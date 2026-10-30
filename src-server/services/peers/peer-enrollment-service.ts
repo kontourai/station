@@ -19,6 +19,7 @@ import { isIP } from 'node:net';
 import { join } from 'node:path';
 import {
   CLIENT_PROTOCOL_HEADER,
+  CLIENT_PROTOCOL_UNSUPPORTED_ERROR_CODE,
   PAIRING_SCOPE_PRESETS,
   type PeerEnrollment,
   type PeerEnrollmentInput,
@@ -67,6 +68,18 @@ type EnrollmentState = {
 
 function record(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function receiverRefusal(status: number, value: unknown): string {
+  const error = record(value) ? value.error : undefined;
+  const code = record(error) ? error.code : error;
+  if (status === 403 && code === 'origin_forbidden')
+    return 'Receiver blocked this Station address; ask its operator to configure the published address as a trusted origin, then start a new peer request';
+  if (status === 429 && code === 'rate_limited')
+    return 'Receiver is limiting pairing requests; wait before starting a new peer request';
+  if (status === 426 && code === CLIENT_PROTOCOL_UNSUPPORTED_ERROR_CODE)
+    return 'Receiver requires a newer Station protocol; update this Station before starting a new peer request';
+  return 'Receiver did not accept a peer request';
 }
 
 function hasControls(value: string): boolean {
@@ -474,7 +487,7 @@ export class PeerEnrollmentService {
         return this.#finish(
           state,
           'failed',
-          'Receiver did not accept a peer request',
+          receiverRefusal(requested.status, value),
         );
       state.offerId = value.offerId;
       state.proof = value.proof;

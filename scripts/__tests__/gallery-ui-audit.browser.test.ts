@@ -82,6 +82,153 @@ describe('hit-target audit scrollers', { timeout: 60_000 }, () => {
 });
 
 describe('gallery finding identities', { timeout: 60_000 }, () => {
+  it('reports a control partly covered by collapsed dock chrome, but not one clear of it', async () => {
+    await render(
+      `<button aria-label="Covered" style="position:fixed;left:10px;bottom:35px;width:100px;height:44px">Covered</button><button aria-label="Clear" style="position:fixed;left:150px;bottom:100px;width:100px;height:44px">Clear</button><div class="chat-dock is-collapsed" style="position:fixed;left:0;right:0;bottom:0;height:55px;background:#333"></div>`,
+    );
+    const audit = await auditGalleryScreen(page, 'fixture');
+    expect(
+      audit.findings.some(
+        (finding) =>
+          finding.identity.startsWith('hit-target:occluded-by-dock:') &&
+          finding.identity.includes('Covered'),
+      ),
+    ).toBe(true);
+    expect(
+      audit.findings.some(
+        (finding) =>
+          finding.identity.startsWith('hit-target:occluded-by-dock:') &&
+          finding.identity.includes('Clear'),
+      ),
+    ).toBe(false);
+  });
+
+  it('does not report a clickable foreground dialog control above the dock', async () => {
+    await render(
+      `<div class="chat-dock is-collapsed" style="position:fixed;left:0;right:0;bottom:0;height:55px;background:#333;z-index:1"></div><div role="dialog" style="position:fixed;left:0;right:0;bottom:0;height:180px;z-index:10;background:white"><button aria-label="Done" style="position:absolute;left:10px;bottom:35px;width:100px;height:44px" onclick="this.closest('[role=dialog]').remove()">Done</button></div>`,
+    );
+    const audit = await auditGalleryScreen(page, 'fixture');
+    expect(
+      audit.findings.some(
+        (finding) =>
+          finding.identity.startsWith('hit-target:occluded-by-dock:') &&
+          finding.identity.includes('Done'),
+      ),
+    ).toBe(false);
+    await page.getByRole('button', { name: 'Done' }).click();
+    expect(await page.getByRole('dialog').count()).toBe(0);
+  });
+
+  it('ignores background controls while a modal backdrop covers the dock', async () => {
+    await render(
+      `<button aria-label="Background" style="position:fixed;left:10px;bottom:35px;width:100px;height:44px">Background</button><div class="chat-dock is-collapsed" style="position:fixed;left:0;right:0;bottom:0;height:55px;background:#333;z-index:1"></div><div style="position:fixed;inset:0;z-index:10;background:#0008"></div><div role="dialog" style="position:fixed;top:10px;left:10px;z-index:11;background:white">Dialog</div>`,
+    );
+    const audit = await auditGalleryScreen(page, 'fixture');
+    expect(
+      audit.findings.some(
+        (finding) =>
+          finding.identity.startsWith('hit-target:occluded-by-dock:') &&
+          finding.identity.includes('Background'),
+      ),
+    ).toBe(false);
+  });
+
+  it('reports a partly visible control extending beyond the content clip into the dock', async () => {
+    await render(
+      `<div style="position:fixed;left:0;right:0;top:0;bottom:55px;overflow:hidden"><button aria-label="Clipped by dock boundary" style="position:absolute;bottom:-24px;left:10px;width:100px;height:44px">Clipped by dock boundary</button></div><div class="chat-dock is-collapsed" style="position:fixed;left:0;right:0;bottom:0;height:55px;background:#333"></div>`,
+    );
+    const audit = await auditGalleryScreen(page, 'fixture');
+    expect(
+      audit.findings.some(
+        (finding) =>
+          finding.identity.startsWith('hit-target:occluded-by-dock:') &&
+          finding.identity.includes('Clipped by dock boundary'),
+      ),
+    ).toBe(true);
+  });
+
+  it('does not treat a small glimpse of a below-fold scrolling card as dock occlusion', async () => {
+    await render(
+      `<div style="position:fixed;left:10px;width:200px;top:0;bottom:55px;overflow:auto"><div style="height:900px"></div><button aria-label="Below fold" style="width:100px;height:60px;position:absolute;top:780px" onclick="this.dataset.clicked=1">Below fold</button></div><div class="chat-dock is-collapsed" style="position:fixed;left:0;right:0;bottom:0;height:55px;background:#333"></div>`,
+    );
+    const audit = await auditGalleryScreen(page, 'fixture');
+    expect(
+      audit.findings.some(
+        (finding) =>
+          finding.identity.startsWith('hit-target:occluded-by-dock:') &&
+          finding.identity.includes('Below fold'),
+      ),
+    ).toBe(false);
+    await page.getByRole('button', { name: 'Below fold' }).click();
+    expect(
+      await page
+        .getByRole('button', { name: 'Below fold' })
+        .getAttribute('data-clicked'),
+    ).toBe('1');
+  });
+
+  it('allows a Settings row that scrolls fully above the dock', async () => {
+    await render(
+      `<div style="position:fixed;left:0;right:0;top:0;bottom:0;overflow:auto"><div class="settings__section" style="height:1300px"><button aria-label="Settings row" style="position:absolute;top:800px;width:100px;height:32px" onclick="this.dataset.clicked=1">Settings row</button></div></div><div class="chat-dock is-collapsed" style="position:fixed;left:0;right:0;bottom:0;height:55px;background:#333"></div>`,
+    );
+    const audit = await auditGalleryScreen(page, 'fixture');
+    expect(
+      audit.findings.some(
+        (finding) =>
+          finding.identity.startsWith('hit-target:occluded-by-dock:') &&
+          finding.identity.includes('Settings row'),
+      ),
+    ).toBe(false);
+    await page.mouse.move(200, 400);
+    await page.mouse.wheel(0, 300);
+    await page.getByRole('button', { name: 'Settings row' }).click();
+    expect(
+      await page
+        .getByRole('button', { name: 'Settings row' })
+        .getAttribute('data-clicked'),
+    ).toBe('1');
+  });
+
+  it.each(['sticky control', 'sticky ancestor', 'fixed control'])(
+    'reports a %s that cannot scroll clear of the dock',
+    async (kind) => {
+      const position = kind === 'fixed control' ? 'fixed' : 'sticky';
+      const button = `<button aria-label="Pinned row" style="${kind === 'sticky ancestor' ? '' : `position:${position};top:800px;`}width:100px;height:32px">Pinned row</button>`;
+      const content =
+        kind === 'sticky ancestor'
+          ? `<div style="position:sticky;top:800px">${button}</div>`
+          : button;
+      await render(
+        `<div style="position:fixed;left:0;right:0;top:0;bottom:0;overflow:auto"><div class="settings__section" style="height:1800px">${content}</div></div><div class="chat-dock is-collapsed" style="position:fixed;left:0;right:0;bottom:0;height:55px;background:#333"></div>`,
+      );
+      const row = page.getByRole('button', { name: 'Pinned row' });
+      const audit = await auditGalleryScreen(page, 'fixture');
+      expect(
+        audit.findings.some(
+          (finding) =>
+            finding.identity.startsWith('hit-target:occluded-by-dock:') &&
+            finding.identity.includes('Pinned row'),
+        ),
+      ).toBe(true);
+      await page.mouse.move(200, 400);
+      await page.mouse.wheel(0, 300);
+      await expect(row.click({ timeout: 1000 })).rejects.toThrow();
+    },
+  );
+
+  it('does not call a control clipped out by its own ancestor a dock occlusion', async () => {
+    await render(
+      `<div style="position:fixed;top:700px;left:10px;width:120px;height:10px;overflow:hidden"><button aria-label="Clipped" style="position:absolute;top:100px;width:100px;height:44px">Clipped</button></div><div class="chat-dock is-collapsed" style="position:fixed;left:0;right:0;bottom:0;height:55px;background:#333"></div>`,
+    );
+    const audit = await auditGalleryScreen(page, 'fixture');
+    expect(
+      audit.findings.some(
+        (finding) =>
+          finding.identity.startsWith('hit-target:occluded-by-dock:') &&
+          finding.identity.includes('Clipped'),
+      ),
+    ).toBe(false);
+  });
   // Visible text missing from the accessible name: axe's
   // label-content-name-mismatch (serious), keyed by the gallery.
   const mismatch =
