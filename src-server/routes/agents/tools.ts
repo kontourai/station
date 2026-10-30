@@ -2,7 +2,9 @@
  * Tool Routes - MCP tool management
  */
 
+import { principalIdMatchesKind } from '@kontourai/station-contracts/principal';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
+import { LegacyTrustReviewRequiredError } from '@kontourai/station-shared/integration-trust-overlay';
 import {
   canonicalDisabledMcpTools,
   mcpToolDisabled,
@@ -124,6 +126,11 @@ export interface McpUiCallDeps {
    * person-owned integration then refuses rather than guessing.
    */
   resolveAccountPrincipalId?: (c: Context) => string | undefined;
+  /**
+   * #3483: the authenticated request principal, for attributing permission
+   * changes. Unlike the account owner above it answers for hosted requests.
+   */
+  resolveRequestPrincipalId?: (c: Context) => string | undefined;
 }
 
 /**
@@ -234,13 +241,35 @@ export function createToolRoutes(
   mcpUiCallDeps: McpUiCallDeps = {},
 ) {
   const app = new Hono();
+  // #3483: who a definition write is attributed to, when known.
+  const attribution = (c: Context, input: Partial<ToolDef>) => {
+    const changedBy = mcpUiCallDeps.resolveRequestPrincipalId?.(c);
+    const explicitFields: Array<
+      'contentTrust' | 'permissions' | 'trustReadOnlyHints'
+    > = [];
+    if (Object.hasOwn(input, 'contentTrust'))
+      explicitFields.push('contentTrust');
+    if (Object.hasOwn(input, 'untrustedContentPermissions'))
+      explicitFields.push('permissions');
+    if (Object.hasOwn(input, 'trustReadOnlyHints'))
+      explicitFields.push('trustReadOnlyHints');
+    return [
+      {
+        ...(changedBy ? { changedBy } : {}),
+        personChange: true as const,
+        explicitFields,
+      },
+    ] as const;
+  };
   app.use('*', async (c, next) => {
     const path = c.req.path.replace(/^\/integrations/, '') || '/';
     const management =
       (c.req.method === 'POST' && path === '/') ||
       (['PUT', 'DELETE'].includes(c.req.method) && /^\/[^/]+$/.test(path)) ||
       (c.req.method === 'POST' &&
-        /^\/[^/]+\/(?:enabled|tools\/apply|reconnect)$/.test(path));
+        /^\/[^/]+\/(?:enabled|tools\/apply|reconnect|trust-review)$/.test(
+          path,
+        ));
     if (management && mcpUiCallDeps.authorizeOperator) {
       try {
         await mcpUiCallDeps.authorizeOperator(c);
@@ -256,6 +285,14 @@ export function createToolRoutes(
     }
     await next();
   });
+  // #3483: the per-engine coverage of the untrusted-content permission.
+  const coverageOf = (
+    def: Parameters<MCPService['engineCoverage']>[0],
+    secrets: boolean,
+  ) => {
+    const engineCoverage = mcpService.engineCoverage?.(def, secrets);
+    return engineCoverage ? { engineCoverage } : {};
+  };
   const iconAssets =
     mcpUiCallDeps.integrationIconAssets ??
     new IntegrationIconAssets(resolveHomeDir());
@@ -428,6 +465,7 @@ export function createToolRoutes(
           renderAllowed: mcpUiCallDeps.isRenderRevoked
             ? !mcpUiCallDeps.isRenderRevoked(t.id)
             : true,
+          ...coverageOf(t, t.requiresEnvSecrets === true),
         };
       });
       return c.json({ success: true, data });
@@ -463,11 +501,14 @@ export function createToolRoutes(
         toolServerCredentialWrites.add(Object.keys(env).length, {
           operation: 'create',
         });
-      await mcpService.saveIntegration({
-        ...safe,
-        ...(env ? { secretEnv: env } : {}),
-        enabled: false,
-      } as ToolDef);
+      await mcpService.saveIntegration(
+        {
+          ...safe,
+          ...(env ? { secretEnv: env } : {}),
+          enabled: false,
+        } as ToolDef,
+        ...attribution(c, input),
+      );
       return c.json({ success: true });
     } catch (error: unknown) {
       return c.json({ success: false, error: errorMessage(error) }, 400);
@@ -478,9 +519,71 @@ export function createToolRoutes(
   app.get('/:id', async (c) => {
     try {
       const def = await mcpService.getIntegration(param(c, 'id'));
-      return c.json({ success: true, data: integrationReadProjection(def) });
+      return c.json({
+        success: true,
+        data: {
+          ...integrationReadProjection(def),
+          ...coverageOf(
+            def,
+            Boolean(
+              (def.env && Object.keys(def.env).length) ||
+                def.storedEnvNames?.length ||
+                Object.keys(def.secretEnvRefs ?? {}).length,
+            ),
+          ),
+        },
+      });
     } catch (error: unknown) {
+      // #3483: shown for review without its unreviewed settings; it stays
+      // unloaded until a person decides.
+      if (error instanceof LegacyTrustReviewRequiredError) {
+        const review = await mcpService
+          .integrationTrustReview(param(c, 'id'))
+          .catch(() => undefined);
+        if (review)
+          return c.json({
+            success: true,
+            data: {
+              ...integrationReadProjection({
+                ...review.definition,
+                enabled: false,
+              }),
+              trustReview: { fields: review.fields },
+            },
+          });
+      }
       return c.json({ success: false, error: errorMessage(error) }, 404);
+    }
+  });
+
+  // #3483: keep or reset legacy trust settings. The management guard above
+  // admits only the operator; the receipt needs the authenticated person.
+  app.post('/:id/trust-review', async (c) => {
+    const body = await c.req.json().catch(() => undefined);
+    const decision = (body as { decision?: unknown } | undefined)?.decision;
+    if (decision !== 'keep' && decision !== 'reset')
+      return c.json(
+        { success: false, error: 'decision must be keep or reset' },
+        400,
+      );
+    const by = mcpUiCallDeps.resolveRequestPrincipalId?.(c);
+    if (!by || !principalIdMatchesKind(by, 'human'))
+      return c.json(
+        {
+          success: false,
+          error: 'Only a signed-in person can review these settings.',
+        },
+        403,
+      );
+    try {
+      await mcpService.decideIntegrationTrustReview(
+        param(c, 'id'),
+        decision,
+        by,
+      );
+      return c.json({ success: true });
+    } catch (error: unknown) {
+      return c.json({ success: false, error: errorMessage(error) }, 409);
     }
   });
 
@@ -901,7 +1004,9 @@ export function createToolRoutes(
       if (!Object.hasOwn(update, 'secretEnv') && existing.env) {
         merged.env = existing.env;
       }
-      await mcpService.saveIntegration(merged);
+      // #3483: the config writer records untrusted-content permission
+      // changes; the authenticated request principal is who made them.
+      await mcpService.saveIntegration(merged, ...attribution(c, update));
       return c.json({ success: true });
     } catch (error: unknown) {
       return c.json({ success: false, error: errorMessage(error) }, 400);

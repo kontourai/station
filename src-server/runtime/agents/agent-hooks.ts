@@ -21,8 +21,15 @@ import type { AgentPolicyService } from '../../services/agents/agent-policy-serv
 import { extractToolFilePath } from '../../services/agents/agent-policy-service.js';
 import type { ApprovalGuardianService } from '../../services/approvals/approval-guardian.js';
 import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
+import { recordPersonApprovedCall } from '../../services/plugins/mediated-untrusted-content-gate.js';
+import {
+  sharedUntrustedContentLedger,
+  type UntrustedContentLedger,
+  untrustedContentDecision,
+} from '../../services/plugins/untrusted-content-policy.js';
 import { toolDenials } from '../../telemetry/metrics.js';
 import { findModelPricing } from '../../utils/pricing.js';
+import { currentMcpPromptOrigin } from '../conversation/authorized-turn-correlation.js';
 import {
   buildConversationStatsUpdate,
   calculateUsageCost,
@@ -91,8 +98,23 @@ export interface AgentHooksDeps {
   ) => Promise<UnattendedGrantResolution>;
   toolNameMapping: Map<string, MCPToolNameMappingEntry>;
   workItemCapture?: WorkItemCapture;
+  /** #3483: defaults to the ledger shared by every Agent's hooks. */
+  untrustedContentLedger?: UntrustedContentLedger;
   logger: any;
 }
+
+/**
+ * station-control tools whose result can carry a delegated child's output
+ * back into the parent's turn.
+ */
+const DELEGATED_RESULT_TOOLS = new Set([
+  'delegate_task',
+  'get_task',
+  'get_task_events',
+  'continue_task',
+  'respond_to_task_request',
+  'list_delegated_tasks',
+]);
 
 // ── Factory ────────────────────────────────────────────
 
@@ -117,6 +139,17 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
     string,
     (tool: ToolCallContext) => Promise<boolean>
   >();
+  // #3483: turns that have read content an integration classifies untrusted.
+  const untrustedContent =
+    deps.untrustedContentLedger ?? sharedUntrustedContentLedger;
+  const provenanceOf = (tool: ToolCallContext) =>
+    tool.mcp?.provenance ?? deps.toolNameMapping.get(tool.toolName)?.provenance;
+  // Read fresh on each call so a person's change applies to the next call.
+  // A rejected read stays rejected: callers fail toward asking.
+  const storedDefinition = (integrationId: string) =>
+    Promise.resolve().then(() =>
+      deps.configLoader.loadIntegration(integrationId),
+    );
 
   let hooks: IAgentHooks & {
     requestApproval?: (tool: ToolCallContext) => Promise<boolean>;
@@ -159,6 +192,26 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
         unattendedAutoApprove,
         deps.toolNameMapping,
       ),
+    untrustedContentPermission: async (tool, invocation) => {
+      if (!(await untrustedContent.hasRead(invocation))) return undefined;
+      const provenance = provenanceOf(tool);
+      if (!provenance && tool.builtin) {
+        return untrustedContentDecision(
+          await storedDefinition(tool.builtin.integrationId).catch(
+            () => undefined,
+          ),
+          tool.toolName,
+        );
+      }
+      // Unknown sources cannot grant a tool permission by name alone.
+      if (!provenance)
+        return untrustedContentDecision(undefined, tool.toolName);
+      return untrustedContentDecision(
+        // No readable definition: no entries and no trusted hints, so ask.
+        await storedDefinition(provenance.integrationId).catch(() => undefined),
+        provenance.originalToolName,
+      );
+    },
     logger: deps.logger,
   });
 
@@ -173,6 +226,16 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
     },
 
     beforeToolCall: async (tool, invocation) => {
+      const promptOrigin = currentMcpPromptOrigin();
+      if (promptOrigin && !(await untrustedContent.hasRead(invocation))) {
+        untrustedContent.mark(
+          invocation,
+          storedDefinition(promptOrigin.serverId).then(
+            (definition) =>
+              promptOrigin.untrusted || definition.contentTrust === 'untrusted',
+          ),
+        );
+      }
       const scopedRequester = invocation.conversationId
         ? approvalRequesters.get(invocation.conversationId)
         : undefined;
@@ -184,7 +247,18 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
       if (decision.behavior === 'allow') return true;
       if (decision.behavior === 'deny') return decision.denial;
       if (decision.behavior === 'ask' && requester) {
-        if (await requester(tool)) return true;
+        if (await requester(tool)) {
+          // #3483: the person approved this call; the station-control
+          // guard applies the same permission and reads this approval.
+          const provenance = provenanceOf(tool);
+          if (provenance && invocation.conversationId)
+            recordPersonApprovedCall(
+              invocation.conversationId,
+              provenance.integrationId,
+              provenance.originalToolName,
+            );
+          return true;
+        }
         toolDenials.add(1, { reason: 'user_denied' });
         // archive#3210: these two reasons are pure Station templates — they
         // embed no guardian, hook, or tool-supplied prose at all — yet they
@@ -211,6 +285,26 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
         toolName: tool.toolName,
         agentSlug: invocation.agentSlug,
       });
+
+      const provenance = provenanceOf(tool);
+      if (provenance) {
+        untrustedContent.mark(
+          invocation,
+          // An unreadable definition rejects, which the ledger counts as
+          // untrusted: a classification Station cannot read fails to asking.
+          storedDefinition(provenance.integrationId).then(
+            (def) => def.contentTrust === 'untrusted',
+          ),
+        );
+        // A delegated child's output that read untrusted content brings it
+        // into this turn.
+        if (
+          provenance.integrationId === 'station-control' &&
+          DELEGATED_RESULT_TOOLS.has(provenance.originalToolName) &&
+          untrustedContent.hasDescendantRead(invocation.conversationId)
+        )
+          untrustedContent.mark(invocation, Promise.resolve(true));
+      }
 
       deps.workItemCapture?.capture({
         tool,
@@ -244,8 +338,13 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
       }
     },
 
+    endInvocation: (invocation) => {
+      untrustedContent.clear(invocation);
+    },
+
     afterInvocation: async (ctx) => {
       const { invocation, usage, toolCallCount } = ctx;
+      untrustedContent.clear(invocation);
       if (!invocation.conversationId) return;
 
       try {

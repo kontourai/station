@@ -45,6 +45,9 @@ import {
   configureRequestTimeout,
   getResolvedApiBase,
   parseCoreArgs,
+  printJson,
+  requestJson,
+  resolveApiBase,
 } from './commands/core-api.js';
 import { runDevCommand } from './commands/dev-command.js';
 import {
@@ -838,6 +841,23 @@ function buildProgram(
       case 'list': {
         const parsed = parseCoreArgs(subArgs);
         await list(parsed);
+        break;
+      }
+      case 'recovery-backups': {
+        const parsed = parseCoreArgs(subArgs);
+        try {
+          const result = await requestJson(
+            resolveApiBase(parsed),
+            '/api/plugins/recovery-backups',
+          );
+          printJson(result);
+        } catch (error) {
+          if ((error as { status?: number }).status === 404)
+            throw new Error(
+              'This Station does not support recovery backup inventory; update the Station.',
+            );
+          throw error;
+        }
         break;
       }
       case 'remove': {

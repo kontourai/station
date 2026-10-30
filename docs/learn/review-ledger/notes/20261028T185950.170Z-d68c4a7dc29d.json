@@ -1,0 +1,7 @@
+{
+  "revision": "6895629f64e98a9f910f73e7a9584e47eac88968",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Review round: catalog qualification now lists setup-required and trustReadOnlyHints; tool contract notes that a person's entry wins over read-only hints and that receipts are config-writer-owned; matches packages/contracts/src/catalog.ts and tool.ts.","inputs":["docs/reference/contracts.md","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

@@ -75,11 +75,19 @@ describe('FeaturePreviewRegistry', () => {
     expect(registry.list()).toEqual([
       expect.objectContaining({ id: 'task-review', enabled: false }),
       expect.objectContaining({ id: 'visual-skills', enabled: false }),
+      expect.objectContaining({
+        id: 'integration-content-trust',
+        enabled: false,
+      }),
     ]);
     const probe = bindProbe(registry);
     expect(registry.list()).toEqual([
       expect.objectContaining({ id: 'task-review', enabled: false }),
       expect.objectContaining({ id: 'visual-skills', enabled: false }),
+      expect.objectContaining({
+        id: 'integration-content-trust',
+        enabled: false,
+      }),
       expect.objectContaining({ id: 'probe', enabled: false }),
     ]);
     expect(selectProbe(probe)).toBe('skipped');
@@ -112,6 +120,10 @@ describe('FeaturePreviewRegistry', () => {
     expect(registry.list()).toEqual([
       expect.objectContaining({ id: 'task-review', enabled: false }),
       expect.objectContaining({ id: 'visual-skills', enabled: false }),
+      expect.objectContaining({
+        id: 'integration-content-trust',
+        enabled: false,
+      }),
     ]);
     await expect(registry.setEnabled('orphaned', false)).rejects.toBeInstanceOf(
       FeaturePreviewNotOfferedError,
