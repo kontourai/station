@@ -13,6 +13,7 @@
  * in-terminal short form.
  */
 
+import { AUTOMATION_OPERATOR_SURFACE } from '@kontourai/station-contracts/automation';
 import { REVIEW_EVIDENCE_OPERATOR_OPERATIONS } from '@kontourai/station-contracts/review-evidence';
 import { SCHEDULER_OPERATOR_OPERATIONS } from '@kontourai/station-contracts/scheduler';
 import { resolveStationRuntimeContext } from '@kontourai/station-shared/runtime-path-resolver';
@@ -1142,6 +1143,19 @@ const VERBS: Record<string, VerbSpec> = {
       'weekday rule has no correct fixed-UTC spelling, so pass the zone the',
       'expression is written in or the instants will not be the ones it fires',
       'at.',
+    ],
+  },
+  automation: {
+    group: 'Core Workspace',
+    summary: 'Read Automation delivery history (observe-only)',
+    targets: true,
+    actions: [AUTOMATION_OPERATOR_SURFACE.deliveries.cli],
+    detail: [
+      'station automation deliveries [--limit=<1-200>]',
+      '',
+      'Lists the newest recorded deliveries, newest first (default 50).',
+      'Each row is a bounded projection: outcome, reason, rule and episode',
+      'ids. Station records matches but starts no Automation work yet.',
     ],
   },
   runs: {
