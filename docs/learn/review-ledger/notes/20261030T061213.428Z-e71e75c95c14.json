@@ -1,0 +1,7 @@
+{
+  "revision": "82b7ba37856d3ebba01379ef70a58da0a077d4da",
+
+  "notes": [
+    {"path":"README.md","note":"Scoped entry-point review at 82b7ba37856: read the complete README, current ChildWork module-map contract and actual BackgroundTasksSheet/ChildWorkRow branch deltas. The Follow delegated work row accurately says retained activity, distinguishes returned results from provider reports, requires authorized transcript access and separates completion from accepted work. Omitted-history and retained-running-count disclosures in the sheet support that limited claim. CLI changes add session-group/ensemble dispatch and group error projection, repair playbook migration ordering and preserve ordinary source/bundled doctor paths; README neither advertises portable group serving nor claims finalizer delivery. Existing package/architecture links remain reading routes, not release/device/provider proof. No prose change needed for these named inputs. Recent175 UI and399 provenance/delivery focused passes remain bounded local fixtures with separately dirty publication owners; no new installation, provider/native/hosted, geometry or complete epic acceptance. Unchanged installer/privacy/other-engine claims retain earlier reviews.","inputs":["README.md","docs/architecture/module-map.md","docs/reference/cli.md","packages/cli/src/cli.ts","src-ui/src/components/chat-dock/BackgroundTasksSheet.tsx","src-ui/src/workspace-panes/agents/ChildWorkRow.tsx"]}
+  ]
+}
