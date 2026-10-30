@@ -1,15 +1,20 @@
 /** @vitest-environment jsdom */
+import 'fake-indexeddb/auto';
 import {
   cleanup,
   fireEvent,
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
+import { clear, get } from 'idb-keyval';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  store: new Map<string, unknown>(),
+  writeGate: undefined as
+    | { entered: () => void; released: Promise<void> }
+    | undefined,
   send: vi.fn(),
   history: {
     data: {
@@ -40,15 +45,30 @@ const mocks = vi.hoisted(() => ({
     observation: { grant: { kind: 'operator' } },
   },
 }));
-vi.mock('idb-keyval', () => ({
-  get: async (key: string) => mocks.store.get(key),
-  set: async (key: string, value: unknown) => {
-    mocks.store.set(key, value);
-  },
-  del: async (key: string) => {
-    mocks.store.delete(key);
-  },
-}));
+vi.mock('idb-keyval', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('idb-keyval')>();
+  const afterWrite = async () => {
+    const gate = mocks.writeGate;
+    if (!gate) return;
+    mocks.writeGate = undefined;
+    gate.entered();
+    await gate.released;
+  };
+  return {
+    ...actual,
+    set: async <T,>(key: IDBValidKey, value: T) => {
+      await actual.set(key, value);
+      await afterWrite();
+    },
+    update: async <T,>(
+      key: IDBValidKey,
+      updater: (value: T | undefined) => T,
+    ) => {
+      await actual.update(key, updater);
+      await afterWrite();
+    },
+  };
+});
 vi.mock('@kontourai/station-sdk', () => ({
   useChildWorkInstructionsQuery: () => mocks.history,
   useSteerChildWorkMutation: () => ({
@@ -70,15 +90,16 @@ vi.mock('../../../contexts/AuthorityPersistenceContext', () => ({
 import { ChildWorkInstructionPanel } from '../ChildWorkInstructionPanel';
 import { UIBlockActionsContext } from '../UIBlockActionsContext';
 
-beforeEach(() => {
-  mocks.store.clear();
+beforeEach(async () => {
+  await clear();
+  mocks.writeGate = undefined;
   mocks.send.mockReset();
   mocks.history.isError = false;
   mocks.history.data = { pages: [{ entries: [] }] };
   mocks.authority.observation.grant = { kind: 'operator' };
 });
 afterEach(cleanup);
-function view(turnId = 'turn', allowed = true) {
+function view(turnId = 'turn', allowed = true, name = 'Worker') {
   return render(
     <UIBlockActionsContext.Provider
       value={{ submitForm: () => {}, canSendChildInstruction: allowed }}
@@ -89,7 +110,7 @@ function view(turnId = 'turn', allowed = true) {
         childId="child"
         turnId={turnId}
         running
-        name="Worker"
+        name={name}
       />
     </UIBlockActionsContext.Provider>,
   );
@@ -116,6 +137,107 @@ test('sends only to the named child and keeps the same request after an uncertai
   );
   await waitFor(() => expect(mocks.send).toHaveBeenCalledTimes(2));
   expect(mocks.send.mock.calls[1][0]).toEqual(first);
+});
+
+test('concurrent panels claim one durable instruction before dispatch', async () => {
+  mocks.send.mockResolvedValue({ outcome: 'indeterminate' });
+  const a = view('turn', true, 'A');
+  const b = view('turn', true, 'B');
+  const inputA = await within(a.container).findByLabelText('Send to A');
+  const inputB = await within(b.container).findByLabelText('Send to B');
+  fireEvent.change(inputA, { target: { value: 'First instruction' } });
+  fireEvent.click(within(a.container).getByRole('button', { name: 'Send' }));
+  await within(a.container).findByText(/Delivery could not be confirmed/);
+  fireEvent.change(inputB, { target: { value: 'Second instruction' } });
+  fireEvent.click(within(b.container).getByRole('button', { name: 'Send' }));
+  await within(b.container).findByText(
+    'Another instruction is awaiting confirmation.',
+  );
+  expect(mocks.send).toHaveBeenCalledTimes(1);
+  expect((inputB as HTMLTextAreaElement).value).toBe('Second instruction');
+  a.unmount();
+  b.unmount();
+  view();
+  expect(
+    await screen.findByText('Saved instruction: First instruction'),
+  ).toBeTruthy();
+});
+
+test('an older response cannot clear a later uncertain instruction', async () => {
+  let finishFirst!: (result: { outcome: string }) => void;
+  mocks.send
+    .mockImplementationOnce(
+      () =>
+        new Promise<{ outcome: string }>((resolve) => {
+          finishFirst = resolve;
+        }),
+    )
+    .mockResolvedValueOnce({ outcome: 'steered' })
+    .mockResolvedValue({ outcome: 'indeterminate' });
+  const a = view('turn', true, 'A');
+  const b = view('turn', true, 'B');
+  const inputA = await within(a.container).findByLabelText('Send to A');
+  const inputB = await within(b.container).findByLabelText('Send to B');
+  fireEvent.change(inputA, { target: { value: 'First instruction' } });
+  fireEvent.click(within(a.container).getByRole('button', { name: 'Send' }));
+  await waitFor(() => expect(mocks.send).toHaveBeenCalledTimes(1));
+  const checking = view('turn', true, 'Checking');
+  fireEvent.click(
+    await within(checking.container).findByRole('button', {
+      name: 'Check saved instruction',
+    }),
+  );
+  await within(checking.container).findByText('Sent to the subagent.');
+  fireEvent.change(inputB, { target: { value: 'Second instruction' } });
+  fireEvent.click(within(b.container).getByRole('button', { name: 'Send' }));
+  await within(b.container).findByText(/Delivery could not be confirmed/);
+  const second = mocks.send.mock.calls[2][0];
+  finishFirst({ outcome: 'steered' });
+  await within(a.container).findByText('Sent to the subagent.');
+  a.unmount();
+  b.unmount();
+  checking.unmount();
+  view('new-turn');
+  expect(
+    await screen.findByText('Saved instruction: Second instruction'),
+  ).toBeTruthy();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Check saved instruction' }),
+  );
+  await waitFor(() => expect(mocks.send).toHaveBeenCalledTimes(4));
+  expect(mocks.send.mock.calls[3][0]).toEqual(second);
+});
+
+test('freezes editing until the instruction is durably saved', async () => {
+  let release!: () => void;
+  let entered!: () => void;
+  const started = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  mocks.writeGate = { entered, released };
+  mocks.send.mockResolvedValue({ outcome: 'indeterminate' });
+  const rendered = view();
+  const input = await screen.findByLabelText('Send to Worker');
+  fireEvent.change(input, { target: { value: 'Original instruction' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+  await started;
+  const disabled = (input as HTMLTextAreaElement).disabled;
+  fireEvent.change(input, { target: { value: 'Changed during save' } });
+  release();
+  await screen.findByText(/Delivery could not be confirmed/);
+  expect(disabled).toBe(true);
+  expect(mocks.send.mock.calls[0][0].input).toBe('Original instruction');
+  expect(
+    await get(`child-steer:${JSON.stringify(['owner', 'parent', 'child'])}`),
+  ).toMatchObject({ input: 'Original instruction' });
+  rendered.unmount();
+  view();
+  expect(
+    await screen.findByText('Saved instruction: Original instruction'),
+  ).toBeTruthy();
 });
 
 test('a changed child turn refuses the composed instruction', async () => {

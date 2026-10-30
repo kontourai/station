@@ -3,7 +3,7 @@ import {
   useChildWorkInstructionsQuery,
   useSteerChildWorkMutation,
 } from '@kontourai/station-sdk';
-import { del, get, set } from 'idb-keyval';
+import { get, update } from 'idb-keyval';
 import { useEffect, useRef, useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
@@ -19,6 +19,18 @@ type Pending = {
   input: string;
   clientInputId: string;
 };
+
+async function clearInstruction(key: string, expected: Pending) {
+  await update<Pending | null>(key, (current) =>
+    current?.clientInputId === expected.clientInputId &&
+    current.threadId === expected.threadId &&
+    current.childId === expected.childId &&
+    current.turnId === expected.turnId &&
+    current.input === expected.input
+      ? null
+      : (current ?? null),
+  );
+}
 
 export function ChildWorkInstructionPanel({
   threadId,
@@ -62,6 +74,7 @@ export function ChildWorkInstructionPanel({
   const [pending, setPending] = useState<Pending | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [message, setMessage] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const busy = useRef(false);
   const target = useRef({
     threadId,
@@ -112,7 +125,7 @@ export function ChildWorkInstructionPanel({
       );
     if (!entry || entry.delivery === 'indeterminate') return;
     let active = true;
-    void del(key).then(() => {
+    void clearInstruction(key, pending).then(() => {
       if (!active) return;
       setPending(null);
       if (entry.delivery === 'refused') {
@@ -164,10 +177,20 @@ export function ChildWorkInstructionPanel({
       return;
     }
     busy.current = true;
+    setSubmitting(true);
     try {
       if (!retry) {
         try {
-          await set(key, saved);
+          let claimed = false;
+          await update<Pending | null>(key, (current) => {
+            if (current) return current;
+            claimed = true;
+            return saved;
+          });
+          if (!claimed) {
+            setMessage('Another instruction is awaiting confirmation.');
+            return;
+          }
         } catch {
           setMessage('Could not save the instruction. It was not sent.');
           return;
@@ -195,7 +218,7 @@ export function ChildWorkInstructionPanel({
       const result = await send.mutateAsync(saved);
       await history.refetch();
       if (result.outcome === 'steered') {
-        await del(key);
+        await clearInstruction(key, saved);
         setPending(null);
         setText('');
         setDraftTurnId(undefined);
@@ -205,7 +228,7 @@ export function ChildWorkInstructionPanel({
           'Delivery could not be confirmed. Check again with the same instruction.',
         );
       else {
-        await del(key);
+        await clearInstruction(key, saved);
         setPending(null);
         setText(saved.input);
         setDraftTurnId(saved.turnId);
@@ -225,6 +248,7 @@ export function ChildWorkInstructionPanel({
       );
     } finally {
       busy.current = false;
+      setSubmitting(false);
     }
   };
   const entries = history.data?.pages.flatMap((page) => page.entries) ?? [];
@@ -291,7 +315,7 @@ export function ChildWorkInstructionPanel({
       {pending && canOperate && mayContinue && key && loaded ? (
         <Button
           className="tap-target"
-          pending={send.isPending}
+          pending={submitting || send.isPending}
           onClick={() => void submit(true)}
         >
           Check saved instruction
@@ -317,7 +341,9 @@ export function ChildWorkInstructionPanel({
               className="editor-textarea"
               rows={3}
               value={text}
+              disabled={submitting || send.isPending}
               onChange={(event) => {
+                if (busy.current) return;
                 if (!text && event.target.value) setDraftTurnId(turnId);
                 setText(event.target.value);
               }}
@@ -333,7 +359,7 @@ export function ChildWorkInstructionPanel({
               !historyAvailable ||
               !history.isSuccess
             }
-            pending={send.isPending}
+            pending={submitting || send.isPending}
           >
             Send
           </Button>
