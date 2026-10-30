@@ -8196,6 +8196,20 @@ describe('OrchestrationService', () => {
       ),
     ).rejects.toThrow('Tenant execution context does not match session');
     expect(bedrock.sendTurn).not.toHaveBeenCalled();
+    await expect(
+      service.dispatchWithReceipt(
+        {
+          type: 'steerChildWork',
+          threadId: 'tenant-bound',
+          childId: 'child',
+          turnId: 'turn',
+          input: 'do not cross tenants',
+          clientInputId: 'tenant-child-key',
+        },
+        { tenantExecutionContext: bravo, requestCurrent: () => true },
+      ),
+    ).rejects.toThrow('Tenant execution context does not match session');
+    expect(bedrock.steerChildWork).not.toHaveBeenCalled();
     expect(eventStore.readSessions()[0]?.tenantExecutionContext).toEqual(alpha);
     expect(started.result).not.toHaveProperty('tenantExecutionContext');
     expect(JSON.stringify(started.result)).not.toContain(
