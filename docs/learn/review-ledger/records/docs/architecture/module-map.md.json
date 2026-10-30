@@ -1462,7 +1462,13 @@
 
     "src-server/routes/orchestration/session-goals.ts",
 
-    "src-server/providers/adapters/codex-goals.ts"
+    "src-server/providers/adapters/codex-goals.ts",
+
+    "src-server/services/automation/github-poll.ts",
+
+    "src-server/services/automation/automation-intake.ts",
+
+    "src-server/services/automation/github-workflow-run.ts"
   ],
 
   "checks": [

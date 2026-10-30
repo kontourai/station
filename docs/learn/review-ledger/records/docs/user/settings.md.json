@@ -52,7 +52,9 @@
 
     "src-server/providers/adapters/codex-goals.ts",
 
-    "src-ui/src/components/chat/SessionGoalControl.tsx"
+    "src-ui/src/components/chat/SessionGoalControl.tsx",
+
+    "src-server/services/automation/github-poll.ts"
   ],
 
   "checks": [

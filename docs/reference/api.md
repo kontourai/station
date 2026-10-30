@@ -4716,6 +4716,25 @@ Use the [SDK scheduler client](../../packages/sdk/src/client/scheduler.ts),
 `station schedule`, or corresponding station-control tools for supported
 operator operations. SSE and webhook retain their separate HTTP transport roles.
 
+### Automation Deliveries
+
+`GET /automations/deliveries?limit=<1-200>` (default 50) returns
+`{success: true, data: {deliveries, polls}}`: the newest recorded Automation
+deliveries, newest first, as the [AutomationDeliveryRecord contract](../../packages/contracts/src/automation.ts)
+projection: hashed `deliveryKey`, `sourceId`, `semanticKey`, `eventType`,
+times, `outcome`, optional `reason`, and rule, episode, Task and session ids.
+No payload, secret or delivery GUID is returned. A `limit` outside 1–200 is
+refused with 400 rather than clamped, an unavailable ledger answers 503 with
+`code: "policy_unavailable"`, and hosted mode answers 404. The route
+([source](../../src-server/routes/operations/automations.ts)) needs the
+`access:manage` pairing scope and the enabled `github-automation-observations`
+Feature Preview. Disabled previews return 404 with `feature_preview_disabled`,
+`previewId` and `settingsPath`, before opening the ledger. The `polls` projection
+reports last-poll time, cursor and coverage/failure outcome; `partial` means the
+GitHub page omitted additional runs and did not advance the cursor. No `/automations` mutation is mounted or
+scope-classified yet. Use the [SDK client](../../packages/sdk/src/client/automations.ts)
+or `station automation deliveries`.
+
 ### Open File with System Handler
 
 The former `POST /scheduler/open` route is not registered. Scheduled output is

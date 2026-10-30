@@ -1,0 +1,7 @@
+{
+  "revision": "8f0111e1a85c5f36a2a9eebfa4a3c18ab8502d9b",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"Reviewed the changed principal test and scoped account rule against usage export and source enrollment attribution; these analytics routes are outside the new rule. No monitoring runtime or companion deployment was exercised.","inputs":["docs/guides/monitoring.md","src-server/runtime/routes/__tests__/runtime-routes-device-session-chat-principal.test.ts"]}
+  ]
+}

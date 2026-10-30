@@ -2089,6 +2089,22 @@ operator lifecycle is exposed by the HTTP API, React-free SDK client, and
 station-control MCP; only scheduler SSE/webhook transport plumbing is
 intentionally API-only.
 
+### `automation`
+
+```
+station automation deliveries [--limit=<1-200>] [--api-base=<url>]
+```
+
+Requires management access and the **GitHub automation observations** Feature
+Preview. Prints `deliveries` (default 50) and `polls` through
+`GET /automations/deliveries`: each row's outcome (`matched`, `no-match`,
+`ignored`, `refused` with a reason, or `duplicate`), its semantic key, and its
+rule and episode ids. `polls` retains partial coverage and failed observations
+with their last poll time and cursor; missing coverage is not success. Station
+currently records matches for `github-poll`
+sources and starts no Automation work. The other `AUTOMATION_OPERATOR_SURFACE`
+verbs are not available yet.
+
 ### `runs`
 
 Read the run history currently projected by the neutral runs API (`/api/runs`)

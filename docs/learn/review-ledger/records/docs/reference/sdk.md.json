@@ -808,7 +808,9 @@
 
     "packages/sdk/src/client/session-goals.ts",
 
-    "src-ui/src/components/chat/SessionGoalControl.tsx"
+    "src-ui/src/components/chat/SessionGoalControl.tsx",
+
+    "packages/sdk/src/client/automations.ts"
   ],
 
   "checks": [
