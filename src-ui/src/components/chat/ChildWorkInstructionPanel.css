@@ -16,3 +16,9 @@
 .child-instructions li {
   overflow-wrap: anywhere;
 }
+.child-instructions summary {
+  min-height: 44px;
+  box-sizing: border-box;
+  padding-block: var(--k-space-3);
+  cursor: pointer;
+}
