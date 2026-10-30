@@ -132,6 +132,41 @@ export function ConversationStatsModal({
     ? cacheInclusiveTotalTokens(usageProvider, stats)
     : undefined;
 
+  /**
+   * archive#3201 pins absent ≠ zero, and a section of nothing but dashes is
+   * the honest render of an unmeasured class — but a card whose EVERY figure
+   * is a dash reads as broken data, not absent data (an ACP session reports
+   * context occupancy only, so three cards sat fully dashed above a footnote
+   * that alone carried the information). A section collapses only when every
+   * figure it shows is unreported; a mixed section keeps its dashes so a
+   * measured field stays distinguishable from an unmeasured one. A
+   * `station-memory` view records numbers (zeros included), so it never
+   * collapses.
+   */
+  const engineEventsView = stats?.measurement?.source === 'engine-events';
+  const tokenUsageReported = stats
+    ? !engineEventsView ||
+      [
+        stats.inputTokens,
+        stats.outputTokens,
+        stats.totalTokens,
+        stats.cacheReadTokens,
+        stats.cacheWriteTokens,
+      ].some((value) => value !== undefined)
+    : false;
+  const averagesReported = stats
+    ? stats.turns > 0 &&
+      (!engineEventsView ||
+        [
+          stats.userMessageTokens,
+          stats.assistantMessageTokens,
+          stats.inputTokens,
+        ].some((value) => value !== undefined))
+    : false;
+  const costReported = stats
+    ? !engineEventsView || stats.estimatedCost !== undefined
+    : false;
+
   return (
     <ResponsiveDialogSurface
       layer="dialog"
@@ -288,61 +323,67 @@ export function ConversationStatsModal({
               )}
             </div>
           )}
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
-              gap: '16px',
-              marginBottom: '16px',
-            }}
-          >
-            <SectionCard
-              title="Total LLM Consumption"
-              subtitle="Tokens sent/received across all API calls"
+          {(tokenUsageReported || averagesReported) && (
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: '16px',
+                marginBottom: '16px',
+              }}
             >
-              <StatRow
-                label={cacheInclusivity === 'disjoint' ? 'In (uncached)' : 'In'}
-                value={formatMeasuredTokens(stats.inputTokens)}
-              />
-              {/* Cache rows render only when the engine reported the figure —
-                  an absent field gets no row rather than an invented zero
-                  (station#3201). */}
-              {stats.cacheReadTokens !== undefined && (
-                <StatRow
-                  label="Cache read"
-                  value={formatMeasuredTokens(stats.cacheReadTokens)}
-                />
+              {tokenUsageReported && (
+                <SectionCard
+                  title="Total LLM Consumption"
+                  subtitle="Tokens sent/received across all API calls"
+                >
+                  <StatRow
+                    label={
+                      cacheInclusivity === 'disjoint' ? 'In (uncached)' : 'In'
+                    }
+                    value={formatMeasuredTokens(stats.inputTokens)}
+                  />
+                  {/* Cache rows render only when the engine reported the figure —
+                      an absent field gets no row rather than an invented zero
+                      (station#3201). */}
+                  {stats.cacheReadTokens !== undefined && (
+                    <StatRow
+                      label="Cache read"
+                      value={formatMeasuredTokens(stats.cacheReadTokens)}
+                    />
+                  )}
+                  {stats.cacheWriteTokens !== undefined && (
+                    <StatRow
+                      label="Cache write"
+                      value={formatMeasuredTokens(stats.cacheWriteTokens)}
+                    />
+                  )}
+                  {promptSideTotal !== undefined && (
+                    <StatRow
+                      label="Prompt total"
+                      value={promptSideTotal.toLocaleString()}
+                    />
+                  )}
+                  <StatRow
+                    label="Out"
+                    value={formatMeasuredTokens(stats.outputTokens)}
+                  />
+                  {/* When the declared inclusivity backs it, the total includes
+                      cache; otherwise this is the provider's own figure,
+                      unsummed. */}
+                  <div>
+                    Total:{' '}
+                    {formatMeasuredTokens(
+                      cacheInclusiveTotal ?? stats.totalTokens,
+                    )}
+                  </div>
+                </SectionCard>
               )}
-              {stats.cacheWriteTokens !== undefined && (
-                <StatRow
-                  label="Cache write"
-                  value={formatMeasuredTokens(stats.cacheWriteTokens)}
-                />
-              )}
-              {promptSideTotal !== undefined && (
-                <StatRow
-                  label="Prompt total"
-                  value={promptSideTotal.toLocaleString()}
-                />
-              )}
-              <StatRow
-                label="Out"
-                value={formatMeasuredTokens(stats.outputTokens)}
-              />
-              {/* When the declared inclusivity backs it, the total includes
-                  cache; otherwise this is the provider's own figure,
-                  unsummed. */}
-              <div>
-                Total:{' '}
-                {formatMeasuredTokens(cacheInclusiveTotal ?? stats.totalTokens)}
-              </div>
-            </SectionCard>
-            <SectionCard
-              title="Per Turn Averages"
-              subtitle="Average tokens per conversation turn"
-            >
-              {stats.turns > 0 && (
-                <>
+              {averagesReported && (
+                <SectionCard
+                  title="Per Turn Averages"
+                  subtitle="Average tokens per conversation turn"
+                >
                   <StatRow
                     label="User"
                     value={
@@ -369,10 +410,10 @@ export function ConversationStatsModal({
                     {formatAverageTokens(stats.inputTokens, stats.turns) ??
                       UNREPORTED_MEASUREMENT_TEXT}
                   </div>
-                </>
+                </SectionCard>
               )}
-            </SectionCard>
-          </div>
+            </div>
+          )}
           <div
             style={{
               display: 'grid',
@@ -388,21 +429,23 @@ export function ConversationStatsModal({
               <div style={{ marginBottom: '4px' }}>Turns: {stats.turns}</div>
               <div>Tool Calls: {stats.toolCalls}</div>
             </SectionCard>
-            <SectionCard title="Cost" subtitle="Total and per-turn cost">
-              <div style={{ marginBottom: '4px' }}>
-                Total: {formatMeasuredCostUsd(stats.estimatedCost)}
-              </div>
-              {stats.turns > 0 && (
-                <div>
-                  Per Turn:{' '}
-                  {formatMeasuredCostUsd(
-                    stats.estimatedCost === undefined
-                      ? undefined
-                      : stats.estimatedCost / stats.turns,
-                  )}
+            {costReported && (
+              <SectionCard title="Cost" subtitle="Total and per-turn cost">
+                <div style={{ marginBottom: '4px' }}>
+                  Total: {formatMeasuredCostUsd(stats.estimatedCost)}
                 </div>
-              )}
-            </SectionCard>
+                {stats.turns > 0 && (
+                  <div>
+                    Per Turn:{' '}
+                    {formatMeasuredCostUsd(
+                      stats.estimatedCost === undefined
+                        ? undefined
+                        : stats.estimatedCost / stats.turns,
+                    )}
+                  </div>
+                )}
+              </SectionCard>
+            )}
           </div>
           <ThreadUsageBreakdown
             tree={usageTree}

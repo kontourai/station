@@ -332,7 +332,11 @@ including the history-dependent limit on untagged terminal acknowledgement.
 Its read-only companions, `list_project_activity` and `get_session_digest`, call
 `/api/orchestration/session-activity` (see
 [Station Control Project Activity](api.md#station-control-project-activity)) and
-read as the calling Session's owner within the caller's Project.
+read as the calling Session's owner within the caller's Project. A person waits
+on, digests and lists their own Sessions through separate person-facing leaves
+under `/api/orchestration/session-reads` (see
+[Person Session Reads](api.md#person-session-reads)), which refuse every
+station-control request.
 
 The response is a foreground handle containing `conversationId`, `sessionId`,
 `providerTurnId`, the
