@@ -3,7 +3,7 @@ import {
   useSessionGoalMutation,
   useSessionGoalQuery,
 } from '@kontourai/station-sdk/session-goals';
-import { StatusBadge } from '@kontourai/ui/react';
+import { Badge } from '@kontourai/ui/react';
 import { useId, useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
@@ -86,7 +86,7 @@ function GoalSurface({
               ? 'Engine-owned'
               : 'Station-owned'}
             {' · '}
-            <StatusBadge status={data.goal?.status ?? 'No goal'} />
+            <Badge value={data.goal?.status ?? 'No goal'} />
           </p>
           {data.goal && (
             <>
