@@ -163,10 +163,10 @@ export class PortableGroupPreparation {
     );
   }
 
-  async prepare(
+  async operationIdentity(
     context: RuntimeSourceRequestContext,
     sent: StationReportGroupInput,
-  ): Promise<PreparedPortableGroup> {
+  ) {
     const input = parseStationReportGroupInput(sent);
     assertSupportedInput(input);
     this.#assertRequest(context.req.raw);
@@ -176,8 +176,6 @@ export class PortableGroupPreparation {
       this.owners.runtime.requestSecurity,
     );
     const lease = authority.requireCurrentLocalGrant(context.req.raw);
-    lease.assertCurrent();
-    await this.retryInputCleanup();
     lease.assertCurrent();
     const principal = createOrchestrationRequestPrincipalResolver({
       environmentSecurityService:
@@ -189,6 +187,21 @@ export class PortableGroupPreparation {
         canonicalJson([lease.hostContextId, principal.id, input.operationId]),
       )
       .digest('hex')}`;
+    return { groupId, principalId: principal.id };
+  }
+
+  async prepare(
+    context: RuntimeSourceRequestContext,
+    sent: StationReportGroupInput,
+  ): Promise<PreparedPortableGroup> {
+    const input = parseStationReportGroupInput(sent);
+    assertSupportedInput(input);
+    this.#assertRequest(context.req.raw);
+    const { groupId, principalId } = await this.operationIdentity(
+      context,
+      input,
+    );
+    await this.retryInputCleanup();
     const intent = canonicalJson(input);
     const prior = this.#operations.get(groupId);
     if (prior) {
@@ -199,13 +212,19 @@ export class PortableGroupPreparation {
       return prepared;
     }
     if (this.#operations.size >= 128) refuse();
-    const promise = this.#prepare(context, input, groupId, principal.id);
+    const promise = this.#prepare(context, input, groupId, principalId);
     this.#operations.set(groupId, {
       intent,
       request: context.req.raw,
       promise,
     });
-    return promise;
+    try {
+      return await promise;
+    } catch (error) {
+      if (this.#operations.get(groupId)?.promise === promise)
+        this.#operations.delete(groupId);
+      throw error;
+    }
   }
 
   async #prepare(
@@ -1264,6 +1283,9 @@ export class PortableGroupPreparation {
     const state = this.#states.get(handle);
     if (!state || state.closed) return;
     state.closed = true;
+    const operation = this.#operations.get(state.spec.groupId);
+    if (operation?.request === state.request)
+      this.#operations.delete(state.spec.groupId);
     for (const member of state.members)
       this.owners.sources.releaseSnapshot(member.snapshot);
   }

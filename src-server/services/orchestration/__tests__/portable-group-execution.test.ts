@@ -63,7 +63,7 @@ test('V2 create and later run dispatch admitted source through real tasks and re
   });
   const preparation = new PortableGroupPreparation(h.preparationOwners);
   const persistence = new StationDelegationPersistence(root);
-  const owner = new PortableGroupExecution({
+  const owners: ConstructorParameters<typeof PortableGroupExecution>[0] = {
     preparation,
     admissions: new PortableGroupAdmissionStore(admissionsRoot),
     persistence,
@@ -82,10 +82,33 @@ test('V2 create and later run dispatch admitted source through real tasks and re
         return undefined;
       };
     },
-  });
+  };
+  const owner = new PortableGroupExecution(owners);
   try {
     const created = await owner.create(h.f.context(), h.input);
     assert.equal(created.projection.revision, 1);
+    const replay = await owner.create(
+      h.f.context(requestFor(h, 'POST')),
+      h.input,
+    );
+    assert.equal(replay.replayed, true);
+    assert.deepEqual(replay.projection.spec, created.projection.spec);
+    const restarted = new PortableGroupExecution({
+      ...owners,
+      preparation: new PortableGroupPreparation(h.preparationOwners),
+    });
+    const afterRestart = await restarted.create(
+      h.f.context(requestFor(h, 'POST')),
+      h.input,
+    );
+    assert.equal(afterRestart.replayed, true);
+    assert.deepEqual(afterRestart.projection.spec, created.projection.spec);
+    await assert.rejects(() =>
+      owner.create(h.f.context(requestFor(h, 'POST')), {
+        ...h.input,
+        maxConcurrent: 1,
+      }),
+    );
     assert.equal(h.rawFetch.mock.calls.length, 0);
     const result = await owner.run(
       h.f.context(requestFor(h, 'POST')),

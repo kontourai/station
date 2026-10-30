@@ -23,6 +23,7 @@ import type {
   PortableGroupPreparation,
   PreparedPortableGroup,
 } from './portable-group-preparation.js';
+import { parseStationReportGroupInput } from './station-report-group-input.js';
 
 const same = (a: unknown, b: unknown) => canonicalJson(a) === canonicalJson(b);
 function refuse(): never {
@@ -37,6 +38,16 @@ type Retained = {
 /** Operator-only V2 composition. Other caller classes require their own admission owner. */
 // UNWIRED(#91): factory serving and full caller/protocol qualification remain open.
 export class PortableGroupExecution {
+  readonly #creating = new Map<
+    string,
+    {
+      intent: string;
+      promise: Promise<{
+        replayed: boolean;
+        projection: import('@kontourai/flow-agents/delegation-group-v2').DelegationGroupProjectionV2;
+      }>;
+    }
+  >();
   constructor(
     private readonly owners: {
       preparation: PortableGroupPreparation;
@@ -54,6 +65,44 @@ export class PortableGroupExecution {
     input: Parameters<PortableGroupPreparation['prepare']>[1],
   ) {
     const current = await this.owners.authorize(context);
+    const parsed = parseStationReportGroupInput(input);
+    const { groupId } = await this.owners.preparation.operationIdentity(
+      context,
+      parsed,
+    );
+    current();
+    const prior = this.owners.admissions.read(groupId, current);
+    if (prior) {
+      const metadata = this.owners.preparation.inspectAdmission(context, prior);
+      if (!same(metadata.intent, parsed)) refuse();
+      const projection = await this.get(context, groupId);
+      current();
+      return { replayed: true, projection };
+    }
+    const intent = canonicalJson(parsed);
+    const active = this.#creating.get(groupId);
+    if (active) {
+      if (active.intent !== intent) refuse();
+      const result = await active.promise;
+      current();
+      return { ...result, replayed: true };
+    }
+    if (this.#creating.size >= 128) refuse();
+    const promise = this.#createNew(context, parsed, current);
+    this.#creating.set(groupId, { intent, promise });
+    try {
+      return await promise;
+    } finally {
+      if (this.#creating.get(groupId)?.promise === promise)
+        this.#creating.delete(groupId);
+    }
+  }
+
+  async #createNew(
+    context: RuntimeSourceRequestContext,
+    input: Parameters<PortableGroupPreparation['prepare']>[1],
+    current: () => undefined,
+  ) {
     const handle = await this.owners.preparation.prepare(context, input);
     try {
       const prepared = this.owners.preparation.read(handle, context.req.raw);

@@ -41,3 +41,22 @@ test('a later operator request re-admits the signed V2 source and rejects tamper
     owner.close(resumed);
   }
 });
+
+test('a failed preparation releases the operation key for a corrected intent', async () => {
+  const h = await setup();
+  const owner = new PortableGroupPreparation(h.preparationOwners);
+  await assert.rejects(
+    () => owner.prepare(h.f.context(), { ...h.input, deadlineAt: 0 }),
+    (error: unknown) =>
+      error instanceof Error &&
+      'code' in error &&
+      error.code === 'group_preparation_unavailable',
+  );
+  const prepared = await owner.prepare(h.f.context(), h.input);
+  try {
+    assert.equal(owner.read(prepared, h.f.req).spec.schemaVersion, '2.0');
+    assert.equal(h.rawFetch.mock.calls.length, 0);
+  } finally {
+    owner.close(prepared);
+  }
+});
