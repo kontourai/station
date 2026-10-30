@@ -219,7 +219,9 @@ test.describe
 
       const contexts: BrowserContext[] = [];
       try {
-        const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+        const context = await browser.newContext({
+          storageState: { cookies: [], origins: [] },
+        });
         contexts.push(context);
         const guest = await context.newPage();
         const device = await virtualAuthenticator(guest);
@@ -314,7 +316,9 @@ test.describe
         const recoveryUrl = recovery.data.recoveryUrl!;
         expect(new URL(recoveryUrl).origin).toBe(origin);
         await device.remove();
-        const replacementContext = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+        const replacementContext = await browser.newContext({
+          storageState: { cookies: [], origins: [] },
+        });
         contexts.push(replacementContext);
         const replacement = await replacementContext.newPage();
         const replacementDevice = await virtualAuthenticator(replacement);
