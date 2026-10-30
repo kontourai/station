@@ -458,6 +458,16 @@ vi.mock('@kontourai/station-shared/parsers', () => ({
 }));
 
 const mockOverrides: Record<string, any> = {};
+// This route fixture owns update orchestration; the storage/transaction suites
+// exercise real locked integration publication and restoration.
+vi.mock('../../../domain/config-loader-storage.js', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('../../../domain/config-loader-storage.js')
+  >()),
+  publishPluginIntegrations: vi.fn(async () => []),
+  restorePluginIntegrations: vi.fn(async () => []),
+}));
+
 vi.mock('../../../domain/config-loader.js', () => ({
   ConfigLoader: vi.fn().mockImplementation(function MockConfigLoader() {
     return {

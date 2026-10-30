@@ -738,6 +738,34 @@ function createStdioTransport(
 }
 
 /**
+ * #3483: chooses the `fetch` for a remote transport, or `undefined` for the
+ * platform one. The server installs one that pins catalog-supplied servers
+ * to checked addresses (`remote-address-guard.ts`). A throw refuses the
+ * connection.
+ */
+export type RemoteTransportFetchPolicy = (
+  def: Pick<ToolDef, 'id' | 'transport' | 'endpoint'>,
+) => typeof globalThis.fetch | undefined;
+
+let remoteTransportFetchPolicy: RemoteTransportFetchPolicy | undefined;
+
+/** Installs the process-wide remote transport fetch policy; returns the previous one. */
+export function setRemoteTransportFetchPolicy(
+  policy: RemoteTransportFetchPolicy | undefined,
+): RemoteTransportFetchPolicy | undefined {
+  const previous = remoteTransportFetchPolicy;
+  remoteTransportFetchPolicy = policy;
+  return previous;
+}
+
+/** The fetch the installed policy chooses for a remote server, if any. */
+export function remoteTransportFetch(
+  def: Pick<ToolDef, 'id' | 'transport' | 'endpoint'>,
+): typeof globalThis.fetch | undefined {
+  return remoteTransportFetchPolicy?.(def);
+}
+
+/**
  * Set on an OAuth provider whose authorization-server requests must pass
  * through its own fetch guard. The transport factory refuses such a provider
  * without `authorizationFetch`, so no caller can build an unguarded OAuth
@@ -762,7 +790,9 @@ export function createMCPTransport(
     throw new Error(
       `Tool '${def.id}': this OAuth provider requires its authorization fetch guard`,
     );
-  const remoteFetch = (base?: FetchLike) =>
+  const remoteFetch = (
+    base: FetchLike | undefined = remoteTransportFetch(def),
+  ) =>
     authorizationFetch
       ? { fetch: authorizationFetch(base ?? globalThis.fetch.bind(globalThis)) }
       : base
@@ -799,7 +829,11 @@ export function createMCPTransport(
         requestInit: { redirect: 'error' },
         ...remoteFetch(
           def.headers
-            ? originBoundLiteralHeaderFetch(def.endpoint, def.headers)
+            ? originBoundLiteralHeaderFetch(
+                def.endpoint,
+                def.headers,
+                remoteTransportFetch(def),
+              )
             : undefined,
         ),
       });
