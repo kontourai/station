@@ -27509,6 +27509,17 @@ describe('OrchestrationService', () => {
     expect(
       await routing.dispatch({ ...command, clientInputId: 'another' }, context),
     ).toMatchObject({ outcome: 'unsupported' });
+    const reopened = new EventStore(join(tmp, 'orchestration.sqlite'));
+    try {
+      const restarted = new OrchestrationService({ adapterRegistry: createRegistry([claude]), eventBus, eventStore: reopened, logger: { debug: vi.fn(), warn: vi.fn() } });
+      expect(await restarted.dispatch({ ...command, clientInputId: 'another' }, context)).toMatchObject({ outcome: 'unsupported' });
+      expect(await restarted.dispatch({ ...command, clientInputId: 'another', input: 'changed' }, context)).toMatchObject({ outcome: 'indeterminate' });
+      expect(reopened.listChildSteerInstructions(command.threadId, command.childId, 0, 10).entries).toMatchObject([{ delivery: 'delivered' }, { delivery: 'refused' }]);
+    } finally { reopened.close(); }
+    claude.steerChildWork.mockResolvedValueOnce({ outcome: 'cancelled' } as never);
+    expect(await routing.dispatch({ ...command, clientInputId: 'invalid' }, context)).toMatchObject({ outcome: 'indeterminate' });
+    expect(await routing.dispatch({ ...command, clientInputId: 'invalid' }, context)).toMatchObject({ outcome: 'indeterminate' });
+    expect(claude.steerChildWork).toHaveBeenCalledTimes(3);
     expect(claude.steerTurn).not.toHaveBeenCalled();
   });
 

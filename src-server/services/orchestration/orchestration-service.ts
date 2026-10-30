@@ -6879,6 +6879,20 @@ export class OrchestrationService {
     );
   }
 
+  readChildSteerInstructions(
+    threadId: string,
+    childId: string,
+    offset: number,
+    limit: number,
+  ) {
+    return this.options.eventStore?.listChildSteerInstructions(
+      threadId,
+      childId,
+      offset,
+      limit,
+    );
+  }
+
   /**
    * Presence-subject resolution (body lives in SessionAuthorization —
    * epic archive#4024, archive#4166); the initialize() latch stays here (T9).
@@ -9747,6 +9761,11 @@ export class OrchestrationService {
           const prior = store.readChildSteerInput(input);
           if (prior) {
             this.persistReceipt(receipt);
+            if (
+              prior.outcome === 'unsupported' ||
+              prior.outcome === 'no-active-task'
+            )
+              return { receipt, result: prior };
             return {
               receipt,
               result:
@@ -9820,9 +9839,22 @@ export class OrchestrationService {
               } as SteerChildWorkResult,
             };
           }
-          if (!store.claimChildSteerInput(input)) {
+          if (
+            !store.claimChildSteerInput(input, {
+              createdAt: new Date().toISOString(),
+              ...(context.principal ? { principal: context.principal } : {}),
+              ...(context.clientOrigin
+                ? { clientOrigin: context.clientOrigin }
+                : {}),
+            })
+          ) {
             const held = store.readChildSteerInput(input);
             this.persistReceipt(receipt);
+            if (
+              held?.outcome === 'unsupported' ||
+              held?.outcome === 'no-active-task'
+            )
+              return { receipt, result: held };
             return {
               receipt,
               result:
@@ -9874,7 +9906,18 @@ export class OrchestrationService {
                 );
               }),
             ]).finally(() => clearTimeout(timeout));
+            if (
+              !result ||
+              typeof result !== 'object' ||
+              !('outcome' in result) ||
+              typeof result.outcome !== 'string' ||
+              !['steered', 'unsupported', 'no-active-task'].includes(
+                result.outcome,
+              )
+            )
+              throw new Error('Invalid child steer acknowledgement.');
             if (result.outcome !== 'steered') {
+              store.refuseChildSteerInput(input, result.outcome);
               this.persistReceipt(receipt);
               return {
                 receipt,
@@ -9887,7 +9930,7 @@ export class OrchestrationService {
             if (result.turnId !== command.turnId)
               throw new Error('Child steer acknowledgement target changed.');
             this.assertAdapterCurrentAfterCommand(adapter);
-            store.confirmSteerInput(input, result.turnId);
+            store.confirmChildSteerInput(input);
             this.persistReceipt(receipt);
             return {
               receipt,

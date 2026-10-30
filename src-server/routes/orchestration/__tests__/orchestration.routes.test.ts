@@ -992,10 +992,36 @@ describe('Orchestration Routes', () => {
       createdAt: now,
       prompt: 'initial',
     });
+    eventStore.appendEvent({
+      eventId: 'child-http-work',
+      provider: 'claude',
+      threadId,
+      createdAt: now,
+      method: 'child-work.updated',
+      delta: {
+        kind: 'upsert',
+        item: {
+          producer: 'engine-subagent',
+          reporterThreadId: threadId,
+          childId: 'child',
+          status: 'running',
+          transcript: {
+            kind: 'claude-subagent',
+            sessionId: '00000000-0000-4000-8000-000000000001',
+            agentId: 'child',
+          },
+        },
+      },
+    });
     const app = createOrchestrationRoutes(service, {
       eventBus,
       logger: { debug: vi.fn() },
       getUserId: () => ROUTE_TEST_USER_ID,
+      resolvePrincipal: () => ({
+        id: ROUTE_TEST_USER_ID,
+        kind: 'human',
+        display: 'Test user',
+      }),
       isRequestPrincipalCurrent: () => true,
     });
     const command = {
@@ -1028,7 +1054,14 @@ describe('Orchestration Routes', () => {
       ).status,
     ).toBe(404);
     expect(adapter.steerChildWork).not.toHaveBeenCalled();
-    expect(await (await send(command)).json()).toMatchObject({
+    expect(
+      await (
+        await send({
+          ...command,
+          principal: { id: 'forged', kind: 'human', display: 'Forged' },
+        })
+      ).json(),
+    ).toMatchObject({
       success: true,
       data: { outcome: 'steered', childId: 'child', turnId: 'child-turn' },
     });
@@ -1046,6 +1079,31 @@ describe('Orchestration Routes', () => {
       'child-turn',
       'redirect',
     );
+    const read = (childId: string) =>
+      app.request(`/sessions/${threadId}/child-work/${childId}/instructions`);
+    expect(await (await read('child')).json()).toMatchObject({
+      success: true,
+      data: {
+        entries: [
+          {
+            childId: 'child',
+            turnId: 'child-turn',
+            clientInputId: 'key',
+            text: 'redirect',
+            delivery: 'delivered',
+            principal: { id: ROUTE_TEST_USER_ID, kind: 'human' },
+          },
+        ],
+      },
+    });
+    expect((await read('other')).status).toBe(404);
+    expect(
+      (
+        await foreign.request(
+          `/sessions/${threadId}/child-work/child/instructions`,
+        )
+      ).status,
+    ).toBe(404);
   });
 
   // The service's third dispatch argument carries internal bypasses

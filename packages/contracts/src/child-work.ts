@@ -352,6 +352,24 @@ export interface ChildWorkTranscriptPage {
   nextOffset?: number;
 }
 
+/** Station-owned child instructions, independently paged from provider history. */
+export interface ChildWorkInstruction {
+  childId: string;
+  turnId: string;
+  clientInputId: string;
+  text: string;
+  createdAt: string;
+  delivery: 'indeterminate' | 'delivered' | 'refused';
+  refusal?: 'unsupported' | 'no-active-task';
+  principal?: import('./principal.js').PrincipalRef;
+  clientOrigin?: import('./client-origin.js').ClientOrigin;
+}
+
+export interface ChildWorkInstructionPage {
+  entries: ChildWorkInstruction[];
+  nextOffset?: number;
+}
+
 export type ChildWorkResultHandle =
   | { kind: 'transcript-file'; path: string }
   | { kind: 'session'; threadId: string; conversationId?: string };

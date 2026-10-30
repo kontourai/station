@@ -19,6 +19,7 @@
 import type { StationCapabilityFlags } from '@kontourai/station-contracts';
 
 export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
+  childWorkSteering: true,
   privateOperationalOutcomes: true,
   // SSH environment management: src-server/services/ssh/, /api/ssh-environments
   // routes, packages/sdk/src/query-domains/sshEnvironments.ts.

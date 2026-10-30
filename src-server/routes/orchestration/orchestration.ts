@@ -112,7 +112,10 @@ import {
   requestMayBeAnAgent,
 } from '../../security/coding-authority.js';
 import { resolveClientOriginForRequest } from '../../security/runtime-request-security.js';
-import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
+import {
+  stationControlRequestAuthority,
+  stationControlRequestCurrent,
+} from '../../security/station-control-request-authority.js';
 import {
   AnswerAssessmentConflictError,
   AnswerAssessmentModule,
@@ -5705,6 +5708,48 @@ export function createOrchestrationRoutes(
       return unavailable();
     return c.json({ success: true, data: outcome.page });
   });
+  app.get('/sessions/:threadId/child-work/:childId/instructions', (c) => {
+    c.header('Cache-Control', 'private, no-store');
+    const unavailable = () =>
+      c.json({ success: false, error: 'Child instructions unavailable' }, 404);
+    const offsetText = c.req.query('offset') ?? '0';
+    const limitText = c.req.query('limit') ?? '10';
+    if (!/^\d{1,8}$/.test(offsetText) || !/^\d{1,2}$/.test(limitText))
+      return c.json({ success: false, error: 'Invalid instruction page' }, 400);
+    const offset = Number(offsetText);
+    const limit = Number(limitText);
+    if (limit < 1 || limit > 10 || offset > 1_000_000)
+      return c.json({ success: false, error: 'Invalid instruction page' }, 400);
+    const threadId = param(c, 'threadId');
+    const childId = param(c, 'childId');
+    const authority = readAuthorityFor(c);
+    if (
+      deps.isRequestPrincipalCurrent?.(c.req.raw) !== true ||
+      !orchestrationService.childWorkTranscripts.ownsChild({
+        threadId,
+        childId,
+        authority,
+      })
+    )
+      return unavailable();
+    const page = orchestrationService.readChildSteerInstructions(
+      threadId,
+      childId,
+      offset,
+      limit,
+    );
+    if (
+      !page ||
+      deps.isRequestPrincipalCurrent?.(c.req.raw) !== true ||
+      !orchestrationService.childWorkTranscripts.ownsChild({
+        threadId,
+        childId,
+        authority,
+      })
+    )
+      return unavailable();
+    return c.json({ success: true, data: page });
+  });
   const sessionInventoryUnavailable = (c: Context, status: 404 | 503 = 404) => {
     c.header('Cache-Control', 'private, no-store');
     return c.json(
@@ -6634,6 +6679,7 @@ export function createOrchestrationRoutes(
             ? {
                 requestCurrent: () =>
                   deps.isRequestPrincipalCurrent?.(c.req.raw) === true &&
+                  stationControlRequestCurrent(c.req.raw) &&
                   orchestrationService.canUserReadSession(
                     command.threadId,
                     readAuthority,

@@ -43,6 +43,11 @@ export interface ChildWorkTranscriptModuleDeps {
 }
 
 export interface ChildWorkTranscriptModule {
+  ownsChild(input: {
+    threadId: string;
+    childId: string;
+    authority: SessionReadAuthority;
+  }): boolean;
   read(input: {
     threadId: string;
     childId: string;
@@ -101,6 +106,16 @@ export function createChildWorkTranscriptModule(
   deps: ChildWorkTranscriptModuleDeps,
 ): ChildWorkTranscriptModule {
   return {
+    ownsChild({ threadId, childId, authority }) {
+      return (
+        deps.canReadSession(threadId, authority) &&
+        childTranscriptRefFromHistory(
+          threadId,
+          childId,
+          deps.listChildWorkHistory(threadId),
+        ) !== undefined
+      );
+    },
     async read({ threadId, childId, offset, limit, authority }) {
       if (!deps.canReadSession(threadId, authority))
         return { status: 'not-found' };

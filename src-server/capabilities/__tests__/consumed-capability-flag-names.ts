@@ -6,6 +6,7 @@
  * may not export.
  */
 export const TABLED_CAPABILITY_FLAGS: readonly string[] = Object.freeze([
+  'childWorkSteering',
   'connectionRoutes',
   'eventStreamResume',
   'privateOperationalOutcomes',
