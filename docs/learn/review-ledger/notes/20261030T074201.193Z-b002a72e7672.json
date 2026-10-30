@@ -1,0 +1,9 @@
+{
+  "revision": "d8619286dbf6e9384cc7ce8ff5ba361651384a1e",
+
+  "notes": [
+    {"path":"docs/design/task-dispatcher.md","note":"Reviewed the bootstrap delta against this dispatch boundary note. StationRuntime now mints an exact-home publication participant, passes it into route composition, stops admission before shutdown and awaits its drain before ordinary dependency teardown. The diff does not change TaskDispatcher dispatch/task-graph reservation, claim compensation, Agent selection or external-effect uncertainty outcomes. composeTaskDispatcher remains the stated composition owner. A publication drain timeout rejects before dependency closure and is not a successful shutdown; this does not grant task execution or make an uncertain provider start retryable. No prose change needed for this impact. Source review only, no new dispatch/cancellation/provider test execution.","inputs":["docs/design/task-dispatcher.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/principals.md","note":"Reviewed the StationRuntime bootstrap delta against the current-owner and historical-attribution boundaries. The new participant proves custody of a bootstrap-minted home lease and owns publication admission/drain; it does not resolve a person, mint a Device credential, create Project membership or alter request-principal composition. The same optional projectMembership owner is passed separately to runtime routes. The retained historical principal decisions remain rationale under the existing current-owner banner, not evidence that modern account/membership APIs are absent. No prose change needed for this bootstrap delta; no account login, multi-human, native or hosted acceptance was executed.","inputs":["docs/design/principals.md","src-server/runtime/bootstrap/station-runtime.ts"]}
+  ]
+}
