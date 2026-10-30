@@ -159,7 +159,7 @@ export interface ToolCallGroup<P extends ToolCallLike = ToolCallLike> {
   awaitingApprovalCount: number;
   deniedCount: number;
   cancelledCount: number;
-  /** Narration folded between the calls (`foldTurnWork`), in original order. */
+  /** Reasoning and narration folded among the calls (`foldTurnWork`), in original order. */
   interludes: { part: P; index: number }[];
 }
 
@@ -374,7 +374,16 @@ export function classifyToolCallRun<P extends ToolCallLike>(
     (c) =>
       isToolCallBatchPending(c.part) || (c.phase === 'unresolved' && !c.failed),
   );
-  const aggregateSummary = summarizeCalls(calls, inProgress, pending);
+  const reasoningCount =
+    run.interludes?.filter(({ part }) => part.type === 'reasoning').length ?? 0;
+  const aggregateSummary = [
+    summarizeCalls(calls, inProgress, pending),
+    ...(reasoningCount > 0
+      ? [
+          `${reasoningCount} reasoning ${reasoningCount === 1 ? 'step' : 'steps'}`,
+        ]
+      : []),
+  ].join(' · ');
   const activeCalls = calls.filter((c) => c.inProgress);
   const settledCount = calls.filter(
     (c) => !c.inProgress && !c.awaitingApproval,
