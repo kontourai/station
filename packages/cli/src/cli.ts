@@ -402,6 +402,7 @@ export interface PlaybookSkillMigrationSummary {
 const CORE_COMMANDS = [
   'agents',
   'sessions',
+  'activity',
   'approvals',
   'operate',
   'delegate',

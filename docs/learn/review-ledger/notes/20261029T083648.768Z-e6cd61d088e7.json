@@ -1,0 +1,7 @@
+{
+  "revision": "7641e738a9fa2fe14955b2d0d044205ddc321cce",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"Reviewed terminal gateway replay, frame credit, ACK, filtering and scope against channel, contract, SDK and focused gateway tests; device and hosted behavior remain unverified.","inputs":["docs/design/terminal.md","docs/reference/api.md","packages/contracts/src/terminal-transport.ts","src-server/services/terminal/__tests__/terminal-gateway.process.test.ts","src-server/services/terminal/terminal-channel-connection.ts"]}
+  ]
+}
