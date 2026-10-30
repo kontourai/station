@@ -1,0 +1,7 @@
+{
+  "revision": "90091b0f748b90bff232e8e28752a10eed193b95",
+
+  "notes": [
+    {"path":"docs/guides/documentation.md","note":"Reviewed the documentation-freshness implementation delta against this maintenance contract. The scoped reachability helper caches one branch parent graph and computes commits after each review by ancestor exclusion instead of spawning rev-list per note; mode selection, append-only checks, source lists, classifications and coverage baseline are unchanged. Executed an independent Git oracle comparison on this actual branch for four review anchors including the main merge and premerge branch head: all computed commit sets matched git rev-list from..HEAD ^base (1,35,130,18commits). This checks sampled reachability semantics, not every DAG or performance. The guide still requires actual claim review, explicit stale/missing evidence and no baseline/hash-only approval. No prose change needed; no readiness or whole documentation correctness claim.","inputs":["docs/guides/documentation.md","scripts/lib/documentation-freshness.mjs"]}
+  ]
+}
