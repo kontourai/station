@@ -68,6 +68,7 @@ export class ProjectMembershipService {
     slug: string,
     expectedLocalId: string,
     authority: ProjectMembershipAuthority,
+    assertLiveAuthority?: () => void,
   ) {
     await authority.operator();
     const initial = await authority.current();
@@ -79,6 +80,7 @@ export class ProjectMembershipService {
         const actor = await this.currentActor(authority, initial.principal.id);
         if (scope.localProjectId !== expectedLocalId)
           throw new ProjectMembershipRefusal('conflict');
+        assertLiveAuthority?.();
         this.members.enable(scope, actor.principal);
         return this.members.administration(scope, actor.principal);
       },
@@ -117,25 +119,30 @@ export class ProjectMembershipService {
 
   /**
    * What a forbidden `administration` read may tell its caller. The caller
-   * must first pass the checks `enable` makes before its transaction
-   * (operator authority and a human principal). Only then is the sharing
-   * state read. Anyone else gets `undisclosed`.
+   * must be human and pass the current enable admission callback immediately
+   * before the synchronous sharing-state read. Others get `undisclosed`.
    */
   async accessRefusal(
     slug: string,
     authority: ProjectMembershipAuthority,
-    mayEnableRoute: () => boolean,
+    mayEnableRoute: (operator: boolean) => boolean,
   ): Promise<ProjectAccessRefusalDetails> {
     const undisclosed = { sharing: 'undisclosed', canEnable: false } as const;
+    let operator = false;
     try {
       await authority.operator();
+      operator = true;
+    } catch (error) {
+      if (!(error instanceof ProjectMembershipRefusal)) throw error;
+    }
+    try {
       if ((await authority.current()).principal.kind !== 'human')
         return undisclosed;
     } catch (error) {
       if (error instanceof ProjectMembershipRefusal) return undisclosed;
       throw error;
     }
-    if (!mayEnableRoute()) return undisclosed;
+    if (!mayEnableRoute(operator)) return undisclosed;
     return this.members.isSharedSlug(slug)
       ? { sharing: 'on', canEnable: false }
       : { sharing: 'off', canEnable: true };

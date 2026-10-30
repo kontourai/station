@@ -7,7 +7,10 @@
 > The merged runtime also implements #3257 S2b consent-origin passkey enrollment
 > and host administration; see [Operator passkeys](../guides/operator-passkeys.md).
 > S3 adds consent-origin sign-in and device-bound, read-only operator sessions.
-> S4 implements per-action step-up with no reusable window. The dated body below retains the original
+> S4 implements per-action step-up with no reusable window. #4306 adds one target
+> outside the owner-approved table below: `project-sharing-enable`, fingerprint
+> `{slug, localProjectId, ownerId}`; see the
+> [threat model](../security/remote-access-threat-model.md). The dated body below retains the original
 > design assumptions and line citations; it is not a complete current-state inventory.
 
 The later pairing approval flow also permits an operator session to request a
