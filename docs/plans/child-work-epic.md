@@ -5,16 +5,23 @@ master consolidation in #3991. It starts at published
 `d96f54887837be058c5e5119b8028daab0befea1`. Merge subsequent master/main
 normally before publication. Open one PR when the combined work is ready.
 
-## Published Flow 9.9.0 pin (#91)
+## Published Flow 9.9.1 pin (#91)
 
-Station selects the registry Flow Agents 9.9.0 and Flow 5.4.0 packages. The
-installed rounds module and type bytes match the 9.9.0 artifact. The source owner
+Station selects the registry Flow Agents 9.9.1 and Flow 5.4.0 packages. The
+installed rounds module and type bytes match the released 9.9.1 artifact
+(`e2bf2ebdd37`, rechecked at `cdf6a11f7d0`). The source owner
 can authenticate a historical Flow location by joining signed report admission,
 member envelope and the retained signed source snapshot, without re-preparing
 source execution. A metadata-only adapter now joins that locator with the
 bootstrap participant, home writer and retained receipt owner, but its route is
-disabled while 9.9.0 exact-finalizer replay lacks winner authentication. The
-released patch, real owner race/fault proof and enabled serving remain open.
+disabled even when its preview is enabled (`e802467d519`). The published patch
+repairs 9.9.0's exact-finalizer replay authentication defect; that historical
+failure is retained, but publication is no longer the blocker. Station's other
+rounds writers do not yet hold the home writer through journal publication.
+The home-first transaction composition, cross-participant exclusion proof and
+positive full runtime-factory HTTP/SDK finalization remain open. Controlled
+custody tests and a busy contender refusal do not establish a CAS-loser race or
+complete publisher exclusion.
 Missing or altered location evidence refuses; no provider execution or #91
 completion follows from this work.
 
@@ -26,8 +33,9 @@ transaction and response readback. Shutdown stops new admissions first and joins
 admitted work before closing dependent services or releasing the home; a pending
 join leaves those dependencies and the lease intact for a later attempt. This is
 not a provider authority and does not complete #91. The metadata continuation
-route remains disabled until the patched public Flow contract and its composed
-owner proofs are verified.
+route remains disabled until the composed publication owners and their proofs
+are verified. The patched public package is installed; its upstream evidence
+does not qualify Station's composition.
 
 ## Portable delegation-group source split (#91)
 
@@ -40,7 +48,7 @@ Production preparation, current V2 grant binding, Flow host callbacks and
 qualified physical execution remain open under #91. Shared report and CLI
 session-group owners remain in use; this split does not complete the epic.
 
-## Latest source checkpoint
+## Earlier source checkpoints
 
 At `1973398083f`, the branch includes main through `8fa16170bed` by normal
 merge and consumes published Flow Agents 9.7.0. The
