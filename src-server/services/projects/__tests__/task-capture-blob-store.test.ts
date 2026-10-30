@@ -643,3 +643,25 @@ describe('TaskCaptureBlobStore', () => {
     },
   );
 });
+
+test.each([false, true])(
+  'authorization lost after storage I/O never publishes metadata (shared bytes=%s)',
+  async (shared) => {
+    const home = temporary('capture-publication-authority-');
+    const store = new TaskCaptureBlobStore({
+      homeDir: home,
+      forbiddenProjectRoots: [],
+    });
+    if (shared) await store.put(PNG, 'image/png');
+    const refusal = new Error('source revoked');
+    const commit = vi.fn((blob: { digest: string }) => blob.digest);
+    await expect(
+      store.put(PNG, 'image/png', commit, async () => {
+        throw refusal;
+      }),
+    ).rejects.toBe(refusal);
+    expect(commit).not.toHaveBeenCalled();
+    expect(existsSync(blobPath(home, digestOf(PNG)))).toBe(shared);
+    if (shared) expect(await store.read(digestOf(PNG))).toEqual(PNG);
+  },
+);
