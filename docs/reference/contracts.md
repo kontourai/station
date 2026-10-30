@@ -41,6 +41,16 @@ references describe cleanup and uncertain delivery outcomes.
 
 ## Modules
 
+`@kontourai/station-contracts/session-goal` owns provider-neutral Goal,
+capability, command and result shapes and their boundary parsers. Implementations
+identify `engine` or `station` ownership and advertise actual operations. Saving
+stores a paused objective; activation is a separate capability. Native Goal
+completion is an implementation observation, never Task completion or a Flow
+gate verdict. Unsupported, unavailable, refused and indeterminate remain
+distinct; a possible mutation must not be replayed automatically. See the
+[delivery plan](../plans/integration-completion-program.md) for activation and
+restart requirements still in progress.
+
 `@kontourai/station-contracts/telemetry-delivery` owns
 `TelemetryCompanionPrerequisites`, the request-local local-container capability
 result used by the operator companion prerequisite API. Its `available` branch

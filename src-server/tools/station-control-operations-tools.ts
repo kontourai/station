@@ -28,7 +28,6 @@ import {
   rebuildKnowledgeIndex,
   runIndependentReview,
   runJob,
-  searchKnowledgeIndex,
   updateJob,
 } from '@kontourai/station-sdk/client';
 import {
@@ -57,6 +56,7 @@ import {
 } from './station-control-delegation.js';
 import type { StationControlToolRegistry } from './station-control-mcp-server.js';
 import { registerProjectReadTools } from './station-control-project-read-tools.js';
+import { knowledgeSearchToolResult } from './station-knowledge-tools.js';
 
 export const MONITORING_ENGINE_FILTER_VALUES = [
   'station',
@@ -1228,7 +1228,7 @@ export function registerOperationsTools(
 
   server.tool(
     'search_knowledge',
-    'Semantic search over the knowledge index, optionally scoped to specific store roots — results are re-resolved records (title/excerpt/category), never raw index hits; fails with the NO_EMBEDDER error when no embedding connection is configured',
+    'Search re-resolved Knowledge records and report index health. Stale roots or excerpts need reindexing; index:null means unreported health. Fails when no embedding connection is configured.',
     {
       query: z.string().min(1).describe('Natural-language search query'),
       rootIds: z
@@ -1244,16 +1244,8 @@ export function registerOperationsTools(
         .optional()
         .describe('Maximum number of results (server default when omitted)'),
     },
-    async ({ query, rootIds, topK }) =>
-      jsonToolResult(
-        await toOperationsEnvelope(
-          searchKnowledgeIndex(
-            controlApiBase(),
-            { query, rootIds, topK },
-            controlRequestOptions(),
-          ),
-        ),
-      ),
+    ({ query, rootIds, topK }) =>
+      knowledgeSearchToolResult(controlApiBase(), { query, rootIds, topK }),
   );
 
   server.tool(

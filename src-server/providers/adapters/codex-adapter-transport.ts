@@ -69,6 +69,7 @@ import {
   refuseCodexApprovalReply,
 } from './codex-approval-delivery.js';
 import { terminateCodexProcess } from './codex-process-termination.js';
+import { CodexRpcError } from './codex-rpc-error.js';
 
 type JsonRpcRequest = {
   id?: JsonRpcId;
@@ -917,7 +918,8 @@ export class CodexAdapterTransport {
     record.pendingRpcRequests.delete(requestId);
     if (response.error) {
       pending.reject(
-        new Error(
+        new CodexRpcError(
+          response.error.code,
           response.error.message ??
             `Codex JSON-RPC error (${response.error.code ?? 'unknown'})`,
         ),
