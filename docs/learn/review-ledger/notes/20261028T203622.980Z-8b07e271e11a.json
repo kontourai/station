@@ -1,0 +1,21 @@
+{
+  "revision": "47afdd2d76c82365eed656d66398d0710ab6880a",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"Round 2: added the down-at-start case and the no-cursor reconnect limit to the sessions wait rules; checked against the SDK handshake re-probe in client/session-reads.ts and waitOnSession, pinned by the refused-port and engine-turn tests (each fault-injected).","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Round 2: session-turn-wait.ts adds an internal lastTurnEndSequence to evaluateSessionWait so the person wait's interruption must be the newest turn end; the module-map claims (one shared waiter, only the person leaf asks for interruptedTurn, wait_session unchanged) remain accurate.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/session-turn-wait.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Round 2: evaluateSessionWait gained an internal lastTurnEndSequence used only by the person wait; wait_session's answer and the restart-interrupted wording in this guide are unchanged (session-control runtime test still pins the agent answer).","inputs":["docs/guides/self-configuring-agent.md","src-server/runtime/routes/__tests__/runtime-routes-station-control-project-activity.test.ts","src-server/services/orchestration/__tests__/session-turn-wait.test.ts","src-server/services/orchestration/session-turn-wait.ts"]},
+
+    {"path":"README.md","note":"docs/reference/cli.md only gained sessions wait retry and limit detail; this README's CLI claims do not restate it.","inputs":["README.md","docs/reference/cli.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"docs/reference/cli.md only gained sessions wait retry and limit detail; this review's CLI claims do not restate it.","inputs":["docs/architecture/abstraction-review.md","docs/reference/cli.md"]},
+
+    {"path":"docs/design/cli-triage.md","note":"docs/reference/cli.md only gained sessions wait retry and limit detail; the triage design's claims are unaffected.","inputs":["docs/design/cli-triage.md","docs/reference/cli.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"docs/reference/cli.md only gained sessions wait retry and limit detail; this guide's integration claims do not restate it.","inputs":["docs/guides/integrating-station.md","docs/reference/cli.md"]},
+
+    {"path":"packages/cli/README.md","note":"docs/reference/cli.md only gained sessions wait retry and limit detail; the package README's summary of CLI capabilities is unchanged.","inputs":["packages/cli/README.md","docs/reference/cli.md"]}
+  ]
+}

@@ -1,6 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import type { AuthenticatedFetchInit } from '@kontourai/station-sdk/client';
+import type {
+  ApiRequestScope,
+  AuthenticatedFetchInit,
+} from '@kontourai/station-sdk/client';
 import {
   authenticatedFetch,
   DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
@@ -347,6 +350,18 @@ export function withRequestTimeout(init: RequestInit = {}): RequestInit {
   return { ...init, signal: AbortSignal.timeout(timeoutMs) };
 }
 
+/**
+ * The public identity of the one credential this CLI process holds for
+ * `apiBase`, for an SDK fetcher that binds its request to a host authority
+ * (`ClientRequestOptions.requestScope`, e.g. unified search). It names the
+ * origin only: never the credential or anything derived from it. The
+ * resolver below settles with the same key, and a CLI process never switches
+ * credential mid-run, so the binding is always current.
+ */
+export function cliRequestScope(apiBase: string): ApiRequestScope {
+  return { apiBase, authorityKey: `station-cli:${new URL(apiBase).origin}` };
+}
+
 export function configureApiCredential(
   parsed: ParsedCoreArgs,
   apiBase: string,
@@ -356,6 +371,10 @@ export function configureApiCredential(
     throw new Error('--credential requires a non-empty value.');
   }
   const origin = new URL(apiBase).origin;
+  const requestAuthority = {
+    ...cliRequestScope(apiBase),
+    isCurrent: () => true,
+  };
   const resolved = getResolvedApiBase();
   const stationCredential = resolved?.station
     ? findProfile(resolved.station)?.credentialRef
@@ -383,7 +402,10 @@ export function configureApiCredential(
       : undefined;
     if (selfHeal) {
       assertCredentialTransportAllowed(origin);
-      setClientCredentialResolver(selfHeal);
+      setClientCredentialResolver(async () => {
+        const healed = await selfHeal();
+        return healed && { ...healed, requestAuthority };
+      });
       return true;
     }
     setClientCredentialResolver(undefined);
@@ -391,7 +413,7 @@ export function configureApiCredential(
   }
 
   assertCredentialTransportAllowed(origin);
-  setClientCredentialResolver(() => ({ credential, origin }));
+  setClientCredentialResolver(() => ({ credential, origin, requestAuthority }));
   return true;
 }
 

@@ -13,6 +13,7 @@ import { createPushRoutes } from '../../routes/operations/push-routes.js';
 import { createRecipientCandidateRoutes } from '../../routes/operations/recipient-candidates.js';
 import { createSchedulerRoutes } from '../../routes/operations/scheduler.js';
 import { createOrchestrationRoutes } from '../../routes/orchestration/orchestration.js';
+import { createSessionPersonActivityRoutes } from '../../routes/orchestration/session-project-activity.js';
 import { createSystemStatusRoutes } from '../../routes/system/system-status-routes.js';
 import { HOSTED_TENANT_REGISTRY_FILE_ENV } from '../../runtime/bootstrap/hosted-tenant-mode.js';
 import {
@@ -266,6 +267,28 @@ const CONSUMED_FLAGS: Record<
     });
     return (await routes.request('/vapid-public-key')).status === 200;
   },
+  // GET /api/orchestration/session-reads/activity answers a person's list.
+  sessionPersonReads: async ({ hosted }) => {
+    const routes = createSessionPersonActivityRoutes({
+      orchestrationService: {
+        canUserReadSession: () => true,
+        currentConversationSessionId: (id: string) => id,
+        firstStartedMetadataOfThread: () => undefined,
+        listSessionReadModel: vi.fn(async () => []),
+      },
+      eventStore: {} as never,
+      resolvePrincipal: () =>
+        ({ id: 'owner', kind: 'human', display: 'Owner' }) as never,
+      ...(hosted
+        ? { hostedTenantRegistry: parseHostedTenantRegistry(REGISTRY) }
+        : {}),
+      projectIdForSlug: () => undefined,
+      personMayView: () => true,
+      personViewsEveryProject: () => true,
+      preview: { select: (branches) => branches.enabled() },
+    });
+    return (await routes.request('/activity')).status === 200;
+  },
   // GET /events honours Last-Event-ID: a cursor inside the gap replays the
   // missed event instead of sending a fresh snapshot.
   eventStreamResume: async (deployment) => {
@@ -341,6 +364,7 @@ describe('consumed capability flags match what their routes serve', () => {
     sessionEventWindow: { personal: true, hosted: true },
     sessionInventoryInputRead: { personal: true, hosted: false },
     eventStreamResume: { personal: true, hosted: true },
+    sessionPersonReads: { personal: true, hosted: true },
     webPushNotifications: { personal: true, hosted: false },
     connectionRoutes: { personal: true, hosted: false },
   };

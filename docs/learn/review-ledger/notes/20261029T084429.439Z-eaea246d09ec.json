@@ -1,0 +1,7 @@
+{
+  "revision": "7641e738a9fa2fe14955b2d0d044205ddc321cce",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Reviewed the terminal transport subpath frame limit and existing scope predicate against its contract and gateway caller.","inputs":["docs/reference/contracts.md","packages/contracts/src/terminal-transport.ts"]}
+  ]
+}
