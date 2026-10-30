@@ -874,6 +874,11 @@ raw tool rows per conversation. Omitted tool history is disclosed in the sheet
 and conversation Agents pane; entry-point counts say “shown” while limited.
 These are display bounds, not a claim that omitted work stopped. Up to 50
 additional delegate bindings without cards remain available for later resume.
+Closed conversations share a recovery cache of at most 150 rows, 50 bindings
+without rows, and 50 omitted-history flags. Cache eviction records no terminal
+outcome; an empty list does not prove that no work remains. Reopening can
+recover current delegate facts from the Station snapshot, without rebuilding
+all discarded history.
 Closing the last chat drops its settled history while retaining live or
 unresolved delegate routing; a later observed settlement retires that closed
 context unless the chat reopened. Open execution aliases own the cache;
