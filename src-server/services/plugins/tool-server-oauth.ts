@@ -7,7 +7,10 @@ import {
   type ToolDef,
   toolServerOAuthResourceIdentity,
 } from '@kontourai/station-contracts/tool';
-import { REQUIRES_AUTHORIZATION_FETCH } from '@kontourai/station-shared/mcp';
+import {
+  REQUIRES_AUTHORIZATION_FETCH,
+  remoteTransportFetch,
+} from '@kontourai/station-shared/mcp';
 import type {
   AuthProvider,
   FetchLike,
@@ -1003,7 +1006,13 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
       metadata,
       clientMetadata: this.clientMetadata,
       scope,
-      fetchFn: this.authorizationFetch(fetch),
+      fetchFn: this.authorizationFetch(
+        remoteTransportFetch({
+          id: this.serverId,
+          transport: 'streamable-http',
+          endpoint: this.resourceIdentity,
+        }) ?? fetch,
+      ),
     });
     // Record what the client was registered for (the server's echo, else
     // what was asked) and what was asked, so a later scope change can tell
@@ -1241,7 +1250,13 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
           refreshToken: expected.refresh_token,
           resource:
             discovery.resourceMetadata?.resource ?? this.resourceIdentity,
-          fetchFn: this.authorizationFetch(fetch),
+          fetchFn: this.authorizationFetch(
+            remoteTransportFetch({
+              id: this.serverId,
+              transport: 'streamable-http',
+              endpoint: this.resourceIdentity,
+            }) ?? fetch,
+          ),
         },
       );
       const saved = await this.saveTokensIfCurrent(

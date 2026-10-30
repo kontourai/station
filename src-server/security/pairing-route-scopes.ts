@@ -4117,6 +4117,22 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'POST', path: '/integrations/:id/oauth/authorize' },
     { method: 'POST', path: '/integrations/:id/oauth/callback' },
     { method: 'POST', path: '/integrations/:id/reconnect' },
+    // #3483: keeps or resets an integration's legacy trust settings in this
+    // Station, like an integration edit; the handler requires the operator in
+    // person and records a receipt.
+    { method: 'POST', path: '/integrations/:id/trust-review' },
+    // #3483: a conversation's untrusted-content mark. The read resolves
+    // through the integration detail rule (operate); clearing relaxes a
+    // protection within this Station and inherits integration operate, and
+    // the handler further requires the operator in person.
+    {
+      method: 'GET',
+      path: '/integrations/untrusted-content/conversations/:conversationId',
+    },
+    {
+      method: 'POST',
+      path: '/integrations/untrusted-content/conversations/:conversationId/clear',
+    },
     { method: 'POST', path: '/integrations/:id/tools/apply' },
     { method: 'POST', path: '/integrations/:serverId/ui/call' },
     { method: 'POST', path: '/integrations/:serverId/ui/permissions' },
@@ -5055,6 +5071,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // sensitive than the rest of the family — plain family inheritance.
     // Two got individual scrutiny rather than a rubber stamp:
     { method: 'GET', path: '/api/plugins' },
+    // Retained plugin recovery backups (Feature Preview). The handler answers
+    // only the operator credential, so a paired device that reaches it with
+    // the family read scope is refused there; the scope is the floor.
+    { method: 'GET', path: '/api/plugins/recovery-backups' },
     // archive#3677 PR 3: locality-gated in-handler (see the family comment
     // on PAIRING_SCOPE_DOMAIN_PREFIXES) — the scope tier is deliberately the
     // family default, and the home-possession check is the authority.
