@@ -2228,6 +2228,35 @@ export function configureRuntimeRoutes(
   // indistinguishable to the reader below, and both fail closed to
   // `{ kind: 'revoked' }`, never a default identity.
   const roomRequestPrincipals = new WeakMap<Request, PrincipalRef>();
+  const canReadPluginCommandProject = async (
+    slug: string,
+    request: Request,
+    principal: PrincipalRef,
+  ): Promise<boolean> => {
+    roomRequestPrincipals.set(request, principal);
+    try {
+      const member = await memberCallerForRequest(request);
+      if (member) {
+        if (member.kind === 'none' || !context.projectMembership) return false;
+        await context.projectMembership.requireProjectRead(
+          slug,
+          projectMembershipAuthority(request),
+        );
+        return true;
+      }
+      await projectMembershipAuthority(request).operator();
+      return context.projectService
+        .listProjects()
+        .some((project) => project.slug === slug);
+    } catch (error) {
+      if (
+        error instanceof ProjectMembershipRefusal &&
+        error.code !== 'unavailable'
+      )
+        return false;
+      throw error;
+    }
+  };
   const primeRoomRequestPrincipal = async (
     c: Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
     next: () => Promise<void>,
@@ -3955,17 +3984,24 @@ export function configureRuntimeRoutes(
                 sessionId,
                 readAuthorityForRequest(authority),
               ),
-            projectExists: (slug) => {
-              try {
-                return Boolean(context.projectService.getProject(slug));
-              } catch {
-                return false;
-              }
-            },
-            taskInProject: (taskId, projectSlug) => {
+            canReadProject: (slug, request, principal) =>
+              canReadPluginCommandProject(slug, request, principal),
+            canReadTask: async (taskId, projectSlug, request, principal) => {
               const task = context.taskGraphService.readTask(taskId);
-              return Boolean(
-                task && (!projectSlug || task.projectId === projectSlug),
+              if (!task) return false;
+              const project = context.projectService
+                .listProjects()
+                .find(
+                  (candidate) =>
+                    candidate.id === task.projectId ||
+                    candidate.slug === task.projectId,
+                );
+              if (!project || (projectSlug && projectSlug !== project.slug))
+                return false;
+              return canReadPluginCommandProject(
+                project.slug,
+                request,
+                principal,
               );
             },
           }),
