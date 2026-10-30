@@ -1,0 +1,61 @@
+/* The tinted glyph tile that opens every inbox row (popover, page, card). */
+.inbox-mark {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--k-radius-sm);
+  background: var(--k-panel-raised);
+  color: var(--k-text-muted);
+  font-size: 16px;
+}
+
+.inbox-mark--caution {
+  background: var(--k-caution-soft);
+  color: var(--k-caution);
+}
+
+.inbox-mark--negative {
+  background: var(--k-negative-soft);
+  color: var(--k-negative);
+}
+
+.inbox-mark--active {
+  background: var(--k-active-soft);
+  color: var(--k-active);
+}
+
+/* The context line under a row's title: Station · Project · Chat · Agent ·
+   Engine, each led by its glyph. Wraps rather than truncating the set; a
+   single long value is cut with its full text on `title`. */
+.inbox-context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px var(--k-space-3);
+  margin: var(--k-space-1) 0 0;
+  padding: 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+  list-style: none;
+}
+
+.inbox-context__part {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  align-items: center;
+  gap: 4px;
+}
+
+.inbox-context__glyph {
+  flex: 0 0 auto;
+  opacity: 0.8;
+}
+
+.inbox-context__value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

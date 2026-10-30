@@ -1,0 +1,7 @@
+{
+  "revision": "e4ad012f60f48b824812089c9eea480201b26bcb",
+
+  "notes": [
+    {"path":"docs/design/plugin-installation-lifecycle.md","note":"Source-impact review: plugin update and its rollback only call assertPluginIntegrationsWritable before copyPluginIntegrations; plugin-install-transaction.ts only calls assertPluginIntegrationsWritable before copyPluginIntegrations (refusing bundled secret-binding references and applying the OAuth client rules); install order, admission and outcomes are otherwise unchanged. Searched this document for MCP tool-server OAuth client, issuer, secret-binding grant/reference, plugin integration copy, portability and credential-store claims; none describes the changed behavior beyond links that still resolve, so its claims stay accurate.","inputs":["docs/design/plugin-installation-lifecycle.md","src-server/routes/plugins/plugin-lifecycle-routes.ts","src-server/services/plugins/plugin-install-transaction.ts"]}
+  ]
+}

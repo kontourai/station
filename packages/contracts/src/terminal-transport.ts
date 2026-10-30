@@ -8,6 +8,8 @@ import {
 export const TERMINAL_SOCKET_PATH = '/api/terminal/socket';
 export const TERMINAL_FRAME_HEADER_BYTES = 13;
 export const TERMINAL_WINDOW_BYTES = 64 * 1024;
+/** Bounds wire overhead and zero-byte sanitized records independently of credit. */
+export const TERMINAL_MAX_OUTSTANDING_OUTPUT_FRAMES = 128;
 /** A full buffered rendering control must fit in an output credit window. */
 export const TERMINAL_MIN_WINDOW_BYTES = 16 * 1024;
 export const TERMINAL_INPUT = 1;

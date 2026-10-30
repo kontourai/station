@@ -1,0 +1,7 @@
+{
+  "revision": "842ea31f73218e41fe18c622deb9cb39d5ef1f44",
+
+  "notes": [
+    {"path":"docs/design/plugin-installation-lifecycle.md","note":"Source-impact review: ConfigLoader adds integrationInstanceId(), which ensures the server-created instance id under the integration lock. Searched this document for MCP tool-server OAuth client, secret-binding grant, integration directory contents and credential-store claims; none describes the changed behavior beyond links that still resolve, so its claims stay accurate.","inputs":["docs/design/plugin-installation-lifecycle.md","src-server/domain/config-loader.ts"]}
+  ]
+}

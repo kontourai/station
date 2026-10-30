@@ -500,6 +500,10 @@ also rewrite the corresponding session, event, cursor, or related store state.
 Whole-store authenticated integrity with key authority outside that writer is
 follow-up scope.
 
+The GitHub automation observation preview is not offered in hosted mode, and
+`/automations/deliveries` refuses hosted reads because its shared ledger has no
+tenant binding.
+
 Until their storage gains a durable tenant binding, hosted mode suppresses the
 entire `/scheduler` API (including its reads, SSE, webhook, and mutations) and
 the unbound `/api/tasks` task graph. File-memory conversation inventory,

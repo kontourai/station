@@ -1,6 +1,14 @@
-import { existsSync, readFileSync, rmSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import {
+  existsSync,
+  lstatSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join, sep } from 'node:path';
 import {
   type ACPConfig,
   normalizeACPArgs,
@@ -13,6 +21,7 @@ import type {
   SkillVariable,
 } from '@kontourai/station-contracts/catalog';
 import {
+  assertToolOAuthClientWritable,
   isSafeToolServerId,
   type ToolDef,
   type ToolMetadata,
@@ -244,6 +253,7 @@ async function writeIntegrationConfigLocked(
   current: ToolDef | undefined,
 ): Promise<void> {
   rejectRetiredIntegrationCredentialFormat(current, id);
+  assertToolOAuthClientWritable(current, def);
   const persisted = { ...def };
   delete persisted.secretEnv;
   delete persisted.removeSecretEnvKeys;
@@ -292,10 +302,232 @@ async function writeIntegrationConfigLocked(
   )[integrationEnabledSynthesized];
   if (synthesized && def.enabled === true) delete persisted.enabled;
   await publishJsonFileWithOwnedLock(integrationPath, persisted);
+  ensureIntegrationInstanceIdLocked(projectHomeDir, id);
   // One credential-store publication retains the referenced set while
   // removing a migrated set. Splitting this into removeMany then reconcile
   // admitted a partial delete if the second write failed after the first.
   if (store) await store.reconcileServer(id, [...refs], [...removals]);
+}
+
+/**
+ * #4279: a server-created identity for one integration's existence, kept
+ * beside `integration.json` so no definition, writer, registry, plugin or
+ * import can set it. The locked writer creates it on first write and never
+ * replaces it; deleting the integration removes it with the directory, so an
+ * integration recreated under the same id is a new instance. OAuth
+ * client-secret grants record it, so a deleted integration's grants cannot
+ * authorize its replacement.
+ */
+export const INTEGRATION_INSTANCE_FILE = '.station-instance';
+const INTEGRATION_INSTANCE_ID = /^[0-9a-f-]{36}$/;
+
+const RESERVED_SIDECAR_KEYS = new Set(
+  ['.station-instance', '.station-oauth-issuer'].map(sidecarNameKey),
+);
+
+/** Case- and Unicode-folded, as case-insensitive filesystems compare names. */
+function sidecarNameKey(name: string): string {
+  return name.normalize('NFKC').toLowerCase().normalize('NFKC');
+}
+
+/** Whether a file name could resolve to one of Station's own sidecars. */
+export function isReservedIntegrationSidecarName(name: string): boolean {
+  return RESERVED_SIDECAR_KEYS.has(sidecarNameKey(name));
+}
+
+/**
+ * A sidecar is trusted only as a regular file whose directory entry is
+ * spelled exactly as Station writes it. On a case-insensitive filesystem a
+ * differently cased file resolves to the same path; it was not written by
+ * Station, so it reads as absent.
+ */
+function sidecarPresentExactly(path: string): boolean {
+  if (!existsSync(path) || lstatSync(path).isSymbolicLink()) return false;
+  const name = path.slice(path.lastIndexOf(sep) + 1);
+  return readdirSync(dirname(path)).includes(name);
+}
+
+/**
+ * Before Station writes a sidecar, remove any entry spelled differently that
+ * the filesystem would resolve to it, so the written file carries Station's
+ * exact name.
+ */
+function removeVariantSidecars(path: string): void {
+  const name = path.slice(path.lastIndexOf(sep) + 1);
+  const dir = dirname(path);
+  for (const entry of readdirSync(dir))
+    if (entry !== name && sidecarNameKey(entry) === sidecarNameKey(name))
+      rmSync(join(dir, entry), { force: true });
+}
+
+function integrationInstancePath(projectHomeDir: string, id: string): string {
+  assertSafeIntegrationId(id);
+  return join(projectHomeDir, 'integrations', id, INTEGRATION_INSTANCE_FILE);
+}
+
+/** The integration's instance id, or undefined when absent or malformed. */
+export function readIntegrationInstanceId(
+  projectHomeDir: string,
+  id: string,
+): string | undefined {
+  const path = integrationInstancePath(projectHomeDir, id);
+  if (!sidecarPresentExactly(path)) return undefined;
+  const value = readFileSync(path, 'utf8').trim();
+  return INTEGRATION_INSTANCE_ID.test(value) ? value : undefined;
+}
+
+function ensureIntegrationInstanceIdLocked(
+  projectHomeDir: string,
+  id: string,
+): string {
+  const existing = readIntegrationInstanceId(projectHomeDir, id);
+  if (existing) return existing;
+  const minted = randomUUID();
+  removeVariantSidecars(integrationInstancePath(projectHomeDir, id));
+  writeFileSync(integrationInstancePath(projectHomeDir, id), minted, {
+    mode: 0o600,
+  });
+  return minted;
+}
+
+/**
+ * The instance id of an existing integration, created under the
+ * integration's mutation lock if an older or externally written definition
+ * has none yet.
+ */
+export async function ensureIntegrationInstanceId(
+  projectHomeDir: string,
+  id: string,
+): Promise<string> {
+  assertSafeIntegrationId(id);
+  const release = await acquireFileMutationLockAsync(
+    toolServerIntegrationMutationLockPath(projectHomeDir, id),
+  );
+  try {
+    if (!existsSync(integrationConfigPath(projectHomeDir, id)))
+      throw new Error(`Tool '${id}' not found`);
+    return ensureIntegrationInstanceIdLocked(projectHomeDir, id);
+  } finally {
+    await release();
+  }
+}
+
+/**
+ * #4279: the authorization server an integration without a declared issuer
+ * was first registered with, for one MCP resource. Kept beside
+ * `integration.json` (no writer, registry, plugin or import can set it),
+ * shared by every person's sign-in, and removed with the integration.
+ * Changing the endpoint changes the resource, which starts a new pin.
+ */
+export const INTEGRATION_OAUTH_ISSUER_FILE = '.station-oauth-issuer';
+
+function integrationOAuthIssuerPath(projectHomeDir: string, id: string) {
+  assertSafeIntegrationId(id);
+  return join(
+    projectHomeDir,
+    'integrations',
+    id,
+    INTEGRATION_OAUTH_ISSUER_FILE,
+  );
+}
+
+/** The pinned issuer for this resource, or undefined. */
+export function readIntegrationOAuthIssuerPin(
+  projectHomeDir: string,
+  id: string,
+  resource: string,
+): string | undefined {
+  const path = integrationOAuthIssuerPath(projectHomeDir, id);
+  if (!sidecarPresentExactly(path)) return undefined;
+  try {
+    const pin = JSON.parse(readFileSync(path, 'utf8')) as {
+      schemaVersion?: unknown;
+      resource?: unknown;
+      issuer?: unknown;
+    };
+    return pin.schemaVersion === 1 &&
+      pin.resource === resource &&
+      typeof pin.issuer === 'string'
+      ? pin.issuer
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Pin `issuer` for this resource unless one is already pinned, under the
+ * integration's mutation lock. Returns the pinned issuer, which differs from
+ * `issuer` when another server was pinned first. An integration that no
+ * longer exists pins nothing.
+ */
+const oauthPinQueues = new Map<string, Promise<void>>();
+
+/**
+ * One integration's OAuth pin lock. Establishing the pin and every outbound
+ * authorization-server request (registration, code exchange, refresh) hold
+ * it, so a request's issuer check and its send cannot be split by another
+ * sign-in pinning a different server. In-process callers queue in order; the
+ * file lock covers other processes sharing the home. A request held under it
+ * is bounded by its caller.
+ */
+export async function withIntegrationOAuthPinLock<T>(
+  projectHomeDir: string,
+  id: string,
+  action: () => Promise<T>,
+): Promise<T> {
+  assertSafeIntegrationId(id);
+  const path = join(
+    projectHomeDir,
+    'integrations',
+    `.${id}.oauth-pin.mutation`,
+  );
+  const previous = oauthPinQueues.get(path) ?? Promise.resolve();
+  let releaseQueue!: () => void;
+  const turn = new Promise<void>((resolve) => {
+    releaseQueue = resolve;
+  });
+  const tail = previous.then(() => turn);
+  oauthPinQueues.set(path, tail);
+  await previous;
+  try {
+    await mkdir(join(projectHomeDir, 'integrations'), { recursive: true });
+    const unlock = await acquireFileMutationLockAsync(path, {
+      timeoutMs: 45_000,
+    });
+    try {
+      return await action();
+    } finally {
+      await unlock();
+    }
+  } finally {
+    releaseQueue();
+    if (oauthPinQueues.get(path) === tail) oauthPinQueues.delete(path);
+  }
+}
+
+export async function claimIntegrationOAuthIssuerPin(
+  projectHomeDir: string,
+  id: string,
+  resource: string,
+  issuer: string,
+): Promise<string> {
+  return withIntegrationOAuthPinLock(projectHomeDir, id, async () => {
+    const existing = readIntegrationOAuthIssuerPin(
+      projectHomeDir,
+      id,
+      resource,
+    );
+    if (existing) return existing;
+    if (!existsSync(integrationConfigPath(projectHomeDir, id))) return issuer;
+    removeVariantSidecars(integrationOAuthIssuerPath(projectHomeDir, id));
+    writeFileSync(
+      integrationOAuthIssuerPath(projectHomeDir, id),
+      JSON.stringify({ schemaVersion: 1, resource, issuer }),
+      { mode: 0o600 },
+    );
+    return issuer;
+  });
 }
 
 export async function deleteIntegrationConfig(
@@ -588,4 +820,51 @@ export async function saveACPConfigFile(
   const path = join(projectHomeDir, 'config', 'acp.json');
   await mkdir(join(projectHomeDir, 'config'), { recursive: true });
   await writeFile(path, JSON.stringify(config, null, 2), 'utf-8');
+}
+
+/**
+ * `copyPluginIntegrations` publishes a plugin's bundled integration
+ * directories itself rather than through `writeIntegrationConfigLocked`. Its
+ * callers run this first, so a bundled definition meets the same OAuth client
+ * rules (`assertToolOAuthClientWritable`) against the definition it would
+ * replace, and never carries a secret-binding reference. Symlinked or
+ * unreadable entries are left to the copy, which refuses them.
+ */
+export function assertPluginIntegrationsWritable(
+  pluginDir: string,
+  projectHomeDir: string,
+): void {
+  const bundled = join(pluginDir, 'integrations');
+  if (!existsSync(bundled) || lstatSync(bundled).isSymbolicLink()) return;
+  const readDefinition = (path: string): ToolDef | undefined =>
+    existsSync(path) && !lstatSync(path).isSymbolicLink()
+      ? (JSON.parse(readFileSync(path, 'utf8')) as ToolDef)
+      : undefined;
+  for (const entry of readdirSync(bundled, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    assertSafeIntegrationId(entry.name);
+    // A bundle cannot bring Station's own sidecars in any spelling the
+    // filesystem may resolve to them; the copy would carry them.
+    if (
+      readdirSync(join(bundled, entry.name)).some((name) =>
+        isReservedIntegrationSidecarName(String(name)),
+      )
+    )
+      throw new Error(
+        `Plugin integration '${entry.name}' contains Station's instance identity file.`,
+      );
+    const next = readDefinition(join(bundled, entry.name, 'integration.json'));
+    if (!next) continue;
+    if (
+      Object.keys(next.secretEnvRefs ?? {}).length > 0 ||
+      next.oauthClient?.clientSecretRef !== undefined
+    )
+      throw new Error(
+        `Plugin integration '${entry.name}' contains secret binding references; bind secrets through Station's operator binding flow.`,
+      );
+    assertToolOAuthClientWritable(
+      readDefinition(integrationConfigPath(projectHomeDir, entry.name)),
+      next,
+    );
+  }
 }

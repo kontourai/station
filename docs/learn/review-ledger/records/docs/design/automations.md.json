@@ -34,7 +34,13 @@
 
     "src-server/services/webhooks/inbound-webhook-store.ts",
 
-    "src-server/runtime/agents/unattended-principal-context.ts"
+    "src-server/runtime/agents/unattended-principal-context.ts",
+
+    "src-server/services/automation/github-poll.ts",
+
+    "src-server/services/automation/automation-intake.ts",
+
+    "src-server/services/automation/github-workflow-run.ts"
   ],
 
   "checks": [

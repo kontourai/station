@@ -56,6 +56,23 @@ export function removeEmptyRender(source) {
 }
 export const MUTATIONS = [
   {
+    id: 'attention-snooze-pending',
+    test: 'src-server/services/projects/__tests__/attention-projection.test.ts',
+    failure:
+      'snooze removes pending count, retains the item, and expires at until',
+    files: [
+      {
+        path: 'packages/contracts/src/attention.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'return !item.acknowledgedAt && !item.snoozedUntil;',
+            'return !item.acknowledgedAt;',
+          ),
+      },
+    ],
+  },
+  {
     id: 'terminal-observation-timeout-missing',
     test: 'src-server/adapters/__tests__/node-pty-adapter.test.ts',
     failure:

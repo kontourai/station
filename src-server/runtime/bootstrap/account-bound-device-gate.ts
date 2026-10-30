@@ -130,6 +130,8 @@ function isAccountBoundLayoutLeaf(path: string, method: string): boolean {
 }
 
 export interface AccountBoundDeviceGateDeps {
+  localAccountSignOutEnabled?: boolean;
+  accountSessionOwnsPerson?(request: Request): boolean;
   currentRelationshipAccountDevice?(
     request: Request,
     binding: Extract<DevicePrincipalBinding, { kind: 'account' }>,
@@ -354,6 +356,15 @@ export function installAccountBoundDeviceGate(
         deps.identifyIngress(c))
     )
       return c.json({ error: { code: 'account_identity_conflict' } }, 401);
+    // Logout only revokes the account session; it grants no Device authority.
+    if (
+      deps.localAccountSignOutEnabled &&
+      c.req.method === 'POST' &&
+      c.req.path === '/api/account-auth/sign-out'
+    ) {
+      await next();
+      return;
+    }
     const accountOperation =
       c.req.path === '/api/account-auth' ||
       c.req.path.startsWith('/api/account-auth/');
@@ -385,7 +396,14 @@ export function installAccountBoundDeviceGate(
           { error: { code: 'account_authentication_invalid' } },
           401,
         );
-      const ingress = deps.identifyIngress(c);
+      let accountOwnsPerson = false;
+      try {
+        accountOwnsPerson = deps.accountSessionOwnsPerson?.(c.req.raw) === true;
+      } catch (error) {
+        if (!(error instanceof PrincipalUnresolvedError)) throw error;
+        return c.json({ error: { code: 'account_identity_conflict' } }, 403);
+      }
+      const ingress = accountOwnsPerson ? null : deps.identifyIngress(c);
       if (accountBinding && ingress) {
         return c.json({ error: { code: 'account_identity_conflict' } }, 401);
       }

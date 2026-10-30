@@ -12,7 +12,7 @@ import {
   render,
   screen,
 } from '@testing-library/react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { navigationStore } from '../contexts/NavigationContext';
 
 const dismiss = vi.fn();
@@ -33,6 +33,14 @@ let listsLoading = false;
 let notificationsError: unknown;
 let attentionError: unknown;
 
+// Snooze is a Feature Preview; off unless a test turns it on.
+let snoozePreviews: { id: string; enabled: boolean }[] = [];
+const snoozeAttention = vi.fn();
+const unsnoozeAttention = vi.fn();
+const snoozeNotification = vi.fn();
+
+import { chooseRowAction, openRowAction } from './helpers/row-menu';
+
 vi.mock('@kontourai/station-sdk', () => ({
   LIVE_NOTIFICATION_STATUSES: ['pending', 'delivered'],
   useNotificationsQuery: () => ({
@@ -46,6 +54,20 @@ vi.mock('@kontourai/station-sdk', () => ({
     error: attentionError,
     isLoading: listsLoading,
     refetch: refetchAttention,
+  }),
+  useDevicePresentation: () => undefined,
+  useFeaturePreviewsQuery: () => ({ data: snoozePreviews }),
+  useSnoozeAttentionItemMutation: () => ({
+    mutate: snoozeAttention,
+    isPending: false,
+  }),
+  useUnsnoozeAttentionItemMutation: () => ({
+    mutate: unsnoozeAttention,
+    isPending: false,
+  }),
+  useSnoozeNotificationMutation: () => ({
+    mutate: snoozeNotification,
+    isPending: false,
   }),
   useOrchestrationSessionsQuery: () => ({
     data: sessions,
@@ -100,6 +122,19 @@ beforeEach(() => {
   refetchAttention.mockReset();
 });
 
+function tabLabels(): string[] {
+  return screen
+    .queryAllByRole('tab')
+    .map((tab) => (tab.textContent ?? '').replaceAll(/\s+/g, ' ').trim());
+}
+
+function selectedTab(): string | null {
+  const tab = screen
+    .queryAllByRole('tab')
+    .find((candidate) => candidate.getAttribute('aria-selected') === 'true');
+  return tab ? (tab.textContent ?? '').replaceAll(/\s+/g, ' ').trim() : null;
+}
+
 describe('NotificationHistory', () => {
   test('renders active notifications and routes action clicks through the server-backed mutations', () => {
     notifications = [
@@ -127,7 +162,12 @@ describe('NotificationHistory', () => {
     );
 
     expect(screen.getByText('Notifications')).toBeTruthy();
-    expect(screen.getByText('Recent activity')).toBeTruthy();
+    // Nothing needs attention, so the popover opens on the activity tab.
+    expect(
+      screen
+        .getByRole('tab', { name: 'Activity' })
+        .getAttribute('aria-selected'),
+    ).toBe('true');
     expect(screen.getByText('View all notifications')).toBeTruthy();
     fireEvent.click(screen.getByText('Deny'));
 
@@ -136,11 +176,92 @@ describe('NotificationHistory', () => {
         actionId: 'decline',
         id: 'notif-1',
       },
-      { onSuccess: expect.any(Function) },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
     );
     // Acting on one notification must NOT tear down the list being triaged —
     // the popover stays open and the row animates instead.
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  test('a refused decision is explained on the row that was acted on', () => {
+    const stamp = new Date().toISOString();
+    notifications = [
+      {
+        id: 'notif-1',
+        source: 'approval-inbox',
+        category: 'approval-request',
+        title: 'Approval needed',
+        priority: 'high',
+        status: 'delivered',
+        actions: [{ id: 'decline', label: 'Deny', variant: 'danger' }],
+        createdAt: stamp,
+        updatedAt: stamp,
+      },
+      {
+        id: 'other',
+        source: 'scheduler',
+        category: 'job',
+        title: 'Backup finished',
+        priority: 'normal',
+        status: 'delivered',
+        createdAt: stamp,
+        updatedAt: stamp,
+      },
+    ];
+    action.mockImplementation(
+      (_vars: unknown, options: { onError?: (error: unknown) => void }) =>
+        options.onError?.(new Error('Notification action is unavailable')),
+    );
+    render(
+      <NotificationHistory isOpen onClose={vi.fn()} onViewAll={vi.fn()} />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Deny' }));
+
+    const failure = screen.getByTestId('decision-error');
+    expect(failure.textContent).toMatch(/already answered/i);
+    // On THAT row — not a banner over the tray that cannot say which.
+    const row = failure.closest('.notification-history__item');
+    expect(row?.textContent).toContain('Approval needed');
+    expect(row?.textContent).not.toContain('Backup finished');
+    // A refusal is not retried blindly; the way forward is the chat.
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+  });
+
+  test('a network failure on a decision offers to try it again', () => {
+    const stamp = new Date().toISOString();
+    notifications = [
+      {
+        id: 'notif-1',
+        source: 'approval-inbox',
+        category: 'approval-request',
+        title: 'Approval needed',
+        priority: 'high',
+        status: 'delivered',
+        actions: [{ id: 'decline', label: 'Deny', variant: 'danger' }],
+        createdAt: stamp,
+        updatedAt: stamp,
+      },
+    ];
+    action.mockImplementationOnce(
+      (_vars: unknown, options: { onError?: (error: unknown) => void }) =>
+        options.onError?.(new TypeError('Failed to fetch')),
+    );
+    render(
+      <NotificationHistory isOpen onClose={vi.fn()} onViewAll={vi.fn()} />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Deny' }));
+    expect(screen.getByTestId('decision-error').textContent).toMatch(
+      /Couldn't reach Station/,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+
+    expect(action).toHaveBeenCalledTimes(2);
+    expect(action.mock.calls[1]?.[0]).toEqual({
+      actionId: 'decline',
+      id: 'notif-1',
+    });
   });
 
   test('dismiss collapses the row into an undo affordance instead of closing', () => {
@@ -167,7 +288,7 @@ describe('NotificationHistory', () => {
       />,
     );
 
-    fireEvent.click(screen.getAllByRole('button', { name: /dismiss/i })[0]);
+    chooseRowAction('Dismiss');
 
     // The dismissal is held, not committed, and the panel stays open.
     expect(screen.getByText('Dismissed')).toBeTruthy();
@@ -245,16 +366,16 @@ describe('NotificationHistory', () => {
       />,
     );
 
-    const headings = screen.getAllByRole('heading', { level: 2 });
-    // archive#3222: the section names the badge's own number, so a reader
-    // arriving from "Notifications, 1 need attention" is shown one row and
-    // told that is all of them.
-    expect(headings.map((heading) => heading.textContent?.trim())).toEqual([
-      'Needs attention (1)',
-      'Recent activity',
-    ]);
+    // archive#3222: the attention tab names the badge's own number, so a
+    // reader arriving from "Notifications, 1 need attention" is shown one row
+    // and told that is all of them. It opens first because it is non-empty.
+    expect(tabLabels()).toEqual(['Needs attention 1', 'Activity']);
+    expect(selectedTab()).toBe('Needs attention 1');
     expect(screen.getAllByText('Approval needed')).toHaveLength(1);
+    fireEvent.click(screen.getByRole('tab', { name: 'Activity' }));
     expect(screen.getByText('Job failed')).toBeTruthy();
+    // The projected approval is not repeated as activity.
+    expect(screen.queryByText('Approval needed')).toBeNull();
   });
 
   /**
@@ -317,12 +438,14 @@ describe('NotificationHistory', () => {
 
     // One row, in attention only.
     expect(screen.getAllByText('A device is asking to pair')).toHaveLength(1);
+    fireEvent.click(screen.getByRole('tab', { name: 'Activity' }));
+    expect(screen.queryByText('A device is asking to pair')).toBeNull();
     // All five activity slots go to real activity. Without suppression the
     // mirror would have taken one of them and only four of these would render.
     expect(screen.getAllByText(/^Job \d$/)).toHaveLength(5);
   });
 
-  test('keeps the recent activity section visible when attention is the only content', () => {
+  test('keeps the activity tab reachable when attention is the only content', () => {
     const timestamp = new Date().toISOString();
     attention = {
       pendingCount: 1,
@@ -347,11 +470,9 @@ describe('NotificationHistory', () => {
       />,
     );
 
-    expect(
-      screen
-        .getAllByRole('heading', { level: 2 })
-        .map((heading) => heading.textContent?.trim()),
-    ).toEqual(['Needs attention (1)', 'Recent activity']);
+    expect(tabLabels()).toEqual(['Needs attention 1', 'Activity']);
+    fireEvent.click(screen.getByRole('tab', { name: 'Activity' }));
+    expect(selectedTab()).toBe('Activity');
     expect(screen.getByText('No recent activity')).toBeTruthy();
   });
 });
@@ -458,13 +579,11 @@ describe('NotificationHistory attention section agrees with the badge', () => {
     );
   }
 
+  /** The attention tab's label, or null when it names no count. */
   function attentionHeading(): string | null {
-    return (
-      screen
-        .queryAllByRole('heading', { level: 2 })
-        .find((heading) => heading.textContent?.startsWith('Needs attention'))
-        ?.textContent?.trim() ?? null
-    );
+    const label =
+      tabLabels().find((text) => text.startsWith('Needs attention')) ?? null;
+    return label === 'Needs attention' ? null : label;
   }
 
   test("nothing narrowed: the heading shows the badge's own number", () => {
@@ -473,7 +592,7 @@ describe('NotificationHistory attention section agrees with the badge', () => {
     attention = { pendingCount: 2, items: [failed(1), failed(2)] };
     open();
 
-    expect(attentionHeading()).toBe('Needs attention (2)');
+    expect(attentionHeading()).toBe('Needs attention 2');
     expect(screen.getByText('Session 1 failed')).toBeTruthy();
     expect(screen.getByText('Session 2 failed')).toBeTruthy();
   });
@@ -487,9 +606,11 @@ describe('NotificationHistory attention section agrees with the badge', () => {
     };
     open();
 
-    expect(attentionHeading()).toBe('Needs attention (5 of 9)');
+    expect(attentionHeading()).toBe('Needs attention 5 of 9');
     expect(screen.getByText('Session 5 failed')).toBeTruthy();
     expect(screen.queryByText('Session 6 failed')).toBeNull();
+    // ...and says so beside the list, with the way to the rest.
+    expect(screen.getByRole('status').textContent).toMatch(/Showing 5 of 9/);
   });
 
   test('all acknowledged: the badge is gone, so nothing may claim attention', () => {
@@ -514,7 +635,7 @@ describe('NotificationHistory attention section agrees with the badge', () => {
     };
     open();
 
-    expect(attentionHeading()).toBe('Needs attention (1)');
+    expect(attentionHeading()).toBe('Needs attention 1');
     expect(screen.queryByText('Session 1 failed')).toBeNull();
     expect(screen.getByText('Session 2 failed')).toBeTruthy();
   });
@@ -536,7 +657,7 @@ describe('NotificationHistory attention section agrees with the badge', () => {
     };
     open();
 
-    expect(attentionHeading()).toBe('Needs attention (2)');
+    expect(attentionHeading()).toBe('Needs attention 2');
     expect(screen.getByText('Session 6 failed')).toBeTruthy();
     expect(screen.getByText('Session 7 failed')).toBeTruthy();
   });
@@ -548,7 +669,7 @@ describe('NotificationHistory attention section agrees with the badge', () => {
     attention = { pendingCount: 3, items: [failed(1), failed(2)] };
     open();
 
-    expect(attentionHeading()).toBe('Needs attention (2 of 3)');
+    expect(attentionHeading()).toBe('Needs attention 2 of 3');
   });
 });
 
@@ -585,7 +706,7 @@ describe('NotificationHistory undo window', () => {
     vi.useFakeTimers();
     try {
       renderOne();
-      fireEvent.click(screen.getAllByRole('button', { name: /dismiss/i })[0]);
+      chooseRowAction('Dismiss');
       expect(dismiss).not.toHaveBeenCalled();
 
       act(() => {
@@ -603,7 +724,7 @@ describe('NotificationHistory undo window', () => {
     vi.useFakeTimers();
     try {
       renderOne();
-      fireEvent.click(screen.getAllByRole('button', { name: /dismiss/i })[0]);
+      chooseRowAction('Dismiss');
       fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
 
       act(() => {
@@ -620,7 +741,7 @@ describe('NotificationHistory undo window', () => {
     vi.useFakeTimers();
     try {
       const { unmount } = renderOne();
-      fireEvent.click(screen.getAllByRole('button', { name: /dismiss/i })[0]);
+      chooseRowAction('Dismiss');
 
       // Closing the panel must not silently cancel what the user asked for...
       unmount();
@@ -757,9 +878,9 @@ describe('NotificationHistory answerability annotation', () => {
 
   test('AC3: Dismiss stays live — a dismissal IS a user decision', () => {
     open();
-    const dismissButton = screen.getByRole('button', { name: /dismiss/i });
-    expect((dismissButton as HTMLButtonElement).disabled).toBe(false);
-    fireEvent.click(dismissButton);
+    const dismissItem = openRowAction('Dismiss');
+    expect(dismissItem.disabled).toBe(false);
+    fireEvent.click(dismissItem);
     expect(screen.getByText('Dismissed')).toBeTruthy();
   });
 
@@ -785,7 +906,7 @@ describe('NotificationHistory answerability annotation', () => {
         actionId: 'decline',
         id: 'notif-stranded',
       },
-      { onSuccess: expect.any(Function) },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
     );
   });
 
@@ -976,4 +1097,127 @@ test('a recent approval opens its own conversation while Attention has no projec
   );
   expect(navigationStore.getSnapshot().isDockOpen).toBe(true);
   expect(close).toHaveBeenCalledTimes(1);
+});
+
+describe('NotificationHistory snooze (Feature Preview)', () => {
+  const stamp = new Date().toISOString();
+  const failure = {
+    id: 'session-failed:thread-1',
+    kind: 'session-failed' as const,
+    title: 'Session one failed',
+    createdAt: stamp,
+    updatedAt: stamp,
+    openHref: '/?surface=activity&session=thread-1',
+    source: { threadId: 'thread-1' },
+  };
+  const job = (
+    id: string,
+    extra: Partial<Notification> = {},
+  ): Notification => ({
+    id,
+    source: 'scheduler',
+    category: 'job',
+    title: `Job ${id}`,
+    priority: 'normal',
+    status: 'delivered',
+    createdAt: stamp,
+    updatedAt: stamp,
+    ...extra,
+  });
+  afterEach(() => {
+    snoozePreviews = [];
+    snoozeAttention.mockReset();
+    snoozeNotification.mockReset();
+  });
+
+  test('with the preview off, no row offers snooze', () => {
+    attention = { pendingCount: 1, items: [failure] };
+    render(
+      <NotificationHistory isOpen onClose={vi.fn()} onViewAll={vi.fn()} />,
+    );
+    expect(screen.queryByRole('menuitem', { name: '1 hour' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    expect(screen.queryByRole('menuitem', { name: '1 hour' })).toBeNull();
+  });
+
+  test('a preset snoozes the attention item until that instant', () => {
+    snoozePreviews = [{ id: 'attention-snooze', enabled: true }];
+    attention = { pendingCount: 1, items: [failure] };
+    render(
+      <NotificationHistory isOpen onClose={vi.fn()} onViewAll={vi.fn()} />,
+    );
+
+    chooseRowAction('1 hour');
+
+    expect(snoozeAttention).toHaveBeenCalledTimes(1);
+    const [vars] = snoozeAttention.mock.calls[0] ?? [];
+    expect(vars.itemId).toBe('session-failed:thread-1');
+    const ahead = Date.parse(vars.until) - Date.now();
+    expect(ahead).toBeGreaterThan(59 * 60 * 1000);
+    expect(ahead).toBeLessThanOrEqual(60 * 60 * 1000);
+  });
+
+  test('an activity row snoozes through the stored-notification snooze', () => {
+    snoozePreviews = [{ id: 'attention-snooze', enabled: true }];
+    notifications = [job('a')];
+    render(
+      <NotificationHistory isOpen onClose={vi.fn()} onViewAll={vi.fn()} />,
+    );
+
+    chooseRowAction('Tomorrow morning');
+
+    expect(snoozeAttention).not.toHaveBeenCalled();
+    expect(snoozeNotification.mock.calls[0]?.[0]).toMatchObject({ id: 'a' });
+  });
+
+  test('a snoozed notification is not recent activity while the preview is on', () => {
+    const later = new Date(Date.now() + 3_600_000).toISOString();
+    notifications = [
+      job('due'),
+      job('later', { status: 'pending', scheduledAt: later }),
+    ];
+
+    snoozePreviews = [{ id: 'attention-snooze', enabled: true }];
+    const view = render(
+      <NotificationHistory isOpen onClose={vi.fn()} onViewAll={vi.fn()} />,
+    );
+    expect(screen.getByText('Job due')).toBeTruthy();
+    expect(screen.queryByText('Job later')).toBeNull();
+    view.unmount();
+
+    // Off, nothing about the list changes.
+    snoozePreviews = [];
+    render(
+      <NotificationHistory isOpen onClose={vi.fn()} onViewAll={vi.fn()} />,
+    );
+    expect(screen.getByText('Job later')).toBeTruthy();
+  });
+});
+
+test('dismissing an approval row holds it for Undo', () => {
+  const stamp = new Date().toISOString();
+  attention = {
+    pendingCount: 1,
+    items: [
+      {
+        id: 'approval:notif-u',
+        kind: 'approval',
+        title: 'Approve the deploy',
+        createdAt: stamp,
+        updatedAt: stamp,
+        source: {
+          notificationId: 'notif-u',
+          notificationSource: 'approval-inbox',
+        },
+        actions: [{ id: 'accept', label: 'Allow', variant: 'primary' }],
+      },
+    ],
+  };
+  render(<NotificationHistory isOpen onClose={vi.fn()} onViewAll={vi.fn()} />);
+  chooseRowAction('Dismiss');
+  expect(screen.getByText('Dismissed')).toBeTruthy();
+  expect(screen.queryByText('Approve the deploy')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+  expect(screen.getByText('Approve the deploy')).toBeTruthy();
+  expect(dismiss).not.toHaveBeenCalled();
 });

@@ -12,6 +12,40 @@ entry point. Exports select TypeScript/TSX source and host components may also
 need CSS, React and a Query Client. See the [package README](../../packages/sdk/README.md)
 for source distribution and a checked authoring example.
 
+## Terminal output sessions
+
+`TerminalOutputSession` from `@kontourai/station-sdk/client` observes an existing
+terminal through the Station API listener. Pass its `apiBase`, `projectId`,
+`bindingKey`, UUID `terminalId`, a `resolveCredential` callback returning a
+`ClientCredential`, and `onOutput`/`onReset` callbacks. Call `connect()` and
+`dispose()` to own the connection lifetime. An optional `requestScope` pins the
+selected host authority; broker routes and credential-less native transports
+are refused. Both the HTTP probe and socket require a terminal-operate
+credential; output-only describes the commands this client sends, not an
+observe-scope credential.
+
+An authenticated HTTP probe distinguishes an older host's 404 and reports
+`unsupported-host`, suggesting a host update before any socket is attempted.
+After attachment, the SDK also requires the server's advertised, enforced
+128-frame outstanding output bound. Hosts without it return `unsupported-host`
+and need an update; older clients can ignore the additive field.
+Authentication is mandatory on loopback too. Output credit advances only after
+`onOutput` resolves; `appliedThrough` is the last applied journal sequence. A
+retention reset awaits `onReset` before replay. Three bounded reconnect attempts
+resume that same terminal from the applied sequence after each disconnect;
+probe network failures share that bounded retry budget. Replay can take longer
+than five seconds while output advances, but a stalled replay renderer is
+bounded. Once ready, slow rendering applies backpressure without a rendering
+deadline; credit is acknowledged only after output is applied.
+Callbacks receive an abort
+signal for disposal or failure. Rejected credentials, expired authority and
+protocol errors settle `connect()` and are reported through `onError`.
+
+This read-only client sends no shell input or terminal lifecycle commands. It
+does not replace the Coding terminal view, choose an emulator, or qualify paired
+devices, native transports, provider execution or installed reconnection. Those
+remain part of #3994.
+
 ## Local speech and media tools
 
 The React-free `@kontourai/station-sdk/client` exports
@@ -153,6 +187,11 @@ The latter accepts `bind` or `unbind`, the exact destination grant and an
 hooks. Pass the render-captured request scope: caches partition by API base and
 authority key, and old responses cannot update a replacement authority. Existing
 MCP consumer inputs and results retain their own separate client functions.
+`bindOAuthClientSecret(apiBase, id, {integrationId, expectedRevision})` and
+`unbindOAuthClientSecret` bind a shared binding as one remote integration's
+OAuth client secret, with `useBindOAuthClientSecretMutation` and
+`useUnbindOAuthClientSecretMutation` hooks. `getIntegrationSecretBindings`
+returns the bound id as `oauthClientSecretBindingId`.
 
 ## Integration discovery
 
@@ -173,8 +212,10 @@ withhold stale provenance.
 `useIntegrationAccountQuery(id, projectSlug?, requestScope?)` reads the account
 summary. Pass the captured `ApiRequestScope` to partition account state by
 Station and principal authority and refuse a request after that authority changes.
-`useStartIntegrationOAuthMutation()` accepts `{id, projectSlug?}` and returns an
-`authorizationUrl`. `useFinishIntegrationOAuthMutation()` accepts
+`useStartIntegrationOAuthMutation()` accepts `{id, projectSlug?, scopes?}` and
+returns an `authorizationUrl`; `scopes` is the person's choice for that sign-in,
+and an empty list requests the server's advertised scopes instead of the
+integration default. `useFinishIntegrationOAuthMutation()` accepts
 `{id, projectSlug?, callbackUrl}` for remote sign-in completion, evicts settled
 mutation variables and refreshes account/integration queries. Existing endpoint
 ownership checks still apply; a successful catalog install does not sign in.
@@ -3981,6 +4022,50 @@ interface ProviderMetadata {
 
 ## Notifications API
 
+### Attention and notification snooze hooks
+
+These exports from `@kontourai/station-sdk` use Station's authenticated
+transport. Attention mutations require the host's **Attention snooze**
+(`attention-snooze`) Feature Preview. The notification helper uses the existing
+stored-notification route and does not require that preview.
+
+```ts
+// until is an ISO timestamp string. Attention helpers accept apiBase?: string.
+const { snoozedUntil } = await snoozeAttentionItem(itemId, until, apiBase);
+await unsnoozeAttentionItem(itemId, apiBase);
+useSnoozeAttentionItemMutation(apiBase).mutateAsync({ itemId, until });
+useUnsnoozeAttentionItemMutation(apiBase).mutateAsync(itemId);
+await snoozeNotification(id, until);
+useSnoozeNotificationMutation().mutateAsync({ id, until });
+```
+
+Attention helpers call `POST` / `DELETE /api/attention/:id/snooze`. The POST
+sends `{until}`; it returns the server-normalized `snoozedUntil`. Attention
+hooks invalidate the `['attention']` prefix, including queries with an explicit
+API base. `snoozeNotification` posts `{until}` to
+`/notifications/:id/snooze`; its hook invalidates both `['notifications']` and
+`['attention']`, like dismissal. IDs are URL-encoded.
+
+All helpers throw for a non-OK response or unsuccessful envelope, preserving
+the server's error message. A host without the new attention routes is
+unsupported: an unknown-route 404 suggests updating Station, whether its body
+is JSON or plain text. A typed disabled-preview
+404 instead carries the server's Settings remedy; a missing-item 404 remains
+an error. Unlike `acknowledgeAttentionItem`, snooze never treats a 404 as success.
+
+The [attention API](session-api.md#review-work-in-the-attention-inbox) owns
+validation and versioning: attention snoozes must end strictly in the future
+and within 30 days, and a newer source version resurfaces immediately. Pending
+counts exclude both acknowledged and actively snoozed items while retaining
+them in the projection's `items`. The stored-notification route keeps its
+existing validation and delivery behavior; the new SDK helper does not change
+it.
+
+Source: [attention domain](../../packages/sdk/src/query-domains/attention.ts),
+[notification domain](../../packages/sdk/src/query-domains/notifications.ts).
+[Mutation tests](../../packages/sdk/src/__tests__/snooze-mutations.test.tsx)
+verify request shape, error propagation, and actual mounted-query refetches.
+
 ### Person notification query domain
 
 `fetchPersonNotifications`, `markPersonNotificationRead`,
@@ -6344,3 +6429,14 @@ A 404 means unsupported host or unavailable/expired request; request again and
 consider updating the host. No operator or private-vault credential is returned.
 See [the source journey](../guides/monitoring.md#connect-a-personal-source-in-insights)
 for expiry, source/Device revalidation and remaining qualification limits.
+
+### Observe-only Automation deliveries
+
+`listAutomationDeliveries(apiBase, { limit? }, options?)` from
+`@kontourai/station-sdk/client` reads `GET /automations/deliveries` as the
+management caller. It returns `AutomationDeliveryPage` with `deliveries` and
+`polls`, including partial coverage and source failures. The server requires
+**GitHub automation observations** in Feature previews. A `StationHttpError`
+preserves the preview refusal's code and Settings link; a 404 from an older
+host reports the unsupported capability. No mutation or agent invocation is
+performed. See [Automation intake](../design/automations.md#observe-only-github-preview).

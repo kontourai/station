@@ -1,0 +1,11 @@
+{
+  "revision": "1825df9a05f000829843d507261241dd3c2e2813",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"Reviewed NotificationsPage delta: Inspect approval and review evidence still opens the exact Notifications row without deciding it. The collapse guard now uses unfiltered snoozed attention so Search and Clear filters stay reachable; displayed rows remain filtered. Mounted page regression failed before the fix and passed after. No prose change or new provider/runtime claim needed.","inputs":["docs/guides/starter-work.md","src-ui/src/pages/NotificationsPage.tsx"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Reviewed NotificationsPage delta: Inspect an approval still distinguishes inline approval decisions from review request inspection. The collapse guard now uses unfiltered snoozed attention so Search and Clear filters stay reachable; displayed rows remain filtered. Mounted page regression failed before the fix and passed after. No prose change or new provider/runtime claim needed.","inputs":["docs/learn/walkthroughs.md","src-ui/src/pages/NotificationsPage.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed NotificationsPage delta: Return to a decision still describes exact-request inline decisions, context fields and preview-gated snooze. The collapse guard now uses unfiltered snoozed attention so Search and Clear filters stay reachable; displayed rows remain filtered. Mounted page regression failed before the fix and passed after. No prose change or new provider/runtime claim needed.","inputs":["docs/user/getting-started.md","src-ui/src/pages/NotificationsPage.tsx"]}
+  ]
+}

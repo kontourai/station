@@ -10,6 +10,7 @@ import {
   isStandingAttentionKind,
   type PluginLifecycleProposalAttentionItem,
   type ProposedChangeAttentionItem,
+  parseAttentionSnoozeUntil,
   type SessionFailedAttentionItem,
   type SetupIncompleteAttentionItem,
 } from '@kontourai/station-contracts/attention';
@@ -40,6 +41,8 @@ import {
   attentionRequestEvidenceScanDuration,
 } from '../../telemetry/metrics.js';
 import type { ApprovalRegistry } from '../approvals/approval-registry.js';
+import { FeaturePreviewDisabledError } from '../feature-previews/feature-preview-refusal.js';
+import type { FeaturePreviewSelector } from '../feature-previews/feature-preview-registry.js';
 import type {
   FlowRunService,
   FlowRunStatus,
@@ -69,6 +72,7 @@ import {
 } from '../plugins/plugin-lifecycle-proposals.js';
 import { ToolLibraryService } from '../plugins/tool-library-service.js';
 import { DEVICE_PAIRING_NOTIFICATION_SOURCE } from '../ssh/device-pairing-notifications.js';
+import type { FileAttentionSnoozeStore } from './attention-snooze-store.js';
 import type { ProposedChangeService } from './proposed-change-service.js';
 
 const ACTIVE_NOTIFICATION_STATUSES = ['delivered', 'pending'];
@@ -283,6 +287,11 @@ export class AttentionProjectionService {
       'listOpen'
     > | null,
     private readonly toolLibrary?: Pick<ToolLibraryService, 'requests'>,
+    private readonly snoozing?: {
+      store: FileAttentionSnoozeStore;
+      preview: FeaturePreviewSelector;
+      now?: () => number;
+    },
   ) {}
 
   /**
@@ -467,6 +476,13 @@ export class AttentionProjectionService {
       readAuthority,
       this.acknowledgementStore?.isOwnerDevice,
     );
+    const snoozes = this.snoozeEnabled()
+      ? this.snoozing?.store.getMany(
+          readAuthority.userId,
+          undecorated.map((item) => item.id),
+        )
+      : undefined;
+    const now = this.snoozing?.now?.() ?? Date.now();
     const acknowledgements = acknowledgementKey
       ? this.acknowledgementStore?.getMany(
           acknowledgementKey,
@@ -475,9 +491,18 @@ export class AttentionProjectionService {
       : undefined;
     const decorated = undecorated.map((item) => {
       const version = acknowledgements?.get(item.id);
-      return version && version >= item.updatedAt
-        ? { ...item, acknowledgedAt: version }
-        : item;
+      const snooze = snoozes?.get(item.id);
+      return {
+        ...item,
+        ...(version && version >= item.updatedAt
+          ? { acknowledgedAt: version }
+          : {}),
+        ...(snooze &&
+        snooze.version >= item.updatedAt &&
+        Date.parse(snooze.until) > now
+          ? { snoozedUntil: snooze.until }
+          : {}),
+      };
     });
     const items = decorated.sort(compareAttentionItems);
     // Acked items stay IN `items` (history, never deleted) but drop out of
@@ -494,6 +519,60 @@ export class AttentionProjectionService {
         ? { unavailableSources: gateReviews.unavailable }
         : {}),
     };
+  }
+
+  private snoozeEnabled(): boolean {
+    return (
+      this.snoozing?.preview.select({
+        enabled: () => true,
+        disabled: () => false,
+      }) ?? false
+    );
+  }
+
+  private requireSnoozing() {
+    if (!this.snoozing || !this.snoozeEnabled()) {
+      throw new FeaturePreviewDisabledError(
+        'attention-snooze',
+        'Attention snooze',
+      );
+    }
+    return this.snoozing;
+  }
+
+  async snooze(
+    itemId: string,
+    until: unknown,
+    authority?: SessionReadAuthority,
+    viewer?: Parameters<AttentionProjectionService['list']>[1],
+  ): Promise<string | undefined> {
+    const snoozing = this.requireSnoozing();
+    const now = snoozing.now?.() ?? Date.now();
+    const snoozedUntil = parseAttentionSnoozeUntil(until, now);
+    const readAuthority = authority ?? this.defaultReadAuthority();
+    const { items } = await this.list(readAuthority, viewer);
+    const item = items.find((candidate) => candidate.id === itemId);
+    if (!item) return undefined;
+    this.requireSnoozing().store.set(
+      {
+        userId: readAuthority.userId,
+        itemId,
+        version: item.updatedAt,
+        until: snoozedUntil,
+      },
+      now,
+    );
+    return snoozedUntil;
+  }
+
+  unsnooze(itemId: string, authority?: SessionReadAuthority): void {
+    const snoozing = this.requireSnoozing();
+    const readAuthority = authority ?? this.defaultReadAuthority();
+    snoozing.store.delete(
+      readAuthority.userId,
+      itemId,
+      snoozing.now?.() ?? Date.now(),
+    );
   }
 
   /**

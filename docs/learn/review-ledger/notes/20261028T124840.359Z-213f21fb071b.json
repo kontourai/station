@@ -1,0 +1,7 @@
+{
+  "revision": "ff6b4df88a0dc2dcee48e3da02e10a00da6490bb",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Reviewed the single implementation comment rewording after the composition gate treated a future-view disclaimer as a dependency. The client imports only its terminal contract and SDK siblings and owns no pane, layout, navigation or renderer; renderer cutover remains UNWIRED(#3994). Reworded that comment to describe renderer cutover without naming a composition it does not depend on. No scanner/inventory/policy/suppression or executable byte changed. The actual gate now passes, and all earlier scoped transport, authority, real-gateway and fault evidence keeps its original source boundary.","inputs":["docs/reference/sdk.md","packages/sdk/src/client/terminal-output-session.ts"]}
+  ]
+}

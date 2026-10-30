@@ -1456,7 +1456,13 @@
 
     "src-server/services/orchestration/__tests__/conversation-native-fork-effect.test.ts",
 
-    "scripts/lib/heavy-check-slots.mjs"
+    "scripts/lib/heavy-check-slots.mjs",
+
+    "src-server/services/automation/github-poll.ts",
+
+    "src-server/services/automation/automation-intake.ts",
+
+    "src-server/services/automation/github-workflow-run.ts"
   ],
 
   "checks": [

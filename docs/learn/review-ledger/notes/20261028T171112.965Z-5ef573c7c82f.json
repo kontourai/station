@@ -1,0 +1,7 @@
+{
+  "revision": "7f2e7b4193a0fdc748a43a4aa1344c041419903f",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"Source-impact review: the connections guide adds Authorization server binding and updates scope wording. Searched this document for MCP tool-server OAuth client, issuer, client secret, secret-binding grant and scope claims; none describes these paths beyond links that still resolve, so its claims stay accurate.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]}
+  ]
+}

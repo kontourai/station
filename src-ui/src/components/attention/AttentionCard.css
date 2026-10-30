@@ -12,21 +12,23 @@
  * visit first).
  */
 .attention-item {
-  padding: 20px;
-  background: linear-gradient(
-    135deg,
-    var(--bg-secondary) 0%,
-    var(--bg-tertiary) 100%
-  );
-  border: 1px solid var(--accent-primary);
-  border-radius: 12px;
-  position: relative;
-  overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: var(--k-space-3);
+  padding: var(--k-space-4);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+  color: var(--k-text);
+}
+
+/* Everything but the kind tile lives in the content column. */
+.attention-item > :not(.inbox-mark) {
+  grid-column: 2;
 }
 
 .attention-item--focused:focus {
-  outline: 2px solid var(--accent-primary);
+  outline: 2px solid var(--k-focus);
   outline-offset: 2px;
 }
 
@@ -34,7 +36,6 @@
   display: flex;
   justify-content: space-between;
   align-items: start;
-  margin-bottom: 8px;
 }
 
 .attention-item__content {
@@ -42,25 +43,32 @@
   min-width: 0;
 }
 
+.attention-item__meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--k-space-3);
+}
+
 .attention-item__type {
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-  color: var(--text-muted);
-  margin-bottom: 6px;
-  text-transform: uppercase;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
   font-weight: 600;
-  letter-spacing: 0.5px;
 }
 
 .attention-item__message {
-  font-size: var(--text-lg);
-  margin-bottom: 8px;
+  margin-top: 2px;
+  color: var(--k-text);
+  font-size: var(--k-text-md);
+  font-weight: 500;
+  line-height: var(--k-leading-tight);
   overflow-wrap: anywhere;
 }
 
 .attention-item__detail {
-  font-size: var(--text-base);
-  color: var(--text-muted);
+  margin-top: var(--k-space-1);
+  font-size: var(--k-text-sm);
+  color: var(--k-text-muted);
   overflow-wrap: anywhere;
 }
 
@@ -89,19 +97,18 @@
  * the cause above it so the cause stays the line you read first.
  */
 .attention-item__identity {
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-  color: var(--text-muted);
-  margin-top: 4px;
+  font-size: var(--k-text-xs);
+  color: var(--k-text-muted);
+  margin-top: var(--k-space-1);
   overflow-wrap: anywhere;
 }
 
 .attention-item__time {
-  font-family: var(--font-mono);
-  font-size: var(--text-base);
-  color: var(--text-muted);
+  flex: 0 0 auto;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  margin-left: 16px;
 }
 
 .attention-answer {
@@ -117,10 +124,23 @@
 }
 
 .attention-open-link {
-  display: inline-block;
-  margin-top: 12px;
-  min-height: 44px;
-  line-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  margin-top: var(--k-space-3);
+  min-height: var(--touch-target-min, 36px);
+  padding: 0 var(--k-space-3);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-control);
+  background: var(--k-panel-raised);
+  color: var(--k-text);
+  font-size: var(--k-text-sm);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.attention-open-link:hover {
+  border-color: var(--k-line-strong);
 }
 
 /*
@@ -129,17 +149,22 @@
  * and a casual click can't discard a live decision.
  */
 .attention-dismiss-link {
-  display: inline-block;
-  margin-top: 4px;
-  min-height: 44px;
-  line-height: 44px;
-  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  margin-top: var(--k-space-1);
+  min-height: var(--touch-target-min, 36px);
+  padding: 0 var(--k-space-2);
   border: none;
+  border-radius: var(--k-radius-control);
   background: none;
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-  text-decoration: underline;
+  color: var(--k-text-muted);
+  font: inherit;
+  font-size: var(--k-text-sm);
   cursor: pointer;
+}
+
+.attention-dismiss-link:hover:not(:disabled) {
+  color: var(--k-text);
 }
 
 .attention-dismiss-link:disabled {
@@ -157,8 +182,8 @@
  * they differed (12px vs 4px), leaving the pair visibly unaligned.
  */
 .attention-open-link + .attention-dismiss-link {
-  margin-top: 12px;
-  margin-left: 16px;
+  margin-top: var(--k-space-3);
+  margin-left: var(--k-space-2);
 }
 
 .attention-error {
@@ -203,8 +228,103 @@
 }
 
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
-  .notice-actions,
-  .attention-item__footer {
-    justify-content: flex-start;
+  /* An approval card's way out becomes a text link, so it and the two
+     decisions keep one line in the narrow column. */
+  .attention-item .exact-request__actions > .attention-open-link {
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--k-action);
+    font-size: var(--k-text-xs);
   }
+}
+
+/*
+ * Footer order, like every inbox row: quiet controls (snooze, dismiss) at the
+ * left edge, the way out (open) next, the decision buttons last on the right.
+ */
+.attention-item__footer > .attention-item__quiet,
+.attention-item__footer > .attention-dismiss-link {
+  order: -1;
+  margin-right: auto;
+}
+
+.attention-item__quiet {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-1);
+}
+
+.attention-item__quiet .notice-actions {
+  justify-content: flex-start;
+}
+
+/* Every quiet dismiss on a card reads the same: borderless, muted. */
+.attention-item__quiet .button.notice-action--ghost {
+  border-color: transparent;
+}
+
+.exact-request__bar .attention-open-link,
+.exact-request__bar .attention-dismiss-link {
+  margin: 0;
+}
+
+.attention-item__footer > .attention-open-link {
+  order: 0;
+}
+
+.attention-item__footer > .notice-actions,
+.attention-item__footer > .exact-request {
+  order: 1;
+}
+
+.attention-item__footer > .exact-request {
+  flex-basis: 100%;
+}
+
+/* Inside an inbox card a reply (scoped or legacy) is a compact inline
+   composer: a quiet label, a token-styled field, a send button sized to its
+   label. */
+.attention-item .attention-answer {
+  justify-items: start;
+}
+.attention-item .attention-answer > label {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+  font-weight: 600;
+}
+.attention-item .attention-answer textarea {
+  min-height: 64px;
+  padding: var(--k-space-2) var(--k-space-3);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-control);
+  background: var(--k-bg);
+  color: var(--k-text);
+  font: inherit;
+  font-size: var(--k-text-sm);
+  resize: vertical;
+}
+.attention-item .attention-answer textarea:focus {
+  border-color: var(--k-focus);
+}
+.attention-item .attention-answer > [role="alert"],
+.attention-item .attention-answer > fieldset {
+  justify-self: stretch;
+}
+
+/* A reply composer comes first; the quiet/open row closes the card. */
+.attention-item__footer > .attention-answer {
+  order: -2;
+}
+
+/* The meta line ends in the time and, on the inbox page, the card's ⋯ menu. */
+.attention-item__corner {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--k-space-1);
+}
+
+.attention-item__footer > .exact-request {
+  margin-top: 0;
 }

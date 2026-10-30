@@ -1,0 +1,7 @@
+{
+  "revision": "b9a951449251da359b7f62b17d807cbca68b219e",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Edited for review round 6 of #4279: authorization-server requests (registration, code exchange, refresh) are checked immediately before send under a per-integration lock that pin establishment also takes. Checked against tool-server-oauth.ts, config-loader-storage.ts, mcp-connection.ts and the deterministic interleaving tests. Other inputs: the guide states that authorization-server requests are checked at dispatch under a per-integration lock shared with pin establishment; mcp-manager.ts passes the OAuth provider fetch guard to remote connections; the provider guards authorization-server requests at dispatch under the pin lock, rechecking the declared issuer or pin.","inputs":["docs/guides/connections.md","src-server/runtime/mcp/mcp-manager.ts","src-server/services/plugins/tool-server-oauth.ts"]}
+  ]
+}

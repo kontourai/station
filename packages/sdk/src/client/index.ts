@@ -36,6 +36,7 @@ export {
   envelopeReasons,
 } from './api-error-message';
 export * from './attachment-staging';
+export * from './automations';
 export * from './board';
 export { ChatHttpError } from './chatHttpError';
 export * from './cli-session-groups';
@@ -130,6 +131,7 @@ export {
 } from './task-room-work';
 export * from './task-tool-results';
 export * from './task-user-input-references';
+export * from './terminal-output-session';
 export * from './unified-search';
 export * from './usage-export';
 export * from './walkthroughs';

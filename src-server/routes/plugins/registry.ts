@@ -2,6 +2,7 @@ import type {
   PluginInstallationRevision,
   PluginManifest,
 } from '@kontourai/station-contracts/plugin';
+import { withoutToolBindingReferences } from '@kontourai/station-contracts/tool';
 import { recordIntegrationOrigin } from '../../services/plugins/integration-origin.js';
 import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
 import { ensurePluginInstallTrustMigration } from '../../services/plugins/plugin-install-trust-migration.js';
@@ -791,7 +792,10 @@ export function createRegistryRoutes(
         } catch {
           // A first registry install has no prior Station-owned binding map.
         }
-        if (Object.keys(existing?.secretEnvRefs ?? {}).length > 0) {
+        if (
+          Object.keys(existing?.secretEnvRefs ?? {}).length > 0 ||
+          existing?.oauthClient?.clientSecretRef
+        ) {
           return c.json(
             {
               success: false,
@@ -801,10 +805,12 @@ export function createRegistryRoutes(
             409,
           );
         }
-        const persisted = { ...toolDef, enabled: false };
         // Registry/provider metadata is untrusted relative to the operator
         // binding authority. It can never author a reference.
-        delete persisted.secretEnvRefs;
+        const persisted = withoutToolBindingReferences({
+          ...toolDef,
+          enabled: false,
+        });
         await configLoader.saveIntegration(toolDef.id, persisted);
         if ('origin' in installed && installed.origin)
           recordIntegrationOrigin(

@@ -1,0 +1,7 @@
+{
+  "revision": "7641e738a9fa2fe14955b2d0d044205ddc321cce",
+
+  "notes": [
+    {"path":"packages/contracts/AGENTS.md","note":"Reviewed the recorded HTTP, SDK or contract dependency against the narrow terminal and captured-credential GET change; existing non-terminal behavior and this document remain unchanged. Focused authority and gateway tests passed; hosted behavior not verified.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}

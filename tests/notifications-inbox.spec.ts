@@ -229,21 +229,18 @@ test.describe('Notifications hierarchy', () => {
     await notificationsButton.click();
     const compactNotifications = page.locator('.notification-history');
     await expect(compactNotifications).toBeVisible();
-    // archive#3222: the tray section names the badge's own population. All
-    // four are unacknowledged and all four fit, so it reads as one number —
-    // the same number the button the reader just clicked is showing.
+    // archive#3222: the tray's attention tab names the badge's own
+    // population. All four are unacknowledged and all four fit, so it reads
+    // as one number — the same number the button the reader just clicked is
+    // showing — and it is the tab the tray opens on.
     await expect(
-      compactNotifications.getByRole('heading', {
-        name: 'Needs attention (4)',
-        level: 2,
+      compactNotifications.getByRole('tab', {
+        name: 'Needs attention 4',
         exact: true,
       }),
-    ).toBeVisible();
+    ).toHaveAttribute('aria-selected', 'true');
     await expect(
-      compactNotifications.getByRole('heading', {
-        name: 'Activity',
-        level: 2,
-      }),
+      compactNotifications.getByRole('tab', { name: 'Activity', exact: true }),
     ).toBeVisible();
     await expect(
       compactNotifications.getByRole('button', {
@@ -467,9 +464,15 @@ test.describe('Failed-session notifications on a phone (#3203)', () => {
     await expect(
       page.getByText(/ECONNREFUSED api\.example\.internal/),
     ).toBeVisible();
-    await expect(
-      page.getByText('Claude Code · staging-release-reviewer'),
-    ).toBeVisible();
+    // Engine and agent ride the row's context line, each with its label.
+    const longRowContext = page
+      .getByTestId('attention-item')
+      .filter({ hasText: LONG_TITLE })
+      .getByTestId('inbox-context');
+    await expect(longRowContext).toContainText(
+      'Agent: staging-release-reviewer',
+    );
+    await expect(longRowContext).toContainText('Engine: Claude Code');
     // The absent-cause row states the absence rather than rendering nothing.
     await expect(
       page.getByText('No failure detail was recorded for this session.'),
@@ -527,14 +530,10 @@ test.describe('Failed-session notifications on a phone (#3203)', () => {
       .click();
     const tray = page.locator('.notification-history');
     await expect(tray).toBeVisible();
-    // archive#3222: the count pair lives in this heading, so the 390px
+    // archive#3222: the count lives in the attention tab, so the 390px
     // containment assertions below cover it too.
     await expect(
-      tray.getByRole('heading', {
-        name: 'Needs attention (3)',
-        level: 2,
-        exact: true,
-      }),
+      tray.getByRole('tab', { name: 'Needs attention 3', exact: true }),
     ).toBeVisible();
     await expect(tray.getByText(LONG_TITLE)).toBeVisible();
     await expect(

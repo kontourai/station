@@ -1,0 +1,7 @@
+{
+  "revision": "e4ad012f60f48b824812089c9eea480201b26bcb",
+
+  "notes": [
+    {"path":"docs/reference/agent-plugins.md","note":"Source-impact review: the storage writer imports the contract invariant and adds assertPluginIntegrationsWritable; mcp-service.ts passes a per-sign-in scope choice to the provider (unchanged behavior this round besides the shared helper import); plugin-install-transaction.ts only calls assertPluginIntegrationsWritable before copyPluginIntegrations (refusing bundled secret-binding references and applying the OAuth client rules); install order, admission and outcomes are otherwise unchanged. Searched this document for MCP tool-server OAuth client, issuer, secret-binding grant/reference, plugin integration copy, portability and credential-store claims; none describes the changed behavior beyond links that still resolve, so its claims stay accurate.","inputs":["docs/reference/agent-plugins.md","src-server/domain/config-loader-storage.ts","src-server/services/plugins/mcp-service.ts","src-server/services/plugins/plugin-install-transaction.ts"]}
+  ]
+}

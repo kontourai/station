@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { _getApiBase } from '../api';
 import type { ClientRequestOptions } from '../client/http';
 import {
+  bindOAuthClientSecret,
   bindSecretBinding,
   createSecretBinding,
   getIntegrationSecretBindings,
@@ -10,10 +11,12 @@ import {
   type IntegrationSecretBindingProjection,
   listSecretBindings,
   listTelemetrySecretBindings,
+  type OAuthClientSecretBindingInput,
   replaceSecretBinding,
   revokeSecretBinding,
   type SecretBindingConsumerInput,
   type TelemetrySecretBindingInput,
+  unbindOAuthClientSecret,
   unbindSecretBinding,
   updateTelemetrySecretBindingGrant,
 } from '../client/secret-bindings';
@@ -150,6 +153,20 @@ export const useBindSecretBindingMutation = () =>
   useBindingMutation(
     (apiBase, { id, ...data }: SecretBindingConsumerInput & { id: string }) =>
       bindSecretBinding(apiBase, id, data),
+  );
+export const useBindOAuthClientSecretMutation = () =>
+  useBindingMutation(
+    (
+      apiBase,
+      { id, ...data }: OAuthClientSecretBindingInput & { id: string },
+    ) => bindOAuthClientSecret(apiBase, id, data),
+  );
+export const useUnbindOAuthClientSecretMutation = () =>
+  useBindingMutation(
+    (
+      apiBase,
+      { id, ...data }: OAuthClientSecretBindingInput & { id: string },
+    ) => unbindOAuthClientSecret(apiBase, id, data),
   );
 export const useUnbindSecretBindingMutation = () =>
   useBindingMutation(

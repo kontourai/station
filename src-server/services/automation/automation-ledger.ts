@@ -1,6 +1,4 @@
 /**
- * UNWIRED(#3439): no runtime composition yet; Automation dispatch will call this.
- *
  * AutomationLedger: durable delivery dedupe, episodes and action claims for
  * Station Automations (epic kontourai/station#3439).
  *
@@ -61,7 +59,10 @@ import {
   AUTOMATION_EXECUTION_LIMITS,
   AUTOMATION_SEMANTIC_DEDUPE_OUTCOMES,
   type AutomationDeliveryOutcome,
+  type AutomationDeliveryRecord,
   type AutomationEpisodeState,
+  type AutomationPollOutcome,
+  type AutomationPollRecord,
   type AutomationRefusalReason,
   type AutomationSuppressionReason,
 } from '@kontourai/station-contracts/automation';
@@ -142,24 +143,16 @@ CREATE TABLE IF NOT EXISTS automation_action_claims (
   owner_birth TEXT,
   claimed_ms INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS automation_poll_state (
+  source_id TEXT PRIMARY KEY,
+  last_polled_ms INTEGER NOT NULL,
+  cursor_ms INTEGER,
+  last_outcome TEXT NOT NULL
+);
 `;
 
-/** Bounded, payload-free view of one delivery. */
-export type AutomationDeliveryRecord = Readonly<{
-  /** sha256 of the source id and transport id; never the GUID itself. */
-  deliveryKey: string;
-  sourceId: string;
-  semanticKey: string;
-  eventType: string;
-  receivedAt: string;
-  updatedAt: string;
-  outcome: AutomationDeliveryOutcome;
-  reason?: AutomationRefusalReason | AutomationSuppressionReason;
-  ruleId?: string;
-  episodeId?: string;
-  taskId?: string;
-  sessionId?: string;
-}>;
+/** Bounded, payload-free view of one delivery (a published contract shape). */
+export type { AutomationDeliveryRecord };
 
 export type AutomationEpisodeRecord = Readonly<{
   ruleId: string;
@@ -170,6 +163,18 @@ export type AutomationEpisodeRecord = Readonly<{
   maxAttempts: number;
   openedAt: string;
   updatedAt: string;
+}>;
+
+/**
+ * A poll source's progress: when it last polled (any outcome) and the
+ * `updated_at` cursor of its last successful poll.
+ */
+export type AutomationPollState = Readonly<{
+  sourceId: string;
+  lastPolledAt: number;
+  /** Absent until a poll succeeds. */
+  cursorMs?: number;
+  lastOutcome: AutomationPollOutcome;
 }>;
 
 export type RecordDeliveryInput = Readonly<{
@@ -239,6 +244,16 @@ export type ClaimActionOutcome =
   | Readonly<{ kind: 'indeterminate' }>;
 
 export interface AutomationLedger {
+  recordIntake(input: {
+    delivery: RecordDeliveryInput;
+    openings: readonly OpenEpisodeInput[];
+    closings: readonly { ruleId: string; episodeKey: string }[];
+    now: number;
+  }): {
+    recorded: RecordDeliveryOutcome;
+    openedEpisodeIds: string[];
+    closedEpisodeIds: string[];
+  };
   recordDelivery(input: RecordDeliveryInput): RecordDeliveryOutcome;
   updateDelivery(deliveryKey: string, update: DeliveryUpdate): boolean;
   listDeliveries(limit?: number): AutomationDeliveryRecord[];
@@ -256,6 +271,18 @@ export interface AutomationLedger {
     deliveryKey: string;
     now: number;
   }): ClaimActionOutcome;
+  listPolls(): AutomationPollRecord[];
+  pollState(sourceId: string): AutomationPollState | undefined;
+  /**
+   * Records one poll attempt. The cursor only moves forward, and only a
+   * successful poll may move it.
+   */
+  recordPoll(input: {
+    sourceId: string;
+    polledAt: number;
+    outcome: AutomationPollOutcome;
+    cursorMs?: number;
+  }): void;
   close(): void;
 }
 
@@ -341,6 +368,13 @@ interface EpisodeRow {
   updated_ms: number;
 }
 
+interface PollStateRow {
+  source_id: string;
+  last_polled_ms: number;
+  cursor_ms: number | null;
+  last_outcome: AutomationPollOutcome;
+}
+
 interface DeliveryRow {
   dedupe_key: string;
   source_id: string;
@@ -370,6 +404,31 @@ export function createAutomationLedger(
   options: AutomationLedgerOptions = {},
 ): AutomationLedger {
   return new SqliteAutomationLedger(options);
+}
+
+/**
+ * One lazily opened ledger shared by a process's poller and read routes, so
+ * a Station with no Automation activity never creates the database.
+ */
+export class SharedAutomationLedger {
+  private ledger: AutomationLedger | undefined;
+
+  constructor(
+    private readonly open: () => AutomationLedger = () =>
+      createAutomationLedger(),
+  ) {}
+
+  /** Throws {@link AutomationPolicyUnavailableError} when it cannot open. */
+  get(): AutomationLedger {
+    this.ledger ??= this.open();
+    return this.ledger;
+  }
+
+  close(): void {
+    const ledger = this.ledger;
+    this.ledger = undefined;
+    ledger?.close();
+  }
 }
 
 const iso = (ms: number) => new Date(ms).toISOString();
@@ -510,6 +569,52 @@ class SqliteAutomationLedger implements AutomationLedger {
   close(): void {
     LIVE_OWNER_IDS.delete(this.owner.id);
     this.db.close();
+  }
+
+  recordIntake(input: {
+    delivery: RecordDeliveryInput;
+    openings: readonly OpenEpisodeInput[];
+    closings: readonly { ruleId: string; episodeKey: string }[];
+    now: number;
+  }) {
+    return this.transaction(() => {
+      const recorded = this.recordDelivery(input.delivery);
+      const openedEpisodeIds: string[] = [];
+      const closedEpisodeIds: string[] = [];
+      if (recorded.kind === 'duplicate')
+        return { recorded, openedEpisodeIds, closedEpisodeIds };
+      let closedForRow: { ruleId: string; episodeId: string } | undefined;
+      for (const closing of input.closings) {
+        const closed = this.closeEpisode({
+          episodeKey: closing.episodeKey,
+          now: input.now,
+        });
+        if (closed) {
+          closedEpisodeIds.push(closed.episodeId);
+          closedForRow ??= {
+            ruleId: closing.ruleId,
+            episodeId: closed.episodeId,
+          };
+        }
+      }
+      let firstEpisodeId: string | undefined;
+      for (const opening of input.openings) {
+        const opened = this.openEpisode(opening);
+        if (opening.ruleId === input.delivery.ruleId)
+          firstEpisodeId = opened.episode.episodeId;
+        if (opened.kind === 'opened')
+          openedEpisodeIds.push(opened.episode.episodeId);
+      }
+      if (
+        firstEpisodeId ||
+        (closedForRow && input.delivery.outcome !== 'matched')
+      )
+        this.updateDelivery(recorded.deliveryKey, {
+          outcome: input.delivery.outcome,
+          ...(firstEpisodeId ? { episodeId: firstEpisodeId } : closedForRow),
+        });
+      return { recorded, openedEpisodeIds, closedEpisodeIds };
+    });
   }
 
   recordDelivery(input: RecordDeliveryInput): RecordDeliveryOutcome {
@@ -921,6 +1026,68 @@ class SqliteAutomationLedger implements AutomationLedger {
     }
   }
 
+  listPolls(): AutomationPollRecord[] {
+    return this.read(() =>
+      (
+        this.db
+          .prepare(
+            'SELECT * FROM automation_poll_state ORDER BY last_polled_ms DESC LIMIT 200',
+          )
+          .all() as PollStateRow[]
+      ).map((row) => ({
+        sourceId: row.source_id,
+        lastPolledAt: iso(row.last_polled_ms),
+        ...(row.cursor_ms === null ? {} : { cursorAt: iso(row.cursor_ms) }),
+        lastOutcome: row.last_outcome,
+      })),
+    );
+  }
+
+  pollState(sourceId: string): AutomationPollState | undefined {
+    return this.read(() => {
+      const row = this.db
+        .prepare('SELECT * FROM automation_poll_state WHERE source_id = ?')
+        .get(sourceId) as PollStateRow | undefined;
+      return row
+        ? {
+            sourceId: row.source_id,
+            lastPolledAt: row.last_polled_ms,
+            ...(row.cursor_ms === null ? {} : { cursorMs: row.cursor_ms }),
+            lastOutcome: row.last_outcome,
+          }
+        : undefined;
+    });
+  }
+
+  recordPoll(input: {
+    sourceId: string;
+    polledAt: number;
+    outcome: AutomationPollOutcome;
+    cursorMs?: number;
+  }): void {
+    const cursor =
+      input.outcome === 'ok' && input.cursorMs !== undefined
+        ? input.cursorMs
+        : null;
+    this.transaction(() => {
+      this.db
+        .prepare(
+          `INSERT INTO automation_poll_state
+             (source_id, last_polled_ms, cursor_ms, last_outcome)
+           VALUES (?, ?, ?, ?)
+           ON CONFLICT(source_id) DO UPDATE SET
+             last_polled_ms = excluded.last_polled_ms,
+             last_outcome = excluded.last_outcome,
+             cursor_ms = CASE
+               WHEN excluded.cursor_ms IS NULL THEN cursor_ms
+               WHEN cursor_ms IS NULL THEN excluded.cursor_ms
+               ELSE MAX(cursor_ms, excluded.cursor_ms)
+             END`,
+        )
+        .run(input.sourceId, input.polledAt, cursor, input.outcome);
+    });
+  }
+
   private claimIsLive(claim: ClaimRow): boolean {
     // Same pid: the in-process registry is exact (see SchedulerLedger).
     if (claim.owner_pid === process.pid) {
@@ -955,7 +1122,11 @@ class SqliteAutomationLedger implements AutomationLedger {
     }
   }
 
+  private transactionActive = false;
+
   private transaction<T>(work: () => T): T {
+    // Intake combines the existing delivery and episode transitions in one commit.
+    if (this.transactionActive) return work();
     try {
       this.db.exec('BEGIN IMMEDIATE');
     } catch (error) {
@@ -964,6 +1135,7 @@ class SqliteAutomationLedger implements AutomationLedger {
       });
     }
     try {
+      this.transactionActive = true;
       const value = work();
       this.db.exec('COMMIT');
       return value;
@@ -977,6 +1149,8 @@ class SqliteAutomationLedger implements AutomationLedger {
       throw new AutomationPolicyUnavailableError('ledger write failed', {
         cause: error,
       });
+    } finally {
+      this.transactionActive = false;
     }
   }
 }

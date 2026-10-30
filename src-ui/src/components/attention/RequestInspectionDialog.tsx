@@ -21,17 +21,17 @@ type CapturedAuthority = NonNullable<
   ReturnType<typeof useHostRequestAuthorityScope>
 >;
 
-export function RequestInspectionDialog({
-  reference,
-  authority,
-  openHref,
-  onClose,
-}: {
-  reference: AttentionRequestReference;
-  authority: CapturedAuthority;
-  openHref?: string;
-  onClose: () => void;
-}) {
+/**
+ * The exact-request decision, shared by the inspection dialog and the inbox's
+ * inline approval row so both answer through ONE guarded path: a decision is
+ * sent only for the request version this read inspected, at most once per
+ * exact event, never while an earlier attempt's outcome is uncertain, and
+ * never after the authority that read it has changed.
+ */
+export function useExactRequestDecision(
+  reference: AttentionRequestReference,
+  authority: CapturedAuthority,
+) {
   const current = authority.isCurrent();
   const query = useAttentionRequestInspection(reference, authority, current);
   const queryClient = useQueryClient();
@@ -188,6 +188,78 @@ export function RequestInspectionDialog({
     typeof receipt.commandId === 'string'
       ? receipt.commandId
       : undefined;
+  const recheck = () => {
+    if (checking || !authority.isCurrent()) return;
+    setChecking(true);
+    void query
+      .refetch()
+      .then((fresh) => {
+        if (authority.isCurrent() && fresh.isSuccess && fresh.data) {
+          response.reset();
+          if (
+            fresh.data.state === 'resolved' ||
+            fresh.data.state === 'changed'
+          ) {
+            for (const mutation of queryClient
+              .getMutationCache()
+              .findAll({ mutationKey, exact: true }))
+              queryClient.getMutationCache().remove(mutation);
+          }
+        }
+      })
+      .finally(() => setChecking(false));
+  };
+  /** Whether `decide` would send right now; the buttons' enabled state. */
+  const canDecide =
+    !attempted &&
+    !capacityReached &&
+    !response.isPending &&
+    !response.isError &&
+    !query.isError &&
+    !query.isFetching &&
+    !checking &&
+    current &&
+    query.data?.state === 'open' &&
+    query.data.canRespond &&
+    !query.data.requiresAnswers;
+  return {
+    attempted,
+    canDecide,
+    capacityReached,
+    checking,
+    current,
+    decide,
+    query,
+    receiptId,
+    recheck,
+    response,
+    result,
+  };
+}
+
+export function RequestInspectionDialog({
+  reference,
+  authority,
+  openHref,
+  onClose,
+}: {
+  reference: AttentionRequestReference;
+  authority: CapturedAuthority;
+  openHref?: string;
+  onClose: () => void;
+}) {
+  const {
+    attempted,
+    capacityReached,
+    checking,
+    current,
+    decide,
+    query,
+    receiptId,
+    recheck,
+    response,
+    result,
+  } = useExactRequestDecision(reference, authority);
   return (
     <ResponsiveDialogSurface
       layer="dialog"
@@ -300,34 +372,7 @@ export function RequestInspectionDialog({
             title="Couldn't confirm the decision"
             description={userFacingErrorMessage(response.error)}
             action={
-              <Button
-                disabled={checking}
-                onClick={() => {
-                  if (checking || !authority.isCurrent()) return;
-                  setChecking(true);
-                  void query
-                    .refetch()
-                    .then((fresh) => {
-                      if (
-                        authority.isCurrent() &&
-                        fresh.isSuccess &&
-                        fresh.data
-                      ) {
-                        response.reset();
-                        if (
-                          fresh.data.state === 'resolved' ||
-                          fresh.data.state === 'changed'
-                        ) {
-                          for (const mutation of queryClient
-                            .getMutationCache()
-                            .findAll({ mutationKey, exact: true }))
-                            queryClient.getMutationCache().remove(mutation);
-                        }
-                      }
-                    })
-                    .finally(() => setChecking(false));
-                }}
-              >
+              <Button disabled={checking} onClick={recheck}>
                 Check request again
               </Button>
             }

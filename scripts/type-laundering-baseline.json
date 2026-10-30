@@ -1425,12 +1425,6 @@
       "reason": "legacy-cast"
     },
     {
-      "file": "src-server/runtime/routes/runtime-route-support.ts",
-      "rule": "as-unknown",
-      "fingerprint": "62a75824f5a6e9c399b67f22f2b7c88e32d6dcfe7adf940b63994e8c7618e865",
-      "reason": "legacy-cast"
-    },
-    {
       "file": "src-server/runtime/routes/runtime-routes.ts",
       "rule": "as-unknown",
       "fingerprint": "2b5642a3ad1cf3fe709dec14f2c70615dc0cd124ee88d67e8bf9cabc73eb3853",

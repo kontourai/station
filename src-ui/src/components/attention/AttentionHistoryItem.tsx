@@ -1,11 +1,10 @@
 import type { AttentionItem } from '@kontourai/station-sdk';
 import { useAcknowledgeAttentionItemMutation } from '@kontourai/station-sdk';
+import type { ReactNode } from 'react';
 import {
   attentionKindLabel,
-  isApprovalLivePending,
   isPeerHostedAttentionItem,
   peerAttentionElsewhereText,
-  sessionFailedIdentity,
   sessionFailureCause,
 } from '../../utils/attention';
 import {
@@ -14,6 +13,16 @@ import {
   navigateToAttentionTarget,
 } from '../../utils/attentionOpen';
 import { formatNotificationTime } from '../../utils/notifications';
+import {
+  InboxContextLine,
+  type InboxContextPart,
+} from '../notifications/inboxContext';
+import {
+  attentionKindMark,
+  InboxMarkTile,
+} from '../notifications/inboxPresentation';
+import { RowMenu, type RowMenuItem } from '../notifications/RowMenu';
+import { ExactRequestInline } from './ExactRequestInline';
 import {
   ACKNOWLEDGE_ATTENTION_ACTION,
   DISMISS_NOTIFICATION_ACTION,
@@ -28,6 +37,9 @@ export function AttentionHistoryItem({
   onAction,
   onClose,
   onDismiss,
+  context = [],
+  feedback,
+  menuItems = [],
 }: {
   item: AttentionItem;
   isPending: boolean;
@@ -35,26 +47,96 @@ export function AttentionHistoryItem({
   onAction: (notificationId: string, actionId: string) => void;
   onClose: () => void;
   onDismiss: (notificationId: string) => void;
+  /** Station · Project · Chat · Agent · Engine, from `useInboxContext`. */
+  context?: readonly InboxContextPart[];
+  /** This row's own action outcome (an error with its recovery), if any. */
+  feedback?: ReactNode;
+  /** Extra items for the row's ⋯ menu (snooze), before its dismiss. */
+  menuItems?: readonly RowMenuItem[];
 }) {
   /*
    * archive#3203: this row used to be the kind eyebrow and the title, and
    * nothing else — so the projection's `body` (the failure's own cause) and
-   * `updatedAt` were both carried to this surface and dropped, and the tray
-   * the owner reported showed three rows reading "Session failed / Session
-   * failed" with no way to tell which session each was. The body and the time
-   * are the same fields `AttentionCard` and `NotificationHistoryItem` already
-   * render; the classes and layout are `NotificationHistoryItem`'s, so the two
-   * kinds of row in one popover cannot drift apart visually.
+   * `updatedAt` were both carried to this surface and dropped. The body, the
+   * time and now the context line are the same fields `AttentionCard` and
+   * `NotificationHistoryItem` render, in the same layout, so the kinds of row
+   * in one popover cannot drift apart.
+   *
+   * Layout: the meta line ends in the time and the row's ⋯ menu (snooze,
+   * dismiss) on every row; the footer holds only the row's actions, right
+   * aligned with the primary one last, and is absent when there are none.
    */
+  const exactRequest =
+    item.kind === 'approval' ? item.requestReference : undefined;
+  // archive#1914: a failed session has no notification to delete; its
+  // dismissal acknowledges this version of the failure, safe to send at once.
+  const acknowledge = useAcknowledgeAttentionItemMutation();
+  // archive#3779: both labels come from the shared action model.
+  const dismissItem: RowMenuItem[] =
+    item.kind === 'approval'
+      ? [
+          {
+            id: 'dismiss',
+            label: DISMISS_NOTIFICATION_ACTION.label,
+            disabled: isDismissPending,
+            onSelect: () => onDismiss(item.source.notificationId),
+          },
+        ]
+      : item.kind === 'session-failed'
+        ? [
+            {
+              id: 'dismiss',
+              label: ACKNOWLEDGE_ATTENTION_ACTION.label,
+              disabled: acknowledge.isPending,
+              onSelect: () => acknowledge.mutate(item.id),
+            },
+          ]
+        : [];
+  const openLink = (
+    <>
+      {item.kind === 'session-failed' ? (
+        <FailedSessionOpenLink item={item} onClose={onClose} />
+      ) : (
+        item.openHref && (
+          <a
+            className="notification-history__action"
+            href={item.openHref}
+            onClick={onClose}
+          >
+            {isPeerHostedAttentionItem(item)
+              ? 'Open in Activity'
+              : openLinkLabel(item.kind)}
+          </a>
+        )
+      )}
+    </>
+  );
   return (
-    <div className="notification-history__item notification-history__item--timed">
+    <div className="notification-history__item">
+      <InboxMarkTile mark={attentionKindMark(item.kind)} />
       <div className="notification-history__item-content">
-        <div className="notification-history__eyebrow">
-          {attentionKindLabel(item.kind)}
+        <div className="notification-history__meta">
+          <span className="notification-history__eyebrow">
+            {attentionKindLabel(item.kind)}
+          </span>
+          <span className="notification-history__corner">
+            <time
+              className="notification-history__time"
+              dateTime={item.updatedAt}
+            >
+              {formatNotificationTime(item.updatedAt)}
+            </time>
+            <RowMenu items={[...menuItems, ...dismissItem]} />
+          </span>
         </div>
-        <div>{item.title}</div>
+        <div className="notification-history__item-title">{item.title}</div>
         {item.kind === 'session-failed' ? (
-          <SessionFailedDetail item={item} />
+          <div
+            className="notification-history__detail notification-history__detail--cause"
+            data-testid="attention-cause"
+          >
+            {sessionFailureCause(item)}
+          </div>
         ) : (
           item.body && (
             <div className="notification-history__detail">{item.body}</div>
@@ -70,89 +152,41 @@ export function AttentionHistoryItem({
             {peerAttentionElsewhereText(item.environmentName)}
           </div>
         )}
-        <div className="notification-history__actions">
-          {item.kind === 'approval' &&
-            item.actions.map((action) => (
-              <button
-                key={action.id}
-                type="button"
-                className="notification-history__action"
-                onClick={() => onAction(item.source.notificationId, action.id)}
-                disabled={isPending}
-              >
-                {action.label}
-              </button>
-            ))}
-          {item.kind === 'session-failed' ? (
-            <FailedSessionOpenLink item={item} onClose={onClose} />
-          ) : (
-            item.openHref && (
-              <a
-                className="notification-history__action"
-                href={item.openHref}
-                onClick={onClose}
-              >
-                {isPeerHostedAttentionItem(item)
-                  ? 'Open in Activity'
-                  : openLinkLabel(item.kind)}
-              </a>
-            )
-          )}
-          {/*
-           * Non-actionable/terminal approvals get a plain dismiss; a
-           * genuinely-pending approval (live actions + resolvable session)
-           * keeps dismiss available but visually de-emphasized (`--quiet`)
-           * so approve/deny stay primary — mirrors AttentionCard.
-           */}
-          {/* archive#3779: label from the shared model, not written here. */}
-          {item.kind === 'approval' && (
-            <button
-              type="button"
-              className={
-                isApprovalLivePending(item)
-                  ? 'notification-history__action notification-history__action--quiet'
-                  : 'notification-history__action'
-              }
-              onClick={() => onDismiss(item.source.notificationId)}
-              disabled={isDismissPending}
-            >
-              {DISMISS_NOTIFICATION_ACTION.label}
-            </button>
-          )}
-          {item.kind === 'session-failed' && <SessionFailedAck item={item} />}
-        </div>
+        <InboxContextLine parts={context} compact />
+        {feedback}
+        {exactRequest ? (
+          <ExactRequestInline
+            reference={exactRequest}
+            openHref={item.openHref}
+            onOpen={onClose}
+            open={openLink}
+          />
+        ) : (
+          <div className="notification-history__footer-row">
+            <div className="notification-history__actions">
+              {openLink}
+              {/* Only reached without an exact request: that one answers
+                  through its inline decision, never this generic action. */}
+              {item.kind === 'approval' &&
+                item.actions.map((action) => (
+                  <button
+                    key={action.id}
+                    type="button"
+                    className="notification-history__action"
+                    data-variant={action.variant ?? 'secondary'}
+                    onClick={() =>
+                      onAction(item.source.notificationId, action.id)
+                    }
+                    disabled={isPending}
+                  >
+                    {action.label}
+                  </button>
+                ))}
+            </div>
+          </div>
+        )}
       </div>
-      <time className="notification-history__time">
-        {formatNotificationTime(item.updatedAt)}
-      </time>
     </div>
-  );
-}
-
-/**
- * archive#3203: the cause, then who ran it. The cause renders even when the
- * projection carried no `body` — "no failure detail was recorded" is a fact
- * about the session, and it is the answer to "what happened"; silence is not.
- */
-function SessionFailedDetail({ item }: { item: SessionFailedItem }) {
-  const identity = sessionFailedIdentity(item);
-  return (
-    <>
-      <div
-        className="notification-history__detail notification-history__detail--cause"
-        data-testid="attention-cause"
-      >
-        {sessionFailureCause(item)}
-      </div>
-      {identity && (
-        <div
-          className="notification-history__detail"
-          data-testid="attention-identity"
-        >
-          {identity}
-        </div>
-      )}
-    </>
   );
 }
 
@@ -193,28 +227,6 @@ function FailedSessionOpenLink({
     >
       {openLinkLabel(item.kind)}
     </a>
-  );
-}
-
-/**
- * archive#1914: `session-failed` has no notification behind it to dismiss —
- * see `AttentionCard.tsx`'s `SessionFailedAction` for the full rationale.
- * Self-contained rather than routed through the popover's `onDismiss` prop:
- * that prop drives `NotificationHistory`'s undo-window + notification-delete
- * flow, which does not apply here (there is no notification id, and nothing
- * to undo into — an ack is idempotent and safe to fire immediately).
- */
-function SessionFailedAck({ item }: { item: SessionFailedItem }) {
-  const mutation = useAcknowledgeAttentionItemMutation();
-  return (
-    <button
-      type="button"
-      className="notification-history__action"
-      onClick={() => mutation.mutate(item.id)}
-      disabled={mutation.isPending}
-    >
-      {ACKNOWLEDGE_ATTENTION_ACTION.label}
-    </button>
   );
 }
 

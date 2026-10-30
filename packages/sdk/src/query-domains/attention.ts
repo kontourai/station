@@ -1,6 +1,7 @@
 import type { AttentionProjection } from '@kontourai/station-contracts/attention';
 import { apiErrorMessage } from '../api-core';
 import { authenticatedFetch, type ClientRequestOptions } from '../client/http';
+import { unlessDeadline } from '../client/request-deadline';
 import {
   type QueryConfig,
   resolveApiBase,
@@ -96,4 +97,85 @@ export function useAcknowledgeAttentionItemMutation(apiBase?: string) {
   return useApiMutation(mutationFn, {
     invalidateKeys: [['attention']],
   });
+}
+
+function attentionSnoozeError(
+  response: Response,
+  result: { error?: string; code?: string } | null,
+): Error {
+  const message = apiErrorMessage(result, `HTTP ${response.status}`);
+  if (
+    response.status === 404 &&
+    result?.code !== 'feature_preview_disabled' &&
+    result?.error !== 'Attention item not found'
+  ) {
+    return new Error(
+      `${message}. Attention snooze is not supported by this host. Try updating Station.`,
+    );
+  }
+  return new Error(message);
+}
+
+/** Snooze a current attention version. A 404 means unavailable, never success. */
+export async function snoozeAttentionItem(
+  itemId: string,
+  until: string,
+  apiBase?: string,
+): Promise<{ snoozedUntil: string }> {
+  const resolvedApiBase = await resolveApiBase(apiBase);
+  const response = await authenticatedFetch(
+    `${resolvedApiBase}/api/attention/${encodeURIComponent(itemId)}/snooze`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ until }),
+    },
+  );
+  const result = (await response.json().catch(unlessDeadline(() => null))) as {
+    success?: boolean;
+    data?: { snoozedUntil: string };
+    error?: string;
+    code?: string;
+  } | null;
+  if (!response.ok || !result?.success || !result.data) {
+    throw attentionSnoozeError(response, result);
+  }
+  return result.data;
+}
+
+/** Remove the caller's snooze. Hosts without this route report unsupported. */
+export async function unsnoozeAttentionItem(
+  itemId: string,
+  apiBase?: string,
+): Promise<void> {
+  const resolvedApiBase = await resolveApiBase(apiBase);
+  const response = await authenticatedFetch(
+    `${resolvedApiBase}/api/attention/${encodeURIComponent(itemId)}/snooze`,
+    { method: 'DELETE' },
+  );
+  const result = (await response.json().catch(unlessDeadline(() => null))) as {
+    success?: boolean;
+    error?: string;
+    code?: string;
+  } | null;
+  if (!response.ok || !result?.success) {
+    throw attentionSnoozeError(response, result);
+  }
+}
+
+export function useSnoozeAttentionItemMutation(apiBase?: string) {
+  return useApiMutation(
+    (input: { itemId: string; until: string }) =>
+      snoozeAttentionItem(input.itemId, input.until, apiBase),
+    { invalidateKeys: [['attention']] },
+  );
+}
+
+export function useUnsnoozeAttentionItemMutation(apiBase?: string) {
+  return useApiMutation(
+    (itemId: string) => unsnoozeAttentionItem(itemId, apiBase),
+    {
+      invalidateKeys: [['attention']],
+    },
+  );
 }

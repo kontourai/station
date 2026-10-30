@@ -1,0 +1,7 @@
+{
+  "revision": "7f2e7b4193a0fdc748a43a4aa1344c041419903f",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Edited SecretBindingAdministration: binding requires the declared issuer. Checked against bindOAuthClientSecret and requireDeclaredIssuer. Other inputs: the module map adds one sentence: binding an OAuth client secret requires the declared oauthClient.issuer and the provider never presents it to another issuer; mcp-service.ts refuses an issuer change while a client secret is bound, resets tokens on issuer change, and lets an empty sign-in scope choice drop the integration default; binding an OAuth client secret now requires a declared issuer.","inputs":["docs/architecture/module-map.md","src-server/services/plugins/mcp-service.ts","src-server/services/secrets/secret-binding-administration.ts"]}
+  ]
+}

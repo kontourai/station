@@ -301,6 +301,18 @@ against the new graph. These controls do not establish every transitive
 consumer's remote authorization behavior or prove an attacker reached Station.
 New interactive sign-in trust and direct low-level vendor calls remain
 separate from this advisory's saved-credential binding claim.
+A [configured OAuth client](connections.md#authorization-server-binding) has no
+issuer of its own, so Station uses it only with the issuer the operator
+declares. Every pre-registered client needs one, and a mismatch is refused from
+configuration before a secret, code or verifier leaves Station, independent of
+per-person credentials, disconnects and concurrent sign-ins. The binding
+authority also releases the secret only for the issuer, endpoint and
+integration instance its grant recorded, checked at every token request, so
+no integration writer can redirect it and a recreated integration cannot
+inherit it.
+Dynamic registration without a declared issuer pins the server of its first
+completed sign-in for that resource and refuses others afterwards; only that
+first sign-in is trust-on-first-use, as the connections guide states.
 
 The earlier local audit and hosted receipts retain their observation times:
 these newly disclosed findings do not rewrite those results. Current audit,

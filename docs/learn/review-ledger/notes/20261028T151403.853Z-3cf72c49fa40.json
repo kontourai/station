@@ -1,0 +1,7 @@
+{
+  "revision": "50613535a040b57e7f87fabf185b77b10e608508",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Edited: added Remote OAuth client (authorize scopes 1-32 tokens, oauthClient fields, clientSecretRef only through the bind consumer, read projection, client-change reset, endpoint pin, issuer pin, client-id-required). Checked against tools.ts, runtime.ts schema, secret-bindings.ts and mcp-service.ts. Other inputs: the API reference adds a Remote OAuth client subsection; ToolDef adds optional oauthClient and the client-id-required authorization state; the integration routes add optional authorize scopes and omit oauthClient.clientSecretRef from reads; the integration schema adds optional oauthClient without clientSecretRef; station-runtime.ts only passes the secret-binding resolver to the engine MCP OAuth resolver so configured OAuth client secrets can refresh; mcp-service.ts adds the client-id-required health state, credential reset on OAuth client change, a bound-secret endpoint pin and per-sign-in scopes.","inputs":["docs/reference/api.md","packages/contracts/src/tool.ts","src-server/routes/agents/tools.ts","src-server/routes/schemas/schema-definitions/runtime.ts","src-server/runtime/bootstrap/station-runtime.ts","src-server/services/plugins/mcp-service.ts"]}
+  ]
+}

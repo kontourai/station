@@ -22,6 +22,7 @@ import {
   getSchedulerStats,
   getSchedulerStatus,
   installRegistrySkill,
+  listAutomationDeliveries,
   listIntegrations,
   listJobs,
   listReviewReceipts,
@@ -779,6 +780,34 @@ async function runScheduleCommand(args: string[]) {
       throw new Error(
         "Unknown schedule action. Use 'list', 'jobs', 'providers', 'stats', 'status', 'preview', 'logs', 'create', 'update', 'run', 'enable', 'disable', or 'delete'.",
       );
+  }
+}
+
+/**
+ * `station automation` (epic #3439). Slice S2 ships the read-only
+ * `deliveries` verb; the other `AUTOMATION_OPERATOR_SURFACE` verbs arrive
+ * with their routes.
+ */
+async function runAutomationCommand(args: string[]) {
+  const parsed = parseCoreArgs(args);
+  const apiBase = resolveSurfaceApiBase(parsed);
+  const action = requirePositional(parsed, 0, 'automation action');
+
+  switch (action) {
+    case 'deliveries': {
+      const raw = parsed.flags.limit;
+      if (raw !== undefined && (typeof raw !== 'string' || !/^\d+$/.test(raw)))
+        throw new Error('--limit must be a positive integer.');
+      printFetched(
+        await listAutomationDeliveries(
+          apiBase,
+          raw === undefined ? {} : { limit: Number(raw) },
+        ),
+      );
+      return;
+    }
+    default:
+      throw new Error("Unknown automation action. Use 'deliveries'.");
   }
 }
 
@@ -1595,6 +1624,9 @@ export async function runSurfaceCommand(
       return;
     case 'schedule':
       await runScheduleCommand(args);
+      return;
+    case 'automation':
+      await runAutomationCommand(args);
       return;
     case 'runs':
       await runRunsCommand(args);

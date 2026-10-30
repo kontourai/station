@@ -8,8 +8,10 @@ import {
   decodeTerminalFrame,
   encodeTerminalFrame,
   TERMINAL_INPUT,
+  TERMINAL_MAX_OUTSTANDING_OUTPUT_FRAMES,
   terminalScopeAllows,
 } from '@kontourai/station-contracts/terminal-transport';
+import { TerminalOutputSession } from '@kontourai/station-sdk/client';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { WebSocket } from 'ws';
 import { z } from 'zod/v3';
@@ -34,6 +36,7 @@ const controlSchema = z.object({
   sentThrough: z.number().optional(),
   replayThrough: z.number().optional(),
   lastSeq: z.number().optional(),
+  maxOutstandingOutputFrames: z.number().optional(),
 });
 type Control = z.infer<typeof controlSchema>;
 type Output = { channel: number; seq: number; data: string };
@@ -130,6 +133,7 @@ describe.skipIf(process.platform === 'win32')(
     let sessions: TerminalSessions<string>;
     let url: string;
     const clients: Client[] = [];
+    const outputReaders: TerminalOutputSession[] = [];
     const grants = new Map<string, string>();
 
     beforeEach(async () => {
@@ -151,9 +155,19 @@ describe.skipIf(process.platform === 'win32')(
           resolveRoot: async () => root,
         },
       );
-      server = createServer((_req, res) =>
-        res.end('ordinary HTTP on the same listener'),
-      );
+      server = createServer((req, res) => {
+        if (req.url === '/api/terminal/socket') {
+          const credential = req.headers.authorization?.replace(/^Bearer /, '');
+          res.writeHead(
+            credential === 'revoked'
+              ? 401
+              : credential && grants.has(credential)
+                ? 204
+                : 403,
+          );
+          res.end();
+        } else res.end('ordinary HTTP on the same listener');
+      });
       gateway = new TerminalGateway({
         sessions,
         allowedOrigins: ['http://station.test'],
@@ -169,6 +183,7 @@ describe.skipIf(process.platform === 'win32')(
       url = `ws://127.0.0.1:${address.port}/api/terminal/socket`;
     });
     afterEach(async () => {
+      for (const reader of outputReaders.splice(0)) reader.dispose();
       for (const client of clients.splice(0)) client.ws.terminate();
       gateway.stop();
       vi.restoreAllMocks();
@@ -190,6 +205,314 @@ describe.skipIf(process.platform === 'win32')(
     async function open() {
       return sessions.open('operator', scope, dimensions);
     }
+
+    test('the public SDK authenticates a loopback output session against the real gateway', async () => {
+      const record = await open();
+      const apiBase = url
+        .replace(/^ws:/, 'http:')
+        .replace('/api/terminal/socket', '');
+      const output: string[] = [];
+      const reader = new TerminalOutputSession({
+        apiBase,
+        ...scope,
+        terminalId: record.terminalId,
+        resolveCredential: () => ({ origin: apiBase, credential: 'observer' }),
+        onOutput: (bytes) => {
+          output.push(new TextDecoder().decode(bytes));
+        },
+        onReset: () => {
+          output.length = 0;
+        },
+      });
+      outputReaders.push(reader);
+      await reader.connect();
+      await sessions.write(
+        'operator',
+        scope,
+        record.terminalId,
+        "printf 'sdk-replayed\\n'\r",
+      );
+      await expect.poll(() => output.join('')).toContain('sdk-replayed');
+      expect(reader.appliedThrough).toBeGreaterThan(0);
+      const after = await sessions.read('operator', scope, record.terminalId);
+      expect(after.terminalId).toBe(record.terminalId);
+      expect(after.status).toBe('running');
+    });
+
+    test('the public SDK reports refused loopback credentials without receiving terminal output', async () => {
+      const record = await open();
+      const apiBase = url
+        .replace(/^ws:/, 'http:')
+        .replace('/api/terminal/socket', '');
+      const output = vi.fn();
+      const reader = new TerminalOutputSession({
+        apiBase,
+        ...scope,
+        terminalId: record.terminalId,
+        resolveCredential: () => ({
+          origin: apiBase,
+          credential: 'not-a-grant',
+        }),
+        onOutput: output,
+        onReset: () => undefined,
+      });
+      outputReaders.push(reader);
+      await expect(reader.connect()).rejects.toMatchObject({
+        code: 'terminal-refused',
+      });
+      expect(output).not.toHaveBeenCalled();
+    });
+
+    test('bounded frame credit carries small and sanitized-empty journal records through the real gateway', async () => {
+      const record = await open();
+      await sessions.write(
+        'operator',
+        scope,
+        record.terminalId,
+        "stty -echo; printf 'start-marker\\n'\r",
+      );
+      await journal(record.terminalId, 'start-marker');
+      const start = (await sessions.read('operator', scope, record.terminalId))
+        .journal.lastSeq;
+      await sessions.write(
+        'operator',
+        scope,
+        record.terminalId,
+        "i=0; while [ $i -lt 160 ]; do printf x; sleep 0.01; i=$((i+1)); done; printf '\\033]8;;file:///tmp/private\\007'; sleep 0.05; printf 'end-marker\\n'\r",
+      );
+      await journal(record.terminalId, 'end-marker');
+      const end = (await sessions.read('operator', scope, record.terminalId))
+        .journal.lastSeq;
+      expect(end - start).toBeGreaterThan(140);
+
+      const client = await connect();
+      const attached = await client.attach(record.terminalId, 1, start);
+      expect(attached.maxOutstandingOutputFrames).toBe(
+        TERMINAL_MAX_OUTSTANDING_OUTPUT_FRAMES,
+      );
+      await expect
+        .poll(() => client.output.length)
+        .toBe(TERMINAL_MAX_OUTSTANDING_OUTPUT_FRAMES);
+      const progressCount = client.controls.filter(
+        (item) => item.type === 'progress',
+      ).length;
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      expect(client.output).toHaveLength(
+        TERMINAL_MAX_OUTSTANDING_OUTPUT_FRAMES,
+      );
+      expect(
+        client.controls.filter((item) => item.type === 'progress'),
+      ).toHaveLength(progressCount);
+      client.ack(1, client.output.at(-1)!.seq);
+      await expect.poll(() => client.output.at(-1)?.seq).toBe(end);
+      expect(client.output.some((item) => item.data === '')).toBe(true);
+      client.ack(1, end);
+      await client.wait((item) => item.type === 'ready' && item.seq === end);
+
+      const apiBase = url
+        .replace(/^ws:/, 'http:')
+        .replace('/api/terminal/socket', '');
+      let release!: () => void;
+      let started!: () => void;
+      const rendering = new Promise<void>((resolve) => {
+        started = resolve;
+      });
+      const blocked = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const rendered: number[] = [];
+      const reader = new TerminalOutputSession({
+        apiBase,
+        ...scope,
+        terminalId: record.terminalId,
+        fromSeq: start,
+        resolveCredential: () => ({ origin: apiBase, credential: 'operator' }),
+        onOutput: async (_bytes, seq) => {
+          started();
+          await blocked;
+          rendered.push(seq);
+        },
+        onReset: () => undefined,
+      });
+      outputReaders.push(reader);
+      const connected = reader.connect();
+      await rendering;
+      expect(reader.appliedThrough).toBe(start);
+      release();
+      await connected;
+      expect(reader.appliedThrough).toBe(end);
+      expect(rendered.length).toBeGreaterThan(140);
+    });
+
+    test('SDK reaches gateway first-frame refusal after an accepted HTTP probe', async () => {
+      const record = await open();
+      grants.set('probe-only', 'terminal:operate');
+      const apiBase = url
+        .replace(/^ws:/, 'http:')
+        .replace('/api/terminal/socket', '');
+      const reader = new TerminalOutputSession({
+        apiBase,
+        ...scope,
+        terminalId: record.terminalId,
+        resolveCredential: () => ({
+          origin: apiBase,
+          credential: 'probe-only',
+        }),
+        createSocket: (target) => {
+          grants.delete('probe-only');
+          return new WebSocket(target, {
+            origin: 'http://station.test',
+          }) as unknown as import('@kontourai/station-sdk/client').TerminalOutputSocket;
+        },
+        onOutput: () => undefined,
+        onReset: () => undefined,
+      });
+      outputReaders.push(reader);
+      await expect(reader.connect()).rejects.toMatchObject({
+        code: 'terminal-refused',
+      });
+    });
+    test('a real HTTP probe 401 notifies its captured credential owner', async () => {
+      const record = await open();
+      const apiBase = url
+        .replace(/^ws:/, 'http:')
+        .replace('/api/terminal/socket', '');
+      const onUnauthorized = vi.fn();
+      const reader = new TerminalOutputSession({
+        apiBase,
+        ...scope,
+        terminalId: record.terminalId,
+        resolveCredential: () => ({
+          origin: apiBase,
+          credential: 'revoked',
+          onUnauthorized,
+        }),
+        onOutput: () => undefined,
+        onReset: () => undefined,
+      });
+      outputReaders.push(reader);
+      await expect(reader.connect()).rejects.toMatchObject({
+        code: 'terminal-refused',
+      });
+      expect(onUnauthorized).toHaveBeenCalledTimes(1);
+    });
+
+    test('SDK survives a retention reset after its last outstanding frame is acknowledged', async () => {
+      const home = temp('terminal-reset-gateway-');
+      const isolatedRoot = join(home, 'project');
+      await mkdir(isolatedRoot);
+      const isolated = new TerminalSessions(
+        home,
+        new InProcessShellHost(new NodePtyAdapter(), () => '/bin/sh'),
+        { authorize: () => true, resolveRoot: async () => isolatedRoot },
+        {
+          persist: false,
+          maxBytes: 4096,
+          maxLines: 10000,
+          tailBytes: 1024,
+          tailLines: 10000,
+          segmentBytes: 1024,
+        },
+      );
+      const listener = createServer((_req, res) => {
+        res.writeHead(204);
+        res.end();
+      });
+      const transport = new TerminalGateway({
+        sessions: isolated,
+        allowedOrigins: [],
+        authenticate: async () => 'operator',
+      });
+      transport.mount(listener, { upgraded: () => undefined });
+      listener.listen(0, '127.0.0.1');
+      await once(listener, 'listening');
+      const address = listener.address();
+      if (!address || typeof address === 'string')
+        throw new Error('Missing owned port');
+      const apiBase = `http://127.0.0.1:${address.port}`;
+      let release!: () => void;
+      let started!: () => void;
+      const blocked = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const rendering = new Promise<void>((resolve) => {
+        started = resolve;
+      });
+      const errors: string[] = [];
+      let hold = false;
+      let resets = 0;
+      let output = '';
+      let reader: TerminalOutputSession | undefined;
+      try {
+        const opened = await isolated.open('operator', scope, dimensions);
+        reader = new TerminalOutputSession({
+          apiBase,
+          ...scope,
+          terminalId: opened.terminalId,
+          resolveCredential: () => ({
+            origin: apiBase,
+            credential: 'operator',
+          }),
+          onOutput: async (bytes) => {
+            if (hold) {
+              hold = false;
+              started();
+              await blocked;
+            }
+            output += new TextDecoder().decode(bytes);
+          },
+          onReset: () => {
+            resets++;
+            output = '';
+          },
+          onError: (error) => errors.push(error.code),
+        });
+        await reader.connect();
+        hold = true;
+        await isolated.write(
+          'operator',
+          scope,
+          opened.terminalId,
+          "printf 'first-frame\\n'\r",
+        );
+        await rendering;
+        await isolated.write(
+          'operator',
+          scope,
+          opened.terminalId,
+          "printf '%0200000d' 0; printf 'reset-marker\\n'\r",
+        );
+        await expect
+          .poll(async () => {
+            const snapshot = await isolated.read(
+              'operator',
+              scope,
+              opened.terminalId,
+              0,
+            );
+            return (
+              snapshot.journal.reset &&
+              snapshot.journal.records
+                .map((item) => item.data)
+                .join('')
+                .includes('reset-marker')
+            );
+          })
+          .toBe(true);
+        release();
+        await expect.poll(() => resets).toBeGreaterThan(0);
+        await expect.poll(() => output).toContain('reset-marker');
+        expect(errors).toEqual([]);
+      } finally {
+        release();
+        reader?.dispose();
+        transport.stop();
+        await isolated.dispose();
+        await new Promise<void>((resolve, reject) =>
+          listener.close((error) => (error ? reject(error) : resolve())),
+        );
+      }
+    });
     async function journal(id: string, text: string) {
       await expect
         .poll(
@@ -417,7 +740,9 @@ describe.skipIf(process.platform === 'win32')(
 
     test('shares HTTP listener and requires a valid first auth frame even on loopback', async () => {
       const response = await fetch(url.replace('ws:', 'http:'));
-      expect(await response.text()).toBe('ordinary HTTP on the same listener');
+      expect(response.status).toBe(403);
+      const ordinary = await fetch(new URL('/', url.replace('ws:', 'http:')));
+      expect(await ordinary.text()).toBe('ordinary HTTP on the same listener');
       const ws = new WebSocket(url, { origin: 'http://station.test' });
       clients.push(new Client(ws));
       await once(ws, 'open');
@@ -562,7 +887,7 @@ describe.skipIf(process.platform === 'win32')(
         (frame) =>
           frame.type === 'progress' &&
           frame.channel === 1 &&
-          frame.lastSeq === snapshot.journal.lastSeq,
+          (frame.sentThrough ?? 0) > acknowledged,
       );
       expect(blocked.sentThrough).toBeLessThan(snapshot.journal.lastSeq);
       const pending = client.output.filter(

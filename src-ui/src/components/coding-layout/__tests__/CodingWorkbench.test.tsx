@@ -8,7 +8,14 @@ import {
 } from '@kontourai/station-contracts/workspace-coding-panels';
 import type { WorkspacePaneInstance } from '@kontourai/station-contracts/workspace-pane';
 import { createWorkspacePaneHostBaselineDocument } from '@kontourai/station-contracts/workspace-pane-host';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { type ReactNode, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -323,7 +330,7 @@ test('dismissing the phone tool sheet leaves the active tool unchanged', async (
   await act(async () => undefined);
   expect(screen.queryByRole('dialog', { name: 'Tools' })).toBeNull();
   expect(new URLSearchParams(window.location.search).get('pane')).toBeNull();
-  expect(window.document.activeElement).toBe(trigger);
+  await waitFor(() => expect(window.document.activeElement).toBe(trigger));
 });
 
 test('a tool opened while the phone picker is visible does not reopen the picker on return', async () => {

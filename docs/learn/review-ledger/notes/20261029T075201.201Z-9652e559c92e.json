@@ -1,0 +1,167 @@
+{
+  "revision": "5c3c88e4029caaa8a120f139af3ba342b1aa2e7a",
+
+  "notes": [
+    {"path":"deploy/public-ingress/README.md","note":"Reviewed public ingress Origin and owner pairing guidance against the local sign-out exception; deployment topology and account sign-in Origin policy are unchanged. No ingress deployment run.","inputs":["deploy/public-ingress/README.md","src-server/runtime/bootstrap/station-runtime.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/README.md","note":"Reviewed Station Documentation scope and its lack of direct Origin or account claims against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/README.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","note":"Reviewed Treat knowledge stores as canonical and the index as derived scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"Reviewed Keep browser-preview hosting adapter-local scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/adr/0017-browser-preview-host.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Reviewed ADR 0018 — SSE is the realtime transport, because resume rides `Last-Event-ID` scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"Reviewed ADR 0019 — Host the Browser pane server-side, behind a host adapter scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture.md","note":"Reviewed Station Architecture scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/architecture.md","src-server/runtime/bootstrap/station-runtime.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed account authentication composition and startup Origin plumbing against the local sign-out exception. No full module-map or deployed runtime audit.","inputs":["docs/architecture/module-map.md","src-server/routes/system/deployment-authentication-routes.ts","src-server/runtime/bootstrap/station-runtime.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/identity/local-account-provider.ts","src-server/services/identity/local-account-runtime.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed Pre-tool blocking and grant delivery boundary scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Reviewed Evidence Governance Context scope and its lack of direct Origin or account claims against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/contexts/evidence-governance/CONTEXT.md","src-server/runtime/bootstrap/station-runtime.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Reviewed Operations Context scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/contexts/operations/CONTEXT.md","src-server/runtime/bootstrap/station-runtime.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Reviewed Scoped answer share permalinks (archive#1423) scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/design/answer-share-permalinks.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/automations.md","note":"Reviewed Station Automations scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/design/automations.md","docs/security/remote-access-threat-model.md"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"Reviewed Browser-preview host spike (archive#1376) scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/design/browser-preview-host-spike.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"Reviewed Browser Preview Pane MVP (archive#1375) scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/design/browser-preview-pane-mvp.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Reviewed Channel home authority and planned transfer scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/design/channel-home-authority.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Reviewed Design: Connections onboarding & capability passthrough scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/design/connections-onboarding.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/hosted-execution-isolation.md","note":"Reviewed Hosted execution and plugin isolation scope and its lack of direct Origin or account claims against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/design/hosted-execution-isolation.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/identity.md","note":"Reviewed local-account and OIDC identity overview against sign-out-only Origin admission; sign-in identity derivation and other account routes remain unchanged. No live provider exercise.","inputs":["docs/design/identity.md","src-server/services/identity/local-account-runtime.ts"]},
+
+    {"path":"docs/design/local-bootstrap-token.md","note":"Reviewed Local-bootstrap token (archive#1991) scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/design/local-bootstrap-token.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Reviewed MCP Apps in Station scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/design/mcp-ui-host.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Reviewed Operator device access from a paired browser (#2894) scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/design/operator-device-access.md","src-server/runtime/bootstrap/station-runtime.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/plugin-installation-lifecycle.md","note":"Reviewed Plugin installation lifecycle scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/design/plugin-installation-lifecycle.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/principals.md","note":"Reviewed Design: Principals — what \"people\" means in Station, and when it changes scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/design/principals.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"Reviewed Project membership and device enrollment scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/design/project-membership.md","src-server/runtime/bootstrap/station-runtime.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/registry-trust-policy.md","note":"Reviewed Applied registry trust policy scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/design/registry-trust-policy.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/survey-flow-review.md","note":"Reviewed Survey-backed Flow review scope and its lack of direct Origin or account claims against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/design/survey-flow-review.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/task-dispatcher.md","note":"Reviewed Task Dispatcher scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/design/task-dispatcher.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Reviewed Task room agent requests scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/design/task-room-agent-requests.md","src-server/runtime/bootstrap/station-runtime.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Reviewed Integrated terminal scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/design/terminal.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed Glossary scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/glossary.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed Configure Agents scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/guides/agent-configuration.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Reviewed Browser workspace scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/guides/browser-workspace.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the exact browser-origin and pairing guidance against the sign-out-only exception; Device pairing admission is unchanged. No live two-Station journey.","inputs":["docs/guides/connections.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Reviewed Delegation attempt claims scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/guides/delegation-attempt-claims.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Reviewed account Origin admission, local sign-out routing and Better Auth guard against production composition and focused tests; documented the exact Station-Origin exception. No live browser or Serve rerun.","inputs":["docs/guides/deployment-authentication.md","src-server/routes/system/deployment-authentication-routes.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/identity/local-account-provider.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Reviewed Deployment Guide scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/guides/deployment.md","src-server/runtime/bootstrap/station-runtime.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/discord-gateway.md","note":"Reviewed Discord gateway scope and its lack of direct Origin or account claims against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/guides/discord-gateway.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Reviewed Ship a feature preview scope and its lack of direct Origin or account claims against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/guides/feature-previews.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Reviewed Preparing a personal home-transfer controller scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/guides/home-transfer-controller.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed Integrating Station into your company or project scope and its lack of direct Origin or account claims against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/guides/integrating-station.md","docs/guides/deployment-authentication.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Reviewed Free local collaboration lab scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/guides/local-collaboration-lab.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Reviewed Computer relationships: pairing vs. remote work scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/guides/machine-relationships.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"Reviewed Mobile device workspace scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/guides/mobile-device-workspace.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"Reviewed Enroll an operator passkey scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/guides/operator-passkeys.md","src-server/runtime/bootstrap/station-runtime.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"Reviewed Plugin Development scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/guides/plugins.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Reviewed Private runner partition scope and its lack of direct Origin or account claims against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/guides/private-runner-partition.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Reviewed Product-law authoring scope and its lack of direct Origin or account claims against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/guides/product-law-authoring.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Reviewed Repository layout scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/guides/repository-layout.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed Build a Self-Configuring Agent scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/guides/self-configuring-agent.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Reviewed How Starter Work connects first steps to real work scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/guides/starter-work.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/walkthroughs.md","note":"Reviewed Import a Walkthrough scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/guides/walkthroughs.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Reviewed Web Push notifications scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/guides/web-push-notifications.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Reviewed Work Board security boundary scope and its lack of direct Origin or account claims against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/guides/work-board-security.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Reviewed Copy a Git workspace between hosts scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/guides/workspace-packages.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/privacy-policy.md","note":"Reviewed the local account and session data paragraph against account-only sign-out; no new data collection or retention path is introduced. No privacy or deployed-provider audit.","inputs":["docs/privacy-policy.md","src-server/services/identity/local-account-provider.ts","src-server/services/identity/local-account-runtime.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed Agent smoke confidence scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/reference/agent-smoke-confidence.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed Station API Documentation scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/reference/api.md","src-server/runtime/bootstrap/station-runtime.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed config reference scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/reference/config.md","src-server/runtime/bootstrap/station-runtime.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Reviewed @kontourai/station-connect scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/reference/connect.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed @kontourai/station-contracts scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/reference/contracts.md","src-server/runtime/bootstrap/station-runtime.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Reviewed Environment Variables scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/reference/env-vars.md","src-server/runtime/bootstrap/station-runtime.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/play-data-safety.md","note":"Reviewed the data-safety scope against local sign-out Origin admission; this does not add a data collection flow. No Play disclosure or native-device qualification.","inputs":["docs/reference/play-data-safety.md","src-server/services/identity/local-account-provider.ts","src-server/services/identity/local-account-runtime.ts"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Reviewed Project/Task room collaboration acceptance scope and its lack of direct Origin or account claims against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/reference/project-task-room-collaboration-acceptance.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed @kontourai/station-sdk scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/reference/sdk.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed Session API: the programmatic chat surface scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/reference/session-api.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed Usage telemetry scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/reference/usage-telemetry.md","src-server/runtime/bootstrap/station-runtime.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed exact Origin checks at the route and local provider, sign-out-only scope and denied missing/untrusted Origins against the focused tests. No live CSRF or native-device exercise.","inputs":["docs/security/remote-access-threat-model.md","src-server/routes/system/deployment-authentication-routes.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/identity/local-account-provider.ts"]},
+
+    {"path":"docs/user/pull-request-guides.md","note":"Reviewed Pull request guides scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/user/pull-request-guides.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/settings.md","note":"Reviewed Settings you may not have found scope and its lack of direct Origin or account claims against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/user/settings.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Reviewed Restore workspace files from a chat checkpoint scope and its lack of direct Origin or account claims against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["docs/user/workspace-checkpoints.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/builder-delivery-viewer/README.md","note":"Reviewed Builder Delivery Viewer scope and its lack of direct Origin or account claims against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["examples/builder-delivery-viewer/README.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"examples/fieldwork-review/README.md","note":"Reviewed Fieldwork Review scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["examples/fieldwork-review/README.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"Reviewed MCP-UI demo server scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["examples/mcp-ui-demo/README.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed Self-Configuring Agent Example scope and its lack of direct Origin or account claims against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["examples/self-configuring-agent/README.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"examples/station-sessions-mcp/README.md","note":"Reviewed Station sessions MCP-UI server scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["examples/station-sessions-mcp/README.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/survey-review-workbench/README.md","note":"Reviewed Survey Review Workbench scope and sampled Origin or account passages against the local sign-out-only change. This is a scoped source review, not a full-document or live-runtime audit.","inputs":["examples/survey-review-workbench/README.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"Inspected the existing operator Device sign-in and approval capture against the account sign-out Origin change. It was not recaptured or qualified in a live browser.","inputs":["docs/learn/media/operator-s4-before-sign-in.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"Inspected the existing operator Device sign-in and approval capture against the account sign-out Origin change. It was not recaptured or qualified in a live browser.","inputs":["docs/learn/media/operator-s4-after-sign-in.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"Inspected the existing operator Device sign-in and approval capture against the account sign-out Origin change. It was not recaptured or qualified in a live browser.","inputs":["docs/learn/media/operator-s4-step-up-review.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"Inspected the existing operator Device sign-in and approval capture against the account sign-out Origin change. It was not recaptured or qualified in a live browser.","inputs":["docs/learn/media/operator-s4-after-step-up.png","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

@@ -76,6 +76,7 @@ import {
 import {
   deleteIntegrationConfig,
   deleteSkillPackageAt,
+  ensureIntegrationInstanceId,
   integrationConfigExists,
   listIntegrationMetadata,
   listSkillConfigs,
@@ -1102,6 +1103,11 @@ export class ConfigLoader {
       validator.validateToolDef(next);
       return next;
     });
+  }
+
+  /** #4279: the integration's server-created instance id (see storage). */
+  async integrationInstanceId(id: string): Promise<string> {
+    return ensureIntegrationInstanceId(this.projectHomeDir, id);
   }
 
   async deleteIntegration(id: string): Promise<void> {

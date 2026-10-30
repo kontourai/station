@@ -286,6 +286,46 @@ export type AutomationSuppressionReason =
   (typeof AUTOMATION_SUPPRESSION_REASONS)[number];
 
 /**
+ * Bounded, payload-free view of one recorded delivery, as the ledger keeps it
+ * and `GET /automations/deliveries` returns it. It holds no payload, secret
+ * or delivery GUID: `deliveryKey` is a sha256 of the source id and transport
+ * id.
+ */
+export type AutomationDeliveryRecord = Readonly<{
+  deliveryKey: string;
+  sourceId: string;
+  /** e.g. `workflow_run:<id>:<attempt>:completed`. */
+  semanticKey: string;
+  eventType: string;
+  receivedAt: string;
+  updatedAt: string;
+  outcome: AutomationDeliveryOutcome;
+  reason?: AutomationRefusalReason | AutomationSuppressionReason;
+  ruleId?: string;
+  episodeId?: string;
+  taskId?: string;
+  sessionId?: string;
+}>;
+
+export type AutomationPollOutcome =
+  | 'ok'
+  | 'partial'
+  | 'unauthorized'
+  | 'unavailable';
+
+export interface AutomationPollRecord {
+  sourceId: string;
+  lastPolledAt: string;
+  cursorAt?: string;
+  lastOutcome: AutomationPollOutcome;
+}
+
+export interface AutomationDeliveryPage {
+  deliveries: AutomationDeliveryRecord[];
+  polls: AutomationPollRecord[];
+}
+
+/**
  * Episode lifecycle. `open` may still act; `exhausted` used every allowed
  * attempt; `indeterminate` had an action whose result is unknown and is
  * never replayed; `closed` was resolved by `closeOn`.

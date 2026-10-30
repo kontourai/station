@@ -36,6 +36,11 @@ beforeEach(() => {
   navigate.mockReset();
 });
 
+import {
+  chooseRowAction,
+  openRowAction,
+} from '../../../__tests__/helpers/row-menu';
+import { inboxContextParts } from '../../notifications/inboxContext';
 import { AttentionHistoryItem } from '../AttentionHistoryItem';
 
 function baseApproval(
@@ -140,8 +145,7 @@ describe('AttentionHistoryItem — session-failed kind', () => {
       />,
     );
 
-    const dismissButton = screen.getByRole('button', { name: 'Dismiss' });
-    dismissButton.click();
+    chooseRowAction('Dismiss');
 
     expect(acknowledge).toHaveBeenCalledWith('session-failed:thread-boom');
     expect(onDismiss).not.toHaveBeenCalled();
@@ -155,21 +159,28 @@ describe('AttentionHistoryItem — session-failed kind', () => {
    * repeated three times.
    */
   test('the row carries the cause, the identity, and the time', () => {
-    renderRow(
-      baseFailure({
-        body: 'ECONNREFUSED api.example.com:443',
-        engine: 'claude',
-        agent: 'reviewer',
+    const item = baseFailure({
+      body: 'ECONNREFUSED api.example.com:443',
+      engine: 'claude',
+      agent: 'reviewer',
+    });
+    // The identity (engine · agent) now travels on the context line, built
+    // by the same resolver the tray uses from the item's own fields.
+    renderRow(item, {
+      context: inboxContextParts({
+        title: item.title,
+        engine: item.engine,
+        agent: item.agent,
       }),
-    );
+    });
 
     expect(screen.getByText('Fix the login redirect')).toBeTruthy();
     expect(screen.getByTestId('attention-cause').textContent).toBe(
       'ECONNREFUSED api.example.com:443',
     );
-    expect(screen.getByTestId('attention-identity').textContent).toBe(
-      'Claude Code · reviewer',
-    );
+    // The tray's one-line context keeps the engine; the agent is on the page.
+    const context = screen.getByTestId('inbox-context');
+    expect(context.textContent).toContain('Engine: Claude Code');
     // `formatNotificationTime` renders a fresh stamp as "Just now" — the
     // point is that a <time> exists at all, which it did not before.
     expect(screen.getByText('Just now')).toBeTruthy();
@@ -241,7 +252,7 @@ describe('AttentionHistoryItem — session-failed kind', () => {
 });
 
 describe('AttentionHistoryItem — dismiss affordance', () => {
-  test('a genuinely-pending approval shows a visually quiet dismiss and routes clicks to onDismiss with the notification id', () => {
+  test("an approval's dismiss lives in the row menu, never beside Allow/Deny", () => {
     const onDismiss = vi.fn();
     render(
       <AttentionHistoryItem
@@ -254,34 +265,12 @@ describe('AttentionHistoryItem — dismiss affordance', () => {
       />,
     );
 
-    const dismissButton = screen.getByRole('button', { name: 'Dismiss' });
-    expect(dismissButton.className).toContain(
-      'notification-history__action--quiet',
-    );
-
-    dismissButton.click();
+    expect(screen.queryByRole('button', { name: 'Dismiss' })).toBeNull();
+    chooseRowAction('Dismiss');
     expect(onDismiss).toHaveBeenCalledWith('notif-1');
   });
 
-  test('a non-actionable approval (no live actions) shows a plain dismiss, not the quiet variant', () => {
-    render(
-      <AttentionHistoryItem
-        item={baseApproval({ actions: [] })}
-        isPending={false}
-        isDismissPending={false}
-        onAction={vi.fn()}
-        onClose={vi.fn()}
-        onDismiss={vi.fn()}
-      />,
-    );
-
-    const dismissButton = screen.getByRole('button', { name: 'Dismiss' });
-    expect(dismissButton.className).not.toContain(
-      'notification-history__action--quiet',
-    );
-  });
-
-  test('disables the dismiss button while a dismiss mutation is pending', () => {
+  test('disables the dismiss item while a dismiss mutation is pending', () => {
     render(
       <AttentionHistoryItem
         item={baseApproval()}
@@ -293,10 +282,7 @@ describe('AttentionHistoryItem — dismiss affordance', () => {
       />,
     );
 
-    expect(
-      (screen.getByRole('button', { name: 'Dismiss' }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(true);
+    expect(openRowAction('Dismiss').disabled).toBe(true);
   });
 });
 

@@ -44,10 +44,29 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => ({
   }),
 }));
 
+// Snooze is a Feature Preview; off unless a test turns it on.
+const snoozePreviews: { id: string; enabled: boolean }[] = [];
+const snoozeAttention = vi.fn();
+const unsnoozeAttention = vi.fn();
+const snoozeNotification = vi.fn();
 vi.mock('@kontourai/station-sdk', () => ({
   LIVE_NOTIFICATION_STATUSES: ['pending', 'delivered'],
   useNotificationsQuery: () => ({ data: notifications, isLoading: false }),
   useAttentionQuery: () => ({ data: attention, isLoading: false }),
+  useDevicePresentation: () => undefined,
+  useFeaturePreviewsQuery: () => ({ data: snoozePreviews }),
+  useSnoozeAttentionItemMutation: () => ({
+    mutate: snoozeAttention,
+    isPending: false,
+  }),
+  useUnsnoozeAttentionItemMutation: () => ({
+    mutate: unsnoozeAttention,
+    isPending: false,
+  }),
+  useSnoozeNotificationMutation: () => ({
+    mutate: snoozeNotification,
+    isPending: false,
+  }),
   useOrchestrationSessionsQuery: () => ({ data: [], isSuccess: true }),
   useDismissNotificationMutation: () => ({ isPending: false, mutate: vi.fn() }),
   useNotificationActionMutation: () => ({ isPending: false, mutate: vi.fn() }),

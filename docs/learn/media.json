@@ -171,12 +171,12 @@
     {
       "path": "docs/learn/media/oauth-mcp-sign-in-comparison.png",
       "kind": "image",
-      "digest": "7dbc43e6c59e2f812daaebc06dfe9f1b6f837b4897d616abc8a5248078d47b2a",
-      "alt": "The Workspace MCP sign-in panel identifies the shared Station account.",
-      "caption": "The Workspace MCP sign-in panel identifies the shared Station account.",
+      "digest": "3f77dece872bd1664c97b800b23f456ff913dfb5dcfbfcc7087f5cd76e8afd69",
+      "alt": "The Workspace MCP sign-in panel identifies the shared Station account and offers editable scopes.",
+      "caption": "The Workspace MCP sign-in panel identifies the shared Station account and offers editable scopes.",
       "scenario": "OAuth MCP engine setup",
-      "evidence": "EXECUTED: inspected recaptured Chrome desktop dark-theme mounted React components with synthetic local API responses and a neutral Workspace MCP fixture. The sign-in scene uses a shared-account response; the personal-source picker follows an ordinary Add click. Current component source bytes match f521b2fc806da3cbb35b3386ba623f9d9e7fa675. The left comparison retains the frozen pre-feature component fixture. No Station host, live OAuth provider, model turn, native or hosted acceptance. Browser JPEG was re-encoded as PNG without cropping, resizing or content edits.",
-      "capturedRevision": "f521b2fc806da3cbb35b3386ba623f9d9e7fa675",
+      "evidence": "EXECUTED: captured with Playwright Chromium at 1800x1009, dark theme, from an isolated source Station instance (temp home, non-default ports) at the captured revision, with a neutral Workspace MCP integration and a local fake authorization server that answers discovery only. Shows the shared-account panel, the Scopes field prefilled from the integration default and Sign in. Replaces the earlier side-by-side comparison of mounted components: this is a single current capture, with no pre-feature baseline. No sign-in was completed; no live OAuth provider, model turn, native or hosted acceptance.",
+      "capturedRevision": "f83cf85e288326e846f8901bc220a28b6580d87b",
       "documents": [
         "docs/guides/connections.md"
       ]

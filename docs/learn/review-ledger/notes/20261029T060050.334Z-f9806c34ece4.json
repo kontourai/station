@@ -1,0 +1,7 @@
+{
+  "revision": "5cb3487df58a1666c0da3e74bcaf4dfdaffa5b4a",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Edited: grant records issuer, resource and server-created instance id; released only on a full match at every token request; recreation needs rebinding. Checked against secret-binding-administration.ts and config-loader-storage.ts. Other inputs: the API reference states the instance-pinned grant and per-request release; ConfigLoader adds integrationInstanceId(), ensuring the server-created instance id under the integration lock.","inputs":["docs/reference/api.md","src-server/domain/config-loader.ts"]}
+  ]
+}

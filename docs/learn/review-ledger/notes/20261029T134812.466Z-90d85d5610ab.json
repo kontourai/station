@@ -1,0 +1,7 @@
+{
+  "revision": "b9a951449251da359b7f62b17d807cbca68b219e",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"Source-impact review: the guide states that authorization-server requests are checked at dispatch under a per-integration lock shared with pin establishment. Searched this document for MCP transport, OAuth request and issuer pin claims; none describes the changed behavior beyond links that still resolve, so its claims stay accurate.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]}
+  ]
+}

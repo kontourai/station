@@ -1144,15 +1144,48 @@ function cloneRegistry(registry: DeviceRegistry): DeviceRegistry {
   };
 }
 
+type AccountReplacementIdentity = Pick<
+  Extract<DevicePrincipalBinding, { kind: 'account' }>,
+  'kind' | 'issuer' | 'subject'
+>;
+type ReplacementBinding = DevicePrincipalBinding | AccountReplacementIdentity;
+
+// A candidate can reserve a display name; only an approved binding authorizes exchange replacement.
+function accountCandidateIdentity(
+  candidate: DeviceAccountBindingCandidate | undefined,
+): AccountReplacementIdentity | undefined {
+  return candidate
+    ? { kind: 'account', issuer: candidate.issuer, subject: candidate.subject }
+    : undefined;
+}
+
 /**
  * A caller-controlled instance id is only a replacement key inside an
- * already-proven principal. It must never let one tailnet identity, or an
- * identityless source, revoke another's device.
+ * existing provenance domain. Account-bound Devices also require the same
+ * approved issuer and subject; WhoIs alone cannot link accounts.
  */
 function isSameReplacementDomain(
-  existing: Pick<StoredDevice, 'source' | 'requester'>,
+  existing: Pick<StoredDevice, 'source' | 'requester'> & {
+    principalBinding?: ReplacementBinding;
+  },
   request: PairingProvenance,
+  approvedBinding: ReplacementBinding | undefined,
 ): boolean {
+  const existingAccount =
+    existing.principalBinding && 'kind' in existing.principalBinding
+      ? existing.principalBinding
+      : undefined;
+  const approvedAccount =
+    approvedBinding && 'kind' in approvedBinding ? approvedBinding : undefined;
+  if (existingAccount || approvedAccount) {
+    if (
+      !existingAccount ||
+      !approvedAccount ||
+      existingAccount.issuer !== approvedAccount.issuer ||
+      existingAccount.subject !== approvedAccount.subject
+    )
+      return false;
+  }
   if (request.source === 'tailnet') {
     return (
       existing.source === 'tailnet' &&
@@ -1423,6 +1456,9 @@ export class DevicePairingService {
         name,
         input.clientInstanceId,
         provenance,
+        input.requireAccountBinding
+          ? accountCandidateIdentity(input.accountCandidate)
+          : undefined,
       ),
       scope: offer.scope,
       kind: offer.kind,
@@ -1951,7 +1987,11 @@ export class DevicePairingService {
             (item) =>
               item.revokedAt === null &&
               item.clientInstanceId === input.clientInstanceId &&
-              isSameReplacementDomain(item, requestProvenance),
+              isSameReplacementDomain(
+                item,
+                requestProvenance,
+                offer.principalBinding,
+              ),
           )
         : false;
       if (input.clientInstanceId) {
@@ -1960,7 +2000,11 @@ export class DevicePairingService {
           if (
             item.revokedAt === null &&
             item.clientInstanceId === input.clientInstanceId &&
-            isSameReplacementDomain(item, requestProvenance)
+            isSameReplacementDomain(
+              item,
+              requestProvenance,
+              offer.principalBinding,
+            )
           ) {
             item.revokedAt = revokedAt;
             item.revocation = {
@@ -2011,7 +2055,13 @@ export class DevicePairingService {
       const issuedAt = this.#now();
       const device: StoredDevice = {
         id: relayReservation?.deviceId ?? randomUUID(),
-        name: request.deviceName,
+        name: this.#uniqueDeviceName(
+          request.deviceName,
+          input.clientInstanceId,
+          requestProvenance,
+          offer.principalBinding,
+          offer.offerId,
+        ),
         scope: sessionScope,
         kind: offer.kind,
         createdAt: issuedAt,
@@ -3737,6 +3787,8 @@ export class DevicePairingService {
     name: string,
     clientInstanceId?: string,
     provenance?: PairingProvenance,
+    requestedBinding?: ReplacementBinding,
+    excludeOfferId?: string,
   ): string {
     return this.#withRegistrySpan(() => {
       const existingNames = new Set(
@@ -3747,13 +3799,14 @@ export class DevicePairingService {
               (!clientInstanceId ||
                 !provenance ||
                 device.clientInstanceId !== clientInstanceId ||
-                !isSameReplacementDomain(device, provenance)),
+                !isSameReplacementDomain(device, provenance, requestedBinding)),
           )
           .map((device) => device.name),
       );
       const now = this.#now();
       for (const offer of this.#offers.values()) {
-        if (offer.expiresAt <= now) continue;
+        if (offer.offerId === excludeOfferId || offer.expiresAt <= now)
+          continue;
         if (offer.status !== 'requested' && offer.status !== 'confirmed') {
           continue;
         }
@@ -3762,7 +3815,19 @@ export class DevicePairingService {
           (!clientInstanceId ||
             !provenance ||
             offer.clientInstanceId !== clientInstanceId ||
-            !isSameReplacementDomain(offer.request, provenance))
+            !isSameReplacementDomain(
+              {
+                ...offer.request,
+                principalBinding:
+                  offer.status === 'confirmed'
+                    ? offer.principalBinding
+                    : offer.request.requireAccountBinding
+                      ? accountCandidateIdentity(offer.request.accountCandidate)
+                      : undefined,
+              },
+              provenance,
+              requestedBinding,
+            ))
         ) {
           existingNames.add(offer.request.deviceName);
         }
@@ -3778,7 +3843,7 @@ export class DevicePairingService {
         const candidate = `${base}${suffixText}`;
         if (!existingNames.has(candidate)) return candidate;
       }
-      return name;
+      throw new DevicePairingError('invalid_request');
     });
   }
 

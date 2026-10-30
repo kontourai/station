@@ -1,0 +1,7 @@
+{
+  "revision": "7f2e7b4193a0fdc748a43a4aa1344c041419903f",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Edited: useStartIntegrationOAuthMutation scopes, including an empty list meaning the server's scopes. Checked against catalog.ts and IntegrationAccountSection.tsx. Other inputs: the SDK reference says an empty scope choice requests the server's scopes; ToolOAuthClient adds the optional declared issuer.","inputs":["docs/reference/sdk.md","packages/contracts/src/tool.ts"]}
+  ]
+}

@@ -602,7 +602,9 @@ access to this Station**. Station creates a rate-limited, five-minute request
 for that same origin without asking for a URL, camera, code, or operator
 credential. An already trusted session must approve the displayed device name
 and scope or explicitly deny the request; the requesting browser cannot decide
-either outcome itself. The host inbox shows the remaining lifetime and removes
+either outcome itself. At exchange, Station may add a numeric suffix if a
+Device in a different authority domain has reserved or claimed that name; the
+approval still addresses the request ID. The host inbox shows the remaining lifetime and removes
 expired requests automatically. It distinguishes same-origin requests from
 pairing-code requests. A deployment with the explicit Tailscale Serve identity
 adapter also labels a request with the verified tailnet account returned by

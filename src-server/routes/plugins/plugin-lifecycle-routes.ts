@@ -19,6 +19,7 @@ import { copyPluginIntegrations } from '@kontourai/station-shared/parsers';
 import { createStationTempDirSync } from '@kontourai/station-shared/temp-dir';
 import { Hono } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
+import { assertPluginIntegrationsWritable } from '../../domain/config-loader-storage.js';
 import {
   capturePluginProviderGeneration,
   preparePluginProviderGeneration,
@@ -930,6 +931,7 @@ export function registerPluginLifecycleRoutes(
                     originalIdentity,
                   );
                   if (manifestFormat !== 'agent-plugin-1.0') {
+                    assertPluginIntegrationsWritable(pluginDir, projectHomeDir);
                     copyPluginIntegrations(
                       pluginDir,
                       join(projectHomeDir, 'integrations'),
@@ -1039,6 +1041,10 @@ export function registerPluginLifecycleRoutes(
                       originalIdentity,
                     );
                     if (originalManifestFormat !== 'agent-plugin-1.0') {
+                      assertPluginIntegrationsWritable(
+                        pluginDir,
+                        projectHomeDir,
+                      );
                       copyPluginIntegrations(
                         pluginDir,
                         join(projectHomeDir, 'integrations'),

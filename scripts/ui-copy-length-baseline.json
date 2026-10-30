@@ -338,9 +338,6 @@
     "src-ui/src/views/project-page/ProjectTasksSection.tsx": {
       "long-copy:text:p": 2
     },
-    "src-ui/src/views/project-settings/NewChatDefaultsSection.tsx": {
-      "long-copy:literal:const": 2
-    },
     "src-ui/src/views/project-settings/ProjectDocumentImport.tsx": {
       "multi-sentence:text:p": 2,
       "long-copy:text:p": 1

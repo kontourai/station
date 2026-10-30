@@ -1,0 +1,7 @@
+{
+  "revision": "e4ad012f60f48b824812089c9eea480201b26bcb",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Source-impact review: the API reference states exactly which writers apply the OAuth client rules and the issuer/resource-bound grant; the CLI reference documents OAuth client-secret references in portability import and export. Searched this document for MCP tool-server OAuth client, issuer, secret-binding grant/reference, plugin integration copy, portability and credential-store claims; none describes the changed behavior beyond links that still resolve, so its claims stay accurate.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md","docs/reference/cli.md"]}
+  ]
+}

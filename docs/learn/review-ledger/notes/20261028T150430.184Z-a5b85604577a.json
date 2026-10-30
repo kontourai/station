@@ -1,0 +1,7 @@
+{
+  "revision": "50613535a040b57e7f87fabf185b77b10e608508",
+
+  "notes": [
+    {"path":"docs/design/survey-flow-review.md","note":"Source-impact review: station-runtime.ts only passes the secret-binding resolver to the engine MCP OAuth resolver so configured OAuth client secrets can refresh. Searched this document for MCP tool-server OAuth, client registration, client secret, secret-binding grant and scope claims; none describes these paths beyond links that still resolve, so its claims stay accurate.","inputs":["docs/design/survey-flow-review.md","src-server/runtime/bootstrap/station-runtime.ts"]}
+  ]
+}

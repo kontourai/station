@@ -180,6 +180,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // A message-link hash holds every transcript in this file; leave none.
+  window.location.hash = '';
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
@@ -307,6 +309,38 @@ describe('Scroll to bottom', () => {
     fireEvent.click(scrollToBottomButton()!);
     expect(scroller.scrollTop).toBe(2_000);
     expect(scrollToBottomButton()).toBeNull();
+  });
+
+  test('a followed message link releases its hold when the reader asks for the bottom', () => {
+    stubMotion(false);
+    // jsdom lays nothing out; the reveal's own centreing is not under test.
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    // A deep link into one message (a notification link, a quoted jump):
+    // its reveal holds the transcript on that message, "scrolled up".
+    window.location.hash = '#station-message=abc';
+    const { scroller, geometry, base, rerender } = renderList();
+    expect(scrollToBottomButton()).not.toBeNull();
+    fireEvent.click(scrollToBottomButton()!);
+    advanceFrames(1_000);
+    expect(scroller.scrollTop).toBe(2_000);
+    // Asking for the latest is "going elsewhere": the link stops holding.
+    expect(window.location.hash).toBe('');
+    delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    // The next settled message follows, instead of yanking the reader back
+    // to the linked message and re-raising the control.
+    geometry.scrollHeight = 2_500;
+    rerender({
+      activeSession: {
+        ...base,
+        messages: [
+          ...base.messages,
+          { role: 'assistant', content: 'new answer', timestamp: 11 },
+        ],
+      },
+    });
+    expect(scrollToBottomButton()).toBeNull();
+    expect(scroller.scrollTop).toBe(2_500);
   });
 });
 

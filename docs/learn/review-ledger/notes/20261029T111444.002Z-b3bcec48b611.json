@@ -1,0 +1,7 @@
+{
+  "revision": "28b1c36c57bd88cce7157b812da7ea21e5b16ae5",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Reviewed the terminal output contract against 28b1c36: the only input change replaces eight test-only Array.at(-1) accesses with equivalent array[length - 1] expressions for the declared ES2020 SDK library target. Production session and transport bytes are unchanged; authentication, frame credit, reset, live backpressure and reconnect assertions remain intact. The original SDK compiler failure reproduced eight TS2550 errors; corrected typecheck:sdk and all 26 session-owner tests pass. No prose correction, runtime recertification, or browser/native/hosted proof is implied.","inputs":["docs/reference/sdk.md","packages/sdk/src/__tests__/terminal-output-session.test.ts"]}
+  ]
+}

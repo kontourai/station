@@ -1,0 +1,7 @@
+{
+  "revision": "b9a951449251da359b7f62b17d807cbca68b219e",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Source-impact review: the provider guards authorization-server requests at dispatch under the pin lock, rechecking the declared issuer or pin; MCPManagerOptions adds an optional authorizationFetch wrapper that createMCPTransport applies to remote transports; without it transports are unchanged. Searched this document for MCP transport, OAuth request and issuer pin claims; none describes the changed behavior beyond links that still resolve, so its claims stay accurate.","inputs":["docs/guides/dependency-security.md","packages/shared/src/mcp-connection.ts","src-server/services/plugins/tool-server-oauth.ts"]}
+  ]
+}

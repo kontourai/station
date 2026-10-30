@@ -1,0 +1,7 @@
+{
+  "revision": "7641e738a9fa2fe14955b2d0d044205ddc321cce",
+
+  "notes": [
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Reviewed the recorded HTTP, SDK or contract dependency against the narrow terminal and captured-credential GET change; existing non-terminal behavior and this document remain unchanged. Focused authority and gateway tests passed; hosted behavior not verified.","inputs":["docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","packages/sdk/src/client/http.ts"]}
+  ]
+}

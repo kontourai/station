@@ -1,0 +1,7 @@
+{
+  "revision": "5c1aadf5e58ca7dcbb969beea648bdc27d7468f7",
+
+  "notes": [
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"Reviewed home-schema and update rollback claims against the registry delta: attention-snoozes.json is product state, so snapshots restore it like acknowledgement state. No channel, schema-marker or live/external classification changes. Source review only; update runtime not exercised.","inputs":["docs/adr/0020-distribution-two-trains-channels-as-pointers.md","packages/shared/src/station-home-store-registry.ts"]}
+  ]
+}

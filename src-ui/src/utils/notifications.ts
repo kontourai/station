@@ -1,16 +1,26 @@
 import type { Notification } from '@kontourai/station-contracts/notification';
 import { MS_PER_MINUTE } from '@kontourai/station-contracts/time';
 
-export function formatNotificationTime(timestamp: string): string {
+/**
+ * A row's time, as short as stays unambiguous: relative within a day, then a
+ * date — with the year only once it is not this year. The exact instant is on
+ * the `<time dateTime>` the callers render it in.
+ */
+export function formatNotificationTime(
+  timestamp: string,
+  now = new Date(),
+): string {
   const date = new Date(timestamp);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / MS_PER_MINUTE);
+  const diffMins = Math.floor((now.getTime() - date.getTime()) / MS_PER_MINUTE);
 
   if (diffMins < 1) return 'Just now';
   if (diffMins < 60) return `${diffMins}m ago`;
   if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h ago`;
-  return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
+  return date.toLocaleDateString([], {
+    month: 'short',
+    day: 'numeric',
+    ...(date.getFullYear() === now.getFullYear() ? {} : { year: 'numeric' }),
+  });
 }
 
 export function sortNotifications(

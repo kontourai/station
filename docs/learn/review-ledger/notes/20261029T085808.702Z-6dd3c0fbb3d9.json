@@ -1,0 +1,7 @@
+{
+  "revision": "9ab71288ea776f13c59851c039f5a1e14c405cf9",
+
+  "notes": [
+    {"path":"docs/guides/operator-passkeys.md","note":"Source-impact review: station-runtime.ts only validates STATION_OAUTH_CLIENT_METADATA_URL at construction (a malformed value refuses startup). Searched this document for MCP tool-server OAuth client, issuer, scope, metadata-document, environment-variable and integration-storage claims; none describes the changed behavior beyond links that still resolve, so its claims stay accurate.","inputs":["docs/guides/operator-passkeys.md","src-server/runtime/bootstrap/station-runtime.ts"]}
+  ]
+}

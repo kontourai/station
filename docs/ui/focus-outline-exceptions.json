@@ -83,11 +83,6 @@
     },
     {
       "path": "src-ui/src/index.css",
-      "selector": ".attachment-menu__thumbnail",
-      "reason": "Legacy suppression covered by the global keyboard-focus floor."
-    },
-    {
-      "path": "src-ui/src/index.css",
       "selector": ".chat-dock__context-actions button:hover, .chat-dock__context-actions button:focus-visible, .chat-dock__context-actions button.is-active",
       "reason": "Custom context-action state remains visible for keyboard focus."
     },

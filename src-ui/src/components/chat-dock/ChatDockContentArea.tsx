@@ -3,7 +3,7 @@ import { type ComponentProps, memo } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
 import type { ChatSession, FileAttachment } from '../../types';
 import type { ForkTurnSource } from '../chat/fork-turn-source';
-import { LazyBoundary } from '../LazyBoundary';
+import { LazyBoundary, LazyBoundaryError } from '../LazyBoundary';
 import { NewChatAction } from '../NewChatAction';
 import { Empty, SkeletonList } from '../state';
 import '../skill-experiences/skill-experiences.css';
@@ -183,18 +183,7 @@ function ChatDockContentAreaImpl({
                   </div>
                 </div>
                 <div className="conversation-history__list">
-                  <div className="lazy-boundary__error" role="alert">
-                    <span>Unable to load this part of Station.</span>
-                    <button type="button" onClick={onRetry}>
-                      Retry
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => window.location.reload()}
-                    >
-                      Reload
-                    </button>
-                  </div>
+                  <LazyBoundaryError onRetry={onRetry} />
                 </div>
               </div>
             )}
