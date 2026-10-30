@@ -15,6 +15,10 @@ Settings row from the [command palette](../guides/keyboard-shortcuts.md#command-
 
 ## Feature previews
 
+Report continuation recovery is not currently offered. Its metadata-finalization
+endpoint returns `report_continuation_finalizer_unavailable` while publication
+qualification is incomplete; it starts no provider work and grants no retry.
+
 Feature previews are features that are still being evaluated. Each one has a
 switch, a name and a description of what turning it on does. A preview is listed
 only when this Station's build can run it; if none is, the section says
@@ -23,7 +27,6 @@ only when this Station's build can run it; if none is, the section says
 | ID | Name | What turning it on does | Notable cost/risk |
 | --- | --- | --- | --- |
 | `attention-snooze` | Attention snooze | Lets the attention API temporarily hide any inbox item until a chosen time, up to 30 days. A newer source version resurfaces immediately. | Local per-user state only; no provider cost or background jobs. Off by default; disabling keeps saved snoozes but omits their effect while off. |
-| `report-continuation-finalizer` | Report continuation recovery | Reserved for metadata-only recovery of already-recorded Flow continuation receipts on a personal host with a publication owner. | Currently unavailable even when enabled: requests return `report_continuation_finalizer_unavailable` while publication qualification is incomplete. It starts no provider work and grants no retry. |
 | `fleet-consumer-probes` | Fleet consumer probes | Sends a test request to a peer-contributed model before routing work to it. | Can spend a completion on another Station. |
 | `walkthroughs` | Walkthroughs | Imports narrated screen recordings into transcripts and frames agents can read, using local processing. | One-time consented media/speech tool download; CPU use; recordings may contain private information. |
 | `local-speech` | Local speech | Offers Station (local) in Voice → Speech-to-text: record a message, then transcribe it on this Station. | One-time consented tool/model download; English batch dictation only; microphone permission; shares one recognizer and a bounded wait queue with Walkthroughs. |
