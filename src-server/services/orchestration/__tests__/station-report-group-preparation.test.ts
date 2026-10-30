@@ -73,7 +73,9 @@ test('authenticated preparation issues exact source/task envelopes consumed by t
       ],
     );
     assert.ok(!JSON.stringify(prepared).includes('synthetic-not-a-live-key'));
-    const persistence = new StationDelegationPersistence(h.f.root);
+    const persistence = new StationDelegationPersistence(
+      join(h.f.home, 'report-groups'),
+    );
     const current = (): undefined => {
       h.owner.read(handle, h.f.req);
       return undefined;
@@ -251,7 +253,8 @@ test('issued preparation reaches canonical delegated-task dispatch and retained 
     await sdkDisposalPromise(sdk.owner, sdk.sdkHandle);
     h.owner.close(handle);
     const admissionFile = join(
-      h.f.root,
+      h.f.home,
+      'report-groups',
       'station-report-admissions-v1',
       `${createHash('sha256').update(groupId).digest('hex')}.json`,
     );
@@ -412,7 +415,8 @@ test('issued preparation reaches canonical delegated-task dispatch and retained 
     assert.deepEqual(saved?.record, interrupted.record);
     assert.deepEqual(saved?.reference, interrupted.reference);
     const cancellationFile = join(
-      h.f.root,
+      h.f.home,
+      'report-groups',
       'station-report-interrupts-v1',
       `${createHash('sha256').update(groupId).digest('hex')}.json`,
     );
@@ -526,7 +530,8 @@ for (const defect of [
           const groupId = h.owner.read(handle, h.f.req).spec.groupId;
           unlinkSync(
             join(
-              h.f.root,
+              h.f.home,
+              'report-groups',
               'station-report-admissions-v1',
               `${createHash('sha256').update(groupId).digest('hex')}.json`,
             ),
@@ -619,7 +624,8 @@ test('signed admission refuses a well-shaped metadata substitution and restored 
     const context = h.f.context(requestFor(h));
     assert.ok(await h.custody.inspect(context, groupId));
     const file = join(
-      h.f.root,
+      h.f.home,
+      'report-groups',
       'station-report-admissions-v1',
       `${createHash('sha256').update(groupId).digest('hex')}.json`,
     );
@@ -876,7 +882,8 @@ test.each(['lost-ack', 'lost-journal-commit'] as const)(
         });
       } else {
         const file = join(
-          h.f.root,
+          h.f.home,
+          'report-groups',
           'station-report-interrupts-v1',
           `${createHash('sha256').update(groupId).digest('hex')}.json`,
         );
@@ -1071,7 +1078,8 @@ test('initial Flow continuation limits are immutable intent and reserve aggregat
       'Review correctness',
     );
     const intentFile = join(
-      h.f.root,
+      h.f.home,
+      'report-groups',
       'station-report-intents-v1',
       `${stored.data.intentRef.id}.json`,
     );

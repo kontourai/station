@@ -321,6 +321,31 @@ test('request admission waits for home custody and refuses a credential revoked 
   await expect(sibling).resolves.toBe('sibling current');
 });
 
+test('owned transaction requires its explicit live lease and refuses a cancelled waiter', async () => {
+  const owner = await HomeWriterOwner.forHome(home());
+  let retained: Parameters<typeof owner.runWithLease>[0] | undefined;
+  await owner.runOwnedLease(new AbortController().signal, async (lease) => {
+    retained = lease;
+    expect(owner.runWithLease(lease, () => 'current')).toBe('current');
+    expect(() => owner.runSynchronous(() => undefined)).toThrow();
+  });
+  expect(() => owner.runWithLease(retained!, () => undefined)).toThrow();
+
+  const held = await owner.acquire();
+  const abort = new AbortController();
+  let entered = false;
+  const pending = owner.runOwnedLease(abort.signal, async () => {
+    entered = true;
+  });
+  const rejected = expect(pending).rejects.toMatchObject({
+    name: 'AbortError',
+  });
+  abort.abort();
+  await held.release();
+  await rejected;
+  expect(entered).toBe(false);
+});
+
 test('an uncontended request completes its synchronous check before yielding', async () => {
   const owner = await HomeWriterOwner.forHome(home());
   let checked = false;

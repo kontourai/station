@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { RESERVED_SOURCE_EXECUTION_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
@@ -46,13 +46,15 @@ test.each([
       f.sdkOwner,
     );
     const { wire } = inspectSdkSourceWire(f.sdkOwner, prepared.sdkHandle);
-    const persistence = new StationDelegationPersistence(f.root);
+    const reportRoot = join(f.home, 'report-groups');
+    mkdirSync(reportRoot, { mode: 0o700, recursive: true });
+    const persistence = new StationDelegationPersistence(reportRoot);
     const read = (value: ReportInputBinding) =>
       reportInputRecordSchema.parse(
         JSON.parse(
           readFileSync(
             join(
-              f.root,
+              reportRoot,
               'station-report-input-v1',
               `${reportInputKey(value)}.json`,
             ),
@@ -197,7 +199,7 @@ test.each([
           changed.binding.turnId = 'foreign-native-turn';
           writeFileSync(
             join(
-              f.root,
+              reportRoot,
               'station-report-input-v1',
               `${reportInputKey(binding)}.json`,
             ),
@@ -272,7 +274,7 @@ test.each([
         }
       }
       const reopened = new ReportInputLedger(
-        new StationDelegationPersistence(f.root).reportInputStore(
+        new StationDelegationPersistence(reportRoot).reportInputStore(
           () => undefined,
         ),
       );

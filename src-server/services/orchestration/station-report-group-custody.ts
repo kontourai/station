@@ -699,21 +699,33 @@ export class StationReportGroupCustody {
     const before = await this.#inspect(authorized, groupId);
     if (!before?.authority) refuse();
     const root = before.authority.epochs.at(-1)!.root;
-    const service = createDelegationAuthorityServiceV3(
-      this.owners.persistence.roundsAuthorityStore(authorized.current),
-      {
-        now: () => new Date().toISOString(),
-        authorize: async (action, candidate) => {
-          authorized.current();
-          return action === 'cancel' && same(candidate, root);
-        },
-        confirmExecution: async () => false,
-        authenticateRenewal: async () => null,
-      },
-      { maxRenewals: 0 },
+    const writer = await HomeWriterOwner.forHome(
+      this.owners.environment.getProjectHomeDir(),
     );
-    authorized.current();
-    await service.cancel(before.admission.root.authority_id);
+    await writer.runOwnedLease(context.req.raw.signal, async (lease) => {
+      const current = (): undefined => {
+        context.req.raw.signal.throwIfAborted();
+        return writer.runWithLease(lease, authorized.current);
+      };
+      const service = createDelegationAuthorityServiceV3(
+        this.owners.persistence.roundsAuthorityStore(current, current, {
+          owner: writer,
+          lease,
+        }),
+        {
+          now: () => new Date().toISOString(),
+          authorize: async (action, candidate) => {
+            current();
+            return action === 'cancel' && same(candidate, root);
+          },
+          confirmExecution: async () => false,
+          authenticateRenewal: async () => null,
+        },
+        { maxRenewals: 0 },
+      );
+      current();
+      await service.cancel(before.admission.root.authority_id);
+    });
     const after = await this.#inspect(authorized, groupId);
     if (!after?.authority?.cancelled) refuse();
     authorized.current();

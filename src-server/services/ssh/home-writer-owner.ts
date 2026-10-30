@@ -331,6 +331,30 @@ export class HomeWriterOwner {
     return result;
   }
 
+  /** Own a bounded asynchronous transaction without lending it to descendants. */
+  async runOwnedLease<T>(
+    signal: AbortSignal,
+    body: (lease: HomeWriterLease) => Promise<T>,
+  ): Promise<T> {
+    const lease = await this.acquire(signal);
+    let outcome: { ok: true; value: T } | { ok: false; error: unknown };
+    try {
+      signal.throwIfAborted();
+      outcome = { ok: true, value: await body(lease) };
+    } catch (error) {
+      outcome = { ok: false, error };
+    }
+    try {
+      await lease.release();
+    } catch (error) {
+      throw new HomeWriterUnavailableError('cleanup-required', true, {
+        cause: outcome.ok ? error : new AggregateError([outcome.error, error]),
+      });
+    }
+    if (!outcome.ok) throw outcome.error;
+    return outcome.value;
+  }
+
   afterRelease(notify: () => void): void {
     this.assertSynchronous();
     this.#core.notifications.push(notify);

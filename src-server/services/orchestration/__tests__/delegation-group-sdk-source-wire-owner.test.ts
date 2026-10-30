@@ -1652,7 +1652,9 @@ for (const [provider, protocol] of [
       (await driver.ledger()).invocations[0].invocationId,
     );
     const firstReference = await driver.retainAgain(retained);
-    const store = new StationDelegationPersistence(f.root);
+    const store = new StationDelegationPersistence(
+      join(f.home, 'report-groups'),
+    );
     const scope = {
       groupId: retained.intent.groupId,
       rootId: retained.intent.root.id,

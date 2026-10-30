@@ -129,7 +129,9 @@ export async function publicFenceFixture(
       if (issued) issued.owner.read(issued.handle, f.req);
       return undefined;
     });
-  const persistence = new StationDelegationPersistence(f.root);
+  const reportRoot = join(f.home, 'report-groups');
+  mkdirSync(reportRoot, { mode: 0o700, recursive: true });
+  const persistence = new StationDelegationPersistence(reportRoot);
   const modelId = observation?.modelId ?? 'fixture-model';
   const allocation = observation?.allocation ?? {
     inputTokens: 1000,
@@ -324,7 +326,7 @@ export async function publicFenceFixture(
   const invocation = new AsyncLocalStorage<string>();
   const observed: ReservedProviderEvidence[] = [];
   const accounting = new Map<string, DelegationRetainedAccountingV1>();
-  const evidenceDirectory = join(f.root, 'station-provider-evidence');
+  const evidenceDirectory = join(reportRoot, 'station-provider-evidence');
   const sessionId = initial?.taskId ?? 'reserved-sdk-session';
   const eventStore = observation
     ? new EventStore(join(f.root, 'reserved-events.sqlite'))

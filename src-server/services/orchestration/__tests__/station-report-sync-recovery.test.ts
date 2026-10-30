@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { realpathSync } from 'node:fs';
+import { join } from 'node:path';
 import { FileAuthorizationLedger } from '@kontourai/dispatch';
 import { flowRunHead, loadRun } from '@kontourai/flow';
 import { createDelegationAuthorityServiceV3 } from '@kontourai/flow-agents/delegation-authority-service-v3';
@@ -397,7 +398,9 @@ test('continuation turn custody refuses rebinds and retains distinct interrupt r
   assert.equal(verifyReportContinuationTurn(signed, h.f.environment), true);
   await persistence.retainReportContinuationTurn(signed, current);
   intent.clientTurnId = 'caller-mutated';
-  const returning = new StationDelegationPersistence(h.f.root);
+  const returning = new StationDelegationPersistence(
+    join(h.f.home, 'report-groups'),
+  );
   assert.deepEqual(
     await returning.readReportContinuationTurn(
       'binding-group',

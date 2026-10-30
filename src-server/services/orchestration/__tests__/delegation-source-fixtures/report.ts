@@ -1,3 +1,5 @@
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, vi } from 'vitest';
 import { AnthropicSealedPreparation } from '../../../../runtime/conversation/anthropic-sealed-preparation.js';
 import {
@@ -84,7 +86,9 @@ export async function setup(
     rawFetch,
   };
   const owner = new StationReportGroupPreparation(preparationOwners);
-  const persistence = new StationDelegationPersistence(f.root);
+  const reportRoot = join(f.home, 'report-groups');
+  mkdirSync(reportRoot, { mode: 0o700, recursive: true });
+  const persistence = new StationDelegationPersistence(reportRoot);
   const custodyOwners = {
     persistence,
     environment: f.environment,
