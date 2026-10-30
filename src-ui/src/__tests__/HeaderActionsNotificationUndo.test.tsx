@@ -31,6 +31,8 @@ const dismiss = vi.fn();
 let notifications: Notification[] = [];
 let attention: AttentionProjection = { items: [], pendingCount: 0 };
 
+import { chooseRowAction } from './helpers/row-menu';
+
 vi.mock('@kontourai/station-connect', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-connect')>()),
   ConnectionStatusDot: () => <span data-testid="connection-status" />,
@@ -41,10 +43,29 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => ({
   }),
 }));
 
+// Snooze is a Feature Preview; off unless a test turns it on.
+const snoozePreviews: { id: string; enabled: boolean }[] = [];
+const snoozeAttention = vi.fn();
+const unsnoozeAttention = vi.fn();
+const snoozeNotification = vi.fn();
 vi.mock('@kontourai/station-sdk', () => ({
   LIVE_NOTIFICATION_STATUSES: ['pending', 'delivered'],
   useNotificationsQuery: () => ({ data: notifications, isLoading: false }),
   useAttentionQuery: () => ({ data: attention, isLoading: false }),
+  useDevicePresentation: () => undefined,
+  useFeaturePreviewsQuery: () => ({ data: snoozePreviews }),
+  useSnoozeAttentionItemMutation: () => ({
+    mutate: snoozeAttention,
+    isPending: false,
+  }),
+  useUnsnoozeAttentionItemMutation: () => ({
+    mutate: unsnoozeAttention,
+    isPending: false,
+  }),
+  useSnoozeNotificationMutation: () => ({
+    mutate: snoozeNotification,
+    isPending: false,
+  }),
   useOrchestrationSessionsQuery: () => ({ data: [], isSuccess: true }),
   useDismissNotificationMutation: () => ({ isPending: false, mutate: dismiss }),
   useNotificationActionMutation: () => ({ isPending: false, mutate: vi.fn() }),
@@ -141,7 +162,11 @@ describe('HeaderActions + NotificationHistory — undo survives closing', () => 
     try {
       const { onClose, rerenderWith } = await openPanel();
 
-      fireEvent.click(screen.getAllByRole('button', { name: /dismiss/i })[0]);
+      chooseRowAction('Dismiss', {
+        within:
+          document.querySelector<HTMLElement>('.notification-history') ??
+          undefined,
+      });
       expect(screen.getByRole('button', { name: 'Undo' })).toBeTruthy();
 
       // Close the way a user does: a click anywhere outside the popover.
@@ -171,7 +196,11 @@ describe('HeaderActions + NotificationHistory — undo survives closing', () => 
     try {
       const { rerenderWith } = await openPanel();
 
-      fireEvent.click(screen.getAllByRole('button', { name: /dismiss/i })[0]);
+      chooseRowAction('Dismiss', {
+        within:
+          document.querySelector<HTMLElement>('.notification-history') ??
+          undefined,
+      });
       rerenderWith(false);
 
       // Closing must not cancel what the user asked for either — the timer
