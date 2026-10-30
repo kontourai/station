@@ -1,10 +1,16 @@
 import assert from 'node:assert/strict';
-import { mkdirSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { FileAuthorizationLedger } from '@kontourai/dispatch';
 import { createDelegationAuthorityServiceV3 } from '@kontourai/flow-agents/delegation-authority-service-v3';
 import { createDelegationRoundsController } from '@kontourai/flow-agents/delegation-group-rounds';
 import { test, vi } from 'vitest';
+import {
+  executeOwnedProcess,
+  terminateSuiteExecution,
+  waitForSuiteSettlement,
+} from '../../../../scripts/lib/owned-process.mjs';
 import { captureEnvironmentLocalGrantObservationOwner } from '../../../runtime/conversation/local-grant-observation-owner.js';
 import {
   bindRuntimeLocalOperator,
@@ -95,85 +101,171 @@ test('home-first rounds publication excludes a second revoked request and nests 
         h.f.environment,
       )
     ).requireCurrentLocalGrant(request);
-    const secondCurrent = (): undefined =>
-      h.f.environment.withCurrentAuthority(() => {
-        request.signal.throwIfAborted();
-        captured.assertCurrent();
-        return undefined;
-      });
-    let entered!: () => void, release!: () => void;
-    const ready = new Promise<void>((resolve) => {
-      entered = resolve;
-    });
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const first = store.transact(prepared.spec.groupId, async (journal) => {
-      assert.ok(journal);
-      const ledger = await service.inspect(prepared.root.authority_id);
-      assert.ok(ledger);
-      await service.cancel(prepared.root.authority_id);
-      journal.events.push({
-        revision: journal.events.length + 1,
-        kind: 'command',
-        command: {
-          kind: 'cancel',
-          groupId: prepared.spec.groupId,
-          operationKey: 'cancel',
-          expectedRevision: journal.events.length,
-          controller: prepared.spec.controller,
-        },
-        authorization: prepared.root.authenticated_principal_ref,
-      });
-      entered();
-      await gate;
-      h.f.environment.devicePairing.revokeDevice(
-        other.device.id,
-        'operator-credential',
-      );
-      return { journal, result: journal.events.length };
-    });
-    await ready;
-    assert.throws(() => h.f.environment.withCurrentAuthority(() => undefined), {
-      name: 'HomeWriterUnavailableError',
-      reason: 'busy',
-      operationRan: false,
-    });
-    let attempting!: () => void;
-    const attempted = new Promise<void>((resolve) => {
-      attempting = resolve;
-    });
-    const acquire = HomeWriterOwner.prototype.acquire;
-    const acquireSpy = vi
-      .spyOn(HomeWriterOwner.prototype, 'acquire')
-      .mockImplementation(function (this: HomeWriterOwner, ...args) {
-        attempting();
-        return acquire.apply(this, args);
-      });
-    let secondEntered = false;
-    const second = persistence
-      .roundsStore(secondCurrent)
-      .transact(prepared.spec.groupId, async (journal) => {
-        secondEntered = true;
-        assert.ok(journal);
-        return { journal, result: undefined };
-      });
-    const rejected = assert.rejects(second);
-    await attempted;
-    acquireSpy.mockRestore();
-    release();
-    const before = await first;
-    assert.throws(() => captured.assertCurrent());
-    await rejected;
-    assert.equal(secondEntered, false);
-    const after = await store.transact(
-      prepared.spec.groupId,
-      async (journal) => {
-        assert.ok(journal);
-        return { journal, result: journal.events.length };
-      },
+    const childInput = join(root, 'child-grant.json');
+    writeFileSync(
+      childInput,
+      JSON.stringify({ credential: other.credential, url: request.url }),
+      { mode: 0o600 },
     );
-    assert.equal(after, before);
+    const source = `
+import fs from 'node:fs';
+import { join } from 'node:path';
+const home = process.argv[1], root = join(home, 'report-groups');
+const input = JSON.parse(fs.readFileSync(join(root, 'child-grant.json'), 'utf8'));
+const { EnvironmentSecurityService } = await import(${JSON.stringify(new URL('../../ssh/environment-security-service.ts', import.meta.url).href)});
+const { captureEnvironmentLocalGrantObservationOwner } = await import(${JSON.stringify(new URL('../../../runtime/conversation/local-grant-observation-owner.ts', import.meta.url).href)});
+const { setRuntimeAuthenticatedRequestPrincipal, bindRuntimeLocalOperator } = await import(${JSON.stringify(new URL('../../../security/runtime-request-security.ts', import.meta.url).href)});
+const { StationDelegationPersistence } = await import(${JSON.stringify(new URL('../delegation-group-persistence.ts', import.meta.url).href)});
+const { HomeWriterOwner } = await import(${JSON.stringify(new URL('../../ssh/home-writer-owner.ts', import.meta.url).href)});
+const environment = new EnvironmentSecurityService({ homeDir: home });
+await environment.initialize();
+const request = new Request(input.url, { method: 'POST' });
+setRuntimeAuthenticatedRequestPrincipal(request, { kind: 'credential', authority: 'device-credential', credential: input.credential, source: 'bearer', locality: 'home-possession', mintKind: 'local-grant' });
+bindRuntimeLocalOperator(request);
+const lease = (await captureEnvironmentLocalGrantObservationOwner(request, environment, environment)).requireCurrentLocalGrant(request);
+fs.writeFileSync(join(root, 'child-ready'), 'ready');
+while (!fs.existsSync(join(root, 'child-start'))) await new Promise(resolve => setTimeout(resolve, 10));
+const original = HomeWriterOwner.prototype.acquire;
+HomeWriterOwner.prototype.acquire = function (...args) { fs.writeFileSync(join(root, 'child-attempt'), 'attempt'); return original.apply(this, args); };
+const current = () => environment.withCurrentAuthority(() => { lease.assertCurrent(); return undefined; });
+try {
+  await new StationDelegationPersistence(root, { homeDir: home }).roundsStore(current).transact(process.argv[2], async () => { fs.writeFileSync(join(root, 'child-body'), 'entered'); throw Error('unexpected body'); });
+  throw Error('unexpected success');
+} catch (error) {
+  if (fs.existsSync(join(root, 'child-body')) || error?.code !== 'authorization_unavailable') throw error;
+  fs.writeFileSync(join(root, 'child-result'), 'refused');
+}
+`;
+    const child = executeOwnedProcess(
+      process.execPath,
+      [
+        '--import',
+        'tsx',
+        '--input-type=module',
+        '-e',
+        source,
+        h.f.home,
+        prepared.spec.groupId,
+      ],
+      spawn,
+      'rounds contender',
+      { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] },
+    );
+    let childError = '';
+    child.child.stderr?.on('data', (chunk) => {
+      childError = (childError + String(chunk)).slice(-4096);
+    });
+    try {
+      await vi.waitFor(
+        () =>
+          assert.equal(existsSync(join(root, 'child-ready')), true, childError),
+        { timeout: 15_000 },
+      );
+      const secondCurrent = (): undefined =>
+        h.f.environment.withCurrentAuthority(() => {
+          request.signal.throwIfAborted();
+          captured.assertCurrent();
+          return undefined;
+        });
+      let entered!: () => void, release!: () => void;
+      const ready = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const first = store.transact(prepared.spec.groupId, async (journal) => {
+        assert.ok(journal);
+        const ledger = await service.inspect(prepared.root.authority_id);
+        assert.ok(ledger);
+        await service.cancel(prepared.root.authority_id);
+        journal.events.push({
+          revision: journal.events.length + 1,
+          kind: 'command',
+          command: {
+            kind: 'cancel',
+            groupId: prepared.spec.groupId,
+            operationKey: 'cancel',
+            expectedRevision: journal.events.length,
+            controller: prepared.spec.controller,
+          },
+          authorization: prepared.root.authenticated_principal_ref,
+        });
+        entered();
+        await gate;
+        h.f.environment.devicePairing.revokeDevice(
+          other.device.id,
+          'operator-credential',
+        );
+        return { journal, result: journal.events.length };
+      });
+      await ready;
+      writeFileSync(join(root, 'child-start'), 'start');
+      await vi.waitFor(
+        () =>
+          assert.equal(
+            existsSync(join(root, 'child-attempt')),
+            true,
+            childError,
+          ),
+        { timeout: 15_000 },
+      );
+      assert.throws(
+        () => h.f.environment.withCurrentAuthority(() => undefined),
+        {
+          name: 'HomeWriterUnavailableError',
+          reason: 'busy',
+          operationRan: false,
+        },
+      );
+      let attempting!: () => void;
+      const attempted = new Promise<void>((resolve) => {
+        attempting = resolve;
+      });
+      const acquire = HomeWriterOwner.prototype.acquire;
+      const acquireSpy = vi
+        .spyOn(HomeWriterOwner.prototype, 'acquire')
+        .mockImplementation(function (this: HomeWriterOwner, ...args) {
+          attempting();
+          return acquire.apply(this, args);
+        });
+      let secondEntered = false;
+      const second = persistence
+        .roundsStore(secondCurrent)
+        .transact(prepared.spec.groupId, async (journal) => {
+          secondEntered = true;
+          assert.ok(journal);
+          return { journal, result: undefined };
+        });
+      const rejected = assert.rejects(second);
+      await attempted;
+      acquireSpy.mockRestore();
+      release();
+      const before = await first;
+      assert.throws(() => captured.assertCurrent());
+      await rejected;
+      assert.deepEqual(await child.completion, { status: 0, signal: null });
+      assert.equal(readFileSync(join(root, 'child-result'), 'utf8'), 'refused');
+      assert.equal(existsSync(join(root, 'child-body')), false);
+      assert.equal(secondEntered, false);
+      const after = await store.transact(
+        prepared.spec.groupId,
+        async (journal) => {
+          assert.ok(journal);
+          return { journal, result: journal.events.length };
+        },
+      );
+      assert.equal(after, before);
+    } finally {
+      const settled = await terminateSuiteExecution(child, {
+        processLabel: 'rounds contender',
+        waitForSuiteSettlement,
+        terminationGraceMs: 1000,
+        terminationForceMs: 1000,
+      });
+      assert.equal(settled.settled, true);
+      assert.deepEqual(settled.errors, []);
+    }
   } finally {
     h.owner.close(handle);
   }
