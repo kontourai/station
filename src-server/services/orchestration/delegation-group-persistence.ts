@@ -1978,6 +1978,7 @@ export class StationDelegationPersistence {
   roundsStore(
     finalizeCurrent: DelegationPersistenceFinalizer,
     preparationCurrent: DelegationPersistenceFinalizer = finalizeCurrent,
+    existing?: { owner: HomeWriterOwner; lease: HomeWriterLease },
   ): DelegationRoundsStore {
     const domain = this.#rounds;
     const publicationCurrent = (): undefined => {
@@ -2001,92 +2002,94 @@ export class StationDelegationPersistence {
     };
     return {
       transact: (groupId, body) =>
-        this.#roundsLifetime((commitWithin) =>
-          domain.locked(finalizeCurrent, async () => {
-            if (preparationCurrent !== finalizeCurrent)
-              assertCurrent(preparationCurrent);
-            const file = address(groupId),
-              previous = read(file);
-            requirePersistence(
-              readBytes(
-                join(this.#groups.directory, file),
-                GROUP_V2_MAX_BYTES,
-              ) === null,
-              'delegation_group_protocol_conflict',
-            );
-            const next = await body(previous && structuredClone(previous));
-            if (preparationCurrent !== finalizeCurrent)
-              assertCurrent(preparationCurrent);
-            assertCurrent(finalizeCurrent);
-            const projection = projectDelegationRounds(next.journal);
-            requirePersistence(
-              next.journal.groupId === groupId,
-              'delegation_group_identity_mismatch',
-            );
-            if (previous)
+        this.#roundsLifetime(
+          (commitWithin) =>
+            domain.locked(finalizeCurrent, async () => {
+              if (preparationCurrent !== finalizeCurrent)
+                assertCurrent(preparationCurrent);
+              const file = address(groupId),
+                previous = read(file);
               requirePersistence(
-                next.journal.events.length >= previous.events.length &&
-                  same(
-                    next.journal.events.slice(0, previous.events.length),
-                    previous.events,
-                  ),
-                'delegation_journal_history_changed',
-              );
-            else {
-              for (const otherFile of this.#groups.filesIfPresent()) {
-                const bytes = readBytes(
-                  join(this.#groups.directory, otherFile),
+                readBytes(
+                  join(this.#groups.directory, file),
                   GROUP_V2_MAX_BYTES,
-                );
-                requirePersistence(
-                  bytes !== null,
-                  'delegation_record_disappeared',
-                );
-                const other = projectDelegationGroupV2(JSON.parse(bytes));
-                requirePersistence(
-                  other.spec.rootAuthorityRef.id !==
-                    projection.spec.rootAuthorityRef.id,
-                  'delegation_group_authority_custody_conflict',
-                );
-              }
-              const files = domain.files();
+                ) === null,
+                'delegation_group_protocol_conflict',
+              );
+              const next = await body(previous && structuredClone(previous));
+              if (preparationCurrent !== finalizeCurrent)
+                assertCurrent(preparationCurrent);
+              assertCurrent(finalizeCurrent);
+              const projection = projectDelegationRounds(next.journal);
               requirePersistence(
-                files.length < MAX_FILES,
-                'delegation_store_capacity',
+                next.journal.groupId === groupId,
+                'delegation_group_identity_mismatch',
               );
-              for (const otherFile of files) {
-                const other = read(otherFile);
+              if (previous)
                 requirePersistence(
-                  other &&
-                    projectDelegationRounds(other).spec.rootAuthorityRef.id !==
-                      projection.spec.rootAuthorityRef.id,
-                  'delegation_group_authority_custody_conflict',
+                  next.journal.events.length >= previous.events.length &&
+                    same(
+                      next.journal.events.slice(0, previous.events.length),
+                      previous.events,
+                    ),
+                  'delegation_journal_history_changed',
                 );
+              else {
+                for (const otherFile of this.#groups.filesIfPresent()) {
+                  const bytes = readBytes(
+                    join(this.#groups.directory, otherFile),
+                    GROUP_V2_MAX_BYTES,
+                  );
+                  requirePersistence(
+                    bytes !== null,
+                    'delegation_record_disappeared',
+                  );
+                  const other = projectDelegationGroupV2(JSON.parse(bytes));
+                  requirePersistence(
+                    other.spec.rootAuthorityRef.id !==
+                      projection.spec.rootAuthorityRef.id,
+                    'delegation_group_authority_custody_conflict',
+                  );
+                }
+                const files = domain.files();
+                requirePersistence(
+                  files.length < MAX_FILES,
+                  'delegation_store_capacity',
+                );
+                for (const otherFile of files) {
+                  const other = read(otherFile);
+                  requirePersistence(
+                    other &&
+                      projectDelegationRounds(other).spec.rootAuthorityRef
+                        .id !== projection.spec.rootAuthorityRef.id,
+                    'delegation_group_authority_custody_conflict',
+                  );
+                }
               }
-            }
-            const capacity = delegationRoundsCapacity(next.journal);
-            requirePersistence(
-              next.journal.events.length + capacity.events <=
-                ROUNDS_MAX_EVENTS &&
-                Buffer.byteLength(`${canonicalJson(next.journal)}\n`) +
-                  capacity.bytes <=
-                  ROUNDS_MAX_BYTES,
-              'delegation_group_capacity',
-            );
-            if (!previous || !same(previous, next.journal))
-              await domain.publish(
-                file,
-                next.journal,
-                ROUNDS_MAX_BYTES,
-                publicationCurrent,
-                commitWithin,
+              const capacity = delegationRoundsCapacity(next.journal);
+              requirePersistence(
+                next.journal.events.length + capacity.events <=
+                  ROUNDS_MAX_EVENTS &&
+                  Buffer.byteLength(`${canonicalJson(next.journal)}\n`) +
+                    capacity.bytes <=
+                    ROUNDS_MAX_BYTES,
+                'delegation_group_capacity',
               );
-            requirePersistence(
-              same(read(file), next.journal),
-              'delegation_commit_unconfirmed',
-            );
-            return next.result;
-          }),
+              if (!previous || !same(previous, next.journal))
+                await domain.publish(
+                  file,
+                  next.journal,
+                  ROUNDS_MAX_BYTES,
+                  publicationCurrent,
+                  commitWithin,
+                );
+              requirePersistence(
+                same(read(file), next.journal),
+                'delegation_commit_unconfirmed',
+              );
+              return next.result;
+            }),
+          existing,
         ),
     };
   }

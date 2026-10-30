@@ -1002,7 +1002,10 @@ export class StationReportGroupCustody {
         };
         current();
         const service = createDelegationAuthorityServiceV3(
-          this.owners.persistence.roundsAuthorityStore(current),
+          this.owners.persistence.roundsAuthorityStore(current, current, {
+            owner: writer,
+            lease: held,
+          }),
           {
             now: () => new Date().toISOString(),
             authorize: async (action, candidate) => {
@@ -1021,7 +1024,10 @@ export class StationReportGroupCustody {
           controller: group.spec.controller,
         };
         const controller = createDelegationRoundsController({
-          store: this.owners.persistence.roundsStore(current),
+          store: this.owners.persistence.roundsStore(current, current, {
+            owner: writer,
+            lease: held,
+          }),
           authorityService: service,
           dispatchLedger,
           cwd,

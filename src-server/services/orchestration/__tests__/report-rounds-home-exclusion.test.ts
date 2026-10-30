@@ -100,6 +100,19 @@ test('home-first rounds publication excludes a second revoked request and nests 
       scopedCurrent,
       { owner: writer, lease: held },
     );
+    const scopedRounds = new StationDelegationPersistence(root).roundsStore(
+      scopedCurrent,
+      scopedCurrent,
+      { owner: writer, lease: held },
+    );
+    await scopedRounds.transact(prepared.spec.groupId, async (journal) => {
+      assert.ok(journal);
+      await scoped.transact(prepared.root.authority_id, async (ledger) => {
+        assert.ok(ledger);
+        return { ledger, result: undefined };
+      });
+      return { journal, result: undefined };
+    });
     let authorityRenames = 0;
     const rename = fs.renameSync;
     const renameProbe = vi
@@ -153,6 +166,11 @@ test('home-first rounds publication excludes a second revoked request and nests 
       await foreignLease.release();
     }
     await held.release();
+    await assert.rejects(
+      scopedRounds.transact(prepared.spec.groupId, async () => {
+        throw Error('released group scope must not enter');
+      }),
+    );
     await assert.rejects(
       scoped.transact(prepared.root.authority_id, async () => {
         throw Error('released scope must not enter');
