@@ -1,0 +1,7 @@
+{
+  "revision": "f29970a2d291abab30d25e99e26753f358bb504a",
+
+  "notes": [
+    {"path":"docs/strategy/kontour-integration-surface.md","note":"Scoped dependency-selector review at 954593ec2a0: current manifest selects exact published Flow 5.4.0 and Flow Agents 9.9.1. Rechecked installed public rounds JS and types hashes against the released 9.9.1 handoff in the preceding parent qualification; no sibling/internal borrowing. The guide deliberately routes current consumers to manifest/lockfile and canonical owners; July-August versions, old evidence options, diagrams and defect reports are expressly historical. This update does not make those historical API examples current or prove Station finalizer serving: publication exclusion and positive full-factory acceptance remain open, with route refused. No prose change needed for the two package.json selector inputs. Source/package metadata inspection only; no new package import, Flow execution, provider/native/hosted or whole integration acceptance claimed.","inputs":["docs/strategy/kontour-integration-surface.md","package.json#/dependencies/@kontourai~1flow","package.json#/dependencies/@kontourai~1flow-agents"]}
+  ]
+}
