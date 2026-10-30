@@ -1,0 +1,7 @@
+{
+  "revision": "614375954552d9bee228ea762d3286f171b0e57d",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Rechecked after merging origin/main: station-docs-content.ts was regenerated with docs:mcp:generate from the merged docs (digest matches). This page describes the shipped docs bundle and how it is generated, not any one topic's text, so it stays accurate.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

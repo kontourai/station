@@ -26,6 +26,7 @@ import {
   writeDocumentImportRecovery,
 } from '../../lib/project-onboarding-recovery';
 import { userFacingErrorMessage } from '../../utils/errorText';
+import { sha256Hex } from '../../utils/sha256';
 
 const pointerSchema = z.object({
   requestId: z.string().uuid(),
@@ -159,10 +160,7 @@ export function ProjectDocumentImport({
           throw new Error(
             'Choose UTF-8 text documents without binary content.',
           );
-        const sha256 = Array.from(
-          new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)),
-          (byte) => byte.toString(16).padStart(2, '0'),
-        ).join('');
+        const sha256 = await sha256Hex(bytes);
         let binary = '';
         for (const byte of bytes) binary += String.fromCharCode(byte);
         result.push({

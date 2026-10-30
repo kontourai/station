@@ -1,0 +1,7 @@
+{
+  "revision": "2afd207560d2ff4591a0847961fa8b6e5e455c76",
+
+  "notes": [
+    {"path":"docs/design/session-tape-replay.md","note":"Reviewed this branch's ReasoningSection change: it adds the shared brain glyph to the existing summary. The disclosure still uses its word count, automatic expansion and explicit open/closed intent; no tape event, replay transport or intent persistence behavior changes. ReasoningDisclosure and ChatMessageList reasoning focused suites passed. No prose change needed for the compact-disclosure claim.","inputs":["docs/design/session-tape-replay.md","src-ui/src/components/chat/ReasoningSection.tsx"]}
+  ]
+}
