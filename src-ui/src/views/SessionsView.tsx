@@ -56,6 +56,7 @@ import {
 import { useRegionModelOptional } from '../contexts/RegionModelContext';
 import { toastStore } from '../contexts/ToastContext';
 import { useShowSurface } from '../contexts/useShowSurface';
+import { useCoarseNow } from '../hooks/useCoarseNow';
 import { copyToClipboard } from '../lib/clipboard';
 import { requestTaskShaping } from '../lib/task-shaping';
 import { openerSelectionKey, type PaneOpener } from '../regions/pane-relations';
@@ -107,8 +108,6 @@ import {
 import './SessionsView.css';
 import './page-layout.css';
 
-/** How often relative times and lanes re-derive. */
-const ACTIVITY_CLOCK_MS = 30_000;
 const SETTLED_PAGE_SIZE = 20;
 
 function isReadOnlyAttachedSession(
@@ -465,11 +464,7 @@ export function SessionsView({
   const [search, setSearch] = useState('');
   // One clock for everything time-based on this surface — lane membership
   // (the recently-finished window) and the row times — so they age together instead of freezing at the last data change.
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), ACTIVITY_CLOCK_MS);
-    return () => clearInterval(timer);
-  }, []);
+  const now = useCoarseNow();
   // Kind / Project / Started from. Origins come from recorded session
   // provenance; the device management registry is operator-only and reading
   // it here can invalidate a valid browser session.

@@ -108,6 +108,13 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   // coordinator.ts. Hosted deployments withdraw it: see
   // servesCoordinatorSession.
   coordinatorSession: true,
+  // #3427: the person-facing Session reads under
+  // `/api/orchestration/session-reads` (`station sessions wait|digest`,
+  // `station activity`). A STATIC protocol fact about this build: whether
+  // the reads answer is the `session-cli-reads` Feature Preview's, which
+  // refuses with its own typed answer, so an older host's 404 and an off
+  // preview stay distinguishable.
+  sessionPersonReads: true,
 };
 
 /** Deployment facts that decide whether a build-supported route can serve. */
