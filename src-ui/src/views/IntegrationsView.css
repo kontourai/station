@@ -93,3 +93,8 @@
   border-color: var(--warning-text);
   background: color-mix(in srgb, var(--warning-text) 12%, var(--bg-secondary));
 }
+
+/* The account status line sits directly above the sign-in scopes. */
+.integration-account__status {
+  margin: 0 0 var(--k-space-4);
+}

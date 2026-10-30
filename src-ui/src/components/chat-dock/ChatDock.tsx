@@ -207,6 +207,7 @@ import { useConversationBoundaryDialogs } from './useConversationBoundaryDialogs
 import { useDockCopyActions } from './useDockCopyActions';
 import { useFirstRunDockNudge } from './useFirstRunDockNudge';
 import { useInboxNeedsYouCount, useInboxWorkingCount } from './useInboxGroups';
+import { useTaskStartedNotice } from './useTaskStartedNotice';
 
 /**
  * Re-open an offline queued turn from what its owning session persistently
@@ -894,6 +895,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const collapseDockForNavigation = useCallback(() => {
     if (!isFullscreenPlacement && isDockMaximized) restoreDockToDocked();
   }, [isDockMaximized, isFullscreenPlacement, restoreDockToDocked]);
+  const notifyTaskStarted = useTaskStartedNotice(collapseDockForNavigation);
 
   const { setDeviceSetting } = useDeviceSettingsActions();
   const {
@@ -3876,10 +3878,12 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 forkAbortRef.current = null;
             }
           },
-          onNewTaskStarted: () => {
+          onNewTaskStarted: (task, stationName) => {
             setShowNewChatModal(false, undefined, 'started');
             setNewChatProjectOverride(null);
             setHandoffSource(null);
+            invalidate(orchestrationQueries.sessions().queryKey);
+            notifyTaskStarted(task, stationName);
           },
           onCloseNewChat: () => {
             setShowNewChatModal(false);

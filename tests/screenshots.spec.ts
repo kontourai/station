@@ -2696,11 +2696,14 @@ const SCREENS: Screen[] = [
       await expect(
         page.getByRole('heading', { name: "What's next?" }),
       ).toHaveCount(0);
+      // A fresh gallery home has no other Station to run on, so "Runs on"
+      // names this one as plain text: no control to open.
       await expect(
-        page.getByRole('button', {
-          name: 'Run a task on a Station; current Station: Gallery host',
-        }),
+        page.getByText('Runs on Gallery host', { exact: true }),
       ).toBeVisible();
+      await expect(page.getByRole('button', { name: /^Runs on / })).toHaveCount(
+        0,
+      );
     },
   },
   { name: 'agents', title: 'Agents', path: '/agents', viewport: DESKTOP },
