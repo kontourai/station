@@ -2305,8 +2305,41 @@ captures reject before sender construction. These source boundaries need
 executed interleaving controls; they do not establish generic embedded-runtime
 service cleanup after a late startup failure.
 
+`IntegrationSecretResolver.resolveOAuthClientSecret` materializes one remote
+integration's OAuth client secret for its token requests. It requires an exact
+`mcp-integration-oauth-client` grant for that integration on a non-revoked
+instance binding; environment grants confer none. The integration records only
+the binding id at `oauthClient.clientSecretRef`, written by
+`SecretBindingIntegrationService.bindOAuthClientSecret` (grant first) and
+removed by `unbindOAuthClientSecret` (reference first). Binding requires the integration's declared
+`oauthClient.issuer`; the provider never presents the secret to another issuer. The grant
+records the `issuer`, the resource identity and the integration's instance id
+(`.station-instance`, created by `writeIntegrationConfigLocked` on first write
+and removed with the integration directory) at binding.
+`resolveOAuthClientSecret` reads the current instance id itself and releases
+the secret only for that triple. The provider resolves it at every token
+request and never caches it in a consent flow. A definition rewritten by any
+path cannot redirect the secret, and an integration deleted and recreated
+under the same tuple cannot reuse its grant, so grants are not tied to the
+delete paths. A leftover grant stays visible as binding metadata until
+unbound. Without a declared issuer, `claimIntegrationOAuthIssuerPin` records
+the authorization server of the first completed consent for the resource
+(`.station-oauth-issuer`, under the integration lock); the provider then
+refuses any other issuer before registration or redirect. Unbind
+removes every client-secret grant the binding holds for the integration. The
+issuer/endpoint pin and the no-foreign-reference rule
+(`assertToolOAuthClientWritable` in [the tool contract](../../packages/contracts/src/tool.ts))
+run in `writeIntegrationConfigLocked`, the writer behind
+`ConfigLoader.saveIntegration`/`updateIntegration` and `saveIntegrationConfig`.
+`assertPluginIntegrationsWritable` runs before `copyPluginIntegrations`, which
+copies bundles without that writer. The CLI portability import also calls the
+check. Plugin backup restores put back bytes that were already on disk. The secret is never
+cached or written to the credential store; see
+[Use your own OAuth client](../guides/connections.md#use-your-own-oauth-client).
+
 The v1 document retains legacy records unchanged and adds optional
-`telemetryDestinationGrants` only when a telemetry grant is written. Older
+`telemetryDestinationGrants` only when a telemetry grant is written, and
+`oauthClientGrants` only when an OAuth client-secret grant is written. Older
 strict readers reject that new property; an upgrade/rollback must preserve and
 restore a compatible binding document, never delete grants to bypass admission.
 

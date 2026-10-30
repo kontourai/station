@@ -1,0 +1,7 @@
+{
+  "revision": "fc45c92f95fad05fd7746fc5d8cad6bfe6746277",
+
+  "notes": [
+    {"path":"docs/design/plugin-installation-lifecycle.md","note":"Source-impact review: station-runtime.ts only changes the STATION_OAUTH_CLIENT_METADATA_URL startup check from a private to a readonly field and reorders its import (lint); behavior is unchanged. Searched this document for runtime construction, environment validation and MCP OAuth client claims; none is affected, so its claims stay accurate.","inputs":["docs/design/plugin-installation-lifecycle.md","src-server/runtime/bootstrap/station-runtime.ts"]}
+  ]
+}

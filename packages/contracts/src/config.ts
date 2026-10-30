@@ -201,6 +201,15 @@ export interface AppConfig {
    * stop is left to the user with its reset time still shown.
    */
   usageLimitAutoResume?: boolean;
+  /**
+   * Turn on Claude Code's Artifact tool, which publishes a local HTML or
+   * Markdown file as a page on claude.ai. **Default off.** Read at each
+   * Claude session start, never by a running session: on, the spawn gets
+   * `CLAUDE_CODE_ARTIFACT=1`; off, it gets `CLAUDE_CODE_ARTIFACT=0`, so an
+   * ambient or connection-env value cannot turn the tool on behind it. The
+   * engine offers the tool only to a claude.ai subscription login.
+   */
+  claudeArtifactsEnabled?: boolean;
   /** Distribution defaults for starter layouts and registry sources. */
   distributionProfile?: DistributionProfileSelection;
   /**

@@ -888,6 +888,7 @@ import {
   type RequestDelegationSources,
 } from '../agents/request-delegation.js';
 import {
+  accountBoundProjectRouteMayPass,
   installAccountBoundDeviceGate,
   isTaskRelationshipHttpLeaf,
 } from '../bootstrap/account-bound-device-gate.js';
@@ -7097,6 +7098,28 @@ export function configureRuntimeRoutes(
       context.projectMembership,
       projectMembershipAuthority,
       context.deploymentAuthentication?.publicOrigin,
+      (request, slug) => {
+        const route = {
+          method: 'POST',
+          path: `/api/projects/${slug}/access/enable`,
+        };
+        const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+        const binding =
+          principal?.authority === 'device-credential'
+            ? context.environmentSecurityService.identifyDevice(
+                principal.credential,
+              )?.principalBinding
+            : undefined;
+        return (
+          runtimeRequestPrincipalMayAccessHttpRoute(
+            request,
+            context.environmentSecurityService,
+            route,
+          ) &&
+          (!(binding && 'kind' in binding && binding.kind === 'account') ||
+            accountBoundProjectRouteMayPass(route.method, route.path))
+        );
+      },
     ),
   );
   // #90 Browser pane: personal hosts only (same gate as the device routes),
