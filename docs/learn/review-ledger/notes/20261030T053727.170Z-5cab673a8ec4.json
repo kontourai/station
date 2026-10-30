@@ -1,0 +1,7 @@
+{
+  "revision": "3d62103991bdcb917a02a39bbcbf1eaa265c6a91",
+
+  "notes": [
+    {"path":"docs/user/native-recovery.md","note":"Scoped CLI dispatch review after main integration at 3d62103991b: read the recovery guide and complete branch delta in cli.ts, including ensemble local-observation handling, group JSON error projection, and repaired migrate-playbooks dispatch precedence. Plain doctor still selects runTargetCommand in bundled distributions and collectDoctorReport for contributor checkout; target owner reports endpoint/reachability/credential/local-service state without inspecting a Tauri renderer. The guide correctly distinguishes these diagnostics from packaged window or sidecar readiness. The new ensemble/group branches do not alter service-status or plain doctor dispatch. No prose change needed for this CLI input; unchanged desktop readiness/platform claims retain prior reviews and explicit NOT_VERIFIED limits. Source inspection only, no command invocation against a service, packaged shell, provider, browser or device qualification executed.","inputs":["docs/user/native-recovery.md","packages/cli/src/cli.ts"]}
+  ]
+}
