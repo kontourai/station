@@ -1690,6 +1690,14 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
     origin: 'explicit',
   },
+  {
+    id: '/api/orchestration/sessions/:threadId/goal:operate',
+    method: 'POST',
+    prefix: '/api/orchestration/sessions/:threadId/goal',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+    origin: 'explicit',
+  },
   // Downloading the public agent registry makes this Station reach out to
   // the network on request, so it takes the same operate tier as the re-check.
   {
@@ -4316,6 +4324,7 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     },
     { method: 'GET', path: '/api/orchestration/sessions' },
     { method: 'GET', path: '/api/orchestration/sessions/:threadId' },
+    { method: 'GET', path: '/api/orchestration/sessions/:threadId/goal' },
     // Immutable experience history uses the same Session read authority;
     // the reader also authorizes every historical thread before publication.
     {
