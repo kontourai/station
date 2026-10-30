@@ -148,7 +148,7 @@ function normalizeGeneratedTitle(raw: unknown): string | null {
     return null;
   }
 
-  let title = raw.trim();
+  let title = raw.normalize('NFC').trim();
   if (/[\r\n]/.test(title) || /[`{}<>]/.test(title)) return null;
   const wrappedInQuotes =
     title.length >= 2 &&
@@ -159,7 +159,7 @@ function normalizeGeneratedTitle(raw: unknown): string | null {
   }
 
   title = title.replace(/\s+/g, ' ').trim();
-  if (!/^[\p{L}\p{N} '’&-]+$/u.test(title)) return null;
+  if (!/^[\p{L}\p{M}\p{N} '’&-]+$/u.test(title)) return null;
   if (title.length > MAX_TITLE_CHARS) {
     title = title.slice(0, MAX_TITLE_CHARS).trim();
   }

@@ -59,9 +59,18 @@ describe('generateConversationTitle (station#1566)', () => {
     }
   });
 
-  test('returns a post-processed title on the success path', async () => {
+  test.each([
+    [
+      '  "Deploying the app to production"  ',
+      'Deploying the app to production',
+    ],
+    ['वनस्पति पत्रिकाओं का संग्रह', 'वनस्पति पत्रिकाओं का संग्रह'],
+    ['தாவரவியல் இதழ்களை பாதுகாத்தல்', 'தாவரவியல் இதழ்களை பாதுகாத்தல்'],
+    ['การเก็บรักษาวารสารพฤกษศาสตร์', 'การเก็บรักษาวารสารพฤกษศาสตร์'],
+    ['Cafe\u0301 botanical journals', 'Café botanical journals'],
+  ])('accepts a valid generated title: %s', async (text, expected) => {
     const generateText = vi.fn().mockResolvedValue({
-      text: '  "Deploying the app to production"  ',
+      text,
     });
     const ctx = createCtx({
       framework: {
@@ -76,7 +85,7 @@ describe('generateConversationTitle (station#1566)', () => {
       assistantText: 'Run the deploy script.',
     });
 
-    expect(title).toBe('Deploying the app to production');
+    expect(title).toBe(expected);
     expect(ctx.framework.createTempAgent).toHaveBeenCalledOnce();
     expect(generateText).toHaveBeenCalledOnce();
   });
