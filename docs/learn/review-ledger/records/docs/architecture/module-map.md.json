@@ -1464,7 +1464,13 @@
 
     "src-ui/src/views/task-workspace/review/TaskReviewClips.tsx",
 
-    "src-ui/src/views/task-workspace/review/ReviewItemList.tsx"
+    "src-ui/src/views/task-workspace/review/ReviewItemList.tsx",
+
+    "src-server/services/automation/github-poll.ts",
+
+    "src-server/services/automation/automation-intake.ts",
+
+    "src-server/services/automation/github-workflow-run.ts"
   ],
 
   "checks": [

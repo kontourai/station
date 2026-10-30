@@ -48,7 +48,9 @@
 
     "tests/task-review.spec.ts",
 
-    "src-ui/src/views/task-workspace/review/TaskReviewClips.tsx"
+    "src-ui/src/views/task-workspace/review/TaskReviewClips.tsx",
+
+    "src-server/services/automation/github-poll.ts"
   ],
 
   "checks": [
