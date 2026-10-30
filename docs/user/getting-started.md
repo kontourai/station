@@ -491,15 +491,20 @@ first; the controls show what **Start** will use:
 - **⋯** holds **Use a visual skill** while the **Visual skills** Feature
   Preview is on; with it off there is no **⋯**.
 
-**Run a task…** opens **Run on a Station** with your message, Project and any explicit
-Station/engine/model/options choice kept. Its tooltip names the current Station
-or saved Project default; this action starts a task rather than moving your chat.
-Choose a Station, worker and model there, then choose **Run task** to start a
-resumable task. Available workers come from that Station; unavailable
-destinations keep their refusal instead of falling back to this computer.
-Cancel returns to your message, including edits made in the task chooser.
-Follow a started task in Activity. A foreground chat stays on its existing
-Station; choosing a remote task destination does not move that chat.
+**Runs on <Station>** says which Station runs the work. When you can run work
+on another Station (a verified SSH environment when no Project is chosen,
+or a paired Station you are allowed to list whose pairing can run work, with
+permission to start tasks), it opens **Where this work runs**, with the current one
+checked. Choosing another Station continues to its **Engine & model**, since
+that Station's own engines run the work. **Start** then opens **Run on a
+Station** with your message, Project and choices, and **Run task** starts a
+resumable task there. Unavailable destinations keep their refusal instead of
+falling back to this computer, and Cancel returns to your message, including
+edits made in the task chooser. A started task shows **Task started on
+<Station>.** with **Open task** to follow it in Activity. A
+foreground chat stays on its existing Station; choosing a remote task
+destination does not move that chat. With no other Station to choose, the
+control is plain text.
 
 The Project page opens on **Overview**. **Project room** is shared discussion
 with people in that Project; use **Bring an Agent** for an explicit request
