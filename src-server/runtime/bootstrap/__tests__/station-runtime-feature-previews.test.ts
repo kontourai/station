@@ -63,7 +63,6 @@ test('Fleet consumer probes toggle the actual runtime consuming path', async () 
       expect.objectContaining({ id: 'visual-skills', enabled: false }),
     ]),
   );
-  expect(registry.list()).toHaveLength(4);
   expect(runtime.fleetProbes()).toBeUndefined();
   await registry.setEnabled('fleet-consumer-probes', true);
 

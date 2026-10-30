@@ -1,0 +1,7 @@
+{
+  "revision": "30473c42aa6f1907bb8c997804719a21276b3536",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Updated the integration-registry paragraph: readDiskIntegrations skips binary lookup for a remote (endpoint, no command) definition, and MCP subregistry providers sit beside the built-in catalog with a bounded last-good copy; checked against integration-registry-provider.ts, registry.ts and the new provider.","inputs":["docs/architecture/module-map.md","packages/contracts/src/catalog.ts","src-server/providers/registries/registry.ts","src-server/routes/plugins/registry.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "30473c42aa6f1907bb8c997804719a21276b3536",
+
+  "notes": [
+    {"path":"docs/guides/agent-configuration.md","note":"Checked the autoApprove/askBeforeUse/unattendedAutoApprove bullets and 'What autoApprove never covers' against pre-tool-policy.ts: the new untrusted-content stage runs after Project tool policy and before authored Ask and tool grants on the Station engine only; updated the autoApprove bullet to name it and link connections. Other approval claims unchanged by this diff.","inputs":["docs/guides/agent-configuration.md","src-server/runtime/agents/agent-hooks.ts","src-server/runtime/agents/pre-tool-policy.ts","src-server/services/plugins/tool-library-catalog.ts"]}
+  ]
+}

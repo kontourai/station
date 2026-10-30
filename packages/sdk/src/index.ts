@@ -991,6 +991,7 @@ export {
   useCreateWorkflowMutation,
   useCredentialRecoveryQuery,
   useCredentialUsageQuery,
+  useDecideIntegrationTrustReviewMutation,
   useDelegateOrchestrationTaskMutation,
   useDelegationOptionsQuery,
   useDeleteACPConnectionMutation,

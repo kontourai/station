@@ -1,0 +1,7 @@
+{
+  "revision": "30473c42aa6f1907bb8c997804719a21276b3536",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"Checked the autoApprove/askBeforeUse/unattendedAutoApprove rows against pre-tool-policy.ts; added that on the Station engine autoApprove is consulted after the untrusted-content permission. Other config rows untouched by this diff.","inputs":["docs/reference/config.md","src-server/runtime/agents/agent-hooks.ts","src-server/runtime/agents/pre-tool-policy.ts"]}
+  ]
+}

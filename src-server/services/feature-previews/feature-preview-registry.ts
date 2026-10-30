@@ -100,6 +100,12 @@ export class FeaturePreviewRegistry {
       description:
         'Offer installed visual skills when starting a chat: guided question rounds and optional plugin panes around a bundled Skill.',
     });
+    this.rememberConsumer({
+      id: 'integration-content-trust',
+      label: 'Content trust settings',
+      description:
+        'Configure how tool servers and built-in tools behave after reading untrusted content.',
+    });
     this.state = new GrantsFileStore<FeaturePreviewState>({
       filePath: featurePreviewStatePath(homeDir),
       storeLabel: 'feature-previews',
