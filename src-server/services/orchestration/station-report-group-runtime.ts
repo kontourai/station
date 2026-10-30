@@ -475,17 +475,16 @@ export class StationReportGroupRuntime {
     const participant = this.owners.publicationParticipant;
     if (!isRuntimePublicationParticipant(participant))
       throw new StationReportCustodyUnavailable();
-    const result = await this.#custody.finalizeContinuation(
+    const { result, group } = await this.#custody.finalizeContinuation(
       context,
       groupId,
       command,
       this.#dispatch,
       this.#sources,
       participant,
+      view,
     );
-    const historical = await this.#custody.inspectForMutation(context, groupId);
-    if (!historical) throw new StationReportCustodyUnavailable();
-    return { replayed: result.replayed, group: view(historical) };
+    return { replayed: result.replayed, group };
   }
   async finalizeSync(
     context: RuntimeSourceRequestContext,

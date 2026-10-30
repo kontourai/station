@@ -919,7 +919,7 @@ export class StationReportGroupCustody {
 
   // UNWIRED(#91): held off until released replay authentication and owner proof.
   /** Close only an already-recorded Flow continuation; this cannot execute work. */
-  async finalizeContinuation(
+  async finalizeContinuation<T>(
     context: RuntimeSourceRequestContext,
     groupId: string,
     input: {
@@ -930,6 +930,11 @@ export class StationReportGroupCustody {
     dispatchLedger: AuthorizationLedger,
     sources: import('./delegation-group-source-admission.js').LocalSourceAdmissionOwner,
     participant: import('../../runtime/bootstrap/runtime-publication-participant.js').RuntimePublicationParticipant,
+    project: (
+      historical: NonNullable<
+        Awaited<ReturnType<StationReportGroupCustody['inspectForMutation']>>
+      >,
+    ) => T,
   ) {
     id(groupId);
     id(input.operationKey);
@@ -1108,7 +1113,10 @@ export class StationReportGroupCustody {
       });
       const result = await controller.finalizeContinuation(command);
       current();
-      return result;
+      const historical = await this.#inspect(authorized, groupId);
+      if (!historical) refuse();
+      current();
+      return { result, group: project(historical) };
     };
     let outcome:
       | { ok: true; value: Awaited<ReturnType<typeof execute>> }
@@ -1127,13 +1135,16 @@ export class StationReportGroupCustody {
           : 'publication-unknown',
         outcome.ok ? [error] : [outcome.error, error],
       );
-    try {
-      if (hold) await hold.release();
-    } catch (error) {
-      throw cleanupFailure(error);
-    }
-    try {
+    let homeReleased = !hold;
+    const cleanup = participant.retainCleanup(async () => {
+      if (!homeReleased) {
+        await hold!.release();
+        homeReleased = true;
+      }
       parent.release();
+    });
+    try {
+      await cleanup();
     } catch (error) {
       throw cleanupFailure(error);
     }

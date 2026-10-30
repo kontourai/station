@@ -29,6 +29,7 @@ export class RuntimePublicationParticipant {
   #stopping = false;
   #pending = new Set<object>();
   #waiters = new Set<() => void>();
+  #cleanups = new Set<() => Promise<void>>();
   constructor(private readonly home: StationHomeRuntimeProof) {
     assertStationHomeRuntimeProof(home);
     owners.add(this);
@@ -108,8 +109,28 @@ export class RuntimePublicationParticipant {
   stop(): void {
     this.#stopping = true;
   }
+  retainCleanup(cleanup: () => Promise<void>): () => Promise<void> {
+    if (!owners.has(this)) throw new RuntimePublicationUnavailable();
+    let running: Promise<void> | undefined;
+    const retry = () => {
+      running ??= cleanup()
+        .then(() => {
+          this.#cleanups.delete(retry);
+        })
+        .finally(() => {
+          running = undefined;
+        });
+      return running;
+    };
+    this.#cleanups.add(retry);
+    return retry;
+  }
   async drain(timeoutMs: number): Promise<void> {
     if (!this.#stopping) throw new RuntimePublicationUnavailable();
+    for (const cleanup of this.#cleanups) {
+      // A failed or stalled cleanup keeps its admission for a later retry.
+      void cleanup().catch(() => {});
+    }
     if (!this.#pending.size) return;
     await new Promise<void>((resolve, reject) => {
       const wake = () => {

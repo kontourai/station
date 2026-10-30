@@ -100,3 +100,30 @@ test('body and unreleased-child failures retain the admission until explicit cle
     homeLease.release();
   }
 });
+
+test('shutdown retries retained cleanup without losing an outstanding child', async () => {
+  const home = join(temp('runtime-publication-cleanup-'), 'home');
+  const homeLease = acquireStationHomeRuntimeLease(home);
+  try {
+    const participant = new RuntimePublicationParticipant(
+      captureStationHomeRuntimeProof(home, homeLease),
+    );
+    const lease = participant.acquire();
+    const child = lease.borrow();
+    let attempts = 0;
+    const cleanup = participant.retainCleanup(async () => {
+      if (++attempts === 1) throw new Error('home cleanup uncertain');
+      lease.release();
+    });
+    await expect(cleanup()).rejects.toThrow('home cleanup uncertain');
+    participant.stop();
+    await expect(participant.drain(10)).rejects.toMatchObject({
+      code: 'runtime_publication_pending',
+    });
+    child.release();
+    await expect(participant.drain(100)).resolves.toBeUndefined();
+    expect(attempts).toBe(3);
+  } finally {
+    homeLease.release();
+  }
+});

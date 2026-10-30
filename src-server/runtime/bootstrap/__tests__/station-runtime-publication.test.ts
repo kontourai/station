@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs';
+import fs, { readFileSync } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { join } from 'node:path';
 import { publishJsonFileWithOwnedLock } from '@kontourai/station-shared/json-file-storage';
 import {
@@ -7,6 +8,7 @@ import {
 } from '@kontourai/station-shared/station-home-lifecycle';
 import { expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { HomeWriterOwner } from '../../../services/ssh/home-writer-owner.js';
 import type { RuntimePublicationParticipant } from '../runtime-publication-participant.js';
 import { StationRuntime } from '../station-runtime.js';
 
@@ -59,6 +61,51 @@ test('real bootstrap holds home and storage until admitted publication completes
   await Promise.all([shutdown, repeatedShutdown]);
   expect(close).toHaveBeenCalledOnce();
   expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({ revision: 1 });
+  const maintenance = acquireStationHomeMaintenanceLease(home);
+  maintenance.release();
+}, 30_000);
+
+test('shutdown retries an uncertain real home writer release before closing storage', async () => {
+  const home = temp('runtime-publication-cleanup-real-');
+  const runtime = new StationRuntime({ projectHomeDir: home });
+  const participant = Reflect.get(
+    runtime,
+    'runtimePublicationParticipant',
+  ) as RuntimePublicationParticipant;
+  const close = vi.spyOn(
+    Reflect.get(runtime, 'orchestrationEventStore'),
+    'close',
+  );
+  const parent = participant.acquire();
+  const writer = await HomeWriterOwner.forHome(home);
+  const hold = await writer.acquire();
+  let released = false;
+  const cleanup = participant.retainCleanup(async () => {
+    if (!released) {
+      await hold.release();
+      released = true;
+    }
+    parent.release();
+  });
+  const remove = fs.rmSync;
+  const fault = vi.spyOn(fs, 'rmSync').mockImplementation((path, options) => {
+    if (String(path).includes('.home-writer.mutation.guard.stale-'))
+      throw new Error('injected home release failure');
+    return remove(path, options);
+  });
+  syncBuiltinESMExports();
+  try {
+    await expect(cleanup()).rejects.toThrow('injected home release failure');
+    expect(close).not.toHaveBeenCalled();
+    expect(() => acquireStationHomeMaintenanceLease(home)).toThrow(
+      StationHomeActiveError,
+    );
+  } finally {
+    fault.mockRestore();
+    syncBuiltinESMExports();
+  }
+  await runtime.shutdown();
+  expect(close).toHaveBeenCalledOnce();
   const maintenance = acquireStationHomeMaintenanceLease(home);
   maintenance.release();
 }, 30_000);
