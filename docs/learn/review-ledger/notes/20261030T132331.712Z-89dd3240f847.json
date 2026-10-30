@@ -1,0 +1,7 @@
+{
+  "revision": "b68232db5ed3f1082edf3ac4bb740fb42198f335",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Re-reviewed peer setup after final presentation cleanup: operator refusal appears once with one recovery sentence; status expiry is shown only with an observed enrollment; device access and retained request identity remain independent. Confirmed17 dialog tests pass and rendered actual peer refusal at390 and1440 in dark and light themes. Setup instructions remain accurate; no grants or approval requirements changed.","inputs":["docs/guides/connections.md","src-ui/src/views/connections-hub/ConnectStationDialog.tsx"]}
+  ]
+}

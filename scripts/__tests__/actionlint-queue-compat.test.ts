@@ -33,6 +33,83 @@ function lint(source: string) {
 }
 
 describe('reviewed GitHub FIFO schema compatibility', () => {
+  test('routes PR shards into three shared groups while retaining old group identities', () => {
+    const ci = readWorkflowDocuments().find(
+      (workflow) => workflow.file === '.github/workflows/ci.yml',
+    );
+    if (!ci) throw new Error('Missing CI');
+    const job = (
+      ci.document as {
+        jobs: Record<
+          string,
+          {
+            concurrency: {
+              group: string;
+              queue: string;
+              'cancel-in-progress': boolean;
+            };
+          }
+        >;
+      }
+    ).jobs['fast-checks-shard'];
+    const expression = job.concurrency.group
+      .trim()
+      .replace(/^\$\{\{([\s\S]*)\}\}$/, '$1');
+    const evaluate = new Function(
+      'github',
+      'matrix',
+      'endsWith',
+      'format',
+      `return (${expression});`,
+    );
+    const format = (pattern: string, ...values: unknown[]) =>
+      pattern.replace(/\{(\d+)\}/g, (_, index: string) =>
+        String(values[Number(index)]),
+      );
+    const endsWith = (value: unknown, suffix: string) =>
+      String(value).endsWith(suffix);
+    const groups = new Set<string>();
+    for (let number = 10; number < 20; number++) {
+      for (let shard = 1; shard <= 4; shard++) {
+        const github = {
+          event_name: 'pull_request_target',
+          event: {
+            pull_request: {
+              number,
+              head: { sha: 'head' },
+              base: { sha: 'base' },
+            },
+          },
+          ref: 'ref',
+          sha: 'sha',
+        };
+        const group = evaluate(github, { shard }, endsWith, format) as string;
+        const third = [0, 1, 2].includes(number % 10) && [1, 3].includes(shard);
+        const old =
+          (number % 2 === 1) !== [1, 3].includes(shard) ? 'odd' : 'even';
+        expect(group).toBe(
+          third ? 'ci-pr-shards-third' : `ci-pr-shards-${old}`,
+        );
+        groups.add(group);
+      }
+    }
+    expect(groups).toEqual(
+      new Set(['ci-pr-shards-odd', 'ci-pr-shards-even', 'ci-pr-shards-third']),
+    );
+    expect(job.concurrency.queue).toBe('max');
+    expect(job.concurrency['cancel-in-progress']).toBe(false);
+    const github = {
+      event_name: 'merge_group',
+      event: {
+        pull_request: { number: '', head: { sha: '' }, base: { sha: '' } },
+      },
+      ref: 'candidate',
+      sha: 'abc',
+    };
+    expect(evaluate(github, { shard: 1 }, endsWith, format)).toBe(
+      'ci-fast-shard-1-merge_group-candidate-abc-',
+    );
+  });
   test('removes only the validated new key and preserves the original security document', () => {
     const original = structuredClone(document);
     const [adapted] = legacyActionlintSources([{ file, document: original }]);
@@ -190,5 +267,19 @@ describe('reviewed GitHub FIFO schema compatibility', () => {
     expect(() =>
       legacyActionlintSources([{ file: ci.file, document }]),
     ).toThrow(/Unreviewed/);
+  });
+  test('refuses an unbounded per-PR shard group even when the FIFO flags remain', () => {
+    const ci = readWorkflowDocuments().find(
+      (workflow) => workflow.file === '.github/workflows/ci.yml',
+    );
+    if (!ci) throw new Error('Missing CI');
+    const document = structuredClone(ci.document) as {
+      jobs: Record<string, { concurrency: Record<string, unknown> }>;
+    };
+    document.jobs['fast-checks-shard'].concurrency.group =
+      `ci-pr-shards-\${{ github.event.pull_request.number }}`;
+    expect(() =>
+      legacyActionlintSources([{ file: ci.file, document }]),
+    ).toThrow(/Unreviewed PR source FIFO/);
   });
 });

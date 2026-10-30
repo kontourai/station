@@ -37,6 +37,7 @@ function emptyStartContextStore(): Pick<
   | 'conversationForSession'
   | 'readSessionInventoryHighWater'
   | 'reserveConversationStartContext'
+  | 'isCoordinatorToolsRestart'
 > {
   return {
     conversationStartContext: () => undefined,
@@ -48,11 +49,21 @@ function emptyStartContextStore(): Pick<
     }),
     readSessionInventoryHighWater: () => 0,
     reserveConversationStartContext: (_sessionId, pin) => pin,
+    isCoordinatorToolsRestart: () => false,
   };
 }
 
-function lineageFor(current: OrchestrationSessionDetail) {
+function lineageFor(
+  current: OrchestrationSessionDetail,
+  needsToolsSuccessor = false,
+) {
   const reserveNextConversationSession = vi.fn();
+  reserveNextConversationSession.mockImplementation(
+    ({ proposedSessionId }) => ({
+      outcome: 'reserved',
+      lineage: { sessionId: proposedSessionId },
+    }),
+  );
   const lineage = new ConversationLineage({
     eventStore: {
       conversationHandoffForSession: () => undefined,
@@ -66,8 +77,10 @@ function lineageFor(current: OrchestrationSessionDetail) {
         },
       ],
       reserveNextConversationSession,
+      isCoordinatorToolsRestart: () => needsToolsSuccessor,
     } as any,
     logger: { warn: vi.fn() },
+    needsCoordinatorToolsSuccessor: () => needsToolsSuccessor,
     readSession: async () => current,
     readSessionMessages: () => [],
     readSessionSeedMessages: () => [],
@@ -98,6 +111,29 @@ const stoppedUnloadedPatch = (
 });
 
 describe('#749 shared continuation control eligibility', () => {
+  test('a running coordinator that needs a tools successor reserves a continuation', async () => {
+    const current = detail({ provider: 'codex' });
+    const { lineage, reserveNextConversationSession } = lineageFor(
+      current,
+      true,
+    );
+    expect(
+      await lineage.nextTurnStartsSession(
+        'conversation-policy',
+        current,
+        INTERNAL_SESSION_READ_SCOPE,
+      ),
+    ).toBe(true);
+    const result = await lineage.resolveConversationContinuation(
+      'conversation-policy',
+      INTERNAL_SESSION_READ_SCOPE,
+      { provider: 'codex' },
+    );
+    expect(result.startRequired).toBe(true);
+    expect(result.coordinatorToolsRestart).toBe(true);
+    expect(result.sessionId).not.toBe('conversation-policy');
+    expect(reserveNextConversationSession).toHaveBeenCalledOnce();
+  });
   test.each([
     ['read-only', { controlMode: 'read-only-attached' as const }],
     ['pending review', { pendingReview: true }],
