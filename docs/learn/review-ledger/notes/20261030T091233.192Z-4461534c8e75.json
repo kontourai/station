@@ -1,0 +1,7 @@
+{
+  "revision": "93659d3f38055aa09680032f41070b5f43c70710",
+
+  "notes": [
+    {"path":"docs/guides/feature-previews.md","note":"Reviewed runtime-routes preview withdrawal and direct continuation entry against this policy. The unqualified report-continuation binding is removed, settings lists9 actual bound previews, and a remembered choice has no live selector to offer it. Runtime finalizer admission additionally refuses before custody metadata work while REPORT_FINALIZER_PUBLICATION_QUALIFIED is false, including direct HTTP/SDK entry; delegationGroups remains false rather than inferred from report/session routes. This is interim unavailable capability truth, not promotion or delivery. Executed docs:feature-previews:check PASS9 and cli-mcp:parity:check PASS143tools/275actions with100pre-existing missing counterparts still tracked. The guide keeps enabled-path/ordinary-authorization/recovery proofs mandatory before serving. No instruction change needed; no fixture, provider, native or production finalizer acceptance was executed.","inputs":["docs/guides/feature-previews.md","docs/user/settings.md","src-server/runtime/bootstrap/station-runtime.ts","src-ui/src/app-shell/destination-registry.ts"]}
+  ]
+}
