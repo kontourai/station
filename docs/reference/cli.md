@@ -1409,8 +1409,10 @@ checkout; published CLI/contracts availability requires separate release evidenc
 
 ### `group`
 
-The initial CLI-session path uses the personal Station's existing authority and
-confinement. It has separate commands from the hard-cap API transport below:
+The CLI-session path uses the personal Station's existing authority and
+confinement. The unfinished portable delegation-group transport is not shipped;
+its `delegationGroups` capability remains unavailable. These commands operate
+retained session groups:
 
 ```bash
 station group session-create --file=local-group.json --json
