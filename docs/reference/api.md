@@ -1859,6 +1859,8 @@ serve it as "The response stream failed." instead
 The marker never reaches a model: the Station-engine prompt, native-memory
 history and a direct Strands conversation's replayed history all exclude it.
 
+Child steering and separately paged instructions are described in the [Session API](session-api.md#lifecycle-control-commands), including authorization and uncertain delivery.
+
 ### Update Conversation
 
 `PATCH /agents/:slug/conversations/:conversationId` accepts the supported
