@@ -3966,6 +3966,50 @@ interface ProviderMetadata {
 
 ## Notifications API
 
+### Attention and notification snooze hooks
+
+These exports from `@kontourai/station-sdk` use Station's authenticated
+transport. Attention mutations require the host's **Attention snooze**
+(`attention-snooze`) Feature Preview. The notification helper uses the existing
+stored-notification route and does not require that preview.
+
+```ts
+// until is an ISO timestamp string. Attention helpers accept apiBase?: string.
+const { snoozedUntil } = await snoozeAttentionItem(itemId, until, apiBase);
+await unsnoozeAttentionItem(itemId, apiBase);
+useSnoozeAttentionItemMutation(apiBase).mutateAsync({ itemId, until });
+useUnsnoozeAttentionItemMutation(apiBase).mutateAsync(itemId);
+await snoozeNotification(id, until);
+useSnoozeNotificationMutation().mutateAsync({ id, until });
+```
+
+Attention helpers call `POST` / `DELETE /api/attention/:id/snooze`. The POST
+sends `{until}`; it returns the server-normalized `snoozedUntil`. Attention
+hooks invalidate the `['attention']` prefix, including queries with an explicit
+API base. `snoozeNotification` posts `{until}` to
+`/notifications/:id/snooze`; its hook invalidates both `['notifications']` and
+`['attention']`, like dismissal. IDs are URL-encoded.
+
+All helpers throw for a non-OK response or unsuccessful envelope, preserving
+the server's error message. A host without the new attention routes is
+unsupported: an unknown-route 404 suggests updating Station, whether its body
+is JSON or plain text. A typed disabled-preview
+404 instead carries the server's Settings remedy; a missing-item 404 remains
+an error. Unlike `acknowledgeAttentionItem`, snooze never treats a 404 as success.
+
+The [attention API](session-api.md#review-work-in-the-attention-inbox) owns
+validation and versioning: attention snoozes must end strictly in the future
+and within 30 days, and a newer source version resurfaces immediately. Pending
+counts exclude both acknowledged and actively snoozed items while retaining
+them in the projection's `items`. The stored-notification route keeps its
+existing validation and delivery behavior; the new SDK helper does not change
+it.
+
+Source: [attention domain](../../packages/sdk/src/query-domains/attention.ts),
+[notification domain](../../packages/sdk/src/query-domains/notifications.ts).
+[Mutation tests](../../packages/sdk/src/__tests__/snooze-mutations.test.tsx)
+verify request shape, error propagation, and actual mounted-query refetches.
+
 ### Person notification query domain
 
 `fetchPersonNotifications`, `markPersonNotificationRead`,

@@ -3789,6 +3789,7 @@ export class StationRuntime {
           homeDirectory: this.configLoader.getProjectHomeDir(),
         },
         this.projectMembership.service,
+        resolveStationBrowserOrigins({ port: this.port, host: this.host }),
         { memberPasskeys: this.memberPasskeysPreview },
       );
       this.deploymentAuthentication = this.localAccounts;

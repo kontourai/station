@@ -33,6 +33,7 @@ export interface LoadedLocalAccounts extends LoadedDeploymentAuthentication {
   issueRecovery: LocalAccountProvider['issueRecovery'];
   /** #3586: account standing for credentials that outlive a session. */
   accountDirectory: AccountDirectory;
+  signOutBrowserOrigins: readonly string[];
 }
 export function readLocalAccountConfiguration(
   environment: Readonly<Record<string, string | undefined>>,
@@ -106,10 +107,12 @@ export async function loadLocalAccounts(
   configuration: LocalAccountConfiguration,
   host: { stationId: string; homeDirectory: string },
   membership: Pick<ProjectMembershipService, 'mayRegister'>,
+  signOutBrowserOrigins: readonly string[] = [],
   /** #4303: absent, member passkeys are never offered. */
   previews: { memberPasskeys?: FeaturePreviewSelector } = {},
 ): Promise<LoadedLocalAccounts> {
   const input = structuredClone(configuration);
+  const signOutOrigins = Object.freeze([...new Set(signOutBrowserOrigins)]);
   const providerHost = await createDeploymentAuthenticationHost(
     input.publicOrigin,
     host,
@@ -138,6 +141,7 @@ export async function loadLocalAccounts(
       'username-password',
       input.oidc,
       {},
+      signOutOrigins,
       { memberPasskeys: memberPasskeysOffered },
     );
     return {
@@ -147,6 +151,7 @@ export async function loadLocalAccounts(
       }),
       publicOrigin: providerHost.publicOrigin,
       allowedBrowserOrigins: providerHost.allowedBrowserOrigins,
+      signOutBrowserOrigins: signOutOrigins,
       administration: provider.administration,
       issueRecovery: provider.issueRecovery.bind(provider),
       accountDirectory: localAccountDirectory(

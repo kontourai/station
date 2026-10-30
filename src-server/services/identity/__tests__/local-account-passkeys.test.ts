@@ -96,6 +96,7 @@ async function station(
       mayRegister: async ({ invitation }) =>
         input.mayRegister ? input.mayRegister() : invitations.has(invitation),
     },
+    [],
     { memberPasskeys: preview },
   );
   loaded.push(accounts);
