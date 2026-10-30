@@ -71,6 +71,10 @@
       "exempt": "person-only",
       "reason": "Person directory lookup (/api/users/search)."
     },
+    "automation deliveries": {
+      "exempt": "person-only",
+      "reason": "Operator-only observation history; the Automation ledger has no Project or agent audience binding."
+    },
     "branding get": {
       "exempt": "presentation",
       "reason": "Whitelabel branding for UI chrome (/api/branding)."

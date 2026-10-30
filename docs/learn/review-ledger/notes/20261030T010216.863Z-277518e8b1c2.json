@@ -1,0 +1,7 @@
+{
+  "revision": "dade611c6cf14f02c2bb5fc5dba1bd1b4fab5836",
+
+  "notes": [
+    {"path":"deployment/telemetry/README.md","note":"Scoped impact review: the deployment guide now names hosted exclusion of the optional GitHub observer and its untenant-bound delivery ledger. Companion packaging, prerequisites, source grants, private Insights, receiver deployment and qualification limits described here are unchanged. No new deployed/native/hosted result is asserted.","inputs":["deployment/telemetry/README.md","docs/guides/deployment.md"]}
+  ]
+}
