@@ -1,0 +1,7 @@
+{
+  "revision": "4d47239956f7729b341a2ac46c8478e17732dbec",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"Reviewed real gateway retention reset after outstanding frame ACK and replay recovery against TerminalSessions, channel and SDK; fixture scope does not qualify hosted or native transport.","inputs":["docs/design/terminal.md","src-server/services/terminal/__tests__/terminal-gateway.process.test.ts"]}
+  ]
+}

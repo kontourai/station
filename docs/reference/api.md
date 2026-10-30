@@ -5154,6 +5154,56 @@ Session for a caller that is not a bound operator, another Station) answers `404
 `session_not_found`, identical to one that does not exist. See the
 [route](../../src-server/routes/orchestration/session-project-activity.ts).
 
+### Person Session Reads
+
+These are the person-facing leaves of the same reads and of `wait_session`
+(#3427), behind `station activity` and `station sessions wait|digest`:
+
+- `GET /api/orchestration/session-reads/activity?projectSlug=&limit=&cursor=&activeWithinMinutes=`
+- `GET /api/orchestration/session-reads/:sessionId/digest?turnLimit=&cursor=`
+- `GET /api/orchestration/session-reads/:sessionId/wait?until=&timeoutMs=&afterEventCursor=`
+
+They answer a person's own credential. Every internal request (a
+station-control caller, a caller-less child, Station's own server code) gets
+`403`: the station-control guard refuses the unmapped route, and the leaf
+itself answers `person_credential_required`. The agent-only leaves above keep
+refusing a person with `station_control_caller_required`. The leaves inherit
+`orchestration:read`, and the handshake advertises them as
+`capabilities.sessionPersonReads`. While the `session-cli-reads` Feature
+Preview is off, each answers `404` `feature_preview_disabled` with `previewId`
+and `settingsPath`.
+
+Reads are owner-scoped. A Session in a Project is visible only while the
+person holds that Project's `view` action, and a Session in the global space is
+always visible. A Session whose Project cannot be read, such as one whose
+folder is gone, is visible only to a person who may view every Project (anyone
+but a deployment account). Anything out of reach is `404` `session_not_found`.
+
+- **Activity** answers the list shape above, with no `self`. Without
+  `projectSlug` it lists every visible Session. With it, it lists only that
+  Project's Sessions. A Project the person may not view, or one that does not
+  exist, is `404` `project_not_found`. `activeWithinMinutes` (1–10,080) keeps
+  Sessions running a turn or active in that window. The person's own Sessions
+  that run `host` are listed: that exclusion keeps an agent out of other
+  Sessions, not their owner.
+- **Digest** answers the digest shape above.
+- **Wait** has the `wait_session` query and bounds: `until` is
+  `turn-settled|idle`, `timeoutMs` is 1–50,000 (default 30,000), and
+  `afterEventCursor` is allowed only with `turn-settled`. Its answer is
+  `{sessionId, settled, timedOut, alreadyIdle?, state, openTurnId?,
+  settledTurn?, interruptedTurn?, eventCursor, superseded?,
+  currentSessionId?}`. `interruptedTurn` (`{turnId, sequence}`) names a turn a
+  restart-recovery abort closed, when that is the newest way a turn ended after
+  the cursor. With no cursor (`idle`), it counts only while nothing is running.
+  It ends a `turn-settled` wait with `settled: true` and no `settledTurn`,
+  because it acknowledges no work. `wait_session` does not carry
+  it. A person holds at most 4 waits at once (`429` `wait_capacity`), counted
+  apart from any Session's, within Station's shared 256.
+
+See the
+[activity and digest route](../../src-server/routes/orchestration/session-project-activity.ts)
+and the [wait route](../../src-server/routes/orchestration/session-agent-control.ts).
+
 ### Station Control Work Claims
 
 `POST /api/orchestration/work-claims` with `{workItemRef?, paths?, note?,
@@ -5323,7 +5373,7 @@ Project/binding authority through TerminalSessions.
   fromSeq?, windowBytes?}`. `fromSeq` is the last consumed output sequence,
   default zero. Unknown ids and mismatched Projects/bindings are refused.
   Both commands respond with `attached`, including `terminalId`, `status` and
-  `replayThrough`, plus `readOnly` from the current session authority. Dimensions
+  `replayThrough`, `maxOutstandingOutputFrames`, plus `readOnly` from the current session authority. Dimensions
   range from 1 to 1,000 as in the HTTP API.
 - `list`: `{type, requestId, projectId, bindingKey}` returns `list` with
   `records`. `resize` takes `{type, requestId, channel, cols, rows}`; `close`
@@ -5348,14 +5398,21 @@ The socket maximum payload is 64 KiB + 13 bytes, including JSON frames.
 Each channel has a fixed output credit window (`windowBytes`, 16,384–65,536
 bytes, default 65,536). Sending raw output consumes its byte length;
 acknowledging actual records releases exactly those bytes. Header/control bytes
-do not consume channel credit. The transport filters OSC 8 URI schemes to
+do not consume channel credit. Independently, the server permits at most 128
+unacknowledged output frames per channel, including frames whose sanitized
+payload is empty. This bounds framing overhead without reducing the 64 KiB
+payload window; ACKs release frame slots and replay continues in bounded pages.
+The additive `maxOutstandingOutputFrames` field advertises this enforced limit;
+older clients can ignore it and continue acknowledging sequences. The transport filters OSC 8 URI schemes to
 absolute HTTP/HTTPS and drops unsafe URI metadata while keeping displayed text.
 Parser state advances only when the filtered record fits the remaining credit. Output stays in the bounded journal until credit
 is available. A slow consumer cannot accumulate an unbounded per-socket replay
 queue; retention loss is explicit. `reset` gives `fromSeq` and `replayThrough`;
 replace the emulator's replay and resume acknowledgement from that sequence.
 `progress` reports `sentThrough`, journal `lastSeq`, `replayThrough` and session
-`status`. Acknowledging through replay emits `ready`, allowing input. Clients
+`status`. Unchanged sent cursor, replay target and status are coalesced even if
+the journal's `lastSeq` grows while output is blocked; a later meaningful
+progress notification reports the current `lastSeq`. Acknowledging through replay emits `ready`, allowing input. Clients
 must keep emulator reply writers detached during replay.
 
 The command queue refuses capacity beyond 128 pending commands or 256 KiB of

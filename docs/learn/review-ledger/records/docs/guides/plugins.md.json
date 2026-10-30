@@ -184,7 +184,9 @@
 
     "src-ui/src/workspace-panes/__tests__/WorkspacePaneHost.test.tsx",
 
-    "src-ui/src/workspace-panes/WorkspacePaneHostTree.tsx"
+    "src-ui/src/workspace-panes/WorkspacePaneHostTree.tsx",
+
+    "src-server/providers/registries/integration-registry-provider.ts"
   ],
 
   "checks": [
