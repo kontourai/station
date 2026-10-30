@@ -157,7 +157,14 @@ export function createEventStreamProducer({
     return data;
   };
 
-  return async (c: Context, stream: SSEStreamingApi) => {
+  return async (
+    c: Context,
+    stream: SSEStreamingApi,
+    writeFrameOverride?: (frame: {
+      event: string;
+      data: string;
+    }) => Promise<void>,
+  ) => {
     let clientLease: ClientConnectionLease | undefined;
     let settleUnauthorized: (() => void) | undefined;
     let authorizationSettled = false;
@@ -184,7 +191,9 @@ export function createEventStreamProducer({
         }
         return Promise.reject(new Error('unauthorized'));
       }
-      await (writeSse?.(stream, frame) ?? stream.writeSSE(frame));
+      await (writeFrameOverride?.(frame) ??
+        writeSse?.(stream, frame) ??
+        stream.writeSSE(frame));
       if (
         (stream as unknown as { aborted?: boolean; closed?: boolean })
           .aborted ||

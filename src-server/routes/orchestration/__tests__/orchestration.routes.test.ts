@@ -12,7 +12,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CHAT_ATTACHMENT_MAX_COMMAND_JSON_BYTES } from '@kontourai/station-contracts/chat-attachment';
 import type { ProviderSessionStartInput } from '@kontourai/station-contracts/provider';
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import {
+  type CanonicalRuntimeEvent,
+  SERVER_EVENTS,
+} from '@kontourai/station-contracts/runtime-events';
 import { parseHostedTenantRegistry } from '@kontourai/station-contracts/tenancy';
 import { inspectSteerInput, steerTurn } from '@kontourai/station-sdk/client';
 import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
@@ -55,6 +58,7 @@ import {
   OrchestrationCommandDispatchError,
   OrchestrationService,
 } from '../../../services/orchestration/orchestration-service.js';
+import { OrchestrationStreamPresence } from '../../../services/orchestration/orchestration-stream-presence.js';
 import { ProjectWorktreeDirectoryError } from '../../../services/projects/project-service.js';
 import {
   AnswerShareService,
@@ -68,6 +72,7 @@ import {
 } from '../../../utils/internal-api-token.js';
 import { createLogger } from '../../../utils/logger.js';
 import { LOG_BINDING_KEYS } from '../../../utils/logger-correlation.js';
+import { createEventStreamProducer } from '../events.js';
 import {
   createOrchestrationRoutes,
   resolveStreamResumePlan,
@@ -6386,6 +6391,119 @@ describe('Orchestration Routes', () => {
         delta: eventId,
       });
     }
+
+    test('shared stream keeps authorization, replay cursor and both lifetimes independent', async () => {
+      persistEvent('seen', 'thread-1', 1);
+      persistEvent('missed', 'thread-1', 2);
+      const bus = new EventBus();
+      const unsubscribe = vi.fn();
+      const subscribe = bus.subscribe.bind(bus);
+      vi.spyOn(bus, 'subscribe').mockImplementation((listener) => {
+        const stop = subscribe(listener);
+        let stopped = false;
+        return () => {
+          if (stopped) return;
+          stopped = true;
+          unsubscribe();
+          stop();
+        };
+      });
+      const presence = new OrchestrationStreamPresence();
+      const release = vi.fn();
+      const generalEventProducer = createEventStreamProducer({
+        eventBus: bus,
+        getACPStatus: () => ({ connected: false, connections: [] }),
+        logger: { debug: vi.fn() },
+        connectClientSession: () => ({ touch: vi.fn(), release }),
+        canReadPluginDraftEvent: (data, c) =>
+          (data as { project: string }).project === c.req.header('x-project'),
+      });
+      const app = createOrchestrationRoutes(
+        makeResumeTestService(eventStore) as any,
+        {
+          getUserId: () => ROUTE_TEST_USER_ID,
+          eventBus: bus,
+          logger: { debug: vi.fn() },
+          presence,
+          generalEventProducer,
+        },
+      );
+      const response = await app.request('/events?includeGeneral=1', {
+        headers: { 'Last-Event-ID': '1', 'x-project': 'allowed' },
+      });
+      expect(presence.isConnected(ROUTE_TEST_USER_ID)).toBe(true);
+      bus.emit(SERVER_EVENTS.PLUGIN_DRAFTS_REBUILT, {
+        project: 'denied',
+        marker: 'secret-project',
+      });
+      bus.emit(SERVER_EVENTS.INTERNAL_STOP_REDISPATCH_FAILED, {
+        marker: 'secret-family',
+      } as never);
+      bus.emit(SERVER_EVENTS.PLUGIN_DRAFTS_REBUILT, {
+        project: 'allowed',
+        marker: 'visible',
+      });
+      const payload = await readStreamUntil(
+        response.body!,
+        (text) =>
+          text.includes('visible') && text.includes('orchestration:caughtUp'),
+      );
+      expect(payload).not.toContain('secret-project');
+      expect(payload).not.toContain('secret-family');
+      expect(payload).toMatch(
+        /event: orchestration:event\ndata: .*missed.*\nid: 2/,
+      );
+      expect(payload.indexOf('missed')).toBeLessThan(
+        payload.indexOf('orchestration:caughtUp'),
+      );
+      expect(payload).not.toContain('orchestration:snapshot');
+      const frames = payload.split('\n\n');
+      const generalFrames = frames.filter((frame) =>
+        frame.includes('event: station:general'),
+      );
+      expect(generalFrames.some((frame) => frame.includes('visible'))).toBe(
+        true,
+      );
+      for (const frame of generalFrames) expect(frame).not.toMatch(/^id:/m);
+      // Model EventSource's last-event-id update from actual wire fields.
+      let cursor = '1';
+      for (const frame of frames) {
+        const id = frame.match(/^id: (.*)$/m);
+        if (id) cursor = id[1];
+      }
+      expect(cursor).toBe('2');
+      await vi.waitFor(() => {
+        expect(unsubscribe).toHaveBeenCalledTimes(2);
+        expect(release).toHaveBeenCalledTimes(1);
+        expect(presence.isConnected(ROUTE_TEST_USER_ID)).toBe(false);
+      });
+
+      const controller = new AbortController();
+      const snapshot = await app.request('/events?includeGeneral=1', {
+        signal: controller.signal,
+      });
+      const reader = snapshot.body!.getReader();
+      const decoder = new TextDecoder();
+      let snapshotPayload = '';
+      while (!snapshotPayload.includes('orchestration:caughtUp')) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        snapshotPayload += decoder.decode(chunk.value, { stream: true });
+      }
+      controller.abort();
+      expect(snapshotPayload.indexOf('orchestration:snapshot')).toBeLessThan(
+        snapshotPayload.indexOf('orchestration:caughtUp'),
+      );
+      expect(snapshotPayload).toMatch(
+        /event: orchestration:snapshot\ndata: .*\nid: 2/,
+      );
+      await vi.waitFor(() => {
+        expect(unsubscribe).toHaveBeenCalledTimes(4);
+        expect(release).toHaveBeenCalledTimes(2);
+        expect(presence.isConnected(ROUTE_TEST_USER_ID)).toBe(false);
+      });
+      await reader.cancel();
+    });
 
     test('a below-threshold oversized replay switches to a bounded snapshot frame', async () => {
       for (let index = 1; index <= 401; index += 1) {
