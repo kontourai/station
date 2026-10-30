@@ -64,6 +64,20 @@ performance, or finalizer/runtime publication qualification. The exact logs
 and their digests are retained in the local ignored
 `.kontourai/child-work-cli-group/ui-focused-e076e661411.json` receipt.
 
+### Merged provenance and delivery diagnostics
+
+At `e84be2b68ca`, the contract, Claude/Codex capture replay, projection,
+cold-history and transcript-route selection passed 254 tests across six files.
+The named provenance owners had no working diff. A separate delivery selection
+passed 145 tests across three files, including runtime-route credential wiring
+and real EventStore persistence with recorded stub parent effects. Publication
+owner files were dirty during these runs, so neither is an exact-head
+whole-server receipt or qualification of that repair. Transcript authority is
+fixture-supplied; cold reconstruction is not a true process restart, and no
+live provider/device acceptance follows. Hash-bound local receipts are retained
+as `provenance-focused-e84be2b68ca.json` and
+`delivery-focused-e84be2b68ca.json` under the same ignored evidence directory.
+
 At `1973398083f`, the branch includes main through `8fa16170bed` by normal
 merge and consumes published Flow Agents 9.7.0. The
 published package's integrity and installed renewal implementation were checked;
