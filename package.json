@@ -469,6 +469,7 @@
     "@types/yazl": "^3.3.1",
     "@vitejs/plugin-react": "^5.2.0",
     "@vitest/coverage-v8": "4.1.12",
+    "@vitest/runner": "4.1.12",
     "@voltagent/cli": "^0.1.21",
     "better-call": "1.4.4",
     "esbuild": "^0.28.2",

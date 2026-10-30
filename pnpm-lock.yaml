@@ -476,6 +476,9 @@ importers:
       '@vitest/coverage-v8':
         specifier: 4.1.12
         version: 4.1.12(vitest@4.1.12)
+      '@vitest/runner':
+        specifier: 4.1.12
+        version: 4.1.12(patch_hash=df2987383e6ca6510a1bede41c3fedc0b6224950a2dde585c5daccd170f8d8af)
       '@voltagent/cli':
         specifier: ^0.1.21
         version: 0.1.21(@ai-sdk/provider-utils@4.0.62(zod@4.6.7))(@ai-sdk/provider@3.0.19)(@aws-sdk/credential-provider-node@3.972.89)(@smithy/signature-v4@5.7.4)(@types/node@26.6.5)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(@voltagent/scorers@2.1.0(@voltagent/core@2.11.0(patch_hash=953e966ee1694e8afdc84da18950b5a07c4824075acef2d97f4cbbd41bbc822b)(@ai-sdk/provider-utils@4.0.62(zod@4.6.7))(@ai-sdk/provider@3.0.19)(@aws-sdk/credential-provider-node@3.972.89)(@smithy/signature-v4@5.7.4)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.317(zod@4.6.7))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.22.0)(zod@4.6.7))(ai@6.0.317(zod@4.6.7))(encoding@0.1.13)(ws@8.22.0)(zod@4.6.7))(ai@6.0.317(zod@4.6.7))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.22.0)(zod@4.6.7)
