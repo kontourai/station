@@ -3,12 +3,13 @@ import {
   useChildWorkInstructionsQuery,
   useSteerChildWorkMutation,
 } from '@kontourai/station-sdk';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { get, update } from 'idb-keyval';
 import { useEffect, useRef, useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
 import { Button } from '../Button';
-import { ErrorState } from '../state';
+import { Empty, ErrorState, SkeletonBlock } from '../state';
 import { useUIBlockActions } from './UIBlockActionsContext';
 import './ChildWorkInstructionPanel.css';
 
@@ -160,7 +161,7 @@ export function ChildWorkInstructionPanel({
         childId,
         turnId,
         input: text.trim(),
-        clientInputId: crypto.randomUUID(),
+        clientInputId: randomCorrelationId(),
       };
     }
     if (!saved?.input) return;
@@ -261,7 +262,7 @@ export function ChildWorkInstructionPanel({
       {historyAvailable &&
         scope &&
         authority.namespace &&
-        history.isPending && <p>Loading instructions…</p>}
+        history.isPending && <SkeletonBlock count={1} label="Instructions" />}
       {history.isError && (
         <ErrorState
           variant="compact"
@@ -300,7 +301,7 @@ export function ChildWorkInstructionPanel({
         </ol>
       )}
       {historyAvailable && history.isSuccess && entries.length === 0 && (
-        <p>No instructions sent yet.</p>
+        <Empty variant="compact" label="Nothing sent yet" />
       )}
       {history.hasNextPage && (
         <Button
