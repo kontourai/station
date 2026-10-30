@@ -1,0 +1,7 @@
+{
+  "revision": "6895629f64e98a9f910f73e7a9584e47eac88968",
+
+  "notes": [
+    {"path":"docs/guides/plugins.md","note":"Review round: integrationRegistry note still accurate (refused entries answer install with reasons, getToolDef null); private-address and capability refusals are further reasons of the same kind. No edit.","inputs":["docs/guides/plugins.md","packages/contracts/src/catalog.ts","src-server/domain/config-loader.ts","src-server/routes/agents/tools.ts","src-server/services/plugins/mcp-service.ts"]}
+  ]
+}
