@@ -465,7 +465,9 @@ across an await or stream boundary.
 Report runtime resolution and failure-retention admission can wait for a
 separate request-bound home hold, then recheck the request and credential in a
 synchronous span before releasing it. This does not hold custody across a
-provider call.
+provider call. An uncontended request check uses the prepared synchronous owner;
+an async-acquired lease uses its captured process identity for synchronous
+release when safe and retains cleanup for retry when it cannot release.
 The report preparation owner also validates its complete roster under one such
 span, so nested credential and Flow checks borrow the same resource hold rather
 than independently publishing locks for each member. Source and Flow admission

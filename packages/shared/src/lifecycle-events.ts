@@ -1257,9 +1257,9 @@ function* releaseFileMutationLeaseGen(
 export async function acquireFileMutationLeaseAsync(
   lock: string,
   options: FileMutationLockOptions = {},
-): Promise<FileMutationLease> {
+): Promise<PreparedFileMutationLease> {
   const owned = await runLockGenAsync(acquireGen(lock, options), options);
-  return createFileMutationLease(lock, owned, options);
+  return createFileMutationLease(lock, owned, options, owned.owner.birth);
 }
 
 export interface PreparedFileMutationLease extends FileMutationLease {

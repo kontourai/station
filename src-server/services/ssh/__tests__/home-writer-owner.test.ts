@@ -8,6 +8,7 @@ import fs, {
 } from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
 import { join } from 'node:path';
+import * as lifecycle from '@kontourai/station-shared/lifecycle-events';
 import { expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { DevicePairingService } from '../device-pairing-service.js';
@@ -303,8 +304,13 @@ test('request admission waits for home custody and refuses a credential revoked 
     return acquire(signal);
   });
   let completed = false;
+  let startSibling!: () => void;
+  const sibling = new Promise<void>((resolve) => {
+    startSibling = resolve;
+  }).then(() => owner.runSynchronous(() => 'sibling current'));
   const pendingAllowed = owner.runRequest(new AbortController().signal, () => {
     completed = true;
+    startSibling();
     return 'admitted';
   });
   await started;
@@ -312,6 +318,105 @@ test('request admission waits for home custody and refuses a credential revoked 
   expect(completed).toBe(false);
   await heldThird.release();
   await expect(pendingAllowed).resolves.toBe('admitted');
+  await expect(sibling).resolves.toBe('sibling current');
+});
+
+test('an uncontended request completes its synchronous check before yielding', async () => {
+  const owner = await HomeWriterOwner.forHome(home());
+  let checked = false;
+  const pending = owner.runRequest(new AbortController().signal, () => {
+    checked = true;
+    return 'current';
+  });
+  expect(checked).toBe(true);
+  await expect(pending).resolves.toBe('current');
+  let attempts = 0;
+  await expect(
+    owner.runRequest(new AbortController().signal, () => {
+      attempts++;
+      throw new HomeWriterUnavailableError('busy');
+    }),
+  ).rejects.toMatchObject({ reason: 'busy' });
+  expect(attempts).toBe(1);
+});
+
+test('a queued request reports failed release without replaying its check', async () => {
+  const owner = await HomeWriterOwner.forHome(home());
+  const held = await owner.acquire();
+  let calls = 0;
+  let fault: ReturnType<typeof vi.spyOn> | undefined;
+  const remove = fs.rmSync;
+  const pending = owner.runRequest(new AbortController().signal, () => {
+    calls++;
+    fault = vi.spyOn(fs, 'rmSync').mockImplementation((path, options) => {
+      if (String(path).includes('.home-writer.mutation.guard.stale-'))
+        throw new Error('injected request release');
+      return remove(path, options);
+    });
+    syncBuiltinESMExports();
+  });
+  const rejected = expect(pending).rejects.toMatchObject({
+    reason: 'cleanup-required',
+    operationRan: true,
+  });
+  await held.release();
+  try {
+    await rejected;
+    expect(calls).toBe(1);
+    expect(() => owner.runSynchronous(() => 'unowned')).toThrow(
+      HomeWriterUnavailableError,
+    );
+  } finally {
+    fault?.mockRestore();
+    syncBuiltinESMExports();
+  }
+  const successor = await owner.acquire();
+  expect(calls).toBe(1);
+  await successor.release();
+});
+
+test('a queued request keeps its inactive holder exclusive until release completes', async () => {
+  const owner = await HomeWriterOwner.forHome(home());
+  const held = await owner.acquire();
+  let enteredRelease!: () => void;
+  let resumeRelease!: () => void;
+  const releaseEntered = new Promise<void>((resolve) => {
+    enteredRelease = resolve;
+  });
+  const releaseGate = new Promise<void>((resolve) => {
+    resumeRelease = resolve;
+  });
+  const acquire = lifecycle.acquireFileMutationLeaseAsync;
+  const spy = vi
+    .spyOn(lifecycle, 'acquireFileMutationLeaseAsync')
+    .mockImplementation(async (...args) => {
+      const lease = await acquire(...args);
+      return {
+        ...lease,
+        tryRelease: () => 'cleanup-required' as const,
+        release: async () => {
+          enteredRelease();
+          await releaseGate;
+          await lease.release();
+        },
+      };
+    });
+  const pending = owner.runRequest(
+    new AbortController().signal,
+    () => 'completed',
+  );
+  await held.release();
+  try {
+    await releaseEntered;
+    expect(() => owner.runSynchronous(() => 'unowned')).toThrow(
+      expect.objectContaining({ reason: 'busy', operationRan: false }),
+    );
+  } finally {
+    resumeRelease();
+    spy.mockRestore();
+  }
+  await expect(pending).resolves.toBe('completed');
+  expect(owner.runSynchronous(() => 'after release')).toBe('after release');
 });
 
 test('pairing construction rejects a runtime constructor bypass and a foreign held lease', async () => {

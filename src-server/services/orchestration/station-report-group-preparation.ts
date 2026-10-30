@@ -52,6 +52,7 @@ import {
   type DelegatedTaskHandle,
   delegateTask,
 } from '../../tools/station-control-delegation.js';
+import { HomeWriterOwner } from '../ssh/home-writer-owner.js';
 import { RoundsFinalFetchLaunchFence } from './delegation-group-launch-fence.js';
 import {
   createPreparedSdkSourceWireOwner,
@@ -1019,6 +1020,9 @@ export class StationReportGroupPreparation {
       undefined,
       inputRuntime,
     );
+    const postDispatchWriter = await HomeWriterOwner.forHome(
+      this.owners.runtime.environmentSecurityService.getProjectHomeDir(),
+    );
     const task = await delegateTask(
       {
         reservedStationTurn: port,
@@ -1038,7 +1042,7 @@ export class StationReportGroupPreparation {
       },
       orchestration,
     );
-    finalizeCurrent();
+    await postDispatchWriter.runRequest(signal, finalizeCurrent);
     if (
       task.taskId !== member.taskId ||
       task.sessionId !== member.taskId ||

@@ -149,6 +149,31 @@ describe('acquireFileMutationLockAsync (#2646 event-loop yield)', () => {
 });
 
 describe('prepared file mutation owner', () => {
+  it('releases an async-acquired lease synchronously with its captured owner identity', async () => {
+    const lock = temporaryLockPath();
+    const lease = await acquireFileMutationLeaseAsync(lock);
+    const tryRelease = Reflect.get(lease, 'tryRelease');
+    expect(typeof tryRelease).toBe('function');
+    expect(Reflect.apply(tryRelease, lease, [])).toBe('released');
+    expect(existsSync(lock)).toBe(false);
+    await lease.release();
+  });
+
+  it('retains an async-acquired lease when a claim prevents synchronous release', async () => {
+    const lock = temporaryLockPath();
+    const lease = await acquireFileMutationLeaseAsync(lock);
+    mkdirSync(`${lock}.guard.claims`);
+    writeFileSync(`${lock}.guard.claims/pending.claim`, '{}');
+    expect(lease.tryRelease()).toBe('cleanup-required');
+    expect(() => lease.assertCurrent()).toThrow('lease is not current');
+    rmSync(`${lock}.guard.claims/pending.claim`);
+    await lease.release();
+    expect(existsSync(lock)).toBe(false);
+    const successor = await acquireFileMutationLeaseAsync(lock);
+    await lease.release();
+    successor.assertCurrent();
+    await successor.release();
+  });
   it('does not block synchronous acquisition while empty cleanup settles', async () => {
     const lock = temporaryLockPath();
     const owner = await prepareFileMutationOwner(lock);

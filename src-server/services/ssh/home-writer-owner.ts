@@ -5,6 +5,7 @@ import { assertExistingSecurityDirectory } from '@kontourai/station-shared/envir
 import {
   acquireFileMutationLeaseAsync,
   type FileMutationLease,
+  type PreparedFileMutationLease,
   type PreparedFileMutationOwner,
   prepareFileMutationOwner,
 } from '@kontourai/station-shared/lifecycle-events';
@@ -35,7 +36,7 @@ type Core = {
 };
 type Holder = {
   core: Core;
-  lease: FileMutationLease;
+  lease: PreparedFileMutationLease;
   active: boolean;
   releasing?: Promise<void>;
 };
@@ -55,6 +56,11 @@ const lifetimes = new AsyncLocalStorage<ReadonlyMap<Core, Lifetime>>();
 function releaseHolder(holder: Holder): Promise<void> {
   holder.active = false;
   if (holder.releasing) return holder.releasing;
+  if (holder.lease.tryRelease() === 'released') {
+    holder.core.holders.delete(holder);
+    if (!holder.core.holders.size) flushNotifications(holder.core);
+    return Promise.resolve();
+  }
   holder.releasing = holder.lease
     .release()
     .then(() => {
@@ -361,6 +367,29 @@ export class HomeWriterOwner {
   /** Admit one request-bound synchronous check after acquiring the home. */
   async runRequest<T>(signal: AbortSignal, body: () => T): Promise<T> {
     signal.throwIfAborted();
+    if (
+      spans.getStore()?.has(this.#core) ||
+      lifetimes.getStore()?.has(this.#core)
+    )
+      throw new HomeWriterUnavailableError('borrow-unavailable');
+    let entered = false;
+    try {
+      return this.runSynchronous(() => {
+        signal.throwIfAborted();
+        entered = true;
+        const value = body();
+        signal.throwIfAborted();
+        return value;
+      });
+    } catch (error) {
+      if (
+        entered ||
+        !(error instanceof HomeWriterUnavailableError) ||
+        error.operationRan ||
+        (error.reason !== 'busy' && error.reason !== 'cleanup-required')
+      )
+        throw error;
+    }
     const lease = await this.acquire(signal);
     let outcome: { ok: true; value: T } | { ok: false; error: unknown };
     let ran = false;
@@ -401,7 +430,7 @@ export class HomeWriterOwner {
         await releaseHolder(holder);
       }
     if (!this.#core.holders.size) flushNotifications(this.#core);
-    let base: FileMutationLease;
+    let base: PreparedFileMutationLease;
     try {
       base = await acquireFileMutationLeaseAsync(this.#core.lock);
     } catch (error) {
