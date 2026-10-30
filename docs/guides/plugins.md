@@ -543,6 +543,13 @@ and need registry access; a local catalog does not promise a network-free build.
 | `smart-routing` | A provider plugin with no UI entrypoint |
 | `matt-pocock-engineering` | Attributed pinned Skills and five visual entry definitions; agent, project/tracker setup and authority remain prerequisites |
 
+The bundled **Integrations** catalog also offers Exa web search, Context7 and
+Microsoft Learn documentation, Lightpanda browsing and MarkItDown conversion.
+See [starter integration setup and qualification](../../examples/registry/integrations/README.md)
+for provider data boundaries, local runtime requirements and the public-registry
+direction. Adding an integration saves it disabled; configure and enable it in
+Connections before selecting it for an Agent.
+
 The fuller catalog at `examples/registry/manifest.json` adds examples that pull
 npm dependencies (`enterprise-layout`, `survey-review-workbench`,
 `fieldwork-review`). Point at it — or at your own manifest, or a hosted URL — by

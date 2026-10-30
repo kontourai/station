@@ -1,0 +1,19 @@
+{
+  "id": "lightpanda",
+  "kind": "mcp",
+  "displayName": "Lightpanda Web Automation",
+  "icon": "🐼",
+  "description": "Navigate JavaScript pages and extract content with a local headless browser. Requires a separately installed Lightpanda binary on the Station host. This is a separate session from Station’s Browser pane.",
+  "enabled": false,
+  "transport": "stdio",
+  "command": "lightpanda",
+  "args": ["mcp"],
+  "env": {
+    "LIGHTPANDA_DISABLE_TELEMETRY": "true",
+    "LIGHTPANDA_DISABLE_CORE_DUMP": "1"
+  },
+  "timeouts": {
+    "startupMs": 20000,
+    "requestMs": 60000
+  }
+}

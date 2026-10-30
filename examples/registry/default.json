@@ -46,7 +46,7 @@
     {
       "id": "matt-pocock-engineering",
       "displayName": "Matt Pocock engineering collection (Station-curated)",
-      "description": "Clarify an idea, review project decisions, write a specification, and approve a work breakdown using attributed pinned Skills. Tools, tracker setup, writes and publication retain the selected agent\u2019s authority.",
+      "description": "Clarify an idea, review project decisions, write a specification, and approve a work breakdown using attributed pinned Skills. Tools, tracker setup, writes and publication retain the selected agent’s authority.",
       "version": "1.0.0",
       "source": "../matt-pocock-engineering"
     }
@@ -58,6 +58,41 @@
       "description": "Kontour Surface MCP server over the active change's trust bundle. One-click install registers a version-pinned stdio server; replace the report path placeholder with the latest Veritas reportArtifactPath.",
       "version": "2.12.0",
       "source": "./integrations/surface-mcp"
+    },
+    {
+      "id": "exa",
+      "displayName": "Exa Web Search",
+      "description": "Search the public web and retrieve pages. Hosted anonymous access is rate-limited; queries and fetched URLs go to Exa. No local runtime required.",
+      "version": "1.0.0",
+      "source": "./integrations/exa"
+    },
+    {
+      "id": "context7",
+      "displayName": "Context7 Library Docs",
+      "description": "Look up current library documentation and code examples. Hosted anonymous access is rate-limited; queries go to Context7. No local runtime required.",
+      "version": "1.0.0",
+      "source": "./integrations/context7"
+    },
+    {
+      "id": "microsoft-learn",
+      "displayName": "Microsoft Learn Docs",
+      "description": "Search Microsoft documentation, retrieve articles and find code samples. Queries go to Microsoft Learn. No account or local runtime required.",
+      "version": "1.0.0",
+      "source": "./integrations/microsoft-learn"
+    },
+    {
+      "id": "lightpanda",
+      "displayName": "Lightpanda Web Automation",
+      "description": "Navigate JavaScript pages and extract content with a local headless browser. Requires a separately installed Lightpanda binary on the Station host. This is a separate session from Station’s Browser pane.",
+      "version": "1.0.0",
+      "source": "./integrations/lightpanda"
+    },
+    {
+      "id": "markitdown",
+      "displayName": "MarkItDown Document Conversion",
+      "description": "Convert documents to Markdown. Requires markitdown-mcp on the Station host; the process can read files and network locations accessible to its OS user. Optional cloud formats may require credentials.",
+      "version": "1.0.0",
+      "source": "./integrations/markitdown"
     }
   ]
 }
