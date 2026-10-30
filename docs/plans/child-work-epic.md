@@ -48,6 +48,25 @@ Production preparation, current V2 grant binding, Flow host callbacks and
 qualified physical execution remain open under #91. Shared report and CLI
 session-group owners remain in use; this split does not complete the epic.
 
+### Portable source-owner recovery increment
+
+The new, unwired portable preparation and execution owners use the installed
+public V2 controller and signed host admissions (`f33b6940b67`). A later request
+can authenticate the retained intent and reuse the persisted group; recovery
+also finishes creation from a retained admission with no group journal, using
+the exact retained authority identities (`67d080ec499`, `43c6cb70284`). The
+focused preparation/execution selection passed three cases and server-test
+typechecking passed after the recovery repair. Independent source review closed
+the replay and preparation-cache findings. The overlapping-create test does not
+establish that the second request reached the held phase before release;
+concurrent retry remains unverified at that boundary.
+
+These owners are not mounted in production. Bound Session source and credential
+authority, the complete runtime/HTTP/MCP/CLI surface, Flow callbacks, cancellation
+and member transport qualification remain unfinished. The operator fixture's
+controlled SDK responses do not establish provider or physical-runtime acceptance.
+The capability remains false and #91 remains undelivered.
+
 ## Earlier source checkpoints
 
 ### Merged UI focused qualification
