@@ -1025,7 +1025,9 @@ config (`agentConnections.<engine>.config` in `config/app.json`):
 - `env` — environment variables merged into every engine subprocess the
   connection spawns. Names must be valid env-var names; Station-internal
   secret names and `TMPDIR` are refused. An empty-string value masks an
-  inherited variable.
+  inherited variable. Claude sessions take `CLAUDE_CODE_ARTIFACT` from the
+  [`claudeArtifactsEnabled`](../reference/config.md#optional-fields) setting,
+  which overrides a value set here.
 - `configHome` — an explicit engine config home (`~` allowed), applied as
   `CLAUDE_CONFIG_DIR` (Claude Code) or `CODEX_HOME` (Codex). It wins over the
   station-managed app-home opt-in (`useAppHome`); a selected credential
@@ -1692,7 +1694,10 @@ and **Skip approval prompts**. Whoever approves sees "asks for full device
 access" and approves it as asked, or opens **Limit access** to untick
 permissions first; only the operator can approve the two elevated ones. In
 **Needs attention** the request is one line with **Review**, which opens the
-details. (The share prompt's **Request pairing for this browser** still
+details. A paired browser can sign in with an enrolled operator passkey and
+confirm an ordinary pairing request on the consent origin; the request remains
+pending until confirmation. See [operator passkeys](operator-passkeys.md) for
+setup and availability. (The share prompt's **Request pairing for this browser** still
 asks for the full default grant; it says so on screen.) A Device paired by an older Station may still hold
 `access:manage` from the historical default grant; its first access change, in
 either place, removes it for good and says so.

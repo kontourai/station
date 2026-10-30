@@ -25,6 +25,10 @@ import {
   openConnectionsModal,
 } from '../../lib/connectionModalEvents';
 import {
+  peerPlacementRefusals,
+  sshPlacementRefusals,
+} from '../../utils/executionPlacement';
+import {
   peerStationLabel,
   selectablePeerStations,
 } from '../../utils/peerEnvironmentOptions';
@@ -91,6 +95,8 @@ const PORTABLE_RESOURCE_CHOICE_NOTICE =
   'Choose which Project resource to place on the selected Station.';
 const PORTABLE_SSH_UNSUPPORTED_NOTICE =
   'This Project can\u2019t be placed on an SSH Station in this flow.';
+const PEER_CANNOT_OPERATE_NOTICE =
+  'This paired Station\u2019s credential can\u2019t start work there. Pair it again with permission to run work, or choose another Station.';
 const PORTABLE_SSH_UNSUPPORTED_GUIDANCE =
   'Choose a paired Station, or This Station to run it here.';
 const PORTABLE_IDENTITY_DENIED_NOTICE =
@@ -429,8 +435,16 @@ export function DelegationLauncher({
   const isSshEnvironment =
     selectedEnvironment !== undefined && !isPeerEnvironment;
   const portablePlacement = Boolean(projectSlug) && isPeerEnvironment;
-  // SSH + linked Project: blocked outright, never dispatched.
-  const sshProjectBlocked = Boolean(projectSlug) && isSshEnvironment;
+  // SSH + linked Project: blocked outright, never dispatched. The start
+  // composer's Station list reads the same rule and never offers it.
+  const sshRefusals =
+    isSshEnvironment && selectedEnvironment
+      ? sshPlacementRefusals(selectedEnvironment.profile, Boolean(projectSlug))
+      : [];
+  const sshProjectBlocked = sshRefusals.includes('ssh-with-project');
+  const peerCannotOperate =
+    selectedPeer !== undefined &&
+    peerPlacementRefusals(selectedPeer).includes('peer-cannot-operate');
   const portableProjectId = portablePlacement
     ? projectIdentity?.identity.id
     : undefined;
@@ -509,9 +523,8 @@ export function DelegationLauncher({
     : null;
   const environmentUnavailable = Boolean(
     projectDefaultsUnavailable ||
-      (selectedEnvironment &&
-        (!selectedEnvironment.profile.environmentId ||
-          !selectedEnvironment.profile.verifiedProjectPath)),
+      sshRefusals.includes('ssh-unverified') ||
+      peerCannotOperate,
   );
 
   const submit = async (event: React.FormEvent) => {
@@ -812,6 +825,11 @@ export function DelegationLauncher({
               {ENVIRONMENTS_UNAVAILABLE_NOTICE}
             </p>
           )}
+          {peerCannotOperate && (
+            <p className="delegation-launcher__hint" role="alert">
+              {PEER_CANNOT_OPERATE_NOTICE}
+            </p>
+          )}
           {sshProjectBlocked && (
             <div className="delegation-launcher__discovery-error" role="alert">
               <span>{PORTABLE_SSH_UNSUPPORTED_NOTICE}</span>
@@ -981,7 +999,10 @@ export function DelegationLauncher({
                         <option
                           key={environment.profile.id}
                           value={environment.profile.environmentId!}
-                          disabled={!environment.profile.verifiedProjectPath}
+                          disabled={sshPlacementRefusals(
+                            environment.profile,
+                            false,
+                          ).includes('ssh-unverified')}
                         >
                           {environment.profile.name} — SSH
                           {!environment.profile.verifiedProjectPath
@@ -995,8 +1016,12 @@ export function DelegationLauncher({
                       <option
                         key={`peer:${peer.environmentId}`}
                         value={peer.environmentId}
+                        disabled={peerPlacementRefusals(peer).length > 0}
                       >
                         {peerStationLabel(peer)} — Paired Station
+                        {peerPlacementRefusals(peer).length > 0
+                          ? ' (can\u2019t start work)'
+                          : ''}
                       </option>
                     ))}
                   </select>

@@ -293,7 +293,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/plugin-foreground-work` | Bounded foreground-work declarations, start intents, effect depth, run states, and safe public outcomes. Published ahead of a server implementation: Station does not admit or list plugin foreground runs yet |
 | `@kontourai/station-contracts/project` | Project config and metadata, and `projectIconProblem`: the one rule for a stored project icon (a short glyph, or a PNG/JPEG/WebP/ICO data URL of at most 128 KiB whose bytes match its type) that the create and update routes, the icon pickers and the renderer share |
 | `@kontourai/station-contracts/project-chat-defaults` | How a Project's new chat picks its model and approval mode (`fixed` or `last-used`), the `GET /api/projects/:slug/chat-defaults` view, and `resolveProjectChatApprovalDefault`, the one resolution the session start and that view share |
-| `@kontourai/station-contracts/project-membership` | Exact Station/local/portable Project scope, member roles/actions, single-use or verified-email invitations and administration projections |
+| `@kontourai/station-contracts/project-membership` | Exact Station/local/portable Project scope, member roles/actions, single-use or verified-email invitations, administration projections and the sharing state a refused administration read discloses (`ProjectAccessRefusalDetails`) |
 | `@kontourai/station-contracts/provider` | Provider kinds and provider-facing contract enums/types |
 | `@kontourai/station-contracts/runtime` | Session metadata, workflow metadata, runtime responses |
 | `@kontourai/station-contracts/runtime-events` | Runtime event stream payloads |
@@ -780,6 +780,16 @@ reads it only from a station-control tool's whole result, and
 `stationControlToolName`. A history window carries it whole on
 `ToolCompletedEvent.stationControlRefusal`, read before the window cut the
 output to an excerpt; a sentence over its bound is not carried.
+
+`@kontourai/station-contracts/claude-artifact` owns `ClaudeArtifactLink`
+(the claude.ai page a Claude Code `Artifact` publish produced, and its
+title), `parseClaudeArtifactPublish`, which reads it only from a publish's
+structured tool output (`url` and `path` at the top level), and
+`claudeArtifactLinkView`, which checks a stored link again before a reader
+renders it. `claudeArtifactUrl` admits only an `https://claude.ai` URL with
+no credentials or port; a URL over its bound is refused, and a title over
+its bound is dropped. The Claude adapter carries the link on
+`ToolCompletedEvent.claudeArtifact`.
 
 `ORCHESTRATION_STREAM_ACTIVITY_EVENT` names an idless SSE frame carrying the
 current conversation activity after a burst of coalesced runtime events. It
@@ -1312,7 +1322,12 @@ kernel `oom_kill` count (`childWorkloadMemoryExhausted` in
 `@kontourai/station-shared/child-workload`), not a signal alone. Only the Codex
 adapter publishes it today. The conversation is continued automatically
 (capped) with a Station recovery note; past the cap chat offers Continue rather
-than Send again. `isEngineMemoryExhaustedFailure` (`provider`) also recognises
+than Send again, to a caller the conversation's open read lets send. That
+answer (`callerAccess.continue`) is computed for
+`POST /api/orchestration/chat/:conversationId/continue`; Continue posts
+`POST /api/orchestration/conversations/:id/memory-continuation`, and the chat
+pane relies on both being in the same `orchestration:operate` tier.
+`isEngineMemoryExhaustedFailure` (`provider`) also recognises
 a failure stored before that code existed (`codex-turn-orphaned` with the old
 "Codex was killed because memory was exhausted." sentence), so chat shows it
 in current copy and a person's Continue applies to it. That continuation's turn carries a send key starting

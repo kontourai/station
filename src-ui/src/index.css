@@ -3376,13 +3376,6 @@ button:hover {
   overflow: hidden;
 }
 
-/* archive#3213: placement only. The failed-session banner's appearance and
-   its wrap/clamp policy belong to the shared `SessionFailureAlert.css`; this
-   is just the inset its siblings above the composer already use. */
-.chat-dock__session-failure {
-  margin: 0 12px 8px;
-}
-
 /* archive#3386: a quiet disclosure, not a failure. It states that a bounded
    read withheld bytes the session still holds, so it sits below the failure
    banner's volume. Shared by both surfaces that render the same disclosure

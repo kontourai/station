@@ -543,6 +543,13 @@ const SETTINGS_CATALOG_SOURCE = [
     configKeys: ['usageLimitAutoResume'],
   },
   {
+    id: 'claude-artifacts',
+    title: 'Claude Code artifacts',
+    section: 'agent-runs',
+    configKeys: ['claudeArtifactsEnabled'],
+    keywords: ['claude', 'artifact', 'publish', 'claude.ai', 'page'],
+  },
+  {
     id: 'review-guides',
     title: 'Review guides',
     section: 'agent-runs',
