@@ -163,6 +163,8 @@ const pattern = ${JSON.stringify(phase === 'collection' ? 'stage=queued; elapsed
 export default class extends Reporter {
   constructor() { super({ intervalMs: 25, write(message) {
     process.stdout.write(message);
+    if (/stage=running;.*cases=(?!unknown)[^;]+; hooks=unknown/.test(message) && !existsSync(marker + '.body'))
+      writeFileSync(marker + '.body', 'observed');
     if (new RegExp(pattern).test(message) && !existsSync(marker))
       writeFileSync(marker, 'observed');
   } }); }
@@ -188,21 +190,21 @@ const delay = () => new Promise((resolve, reject) => {
   check();
 });
 ${phase === 'collection' ? 'await delay();' : ''}
-${phase === 'afterEach' ? 'afterEach(delay);' : ''}
 let closeObservation = () => {};
-${phase === 'body' ? 'afterEach(() => closeObservation());' : ''}
-const observeBody = () => new Promise(resolve => {
+const observe = (observedMarker) => new Promise(resolve => {
   const finish = () => {
-    if (!existsSync(marker)) return;
+    if (!existsSync(observedMarker)) return;
     observer.close();
     resolve();
   };
-  const observer = watch(dirname(marker), finish);
+  const observer = watch(dirname(observedMarker), finish);
   closeObservation = () => observer.close();
   finish();
 });
-test('private-case-content-must-not-appear-in-progress', async () => {
-  ${phase === 'body' ? 'await observeBody();' : ''}
+${phase === 'afterEach' ? 'afterEach(() => observe(marker));' : ''}
+test('private-case-content-must-not-appear-in-progress', async ({ onTestFinished }) => {
+  onTestFinished(() => closeObservation());
+  ${phase === 'collection' ? '' : "await observe(marker + '.body');"}
   expect(process.env.STATION_VITEST_CORPUS_GROUP).toBe('process-exclusive');
   expect(2 + 2).toBe(4);
 });`,
