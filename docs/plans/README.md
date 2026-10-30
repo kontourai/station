@@ -11,6 +11,7 @@ Concrete execution plans that expand roadmap phases or major initiatives into im
 - [basis-session-epic-completion.md](basis-session-epic-completion.md) — Basis and session surfaces: remaining epic work
 - [continuity-epic-followthrough.md](continuity-epic-followthrough.md) — Continuity and existing-client follow-through
 - [documentation-code-audit.md](documentation-code-audit.md) — Documentation and architecture audit
+- [integration-completion-program.md](integration-completion-program.md) — Integration completion program
 - [issue-class-prevention.md](issue-class-prevention.md) — Issue class prevention
 - [onboarding-improvement-rounds.md](onboarding-improvement-rounds.md) — Onboarding improvement rounds
 - [pane-workspace.md](pane-workspace.md) — Pane workspace implementation

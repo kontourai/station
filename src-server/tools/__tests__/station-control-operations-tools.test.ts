@@ -97,7 +97,9 @@ type ToolResult = {
 };
 type ToolHandler = (...args: any[]) => Promise<ToolResult>;
 
-async function registerTools(): Promise<Record<string, ToolHandler>> {
+async function registerTools(
+  profile: 'control' | 'knowledge' = 'control',
+): Promise<Record<string, ToolHandler>> {
   const { registerOperationsTools } = await import(
     '../station-control-operations-tools.js'
   );
@@ -108,7 +110,13 @@ async function registerTools(): Promise<Record<string, ToolHandler>> {
     name: 'operations-tools-characterization',
     version: '0.0.0',
   });
-  registerOperationsTools(new StationControlToolRegistry(server));
+  const toolRegistry = new StationControlToolRegistry(server);
+  if (profile === 'knowledge') {
+    const { registerKnowledgeDataTools } = await import(
+      '../station-knowledge-tools.js'
+    );
+    registerKnowledgeDataTools(toolRegistry);
+  } else registerOperationsTools(toolRegistry);
   const registry = (
     server as unknown as {
       _registeredTools: Record<string, { handler: ToolHandler }>;
@@ -1171,6 +1179,7 @@ describe('station-control operations tools (characterization)', () => {
                   category: 'meeting',
                 },
               ],
+              index: null,
             },
             null,
             2,
@@ -1193,6 +1202,62 @@ describe('station-control operations tools (characterization)', () => {
       }),
     );
   });
+
+  describe.each(['control', 'knowledge'] as const)(
+    '%s knowledge search health',
+    (profile) => {
+      test.each([
+        {
+          staleRoots: [{ rootId: 'personal', reason: 'embedding-changed' }],
+          staleRecords: 0,
+          scanLimitReached: false,
+        },
+        { staleRoots: [], staleRecords: 2, scanLimitReached: true },
+        { staleRoots: [], staleRecords: 0, scanLimitReached: false },
+      ])('retains the server report for empty results: %j', async (index) => {
+        fetchMock.mockResolvedValueOnce(
+          jsonResponse({ success: true, data: [], index }),
+        );
+        const tools = await registerTools(profile);
+        const result = await tools.search_knowledge({ query: 'release plan' });
+        expect(result.isError).toBeUndefined();
+        expect(JSON.parse(result.content[0].text)).toEqual({
+          success: true,
+          data: [],
+          index,
+        });
+      });
+
+      test('does not invent health for an older host', async () => {
+        fetchMock.mockResolvedValueOnce(
+          jsonResponse({ success: true, data: [] }),
+        );
+        const tools = await registerTools(profile);
+        const result = await tools.search_knowledge({ query: 'release plan' });
+        expect(JSON.parse(result.content[0].text)).toEqual({
+          success: true,
+          data: [],
+          index: null,
+        });
+      });
+
+      test('keeps missing-embedder failures observable', async () => {
+        fetchMock.mockResolvedValueOnce(
+          jsonResponse(
+            { success: false, error: 'no embedder configured' },
+            400,
+          ),
+        );
+        const tools = await registerTools(profile);
+        const result = await tools.search_knowledge({ query: 'release plan' });
+        expect(result.isError).toBe(true);
+        expect(JSON.parse(result.content[0].text)).toEqual({
+          success: false,
+          error: 'no embedder configured',
+        });
+      });
+    },
+  );
 
   test('search_knowledge forwards the NO_EMBEDDER error envelope on failure', async () => {
     fetchMock.mockResolvedValueOnce(
