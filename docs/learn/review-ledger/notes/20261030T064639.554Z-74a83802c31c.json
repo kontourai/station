@@ -1,0 +1,7 @@
+{
+  "revision": "684e41d9116c4e199f6581878f24653a1465f42e",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Scoped lock-graph review at 684e41d9116: installed Claude Agent SDK is0.3.304, matching pnpm package/snapshot entries and this document header. Read its installed public Options/resolveSettings declarations: omitted settingSources loads user/project/local defaults; empty sources skips those while managed policy still reads. Current Claude buildOptions intentionally omits settingSources; catalog probe uses empty sources and strict MCP; normal authored selection keeps strictMcpConfig except additive mode. Flow Agents9.9.1/Flow5.4 graph refresh does not supply a new pre-tool seam or requalify historical Claude2.1.224/2.1.278 experiments. The document explicitly separates those historical probes, current declarations and live enforcement. No prose change needed for lock packages/snapshots; unchanged evaluator/grant/preview/other-provider claims retain prior review. Static installed declaration/source inspection only, no query(), settings resolution execution, engine launch, account/login, provider or native/hosted enforcement acceptance.","inputs":["docs/conformance/tool-policy-delivery.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots","src-server/providers/__tests__/claude-adapter.test.ts","src-server/providers/adapters/claude-adapter.ts","src-server/runtime/bootstrap/station-runtime.ts"]}
+  ]
+}
