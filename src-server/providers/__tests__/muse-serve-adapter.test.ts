@@ -147,6 +147,7 @@ async function run(
     decide?: 'accept' | 'acceptForSession' | 'decline';
     stopChild?: boolean;
     stopAt?: number;
+    invocationId?: string;
   } = {},
 ): Promise<SentFrame[]> {
   const driven = await replayMuseServeCapture(
@@ -166,7 +167,11 @@ async function run(
       ...(actions.stopAt !== undefined ? { stopAt: actions.stopAt } : {}),
       onDrivenRequest: (method, occurrence, captured) => {
         if (method === 'turn/start') {
-          return h.adapter.sendTurn({ threadId: THREAD, input: 'go' });
+          return h.adapter.sendTurn({
+            threadId: THREAD,
+            input: 'go',
+            invocationId: actions.invocationId,
+          });
         }
         if (
           method === 'approval/decide' &&
@@ -393,6 +398,29 @@ describe('#2452 muse serve: approval mode', () => {
     const driven = await run(h, 'workflow-child-approve', { decide: 'accept' });
     const start = driven.find((frame) => frame.method === 'session/start');
     expect(start?.params?.approvalMode).toBe('onRequest');
+  });
+});
+
+describe('Muse serve turn invocation provenance', () => {
+  test('a dispatched turn retains its invocation while a provider turn does not', async () => {
+    const h = harness();
+    await run(h, 'workflow-child-approve', {
+      decide: 'accept',
+      invocationId: 'station-invocation',
+    });
+    const starts = of(h.events, 'turn.started');
+    const station = starts.find((event) => event.turnId === STATION_TURN);
+    expect(station).toMatchObject({ invocationId: 'station-invocation' });
+    expect(
+      of(h.events, 'turn.completed').find(
+        (event) => event.turnId === STATION_TURN,
+      ),
+    ).toMatchObject({ invocationId: 'station-invocation' });
+    const provider = starts.find(
+      (event) => event.metadata?.trigger === PROVIDER_TURN_TRIGGER,
+    );
+    expect(provider).toBeDefined();
+    expect(provider?.invocationId).toBeUndefined();
   });
 });
 

@@ -452,7 +452,9 @@ export function recordOwnedProcess(
   const registryDir =
     options.registryDir ?? ownedProcessRegistryDir(options.env);
   const log = options.log ?? (() => {});
-  if (!ensureRegistryDir(registryDir, log)) {
+  if (process.platform === 'win32' || !ensureRegistryDir(registryDir, log)) {
+    // Windows has no POSIX process groups to recover through this registry.
+    // Node's synthetic mode bits cannot establish Windows ACL trust either.
     // Fail closed: do not write into an untrusted directory. The spawn still
     // succeeds; the child is simply not sweep-protected. spawnOwnedChild
     // already swallows write failures for the same reason.
@@ -491,6 +493,7 @@ export function forgetOwnedProcess(
   enginePid: number,
   options: { registryDir?: string; env?: NodeJS.ProcessEnv } = {},
 ): void {
+  if (process.platform === 'win32') return;
   const registryDir =
     options.registryDir ?? ownedProcessRegistryDir(options.env);
   rmSync(recordFilePath(registryDir, enginePid), { force: true });
@@ -699,7 +702,7 @@ async function settleDeadLeaderGroup(
  * directory that is not owned by us or whose mode is broader than 0700, so a
  * foreign-planted record cannot weaponize the kill.
  *
- * POSIX-only in effect: the negative-group `kill(-pid, 'SIGKILL')` reaps the
+ * POSIX-only: the negative-group `kill(-pid, 'SIGKILL')` reaps the
  * whole process group, including a re-execed grandchild (`kiro-cli` →
  * `kiro-cli-chat`). Windows process groups do not work this way; see
  * `terminateProcessTree` for the Windows `taskkill /t` path, which the sweep
@@ -737,6 +740,12 @@ export async function sweepOrphanedOwnedProcesses(
     unverifiable: 0,
     survivingGroups: [],
   };
+  if (process.platform === 'win32') {
+    log(
+      'owned-process registry: POSIX orphan sweeping is unavailable on Windows; live-owner process-tree cleanup remains available',
+    );
+    return result;
+  }
   // BLOCKING 2: never read a registry we do not own.
   if (!registryDirIsTrustworthy(registryDir, log)) {
     return result;

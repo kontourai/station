@@ -1041,11 +1041,19 @@ describe('Home, the dock and Activity agree on one item', () => {
     const workFacts = buildWorkFacts({ items, sessions: summaries });
     const activity = renderView().container;
     const home = render(
-      <HomeSurface
-        model={homeModel(items)}
-        continuation={null}
-        onNavigate={vi.fn()}
-      />,
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <NavigationProvider>
+          <HomeSurface
+            model={homeModel(items)}
+            continuation={null}
+            onNavigate={vi.fn()}
+          />
+        </NavigationProvider>
+      </QueryClientProvider>,
     ).container;
     const dock = render(
       <DockInboxHost

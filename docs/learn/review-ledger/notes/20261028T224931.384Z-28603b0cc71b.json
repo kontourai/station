@@ -1,0 +1,7 @@
+{
+  "revision": "15ab65628f0118165e0ad004ba243b46d1e333ab",
+
+  "notes": [
+    {"path":"docs/guides/self-configuring-agent.md","note":"Rechecked against this change: session-project-activity.ts only drops the export from SESSION_PERSON_READS_PREVIEW (the session-cli-reads Feature Preview descriptor), which is now used only inside that module; the preview id, label and refusal text are unchanged. The guide's Station Control session and activity claims are unaffected.","inputs":["docs/guides/self-configuring-agent.md","src-server/routes/orchestration/session-project-activity.ts"]}
+  ]
+}

@@ -553,6 +553,17 @@ export const STATION_CONTROL_TOOL_POLICY = {
   // request that names another conversation. A wake-up sends its turn with
   // the conversation's existing permissions; a job proposal creates nothing
   // until a person approves it through the scheduler route.
+  coordinator_picture_read: {
+    ...SELF_READ,
+    routes: [get('/api/orchestration/station-control/coordinator-picture')],
+  },
+  coordinator_picture_update: {
+    assurance: 'bound',
+    role: 'self',
+    toolClass: 'mutating',
+    personOnly: 'never',
+    routes: [post('/api/orchestration/station-control/coordinator-picture')],
+  },
   schedule_wake_up: {
     assurance: 'any',
     role: 'self',

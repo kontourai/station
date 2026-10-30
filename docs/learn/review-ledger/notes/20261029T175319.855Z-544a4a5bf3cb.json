@@ -1,0 +1,15 @@
+{
+  "revision": "53371ccdf50ec9093e460930e979d43dee759c59",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Reviewed the screenshot fixture delta: mobile Home now checks dock clearance with a wrapped heading and removes the temporary style before capture. The motion, testing and telemetry claims remain unchanged. The full 91-screen local gallery passed; this is not live-device evidence.","inputs":["docs/design/motion.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the screenshot fixture delta: mobile Home now checks dock clearance with a wrapped heading and removes the temporary style before capture. The motion, testing and telemetry claims remain unchanged. The full 91-screen local gallery passed; this is not live-device evidence.","inputs":["docs/guides/testing.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed the screenshot fixture delta: mobile Home now checks dock clearance with a wrapped heading and removes the temporary style before capture. The motion, testing and telemetry claims remain unchanged. The full 91-screen local gallery passed; this is not live-device evidence.","inputs":["docs/reference/usage-telemetry.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed the connection-manager browser fixture and smoke coverage: a paired receiver now answers the coordinator read with an explicit absent designation. Both affected device-connection tests passed locally; the declared coverage and qualification limits remain unchanged.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/connect-modal.spec.ts"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"Reviewed the connection-manager browser fixture and smoke coverage: a paired receiver now answers the coordinator read with an explicit absent designation. Both affected device-connection tests passed locally; the declared coverage and qualification limits remain unchanged.","inputs":["docs/testing/browser-smoke.md","tests/connect-modal.spec.ts"]}
+  ]
+}

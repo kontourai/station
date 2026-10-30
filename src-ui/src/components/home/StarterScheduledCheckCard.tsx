@@ -11,6 +11,7 @@ import {
 } from '@kontourai/station-sdk';
 import { useState } from 'react';
 import { useNavigation } from '../../contexts/NavigationContext';
+import { requireSubtleCrypto, toHex } from '../../utils/sha256';
 import { Button } from '../Button';
 import { PageCallout } from '../PageCallout';
 import { SkeletonBlock } from '../state';
@@ -33,19 +34,16 @@ function isScheduledObservation(
 }
 
 async function scheduledCheckOperationId(): Promise<string> {
-  if (!globalThis.crypto?.subtle)
-    throw new Error('Secure Starter identity is unavailable.');
-  const digest = await globalThis.crypto.subtle.digest(
+  const subtle = requireSubtleCrypto('Secure Starter identity is unavailable.');
+  const digest = await subtle.digest(
     'SHA-256',
     new TextEncoder().encode(
       `${STARTER_ID}\0definition:${SCHEDULED_CHECK_STARTER_DEFINITION_VERSION}`,
     ),
   );
-  return `scheduled-check:${SCHEDULED_CHECK_STARTER_DEFINITION_VERSION}:${[
-    ...new Uint8Array(digest),
-  ]
-    .map((value) => value.toString(16).padStart(2, '0'))
-    .join('')}`;
+  return `scheduled-check:${SCHEDULED_CHECK_STARTER_DEFINITION_VERSION}:${toHex(
+    new Uint8Array(digest),
+  )}`;
 }
 
 export function StarterScheduledCheckCard() {

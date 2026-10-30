@@ -54,6 +54,12 @@ owns limits, theme variables, Chromium prerequisites and page deletion semantics
   Station Agent or external engine, on this Station or a supported saved environment
 - `respond_to_task_request` for an open approval or permission request from a
   delegated worker
+- `coordinator_picture_read` and `coordinator_picture_update` for the bound
+  designated coordinator, when the **Coordinator working picture** preview is
+  enabled. They keep short, person-scoped notes about readable conversations;
+  Station rechecks source access on reads and updates. Notes are the
+  coordinator's account, not authoritative live status. See [Houston's
+  working picture](../user/houston.md#working-picture).
 - `search_sessions` and `rename_session` for finding and naming conversations
   (see [Searching and renaming conversations](#searching-and-renaming-conversations))
 - `declare_pull_request` for an agent on any engine (Claude Code, Codex, ACP) to
@@ -439,7 +445,9 @@ Session by its `sessionId`, without creating a task.
   restart interrupted leaves the Session idle but settles nothing: no
   `settledTurn` reports it, and nothing acknowledges the requested work. A
   delegated task cut off that way tells its parent it was interrupted, quoting
-  no output. Active requested work whose
+  no output. A person waiting from the CLI (`station sessions wait`) is told
+  too: its separate person-facing leaf reports that turn as interrupted,
+  while `wait_session`'s answer stays as described here. Active requested work whose
   producer emits only untagged observations remains running and unacknowledged.
   A positively scoped terminal uses the actual current boundary or validated
   retirement witness and complete canonical scope; its invocation is never

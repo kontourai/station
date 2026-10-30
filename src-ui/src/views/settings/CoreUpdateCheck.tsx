@@ -24,6 +24,7 @@ import {
   ComparisonMessage,
   comparisonMetadata,
   deriveComparisonView,
+  formatCheckTime,
   isArchiveInstall,
   SERVICE_UPDATE_IN_FLIGHT,
   ServerUpdateHeader,
@@ -563,8 +564,7 @@ export function CoreUpdateCheck({
       />
     ) : null;
 
-  const historicalTime =
-    dataUpdatedAt > 0 ? new Date(dataUpdatedAt).toLocaleTimeString() : null;
+  const historicalTime = formatCheckTime(dataUpdatedAt);
 
   const unreachable =
     !!context &&
