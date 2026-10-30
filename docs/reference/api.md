@@ -3904,8 +3904,10 @@ the installed declaration (`navigate` with a destination id, or
 - **Requirements.** `active-chat` and `session` are satisfied only by a session
   the caller can read (the same predicate every session read uses); one it
   cannot read is `requirement-not-satisfied`, exactly like one that does not
-  exist. `project` and `task` are checked against existence, the same authority
-  Station's project and task routes answer any caller with.
+  exist. `project` requires the caller's Project read authority. `task` must
+  belong to a readable Project and, when supplied, match `projectSlug`.
+  An unreadable or missing Project or Task is `requirement-not-satisfied`;
+  an unavailable authority check returns `unavailable`.
 - **Refusals.** `409` with a `reason`: `request-expired`,
   `generation-changed`, `command-not-declared`, `command-not-executable`,
   `target-mismatch`, `requirement-not-satisfied`, `permission-unavailable`,
