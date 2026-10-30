@@ -398,12 +398,20 @@ export function useIntegrationAccountQuery(
 
 export function useStartIntegrationOAuthMutation() {
   return useApiMutation(
-    ({ id, projectSlug, requestScope }: IntegrationAccountInput) =>
+    ({
+      id,
+      projectSlug,
+      requestScope,
+      scopes,
+    }: IntegrationAccountInput & {
+      /** The person's scopes for this sign-in; omitted uses the default. */
+      scopes?: string[];
+    }) =>
       requestIntegrationAccount<{ authorizationUrl: string }>(
         `/${encodeURIComponent(id)}/oauth/authorize`,
         requestScope,
         'POST',
-        { mode: 'remote', projectSlug },
+        { mode: 'remote', projectSlug, ...(scopes ? { scopes } : {}) },
       ),
     { invalidateKeys: [['integration-account'], ['integrations']] },
   );

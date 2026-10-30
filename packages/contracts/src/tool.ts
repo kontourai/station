@@ -120,6 +120,42 @@ export interface ToolDef {
    * used for such a turn only when `allowInstanceFallback` is true.
    */
   credentialOwnership?: ToolCredentialOwnership;
+  /**
+   * How Station identifies itself to a remote tool server's OAuth
+   * authorization server. Absent means Dynamic Client Registration, as before.
+   * Selection follows the MCP authorization spec: a pre-registered `clientId`
+   * first, then `clientMetadataUrl` when the server advertises Client ID
+   * Metadata Document support, then registration.
+   */
+  oauthClient?: ToolOAuthClient;
+}
+
+/**
+ * A remote tool server's OAuth client. The client identifies the app, not a
+ * person: everyone who signs in uses it, and their tokens keep the
+ * integration's `credentialOwnership`.
+ */
+export interface ToolOAuthClient {
+  /** A client ID registered with the authorization server ahead of time. */
+  clientId?: string;
+  /**
+   * The authorization server's `issuer` the pre-registered client belongs to.
+   * The client is never used with another issuer, and a client secret cannot
+   * be bound without one (GHSA-6qxp-vccf-f47h).
+   */
+  issuer?: string;
+  /** HTTPS URL of a Client ID Metadata Document, used as the client ID. */
+  clientMetadataUrl?: string;
+  /**
+   * Default scopes to request at sign-in, replacing the scopes the server
+   * advertises. The person signing in can change them for their sign-in.
+   */
+  scopes?: string[];
+  /**
+   * Secret binding id holding the client secret, never the secret. Only the
+   * secret-binding bind/unbind routes write it.
+   */
+  clientSecretRef?: string;
 }
 
 export interface ToolCredentialOwnership {
@@ -153,7 +189,9 @@ export interface ToolServerProbeResult {
     | { state: 'awaiting-operator-consent' }
     | { state: 'authorized' }
     | { state: 'authorization-failed'; reason: string }
-    | { state: 'token-expired-refresh-failed'; reason: string };
+    | { state: 'token-expired-refresh-failed'; reason: string }
+    /** The server offers no client registration and no client is configured. */
+    | { state: 'client-id-required'; reason: string };
 }
 
 export interface ToolMetadata {
@@ -200,6 +238,12 @@ export interface ToolAccountStatus {
   project?: { slug: string; connected: boolean };
   shared: { usable: boolean; connected: boolean };
   catalogAvailable?: boolean;
+  /**
+   * The scopes this caller chose at their last completed sign-in for the
+   * account they would sign in as (empty: the server's own). Absent when
+   * they have not chosen; the integration default then applies.
+   */
+  rememberedScopes?: string[];
 }
 
 export interface Prerequisite {
@@ -652,4 +696,106 @@ export interface ProviderConnectionConfig {
   config: Record<string, unknown>;
   enabled: boolean;
   capabilities: ('llm' | 'embedding' | 'vectordb')[];
+}
+
+/**
+ * OAuth credential identity of a remote tool server: the URL-standard
+ * serialized endpoint with its fragment removed. Fragments never reach an
+ * HTTP server; path trailing slashes and query ordering remain significant.
+ */
+export function toolServerOAuthResourceIdentity(
+  def: Pick<ToolDef, 'transport' | 'endpoint'>,
+): string | undefined {
+  if (
+    (def.transport !== 'sse' && def.transport !== 'streamable-http') ||
+    !def.endpoint
+  )
+    return undefined;
+  try {
+    const endpoint = new URL(def.endpoint);
+    endpoint.hash = '';
+    return endpoint.href;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Whether one integration definition may replace another, for its OAuth
+ * client (GHSA-6qxp-vccf-f47h). Every writer of integration definitions calls
+ * this with the definition it replaces (or none):
+ *
+ * - A pre-registered client names the issuer it belongs to.
+ * - A bound client secret pins the issuer and the endpoint; dropping the
+ *   reference is always allowed, so unbinding is the step that releases them.
+ * - A write never introduces a reference to a different binding, and no
+ *   definition is created already bound: only the bind operation, which
+ *   changes nothing else, adds one.
+ *
+ * Throws with an operator-facing reason; returns nothing when allowed.
+ */
+export function assertToolOAuthClientWritable(
+  current: ToolDef | undefined,
+  next: ToolDef,
+): void {
+  const client = next.oauthClient;
+  if (client?.clientId && !client.issuer)
+    throw new Error(
+      "A pre-registered OAuth client needs its authorization server's issuer.",
+    );
+  const nextRef = client?.clientSecretRef;
+  if (!nextRef) return;
+  const currentRef = current?.oauthClient?.clientSecretRef;
+  if (!current || (currentRef !== undefined && currentRef !== nextRef))
+    throw new Error(
+      'Secret bindings can be changed only through the operator binding API.',
+    );
+  if (!client?.issuer)
+    throw new Error(
+      "Declare the client's authorization server before binding its secret.",
+    );
+  if (current.oauthClient?.issuer !== client.issuer)
+    throw new Error(
+      "Unbind the OAuth client secret before changing the client's authorization server.",
+    );
+  if (
+    toolServerOAuthResourceIdentity(current) !==
+    toolServerOAuthResourceIdentity(next)
+  )
+    throw new Error(
+      'Unbind the OAuth client secret before changing the integration endpoint.',
+    );
+}
+
+/**
+ * A definition from outside Station (a registry, catalog, plugin or import)
+ * never authors a secret-binding reference; only the binding routes do.
+ */
+export function withoutToolBindingReferences(def: ToolDef): ToolDef {
+  const { secretEnvRefs: _env, oauthClient, ...rest } = def;
+  if (!oauthClient) return rest;
+  const { clientSecretRef: _secret, ...client } = oauthClient;
+  return Object.keys(client).length > 0
+    ? { ...rest, oauthClient: client }
+    : rest;
+}
+
+/**
+ * The MCP spec's Client ID Metadata Document shape: an HTTPS URL with a
+ * non-root path, no credentials and no fragment. The SDK rejects anything
+ * else at consent time; refusing it on write keeps a bad value out.
+ */
+export function isToolClientMetadataDocumentUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === 'https:' &&
+      url.pathname !== '/' &&
+      !url.username &&
+      !url.password &&
+      !url.hash
+    );
+  } catch {
+    return false;
+  }
 }

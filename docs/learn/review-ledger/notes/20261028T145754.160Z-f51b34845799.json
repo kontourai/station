@@ -1,0 +1,7 @@
+{
+  "revision": "50613535a040b57e7f87fabf185b77b10e608508",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Edited SecretBindingAdministration: resolveOAuthClientSecret, its exact grant, bind/unbind ordering and the oauthClientGrants document field. Checked against secret-binding-administration.ts and its tests. Other inputs: the module map adds only an OAuth client-secret resolver paragraph to SecretBindingAdministration; bind/unbind accept the mcp-integration-oauth-client consumer; station-runtime.ts only passes the secret-binding resolver to the engine MCP OAuth resolver so configured OAuth client secrets can refresh; mcp-manager.ts only passes an integration's configured OAuth client and secret resolver to its remote OAuth providers; mcp-service.ts adds the client-id-required health state, credential reset on OAuth client change, a bound-secret endpoint pin and per-sign-in scopes; the binding authority adds the OAuth client-secret grant, resolver and bind/unbind consumer.","inputs":["docs/architecture/module-map.md","src-server/routes/secret-bindings.ts","src-server/runtime/bootstrap/station-runtime.ts","src-server/runtime/mcp/mcp-manager.ts","src-server/services/plugins/mcp-service.ts","src-server/services/secrets/secret-binding-administration.ts"]}
+  ]
+}

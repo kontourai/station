@@ -1,0 +1,7 @@
+{
+  "revision": "9ab71288ea776f13c59851c039f5a1e14c405cf9",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Edited: issuer pin for undeclared issuers and rememberedScopes in the account response. Checked against tool-server-oauth.ts and mcp-service.ts. Other inputs: the API reference documents the issuer pin and rememberedScopes; the tool contract adds ToolAccountStatus.rememberedScopes and isToolClientMetadataDocumentUrl; the integration schema uses the contract isToolClientMetadataDocumentUrl (same rule as before); station-runtime.ts only validates STATION_OAUTH_CLIENT_METADATA_URL at construction (a malformed value refuses startup); mcp-service.ts passes the home to the OAuth client config, records an explicit scope choice for remembering, and returns rememberedScopes in account status.","inputs":["docs/reference/api.md","packages/contracts/src/tool.ts","src-server/routes/schemas/schema-definitions/runtime.ts","src-server/runtime/bootstrap/station-runtime.ts","src-server/services/plugins/mcp-service.ts"]}
+  ]
+}
