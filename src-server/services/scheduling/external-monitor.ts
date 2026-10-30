@@ -68,10 +68,12 @@ async function json(
   fetcher: MonitorFetch,
   url: string,
   init: RequestInit,
+  limits: Readonly<{ maxBytes?: number; notFoundDetail?: string }> = {},
 ): Promise<
   | { value: unknown; sourceTime?: string; link?: string }
   | { outcome: 'terminal' | 'unauthorized' | 'unavailable'; detail: string }
 > {
+  const maxBytes = limits.maxBytes ?? GITHUB_PROBE_MAX_BYTES;
   const r = await abortable(fetcher(url, init), init.signal);
   if (r.redirected || r.type === 'opaqueredirect')
     return {
@@ -94,14 +96,17 @@ async function json(
           detail: 'GitHub did not authorize this monitor credential.',
         };
   if (r.status === 404 || r.status === 410)
-    return { outcome: 'terminal', detail: 'The pull request is unavailable.' };
+    return {
+      outcome: 'terminal',
+      detail: limits.notFoundDetail ?? 'The pull request is unavailable.',
+    };
   if (!r.ok)
     return {
       outcome: 'unavailable',
       detail: `GitHub probe returned HTTP ${r.status}.`,
     };
   const length = Number(r.headers.get('content-length') ?? '0');
-  if (!Number.isFinite(length) || length > GITHUB_PROBE_MAX_BYTES)
+  if (!Number.isFinite(length) || length > maxBytes)
     return {
       outcome: 'unavailable',
       detail: 'GitHub response exceeded the monitor byte limit.',
@@ -115,7 +120,7 @@ async function json(
     const n = await reader.read();
     if (n.done) break;
     size += n.value.byteLength;
-    if (size > GITHUB_PROBE_MAX_BYTES) {
+    if (size > maxBytes) {
       await reader.cancel();
       return {
         outcome: 'unavailable',
@@ -276,6 +281,67 @@ async function pages(
     };
   return values;
 }
+type GitHubCredential = Awaited<
+  ReturnType<IntegrationSecretResolver['resolveForIntegration']>
+>;
+
+/**
+ * The one GitHub credential path every monitor probe uses: an exact
+ * secret-binding id resolved through the integration resolver, or no
+ * credential at all. The caller settles a returned grant exactly once.
+ */
+async function resolveGitHubCredential(input: {
+  binding: string | undefined;
+  resolver: IntegrationSecretResolver | undefined;
+  integrationId: string;
+  signal: AbortSignal;
+}): Promise<
+  { kind: 'resolved'; secret?: GitHubCredential } | { kind: 'unauthorized' }
+> {
+  if (!input.binding) return { kind: 'resolved' };
+  if (!input.resolver) return { kind: 'unauthorized' };
+  const resolution = input.resolver.resolveForIntegration({
+    integrationId: input.integrationId,
+    secretEnvRefs: { GITHUB_TOKEN: input.binding },
+  });
+  // Aborting a wait does not abort a resolver (the binding may be backed
+  // by a keychain or external runner). Keep observing it: if it grants
+  // after the probe deadline, immediately release that grant as failed
+  // rather than retaining secret material with no child to consume it.
+  void resolution.then(
+    (late) => {
+      if (input.signal.aborted)
+        late.settlement.settle({
+          outcome: 'failure',
+          reason: 'child_establishment_failed',
+        });
+    },
+    () => undefined,
+  );
+  return {
+    kind: 'resolved',
+    secret: await abortable(resolution, input.signal),
+  };
+}
+
+function githubRequestInit(
+  signal: AbortSignal,
+  secret: GitHubCredential | undefined,
+) {
+  return {
+    method: 'GET',
+    redirect: 'error' as const,
+    signal,
+    headers: {
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'Station-external-monitor',
+      ...(secret?.environment.GITHUB_TOKEN
+        ? { Authorization: `Bearer ${secret.environment.GITHUB_TOKEN}` }
+        : {}),
+    },
+  };
+}
+
 export function decideExternalMonitor(input: {
   state?: ExternalMonitorState;
   observation: ExternalMonitorObservation;
@@ -371,58 +437,31 @@ export async function probeGitHubPullRequest(
   const t = parseGitHubPullRequestTarget(config.target),
     c = new AbortController(),
     timer = setTimeout(() => c.abort(), GITHUB_PROBE_DEADLINE_MS);
-  let secret:
-    | Awaited<ReturnType<IntegrationSecretResolver['resolveForIntegration']>>
-    | undefined;
+  let secret: GitHubCredential | undefined;
   let settled = false;
   try {
-    if (config.credentialSecretBinding) {
-      if (!resolver)
-        return {
-          observation: obs(
-            'unauthorized',
-            'GitHub credential binding is unavailable.',
-          ),
-          actionable: false,
-        };
-      const resolution = resolver.resolveForIntegration({
-        integrationId: 'external-monitor:github-pull-request',
-        secretEnvRefs: { GITHUB_TOKEN: config.credentialSecretBinding },
-      });
-      // Aborting a wait does not abort a resolver (the binding may be backed
-      // by a keychain or external runner). Keep observing it: if it grants
-      // after the probe deadline, immediately release that grant as failed
-      // rather than retaining secret material with no child to consume it.
-      void resolution.then(
-        (late) => {
-          if (c.signal.aborted)
-            late.settlement.settle({
-              outcome: 'failure',
-              reason: 'child_establishment_failed',
-            });
-        },
-        () => undefined,
-      );
-      secret = await abortable(resolution, c.signal);
-    }
+    const credential = await resolveGitHubCredential({
+      binding: config.credentialSecretBinding,
+      resolver,
+      integrationId: 'external-monitor:github-pull-request',
+      signal: c.signal,
+    });
+    if (credential.kind === 'unauthorized')
+      return {
+        observation: obs(
+          'unauthorized',
+          'GitHub credential binding is unavailable.',
+        ),
+        actionable: false,
+      };
+    secret = credential.secret;
     if (c.signal.aborted)
       return {
         observation: obs('unavailable', 'GitHub probe timed out.'),
         actionable: false,
       };
     const base = `${API}/repos/${encodeURIComponent(t.owner)}/${encodeURIComponent(t.repository)}`,
-      init = {
-        method: 'GET',
-        redirect: 'error' as const,
-        signal: c.signal,
-        headers: {
-          Accept: 'application/vnd.github+json',
-          'User-Agent': 'Station-external-monitor',
-          ...(secret?.environment.GITHUB_TOKEN
-            ? { Authorization: `Bearer ${secret.environment.GITHUB_TOKEN}` }
-            : {}),
-        },
-      };
+      init = githubRequestInit(c.signal, secret);
     const pr = await json(fetcher, `${base}/pulls/${t.number}`, init);
     if ('outcome' in pr)
       return { observation: obs(pr.outcome, pr.detail), actionable: false };
@@ -611,6 +650,136 @@ export async function probeGitHubPullRequest(
     };
   } finally {
     clearTimeout(timer);
+    if (secret && !settled)
+      secret.settlement.settle({
+        outcome: 'failure',
+        reason: 'child_establishment_failed',
+      });
+  }
+}
+
+/** A workflow run is large (two embedded repositories); one page stays bounded. */
+const GITHUB_WORKFLOW_RUNS_MAX_BYTES = 1024 * 1024;
+export const GITHUB_WORKFLOW_RUNS_MAX_PER_PAGE = 30;
+const WORKFLOW_FILE = /^[A-Za-z0-9_.-]{1,100}\.ya?ml$/;
+
+export type GitHubWorkflowRunListing =
+  | Readonly<{ kind: 'runs'; runs: readonly unknown[]; partial: boolean }>
+  | Readonly<{
+      kind: 'failed';
+      outcome: 'terminal' | 'unauthorized' | 'unavailable';
+      detail: string;
+    }>;
+
+/**
+ * Lists the newest completed workflow runs of one repository, or of one
+ * workflow file in it, through the same GitHub REST transport and
+ * credential path as the pull-request monitor. One bounded page, no
+ * pagination: the caller's cursor decides which runs are new. The runs are
+ * returned raw for the Automation normalizer, which validates every field.
+ */
+export async function listGitHubWorkflowRuns(
+  input: Readonly<{
+    repository: string;
+    /** A file under `.github/workflows/`, e.g. `main-qualification.yml`. */
+    workflowFile?: string;
+    credentialSecretBinding?: string;
+    perPage: number;
+    /** The caller's lifetime, e.g. the scheduler stopping. */
+    signal?: AbortSignal;
+  }>,
+  fetcher: MonitorFetch = fetch,
+  resolver?: IntegrationSecretResolver,
+): Promise<GitHubWorkflowRunListing> {
+  const [owner, repository, extra] = input.repository.split('/');
+  if (!owner || !repository || extra !== undefined)
+    throw new Error('Repository must be owner/repo');
+  if (!NAME.test(owner) || !NAME.test(repository))
+    throw new Error('Repository must be owner/repo');
+  if (
+    input.workflowFile !== undefined &&
+    !WORKFLOW_FILE.test(input.workflowFile)
+  )
+    throw new Error('Workflow file must be a .yml or .yaml file name');
+  if (
+    !Number.isInteger(input.perPage) ||
+    input.perPage < 1 ||
+    input.perPage > GITHUB_WORKFLOW_RUNS_MAX_PER_PAGE
+  )
+    throw new RangeError('perPage out of range');
+  const c = new AbortController(),
+    timer = setTimeout(() => c.abort(), GITHUB_PROBE_DEADLINE_MS);
+  const stop = () => c.abort();
+  if (input.signal?.aborted) c.abort();
+  input.signal?.addEventListener('abort', stop, { once: true });
+  let secret: GitHubCredential | undefined;
+  let settled = false;
+  try {
+    const credential = await resolveGitHubCredential({
+      binding: input.credentialSecretBinding,
+      resolver,
+      integrationId: 'automation:github-poll',
+      signal: c.signal,
+    });
+    if (credential.kind === 'unauthorized')
+      return {
+        kind: 'failed',
+        outcome: 'unauthorized',
+        detail: 'GitHub credential binding is unavailable.',
+      };
+    secret = credential.secret;
+    const base = `${API}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}/actions`;
+    const path = input.workflowFile
+      ? `${base}/workflows/${encodeURIComponent(input.workflowFile)}/runs`
+      : `${base}/runs`;
+    const response = await json(
+      fetcher,
+      `${path}?status=completed&per_page=${input.perPage}`,
+      githubRequestInit(c.signal, secret),
+      {
+        maxBytes: GITHUB_WORKFLOW_RUNS_MAX_BYTES,
+        notFoundDetail: 'The repository or workflow is unavailable.',
+      },
+    );
+    if ('outcome' in response)
+      return {
+        kind: 'failed',
+        outcome: response.outcome,
+        detail: response.detail,
+      };
+    const runs = rec(response.value)?.workflow_runs;
+    const total = rec(response.value)?.total_count;
+    if (
+      !Array.isArray(runs) ||
+      runs.length > input.perPage ||
+      !Number.isSafeInteger(total) ||
+      Number(total) < runs.length
+    )
+      return {
+        kind: 'failed',
+        outcome: 'unavailable',
+        detail: 'GitHub workflow run response was incomplete.',
+      };
+    secret?.settlement.settle({ outcome: 'success' });
+    settled = true;
+    return {
+      kind: 'runs',
+      runs,
+      partial:
+        Number(total) > runs.length || /rel="next"/.test(response.link ?? ''),
+    };
+  } catch (e) {
+    return {
+      kind: 'failed',
+      outcome: 'unavailable',
+      detail:
+        e instanceof Error && e.name === 'AbortError'
+          ? 'GitHub probe timed out.'
+          : 'GitHub probe failed.',
+    };
+  } finally {
+    clearTimeout(timer);
+    input.signal?.removeEventListener('abort', stop);
     if (secret && !settled)
       secret.settlement.settle({
         outcome: 'failure',

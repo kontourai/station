@@ -1,4 +1,5 @@
 import { networkInterfaces } from 'node:os';
+import { join } from 'node:path';
 import { ACPStatus } from '@kontourai/station-contracts/acp';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type { HomeRecoveryDisclosure } from '@kontourai/station-contracts/system-status';
@@ -16,6 +17,12 @@ import {
   ApprovalInboxNotificationProvider,
   wireApprovalInboxNotifications,
 } from '../../services/approvals/approval-inbox.js';
+import {
+  createAutomationLedger,
+  SharedAutomationLedger,
+} from '../../services/automation/automation-ledger.js';
+import { AutomationStore } from '../../services/automation/automation-store.js';
+import { GitHubPollAutomationPoller } from '../../services/automation/github-poll.js';
 import { lanDiscoveryFor } from '../../services/connections/lan-discovery.js';
 import { createStationRoutesResolver } from '../../services/connections/station-routes.js';
 import type { FlowRunService } from '../../services/flow/flow-run-service.js';
@@ -481,13 +488,33 @@ export function configureRuntimeSupportServices(
         (event) => event.payload,
       ),
   });
+  const integrationSecretResolver = context.secretBindingAdministration;
+  // Observe-only Automation intake (epic #3439, S2): `github-poll` sources
+  // ride the scheduler's tick through the external monitor's transport. One
+  // lazily opened ledger serves the poller and the read route.
+  const automationHome = context.configLoader.getProjectHomeDir();
+  const automationLedger = new SharedAutomationLedger(() =>
+    createAutomationLedger({ directory: join(automationHome, 'automation') }),
+  );
+  const automationPreview = context.featurePreviews.bind({
+    id: 'github-automation-observations',
+    label: 'GitHub automation observations',
+    description:
+      'Observe configured GitHub workflow runs without starting agents. Uses GitHub API requests and stores bounded delivery history.',
+  });
   const schedulerService = new SchedulerService({
     logger: context.logger,
     builtin: {
       notificationService,
       turnAdapter: createScheduledTurnAdapter(context.activeAgents),
-      integrationSecretResolver:
-        context.secretBindingAdministration as unknown as import('../../services/secrets/secret-binding-administration.js').IntegrationSecretResolver,
+      integrationSecretResolver,
+      automationPoller: new GitHubPollAutomationPoller({
+        preview: automationPreview,
+        store: new AutomationStore(automationHome),
+        ledger: automationLedger,
+        integrationSecretResolver,
+        logger: context.logger,
+      }),
       onActionableMonitor: async (input) => {
         const task = await context.taskGraphService.createTaskIdempotent(
           {
@@ -771,6 +798,8 @@ export function configureRuntimeSupportServices(
   );
   return {
     schedulerService,
+    automationLedger,
+    automationPreview,
     notificationService,
     approvalInboxProvider,
     attentionProjection,
