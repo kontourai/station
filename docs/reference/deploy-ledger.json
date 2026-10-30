@@ -1,5 +1,42 @@
 [
   {
+    "timestampUtc": "2026-10-30T22:00:11Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2494.1",
+    "sha": "0dda10432fe6e4f594936ac6787f8758e2eb7364",
+    "artifactBuiltAt": "2026-10-30T21:16:03.218Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/41128097521",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 41128097521)"
+    ],
+    "changelog": {
+      "previousSha": "d2ec5eefa1641207252376b70e361f5695572d42",
+      "groups": {
+        "feat": [
+          "[#4363](https://github.com/kontourai/station/pull/4363) feat: expose Knowledge search health and paused Session Goal capabilities",
+          "[#4292](https://github.com/kontourai/station/pull/4292) feat(coordinator): Houston, a personal coordinator Session woken on attention states (#3628)",
+          "[#4307](https://github.com/kontourai/station/pull/4307) feat(chat): open New chat as a draft in the chat dock, not a dialog"
+        ],
+        "fix": [
+          "[#4367](https://github.com/kontourai/station/pull/4367) fix(station): repair pairing, Windows startup, and diagnostics"
+        ],
+        "ci": [
+          "[#4369](https://github.com/kontourai/station/pull/4369) ci: stage nonqualifying conflict signer diagnostic"
+        ],
+        "docs": [],
+        "other": [
+          "[#4365](https://github.com/kontourai/station/pull/4365) perf(ci): relieve PR shard backlog and ledger reads"
+        ]
+      },
+      "note": null,
+      "commitCount": 6
+    }
+  },
+  {
     "timestampUtc": "2026-10-30T22:00:08Z",
     "channel": "nightly-android",
     "version": "0.1.11-nightly.2494.1",
