@@ -53,9 +53,10 @@ export function configuredPinnedChromium({
   return executable;
 }
 
-/** The explicit cache opt-in must also govern real installed-browser tests. */
+/** Bind the canonical preview corpus without replacing system-browser fixtures. */
 export function bindPinnedVitestChromium(runRoot, options = {}) {
   const env = options.env ?? process.env;
+  if (env.STATION_VITEST_CORPUS_GROUP !== 'process-exclusive') return () => {};
   const executable = configuredPinnedChromium({ ...options, env });
   if (!executable) return () => {};
 

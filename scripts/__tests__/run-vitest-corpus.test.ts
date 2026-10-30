@@ -173,6 +173,7 @@ ${phase === 'collection' ? 'await delay();' : ''}
 ${phase === 'afterEach' ? 'afterEach(delay);' : ''}
 test('private-case-content-must-not-appear-in-progress', async () => {
   ${phase === 'body' ? 'await delay();' : ''}
+  expect(process.env.STATION_VITEST_CORPUS_GROUP).toBe('process-exclusive');
   expect(2 + 2).toBe(4);
 });`,
       );
@@ -199,10 +200,15 @@ test('private-case-content-must-not-appear-in-progress', async () => {
         ).toBe(true);
       } else if (phase === 'body') {
         expect(
-          progress.some((line) =>
-            /stage=running;.*cases=(?!unknown)[^;]+; hooks=unknown/.test(line),
-          ),
-        ).toBe(true);
+          progress,
+          'the real child must expose its running body without an active hook',
+        ).toEqual(
+          expect.arrayContaining([
+            expect.stringMatching(
+              /stage=running;.*cases=(?!unknown)[^;]+; hooks=unknown/,
+            ),
+          ]),
+        );
       } else {
         expect(
           progress.some((line) => /hooks=afterEach@[1-9]\d*ms/.test(line)),

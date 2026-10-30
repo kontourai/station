@@ -1558,11 +1558,13 @@ to select the repo-local browser; the suite runner sets this itself. The reusabl
 `.github/workflows/full-regression.yml` provides the browser
 prerequisite for hosted completion; do not infer it from dependency installation.
 
-On Linux, an explicit `PLAYWRIGHT_BROWSERS_PATH` also binds installed-browser
-Vitest fixtures to that installed Playwright revision. Global setup places a
-`google-chrome` link in the run-owned temporary directory ahead of ambient
-browsers; ordinary system-Chrome discovery otherwise takes precedence over a
-`chromium` link. Missing pinned files fail the prerequisite. Teardown removes
+On Linux, the canonical process-exclusive corpus binds its preview fixtures
+to the installed Playwright revision when `PLAYWRIGHT_BROWSERS_PATH` is set.
+The corpus runner supplies `STATION_VITEST_CORPUS_GROUP=process-exclusive`;
+global setup then places a `google-chrome` link in the run-owned temporary
+directory ahead of ambient browsers. Ordinary affected-test shards and
+process-heavy installed-browser compatibility suites retain system-Chrome
+discovery, which otherwise takes precedence over a `chromium` link. Missing pinned files fail the prerequisite. Teardown removes
 the link with that run root and restores its PATH. This does not disable the
 Chromium sandbox or qualify an unconfigured system browser.
 

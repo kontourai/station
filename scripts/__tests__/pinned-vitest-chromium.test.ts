@@ -46,6 +46,7 @@ function fixture() {
   const env: NodeJS.ProcessEnv = {
     PATH: systemBin,
     PLAYWRIGHT_BROWSERS_PATH: cache,
+    STATION_VITEST_CORPUS_GROUP: 'process-exclusive',
   };
   const options = { env, platform: 'linux' as const };
   const acquisition = () =>
@@ -58,12 +59,28 @@ function fixture() {
 }
 
 describe('explicit pinned Chromium for a Vitest run', () => {
+  it.each([undefined, 'ordinary', 'process-heavy'])(
+    'preserves system-browser acquisition outside the preview corpus (%s)',
+    (group) => {
+      const f = fixture();
+      if (group === undefined) delete f.env.STATION_VITEST_CORPUS_GROUP;
+      else f.env.STATION_VITEST_CORPUS_GROUP = group;
+      const before = f.env.PATH;
+      const restore = bindPinnedVitestChromium(f.runRoot, f.options);
+      expect(f.acquisition().resolveExecutable()).toBe(f.system);
+      expect(f.env.PATH).toBe(before);
+      expect(existsSync(join(f.runRoot, 'browser-bin'))).toBe(false);
+      restore();
+    },
+  );
+
   it.runIf(process.platform === 'linux')(
     'global setup binds acquisition and its teardown removes the owned alias',
     async () => {
       const f = fixture();
       vi.stubEnv('PATH', f.env.PATH);
       vi.stubEnv('PLAYWRIGHT_BROWSERS_PATH', f.env.PLAYWRIGHT_BROWSERS_PATH);
+      vi.stubEnv('STATION_VITEST_CORPUS_GROUP', 'process-exclusive');
       vi.stubEnv(
         'STATION_VITEST_RUN_ROOT',
         process.env.STATION_VITEST_RUN_ROOT,
