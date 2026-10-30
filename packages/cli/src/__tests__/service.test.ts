@@ -118,7 +118,8 @@ const serviceFs = {
   lstatSync: (path: nodeFs.PathLike) => {
     const stat = nodeFs.lstatSync(path);
     const value = String(path);
-    const isTempAncestor = value === tmpdir() || tmpdir().startsWith(`${value}/`);
+    const isTempAncestor =
+      value === tmpdir() || tmpdir().startsWith(`${value}/`);
     return ['/', '/usr', '/usr/bin'].includes(value) || isTempAncestor
       ? Object.assign(Object.create(Object.getPrototypeOf(stat)), stat, {
           uid: 0,
