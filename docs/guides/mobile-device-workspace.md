@@ -193,6 +193,38 @@ exit signal, and an unavailable inventory is not proof that a device stopped.
 Browser sessions have different lifetime rules, so do not apply this
 device idle timeout to a Browser pane.
 
+## Capture a device Screen to a Task
+
+A bound agent can call station-control `device_capture_to_task` with the
+`deviceSessionId` returned by `device_open` and an optional `label` (120
+characters maximum). The route derives the Task from that Session's current
+lead binding; the tool accepts no Task id. It uses the existing `DEVICE_AGENT`
+policy, Agent access opt-in, Project standing and shared-device authorization.
+It is a mutating tool and is not on the auto-approved bounded-write list.
+
+Commit workspace changes first. Station pins the clean Task workspace before
+capturing and re-pins it afterwards. Dirty workspaces or a commit made during
+capture return `workspace-changed`; unavailable workspaces or unobserved
+submodules return `workspace-unobservable`. Per-Task, home-storage and image
+limits use the same capture store as `browser_capture_to_task`, including
+`capture-limit`, `capture-home-limit` and `screenshot-too-large` refusals.
+Human takeover, source loss or authority changes refuse publication. The
+control lease remains held through publication and is then released.
+
+Success returns `captureId`, `commit`, `digest` and the image. The immutable
+Screen is available in Review and in the Overview **Timeline** while the
+existing **Task review** feature preview (`task-review`) is enabled. A thumbnail
+opens that Screen in Review. The Timeline shows its label, commit and gate
+standing from a referencing review reply: verified evidence uses the existing
+gate-evaluation verifier; missing or unverifiable evidence says **claimed**.
+The gate reference must name the same capture and commit. Thumbnail bytes come
+through the Task-authorized capture-content route.
+
+The commit records the observed Task workspace. It does not establish which
+build is installed on the device or which app is in the foreground; attach
+those receipts separately. Real-device capture and installed-build provenance
+require separate verification.
+
 ## Single-frame API and SDK
 
 - `GET /api/mobile-devices/hosts/local/devices` returns host state,
