@@ -98,6 +98,7 @@ export function pairedDevicePrincipal(
 }
 
 export interface OrchestrationRequestPrincipalDeps {
+  accountSessionOwnsPerson?(request: Request): boolean;
   environmentSecurityService: Pick<
     EnvironmentSecurityService,
     'identifyDevice'
@@ -170,7 +171,9 @@ export function createOrchestrationRequestPrincipalResolver(
         nativeDevice.accountBinding.subject,
         nativeDevice.accountBinding.displayName,
       );
-      const ingressIdentity = identifyIngress(c);
+      const ingressIdentity = deps.accountSessionOwnsPerson?.(c.req.raw)
+        ? null
+        : identifyIngress(c);
       if (ingressIdentity)
         throw new PrincipalUnresolvedError(
           'Native Device account binding conflicts with the current ingress identity',
@@ -214,7 +217,9 @@ export function createOrchestrationRequestPrincipalResolver(
         : runtimePrincipal?.authority === 'operator-credential'
           ? ({ verifiedOperatorCredential: true } as const)
           : undefined;
-    const ingressIdentity = identifyIngress(c);
+    const ingressIdentity = deps.accountSessionOwnsPerson?.(c.req.raw)
+      ? null
+      : identifyIngress(c);
     const device =
       runtimePrincipal?.authority === 'device-credential'
         ? environmentSecurityService.identifyDevice(runtimePrincipal.credential)

@@ -197,6 +197,52 @@ describe('Project access administration UI through SDK queries and mutations', (
     expect(screen.queryByDisplayValue('private@example.test')).toBeNull();
   });
 
+  test('an identity conflict preserves the Device and offers account-only sign-out', async () => {
+    let signedIn = true;
+    const logout = vi.fn();
+    vi.mocked(fetch).mockImplementation(async (url, init) => {
+      if (String(url).endsWith('/api/account-auth/sign-out')) {
+        logout();
+        signedIn = false;
+        return Response.json({ success: true });
+      }
+      if (init?.method === 'POST' && signedIn)
+        return Response.json(
+          { error: { code: 'account_identity_conflict' } },
+          { status: 403 },
+        );
+      return reply(view());
+    });
+    mount();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Create invitation' }),
+    );
+    expect(
+      await screen.findByText(/This browser is signed in to a Station account/),
+    ).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Sign out of account' }),
+    );
+    await waitFor(() => expect(logout).toHaveBeenCalledOnce());
+    expect(await screen.findByText('Collaborator')).toBeTruthy();
+  });
+
+  test('a conflict on the access read offers account sign-out instead of enabling sharing', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      Response.json(
+        { error: { code: 'account_identity_conflict' } },
+        { status: 403 },
+      ),
+    );
+    mount();
+    expect(
+      await screen.findByRole('button', { name: 'Sign out of account' }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('button', { name: 'Enable Project sharing' }),
+    ).toBeNull();
+  });
+
   test('sharing off for a caller who can enable it is a neutral state with the Enable action (#4302)', async () => {
     const writes: string[] = [];
     vi.mocked(fetch).mockImplementation(async (url, init) => {
