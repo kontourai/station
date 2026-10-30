@@ -22,6 +22,23 @@ export function registerFullscreenChatSurface(): () => void {
 }
 
 /**
+ * How many New chat drafts cover a dock's chat. The draft shows in place of
+ * the chat on screen, so while one is up that chat is not being read.
+ */
+let chatDraftCovers = 0;
+
+/** Called by a dock for as long as its New chat draft covers its chat. */
+export function registerChatDraftCover(): () => void {
+  chatDraftCovers += 1;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    chatDraftCovers -= 1;
+  };
+}
+
+/**
  * Is this chat the one on screen: the page is visible, a Chat surface is
  * showing, and the chat it shows is this one (by chat key, execution session,
  * or conversation).
@@ -39,6 +56,7 @@ export function isChatInForeground(ids: {
   }
   const navigation = navigationStore.getSnapshot();
   if (!navigation.isDockOpen && fullscreenChatSurfaces === 0) return false;
+  if (chatDraftCovers > 0) return false;
   const candidates = [ids.chatKey, ids.threadId, ids.conversationId].filter(
     (value): value is string => Boolean(value),
   );

@@ -324,13 +324,12 @@ test.describe('New Chat mobile project picker (390x844)', () => {
 });
 
 /**
- * The start sheet has one scroll region: the body. Its header holds only the
- * title row, and on a phone it used to shrink alongside an overflowing body
- * until it was a few pixels short of its own content, so the sheet showed a
- * second scrollbar beside the title. A keyboard-height viewport makes the
- * body overflow with the composer alone.
+ * New chat is a draft in the dock body, not a sheet with a title row. At a
+ * keyboard-height viewport the composer keeps Start on screen, and the body
+ * above it (the line, setup, errors) takes the room that is left and scrolls
+ * itself, never sitting under the composer.
  */
-test.describe('New chat start sheet scroll regions (390x560)', () => {
+test.describe('New chat draft at keyboard height (390x560)', () => {
   test.beforeEach(async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 560 });
     await page.addInitScript(() => {
@@ -340,35 +339,31 @@ test.describe('New chat start sheet scroll regions (390x560)', () => {
     await seedRoutes(page);
   });
 
-  test('scrolls the body only; the header keeps its full height', async ({
+  test('keeps Start on screen and the body above the composer', async ({
     page,
   }, testInfo) => {
-    const modal = await openNewChat(page);
-    const header = modal.locator('.new-chat-modal__header');
-    const body = modal.locator('.chat-start__body');
+    const draft = await openNewChat(page);
+    const body = draft.locator('.chat-start__body');
     await expect(body).toBeVisible();
-    await settleSheetEntrance(page.getByRole('dialog', { name: 'New chat' }));
-
-    const metrics = (locator: Locator) =>
-      locator.evaluate((el) => ({
-        scrollHeight: el.scrollHeight,
-        clientHeight: el.clientHeight,
-      }));
-    // Reachability first: the body must actually overflow, or the header
-    // assertion below would pass without the squeeze ever being possible.
-    const bodyBox = await metrics(body);
-    expect(bodyBox.scrollHeight).toBeGreaterThan(bodyBox.clientHeight);
-    const headerBox = await metrics(header);
+    await settleSheetEntrance(page.getByRole('region', { name: 'New chat' }));
+    const start = draft.getByRole('button', { name: 'Start', exact: true });
+    const composer = draft.locator(':scope > .start-composer');
     await page.screenshot({
-      path: testInfo.outputPath('new-chat-start-390x560.png'),
+      path: testInfo.outputPath('new-chat-draft-390x560.png'),
     });
-    expect(headerBox.scrollHeight).toBeLessThanOrEqual(headerBox.clientHeight);
-
-    // Scrolling the body moves it and leaves the header where it was.
-    await body.evaluate((el) => el.scrollTo(0, el.scrollHeight));
-    await expect
-      .poll(() => body.evaluate((el) => el.scrollTop))
-      .toBeGreaterThan(0);
-    expect(await header.evaluate((el) => el.scrollTop)).toBe(0);
+    const [startBox, bodyBox, composerBox] = await Promise.all([
+      start.boundingBox(),
+      body.boundingBox(),
+      composer.boundingBox(),
+    ]);
+    expect(startBox).not.toBeNull();
+    expect(startBox!.y + startBox!.height).toBeLessThanOrEqual(560);
+    // The body ends where the composer begins: nothing of it underneath.
+    expect(bodyBox!.y + bodyBox!.height).toBeLessThanOrEqual(
+      composerBox!.y + 1,
+    );
+    expect(await body.evaluate((el) => getComputedStyle(el).overflowY)).toBe(
+      'auto',
+    );
   });
 });

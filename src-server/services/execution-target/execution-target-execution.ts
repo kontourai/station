@@ -539,6 +539,7 @@ export interface ExecutionTargetExecutionDependencies
     contextBoundary?: ConversationContextBoundaryProjection;
     /** A never-ran predecessor to stop once this start succeeds. */
     retirePredecessorSessionId?: string;
+    coordinatorToolsRestart?: boolean;
   }>;
   /** Best-effort teardown of a retired predecessor's engine process. */
   retireSession?: (
@@ -1353,6 +1354,9 @@ export async function executeForegroundMessage(
           // resumable as every delegated session.
           ...agentExecutionBindingMetadata(resolved),
           conversationId,
+          ...(continuation?.coordinatorToolsRestart
+            ? { coordinatorToolsRestart: true }
+            : {}),
           // #4162: the key of the send this start is for, so a same-key
           // retry answered from that send's turn can say it started here.
           ...(effectiveClientTurnId

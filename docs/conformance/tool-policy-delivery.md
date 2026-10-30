@@ -235,6 +235,13 @@ server serves the same filtered registrations. A direct call to an omitted
 Station Control tool cannot reach its callback. These filters do not relax the
 existing per-call authority table.
 
+When a running Claude chat becomes the coordinator, the in-place refresh
+re-resolves the designated Agent's Station Control selection, refuses a
+missing or noncanonical server, and gives the in-process server only the
+selected names. Its credential rechecks designation on calls. The adapter and
+in-process MCP tests cover selection and revocation with fixtures; they do not
+establish live-provider behavior.
+
 Probe receipts store server-qualified names. The shared
 [selection translator](../../packages/shared/src/mcp-tool-selection.ts)
 resolves original, qualified and legacy normalized identities for external
@@ -582,9 +589,11 @@ What this costs, and what it still does not cover:
   call. Those would be covered only by the part 1 signals, as before.
 - **Exit errors.** The SDK appends the engine's stderr to an exit error only
   for its own spawn. Station keeps the last 2048 characters itself, redacted,
-  and appends them to the `runtime.error` it publishes when the message
-  stream fails. An exit error the SDK raises on another call does not carry
-  them. The SDK also adds its `--debug-file` argument only for its own
+  and appends them to an unclassified `runtime.error` when the message
+  stream fails. Recognized startup diagnostics instead use fixed guidance
+  without raw engine output; see [engine-neutral failures](../reference/contracts.md#engine-neutral-failures).
+  An exit error the SDK raises on another call does not carry the stderr
+  tail. The SDK also adds its `--debug-file` argument only for its own
   spawn, which matters only when SDK debug logging is on.
 
 A session answer never writes the engine's settings files. Every suggestion

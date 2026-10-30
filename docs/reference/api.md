@@ -4686,6 +4686,42 @@ needs a person who may send to the conversation, and answers 404 to anyone
 else. An agent's request reaches none of them. The agent's own side is the station-control tools in
 [the self-configuring agent guide](../guides/self-configuring-agent.md#wake-an-agent-later).
 
+### A person's coordinator Session
+
+The [coordinator routes](../../src-server/routes/orchestration/coordinator.ts)
+read and set the caller's own coordinator (#3628, product name Houston; see
+[Houston](../user/houston.md)). `GET /api/orchestration/coordinator` answers
+`CoordinatorDesignationRead` (`designation`, or `null`).
+`PUT /api/orchestration/coordinator` with `{conversationId, replace?}`
+designates a conversation the person may send to (404 otherwise). It answers
+409 `coordinator_already_designated` when the person has another one and
+`replace` is not `true`, and 409 `coordinator_conversation_taken` when the
+conversation is another person's. `DELETE` removes it (`undesignated`). The
+user id is the request principal's; a request that may be an agent's is
+refused (403 `person-approval-required`). A hosted Station answers 503
+`coordinator_unavailable` and withdraws the `coordinatorSession` capability.
+With a designation, GET and PUT also answer `delivery` (`CoordinatorDelivery`):
+`wakes` is `blocked` when the coordinator's last turn has ended but its
+turn boundary is still held, so the inbox would hold a wake indefinitely
+(#4051),
+`toolsPending` while the live Session started without the Station tools,
+`toolsUnavailable` when its engine declares tool servers unsupported,
+`toolsRestarted` when the current Session was started to acquire them, and
+`engine` names its provider. A designation whose conversation the person can
+no longer read reads as none, and PUT replaces it without `replace`. Replacing
+or removing a designation withdraws the wakes still queued for the old
+conversation and revokes its designation-derived Station Control and Knowledge
+credentials. Independently authored Agent or Project grants remain separate.
+
+The default-off coordinator-picture preview adds
+`GET /api/orchestration/coordinator/picture` for the person's readable notes.
+A bound designated coordinator reads and writes its own picture through
+`GET` and `POST /api/orchestration/station-control/coordinator-picture`.
+The POST accepts `conversationId`, `status` (`in-flight`, `waiting`, `finished`
+or `remove`), and a summary except for `remove`. The caller and source read
+permissions are checked again after the body arrives. Notes are bounded and
+are the coordinator's account, not live work status.
+
 ### Update Job
 
 `PUT /scheduler/jobs/:target` accepts supported partial job options, including

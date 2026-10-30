@@ -355,6 +355,10 @@ import {
 } from './conversation-start-context.js';
 import { ConversationTurnActivityProjection } from './conversation-turn-activity.js';
 import { CooperativeStop } from './cooperative-stop.js';
+import {
+  coordinatorDeliveryPorts,
+  readCoordinatorDelivery,
+} from './coordinator-session.js';
 import { CredentialProfileRecovery } from './credential-profile-recovery.js';
 import {
   type CredentialProfileRecoveryAdapter,
@@ -1165,6 +1169,7 @@ interface OrchestrationServiceOptions {
    * agent. Optional — omitted in installations/tests that don't wire it, in
    * which case `startSession` input reaches the adapter exactly as before.
    */
+  coordinatorGenerationForSession?: (threadId: string) => number;
   resolveSessionAgent?: (
     input: ProviderSessionStartInput,
     captured?: { agentId: string; spec: AgentSpec },
@@ -2055,6 +2060,7 @@ export class OrchestrationService {
   private readonly interruptedTurns: InterruptedTurnRecovery;
   private adapterRegistryUnsubscribe?: () => void;
   private readonly sessionAdapters = new Map<string, ProviderAdapterShape>();
+  private readonly coordinatorToolGenerations = new Map<string, number>();
   /**
    * Turn progress + turn-stall observation (epic archive#4024, archive#4116):
    * owns the stall watchdog, per-thread windows, and the process-local
@@ -3020,6 +3026,40 @@ export class OrchestrationService {
       perTurnModelOverride: (provider) =>
         options.adapterRegistry.get(provider)?.metadata.modelLaunch
           ?.overridePerTurn !== false,
+      needsCoordinatorToolsSuccessor: (conversationId, detail) => {
+        const store = options.eventStore;
+        const provider = detail.session.provider;
+        const adapter = options.adapterRegistry.get(provider);
+        if (
+          !store ||
+          ENGINE_CAPABILITY_MATRICES[provider]?.toolServers.state !==
+            'session' ||
+          !store.isCoordinatorConversation(conversationId)
+        )
+          return false;
+        if (adapter?.coordinatorToolsNeedSuccessor?.(detail.session.threadId))
+          return true;
+        if (adapter?.coordinatorToolsRefresh) return false;
+        const currentGeneration = options.coordinatorGenerationForSession?.(
+          detail.session.threadId,
+        );
+        if (
+          currentGeneration !== undefined &&
+          this.coordinatorToolGenerations.get(detail.session.threadId) !==
+            currentGeneration
+        )
+          return true;
+        const ports = coordinatorDeliveryPorts({
+          eventStore: store,
+          service: this,
+        });
+        return readCoordinatorDelivery(conversationId, {
+          ...ports,
+          currentSessionId: () => detail.session.threadId,
+          lastTurnEnded: () => false,
+          boundaryActive: () => false,
+        }).toolsPending;
+      },
       nativeReturnSupported: (provider) => {
         const adapter = options.adapterRegistry.get(provider);
         const continuity = adapter?.metadata.continuity;
@@ -3841,6 +3881,22 @@ export class OrchestrationService {
     const resolved = this.options.resolveSessionAgent
       ? await this.options.resolveSessionAgent(withCredentialProfile, captured)
       : withCredentialProfile;
+    const derivedServer = resolved.agent?.toolServers?.find(
+      (server) => server.coordinatorDerived,
+    );
+    const conversationId =
+      typeof input.metadata?.conversationId === 'string'
+        ? input.metadata.conversationId
+        : (this.options.eventStore?.conversationForSession(input.threadId)
+            ?.conversationId ?? input.threadId);
+    const generation =
+      derivedServer?.coordinatorGeneration ??
+      (this.options.eventStore?.isCoordinatorConversation(conversationId)
+        ? this.options.coordinatorGenerationForSession?.(input.threadId)
+        : undefined);
+    if (generation !== undefined)
+      this.coordinatorToolGenerations.set(input.threadId, generation);
+    else this.coordinatorToolGenerations.delete(input.threadId);
     const unavailableReason = sessionAgentStartUnavailableReason({
       agentSlug,
       // Providers with no session-delivery concept — Station's own engine
@@ -5055,6 +5111,51 @@ export class OrchestrationService {
     return this.readLatestSessionStartMetadata(threadId);
   }
 
+  /** Re-resolve the designated Session's Station Control selection at refresh time. */
+  async resolveCoordinatorStationControl(threadId: string) {
+    this.initialize();
+    const store = this.options.eventStore;
+    const resolver = this.options.resolveSessionAgent;
+    const session = store?.readSessionByThread(threadId);
+    const principal = this.resolveSessionActingPrincipal(threadId);
+    if (
+      !store ||
+      !resolver ||
+      !session ||
+      !principal ||
+      principal.source !== 'session-owner'
+    )
+      return undefined;
+    const conversationId =
+      store.conversationForSession(threadId)?.conversationId ?? threadId;
+    const stillDesignated = () => {
+      const current = this.resolveSessionActingPrincipal(threadId);
+      return (
+        store.coordinatorStore().designationForConversation(conversationId)
+          ?.actor.userId === principal.id &&
+        current?.source === 'session-owner' &&
+        current.id === principal.id
+      );
+    };
+    if (!stillDesignated()) return undefined;
+    const metadata = this.readLatestSessionStartMetadata(threadId);
+    if (!metadata) return undefined;
+    const tenantExecutionContext =
+      this.sessionAuthz.tenantContextFor(threadId) ??
+      session.tenantExecutionContext;
+    const resolved = await resolver({
+      threadId,
+      provider: session.provider,
+      metadata,
+      ...(session.cwd ? { cwd: session.cwd } : {}),
+      ...(tenantExecutionContext ? { tenantExecutionContext } : {}),
+    });
+    if (!stillDesignated()) return undefined;
+    return resolved.agent?.toolServers?.find(
+      (server) => server.id === 'station-control',
+    );
+  }
+
   /**
    * #2377 slice C2a: whether Station recorded a start for this session, so a
    * station-control call that names it is a follow-up, not a new session.
@@ -5304,6 +5405,7 @@ export class OrchestrationService {
     nativeSourceSessionId?: string;
     nativeResumeBindingKey?: string;
     contextBoundary?: ConversationContextBoundaryProjection;
+    coordinatorToolsRestart?: boolean;
   }> {
     this.initialize();
     return this.conversationLineage.resolveConversationContinuation(

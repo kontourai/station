@@ -2775,6 +2775,16 @@ On Windows Station verifies the scheduled task owner, wrapper command, and
 limited run level before start, stop, replacement, or deletion; a conflicting
 task fails closed.
 
+The official task requires an interactive logon by the installing user. An SSH
+session alone does not satisfy that requirement. After a bounded start timeout,
+the CLI reports the scheduler's last task result in hexadecimal when readable;
+it adds the logon remedy only when the task principal is verified to use an
+interactive token. Failed installation still rolls back. An absent registration
+is reported without attempting to query its scheduling settings; an unreadable
+registration remains unknown rather than being treated as absent. For an
+operator-managed headless task using the existing foreground supervisor, see
+[Windows over SSH](../guides/deployment.md#headless-station-on-a-windows-host-over-ssh).
+
 `schtasks /Create` leaves a task with Task Scheduler's defaults: a 72-hour
 execution time limit, and battery rules that keep the task from starting on
 battery and stop it when a laptop unplugs. Install therefore sets, through
@@ -3113,7 +3123,13 @@ station environment peers remove <environment-id>
   the already-validated loopback listener origin as `https://<magicdns>`.
   `--tailscale-serve-port` selects a strict port from 1 through 65535 (default
   443) and requires `--tailscale`; the selected port is used for the endpoint,
-  mapping, and manual teardown guidance. Offer expiry
+  mapping, and manual teardown guidance. Before minting a Tailscale offer, the
+  CLI probes the verified local host with the published Origin. If the host
+  refuses that Origin, it prints the exact `--allowed-origin=<https-origin>`
+  startup setting to apply and asks you to restart the instance. It does not
+  change the allowlist or remove the Serve mapping automatically. An explicit
+  remote `--advertise-url` is described as operator-managed reachability rather
+  than loopback; test it from the joining Device. Offer expiry
   never changes Serve and Station never enables Funnel. The printed QR and
   link grant **Standard** (`orchestration:read orchestration:operate
   terminal:operate`), the same grant the **Paired devices** panel offers.

@@ -125,6 +125,10 @@ export function useExecutionStations({
   return {
     enabled,
     stations,
+    knownNameFor: (id: string) =>
+      id === 'current'
+        ? device?.hostName
+        : listed.find((station) => station.id === id)?.name,
     /** A listed Station's name, offered or not (a remembered choice). */
     nameFor: (id: string) => listed.find((station) => station.id === id)?.name,
     settled:
