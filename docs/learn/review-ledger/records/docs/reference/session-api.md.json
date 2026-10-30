@@ -148,7 +148,9 @@
 
     "src-server/providers/__tests__/claude-adapter-events.test.ts",
 
-    "src-server/routes/orchestration/events.ts"
+    "src-server/routes/orchestration/events.ts",
+
+    "src-server/routes/orchestration/session-goals.ts"
   ],
 
   "checks": [

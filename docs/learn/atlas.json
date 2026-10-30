@@ -43,6 +43,7 @@
       ],
       "modules": [
         "SessionQueryModule",
+        "SessionGoalModule",
         "ConversationSessionLineage",
         "SessionCommandModule",
         "SkillExperienceRuntime",
