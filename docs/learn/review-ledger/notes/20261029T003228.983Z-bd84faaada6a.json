@@ -1,0 +1,129 @@
+{
+  "revision": "4228e8abd4f59783ef1361e44aedce3d86c38649",
+
+  "notes": [
+    {"path":"deploy/public-ingress/README.md","note":"Checked the public HTTPS proxy and smoke fixture: the change only affects a Project access refusal, not proxy admission or qualification.","inputs":["deploy/public-ingress/README.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/README.md","note":"Checked the audience paths and public-site index: route admission changes no documentation navigation or publication claim.","inputs":["docs/README.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","note":"Checked the historical canonical-store and derived-index decision: Project sharing refusal details do not change Knowledge storage or index ownership.","inputs":["docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"Checked the browser-preview adapter-local decision and current guide link: the Project enable affordance does not change preview hosting.","inputs":["docs/adr/0017-browser-preview-host.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Checked the SSE and Last-Event-ID decision: the Project refusal route neither changes event streams nor replay behavior.","inputs":["docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"Checked the browser-pane host-adapter decision and its route references: the Project access check leaves browser session and host admission unchanged.","inputs":["docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture.md","note":"Checked the overview and diagrams for Project and runtime composition: route scope admission tightens the refusal affordance without changing the depicted boundaries.","inputs":["docs/architecture.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked Project membership ownership and account-bound relay composition in the module map: the existing ownership and relay claims remain accurate after the shared Project-write predicate extraction.","inputs":["docs/architecture/module-map.md","src-server/runtime/bootstrap/account-bound-device-gate.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/projects/project-membership-service.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Checked the evidence-governance context and its proof/receipt vocabulary: Project access refusal does not change evidence authority.","inputs":["docs/contexts/evidence-governance/CONTEXT.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Checked the operations context and its analytics route composition: the Project refusal check changes no operations owner or analytics authority.","inputs":["docs/contexts/operations/CONTEXT.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Checked token creation, viewing and reauthorization for answer permalinks: Project sharing refusal details do not change share-token admission.","inputs":["docs/design/answer-share-permalinks.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"Checked the dated browser-preview host experiment and its current-owner link: no preview experiment or adapter behavior changes.","inputs":["docs/design/browser-preview-host-spike.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"Checked Browser Preview Pane admission and restoration: the Project membership affordance does not affect native loopback or browser-session restoration.","inputs":["docs/design/browser-preview-pane-mvp.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Checked channel-home transfer authority and its preparation/advance boundaries: this Project access refusal does not alter channel ownership or transfer.","inputs":["docs/design/channel-home-authority.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/connection-broker.md","note":"Checked broker enrollment and native application routing claims against the account-bound gate: extracting the existing Project write predicate does not change broker leaves.","inputs":["docs/design/connection-broker.md","src-server/runtime/bootstrap/account-bound-device-gate.ts"]},
+
+    {"path":"docs/design/local-bootstrap-token.md","note":"Checked local bootstrap token mint/exchange and threat model: the Project access refusal check does not change bootstrap credential issuance or use.","inputs":["docs/design/local-bootstrap-token.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"Checked native capability and permission boundaries: the account-bound Project-write extraction changes no native platform capability.","inputs":["docs/design/native-capabilities.md","src-server/runtime/bootstrap/account-bound-device-gate.ts"]},
+
+    {"path":"docs/design/native-relay-enrollment.md","note":"Checked native relay enrollment and credential delivery: Project enable remains outside the account-bound guest write leaves; native enrollment is unchanged.","inputs":["docs/design/native-relay-enrollment.md","src-server/runtime/bootstrap/account-bound-device-gate.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Checked operator Device inventory, passkey step-up and account-bound restrictions: the new Project affordance check does not change Device administration or consent actions.","inputs":["docs/design/operator-device-access.md","src-server/runtime/bootstrap/account-bound-device-gate.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"Updated the sharing refusal explanation to include HTTP credential scope and the account-bound Device gate; checked runtime composition, accessRefusal and the route regression before the sharing-state read.","inputs":["docs/design/project-membership.md","src-server/routes/projects/project-membership-routes.ts","src-server/runtime/bootstrap/account-bound-device-gate.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/projects/project-membership-service.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Checked Task room request persistence and agent admission: the Project administration refusal does not change room request transport or execution authority.","inputs":["docs/design/task-room-agent-requests.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Checked terminal host, replay and confinement claims: the Project enable admission check does not change terminal sessions or WebSocket authorization.","inputs":["docs/design/terminal.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/glossary.md","note":"Checked Project role and Device vocabulary and the live-surface reference: the new enable affordance grants no membership and does not change those definitions.","inputs":["docs/glossary.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Checked browser session profiles, acquisition and bound Agent access: Project sharing refusal details do not change browser workspace admission.","inputs":["docs/guides/browser-workspace.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked saved connection profiles and broker/relay admission: the extracted Project write rule changes no connection or native relay leaf.","inputs":["docs/guides/connections.md","src-server/runtime/bootstrap/account-bound-device-gate.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Checked delegation lookup, claim and capacity semantics: the Project access read does not change delegation duplicate suppression.","inputs":["docs/guides/delegation-attempt-claims.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Updated the People and access explanation to require a human operator and enable-route admission; checked the refusal service, paired Device scope check, account-bound rule and UI consumer.","inputs":["docs/guides/deployment-authentication.md","src-server/runtime/bootstrap/account-bound-device-gate.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/projects/project-membership-service.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Checked deployment authentication, proxy and runtime setup guidance: this scoped Project refusal change does not alter deployment startup or ingress.","inputs":["docs/guides/deployment.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Checked the personal home-transfer preparation and controller flow: Project sharing refusal admission does not change peer binding or transfer control.","inputs":["docs/guides/home-transfer-controller.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Checked the real local-account lab and invitation/membership boundaries: Project access refusal details do not change the lab's account or invitation operations.","inputs":["docs/guides/local-collaboration-lab.md","src-server/runtime/bootstrap/account-bound-device-gate.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/projects/project-membership-service.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Checked the separate Device and Project relationship and guest administration scope claims: the new affordance does not grant membership or alter guest administration writes.","inputs":["docs/guides/machine-relationships.md","src-server/runtime/bootstrap/account-bound-device-gate.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/projects/project-membership-service.ts"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"Checked mobile session capture, control and lifecycle descriptions: the Project enable predicate changes no Device workspace API.","inputs":["docs/guides/mobile-device-workspace.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Checked native shell verification and relay qualification: the account-bound Project-write extraction leaves native relay and shell verification paths unchanged.","inputs":["docs/guides/native-shell-verification.md","src-server/runtime/bootstrap/account-bound-device-gate.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"Checked passkey enrollment, operator sign-in and Device step-up: the Project refusal check changes neither passkey ceremonies nor Device management.","inputs":["docs/guides/operator-passkeys.md","src-server/runtime/bootstrap/account-bound-device-gate.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Checked fleet listener partition and runner labels: the Project access route check does not alter runner routing or CI labels.","inputs":["docs/guides/private-runner-partition.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Checked product-law selection and observation interpretation: Project sharing refusal does not change law authoring or observation classification.","inputs":["docs/guides/product-law-authoring.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Checked the runtime and documentation navigation: the Project access composition remains in the documented server layout and adds no repository boundary.","inputs":["docs/guides/repository-layout.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Checked self-hosted broker invitation and routing grants: the account-bound Project write predicate does not change broker grants or native routing.","inputs":["docs/guides/self-hosted-broker.md","src-server/runtime/bootstrap/account-bound-device-gate.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Checked Starter Work readiness, Task attachment and continuation: the Project access refusal does not change Starter Work state or dispatch fences.","inputs":["docs/guides/starter-work.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/walkthroughs.md","note":"Checked Walkthrough import, Project image reads and limits: the sharing enable affordance changes none of those APIs.","inputs":["docs/guides/walkthroughs.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Checked Web Push registration, recipients and worker navigation: the Project refusal admission does not change push delivery.","inputs":["docs/guides/web-push-notifications.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Checked Work Board trusted rendering and owner-resolved references: the Project access refusal does not change Board eligibility or storage.","inputs":["docs/guides/work-board-security.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Checked workspace export, verification and import guidance: Project sharing refusal does not change the Git workspace package lifecycle.","inputs":["docs/guides/workspace-packages.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked API Project and account-bound route descriptions: the extracted Project write guard preserves the allowed leaves; the new check changes only refusal details, not route availability.","inputs":["docs/reference/api.md","src-server/runtime/bootstrap/account-bound-device-gate.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked configuration and log-read authority: the Project refusal admission adds no configuration key and does not change log access.","inputs":["docs/reference/config.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Checked Station Connect native relay and Device transport boundaries: extracting the Project write rule does not change connection signaling or relay admission.","inputs":["docs/reference/connect.md","src-server/runtime/bootstrap/account-bound-device-gate.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked Project membership contract and runtime authority references: the refusal shape is unchanged and does not confer Device, membership or route authority.","inputs":["docs/reference/contracts.md","src-server/runtime/bootstrap/account-bound-device-gate.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Checked server and native enrollment environment variables: Project enable admission adds no environment variable and changes no native enrollment opt-in.","inputs":["docs/reference/env-vars.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked projectAccessRefusal parsing and SDK export guidance: the server's stricter canEnable decision preserves the documented response shape and parser behavior.","inputs":["docs/reference/sdk.md","src-server/routes/projects/project-membership-routes.ts","src-server/runtime/bootstrap/account-bound-device-gate.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/projects/project-membership-service.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked Session start, continuation and SSE descriptions: Project access refusal details do not change Session commands or history delivery.","inputs":["docs/reference/session-api.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked telemetry activation, authenticated routes and persistence claims: Project sharing refusal does not change usage collection or telemetry control.","inputs":["docs/reference/usage-telemetry.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Checked HTTP capability and account-bound threat boundaries: the existing Project write allowlist is preserved and the new refusal requires enable-route admission before revealing sharing state.","inputs":["docs/security/remote-access-threat-model.md","src-server/runtime/bootstrap/account-bound-device-gate.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/projects/project-membership-service.ts"]},
+
+    {"path":"docs/user/pull-request-guides.md","note":"Checked pull-request guide generation and read-only review: Project sharing refusal details do not change that journey.","inputs":["docs/user/pull-request-guides.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Checked workspace checkpoint preview and restore authority: Project access refusal does not alter checkpoint capture or restoration.","inputs":["docs/user/workspace-checkpoints.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"Checked MCP-UI example registration, resource resolution and Station route wiring: the Project enable affordance changes no example tool or resource.","inputs":["examples/mcp-ui-demo/README.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/station-sessions-mcp/README.md","note":"Checked the sessions MCP example and its documented reader limitations: Project sharing refusal does not repair or change its Session API use.","inputs":["examples/station-sessions-mcp/README.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"packages/connect/README.md","note":"Checked Connect package storage, transport and routing-grant boundaries: the account-bound Project write predicate does not change Connect exports or connection custody.","inputs":["packages/connect/README.md","src-server/runtime/bootstrap/account-bound-device-gate.ts"]},
+
+    {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","note":"Checked native relay fixture trust, Device activation and Project membership separation: the Project refusal affordance does not grant an invitation or change the fixture's activation steps.","inputs":["tests/tauri-shell/native-fresh-relay-fixture.md","src-server/runtime/bootstrap/account-bound-device-gate.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"Inspected the paired-device pre-sign-in screen and compared its image digest with media.json. The Project access refusal admission does not change operator sign-in or device inventory.","inputs":["docs/learn/media/operator-s4-before-sign-in.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"Inspected the signed-in Device list and matched its image digest to media.json. The Project enable check changes neither operator-session reads nor Device actions.","inputs":["docs/learn/media/operator-s4-after-sign-in.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"Inspected the consent-origin access-change review and verified the image digest. The Project enable affordance does not change Device scope step-up or passkey confirmation.","inputs":["docs/learn/media/operator-s4-step-up-review.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"Inspected the paired-device post-confirmation state and verified the image digest. Project sharing refusal admission does not change the Device scope update or read-back.","inputs":["docs/learn/media/operator-s4-after-step-up.png","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

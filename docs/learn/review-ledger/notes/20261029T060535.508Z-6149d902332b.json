@@ -1,0 +1,7 @@
+{
+  "revision": "5cb3487df58a1666c0da3e74bcaf4dfdaffa5b4a",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"Source-impact review: client-secret grants also record the integration instance id, which resolution reads from storage itself. Searched this document for MCP tool-server OAuth client, secret-binding grant, integration directory contents and credential-store claims; none describes the changed behavior beyond links that still resolve, so its claims stay accurate.","inputs":["docs/reference/usage-telemetry.md","src-server/services/secrets/secret-binding-administration.ts"]}
+  ]
+}

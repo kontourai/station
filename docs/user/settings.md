@@ -22,6 +22,7 @@ only when this Station's build can run it; if none is, the section says
 
 | ID | Name | What turning it on does | Notable cost/risk |
 | --- | --- | --- | --- |
+| `attention-snooze` | Attention snooze | Lets the attention API temporarily hide any inbox item until a chosen time, up to 30 days. A newer source version resurfaces immediately. | Local per-user state only; no provider cost or background jobs. Off by default; disabling keeps saved snoozes but omits their effect while off. |
 | `fleet-consumer-probes` | Fleet consumer probes | Sends a test request to a peer-contributed model before routing work to it. | Can spend a completion on another Station. |
 | `walkthroughs` | Walkthroughs | Imports narrated recordings and enables Task-bound Browser clips. | One-time consented media/speech tool download; CPU use; recordings may contain private information. |
 | `local-speech` | Local speech | Offers Station (local) in Voice → Speech-to-text: record a message, then transcribe it on this Station. | One-time consented tool/model download; English batch dictation only; microphone permission; shares one recognizer and a bounded wait queue with Walkthroughs. |

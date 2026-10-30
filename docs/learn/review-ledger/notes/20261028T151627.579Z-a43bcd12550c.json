@@ -1,0 +1,7 @@
+{
+  "revision": "50613535a040b57e7f87fabf185b77b10e608508",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Edited: documented bindOAuthClientSecret/unbindOAuthClientSecret, their hooks, oauthClientSecretBindingId and scopes on useStartIntegrationOAuthMutation. Checked against the SDK client and query sources. Other inputs: the SDK reference adds the OAuth client-secret functions and authorize scopes; the SDK adds OAuth client-secret bind/unbind functions; the SDK adds OAuth client-secret bind/unbind hooks; ToolDef adds optional oauthClient and the client-id-required authorization state; useStartIntegrationOAuthMutation accepts optional per-sign-in scopes.","inputs":["docs/reference/sdk.md","packages/contracts/src/tool.ts","packages/sdk/src/client/secret-bindings.ts","packages/sdk/src/query-domains/catalog.ts","packages/sdk/src/query-domains/secret-bindings.ts"]}
+  ]
+}

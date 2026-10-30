@@ -9,6 +9,28 @@ export interface McpIntegrationEnvGrant {
   envName: string;
 }
 
+/**
+ * Exact authority for spending one binding as one MCP integration's OAuth
+ * client secret, at the authorization server and resource it was bound for.
+ * A definition that later names another issuer or endpoint, however it was
+ * written, cannot materialize the secret; nor can an integration recreated
+ * under the same id, which is a new instance.
+ */
+export interface McpIntegrationOAuthClientGrant {
+  kind: 'mcp-integration-oauth-client';
+  integrationId: string;
+  /** The declared `oauthClient.issuer` when the secret was bound. */
+  issuer: string;
+  /** The integration's OAuth resource identity when the secret was bound. */
+  resource: string;
+  /**
+   * The integration's server-created instance id when the secret was bound.
+   * Deleting the integration retires it, so a recreated integration with the
+   * same id, issuer and endpoint does not inherit the grant.
+   */
+  instanceId: string;
+}
+
 /** Exact authority for spending one binding as one ACP provider header. */
 export interface ACPProviderHeaderGrant {
   kind: 'acp-provider-header';
@@ -26,6 +48,7 @@ export interface TelemetryDestinationGrant {
 
 export type SecretBindingGrant =
   | McpIntegrationEnvGrant
+  | McpIntegrationOAuthClientGrant
   | ACPProviderHeaderGrant
   | TelemetryDestinationGrant;
 
@@ -60,6 +83,8 @@ export interface SecretBinding {
   acpProviderHeaderGrants?: ACPProviderHeaderGrant[];
   /** Separate from MCP/ACP grants; absent on earlier binding documents. */
   telemetryDestinationGrants?: TelemetryDestinationGrant[];
+  /** OAuth client-secret authorities; absent on earlier binding documents. */
+  oauthClientGrants?: McpIntegrationOAuthClientGrant[];
   createdAt: string;
   updatedAt: string;
   /** Terminal: revoked bindings cannot be reactivated or re-used. */
