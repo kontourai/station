@@ -41,7 +41,7 @@ describe('turn dedup over Station tables', () => {
       clientInputId: 'key',
       input: 'hello',
     };
-    expect(store.claimSteerInput(input)).toBe(true);
+    expect(store.claimChildSteerInput(input)).toBe(true);
     store.close();
     const reopened = new EventStore(file);
     for (const other of [
@@ -61,6 +61,13 @@ describe('turn dedup over Station tables', () => {
     });
     expect(
       reopened.readSteerInput({ ...input, childId: 'child-b' })?.outcome,
+    ).toBe('indeterminate');
+    expect(
+      reopened.claimChildSteerInput({ ...input, threadId: 'other-parent' }),
+    ).toBe(false);
+    expect(
+      reopened.readChildSteerInput({ ...input, threadId: 'other-parent' })
+        ?.outcome,
     ).toBe('indeterminate');
     reopened.close();
   });

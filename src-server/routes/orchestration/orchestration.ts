@@ -473,6 +473,15 @@ const steerTurnOnceCommandSchema = steerTurnCommandSchema.extend({
   clientInputId: z.string().min(1).max(128),
 });
 
+const steerChildWorkCommandSchema = z.object({
+  type: z.literal('steerChildWork'),
+  threadId: z.string().min(1).max(512),
+  childId: z.string().min(1).max(512),
+  turnId: z.string().min(1).max(512),
+  input: z.string().trim().min(1).max(CHAT_INPUT_MAX_CHARS),
+  clientInputId: z.string().min(1).max(128),
+});
+
 const experienceIdentitySchema = z
   .object({
     pluginId: z.string().min(1).max(128),
@@ -611,6 +620,7 @@ export const orchestrationCommandSchema = z.discriminatedUnion('type', [
   interruptTurnCommandSchema,
   steerTurnCommandSchema,
   steerTurnOnceCommandSchema,
+  steerChildWorkCommandSchema,
   inspectSteerInputCommandSchema,
   respondToRequestCommandSchema,
   stopSessionCommandSchema,
@@ -6538,6 +6548,20 @@ export function createOrchestrationRoutes(
         getTenantRequestContext(c.req.raw),
         deps.hostedTenantRegistry,
       );
+      if (
+        command.type === 'steerChildWork' &&
+        (deps.isRequestPrincipalCurrent?.(c.req.raw) !== true ||
+          !orchestrationService.canUserReadSession(
+            command.threadId,
+            readAuthority,
+          ) ||
+          !orchestrationService.canUserMutateSession(
+            command.threadId,
+            actorUserId,
+            tenantExecutionContextForRequest(c.req.raw),
+          ))
+      )
+        return c.json({ success: false, error: 'Session not found' }, 404);
       const actionOperationActor = actionOperationActorForRequest(
         c.req.raw,
         readAuthority,
@@ -6604,6 +6628,21 @@ export function createOrchestrationRoutes(
             ? {
                 requestCurrent: () =>
                   deps.isRequestPrincipalCurrent?.(c.req.raw) === true,
+              }
+            : {}),
+          ...(command.type === 'steerChildWork'
+            ? {
+                requestCurrent: () =>
+                  deps.isRequestPrincipalCurrent?.(c.req.raw) === true &&
+                  orchestrationService.canUserReadSession(
+                    command.threadId,
+                    readAuthority,
+                  ) &&
+                  orchestrationService.canUserMutateSession(
+                    command.threadId,
+                    actorUserId,
+                    tenantExecutionContextForRequest(c.req.raw),
+                  ),
               }
             : {}),
           // archive#4075 stage 2: this is the STEER path's attribution

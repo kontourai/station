@@ -133,6 +133,14 @@ export type OrchestrationCommand =
       clientInputId?: string;
     }
   | {
+      type: 'steerChildWork';
+      threadId: string;
+      childId: string;
+      turnId: string;
+      input: string;
+      clientInputId: string;
+    }
+  | {
       type: 'respondToRequest';
       /** Frame-origin action: admit this exact current package and its agents.invoke grant. */
       expectedSkillExperience?: {
@@ -556,6 +564,19 @@ export type SteerTurnResult =
        * from #2898 on return a plain sentence for any unknown outcome.
        */
       outcome: 'confinement-changed';
+      threadId: string;
+    };
+
+export type SteerChildWorkResult =
+  | { outcome: 'steered'; threadId: string; childId: string; turnId: string }
+  | { outcome: 'indeterminate'; threadId: string; clientInputId: string }
+  | {
+      outcome:
+        | 'unsupported'
+        | 'no-active-task'
+        | 'confinement-changed'
+        | 'unavailable'
+        | 'not-authorized';
       threadId: string;
     };
 

@@ -2851,6 +2851,10 @@ export class EventStore {
         confirmed_turn_id TEXT,
         PRIMARY KEY (thread_id, client_input_id)
       )`);
+      this.db.exec(`CREATE TABLE IF NOT EXISTS orchestration_child_steer_keys (
+        client_input_id TEXT PRIMARY KEY,
+        thread_id TEXT NOT NULL
+      )`);
       // #3160: the request keys behind `send_to_session` / `interrupt_session`.
       this.db.exec(SESSION_CONTROL_REQUEST_KEY_SCHEMA);
       // #3158: delegated-result ownership and its one consumption record,
@@ -15706,6 +15710,58 @@ export class EventStore {
   }
 
   /** A pending steer claim is never reclaimed: its engine may have accepted it. */
+  readChildSteerInput(input: {
+    threadId: string;
+    childId: string;
+    turnId: string;
+    input: string;
+    clientInputId: string;
+  }): ReturnType<EventStore['readSteerInput']> {
+    const owner = this.db
+      .prepare(
+        'SELECT thread_id FROM orchestration_child_steer_keys WHERE client_input_id = ?',
+      )
+      .get(input.clientInputId) as { thread_id: string } | undefined;
+    if (owner && owner.thread_id !== input.threadId)
+      return {
+        outcome: 'indeterminate',
+        threadId: input.threadId,
+        clientInputId: input.clientInputId,
+      };
+    return this.readSteerInput(input);
+  }
+
+  claimChildSteerInput(input: {
+    threadId: string;
+    childId: string;
+    turnId: string;
+    input: string;
+    clientInputId: string;
+  }): boolean {
+    this.db.exec('SAVEPOINT child_steer_claim');
+    try {
+      this.db
+        .prepare(
+          'INSERT OR IGNORE INTO orchestration_child_steer_keys(client_input_id, thread_id) VALUES (?, ?)',
+        )
+        .run(input.clientInputId, input.threadId);
+      const owner = this.db
+        .prepare(
+          'SELECT thread_id FROM orchestration_child_steer_keys WHERE client_input_id = ?',
+        )
+        .get(input.clientInputId) as { thread_id: string } | undefined;
+      const claimed =
+        owner?.thread_id === input.threadId && this.claimSteerInput(input);
+      this.db.exec('RELEASE SAVEPOINT child_steer_claim');
+      return claimed;
+    } catch (error) {
+      this.db.exec(
+        'ROLLBACK TO SAVEPOINT child_steer_claim; RELEASE SAVEPOINT child_steer_claim',
+      );
+      throw error;
+    }
+  }
+
   readSteerInput(input: {
     threadId: string;
     clientInputId: string;
@@ -16536,6 +16592,12 @@ export class EventStore {
         );
         if (steerCleanup.kind !== 'applied')
           throw new Error('Steer receipt cleanup was refused.');
+        // Keep the key occupied after deletion so it cannot address a new parent.
+        this.db
+          .prepare(
+            "UPDATE orchestration_child_steer_keys SET thread_id = '' WHERE thread_id = ?",
+          )
+          .run(threadId);
       }
       this.db
         .prepare(

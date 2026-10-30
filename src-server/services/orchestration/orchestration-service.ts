@@ -55,6 +55,7 @@ import type {
   OrchestrationSessionSummary,
   SessionBoardItem,
   SetApprovalModeResult,
+  SteerChildWorkResult,
   SteerInputInspectionResult,
   SteerTurnResult,
 } from '@kontourai/station-contracts/orchestration';
@@ -8001,6 +8002,7 @@ export class OrchestrationService {
     | ProviderSession
     | ProviderTurnStartResult
     | SteerTurnResult
+    | SteerChildWorkResult
     | SteerInputInspectionResult
     | InterruptTurnResult
     | SetApprovalModeResult
@@ -8011,6 +8013,7 @@ export class OrchestrationService {
       | ProviderSession
       | ProviderTurnStartResult
       | SteerTurnResult
+      | SteerChildWorkResult
       | SteerInputInspectionResult
       | InterruptTurnResult
       | SetApprovalModeResult
@@ -8126,6 +8129,7 @@ export class OrchestrationService {
       | ProviderSession
       | ProviderTurnStartResult
       | SteerTurnResult
+      | SteerChildWorkResult
       | SteerInputInspectionResult
       | InterruptTurnResult
       | SetApprovalModeResult
@@ -9694,6 +9698,199 @@ export class OrchestrationService {
           };
           this.persistReceipt(receipt);
           return { receipt, result };
+        }
+        case 'steerChildWork': {
+          const store = this.options.eventStore;
+          const input = {
+            threadId: command.threadId,
+            childId: command.childId,
+            turnId: command.turnId,
+            clientInputId: command.clientInputId,
+            input: command.input,
+          };
+          const uncertain: SteerChildWorkResult = {
+            outcome: 'indeterminate',
+            threadId: command.threadId,
+            clientInputId: command.clientInputId,
+          };
+          if (!store) {
+            this.persistReceipt(receipt);
+            return {
+              receipt,
+              result: {
+                outcome: 'unavailable',
+                threadId: command.threadId,
+              } as SteerChildWorkResult,
+            };
+          }
+          if (context?.requestCurrent?.() !== true) {
+            this.persistReceipt(receipt);
+            return {
+              receipt,
+              result: {
+                outcome: 'not-authorized',
+                threadId: command.threadId,
+              } as SteerChildWorkResult,
+            };
+          }
+          const prior = store.readChildSteerInput(input);
+          if (prior) {
+            this.persistReceipt(receipt);
+            return {
+              receipt,
+              result:
+                prior.outcome === 'steered'
+                  ? ({
+                      outcome: 'steered',
+                      threadId: command.threadId,
+                      childId: command.childId,
+                      turnId: prior.turnId,
+                    } as SteerChildWorkResult)
+                  : uncertain,
+            };
+          }
+          const parentTurnId = activeTurnIdForEvents(
+            store
+              .listEventsByMethods(command.threadId, ACTIVE_TURN_FOLD_METHODS)
+              .map((stored) => stored.payload),
+          );
+          if (!parentTurnId || this.isDormantSessionThread(command.threadId)) {
+            this.persistReceipt(receipt);
+            return {
+              receipt,
+              result: {
+                outcome: 'no-active-task',
+                threadId: command.threadId,
+              } as SteerChildWorkResult,
+            };
+          }
+          if (this.ranUnconfinedNowConfined(command.threadId, parentTurnId)) {
+            this.persistReceipt(receipt);
+            return {
+              receipt,
+              result: {
+                outcome: 'confinement-changed',
+                threadId: command.threadId,
+              } as SteerChildWorkResult,
+            };
+          }
+          const adapter = await resolveOrchestrationAdapterForThread({
+            threadId: command.threadId,
+            threadProviders: this.threadProviders,
+            requireAdapter: (provider) => this.requireAdapter(provider),
+            adapters: this.options.adapterRegistry.list(),
+          });
+          this.assertAdapterCurrent(adapter);
+          if (!adapter.steerChildWork) {
+            this.persistReceipt(receipt);
+            return {
+              receipt,
+              result: {
+                outcome: 'unsupported',
+                threadId: command.threadId,
+              } as SteerChildWorkResult,
+            };
+          }
+          if (
+            context.requestCurrent() !== true ||
+            !this.sessionAuthz.canReadSessionForCommand(
+              command.threadId,
+              context.userId,
+              context.tenantExecutionContext,
+            ) ||
+            this.ranUnconfinedNowConfined(command.threadId, parentTurnId)
+          ) {
+            this.persistReceipt(receipt);
+            return {
+              receipt,
+              result: {
+                outcome: 'not-authorized',
+                threadId: command.threadId,
+              } as SteerChildWorkResult,
+            };
+          }
+          if (!store.claimChildSteerInput(input)) {
+            const held = store.readChildSteerInput(input);
+            this.persistReceipt(receipt);
+            return {
+              receipt,
+              result:
+                held?.outcome === 'steered'
+                  ? ({
+                      outcome: 'steered',
+                      threadId: command.threadId,
+                      childId: command.childId,
+                      turnId: held.turnId,
+                    } as SteerChildWorkResult)
+                  : uncertain,
+            };
+          }
+          try {
+            this.assertAdapterCurrent(adapter);
+            if (
+              context.requestCurrent() !== true ||
+              !this.sessionAuthz.canReadSessionForCommand(
+                command.threadId,
+                context.userId,
+                context.tenantExecutionContext,
+              ) ||
+              this.ranUnconfinedNowConfined(command.threadId, parentTurnId) ||
+              activeTurnIdForEvents(
+                store
+                  .listEventsByMethods(
+                    command.threadId,
+                    ACTIVE_TURN_FOLD_METHODS,
+                  )
+                  .map((stored) => stored.payload),
+              ) !== parentTurnId
+            ) {
+              this.persistReceipt(receipt);
+              return { receipt, result: uncertain };
+            }
+            let timeout: ReturnType<typeof setTimeout> | undefined;
+            const result = await Promise.race([
+              adapter.steerChildWork(
+                command.threadId,
+                command.childId,
+                command.turnId,
+                command.input,
+              ),
+              new Promise<never>((_, reject) => {
+                timeout = setTimeout(
+                  () =>
+                    reject(new Error('Child steer acknowledgement timed out.')),
+                  10_000,
+                );
+              }),
+            ]).finally(() => clearTimeout(timeout));
+            if (result.outcome !== 'steered') {
+              this.persistReceipt(receipt);
+              return {
+                receipt,
+                result: {
+                  outcome: result.outcome,
+                  threadId: command.threadId,
+                } as SteerChildWorkResult,
+              };
+            }
+            if (result.turnId !== command.turnId)
+              throw new Error('Child steer acknowledgement target changed.');
+            this.assertAdapterCurrentAfterCommand(adapter);
+            store.confirmSteerInput(input, result.turnId);
+            this.persistReceipt(receipt);
+            return {
+              receipt,
+              result: {
+                outcome: 'steered',
+                threadId: command.threadId,
+                childId: command.childId,
+                turnId: result.turnId,
+              } as SteerChildWorkResult,
+            };
+          } catch {
+            this.persistReceipt(receipt);
+            return { receipt, result: uncertain };
+          }
         }
         case 'steerTurn': {
           const steerInput = command.clientInputId
