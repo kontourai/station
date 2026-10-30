@@ -1,0 +1,15 @@
+{
+  "revision": "72dae3e0e1f7b188d13b7da944959b6c6380bfcd",
+
+  "notes": [
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Compared verified-peer attempt claim, lookup and no-replay semantics to runtime route delta: plugin command Project/Task admission is a different route and leaves claim authority unchanged. No peer or provider effect run.","inputs":["docs/guides/delegation-attempt-claims.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Compared controller identity, external database and participant binding limits to runtime route delta: plugin command requirement checks do not alter home-authority route composition or activate a transfer. No independent-host journey run.","inputs":["docs/guides/home-transfer-controller.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Compared the proposed runner-label and physical-host lease plan with runtime route delta: plugin command Project/Task authorization does not alter CI runner placement. No runner reconfiguration or dispatch run.","inputs":["docs/guides/private-runner-partition.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Compared behavior/fault observation and NOT_VERIFIED guidance with runtime route delta: plugin command requirement checks do not change law evidence semantics. No product-law observation run.","inputs":["docs/guides/product-law-authoring.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Compared paused encrypted workspace-copy and separate Project registration boundaries with runtime route delta: plugin command requirement admission does not change package capture or transfer. No pack/unpack or remote host run.","inputs":["docs/guides/workspace-packages.md","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

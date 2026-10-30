@@ -1,0 +1,13 @@
+{
+  "revision": "a5af2106e7fe038253c36fcd8df96c21bbf45f7c",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Compared the Agent update route delta with the RequestSheet tool-approval presentation: the new gate concerns plugin-owned saved grant changes, not the pending-request sheet lifecycle or responsive behavior. No UI or device execution in this review.","inputs":["docs/guides/responsive-ui.md","src-server/routes/agents/agents.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"Compared the Agent update route delta with the theme cascade and Monitoring series-color guidance: plugin-owned grant authorization does not alter tokens or theme selection. Source inspection only; no rendered contrast check.","inputs":["docs/guides/theming.md","src-server/routes/agents/agents.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Reviewed request-admission guidance against the Agent route update: the new plugin-owned grant change gate is an object-level authority check, consistent with the guidance to compose route and service authorization. No route test executed in this review.","inputs":["docs/patterns/backend.md","src-server/routes/agents/agents.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed the Agent query example and explicit-intent guidance against the Agent update route change. The added plugin-owned grant gate changes server-side authorization, not the tools read or query ownership described here. No browser execution in this review.","inputs":["docs/patterns/frontend.md","src-server/routes/agents/agents.ts"]}
+  ]
+}
