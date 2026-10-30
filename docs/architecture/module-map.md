@@ -446,10 +446,10 @@ existing cadence-based credential-activity touch and its failure behavior.
 
 **Borrowing and recovery.** Only an explicit live lease can start a borrowed
 span. Thenables refuse; the span invalidates before return, so a late async
-descendant cannot borrow it. Report rounds transactions also use an explicit
-async lifetime around the exact lease: home is acquired before the group and
-authority locks, while each currentness check and journal rename uses a
-synchronous borrow. Nested lifetimes expire independently. Cleanup retains exact handles and can be retried by
+descendant cannot borrow it. An experimental rounds-store lifetime carries an
+exact lease through nested transactions, but production report composition does
+not use it: concurrent report callbacks encounter busy authority checks and
+need a separately qualified coordination design. Cleanup retains exact handles and can be retried by
 explicit async acquisition without replaying the callback. The HTTP boundary
 returns 503 before callback admission or 409 when an operation outcome is
 unconfirmed. Registry publication uncertainty fences that service instance;
