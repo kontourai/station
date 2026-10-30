@@ -447,6 +447,7 @@ describe('project guest administration over the production composition', () => {
       monitoringEvents: [],
       orchestrationEventStore: new Proxy(
         {
+          createPackageMcpAdmissionJournal: () => undefined,
           sessionTurnBoundaryAuthority: () => ({
             reconcile: () => ({ kind: 'available', interrupted: [] }),
           }),
@@ -460,6 +461,7 @@ describe('project guest administration over the production composition', () => {
       ),
       environmentSecurityService: security,
       eventBus,
+      operationalEventPublisher: { append: () => ({ kind: 'appended' }) },
       taskGraphService: graph,
     });
     const result = configureRuntimeRoutesProduction(
