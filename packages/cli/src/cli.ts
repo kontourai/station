@@ -422,6 +422,7 @@ const SURFACE_COMMANDS = [
   'notifications',
   'monitoring',
   'schedule',
+  'automation',
   'runs',
   'review',
   'knowledge',

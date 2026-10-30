@@ -1,0 +1,19 @@
+{
+  "revision": "ed3a2ffa1686e51f31103ca7dd6b77700f0baf6d",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"Reviewed preview-only runtime composition, default-off and hosted exclusion, per-request source/preview rechecks, atomic intake, bounded-page partial status and the retained S3/S4 gaps. Source and controlled tests only; no installed/live-provider or release qualification.","inputs":["docs/design/automations.md","src-server/runtime/routes/runtime-route-support.ts","src-server/services/scheduling/external-monitor.ts","src-server/services/automation/github-poll.ts","src-server/services/automation/automation-intake.ts","src-server/services/automation/github-workflow-run.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed only the Automation directory row and Scheduler Automation paragraph against composition, scheduler single-flight shutdown, normalizer and atomic intake. Existing unrelated module descriptions are unchanged; no corpus-wide semantic approval.","inputs":["docs/architecture/module-map.md","src-server/runtime/routes/runtime-route-support.ts","src-server/runtime/routes/runtime-routes.ts","src-server/security/pairing-route-scopes.ts","src-server/services/scheduling/builtin-scheduler.ts","src-server/services/scheduling/external-monitor.ts","src-server/services/automation/github-poll.ts","src-server/services/automation/automation-intake.ts","src-server/services/automation/github-workflow-run.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Traced GET /automations/deliveries through management pairing scope, hosted/preview refusal before storage, limit validation, delivery/poll projection and policy-unavailable response. Other endpoint behavior is unchanged.","inputs":["docs/reference/api.md","packages/cli/src/commands/surfaces.ts","packages/sdk/src/client/index.ts","src-server/runtime/routes/runtime-routes.ts","src-server/security/pairing-route-scopes.ts","src-server/services/scheduling/builtin-scheduler.ts","src-server/routes/operations/automations.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Traced station automation deliveries from CLI help/dispatch through SDK to the protected GET route; partial/failure coverage is printed alongside bounded deliveries. Other declared automation verbs remain unavailable.","inputs":["docs/reference/cli.md","packages/cli/src/cli.ts","packages/cli/src/commands/surfaces.ts","packages/cli/src/help.ts","packages/sdk/src/client/automations.ts","src-server/routes/operations/automations.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed listAutomationDeliveries export, AutomationDeliveryPage shape and StationHttpError handling for preview-disabled/unsupported/non-JSON failure. Existing SDK entries are unaffected.","inputs":["docs/reference/sdk.md","src-server/runtime/routes/runtime-route-support.ts","src-server/runtime/routes/runtime-routes.ts","src-server/security/pairing-route-scopes.ts","packages/sdk/src/client/automations.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed additive AutomationDeliveryRecord, AutomationPollRecord/Outcome and AutomationDeliveryPage against ledger/route and SDK consumers. Existing operator vocabulary is unchanged.","inputs":["docs/reference/contracts.md","src-server/runtime/routes/runtime-routes.ts","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/user/settings.md","note":"Reviewed the github-automation-observations catalog row against its hosted-aware runtime binding, default-off selector and no-model/network/storage costs. Disabling prevents new effects but retains historical records.","inputs":["docs/user/settings.md","src-server/services/automation/github-poll.ts"]}
+  ]
+}
