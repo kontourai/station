@@ -1,0 +1,7 @@
+{
+  "revision": "409c9a39e9b9631cc04ab9351a63d28e86c7a54d",
+
+  "notes": [
+    {"path":"docs/learn/media/inspect-request.webm","note":"Scoped retained-video/source review at 409c9a39e9b. Verified the existing WebM duration14.20s and inspected four temporally spaced extracted frames: attention card before inspector, identity-expanded request inspector with Deny/Approve once/Close, and card again after close. Read the clip alt/caption/evidence, original capturedRevision and walkthrough. Frames corroborate the described inspection/disclosure/close sequence; sampling is not a new event-by-event backend audit or proof that every intervening frame was independently checked. Current exact persisted-request inspection, authorization/answerability and canRespond owners were inspected with the adjacent PNG review; report/finalizer/native-child changes do not make inspection itself an approval. Existing metadata already labels old navigation and bulk-dismiss background wording historical. Preserve exact clip bytes, digest, capturedRevision and controlled-provider/no-external-effect scope. No new browser run or recapture is needed for this named service impact. No approval, runtime/provider/passkey/native/device/latency qualification and no baseline/classification/caption change.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}
