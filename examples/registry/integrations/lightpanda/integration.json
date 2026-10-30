@@ -8,6 +8,7 @@
   "transport": "stdio",
   "command": "lightpanda",
   "args": ["mcp"],
+  "disabledTools": ["session_new", "session_list", "session_close"],
   "env": {
     "LIGHTPANDA_DISABLE_TELEMETRY": "true",
     "LIGHTPANDA_DISABLE_CORE_DUMP": "1"
