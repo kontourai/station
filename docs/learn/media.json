@@ -448,8 +448,8 @@
       "alt": "Chat settings before the Session Goal control, 390px dark theme.",
       "caption": "Session Goal component comparison: before, 390px, dark.",
       "scenario": "Session Goal component layout",
-      "evidence": "Controlled Chromium component render using actual ChatSettingsPanel and styles at 72e77a61d0beeb1c247e582c6331888df0b65a22; panel source extracted from 2a740cb43031655fbb33d549bfb0ba94a09113e3 with current styles. SDK/context observations are fixtures; unused Replay controls stubbed. Finite animations/fonts awaited, no JS errors or horizontal overflow; all four widths/themes inspected. No running Station, live engine, native shell, hosted, activation or release qualification.",
-      "capturedRevision": "72e77a61d0beeb1c247e582c6331888df0b65a22",
+      "evidence": "Controlled Chromium component render using actual ChatSettingsPanel and styles at e4673c154e93f4eca46c55d5b805a5aacc1d696a; panel source extracted from 2a740cb43031655fbb33d549bfb0ba94a09113e3 with current styles. SDK/context observations are fixtures; unused Replay controls stubbed. Finite animations/fonts awaited, no JS errors or horizontal overflow; all four widths/themes inspected. No running Station, live engine, native shell, hosted, activation or release qualification.",
+      "capturedRevision": "e4673c154e93f4eca46c55d5b805a5aacc1d696a",
       "documents": [
         "docs/user/settings.md"
       ]
@@ -461,8 +461,8 @@
       "alt": "Chat settings before the Session Goal control, 390px light theme.",
       "caption": "Session Goal component comparison: before, 390px, light.",
       "scenario": "Session Goal component layout",
-      "evidence": "Controlled Chromium component render using actual ChatSettingsPanel and styles at 72e77a61d0beeb1c247e582c6331888df0b65a22; panel source extracted from 2a740cb43031655fbb33d549bfb0ba94a09113e3 with current styles. SDK/context observations are fixtures; unused Replay controls stubbed. Finite animations/fonts awaited, no JS errors or horizontal overflow; all four widths/themes inspected. No running Station, live engine, native shell, hosted, activation or release qualification.",
-      "capturedRevision": "72e77a61d0beeb1c247e582c6331888df0b65a22",
+      "evidence": "Controlled Chromium component render using actual ChatSettingsPanel and styles at e4673c154e93f4eca46c55d5b805a5aacc1d696a; panel source extracted from 2a740cb43031655fbb33d549bfb0ba94a09113e3 with current styles. SDK/context observations are fixtures; unused Replay controls stubbed. Finite animations/fonts awaited, no JS errors or horizontal overflow; all four widths/themes inspected. No running Station, live engine, native shell, hosted, activation or release qualification.",
+      "capturedRevision": "e4673c154e93f4eca46c55d5b805a5aacc1d696a",
       "documents": [
         "docs/user/settings.md"
       ]
@@ -474,8 +474,8 @@
       "alt": "Chat settings before the Session Goal control, 1440px dark theme.",
       "caption": "Session Goal component comparison: before, 1440px, dark.",
       "scenario": "Session Goal component layout",
-      "evidence": "Controlled Chromium component render using actual ChatSettingsPanel and styles at 72e77a61d0beeb1c247e582c6331888df0b65a22; panel source extracted from 2a740cb43031655fbb33d549bfb0ba94a09113e3 with current styles. SDK/context observations are fixtures; unused Replay controls stubbed. Finite animations/fonts awaited, no JS errors or horizontal overflow; all four widths/themes inspected. No running Station, live engine, native shell, hosted, activation or release qualification.",
-      "capturedRevision": "72e77a61d0beeb1c247e582c6331888df0b65a22",
+      "evidence": "Controlled Chromium component render using actual ChatSettingsPanel and styles at e4673c154e93f4eca46c55d5b805a5aacc1d696a; panel source extracted from 2a740cb43031655fbb33d549bfb0ba94a09113e3 with current styles. SDK/context observations are fixtures; unused Replay controls stubbed. Finite animations/fonts awaited, no JS errors or horizontal overflow; all four widths/themes inspected. No running Station, live engine, native shell, hosted, activation or release qualification.",
+      "capturedRevision": "e4673c154e93f4eca46c55d5b805a5aacc1d696a",
       "documents": [
         "docs/user/settings.md"
       ]
@@ -487,8 +487,8 @@
       "alt": "Chat settings before the Session Goal control, 1440px light theme.",
       "caption": "Session Goal component comparison: before, 1440px, light.",
       "scenario": "Session Goal component layout",
-      "evidence": "Controlled Chromium component render using actual ChatSettingsPanel and styles at 72e77a61d0beeb1c247e582c6331888df0b65a22; panel source extracted from 2a740cb43031655fbb33d549bfb0ba94a09113e3 with current styles. SDK/context observations are fixtures; unused Replay controls stubbed. Finite animations/fonts awaited, no JS errors or horizontal overflow; all four widths/themes inspected. No running Station, live engine, native shell, hosted, activation or release qualification.",
-      "capturedRevision": "72e77a61d0beeb1c247e582c6331888df0b65a22",
+      "evidence": "Controlled Chromium component render using actual ChatSettingsPanel and styles at e4673c154e93f4eca46c55d5b805a5aacc1d696a; panel source extracted from 2a740cb43031655fbb33d549bfb0ba94a09113e3 with current styles. SDK/context observations are fixtures; unused Replay controls stubbed. Finite animations/fonts awaited, no JS errors or horizontal overflow; all four widths/themes inspected. No running Station, live engine, native shell, hosted, activation or release qualification.",
+      "capturedRevision": "e4673c154e93f4eca46c55d5b805a5aacc1d696a",
       "documents": [
         "docs/user/settings.md"
       ]
@@ -496,12 +496,12 @@
     {
       "path": "docs/learn/media/session-goals-after-390-dark.png",
       "kind": "image",
-      "digest": "b0428f6e81fefa6b8435a2036bfd318822bec00996d6b55e8fb24fe813375651",
+      "digest": "5b6d96ce775a85133859ad7fc170c024ebc079a09cead8d119a30ed3f72034ee",
       "alt": "Chat settings after the Session Goal control, 390px dark theme.",
       "caption": "Session Goal component comparison: after, 390px, dark.",
       "scenario": "Session Goal component layout",
-      "evidence": "Controlled Chromium component render using actual ChatSettingsPanel and styles at 72e77a61d0beeb1c247e582c6331888df0b65a22; panel and Goal control from captured revision. SDK/context observations are fixtures; unused Replay controls stubbed. Finite animations/fonts awaited, no JS errors or horizontal overflow; all four widths/themes inspected. No running Station, live engine, native shell, hosted, activation or release qualification.",
-      "capturedRevision": "72e77a61d0beeb1c247e582c6331888df0b65a22",
+      "evidence": "Controlled Chromium component render using actual ChatSettingsPanel and styles at e4673c154e93f4eca46c55d5b805a5aacc1d696a; panel and Goal control from captured revision. SDK/context observations are fixtures; unused Replay controls stubbed. Finite animations/fonts awaited, no JS errors or horizontal overflow; all four widths/themes inspected. No running Station, live engine, native shell, hosted, activation or release qualification.",
+      "capturedRevision": "e4673c154e93f4eca46c55d5b805a5aacc1d696a",
       "documents": [
         "docs/user/settings.md"
       ]
@@ -509,12 +509,12 @@
     {
       "path": "docs/learn/media/session-goals-after-390-light.png",
       "kind": "image",
-      "digest": "999f48fb4d975f8d9c816418fea68e120bb9b51998e3996bcdb20869406fc1b5",
+      "digest": "fcbe291da4ecc05ea42100071d0ee529f8a13362edaa9b97cd1b5b369ff2327d",
       "alt": "Chat settings after the Session Goal control, 390px light theme.",
       "caption": "Session Goal component comparison: after, 390px, light.",
       "scenario": "Session Goal component layout",
-      "evidence": "Controlled Chromium component render using actual ChatSettingsPanel and styles at 72e77a61d0beeb1c247e582c6331888df0b65a22; panel and Goal control from captured revision. SDK/context observations are fixtures; unused Replay controls stubbed. Finite animations/fonts awaited, no JS errors or horizontal overflow; all four widths/themes inspected. No running Station, live engine, native shell, hosted, activation or release qualification.",
-      "capturedRevision": "72e77a61d0beeb1c247e582c6331888df0b65a22",
+      "evidence": "Controlled Chromium component render using actual ChatSettingsPanel and styles at e4673c154e93f4eca46c55d5b805a5aacc1d696a; panel and Goal control from captured revision. SDK/context observations are fixtures; unused Replay controls stubbed. Finite animations/fonts awaited, no JS errors or horizontal overflow; all four widths/themes inspected. No running Station, live engine, native shell, hosted, activation or release qualification.",
+      "capturedRevision": "e4673c154e93f4eca46c55d5b805a5aacc1d696a",
       "documents": [
         "docs/user/settings.md"
       ]
@@ -522,12 +522,12 @@
     {
       "path": "docs/learn/media/session-goals-after-1440-dark.png",
       "kind": "image",
-      "digest": "82c6b3f2f89cd56a966b31afc97112bbda2b295565ab9c92360d4c13601c0ee1",
+      "digest": "caf25ad04192c00cd1f0cfeb68d42acaec1072e7b90f8c21245c1af152923251",
       "alt": "Chat settings after the Session Goal control, 1440px dark theme.",
       "caption": "Session Goal component comparison: after, 1440px, dark.",
       "scenario": "Session Goal component layout",
-      "evidence": "Controlled Chromium component render using actual ChatSettingsPanel and styles at 72e77a61d0beeb1c247e582c6331888df0b65a22; panel and Goal control from captured revision. SDK/context observations are fixtures; unused Replay controls stubbed. Finite animations/fonts awaited, no JS errors or horizontal overflow; all four widths/themes inspected. No running Station, live engine, native shell, hosted, activation or release qualification.",
-      "capturedRevision": "72e77a61d0beeb1c247e582c6331888df0b65a22",
+      "evidence": "Controlled Chromium component render using actual ChatSettingsPanel and styles at e4673c154e93f4eca46c55d5b805a5aacc1d696a; panel and Goal control from captured revision. SDK/context observations are fixtures; unused Replay controls stubbed. Finite animations/fonts awaited, no JS errors or horizontal overflow; all four widths/themes inspected. No running Station, live engine, native shell, hosted, activation or release qualification.",
+      "capturedRevision": "e4673c154e93f4eca46c55d5b805a5aacc1d696a",
       "documents": [
         "docs/user/settings.md"
       ]
@@ -535,12 +535,12 @@
     {
       "path": "docs/learn/media/session-goals-after-1440-light.png",
       "kind": "image",
-      "digest": "a50a3fe254639d0a3c023c09818d8bfa58a52f15a5b390a13487f282c787f09d",
+      "digest": "f6481aafc04c0f7957e1a29101684464c76ee8084b85ca81fd7abfe0fc1bbd95",
       "alt": "Chat settings after the Session Goal control, 1440px light theme.",
       "caption": "Session Goal component comparison: after, 1440px, light.",
       "scenario": "Session Goal component layout",
-      "evidence": "Controlled Chromium component render using actual ChatSettingsPanel and styles at 72e77a61d0beeb1c247e582c6331888df0b65a22; panel and Goal control from captured revision. SDK/context observations are fixtures; unused Replay controls stubbed. Finite animations/fonts awaited, no JS errors or horizontal overflow; all four widths/themes inspected. No running Station, live engine, native shell, hosted, activation or release qualification.",
-      "capturedRevision": "72e77a61d0beeb1c247e582c6331888df0b65a22",
+      "evidence": "Controlled Chromium component render using actual ChatSettingsPanel and styles at e4673c154e93f4eca46c55d5b805a5aacc1d696a; panel and Goal control from captured revision. SDK/context observations are fixtures; unused Replay controls stubbed. Finite animations/fonts awaited, no JS errors or horizontal overflow; all four widths/themes inspected. No running Station, live engine, native shell, hosted, activation or release qualification.",
+      "capturedRevision": "e4673c154e93f4eca46c55d5b805a5aacc1d696a",
       "documents": [
         "docs/user/settings.md"
       ]
