@@ -16,6 +16,7 @@
  */
 import type { AddressInfo } from 'node:net';
 import { serve } from '@hono/node-server';
+import type { ToolDef } from '@kontourai/station-contracts/tool';
 import {
   getOrchestrationSession,
   interruptTurn,
@@ -60,6 +61,11 @@ import { ApprovalRegistry } from '../../services/approvals/approval-registry.js'
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import { EventBus as RealEventBus } from '../../services/orchestration/event-bus.js';
+import {
+  gateMediatedMcpCall,
+  recordPersonApprovedCall,
+} from '../../services/plugins/mediated-untrusted-content-gate.js';
+import { sharedUntrustedContentLedger } from '../../services/plugins/untrusted-content-policy.js';
 import { createStationControlMcpServer } from '../../tools/station-control-mcp-server.js';
 import {
   STATION_CONTROL_TOOL_POLICY,
@@ -94,6 +100,7 @@ import {
 } from '../station-server-scope.js';
 
 const OPERATOR_CREDENTIAL = 'test-only-operator-credential-authority-guard';
+let stationControlDefinition: ToolDef = { id: 'station-control', kind: 'mcp' };
 
 /**
  * Session ids name the principal Station recorded for the session: the
@@ -225,6 +232,16 @@ beforeAll(async () => {
       // The production check, over a real grant store.
       retargetsGrantedJob: (jobName, changes) =>
         jobEditRetargetsGrantedWork(jobName, changes, async () => JOBS, grants),
+      // #3483: the production gate over a stub station-control definition.
+      untrustedContentGate: async ({ conversationIds, toolNames }) => {
+        const verdict = await gateMediatedMcpCall({
+          conversationIds,
+          serverId: 'station-control',
+          toolNames,
+          definition: async () => stationControlDefinition,
+        });
+        return verdict.allowed ? undefined : verdict.reason;
+      },
       onRefusal: (refusal) => refusals.push(refusal.code),
     }),
   );
@@ -1735,4 +1752,78 @@ describe('a tool’s call to a saved Environment (#2377 slice C2b)', () => {
       expect(dispatchBodies[0]).not.toHaveProperty('delegation');
     },
   );
+});
+
+describe('after untrusted content, station-control applies the permission (#3483)', () => {
+  beforeEach(() => {
+    stationControlDefinition = { id: 'station-control', kind: 'mcp' };
+  });
+  const marked = async (channel: Channel) => {
+    const sessionId = nextSession('op-');
+    sharedUntrustedContentLedger.markConversation(
+      sessionId,
+      Promise.resolve(true),
+    );
+    await sharedUntrustedContentLedger.conversationHasRead(sessionId);
+    const caller = forwardedCaller(channel, sessionId)!;
+    const headers = internalHeaders({
+      [STATION_CONTROL_CALLER_TOKEN_HEADER]: caller,
+    });
+    return { sessionId, headers };
+  };
+
+  test("a call that changes things asks, and only a person's approval admits it once", async () => {
+    const { sessionId, headers } = await marked('bound');
+    hits.length = 0;
+    expect(await rest('PUT', '/config/app', headers, { theme: 'x' })).toEqual({
+      status: 403,
+      code: 'station_control_untrusted_content',
+    });
+    // Reads are not gated.
+    expect(await rest('GET', '/agents', headers)).toEqual({ status: 200 });
+    recordPersonApprovedCall(sessionId, 'station-control', 'update_config');
+    expect(await rest('PUT', '/config/app', headers, { theme: 'x' })).toEqual({
+      status: 200,
+    });
+    expect(await rest('PUT', '/config/app', headers, { theme: 'x' })).toEqual({
+      status: 403,
+      code: 'station_control_untrusted_content',
+    });
+    expect(hits).toEqual(['GET /agents', 'PUT /config/app']);
+  });
+
+  test("the person's allow lets it run and their deny refuses it even when approved", async () => {
+    const { sessionId, headers } = await marked('bound');
+    stationControlDefinition = {
+      id: 'station-control',
+      kind: 'mcp',
+      untrustedContentPermissions: { tools: { update_config: 'allow' } },
+    };
+    expect(await rest('PUT', '/config/app', headers, { theme: 'x' })).toEqual({
+      status: 200,
+    });
+    stationControlDefinition = {
+      id: 'station-control',
+      kind: 'mcp',
+      untrustedContentPermissions: { default: 'deny' },
+    };
+    recordPersonApprovedCall(sessionId, 'station-control', 'update_config');
+    expect(await rest('PUT', '/config/app', headers, { theme: 'x' })).toEqual({
+      status: 403,
+      code: 'station_control_untrusted_content',
+    });
+  });
+
+  test('a conversation with no untrusted content is unaffected', async () => {
+    const sessionId = nextSession('op-');
+    const headers = internalHeaders({
+      [STATION_CONTROL_CALLER_TOKEN_HEADER]: forwardedCaller(
+        'bound',
+        sessionId,
+      )!,
+    });
+    expect(await rest('PUT', '/config/app', headers, { theme: 'x' })).toEqual({
+      status: 200,
+    });
+  });
 });

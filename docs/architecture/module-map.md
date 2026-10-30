@@ -4892,7 +4892,11 @@ logged and omitted, so absence from the returned list is not proof no definition
 exists on disk. Runtime availability still has its own current-state owner.
 
 [Integration registry listings](../../src-server/providers/registries/integration-registry-provider.ts)
-read definitions afresh with asynchronous filesystem calls. Binary-presence
+read definitions afresh with asynchronous filesystem calls. A remote server
+(HTTP or SSE endpoint, no command) has no binary and gets no presence status.
+[MCP subregistry sources](../../src-server/providers/registries/mcp-subregistry-provider.ts)
+are integration providers beside the built-in catalog; they keep a bounded
+last-good copy per source ([design](../design/mcp-subregistry-curation.md)). Binary-presence
 lookups use asynchronous `which`/`where`, coalesce concurrent observations, and
 cache definitive positive and negative results for 30 seconds (at most 256 commands).
 Timeouts, signals and lookup errors are retried on the next listing.
