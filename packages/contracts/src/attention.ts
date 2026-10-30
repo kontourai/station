@@ -9,6 +9,58 @@ export interface AttentionRequestReference {
   requestEventId: string;
 }
 
+/** Maximum attention snooze duration: 30 days. Longer requests are refused. */
+export const ATTENTION_SNOOZE_MAX_MS = 30 * 24 * 60 * 60 * 1_000;
+
+/** Only authored validation reasons may cross the HTTP boundary. */
+export class AttentionSnoozeUntilError extends Error {
+  constructor(
+    readonly publicMessage:
+      | 'until must be a valid ISO timestamp with a timezone'
+      | 'until must be in the future'
+      | 'until must be at most 30 days in the future',
+  ) {
+    super(publicMessage);
+  }
+}
+
+/** Parse an ISO timestamp with a timezone; refuse invalid or out-of-range dates. */
+export function parseAttentionSnoozeUntil(value: unknown, now: number): string {
+  const match =
+    typeof value === 'string'
+      ? /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?(Z|[+-](\d{2}):(\d{2}))$/.exec(
+          value,
+        )
+      : null;
+  const until = typeof value === 'string' ? Date.parse(value) : NaN;
+  if (
+    !match ||
+    !Number.isFinite(until) ||
+    Number(match[2]) < 1 ||
+    Number(match[2]) > 12 ||
+    Number(match[3]) < 1 ||
+    Number(match[3]) >
+      new Date(Date.UTC(Number(match[1]), Number(match[2]), 0)).getUTCDate() ||
+    Number(match[4]) > 23 ||
+    Number(match[5]) > 59 ||
+    Number(match[6]) > 59 ||
+    (match[8] !== undefined && (Number(match[8]) > 23 || Number(match[9]) > 59))
+  ) {
+    throw new AttentionSnoozeUntilError(
+      'until must be a valid ISO timestamp with a timezone',
+    );
+  }
+  if (!Number.isFinite(now) || until <= now) {
+    throw new AttentionSnoozeUntilError('until must be in the future');
+  }
+  if (until > now + ATTENTION_SNOOZE_MAX_MS) {
+    throw new AttentionSnoozeUntilError(
+      'until must be at most 30 days in the future',
+    );
+  }
+  return new Date(until).toISOString();
+}
+
 export const ATTENTION_REQUEST_MAX_BYTES = 65_536;
 export const ATTENTION_REQUEST_ID_MAX_CHARS = 1_024;
 
@@ -50,6 +102,13 @@ export interface AttentionItemBase {
    * unacknowledged again, because the stored version no longer matches.
    */
   acknowledgedAt?: string;
+  /**
+   * Active, user-scoped snooze of this `updatedAt` version. The item remains
+   * in `items` but is excluded from pending counts. Omitted once now >= until
+   * or a newer source version appears, so fresh failures resurface immediately.
+   * Snoozing never resolves the source or acknowledges the item.
+   */
+  snoozedUntil?: string;
   /**
    * #2064 (D4): the project this item belongs to, when the projection could
    * derive one from the item's own source — a session's `projectSlug`, a
@@ -635,11 +694,11 @@ export interface AttentionProjection {
  * The ONE predicate that decides what "pending" means, in the contract so the
  * server's `pendingCount`, the client's narrowed recount
  * (`pendingAttentionItems`) and the per-project counts below are three
- * readings of one declaration. An acknowledged item is history: still in
- * `items`, out of every count (see {@link AttentionItemBase.acknowledgedAt}).
+ * readings of one declaration. Acknowledged and actively snoozed items remain in
+ * `items`, out of every pending count (see {@link AttentionItemBase.acknowledgedAt}).
  */
 export function isPendingAttentionItem(item: AttentionItem): boolean {
-  return !item.acknowledgedAt;
+  return !item.acknowledgedAt && !item.snoozedUntil;
 }
 
 /**

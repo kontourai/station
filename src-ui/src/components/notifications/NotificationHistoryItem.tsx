@@ -1,4 +1,5 @@
 import type { Notification } from '@kontourai/station-contracts/notification';
+import type { ReactNode } from 'react';
 import {
   type AnswerabilityView,
   NOT_APPLICABLE,
@@ -6,13 +7,16 @@ import {
 import { notificationCategoryLabel } from '../../utils/notificationLabels';
 import {
   formatNotificationTime,
-  isApprovalNotification,
   notificationDetail,
 } from '../../utils/notifications';
+import { DISMISS_NOTIFICATION_ACTION } from '../attention/notificationRowActions';
+import { InboxContextLine, type InboxContextPart } from './inboxContext';
+import { InboxMarkTile, notificationMark } from './inboxPresentation';
 import { NotificationEnvelopeControls } from './NotificationEnvelopeControls';
+import { RowMenu, type RowMenuItem } from './RowMenu';
 
 /**
- * One row of "Recent activity".
+ * One row of the popover's "Activity" tab.
  *
  * archive#1780: this list renders `notifications minus attention-projected`,
  * so a stranded approval that the attention projection correctly dropped
@@ -30,6 +34,9 @@ export function NotificationHistoryItem({
   isDismissPending,
   onAction,
   onDismiss,
+  context = [],
+  feedback,
+  menuItems = [],
 }: {
   notification: Notification;
   answerability?: AnswerabilityView;
@@ -37,6 +44,12 @@ export function NotificationHistoryItem({
   isDismissPending: boolean;
   onAction: (notificationId: string, actionId: string) => void;
   onDismiss: (notificationId: string) => void;
+  /** Station · Project · Chat · Agent · Engine, from `useInboxContext`. */
+  context?: readonly InboxContextPart[];
+  /** This row's own action outcome (an error with its recovery), if any. */
+  feedback?: ReactNode;
+  /** Extra items for the row's ⋯ menu (snooze), before its dismiss. */
+  menuItems?: readonly RowMenuItem[];
 }) {
   const detail = notificationDetail(notification);
   // Only an OBSERVED negative disables anything. `unknown` renders its gap
@@ -54,15 +67,38 @@ export function NotificationHistoryItem({
   const noticeId = notice
     ? `notification-answerability-${notification.id}`
     : undefined;
+  const actions = notification.actions ?? [];
   return (
-    <div className="notification-history__item notification-history__item--timed">
+    <div className="notification-history__item">
+      <InboxMarkTile mark={notificationMark(notification)} />
       <div className="notification-history__item-content">
-        {isApprovalNotification(notification) && (
-          <div className="notification-history__eyebrow">
+        <div className="notification-history__meta">
+          <span className="notification-history__eyebrow">
             {notificationCategoryLabel(notification.category)}
-          </div>
-        )}
-        <div>{notification.title}</div>
+          </span>
+          <span className="notification-history__corner">
+            <time
+              className="notification-history__time"
+              dateTime={notification.updatedAt}
+            >
+              {formatNotificationTime(notification.updatedAt)}
+            </time>
+            <RowMenu
+              items={[
+                ...menuItems,
+                {
+                  id: 'dismiss',
+                  label: DISMISS_NOTIFICATION_ACTION.label,
+                  disabled: isDismissPending,
+                  onSelect: () => onDismiss(notification.id),
+                },
+              ]}
+            />
+          </span>
+        </div>
+        <div className="notification-history__item-title">
+          {notification.title}
+        </div>
         {notification.body && (
           <div className="notification-history__detail">
             {notification.body}
@@ -84,32 +120,28 @@ export function NotificationHistoryItem({
             {notice}
           </div>
         )}
-        <div className="notification-history__actions">
-          {notification.actions?.map((action) => (
-            <button
-              key={action.id}
-              type="button"
-              className="notification-history__action"
-              onClick={() => onAction(notification.id, action.id)}
-              disabled={isActionPending || unanswerable}
-              aria-describedby={unanswerable ? noticeId : undefined}
-            >
-              {action.label}
-            </button>
-          ))}
-          <button
-            type="button"
-            className="notification-history__action"
-            onClick={() => onDismiss(notification.id)}
-            disabled={isDismissPending}
-          >
-            Dismiss
-          </button>
-        </div>
+        <InboxContextLine parts={context} compact />
+        {feedback}
+        {actions.length > 0 && (
+          <div className="notification-history__footer-row">
+            <div className="notification-history__actions">
+              {actions.map((action) => (
+                <button
+                  key={action.id}
+                  type="button"
+                  className="notification-history__action"
+                  data-variant={action.variant ?? 'secondary'}
+                  onClick={() => onAction(notification.id, action.id)}
+                  disabled={isActionPending || unanswerable}
+                  aria-describedby={unanswerable ? noticeId : undefined}
+                >
+                  {action.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
-      <time className="notification-history__time">
-        {formatNotificationTime(notification.updatedAt)}
-      </time>
     </div>
   );
 }
