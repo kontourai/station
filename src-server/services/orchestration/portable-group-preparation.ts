@@ -46,6 +46,7 @@ import {
   resolveClientOriginForRequest,
   runtimeRequestPrincipalMayAccessHttpRoute,
 } from '../../security/runtime-request-security.js';
+import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
 import {
   type DelegatedTaskHandle,
   delegateTask,
@@ -295,25 +296,6 @@ export class PortableGroupPreparation {
     try {
       for (const member of input.members) {
         current();
-        let selected = selections.get(member.agentId);
-        if (!selected) {
-          selected = await this.#credentials.captureAgentSdkCredential(
-            context.req.raw,
-            member.agentId,
-          );
-          selections.set(member.agentId, selected);
-        }
-        current();
-        let qualification = qualifications.get(selected.provider);
-        if (!qualification) {
-          qualification =
-            typeof this.owners.qualification === 'function'
-              ? await this.owners.qualification(selected.provider)
-              : this.owners.qualification;
-          qualifications.set(selected.provider, qualification);
-        }
-        current();
-        qualification.assertSelection(selected.provider, selected.modelId);
         const taskId = `task:${randomUUID()}`;
         const subject = { groupId, workItemId: taskId };
         const sealed = await this.owners.sources.captureSnapshot(
@@ -328,6 +310,37 @@ export class PortableGroupPreparation {
         );
         pendingSnapshot = sealed.capability;
         current();
+        const isBoundCaller =
+          stationControlRequestAuthority(context.req.raw)?.kind === 'caller';
+        const sessionCapability = isBoundCaller
+          ? await this.owners.sources.captureStationControlCredentialAuthority(
+              context,
+              subject,
+              sealed.capability,
+              member.agentId,
+            )
+          : undefined;
+        const selectionKey = isBoundCaller ? member.seatId : member.agentId;
+        let selected = selections.get(selectionKey);
+        if (!selected) {
+          selected = await this.#credentials.captureAgentSdkCredential(
+            context.req.raw,
+            member.agentId,
+            sessionCapability,
+          );
+          selections.set(selectionKey, selected);
+        }
+        current();
+        let qualification = qualifications.get(selected.provider);
+        if (!qualification) {
+          qualification =
+            typeof this.owners.qualification === 'function'
+              ? await this.owners.qualification(selected.provider)
+              : this.owners.qualification;
+          qualifications.set(selected.provider, qualification);
+        }
+        current();
+        qualification.assertSelection(selected.provider, selected.modelId);
         const flow = input.flow
           ? await this.owners.sources.prepareFlowSnapshot(
               context,
@@ -932,9 +945,25 @@ export class PortableGroupPreparation {
           delegationEnvelopeDigestV2(envelope) !== seat.envelope.digest
         )
           refuse();
+        const sealed = await this.owners.sources.readmitSnapshot(
+          context,
+          { groupId: spec.groupId, workItemId: entry.taskId },
+          grant.source,
+        );
+        pendingSnapshot = sealed.capability;
+        const sessionCapability =
+          stationControlRequestAuthority(context.req.raw)?.kind === 'caller'
+            ? await this.owners.sources.captureStationControlCredentialAuthority(
+                context,
+                { groupId: spec.groupId, workItemId: entry.taskId },
+                sealed.capability,
+                entry.agentId,
+              )
+            : undefined;
         const selected = await this.#credentials.captureAgentSdkCredential(
           context.req.raw,
           entry.agentId,
+          sessionCapability,
         );
         if (
           selected.provider !== entry.provider ||
@@ -949,12 +978,6 @@ export class PortableGroupPreparation {
             : this.owners.qualification;
         qualification.assertCurrent();
         qualification.assertSelection(selected.provider, selected.modelId);
-        const sealed = await this.owners.sources.readmitSnapshot(
-          context,
-          { groupId: spec.groupId, workItemId: entry.taskId },
-          grant.source,
-        );
-        pendingSnapshot = sealed.capability;
         const owner = createPreparedSdkSourceWireOwner({
           outputDelivery: 'streamed',
           provider: selected.provider,

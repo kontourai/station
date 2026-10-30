@@ -1,3 +1,92 @@
+import type { InputRequestForm } from './input-request';
+import type { ReportGroupAmounts, ReportGroupInput } from './report-group';
+
+export const DELEGATION_GROUP_TRANSPORT_VERSION =
+  'station.delegation-group/v1' as const;
+export const DELEGATION_GROUP_LIMITS = {
+  requestBytes: 262_144,
+  responseBytes: 262_144,
+  pageSize: 64,
+} as const;
+
+/** Intent is inert; the host must resolve current source, inventory and authority. */
+export type DelegationGroupCreateInput = Omit<ReportGroupInput, 'continuation'>;
+export type DelegationGroupCommandInput = {
+  operationId: string;
+  expectedRevision: number;
+};
+
+/** Public observations exclude the private authority journal and signed admission. */
+export type DelegationGroupView = {
+  version: typeof DELEGATION_GROUP_TRANSPORT_VERSION;
+  groupId: string;
+  revision: number;
+  execution: 'idle' | 'execution_unknown' | 'returned';
+  cancellation: 'none' | 'pending' | 'requested';
+  terminal: 'unproven' | 'proven';
+  acceptance: 'unassessed';
+  topology: { kind: 'independent-advisory' } | { kind: 'flow'; runId: string };
+  members: {
+    seatId: string;
+    taskId: string;
+    invocationId: string | null;
+    outcome: string | null;
+    terminalProof: 'unproven' | 'proven';
+  }[];
+  /** Present only when the host has authenticated the retained accounting ledger. */
+  accounting?: {
+    knownTerminalUsage: ReportGroupAmounts;
+    unsettledAllocation: ReportGroupAmounts;
+  };
+};
+export type DelegationGroupOperationResult = {
+  replayed: boolean;
+  group: DelegationGroupView;
+};
+export type DelegationGroupListPage = {
+  groups: DelegationGroupView[];
+  nextGroupId: string | null;
+  hasMore: boolean;
+};
+export type DelegationGroupEventPage = {
+  groupId: string;
+  afterRevision: number;
+  nextRevision: number;
+  hasMore: boolean;
+  events: {
+    revision: number;
+    kind: string;
+    seatId?: string;
+    invocationId?: string;
+    outcome?: string;
+  }[];
+};
+export type DelegationGroupMemberEventPage = {
+  groupId: string;
+  seatId: string;
+  nextSequence: number;
+  hasMore: boolean;
+  events: {
+    sequence: number;
+    eventId: string;
+    kind: string;
+    turnId?: string;
+    inputRequest?: {
+      requestId: string;
+      requestEventId: string;
+      form: InputRequestForm;
+    };
+  }[];
+};
+export type DelegationGroupRawOutputResult = {
+  groupId: string;
+  seatId: string;
+  invocationId: string;
+  text: string;
+  modelId: string;
+  usage: ReportGroupAmounts;
+};
+
 // A 128-character group ID can expand threefold in the cursor; revision is
 // a safe integer (at most 16 digits). 1 KiB covers the fixed SSE field lines.
 export const CLI_SESSION_GROUP_EVENT_LIMITS = {
