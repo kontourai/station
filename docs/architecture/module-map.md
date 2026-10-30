@@ -1416,7 +1416,8 @@ timeout. Reads never start or resume an engine. Activation and Station-managed
 execution remain unavailable pending durable admission and recovery integration.
 
 **Evidence.** [Route tests](../../src-server/routes/orchestration/__tests__/session-goals.test.ts)
-cover authorization, preview and replacement; [adapter tests](../../src-server/providers/__tests__/codex-goals.test.ts)
+cover authorization and preview; [service tests](../../src-server/services/orchestration/__tests__/orchestration-service.test.ts)
+check replaced-adapter eligibility. [Adapter tests](../../src-server/providers/__tests__/codex-goals.test.ts)
 exercise a fake app-server pipe, timeouts and foreign native identity. They do
 not establish installed-app or autonomous execution qualification. See the
 [delivery plan](../plans/integration-completion-program.md) for remaining work.
