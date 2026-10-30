@@ -6,7 +6,8 @@ import {
   listProjectS3Objects,
   listProjectS3Sources,
   readProjectS3Object,
-  searchKnowledgeIndex,
+  type SearchKnowledgeIndexOptions,
+  searchKnowledgeIndexWithReport,
 } from '@kontourai/station-sdk/client';
 import { z } from 'zod';
 import { projectS3SourcesEnabled } from '../services/projects/project-s3-sources.js';
@@ -24,25 +25,30 @@ const rootId = z.string().min(1).max(300);
 const recordId = z.string().min(1).max(200);
 const recordType = z.enum(['raw', 'compiled', 'concept', 'snapshot', 'person']);
 
+export async function knowledgeSearchToolResult(
+  apiBase: string,
+  input: SearchKnowledgeIndexOptions,
+) {
+  const result = await toToolEnvelope(
+    searchKnowledgeIndexWithReport(apiBase, input, controlRequestOptions()),
+  );
+  return jsonToolResult(
+    result.success
+      ? { success: true, data: result.data.results, index: result.data.index }
+      : result,
+  );
+}
+
 function registerKnowledgeSearchTool(server: StationControlToolRegistry) {
   server.tool(
     'search_knowledge',
-    'Search accessible Knowledge records. Requires a configured embedding connection.',
+    'Search accessible Knowledge records with index health. Stale roots or excerpts need reindexing; index:null means the host did not report health. Requires an embedding connection.',
     {
       query: z.string().min(1),
       rootIds: z.array(rootId).optional(),
       topK: z.number().int().positive().optional(),
     },
-    async (input) =>
-      jsonToolResult(
-        await toToolEnvelope(
-          searchKnowledgeIndex(
-            resolveControlApiBase(),
-            input,
-            controlRequestOptions(),
-          ),
-        ),
-      ),
+    (input) => knowledgeSearchToolResult(resolveControlApiBase(), input),
   );
 }
 

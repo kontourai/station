@@ -644,6 +644,26 @@ async function mintEnvironmentPairingOffer(
   preapproved: boolean,
 ): Promise<DevicePairingOffer> {
   try {
+    if (publication) {
+      try {
+        // Check the verified local host's Origin gate without consuming an offer
+        // or sending the operator credential through the published endpoint.
+        await host.request(host.apiBase, '/.well-known/station/v1', {
+          headers: { Origin: new URL(publication.endpoint).origin },
+        });
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          'code' in error &&
+          error.code === 'origin_forbidden'
+        ) {
+          throw new Error(
+            `Station refuses the published Origin. Add --allowed-origin=${new URL(publication.endpoint).origin} to this instance's service startup arguments, restart it, and rerun the offer.`,
+          );
+        }
+        throw error;
+      }
+    }
     return parseDevicePairingOffer(
       await host.request(host.apiBase, '/api/pairing/offers', {
         method: 'POST',
@@ -686,7 +706,9 @@ function formatEnvironmentOfferOutput(input: {
     `Access: ${input.offer.scope}`,
     input.publication
       ? `Reachability: published privately on this tailnet as ${input.publication.endpoint}.`
-      : 'Reachability: this offer uses loopback, so a phone cannot reach it directly. Use a reviewed reachable endpoint through the existing Connections UI.',
+      : isLoopbackApiBase(endpoint)
+        ? 'Reachability: this offer uses loopback, so a phone cannot reach it directly. Use a reviewed reachable endpoint through the existing Connections UI.'
+        : 'Reachability: verify this advertised endpoint from the joining device; publication and Origin admission are managed separately.',
     'Payload (one-time pairing offer; scan or paste into Join):',
     input.payload,
     ...(input.browserLink ? ['Open in a browser:', input.browserLink] : []),

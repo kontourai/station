@@ -207,6 +207,7 @@ import { useChatDockActiveChatSync } from './useChatDockActiveChatSync';
 import { useChatDockOverlays } from './useChatDockOverlays';
 import { useChatDockViewModel } from './useChatDockViewModel';
 import { useConversationBoundaryDialogs } from './useConversationBoundaryDialogs';
+import { useCoordinatorDockActions } from './useCoordinatorDockActions';
 import { useDockCopyActions } from './useDockCopyActions';
 import { useFirstRunDockNudge } from './useFirstRunDockNudge';
 import { useInboxNeedsYouCount, useInboxWorkingCount } from './useInboxGroups';
@@ -1649,6 +1650,12 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     sessionId: activeSession?.currentSessionId,
     workingDirectory: sessionDisplayCwd,
   });
+  // #3628: make this chat the person's coordinator, or stop.
+  const coordinatorActions = useCoordinatorDockActions(
+    activeSession && !activeSession.replay && !importedSessionId
+      ? activeSession.conversationId
+      : undefined,
+  );
   const openConversationHistory = () => {
     if (!activeSession) return;
     void import('./timelineOpen').then((module) =>
@@ -1712,6 +1719,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
           },
         ]
       : []),
+    ...coordinatorActions,
     ...copyActions,
     ...(activeSession?.conversationId && !activeSession.replay
       ? [
@@ -3121,7 +3129,8 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 onOpenAppSettings: () => navigate('/settings'),
                 // Mobile parity for the desktop More menu's clipboard rows —
                 // the sheet is a coarse device's only home for these IDs.
-                copyActions,
+                // The coordinator rows ride the same list: one-shot commands.
+                copyActions: [...coordinatorActions, ...copyActions],
                 onOpenInventory:
                   sessionInventoryControls && sessionInventoryReady
                     ? (trigger) => {
@@ -4183,6 +4192,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
       <LazyBoundary
         load={loadChatDockModalStack}
         componentProps={{
+          goalSessionId: activeSession?.currentSessionId,
           agents: forkEligibleAgents,
           projects:
             hasImmutableProjectScope && projectSlug

@@ -5948,6 +5948,46 @@ describe('station#1684: station-control over ACP HTTP MCP', () => {
     );
   });
 
+  test('a failed coordinator-only delivery revokes only its own credential', async () => {
+    const revoke = vi.fn();
+    const { adapter } = createAdapter({
+      mcpHttpCapability: true,
+      mintStationControlMcpAuth: () => ({
+        url: STATION_CONTROL_URL,
+        token: TOKEN,
+      }),
+      revokeStationControlMcpAuth: revoke,
+    });
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-derived-refusal',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+      agent: {
+        slug: 'my-agent',
+        toolServers: [
+          {
+            id: 'station-control',
+            transport: 'stdio',
+            command: 'node',
+            args: ['/not-the-builtin'],
+            coordinatorDerived: true,
+            coordinatorGeneration: 0,
+          },
+        ],
+      },
+    });
+    expect(revoke).toHaveBeenCalledWith(
+      'thread-derived-refusal',
+      'coordinator-control',
+    );
+    expect(revoke).not.toHaveBeenCalledWith(
+      'thread-derived-refusal',
+      'station-control',
+    );
+    await adapter.stopAll();
+  });
+
   /**
    * station#1569 (L3): the credential-refusal recovery is the ACP session-end
    * path that settled NOTHING before — unlike the stop path it never reaches

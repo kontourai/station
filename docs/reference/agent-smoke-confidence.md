@@ -53,6 +53,10 @@ Cleanup has a separate bounded grace. Station deletes its temporary thread and
 events after confirmed cleanup; if cleanup cannot be confirmed, the result is
 `cleanup-failed` and diagnostic state remains for recovery. A timeout therefore
 does not promise that the underlying provider process stopped.
+If a session already exited, cleanup is confirmed only when Station has no
+tracked provider and the adapter confirms absence within that same grace.
+Station retains the original diagnostic outcome; absence does not turn a
+failed smoke into a successful one.
 
 ```sh
 station environment credential show | npm run dogfood:agent-smoke -- \

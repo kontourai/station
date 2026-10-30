@@ -1458,6 +1458,12 @@
 
     "patches/modelcontextprotocol-client-2.4.0.patch",
 
+    "src-server/services/orchestration/session-goal-module.ts",
+
+    "src-server/routes/orchestration/session-goals.ts",
+
+    "src-server/providers/adapters/codex-goals.ts",
+
     "src-server/services/automation/github-poll.ts",
 
     "src-server/services/automation/automation-intake.ts",

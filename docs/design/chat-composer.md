@@ -685,9 +685,10 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   chip's accessible name and tooltip keep it. Once a chat has a Session, the Engine & model
   caption names the engine that Session runs on (its own connection for a generic ACP
   engine), not the Agent's current connection: repointing an Agent does not move an
-  open Session, and only a successor Session starts on the new engine. One exception: a
+  open Session, and only a successor Session starts on the new engine. A
   model override the requested engine cannot apply per turn also starts a successor on
-  it. The Agent's own connection name is kept while the Session runs on the Agent's
+  it. A designated coordinator can likewise start a successor to acquire Station tools
+  when its engine cannot refresh that Session in place. The Agent's own connection name is kept while the Session runs on the Agent's
   current connection. The dock header's engine label follows the same rule
   (`chatEngineIdentity`), judged against a conversation override's execution Agent when
   there is one. The chat's connection counts as the Session's only when it was observed

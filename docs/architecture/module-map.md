@@ -52,6 +52,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [NativeApplicationSignaling](#nativeapplicationsignaling) | Own a native peer transcript and one bounded Device request proof for the opt-in application transport. | `src-desktop/src/native_application_peer.rs` |
 | [PendingPairingCompletion](#pendingpairingcompletion) | Complete one accepted device-pairing request once, with shared subscribers and bounded retry. | `packages/connect/src/core/pendingPairingCompletion.ts` |
 | [SessionQueryModule](#sessionquerymodule) | Authorize and project one conversation from one ordered event stream. | `src-server/services/orchestration/session-query-module.ts` |
+| [SessionGoalModule](#sessiongoalmodule) | Inspect and control an exact live Session's advertised Goal capability. | `src-server/services/orchestration/session-goal-module.ts` |
 | [ConversationSessionLineage](#conversationsessionlineage) | Establish and inspect durable conversation-to-execution-session lineage. | `src-server/services/orchestration/conversation-session-lineage.ts` |
 | [SessionCommandModule](#sessioncommandmodule) | Execute the closed session-command vocabulary and return an outcome with explicit receipt certainty. | `src-server/services/orchestration/session-command-module.ts` |
 | [SessionLifecycleModule](#sessionlifecyclemodule) | Mutate one session lifecycle without racing provider turn startup. | `src-server/services/orchestration/session-lifecycle-module.ts` |
@@ -1392,6 +1393,35 @@ WebView or physical-device persistence. Do not reintroduce per-screen polling,
 transport-error replay, competing completion policies or a localStorage admission
 lock.
 
+## SessionGoalModule
+
+**Interface.** The [Session Goal contract](../../packages/contracts/src/session-goal.ts)
+defines observations, advertised operations and mutation outcomes for engine-
+or Station-owned implementations. Unsupported, unavailable and indeterminate
+are distinct. A Goal's completion never completes a Task or passes a gate.
+
+**Ownership and authority.** The [module](../../src-server/services/orchestration/session-goal-module.ts)
+uses the exact current live adapter from Orchestration, refusing replaced and
+read-only attached adapters. The [route](../../src-server/routes/orchestration/session-goals.ts)
+is behind the default-off Session goals preview. Reads use Session-read
+authority; writes require a person and Session mutation authority. Both recheck
+authority and adapter identity after provider I/O. SDK hooks partition data by
+Station, authority and Session; Chat settings consumes the same capability.
+
+**Current implementation.** The [Codex adapter](../../src-server/providers/adapters/codex-goals.ts)
+uses an already-owned app-server connection and validates native thread identity.
+It supports read, save paused, pause and clear, with bounded waits and no
+automatic mutation retry. An unacknowledged mutation remains pending after a
+timeout. Reads never start or resume an engine. Activation and Station-managed
+execution remain unavailable pending durable admission and recovery integration.
+
+**Evidence.** [Route tests](../../src-server/routes/orchestration/__tests__/session-goals.test.ts)
+cover authorization and preview; [service tests](../../src-server/services/orchestration/__tests__/orchestration-service.test.ts)
+check replaced-adapter eligibility. [Adapter tests](../../src-server/providers/__tests__/codex-goals.test.ts)
+exercise a fake app-server pipe, timeouts and foreign native identity. They do
+not establish installed-app or autonomous execution qualification. See the
+[delivery plan](../plans/integration-completion-program.md) for remaining work.
+
 ## SessionQueryModule
 
 This is the read boundary for a Session’s messages and exact answer/input/result references. It keeps authorization and event interpretation together so routes and Knowledge readers do not each reconstruct a different answer. The [query implementation](../../src-server/services/orchestration/session-query-module.ts) separates transcript replay from bounded Basis descriptors.
@@ -1818,6 +1848,83 @@ and remote targets over real events, and the
 pin the bounds. Their presence is not an executed receipt against a real engine.
 See [agent configuration](../guides/self-configuring-agent.md#project-activity)
 for the tool-level behavior.
+
+## CoordinatorWakeDelivery
+
+A person's coordinator Session (#3628) learns when their work needs them,
+fails or finishes, without polling. Its product names live only in the UI copy
+source ([`productNames.ts`](../../src-ui/src/lib/productNames.ts)), which a
+guard test enforces.
+[coordinator-session.ts](../../src-server/services/orchestration/coordinator-session.ts)
+holds the designation and the wake, on the orchestration database.
+
+**Interface.** `EventStore.coordinatorStore()` returns `designate`,
+`undesignate`, `designation`, `designationForConversation`, and the item and
+wake records. `wireCoordinatorWakes` subscribes to `NOTIFICATION_DELIVERED`,
+maps each record through `coordinatorAttentionOf` (needs-input, failed and
+done tiers that name a Session; a requested stop is left out) and hands one
+framed turn per burst to `ThreadInboxDelivery.submit`. The person's
+[routes](../../src-server/routes/orchestration/coordinator.ts) read and set
+the designation. The agent resolver's `isCoordinatorSession` requests the
+coordinator's built-in Station tool servers
+(`withCoordinatorCapabilities`).
+
+**Invariants.** One designation per person and at most one person per
+conversation; a second is refused unless the request says `replace`. An item
+is recorded once per person and remembered for
+`COORDINATOR_WAKE_DEDUPE_WINDOW_MS` (7 days), so a repeat in that window is not
+sent; producers key items per turn or request, so only a replay can repeat one
+later. Read access to each item's Session is decided again when a wake is
+composed, and an unreadable item is dropped. A burst waits
+`COORDINATOR_WAKE_COALESCE_MS`, and at most `COORDINATOR_WAKE_MAX_PER_HOUR`
+wakes go per rolling hour: items past the cap wait for the next slot, and past
+`COORDINATOR_WAKE_MAX_PENDING_ITEMS` a new item is refused. The coordinator's
+own conversation does not wake it, nor does a delegated child's finished or
+failed turn (#3158 already delivers settled turns); a delegated child that
+needs the person does. The wake row is committed before the inbox call under a key
+derived from its id, so a restart re-submits it and the inbox accepts it once.
+When the inbox takes nothing, the items go back and the wake is tried again
+after `COORDINATOR_WAKE_RETRY_DELAYS_MS`, within the hourly cap; the attempt
+and due time are durable. Replacing, removing (`retire`) or deleting the
+coordinator conversation withdraws the wakes still queued in its inbox in one
+operation (`ThreadInboxDelivery.cancelQueued`) and clears the old backoff.
+The inbox's sender policy (`placementRefusal`) checks each wake at placement:
+a retired target, a wake queued over `COORDINATOR_WAKE_QUEUED_MAX_AGE_MS`, or
+an unreadable Session refuses it. The routes' `delivery`
+(`readCoordinatorDelivery` over `coordinatorDeliveryPorts`) says whether
+wakes are blocked (#4051: last turn ended, boundary still held) and whether
+the live Session still lacks the Station tools.
+The turn replays the person's dispatch actor and an internal client origin.
+
+The default-off coordinator-picture preview adds bounded, person-scoped
+conversation notes. The bound designated caller writes through Station Control;
+the person and coordinator reads recheck each conversation's access. Finished
+notes expire after seven days. The preview and normal caller scope both gate the
+operation; the picture is authored context, not an authoritative live status.
+
+For an already-running coordinator, the Claude adapter refreshes its own MCP
+server set before the next turn. Other supported engines use the normal
+conversation continuation path to start a successor, carrying the native
+cursor or an admitted transcript seed. The successor reservation records the
+tools-restart reason atomically, and a started Session exposes it to the chat.
+Station Control and Knowledge credentials added solely by designation recheck
+the designation on every call and are revoked across the conversation's
+Sessions on removal or replacement. A process-local generation fences a late
+provider start; an independently Agent- or Project-authored server retains its
+separate credential. A Claude Session with an earlier coordinator credential
+starts a successor after re-designation.
+An engine that declares tool servers unsupported remains selectable and the
+card and chat show the limitation; no host-wide Codex reload is used.
+
+**Composition and evidence.** The runtime mounts the routes and the wake in
+`runtime-routes.ts`, withdrawn on a hosted Station (`servesCoordinatorSession`).
+Tests: `coordinator-session.test.ts` (designation across a restart, coalescing,
+the hourly and pending caps at max + 1, exclusions, restart hand-over),
+`coordinator-wake-dispatch.test.ts` (a worker's turn ending reaches the
+coordinator's engine once, on ACP and a Claude-provider seam),
+`coordinator.routes.test.ts`, `session-agent-resolution.test.ts`, and
+`coordinator-tools-successor.test.ts` (real service and store with a fake
+Codex adapter; it does not establish live provider behavior).
 
 ## WorkClaimStore
 

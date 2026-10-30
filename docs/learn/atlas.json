@@ -43,6 +43,7 @@
       ],
       "modules": [
         "SessionQueryModule",
+        "SessionGoalModule",
         "ConversationSessionLineage",
         "SessionCommandModule",
         "SkillExperienceRuntime",
@@ -51,6 +52,7 @@
         "TurnDeduplicator",
         "SessionMessageDelivery",
         "SessionDigest",
+        "CoordinatorWakeDelivery",
         "WorkClaimStore",
         "AdoptionLedger",
         "RecoveryLedger and private CredentialApplicationFactory/Handle",

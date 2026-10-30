@@ -504,6 +504,17 @@ describe('detached worktrees are named, not lumped', () => {
     ).toBe('detached HEAD');
   });
 
+  test.each([
+    ['/w/dependabot-transfer-baseline-abcdef123', 'ffffffffffff'],
+    ['/w/dependabot-transfer-baseline-abcdef123', undefined],
+    ['/w/dependabot-transfer-baseline-notahex', 'abcdef123'],
+  ])(
+    'legacy naming without HEAD agreement stays unclassified: %s',
+    (path, head) => {
+      expect(detachedReason({ path, head })).toBe('detached HEAD');
+    },
+  );
+
   test('naming a baseline still does not make it FINISHED', () => {
     const classified = classifyWorktree({
       path: base,

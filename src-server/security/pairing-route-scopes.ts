@@ -1680,6 +1680,14 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
     origin: 'explicit',
   },
+  {
+    id: '/api/orchestration/sessions/:threadId/goal:operate',
+    method: 'POST',
+    prefix: '/api/orchestration/sessions/:threadId/goal',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+    origin: 'explicit',
+  },
   // Downloading the public agent registry makes this Station reach out to
   // the network on request, so it takes the same operate tier as the re-check.
   {
@@ -3557,6 +3565,22 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'POST',
       path: '/api/orchestration/agent-schedule/:conversationId/job-proposals/:proposalId/decline',
     },
+    // #3628: the person's own coordinator designation. Every leaf reads or
+    // writes only the request principal's record and refuses a request that
+    // may be an agent's; designating also needs sending to the conversation.
+    // No leaf is more sensitive than the family.
+    { method: 'GET', path: '/api/orchestration/coordinator' },
+    { method: 'GET', path: '/api/orchestration/coordinator/picture' },
+    {
+      method: 'GET',
+      path: '/api/orchestration/station-control/coordinator-picture',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/station-control/coordinator-picture',
+    },
+    { method: 'PUT', path: '/api/orchestration/coordinator' },
+    { method: 'DELETE', path: '/api/orchestration/coordinator' },
     // #2061 Boards: the family read/mutate split is exactly right here —
     // every leaf resolves its owner from the request principal and can reach
     // no other principal's records, so none is more sensitive than the family.
@@ -4290,6 +4314,7 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     },
     { method: 'GET', path: '/api/orchestration/sessions' },
     { method: 'GET', path: '/api/orchestration/sessions/:threadId' },
+    { method: 'GET', path: '/api/orchestration/sessions/:threadId/goal' },
     // Immutable experience history uses the same Session read authority;
     // the reader also authorizes every historical thread before publication.
     {

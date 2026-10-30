@@ -93,6 +93,7 @@ interface ConversationSessionLineagePersistence {
     predecessorSessionId: string;
     proposedSessionId: string;
     createdAt: string;
+    coordinatorToolsRestart?: boolean;
   }): { lineage: ConversationSessionLineage; outcome: 'created' | 'existing' };
 }
 
@@ -115,6 +116,7 @@ export interface ConversationSessionLineageModule {
     predecessorSessionId: string;
     proposedSessionId: string;
     createdAt: string;
+    coordinatorToolsRestart?: boolean;
   }): {
     lineage: Readonly<ConversationSessionLineage>;
     outcome: 'created' | 'existing';

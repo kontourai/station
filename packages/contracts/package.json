@@ -25,6 +25,7 @@
     "LICENSE"
   ],
   "exports": {
+    "./session-goal": "./src/session-goal.ts",
     "./terminal-transport": "./src/terminal-transport.ts",
     "./walkthrough": "./src/walkthrough.ts",
     "./station-control-external-client": "./src/station-control-external-client.ts",
@@ -65,6 +66,7 @@
     "./answer-share-channel": "./src/answer-share-channel.ts",
     "./attachment-staging": "./src/attachment-staging.ts",
     "./agent-schedule": "./src/agent-schedule.ts",
+    "./coordinator": "./src/coordinator.ts",
     "./station-control-refusal": "./src/station-control-refusal.ts",
     "./claude-artifact": "./src/claude-artifact.ts",
     "./attention": "./src/attention.ts",
