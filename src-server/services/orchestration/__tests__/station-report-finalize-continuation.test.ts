@@ -189,6 +189,12 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
     const held = await controller.get(groupId);
     const flowAfterLoss = await loadRun(flow.runId, h.f.repo);
     const authorityBefore = await authority.inspect(prepared.root.authority_id);
+    const forbiddenPreparation = [
+      vi.spyOn(h.f.owner, 'prepareFlowSnapshot'),
+      vi.spyOn(h.f.owner, 'prepareSdkSnapshot'),
+      vi.spyOn(h.f.owner, 'readmitSnapshot'),
+      vi.spyOn(h.f.owner, 'observe'),
+    ];
     const retain = persistence.retainReportContinuation.bind(persistence);
     let retainedBeforeFault: Awaited<ReturnType<typeof retain>> | undefined;
     const retentionFault = vi
@@ -365,7 +371,19 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
       controller.authorizeRetry(retry),
       /injected receipt retention outage/,
     );
+    const beforeCancel = await controller.get(groupId);
+    await assert.rejects(
+      controller.cancel({
+        kind: 'cancel',
+        groupId,
+        operationKey: 'cancel-after-retry',
+        expectedRevision: beforeCancel.revision,
+        controller: prepared.spec.controller,
+      }),
+      /unexpected execution/,
+    );
     const retryHeld = await controller.get(groupId);
+    assert.equal(retryHeld.cancellation, 'pending');
     const retryFlow = await loadRun(flow.runId, h.f.repo);
     const retryCommand = {
       operationKey: 'finish-retry',
@@ -393,6 +411,8 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
       (historical) => historical.group,
     );
     assert.equal(retryReplay.result.replayed, true);
+    for (const preparation of forbiddenPreparation)
+      assert.equal(preparation.mock.calls.length, 0);
     assert.equal(
       flowRunHead((await loadRun(flow.runId, h.f.repo)).state),
       flowRunHead(retryFlow.state),
