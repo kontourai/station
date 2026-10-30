@@ -1,0 +1,11 @@
+{
+  "revision": "6e8f8685ab49d657ced2a3c8e4cdc95b56da92c5",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked the Review journey delta: its empty Timeline assertion now expects the capture-in-Review instruction; capture and navigation behavior is unchanged.","inputs":["docs/architecture/module-map.md","tests/task-review.spec.ts"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Checked the Review journey delta: its empty Timeline assertion now expects the capture-in-Review instruction; capture and navigation behavior is unchanged.","inputs":["docs/guides/browser-workspace.md","tests/task-review.spec.ts"]},
+
+    {"path":"docs/user/settings.md","note":"Checked the Review journey delta: its empty Timeline assertion now expects the capture-in-Review instruction; capture and navigation behavior is unchanged.","inputs":["docs/user/settings.md","tests/task-review.spec.ts"]}
+  ]
+}
