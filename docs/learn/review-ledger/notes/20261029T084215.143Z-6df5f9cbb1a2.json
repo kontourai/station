@@ -1,0 +1,7 @@
+{
+  "revision": "7641e738a9fa2fe14955b2d0d044205ddc321cce",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Reviewed terminal attachment, frame and byte credit, reset, progress and admission against channel and gateway tests; production paired-device admission remains outside this evidence.","inputs":["docs/reference/api.md","packages/contracts/src/terminal-transport.ts","packages/sdk/src/client/http.ts","src-server/services/terminal/terminal-channel-connection.ts"]}
+  ]
+}

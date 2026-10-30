@@ -30,6 +30,7 @@ import { useNavigationActions } from '../../contexts/NavigationContext';
 import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import { userFacingErrorMessage } from '../../utils/errorText';
+import { sha256Hex } from '../../utils/sha256';
 
 export interface TaskOutputPromotion {
   relativePath: string;
@@ -590,12 +591,7 @@ function TaskOutputContent({
       .then(async (content) => {
         const copy = new Uint8Array(content.bytes.byteLength);
         copy.set(content.bytes);
-        const hashed = globalThis.crypto?.subtle
-          ? new Uint8Array(
-              await globalThis.crypto.subtle.digest('SHA-256', copy.buffer),
-            )
-          : (await import('@noble/hashes/sha2.js')).sha256(copy);
-        const digest = `sha256:${Array.from(hashed, (byte) => byte.toString(16).padStart(2, '0')).join('')}`;
+        const digest = `sha256:${await sha256Hex(copy)}`;
         if (
           digest !== output.materialization.digest ||
           content.etag !== `"${digest}"` ||

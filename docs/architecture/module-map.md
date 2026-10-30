@@ -1589,7 +1589,10 @@ the caller's scope and keys each request in the durable
 before it reaches this module. `wait_session` observes
 the same lifecycle fold the steer path reads through
 [SessionTurnWaiter](../../src-server/services/orchestration/session-turn-wait.ts),
-which never acts on the Session. The
+which never acts on the Session. One waiter per Station also serves the
+person's `station sessions wait` leaf (#3427), so their caps are one budget.
+That leaf alone asks the waiter to report a turn a restart cut off
+(`interruptedTurn`); `wait_session`'s answer is unchanged. The
 [Session control guide](../guides/self-configuring-agent.md#session-control)
 distinguishes ordinary idle from a verified requested-work acknowledgement,
 including the conservative untagged-history limit. Source tests are the
@@ -1773,7 +1776,11 @@ model's summary. [SessionDigest](../../src-server/services/orchestration/session
 folds the recorded facts of a conversation's turns into that account for Station
 Control's `get_session_digest`, and the
 [route](../../src-server/routes/orchestration/session-project-activity.ts) that
-serves it also serves `list_project_activity`.
+serves it also serves `list_project_activity`. The same module serves the
+person-facing leaves behind `station sessions digest` and `station activity`
+(#3427). They share the list and digest code through a viewer, which decides
+visibility per Session: the agent's Project scope rule, or the person's
+Project `view` action.
 
 **Interface.** `EventStore.readTurnDigestFacts(threadIds, { beforeGlobalSequence,
 turnLimit })` selects and aggregates in SQLite the facts of a window of turns,

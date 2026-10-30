@@ -74,9 +74,8 @@ export interface ToolCallRun<P extends ToolCallLike = ToolCallLike> {
   key: string;
   calls: { part: P; index: number }[];
   /**
-   * Prose folded between this run's calls by {@link foldTurnWork}, in
-   * original order. Present only on a folded settled turn; the batch sheet
-   * interleaves it with the calls by `index` so nothing becomes unreachable.
+   * Visible reasoning, plus narration moved by {@link foldTurnWork}. The
+   * sheet interleaves these parts with calls by their original `index`.
    */
   interludes?: { part: P; index: number }[];
 }
@@ -105,31 +104,47 @@ function buildRun<P extends ToolCallLike>(
   return { type: 'tool-call-run', key, calls };
 }
 
-/**
- * Splits a message's content parts into runs of consecutive tool-call parts
- * and everything else, preserving order. The grouping rule: parts of type
- * `tool-invocation` (or any `tool-*` persisted-part variant) that are
- * *adjacent* in the array merge into one run. Any other part in between —
- * prose text, reasoning, a file preview, a UI block — breaks the run,
- * because it means the agent said something between those tool calls that
- * the transcript must not bury inside a collapsed batch.
- */
+/** Adjacent tools and visible reasoning share an activity run. Prose, artifacts
+ * and requests keep their own rows. Reasoning without a tool stays standalone. */
 export function splitToolCallRuns<P extends ToolCallLike>(
   parts: P[] | undefined | null,
   appTools: ReadonlySet<string> = new Set(),
+  showReasoning = true,
 ): RunBlock<P>[] {
   if (!parts || parts.length === 0) return [];
 
   const blocks: RunBlock<P>[] = [];
   let pending: { part: P; index: number }[] = [];
+  let reasoning: { part: P; index: number }[] = [];
 
   const flushRun = () => {
-    if (pending.length === 0) return;
-    blocks.push(buildRun(pending));
+    if (pending.length > 0) {
+      const run = buildRun(pending);
+      if (reasoning.length) run.interludes = reasoning;
+      blocks.push(run);
+    } else {
+      blocks.push(
+        ...reasoning.map((note) => ({
+          type: 'content-part' as const,
+          ...note,
+        })),
+      );
+    }
     pending = [];
+    reasoning = [];
   };
 
   parts.forEach((part, index) => {
+    if (part.type === 'reasoning') {
+      if (
+        showReasoning &&
+        typeof part.content === 'string' &&
+        part.content.trim()
+      ) {
+        reasoning.push({ part, index });
+      }
+      return;
+    }
     // #3419: a message sent to another Session is its own row, never one line
     // of a collapsed "used 3 tools" summary; so is a published artifact,
     // whose link is the call's deliverable.
@@ -188,8 +203,8 @@ function isFoldableProse(part: ToolCallLike): boolean {
  * run, placed where the first call was. Text after the last call (the
  * outcome) and text before the first (the intent) stay as they were.
  *
- * Only narration folds. Anything else inside that span — a file the agent
- * produced, a UI block, a runtime error, a reasoning part — is kept, in
+ * Narration and reasoning fold. Anything else inside that span — a file the agent
+ * produced, a UI block, a runtime error — is kept, in
  * order, directly after the folded run, so the fold never hides an artifact
  * or a failure. When no visible text follows the last call, the last
  * narration is kept there too: it is the turn's last word. With one tool-call run or fewer this returns exactly
@@ -198,8 +213,9 @@ function isFoldableProse(part: ToolCallLike): boolean {
 export function foldTurnWork<P extends ToolCallLike>(
   parts: P[] | undefined | null,
   appTools: ReadonlySet<string> = new Set(),
+  showReasoning = true,
 ): RunBlock<P>[] {
-  const blocks = splitToolCallRuns(parts, appTools);
+  const blocks = splitToolCallRuns(parts, appTools, showReasoning);
   if (!parts) return blocks;
   if (blocks.some((block) => block.type === 'html-reply')) return blocks;
   const runCount = blocks.filter((b) => b.type === 'tool-call-run').length;
@@ -219,6 +235,7 @@ export function foldTurnWork<P extends ToolCallLike>(
       kept.push(block);
     } else if (block.type === 'tool-call-run') {
       calls.push(...block.calls);
+      interludes.push(...(block.interludes ?? []));
     } else if (block.type === 'content-part' && isFoldableProse(block.part)) {
       interludes.push({ part: block.part, index: block.index });
     } else {
@@ -238,7 +255,14 @@ export function foldTurnWork<P extends ToolCallLike>(
       typeof block.part.content === 'string' &&
       block.part.content.trim().length > 0,
   );
-  const lastWords = hasOutcome ? undefined : interludes.pop();
+  let lastProse = interludes.length - 1;
+  while (lastProse >= 0 && !isFoldableProse(interludes[lastProse].part)) {
+    lastProse -= 1;
+  }
+  const lastWords =
+    !hasOutcome && lastProse >= 0
+      ? interludes.splice(lastProse, 1)[0]
+      : undefined;
   if (lastWords) {
     kept.push({ type: 'content-part', ...lastWords });
     kept.sort((a, b) =>
