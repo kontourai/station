@@ -51,6 +51,7 @@ import {
   AttentionProjectionService,
   type PausedGateReviewAggregate,
 } from '../../services/projects/attention-projection.js';
+import { FileAttentionSnoozeStore } from '../../services/projects/attention-snooze-store.js';
 import type { ScheduledTurnAdapter } from '../../services/scheduling/builtin-scheduler.js';
 import { MonitorTaskTurnSupervisor } from '../../services/scheduling/monitor-task-supervisor.js';
 import type { ScheduledConversationRunner } from '../../services/scheduling/scheduled-conversation-runs.js';
@@ -777,6 +778,17 @@ export function configureRuntimeSupportServices(
       context.configLoader.getProjectHomeDir(),
     ),
     new ToolLibraryService(context.configLoader.getProjectHomeDir()),
+    {
+      store: new FileAttentionSnoozeStore(
+        context.configLoader.getProjectHomeDir(),
+      ),
+      preview: context.featurePreviews.bind({
+        id: 'attention-snooze',
+        label: 'Attention snooze',
+        description:
+          'Temporarily hide attention items until a chosen time. New source activity resurfaces immediately.',
+      }),
+    },
   );
   return {
     schedulerService,

@@ -3900,6 +3900,8 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // on local state with no cross-environment read, so the family default
     // (POST → orchestration:operate) is exactly right.
     { method: 'POST', path: '/api/attention/:id/ack' },
+    { method: 'POST', path: '/api/attention/:id/snooze' },
+    { method: 'DELETE', path: '/api/attention/:id/snooze' },
     { method: 'GET', path: '/api/auth/badge-photo/:id' },
     { method: 'POST', path: '/api/auth/renew' },
     // A server-bound, read-only authority fact. The desktop uses an explicit
