@@ -1,0 +1,13 @@
+{
+  "path": "docs/learn/media/session-goals-before-390-light.png",
+
+  "sources": [
+    "src-ui/src/components/chat/ChatSettingsPanel.tsx",
+
+    "src-ui/src/components/chat/SessionGoalControl.tsx",
+
+    "src-ui/src/index.css"
+  ],
+
+  "reviewNotes": []
+}

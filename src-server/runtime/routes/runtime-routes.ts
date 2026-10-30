@@ -467,6 +467,7 @@ import {
   createSessionPersonWaitRoutes,
   createSessionTurnWaiter,
 } from '../../routes/orchestration/session-agent-control.js';
+import { createSessionGoalRoutes } from '../../routes/orchestration/session-goals.js';
 import {
   createSessionPersonActivityRoutes,
   createSessionProjectActivityRoutes,
@@ -2518,6 +2519,7 @@ export function configureRuntimeRoutes(
   // its route's mount never runs. A request whose principal cannot be
   // resolved fails here rather than reading as the OS alias.
   for (const path of [
+    '/api/orchestration/sessions/:threadId/goal',
     '/integrations/:serverId/ui/:toolName/initial-result',
     '/tool-approval/:approvalId',
     '/api/shares',
@@ -6430,6 +6432,21 @@ export function configureRuntimeRoutes(
     logger: context.logger,
   });
   const agentWakeUps = agentSchedule.delivery;
+  const sessionGoalsPreview = context.featurePreviews.bind({
+    id: 'session-goals',
+    label: 'Session goals',
+    description:
+      'Inspect engine Goals and save paused objectives. Automatic goal execution is unavailable.',
+  });
+  context.app.route(
+    '/api/orchestration',
+    createSessionGoalRoutes({
+      orchestration: context.orchestrationService,
+      preview: sessionGoalsPreview,
+      authority: conversationReadAuthorityForRequest,
+      current: isRequestPrincipalCurrent,
+    }),
+  );
   context.app.route(
     '/api/orchestration',
     createAgentScheduleRoutes(agentSchedule.routeDeps),
