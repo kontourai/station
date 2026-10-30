@@ -1,5 +1,66 @@
 /* IntegrationsView — integration-specific overrides + mobile */
 
+.integration-trust-hints {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.integration-trust-history {
+  padding-inline-start: var(--k-space-5);
+  font-size: var(--k-text-md);
+  overflow-wrap: anywhere;
+}
+
+.integration-trust-history ul {
+  padding-inline-start: var(--k-space-5);
+}
+
+.integration-engine-coverage {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--k-space-2) var(--k-space-4);
+  align-items: center;
+  margin: 0;
+}
+
+.integration-engine-coverage > div {
+  display: contents;
+}
+
+.integration-engine-coverage dd {
+  justify-self: start;
+  margin: 0;
+}
+
+.integration-trust-review__status {
+  width: fit-content;
+}
+
+.integration-trust-review {
+  display: grid;
+  gap: var(--k-space-2);
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.integration-trust-review dt {
+  font-weight: 600;
+}
+
+.integration-trust-review dd {
+  margin: 0;
+}
+
+.integration-trust-review__actions {
+  display: flex;
+  margin-top: var(--k-space-3);
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+}
+
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
   /* Form / Raw JSON toggle: full-width, equal halves, 44px tap targets.
      Desktop keeps the compact fit-content pill from editor-layout.css. */

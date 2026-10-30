@@ -1,0 +1,7 @@
+{
+  "revision": "6895629f64e98a9f910f73e7a9584e47eac88968",
+
+  "notes": [
+    {"path":"docs/guides/agent-configuration.md","note":"Review round: autoApprove bullet still accurate: untrusted-content ask precedes tool grants on the Station engine; the new decision order and delegation sharing do not change agent configuration fields. No edit.","inputs":["docs/guides/agent-configuration.md","src-server/runtime/agents/agent-hooks.ts"]}
+  ]
+}

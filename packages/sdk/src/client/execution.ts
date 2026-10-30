@@ -71,6 +71,7 @@ interface ForegroundMessageFields {
     environment?: EnvironmentRef;
   };
   message: string;
+  mcpPromptOrigin?: import('@kontourai/station-contracts/mcp-prompts').AgentMcpPromptOrigin;
   conversationId?: string;
   attachments?: ChatAttachmentInput[];
   /** Byte-free current-host staging references; hydrated only at provider dispatch. */
