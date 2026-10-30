@@ -81,7 +81,8 @@ export function engineStartupFailureGuidance(
   code: unknown,
 ): string | undefined {
   return typeof code === 'string' &&
-    Object.hasOwn(ENGINE_STARTUP_FAILURE_GUIDANCE, code)
+    Object.getOwnPropertyDescriptor(ENGINE_STARTUP_FAILURE_GUIDANCE, code) !==
+      undefined
     ? ENGINE_STARTUP_FAILURE_GUIDANCE[code as EngineStartupFailureCode]
     : undefined;
 }
