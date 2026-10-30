@@ -23,6 +23,7 @@ import {
   raceWithSignal,
 } from '../../utils/bounded-async.js';
 import { openPrivateSqlite } from '../../utils/private-sqlite.js';
+import { localAccountSignOutOrigin } from './account-signout-origins.js';
 import { LocalAccountAdministration } from './local-account-administration.js';
 import {
   createOidcAccountSubject,
@@ -80,6 +81,7 @@ export async function createLocalAccountProvider(
   mode: 'email-password' | 'username-password' = 'email-password',
   oidc: readonly LocalAccountOidcProvider[] = [],
   testHooks: LocalAccountProviderTestHooks = {},
+  signOutBrowserOrigins: readonly string[] = [],
 ): Promise<LocalAccountProvider> {
   if (secret.length < 32)
     throw new Error(
@@ -207,7 +209,14 @@ export async function createLocalAccountProvider(
       secret,
       baseURL: host.publicOrigin,
       basePath: host.basePath,
-      trustedOrigins: [...(host.allowedBrowserOrigins ?? [host.publicOrigin])],
+      trustedOrigins: (request?: Request) => {
+        const standard = [
+          ...(host.allowedBrowserOrigins ?? [host.publicOrigin]),
+        ];
+        const signOutOrigin =
+          request && localAccountSignOutOrigin(request, signOutBrowserOrigins);
+        return signOutOrigin ? [...standard, signOutOrigin] : standard;
+      },
       telemetry: { enabled: false },
       logger: { disabled: true },
       emailAndPassword: {
@@ -267,6 +276,8 @@ export async function createLocalAccountProvider(
           : {}),
       },
       advanced: {
+        // Keep the provider Origin guard active in test and production.
+        disableOriginCheck: false,
         cookiePrefix: `station-account-${createHash('sha256').update(host.stationId).digest('hex').slice(0, 20)}`,
         useSecureCookies: host.publicOrigin.startsWith('https:'),
       },

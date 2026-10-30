@@ -334,7 +334,6 @@ describe('account-tied personal access tokens over the production composition', 
       Cookie: owner.cookie,
       Origin: ORIGIN,
     });
-
     /** The person makes a token from their own device (self-service). */
     const mintToken = async (
       device: (init?: RequestInit) => RequestInit,
@@ -358,44 +357,47 @@ describe('account-tied personal access tokens over the production composition', 
       slug: string,
       member: Awaited<ReturnType<typeof person>>,
       role: 'viewer' | 'admin',
+      additionalMembers: Awaited<ReturnType<typeof person>>[] = [],
     ) => {
       const project = await projectService.createProject({ name: slug, slug });
       const enabled = await request(
         `/api/projects/${slug}/access/enable`,
-        ownerOperator({
+        operator({
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', Origin: ORIGIN },
           body: JSON.stringify({ localProjectId: project.id }),
         }),
       );
       expect(enabled.status, await enabled.clone().text()).toBe(200);
       const scope = (await readJson<{ data: { scope: unknown } }>(enabled)).data
         .scope;
-      const invited = await request(
-        `/api/projects/${slug}/access/invitations`,
-        ownerOperator({
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            scope,
-            email: null,
-            role,
-            expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+      for (const invitee of [member, ...additionalMembers]) {
+        const invited = await request(
+          `/api/projects/${slug}/access/invitations`,
+          operator({
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Origin: ORIGIN },
+            body: JSON.stringify({
+              scope,
+              email: null,
+              role,
+              expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+            }),
           }),
-        }),
-      );
-      expect(invited.status, await invited.clone().text()).toBe(200);
-      const token = (await readJson<{ data: { token: string } }>(invited)).data
-        .token;
-      const accepted = await request(
-        '/api/account-auth/accept-invitation',
-        member.device({
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token }),
-        }),
-      );
-      expect(accepted.status, await accepted.clone().text()).toBe(200);
+        );
+        expect(invited.status, await invited.clone().text()).toBe(200);
+        const token = (await readJson<{ data: { token: string } }>(invited))
+          .data.token;
+        const accepted = await request(
+          '/api/account-auth/accept-invitation',
+          invitee.device({
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Origin: ORIGIN },
+            body: JSON.stringify({ token }),
+          }),
+        );
+        expect(accepted.status, await accepted.clone().text()).toBe(200);
+      }
       return project;
     };
     const slugs = async (response: Response) => {
@@ -443,7 +445,9 @@ describe('account-tied personal access tokens over the production composition', 
     const h = await setup();
     const alice = await h.person('notificationalice');
     const bob = await h.person('notificationbob');
-    const aliceProject = await h.shareWith('alice-project', alice, 'viewer');
+    const aliceProject = await h.shareWith('alice-project', alice, 'viewer', [
+      h.owner,
+    ]);
     const bobProject = await h.shareWith('bob-project', bob, 'viewer');
     const send = async (
       principalId: string,
@@ -664,6 +668,40 @@ describe('account-tied personal access tokens over the production composition', 
     if (!revoked) throw new Error('Missing paired device');
     h.security.devicePairing.revokeDevice(revoked.id, 'operator-credential');
     expect((await h.request(base, alice.device())).status).toBe(401);
+  });
+
+  test('sharing bootstrap refuses a mixed account and operator but succeeds as operator alone', async () => {
+    const h = await setup();
+    const account = await h.person('operatorfixture');
+    const project = await h.projectService.createProject({
+      name: 'Owner control',
+      slug: 'owner-control',
+    });
+    const input = {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: account.cookie,
+        Origin: ORIGIN,
+      },
+      body: JSON.stringify({ localProjectId: project.id }),
+    };
+    const mixed = await h.request(
+      '/api/projects/owner-control/access/enable',
+      h.operator(input),
+    );
+    expect(mixed.status, await mixed.clone().text()).toBe(403);
+    expect(await mixed.json()).toEqual({
+      error: { code: 'account_identity_conflict' },
+    });
+    const operator = await h.request(
+      '/api/projects/owner-control/access/enable',
+      h.operator({
+        ...input,
+        headers: { 'Content-Type': 'application/json', Origin: ORIGIN },
+      }),
+    );
+    expect(operator.status, await operator.clone().text()).toBe(200);
   });
 
   test('a member token reads its Project; a non-member token gets 404 and an empty catalogue', async () => {
