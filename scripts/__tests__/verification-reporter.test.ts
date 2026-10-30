@@ -929,34 +929,18 @@ describe('verification reporter', () => {
       'ci:fast stopped at step [',
     );
 
-    // Re-applying the function to its own output is NOT identity, and this
-    // pins that rather than its opposite (round-7 review, H1 and M2).
-    //
-    // The version here until round 7 asserted identity, and said the
-    // envelope's correctness depended on it. Both halves were wrong: arm two
-    // returns the candidate at the moment the redactor still wants to append
-    // to it, so a second call starts from the appended form -- and all three
-    // of that assertion's seeds exit by arm ONE, where re-derivation happens
-    // to be identity, so it could not have seen the class it was written for.
-    // The envelope no longer re-derives at all; nothing does.
-    //
-    // Arm-one values: a second call reproduces them.
+    // The canonical matcher keeps already-redacted values stable, including
+    // the scalar forms that previously grew a closing bracket on each pass.
     for (const seed of [
       `${'x'.repeat(18)} {"apiKey":"SECRETVALUE0123456789","b":"c"}`,
       needsTwoPasses,
       CI_FAST_BUDGET_EXCEEDED_CAUSE,
+      '{"apiKey":123}',
+      'ci:fast stopped: {"apiKey":123}',
     ]) {
       const once = normalizeDeclaredCause(seed) as string;
-      expect(normalizeDeclaredCause(once)).toBe(once);
-    }
-    // Arm-two values: a second call MOVES them, by a byte inside the marker.
-    // This is the fact every consumer has to respect, so it is asserted as a
-    // fact rather than left as an argument.
-    for (const seed of ['{"apiKey":123}', 'ci:fast stopped: {"apiKey":123}']) {
-      const once = normalizeDeclaredCause(seed) as string;
       expect(once).not.toBeNull();
-      expect(normalizeDeclaredCause(once)).not.toBe(once);
-      expect(normalizeDeclaredCause(once)).toBe(`${once.slice(0, -1)}]}`);
+      expect(normalizeDeclaredCause(once)).toBe(once);
     }
 
     // Bounded in BYTES, codepoint-aligned, and never above the schema's own
@@ -1727,7 +1711,12 @@ describe('verification reporter', () => {
   test('persists both streams without nested or boundary-hidden credentials', () => {
     const workspace = root();
     const payload = `body={"context":{"inner":{"password":"receipt-secret","safe":"keep"}}} xxx=\napiKey: "boundary-secret"`;
-    const result = persistVerificationOutput({ root: workspace, requestKey, stdout: payload, stderr: payload });
+    const result = persistVerificationOutput({
+      root: workspace,
+      requestKey,
+      stdout: payload,
+      stderr: payload,
+    });
     expect(result.artifacts).toHaveLength(2);
     for (const artifact of result.artifacts) {
       const contents = readFileSync(join(workspace, artifact.path), 'utf8');
