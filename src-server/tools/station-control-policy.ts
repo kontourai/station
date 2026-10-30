@@ -675,7 +675,10 @@ export const STATION_CONTROL_TOOL_POLICY = {
     // Its leaf is also shared with dispatch (slice C), which reaches it with
     // any verified caller and so is only as strict as dispatch until then.
     tightenedBy: ['C'],
-    routes: [get('/api/projects/:slug')],
+    routes: [
+      get('/api/projects/:slug'),
+      get('/api/projects/:slug/checkout-freshness'),
+    ],
   },
   list_project_layouts: {
     ...SELF_READ,
