@@ -1,0 +1,7 @@
+{
+  "revision": "1d870b8cb02c547372f9a5838a41ff2af5da6cbc",
+
+  "notes": [
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Supplemental executed regression proof after main integration: ran the original committed preselection graph module against current tracked repository inputs with moduleNames ChildWork; it ignored selection and refused Graph record limit exceeded. Ran current CLI with --module=ChildWork: PASS907records1024edges within unchanged bounds; unknown module refused before output creation. First isolated old-module probe failed import resolution before export and was corrected, not counted as product red. This is same-current-input old/new comparison, not a clean historical whole tree or whole-atlas success. Earlier focused15/15 and selected identity/closure controls remain separate evidence. No store import, browser/provider, publication or epic acceptance.","inputs":["examples/repository-knowledge-graph/README.md"]}
+  ]
+}
