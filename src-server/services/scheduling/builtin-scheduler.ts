@@ -20,6 +20,7 @@ import {
   schedulerConcurrencyDeferrals,
   schedulerHealthy,
 } from '../../telemetry/metrics.js';
+import { errorMessage } from '../../utils/error-message.js';
 import type { Logger } from '../../utils/logger.js';
 import { schedulerJobCorrelationBindings } from '../../utils/logger-correlation.js';
 import { SSEBroadcaster } from '../infra/sse-broadcaster.js';
