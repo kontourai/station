@@ -1,0 +1,7 @@
+{
+  "revision": "3a0e7d9d7996033c315445901956fdc6f537fb0c",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed merged getting-started claims: dock Project chip placement and upstream engine-switch restrictions both retained; ChatDock retains hidden/inert covered chat and conversationCanMutate gate. RecentChatList was removed by this draft design; remove obsolete source citation. Current focus test awaits shared animation-frame restore, with baseline red, disabled-restore red, restored 136-test green. Independent source review: no blocker. No further prose changes.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-start/RecentChatList.tsx"]}
+  ]
+}

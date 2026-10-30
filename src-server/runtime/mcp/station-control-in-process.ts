@@ -44,9 +44,10 @@ import {
   type StationControlCallerRecordResolver,
 } from './station-control-caller.js';
 import {
-  type BuiltinStationApiMcpId,
+  coordinatorGeneration,
   mintStationControlMcpToken,
   revokeStationControlMcpToken,
+  type StationMcpCredentialPurpose,
   verifyStationControlMcpToken,
   verifyStationControlMcpTokenEntry,
 } from './station-control-mcp-token.js';
@@ -70,13 +71,17 @@ export interface InProcessStationControlServer {
  * the live one rather than mint a replacement that would revoke it.
  * Cleared with the revocation; a revoked or expired token is never reused.
  */
-const inProcessTokens = new Map<string, Map<BuiltinStationApiMcpId, string>>();
+const inProcessTokens = new Map<
+  string,
+  Map<StationMcpCredentialPurpose, string>
+>();
 
 function inProcessToken(
   sessionId: string,
   tenantExecutionContext: TenantExecutionContext | undefined,
   mode: 'fresh' | 'reuse',
-  serverId: BuiltinStationApiMcpId = 'station-control',
+  serverId: StationMcpCredentialPurpose = 'station-control',
+  isIssuerCurrent?: () => boolean,
 ): string {
   if (mode === 'reuse') {
     const existing = inProcessTokens.get(sessionId)?.get(serverId);
@@ -96,6 +101,8 @@ function inProcessToken(
     tenantExecutionContext,
     undefined,
     serverId,
+    undefined,
+    isIssuerCurrent,
   );
   const tokens = inProcessTokens.get(sessionId) ?? new Map();
   tokens.set(serverId, token);
@@ -124,13 +131,24 @@ function createInProcessServer(input: {
     close(): Promise<void>;
   };
   token: 'fresh' | 'reuse';
-  serverId?: BuiltinStationApiMcpId;
+  serverId?: StationMcpCredentialPurpose;
+  generation?: number;
 }): InProcessStationControlServer {
+  const derived =
+    input.serverId === 'coordinator-control' ||
+    input.serverId === 'coordinator-knowledge';
+  if (derived && input.generation === undefined)
+    throw new Error('Coordinator generation is required.');
+  const conversationId =
+    input.resolveRecord?.(input.sessionId)?.conversationId ?? input.sessionId;
   const token = inProcessToken(
     input.sessionId,
     input.tenantExecutionContext,
     input.token,
     input.serverId,
+    derived
+      ? () => coordinatorGeneration(conversationId) === input.generation
+      : undefined,
   );
   const server = input.createServer();
   const binding = createHash('sha256').update(token).digest('base64url');
@@ -153,7 +171,11 @@ function createInProcessServer(input: {
             },
             operation,
           ),
-        () => verifyStationControlMcpToken(token) !== undefined,
+        () =>
+          verifyStationControlMcpToken(token) !== undefined &&
+          (!derived ||
+            resolveStationControlCallerFromToken(token, input.resolveRecord) !==
+              null),
       ),
     );
   return {
@@ -201,6 +223,12 @@ export function claudeInProcessStationControlOptions(
     tenantExecutionContext?: TenantExecutionContext,
     allowedTools?: readonly string[],
   ) => InProcessStationControlServer;
+  createInProcessCoordinatorStationControl: (
+    threadId: string,
+    tenantExecutionContext?: TenantExecutionContext,
+    allowedTools?: readonly string[],
+    generation?: number,
+  ) => InProcessStationControlServer;
   createInProcessStationBrowser: (
     threadId: string,
     tenantExecutionContext?: TenantExecutionContext,
@@ -209,6 +237,7 @@ export function claudeInProcessStationControlOptions(
     threadId: string,
     tenantExecutionContext?: TenantExecutionContext,
     allowedTools?: readonly string[],
+    generation?: number,
   ) => InProcessStationControlServer;
   revokeStationControlCallerToken: (threadId: string) => void;
 } {
@@ -217,6 +246,7 @@ export function claudeInProcessStationControlOptions(
       threadId,
       tenantExecutionContext,
       allowedTools,
+      generation,
     ) =>
       createInProcessServer({
         sessionId: threadId,
@@ -230,7 +260,34 @@ export function claudeInProcessStationControlOptions(
             'bound',
           ),
         token: 'reuse',
-        serverId: 'station-knowledge',
+        serverId:
+          generation !== undefined
+            ? 'coordinator-knowledge'
+            : 'station-knowledge',
+        generation,
+      }),
+    createInProcessCoordinatorStationControl: (
+      threadId,
+      tenantExecutionContext,
+      allowedTools,
+      generation,
+    ) =>
+      createInProcessServer({
+        sessionId: threadId,
+        ...(tenantExecutionContext ? { tenantExecutionContext } : {}),
+        resolveRecord: (sessionId) => resolveRecord()?.(sessionId),
+        createServer: () =>
+          createServer
+            ? createServer()
+            : createSelectedStationControlMcpServer(
+                allowedTools,
+                undefined,
+                'station-control',
+                'bound',
+              ),
+        token: 'fresh',
+        serverId: 'coordinator-control',
+        generation,
       }),
     createInProcessStationControl: (
       threadId,

@@ -95,6 +95,8 @@ const expected: ReadonlyArray<readonly [string, ProviderFailureKind, boolean]> =
     ['principal_unresolved', 'auth', false],
     ['project_identity_not_prepared', 'input_unsupported', false],
     ['provider-plan-quota-exhausted', 'quota_exhausted', false],
+    ['provider_model_unavailable', 'model_unavailable', false],
+    ['sandbox_unavailable', 'permission_denied', false],
     ['provider_session_start_failed', 'unavailable', true],
     ['provider_session_starting', 'busy', true],
     ['provider_turn_in_progress', 'busy', true],

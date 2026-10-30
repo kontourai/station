@@ -18,6 +18,10 @@ import { EventBus } from '../../services/orchestration/event-bus.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
 import {
+  projectDelegatedTaskEvent,
+  snapshotFor,
+} from '../../tools/station-control-delegation.js';
+import {
   CodexAdapter,
   projectCodexQuotaSnapshot,
   projectCodexQuotaUpdate,
@@ -4526,6 +4530,82 @@ describe('CodexAdapter', () => {
       method: 'runtime.warning',
       code: 'codex-json-parse',
     });
+  });
+
+  test('a sandbox helper startup refusal reaches delegation as safe actionable guidance', async () => {
+    processHandle = new FakeCodexProcess();
+    const adapter = new CodexAdapter({ processFactory: () => processHandle! });
+    const events: any[] = [];
+    const drain = (async () => {
+      for await (const event of adapter.streamEvents()) events.push(event);
+    })();
+    const starting = adapter.startSession({
+      provider: 'codex',
+      threadId: 'sandbox-start-refusal',
+      cwd: makeSessionWorkspace('sandbox-start-refusal-'),
+    });
+    const failed = starting.catch((error: unknown) => error);
+    await flushIo();
+    writeServerMessage(adapter, 'sandbox-start-refusal', {
+      id: '1',
+      result: {},
+    });
+    await flushIo();
+    writeServerMessage(adapter, 'sandbox-start-refusal', {
+      id: '2',
+      error: {
+        code: -32603,
+        message:
+          'failed to load AGENTS.md: fs sandbox helper: bwrap: No permissions to create namespace /private/secret-proof',
+      },
+    });
+    const failure = await failed;
+    expect(failure).toMatchObject({ code: 'sandbox_unavailable' });
+    expect(String(failure)).not.toContain('secret-proof');
+    await adapter.stopAll();
+    await drain;
+    const terminal = events
+      .filter((event) => event.method === 'runtime.error')
+      .at(-1);
+    expect(terminal).toMatchObject({
+      code: 'sandbox_unavailable',
+      kind: 'permission_denied',
+      retryable: false,
+    });
+    const snapshot = snapshotFor({
+      target: {
+        apiBase: 'http://current.invalid',
+        environmentId: 'current',
+        environmentName: 'Current',
+        kind: 'current',
+      },
+      metadata: {
+        taskId: 'sandbox-start-refusal',
+        conversationId: 'sandbox-start-refusal',
+        targetKind: 'agent',
+        targetId: 'codex',
+      },
+      detail: {
+        session: {
+          threadId: 'sandbox-start-refusal',
+          status: 'error',
+          lifecycleState: 'failed',
+          terminalAttribution: { kind: 'runtime_error' },
+        },
+        events,
+      },
+    });
+    expect(snapshot.status).toBe('failed');
+    const reason = snapshot.reason;
+    expect(reason).toMatchObject({
+      code: 'sandbox_unavailable',
+      detail: expect.stringMatching(/host.*sandbox/i),
+    });
+    const projected = projectDelegatedTaskEvent(1, terminal);
+    expect(projected.text).toBe(reason?.detail);
+    expect(
+      JSON.stringify({ failure, terminal, reason, projected }),
+    ).not.toContain('secret-proof');
   });
 
   test('retains a failed-start session until process exit is confirmed', async () => {

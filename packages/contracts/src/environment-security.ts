@@ -1346,6 +1346,12 @@ export interface StationCapabilityFlags {
    */
   delegatedInputAnswers?: boolean;
   /**
+   * #3628: `/api/orchestration/coordinator` reads and sets the person's
+   * coordinator Session. Withdrawn on a hosted Station, which keeps no
+   * conversation inbox to wake it through.
+   */
+  coordinatorSession?: boolean;
+  /**
    * #3427: this build serves the person-facing Session reads under
    * `/api/orchestration/session-reads` (a Session wait that reports a turn a
    * restart cut off, a Session digest, and the Project activity list) for a

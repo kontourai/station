@@ -104,6 +104,7 @@ export interface MuseSpawnResult {
 
 export interface MuseActiveTurn {
   turnId: string;
+  invocationId?: string;
   process: MuseProcessLike;
   release?: () => void;
   startedAt: number;

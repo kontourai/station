@@ -35,6 +35,7 @@ import type {
   ProviderContinuityCapabilities,
   ProviderSessionSourceAffinity,
   ResolvedAgentDefinition,
+  ResolvedAgentToolServer,
 } from '@kontourai/station-contracts/provider';
 import {
   APPROVAL_ESCALATION_REQUIRES_RESTART_CODE,
@@ -43,6 +44,7 @@ import {
   NATIVE_RESUME_BINDING_METADATA_KEY,
   NATIVE_RESUME_IDENTITY_METADATA_KEY,
   readApprovalMode,
+  SESSION_CAPABILITY_DELIVERY_METADATA_KEY,
   SYSTEM_PROMPT_CAPABILITY_ID,
 } from '@kontourai/station-contracts/provider';
 import { CONFINED_FULL_ACCESS_UNAVAILABLE_CODE } from '@kontourai/station-contracts/provider-failure';
@@ -77,6 +79,7 @@ import {
   type PreToolPolicyDecision,
   type StagedPreToolPolicyEvaluator,
 } from '../../runtime/agents/pre-tool-policy.js';
+import { builtinStationApiServerId } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import {
   canonicalizeExternalToolName,
   isAuthenticStationBrowserCall,
@@ -159,11 +162,16 @@ import {
 import { effectiveModelMetadata } from '../llm/effective-model-metadata.js';
 import { providerFailure } from '../provider-failure.js';
 import {
+  classifyEngineStartupFailure,
+  engineStartupFailureEvent,
+} from '../provider-startup-failure.js';
+import {
   decodeChatAttachments,
   decodeUtf8Attachment,
 } from '../sessions/chat-attachments.js';
 import { snapshotSessionSourceAffinity } from '../sessions/session-source-affinity.js';
 import { resolveConfigHomeAffinity } from '../sessions/transcript-file-io.js';
+import { toPassthroughToolDef } from './agent-tool-server-mapping.js';
 import {
   assertExecutionOverrideDelivery,
   mergeCapabilityDeliveryMetadata,
@@ -712,6 +720,14 @@ type ClaudeSessionRecord = {
   stopping?: boolean;
   promptQueue: AsyncUserMessageQueue;
   query: Query;
+  mcpServers: Record<string, McpServerConfig>;
+  tenantExecutionContext?: TenantExecutionContext;
+  configuredMetadata?: Record<string, unknown>;
+  coordinatorControlState?: 'pending' | 'ready' | 'uncertain';
+  coordinatorControlExpected?: readonly string[];
+  coordinatorControlGeneration?: number;
+  coordinatorKnowledgeGeneration?: number;
+  stationControlBuiltin: boolean;
   pendingRequests: Map<string, PendingRequest>;
   /** Mirrors `ClaudeMessageState.activeTurnId`; derived from `sdkTurns`. */
   activeTurnId?: string;
@@ -1050,10 +1066,25 @@ export interface ClaudeAdapterOptions {
     tenantExecutionContext?: TenantExecutionContext,
     allowedTools?: readonly string[],
   ) => unknown;
+  /** Current designation, resolved from Station's durable ownership. */
+  isCoordinatorSession?: (threadId: string) => boolean;
+  coordinatorGenerationForSession?: (threadId: string) => number;
+  /** Re-resolve the designated Agent's selected, canonical Station Control server. */
+  resolveCoordinatorStationControl?: (
+    threadId: string,
+  ) => Promise<ResolvedAgentToolServer | undefined>;
+  /** Separate, designation-scoped in-process credential for a live refresh. */
+  createInProcessCoordinatorStationControl?: (
+    threadId: string,
+    tenantExecutionContext?: TenantExecutionContext,
+    allowedTools?: readonly string[],
+    generation?: number,
+  ) => unknown;
   createInProcessStationKnowledge?: (
     threadId: string,
     tenantExecutionContext?: TenantExecutionContext,
     allowedTools?: readonly string[],
+    generation?: number,
   ) => unknown;
   /**
    * #90 D14: serves the built-in browser tools (`station-browser`) IN-PROCESS
@@ -1431,7 +1462,35 @@ async function evaluateClaudePreToolPolicy(
   }
 }
 
+async function coordinatorMcpDeadline<T>(operation: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error('Coordinator tool refresh timed out')),
+          10_000,
+        );
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export class ClaudeAdapter implements ProviderAdapterShape {
+  readonly coordinatorToolsRefresh = true as const;
+  coordinatorToolsNeedSuccessor(threadId: string): boolean {
+    const record = this.sessions.get(threadId);
+    const generations = [
+      record?.coordinatorControlGeneration,
+      record?.coordinatorKnowledgeGeneration,
+    ].filter((value): value is number => value !== undefined);
+    if (generations.length === 0) return false;
+    const current = this.options.coordinatorGenerationForSession?.(threadId);
+    return generations.some((generation) => current !== generation);
+  }
   readonly provider = 'claude' as const;
   readonly adoptionLifecycle = 'reported' as const;
   private readonly continuity: ProviderContinuityCapabilities = {
@@ -2218,6 +2277,26 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         (nativeId && this.options.nativeSessionOwnership ? true : undefined),
       promptQueue,
       query: sdkQuery,
+      mcpServers: { ...toolServers.mcpServers, ...builtinServers },
+      coordinatorControlGeneration: input.agent?.toolServers?.find(
+        (server) =>
+          server.id === 'station-control' && server.coordinatorDerived,
+      )?.coordinatorGeneration,
+      coordinatorKnowledgeGeneration: input.agent?.toolServers?.find(
+        (server) =>
+          server.id === 'station-knowledge' && server.coordinatorDerived,
+      )?.coordinatorGeneration,
+      stationControlBuiltin:
+        input.agent?.toolServers?.some(
+          (server) =>
+            builtinStationApiServerId(
+              server.id,
+              toPassthroughToolDef(server),
+            ) === 'station-control',
+        ) === true,
+      ...(input.tenantExecutionContext
+        ? { tenantExecutionContext: input.tenantExecutionContext }
+        : {}),
       pendingRequests: new Map(),
       approvedTools: new Set(),
       serverGrants: new Set(),
@@ -2389,6 +2468,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
 
       configuredMetadata[MODEL_SELECTION_RECEIPT_METADATA_KEY] =
         modelSelectionReceipt(input.modelId, record.session.model);
+      record.configuredMetadata = configuredMetadata;
 
       this.publish({
         eventId: crypto.randomUUID(),
@@ -2474,7 +2554,187 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         'busy',
       );
     this.refuseSendWhileTurnOwed(record);
+    if (this.options.isCoordinatorSession?.(input.threadId)) {
+      await this.ensureCoordinatorControl(record);
+      this.refuseSendWhileTurnOwed(record);
+    }
     return this.dispatchTurn(record, input, crypto.randomUUID());
+  }
+
+  private async ensureCoordinatorControl(
+    record: ClaudeSessionRecord,
+  ): Promise<void> {
+    const threadId = record.session.threadId;
+    if (
+      !this.options.isCoordinatorSession?.(threadId) ||
+      record.coordinatorControlState === 'ready'
+    )
+      return;
+    if (
+      record.mcpServers['station-control'] &&
+      !record.coordinatorControlState
+    ) {
+      if (record.stationControlBuiltin) return;
+      throw new SendTurnRefusedError(
+        'A different station-control server is configured. Choose another name before enabling coordinator tools.',
+        'provider_error',
+      );
+    }
+    const refuse = () =>
+      new SendTurnRefusedError(
+        'Station could not confirm the coordinator tools are connected. Restart this Session and try again.',
+        'provider_error',
+      );
+    if (
+      !this.options.resolveCoordinatorStationControl ||
+      typeof record.query.setMcpServers !== 'function' ||
+      typeof record.query.mcpServerStatus !== 'function'
+    )
+      throw refuse();
+    if (record.coordinatorControlState === 'uncertain') throw refuse();
+    if (!record.coordinatorControlState) {
+      // Fence concurrent turns before the first asynchronous SDK request.
+      // Failure leaves the result uncertain, so no later turn repeats it.
+      record.coordinatorControlState = 'uncertain';
+      // A same-named server discovered from another configuration source is
+      // not ours to replace, even if it reports itself connected.
+      let existing: Awaited<ReturnType<Query['mcpServerStatus']>>;
+      try {
+        existing = await coordinatorMcpDeadline(record.query.mcpServerStatus());
+      } catch {
+        throw refuse();
+      }
+      if (existing.some((entry) => entry.name === 'station-control'))
+        throw new SendTurnRefusedError(
+          'A different station-control server is configured. Choose another name before enabling coordinator tools.',
+          'provider_error',
+        );
+      let control: ResolvedAgentToolServer | undefined;
+      try {
+        control = await coordinatorMcpDeadline(
+          this.options.resolveCoordinatorStationControl(threadId),
+        );
+      } catch {
+        throw refuse();
+      }
+      if (
+        !control ||
+        builtinStationApiServerId(control.id, toPassthroughToolDef(control)) !==
+          'station-control' ||
+        !this.options.isCoordinatorSession?.(threadId)
+      )
+        throw refuse();
+      const selected = control.disabledTools?.length
+        ? (control.allowedTools ?? control.toolNames ?? []).filter(
+            (name) => !control.disabledTools!.includes(name),
+          )
+        : control.allowedTools;
+      if (
+        control.coordinatorDerived &&
+        control.coordinatorGeneration === undefined
+      )
+        throw refuse();
+      const instance = control.coordinatorDerived
+        ? this.options.createInProcessCoordinatorStationControl?.(
+            threadId,
+            record.tenantExecutionContext,
+            selected,
+            control.coordinatorGeneration,
+          )
+        : this.options.createInProcessStationControl?.(
+            threadId,
+            record.tenantExecutionContext,
+            selected,
+          );
+      if (!instance) throw refuse();
+      const next = {
+        ...record.mcpServers,
+        'station-control': {
+          type: 'sdk' as const,
+          name: 'station-control',
+          instance: instance as never,
+        },
+      };
+      try {
+        const result = await coordinatorMcpDeadline(
+          record.query.setMcpServers(next),
+        );
+        if (
+          Object.keys(result.errors).length ||
+          result.removed.length ||
+          !result.added.includes('station-control')
+        )
+          throw refuse();
+        record.mcpServers = next;
+        record.coordinatorControlExpected = selected;
+        record.coordinatorControlGeneration = control.coordinatorDerived
+          ? control.coordinatorGeneration
+          : undefined;
+        record.coordinatorControlState = 'pending';
+      } catch {
+        throw refuse();
+      }
+    }
+    let status: Awaited<ReturnType<Query['mcpServerStatus']>>;
+    try {
+      status = await coordinatorMcpDeadline(record.query.mcpServerStatus());
+    } catch {
+      throw refuse();
+    }
+    const server = status.find((entry) => entry.name === 'station-control');
+    if (
+      server?.source !== 'sdk' ||
+      server.status !== 'connected' ||
+      !(record.coordinatorControlExpected ?? ['delegate_task']).every((name) =>
+        server.tools?.some(
+          (tool) => tool.name === name || tool.name.endsWith(`__${name}`),
+        ),
+      )
+    )
+      throw refuse();
+    if (!this.options.isCoordinatorSession?.(threadId)) throw refuse();
+    record.coordinatorControlState = 'ready';
+    const previous = record.configuredMetadata?.[
+      SESSION_CAPABILITY_DELIVERY_METADATA_KEY
+    ] as
+      | {
+          toolServers?: {
+            source?: string;
+            requested?: string[];
+            delivered?: string[];
+            undelivered?: unknown[];
+          };
+          [key: string]: unknown;
+        }
+      | undefined;
+    const tools = previous?.toolServers;
+    const metadata = {
+      ...record.configuredMetadata,
+      [SESSION_CAPABILITY_DELIVERY_METADATA_KEY]: {
+        ...previous,
+        toolServers: {
+          ...tools,
+          source: tools?.source ?? 'agent',
+          requested: [
+            ...new Set([...(tools?.requested ?? []), 'station-control']),
+          ],
+          delivered: [
+            ...new Set([...(tools?.delivered ?? []), 'station-control']),
+          ],
+          undelivered: tools?.undelivered ?? [],
+        },
+      },
+    };
+    record.configuredMetadata = metadata;
+    this.publish({
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId,
+      sessionId: threadId,
+      createdAt: new Date().toISOString(),
+      method: 'session.configured',
+      metadata,
+    });
   }
 
   /**
@@ -3674,6 +3934,25 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           (name) => !control.disabledTools!.includes(name),
         )
       : control?.allowedTools;
+    const knowledge = toolServers.find(
+      (server) => server.id === 'station-knowledge',
+    );
+    if (
+      control?.coordinatorDerived &&
+      (!this.options.createInProcessCoordinatorStationControl ||
+        control.coordinatorGeneration === undefined)
+    )
+      throw new Error(
+        'Coordinator Station Control cannot be delivered safely.',
+      );
+    if (
+      knowledge?.coordinatorDerived &&
+      (!this.options.createInProcessStationKnowledge ||
+        knowledge.coordinatorGeneration === undefined)
+    )
+      throw new Error(
+        'Coordinator Station Knowledge cannot be delivered safely.',
+      );
     const { servers, skipped } = resolveClaudeMcpServers(
       toolServers,
       {
@@ -3690,22 +3969,36 @@ export class ClaudeAdapter implements ProviderAdapterShape {
                   input.threadId,
                   tenantExecutionContext,
                   allowedTools,
+                  ...(knowledge?.coordinatorDerived
+                    ? [knowledge.coordinatorGeneration]
+                    : []),
                 ),
             }
           : {}),
-        ...(this.options.createInProcessStationControl
+        ...((
+          control?.coordinatorDerived
+            ? this.options.createInProcessCoordinatorStationControl
+            : this.options.createInProcessStationControl
+        )
           ? {
               inProcess: () =>
-                selectedControlTools !== undefined
-                  ? this.options.createInProcessStationControl!(
+                control?.coordinatorDerived
+                  ? this.options.createInProcessCoordinatorStationControl!(
                       input.threadId,
                       tenantExecutionContext,
                       selectedControlTools,
+                      control.coordinatorGeneration,
                     )
-                  : this.options.createInProcessStationControl!(
-                      input.threadId,
-                      tenantExecutionContext,
-                    ),
+                  : selectedControlTools !== undefined
+                    ? this.options.createInProcessStationControl!(
+                        input.threadId,
+                        tenantExecutionContext,
+                        selectedControlTools,
+                      )
+                    : this.options.createInProcessStationControl!(
+                        input.threadId,
+                        tenantExecutionContext,
+                      ),
             }
           : {}),
         ...(tenantExecutionContext ? { tenantExecutionContext } : {}),
@@ -4585,6 +4878,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       const message = record.session.model
         ? `Claude model "${record.session.model}" failed: ${detail}`
         : detail;
+      const startupFailure = classifyEngineStartupFailure('claude', detail);
       this.publish({
         eventId: crypto.randomUUID(),
         provider: this.provider,
@@ -4594,6 +4888,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         ...providerFailure('provider_error'),
         severity: 'error',
         message,
+        ...(startupFailure ? engineStartupFailureEvent(startupFailure) : {}),
       } satisfies ProviderRuntimeErrorEvent);
       record.session.status = 'error';
       record.promptQueue.close();

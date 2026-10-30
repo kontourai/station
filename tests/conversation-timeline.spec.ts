@@ -592,7 +592,7 @@ test('conversation timeline crosses execution history, preserves the live draft,
     .selectOption('older-execution');
   await page.getByRole('button', { name: 'Fork from here…' }).click();
   await expect(
-    page.getByRole('heading', { name: 'Fork from here' }),
+    page.getByRole('region', { name: 'Fork from here' }),
   ).toBeVisible();
   await page.getByRole('button', { name: 'Cancel fork' }).click();
   await expect(composer).toHaveValue('Keep this live draft');
