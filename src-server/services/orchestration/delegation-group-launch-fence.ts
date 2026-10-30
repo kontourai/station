@@ -1,6 +1,7 @@
 // UNWIRED #91: boot custody, private issuance and managed transport composition remain required.
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash } from 'node:crypto';
+import type { FlowDurableStepClaim } from '@kontourai/flow';
 import {
   createDelegationAuthorityService,
   type DelegationAuthorityHost,
@@ -60,6 +61,8 @@ export type ReservedWireBinding = {
   effect: string;
   allocation: DelegationInvocationAmounts;
   expectedWireDigest: string;
+  /** Captured from the actual Flow controller callback, never a route input. */
+  flowClaim?: FlowDurableStepClaim;
 };
 export function snapshotFinalWire(input: FinalWire): FinalWire {
   if (
@@ -98,6 +101,7 @@ export type LegacyFinalFetchOwners = LaunchOwners & {
   protocol?: 'group-v2';
   groups: DelegationGroupStoreV2;
   authorities: DelegationAuthorityStore;
+  flow?: SourceFlowLaunchOwner;
 };
 export type RoundsFinalFetchOwners = LaunchOwners & {
   protocol: 'rounds-v1';
@@ -279,8 +283,22 @@ export class FinalFetchLaunchFence {
     const wire = snapshotFinalWire(wireInput);
     requireLaunch(Buffer.byteLength(wire.body) <= 1_048_576);
     requireLaunch(wireIdentityDigest(wire) === binding.expectedWireDigest);
-    return this.#withCurrentReservation(binding, signal, (current) =>
-      sendReservedWire(owners, current, binding, wire, signal),
+    return this.#withCurrentReservation(binding, signal, (current, flow) =>
+      sendReservedWire(
+        owners,
+        current,
+        binding,
+        wire,
+        signal,
+        flow
+          ? async (launch) =>
+              (
+                await flow.owner.withCurrentClaim(flow.claim, () => ({
+                  value: launch(),
+                }))
+              ).value
+          : undefined,
+      ),
     );
   }
 
@@ -290,17 +308,29 @@ export class FinalFetchLaunchFence {
     signal: AbortSignal,
   ): Promise<void> {
     const captured = structuredClone(binding);
-    await this.#withCurrentReservation(captured, signal, async (current) => {
-      await admitReservedInvocation(this.owners, current, captured);
-      assertSynchronous(this.owners.finalizeCurrent);
-      signal.throwIfAborted();
-    });
+    await this.#withCurrentReservation(
+      captured,
+      signal,
+      async (current, flow) => {
+        await admitReservedInvocation(this.owners, current, captured);
+        const check = () => {
+          assertSynchronous(this.owners.finalizeCurrent);
+          signal.throwIfAborted();
+          return { value: undefined };
+        };
+        if (flow) await flow.owner.withCurrentClaim(flow.claim, check);
+        else check();
+      },
+    );
   }
 
   async #withCurrentReservation<T>(
     bindingInput: ReservedWireBinding,
     signal: AbortSignal,
-    work: (current: DelegationAuthorityLedger) => Promise<T>,
+    work: (
+      current: DelegationAuthorityLedger,
+      flow?: { owner: SourceFlowLaunchOwner; claim: FlowDurableStepClaim },
+    ) => Promise<T>,
   ): Promise<T> {
     forbidNestedOwner();
     const binding = structuredClone(bindingInput);
@@ -339,11 +369,46 @@ export class FinalFetchLaunchFence {
               member.observation === null &&
               member.terminalReference === null,
           );
+          let flow:
+            | { owner: SourceFlowLaunchOwner; claim: FlowDurableStepClaim }
+            | undefined;
+          if (group.spec.topology.kind === 'flow') {
+            const owner = this.owners.flow;
+            const claim = binding.flowClaim;
+            requireLaunch(
+              owner &&
+                claim &&
+                same(owner.topology, group.spec.topology) &&
+                member.claimId === claim.claim_id &&
+                claim.run_id === group.spec.topology.runId &&
+                claim.step_id === seat.stepId &&
+                same(claim.definition, group.spec.topology.definition) &&
+                same(claim.actor, group.spec.topology.actor),
+            );
+            flow = { owner, claim };
+          } else requireLaunch(!binding.flowClaim);
           const result = await this.#authorities.transact(
             binding.authority.id,
             async (current) => {
               if (!current) throw new WireIntentRefusal('authority_missing');
-              const result = await work(current);
+              if (flow) {
+                const envelope = current.envelopes.find(
+                  (value) => value.envelope_id === binding.envelope.id,
+                );
+                const flowBinding = envelope?.execution_binding.flow_binding;
+                requireLaunch(
+                  envelope &&
+                    same(
+                      flow.owner.source,
+                      envelope.execution_binding.source,
+                    ) &&
+                    flowBinding?.status === 'bound' &&
+                    flowBinding.flow_run_id === flow.claim.run_id &&
+                    flowBinding.flow_step_id === flow.claim.step_id &&
+                    same(flowBinding.definition, flow.claim.definition),
+                );
+              }
+              const result = await work(current, flow);
               return { ledger: current, result };
             },
           );

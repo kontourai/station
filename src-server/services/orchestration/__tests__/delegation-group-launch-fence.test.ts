@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { FileAuthorizationLedger } from '@kontourai/dispatch';
 import {
   claimReadyStep,
+  type FlowDurableStepClaim,
   flowRunHead,
   loadRun,
   pauseRun,
@@ -214,7 +215,7 @@ async function setup(
     rootAuthorityRef: rootAuthorityReferenceV2(authorityRoot),
     controller: { id: 'controller', generation: 1 },
     policy: { reference: authorityRoot.revisions.policy, maxConcurrent: 1 },
-    topology: { kind: 'independent-advisory' },
+    topology: flow?.owner.topology ?? { kind: 'independent-advisory' },
     seats: [
       {
         seatId: 'seat',
@@ -223,7 +224,7 @@ async function setup(
           generation: 0,
           digest: delegationEnvelopeDigestV2(envelope),
         },
-        stepId: null,
+        stepId: flow ? 'report' : null,
         effect: 'report',
         allocation: { inputTokens: 100, outputTokens: 10, costMicros: 1000 },
       },
@@ -278,6 +279,7 @@ async function setup(
           intents,
           finalizeCurrent,
           fetch: controlledFetch,
+          flow: flow?.owner,
         })
       : undefined;
   const roundsFence =
@@ -306,6 +308,7 @@ async function setup(
   await service.derive('authority', envelope);
   mkdirSync(join(root, 'dispatch'), { mode: 0o700 });
   const invocation = new AsyncLocalStorage<string>();
+  let capturedFlowClaim: FlowDurableStepClaim | undefined;
   let lastBinding: ReservedWireBinding | undefined;
   let fenceEntered = false;
   let fenceFailure: unknown;
@@ -339,7 +342,13 @@ async function setup(
         effect: syncing ? 'context-sync' : 'report',
         allocation: structuredClone(seat.allocation),
         expectedWireDigest: wireIdentityDigest(snapshotFinalWire(wire)),
+        ...(protocol === 'legacy' && capturedFlowClaim
+          ? { flowClaim: structuredClone(capturedFlowClaim) }
+          : {}),
       };
+      if (mode === 'v2-flow-missing-claim') delete binding.flowClaim;
+      if (mode === 'v2-flow-wrong-claim' && binding.flowClaim)
+        binding.flowClaim.claim_id = 'foreign-claim';
       lastBinding = structuredClone(binding);
       if (mode.startsWith('pause-')) await allowFence.promise;
       if (mode === 'wrong-seat') binding.seatId = 'other-seat';
@@ -402,6 +411,13 @@ async function setup(
           return true;
         };
       fenceEntered = true;
+      if (protocol === 'legacy' && mode.includes('v2-flow'))
+        await fence
+          .admitTask(binding, new AbortController().signal)
+          .catch((error: unknown) => {
+            fenceFailure = error;
+            throw error;
+          });
       const begun = await fence
         .start(binding, wire, new AbortController().signal)
         .catch((error: unknown) => {
@@ -424,6 +440,7 @@ async function setup(
   };
   const legacyController = legacyFence
     ? createDelegationGroupControllerV2({
+        cwd: flow?.cwd,
         store: legacyFence.groups,
         authorityService: service,
         dispatchLedger: new FileAuthorizationLedger({
@@ -442,17 +459,39 @@ async function setup(
               invocation.run(id, invoke),
             retainFailure: async () => {},
             retainResult: async () => {},
-            recordScheduleEvent: async () => {
-              throw Error('advisory fixture must not schedule Flow');
+            recordScheduleEvent: async (event) => {
+              if (!flow) throw Error('advisory fixture must not schedule Flow');
+              await persistence.retainReportFlowObservation(
+                'group',
+                'schedule',
+                event,
+                finalizeCurrent,
+              );
             },
-            confirmClaim: async () => {
-              throw Error('advisory fixture must not claim Flow');
+            confirmClaim: async (claim) => {
+              if (!flow) throw Error('advisory fixture must not claim Flow');
+              return (
+                await flow.owner.withCurrentClaim(claim, () => ({
+                  value: true,
+                }))
+              ).value;
             },
-            prepareRequest: async () => {
-              throw Error('advisory fixture must not request Flow');
+            prepareRequest: async (claim) => {
+              if (!flow) throw Error('advisory fixture must not request Flow');
+              capturedFlowClaim = structuredClone(claim);
+              return {
+                messages: [{ role: 'user', content: 'fixture' }],
+                maxOutputTokens: 10,
+              };
             },
-            recordMemberOutcome: async () => {
-              throw Error('advisory fixture must not write Flow');
+            recordMemberOutcome: async (claim, envelope, outcome) => {
+              if (!flow) throw Error('advisory fixture must not write Flow');
+              await persistence.retainReportFlowObservation(
+                'group',
+                'member',
+                { claim, envelopeId: envelope.envelope_id, outcome },
+                finalizeCurrent,
+              );
             },
           }),
           prepareIndependentRequest: async () => ({
@@ -914,6 +953,81 @@ test.each(
     }
   }
 });
+
+test.each([
+  'v2-flow-success',
+  'v2-flow-missing-claim',
+  'v2-flow-wrong-claim',
+  'queued-v2-flow-pause',
+])(
+  'V2 task and physical send require the same current source-owned Flow claim: %s',
+  async (mode) => {
+    const source = await sourceFixture();
+    const topology = await createReportFlow(source, 'v2-final-fetch', [
+      { id: 'report' },
+    ]);
+    const sealed = await source.owner.captureSnapshot(
+      source.context(),
+      subject,
+      selection,
+    );
+    const flow = await source.owner.prepareFlowSnapshot(
+      source.context(),
+      subject,
+      sealed.capability,
+      topology.runId,
+    );
+    const f = await setup(mode, 'legacy', { owner: flow, cwd: source.repo });
+    try {
+      const running = f.run();
+      void running.catch(() => {});
+      f.allowResponse.resolve();
+      if (mode === 'queued-v2-flow-pause') {
+        await within(
+          Promise.race([
+            f.intentReady.promise,
+            running.then(() => {
+              throw Error('V2 run returned before durable wire intent');
+            }),
+          ]),
+          'V2 wire intent not reached',
+        );
+        await pauseRun(topology.runId, {
+          cwd: source.repo,
+          reason: 'Pause between durable wire intent and physical send',
+          authority: {
+            kind: 'operator_request',
+            actor: flow.topology.actor.key,
+            request_ref: 'v2-final-fetch-pause',
+            requested_at: new Date().toISOString(),
+          },
+        });
+        f.allowIntentReturn.resolve();
+      }
+      await running.catch(() => undefined);
+      assert.equal(
+        f.entered,
+        1,
+        'the real controller must reach the reserved runtime',
+      );
+      assert.equal(f.starts, mode === 'v2-flow-success' ? 1 : 0);
+      if (mode === 'v2-flow-missing-claim' || mode === 'v2-flow-wrong-claim') {
+        assert.ok(f.fenceFailure instanceof WireIntentRefusal);
+        assert.equal(f.fenceFailure.code, 'reserved_launch_join_unavailable');
+      }
+      const ledger = await f.service.inspect('authority');
+      assert.equal(ledger.invocations.length, 1);
+      assert.equal(
+        ledger.invocations[0].usage !== null,
+        mode === 'v2-flow-success',
+      );
+    } finally {
+      f.allowIntentReturn.resolve();
+      f.allowResponse.resolve();
+      source.owner.releaseSnapshot(sealed.capability);
+    }
+  },
+);
 
 test('final fetch revalidates the actual source-owned Flow claim after durable wire intent consumption', async () => {
   const source = await sourceFixture();
