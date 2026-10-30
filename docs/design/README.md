@@ -61,6 +61,7 @@ category.
 - [live-work-session.md](live-work-session.md) — Live-work session contract
 - [local-bootstrap-token.md](local-bootstrap-token.md) — Local-bootstrap token (archive#1991)
 - [local-model-tool-calling.md](local-model-tool-calling.md) — Local-model (Ollama) tool calling — how to do it best
+- [mcp-subregistry-curation.md](mcp-subregistry-curation.md) — MCP subregistries, Station curation and untrusted content
 - [mcp-ui-host.md](mcp-ui-host.md) — MCP Apps in Station
 - [mobile-credential-authority.md](mobile-credential-authority.md) — Mobile credential authority boundary
 - [modality-ladder.md](modality-ladder.md) — The modality ladder

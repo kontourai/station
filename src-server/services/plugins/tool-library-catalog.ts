@@ -78,6 +78,9 @@ export async function toolLibraryCatalog(
       continue;
     if (rows.some((row) => row.kind === 'integration' && row.id === item.id))
       continue;
+    // The picker's only action is add; refused entries stay inspectable in
+    // the Registry, which shows why.
+    if (item.mcpServer && item.mcpServer.unavailable.length > 0) continue;
     rows.push({
       id: item.id,
       kind: 'integration',

@@ -13,6 +13,13 @@ export function sameMCPConnectionDefinition(
       description: _description,
       icon: _icon,
       healthCheck: _health,
+      // #3483: trust settings do not change the connection; every call reads
+      // them fresh, so a person's edit applies without reconnecting.
+      contentTrust: _trust,
+      untrustedContentPermissions: _permissions,
+      trustReadOnlyHints: _hints,
+      untrustedContentChanges: _changes,
+      untrustedContentPersonOwned: _owned,
       ...connection
     } = value;
     // loadIntegration hydrates legacy credential values and a synthesized

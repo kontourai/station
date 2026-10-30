@@ -1,0 +1,7 @@
+{
+  "revision": "30473c42aa6f1907bb8c997804719a21276b3536",
+
+  "notes": [
+    {"path":"docs/guides/plugins.md","note":"Added to integrationRegistry that MCP subregistry sources are providers of this kind and that refused entries answer install with reasons and getToolDef with null, per mcp-subregistry-provider.ts. Plugin registry section (JSON manifests, registryUrl, source manager) is unchanged by this diff.","inputs":["docs/guides/plugins.md","packages/contracts/src/catalog.ts","src-server/routes/agents/tools.ts","src-server/routes/plugins/registry.ts"]}
+  ]
+}
