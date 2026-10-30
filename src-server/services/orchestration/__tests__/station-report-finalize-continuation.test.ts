@@ -189,6 +189,33 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
     const held = await controller.get(groupId);
     const flowAfterLoss = await loadRun(flow.runId, h.f.repo);
     const authorityBefore = await authority.inspect(prepared.root.authority_id);
+    const retain = persistence.retainReportContinuation.bind(persistence);
+    let retainedBeforeFault: Awaited<ReturnType<typeof retain>> | undefined;
+    const retentionFault = vi
+      .spyOn(persistence, 'retainReportContinuation')
+      .mockImplementationOnce(async (...args) => {
+        retainedBeforeFault = await retain(...args);
+        throw new Error('injected fault after retention');
+      });
+    await assert.rejects(
+      h.custody.finalizeContinuation(
+        h.f.context(requestFor(h, 'POST')),
+        groupId,
+        {
+          operationKey: 'finish',
+          expectedRevision: held.revision,
+          continuationOperationKey: 'lost',
+        },
+        dispatch,
+        h.f.owner,
+        participant,
+        (historical) => historical.group,
+      ),
+      /injected fault after retention/,
+    );
+    retentionFault.mockRestore();
+    assert.ok(retainedBeforeFault);
+    assert.equal((await controller.get(groupId)).revision, held.revision);
     let callbackReached!: () => void, releaseCallback!: () => void;
     let durableReached!: () => void, releaseDurable!: () => void;
     const callbackReady = new Promise<void>((resolve) => {
@@ -273,6 +300,7 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
     assert.equal(finalized.result.replayed, false);
     assert.ok(finalized.group?.continuations[0].receipt);
     const winner = finalized.group.continuations[0].receipt.reference;
+    assert.deepEqual(winner, retainedBeforeFault);
     const winnerPath = join(
       h.f.root,
       'station-report-flow-observations-v1',
