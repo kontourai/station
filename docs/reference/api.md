@@ -4691,6 +4691,25 @@ Use the [SDK scheduler client](../../packages/sdk/src/client/scheduler.ts),
 `station schedule`, or corresponding station-control tools for supported
 operator operations. SSE and webhook retain their separate HTTP transport roles.
 
+### Automation Deliveries
+
+`GET /automations/deliveries?limit=<1-200>` (default 50) returns
+`{success: true, data: {deliveries, polls}}`: the newest recorded Automation
+deliveries, newest first, as the [AutomationDeliveryRecord contract](../../packages/contracts/src/automation.ts)
+projection: hashed `deliveryKey`, `sourceId`, `semanticKey`, `eventType`,
+times, `outcome`, optional `reason`, and rule, episode, Task and session ids.
+No payload, secret or delivery GUID is returned. A `limit` outside 1–200 is
+refused with 400 rather than clamped, an unavailable ledger answers 503 with
+`code: "policy_unavailable"`, and hosted mode answers 404. The route
+([source](../../src-server/routes/operations/automations.ts)) needs the
+`access:manage` pairing scope and the enabled `github-automation-observations`
+Feature Preview. Disabled previews return 404 with `feature_preview_disabled`,
+`previewId` and `settingsPath`, before opening the ledger. The `polls` projection
+reports last-poll time, cursor and coverage/failure outcome; `partial` means the
+GitHub page omitted additional runs and did not advance the cursor. No `/automations` mutation is mounted or
+scope-classified yet. Use the [SDK client](../../packages/sdk/src/client/automations.ts)
+or `station automation deliveries`.
+
 ### Open File with System Handler
 
 The former `POST /scheduler/open` route is not registered. Scheduled output is
@@ -5274,7 +5293,7 @@ Project/binding authority through TerminalSessions.
   fromSeq?, windowBytes?}`. `fromSeq` is the last consumed output sequence,
   default zero. Unknown ids and mismatched Projects/bindings are refused.
   Both commands respond with `attached`, including `terminalId`, `status` and
-  `replayThrough`, plus `readOnly` from the current session authority. Dimensions
+  `replayThrough`, `maxOutstandingOutputFrames`, plus `readOnly` from the current session authority. Dimensions
   range from 1 to 1,000 as in the HTTP API.
 - `list`: `{type, requestId, projectId, bindingKey}` returns `list` with
   `records`. `resize` takes `{type, requestId, channel, cols, rows}`; `close`
@@ -5299,14 +5318,21 @@ The socket maximum payload is 64 KiB + 13 bytes, including JSON frames.
 Each channel has a fixed output credit window (`windowBytes`, 16,384–65,536
 bytes, default 65,536). Sending raw output consumes its byte length;
 acknowledging actual records releases exactly those bytes. Header/control bytes
-do not consume channel credit. The transport filters OSC 8 URI schemes to
+do not consume channel credit. Independently, the server permits at most 128
+unacknowledged output frames per channel, including frames whose sanitized
+payload is empty. This bounds framing overhead without reducing the 64 KiB
+payload window; ACKs release frame slots and replay continues in bounded pages.
+The additive `maxOutstandingOutputFrames` field advertises this enforced limit;
+older clients can ignore it and continue acknowledging sequences. The transport filters OSC 8 URI schemes to
 absolute HTTP/HTTPS and drops unsafe URI metadata while keeping displayed text.
 Parser state advances only when the filtered record fits the remaining credit. Output stays in the bounded journal until credit
 is available. A slow consumer cannot accumulate an unbounded per-socket replay
 queue; retention loss is explicit. `reset` gives `fromSeq` and `replayThrough`;
 replace the emulator's replay and resume acknowledgement from that sequence.
 `progress` reports `sentThrough`, journal `lastSeq`, `replayThrough` and session
-`status`. Acknowledging through replay emits `ready`, allowing input. Clients
+`status`. Unchanged sent cursor, replay target and status are coalesced even if
+the journal's `lastSeq` grows while output is blocked; a later meaningful
+progress notification reports the current `lastSeq`. Acknowledging through replay emits `ready`, allowing input. Clients
 must keep emulator reply writers detached during replay.
 
 The command queue refuses capacity beyond 128 pending commands or 256 KiB of

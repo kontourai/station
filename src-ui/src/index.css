@@ -6103,28 +6103,39 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   transform: none !important;
 }
 
-.attachment-menu__thumbnail {
-  width: 48px;
-  height: 48px;
-  object-fit: cover;
-  border-radius: 4px;
-  flex: 0 0 auto !important;
-  cursor: pointer;
-  outline: none;
-  border: 2px solid transparent !important;
-  transition: border-color var(--motion-base) var(--ease-standard);
+/* The preview trigger is a real button: keyboard users tab to it and press
+   Enter. (The old clickable img carried a keydown handler it could never
+   receive — an img is not focusable — so the preview was pointer-only.) */
+.attachment-menu__thumbnail-button {
+  padding: 0;
+  border: none !important;
   background: none !important;
+  cursor: pointer;
+  border-radius: 4px;
+  /* The img fills the box; keep the button's own box the same 48px square. */
+  line-height: 0;
+  flex: 0 0 auto !important;
+  transition: box-shadow var(--motion-base) var(--ease-standard);
   transform: none !important;
   box-shadow: none !important;
 }
 
-.attachment-menu__thumbnail:hover {
+.attachment-menu__thumbnail-button:hover {
   background: none !important;
   transform: none !important;
 }
 
-.attachment-menu__thumbnail:focus {
-  border-color: var(--color-primary);
+.attachment-menu__thumbnail-button:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+.attachment-menu__thumbnail {
+  display: block;
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 4px;
 }
 
 .attachment-menu__file-icon {
@@ -6201,6 +6212,9 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     /* Mobile toolbar controls are 44px tall with 4px block padding. Keep the
        shared geometry token honest for dock offsets and fixed overlays. */
     --app-toolbar-height: 52px;
+    /* The touch floor, set only here: a compact control sizes itself with
+       `var(--touch-target-min, <desktop size>)` and needs no media query. */
+    --touch-target-min: 44px;
   }
 
   /* Mobile Safari zooms the whole page when an editable control below 16px

@@ -1,6 +1,10 @@
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import {
+  AUTOMATION_OPERATOR_OPERATIONS,
+  AUTOMATION_OPERATOR_SURFACE,
+} from '@kontourai/station-contracts/automation';
+import {
   REVIEW_EVIDENCE_OPERATOR_SURFACE,
   type ReviewEvidenceOperatorOperation,
 } from '@kontourai/station-contracts/review-evidence';
@@ -153,5 +157,34 @@ describe('scheduler operator surface', () => {
   it('schedule jobs is the list alias', async () => {
     const { method, path } = SCHEDULER_OPERATOR_SURFACE.list;
     expect(await dispatch('schedule', ['jobs'])).toEqual([`${method} ${path}`]);
+  });
+});
+
+describe('automation operator surface', () => {
+  // Slice S2 ships `deliveries` only; each later slice adds its verbs here
+  // with the route that serves them, until the set equals the contract.
+  const SHIPPED = ['deliveries'] as const;
+
+  it('help advertises exactly the shipped contract CLI actions', () => {
+    expect(actionsFor('automation')).toEqual(
+      SHIPPED.map((operation) => AUTOMATION_OPERATOR_SURFACE[operation].cli),
+    );
+    for (const operation of SHIPPED) {
+      expect(AUTOMATION_OPERATOR_OPERATIONS).toContain(operation);
+    }
+  });
+
+  it('automation deliveries dispatches to its contract route', async () => {
+    const entry = AUTOMATION_OPERATOR_SURFACE.deliveries;
+    expect(await dispatch('automation', [entry.cli, '--limit=5'])).toEqual([
+      `${entry.method} ${entry.path}`,
+    ]);
+  });
+
+  it('refuses a non-numeric limit before any request', async () => {
+    await expect(
+      dispatch('automation', ['deliveries', '--limit=lots']),
+    ).rejects.toThrow('--limit must be a positive integer.');
+    expect(requests).toEqual([]);
   });
 });

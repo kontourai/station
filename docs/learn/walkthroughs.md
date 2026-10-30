@@ -90,9 +90,11 @@ owns runtime observations.
 
 ## Inspect an approval
 
-An attention item can point to an exact pending request. **Inspect request**
-opens its scope and available responses. **Request identity** exposes the
-underlying identifiers; opening this panel does not approve the action.
+An attention item can point to an exact pending request. An approval answers
+on its row: **Details** shows the request, and **Approve once** or **Deny**
+answers that exact version. A review request opens **Inspect request**,
+pictured below; **Request identity** exposes the underlying identifiers, and
+opening the panel does not approve the action.
 
 ![A request inspector with Deny and Approve once actions.](media/inspect-request.png)
 

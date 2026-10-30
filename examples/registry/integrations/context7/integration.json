@@ -1,0 +1,14 @@
+{
+  "id": "context7",
+  "kind": "mcp",
+  "displayName": "Context7 Library Docs",
+  "icon": "📚",
+  "description": "Look up current library documentation and code examples. Hosted anonymous access is rate-limited; queries go to Context7. No local runtime required.",
+  "enabled": false,
+  "transport": "streamable-http",
+  "endpoint": "https://mcp.context7.com/mcp",
+  "timeouts": {
+    "startupMs": 20000,
+    "requestMs": 60000
+  }
+}

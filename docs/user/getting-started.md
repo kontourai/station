@@ -1227,11 +1227,14 @@ promotion or retirement action.
 
 ## Return to a decision
 
-Open Notifications to find work that needs your attention. When an approval or
-permission has recorded request evidence, **Inspect request** opens its current
-details. Choose **Approve once** or **Deny** only after reviewing the request.
-You can expand **Request identity** for its exact record or open the Session for
-more context.
+Open Notifications, or the bell, to find work that needs your attention. Each
+row names the Station, Project and chat it belongs to when known. When an approval or
+permission has recorded request evidence, its row offers **Approve once** and
+**Deny**; **Details** shows the full request first. Both answer that exact
+request version, once. A review request with recorded evidence offers
+**Inspect request** instead, where **Request identity** shows its exact record.
+A row's ⋯ menu holds **Dismiss**, and **Snooze** when the Attention snooze
+preview is on.
 
 For a task that runs on a paired Station, the card shows **Allow** and **Deny**
 for that Station's approval when your access here permits it. The paired Station
