@@ -1,0 +1,7 @@
+{
+  "revision": "f98d3d8036428bf25e2225f02639b7134db2b628",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Edited the advisory paragraph for round 2: every pre-registered client needs an issuer, the shared writer pins it, and the DCR-without-issuer exposure is stated. Checked against tool-server-oauth.ts and the invariants module. Other inputs: the advisory paragraph covers public clients, the shared writer and the DCR limit; the provider requires a declared issuer for every pre-registered client, enforces a declared issuer for registration too, refuses duplicate iss, and re-registers when scopes outgrow a registration.","inputs":["docs/guides/dependency-security.md","src-server/services/plugins/tool-server-oauth.ts"]}
+  ]
+}
