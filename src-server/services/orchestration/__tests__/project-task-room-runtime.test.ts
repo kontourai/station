@@ -1588,11 +1588,6 @@ describe('ProjectTaskRoomRuntime', () => {
       maxWorkingSnapshotBytes: 16 * 1024 * 1024,
       responseTimeoutMs: 120_000,
     });
-    const reader = store.createProjectTaskRoomWorkingState({
-      maxRetainedOperations: 10_000,
-      maxWorkingSnapshotBytes: 16 * 1024 * 1024,
-      responseTimeoutMs: 120_000,
-    });
     const scope = {
       projectId: task.projectId,
       taskId: task.id,
@@ -1610,6 +1605,11 @@ describe('ProjectTaskRoomRuntime', () => {
       operationCount: 10_000,
       baseRevision: expect.stringMatching(/^swsr-v2:/),
       revision: expect.stringMatching(/^swsr-v2:/),
+    });
+    const reader = store.createProjectTaskRoomWorkingState({
+      maxRetainedOperations: 10_000,
+      maxWorkingSnapshotBytes: 16 * 1024 * 1024,
+      responseTimeoutMs: 120_000,
     });
     await expect(
       reader.read({ scope, after: seeded.baseRevision }),

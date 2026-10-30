@@ -190,7 +190,11 @@
 
     "src-ui/src/__tests__/execution.test.ts",
 
-    "src-ui/src/__tests__/ChatDockBody.offlineSettling.test.tsx"
+    "src-ui/src/__tests__/ChatDockBody.offlineSettling.test.tsx",
+
+    "src-ui/src/components/chat/ToolCallBatch.tsx",
+
+    "src-ui/src/__tests__/ToolCallBatch.test.tsx"
   ],
 
   "checks": [
