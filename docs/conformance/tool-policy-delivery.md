@@ -568,9 +568,11 @@ What this costs, and what it still does not cover:
   call. Those would be covered only by the part 1 signals, as before.
 - **Exit errors.** The SDK appends the engine's stderr to an exit error only
   for its own spawn. Station keeps the last 2048 characters itself, redacted,
-  and appends them to the `runtime.error` it publishes when the message
-  stream fails. An exit error the SDK raises on another call does not carry
-  them. The SDK also adds its `--debug-file` argument only for its own
+  and appends them to an unclassified `runtime.error` when the message
+  stream fails. Recognized startup diagnostics instead use fixed guidance
+  without raw engine output; see [engine-neutral failures](../reference/contracts.md#engine-neutral-failures).
+  An exit error the SDK raises on another call does not carry the stderr
+  tail. The SDK also adds its `--debug-file` argument only for its own
   spawn, which matters only when SDK debug logging is on.
 
 A session answer never writes the engine's settings files. Every suggestion

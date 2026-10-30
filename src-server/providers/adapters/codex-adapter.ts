@@ -103,6 +103,11 @@ import {
 } from '../llm/effective-model-metadata.js';
 import { providerFailure } from '../provider-failure.js';
 import {
+  classifyEngineStartupFailure,
+  EngineStartupFailure,
+  engineStartupFailureEvent,
+} from '../provider-startup-failure.js';
+import {
   decodeChatAttachments,
   rejectFileAttachments,
 } from '../sessions/chat-attachments.js';
@@ -2413,6 +2418,19 @@ export class CodexAdapter implements ProviderAdapterShape {
           [error, cleanupError],
           'Codex startup failed and process termination was not confirmed.',
         );
+      }
+      const startupFailure = classifyEngineStartupFailure('codex', error);
+      if (startupFailure) {
+        this.transport.publish({
+          eventId: crypto.randomUUID(),
+          provider: this.provider,
+          threadId: input.threadId,
+          createdAt: this.now().toISOString(),
+          method: 'runtime.error',
+          severity: 'error',
+          ...engineStartupFailureEvent(startupFailure),
+        } satisfies ProviderRuntimeErrorEvent);
+        throw new EngineStartupFailure(startupFailure);
       }
       throw error;
     }
