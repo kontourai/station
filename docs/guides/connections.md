@@ -1525,7 +1525,8 @@ OAuth and the Station host must be able to reach that address.
 2. Choose **Sign in → Open sign-in page** (or **Connect your account** for a
    source configured for personal accounts). Station discovers the
    OAuth metadata and registers its client automatically; no client secret is
-   needed for servers that support dynamic registration.
+   needed for servers that support dynamic registration. For a server that
+   does not, see [Use your own OAuth client](#use-your-own-oauth-client).
 3. Follow the remote server's approval flow. If it requires a pairing code,
    obtain one from the workspace's connection settings; otherwise approve from
    an authorized signed-in browser. Choose the access level you intend to grant.
@@ -1618,6 +1619,184 @@ are treated as transient and do not request sign-in again. They preserve consent
 and show as temporarily unavailable when the access token cannot be used. You can
 reconnect manually from the integration's account panel if the failure persists.
 
+### Use your own OAuth client
+
+Some remote MCP servers do not register clients automatically. Google's Gmail
+MCP server and Slack's MCP server are examples: each expects a client that you
+registered with the provider ahead of time. Station picks a client in the order
+the MCP authorization specification gives:
+
+1. A **client ID** you configured (a pre-registered client).
+2. A **client metadata URL** you configured, only when the authorization server
+   advertises `client_id_metadata_document_supported`. The URL is the client ID
+   and must be an HTTPS URL with a path. Station does not host a metadata
+   document, and none is configured by default. A deployment can set one for
+   every integration without its own client through
+   [`STATION_OAUTH_CLIENT_METADATA_URL`](../reference/env-vars.md); an
+   integration's own client ID or metadata URL takes precedence.
+3. Dynamic Client Registration, when the server offers it.
+
+If none of those applies, sign-in stops before contacting the token endpoint.
+The integration shows **Client ID required** and the authorization state
+`client-id-required`; add a client ID and sign in again.
+
+Configure the client under **Use your own OAuth client** in the integration's
+settings:
+
+- **Client ID**: the ID the provider issued.
+- **Authorization server (recommended)**: shown for every remote integration,
+  outside the folded client fields. It is the `issuer` of the authorization
+  server, exactly as its OAuth metadata states it (an HTTPS URL), and Station
+  signs in only with that server. It is required with a client ID, public or
+  confidential; see [Authorization server binding](#authorization-server-binding).
+  Without a client ID it pins dynamic registration and the metadata document
+  to that server from the first sign-in on (see below).
+- **Client secret**: a confidential client's secret, chosen from a shared secret
+  binding (keychain, 1Password or environment). Create the binding under
+  **Advanced: Secret bindings** first, declare the authorization server and save
+  the integration, then choose the binding and **Bind**. The integration stores only the binding id. The secret is read for
+  each token request and sent with the method the server advertises
+  (`client_secret_basic`, then `client_secret_post`). It is never written to
+  `integration.json`, the credential store or logs. A public client leaves this
+  empty. A configured secret that cannot be read refuses sign-in and refresh;
+  Station does not fall back to a public client.
+- **Default scopes**: one per line (spaces also separate them). They prefill the
+  **Scopes** field in the sign-in panel and replace the scopes the server
+  advertises. A manifest or `integration.json` can supply them.
+- **Client metadata URL**: optional; see the order above.
+
+Which access to grant is the choice of the person signing in, not Station's.
+The sign-in panel's **Scopes** field starts with the integration's default
+scopes; add or remove scopes there before **Sign in** or **Connect your
+account**. Station requests exactly that list for that sign-in, including when
+it registers a client dynamically, and does not write it back as the default.
+Clearing the field requests the server's advertised scopes instead of the
+default. When that sign-in completes, Station remembers the choice for your
+own account (for a Project-scoped account, that Project's), and the field
+starts from it next time instead of the default. An abandoned sign-in
+remembers nothing, another person never sees your choice, and disconnecting
+forgets it. Station checks only that each scope is a well-formed OAuth scope (at
+most 32 distinct values); the provider decides what each scope allows.
+
+#### Authorization server binding
+
+A remote MCP server names its authorization server in its resource metadata
+(RFC 9728). If that server were compromised or changed, it could name a
+different authorization server, which would then receive the client secret
+at its token endpoint ([GHSA-6qxp-vccf-f47h](https://github.com/advisories/GHSA-6qxp-vccf-f47h)).
+Station therefore uses a pre-registered client only with the **Authorization
+server** the operator declared. The check reads configuration, not anything a
+sign-in wrote, so it holds for every person, every Project, after a disconnect
+and for concurrent sign-ins. A mismatch stops sign-in and refresh before the
+secret is read.
+
+A client secret cannot be bound without a declared authorization server, and
+a bound secret pins both the authorization server and the endpoint: unbind the
+secret before changing either. A public pre-registered client needs a
+declared authorization server too. It has no secret to give away, but without
+an anchor a compromised resource could stage a mix-up: send a person to the
+honest authorization page while naming its own token endpoint, then redeem
+the code and PKCE verifier Station sends there.
+
+Two independent layers enforce this:
+
+- **The integration writers.** The shared integration writer applies these
+  rules to the settings, the API, registry installs, a plugin's required
+  tools and the binding operations. A plugin's bundled integrations are
+  checked against the same rules before they are copied, and the CLI import
+  checks them before writing. Registry, plugin and imported definitions never
+  carry a secret binding, and a source with a bound secret cannot be replaced
+  from a registry; unbind first.
+- **The secret's own grant.** Binding records three things: the authorization
+  server, the MCP server URL, and the integration's instance identity. Station
+  creates the instance identity when the integration is first saved, keeps it
+  beside the definition where no definition, registry, plugin or import can
+  set it, and deletes it with the integration. Station releases the client
+  secret only to an integration that still matches all three, and checks this
+  at every token request, the code exchange and each refresh included. A
+  definition naming another server or URL, written by any path (a restored
+  backup or a hand edit included), cannot use the secret. Neither can an
+  integration deleted and recreated with the exact same id, server and URL: it
+  is a new instance, so the old grant no longer applies and the secret must be
+  bound again. A secret revoked or unbound during a sign-in stops that sign-in
+  at its code exchange.
+
+When two sign-ins overlap on one account, each saves its tokens together with
+the client that obtained them, and only if the stored client is still the one
+it started from. The later one is refused with a request to sign in again, so
+an account never holds tokens from one client next to another client.
+
+Station also checks the `iss` in the authorization response (RFC 9207). A
+response whose `iss` differs from the server sign-in started at is refused
+before the code is sent anywhere, and when that server advertises
+`authorization_response_iss_parameter_supported`, a response without `iss`
+is refused.
+
+**Dynamic Client Registration without a declared server.** With no client ID
+and no declared **Authorization server**, the first sign-in that completes
+pins the authorization server it used, for that MCP server URL. The pin is
+kept beside the integration where no definition, registry, plugin or import
+can set it (a plugin file with the same name in any letter case or Unicode
+form is refused), and it is shared by everyone who signs in. After that, any other
+server is refused before Station registers a client or redirects anyone, for
+every person, after disconnects and across overlapping sign-ins. Every request
+that carries client or grant material to an authorization server (client
+registration, code exchange, refresh) is checked immediately before it is
+sent, under a per-integration lock that establishing the pin also takes. A
+sign-in that was already open when the pin was set is therefore refused
+before its registration, code or verifier is sent, whatever point it had
+reached. A sign-in
+pins only when its code exchange succeeds, so a hostile first attempt that
+fails the `iss` check pins nothing. The first completed sign-in is still
+trust-on-first-use: if the resource is already compromised then, and the
+honest server omits `iss`, that one sign-in can be misdirected. Declaring the
+**Authorization server** removes even that. Changing the MCP server URL starts
+a new pin, and deleting the integration removes it.
+
+Changing the client ID, authorization server or metadata URL clears the
+integration's tokens, because they belong to the client that obtained them;
+everyone signs in again.
+Raw integration JSON cannot set the binding; only the secret-binding routes can.
+
+The client identifies the app, not a person. Everyone who signs in uses the same
+client. Tokens keep the integration's account ownership: for a source configured
+for personal accounts, each person's tokens stay in their own bucket, and the
+shared account is used only when the fallback is explicitly allowed. A person-owned
+secret binding cannot be bound as a client secret.
+
+#### Example: Gmail MCP server (Developer Preview)
+
+Google's Gmail MCP server (`https://gmailmcp.googleapis.com/mcp/v1`) is a
+Developer Preview. Its behavior, scopes and client requirements may change, and
+Google's preview terms apply. Station has fixture tests for this flow. A live sign-in against
+Google is **NOT_VERIFIED**.
+
+1. In a Google Cloud project you own, follow Google's Gmail MCP preview
+   instructions to enable access, configure the OAuth consent screen and create
+   the OAuth client type the preview requires. Add Station's redirect URI,
+   `http://127.0.0.1:<port>/integrations/<id>/oauth/callback`, where `<port>`
+   is the Station server port and `<id>` the integration id.
+2. Create the integration with connection type **HTTP** and the endpoint above.
+3. Under **Use your own OAuth client**, enter the client ID and the
+   **Authorization server**: the `issuer` in the authorization server metadata
+   that the Gmail MCP server's resource metadata names. Google documents
+   `https://accounts.google.com` as its OAuth issuer; confirm it against that
+   metadata. Optionally add **Default scopes**. Save.
+4. If the client has a secret, store it as a secret binding and **Bind** it.
+5. Sign in as in the steps above, choosing the scopes you want to grant.
+
+Vendor facts, as Google documents the preview at the time of writing: the Gmail
+MCP server offers only `https://www.googleapis.com/auth/gmail.readonly` and
+`https://www.googleapis.com/auth/gmail.compose`. Station doesn't restrict this
+list; the provider does. Starting with `gmail.readonly` and adding
+`gmail.compose` when an Agent needs to draft mail is one reasonable approach,
+not a Station requirement.
+
+Implementation: [client selection](../../src-server/services/plugins/tool-server-oauth.ts),
+[client-secret binding](../../src-server/services/secrets/secret-binding-administration.ts)
+and [settings](../../src-ui/src/views/integrations/OAuthClientSection.tsx).
+Evidence: [fake authorization server tests](../../src-server/services/plugins/__tests__/tool-server-oauth-client-registration.test.ts).
+
 Known limitation: tool-server credentials are plaintext JSON with mode `0600` in
 `<home>/security/tool-server-credentials.json` (personal accounts use
 `tool-server-principal-credentials.json` in the same directory). A process running
@@ -1635,10 +1814,11 @@ Local fixture evidence covers MCP tool calls through the proxy, account selectio
 refresh and conditional publication, mid-session expiry/401, scope refusals,
 launch refusal and confined Claude configuration delivery. These are local checks;
 live provider acceptance of the proxy design is **NOT_VERIFIED**.
-The [account sign-in capture](../learn/media/oauth-mcp-sign-in-comparison.png) and
-[tool assignment capture](../learn/media/oauth-mcp-picker-comparison.png)
-show mounted browser components with synthetic API responses. They do not show
-a live remote-server sign-in or tool call.
+The [account sign-in capture](../learn/media/oauth-mcp-sign-in-comparison.png)
+is from an isolated Station with a local fake authorization server; the
+[tool assignment capture](../learn/media/oauth-mcp-picker-comparison.png) shows
+mounted browser components with synthetic API responses. Neither shows a live
+remote-server sign-in or tool call.
 
 ## Developer services and computers
 
