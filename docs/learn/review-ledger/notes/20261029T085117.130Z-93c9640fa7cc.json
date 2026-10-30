@@ -1,0 +1,7 @@
+{
+  "revision": "9ab71288ea776f13c59851c039f5a1e14c405cf9",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Edited for the #4279 owner follow-ups: DCR issuer pin at the first completed consent (shared, per MCP URL, trust-on-first-use stated), remembered scope choice per account, STATION_OAUTH_CLIENT_METADATA_URL deployment default, and the recaptured sign-in screenshot description. Checked against tool-server-oauth.ts, config-loader-storage.ts, mcp-service.ts, IntegrationAccountSection.tsx and the new tests. Other inputs: the connections guide documents the issuer pin, remembered scopes, the deployment metadata-document default and the recaptured screenshot; station-runtime.ts only validates STATION_OAUTH_CLIENT_METADATA_URL at construction (a malformed value refuses startup); mcp-manager.ts passes the Station home to the OAuth client config so providers read the issuer pin; engine-mcp-oauth.ts passes the home to the OAuth client config; the shared OAuth credential key list adds oauth.scope-choice (kept by env reconcile, cleared with OAuth credentials); the provider pins the authorization server at the first completed consent, remembers scope choices, and applies the deployment metadata-document default.","inputs":["docs/guides/connections.md","packages/shared/src/tool-server-credential-store.ts","src-server/runtime/bootstrap/station-runtime.ts","src-server/runtime/mcp/mcp-manager.ts","src-server/services/plugins/engine-mcp-oauth.ts","src-server/services/plugins/tool-server-oauth.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "8f7533fade9057f8f980ccae6ab004d8aa308fef",
+
+  "notes": [
+    {"path":"docs/guides/plugins.md","note":"Source-impact review: the shared transport factory adds REQUIRES_AUTHORIZATION_FETCH and refuses a marked OAuth provider without authorizationFetch; unmarked providers are unchanged. Searched this document for MCP transport construction, OAuth provider and connection-option claims; none describes the changed behavior beyond links that still resolve (the shared reference excerpt already omits transport and authentication hooks), so its claims stay accurate.","inputs":["docs/guides/plugins.md","packages/shared/src/mcp-connection.ts"]}
+  ]
+}

@@ -63,6 +63,9 @@ const { createMCPToolProvenanceGeneration } = await import(
 const { FileSecretBindingAdministration, SecretBindingIntegrationService } =
   await import('../../secrets/secret-binding-administration.js');
 const { MCPService } = await import('../mcp-service.js');
+const { StationToolServerOAuthProvider } = await import(
+  '../tool-server-oauth.js'
+);
 
 // Created first so its after-hook removes the home after everything else.
 const makeTempDir = trackTempDirs();
@@ -559,6 +562,34 @@ test('two principals each reach the MCP server with their own token and cannot u
           )
         : run();
     };
+
+    // #4279: if a person's tokens vanish between choosing their provider and
+    // connecting, the SDK gets the full provider; that connection must still
+    // carry the provider's authorization fetch guard.
+    const vanished = vi
+      .spyOn(StationToolServerOAuthProvider.prototype, 'forTransport')
+      .mockImplementationOnce(async function (
+        this: InstanceType<typeof StationToolServerOAuthProvider>,
+      ) {
+        return this.forAuthorization();
+      });
+    const guard = vi.spyOn(
+      StationToolServerOAuthProvider.prototype,
+      'authorizationFetch',
+    );
+    const unguarded = await Promise.resolve(
+      callAs(BOB, 'bob-tokens-vanished'),
+    ).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(vanished).toHaveBeenCalled();
+    expect(guard).toHaveBeenCalled();
+    expect(String((unguarded as Error | undefined)?.message)).not.toContain(
+      'authorization fetch guard',
+    );
+    vanished.mockRestore();
+    guard.mockRestore();
 
     await callAs(ALICE, 'alice-turn');
     await callAs(BOB, 'bob-turn');

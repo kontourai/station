@@ -439,6 +439,15 @@
       "configKey": "usageLimitAutoResume"
     },
     {
+      "id": "claude-artifacts",
+      "label": "Claude Code artifacts",
+      "help": "Claude Code sessions can publish HTML and Markdown files as shareable Claude artifact pages.",
+      "scope": "station",
+      "section": "agent-runs",
+      "route": "/settings?view=agent-runs&highlight=claude-artifacts",
+      "configKey": "claudeArtifactsEnabled"
+    },
+    {
       "id": "review-guides",
       "label": "Review guides",
       "help": "Allow AI-written tours of pull requests on this server.",
