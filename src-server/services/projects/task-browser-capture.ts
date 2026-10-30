@@ -12,6 +12,7 @@ import {
   type BrowserSessionRegistry,
   redactBrowserUrl,
 } from '../browser/browser-session-registry.js';
+import { MobileDeviceHostError } from '../mobile-device/mobile-device-host.js';
 import type { TaskReviewAccess } from '../orchestration/project-task-room-runtime.js';
 import type { TaskReviewStore } from '../orchestration/task-review-store.js';
 import {
@@ -156,12 +157,67 @@ export class TaskBrowserCapture {
         registry,
         allows,
       );
+      const url = URL.canParse(session.url) ? new URL(session.url) : undefined;
+      const pageUrl =
+        url?.protocol === 'http:' || url?.protocol === 'https:'
+          ? redactBrowserUrl(session.url).slice(0, 2048)
+          : undefined;
+      const isCurrent = () => {
+        const now = registry.getSession(session.browserSessionId);
+        return (
+          !!now &&
+          eligible(now) &&
+          now.generation === session.generation &&
+          now.url === session.url
+        );
+      };
+      return await this.captureSource(
+        access,
+        {
+          ...input,
+          sourceKind: 'browser',
+          sourceSessionId: session.browserSessionId,
+        },
+        {
+          screenshot: () =>
+            registry.captureScreenshot(session.browserSessionId),
+          isCurrent: async () => isCurrent(),
+          isFenceCurrent: isCurrent,
+          pageUrl,
+        },
+      );
+    } catch (error) {
+      throw this.failure(error);
+    }
+  }
+
+  /** Device callers hold their control lease until metadata publication finishes. */
+  async captureSource(
+    access: TaskReviewAccess,
+    input: TaskReviewCreateCaptureRequest,
+    source: {
+      screenshot(): Promise<{
+        data: Buffer;
+        mimeType: TaskCapture['mediaType'];
+      }>;
+      isCurrent(): Promise<boolean>;
+      isFenceCurrent(): boolean;
+      pageUrl?: string;
+    },
+  ) {
+    try {
+      this.current(access);
+      if (!(await source.isCurrent()))
+        throw new TaskBrowserCaptureError(
+          'capture-unavailable',
+          'The capture source is unavailable.',
+        );
       const captures = this.deps.store.listCaptures(access.write);
       const prior = captures.find((c) => c.operationId === input.operationId);
       if (prior) {
         if (
-          prior.sourceKind !== 'browser' ||
-          prior.sourceSessionId !== session.browserSessionId ||
+          prior.sourceKind !== input.sourceKind ||
+          prior.sourceSessionId !== input.sourceSessionId ||
           prior.label !== input.label ||
           JSON.stringify(prior.author) !== JSON.stringify(access.write.author)
         )
@@ -170,6 +226,11 @@ export class TaskBrowserCapture {
             'That operation id already names another capture.',
           );
         const bytes = await this.content(access, prior.captureId);
+        if (!(await source.isCurrent()) || !source.isFenceCurrent())
+          throw new TaskBrowserCaptureError(
+            'capture-unavailable',
+            'The capture source changed.',
+          );
         return {
           capture: prior,
           screenshot: {
@@ -187,7 +248,7 @@ export class TaskBrowserCapture {
       await blobs.assertCapacity();
       const workspace = await this.workspace(access);
       const before = await this.cleanPin(workspace);
-      const shot = await registry.captureScreenshot(session.browserSessionId);
+      const shot = await source.screenshot();
       const after = await this.cleanPin(workspace);
       if (
         before.commit !== after.commit ||
@@ -198,27 +259,16 @@ export class TaskBrowserCapture {
           'workspace-changed',
           'The workspace changed during capture.',
         );
-      const now = registry.getSession(session.browserSessionId);
-      if (
-        !now ||
-        !eligible(now) ||
-        now.generation !== session.generation ||
-        now.url !== session.url
-      )
+      if (!(await source.isCurrent()))
         throw new TaskBrowserCaptureError(
           'capture-unavailable',
-          'The browser session changed during capture.',
+          'The capture source changed during capture.',
         );
       this.current(access);
       const screenshot = {
         mimeType: shot.mimeType,
         data: shot.data.toString('base64'),
       };
-      const url = URL.canParse(session.url) ? new URL(session.url) : undefined;
-      const pageUrl =
-        url?.protocol === 'http:' || url?.protocol === 'https:'
-          ? redactBrowserUrl(session.url).slice(0, 2048)
-          : undefined;
       const capture = await blobs.put(
         shot.data,
         shot.mimeType.toLowerCase(),
@@ -226,23 +276,32 @@ export class TaskBrowserCapture {
           this.current(access);
           const result = this.deps.store.createCapture({
             ...access.write,
+            beforeCommit: () =>
+              access.write.beforeCommit() && source.isFenceCurrent(),
             ...blob,
-            sourceKind: 'browser',
-            sourceSessionId: session.browserSessionId,
+            sourceKind: input.sourceKind,
+            sourceSessionId: input.sourceSessionId,
             commit: before.commit,
             mediaType: shot.mimeType,
             operationId: input.operationId,
-            ...(pageUrl ? { pageUrl } : {}),
+            ...(source.pageUrl ? { pageUrl: source.pageUrl } : {}),
             ...(input.label !== undefined ? { label: input.label } : {}),
           });
           if (!result.success)
             throw new TaskBrowserCaptureError(result.code, result.error);
           return result.data;
         },
+        async () => {
+          if (!(await source.isCurrent()))
+            throw new TaskBrowserCaptureError(
+              'capture-unavailable',
+              'The capture source changed.',
+            );
+        },
       );
       return { capture, screenshot };
     } catch (error) {
-      throw this.failure(error);
+      throw this.failure(error, input.sourceKind);
     }
   }
 
@@ -272,7 +331,10 @@ export class TaskBrowserCapture {
     }
   }
 
-  private failure(error: unknown): Error {
+  private failure(
+    error: unknown,
+    sourceKind: TaskCapture['sourceKind'] = 'browser',
+  ): Error {
     if (error instanceof TaskBrowserCaptureError) return error;
     if (error instanceof WorkspaceCommitPinError)
       return new TaskBrowserCaptureError(
@@ -289,6 +351,13 @@ export class TaskBrowserCapture {
         error.code === 'screenshot-too-large'
           ? 'The screenshot is too large. Choose a smaller viewport.'
           : 'The browser did not provide a capture.',
+      );
+    if (error instanceof MobileDeviceHostError)
+      return new TaskBrowserCaptureError(
+        error.code === 'response-too-large'
+          ? 'screenshot-too-large'
+          : 'capture-unavailable',
+        'The device did not provide a bounded capture.',
       );
     if (error instanceof TaskCaptureBlobStoreError) {
       const code =
@@ -312,7 +381,9 @@ export class TaskBrowserCapture {
     }
     return new TaskBrowserCaptureError(
       'capture-unavailable',
-      'The browser capture is unavailable.',
+      sourceKind === 'browser'
+        ? 'The browser capture is unavailable.'
+        : 'The device capture is unavailable.',
       { cause: error },
     );
   }

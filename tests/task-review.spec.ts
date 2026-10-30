@@ -320,6 +320,58 @@ async function clipShots(page: Page, testInfo: TestInfo, reviewUrl: string) {
   await page.setViewportSize({ width: 1440, height: 1000 });
 }
 
+async function timelineShots(page: Page, testInfo: TestInfo, empty = false) {
+  const directory = process.env.STATION_REVIEW_SHOTS_DIR;
+  if (!directory) return;
+  mkdirSync(directory, { recursive: true });
+  const taskUrl = page.url();
+  for (const theme of ['dark', 'light']) {
+    await page.goto(new URL('/appearance', taskUrl).href);
+    const mode = page.getByRole('radiogroup', { name: 'Mode', exact: true });
+    const label = theme === 'dark' ? 'Dark' : 'Light';
+    if (
+      !(await mode.getByRole('radio', { name: label, exact: true }).isChecked())
+    ) {
+      const [saved] = await Promise.all([
+        page.waitForResponse(
+          (response) =>
+            new URL(response.url()).pathname === '/api/me/preferences' &&
+            response.request().method() === 'PATCH' &&
+            response.request().postDataJSON()?.theme === theme,
+        ),
+        mode.getByText(label, { exact: true }).click(),
+      ]);
+      expect(saved.ok()).toBe(true);
+    }
+    await page.goto(taskUrl);
+    await page.getByRole('tab', { name: 'Overview', exact: true }).click();
+    const timeline = page.getByRole('region', {
+      name: 'Timeline',
+      exact: true,
+    });
+    if (empty)
+      await expect(
+        timeline.getByText('Capture a Screen in Review to start the Timeline.'),
+      ).toBeVisible();
+    else
+      await expect(timeline.locator('.task-timeline__capture')).toHaveCount(4);
+    for (const width of [390, 1440]) {
+      await page.setViewportSize({ width, height: 1000 });
+      await expect(timeline).toBeVisible();
+      if (!empty) await expect(timeline.locator('img')).toHaveCount(4);
+      const name = empty
+        ? `timeline-empty-${theme}-${width}.png`
+        : `timeline-${theme}-${width}.png`;
+      await page.screenshot({
+        path: testInfo.outputPath(name),
+        fullPage: true,
+      });
+      copyFileSync(testInfo.outputPath(name), join(directory, name));
+    }
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 });
+}
+
 test.describe
   .serial('Task review on an isolated Station', () => {
     let live: LiveStation;
@@ -420,6 +472,7 @@ syncBuiltinESMExports();
         'review-demo',
       );
       await page.reload();
+      await timelineShots(page, info, true);
       await page.getByRole('tab', { name: 'Review', exact: true }).click();
       await expect(
         page.getByRole('tabpanel', { name: 'Review', exact: true }),
@@ -811,5 +864,16 @@ syncBuiltinESMExports();
       await target.hover();
       await expect(target).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       await shots(page, info, 'screens');
+      if (process.env.STATION_REVIEW_SHOTS_DIR) {
+        for (let i = 0; i < 3; i++) {
+          await page
+            .getByRole('button', { name: 'Capture', exact: true })
+            .click();
+          await page
+            .getByRole('button', { name: 'Capture Screen', exact: true })
+            .click();
+        }
+        await timelineShots(page, info);
+      }
     });
   });
