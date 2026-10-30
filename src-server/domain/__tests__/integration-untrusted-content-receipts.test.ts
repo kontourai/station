@@ -1,4 +1,10 @@
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import {
@@ -12,18 +18,32 @@ import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { untrustedContentDecision } from '../../services/plugins/untrusted-content-policy.js';
 import { ConfigLoader } from '../config-loader.js';
 import {
+  claimIntegrationOAuthIssuerPin,
   deleteIntegrationConfig,
   loadIntegrationConfig,
   publishPluginIntegrations,
+  readIntegrationOAuthIssuerPin,
   restorePluginIntegrations,
   saveIntegrationConfig,
 } from '../config-loader-storage.js';
+
+const publicationWrite = vi.hoisted(() => ({
+  before: undefined as (() => Promise<void>) | undefined,
+}));
 
 const renameFault = vi.hoisted(() => ({ enabled: false }));
 vi.mock('node:fs/promises', async (importOriginal) => {
   const original = await importOriginal<typeof import('node:fs/promises')>();
   return {
     ...original,
+    writeFile: async (...args: Parameters<typeof original.writeFile>) => {
+      if (
+        String(args[0]).includes('integration-publish-') &&
+        String(args[0]).endsWith('integration.json')
+      )
+        await publicationWrite.before?.();
+      return original.writeFile(...args);
+    },
     rename: async (
       from: Parameters<typeof original.rename>[0],
       to: Parameters<typeof original.rename>[1],
@@ -361,6 +381,66 @@ describe('plugin integration publication', () => {
       } as ToolDef,
       { changedBy: 'person' },
     );
+
+  test.each(['publish', 'restore'] as const)(
+    '%s retains a first issuer claimed concurrently with tree replacement',
+    async (operation) => {
+      const home = makeTempDir('station-concurrent-pin-');
+      await seedOwned(home);
+      const pluginDir = hostilePlugin(home);
+      const backup = join(home, 'pin-backup');
+      mkdirSync(join(backup, 'mail'), { recursive: true });
+      writeFileSync(
+        join(backup, 'mail', 'integration.json'),
+        JSON.stringify({ ...def, plugin: 'mail-plugin' }),
+      );
+      const issuer = 'https://issuer-a.example.test';
+      const resource = def.endpoint!;
+      let pendingClaim: Promise<string> | undefined;
+      publicationWrite.before = async () => {
+        // If publication owns the pin lease, the concurrent claim must wait.
+        // Otherwise finish sign-in at this paused write, after the sidecar snapshot.
+        const publicationOwnsPin = existsSync(
+          join(home, 'integrations', '.mail.oauth-pin.mutation'),
+        );
+        pendingClaim = claimIntegrationOAuthIssuerPin(
+          home,
+          'mail',
+          resource,
+          issuer,
+        );
+        if (!publicationOwnsPin) await pendingClaim;
+      };
+      try {
+        if (operation === 'restore')
+          await restorePluginIntegrations({
+            projectHomeDir: home,
+            pluginName: 'mail-plugin',
+            backupDir: backup,
+          });
+        else
+          await publishPluginIntegrations({
+            projectHomeDir: home,
+            pluginName: 'mail-plugin',
+            stage: (staging) => copyPluginIntegrations(pluginDir, staging),
+          });
+        expect(await pendingClaim).toBe(issuer);
+        expect(readIntegrationOAuthIssuerPin(home, 'mail', resource)).toBe(
+          issuer,
+        );
+        expect(
+          await claimIntegrationOAuthIssuerPin(
+            home,
+            'mail',
+            resource,
+            'https://issuer-b.example.test',
+          ),
+        ).toBe(issuer);
+      } finally {
+        publicationWrite.before = undefined;
+      }
+    },
+  );
 
   test('keeps stored settings and receipts and drops forged receipts', async () => {
     const home = makeTempDir('station-publish-');

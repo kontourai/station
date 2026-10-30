@@ -468,6 +468,11 @@ async function publishPluginIntegrationsLocked(
             toolServerIntegrationMutationLockPath(projectHomeDir, id),
           ),
         );
+      // Take integration locks first, then pin leases, in sorted id order.
+      // Claims and outbound OAuth requests take only the pin lease; hold it
+      // through snapshot, replacement and compensation so no claimed pin is lost.
+      for (const id of ids)
+        releases.push(await acquireIntegrationOAuthPinLock(projectHomeDir, id));
       const now = (options.now ?? (() => new Date()))();
       for (const id of ids) {
         const currentRaw = storedIntegration(
@@ -924,11 +929,10 @@ const oauthPinQueues = new Map<string, Promise<void>>();
  * file lock covers other processes sharing the home. A request held under it
  * is bounded by its caller.
  */
-export async function withIntegrationOAuthPinLock<T>(
+async function acquireIntegrationOAuthPinLock(
   projectHomeDir: string,
   id: string,
-  action: () => Promise<T>,
-): Promise<T> {
+): Promise<() => Promise<void>> {
   assertSafeIntegrationId(id);
   const path = join(
     projectHomeDir,
@@ -942,20 +946,39 @@ export async function withIntegrationOAuthPinLock<T>(
   });
   const tail = previous.then(() => turn);
   oauthPinQueues.set(path, tail);
+  const finish = () => {
+    releaseQueue();
+    if (oauthPinQueues.get(path) === tail) oauthPinQueues.delete(path);
+  };
   await previous;
   try {
     await mkdir(join(projectHomeDir, 'integrations'), { recursive: true });
     const unlock = await acquireFileMutationLockAsync(path, {
       timeoutMs: 45_000,
     });
-    try {
-      return await action();
-    } finally {
-      await unlock();
-    }
+    return async () => {
+      try {
+        await unlock();
+      } finally {
+        finish();
+      }
+    };
+  } catch (error) {
+    finish();
+    throw error;
+  }
+}
+
+export async function withIntegrationOAuthPinLock<T>(
+  projectHomeDir: string,
+  id: string,
+  action: () => Promise<T>,
+): Promise<T> {
+  const release = await acquireIntegrationOAuthPinLock(projectHomeDir, id);
+  try {
+    return await action();
   } finally {
-    releaseQueue();
-    if (oauthPinQueues.get(path) === tail) oauthPinQueues.delete(path);
+    await release();
   }
 }
 
