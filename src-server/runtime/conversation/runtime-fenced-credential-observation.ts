@@ -5,6 +5,10 @@ import type { ConfigLoader } from '../../domain/config-loader.js';
 import type { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import type { CurrentRuntimeRequestPrincipalSecurity } from '../../security/runtime-request-security.js';
 import type { AgentService } from '../../services/agents/agent-service.js';
+import {
+  readStationControlSourceCredentialAuthority,
+  type StationControlSourceCredentialAuthority,
+} from '../../services/orchestration/delegation-group-source-admission.js';
 import type { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
 import { resolveManagedModelIdentity } from '../plugins/runtime-provider-resolution.js';
 import type { RuntimeContext } from '../types.js';
@@ -164,6 +168,7 @@ export class RuntimeFencedCredentialObservationOwner {
   async captureAgentSdkCredential(
     request: Request,
     agentId: string,
+    sessionCapability?: StationControlSourceCredentialAuthority,
   ): Promise<
     Readonly<{
       agentId: string;
@@ -182,11 +187,18 @@ export class RuntimeFencedCredentialObservationOwner {
       [id],
       () => owners.runtime.getAgentConfigurationRevision(),
     );
-    const authority = await captureEnvironmentLocalGrantObservationOwner(
-      request,
-      owners.environmentSecurityService,
-      owners.requestSecurity,
-    );
+    const session = sessionCapability
+      ? readStationControlSourceCredentialAuthority(sessionCapability, request)
+      : undefined;
+    session?.assertMayCapture();
+    if (session && session.agentId !== id) refuse();
+    const authority = session
+      ? undefined
+      : await captureEnvironmentLocalGrantObservationOwner(
+          request,
+          owners.environmentSecurityService,
+          owners.requestSecurity,
+        );
     const assertCurrent = () => {
       if (
         revision === null ||
@@ -197,11 +209,13 @@ export class RuntimeFencedCredentialObservationOwner {
       this.#requireSameHome();
       configuration();
       runtime();
-      authority.requireCurrentLocalGrant(request).assertCurrent();
+      if (session) session.assertCurrent();
+      else authority!.requireCurrentLocalGrant(request).assertCurrent();
     };
     assertCurrent();
     const spec = await owners.agentService.getAgent(id);
     assertCurrent();
+    if (session && spec.project !== session.projectSlug) refuse();
     if (spec.execution?.agentConnectionId) refuse();
     const appConfig = await owners.configLoader.loadAppConfig();
     assertCurrent();
@@ -213,11 +227,15 @@ export class RuntimeFencedCredentialObservationOwner {
     });
     const provider = binding.providerType;
     if (provider !== 'anthropic' && provider !== 'google') refuse();
-    const credential = await this.captureSdkCredential(request, {
-      agentIds: [id],
-      connectionId: binding.providerConnection.id,
-      provider,
-    });
+    const credential = await this.captureSdkCredential(
+      request,
+      {
+        agentIds: [id],
+        connectionId: binding.providerConnection.id,
+        provider,
+      },
+      sessionCapability,
+    );
     assertCurrent();
     if (
       canonicalJson(owners.storageAdapter.listProviderConnections()) !==
@@ -244,6 +262,7 @@ export class RuntimeFencedCredentialObservationOwner {
       provider: 'anthropic' | 'google';
       lifetimeMs?: number;
     }>,
+    sessionCapability?: StationControlSourceCredentialAuthority,
   ): Promise<ObservedSdkProviderCredential> {
     const owners = this.#owners;
     const provider = input.provider;
@@ -294,12 +313,55 @@ export class RuntimeFencedCredentialObservationOwner {
         runtimeCurrent();
       };
       assertCurrent();
-      const authority = await captureEnvironmentLocalGrantObservationOwner(
-        request,
-        owners.environmentSecurityService,
-        owners.requestSecurity,
-      );
+      const session = sessionCapability
+        ? readStationControlSourceCredentialAuthority(
+            sessionCapability,
+            request,
+          )
+        : undefined;
+      session?.assertMayCapture();
+      const local = session
+        ? undefined
+        : await captureEnvironmentLocalGrantObservationOwner(
+            request,
+            owners.environmentSecurityService,
+            owners.requestSecurity,
+          );
+      const authority = sessionCapability
+        ? {
+            kind: 'station-control-session' as const,
+            capability: sessionCapability,
+          }
+        : local!;
       assertCurrent();
+      if (session) {
+        if (
+          selected.agentIds.length !== 1 ||
+          selected.agentIds[0] !== session.agentId
+        )
+          refuse();
+        const agent = await owners.agentService.getAgent(selected.agentIds[0]!);
+        assertCurrent();
+        session.assertCurrent();
+        if (
+          agent.project !== session.projectSlug ||
+          agent.execution?.agentConnectionId
+        )
+          refuse();
+        const appConfig = await owners.configLoader.loadAppConfig();
+        assertCurrent();
+        session.assertCurrent();
+        const binding = resolveManagedModelIdentity(agent, {
+          appConfig,
+          listProviderConnections: () =>
+            owners.storageAdapter.listProviderConnections(),
+        });
+        if (
+          binding.providerConnection.id !== operation.connectionId ||
+          binding.providerType !== provider
+        )
+          refuse();
+      }
       const store = new ProviderCredentialObservationStore(
         owners.configLoader.getProjectHomeDir(),
         {
@@ -315,7 +377,8 @@ export class RuntimeFencedCredentialObservationOwner {
         () => {
           if (!active || entered || this.#captureAttempts >= 4096) refuse();
           assertCurrent();
-          authority.requireCurrentLocalGrant(request).assertCurrent();
+          if (session) session.assertMayCapture();
+          else local!.requireCurrentLocalGrant(request).assertCurrent();
           entered = true;
           this.#captureAttempts++;
           credential = store.captureSdkCredential(

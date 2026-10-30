@@ -18,6 +18,10 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
+import {
+  readStationControlSourceCredentialAuthority,
+  type StationControlSourceCredentialAuthority,
+} from '../../services/orchestration/delegation-group-source-admission.js';
 
 export type ObservationFailure =
   | 'authorization_unavailable'
@@ -48,7 +52,12 @@ export interface CurrentLocalGrantObservationOwner {
   }>;
 }
 export interface ProviderCredentialObservationSources {
-  authority: CurrentLocalGrantObservationOwner;
+  authority:
+    | CurrentLocalGrantObservationOwner
+    | {
+        kind: 'station-control-session';
+        capability: StationControlSourceCredentialAuthority;
+      };
   /** Actual FileStorageAdapter, pointed at this same canonical home. */
   adapter: {
     listProviderConnections(): Array<{
@@ -120,17 +129,20 @@ type SourceWitness = {
   selectedConnectionSha256: string;
   staticKeySha256: string;
 };
-type PrivateRecord = {
-  schema: 2;
+type PrivateRecordBase = {
   observationId: string;
   observedAtMs: number;
   expiresAtMs: number;
   connectionId: string;
-  principalCredentialSha256: string;
   hostContextId: string;
   privateHostContextWitness: string;
   source: SourceWitness;
 };
+type PrivateRecord = PrivateRecordBase &
+  (
+    | { schema: 2; principalCredentialSha256: string }
+    | { schema: 3; sessionIdentitySha256: string }
+  );
 type Fences = { configuration: () => void; runtime: () => void };
 const MAX_BYTES = 2 * 1024 * 1024;
 const MAX_RECORD_BYTES = 16384;
@@ -325,21 +337,29 @@ function parseProviders(
   };
 }
 function parseRecord(bytes: Buffer): PrivateRecord {
-  const parsed = object(JSON.parse(bytes.toString('utf8')), [
+  const raw = JSON.parse(bytes.toString('utf8'));
+  const session = raw?.schema === 3;
+  const parsed = object(raw, [
     'schema',
     'observationId',
     'observedAtMs',
     'expiresAtMs',
     'connectionId',
-    'principalCredentialSha256',
+    session ? 'sessionIdentitySha256' : 'principalCredentialSha256',
     'hostContextId',
     'privateHostContextWitness',
     'source',
   ]);
   if (
-    parsed.schema !== 2 ||
+    (parsed.schema !== 2 && parsed.schema !== 3) ||
     !ID.test(string(parsed.observationId)) ||
-    !SHA.test(string(parsed.principalCredentialSha256)) ||
+    !SHA.test(
+      string(
+        session
+          ? parsed.sessionIdentitySha256
+          : parsed.principalCredentialSha256,
+      ),
+    ) ||
     !/^[A-Za-z0-9_-]{43}$/u.test(string(parsed.privateHostContextWitness))
   )
     fail('unsupported_source');
@@ -415,15 +435,42 @@ export class ProviderCredentialObservationStore {
     this.#now = now;
   }
 
-  #authorization(request: Request) {
+  #authorization(request: Request, capture = false) {
     try {
-      const lease = this.#sources.authority.requireCurrentLocalGrant(request);
+      const source = this.#sources.authority;
+      if ('kind' in source) {
+        const lease = readStationControlSourceCredentialAuthority(
+          source.capability,
+          request,
+        );
+        if (capture) lease.assertMayCapture();
+        string(lease.hostContextId);
+        if (
+          !SHA.test(lease.identityDigest) ||
+          !/^[A-Za-z0-9_-]{43}$/u.test(lease.privateHostContextWitness)
+        )
+          fail('authorization_unavailable');
+        return {
+          kind: 'session' as const,
+          identityDigest: lease.identityDigest,
+          hostContextId: lease.hostContextId,
+          privateHostContextWitness: lease.privateHostContextWitness,
+          assertCurrent: lease.assertCurrent,
+        };
+      }
+      const lease = source.requireCurrentLocalGrant(request);
       string(lease.principalCredential, 16384);
       string(lease.hostContextId);
       lease.assertCurrent();
       if (!/^[A-Za-z0-9_-]{43}$/u.test(lease.privateHostContextWitness))
         fail('authorization_unavailable');
-      return lease;
+      return {
+        kind: 'local' as const,
+        identityDigest: sha(lease.principalCredential),
+        hostContextId: lease.hostContextId,
+        privateHostContextWitness: lease.privateHostContextWitness,
+        assertCurrent: lease.assertCurrent,
+      };
     } catch {
       return fail('authorization_unavailable');
     }
@@ -571,7 +618,7 @@ export class ProviderCredentialObservationStore {
     connectionId: string,
     lifetimeMs = 15 * 60 * 1000,
   ): ProviderCredentialObservation {
-    const authority = this.#authorization(request);
+    const authority = this.#authorization(request, true);
     try {
       string(connectionId);
       count(lifetimeMs);
@@ -588,12 +635,19 @@ export class ProviderCredentialObservationStore {
       fences.configuration();
       fences.runtime();
       const record: PrivateRecord = {
-        schema: 2,
+        ...(authority.kind === 'local'
+          ? {
+              schema: 2 as const,
+              principalCredentialSha256: authority.identityDigest,
+            }
+          : {
+              schema: 3 as const,
+              sessionIdentitySha256: authority.identityDigest,
+            }),
         observationId: randomUUID(),
         observedAtMs: now,
         expiresAtMs: expires,
         connectionId,
-        principalCredentialSha256: sha(authority.principalCredential),
         hostContextId: authority.hostContextId,
         privateHostContextWitness: authority.privateHostContextWitness,
         source,
@@ -628,8 +682,11 @@ export class ProviderCredentialObservationStore {
       operation.runtime();
       const record = this.#record(observationId);
       if (
-        record.principalCredentialSha256 !==
-          sha(authority.principalCredential) ||
+        (record.schema === 2
+          ? authority.kind !== 'local' ||
+            record.principalCredentialSha256 !== authority.identityDigest
+          : authority.kind !== 'session' ||
+            record.sessionIdentitySha256 !== authority.identityDigest) ||
         record.hostContextId !== authority.hostContextId ||
         record.privateHostContextWitness !== authority.privateHostContextWitness
       )
@@ -699,8 +756,15 @@ export class ProviderCredentialObservationStore {
     lifetimeMs = 15 * 60 * 1000,
   ): ObservedSdkProviderCredential {
     const observation = this.capture(request, connectionId, lifetimeMs);
+    const sourceAuthority = this.#sources.authority;
     const read = (): SdkCredentialValue =>
-      this.#sources.authority.withObservationScope(request, () => {
+      ('kind' in sourceAuthority
+        ? readStationControlSourceCredentialAuthority(
+            sourceAuthority.capability,
+            request,
+          ).withObservationScope
+        : (check: () => SdkCredentialValue) =>
+            sourceAuthority.withObservationScope(request, check))(() => {
         if (request.signal.aborted) fail('authorization_unavailable');
         this.revalidate(request, observation.observationId);
         const record = this.#record(observation.observationId);

@@ -27,19 +27,29 @@ import {
   withRunMutationLock,
 } from '@kontourai/flow';
 import type { DelegationExecutionBindingV2 } from '@kontourai/flow-agents/delegation-authority-contract';
+import type { ProjectMembershipScope } from '@kontourai/station-contracts/project-membership';
 import { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import { createOrchestrationRequestPrincipalResolver } from '../../runtime/bootstrap/orchestration-request-principal.js';
 import { createPersonalRuntimeRequestGuard } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import { captureEnvironmentLocalGrantObservationOwner } from '../../runtime/conversation/local-grant-observation-owner.js';
+import {
+  createStationControlCallerRecordResolver,
+  resolveStationControlCallerForRequest,
+  stationControlCallerRecordSources,
+} from '../../runtime/mcp/station-control-caller.js';
 import { isOperatorInPersonNotAgent } from '../../security/coding-authority.js';
 import {
   getDirectSocketAddress,
+  isRuntimeRequestPrincipalCurrent,
   runtimeRequestPrincipalMayAccessHttpRoute,
 } from '../../security/runtime-request-security.js';
+import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
+import { STATION_CONTROL_CALLER_TOKEN_HEADER } from '../../tools/station-control-shared.js';
 import { execGit } from '../../utils/git-exec.js';
 import {
   INTERNAL_API_TOKEN_HEADER,
   INTERNAL_INGRESS_IDENTITY_HEADER,
+  INTERNAL_TENANT_HEADER,
 } from '../../utils/internal-api-token.js';
 import { expandTilde } from '../../utils/paths.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../identity/principal-resolver.js';
@@ -49,6 +59,7 @@ import {
 } from '../projects/git-read-repository.js';
 import { ProjectBindingsStore } from '../projects/project-binding-store.js';
 import { ProjectManifestStore } from '../projects/project-manifest-store.js';
+import { ProjectMembershipService } from '../projects/project-membership-service.js';
 import { ProjectResourceResolver } from '../projects/project-resource-resolver.js';
 import { ProjectService } from '../projects/project-service.js';
 import { EnvironmentSecurityService } from '../ssh/environment-security-service.js';
@@ -59,6 +70,8 @@ import {
   disposeSdkSourceWire,
   sdkDisposalPromise,
 } from './delegation-group-sdk-source-wire-owner.js';
+import { EventStore } from './event-store.js';
+import { OrchestrationService } from './orchestration-service.js';
 import {
   reportAdmissionSignatureMatches,
   validateStationReportAdmission,
@@ -549,20 +562,65 @@ async function captureSource(home: string, selection: Selection) {
   };
 }
 
-type RecordV1 = {
-  schema: 1;
+type SourceRecordBase = {
   kind: 'source-class-only';
   id: string;
   issuedAt: number;
   expiresAt: number;
   principalId: string;
-  principalCredentialHash: string;
   hostContextId: string;
   privateHostContextWitness: string;
   subject: Subject;
   selection: Selection;
   observed: Snapshot;
 };
+type SessionCustody = {
+  kind: 'station-control-session';
+  sessionId: string;
+  principalId: string;
+  localProjectId: string;
+  projectSlug: string;
+  projectScope: ProjectMembershipScope;
+  conversationId: string | null;
+  tenantId: string | null;
+};
+type RecordV1 = SourceRecordBase & {
+  schema: 1;
+  principalCredentialHash: string;
+};
+type RecordV2 = SourceRecordBase & {
+  schema: 2;
+  sessionCustody: SessionCustody;
+};
+type SourceRecord = RecordV1 | RecordV2;
+const sessionCredentialAuthorities = new WeakMap<
+  object,
+  {
+    request: Request;
+    identityDigest: string;
+    hostContextId: string;
+    privateHostContextWitness: string;
+    projectSlug: string;
+    agentId: string;
+    assertMayCapture(): void;
+    assertCurrent(): void;
+    withObservationScope<T>(check: () => T): T;
+  }
+>();
+
+/** Private request-bound Session custody; its identity comes only from this owner. */
+export type StationControlSourceCredentialAuthority = object;
+
+export function readStationControlSourceCredentialAuthority(
+  capability: StationControlSourceCredentialAuthority,
+  request: Request,
+) {
+  const held = sessionCredentialAuthorities.get(capability);
+  if (!held || held.request !== request)
+    refuse('station_control_source_unavailable');
+  held.assertCurrent();
+  return held;
+}
 /** Private source custody. Flow launch admission uses its sealed Project/resource observation. */
 export class LocalSourceAdmissionOwner {
   readonly #snapshots = new Map<object, SealedState>();
@@ -578,12 +636,25 @@ export class LocalSourceAdmissionOwner {
   readonly #store: string;
   readonly #storeIdentity: string;
   readonly #homeIdentity: string;
+  readonly #stationControl?: {
+    orchestration: OrchestrationService;
+    eventStore: EventStore;
+    projects: ProjectService;
+    membership: ProjectMembershipService;
+  };
   constructor(
     home: string,
     environment: EnvironmentSecurityService,
     store: string,
+    stationControl?: {
+      orchestration: OrchestrationService;
+      eventStore: EventStore;
+      projects: ProjectService;
+      membership: ProjectMembershipService;
+    },
   ) {
     this.#environment = environment;
+    this.#stationControl = stationControl;
     this.#home = realpathSync(home);
     this.#store = realpathSync(store);
     privateDirectory(this.#home);
@@ -661,6 +732,129 @@ export class LocalSourceAdmissionOwner {
   }
   async #authority(context: RuntimeSourceRequestContext) {
     const request = context.req.raw;
+    const bound = stationControlRequestAuthority(request);
+    if (bound?.kind === 'caller') {
+      if (
+        !this.#personal(request) ||
+        request.method !== 'POST' ||
+        request.headers.has(INTERNAL_TENANT_HEADER)
+      )
+        refuse('station_control_source_unavailable');
+      const owners = this.#stationControl;
+      if (
+        !owners ||
+        !(owners.membership instanceof ProjectMembershipService) ||
+        !(owners.orchestration instanceof OrchestrationService) ||
+        !(owners.eventStore instanceof EventStore) ||
+        !(owners.projects instanceof ProjectService)
+      )
+        refuse('station_control_source_unavailable');
+      if (realpathSync(this.#environment.getProjectHomeDir()) !== this.#home)
+        refuse('home_context_mismatch');
+      const callerRecords = createStationControlCallerRecordResolver(
+        stationControlCallerRecordSources({
+          orchestrationService: owners.orchestration,
+          eventStore: owners.eventStore,
+          getProject: (slug) => owners.projects.getProject(slug),
+        }),
+      );
+      const resolve = () =>
+        resolveStationControlCallerForRequest(request, callerRecords);
+      const callerToken = request.headers.get(
+        STATION_CONTROL_CALLER_TOKEN_HEADER,
+      );
+      const caller = resolve();
+      if (
+        !caller ||
+        caller.assurance !== 'bound' ||
+        caller.principal?.source !== 'session-owner' ||
+        !caller.principal.elevationEligible ||
+        caller.projectIdSource !== 'session-record' ||
+        !caller.localProjectId ||
+        !caller.projectSlug ||
+        !isDeepStrictEqual(bound.caller, caller)
+      )
+        refuse('station_control_source_unavailable');
+      const initialAdmissions = owners.membership
+        .admissionsForResolvedPrincipal(caller.principal.id)
+        .filter(
+          ({ scope, member }) =>
+            scope.localProjectId === caller.localProjectId &&
+            scope.localProjectSlug === caller.projectSlug &&
+            member.actions.includes('execute'),
+        );
+      if (initialAdmissions.length !== 1)
+        refuse('station_control_project_unavailable');
+      const capturedScope = structuredClone(initialAdmissions[0]!.scope);
+      const sessionCustody: SessionCustody = {
+        kind: 'station-control-session',
+        sessionId: caller.sessionId,
+        principalId: caller.principal.id,
+        localProjectId: caller.localProjectId,
+        projectSlug: caller.projectSlug,
+        projectScope: capturedScope,
+        conversationId: caller.conversationId ?? null,
+        tenantId: request.headers.get(INTERNAL_TENANT_HEADER),
+      };
+      const host = await this.#environment.readExistingRecord();
+      if (capturedScope.stationId !== host.environmentId)
+        refuse('station_control_project_unavailable');
+      const contextBinding = json([DOMAIN, host.environmentId]);
+      const localEnvironment = new EnvironmentSecurityService({
+        homeDir: this.#home,
+      });
+      const witness =
+        this.#environment.signRevisionEvidenceAuthorityBinding(contextBinding);
+      const assertCurrent = () =>
+        this.#environment.withCurrentAuthority(() => {
+          request.signal.throwIfAborted();
+          const now = resolve();
+          if (
+            !this.#personal(request) ||
+            !callerToken ||
+            request.headers.get(STATION_CONTROL_CALLER_TOKEN_HEADER) !==
+              callerToken ||
+            stationControlRequestAuthority(request) !== bound ||
+            !now ||
+            !isDeepStrictEqual(now, caller) ||
+            !isRuntimeRequestPrincipalCurrent(request, this.#environment)
+          )
+            refuse('station_control_source_unavailable');
+          const admitted = owners.membership
+            .admissionsForResolvedPrincipal(sessionCustody.principalId)
+            .filter(
+              ({ scope, member }) =>
+                isDeepStrictEqual(scope, capturedScope) &&
+                member.actions.includes('execute'),
+            );
+          if (admitted.length !== 1)
+            refuse('station_control_project_unavailable');
+          privateDirectory(this.#home);
+          privateDirectory(this.#store);
+          if (
+            identity(this.#home) !== this.#homeIdentity ||
+            identity(this.#store) !== this.#storeIdentity ||
+            localEnvironment.signRevisionEvidenceAuthorityBinding(
+              contextBinding,
+            ) !== witness ||
+            this.#environment.signRevisionEvidenceAuthorityBinding(
+              contextBinding,
+            ) !== witness
+          )
+            refuse('home_context_mismatch');
+        });
+      assertCurrent();
+      return {
+        request,
+        principalId: sessionCustody.principalId,
+        sessionCustody,
+        lease: {
+          hostContextId: host.environmentId,
+          privateHostContextWitness: witness,
+        },
+        assertCurrent,
+      };
+    }
     const headerValues = new Map(
       [INTERNAL_API_TOKEN_HEADER, INTERNAL_INGRESS_IDENTITY_HEADER].map(
         (name) => [name, context.req.header(name)],
@@ -742,13 +936,67 @@ export class LocalSourceAdmissionOwner {
           refuse('source_grant_action_not_authorized');
       });
     assertCurrent();
-    return { lease, principalId: principal.id, assertCurrent, request };
+    return {
+      lease,
+      principalId: principal.id,
+      sessionCustody: undefined,
+      assertCurrent,
+      request,
+    };
+  }
+  #sourceIdentity(
+    authority: SnapshotAuthority,
+  ):
+    | Pick<RecordV1, 'schema' | 'principalCredentialHash'>
+    | Pick<RecordV2, 'schema' | 'sessionCustody'> {
+    if (authority.sessionCustody)
+      return { schema: 2, sessionCustody: authority.sessionCustody };
+    if (!authority.lease.principalCredential)
+      refuse('personal_operator_required');
+    return {
+      schema: 1,
+      principalCredentialHash: sha(authority.lease.principalCredential),
+    };
+  }
+  #identityMatches(
+    record: SourceRecord,
+    authority: SnapshotAuthority,
+  ): boolean {
+    return record.schema === 1
+      ? !Object.hasOwn(record, 'sessionCustody') &&
+          !authority.sessionCustody &&
+          !!authority.lease.principalCredential &&
+          record.principalCredentialHash ===
+            sha(authority.lease.principalCredential)
+      : !Object.hasOwn(record, 'principalCredentialHash') &&
+          !!authority.sessionCustody &&
+          isDeepStrictEqual(record.sessionCustody, authority.sessionCustody);
+  }
+  #assertProject(authority: SnapshotAuthority, observed: Snapshot): void {
+    if (
+      authority.sessionCustody &&
+      (observed.projectId !== authority.sessionCustody.localProjectId ||
+        observed.projectSlug !== authority.sessionCustody.projectSlug ||
+        observed.portableProjectId !==
+          authority.sessionCustody.projectScope.portableProjectId)
+    )
+      refuse('station_control_project_unavailable');
+  }
+  #assertSelection(authority: SnapshotAuthority, selected: Selection): void {
+    if (
+      authority.sessionCustody &&
+      selected.projectSlug !== authority.sessionCustody.projectSlug
+    )
+      refuse('station_control_project_unavailable');
+    authority.assertCurrent();
   }
   /** A read returns source facts, never a source-admission receipt. */
   async observe(context: RuntimeSourceRequestContext, selection: Selection) {
     const selected = structuredClone(selection);
     const authority = await this.#authority(context);
+    this.#assertSelection(authority, selected);
     const capture = await captureSource(this.#home, selected);
+    this.#assertProject(authority, capture.observed);
     authority.assertCurrent();
     capture.assertObservationOwnersCurrentSync();
     return Object.freeze({
@@ -776,16 +1024,17 @@ export class LocalSourceAdmissionOwner {
       workItemId: id(subject.workItemId),
     };
     const authority = await this.#authority(context);
+    this.#assertSelection(authority, selected);
     const capture = await captureSource(this.#home, selected);
+    this.#assertProject(authority, capture.observed);
     const issuedAt = Date.now();
-    const record: RecordV1 = {
-      schema: 1,
+    const record: SourceRecord = {
+      ...this.#sourceIdentity(authority),
       kind: 'source-class-only',
       id: randomUUID(),
       issuedAt,
       expiresAt: issuedAt + 300_000,
       principalId: authority.principalId,
-      principalCredentialHash: sha(authority.lease.principalCredential),
       hostContextId: authority.lease.hostContextId,
       privateHostContextWitness: authority.lease.privateHostContextWitness,
       subject: boundSubject,
@@ -810,7 +1059,7 @@ export class LocalSourceAdmissionOwner {
     finalize();
     return this.#tuple(record);
   }
-  #tuple(record: RecordV1): Readonly<SourceTuple> {
+  #tuple(record: SourceRecord): Readonly<SourceTuple> {
     // These are private host/project-bound observation identities, not global repository IDs.
     const repositoryId = `source-observation-repository:${sha(json([record.hostContextId, record.observed.projectId, record.observed.portableProjectId, record.observed.resourceId, record.observed.commonDir, record.observed.identities.common]))}`;
     return Object.freeze({
@@ -843,12 +1092,14 @@ export class LocalSourceAdmissionOwner {
             resourceId: selection.resourceId,
           };
     const authority = await this.#authority(context);
+    this.#assertSelection(authority, selected);
     this.#reapSnapshots();
     if (this.#snapshots.size + this.#pendingSeals >= 4)
       refuse('snapshot_capacity_exceeded');
     this.#pendingSeals++;
     try {
       const capture = await captureSource(this.#home, selected);
+      this.#assertProject(authority, capture.observed);
       const serialization = capture.snapshotSerialization;
       const retainedBytes = [...this.#snapshots.values()].reduce(
         (n, s) => n + Buffer.byteLength(s.serialization),
@@ -860,14 +1111,13 @@ export class LocalSourceAdmissionOwner {
       )
         refuse('snapshot_bound_exceeded');
       const issuedAt = Date.now();
-      const provenance: RecordV1 = {
-        schema: 1,
+      const provenance: SourceRecord = {
+        ...this.#sourceIdentity(authority),
         kind: 'source-class-only',
         id: randomUUID(),
         issuedAt,
         expiresAt: issuedAt + 300_000,
         principalId: authority.principalId,
-        principalCredentialHash: sha(authority.lease.principalCredential),
         hostContextId: authority.lease.hostContextId,
         privateHostContextWitness: authority.lease.privateHostContextWitness,
         subject: boundSubject,
@@ -919,6 +1169,65 @@ export class LocalSourceAdmissionOwner {
     } finally {
       this.#pendingSeals--;
     }
+  }
+
+  async captureStationControlCredentialAuthority(
+    context: RuntimeSourceRequestContext,
+    subject: Subject,
+    capability: object,
+    agentId: string,
+  ): Promise<StationControlSourceCredentialAuthority> {
+    const authority = await this.#authority(context);
+    if (!authority.sessionCustody) refuse('station_control_source_unavailable');
+    const state = this.#snapshots.get(capability);
+    if (!state || state.released || state.sdkConsumed)
+      refuse('snapshot_unavailable');
+    const boundSubject = {
+      groupId: id(subject.groupId),
+      workItemId: id(subject.workItemId),
+    };
+    this.#assertSnapshot(state, authority, boundSubject);
+    this.#assertProject(authority, state.record.provenance.observed);
+    const token = Object.freeze({});
+    const assertCurrent = () => {
+      if (state.sdkConsumed)
+        this.#assertSnapshotReceipt(state, authority, boundSubject);
+      else {
+        if (this.#snapshots.get(capability) !== state || state.released)
+          refuse('snapshot_unavailable');
+        this.#assertSnapshot(state, authority, boundSubject);
+      }
+      this.#assertProject(authority, state.record.provenance.observed);
+      state.assertObservationOwnersCurrentSync();
+    };
+    sessionCredentialAuthorities.set(
+      token,
+      Object.freeze({
+        request: context.req.raw,
+        identityDigest: sha(json(authority.sessionCustody)),
+        hostContextId: authority.lease.hostContextId,
+        privateHostContextWitness: authority.lease.privateHostContextWitness,
+        projectSlug: authority.sessionCustody.projectSlug,
+        agentId: id(agentId),
+        assertMayCapture: () => {
+          assertCurrent();
+          if (
+            this.#snapshots.get(capability) !== state ||
+            state.sdkConsumed ||
+            state.released
+          )
+            refuse('snapshot_unavailable');
+          this.#assertSnapshot(state, authority, boundSubject);
+        },
+        assertCurrent,
+        withObservationScope: (check) =>
+          this.#environment.withCurrentAuthority(() => {
+            assertCurrent();
+            return check();
+          }),
+      }),
+    );
+    return token;
   }
   #sealedTuple(record: SealedRecord): Readonly<SourceTuple> {
     // Slot identity survives source refresh; each receipt still pins its snapshot.
@@ -1133,7 +1442,7 @@ export class LocalSourceAdmissionOwner {
       if (
         record.schema !== 2 ||
         record.kind !== 'sealed-source-no-tools' ||
-        record.provenance.schema !== 1 ||
+        (record.provenance.schema !== 1 && record.provenance.schema !== 2) ||
         record.provenance.kind !== 'source-class-only' ||
         record.provenance.id !== ref.id ||
         !Number.isSafeInteger(record.serializedBytes) ||
@@ -1145,8 +1454,7 @@ export class LocalSourceAdmissionOwner {
       const p = record.provenance;
       if (
         p.principalId !== authority.principalId ||
-        p.principalCredentialHash !==
-          sha(authority.lease.principalCredential) ||
+        !this.#identityMatches(p, authority) ||
         p.hostContextId !== authority.lease.hostContextId ||
         p.privateHostContextWitness !==
           authority.lease.privateHostContextWitness ||
@@ -1168,6 +1476,8 @@ export class LocalSourceAdmissionOwner {
         refuse('receipt_expired');
       if (stamp(receiptPath) !== receiptStamp) refuse('receipt_changed');
     };
+    this.#assertSelection(authority, record.provenance.selection);
+    this.#assertProject(authority, record.provenance.observed);
     assertCurrent();
     this.#reapSnapshots();
     if (this.#snapshots.size + this.#pendingSeals >= 4)
@@ -1178,6 +1488,7 @@ export class LocalSourceAdmissionOwner {
         this.#home,
         record.provenance.selection,
       );
+      this.#assertProject(authority, capture.observed);
       assertCurrent();
       if (
         !isDeepStrictEqual(capture.observed, record.provenance.observed) ||
@@ -1432,8 +1743,7 @@ export class LocalSourceAdmissionOwner {
     const record = state.record.provenance;
     if (
       record.principalId !== authority.principalId ||
-      record.principalCredentialHash !==
-        sha(authority.lease.principalCredential) ||
+      !this.#identityMatches(record, authority) ||
       record.hostContextId !== authority.lease.hostContextId ||
       record.privateHostContextWitness !==
         authority.lease.privateHostContextWitness ||
@@ -1714,7 +2024,7 @@ export class LocalSourceAdmissionOwner {
     }
     const receiptPath = join(this.#store, `${ref.id}.json`);
     const receiptStamp = stamp(receiptPath);
-    let stored: { payload: RecordV1; signature: string };
+    let stored: { payload: SourceRecord; signature: string };
     try {
       const encoded = readRegular(receiptPath, 128 * 1024, true).toString(
         'utf8',
@@ -1738,12 +2048,11 @@ export class LocalSourceAdmissionOwner {
     )
       refuse('receipt_unavailable');
     if (
-      record.schema !== 1 ||
+      (record.schema !== 1 && record.schema !== 2) ||
       record.kind !== 'source-class-only' ||
       record.id !== ref.id ||
       record.principalId !== authority.principalId ||
-      record.principalCredentialHash !==
-        sha(authority.lease.principalCredential) ||
+      !this.#identityMatches(record, authority) ||
       record.hostContextId !== authority.lease.hostContextId ||
       record.privateHostContextWitness !==
         authority.lease.privateHostContextWitness ||
@@ -1753,7 +2062,10 @@ export class LocalSourceAdmissionOwner {
       refuse('receipt_binding_mismatch');
     if (Date.now() < record.issuedAt || Date.now() >= record.expiresAt)
       refuse('receipt_expired');
+    this.#assertSelection(authority, record.selection);
+    this.#assertProject(authority, record.observed);
     const current = await captureSource(this.#home, record.selection);
+    this.#assertProject(authority, current.observed);
     if (!isDeepStrictEqual(current.observed, record.observed))
       refuse('source_changed');
     let used = false;
@@ -1819,8 +2131,9 @@ export interface TrustedFinalWireOwnerPort {
 type SnapshotAuthority = {
   request: Request;
   principalId: string;
+  sessionCustody?: SessionCustody;
   lease: {
-    principalCredential: string;
+    principalCredential?: string;
     hostContextId: string;
     privateHostContextWitness: string;
   };
@@ -1829,7 +2142,7 @@ type SnapshotAuthority = {
 type SealedRecord = {
   schema: 2;
   kind: 'sealed-source-no-tools';
-  provenance: RecordV1;
+  provenance: SourceRecord;
   snapshotDigest: string;
   serializedBytes: number;
 };
