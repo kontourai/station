@@ -1,0 +1,7 @@
+{
+  "revision": "1f42d7c5ec4ec81f3a906e1dd656e65b6f7ebc0c",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Bind the new public terminal-output implementation and its direct ownership tests to this canonical SDK explanation for later freshness checks. Reviewed the entire output-only API, same-origin mandatory authentication/probe, bounded reconnect, ordered apply/reset credit, live authority/disposal and broker/native refusal against these sources and real gateway consumer tests. This source dependency addition records the named feature owner; it does not refresh unrelated SDK claims, native physical acceptance or the unimplemented Coding cutover.","inputs":["docs/reference/sdk.md","packages/sdk/src/client/terminal-output-session.ts","packages/sdk/src/__tests__/terminal-output-session.test.ts"]}
+  ]
+}

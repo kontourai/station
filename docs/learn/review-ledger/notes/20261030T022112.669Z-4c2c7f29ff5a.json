@@ -1,0 +1,11 @@
+{
+  "revision": "3a63ca542264e46e810e995605a306eb8357c3b3",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the changed plugin guide: the remote-installed status correction and dated API/raw-Agent qualification do not change this guide's public integration, provider or hosted boundaries. Its plugin guide route remains accurate; no model-generated or UI/native/release qualification added.","inputs":["docs/guides/integrating-station.md","docs/guides/plugins.md"]},
+
+    {"path":"docs/guides/plugins.md","note":"Reviewed readDiskIntegrations and the existing RegistryCatalogItems renderer: command-less HTTP/SSE rows omit executable status and use installed-state presentation without claiming connection health. Both regression cases fail pre-fix and pass post-fix. Existing local/builtin command lookup stays covered. Starter recipe and explicit-enable claims verified through the authenticated live API.","inputs":["docs/guides/plugins.md","src-server/providers/registries/integration-registry-provider.ts"]},
+
+    {"path":"examples/registry/integrations/README.md","note":"Verified all five catalog installs disabled, real MCP connection probes and HTTP bridge calls on isolated macOS ARM64. After stop/start, installed/enabled state persisted; a managed Agent loaded all five and raw-tool calls returned real Exa/Context7/Microsoft results, stateful Lightpanda JS/navigation/click/extraction, and local DOCX conversion. Lightpanda SHA256 matched GitHub digest. Session-only HTTP tools were excluded/refused; disable refused invocation and removal cleared installed state. 108 focused provider/catalog/CLI tests passed; remote-status pre-fix red preserved. Inference model was constructed only, never invoked. UI/native/other OS/signed-in/release claims remain unverified.","inputs":["examples/registry/integrations/README.md","examples/registry/integrations/lightpanda/integration.json","src-server/providers/registries/integration-registry-provider.ts","src-server/providers/registries/__tests__/integration-registry-provider.test.ts"]}
+  ]
+}

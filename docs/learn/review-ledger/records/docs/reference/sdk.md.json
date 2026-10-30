@@ -804,6 +804,10 @@
 
     "src-ui/src/utils/execution.ts",
 
+    "packages/sdk/src/client/terminal-output-session.ts",
+
+    "packages/sdk/src/__tests__/terminal-output-session.test.ts",
+
     "packages/sdk/src/query-domains/personNotifications.ts",
 
     "packages/sdk/src/__tests__/personNotifications.test.tsx",

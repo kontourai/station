@@ -17,6 +17,16 @@ import { Badge, type SemanticTone } from '@kontourai/ui/react';
 import type { ReactNode } from 'react';
 import { CheckGlyph } from '../../components/icons/Glyph';
 
+/**
+ * When the last check ran, as a wall-clock time: React Query's stamp of the
+ * successful check read, or no time when none has ever succeeded.
+ */
+export function formatCheckTime(dataUpdatedAt: number): string | null {
+  return dataUpdatedAt > 0
+    ? new Date(dataUpdatedAt).toLocaleTimeString()
+    : null;
+}
+
 export type ComparisonTone = 'success' | 'warning' | 'error' | 'muted';
 
 export interface ComparisonView {
