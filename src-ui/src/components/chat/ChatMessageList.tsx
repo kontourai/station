@@ -781,8 +781,18 @@ function ChatMessageListComponent({
       RESIZE_REANCHOR_THRESHOLD_PX,
     );
     const observer = new ResizeObserver(() => {
+      // Hidden (`display: none` under a New chat draft): there is nothing to
+      // read, and an anchor captured now would be garbage. Keep the one from
+      // before, and re-anchor on the way back whatever the gate says, since
+      // an engine may have reset the scroll position meanwhile.
+      if (el.clientHeight === 0) {
+        lastClientHeightRef.current = 0;
+        return;
+      }
+      const returning = lastClientHeightRef.current === 0;
       lastClientHeightRef.current = el.clientHeight;
-      if (!reanchorGate.shouldReanchor(el.clientHeight)) return;
+      const resized = reanchorGate.shouldReanchor(el.clientHeight);
+      if (!returning && !resized) return;
       if (isUserScrolledUpRef.current) {
         if (
           visibleAnchorRef.current &&
@@ -811,6 +821,8 @@ function ChatMessageListComponent({
     const el = messagesContainerRef.current;
     if (!el || typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(() => {
+      // Hidden: no anchor to take (see the size observer above).
+      if (el.clientHeight === 0) return;
       // A running glide aims at the live end on every frame already.
       if (scrollAnimationRef.current) return;
       if (!isUserScrolledUpRef.current) {
@@ -1157,12 +1169,28 @@ function ChatMessageListComponent({
     };
   }, []);
 
+  // A followed message link holds the transcript on its message until the
+  // reader goes elsewhere. An explicit ask for the latest — like a turn
+  // jump — is elsewhere: strip the hash so the link stops holding after it.
+  const clearMessageRevealHash = useCallback(() => {
+    if (!STATION_MESSAGE_HASH.test(window.location.hash)) return;
+    window.history.replaceState(
+      window.history.state,
+      '',
+      `${window.location.pathname}${window.location.search}`,
+    );
+    setTranscriptRevealHash('');
+  }, []);
   // Glide to the newest message, then hand back to tail-follow. The reader
   // stays "scrolled up" for the glide so the pin and the virtualizer's
   // follow cannot snap it; reader input cancels and leaves them in control.
   const handleScrollToBottom = () => {
     const el = messagesContainerRef.current;
     if (!el) return;
+    // Before the glide, not after it: a message settling mid-glide must not
+    // re-arm the link's hold against the very trip to the end the reader
+    // just asked for.
+    clearMessageRevealHash();
     // The control (and the turn steps beside it) leave for the glide; focus
     // on them stays in the conversation rather than falling to the page.
     if (
@@ -1226,16 +1254,7 @@ function ChatMessageListComponent({
       setIsUserScrolledUp(true);
       setReaderRestoreRequest(null);
       setApprovalRevealRowId(undefined);
-      // A followed message link holds the transcript on its message until
-      // the reader goes elsewhere; a turn jump is elsewhere.
-      if (STATION_MESSAGE_HASH.test(window.location.hash)) {
-        window.history.replaceState(
-          window.history.state,
-          '',
-          `${window.location.pathname}${window.location.search}`,
-        );
-        setTranscriptRevealHash('');
-      }
+      clearMessageRevealHash();
       if (transcriptRowsRef.current.length > VIRTUALIZE_AFTER_MESSAGE_COUNT) {
         setTurnRevealRowId(landmark.rowId);
         markTranscriptPhase('turn-jump', { key: traceKey(landmark.rowId) });
@@ -1288,7 +1307,7 @@ function ChatMessageListComponent({
       );
       visibleAnchorRef.current = captureChatScrollAnchor(element);
     },
-    [writeProgrammaticScroll],
+    [writeProgrammaticScroll, clearMessageRevealHash],
   );
   const previousTurn = turnStepTarget(turnViewport, -1, turnLandmarks.length);
   const nextTurn = turnStepTarget(turnViewport, 1, turnLandmarks.length);

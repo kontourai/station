@@ -115,6 +115,7 @@ export * from './scheduler';
 export * from './send-execution-message';
 export { sentTurnKey } from './sent-turn-key';
 export * from './session-outputs';
+export * from './session-reads';
 export * from './skill-experiences';
 export * from './skills';
 export * from './task-basis';
@@ -128,6 +129,7 @@ export {
 } from './task-room-work';
 export * from './task-tool-results';
 export * from './task-user-input-references';
+export * from './terminal-output-session';
 export * from './unified-search';
 export * from './usage-export';
 export * from './walkthroughs';
