@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FeaturePreviewRegistry } from '../../../services/feature-previews/feature-preview-registry.js';
 import { StationRuntime } from '../station-runtime.js';
 
@@ -23,6 +24,7 @@ vi.mock(
 );
 
 const directories: string[] = [];
+const makeTempDir = trackTempDirs();
 const logger = {
   trace: vi.fn(),
   debug: vi.fn(),
@@ -76,4 +78,33 @@ test('Fleet consumer probes toggle the actual runtime consuming path', async () 
     new FeaturePreviewRegistry(directory, logger),
   );
   expect(restartedRuntime.fleetProbes()).toBeDefined();
+});
+
+test('host image capture defaults on and retains an explicit off choice after restart', async () => {
+  const directory = makeTempDir('station-runtime-previews-');
+  const registry = new FeaturePreviewRegistry(directory, logger);
+  const runtime = runtimeFor(registry);
+  runtime.bindChatHostImagesPreview();
+  const selected = () =>
+    runtime.chatHostImagesPreview.select({
+      enabled: () => true,
+      disabled: () => false,
+    });
+
+  expect(selected()).toBe(true);
+  expect(registry.list()).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ id: 'chat-host-images', enabled: true }),
+    ]),
+  );
+  await registry.setEnabled('chat-host-images', false);
+  expect(selected()).toBe(false);
+  const restarted = runtimeFor(new FeaturePreviewRegistry(directory, logger));
+  restarted.bindChatHostImagesPreview();
+  expect(
+    restarted.chatHostImagesPreview.select({
+      enabled: () => true,
+      disabled: () => false,
+    }),
+  ).toBe(false);
 });

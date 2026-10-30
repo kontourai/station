@@ -35,18 +35,23 @@
  * `{success:false,error}` body's `error` text is preserved instead of being
  * replaced with a generic status message.
  */
-import type { ChildWorkTranscriptPage } from '@kontourai/station-contracts/child-work';
+import type {
+  ChildWorkInstructionPage,
+  ChildWorkTranscriptPage,
+} from '@kontourai/station-contracts/child-work';
 import type { HarnessQuestionAnswers } from '@kontourai/station-contracts/harness-questions';
 import type { InputRequestContent } from '@kontourai/station-contracts/input-request';
 import type {
   AdoptedSessionResult,
   OrchestrationSessionEventWindow,
+  SteerChildWorkResult,
   SteerInputInspectionResult,
   SteerTurnResult,
 } from '@kontourai/station-contracts/orchestration';
 import type { SkillExperienceIdentityV1 } from '@kontourai/station-contracts/skill-experience';
 import type { ThreadUsageTree } from '@kontourai/station-contracts/thread-usage-tree';
 import { envelopeError } from './api-error-message';
+import { hasCapability } from './capability';
 import { ChatHttpError } from './chatHttpError';
 import {
   authenticatedFetch,
@@ -55,6 +60,7 @@ import {
   mutateJson,
   type StationHttpError,
 } from './http';
+import { fetchPublicStationCapabilities } from './publicStationCapabilities';
 import { rethrowDeadline } from './request-deadline';
 import { isStationAnswer } from './station-envelope';
 
@@ -420,6 +426,67 @@ export async function getChildWorkTranscript(
     opts,
   );
   return unwrapOrchestrationResponse<ChildWorkTranscriptPage>(response);
+}
+
+/** Station-owned instructions are paged separately from the provider transcript. */
+export async function getChildWorkInstructions(
+  apiBase: string,
+  threadId: string,
+  childId: string,
+  page: { offset?: number; limit?: number } = {},
+  opts?: ClientRequestOptions,
+): Promise<ChildWorkInstructionPage> {
+  await requireChildWorkSteering(apiBase);
+  const query = new URLSearchParams();
+  if (page.offset !== undefined) query.set('offset', String(page.offset));
+  if (page.limit !== undefined) query.set('limit', String(page.limit));
+  const suffix = query.size ? `?${query}` : '';
+  const response = await getJson(
+    `${apiBase}/api/orchestration/sessions/${encodeURIComponent(threadId)}/child-work/${encodeURIComponent(childId)}/instructions${suffix}`,
+    opts,
+  );
+  return unwrapOrchestrationResponse<ChildWorkInstructionPage>(response);
+}
+
+export interface SteerChildWorkInput {
+  threadId: string;
+  childId: string;
+  turnId: string;
+  input: string;
+  clientInputId: string;
+}
+
+async function requireChildWorkSteering(apiBase: string): Promise<void> {
+  const handshake = await fetchPublicStationCapabilities(apiBase);
+  if (!handshake)
+    throw new Error('Station capabilities are unavailable. Try again.');
+  if (!hasCapability(handshake, 'childWorkSteering'))
+    throw new Error(
+      'This Station does not support subagent instructions. Update Station to use them.',
+    );
+}
+
+/** The distinct command cannot be interpreted by an older host as a parent steer. */
+export async function steerChildWork(
+  apiBase: string,
+  input: SteerChildWorkInput,
+  opts?: ClientRequestOptions,
+): Promise<SteerChildWorkResult> {
+  await requireChildWorkSteering(apiBase);
+  const response = await mutateJson(
+    `${apiBase}/api/orchestration/commands`,
+    'POST',
+    opts,
+    {
+      type: 'steerChildWork',
+      threadId: input.threadId,
+      childId: input.childId,
+      turnId: input.turnId,
+      input: input.input,
+      clientInputId: input.clientInputId,
+    },
+  );
+  return unwrapOrchestrationResponse<SteerChildWorkResult>(response);
 }
 
 /**

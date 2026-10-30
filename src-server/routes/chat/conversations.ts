@@ -2501,6 +2501,7 @@ export function createGlobalConversationRoutes(
       conversationId: string,
       authority: SessionReadAuthority,
     ): Promise<ConversationOpenResolution | null>;
+    isRuntimeConversation?(conversationId: string): boolean;
   },
   getUserId: () => string = () => getCachedUser().alias,
   acknowledgementStore?: ConversationAcknowledgementStore,
@@ -2937,6 +2938,33 @@ export function createGlobalConversationRoutes(
           success: true,
           data: {
             ...metadata,
+            ...(eventStore
+              ? {
+                  forkProvenance: eventStore.readConversationForkProvenance(id),
+                }
+              : {}),
+          },
+        });
+      }
+
+      if (sessionConversationReader.isRuntimeConversation?.(id)) {
+        const resolved =
+          await sessionConversationReader.resolveConversationOpen?.(
+            id,
+            authority,
+          );
+        if (!resolved)
+          return c.json(
+            { success: false, error: 'Conversation not found' },
+            404,
+          );
+        return c.json({
+          success: true,
+          data: {
+            ...resolved.conversation,
+            agentSlug: publicAgentIdFromRuntimeKey(
+              resolved.conversation.agentSlug,
+            ),
             ...(eventStore
               ? {
                   forkProvenance: eventStore.readConversationForkProvenance(id),

@@ -2856,6 +2856,19 @@ export class EventStore {
         confirmed_turn_id TEXT,
         PRIMARY KEY (thread_id, client_input_id)
       )`);
+      this.db.exec(`CREATE TABLE IF NOT EXISTS orchestration_child_steer_keys (
+        client_input_id TEXT PRIMARY KEY,
+        thread_id TEXT NOT NULL
+      )`);
+      this.db.exec(`CREATE TABLE IF NOT EXISTS orchestration_child_steer_instructions (
+        sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+        thread_id TEXT NOT NULL, child_id TEXT NOT NULL, turn_id TEXT NOT NULL,
+        client_input_id TEXT NOT NULL, input TEXT NOT NULL, created_at TEXT NOT NULL,
+        principal_json TEXT, client_origin_json TEXT, delivery TEXT NOT NULL, refusal_code TEXT,
+        UNIQUE(thread_id, client_input_id)
+      );
+      CREATE INDEX IF NOT EXISTS child_steer_instruction_page
+        ON orchestration_child_steer_instructions(thread_id, child_id, sequence)`);
       // #3160: the request keys behind `send_to_session` / `interrupt_session`.
       this.db.exec(SESSION_CONTROL_REQUEST_KEY_SCHEMA);
       // #3158: delegated-result ownership and its one consumption record,
@@ -15760,11 +15773,214 @@ export class EventStore {
   }
 
   /** A pending steer claim is never reclaimed: its engine may have accepted it. */
+  readChildSteerInput(input: {
+    threadId: string;
+    childId: string;
+    turnId: string;
+    input: string;
+    clientInputId: string;
+  }):
+    | ReturnType<EventStore['readSteerInput']>
+    | { outcome: 'unsupported' | 'no-active-task'; threadId: string } {
+    const owner = this.db
+      .prepare(
+        'SELECT thread_id FROM orchestration_child_steer_keys WHERE client_input_id = ?',
+      )
+      .get(input.clientInputId) as { thread_id: string } | undefined;
+    if (owner && owner.thread_id !== input.threadId)
+      return {
+        outcome: 'indeterminate',
+        threadId: input.threadId,
+        clientInputId: input.clientInputId,
+      };
+    const receipt = this.readSteerInput(input);
+    if (receipt?.outcome === 'indeterminate') {
+      const row = this.db
+        .prepare(`SELECT s.input_digest, j.refusal_code FROM orchestration_steer_inputs s
+        JOIN orchestration_child_steer_instructions j ON j.thread_id = s.thread_id AND j.client_input_id = s.client_input_id
+        WHERE s.thread_id = ? AND s.client_input_id = ? AND j.delivery = 'refused'`)
+        .get(input.threadId, input.clientInputId) as
+        | { input_digest: string; refusal_code: string }
+        | undefined;
+      if (
+        row?.input_digest === this.steerInputDigest(input) &&
+        (row.refusal_code === 'unsupported' ||
+          row.refusal_code === 'no-active-task')
+      )
+        return { outcome: row.refusal_code, threadId: input.threadId };
+    }
+    return receipt;
+  }
+
+  claimChildSteerInput(
+    input: {
+      threadId: string;
+      childId: string;
+      turnId: string;
+      input: string;
+      clientInputId: string;
+    },
+    attribution: {
+      createdAt: string;
+      principal?: import('@kontourai/station-contracts/principal').PrincipalRef;
+      clientOrigin?: import('@kontourai/station-contracts/client-origin').ClientOrigin;
+    },
+  ): boolean {
+    this.db.exec('SAVEPOINT child_steer_claim');
+    try {
+      this.db
+        .prepare(
+          'INSERT OR IGNORE INTO orchestration_child_steer_keys(client_input_id, thread_id) VALUES (?, ?)',
+        )
+        .run(input.clientInputId, input.threadId);
+      const owner = this.db
+        .prepare(
+          'SELECT thread_id FROM orchestration_child_steer_keys WHERE client_input_id = ?',
+        )
+        .get(input.clientInputId) as { thread_id: string } | undefined;
+      const claimed =
+        owner?.thread_id === input.threadId && this.claimSteerInput(input);
+      if (claimed)
+        this.db
+          .prepare(`INSERT INTO orchestration_child_steer_instructions
+        (thread_id, child_id, turn_id, client_input_id, input, created_at, principal_json, client_origin_json, delivery)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'indeterminate')`)
+          .run(
+            input.threadId,
+            input.childId,
+            input.turnId,
+            input.clientInputId,
+            input.input,
+            attribution.createdAt,
+            attribution.principal
+              ? JSON.stringify(attribution.principal)
+              : null,
+            attribution.clientOrigin
+              ? JSON.stringify(attribution.clientOrigin)
+              : null,
+          );
+      this.db.exec('RELEASE SAVEPOINT child_steer_claim');
+      return claimed;
+    } catch (error) {
+      this.db.exec(
+        'ROLLBACK TO SAVEPOINT child_steer_claim; RELEASE SAVEPOINT child_steer_claim',
+      );
+      throw error;
+    }
+  }
+
+  confirmChildSteerInput(input: {
+    threadId: string;
+    childId: string;
+    turnId: string;
+    input: string;
+    clientInputId: string;
+  }): void {
+    this.db.exec('SAVEPOINT child_steer_confirm');
+    try {
+      this.confirmSteerInput(input, input.turnId);
+      const updated = this.db
+        .prepare(`UPDATE orchestration_child_steer_instructions SET delivery = 'delivered'
+        WHERE thread_id = ? AND child_id = ? AND turn_id = ? AND client_input_id = ? AND delivery = 'indeterminate'`)
+        .run(
+          input.threadId,
+          input.childId,
+          input.turnId,
+          input.clientInputId,
+        ) as { changes: number | bigint };
+      if (Number(updated.changes) !== 1)
+        throw new Error(
+          'Child steer instruction confirmation was not recorded.',
+        );
+      this.db.exec('RELEASE SAVEPOINT child_steer_confirm');
+    } catch (error) {
+      this.db.exec(
+        'ROLLBACK TO SAVEPOINT child_steer_confirm; RELEASE SAVEPOINT child_steer_confirm',
+      );
+      throw error;
+    }
+  }
+
+  refuseChildSteerInput(
+    input: {
+      threadId: string;
+      childId: string;
+      turnId: string;
+      clientInputId: string;
+    },
+    outcome: 'unsupported' | 'no-active-task',
+  ): void {
+    const updated = this.db
+      .prepare(`UPDATE orchestration_child_steer_instructions SET delivery = 'refused', refusal_code = ?
+      WHERE thread_id = ? AND child_id = ? AND turn_id = ? AND client_input_id = ? AND delivery = 'indeterminate'`)
+      .run(
+        outcome,
+        input.threadId,
+        input.childId,
+        input.turnId,
+        input.clientInputId,
+      ) as { changes: number | bigint };
+    if (Number(updated.changes) !== 1)
+      throw new Error('Child steer refusal was not recorded.');
+  }
+
+  listChildSteerInstructions(
+    threadId: string,
+    childId: string,
+    offset: number,
+    limit: number,
+  ): import('@kontourai/station-contracts/child-work').ChildWorkInstructionPage {
+    if (
+      !Number.isSafeInteger(offset) ||
+      offset < 0 ||
+      offset > 1_000_000 ||
+      !Number.isSafeInteger(limit) ||
+      limit < 1 ||
+      limit > 10
+    )
+      throw new RangeError('Invalid child instruction page.');
+    const rows = this.db
+      .prepare(`SELECT child_id, turn_id, client_input_id, input, created_at, principal_json, client_origin_json, delivery, refusal_code
+      FROM orchestration_child_steer_instructions WHERE thread_id = ? AND child_id = ? ORDER BY sequence LIMIT ? OFFSET ?`)
+      .all(threadId, childId, limit + 1, offset) as Array<{
+      child_id: string;
+      turn_id: string;
+      client_input_id: string;
+      input: string;
+      created_at: string;
+      principal_json: string | null;
+      client_origin_json: string | null;
+      delivery: 'indeterminate' | 'delivered' | 'refused';
+      refusal_code: 'unsupported' | 'no-active-task' | null;
+    }>;
+    return {
+      entries: rows.slice(0, limit).map((row) => ({
+        childId: row.child_id,
+        turnId: row.turn_id,
+        clientInputId: row.client_input_id,
+        text: row.input,
+        createdAt: row.created_at,
+        delivery: row.delivery,
+        ...(row.delivery === 'refused' && row.refusal_code
+          ? { refusal: row.refusal_code }
+          : {}),
+        ...(row.principal_json
+          ? { principal: JSON.parse(row.principal_json) }
+          : {}),
+        ...(row.client_origin_json
+          ? { clientOrigin: JSON.parse(row.client_origin_json) }
+          : {}),
+      })),
+      ...(rows.length > limit ? { nextOffset: offset + limit } : {}),
+    };
+  }
+
   readSteerInput(input: {
     threadId: string;
     clientInputId: string;
     input: string;
     turnId?: string;
+    childId?: string;
   }):
     | Extract<SteerTurnResult, { outcome: 'steered' | 'indeterminate' }>
     | undefined {
@@ -15799,6 +16015,7 @@ export class EventStore {
     clientInputId: string;
     input: string;
     turnId?: string;
+    childId?: string;
   }): boolean {
     const result = this.steerReceiptStorage().executeSync(
       {
@@ -15821,6 +16038,7 @@ export class EventStore {
       clientInputId: string;
       input: string;
       turnId?: string;
+      childId?: string;
     },
     confirmedTurnId: string,
   ): void {
@@ -15839,9 +16057,24 @@ export class EventStore {
       throw new Error('Steer delivery confirmation was not recorded.');
   }
 
-  private steerInputDigest(input: { input: string; turnId?: string }): string {
+  private steerInputDigest(input: {
+    input: string;
+    turnId?: string;
+    childId?: string;
+  }): string {
     return createHash('sha256')
-      .update(JSON.stringify([input.input, input.turnId ?? null]))
+      .update(
+        JSON.stringify(
+          input.childId === undefined
+            ? [input.input, input.turnId ?? null]
+            : [
+                'child-work-steer-v1',
+                input.childId,
+                input.turnId ?? null,
+                input.input,
+              ],
+        ),
+      )
       .digest('hex');
   }
 
@@ -16589,6 +16822,17 @@ export class EventStore {
         );
         if (steerCleanup.kind !== 'applied')
           throw new Error('Steer receipt cleanup was refused.');
+        // Keep the key occupied after deletion so it cannot address a new parent.
+        this.db
+          .prepare(
+            "UPDATE orchestration_child_steer_keys SET thread_id = '' WHERE thread_id = ?",
+          )
+          .run(threadId);
+        this.db
+          .prepare(
+            'DELETE FROM orchestration_child_steer_instructions WHERE thread_id = ?',
+          )
+          .run(threadId);
       }
       this.db
         .prepare(

@@ -74,6 +74,7 @@ import {
   type ProviderAdapterModelCatalog,
   type ProviderAdapterShape,
   type ProviderAdoptionHooks,
+  type ProviderChildSteerResult,
   type ProviderDiscardSessionRecovery,
   type ProviderInterruptTurnResult,
   type ProviderNativeSessionIdentity,
@@ -122,6 +123,7 @@ import {
   mergeCapabilityDeliveryMetadata,
 } from './capability-delivery-metadata.js';
 import {
+  codexChildSteerTarget,
   codexRunningChildTurnId,
   codexRunningChildTurns,
   requestStop as requestCodexChildStop,
@@ -3032,6 +3034,43 @@ export class CodexAdapter implements ProviderAdapterShape {
       prompt: text,
       inputKind: 'steer',
     });
+  }
+
+  async steerChildWork(
+    threadId: string,
+    childId: string,
+    turnId: string,
+    input: string,
+  ): Promise<ProviderChildSteerResult> {
+    const record = this.transport.requireSession(threadId);
+    const target = codexChildSteerTarget(record, childId, turnId);
+    if (target !== 'ready') return { outcome: target };
+    const text = input.trim();
+    if (!text) throw new Error('Steer input is empty.');
+    try {
+      const result = await this.transport.sendRequest(record, 'turn/steer', {
+        threadId: childId,
+        input: [{ type: 'text', text, text_elements: [] }],
+        expectedTurnId: turnId,
+      });
+      if (extractStringField(result, 'turnId') !== turnId)
+        throw new Error('Codex returned an unexpected child steer turn id.');
+    } catch (error) {
+      const message = errorMessage(error).toLowerCase();
+      if (
+        message.includes(
+          'direct app-server input is not allowed for multi-agent v2',
+        )
+      )
+        return { outcome: 'unsupported' };
+      if (
+        message.includes('no active turn') ||
+        message.includes('cannot accept same-turn steering')
+      )
+        return { outcome: 'no-active-task' };
+      throw error;
+    }
+    return { outcome: 'steered', turnId };
   }
 
   async interruptTurn(threadId: string, turnId?: string) {

@@ -37,6 +37,7 @@ vi.mock('../contexts/AgentsContext', () => ({
 }));
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://localhost:3242' }),
+  useHostRequestAuthorityScope: () => undefined,
 }));
 vi.mock('../contexts/ToastContext', () => ({
   useToast: () => ({ showToast: vi.fn(), dismissToast: vi.fn() }),

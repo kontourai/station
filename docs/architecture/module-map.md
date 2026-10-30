@@ -119,7 +119,7 @@ and where to start reading; it is a pointer, not a reviewed interface contract.
 | `src-server/services/chat-apps/` | Messaging bindings, identity links, kill switches and delivery receipts in the orchestration database; Discord imports its legacy authority once. Live Discord validation remains outstanding. | [Messaging core](../../src-server/services/chat-apps/chat-app-core.ts) |
 | `src-server/services/config/` | The idempotent log-level edit with retained terminal receipts | [Logging configuration](../reference/config.md#logging) |
 | `src-server/services/discord/` | Discord transport and ordered, bounded reply chunks with separate receipts and linked busy refusals; the private token stays in `<home>/security/discord-gateway.json`, whose live policy remains an additional authority ceiling | [Gateway service](../../src-server/services/discord/discord-gateway-service.ts) |
-| `src-server/services/feature-previews/` | The registry of opt-in feature previews this build can run, persisted per Station and shown under Settings → Advanced; served by `src-server/routes/system/feature-previews.ts`. [Contributor workflow](../guides/feature-previews.md) | Source |
+| `src-server/services/feature-previews/` | The registry of feature previews this build can run, persisted per Station and shown under Settings → Advanced; served by `src-server/routes/system/feature-previews.ts`. [Contributor workflow](../guides/feature-previews.md) | Source |
 | `src-server/services/kits/` | Installed-Kit observability lifecycle and persistence for the host | Source |
 | `src-server/services/presence/` | Process-local, non-durable focus presence per paired device or client session (#2585) | Source |
 | `src-server/services/relay/` | Durable relay and native-relay enrollment journals; they hold references and proofs, never credentials | [Native relay enrollment](#native-relay-enrollment) |
@@ -1568,7 +1568,7 @@ key. A prior started turn replays, a live claim stays in flight, and an
 expired or indeterminate effect is never started again. This
 primitive adds no storage command or inbox. Recovery-ledger extraction remains open under #3565. Steer receipts now use
 Monument over the existing EventStore connection, including host rollback and
-explicit thread deletion; this does not add durable steer placement.
+explicit thread deletion; this does not add durable steer placement. Separately, Station atomically records child-steer instructions and target-bound claims, retains key tombstones on Session deletion, and serves authorized instruction pages. See [child steering](../reference/session-api.md#lifecycle-control-commands) and [instruction reads](../reference/session-api.md#child-instructions-get-sessionsthreadidchild-workchildidinstructions).
 
 **Provenance.** Station's `send_to_session` and delegated-result host callers
 validate their server-owned sender and frame the message (`frameAgentMessage`)

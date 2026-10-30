@@ -265,6 +265,7 @@ class FakeAdapter implements ProviderAdapterShape {
     >();
   readonly steerTurn =
     vi.fn<(threadId: string, input: string, turnId: string) => Promise<void>>();
+  readonly steerChildWork = vi.fn<NonNullable<ProviderAdapterShape['steerChildWork']>>();
   readonly respondToRequest =
     vi.fn<
       (
@@ -8196,6 +8197,20 @@ describe('OrchestrationService', () => {
       ),
     ).rejects.toThrow('Tenant execution context does not match session');
     expect(bedrock.sendTurn).not.toHaveBeenCalled();
+    await expect(
+      service.dispatchWithReceipt(
+        {
+          type: 'steerChildWork',
+          threadId: 'tenant-bound',
+          childId: 'child',
+          turnId: 'turn',
+          input: 'do not cross tenants',
+          clientInputId: 'tenant-child-key',
+        },
+        { tenantExecutionContext: bravo, requestCurrent: () => true },
+      ),
+    ).rejects.toThrow('Tenant execution context does not match session');
+    expect(bedrock.steerChildWork).not.toHaveBeenCalled();
     expect(eventStore.readSessions()[0]?.tenantExecutionContext).toEqual(alpha);
     expect(started.result).not.toHaveProperty('tenantExecutionContext');
     expect(JSON.stringify(started.result)).not.toContain(
@@ -27376,6 +27391,244 @@ describe('OrchestrationService', () => {
 
     expect(codex.interruptTurn).not.toHaveBeenCalled();
   });
+
+  test('child steering uses the child port once and retains target-bound receipts across restart', async () => {
+    claude.sessions.set('child-parent', {
+      provider: 'claude',
+      threadId: 'child-parent',
+      status: 'running',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    eventStore.appendEvent({
+      eventId: 'child-parent-start',
+      provider: 'claude',
+      threadId: 'child-parent',
+      turnId: 'parent-turn',
+      createdAt: new Date().toISOString(),
+      method: 'turn.started',
+      prompt: 'initial',
+    });
+    claude.steerChildWork.mockResolvedValue({
+      outcome: 'steered',
+      turnId: 'child-turn',
+    });
+    const options = {
+      adapterRegistry: createRegistry([claude]),
+      eventBus,
+      eventStore,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    };
+    const routing = new OrchestrationService(options);
+    const command = {
+      type: 'steerChildWork' as const,
+      threadId: 'child-parent',
+      childId: 'child',
+      turnId: 'child-turn',
+      input: 'redirect',
+      clientInputId: 'child-input',
+    };
+    const context = { requestCurrent: () => true };
+    const first = await routing.dispatch(command, context);
+    expect(first).toEqual({
+      outcome: 'steered',
+      threadId: 'child-parent',
+      childId: 'child',
+      turnId: 'child-turn',
+    });
+    const reopened = new EventStore(join(tmp, 'orchestration.sqlite'));
+    try {
+      const restarted = new OrchestrationService({
+        ...options,
+        eventStore: reopened,
+      });
+      expect(await restarted.dispatch(command, context)).toEqual(first);
+      expect(
+        await restarted.dispatch({ ...command, childId: 'other' }, context),
+      ).toMatchObject({ outcome: 'indeterminate' });
+      expect(claude.steerChildWork).toHaveBeenCalledTimes(1);
+      expect(claude.steerChildWork).toHaveBeenCalledWith(
+        'child-parent',
+        'child',
+        'child-turn',
+        'redirect',
+      );
+      expect(claude.steerTurn).not.toHaveBeenCalled();
+    } finally {
+      reopened.close();
+    }
+  });
+
+  test('child steering retains an uncertain effect and refuses a stale request', async () => {
+    claude.sessions.set('child-uncertain', {
+      provider: 'claude',
+      threadId: 'child-uncertain',
+      status: 'running',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    eventStore.appendEvent({
+      eventId: 'child-uncertain-start',
+      provider: 'claude',
+      threadId: 'child-uncertain',
+      turnId: 'parent-turn',
+      createdAt: new Date().toISOString(),
+      method: 'turn.started',
+      prompt: 'initial',
+    });
+    claude.steerChildWork.mockRejectedValueOnce(new Error('ack lost'));
+    const options = {
+      adapterRegistry: createRegistry([claude]),
+      eventBus,
+      eventStore,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    };
+    const routing = new OrchestrationService(options);
+    const command = {
+      type: 'steerChildWork' as const,
+      threadId: 'child-uncertain',
+      childId: 'child',
+      turnId: 'child-turn',
+      input: 'redirect',
+      clientInputId: 'key',
+    };
+    expect(
+      await routing.dispatch(command, { requestCurrent: () => false }),
+    ).toMatchObject({ outcome: 'not-authorized' });
+    expect(claude.steerChildWork).not.toHaveBeenCalled();
+    expect(
+      await routing.dispatch(command, { requestCurrent: () => true }),
+    ).toMatchObject({ outcome: 'indeterminate' });
+    const reopened = new EventStore(join(tmp, 'orchestration.sqlite'));
+    try {
+      const restarted = new OrchestrationService({
+        ...options,
+        eventStore: reopened,
+      });
+      expect(
+        await restarted.dispatch(command, { requestCurrent: () => true }),
+      ).toMatchObject({ outcome: 'indeterminate' });
+      expect(claude.steerChildWork).toHaveBeenCalledTimes(1);
+    } finally {
+      reopened.close();
+    }
+  });
+
+  test('concurrent child requests share one effect and an unsupported child does not steer the parent', async () => {
+    claude.sessions.set('child-concurrent', {
+      provider: 'claude',
+      threadId: 'child-concurrent',
+      status: 'running',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    eventStore.appendEvent({
+      eventId: 'child-concurrent-start',
+      provider: 'claude',
+      threadId: 'child-concurrent',
+      turnId: 'parent-turn',
+      createdAt: new Date().toISOString(),
+      method: 'turn.started',
+      prompt: 'initial',
+    });
+    let resolve!: (result: { outcome: 'steered'; turnId: string }) => void;
+    claude.steerChildWork.mockImplementationOnce(
+      () =>
+        new Promise((done) => {
+          resolve = done;
+        }),
+    );
+    const routing = new OrchestrationService({
+      adapterRegistry: createRegistry([claude]),
+      eventBus,
+      eventStore,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    const command = {
+      type: 'steerChildWork' as const,
+      threadId: 'child-concurrent',
+      childId: 'child',
+      turnId: 'child-turn',
+      input: 'redirect',
+      clientInputId: 'key',
+    };
+    const context = { requestCurrent: () => true };
+    const first = routing.dispatch(command, context);
+    await vi.waitFor(() =>
+      expect(claude.steerChildWork).toHaveBeenCalledTimes(1),
+    );
+    expect(await routing.dispatch(command, context)).toMatchObject({
+      outcome: 'indeterminate',
+    });
+    resolve({ outcome: 'steered', turnId: 'child-turn' });
+    expect(await first).toMatchObject({ outcome: 'steered' });
+    claude.steerChildWork.mockResolvedValueOnce({ outcome: 'unsupported' });
+    expect(
+      await routing.dispatch({ ...command, clientInputId: 'another' }, context),
+    ).toMatchObject({ outcome: 'unsupported' });
+    const reopened = new EventStore(join(tmp, 'orchestration.sqlite'));
+    try {
+      const restarted = new OrchestrationService({ adapterRegistry: createRegistry([claude]), eventBus, eventStore: reopened, logger: { debug: vi.fn(), warn: vi.fn() } });
+      expect(await restarted.dispatch({ ...command, clientInputId: 'another' }, context)).toMatchObject({ outcome: 'unsupported' });
+      expect(await restarted.dispatch({ ...command, clientInputId: 'another', input: 'changed' }, context)).toMatchObject({ outcome: 'indeterminate' });
+      expect(reopened.listChildSteerInstructions(command.threadId, command.childId, 0, 10).entries).toMatchObject([{ delivery: 'delivered' }, { delivery: 'refused' }]);
+    } finally { reopened.close(); }
+    claude.steerChildWork.mockResolvedValueOnce({ outcome: 'cancelled' } as never);
+    expect(await routing.dispatch({ ...command, clientInputId: 'invalid' }, context)).toMatchObject({ outcome: 'indeterminate' });
+    expect(await routing.dispatch({ ...command, clientInputId: 'invalid' }, context)).toMatchObject({ outcome: 'indeterminate' });
+    expect(claude.steerChildWork).toHaveBeenCalledTimes(3);
+    expect(claude.steerTurn).not.toHaveBeenCalled();
+  });
+
+  test('a child provider that never acknowledges times out and its key remains held', async () => {
+    claude.sessions.set('child-timeout', {
+      provider: 'claude',
+      threadId: 'child-timeout',
+      status: 'running',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    eventStore.appendEvent({
+      eventId: 'child-timeout-start',
+      provider: 'claude',
+      threadId: 'child-timeout',
+      turnId: 'parent-turn',
+      createdAt: new Date().toISOString(),
+      method: 'turn.started',
+      prompt: 'initial',
+    });
+    claude.steerChildWork.mockImplementationOnce(() => new Promise(() => {}));
+    const options = {
+      adapterRegistry: createRegistry([claude]),
+      eventBus,
+      eventStore,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    };
+    const routing = new OrchestrationService(options);
+    const command = {
+      type: 'steerChildWork' as const,
+      threadId: 'child-timeout',
+      childId: 'child',
+      turnId: 'child-turn',
+      input: 'redirect',
+      clientInputId: 'timeout-key',
+    };
+    expect(
+      await routing.dispatch(command, { requestCurrent: () => true }),
+    ).toMatchObject({ outcome: 'indeterminate' });
+    const reopened = new EventStore(join(tmp, 'orchestration.sqlite'));
+    try {
+      expect(
+        await new OrchestrationService({
+          ...options,
+          eventStore: reopened,
+        }).dispatch(command, { requestCurrent: () => true }),
+      ).toMatchObject({ outcome: 'indeterminate' });
+      expect(claude.steerChildWork).toHaveBeenCalledTimes(1);
+    } finally {
+      reopened.close();
+    }
+  }, 20_000);
 
   test('stable steer input is delivered once across repeated commands and a reopened store', async () => {
     claude.sessions.set('steer-once', {

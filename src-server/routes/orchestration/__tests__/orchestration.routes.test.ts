@@ -546,6 +546,16 @@ describe('Orchestration Routes', () => {
       turnId: z.string().optional(),
     });
     const engineSteer = vi.fn();
+    expect(
+      legacySteerSchema.safeParse({
+        type: 'steerChildWork',
+        threadId: 'parent',
+        childId: 'child',
+        turnId: 'turn',
+        input: 'redirect',
+        clientInputId: 'key',
+      }).success,
+    ).toBe(false);
     const legacy = new Hono();
     legacy.post('/api/orchestration/commands', async (c) => {
       const parsed = legacySteerSchema.safeParse(await c.req.json());
@@ -861,6 +871,239 @@ describe('Orchestration Routes', () => {
       },
       expect.objectContaining({ userId: ROUTE_TEST_USER_ID }),
     );
+  });
+
+  test('child steer command requires a current authorized parent and all target fields', async () => {
+    let current = true;
+    const dispatchWithReceipt = vi.fn().mockResolvedValue({
+      receipt: {
+        commandId: 'c',
+        threadId: 'parent',
+        commandType: 'steerChildWork',
+        status: 'accepted',
+        createdAt: '2026-08-14T00:00:00.000Z',
+      },
+      result: {
+        outcome: 'steered',
+        threadId: 'parent',
+        childId: 'child',
+        turnId: 'turn',
+      },
+    });
+    const service = {
+      dispatchWithReceipt,
+      canUserReadSession: vi.fn(() => true),
+      canUserMutateSession: vi.fn(() => true),
+    };
+    const app = createOrchestrationRoutes(service as any, {
+      eventBus: new EventBus(),
+      logger: { debug: vi.fn() },
+      getUserId: () => ROUTE_TEST_USER_ID,
+      isRequestPrincipalCurrent: () => current,
+    });
+    const command = {
+      type: 'steerChildWork',
+      threadId: 'parent',
+      childId: 'child',
+      turnId: 'turn',
+      input: 'redirect',
+      clientInputId: 'key',
+    };
+    const send = (body: unknown) =>
+      app.request('/commands', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    expect((await send({ ...command, childId: undefined })).status).toBe(400);
+    service.canUserReadSession.mockReturnValue(false);
+    expect((await send(command)).status).toBe(404);
+    service.canUserReadSession.mockReturnValue(true);
+    current = false;
+    expect((await send(command)).status).toBe(404);
+    current = true;
+    service.canUserMutateSession.mockReturnValue(false);
+    expect((await send(command)).status).toBe(404);
+    expect(dispatchWithReceipt).not.toHaveBeenCalled();
+    service.canUserMutateSession.mockReturnValue(true);
+    expect((await send(command)).status).toBe(200);
+    expect(dispatchWithReceipt).toHaveBeenCalledWith(
+      command,
+      expect.objectContaining({
+        requestCurrent: expect.any(Function),
+        userId: ROUTE_TEST_USER_ID,
+      }),
+    );
+  });
+
+  test('child steer command reaches the real service and durable receipt over HTTP', async () => {
+    const directory = makeTempDir('child-steer-http-');
+    const eventStore = new EventStore(join(directory, 'orchestration.sqlite'));
+    steerFixtureStores.push(eventStore);
+    const eventBus = new EventBus();
+    class ChildAdapter extends GateTestAdapter {
+      private loaded = false;
+      readonly steerChildWork = vi.fn(
+        async (_threadId: string, _childId: string, turnId: string) => ({
+          outcome: 'steered' as const,
+          turnId,
+        }),
+      );
+      async startSession(input: ProviderSessionStartInput) {
+        const session = await super.startSession(input);
+        this.loaded = true;
+        return session;
+      }
+      async hasSession() {
+        return this.loaded;
+      }
+    }
+    const adapter = new ChildAdapter();
+    const service = new OrchestrationService({
+      adapterRegistry: createGateTestRegistry(adapter),
+      eventBus,
+      eventStore,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    const threadId = 'child-http-parent';
+    const now = new Date().toISOString();
+    await service.dispatch(
+      {
+        type: 'startSession',
+        input: { provider: 'claude', threadId, cwd: directory },
+      },
+      { userId: ROUTE_TEST_USER_ID },
+    );
+    eventStore.appendEvent({
+      eventId: 'child-http-session',
+      provider: 'claude',
+      threadId,
+      sessionId: threadId,
+      method: 'session.started',
+      createdAt: now,
+      metadata: { userId: ROUTE_TEST_USER_ID, agentSlug: 'claude' },
+    });
+    eventStore.appendEvent({
+      eventId: 'child-http-turn',
+      provider: 'claude',
+      threadId,
+      turnId: 'parent-turn',
+      method: 'turn.started',
+      createdAt: now,
+      prompt: 'initial',
+    });
+    eventStore.appendEvent({
+      eventId: 'child-http-work',
+      provider: 'claude',
+      threadId,
+      createdAt: now,
+      method: 'child-work.updated',
+      delta: {
+        kind: 'upsert',
+        item: {
+          producer: 'engine-subagent',
+          reporterThreadId: threadId,
+          childId: 'child',
+          status: 'running',
+          transcript: {
+            kind: 'claude-subagent',
+            sessionId: '00000000-0000-4000-8000-000000000001',
+            agentId: 'child',
+          },
+        },
+      },
+    });
+    const app = createOrchestrationRoutes(service, {
+      eventBus,
+      logger: { debug: vi.fn() },
+      getUserId: () => ROUTE_TEST_USER_ID,
+      resolvePrincipal: () => ({
+        id: ROUTE_TEST_USER_ID,
+        kind: 'human',
+        display: 'Test user',
+      }),
+      isRequestPrincipalCurrent: () => true,
+    });
+    const command = {
+      type: 'steerChildWork',
+      threadId,
+      childId: 'child',
+      turnId: 'child-turn',
+      input: 'redirect',
+      clientInputId: 'key',
+    };
+    const send = (body: unknown) =>
+      app.request('/commands', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    const foreign = createOrchestrationRoutes(service, {
+      eventBus,
+      logger: { debug: vi.fn() },
+      getUserId: () => 'another-user',
+      isRequestPrincipalCurrent: () => true,
+    });
+    expect(
+      (
+        await foreign.request('/commands', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...command, clientInputId: 'foreign-key' }),
+        })
+      ).status,
+    ).toBe(404);
+    expect(adapter.steerChildWork).not.toHaveBeenCalled();
+    expect(
+      await (
+        await send({
+          ...command,
+          principal: { id: 'forged', kind: 'human', display: 'Forged' },
+        })
+      ).json(),
+    ).toMatchObject({
+      success: true,
+      data: { outcome: 'steered', childId: 'child', turnId: 'child-turn' },
+    });
+    expect(await (await send(command)).json()).toMatchObject({
+      success: true,
+      data: { outcome: 'steered' },
+    });
+    expect(
+      await (await send({ ...command, childId: 'other' })).json(),
+    ).toMatchObject({ success: true, data: { outcome: 'indeterminate' } });
+    expect(adapter.steerChildWork).toHaveBeenCalledTimes(1);
+    expect(adapter.steerChildWork).toHaveBeenCalledWith(
+      threadId,
+      'child',
+      'child-turn',
+      'redirect',
+    );
+    const read = (childId: string) =>
+      app.request(`/sessions/${threadId}/child-work/${childId}/instructions`);
+    expect(await (await read('child')).json()).toMatchObject({
+      success: true,
+      data: {
+        entries: [
+          {
+            childId: 'child',
+            turnId: 'child-turn',
+            clientInputId: 'key',
+            text: 'redirect',
+            delivery: 'delivered',
+            principal: { id: ROUTE_TEST_USER_ID, kind: 'human' },
+          },
+        ],
+      },
+    });
+    expect((await read('other')).status).toBe(404);
+    expect(
+      (
+        await foreign.request(
+          `/sessions/${threadId}/child-work/child/instructions`,
+        )
+      ).status,
+    ).toBe(404);
   });
 
   // The service's third dispatch argument carries internal bypasses

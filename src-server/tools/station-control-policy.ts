@@ -1817,6 +1817,7 @@ export const SCOPED_THREAD_COMMAND_FIELD: Readonly<Record<string, string>> = {
   // The receipted steer (#3127) is a steer; inspecting a steer's input reads
   // another session's live turn.
   steerTurnOnce: 'threadId',
+  steerChildWork: 'threadId',
   inspectSteerInput: 'threadId',
   adoptSession: 'sourceThreadId',
   interruptTurn: 'threadId',

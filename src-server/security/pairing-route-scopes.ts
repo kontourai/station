@@ -4473,6 +4473,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'GET',
       path: '/api/orchestration/sessions/:threadId/child-work/:childId/transcript',
     },
+    {
+      method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/child-work/:childId/instructions',
+    },
     { method: 'GET', path: '/api/orchestration/sessions/loaded' },
     { method: 'GET', path: '/api/orchestration/sessions/read-model' },
     { method: 'GET', path: '/api/projects' },

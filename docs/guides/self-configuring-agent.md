@@ -291,6 +291,10 @@ reached by its URL token cannot declare from a full-access Session.
 Interrupting a delegated task follows the same scope as a follow-up to it.
 The same applies to the Session commands that act on another Session: steer
 and steer-input inspection, adopt, interrupt, stop and draft discard.
+For `steerChildWork`, the scoped Session is the parent thread: the command
+also names the child and exact turn, and its forwarded caller is rechecked
+before adapter dispatch. This command does not grant a new tool or a broader
+Project or host scope to the Agent.
 
 A dispatch, delegation or follow-up from a caller that is not a bound operator
 cannot carry an approval mode. That covers `setApprovalMode` and the

@@ -808,6 +808,21 @@ when you return to the conversation.
 
 ### Send a follow-up while an engine works
 
+For a running Codex subagent that supports direct instructions, expand its
+card and use **Send to** that subagent. Station shows those instructions and
+their delivery status separately from the engine transcript: **Sent**, **Not
+sent**, or **Delivery unconfirmed**. Sending requires permission to continue the
+chat and an operator or device grant that can operate it. If delivery is
+unconfirmed, **Check saved instruction** retries the same instruction and target
+with its original key; Station will not automatically send a new instruction.
+Once the saved one is resolved, you can submit a new instruction if the
+subagent is still eligible. Some Codex
+subagents cannot accept direct instructions. Older Stations need an update to
+offer this control.
+When the engine transcript is open, sent instructions are collapsed in the
+Station list; open one to read its attributed copy. Unconfirmed instructions
+remain visible, and the engine's prompts remain available in its transcript.
+
 Keep typing during a turn. **Send** defaults to **Queue**, which delivers after
 the turn finishes; its dropdown offers **Steer**. Claude Code and Codex can take
 native steering. Other engines hold steering until a safe boundary can be proven;
