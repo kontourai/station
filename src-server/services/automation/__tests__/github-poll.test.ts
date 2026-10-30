@@ -17,6 +17,7 @@ import {
 import { AutomationStore } from '../automation-store.js';
 import {
   CURSOR_OVERLAP_MS,
+  composeGitHubAutomationObservation,
   GitHubPollAutomationPoller,
   pinnedWorkflowFiles,
 } from '../github-poll.js';
@@ -215,15 +216,20 @@ describe('GitHubPollAutomationPoller', () => {
   const T0 = Date.parse('2026-10-06T08:00:00.000Z');
 
   beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(T0);
     home = makeTempDir('automation-poller-');
     directory = join(home, 'automation');
     writeConfiguration(home, configuration());
     ledger = createAutomationLedger({ directory, busyTimeoutMs: 200 });
   });
-  afterEach(() => ledger.close());
+  afterEach(() => {
+    ledger.close();
+    vi.useRealTimers();
+  });
 
   function poller(fetcher: (url: string) => Promise<Response>) {
-    return new GitHubPollAutomationPoller({
+    const instance = new GitHubPollAutomationPoller({
       preview: enabledPreview,
       store: new AutomationStore(home),
       ledger: {
@@ -233,7 +239,42 @@ describe('GitHubPollAutomationPoller', () => {
       fetcher,
       integrationSecretResolver: resolver() as never,
     });
+    return {
+      poll: (input: Parameters<GitHubPollAutomationPoller['poll']>[0]) => {
+        vi.setSystemTime(input.now);
+        return instance.poll(input);
+      },
+    };
   }
+
+  test('hosted composition offers no preview and constructs no poller despite a saved enabled choice', async () => {
+    const registry = new FeaturePreviewRegistry(home, {
+      info: () => undefined,
+    } as never);
+    const personal = composeGitHubAutomationObservation({
+      hosted: false,
+      featurePreviews: registry,
+      store: new AutomationStore(home),
+      ledger: { get: () => ledger, close: () => undefined },
+    });
+    expect(personal.poller).toBeDefined();
+    await registry.setEnabled('github-automation-observations', true);
+    const hostedRegistry = new FeaturePreviewRegistry(home, {
+      info: () => undefined,
+    } as never);
+    const hosted = composeGitHubAutomationObservation({
+      hosted: true,
+      featurePreviews: hostedRegistry,
+      store: new AutomationStore(home),
+      ledger: { get: () => ledger, close: () => undefined },
+    });
+    expect(hosted).toEqual({ preview: undefined, poller: undefined });
+    expect(
+      hostedRegistry
+        .list()
+        .some((preview) => preview.id === 'github-automation-observations'),
+    ).toBe(false);
+  });
 
   test('disabled preview does no IO; disabling during a fetch discards the observation', async () => {
     const registry = new FeaturePreviewRegistry(home, {
@@ -265,6 +306,58 @@ describe('GitHubPollAutomationPoller', () => {
     await subject.poll({ now: T0, signal });
     expect(fetcher).toHaveBeenCalledOnce();
     expect(ledger.listDeliveries()).toEqual([]);
+    expect(ledger.pollState('source-1')).toBeUndefined();
+  });
+
+  test('a run finishing during the fetch is checked against response observation time', async () => {
+    const subject = poller(async () => {
+      vi.setSystemTime(T0 + 2000);
+      return listing([
+        workflowRun({ conclusion: 'failure', updatedAt: iso(T0 + 1000) }),
+      ]);
+    });
+    expect(await subject.poll({ now: T0, signal })).toEqual([
+      expect.objectContaining({ matched: 1, refused: 0 }),
+    ]);
+  });
+
+  test('disabling the preview during the first workflow prevents another request', async () => {
+    const second = {
+      ...QUALIFICATION_RULE,
+      id: 'rule-second',
+      match: {
+        ...QUALIFICATION_RULE.match,
+        where: {
+          ...QUALIFICATION_RULE.match.where,
+          'workflow.path': '.github/workflows/nightly.yml',
+        },
+      },
+    };
+    writeConfiguration(home, configuration([QUALIFICATION_RULE, second]));
+    const registry = new FeaturePreviewRegistry(home, {
+      info: () => undefined,
+    } as never);
+    const preview = registry.bind({
+      id: 'github-automation-observations',
+      label: 'GitHub observations',
+      description: 'Observe only',
+    });
+    await registry.setEnabled('github-automation-observations', true);
+    const fetcher = vi.fn(async () => {
+      await registry.setEnabled('github-automation-observations', false);
+      return listing([]);
+    });
+    const subject = new GitHubPollAutomationPoller({
+      preview,
+      store: new AutomationStore(home),
+      ledger: { get: () => ledger, close: () => undefined },
+      fetcher,
+      integrationSecretResolver: resolver() as never,
+    });
+    expect(await subject.poll({ now: T0, signal })).toEqual([
+      expect.objectContaining({ outcome: 'skipped-disabled' }),
+    ]);
+    expect(fetcher).toHaveBeenCalledOnce();
     expect(ledger.pollState('source-1')).toBeUndefined();
   });
 

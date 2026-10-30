@@ -85,7 +85,7 @@ function parseTimestamp(value: unknown): number | undefined {
   return Number.isFinite(ms) ? ms : undefined;
 }
 
-export function workflowRunSemanticKey(id: string, attempt: string): string {
+function workflowRunSemanticKey(id: string, attempt: string): string {
   return `workflow_run:${id}:${attempt}:completed`;
 }
 

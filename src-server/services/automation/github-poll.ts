@@ -30,7 +30,10 @@ import {
 } from '@kontourai/station-contracts/automation';
 import { errorMessage } from '../../utils/error-message.js';
 import type { Logger } from '../../utils/logger.js';
-import type { FeaturePreviewSelector } from '../feature-previews/feature-preview-registry.js';
+import type {
+  FeaturePreviewRegistry,
+  FeaturePreviewSelector,
+} from '../feature-previews/feature-preview-registry.js';
 import {
   type GitHubWorkflowRunListing,
   listGitHubWorkflowRuns,
@@ -51,11 +54,11 @@ import {
 } from './github-workflow-run.js';
 
 /** Runs requested per listing; one page, never paginated. */
-export const GITHUB_POLL_RUNS_PER_PAGE = 20;
+const GITHUB_POLL_RUNS_PER_PAGE = 20;
 /** Listing lag tolerated behind the cursor before a run counts as seen. */
 export const CURSOR_OVERLAP_MS = 10 * 60 * 1000;
 /** Above this many pinned workflow files, one repository-wide listing is cheaper. */
-export const MAX_POLLED_WORKFLOW_FILES = 4;
+const MAX_POLLED_WORKFLOW_FILES = 4;
 const WORKFLOW_PATH = /^\.github\/workflows\/([A-Za-z0-9_.-]{1,100}\.ya?ml)$/;
 
 type MonitorFetch = (input: string, init: RequestInit) => Promise<Response>;
@@ -85,6 +88,23 @@ export interface GitHubPollAutomationPollerOptions {
   fetcher?: MonitorFetch;
   integrationSecretResolver?: IntegrationSecretResolver;
   logger?: Logger;
+}
+
+export function composeGitHubAutomationObservation(
+  input: Omit<GitHubPollAutomationPollerOptions, 'preview'> & {
+    hosted: boolean;
+    featurePreviews: FeaturePreviewRegistry;
+  },
+) {
+  if (input.hosted) return { preview: undefined, poller: undefined };
+  const preview = input.featurePreviews.bind({
+    id: 'github-automation-observations',
+    label: 'GitHub automation observations',
+    description:
+      'Observe configured GitHub workflow runs without starting agents. Uses GitHub API requests and stores bounded delivery history.',
+  });
+  const poller = new GitHubPollAutomationPoller({ ...input, preview });
+  return { preview, poller };
 }
 
 /**
@@ -195,6 +215,32 @@ export class GitHubPollAutomationPoller {
     this.options.ledger.close();
   }
 
+  private pollRefusal(
+    source: GitHubPollAutomationSource,
+    signal: AbortSignal,
+  ): GitHubPollSourceSummary['outcome'] | undefined {
+    if (signal.aborted) return 'skipped-stopping';
+    if (
+      !this.options.preview.select({
+        enabled: () => true,
+        disabled: () => false,
+      })
+    )
+      return 'skipped-disabled';
+    const current = this.options.store
+      .read()
+      .sources.find((entry) => entry.id === source.id);
+    if (
+      !current ||
+      !isDuePollSource(current) ||
+      JSON.stringify(current) !== JSON.stringify(source)
+    )
+      return 'skipped-source-changed';
+    if (this.options.store.actionableRules(source.id).length === 0)
+      return 'skipped-no-rules';
+    return undefined;
+  }
+
   private async pollSource(
     ledger: AutomationLedger,
     source: GitHubPollAutomationSource,
@@ -222,6 +268,8 @@ export class GitHubPollAutomationPoller {
     const files = pinnedWorkflowFiles(rules);
     const listings: GitHubWorkflowRunListing[] = [];
     for (const workflowFile of files ?? [undefined]) {
+      const refusal = this.pollRefusal(source, input.signal);
+      if (refusal) return { sourceId: source.id, outcome: refusal, ...counts };
       listings.push(
         await listGitHubWorkflowRuns(
           {
@@ -239,32 +287,10 @@ export class GitHubPollAutomationPoller {
       );
     }
     const failed = listings.find((listing) => listing.kind === 'failed');
-    if (
-      input.signal.aborted ||
-      !this.options.preview.select({
-        enabled: () => true,
-        disabled: () => false,
-      })
-    )
-      return {
-        sourceId: source.id,
-        outcome: input.signal.aborted ? 'skipped-stopping' : 'skipped-disabled',
-        ...counts,
-      };
-    const current = this.options.store
-      .read()
-      .sources.find((entry) => entry.id === source.id);
-    if (
-      !current ||
-      !isDuePollSource(current) ||
-      JSON.stringify(current) !== JSON.stringify(source)
-    )
-      return {
-        sourceId: source.id,
-        outcome: 'skipped-source-changed',
-        ...counts,
-      };
+    const refusal = this.pollRefusal(source, input.signal);
+    if (refusal) return { sourceId: source.id, outcome: refusal, ...counts };
     const currentRules = this.options.store.actionableRules(source.id);
+    const observedAt = Date.now();
     if (failed?.kind === 'failed') {
       const outcome =
         failed.outcome === 'unauthorized' ? 'unauthorized' : 'unavailable';
@@ -293,7 +319,7 @@ export class GitHubPollAutomationPoller {
     for (const run of runs) {
       const normalized = normalizeGitHubWorkflowRun(run, {
         source,
-        receivedAt: input.now,
+        receivedAt: observedAt,
       });
       const updatedAtMs = normalized.updatedAtMs;
       if (updatedAtMs !== undefined && updatedAtMs < cutoff) continue;
@@ -305,7 +331,7 @@ export class GitHubPollAutomationPoller {
           semanticKey: normalized.semanticKey,
           eventType: WORKFLOW_RUN_COMPLETED,
           reason: normalized.reason,
-          now: input.now,
+          now: observedAt,
         });
         counts.refused += 1;
         continue;
@@ -316,7 +342,7 @@ export class GitHubPollAutomationPoller {
         rules: currentRules,
         event: normalized.event,
         transportId: normalized.event.semanticKey,
-        now: input.now,
+        now: observedAt,
       });
       if (result.outcome === 'matched') counts.matched += 1;
       else if (result.outcome === 'no-match') counts.noMatch += 1;
@@ -335,7 +361,7 @@ export class GitHubPollAutomationPoller {
         : {
             cursorMs: Math.max(
               newest,
-              input.now - AUTOMATION_EXECUTION_LIMITS.maxEventAgeMs,
+              observedAt - AUTOMATION_EXECUTION_LIMITS.maxEventAgeMs,
             ),
           }),
     });

@@ -22,7 +22,7 @@ import {
   SharedAutomationLedger,
 } from '../../services/automation/automation-ledger.js';
 import { AutomationStore } from '../../services/automation/automation-store.js';
-import { GitHubPollAutomationPoller } from '../../services/automation/github-poll.js';
+import { composeGitHubAutomationObservation } from '../../services/automation/github-poll.js';
 import { lanDiscoveryFor } from '../../services/connections/lan-discovery.js';
 import { createStationRoutesResolver } from '../../services/connections/station-routes.js';
 import type { FlowRunService } from '../../services/flow/flow-run-service.js';
@@ -496,11 +496,13 @@ export function configureRuntimeSupportServices(
   const automationLedger = new SharedAutomationLedger(() =>
     createAutomationLedger({ directory: join(automationHome, 'automation') }),
   );
-  const automationPreview = context.featurePreviews.bind({
-    id: 'github-automation-observations',
-    label: 'GitHub automation observations',
-    description:
-      'Observe configured GitHub workflow runs without starting agents. Uses GitHub API requests and stores bounded delivery history.',
+  const automationObservation = composeGitHubAutomationObservation({
+    hosted: isHostedTenantExecutionRequired(),
+    featurePreviews: context.featurePreviews,
+    store: new AutomationStore(automationHome),
+    ledger: automationLedger,
+    integrationSecretResolver,
+    logger: context.logger,
   });
   const schedulerService = new SchedulerService({
     logger: context.logger,
@@ -508,13 +510,7 @@ export function configureRuntimeSupportServices(
       notificationService,
       turnAdapter: createScheduledTurnAdapter(context.activeAgents),
       integrationSecretResolver,
-      automationPoller: new GitHubPollAutomationPoller({
-        preview: automationPreview,
-        store: new AutomationStore(automationHome),
-        ledger: automationLedger,
-        integrationSecretResolver,
-        logger: context.logger,
-      }),
+      automationPoller: automationObservation.poller,
       onActionableMonitor: async (input) => {
         const task = await context.taskGraphService.createTaskIdempotent(
           {
@@ -799,7 +795,7 @@ export function configureRuntimeSupportServices(
   return {
     schedulerService,
     automationLedger,
-    automationPreview,
+    automationPreview: automationObservation.preview,
     notificationService,
     approvalInboxProvider,
     attentionProjection,

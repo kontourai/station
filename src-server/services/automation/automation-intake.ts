@@ -58,7 +58,7 @@ export function automationEpisodeKey(
  * closed opens a new episode for the same rule, and `(rule, episode id)` is
  * unique for life, so attempts after the first carry their attempt number.
  */
-export function automationEpisodeId(event: AutomationEvent): string {
+function automationEpisodeId(event: AutomationEvent): string {
   const runId = event.fields['run.id'];
   const attempt = event.fields['run.run_attempt'];
   if (!runId) return event.semanticKey;

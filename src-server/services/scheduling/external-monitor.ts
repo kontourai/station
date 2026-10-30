@@ -660,7 +660,7 @@ export async function probeGitHubPullRequest(
 
 /** A workflow run is large (two embedded repositories); one page stays bounded. */
 const GITHUB_WORKFLOW_RUNS_MAX_BYTES = 1024 * 1024;
-export const GITHUB_WORKFLOW_RUNS_MAX_PER_PAGE = 30;
+const GITHUB_WORKFLOW_RUNS_MAX_PER_PAGE = 30;
 const WORKFLOW_FILE = /^[A-Za-z0-9_.-]{1,100}\.ya?ml$/;
 
 export type GitHubWorkflowRunListing =

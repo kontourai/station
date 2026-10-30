@@ -19,11 +19,11 @@ import { AutomationPolicyUnavailableError } from '../../services/automation/auto
 import type { FeaturePreviewSelector } from '../../services/feature-previews/feature-preview-registry.js';
 import type { Logger } from '../../utils/logger.js';
 
-export const AUTOMATION_DELIVERIES_DEFAULT_LIMIT = 50;
-export const AUTOMATION_DELIVERIES_MAX_LIMIT = 200;
+const AUTOMATION_DELIVERIES_DEFAULT_LIMIT = 50;
+const AUTOMATION_DELIVERIES_MAX_LIMIT = 200;
 
 export interface AutomationRouteDependencies {
-  preview: FeaturePreviewSelector;
+  preview: FeaturePreviewSelector | undefined;
   listDeliveries(limit: number): AutomationDeliveryRecord[];
   listPolls(): AutomationPollRecord[];
   /** Runtime composition derives this only from trusted request ingress. */
@@ -58,7 +58,7 @@ export function createAutomationRoutes(
     if (hidden(c.req.raw)) {
       return c.json({ success: false, error: 'Automations not found' }, 404);
     }
-    if (!deps.preview.select({ enabled: () => true, disabled: () => false }))
+    if (!deps.preview?.select({ enabled: () => true, disabled: () => false }))
       return c.json(
         {
           success: false,
