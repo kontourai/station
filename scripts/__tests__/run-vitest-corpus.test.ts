@@ -157,8 +157,15 @@ describe('Vitest corpus runner', () => {
       writeFileSync(
         resolve(root, 'scripts/vitest-inflight-reporter.mjs'),
         `import Reporter from ${JSON.stringify(reporterUrl)};
+import { existsSync, writeFileSync } from 'node:fs';
+const marker = ${JSON.stringify(resolve(root, 'phase-observed'))};
+const pattern = ${JSON.stringify(phase === 'collection' ? 'stage=queued; elapsedMs=[1-9]' : phase === 'body' ? 'stage=running;.*cases=(?!unknown)[^;]+; hooks=unknown' : 'hooks=afterEach@[1-9]')};
 export default class extends Reporter {
-  constructor() { super({ intervalMs: 25 }); }
+  constructor() { super({ intervalMs: 25, write(message) {
+    process.stdout.write(message);
+    if (new RegExp(pattern).test(message) && !existsSync(marker))
+      writeFileSync(marker, 'observed');
+  } }); }
 }`,
       );
       writeFileSync(
@@ -168,7 +175,17 @@ export default class extends Reporter {
       writeFileSync(
         resolve(root, 'phase.test.ts'),
         `import { afterEach, expect, test } from 'vitest';
-const delay = () => new Promise(resolve => setTimeout(resolve, 300));
+import { existsSync } from 'node:fs';
+const marker = ${JSON.stringify(resolve(root, 'phase-observed'))};
+const delay = () => new Promise((resolve, reject) => {
+  const started = Date.now();
+  const check = () => {
+    if (existsSync(marker)) return resolve();
+    if (Date.now() - started >= 1500) return reject(new Error('The real lifecycle heartbeat was not observed'));
+    setTimeout(check, 10);
+  };
+  check();
+});
 ${phase === 'collection' ? 'await delay();' : ''}
 ${phase === 'afterEach' ? 'afterEach(delay);' : ''}
 test('private-case-content-must-not-appear-in-progress', async () => {
