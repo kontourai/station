@@ -217,7 +217,10 @@ import { WalkthroughService } from '../../services/walkthroughs/walkthrough-serv
 import { errorMessage } from '../../utils/error-message.js';
 import { canonicalPath } from '../../utils/path-containment.js';
 import { bindLocalMediaPreviews } from '../bootstrap/local-media-runtime.js';
-import { STATION_KNOWLEDGE_MCP_PATH } from '../mcp/station-control-mcp-token.js';
+import {
+  revokeCoordinatorConversationCredentials,
+  STATION_KNOWLEDGE_MCP_PATH,
+} from '../mcp/station-control-mcp-token.js';
 import { createRuntimeFrameworkModel } from '../plugins/runtime-provider-resolution.js';
 import {
   currentRequestReadAuthority,
@@ -327,6 +330,7 @@ import type { Context } from 'hono';
 import { setCookie } from 'hono/cookie';
 import type { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
 import { NodePtyAdapter } from '../../adapters/node-pty-adapter.js';
+import { servesCoordinatorSession } from '../../capabilities/station-capability-flags.js';
 import {
   loadOrCreateAgentRegistry,
   replacePluginEngineConnections,
@@ -447,6 +451,7 @@ import { fullAccessGrantForRequest } from '../../routes/orchestration/approval-a
 import { createAttachmentStagingRoutes } from '../../routes/orchestration/attachment-staging.js';
 import { createAttachmentRoutes } from '../../routes/orchestration/attachments.js';
 import { createAttentionRoutes } from '../../routes/orchestration/attention.js';
+import { createCoordinatorRoutes } from '../../routes/orchestration/coordinator.js';
 import { createDeclarePullRequestRoutes } from '../../routes/orchestration/declare-pull-request.js';
 import { createEventRoutes } from '../../routes/orchestration/events.js';
 import { createLiveActivityRoutes } from '../../routes/orchestration/live-activity.js';
@@ -699,6 +704,12 @@ import {
   ownerDevicePredicate,
 } from '../../services/orchestration/conversation-acknowledgement-store.js';
 import {
+  type CoordinatorWakeDelivery,
+  coordinatorDeliveryPorts,
+  readCoordinatorDelivery,
+  wireCoordinatorWakes,
+} from '../../services/orchestration/coordinator-session.js';
+import {
   type DelegationAttemptClaimStore,
   delegationAttemptClaimKey,
   projectDelegationAttemptClaim,
@@ -884,6 +895,7 @@ import {
   refreshPeerDelegationActivity,
   respondToDelegatedTaskRequest,
 } from '../../tools/station-control-delegation.js';
+import { stationControlScopeRefusal } from '../../tools/station-control-policy.js';
 import { INTERNAL_CONTROL_CALLER_BINDING_HEADER } from '../../tools/station-control-shared.js';
 import {
   INTERNAL_API_TOKEN_HEADER,
@@ -6152,6 +6164,11 @@ export function configureRuntimeRoutes(
   }
 
   /** #3568: follow-ups a busy conversation holds until its turn ends. */
+  /**
+   * #3628: the coordinator wake's placement policy, bound once the wake
+   * delivery exists (it is composed after the inbox it hands wakes to).
+   */
+  let coordinatorPlacement: CoordinatorWakeDelivery | undefined;
   function createThreadInboxDelivery(
     eventStore: EventStore,
   ): ThreadInboxDelivery {
@@ -6159,6 +6176,13 @@ export function configureRuntimeRoutes(
     return new ThreadInboxDelivery({
       ...conversationDeliveryPorts(eventStore),
       store: eventStore.threadInboxStore(),
+      placementRefusal: ({ conversationId, clientTurnId, payload, queuedAt }) =>
+        coordinatorPlacement?.placementRefusal({
+          conversationId,
+          clientTurnId,
+          userId: payload.actor.userId,
+          queuedAt,
+        }),
       hasPossibleEffect: (threadId) =>
         eventStore.sessionTurnBoundaryAuthority().hasPossibleEffect(threadId),
       // The live continuation's own rule (`canContinueConversation`): the
@@ -6384,6 +6408,98 @@ export function configureRuntimeRoutes(
   context.app.route(
     '/api/orchestration',
     createAgentScheduleRoutes(agentSchedule.routeDeps),
+  );
+  // #3628: a person's coordinator Session, woken through the same inbox when
+  // work they can read needs them, finished or failed. Not on a hosted
+  // Station (no inbox there).
+  const coordinatorStore = servesCoordinatorSession({
+    hosted: hostedTenantRegistry !== undefined,
+  })
+    ? context.orchestrationEventStore?.coordinatorStore()
+    : undefined;
+  const picturePreview = coordinatorStore
+    ? context.featurePreviews.bind({
+        id: 'coordinator-picture',
+        label: 'Coordinator working picture',
+        description:
+          'Keep a bounded coordinator-maintained picture of readable work across sessions.',
+      })
+    : undefined;
+  const coordinatorWakes =
+    coordinatorStore && threadInbox && context.orchestrationEventStore
+      ? wireCoordinatorWakes({
+          eventBus: context.eventBus,
+          eventStore: context.orchestrationEventStore,
+          store: coordinatorStore,
+          pictureEnabled: () =>
+            picturePreview?.select({
+              enabled: () => true,
+              disabled: () => false,
+            }) === true,
+          threadInbox,
+          mayRead: (userId, sessionId) =>
+            context.orchestrationService.canUserReadSession(
+              sessionId,
+              readAuthorityForExecution(userId),
+            ),
+          logger: context.logger,
+        })
+      : undefined;
+  coordinatorPlacement = coordinatorWakes;
+  const coordinatorEvents = context.orchestrationEventStore;
+  context.app.route(
+    '/api/orchestration',
+    createCoordinatorRoutes({
+      store: coordinatorStore,
+      revokeCoordinatorCredentials: (conversationId) => {
+        const sessions =
+          context.orchestrationEventStore?.conversationSessions(
+            conversationId,
+          ) ?? [];
+        revokeCoordinatorConversationCredentials(
+          conversationId,
+          sessions.map((entry) => entry.sessionId),
+        );
+      },
+      picturePreview,
+      isInternalRequest: isStationInternalRequest,
+      resolvePictureCaller: (request) =>
+        resolveStationControlCallerForRequest(
+          request,
+          resolveStationControlCallerRecord,
+        ),
+      agentMayRead: (caller, conversationId) =>
+        !stationControlScopeRefusal(
+          caller,
+          stationControlDispatchScope.target(
+            { kind: 'conversation', conversationId, remote: false },
+            'view',
+          ),
+          (id) => id === LOCAL_OPERATOR_PRINCIPAL_ID,
+        ),
+      person: agentSchedule.person,
+      dispatchActor: (c) =>
+        resolveDispatchActor(
+          {
+            resolvePrincipal: resolveOrchestrationRequestPrincipal,
+            resolveAgentDispatchActor,
+          },
+          c,
+        ),
+      ...(coordinatorWakes ? { wakes: coordinatorWakes } : {}),
+      ...(coordinatorEvents
+        ? {
+            delivery: (conversationId: string) =>
+              readCoordinatorDelivery(
+                conversationId,
+                coordinatorDeliveryPorts({
+                  eventStore: coordinatorEvents,
+                  service: context.orchestrationService,
+                }),
+              ),
+          }
+        : {}),
+    }),
   );
   context.app.route(
     '/api/orchestration',
@@ -10532,6 +10648,15 @@ export function configureRuntimeRoutes(
       .then(() => agentWakeUps.reconcile())
       .catch((error: unknown) =>
         context.logger.warn('agent wake-up reconcile failed', {
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
+  // #3628: coordinator wakes a restart cut short, and items still waiting.
+  if (coordinatorWakes)
+    void kitLifecycleReady
+      .then(() => coordinatorWakes.reconcile())
+      .catch((error: unknown) =>
+        context.logger.warn('coordinator wake reconcile failed', {
           error: error instanceof Error ? error.message : String(error),
         }),
       );

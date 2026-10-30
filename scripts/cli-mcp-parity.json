@@ -1144,6 +1144,14 @@
     "continue_task": {
       "cli": ["delegate continue"]
     },
+    "coordinator_picture_read": {
+      "exempt": "agent-self",
+      "reason": "Reads the calling coordinator's person-scoped working picture."
+    },
+    "coordinator_picture_update": {
+      "exempt": "agent-self",
+      "reason": "Updates only the calling coordinator's person-scoped working picture."
+    },
     "create_agent": {
       "cli": ["agents create"]
     },

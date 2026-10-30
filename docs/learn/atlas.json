@@ -51,6 +51,7 @@
         "TurnDeduplicator",
         "SessionMessageDelivery",
         "SessionDigest",
+        "CoordinatorWakeDelivery",
         "WorkClaimStore",
         "AdoptionLedger",
         "RecoveryLedger and private CredentialApplicationFactory/Handle",

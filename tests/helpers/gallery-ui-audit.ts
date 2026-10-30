@@ -20,6 +20,70 @@ export interface GalleryUiFinding {
 /** The phone layout is the touch layout; the 44px rule applies there. */
 const TOUCH_LAYOUT_MAX_WIDTH = 600;
 
+/** Controls partly covered by the collapsed dock's non-interactive chrome. */
+const DOCK_OCCLUSION_AUDIT = `(() => {
+  ${STABLE_ANCHOR_SOURCE}
+  const docks = Array.from(document.querySelectorAll('.chat-dock.is-collapsed'));
+  const controls = Array.from(document.querySelectorAll('button, input, select, textarea, summary, a[href], [role="button"], [role="menuitem"]'));
+  const findings = [];
+  for (const control of controls) {
+    if (docks.some((dock) => dock.contains(control))) continue;
+    if (typeof control.checkVisibility === 'function' && !control.checkVisibility({ visibilityProperty: true })) continue;
+    const r = control.getBoundingClientRect();
+    // A control entirely clipped by an ancestor is not dock-occluded. A
+    // partly visible control can still extend beneath a dock outside that
+    // ancestor, so use its original rectangle for the overlap itself.
+    let visible = { left: Math.max(r.left, 0), right: Math.min(r.right, innerWidth), top: Math.max(r.top, 0), bottom: Math.min(r.bottom, innerHeight) };
+    for (let ancestor = control.parentElement; ancestor && ancestor !== document.body; ancestor = ancestor.parentElement) {
+      const style = getComputedStyle(ancestor), clip = ancestor.getBoundingClientRect();
+      if (style.overflowX !== 'visible') { visible.left = Math.max(visible.left, clip.left); visible.right = Math.min(visible.right, clip.right); }
+      if (style.overflowY !== 'visible') { visible.top = Math.max(visible.top, clip.top); visible.bottom = Math.min(visible.bottom, clip.bottom); }
+    }
+    if (visible.right - visible.left <= 1 || visible.bottom - visible.top <= 1) continue;
+    for (const dock of docks) {
+      const d = dock.getBoundingClientRect();
+      // An independently scrolling pane can bring its below-fold controls
+      // fully into view; the sliver at its clipped edge is not dock coverage.
+      let reachableInPane = false;
+      let pinned = ['fixed', 'sticky'].includes(getComputedStyle(control).position);
+      for (let ancestor = control.parentElement; ancestor && ancestor !== document.body; ancestor = ancestor.parentElement) {
+        const style = getComputedStyle(ancestor), pane = ancestor.getBoundingClientRect();
+        const listBoundary = Math.min(pane.bottom, d.top);
+        const independentlyScrollingPane = pane.width < d.width - 1 && pane.bottom <= d.top + 1;
+        const settingsList = control.closest('.settings__section') !== null;
+        if (!pinned && (style.overflowY === 'auto' || style.overflowY === 'scroll') &&
+            ancestor.scrollHeight > ancestor.clientHeight &&
+            (independentlyScrollingPane || settingsList) &&
+            r.height <= listBoundary - pane.top &&
+            r.top < pane.bottom && r.bottom > listBoundary &&
+            ancestor.scrollHeight - ancestor.clientHeight - ancestor.scrollTop >= r.bottom - listBoundary) {
+          reachableInPane = true;
+          break;
+        }
+        if (style.position === 'fixed' || style.position === 'sticky') pinned = true;
+      }
+      if (reachableInPane) continue;
+      const left = Math.max(r.left, d.left, 0), right = Math.min(r.right, d.right, innerWidth);
+      const top = Math.max(r.top, d.top, 0), bottom = Math.min(r.bottom, d.bottom, innerHeight);
+      if (right - left <= 1 || bottom - top <= 1) continue;
+      // The control itself may be clipped out of the overlap. Compare the
+      // dock with the first painted element in the control's ancestor chain
+      // as well, so a foreground dialog stays above the dock while clipped
+      // content behind the dock remains detectable.
+      const covered = [0.25, 0.5, 0.75].some((x) =>
+        [0.25, 0.5, 0.75].some((y) => {
+          const stack = document.elementsFromPoint(left + (right - left) * x, top + (bottom - top) * y);
+          const dockIndex = stack.findIndex((element) => dock.contains(element));
+          const controlIndex = stack.findIndex((element) => element === control || control.contains(element) || element.contains(control));
+          return dockIndex === 0 && controlIndex >= 0 && dockIndex < controlIndex;
+        }),
+      );
+      if (covered) findings.push({ anchor: stableAnchor(control) });
+    }
+  }
+  return findings;
+})()`;
+
 /**
  * Horizontal escape, measured in the page. Reports the document scrolling
  * sideways, and every element that crosses the viewport's left or right edge
@@ -98,6 +162,14 @@ export async function auditGalleryScreen(
   const width = page.viewportSize()?.width ?? 0;
 
   const hits = (await page.evaluate(HIT_TARGET_AUDIT)) as HitTargetAudit;
+  const dockOcclusions = (await page.evaluate(DOCK_OCCLUSION_AUDIT)) as Array<{
+    anchor: string;
+  }>;
+  for (const { anchor } of dockOcclusions)
+    findings.push({
+      identity: `hit-target:occluded-by-dock:${anchor}`,
+      detail: 'control is partly covered by collapsed dock chrome',
+    });
   for (const { anchor } of hits.unreachableTargets.filter(
     (target) => !target.offCanvas,
   ))

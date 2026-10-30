@@ -22,6 +22,7 @@ only when this Station's build can run it; if none is, the section says
 
 | ID | Name | What turning it on does | Notable cost/risk |
 | --- | --- | --- | --- |
+| `coordinator-picture` | Coordinator working picture | Lets the designated coordinator keep short notes about readable work, shown on Home. | Notes can contain work details; access to each source is rechecked. Finished notes expire after seven days. |
 | `attention-snooze` | Attention snooze | Lets the attention API temporarily hide any inbox item until a chosen time, up to 30 days. A newer source version resurfaces immediately. | Local per-user state only; no provider cost or background jobs. Off by default; disabling keeps saved snoozes but omits their effect while off. |
 | `fleet-consumer-probes` | Fleet consumer probes | Sends a test request to a peer-contributed model before routing work to it. | Can spend a completion on another Station. |
 | `walkthroughs` | Walkthroughs | Imports narrated recordings and enables Task-bound Browser clips. | One-time consented media/speech tool download; CPU use; recordings may contain private information. |
