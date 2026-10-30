@@ -95,6 +95,12 @@ function childTranscriptRefFromHistory(
       continue;
     }
     for (const item of itemsOf(delta)) {
+      if (
+        delta.kind === 'snapshot' &&
+        (item.producer !== delta.producer ||
+          item.reporterThreadId !== delta.reporterThreadId)
+      )
+        continue;
       if (item.childId !== childId) continue;
       ref = parseChildWorkTranscriptRef(item.transcript) ?? ref;
     }

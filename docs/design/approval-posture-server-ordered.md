@@ -11,6 +11,13 @@
 > for current requests. The historical “full access” descriptions do not replace
 > those current authority and engine boundaries.
 
+> The later `steerChildWork` command also checks the parent turn's current
+> confinement before dispatch. It is a separate child-targeted command; the
+> historical `steerTurn` discussion below does not describe its receipt or
+> instruction history. See the [Session API](../reference/session-api.md) and
+> [remote access threat model](../security/remote-access-threat-model.md) for
+> those boundaries. This is source evidence, not a native or hosted journey.
+
 > Status: **accepted (owner decision on #2436, 2026-09-23); implemented on the
 > branch that closes #2436, #2418 and #2409.** It replaces the client-side pick
 > bookkeeping that #2449 added in `src-ui/src/utils/approvalMode.ts`. Line

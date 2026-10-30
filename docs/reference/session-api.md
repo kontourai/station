@@ -750,7 +750,7 @@ memory paths or another Session's memory identity.
 ## Lifecycle control commands
 
 `POST /api/orchestration/commands` is a control surface, not an execution selector.
-It accepts `adoptSession`, `interruptTurn`, `steerTurn`, `steerTurnOnce`, `inspectSteerInput`, `respondToRequest`,
+It accepts `adoptSession`, `interruptTurn`, `steerTurn`, `steerTurnOnce`, `steerChildWork`, `inspectSteerInput`, `respondToRequest`,
 `setApprovalMode`, `discardDraft`, and `stopSession`. Commands use the execution
 Session ID as `threadId`, not an assumed copy of the Conversation ID.
 Public `startSession` and `sendTurn` commands do not exist; adapter dispatch remains
@@ -1105,6 +1105,28 @@ The remaining controls are defined by
   type before any engine invocation; they cannot silently discard the ID. The
   receipt's `commandType` remains `steerTurn`. Use this variant for retry-safe
   clients that may connect to older servers.
+- `steerChildWork`: `{ type: 'steerChildWork', threadId, childId, turnId, input, clientInputId }`
+  targets an owned running child and its active turn, not the parent turn. The
+  paired credential needs `orchestration:operate`; the current principal must
+  be able to read and mutate the Session. Hosted ownership and tenant checks,
+  Station Control caller authority, and confinement checks still apply and are
+  rechecked before dispatch. A missing or revoked authority is refused. The
+  server requires durable storage and does not fall back to steering the parent.
+  A stable `clientInputId` binds the parent, child, turn and input: an identical
+  confirmed retry returns its result without another engine call; a mismatched
+  or uncertain claim returns `indeterminate`. Deletion removes instruction text
+  but retains a key tombstone so the ID cannot be reused for another Session.
+  An acknowledgement timeout or lost acknowledgement is not proof of delivery;
+  do not retry with a new ID automatically. Explicit `unsupported` and
+  `no-active-task` refusals are retained. `childWorkSteering` in the host
+  handshake advertises this command and instruction history; an absent flag or
+  an older host rejecting the unknown command is not permission to fall back.
+
+  Codex support follows observed child protocol and active turn facts, not model
+  names. Captures with Codex 0.164 show v1 accepting child `turn/steer` and v2
+  rejecting direct app-server input. This provider evidence does not establish
+  an end-to-end Station HTTP or deployed-device journey.
+
 - `inspectSteerInput`: `{ type: 'inspectSteerInput', threadId, input, turnId?, clientInputId }`
   reads the original journal identity and returns `steered`, `indeterminate` or
   `not-received`. It creates a standard command audit receipt, but never resolves
@@ -1425,7 +1447,7 @@ failures can occur before a receipt exists. Acceptance is not turn completion:
   "receipt": {
     "commandId": "uuid, generated server-side",
     "threadId": "string",
-    "commandType": "adoptSession | interruptTurn | steerTurn | inspectSteerInput | respondToRequest | setApprovalMode | discardDraft | stopSession",
+    "commandType": "adoptSession | interruptTurn | steerTurn | steerChildWork | inspectSteerInput | respondToRequest | setApprovalMode | discardDraft | stopSession",
     "status": "accepted | rejected | failed",
     "createdAt": "ISO 8601 timestamp"
   }
@@ -1754,7 +1776,7 @@ this read and the distinct `steerChildWork` command on the
 `childWorkSteering` handshake capability. Retrying an uncertain command uses
 its original parent, child, turn, text and `clientInputId`.
 
-An engine subagent's own conversation, read-only. `threadId` is the session
+An engine subagent's own conversation, read-only through this endpoint. `threadId` is the session
 that reported the subagent and `childId` is its child-work id. The server
 finds the transcript from that session's persisted child-work facts (the
 `transcript` reference on the `ChildWorkItem`), so the request carries no
@@ -1798,6 +1820,22 @@ message saying the preceding conversation is inherited parent context when
 no start ordinal is written. A forked rollout with neither shows nothing
 rather than the parent's history. A single record of any type larger than 4 MiB is
 skipped and shown as one `too-large` entry.
+
+### Child instructions (`GET /sessions/:threadId/child-work/:childId/instructions`)
+
+Station's own instruction journal is paged separately from the provider's
+transcript. The read requires a current principal and authority to read the
+Session and the named child; both are checked again before returning. A missing,
+foreign or no-longer-authorized child returns `404` without distinguishing the
+case. Responses use `Cache-Control: private, no-store`. `offset` defaults to
+`0` and is at most 1,000,000; `limit` defaults to `10` and is `1`–`10`.
+Invalid pages return `400`. `data.entries` contain the child and turn IDs,
+client input ID, text, creation time and delivery (`indeterminate`, `delivered`
+or `refused`), with a refusal reason for `unsupported` or `no-active-task` and
+optional principal and client origin. `nextOffset` appears when another page
+exists. The initial durable claim and instruction are written together before
+engine dispatch; `delivered` records a matching acknowledgement, while
+`indeterminate` does not establish whether the provider acted.
 
 ### Live SSE feed (`GET /events`)
 

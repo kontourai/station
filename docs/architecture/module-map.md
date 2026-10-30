@@ -1538,7 +1538,7 @@ key. A prior started turn replays, a live claim stays in flight, and an
 expired or indeterminate effect is never started again. This
 primitive adds no storage command or inbox. Recovery-ledger extraction remains open under #3565. Steer receipts now use
 Monument over the existing EventStore connection, including host rollback and
-explicit thread deletion; this does not add durable steer placement.
+explicit thread deletion; this does not add durable steer placement. Separately, Station atomically records child-steer instructions and target-bound claims, retains key tombstones on Session deletion, and serves authorized instruction pages. See [child steering](../reference/session-api.md#lifecycle-control-commands) and [instruction reads](../reference/session-api.md#child-instructions-get-sessionsthreadidchild-workchildidinstructions).
 
 **Provenance.** Station's `send_to_session` and delegated-result host callers
 validate their server-owned sender and frame the message (`frameAgentMessage`)
