@@ -17,6 +17,10 @@
       "missing": 4286,
       "want": "Acp_status"
     },
+    "activity": {
+      "tools": ["list_active_work", "list_project_activity"],
+      "note": "--project mirrors list_project_activity; without it, every readable Session (list_active_work)."
+    },
     "agents chat": {
       "tools": ["send_message"]
     },
@@ -743,6 +747,9 @@
       "exempt": "local-host",
       "reason": "Launchd/systemd/Windows service management."
     },
+    "sessions digest": {
+      "tools": ["get_session_digest"]
+    },
     "sessions inspect": {
       "missing": 3427,
       "want": "Get_session_tool_result"
@@ -758,6 +765,17 @@
     "sessions read": {
       "missing": 3427,
       "want": "read_conversation reads the transcript, not the orchestration session snapshot this reads"
+    },
+    "sessions search": {
+      "tools": ["search_sessions"]
+    },
+    "sessions transcript": {
+      "tools": ["read_conversation"],
+      "note": "Uses the owner-only /read route, so it does not check Project view access as the tool does."
+    },
+    "sessions wait": {
+      "tools": ["wait_session"],
+      "note": "Person route under /api/orchestration/session-reads; reports a restart-interrupted turn as restart-interrupted (exit 3)."
     },
     "setup existing": {
       "exempt": "local-host",
@@ -1177,8 +1195,7 @@
       "cli": ["schedule status"]
     },
     "get_session_digest": {
-      "missing": 3427,
-      "want": "Sessions digest"
+      "cli": ["sessions digest"]
     },
     "get_session_inventory": {
       "missing": 3427,
@@ -1239,8 +1256,7 @@
       "cli": ["delegate interrupt"]
     },
     "list_active_work": {
-      "missing": 3427,
-      "want": "Activity --active"
+      "cli": ["activity"]
     },
     "list_agents": {
       "cli": ["agents list"],
@@ -1284,8 +1300,7 @@
       "cli": ["plugin list"]
     },
     "list_project_activity": {
-      "missing": 3427,
-      "want": "Activity --project"
+      "cli": ["activity"]
     },
     "list_project_layouts": {
       "cli": ["projects layouts"],
@@ -1361,8 +1376,7 @@
       "reason": "See get_answer_assessment_target."
     },
     "read_conversation": {
-      "missing": 3427,
-      "want": "Sessions read --around/--cursor"
+      "cli": ["sessions transcript"]
     },
     "read_logs": {
       "missing": 4284,
@@ -1430,8 +1444,7 @@
       "cli": ["knowledge search"]
     },
     "search_sessions": {
-      "missing": 3427,
-      "want": "Sessions search"
+      "cli": ["sessions search"]
     },
     "send_message": {
       "cli": ["chat", "agents chat"],
@@ -1494,8 +1507,7 @@
       "want": "Plugin validate"
     },
     "wait_session": {
-      "missing": 3427,
-      "want": "Sessions wait"
+      "cli": ["sessions wait"]
     },
     "workload_status": {
       "exempt": "agent-self",

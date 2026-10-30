@@ -12,6 +12,40 @@ entry point. Exports select TypeScript/TSX source and host components may also
 need CSS, React and a Query Client. See the [package README](../../packages/sdk/README.md)
 for source distribution and a checked authoring example.
 
+## Terminal output sessions
+
+`TerminalOutputSession` from `@kontourai/station-sdk/client` observes an existing
+terminal through the Station API listener. Pass its `apiBase`, `projectId`,
+`bindingKey`, UUID `terminalId`, a `resolveCredential` callback returning a
+`ClientCredential`, and `onOutput`/`onReset` callbacks. Call `connect()` and
+`dispose()` to own the connection lifetime. An optional `requestScope` pins the
+selected host authority; broker routes and credential-less native transports
+are refused. Both the HTTP probe and socket require a terminal-operate
+credential; output-only describes the commands this client sends, not an
+observe-scope credential.
+
+An authenticated HTTP probe distinguishes an older host's 404 and reports
+`unsupported-host`, suggesting a host update before any socket is attempted.
+After attachment, the SDK also requires the server's advertised, enforced
+128-frame outstanding output bound. Hosts without it return `unsupported-host`
+and need an update; older clients can ignore the additive field.
+Authentication is mandatory on loopback too. Output credit advances only after
+`onOutput` resolves; `appliedThrough` is the last applied journal sequence. A
+retention reset awaits `onReset` before replay. Three bounded reconnect attempts
+resume that same terminal from the applied sequence after each disconnect;
+probe network failures share that bounded retry budget. Replay can take longer
+than five seconds while output advances, but a stalled replay renderer is
+bounded. Once ready, slow rendering applies backpressure without a rendering
+deadline; credit is acknowledged only after output is applied.
+Callbacks receive an abort
+signal for disposal or failure. Rejected credentials, expired authority and
+protocol errors settle `connect()` and are reported through `onError`.
+
+This read-only client sends no shell input or terminal lifecycle commands. It
+does not replace the Coding terminal view, choose an emulator, or qualify paired
+devices, native transports, provider execution or installed reconnection. Those
+remain part of #3994.
+
 ## Local speech and media tools
 
 The React-free `@kontourai/station-sdk/client` exports
@@ -1733,6 +1767,30 @@ This supports new current-host tasks with a shared workspace only; no
 saved-Environment forwarding,
 portable workspace, prepared attempt or Task room request. File limits and cleanup are described in
 the [CLI delegate reference](cli.md#delegate).
+
+### `waitForSession`, `getSessionDigest` and `listSessionActivity`
+
+`@kontourai/station-sdk/client` has one fetcher for each
+[person Session read](api.md#person-session-reads) (#3427), the reads behind
+`station sessions wait|digest` and `station activity`:
+
+- `waitForSession(apiBase, sessionId, { until, timeoutMs?, afterEventCursor? }, options?)`
+  makes one bounded wait of at most 50 seconds. Give the request a deadline
+  longer than `timeoutMs` (`options.timeoutMs`).
+- `getSessionDigest(apiBase, sessionId, { turnLimit?, cursor? }, options?)`
+- `listSessionActivity(apiBase, { projectSlug?, limit?, cursor?, activeWithinMinutes? }, options?)`
+
+Each reads the public handshake first. A host that does not advertise
+`sessionPersonReads` gets `SessionReadsUnsupportedError` and no request,
+because an older host's `404` for an unknown path reads exactly like
+`session_not_found`. A route refusal is a `StationHttpError` with its status
+and `code`, plus `previewId` and `settingsPath` for
+`feature_preview_disabled`. When no handshake can be read, the fetcher reads it
+once more, uncached. A 5xx, 408 or 429 answer then throws a `StationHttpError`
+with that status rather than reporting an older host. The answers that mean
+"try later" (a gateway or edge status, 408 or 429) carry the code
+`STATION_NOT_ANSWERING` (`station_not_answering`). The fetchers send the configured credential as a
+person and never send a station-control caller.
 
 ### `useDelegateOrchestrationTaskMutation(apiBase?, options?)`
 
