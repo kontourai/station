@@ -1,0 +1,7 @@
+{
+  "revision": "f49c921862dddf57e532897e7cd8f3ca9cddc986",
+
+  "notes": [
+    {"path":"docs/user/pull-request-guides.md","note":"Scoped runtime-route composition review at f49c921862d: read complete guide, current PullRequestReviewGuideService composition and full runtime-routes delta against main. Added ensemble/session/report-group mounts and preview participant are separate from the existing guide service, model resolver and pull-request route mount. Guide composition still chooses reviewGuideModel or structureModel, uses managed model resolution with no tools, structured output, maxRetries zero and the request abort signal. Personal-token changes add current-operator checks at token mutation boundaries and do not alter guide generation semantics or confer guide authority. No prose change required for this route input; unchanged guide normalization/store/UI/capacity claims retain prior source reviews. Source inspection only, no generation, model/provider call, PR review/approval, browser or hosted acceptance executed.","inputs":["docs/user/pull-request-guides.md","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}
