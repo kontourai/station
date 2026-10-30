@@ -12,6 +12,7 @@ import {
   ComparisonMessage,
   comparisonMetadata,
   deriveComparisonView,
+  formatCheckTime,
   isArchiveInstall,
   serverIdentityMatchesView,
   TechnicalDetails,
@@ -109,8 +110,7 @@ function SourceInstallationFacts({
     status.applyMethod === 'self-update' &&
     status.updateAvailable &&
     !status.selfUpdateUnavailableReason;
-  const historicalTime =
-    dataUpdatedAt > 0 ? new Date(dataUpdatedAt).toLocaleTimeString() : null;
+  const historicalTime = formatCheckTime(dataUpdatedAt);
 
   const affectedServer = (
     <p className="settings__field-hint">
