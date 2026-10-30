@@ -1,0 +1,43 @@
+{
+  "live_source": "4e4c91205543d704c4ea99768c481d8901a3ad06",
+  "visual_source": "f4b3f7b1405e0784c528a9f8d6ef72a7794ee2c4",
+  "provider": "codex 0.164.0",
+  "model": "gpt-5.6-luna",
+  "request": {
+    "type": "steerChildWork",
+    "http_status": 200,
+    "outcome": "steered",
+    "parent": "parent-1",
+    "child": "child-1",
+    "turn": "turn-1"
+  },
+  "journal": {
+    "matching_rows": 1,
+    "delivery": "delivered",
+    "confirmed_same_turn": true
+  },
+  "reopened": {
+    "visible_instruction_count": 1,
+    "child_reply": "DEDUP_UI_ACK",
+    "attributed_disclosure": true
+  },
+  "geometry": {
+    "viewport_widths": [
+      390,
+      1440
+    ],
+    "themes": [
+      "light",
+      "dark"
+    ],
+    "document_width_matches_viewport": true,
+    "disclosure_height_px": 44,
+    "send_view_transcript_height_px": 44,
+    "check_saved_instruction": {
+      "height_px": 44,
+      "width_px": 332.8125,
+      "evidence": "synthetic local pending record; no command sent"
+    }
+  },
+  "qualification": "Chromium isolated runtime; native and installed not verified"
+}
