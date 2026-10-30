@@ -2,6 +2,7 @@ import {
   decodeTerminalFrame,
   encodeTerminalFrame,
   TERMINAL_INPUT,
+  TERMINAL_MAX_OUTSTANDING_OUTPUT_FRAMES,
   TERMINAL_MIN_WINDOW_BYTES,
   TERMINAL_OUTPUT,
   TERMINAL_WINDOW_BYTES,
@@ -95,6 +96,7 @@ type Channel = {
   outstanding: { seq: number; bytes: number }[];
   pumping: boolean;
   dirty: boolean;
+  progressKey?: string;
 };
 
 /** One bounded command queue, independently credited output channels. */
@@ -275,6 +277,7 @@ export class TerminalChannelConnection<Principal> {
         status: record.status,
         replayThrough: channel.replayTarget,
         readOnly: !canOperate,
+        maxOutstandingOutputFrames: TERMINAL_MAX_OUTSTANDING_OUTPUT_FRAMES,
       });
       this.pump(work.channel, channel);
       return;
@@ -406,6 +409,7 @@ export class TerminalChannelConnection<Principal> {
         channel.ready = false;
         channel.replayTarget = snapshot.journal.lastSeq;
         channel.filter = new TerminalOutputSanitizer(TERMINAL_LINK_PROTOCOLS);
+        channel.progressKey = undefined;
         this.send({
           type: 'reset',
           channel: number,
@@ -417,6 +421,10 @@ export class TerminalChannelConnection<Principal> {
         channel.window -
         channel.outstanding.reduce((sum, record) => sum + record.bytes, 0);
       for (const record of snapshot.journal.records) {
+        if (
+          channel.outstanding.length >= TERMINAL_MAX_OUTSTANDING_OUTPUT_FRAMES
+        )
+          break;
         const filter = channel.filter.fork();
         const data = Buffer.from(filter.append(record.data));
         if (data.byteLength > available) break;
@@ -431,18 +439,27 @@ export class TerminalChannelConnection<Principal> {
         channel.cursor = record.seq;
         available -= data.byteLength;
       }
-      this.send({
-        type: 'progress',
-        channel: number,
-        sentThrough: channel.cursor,
-        replayThrough: channel.replayTarget,
-        status: snapshot.status,
-        lastSeq: snapshot.journal.lastSeq,
-      });
+      const progressKey = JSON.stringify([
+        channel.cursor,
+        channel.replayTarget,
+        snapshot.status,
+      ]);
+      if (channel.progressKey !== progressKey) {
+        this.send({
+          type: 'progress',
+          channel: number,
+          sentThrough: channel.cursor,
+          replayThrough: channel.replayTarget,
+          status: snapshot.status,
+          lastSeq: snapshot.journal.lastSeq,
+        });
+        channel.progressKey = progressKey;
+      }
       // A bounded page may leave more available without another PTY event.
       if (
         snapshot.journal.records.length &&
         channel.cursor < snapshot.journal.lastSeq &&
+        channel.outstanding.length < TERMINAL_MAX_OUTSTANDING_OUTPUT_FRAMES &&
         available >= TERMINAL_MIN_WINDOW_BYTES
       )
         channel.dirty = true;

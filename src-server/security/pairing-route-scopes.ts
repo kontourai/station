@@ -3464,6 +3464,20 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'GET',
       path: '/api/orchestration/session-activity/:sessionId/digest',
     },
+    // #3427 the person-facing leaves of the same reads (`station activity`,
+    // `station sessions digest|wait`): owner-scoped, held to the Projects the
+    // person may view, and refused to every internal request. They read
+    // nothing the family's `/events` stream does not already stream to the
+    // same credential, so the family's read tier is enough.
+    { method: 'GET', path: '/api/orchestration/session-reads/activity' },
+    {
+      method: 'GET',
+      path: '/api/orchestration/session-reads/:sessionId/digest',
+    },
+    {
+      method: 'GET',
+      path: '/api/orchestration/session-reads/:sessionId/wait',
+    },
     // #3413 part B work claims. The three POST leaves are agent-only at the
     // route (403 `station_control_caller_required` without a verified
     // station-control caller), and the claimant is that caller's own Session.
