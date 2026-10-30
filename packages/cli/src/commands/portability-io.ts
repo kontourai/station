@@ -13,9 +13,11 @@ import type {
   PortabilityImportLedgerEntry,
 } from '@kontourai/station-contracts/portability';
 import {
+  assertToolOAuthClientWritable,
   isSafeToolServerCredentialKey,
   isSafeToolServerId,
   type ToolDef,
+  withoutToolBindingReferences,
 } from '@kontourai/station-contracts/tool';
 import { publishJsonFileWithOwnedLock } from '@kontourai/station-shared/json-file-storage';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
@@ -169,8 +171,9 @@ export function listIntegrations(
       }
       delete def.storedEnvNames;
       delete def.secretEnv;
-      delete def.secretEnvRefs;
-      return def;
+      // Binding references (env and OAuth client secret) name this Station's
+      // secret bindings and never travel in a portable artifact.
+      return withoutToolBindingReferences(def);
     })
     .sort((a, b) => a.id.localeCompare(b.id)) as ToolDef[];
 }
@@ -197,6 +200,9 @@ export async function writeIntegration(
     const previous = existsSync(path)
       ? (JSON.parse(readFileSync(path, 'utf8')) as ToolDef)
       : undefined;
+    // Before any credential write: the same OAuth client rules every
+    // integration writer applies.
+    assertToolOAuthClientWritable(previous, def);
     const persisted = { ...def };
     const previousNames = previous?.storedEnvNames ?? [];
     const refs = new Set(previousNames);
@@ -229,7 +235,10 @@ export function validateIntegrationImport(id: string, def: ToolDef): void {
   if (!isSafeToolServerId(id))
     throw new Error(`Invalid tool-server import id: ${JSON.stringify(id)}`);
   const secrets = { ...(def.env ?? {}), ...(def.secretEnv ?? {}) };
-  if (Object.keys(def.secretEnvRefs ?? {}).length > 0) {
+  if (
+    Object.keys(def.secretEnvRefs ?? {}).length > 0 ||
+    def.oauthClient?.clientSecretRef !== undefined
+  ) {
     throw new Error(
       'Portable integration artifacts cannot import secret binding references; establish bindings through the destination operator flow.',
     );

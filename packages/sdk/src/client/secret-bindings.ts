@@ -34,6 +34,22 @@ export interface StoredEnvMigrationOutcome {
 export interface IntegrationSecretBindingProjection {
   integrationId: string;
   secretEnvBindingIds: Record<string, string>;
+  /** The binding holding a remote integration's OAuth client secret. */
+  oauthClientSecretBindingId?: string;
+}
+
+/** Binds one remote integration's OAuth client secret; no env name. */
+export interface OAuthClientSecretBindingInput {
+  integrationId: string;
+  expectedRevision: number;
+}
+
+export interface OAuthClientSecretBindingOutcome {
+  outcome: 'complete' | 'safe-partial';
+  binding: SecretBindingView;
+  integrationId: string;
+  consumer: 'oauth-client';
+  configurationError?: string;
 }
 
 type Envelope<T> = {
@@ -265,6 +281,24 @@ export const unbindSecretBinding = (
       body: JSON.stringify(data),
     },
   );
+const oauthClientSecretBinding =
+  (operation: 'bind' | 'unbind') =>
+  (apiBase: string, id: string, data: OAuthClientSecretBindingInput) =>
+    request<OAuthClientSecretBindingOutcome>(
+      apiBase,
+      `/${encodeURIComponent(id)}/${operation}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kind: 'mcp-integration-oauth-client',
+          integrationId: data.integrationId,
+          expectedRevision: data.expectedRevision,
+        }),
+      },
+    );
+export const bindOAuthClientSecret = oauthClientSecretBinding('bind');
+export const unbindOAuthClientSecret = oauthClientSecretBinding('unbind');
 /** Endpoint contract owned by the resolver/migration lane; never reads material in the SDK. */
 export const migrateStoredSecretEnv = (
   apiBase: string,
