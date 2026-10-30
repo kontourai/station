@@ -168,6 +168,15 @@ External policy delivery follows the [engine policy contract](../conformance/too
 - `askBeforeUse` — requires a person on Station and Claude, even after a session grant or guardian allow. Exact choices override wildcard defaults; Ask wins equally specific conflicts. Earlier refusals and guardian denies still apply. Without an approval channel the call is denied
 - `unattendedAutoApprove` — explicit opt-in for tools the agent may run when nobody is there to confirm (see [Unattended runs](#unattended-runs))
 
+For a plugin-owned Agent, Station ignores plugin-declared
+`unattendedAutoApprove` and filters attended patterns made entirely of `*`.
+An operator in person, or a caller with `approval:full-access`, can change
+these grants through the Agent update route. Station records the choice outside
+the plugin-owned Agent directory, scoped to the owning plugin, so an update of
+that plugin does not replace it and another plugin does not inherit it. An
+explicit empty list records removal of a grant. Other approval and policy checks
+still apply.
+
 The picker writes approval keys as `mcp/<server>/<action>`, with
 `mcp/<server>/*` for future-tool Ask defaults. Legacy names remain readable;
 legacy flattened Always grants cannot override these source Ask defaults.
