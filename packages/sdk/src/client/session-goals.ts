@@ -4,7 +4,7 @@ import {
   parseSessionGoalRead,
   type SessionGoalCommand,
 } from '@kontourai/station-contracts/session-goal';
-import { envelopeError, StationHttpError } from './api-error-message';
+import { envelopeError } from './api-error-message';
 import {
   type ClientRequestOptions,
   getJson,
@@ -20,10 +20,8 @@ function path(apiBase: string, sessionId: string) {
 
 async function envelope(response: Response) {
   const body = await readJsonBody(response);
-  if (!response.ok) {
-    const failure = envelopeError(response, body, 'Session goals unavailable');
-    throw new StationHttpError(failure.status, failure.message, failure);
-  }
+  if (!response.ok)
+    throw envelopeError(response, body, 'Session goals unavailable');
   if (
     !body ||
     typeof body !== 'object' ||

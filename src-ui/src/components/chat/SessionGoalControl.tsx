@@ -7,6 +7,7 @@ import { Badge } from '@kontourai/ui/react';
 import { useId, useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
+import { ActionRow } from '../ActionRow';
 import { Button } from '../Button';
 import { ErrorState, SkeletonBlock } from '../state';
 
@@ -152,48 +153,62 @@ function GoalSurface({
                 </Button>
               </div>
             </form>
-          ) : (
-            <div className="chat-settings-modal__control">
-              {data.capability.operations.includes('set') && (
-                <Button
-                  disabled={mutation.isPending}
-                  onClick={() => {
-                    setObjective(data.goal?.objective ?? '');
-                    setBudget(data.goal?.tokenBudget?.toString() ?? '');
-                    setEditing(true);
-                  }}
-                >
-                  {data.goal ? 'Edit goal' : 'Set goal'}
-                </Button>
-              )}
-              {data.goal &&
-                data.capability.operations.includes('pause') &&
-                data.goal.status !== 'paused' && (
-                  <Button
-                    disabled={mutation.isPending}
-                    onClick={() => void submit({ operation: 'pause' })}
-                  >
-                    Pause goal
-                  </Button>
-                )}
-              {data.goal && data.capability.operations.includes('clear') && (
-                <Button
-                  disabled={mutation.isPending}
-                  onClick={() => void submit({ operation: 'clear' })}
-                >
-                  Clear goal
-                </Button>
-              )}
-            </div>
-          )}
+          ) : null}
         </>
       ) : null}
-      <Button
-        disabled={query.isFetching || mutation.isPending}
-        onClick={() => void query.refetch()}
-      >
-        Refresh goal
-      </Button>
+      <ActionRow
+        overflowLabel="More goal actions"
+        primary={
+          !editing &&
+          data?.state === 'available' &&
+          data.capability.operations.includes('set') && (
+            <Button
+              disabled={mutation.isPending}
+              onClick={() => {
+                setObjective(data.goal?.objective ?? '');
+                setBudget(data.goal?.tokenBudget?.toString() ?? '');
+                setEditing(true);
+              }}
+            >
+              {data.goal ? 'Edit goal' : 'Set goal'}
+            </Button>
+          )
+        }
+        overflow={[
+          {
+            key: 'refresh',
+            label: 'Refresh goal',
+            disabled: query.isFetching || mutation.isPending,
+            onSelect: () => void query.refetch(),
+          },
+          ...(data?.state === 'available' &&
+          data.goal &&
+          data.capability.operations.includes('pause') &&
+          data.goal.status !== 'paused'
+            ? [
+                {
+                  key: 'pause',
+                  label: 'Pause goal',
+                  disabled: mutation.isPending,
+                  onSelect: () => void submit({ operation: 'pause' }),
+                },
+              ]
+            : []),
+          ...(data?.state === 'available' &&
+          data.goal &&
+          data.capability.operations.includes('clear')
+            ? [
+                {
+                  key: 'clear',
+                  label: 'Clear goal',
+                  danger: true,
+                  disabled: mutation.isPending,
+                  onSelect: () => void submit({ operation: 'clear' }),
+                },
+              ]
+            : []),
+        ]}
+      />
       {message && <p role="status">{message}</p>}
     </section>
   );

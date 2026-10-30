@@ -106,7 +106,8 @@ test('editing uses the shared typed operation and saves paused without a resume 
 test('an uncertain mutation stays visible without retrying', async () => {
   fixtures.mutate.mockResolvedValue({ state: 'indeterminate' });
   render(<SessionGoalControl sessionId="session" />);
-  fireEvent.click(screen.getByRole('button', { name: 'Clear goal' }));
+  fireEvent.click(screen.getByRole('button', { name: 'More goal actions' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Clear goal' }));
   expect(await screen.findByRole('status')).toHaveProperty(
     'textContent',
     'The outcome is unconfirmed. Refresh and inspect before trying again.',
