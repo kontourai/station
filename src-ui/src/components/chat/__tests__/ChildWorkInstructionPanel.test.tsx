@@ -71,6 +71,30 @@ vi.mock('idb-keyval', async (importOriginal) => {
 });
 vi.mock('@kontourai/station-sdk', () => ({
   useChildWorkInstructionsQuery: () => mocks.history,
+  useChildWorkTranscriptQuery: () => ({
+    ...mocks.history,
+    data: {
+      pages: [
+        {
+          entries: [
+            { message: 0, kind: 'text', role: 'user', text: 'Initial task' },
+            {
+              message: 1,
+              kind: 'text',
+              role: 'user',
+              text: 'Check the report',
+            },
+            {
+              message: 2,
+              kind: 'text',
+              role: 'user',
+              text: 'Another native prompt',
+            },
+          ],
+        },
+      ],
+    },
+  }),
   useSteerChildWorkMutation: () => ({
     mutateAsync: mocks.send,
     isPending: false,
@@ -88,6 +112,7 @@ vi.mock('../../../contexts/AuthorityPersistenceContext', () => ({
 }));
 
 import { ChildWorkInstructionPanel } from '../ChildWorkInstructionPanel';
+import { SubagentTranscriptCard } from '../SubagentTranscriptCard';
 import { UIBlockActionsContext } from '../UIBlockActionsContext';
 
 beforeEach(async () => {
@@ -324,4 +349,113 @@ test('a remounted child keeps the exact uncertain request and shows recorded del
   );
   await waitFor(() => expect(mocks.send).toHaveBeenCalledTimes(2));
   expect(mocks.send.mock.calls[1][0]).toEqual(first);
+});
+
+test('an open engine transcript keeps sent instructions attributed behind a disclosure without hiding uncertain input', async () => {
+  mocks.history.data = {
+    pages: [
+      {
+        entries: [
+          {
+            clientInputId: 'sent',
+            text: 'Check the report',
+            delivery: 'delivered',
+            principal: { display: 'Brian' },
+          },
+          {
+            clientInputId: 'uncertain',
+            text: 'Another request',
+            delivery: 'indeterminate',
+          },
+        ],
+      },
+    ],
+  };
+  render(
+    <UIBlockActionsContext.Provider
+      value={{ submitForm: () => {}, canSendChildInstruction: true }}
+    >
+      <ChildWorkInstructionPanel
+        historyAvailable
+        transcriptOpen
+        threadId="parent"
+        childId="child"
+        turnId="turn"
+        running
+        name="Worker"
+      />
+      <section aria-label="Engine transcript">
+        <p>Initial task</p>
+        <p>Check the report</p>
+        <p>Another native prompt</p>
+      </section>
+    </UIBlockActionsContext.Provider>,
+  );
+  expect(
+    screen
+      .getAllByText('Check the report', { selector: 'p' })
+      .filter((node) => node.closest('details:not([open])') === null),
+  ).toHaveLength(1);
+  expect(screen.getByText('Initial task')).toBeTruthy();
+  expect(screen.getByText('Another native prompt')).toBeTruthy();
+  expect(screen.getByText('Another request').closest('details')).toBeNull();
+  const disclosure = screen.getByText(/Sent instruction · Brian/);
+  fireEvent.click(disclosure);
+  expect(disclosure.closest('details')?.open).toBe(true);
+  expect(
+    within(disclosure.closest('details')!).getByText('Check the report'),
+  ).toBeTruthy();
+});
+
+test('opening the real card transcript keeps the provider prompt once and retains the attributed copy on demand', async () => {
+  mocks.history.data = {
+    pages: [
+      {
+        entries: [
+          {
+            clientInputId: 'sent',
+            text: 'Check the report',
+            delivery: 'delivered',
+            principal: { display: 'Brian' },
+          },
+        ],
+      },
+    ],
+  };
+  render(
+    <UIBlockActionsContext.Provider
+      value={{ submitForm: () => {}, canSendChildInstruction: true }}
+    >
+      <SubagentTranscriptCard
+        child={{
+          toolAnchor: false,
+          provider: 'codex',
+          item: {
+            producer: 'engine-subagent',
+            reporterThreadId: 'parent',
+            childId: 'child',
+            status: 'completed',
+            transcript: {
+              kind: 'codex-thread',
+              threadId: '00000000-0000-4000-8000-000000000001',
+            },
+          },
+        }}
+      />
+    </UIBlockActionsContext.Provider>,
+  );
+  fireEvent.click(screen.getByTestId('subagent-card').querySelector('button')!);
+  expect(screen.getByText('Check the report')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'View transcript' }));
+  await screen.findByText('Initial task');
+  const copies = screen
+    .getAllByText('Check the report')
+    .filter((node) => node.closest('details:not([open])') === null);
+  expect(copies).toHaveLength(1);
+  expect(screen.getByText('Another native prompt')).toBeTruthy();
+  const summary = screen.getByText(/Sent instruction · Brian/);
+  fireEvent.click(summary);
+  expect(
+    within(summary.closest('details')!).getByText('Check the report'),
+  ).toBeTruthy();
 });

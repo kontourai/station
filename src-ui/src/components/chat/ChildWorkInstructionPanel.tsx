@@ -40,6 +40,7 @@ export function ChildWorkInstructionPanel({
   running,
   name,
   historyAvailable,
+  transcriptOpen = false,
 }: {
   threadId: string;
   childId: string;
@@ -47,6 +48,7 @@ export function ChildWorkInstructionPanel({
   running: boolean;
   name: string;
   historyAvailable: boolean;
+  transcriptOpen?: boolean;
 }) {
   const authority = useAuthorityPersistence();
   const scope = useHostRequestAuthorityScope();
@@ -282,23 +284,47 @@ export function ChildWorkInstructionPanel({
         />
       )}
       {entries.length > 0 && (
-        <ol>
-          {entries.map((entry) => (
-            <li key={entry.clientInputId}>
-              <p>{entry.text}</p>
-              <small>
-                {entry.principal?.display ?? 'Sender not recorded'} ·{' '}
-                {entry.clientOrigin?.reported.surface ?? 'Source not recorded'}{' '}
-                ·{' '}
-                {entry.delivery === 'delivered'
-                  ? 'Sent'
-                  : entry.delivery === 'refused'
-                    ? 'Not sent'
-                    : 'Delivery unconfirmed'}
-              </small>
-            </li>
-          ))}
-        </ol>
+        <>
+          {transcriptOpen &&
+            entries.some((entry) => entry.delivery === 'delivered') && (
+              <p>
+                Sent instructions may also appear in the engine transcript. Open
+                an instruction to read it here.
+              </p>
+            )}
+          <ol>
+            {entries.map((entry) => (
+              <li key={entry.clientInputId}>
+                {transcriptOpen && entry.delivery === 'delivered' ? (
+                  <details>
+                    <summary>
+                      Sent instruction ·{' '}
+                      {entry.principal?.display ?? 'Sender not recorded'} ·{' '}
+                      {entry.clientOrigin?.reported.surface ??
+                        'Source not recorded'}
+                    </summary>
+                    <p>{entry.text}</p>
+                  </details>
+                ) : (
+                  <>
+                    <p>{entry.text}</p>
+                    <small>
+                      {entry.principal?.display ?? 'Sender not recorded'} ·{' '}
+                      {entry.clientOrigin?.reported.surface ??
+                        'Source not recorded'}{' '}
+                      ·{' '}
+                      {entry.delivery === 'delivered'
+                        ? 'Sent'
+                        : entry.delivery === 'refused'
+                          ? 'Not sent'
+                          : 'Delivery unconfirmed'}
+                    </small>
+                  </>
+                )}
+              </li>
+            ))}
+          </ol>
+        </>
       )}
       {historyAvailable && history.isSuccess && entries.length === 0 && (
         <Empty variant="compact" label="Nothing sent yet" />
