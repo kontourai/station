@@ -54,6 +54,8 @@ import {
   formatWithheldBytes,
   fullToolResultText,
 } from './bounded-tool-result';
+import { ClaudeArtifactCard } from './ClaudeArtifactCard';
+import { claudeArtifactLinkOf } from './claude-artifact-link';
 import { DecisionActionRow, DecisionButtons } from './InputRequestDecision';
 import { LoadFullContent } from './LoadFullContent';
 import { transcriptMcpToolRef } from './mcp-app-tool-ref';
@@ -107,6 +109,8 @@ export interface ToolCallData {
   errorText?: string;
   /** A station-control refusal, kept whole by Station (history reads). */
   stationControlRefusal?: StationControlRefusalView;
+  /** A Claude Code Artifact publish's page; see `claude-artifact-link.ts`. */
+  claudeArtifact?: unknown;
   state?: string;
   progressMessage?: string;
   /** When the call started (ISO), for a running row's elapsed time. */
@@ -1275,6 +1279,11 @@ function ToolCallDetails({
 function ToolCallDisplayComponent(
   props: ToolCallDisplayProps & { appTools: ReadonlySet<string> },
 ) {
+  // A Claude Code Artifact publish reads as the page it published. Any other
+  // Artifact action, a failure, or a link that does not check out keeps the
+  // ordinary row with its raw result.
+  const artifact = claudeArtifactLinkOf(props.toolCall);
+  if (artifact) return <ClaudeArtifactCard link={artifact} />;
   return hasStationControlCallRow(props.toolCall) &&
     !isToolCallAwaitingApproval(props.toolCall) &&
     props.toolCall.approvalStatus !== 'user-denied' &&
