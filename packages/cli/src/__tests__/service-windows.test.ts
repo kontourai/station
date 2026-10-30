@@ -143,6 +143,35 @@ function runTaskSettingsProgram(
 }
 
 describe('Windows Task Scheduler service backend', () => {
+  test.each([
+    [0, false, null],
+    [1, null, expect.stringContaining('absence could not be verified')],
+  ])(
+    'distinguishes a missing task from an unreadable task after schtasks exit 1 (confirmation=%s)',
+    (confirmation, active, error) => {
+      const registration = windowsRegistration(
+        'agent',
+        lifecycle('C:\\Station'),
+      );
+      const run = vi.fn((command: string) =>
+        isWindowsUtility(command, 'powershell')
+          ? {
+              status: confirmation,
+              stderr: confirmation ? 'Access denied' : '',
+            }
+          : { status: 1, stderr: 'Localized scheduler error' },
+      );
+      expect(
+        windowsServiceStatus(registration, { fs: windowsFs(), run }),
+      ).toMatchObject({
+        active,
+        present: false,
+        error,
+      });
+      expect(run).toHaveBeenCalledTimes(2);
+    },
+  );
+
   test('quotes task arguments without shell interpolation', () => {
     expect(quoteWindowsArgument('C:\\Program Files\\Station\\node.exe')).toBe(
       '"C:\\Program Files\\Station\\node.exe"',

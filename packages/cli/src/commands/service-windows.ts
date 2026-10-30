@@ -519,6 +519,30 @@ export function windowsServiceStatus(
     };
   }
   if (queried.status === 1) {
+    const payload = Buffer.from(
+      JSON.stringify({ taskName: registration.taskName }),
+      'utf8',
+    ).toString('base64');
+    // schtasks also exits 1 for access denied. Only a successful root-task
+    // enumeration may establish absence; a failed probe remains unknown.
+    const absence = dependencies.run(windowsSystemUtilityPath('powershell'), [
+      '-NoProfile',
+      '-NonInteractive',
+      '-EncodedCommand',
+      encodePowerShellCommand(
+        `$ErrorActionPreference = 'Stop'; $request = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${payload}')) | ConvertFrom-Json; $name = $request.taskName.TrimStart('\\'); $tasks = @(Get-ScheduledTask -TaskPath '\\' -ErrorAction Stop); if ($tasks | Where-Object { $_.TaskName -eq $name }) { throw 'Station task exists but its XML could not be read' }`,
+      ),
+    ]);
+    if (absence.error || absence.status !== 0) {
+      return {
+        active: null,
+        enabled: null,
+        error:
+          'Station Task Scheduler task absence could not be verified; inspect Task Scheduler permissions and task history',
+        present: dependencies.fs.existsSync(registration.unitPath),
+        taskName: registration.taskName,
+      };
+    }
     return {
       active: false,
       enabled: false,
