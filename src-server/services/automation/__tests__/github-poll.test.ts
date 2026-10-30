@@ -251,9 +251,7 @@ describe('GitHubPollAutomationPoller', () => {
     const registry = new FeaturePreviewRegistry(home, {
       info: () => undefined,
     } as never);
-    const personal = composeGitHubAutomationObservation({
-      hosted: false,
-      featurePreviews: registry,
+    const personal = composeGitHubAutomationObservation(registry, false, {
       store: new AutomationStore(home),
       ledger: { get: () => ledger, close: () => undefined },
     });
@@ -262,9 +260,7 @@ describe('GitHubPollAutomationPoller', () => {
     const hostedRegistry = new FeaturePreviewRegistry(home, {
       info: () => undefined,
     } as never);
-    const hosted = composeGitHubAutomationObservation({
-      hosted: true,
-      featurePreviews: hostedRegistry,
+    const hosted = composeGitHubAutomationObservation(hostedRegistry, true, {
       store: new AutomationStore(home),
       ledger: { get: () => ledger, close: () => undefined },
     });

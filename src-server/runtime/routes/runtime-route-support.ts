@@ -496,14 +496,16 @@ export function configureRuntimeSupportServices(
   const automationLedger = new SharedAutomationLedger(() =>
     createAutomationLedger({ directory: join(automationHome, 'automation') }),
   );
-  const automationObservation = composeGitHubAutomationObservation({
-    hosted: isHostedTenantExecutionRequired(),
-    featurePreviews: context.featurePreviews,
-    store: new AutomationStore(automationHome),
-    ledger: automationLedger,
-    integrationSecretResolver,
-    logger: context.logger,
-  });
+  const automationObservation = composeGitHubAutomationObservation(
+    context.featurePreviews,
+    isHostedTenantExecutionRequired(),
+    {
+      store: new AutomationStore(automationHome),
+      ledger: automationLedger,
+      integrationSecretResolver,
+      logger: context.logger,
+    },
+  );
   const schedulerService = new SchedulerService({
     logger: context.logger,
     builtin: {

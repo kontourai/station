@@ -91,19 +91,18 @@ export interface GitHubPollAutomationPollerOptions {
 }
 
 export function composeGitHubAutomationObservation(
-  input: Omit<GitHubPollAutomationPollerOptions, 'preview'> & {
-    hosted: boolean;
-    featurePreviews: FeaturePreviewRegistry;
-  },
+  featurePreviews: FeaturePreviewRegistry,
+  hosted: boolean,
+  options: Omit<GitHubPollAutomationPollerOptions, 'preview'>,
 ) {
-  if (input.hosted) return { preview: undefined, poller: undefined };
-  const preview = input.featurePreviews.bind({
+  if (hosted) return { preview: undefined, poller: undefined };
+  const preview = featurePreviews.bind({
     id: 'github-automation-observations',
     label: 'GitHub automation observations',
     description:
       'Observe configured GitHub workflow runs without starting agents. Uses GitHub API requests and stores bounded delivery history.',
   });
-  const poller = new GitHubPollAutomationPoller({ ...input, preview });
+  const poller = new GitHubPollAutomationPoller({ ...options, preview });
   return { preview, poller };
 }
 
