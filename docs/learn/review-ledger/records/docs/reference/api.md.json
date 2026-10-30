@@ -614,6 +614,10 @@
 
     "src-server/runtime/routes/__tests__/runtime-routes-account-personal-tokens.test.ts",
 
+    "src-server/routes/orchestration/session-goals.ts",
+
+    "src-server/services/orchestration/session-goal-module.ts",
+
     "src-server/routes/operations/automations.ts"
   ],
 
