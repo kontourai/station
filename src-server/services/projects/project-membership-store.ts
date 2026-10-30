@@ -234,6 +234,15 @@ export class ProjectMembershipStore {
     });
   }
 
+  /** Whether the Project at `slug` has been shared. Discloses sharing state: authorize the caller first. */
+  isSharedSlug(slug: string): boolean {
+    return (
+      this.db
+        .prepare('SELECT 1 FROM shared_projects WHERE local_slug=?')
+        .get(slug) !== undefined
+    );
+  }
+
   scopeForMember(
     slug: string,
     actor: PrincipalRef,

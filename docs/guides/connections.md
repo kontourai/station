@@ -1025,7 +1025,9 @@ config (`agentConnections.<engine>.config` in `config/app.json`):
 - `env` — environment variables merged into every engine subprocess the
   connection spawns. Names must be valid env-var names; Station-internal
   secret names and `TMPDIR` are refused. An empty-string value masks an
-  inherited variable.
+  inherited variable. Claude sessions take `CLAUDE_CODE_ARTIFACT` from the
+  [`claudeArtifactsEnabled`](../reference/config.md#optional-fields) setting,
+  which overrides a value set here.
 - `configHome` — an explicit engine config home (`~` allowed), applied as
   `CLAUDE_CONFIG_DIR` (Claude Code) or `CODEX_HOME` (Codex). It wins over the
   station-managed app-home opt-in (`useAppHome`); a selected credential
