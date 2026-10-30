@@ -3900,6 +3900,52 @@ describe('pull-request and merge-queue workflows restore shared caches only', ()
     ).toEqual([]);
   });
 
+  test.each(['fast-checks-plan', 'fast-checks-shard', 'fast-checks-statics'])(
+    'refuses changed Chromium cache authority in %s',
+    (jobId) => {
+      const file = '.github/workflows/ci.yml';
+      for (const mutate of [
+        (step: Record<string, any>) => {
+          step.with.path = '.';
+        },
+        (step: Record<string, any>) => {
+          step.with.key = 'untrusted';
+        },
+        (step: Record<string, any>) => {
+          step.with['restore-keys'] = 'untrusted-';
+        },
+        (step: Record<string, any>) => {
+          step.env = { NODE_OPTIONS: '--require=./candidate.js' };
+        },
+        (step: Record<string, any>) => {
+          step.if = 'always()';
+        },
+        (step: Record<string, any>) => {
+          step.uses = SAVE_ACTION;
+        },
+      ]) {
+        const document = doc(file);
+        const step = document.jobs[jobId].steps.find(
+          (candidate) => candidate.name === 'Restore trusted Chromium cache',
+        );
+        if (!step) throw new Error('Expected Chromium restore');
+        mutate(step);
+        const findings = persistentRunnerPolicyFindings([{ file, document }]);
+        expect(
+          findings.some(
+            (finding) =>
+              finding.jobId === jobId &&
+              [
+                WRITE,
+                RESTORE,
+                'pull_request_target router jobs must not add unreviewed custom actions',
+              ].includes(finding.message),
+          ),
+        ).toBe(true);
+      }
+    },
+  );
+
   test.each([
     ['a save subaction', { uses: SAVE_ACTION, with: { path: 'x', key: 'k' } }],
     [
@@ -4115,7 +4161,7 @@ describe('untrusted-workflow cache policy follows callees and allowlists actions
       uses('kontourai/station/.github/actions/setup-verified-pnpm@').length,
     ).toBeGreaterThan(0);
     expect(uses('github/codeql-action/init@')).toHaveLength(1);
-    expect(uses('actions/cache/restore@')).toHaveLength(1);
+    expect(uses('actions/cache/restore@')).toHaveLength(4);
     // The one live untrusted -> reusable-workflow edge, and the cache it would
     // reach if its guard ever stopped excluding untrusted events.
     expect(docOf(workflows, CI).jobs['full-regression'].uses).toBe(`./${FULL}`);

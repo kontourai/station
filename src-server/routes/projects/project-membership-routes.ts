@@ -80,6 +80,7 @@ export function createProjectMembershipRoutes(
   service: ProjectMembershipService | undefined,
   authority: (request: Request) => ProjectMembershipAuthority,
   invitationOrigin?: string,
+  mayEnableRoute: (request: Request, slug: string) => boolean = () => false,
 ) {
   const app = new Hono();
   async function perform<T>(
@@ -89,6 +90,11 @@ export function createProjectMembershipRoutes(
       access: ProjectMembershipAuthority,
     ) => Promise<T>,
     release?: (data: T) => DeliveryAdmission | undefined,
+    /** `details` for a `forbidden` refusal, so the client knows which state it is in. */
+    forbiddenDetails?: (
+      owner: ProjectMembershipService,
+      access: ProjectMembershipAuthority,
+    ) => Promise<unknown>,
   ) {
     c.header('Cache-Control', 'no-store');
     if (!service)
@@ -135,6 +141,30 @@ export function createProjectMembershipRoutes(
           { error: { code: 'invalid_project_access_request' } },
           400,
         );
+      if (
+        error instanceof ProjectMembershipRefusal &&
+        error.code === 'forbidden' &&
+        forbiddenDetails
+      ) {
+        // Fresh authority: the details are judged on what the caller holds
+        // now, not on the authority object the refused read used.
+        const details = await forbiddenDetails(
+          service,
+          authority(c.req.raw),
+        ).catch((cause: unknown) => {
+          logger.error('Project access refusal details unavailable', {
+            error: cause,
+          });
+          return undefined;
+        });
+        return c.json(
+          {
+            error: { code: 'project_access_forbidden' },
+            ...(details === undefined ? {} : { details }),
+          },
+          403,
+        );
+      }
       if (error instanceof ProjectMembershipRefusal)
         return c.json(
           { error: { code: `project_access_${error.code}` } },
@@ -174,6 +204,10 @@ export function createProjectMembershipRoutes(
         ...(invitationOrigin ? { invitationOrigin } : {}),
       }),
       (data) => managementRelease(data.scope, data.actingPrincipal.id),
+      (owner, access) =>
+        owner.accessRefusal(c.req.param('slug'), access, () =>
+          mayEnableRoute(c.req.raw, c.req.param('slug')),
+        ),
     ),
   );
   app.post('/:slug/access/enable', (c) =>

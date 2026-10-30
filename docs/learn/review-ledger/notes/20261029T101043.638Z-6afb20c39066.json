@@ -1,0 +1,15 @@
+{
+  "revision": "a6160e19b825115e365fd746ce5b1815c1db6109",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed notification suppression and Web Push guide link against the unchanged delivery policy; this comment and guidance change does not alter it.","inputs":["docs/architecture/abstraction-review.md","docs/guides/web-push-notifications.md"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Checked producer authority guidance against scheduleEnveloped and the locked membership check, and feed limit and isolation claims against service and principal tests; no device delivery was exercised.","inputs":["docs/guides/web-push-notifications.md","src-server/services/notifications/notification-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked person routes and private feed behavior against route and service; producer authority guidance does not change the API.","inputs":["docs/reference/api.md","src-server/services/notifications/notification-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked person query domain and its route against SDK and service; producer authority guidance does not change the SDK.","inputs":["docs/reference/sdk.md","src-server/services/notifications/notification-service.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"Checked envelope parser and private feed membership claims against parser and scheduleEnveloped; Project authority remains the producer responsibility.","inputs":["docs/reference/shared.md","src-server/services/notifications/notification-service.ts"]}
+  ]
+}

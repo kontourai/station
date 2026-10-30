@@ -1,0 +1,63 @@
+/* A Claude Code Artifact publish: the page's title and claude.ai address as
+   one link that opens outside Station. */
+.claude-artifact-card {
+  display: grid;
+  gap: var(--k-space-1);
+  max-width: 100%;
+  margin: var(--k-space-2) 0;
+}
+
+.claude-artifact-card__kind {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+}
+
+.claude-artifact-card__link {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "title icon"
+    "url icon";
+  align-items: center;
+  column-gap: var(--k-space-3);
+  min-height: 44px;
+  padding: var(--k-space-2) var(--k-space-3);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-bg);
+  color: var(--k-text);
+  text-decoration: none;
+}
+
+.claude-artifact-card__link:hover {
+  border-color: var(--k-line-strong);
+}
+
+.claude-artifact-card__link:focus-visible {
+  outline: 2px solid var(--k-action);
+  outline-offset: 2px;
+}
+
+.claude-artifact-card__title {
+  grid-area: title;
+  min-width: 0;
+  font-size: var(--k-text-md);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.claude-artifact-card__url {
+  grid-area: url;
+  min-width: 0;
+  color: var(--k-text-muted);
+  font-family: var(--k-font-mono);
+  font-size: var(--k-text-xs);
+  overflow-wrap: anywhere;
+}
+
+.claude-artifact-card__icon {
+  grid-area: icon;
+  width: 16px;
+  height: 16px;
+  color: var(--k-text-muted);
+}

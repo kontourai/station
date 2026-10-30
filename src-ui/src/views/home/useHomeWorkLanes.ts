@@ -8,18 +8,14 @@ import {
 import {
   computeStableActiveOrder,
   type HomeLaneItem,
-  isTerminalLifecycle,
   orderItemsByKeys,
   partitionHomeWorkItems,
   sortSettledTail,
   sortSnoozedShelf,
-  TERMINAL_LINGER_MS,
-  TERMINAL_SINCE_PRUNE_MARGIN_MS,
   WOKE_PILL_WINDOW_MS,
   withStableIds,
 } from './home-lane-model';
 import type { HomeWorkItem } from './home-view-model';
-import { readTerminalSince, writeTerminalSince } from './terminal-since-store';
 import type { WorkFactsById } from './work-facts';
 
 /** Re-render cadence so terminal linger / snooze wake / pill expiry progress
@@ -50,7 +46,7 @@ export interface HomeWorkLanes {
  * Derives the Home lanes (needs you / running / idle / finished / snoozed /
  * settled) plus a position-stable order for the live lanes.
  *
- * `identityAliasRef`, `terminalSinceRef`, `orderRef`, and `wokeAtRef` are
+ * `identityAliasRef`, `orderRef`, and `wokeAtRef` are
  * mutated during render rather than via `setState`. That is safe here
  * specifically because each update is a pure, idempotent function of this
  * render's `items`/`now`: with the same inputs it always converges to the
@@ -74,22 +70,6 @@ export function useHomeWorkLanes(
     readSnoozes(Date.now()),
   );
   const identityAliasRef = useRef(new Map<string, string>());
-  const terminalSinceRef = useRef<Map<string, number> | null>(null);
-  const terminalSinceDirtyRef = useRef(true);
-  if (terminalSinceRef.current === null) {
-    // Lazy ref init (React-sanctioned: safe to read/assign `ref.current`
-    // during render for a one-time initializer). Seeded from
-    // `terminal-since-store.ts` so a reload doesn't re-anchor the linger
-    // clock for items that were already terminal.
-    terminalSinceRef.current = new Map(
-      Object.entries(
-        readTerminalSince(
-          Date.now(),
-          TERMINAL_LINGER_MS + TERMINAL_SINCE_PRUNE_MARGIN_MS,
-        ),
-      ),
-    );
-  }
   const orderRef = useRef<string[]>([]);
   const wokeAtRef = useRef(new Map<string, number>());
   const prevSnoozedIdsRef = useRef(new Set<string>());
@@ -104,16 +84,6 @@ export function useHomeWorkLanes(
     return () => clearInterval(id);
   }, []);
 
-  // Persist changed anchors after commit; unchanged clock ticks need no storage I/O.
-  useEffect(() => {
-    if (
-      terminalSinceDirtyRef.current &&
-      writeTerminalSince(Object.fromEntries(terminalSinceRef.current ?? []))
-    ) {
-      terminalSinceDirtyRef.current = false;
-    }
-  });
-
   const snoozedUntil = useMemo(
     () => new Map(Object.entries(snoozeMap)),
     [snoozeMap],
@@ -126,37 +96,11 @@ export function useHomeWorkLanes(
   const laneItems = withStableIds(items, identityAliasRef.current);
   const presentIds = new Set(laneItems.map((item) => item.id));
 
-  for (const item of laneItems) {
-    if (isTerminalLifecycle(item.lifecycleLabel)) {
-      if (!terminalSinceRef.current.has(item.id)) {
-        // An item already arrives with the source's terminal update time.
-        // Persisted anchors can be pruned once they no longer affect the
-        // settled classification, so never recreate an old terminal item at
-        // "now" after that pruning (or on a fresh browser/store).
-        terminalSinceDirtyRef.current = true;
-        terminalSinceRef.current.set(
-          item.id,
-          Math.min(item.updatedAt || now, now),
-        );
-      }
-    } else if (terminalSinceRef.current.has(item.id)) {
-      terminalSinceRef.current.delete(item.id);
-      terminalSinceDirtyRef.current = true;
-    }
-  }
-  for (const id of [...terminalSinceRef.current.keys()]) {
-    if (!presentIds.has(id)) {
-      terminalSinceRef.current.delete(id);
-      terminalSinceDirtyRef.current = true;
-    }
-  }
-
   const partition = partitionHomeWorkItems({
     items: laneItems,
     workFacts,
     now,
     snoozedUntil,
-    terminalSince: terminalSinceRef.current,
   });
 
   // "Woke from snooze" pill: any id that was in the snoozed lane last time
@@ -190,12 +134,9 @@ export function useHomeWorkLanes(
   const needsYou = orderItemsByKeys(partition.needsYou, orderRef.current);
   const running = orderItemsByKeys(partition.running, orderRef.current);
   const idle = orderItemsByKeys(partition.idle, orderRef.current);
-  const recentlyFinished = sortSettledTail(
-    partition.recentlyFinished,
-    terminalSinceRef.current,
-  );
+  const recentlyFinished = sortSettledTail(partition.recentlyFinished);
   const snoozed = sortSnoozedShelf(partition.snoozed, snoozedUntil);
-  const settled = sortSettledTail(partition.settled, terminalSinceRef.current);
+  const settled = sortSettledTail(partition.settled);
 
   return {
     childrenById: partition.childrenById,

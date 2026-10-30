@@ -34,6 +34,8 @@ export type TurnIdentityAnchor =
 interface LifecycleProjection {
   lifecycleState: SessionLifecycleState;
   previousLifecycleState?: SessionLifecycleState;
+  /** See `OrchestrationSessionSummary.lifecycleChangedAt`. */
+  lifecycleChangedAt?: string;
   transitionReason?: SessionTransitionReason;
   transitionSource?: SessionTransitionSource;
   pendingReview: boolean;
@@ -140,6 +142,11 @@ export function projectSessionLifecycle(options: {
   let previousLifecycleState: SessionLifecycleState | undefined;
   let transitionReason: SessionTransitionReason | undefined;
   let transitionSource: SessionTransitionSource | undefined;
+  // When the event that produced the current `lifecycleState` was recorded:
+  // the real finish time of a terminal session, rather than its last
+  // activity (#4266). Only a CHANGE of state moves it, so a repeated
+  // `idle` report does not make an old finish look recent.
+  let lifecycleChangedAt: string | undefined;
   let pendingReview = false;
   let blockedReason: string | undefined;
   let terminalEvent: CanonicalRuntimeEvent | undefined;
@@ -167,6 +174,9 @@ export function projectSessionLifecycle(options: {
       turnIdentityAnchor,
     );
     if (transition) {
+      if (transition.to !== lifecycleState) {
+        lifecycleChangedAt = event.createdAt;
+      }
       previousLifecycleState = transition.from;
       lifecycleState = transition.to;
       transitionReason = event.transitionReason ?? transition.reason;
@@ -193,6 +203,9 @@ export function projectSessionLifecycle(options: {
     }
 
     if (event.method === 'session.state-changed' && event.sessionState) {
+      if (event.sessionState !== lifecycleState) {
+        lifecycleChangedAt = event.createdAt;
+      }
       previousLifecycleState = event.previousState ?? lifecycleState;
       lifecycleState = event.sessionState;
       transitionReason = event.transitionReason ?? transitionReason;
@@ -322,6 +335,7 @@ export function projectSessionLifecycle(options: {
   return {
     lifecycleState,
     ...(previousLifecycleState ? { previousLifecycleState } : {}),
+    ...(lifecycleChangedAt ? { lifecycleChangedAt } : {}),
     ...(transitionReason ? { transitionReason } : {}),
     ...(transitionSource ? { transitionSource } : {}),
     pendingReview,

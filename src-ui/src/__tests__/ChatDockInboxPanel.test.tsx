@@ -296,12 +296,12 @@ describe('ChatDockInboxPanel', () => {
       const row = screen.getByRole('button', {
         name: 'ready title, ready project, unsent draft',
       });
-      expect(within(row).getByText('Unsent draft')).not.toBeNull();
+      expect(within(row).getByTitle('Unsent draft')).not.toBeNull();
 
       // The cue reads the composer's own store: sending/clearing the text
       // removes it without a re-render from the host.
       act(() => chatDraftsStore.clear('ready'));
-      expect(screen.queryByText('Unsent draft')).toBeNull();
+      expect(screen.queryByTestId('inbox-row-draft-marker')).toBeNull();
       expect(
         screen.getByRole('button', { name: 'ready title, ready project' }),
       ).not.toBeNull();
@@ -316,10 +316,10 @@ describe('ChatDockInboxPanel', () => {
       };
       chatDraftsStore.set('conv-42', 'text under the WRONG key');
       renderPanel({ items: [merged], openChatSessionIds: ['agent:1700'] });
-      expect(screen.queryByText('Unsent draft')).toBeNull();
+      expect(screen.queryByTestId('inbox-row-draft-marker')).toBeNull();
 
       act(() => chatDraftsStore.set('agent:1700', 'text under the store key'));
-      expect(screen.getByText('Unsent draft')).not.toBeNull();
+      expect(screen.getByTestId('inbox-row-draft-marker')).not.toBeNull();
     });
 
     it('whitespace-only text is not a draft, and a Draft-lifecycle row keeps its single Draft chip', () => {
@@ -331,7 +331,7 @@ describe('ChatDockInboxPanel', () => {
         items: [ready, draft],
         openChatSessionIds: ['ready', 'never-prompted'],
       });
-      expect(screen.queryByText('Unsent draft')).toBeNull();
+      expect(screen.queryByTestId('inbox-row-draft-marker')).toBeNull();
     });
   });
 
@@ -549,17 +549,22 @@ describe('ChatDockInboxPanel', () => {
     expect(document.activeElement).not.toBe(document.body);
   });
 
-  it('moves focus to the adjacent row before closing the focused row (#1054)', () => {
+  it('moves focus to the adjacent row before dismissing the focused row (#1054)', () => {
     const onCloseChat = vi.fn();
     renderPanel({ onCloseChat });
     const close = screen.getByRole('button', {
-      name: 'Close attention title',
+      name: 'Dismiss attention title from inbox',
     });
     close.focus();
 
     fireEvent.click(close);
 
-    expect(onCloseChat).toHaveBeenCalledWith('attention');
+    expect(onCloseChat).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole('button', {
+        name: 'attention title, attention project',
+      }),
+    ).toBeNull();
     expect(document.activeElement).toBe(
       screen.getByRole('button', {
         name: 'active title, active project',
@@ -571,7 +576,9 @@ describe('ChatDockInboxPanel', () => {
   it('focuses the inbox panel when the removed row has no neighbor (#1054)', () => {
     renderPanel({ items: [items[0]], openChatSessionIds: ['active'] });
     const panel = screen.getByRole('complementary', { name: 'Inbox chats' });
-    const close = screen.getByRole('button', { name: 'Close active title' });
+    const close = screen.getByRole('button', {
+      name: 'Dismiss active title from inbox',
+    });
     close.focus();
 
     fireEvent.click(close);

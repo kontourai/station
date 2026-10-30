@@ -457,7 +457,10 @@ require(${JSON.stringify(probe)})(gate);
         join(bin, 'node'),
         `#!${process.execPath}
 const { spawnSync } = require('node:child_process');
-const args = process.argv.slice(2);
+// The hook runs heavy gates through the slot runner; its admission is
+// covered in prepush-pure-merge.test.ts, so this probe records the gate.
+const raw = process.argv.slice(2);
+const args = raw[0] === 'scripts/heavy-check-slot.mjs' ? raw.slice(2) : raw;
 const gates = ['check-prepush-orchestration-transfer.mjs', 'check-prepush-static-gates.mjs', 'check-prepush-sdk-barrel.mjs', 'check-prepush-typecheck.mjs', 'commit-message-gate.mjs'];
 if (gates.some(gate => args[0] === 'scripts/' + gate)) {
   require(${JSON.stringify(probe)})(args[0]);

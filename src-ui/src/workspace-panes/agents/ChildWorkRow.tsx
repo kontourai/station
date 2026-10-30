@@ -1,4 +1,7 @@
-import { CHILD_WORK_SUMMARY_MAX_CHARS } from '@kontourai/station-contracts/child-work';
+import {
+  CHILD_WORK_SUMMARY_MAX_CHARS,
+  childWorkDisplayStatus,
+} from '@kontourai/station-contracts/child-work';
 import {
   useInterruptDelegatedTaskMutation,
   useOrchestrationSessionActivityQuery,
@@ -189,7 +192,7 @@ export function ChildWorkRow({
   return (
     <li
       className="child-work-row"
-      data-status={item.status}
+      data-status={childWorkDisplayStatus(item)}
       style={
         row.level > 0
           ? ({ '--child-work-level': row.level } as CSSProperties)
@@ -241,9 +244,9 @@ export function ChildWorkRow({
           )}
         </span>
         <span
-          className={`child-work-row__chip child-work-row__chip--${item.status}`}
+          className={`child-work-row__chip child-work-row__chip--${childWorkDisplayStatus(item)}`}
         >
-          {CHILD_WORK_STATUS_LABEL[item.status]}
+          {CHILD_WORK_STATUS_LABEL[childWorkDisplayStatus(item)]}
         </span>
         {expandable && (
           <span className="child-work-row__chevron" aria-hidden="true">

@@ -272,7 +272,7 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
     }
   });
 
-  test("a project swatch changes no row's height, in the panel or the phone sheet", async () => {
+  test("a project accent changes no row's height, in the panel or the phone sheet", async () => {
     const accents = new Map([['station', 'var(--event-tool-call)']]);
     const cases = [
       {
@@ -291,7 +291,9 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
     for (const { label, plain, painted, viewport } of cases) {
       // The fixture must contain what it claims to compare.
       expect(plain, label).not.toContain('inbox-row__project-accent');
-      expect(painted, label).toContain('inbox-row__project-accent');
+      if (label === 'panel')
+        expect(painted).toContain('inbox-row__project-accent');
+      else expect(painted).not.toContain('inbox-row__project-accent');
       const pg = await browser.newPage({ viewport });
       try {
         const measure = async (markup: string) => {
@@ -305,12 +307,23 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
         };
         const plainHeights = await measure(plain);
         const paintedHeights = await measure(painted);
-        // The swatch is drawn, not just present in the markup.
-        const swatch = await pg
-          .locator('.inbox-row__project-accent')
-          .first()
-          .boundingBox();
-        expect(swatch?.width, `${label} swatch drawn`).toBeGreaterThan(0);
+        if (label === 'panel') {
+          const swatch = await pg
+            .locator('.inbox-row__project-accent')
+            .first()
+            .boundingBox();
+          expect(swatch?.width, 'panel swatch drawn').toBeGreaterThan(0);
+        } else {
+          const line = pg.locator('.inbox-row__project-context').first();
+          expect(await line.locator('svg').count()).toBe(1);
+          const mark = await line.locator('svg').boundingBox();
+          const name = await line.locator('.inbox-row__project').boundingBox();
+          expect(mark!.width).toBeGreaterThan(0);
+          expect(mark!.x + mark!.width).toBeLessThanOrEqual(name!.x);
+          expect(
+            Math.abs(mark!.y + mark!.height / 2 - (name!.y + name!.height / 2)),
+          ).toBeLessThanOrEqual(2);
+        }
         expect(plainHeights.length, label).toBe(ITEMS.length);
         expect(paintedHeights, `${label} row heights`).toEqual(plainHeights);
       } finally {
@@ -365,6 +378,15 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
           .boundingBox();
         expect(icon?.width, `${label} icon width`).toBe(12);
         expect(icon?.height, `${label} icon height`).toBe(12);
+        if (label === 'sheet') {
+          const line = pg.locator('.inbox-row__project-context').first();
+          expect(await line.locator('svg').count()).toBe(0);
+          const name = await line.locator('.inbox-row__project').boundingBox();
+          expect(icon!.x + icon!.width).toBeLessThanOrEqual(name!.x);
+          expect(
+            Math.abs(icon!.y + icon!.height / 2 - (name!.y + name!.height / 2)),
+          ).toBeLessThanOrEqual(2);
+        }
         expect(paintedHeights, `${label} row heights`).toEqual(plainHeights);
       } finally {
         await pg.close();

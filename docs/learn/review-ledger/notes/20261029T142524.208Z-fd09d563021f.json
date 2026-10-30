@@ -1,0 +1,7 @@
+{
+  "revision": "d00b8f40f6948501b190b7c074a1d09de87deeef",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Comment-only change in chat.css and ChatInputArea; no responsive claim affected.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat/chat.css"]}
+  ]
+}

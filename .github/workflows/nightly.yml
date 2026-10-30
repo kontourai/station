@@ -108,6 +108,12 @@ jobs:
           # not apply here either.
           STATION_TYPECHECK_SLOTS: '4'
         run: node scripts/typecheck-aggregate.mjs
+      - name: Cache Chromium
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        continue-on-error: true
+        with:
+          path: ~/.cache/ms-playwright
+          key: station-playwright-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml') }}
       - name: Install Chromium
         timeout-minutes: 20
         run: |

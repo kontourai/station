@@ -1,0 +1,7 @@
+{
+  "revision": "a560a1867644c1ca3f246db948666394bdcf71e8",
+
+  "notes": [
+    {"path":"AGENTS.md","note":"Reviewed gate-for hook reporting against actual wrapped pre-push commands and focused owner tests; the documented pre-edit and evidence routing remains accurate. No hosted qualification is inferred.","inputs":["AGENTS.md","scripts/gate-for.mjs"]}
+  ]
+}

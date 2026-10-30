@@ -85,6 +85,39 @@ export class ChildWorkProjection {
     return threadIds.filter((threadId) => !this.historicalSeeded.has(threadId));
   }
 
+  /** Read the existing reducer only after admitting its entire cached input. */
+  readWarmReporter(
+    threadId: string,
+    provider: string | undefined,
+  ):
+    | { kind: 'warm'; view: ChildWorkSessionView }
+    | { kind: 'unavailable'; reason: string } {
+    if (!this.historicalSeeded.has(threadId))
+      return { kind: 'unavailable', reason: 'warm-child-work-cold' };
+    if (
+      !this.observedAt.has(threadId) &&
+      this.state.notReported[threadId] === undefined
+    )
+      return {
+        kind: 'unavailable',
+        reason: 'warm-child-work-report-unavailable',
+      };
+    // The canonical selector uses Object.values over the shared registry.
+    // Stop before that allocation; do not truncate or synthesize an empty report.
+    let count = 0;
+    for (const key in this.state.items) {
+      if (Object.hasOwn(this.state.items, key) && ++count > 10_000)
+        return {
+          kind: 'unavailable',
+          reason: 'warm-child-work-cache-unbounded',
+        };
+    }
+    const view = this.read(threadId, provider);
+    return view
+      ? { kind: 'warm', view }
+      : { kind: 'unavailable', reason: 'warm-child-work-view-unavailable' };
+  }
+
   /** Restore durable terminal outcomes, without reviving pre-restart work. */
   seedHistoricalSettled(
     threadId: string,

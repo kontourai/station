@@ -1,0 +1,7 @@
+{
+  "revision": "9fe0eb3c9b05517639e744acd18bc278121c2dd1",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Corrected the authority sentence: any failed read of the authority observation, not only a missing or failing endpoint, leaves the Runs on list open, because starting the task still needs orchestration:operate and the launcher and server refuse it. Matches useExecutionStations (authority.isError) and its tests for failed and older-host reads.","inputs":["docs/design/chat-composer.md","src-ui/src/hooks/useExecutionStationCatalog.ts"]}
+  ]
+}

@@ -71,12 +71,14 @@ describe('groupMobileActivity snooze', () => {
     expect(groups.find((g) => g.id === 'snoozed')?.items).toHaveLength(0);
   });
 
-  it('keeps an old completed conversation in Just finished until its rendered version is acknowledged', () => {
+  it('keeps an old completed conversation in Just finished until it is viewed after finishing', () => {
     const completed = item({
       id: 'conversation-1',
       lifecycleLabel: 'Completed',
       updatedAt: NOW - 24 * 60 * 60 * 1000,
       conversationUpdatedAt: '2026-08-02T20:00:00.000Z',
+      // Last viewed while it was still working.
+      acknowledgedAt: NOW - 25 * 60 * 60 * 1000,
     });
     const unseen = groupMobileActivity([completed], NOW);
     expect(unseen.find((g) => g.id === 'settled')?.items).toEqual([completed]);

@@ -4,7 +4,10 @@ import {
   DEFAULT_NOTIFICATION_SOUND_PREFERENCES,
   DEVICE_SETTINGS_REGISTRY,
 } from '@kontourai/station-contracts/device-settings';
-import type { TelemetryTierChoices } from '@kontourai/station-contracts/product-telemetry';
+import type {
+  TelemetryChoiceCapabilities,
+  TelemetryTierChoices,
+} from '@kontourai/station-contracts/product-telemetry';
 import type { ModelConnectionConfig } from '@kontourai/station-contracts/tool';
 import { authenticatedFetch } from '@kontourai/station-sdk';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -325,6 +328,10 @@ let telemetryAuthorDestination: string | undefined;
 /** The read's own state, which the row must not speak ahead of. */
 let telemetryDisclosureSettled = true;
 let telemetryDisclosureIsError = false;
+/** What the disclosure reports this caller may choose; absent = older host. */
+let telemetryCapabilities: TelemetryChoiceCapabilities | undefined;
+/** Only the MAIN disclosure read failed (`isError` also covers the author read). */
+let telemetryDisclosureReadError = false;
 let telemetryDnt = false;
 let telemetryStatusFailed = false;
 vi.mock('../hooks/useTelemetryStatus', async (importOriginal) => {
@@ -375,6 +382,9 @@ vi.mock('../components/UsageTelemetryDisclosure', async (importOriginal) => {
           : {
               endpointConfigured: telemetryEndpointConfigured,
               inventoryRevision: telemetryDisclosureRevision,
+              ...(telemetryCapabilities
+                ? { capabilities: telemetryCapabilities }
+                : {}),
               ...(telemetryAuthorDestination
                 ? {
                     authorDisclosure: {
@@ -392,6 +402,7 @@ vi.mock('../components/UsageTelemetryDisclosure', async (importOriginal) => {
               },
             },
       isError: telemetryDisclosureIsError,
+      readError: telemetryDisclosureReadError,
       settled: telemetryDisclosureSettled,
       outstanding: false,
     }),
@@ -572,6 +583,8 @@ describe('settings catalog completeness', () => {
     telemetryEndpointConfigured = undefined;
     telemetryDisclosureSettled = true;
     telemetryDisclosureIsError = false;
+    telemetryCapabilities = undefined;
+    telemetryDisclosureReadError = false;
     setDeviceSetting.mockClear();
     resetDeviceSetting.mockClear();
     resetDeviceSettings.mockClear();
@@ -2968,7 +2981,189 @@ describe('settings catalog completeness', () => {
     );
   });
 
+  /**
+   * Settings offers a usage-sharing choice only once the disclosure has
+   * settled successfully, because its capabilities say what this caller may
+   * choose. A host that settles WITHOUT capabilities is an older host and
+   * keeps every choice, as before.
+   */
+  describe('usage-sharing choices wait for the disclosure', () => {
+    const radios = () =>
+      [
+        "Don't share",
+        'Anonymous usage counts',
+        'Detailed usage to help improve Station',
+      ].map(
+        (name) =>
+          (screen.getByRole('radio', { name }) as HTMLInputElement).disabled,
+      );
+
+    test.each([
+      {
+        state: 'still loading',
+        settled: false,
+        isError: false,
+        disabled: [true, true, true],
+      },
+      {
+        // Nothing has ever answered. Withdrawing stays possible (the server
+        // still enforces), and nothing else is offered.
+        state: 'the first main read failed',
+        settled: true,
+        isError: true,
+        readError: true,
+        noData: true,
+        disabled: [false, true, true],
+        limit:
+          'Sharing options could not be loaded. You can try turning sharing off, or try again. Try again',
+      },
+      {
+        // An older host already answered without capabilities; a failed
+        // background refetch keeps that answer.
+        state: 'a refetch failed after an older host answered',
+        settled: true,
+        isError: true,
+        readError: true,
+        disabled: [false, false, false],
+      },
+      {
+        state: 'a refetch failed after capabilities were reported',
+        settled: true,
+        isError: true,
+        readError: true,
+        capabilities: {
+          acknowledge: false,
+          recordNotice: false,
+          lower: true,
+          raise: false,
+          defaults: { kontour: 'lite', operator: 'lite' },
+        } satisfies TelemetryChoiceCapabilities,
+        disabled: [false, false, true],
+      },
+      {
+        // An older host that reports no capabilities keeps every choice even
+        // when its Kontour author read fails: that read is not the main one.
+        state: 'only the Kontour author read failed, on an older host',
+        settled: true,
+        isError: true,
+        readError: false,
+        disabled: [false, false, false],
+      },
+      {
+        // The author read says nothing about what this caller may choose.
+        state: 'only the Kontour author read failed',
+        settled: true,
+        isError: true,
+        readError: false,
+        capabilities: {
+          acknowledge: false,
+          recordNotice: false,
+          lower: true,
+          raise: false,
+          defaults: { kontour: 'lite', operator: 'lite' },
+        } satisfies TelemetryChoiceCapabilities,
+        disabled: [false, false, true],
+        limit:
+          'This device can keep or reduce sharing. More sharing is chosen on the host computer.',
+      },
+      {
+        state: 'settled on an older host',
+        settled: true,
+        isError: false,
+        disabled: [false, false, false],
+      },
+      {
+        state: 'settled for a standard device',
+        settled: true,
+        isError: false,
+        capabilities: {
+          acknowledge: false,
+          recordNotice: false,
+          lower: true,
+          raise: false,
+          defaults: { kontour: 'lite', operator: 'lite' },
+        } satisfies TelemetryChoiceCapabilities,
+        disabled: [false, false, true],
+      },
+    ] as {
+      state: string;
+      settled: boolean;
+      isError: boolean;
+      readError?: boolean;
+      noData?: boolean;
+      capabilities?: TelemetryChoiceCapabilities;
+      disabled: boolean[];
+      limit?: string;
+    }[])(
+      '$state',
+      async ({
+        settled,
+        isError,
+        readError = false,
+        noData = false,
+        capabilities,
+        disabled,
+        limit,
+      }) => {
+        // `undefined` makes the mocked state carry no data at all.
+        telemetryEndpointConfigured = noData ? undefined : false;
+        telemetryDisclosureSettled = settled;
+        telemetryDisclosureIsError = isError;
+        telemetryDisclosureReadError = readError;
+        telemetryCapabilities = capabilities;
+        window.history.replaceState({}, '', '/settings?view=telemetry');
+        configSnapshot = {
+          config: {
+            ...INITIAL_CONFIG,
+            telemetryTier: { kontour: 'lite', operator: 'lite' },
+          },
+          dataUpdatedAt: 1,
+        };
+        await renderSettings();
+        expect(radios()).toEqual(disabled);
+        if (limit)
+          expect(screen.getByTestId('usage-sharing-limit').textContent).toBe(
+            limit,
+          );
+      },
+    );
+
+    test('after a failed main read, Try again re-reads the disclosure', async () => {
+      telemetryEndpointConfigured = undefined;
+      telemetryDisclosureIsError = true;
+      telemetryDisclosureReadError = true;
+      window.history.replaceState({}, '', '/settings?view=telemetry');
+      await renderSettings();
+      invalidateQuery.mockClear();
+      fireEvent.click(
+        within(screen.getByTestId('usage-sharing-limit')).getByRole('button', {
+          name: 'Try again',
+        }),
+      );
+      expect(invalidateQuery).toHaveBeenCalledWith([
+        'usage-telemetry-disclosure',
+      ]);
+    });
+  });
+
   describe('Telemetry destination', () => {
+    test('a failed Kontour author read alone still reports the destination', async () => {
+      // `isError` also covers the author read; the destination is the main
+      // read's answer, which arrived.
+      telemetryDisclosureIsError = true;
+      telemetryDisclosureReadError = false;
+      telemetryEndpointConfigured = false;
+      await renderSettings();
+      expect(
+        screen.getByText('No additional destination configured.'),
+      ).toBeTruthy();
+      expect(
+        screen.queryByText(
+          'Could not read whether a destination is configured.',
+        ),
+      ).toBeNull();
+    });
+
     test('reports a configured destination without naming it', async () => {
       telemetryEndpointConfigured = true;
       await renderSettings();
@@ -3021,6 +3216,7 @@ describe('settings catalog completeness', () => {
 
     test('a failed read says the read failed, not what the host holds', async () => {
       telemetryDisclosureIsError = true;
+      telemetryDisclosureReadError = true;
       telemetryEndpointConfigured = undefined;
       await renderSettings();
 

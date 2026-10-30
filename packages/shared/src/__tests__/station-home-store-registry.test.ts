@@ -147,6 +147,12 @@ describe('Station home store registry (#2675 D)', () => {
     expect(classifyStationHomeRoot('notifications.json.previous')).toBe(
       'state',
     );
+    expect(classifyStationHomeRoot('principal-notifications.json')).toBe(
+      'state',
+    );
+    expect(
+      classifyStationHomeRoot('principal-notifications.json.previous'),
+    ).toBe('state');
     expect(classifyStationHomeRoot('instances.json.previous')).toBe('live');
     expect(classifyStationHomeRoot('never-heard-of-it')).toBeUndefined();
   });

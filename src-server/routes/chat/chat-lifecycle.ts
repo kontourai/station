@@ -486,8 +486,8 @@ export async function finalizeChatRequest({
  * committed record is at write time — including a rename that landed after
  * this function started (it's a network round trip to a model provider) —
  * never a pre-queue snapshot. Returning `null` skips the write entirely.
- * `titleSource: 'auto'` marks this write so a later PATCH's own metadata
- * merge doesn't need special-casing.
+ * `titleSource: 'generated'` marks this write, so a later generation or
+ * PATCH can tell it from a person's title.
  */
 async function generateAndPersistAutoTitle({
   ctx,
@@ -523,13 +523,21 @@ async function generateAndPersistAutoTitle({
       !Array.isArray(current.metadata)
         ? (current.metadata as Record<string, unknown>)
         : {};
-    // A user rename, provider title, and deterministic first-prompt title
-    // are all durable authority. Only legacy records without a source may be
-    // enhanced asynchronously; current conversations never depend on a
-    // model call for their useful title.
-    if (currentMetadata.titleSource) {
+    // A user rename, an agent's title and a provider title are durable
+    // authority. #4266: a deterministic first-prompt title is only the
+    // fallback until this lands, so it (and a legacy record without a
+    // source) is replaced; it used to be kept too, which left this path
+    // unable to write for any current conversation. Stamped 'generated', the
+    // source the regenerate route writes and the list reports.
+    if (
+      currentMetadata.titleSource !== undefined &&
+      currentMetadata.titleSource !== 'prompt'
+    ) {
       return null;
     }
-    return { title, metadata: { ...currentMetadata, titleSource: 'auto' } };
+    return {
+      title,
+      metadata: { ...currentMetadata, titleSource: 'generated' },
+    };
   });
 }

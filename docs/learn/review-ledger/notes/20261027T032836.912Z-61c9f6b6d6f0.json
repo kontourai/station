@@ -1,0 +1,11 @@
+{
+  "revision": "b44f54be1d0191f7295bcc2a2bd00383bbd4bc07",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Reviewed the reference delta for PR #4236 against glossary vocabulary: the chat/status contracts remain advance contracts and add no UI, Session lifecycle, membership grant or executed provider capability. Existing capability and Project Room definitions remain accurate; no glossary prose change needed. Source inspection only; all tests, typechecks, fault injection and readiness NOT_RUN (capacity).","inputs":["docs/glossary.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the reference delta for PR #4236 against this guide: the API/SDK/contracts reading route and evidence requirements remain accurate. Pure chat import and confirmation shapes add no shipped deployment adapter, hosted migration or operational integration journey; the reference explicitly leaves those to runtime lanes. No guide prose change needed. Source inspection only; all tests, typechecks, fault injection and readiness NOT_RUN (capacity).","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Reviewed the reference delta for PR #4236 against contract scope instructions. Parser primitives were extracted into one internal environment-free module; the import projection stays pure, time is caller-supplied, public imports remain domain subpaths and compatibility is explicit. No instruction change needed. Source inspection only; required test/typecheck execution and readiness remain NOT_RUN (capacity) under the owner override.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}

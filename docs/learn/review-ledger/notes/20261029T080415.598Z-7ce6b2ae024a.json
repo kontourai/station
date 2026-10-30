@@ -1,0 +1,17 @@
+{
+  "revision": "f0be4abf1329a9896d0d5b907565b17b96e0a2a1",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"No prose change. NewChatModal forwards a remote start's task and Station to onTaskStarted, ChatDockModalStack widens that callback's type, and HomeView's test double gains the Station reads; no module ownership or boundary described here moves.","inputs":["docs/architecture/module-map.md","src-ui/src/components/modals/NewChatModal.tsx","src-ui/src/components/chat-dock/ChatDockModalStack.tsx","src-ui/src/__tests__/HomeView.test.tsx"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"No prose change. ChatDock adds a task-started toast that reveals Activity through the existing useShowSurface seam; pane relationships are unchanged.","inputs":["docs/design/pane-relationships.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/shell-plugins-distributions.md","note":"No prose change. Only HomeView's SDK test double changed (Station reads for the start composer); no shell, plugin or distribution behavior moved.","inputs":["docs/design/shell-plugins-distributions.md","src-ui/src/__tests__/HomeView.test.tsx"]},
+
+    {"path":"docs/guides/plugins.md","note":"No prose change. Only HomeView's SDK test double changed; nothing here describes the start composer or its reads.","inputs":["docs/guides/plugins.md","src-ui/src/__tests__/HomeView.test.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"No prose change. ChatDock adds a Task started on <Station> toast with Open task; the concepts (Station, Agent, Project, Activity) are used as defined here.","inputs":["docs/user/concepts.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/personal-boards.md","note":"No prose change. ChatDock and ChatDockModalStack changes concern the remote-start confirmation; nothing about boards moved.","inputs":["docs/user/personal-boards.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockModalStack.tsx"]}
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "revision": "ff8a4250b1c93e78a9f2d4678d8d65dcd9530919",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"SettingsView decides usage-sharing choices from the main disclosure read's error (readError) instead of the combined flag, and passes a Try again re-read; this document makes no claim about Settings' telemetry error handling, so it remains accurate.","inputs":["docs/architecture/module-map.md","src-ui/src/views/SettingsView.tsx"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"telemetry-configuration.ts only moves a docblock back onto resolveProductTelemetryEnabled; no behaviour changed; SettingsView decides usage-sharing choices from the main disclosure read's error (readError) instead of the combined flag, and passes a Try again re-read; this document makes no claim about Settings' telemetry error handling, so it remains accurate.","inputs":["docs/design/settings-architecture.md","src-server/domain/telemetry-configuration.ts","src-ui/src/views/SettingsView.tsx"]},
+
+    {"path":"docs/guides/monitoring.md","note":"telemetry-configuration.ts only moves a docblock back onto resolveProductTelemetryEnabled; no behaviour changed; this document makes no claim about Settings' telemetry error handling, so it remains accurate.","inputs":["docs/guides/monitoring.md","src-server/domain/telemetry-configuration.ts"]},
+
+    {"path":"docs/privacy-policy.md","note":"telemetry-configuration.ts only moves a docblock back onto resolveProductTelemetryEnabled; no behaviour changed; this document makes no claim about Settings' telemetry error handling, so it remains accurate.","inputs":["docs/privacy-policy.md","src-server/domain/telemetry-configuration.ts"]},
+
+    {"path":"docs/reference/api.md","note":"telemetry-configuration.ts only moves a docblock back onto resolveProductTelemetryEnabled; no behaviour changed; this document makes no claim about Settings' telemetry error handling, so it remains accurate.","inputs":["docs/reference/api.md","src-server/domain/telemetry-configuration.ts"]},
+
+    {"path":"docs/reference/config.md","note":"telemetry-configuration.ts only moves a docblock back onto resolveProductTelemetryEnabled; no behaviour changed; this document makes no claim about Settings' telemetry error handling, so it remains accurate.","inputs":["docs/reference/config.md","src-server/domain/telemetry-configuration.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"telemetry-configuration.ts only moves a docblock back onto resolveProductTelemetryEnabled; no behaviour changed; this document makes no claim about Settings' telemetry error handling, so it remains accurate.","inputs":["docs/reference/env-vars.md","src-server/domain/telemetry-configuration.ts"]},
+
+    {"path":"docs/reference/play-data-safety.md","note":"telemetry-configuration.ts only moves a docblock back onto resolveProductTelemetryEnabled; no behaviour changed; this document makes no claim about Settings' telemetry error handling, so it remains accurate.","inputs":["docs/reference/play-data-safety.md","src-server/domain/telemetry-configuration.ts"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"SettingsView decides usage-sharing choices from the main disclosure read's error (readError) instead of the combined flag, and passes a Try again re-read; this document makes no claim about Settings' telemetry error handling, so it remains accurate.","inputs":["docs/reference/settings-deep-links.md","src-ui/src/views/SettingsView.tsx"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"telemetry-configuration.ts only moves a docblock back onto resolveProductTelemetryEnabled; no behaviour changed; SettingsView decides usage-sharing choices from the main disclosure read's error (readError) instead of the combined flag, and passes a Try again re-read; the disclosure state adds readError (main read only); Settings shows Try again after a failed main read; after a failed main read only Don't share is offered; this document now says a failed main read offers only Don't share with Try again and a failed Kontour read alone does not limit choices, checked against those sources and settings-catalog-completeness.test.tsx.","inputs":["docs/reference/usage-telemetry.md","src-server/domain/telemetry-configuration.ts","src-server/routes/system/__tests__/config-telemetry-paired.routes.test.ts","src-ui/src/components/UsageSharingChoices.tsx","src-ui/src/components/UsageTelemetryDisclosure.tsx","src-ui/src/components/__tests__/TelemetryConsent.routes.test.tsx","src-ui/src/views/SettingsView.tsx","src-ui/src/views/settings/StationConfigSection.tsx","src-ui/src/views/settings/TelemetryTierSettings.tsx"]},
+
+    {"path":"packages/telemetry-broker/README.md","note":"telemetry-configuration.ts only moves a docblock back onto resolveProductTelemetryEnabled; no behaviour changed; this document makes no claim about Settings' telemetry error handling, so it remains accurate.","inputs":["packages/telemetry-broker/README.md","src-server/domain/telemetry-configuration.ts"]}
+  ]
+}

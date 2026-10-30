@@ -1,0 +1,7 @@
+{
+  "revision": "db9c9020e96f233c15af1dc2ad1fe8f8462f242c",
+
+  "notes": [
+    {"path":"docs/guides/self-configuring-agent.md","note":"SessionModelPicker gained an optional resetDisabledReason for the reset button; no claim in this guide concerns the picker reset. Unaffected.","inputs":["docs/guides/self-configuring-agent.md","src-ui/src/components/session/SessionModelPicker.tsx"]}
+  ]
+}

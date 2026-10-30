@@ -12,6 +12,10 @@ import { createForkContextWriter } from '../../../__test-utils__/fork-context-wr
 import { readJson as json } from '../../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { resolvePrincipal } from '../../../services/identity/principal-resolver.js';
+import {
+  FileConversationAcknowledgementStore,
+  PERSONAL_OWNER_ACKNOWLEDGEMENT_KEY,
+} from '../../../services/orchestration/conversation-acknowledgement-store.js';
 import { resolveRuntimeAgent } from '../../agents/runtime-agent-resolver.js';
 
 vi.mock('../../../telemetry/metrics.js', async (importOriginal) => ({
@@ -3602,7 +3606,7 @@ describe('Global Conversation Routes', () => {
       acknowledgedAt: '2026-07-20T00:01:00.000Z',
     });
     expect(acknowledgements.getMany).toHaveBeenCalledExactlyOnceWith(
-      'bound-user',
+      PERSONAL_OWNER_ACKNOWLEDGEMENT_KEY,
       ['c1'],
     );
 
@@ -3613,7 +3617,7 @@ describe('Global Conversation Routes', () => {
     });
     expect(response.status).toBe(200);
     expect(acknowledgements.acknowledge).toHaveBeenCalledWith({
-      userId: 'bound-user',
+      userId: PERSONAL_OWNER_ACKNOWLEDGEMENT_KEY,
       conversationId: 'thread-1',
       updatedAt: '2026-08-02T20:00:00.000Z',
     });
@@ -3701,8 +3705,120 @@ describe('Global Conversation Routes', () => {
     expect(readSessionConversation).toHaveBeenCalledTimes(2);
     expect(acknowledgements.acknowledge).toHaveBeenCalledTimes(1);
     expect(acknowledgements.acknowledge).toHaveBeenCalledWith(
-      expect.objectContaining({ conversationId: 'alpha-thread' }),
+      expect.objectContaining({
+        userId: 'tenant:alpha',
+        conversationId: 'alpha-thread',
+      }),
     );
+  });
+
+  test('an acknowledgement POSTed by one principal is read back by another principal of the same personal owner', async () => {
+    const dataDir = makeForkDir('station-ack-route-');
+    try {
+      // The real wiring: request authority is the resolved principal, and
+      // `getUserId` is the OS account name the POST used to write under.
+      const authorityFor = (request: Request) =>
+        sessionReadAuthorityFromRequest(
+          request.headers.get('x-test-principal') ?? 'human:local:operator',
+          undefined,
+          undefined,
+        );
+      const runtimeItem = {
+        id: 'runtime-thread',
+        source: 'runtime' as const,
+        agentSlug: 'station',
+        title: 'Runtime chat',
+        createdAt: '2026-10-28T04:00:00.000Z',
+        updatedAt: '2026-10-28T04:10:00.000Z',
+        messageCount: 2,
+        mutable: false,
+        answerability: { answerable: true },
+      };
+      const app = createGlobalConversationRoutes(
+        new Map() as any,
+        { getConversation: vi.fn().mockReturnValue(null) } as any,
+        mockLogger,
+        undefined,
+        {
+          readSessionConversation: vi.fn(),
+          listConversationHistoryPage: vi
+            .fn()
+            .mockResolvedValue({ items: [runtimeItem], hasMore: false }),
+        },
+        () => 'brian',
+        // phone-1 is the owner's own paired device, by its record.
+        new FileConversationAcknowledgementStore(
+          dataDir,
+          (deviceId) => deviceId === 'phone-1',
+        ),
+        authorityFor,
+      );
+      const inventoryAs = async (principal: string) =>
+        (
+          await json(
+            await app.request('/', {
+              headers: { 'x-test-principal': principal },
+            }),
+          )
+        ).data.items.find(
+          (item: { id: string }) => item.id === 'runtime-thread',
+        );
+
+      expect(
+        (await inventoryAs('human:device:phone-1')).acknowledgedAt,
+      ).toBeUndefined();
+      const posted = await app.request('/runtime-thread/acknowledgement', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-test-principal': 'human:local:operator',
+        },
+        body: JSON.stringify({ updatedAt: '2026-10-28T04:10:00.000Z' }),
+      });
+      expect(posted.status).toBe(200);
+
+      for (const principal of [
+        'human:device:phone-1',
+        'human:local:operator',
+      ]) {
+        expect((await inventoryAs(principal)).acknowledgedAt).toBe(
+          '2026-10-28T04:10:00.000Z',
+        );
+      }
+
+      // Another person on the same personal Station keeps their own record:
+      // their view does not clear the owner's Just finished, nor theirs the
+      // owner's.
+      const housemate = 'human:tailscale-serve:housemate@example.com';
+      expect((await inventoryAs(housemate)).acknowledgedAt).toBeUndefined();
+      const theirs = await app.request('/runtime-thread/acknowledgement', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-test-principal': housemate,
+        },
+        body: JSON.stringify({ updatedAt: '2026-10-28T04:20:00.000Z' }),
+      });
+      expect(theirs.status).toBe(200);
+      expect((await inventoryAs(housemate)).acknowledgedAt).toBe(
+        '2026-10-28T04:20:00.000Z',
+      );
+      expect((await inventoryAs('human:local:operator')).acknowledgedAt).toBe(
+        '2026-10-28T04:10:00.000Z',
+      );
+
+      const refused = await app.request('/runtime-thread/acknowledgement', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-test-principal': 'service:scheduler',
+        },
+        body: JSON.stringify({ updatedAt: '2026-10-28T05:00:00.000Z' }),
+      });
+      expect(refused.status).toBe(403);
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
   });
 
   test('GET /:id finds conversation in adapters', async () => {

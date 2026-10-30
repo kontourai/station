@@ -5,7 +5,7 @@ import { generateConversationTitle } from '../chat-title-generation.js';
 
 function createCtx(overrides: Record<string, unknown> = {}) {
   return {
-    appConfig: { structureModel: 'structure-model' },
+    appConfig: { titleModel: 'title-model' },
     framework: {
       createModel: vi.fn().mockResolvedValue({ kind: 'model' }),
       createTempAgent: vi.fn(),
@@ -20,10 +20,13 @@ function createCtx(overrides: Record<string, unknown> = {}) {
 
 describe('generateConversationTitle (station#1566)', () => {
   test.each([
-    ['empty', { structureModel: '' }],
+    ['empty', { titleModel: '' }],
     ['absent', {}],
+    // #4266: the prompt quotes the conversation; a model configured for
+    // another purpose never receives it.
+    ['absent, though a structure model is set', { structureModel: 'nova' }],
   ])(
-    'returns null without building a model when structureModel is %s',
+    'returns null without building a model when titleModel is %s',
     async (_label, appConfig) => {
       const ctx = createCtx({ appConfig });
 
@@ -38,6 +41,23 @@ describe('generateConversationTitle (station#1566)', () => {
       expect(ctx.framework.createTempAgent).not.toHaveBeenCalled();
     },
   );
+
+  test('a hosted Station builds no model and calls none (#4266)', async () => {
+    vi.stubEnv('STATION_HOSTED_TENANT_REGISTRY_FILE', '/srv/tenants.json');
+    try {
+      const ctx = createCtx();
+      const title = await generateConversationTitle({
+        ctx,
+        firstUserText: 'How do I deploy this?',
+        assistantText: 'Here is how you deploy it.',
+      });
+      expect(title).toBeNull();
+      expect(ctx.framework.createModel).not.toHaveBeenCalled();
+      expect(ctx.framework.createTempAgent).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
 
   test('returns a post-processed title on the success path', async () => {
     const generateObject = vi.fn().mockResolvedValue({

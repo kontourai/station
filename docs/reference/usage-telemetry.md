@@ -83,6 +83,26 @@ A standard paired device may lower or keep tiers. Only the operator or
 a device with `access:manage` may raise tiers. Agent-originated requests cannot
 change telemetry choices or acknowledge the
 disclosure, even with `access:manage`.
+`GET /api/usage-telemetry/disclosure` (and the acknowledgement response) reports
+`capabilities` for the calling credential, decided by the same gates as each
+write: `acknowledge` (the acknowledgement POST), `recordNotice` (the Lite notice
+POST), `lower` (a tier write that keeps or lowers every destination) and `raise`
+(a tier write that raises any destination). It also reports `defaults`: for a
+destination with no saved choice, the tier a write is compared against, which
+is its default with Do Not Track ignored (DNT makes the effective tier Off
+without changing the choice). The usage-sharing prompt does not
+open for a caller that cannot complete it: outside DNT every way it resolves
+records the notice, and under DNT a kept or lowered choice needs `lower`. A
+QR-paired device therefore is not prompted. The prompt, Settings and Advanced
+controls disable each choice the server would refuse and say that more sharing
+is chosen on the host computer. A device that cannot acknowledge is told that
+Detailed is confirmed on the host computer instead of being asked to save it.
+Settings offers no choice until the disclosure has loaded. If that read fails
+before any answer, only Don't share is offered, with Try again; the server
+still decides whether the write is allowed. An earlier answer holds through a
+failed refetch, and a failed read of the Kontour destination's disclosure
+alone limits neither the choices nor the destination line. Hosts that do not report `capabilities` keep the
+earlier behavior.
 `STATION_TELEMETRY_TIER` and the legacy boolean environment aliases supply
 defaults, reported as `environment`, and cannot grant Full. Hosts that previously
 relied on `STATION_PRODUCT_TELEMETRY_ENABLED=true` (or its legacy alias) plus a

@@ -1,3 +1,4 @@
+import { sanitizeFreeText } from '@kontourai/station-shared/redaction';
 import type {
   ProviderAdapterShape,
   ProviderSession,
@@ -222,6 +223,19 @@ export class AdapterRetirement {
           );
         }),
       ]);
+    } catch (error) {
+      this.deps.logger.warn('Provider cleanup failed', {
+        cleanup: label,
+        error: sanitizeFreeText(errorMessage(error), 2_000),
+        ...(error instanceof AggregateError
+          ? {
+              causes: error.errors
+                .slice(0, 5)
+                .map((cause) => sanitizeFreeText(errorMessage(cause), 2_000)),
+            }
+          : {}),
+      });
+      throw error;
     } finally {
       if (timer) clearTimeout(timer);
       // Belt-and-braces, and UNOBSERVABLE as written: `Promise.race` above

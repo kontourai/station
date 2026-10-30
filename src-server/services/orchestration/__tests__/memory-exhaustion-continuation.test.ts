@@ -187,6 +187,38 @@ describe('automatic continuation after a memory kill', () => {
     reason: 'memory-exhausted',
   });
 
+  test.each(['memory', 'retriable', 'continuation', 'turnless'] as const)(
+    'read eligibility matches a person Continue for %s',
+    (scenario) => {
+      const continuation = coordinator();
+      const turnId = killedTurn(
+        'thread-a',
+        scenario === 'continuation'
+          ? { continuation: memoryContinuationKey('thread-a', 'earlier') }
+          : {},
+      );
+      if (scenario === 'retriable' || scenario === 'turnless')
+        append('thread-a', {
+          method: 'runtime.error',
+          ...(scenario === 'retriable' ? { turnId } : {}),
+          severity: 'error',
+          code: 'stream-disconnected',
+          message: 'later error',
+          retriable: true,
+        });
+      const fact = continuation.continuationEligibility('thread-a');
+      const result = continuation.continueOnRequest({
+        conversationId: 'thread-a',
+        actor: { userId: 'person-1' },
+      });
+      expect(fact.eligible).toBe(result.kind === 'queued');
+      expect(fact.eligible).toBe(
+        scenario === 'memory' || scenario === 'continuation',
+      );
+      if (fact.eligible) expect(fact.turnId).toBe(turnId);
+    },
+  );
+
   test('continues once, with the continuation text under the dead-turn key', () => {
     const continuation = coordinator();
     const turnId = killedTurn('thread-a');
@@ -596,5 +628,109 @@ describe('automatic continuation after a memory kill', () => {
         actor: { userId: 'person-1' },
       }),
     ).toEqual({ kind: 'skipped', reason: 'not-memory-exhausted' });
+  });
+
+  // #4266: the chat's stored-event card (`useActiveChatTranscript`) mirrors
+  // these: a turn's LAST failure decides, and a continuation killed in turn
+  // is itself the turn to continue.
+  test.each([
+    ['a memory kill after another failure', ['other', 'memory'], 'queued'],
+    ['another failure after a memory kill', ['memory', 'other'], 'skipped'],
+  ] as const)(
+    '#4266: the last failure of the turn decides (%s)',
+    (_label, failures, expected) => {
+      const continuation = coordinator();
+      const threadId = `thread-last-${failures.join('-')}`;
+      append(threadId, { method: 'session.started', sessionId: threadId });
+      append(threadId, {
+        method: 'turn.started',
+        turnId: 'last-turn',
+        prompt: 'Build it',
+        clientOrigin: PERSON,
+      });
+      for (const failure of failures)
+        append(threadId, {
+          method: 'runtime.error',
+          turnId: 'last-turn',
+          severity: 'error',
+          ...(failure === 'memory'
+            ? {
+                code: ENGINE_MEMORY_EXHAUSTED_CODE,
+                message: 'Codex ran out of memory and was stopped.',
+              }
+            : { code: 'codex-turn-orphaned', message: 'exited' }),
+        });
+      owners.set(threadId, 'person-1');
+      expect(
+        continuation.continueOnRequest({
+          conversationId: threadId,
+          actor: { userId: 'person-1' },
+        }).kind,
+      ).toBe(expected);
+    },
+  );
+
+  test('a later retriable Codex error prevents memory continuation', () => {
+    const continuation = coordinator();
+    const threadId = 'thread-retriable';
+    append(threadId, { method: 'session.started', sessionId: threadId });
+    append(threadId, {
+      method: 'turn.started',
+      turnId: 'turn-1',
+      prompt: 'run',
+      clientOrigin: PERSON,
+    });
+    append(threadId, {
+      method: 'runtime.error',
+      turnId: 'turn-1',
+      severity: 'error',
+      code: ENGINE_MEMORY_EXHAUSTED_CODE,
+      message: 'Codex ran out of memory and was stopped.',
+    });
+    append(threadId, {
+      method: 'runtime.error',
+      turnId: 'turn-1',
+      severity: 'error',
+      code: 'stream-disconnected',
+      message: 'will retry',
+      retriable: true,
+    });
+    owners.set(threadId, 'person-1');
+    expect(
+      continuation.continueOnRequest({
+        conversationId: threadId,
+        actor: { userId: 'person-1' },
+      }),
+    ).toEqual({ kind: 'skipped', reason: 'not-memory-exhausted' });
+  });
+
+  test('#4266: a memory kill stored before #4257, under the orphaned-turn code, can be continued', () => {
+    const continuation = coordinator();
+    append('thread-legacy', {
+      method: 'session.started',
+      sessionId: 'thread-legacy',
+    });
+    append('thread-legacy', {
+      method: 'turn.started',
+      turnId: 'legacy-turn',
+      prompt: 'Build it',
+      clientOrigin: PERSON,
+    });
+    append('thread-legacy', {
+      method: 'runtime.error',
+      turnId: 'legacy-turn',
+      severity: 'error',
+      code: 'codex-turn-orphaned',
+      message:
+        'Codex was killed because memory was exhausted. Its workload budget was 3072 MiB. Commands and delegated work were interrupted. Run memory-heavy checks sequentially before continuing.',
+    });
+    append('thread-legacy', exited('thread-legacy'));
+    owners.set('thread-legacy', 'person-1');
+    expect(
+      continuation.continueOnRequest({
+        conversationId: 'thread-legacy',
+        actor: { userId: 'person-1' },
+      }).kind,
+    ).toBe('queued');
   });
 });

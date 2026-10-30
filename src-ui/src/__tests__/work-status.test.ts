@@ -426,7 +426,11 @@ const TABLE: ReadonlyArray<
   ],
   [
     'failed with a reason',
-    { lifecycleLabel: 'Failed', failureNotice: 'rate limit exceeded' },
+    {
+      lifecycleLabel: 'Failed',
+      failureNotice: 'rate limit exceeded',
+      terminalAt: NOW - 60_000,
+    },
     undefined,
     'Failed · rate limit exceeded',
     'finished',
@@ -434,7 +438,7 @@ const TABLE: ReadonlyArray<
   ],
   [
     'failed with none',
-    { lifecycleLabel: 'Failed' },
+    { lifecycleLabel: 'Failed', terminalAt: NOW - 60_000 },
     undefined,
     'Failed',
     'finished',
@@ -442,7 +446,7 @@ const TABLE: ReadonlyArray<
   ],
   [
     'stopped',
-    { lifecycleLabel: 'Stopped' },
+    { lifecycleLabel: 'Stopped', terminalAt: NOW - 60_000 },
     undefined,
     'Stopped',
     'finished',
@@ -537,10 +541,11 @@ const TABLE: ReadonlyArray<
     'settled',
   ],
   [
-    'done, not opened: Just finished, with no extra claim on the row',
+    'done after the last view: Just finished, with no extra claim on the row',
     {
       lifecycleLabel: 'Completed',
       conversationUpdatedAt: '2026-09-30T09:36:15.000Z',
+      acknowledgedAt: NOW - 30 * 60_000,
     },
     undefined,
     'Done',
@@ -562,7 +567,6 @@ function bucketOf(row: HomeWorkItem): string {
     items: [row],
     now: NOW,
     snoozedUntil: new Map(),
-    terminalSince: new Map(),
   });
   return Object.entries(partition)
     .filter(([, rows]) => Array.isArray(rows) && rows.includes(row))
@@ -788,7 +792,6 @@ describe('status facts for chat, task and merged rows', () => {
           items: [row.item],
           now: NOW,
           snoozedUntil: new Map(),
-          terminalSince: new Map(),
           workFacts: new Map(row.facts ? [[row.item.id, row.facts]] : []),
         });
         expect(lanes[lane].map((item) => item.id)).toEqual(['task-1']);

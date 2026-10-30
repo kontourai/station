@@ -1735,21 +1735,23 @@ test.describe('chat-dock project switcher (kontourai/station#793)', () => {
       .getByRole('button', { name: 'Show Chat', exact: true })
       .click();
     await expect(chatList).toBeVisible();
-    // Close actions identify open conversations, excluding unopened history.
-    // Compare identities so replacing a chat cannot hide behind an equal count.
-    const openChatRows = chatList.getByRole('button', { name: /^Close / });
-    await expect(openChatRows).toHaveCount(5);
+    // Compare inbox conversation identities so replacing a chat cannot hide behind an equal count.
+    const openChatRows = chatList.getByRole('button', {
+      name: /^Dismiss .* from inbox$/,
+    });
+    await expect(openChatRows).toHaveCount(6);
     const readOpenChats = () =>
       openChatRows.evaluateAll((rows) =>
         rows.map((row) => row.getAttribute('aria-label')).sort(),
       );
     const sessionsBeforeSwitch = await readOpenChats();
     expect(sessionsBeforeSwitch).toEqual([
-      'Close Claude Alpha Chat',
-      'Close Codex Beta Chat',
-      'Close Station Chat',
-      'Close Unbound Station Chat',
-      'Close kiro-cli Chat',
+      'Dismiss Claude Alpha Chat from inbox',
+      'Dismiss Codex Beta Chat from inbox',
+      'Dismiss Remember the exact token CEDAR-82. Reply only: CODEX_CONTEXT_OK from inbox',
+      'Dismiss Station Chat from inbox',
+      'Dismiss Unbound Station Chat from inbox',
+      'Dismiss kiro-cli Chat from inbox',
     ]);
     const activeChatBeforeSwitch = new URL(page.url()).searchParams.get('chat');
     expect(activeChatBeforeSwitch).toBeTruthy();

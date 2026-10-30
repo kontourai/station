@@ -51,6 +51,9 @@ test.each(['requestId', 'sessionId', 'principalId'])(
       'a\u001fb',
       'a\u007fb',
       'a\u0085b',
+      'a\u202eb',
+      'a\u200bb',
+      'a\u034fb',
       '\ud800',
     ]) {
       const input =

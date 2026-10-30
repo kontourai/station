@@ -31,8 +31,9 @@ import {
   UNKNOWN_CLIENT_REPORTED_ORIGIN,
 } from '@kontourai/station-contracts/client-origin';
 import {
-  ENGINE_MEMORY_EXHAUSTED_CODE,
+  isEngineMemoryExhaustedFailure,
   isStationMemoryContinuationTurn,
+  lastRuntimeError,
   MEMORY_CONTINUATION_CLIENT_TURN_PREFIX,
   memoryContinuationKeyKind,
 } from '@kontourai/station-contracts/provider';
@@ -253,14 +254,11 @@ export class MemoryExhaustionContinuation {
       .listEventWindowByTurn(threadId, { turnLimit: 1, direction: 'newest' })
       .events.map((event) => record(event.payload))
       .filter((payload): payload is Record<string, unknown> => !!payload);
-    let failureIndex = -1;
-    payloads.forEach((payload, index) => {
-      if (payload.method === 'runtime.error') failureIndex = index;
-    });
-    const failure = payloads[failureIndex];
+    const failure = lastRuntimeError(payloads);
+    const failureIndex = failure ? payloads.indexOf(failure) : -1;
     if (
       !failure ||
-      failure.code !== ENGINE_MEMORY_EXHAUSTED_CODE ||
+      !isEngineMemoryExhaustedFailure(failure) ||
       typeof failure.turnId !== 'string'
     )
       return 'not-memory-exhausted';
@@ -478,13 +476,36 @@ export class MemoryExhaustionContinuation {
    * with the engine, and the person chose to go on). The inbox applies the
    * sender's own permission to send to the conversation.
    */
+  /** Current read fact; submission permission is still checked by the inbox. */
+  continuationEligibility(conversationId: string): {
+    eligible: boolean;
+    turnId?: string;
+  } {
+    const turn = this.personTurn(conversationId);
+    if ('kind' in turn) return { eligible: false };
+    return {
+      turnId: turn.turnId,
+      eligible:
+        !!this.ports.submit &&
+        typeof this.keyFor(conversationId, turn, 'person') === 'string',
+    };
+  }
+
   continueOnRequest(input: {
     readonly conversationId: string;
     readonly actor: ThreadInboxActor;
   }): MemoryContinuationOutcome {
-    const current = this.ports.service.currentConversationSessionId(
-      input.conversationId,
-    );
+    const turn = this.personTurn(input.conversationId);
+    return 'kind' in turn
+      ? turn
+      : this.submit(input.conversationId, turn, input.actor, 'person');
+  }
+
+  private personTurn(
+    conversationId: string,
+  ): DeadTurn | MemoryContinuationOutcome {
+    const current =
+      this.ports.service.currentConversationSessionId(conversationId);
     const predecessor =
       this.ports.eventStore.conversationForSession(
         current,
@@ -500,17 +521,16 @@ export class MemoryExhaustionContinuation {
         memoryKilled(current) ??
         (predecessor ? memoryKilled(predecessor) : undefined);
       if (!turn) return { kind: 'skipped', reason: 'not-memory-exhausted' };
-      return this.submit(input.conversationId, turn, input.actor, 'person');
+      return turn;
     }
     const turn = memoryKilled(current);
-    if (turn)
-      return this.submit(input.conversationId, turn, input.actor, 'person');
+    if (turn) return turn;
     // A successor already ran: either it is this dead turn's continuation
     // (someone continued first), or the conversation moved on and an old
     // card must not start a continuation now.
     const continued = predecessor ? memoryKilled(predecessor) : undefined;
     if (continued) {
-      const outcome = this.keyFor(input.conversationId, continued, 'person');
+      const outcome = this.keyFor(conversationId, continued, 'person');
       if (
         typeof outcome !== 'string' &&
         outcome.kind === 'skipped' &&

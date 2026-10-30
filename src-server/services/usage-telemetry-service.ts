@@ -14,12 +14,14 @@ import {
   type TelemetryFeedback,
   type TelemetryLiteNoticeReceipt,
   type TelemetryOutboxEntry,
+  type TelemetryTier,
 } from '@kontourai/station-contracts/product-telemetry';
 import type {
   ProductTelemetryDeliveryStatus,
   TelemetryConnectionProbeStatus,
 } from '@kontourai/station-contracts/telemetry-delivery';
 import { publishJsonFileWithOwnedLock } from '@kontourai/station-shared/json-file-storage';
+import { isTelemetryPublisherId } from '@kontourai/station-shared/plugin-telemetry';
 import {
   LITE_TELEMETRY_INVENTORY_REVISION,
   mapRuntimeChannelToTelemetryChannel,
@@ -33,6 +35,7 @@ import {
   resolveProductTelemetryEnabled,
   resolveProductTelemetryEnvironment,
   resolveTelemetryConfiguration,
+  telemetryChoiceDefaults,
 } from '../domain/telemetry-configuration.js';
 import {
   type BuildProvenanceSnapshot,
@@ -244,6 +247,29 @@ export class UsageTelemetryService {
     );
   }
   private hasCurrentDisclosureReceipt = false;
+  /**
+   * The baseline `PUT /config/app` compares a usage-sharing write against for
+   * destinations with no saved choice, from the config this service was last
+   * reconfigured with (the runtime reconfigures it on every config write).
+   */
+  telemetryChoiceDefaults(): Partial<
+    Record<TelemetryPublisherId, TelemetryTier>
+  > {
+    const ids = [
+      ...new Set<TelemetryPublisherId>([
+        'kontour',
+        'operator',
+        ...(Object.keys(this.appConfig.telemetryTier ?? {}).filter(
+          isTelemetryPublisherId,
+        ) as TelemetryPublisherId[]),
+      ]),
+    ];
+    return telemetryChoiceDefaults(
+      this.appConfig,
+      this.options.env ?? process.env,
+      ids,
+    );
+  }
   private resolvedConfiguration(): ResolvedTelemetryConfiguration {
     return resolveTelemetryConfiguration(
       this.appConfig,

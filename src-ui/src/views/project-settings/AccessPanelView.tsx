@@ -26,7 +26,7 @@ import {
   canGrant as roleGrantable,
 } from '../../components/people/projectRoles';
 import { ResponsiveSurfaceActions } from '../../components/ResponsiveDialogSurface';
-import { userFacingErrorMessage } from '../../utils/errorText';
+import { projectAccessErrorMessage } from './projectAccessErrorText';
 
 /**
  * Shared People-and-access administration body, rendered by both the
@@ -107,7 +107,7 @@ export function AccessPanelView({
       setConfirmation(undefined);
       return outcome.kind === 'invited';
     } catch (cause) {
-      setError(userFacingErrorMessage(cause));
+      setError(projectAccessErrorMessage(cause));
       return false;
     }
   }
@@ -287,7 +287,11 @@ export function AccessPanelView({
           }
         />
       )}
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <p role="alert" className="project-access__error">
+          {error}
+        </p>
+      )}
       <ConfirmModal
         isOpen={!!confirmation}
         title={confirmation?.title ?? ''}

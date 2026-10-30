@@ -47,7 +47,13 @@ import {
 } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawnSyncBounded } from './lib/bounded-capture.mjs';
+import {
+  acquireHeavyCheckSlot,
+  HEAVY_CHECK_HELD_ENV,
+  withHeavyCheckHeld,
+} from './lib/heavy-check-slots.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
+import { execAsSlotHolder } from './lib/slot-holder-exec.mjs';
 import {
   acquireTypecheckSlot,
   resolveSlotCount,
@@ -371,61 +377,6 @@ function bunCompiler(argv, cwd) {
   };
 }
 
-async function runWindowsCompiler(compiler, args, cwd) {
-  const {
-    executeOwnedCommand,
-    terminateSuiteExecution,
-    waitForSuiteSettlement,
-  } = await import('./lib/owned-process.mjs');
-  // Windows has no execve. The owned-command Job kills the compiler if this
-  // slot holder dies, and completion waits for the entire Job to settle.
-  const execution = executeOwnedCommand(
-    compiler,
-    args,
-    undefined,
-    'typecheck',
-    {
-      cwd,
-      env: process.env,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      windowsHide: true,
-    },
-  );
-  execution.child.stdout?.pipe(process.stdout, { end: false });
-  execution.child.stderr?.pipe(process.stderr, { end: false });
-  let interrupted = false;
-  let cleanup;
-  const stop = () => {
-    cleanup ??= terminateSuiteExecution(execution, {
-      processLabel: 'typecheck',
-      waitForSuiteSettlement,
-      terminationGraceMs: 2000,
-      terminationForceMs: 2000,
-    });
-    return cleanup;
-  };
-  const onSignal = () => {
-    interrupted = true;
-    void stop();
-  };
-  process.once('SIGINT', onSignal);
-  process.once('SIGTERM', onSignal);
-  try {
-    const result = await execution.completion;
-    if (execution.isAlive()) await stop();
-    if (cleanup) {
-      const settled = await cleanup;
-      if (!settled.settled || settled.errors.length)
-        throw new Error('Compiler process tree did not settle');
-    }
-    if (result.error) throw result.error;
-    process.exitCode = interrupted || result.signal ? 1 : (result.status ?? 1);
-  } finally {
-    process.removeListener('SIGINT', onSignal);
-    process.removeListener('SIGTERM', onSignal);
-  }
-}
-
 async function main(argv = process.argv.slice(2)) {
   const cwd = process.cwd();
   const selected = await planCompiler(argv, cwd);
@@ -437,9 +388,25 @@ async function main(argv = process.argv.slice(2)) {
     throw new Error(`Compiler not found: ${plan.compiler}`);
 
   if (needsSlot(argv)) {
+    const label = describeProject(argv, cwd);
+    let heavy;
     let slot;
     try {
-      slot = await acquireTypecheckSlot({ label: describeProject(argv, cwd) });
+      // A compile is a heavy check too: it takes a host heavy-check slot
+      // first (admitted under its ancestor's when one runs it, such as the
+      // `typecheck` aggregate), then a typecheck slot. Same order everywhere.
+      heavy = await acquireHeavyCheckSlot({
+        label: `typecheck ${label}`,
+        announceBypass: false,
+      });
+      if (heavy.index >= 0) {
+        process.once('exit', heavy.release);
+        process.env[HEAVY_CHECK_HELD_ENV] = withHeavyCheckHeld(
+          process.env,
+          heavy,
+        )[HEAVY_CHECK_HELD_ENV];
+      }
+      slot = await acquireTypecheckSlot({ label });
     } catch (error) {
       process.stderr.write(`${error?.message ?? error}\n`);
       process.exitCode = 1;
@@ -448,13 +415,13 @@ async function main(argv = process.argv.slice(2)) {
     process.once('exit', slot.release);
     process.env[SLOT_HELD_ENV] = `${slot.dir}#${slot.index}`;
   }
-  if (process.platform !== 'win32') {
-    // Keep the slot holder's PID: killing it must also kill the compiler.
-    // execve bypasses Node's exit hook; the next waiter reclaims its record.
-    process.execve(plan.compiler, [plan.compiler, ...plan.args], process.env);
-    return;
-  }
-  await runWindowsCompiler(plan.compiler, plan.args, cwd);
+  // Keep the slot holder's PID: killing it must also kill the compiler.
+  await execAsSlotHolder({
+    file: plan.compiler,
+    args: plan.args,
+    cwd,
+    label: 'typecheck',
+  });
 }
 
 if (invokedDirectly(import.meta.url)) {

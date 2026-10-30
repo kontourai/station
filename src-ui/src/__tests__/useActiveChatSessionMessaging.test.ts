@@ -1612,6 +1612,30 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     const notice = chat?.ephemeralMessages?.at(-1);
     expect(notice?.content).toContain('This chat has ended');
     expect(notice?.action).toBeUndefined();
+    // Unknown access (no open read answer): the full hint stands.
+    expect(notice?.content).toContain('Start a new chat to continue.');
+  });
+
+  it('an ended-session notice names no new chat to a caller the server refused one', async () => {
+    activeChatsStore.updateChat(sessionId, {
+      conversationOpenState: {
+        callerAccess: { continue: true, startChat: false },
+      } as never,
+    });
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      new CodedOrchestrationError(400, 'This chat has ended.', 'session_ended'),
+    );
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+    await act(async () => {
+      await result.current(sessionId, 'codex', undefined, 'one more thing');
+    });
+
+    const notice = activeChatsStore
+      .getSnapshot()
+      [sessionId]?.ephemeralMessages?.at(-1);
+    expect(notice?.content).toContain('This chat has ended');
+    expect(notice?.content).not.toMatch(/new chat/i);
   });
 
   // #1796 G2: a full-access refusal is decided before anything runs. It is

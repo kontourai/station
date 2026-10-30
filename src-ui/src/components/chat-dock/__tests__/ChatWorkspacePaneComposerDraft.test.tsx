@@ -18,6 +18,7 @@
  * resolvers are table-tested in `chat-dock-utils.test.ts`; these tests pin
  * that the pane hands their results to the right surfaces.
  */
+import { orchestrationQueries } from '@kontourai/station-sdk';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
@@ -30,6 +31,7 @@ import {
 import type { ReactNode } from 'react';
 import { afterEach, beforeAll, expect, test, vi } from 'vitest';
 import { ActiveChatsProvider } from '../../../contexts/ActiveChatsContext';
+import { activeChatsStore } from '../../../contexts/active-chats-store';
 import { ConversationsProvider } from '../../../contexts/ConversationsContext';
 import { KeyboardShortcutsProvider } from '../../../contexts/KeyboardShortcutsContext';
 import { NavigationProvider } from '../../../contexts/NavigationContext';
@@ -40,7 +42,7 @@ import {
   usePaneRelations,
 } from '../../../contexts/PaneRelationsContext';
 import { RegionModelProvider } from '../../../contexts/RegionModelContext';
-import { ToastProvider } from '../../../contexts/ToastContext';
+import { ToastProvider, toastStore } from '../../../contexts/ToastContext';
 import { useShowSurface } from '../../../contexts/useShowSurface';
 import { deviceSettingsStore } from '../../../lib/device-settings-store';
 import { dispatchNewChatIntent } from '../../../lib/newChatIntent';
@@ -105,17 +107,36 @@ vi.mock('../ChatDockMobileHeader', () => ({
   ChatDockMobileHeader: ({
     activeCount,
     projectSwitcher,
+    onOpenTaskSwitcher,
   }: {
     activeCount: number;
     projectSwitcher?: { projectName: string };
+    onOpenTaskSwitcher?: () => void;
   }) => (
     <>
       <div data-testid="mobile-dock-work-badge">{activeCount}</div>
       <div data-testid="mobile-dock-project-name">
         {projectSwitcher?.projectName}
       </div>
+      <button type="button" onClick={onOpenTaskSwitcher}>
+        Open task switcher
+      </button>
     </>
   ),
+}));
+
+// #4266: what the pane hands the "last viewed" recorder on each render. The
+// recorder's own rules are tested with it; this pins the pane's wiring.
+const acknowledgeCalls = vi.hoisted(
+  () => [] as { id: string | undefined; visible: boolean }[],
+);
+vi.mock('../useAcknowledgeVisibleConversation', () => ({
+  useAcknowledgeVisibleConversation: (
+    item: { id: string } | undefined,
+    visible: boolean,
+  ) => {
+    acknowledgeCalls.push({ id: item?.id, visible });
+  },
 }));
 
 vi.mock('../../modals/NewChatModal', () => ({
@@ -217,6 +238,8 @@ beforeAll(() => {
 
 afterEach(() => {
   cleanup();
+  act(() => toastStore.clear());
+  paneQueryClient = undefined;
   pickerProps.length = 0;
   runLocationReads.length = 0;
   createChatSession.mockClear();
@@ -225,6 +248,8 @@ afterEach(() => {
   dockProbe.mobile = false;
   dockProbe.sessions = [];
   dockProbe.agents = [{ slug: 'assistant', name: 'Assistant' }];
+  acknowledgeCalls.length = 0;
+  activeChatsStore.removeChat('chat-a');
   showSurface = undefined;
   deviceSettingsStore.reset('chatDockProjectSlug');
   navigationStore.navigate('/', { chat: null, dock: null });
@@ -271,10 +296,13 @@ function CaptureRelations() {
   return null;
 }
 
+/** The pane's QueryClient, so a test can see what it invalidates. */
+let paneQueryClient: QueryClient | undefined;
 function renderInProviders(pane: ReactNode) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+  paneQueryClient = queryClient;
   render(
     <QueryClientProvider client={queryClient}>
       <KeyboardShortcutsProvider>
@@ -297,6 +325,39 @@ function renderInProviders(pane: ReactNode) {
     </QueryClientProvider>,
   );
 }
+
+test('a remote start from the picker closes it, refreshes sessions, and names its Station with Open task', async () => {
+  renderPane('pulse');
+  act(() => {
+    requestProjectChat({
+      projectSlug: 'pulse',
+      projectName: 'Pulse',
+      source: 'new-plugin',
+      composerDraft: draft,
+    });
+  });
+  await screen.findByRole('dialog', { name: 'New chat picker' });
+  const props = pickerProps.at(-1)!;
+  const invalidate = vi.spyOn(paneQueryClient!, 'invalidateQueries');
+
+  act(() =>
+    props.onTaskStarted({ sessionId: 'session:remote' }, 'brian-media'),
+  );
+
+  await waitFor(() =>
+    expect(
+      screen.queryByRole('dialog', { name: 'New chat picker' }),
+    ).toBeNull(),
+  );
+  expect(invalidate).toHaveBeenCalledWith({
+    queryKey: orchestrationQueries.sessions().queryKey,
+  });
+  const toast = toastStore
+    .getSnapshot()
+    .find((entry) => entry.message === 'Task started on brian-media.');
+  expect(toast?.sessionId).toBe('session:remote');
+  expect(toast?.actions?.map((action) => action.label)).toEqual(['Open task']);
+});
 
 test('a fullscreen pane for the requested Project opens its picker with the draft, creates nothing, and sends nothing', async () => {
   renderPane('pulse');
@@ -621,6 +682,38 @@ test('the docked New Chat picker defaults to the dock’s bound Project', async 
   await screen.findByRole('dialog', { name: 'New chat picker' });
   expect(pickerProps.at(-1)!.activeProjectSlug).toBe('pulse');
   expect(createChatSession).not.toHaveBeenCalled();
+});
+
+/** `chat-a` open in this tab, which is what puts it in the inbox's rows. */
+function openChatA() {
+  dockProbe.sessions = [chatSession('chat-a')];
+  activeChatsStore.initChat('chat-a', {
+    agentSlug: 'assistant',
+    agentName: 'Assistant',
+    title: 'Pulse chat',
+    projectSlug: 'pulse',
+  } as Parameters<typeof activeChatsStore.initChat>[1]);
+}
+
+test('the open pane records the chat on screen as viewed (#4266)', async () => {
+  openChatA();
+  navigationStore.navigate('/', { chat: 'chat-a' });
+  renderPane('pulse');
+  await act(async () => {});
+  expect(screen.getByTestId('active-chat-body')).toBeTruthy();
+  expect(acknowledgeCalls.at(-1)).toEqual({ id: 'chat-a', visible: true });
+});
+
+test('the phone’s task switcher covers the chat, so it stops counting as viewed (#4266)', async () => {
+  dockProbe.mobile = true;
+  openChatA();
+  navigationStore.navigate('/', { chat: 'chat-a' });
+  renderPane('pulse');
+  await act(async () => {});
+  expect(acknowledgeCalls.at(-1)).toEqual({ id: 'chat-a', visible: true });
+  fireEvent.click(screen.getByRole('button', { name: 'Open task switcher' }));
+  await act(async () => {});
+  expect(acknowledgeCalls.at(-1)).toEqual({ id: 'chat-a', visible: false });
 });
 
 test('a route-selected Agent does not hide other Agents’ chats from the dock (#1053)', async () => {

@@ -3,16 +3,19 @@ import {
   applyChildWorkDelta,
   CHILD_WORK_SUMMARY_MAX_CHARS,
   type ChildWorkDelta,
+  type ChildWorkEndedBy,
   type ChildWorkItem,
   type ChildWorkModel,
   type ChildWorkParent,
   type ChildWorkRegistryState,
   type ChildWorkResult,
   type ChildWorkTerminalStatus,
+  type ChildWorkTranscriptRef,
   type ChildWorkUsage,
   childWorkForReporter,
   createEmptyChildWorkRegistry,
   isReportableChildWorkToolName,
+  parseChildWorkTranscriptRef,
 } from '@kontourai/station-contracts/child-work';
 import type { ProviderRuntimeEvent as CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import {
@@ -297,6 +300,23 @@ interface ChildIdentity {
 }
 
 /**
+ * The child's own rollout, named by its thread id under the session's Codex
+ * home. Absent when the id is not a Codex thread id or the home is unknown:
+ * no ref is better than one that reads the wrong home.
+ */
+function codexChildTranscriptRef(
+  record: CodexSessionRecord,
+  childId: string,
+): ChildWorkTranscriptRef | undefined {
+  if (!record.codexHome) return undefined;
+  return parseChildWorkTranscriptRef({
+    kind: 'codex-thread',
+    threadId: childId,
+    configHome: record.codexHome,
+  });
+}
+
+/**
  * Registers `childId` as running (a snapshot listing it), then replays any
  * notifications its thread sent before this claim. A child already known is
  * only enriched with identity it lacked; a settled one is never revived.
@@ -319,6 +339,8 @@ function registerChild(
     facts.depth = identity.depth;
   }
   state.children.set(childId, facts);
+  // Readable while the child runs: Codex appends to the rollout as it goes.
+  const transcript = codexChildTranscriptRef(context.record, childId);
   if (!existing) {
     const item: ChildWorkItem = {
       producer: 'engine-subagent',
@@ -330,6 +352,7 @@ function registerChild(
       ...(identity.title ? { title: identity.title } : {}),
       ...(identity.kindLabel ? { kindLabel: identity.kindLabel } : {}),
       ...(identity.model ? { model: identity.model } : {}),
+      ...(transcript ? { transcript } : {}),
       // #2486 review: `stopProviderTask` needs the child's own active turn
       // id to target a `turn/interrupt` at — a control offered before that
       // arrives is a button `stopProviderTask` can only answer
@@ -361,6 +384,7 @@ function registerChild(
       missing.kindLabel = identity.kindLabel;
     }
     if (!existing.model && identity.model) missing.model = identity.model;
+    if (!existing.transcript && transcript) missing.transcript = transcript;
     if (Object.keys(missing).length > 0) {
       emit(context, { kind: 'upsert', item: { ...existing, ...missing } });
     }
@@ -393,6 +417,7 @@ function settleChild(
     summary?: string;
     source?: ChildWorkResult['source'];
     durationMs?: number;
+    endedBy?: ChildWorkEndedBy;
   } = {},
 ): void {
   const state = stateOf(context.record);
@@ -413,6 +438,7 @@ function settleChild(
     reporterThreadId: context.record.externalThreadId,
     childId,
     status,
+    ...(extra.endedBy ? { endedBy: extra.endedBy } : {}),
     ...(result ? { result } : {}),
     ...(Object.keys(usage).length > 0 ? { usage } : {}),
     identity: {
@@ -997,15 +1023,26 @@ function finalAgentMessage(items: unknown): string | undefined {
 }
 
 /**
- * Session end: every child still running can no longer report, so it settles
- * `unresolved` (nothing observed says how it ended). Called beside
+ * Session end: every child still running can no longer report. Codex runs
+ * its children as threads inside the app-server, so when that process died
+ * under them they settle `unresolved` with `endedBy: 'engine-exit'`, shown
+ * as interrupted: an observed end. A requested stop, and a door that cannot
+ * say the process is gone, leave `endedBy` off. Called beside
  * `settleUnresolvedCodexToolCalls`, before `session.exited`. Idempotent.
  */
-export function settleOpenCodexChildren(context: ChildWorkContext): void {
+export function settleOpenCodexChildren(
+  context: ChildWorkContext,
+  endedBy: ChildWorkEndedBy | undefined,
+): void {
   const state = context.record.childWork;
   if (!state || state.closed) return;
   for (const item of runningChildren(context.record)) {
-    settleChild(context, item.childId, 'unresolved');
+    settleChild(
+      context,
+      item.childId,
+      'unresolved',
+      endedBy ? { endedBy } : {},
+    );
   }
   state.closed = true;
   state.children.clear();

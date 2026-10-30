@@ -1,0 +1,7 @@
+{
+  "revision": "db9c9020e96f233c15af1dc2ad1fe8f8462f242c",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Re-reviewed after the fix round: Use Agent defaults on an engine override is now disabled with the same reason (SessionModelPicker resetDisabledReason, ChatInputArea reset chip, ChatDockBody gate); the doc now says so. Agent button accessible name now prefixes the shared reason with an action; no claim here concerns that wording.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/ChatInputArea.test.tsx","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/session/SessionModelPicker.tsx"]}
+  ]
+}

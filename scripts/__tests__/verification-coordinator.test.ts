@@ -16,13 +16,15 @@ import {
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { describe, expect, test, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 import { lookupProcessBirthFingerprint } from '../../packages/shared/src/process-identity.mjs';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   latestE2EEvidenceBinding,
   projectLatestE2EEvidence,
   validateLatestE2EEvidence,
 } from '../lib/e2e-latest-evidence.mjs';
+import { HEAVY_CHECK_HELD_ENV } from '../lib/heavy-check-slots.mjs';
 import { resolveVerificationToolchain } from '../lib/test-reliability.mjs';
 import {
   releaseVerificationArtifactMutation,
@@ -54,6 +56,35 @@ import { FULL_REGRESSION_PHASES } from '../verification-lanes.mjs';
 import { FIXTURE_TOOLCHAIN_IDENTITY } from './fixtures/verification-toolchain.mjs';
 
 const FULL_PHASE_IDS = FULL_REGRESSION_PHASES.map((phase) => phase.id);
+
+// Lanes in this file run in-process. They execute under a heavy-check claim
+// this worker holds in a private pool, not the host pool or whichever runner
+// started Vitest; the heavy-check admission tests below use their own pools.
+const inheritedHeavyCheckMarker = process.env[HEAVY_CHECK_HELD_ENV];
+const fileHeavyCheckClaim = trackTempDirs({ lifetime: 'file' })(
+  'coordinator-claim-',
+);
+beforeAll(() => {
+  writeFileSync(
+    join(fileHeavyCheckClaim, 'slot-0.lock'),
+    JSON.stringify({
+      pid: process.pid,
+      start: null,
+      nonce: 'coordinator-test-file',
+      acquiredAt: Date.now(),
+    }),
+  );
+  process.env[HEAVY_CHECK_HELD_ENV] = JSON.stringify({
+    dir: fileHeavyCheckClaim,
+    index: 0,
+    nonce: 'coordinator-test-file',
+  });
+});
+afterAll(() => {
+  if (inheritedHeavyCheckMarker === undefined)
+    delete process.env[HEAVY_CHECK_HELD_ENV];
+  else process.env[HEAVY_CHECK_HELD_ENV] = inheritedHeavyCheckMarker;
+});
 const ORDINARY_FULL_PHASE_IDS = FULL_PHASE_IDS.filter((id) =>
   id.startsWith('test-full-ordinary-'),
 );
@@ -421,6 +452,494 @@ describe('verification coordinator', () => {
     } finally {
       temp.remove();
     }
+  });
+
+  describe('host heavy-check admission', () => {
+    /** A private pool of one; neither hosted CI nor the Vitest run's own marker admits. */
+    function heavyCheckEnv(slotDir: string, waitMs: string): NodeJS.ProcessEnv {
+      const env: NodeJS.ProcessEnv = { ...process.env };
+      delete env.GITHUB_ACTIONS;
+      delete env[HEAVY_CHECK_HELD_ENV];
+      return {
+        ...env,
+        STATION_HEAVY_CHECK_SLOT_DIR: slotDir,
+        STATION_HEAVY_CHECK_SLOTS: '1',
+        STATION_HEAVY_CHECK_SLOT_WAIT_MS: waitMs,
+      };
+    }
+    /** Another worktree's heavy check holds the only slot (a live pid). */
+    function holdOnlySlot(slotDir: string) {
+      mkdirSync(slotDir, { recursive: true, mode: 0o700 });
+      writeFileSync(
+        join(slotDir, 'slot-0.lock'),
+        JSON.stringify({
+          pid: process.pid,
+          start: null,
+          nonce: 'another-worktree',
+          acquiredAt: Date.now(),
+          label: 'docs:truth:gate',
+        }),
+      );
+    }
+
+    test('an executing owner holds a slot for its run and gives the lane its marker', async () => {
+      const temp = fixture();
+      const slotDir = join(temp.root, 'heavy-check-slots');
+      const seen: Array<{
+        holder: { pid: number; label: string; nonce: string };
+        marker?: string;
+      }> = [];
+      try {
+        const result = await coordinateVerification({
+          laneId: 'prepush',
+          root: temp.root,
+          heartbeatMs: 1,
+          wait: async () => {},
+          collectProvenance: () => provenance(`heavy-${temp.root}`),
+          env: heavyCheckEnv(slotDir, '20000'),
+          runner: async ({ env }: { env?: NodeJS.ProcessEnv } = {}) => {
+            seen.push({
+              holder: JSON.parse(
+                readFileSync(join(slotDir, 'slot-0.lock'), 'utf8'),
+              ),
+              marker: env?.[HEAVY_CHECK_HELD_ENV],
+            });
+            return { status: 0 };
+          },
+        });
+        expect(result.disposition).toBe('executed');
+        expect(seen).toHaveLength(1);
+        expect(seen[0].holder.pid).toBe(process.pid);
+        expect(seen[0].holder.label).toBe('verification:prepush');
+        // The lane's children run under this owner's exact claim.
+        expect(JSON.parse(seen[0].marker ?? '{}')).toEqual({
+          dir: slotDir,
+          index: 0,
+          nonce: seen[0].holder.nonce,
+        });
+        // Released once the lane finished.
+        expect(existsSync(join(slotDir, 'slot-0.lock'))).toBe(false);
+      } finally {
+        temp.remove();
+      }
+    });
+
+    test('each full-regression phase holds its own slot only while it executes', async () => {
+      const temp = fixture();
+      const worktree = join(temp.root, 'worktree');
+      mkdirSync(worktree);
+      const slotDir = join(temp.root, 'heavy-check-slots');
+      const seen: Array<{
+        phase: string;
+        holder: { label: string; nonce: string };
+        marker?: string;
+      }> = [];
+      try {
+        const result = await coordinateVerification({
+          laneId: 'full-regression',
+          root: temp.root,
+          cwd: worktree,
+          heartbeatMs: 1,
+          collectProvenance: () => worktreeProvenance(worktree, 'heavy-phases'),
+          hostCpuSampler: healthySampler(),
+          env: heavyCheckEnv(slotDir, '20000'),
+          phaseRunner: async ({
+            phase,
+            env,
+          }: {
+            phase: { id: string };
+            env?: NodeJS.ProcessEnv;
+          }) => {
+            seen.push({
+              phase: phase.id,
+              holder: JSON.parse(
+                readFileSync(join(slotDir, 'slot-0.lock'), 'utf8'),
+              ),
+              marker: env?.[HEAVY_CHECK_HELD_ENV],
+            });
+            return { status: 0 };
+          },
+        });
+        expect(result.disposition).toBe('executed');
+        expect(seen.map((entry) => entry.phase)).toEqual(FULL_PHASE_IDS);
+        // One slot per phase, taken after that phase's admission: a single
+        // slot across the lane would carry one label and be held while each
+        // later phase queued for the coordinator.
+        for (const entry of seen) {
+          expect(entry.holder.label).toBe(
+            `verification:full-regression:${entry.phase}`,
+          );
+          expect(JSON.parse(entry.marker ?? '{}')).toEqual({
+            dir: slotDir,
+            index: 0,
+            nonce: entry.holder.nonce,
+          });
+        }
+        expect(existsSync(join(slotDir, 'slot-0.lock'))).toBe(false);
+      } finally {
+        temp.remove();
+      }
+    });
+
+    test("a phase's execution clock starts only once its slot is held", async () => {
+      const temp = fixture();
+      const worktree = join(temp.root, 'worktree');
+      mkdirSync(worktree);
+      const slotDir = join(temp.root, 'heavy-check-slots');
+      holdOnlySlot(slotDir);
+      let clock = 1_000_000;
+      const freedAt = clock + 600_000;
+      // The other check finishes ten fake minutes later, longer than the
+      // first phase's whole execution budget.
+      const freed = setTimeout(() => {
+        clock = freedAt;
+        rmSync(join(slotDir, 'slot-0.lock'));
+      }, 400);
+      const startedAt: number[] = [];
+      try {
+        const result = await coordinateVerification({
+          laneId: 'full-regression',
+          root: temp.root,
+          cwd: worktree,
+          heartbeatMs: 1,
+          now: () => clock,
+          timeoutMs: 24 * 60 * 60_000,
+          collectProvenance: () => worktreeProvenance(worktree, 'heavy-clock'),
+          hostCpuSampler: async () =>
+            buildHostPressureSample({
+              busyPercent: 40,
+              cpuCount: 4,
+              sampleMs: 1,
+              sampledAt: clock,
+              threshold: 85,
+              source: 'override',
+            }),
+          env: heavyCheckEnv(slotDir, '20000'),
+          phaseRunner: async () => {
+            const job = verificationStatus({ root: temp.root, now: clock })
+              .jobs[0];
+            startedAt.push(job?.phase?.executionStartedAt);
+            return { status: 0 };
+          },
+        });
+        expect(result.receipt.terminal.passed).toBe(true);
+        expect(startedAt).toHaveLength(FULL_PHASE_IDS.length);
+        // Waiting for the slot did not spend the phase's execution budget.
+        expect(startedAt[0]).toBe(freedAt);
+      } finally {
+        clearTimeout(freed);
+        temp.remove();
+      }
+    });
+
+    test('a lane canceled while it waits for a slot settles as canceled', async () => {
+      const temp = fixture();
+      const slotDir = join(temp.root, 'heavy-check-slots');
+      holdOnlySlot(slotDir);
+      const controller = new AbortController();
+      // Cancel once the waiter's ticket is queued, not after a fixed delay.
+      const abort = setInterval(() => {
+        const queue = join(slotDir, 'queue');
+        if (existsSync(queue) && readdirSync(queue).length > 0)
+          controller.abort();
+      }, 10);
+      let calls = 0;
+      try {
+        const result = await coordinateVerification({
+          laneId: 'prepush',
+          root: temp.root,
+          heartbeatMs: 1,
+          wait: async () => {},
+          signal: controller.signal,
+          collectProvenance: () => provenance(`heavy-cancel-${temp.root}`),
+          env: heavyCheckEnv(slotDir, '600000'),
+          runner: async () => {
+            calls += 1;
+            return { status: 0 };
+          },
+        });
+        expect(calls).toBe(0);
+        expect(result.receipt.terminal.status).toBe('canceled');
+        expect(readdirSync(join(slotDir, 'queue'))).toEqual([]);
+      } finally {
+        clearInterval(abort);
+        temp.remove();
+      }
+    }, 30_000);
+
+    test('a full-regression phase canceled while it waits for a slot leaves the queue holding nothing', async () => {
+      const temp = fixture();
+      const worktree = join(temp.root, 'worktree');
+      mkdirSync(worktree);
+      const slotDir = join(temp.root, 'heavy-check-slots');
+      holdOnlySlot(slotDir);
+      const controller = new AbortController();
+      // Cancel once the waiter's ticket is queued, not after a fixed delay.
+      const abort = setInterval(() => {
+        const queue = join(slotDir, 'queue');
+        if (existsSync(queue) && readdirSync(queue).length > 0)
+          controller.abort();
+      }, 10);
+      const ran: string[] = [];
+      try {
+        // A canceled full-regression ends the way it does when canceled
+        // mid-phase without any slot: publication is fenced.
+        await expect(
+          coordinateVerification({
+            laneId: 'full-regression',
+            root: temp.root,
+            cwd: worktree,
+            heartbeatMs: 1,
+            signal: controller.signal,
+            collectProvenance: () =>
+              worktreeProvenance(worktree, 'heavy-cancel'),
+            hostCpuSampler: healthySampler(),
+            env: heavyCheckEnv(slotDir, '600000'),
+            phaseRunner: async ({ phase }: { phase: { id: string } }) => {
+              ran.push(phase.id);
+              return { status: 0 };
+            },
+          }),
+        ).rejects.toThrow(/fenced/);
+        expect(ran).toEqual([]);
+        // The canceled waiter left the queue and took nothing.
+        expect(readdirSync(join(slotDir, 'queue'))).toEqual([]);
+        expect(
+          JSON.parse(readFileSync(join(slotDir, 'slot-0.lock'), 'utf8')).nonce,
+        ).toBe('another-worktree');
+      } finally {
+        clearInterval(abort);
+        temp.remove();
+      }
+    }, 30_000);
+
+    test('a fenced full-regression phase keeps its slot while its child may still run', async () => {
+      const temp = fixture();
+      const worktree = join(temp.root, 'worktree');
+      mkdirSync(worktree);
+      const slotDir = join(temp.root, 'heavy-check-slots');
+      let clock = 10_000;
+      let release!: () => void;
+      const ignored = new Promise<{ status: number }>((resolvePending) => {
+        release = () => resolvePending({ status: 0 });
+      });
+      const firstPhase = ORDINARY_FULL_PHASE_IDS[0];
+      try {
+        await expect(
+          coordinateVerification({
+            laneId: 'full-regression',
+            root: temp.root,
+            cwd: worktree,
+            heartbeatMs: 1,
+            now: () => clock,
+            collectProvenance: () =>
+              worktreeProvenance(worktree, 'heavy-fenced'),
+            hostCpuSampler: async () =>
+              buildHostPressureSample({
+                busyPercent: 40,
+                cpuCount: 4,
+                sampleMs: 1,
+                sampledAt: clock,
+                threshold: 85,
+                source: 'override',
+              }),
+            env: heavyCheckEnv(slotDir, '20000'),
+            phaseRunner: async ({
+              phase,
+            }: {
+              phase: { id: string; timeoutMs: number };
+            }) => {
+              if (phase.id !== firstPhase) return { status: 0 };
+              // Past its deadline and never settling: an owned child that
+              // ignored termination.
+              clock += phase.timeoutMs;
+              return ignored;
+            },
+          }),
+        ).rejects.toThrow(/fenced/);
+        expect(
+          JSON.parse(readFileSync(join(slotDir, 'slot-0.lock'), 'utf8')).label,
+        ).toBe(`verification:full-regression:${firstPhase}`);
+      } finally {
+        release();
+        temp.remove();
+      }
+    }, 60_000);
+
+    test('a phase refused after the lane deadline passed reports a timeout', async () => {
+      const temp = fixture();
+      const worktree = join(temp.root, 'worktree');
+      mkdirSync(worktree);
+      const slotDir = join(temp.root, 'heavy-check-slots');
+      holdOnlySlot(slotDir);
+      const day = 24 * 60 * 60_000;
+      let clock = 1_000_000;
+      // The lane clock jumps past its deadline (a host waking from sleep)
+      // while the wait's own short cap is still running on the wall clock.
+      const jump = setTimeout(() => {
+        clock += 2 * day;
+      }, 100);
+      const ran: string[] = [];
+      try {
+        const result = await coordinateVerification({
+          laneId: 'full-regression',
+          root: temp.root,
+          cwd: worktree,
+          heartbeatMs: 1,
+          now: () => clock,
+          timeoutMs: day,
+          collectProvenance: () => worktreeProvenance(worktree, 'heavy-sleep'),
+          hostCpuSampler: async () =>
+            buildHostPressureSample({
+              busyPercent: 40,
+              cpuCount: 4,
+              sampleMs: 1,
+              sampledAt: clock,
+              threshold: 85,
+              source: 'override',
+            }),
+          env: heavyCheckEnv(slotDir, '600'),
+          phaseRunner: async ({ phase }: { phase: { id: string } }) => {
+            ran.push(phase.id);
+            return { status: 0 };
+          },
+        });
+        expect(ran).toEqual([]);
+        expect(result.receipt.terminal).toMatchObject({
+          status: 'timed_out',
+          passed: false,
+        });
+      } finally {
+        clearTimeout(jump);
+        temp.remove();
+      }
+    }, 30_000);
+
+    test('a reused receipt takes no slot, even while the pool is full', async () => {
+      const temp = fixture();
+      const slotDir = join(temp.root, 'heavy-check-slots');
+      let calls = 0;
+      const options = {
+        laneId: 'prepush',
+        root: temp.root,
+        heartbeatMs: 1,
+        wait: async () => {},
+        collectProvenance: () => provenance(`heavy-reuse-${temp.root}`),
+        runner: async () => {
+          calls += 1;
+          return { status: 0 };
+        },
+      };
+      try {
+        const first = await coordinateVerification({
+          ...options,
+          env: heavyCheckEnv(slotDir, '20000'),
+        });
+        expect(first.disposition).toBe('executed');
+        holdOnlySlot(slotDir);
+        const reused = await coordinateVerification({
+          ...options,
+          env: heavyCheckEnv(slotDir, '0'),
+        });
+        expect(reused.disposition).toBe('reused');
+        expect(calls).toBe(1);
+      } finally {
+        temp.remove();
+      }
+    });
+
+    test('a lane whose deadline passes while it waits for a slot stops waiting and settles', async () => {
+      const temp = fixture();
+      const slotDir = join(temp.root, 'heavy-check-slots');
+      holdOnlySlot(slotDir);
+      let calls = 0;
+      const options = {
+        laneId: 'prepush',
+        root: temp.root,
+        heartbeatMs: 1,
+        wait: async () => {},
+        collectProvenance: () => provenance(`heavy-deadline-${temp.root}`),
+        runner: async () => {
+          calls += 1;
+          return { status: 0 };
+        },
+      };
+      try {
+        const timedOut = await coordinateVerification({
+          ...options,
+          timeoutMs: 1_500,
+          env: heavyCheckEnv(slotDir, '600000'),
+        });
+        expect(calls).toBe(0);
+        expect(timedOut.receipt.terminal.passed).toBe(false);
+        // The waiter left the queue rather than outliving its lane.
+        expect(readdirSync(join(slotDir, 'queue'))).toEqual([]);
+        // Nothing was fenced: the next request executes once the slot frees.
+        rmSync(join(slotDir, 'slot-0.lock'));
+        const retried = await coordinateVerification({
+          ...options,
+          env: heavyCheckEnv(slotDir, '0'),
+        });
+        expect(retried.disposition).toBe('executed');
+        expect(calls).toBe(1);
+      } finally {
+        temp.remove();
+      }
+    }, 30_000);
+
+    test('an owner that cannot get a slot in time refuses without running the lane', async () => {
+      const temp = fixture();
+      const slotDir = join(temp.root, 'heavy-check-slots');
+      holdOnlySlot(slotDir);
+      let calls = 0;
+      try {
+        const outcome = await coordinateVerification({
+          laneId: 'prepush',
+          root: temp.root,
+          heartbeatMs: 1,
+          wait: async () => {},
+          collectProvenance: () => provenance(`heavy-full-${temp.root}`),
+          env: heavyCheckEnv(slotDir, '0'),
+          runner: async () => {
+            calls += 1;
+            return { status: 0 };
+          },
+        }).then(
+          (result) => ({ result, error: null }),
+          (error: Error) => ({ result: null, error }),
+        );
+        expect(calls).toBe(0);
+        // A refusal is the lane's failed result, published like any other.
+        expect(outcome.error).toBeNull();
+        expect(outcome.result?.disposition).toBe('executed');
+        expect(outcome.result?.receipt.terminal).toMatchObject({
+          status: 'infrastructure_error',
+          passed: false,
+        });
+        expect(outcome.result?.receipt.terminal.infrastructureCause).toContain(
+          'FAIL: waited 0s for a heavy-check slot for verification:prepush',
+        );
+        // The refusal leaves no fence or capacity behind: once the other
+        // check finishes, the same request executes.
+        rmSync(join(slotDir, 'slot-0.lock'));
+        const retried = await coordinateVerification({
+          laneId: 'prepush',
+          root: temp.root,
+          heartbeatMs: 1,
+          wait: async () => {},
+          collectProvenance: () => provenance(`heavy-full-${temp.root}`),
+          env: heavyCheckEnv(slotDir, '0'),
+          runner: async () => {
+            calls += 1;
+            return { status: 0 };
+          },
+        });
+        expect(retried.disposition).toBe('executed');
+        expect(calls).toBe(1);
+      } finally {
+        temp.remove();
+      }
+    });
   });
 
   // The blocking acyclicity guard: fallow only warns on circular imports.

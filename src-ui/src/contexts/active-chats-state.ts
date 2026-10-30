@@ -2,9 +2,10 @@ import type { ChatHostImageMap } from '@kontourai/station-contracts/chat-host-im
 import type {
   ChildWorkModel,
   ChildWorkSummarySource,
-  ChildWorkTerminalStatus,
+  ChildWorkTerminalDisplayStatus,
 } from '@kontourai/station-contracts/child-work';
 import type { ClientOriginSender } from '@kontourai/station-contracts/client-origin';
+import { isLowContentPrompt } from '@kontourai/station-contracts/conversation-title';
 import type { InputRequestRecord } from '@kontourai/station-contracts/input-request';
 import type {
   ConversationHandoffProjection,
@@ -39,6 +40,7 @@ import {
   newerConversationActivity,
   serverTurnLive,
 } from '../utils/conversation-activity';
+import { displayTitleFromPrompt } from '../utils/display-title';
 
 export type { UnsentMessageRecord } from '../types';
 
@@ -132,6 +134,7 @@ export type ChatContentPart = {
   result?: any;
   output?: any;
   htmlReply?: import('@kontourai/station-contracts/html-reply').HtmlReplyReference;
+  claudeArtifact?: import('@kontourai/station-contracts/claude-artifact').ClaudeArtifactLink;
   stationControlRefusal?: import('@kontourai/station-contracts/station-control-refusal').StationControlRefusalView;
   error?: string;
   errorText?: string;
@@ -229,7 +232,7 @@ export type ChatMessage = {
  * when the registry has none.
  */
 export interface BackgroundTaskNotice {
-  status: ChildWorkTerminalStatus;
+  status: ChildWorkTerminalDisplayStatus;
   title?: string;
   summary?: string;
   summarySource?: ChildWorkSummarySource;
@@ -1708,12 +1711,34 @@ export function clearEphemeralMessagesState(chat: ChatUIState): ChatUIState {
   };
 }
 
+/**
+ * #4266: the title a chat takes when its first send is confirmed. This is
+ * the one moment the local messages are known to be the whole conversation
+ * (this client wrote all of them), so it is the one moment they may name it;
+ * once the session starts they are a bounded window that can begin with
+ * "Continue". Kept as `title`, so it is persisted and survives a reload. A
+ * low-content first message names nothing and leaves the chat untitled.
+ */
+function firstSendTitle(chat: ChatUIState): string | undefined {
+  if (chat.conversationId) return undefined;
+  if (chat.title && chat.title !== 'New chat') return undefined;
+  for (const message of chat.messages ?? []) {
+    if (message.role !== 'user' || typeof message.content !== 'string')
+      continue;
+    const title = displayTitleFromPrompt(message.content);
+    if (title && !isLowContentPrompt(title)) return title;
+  }
+  return undefined;
+}
+
 export function assignConversationIdState(
   chat: ChatUIState,
   conversationId: string,
 ): ChatUIState {
+  const title = firstSendTitle(chat);
   return {
     ...chat,
+    ...(title ? { title } : {}),
     conversationId,
     // #2309: a record describes one conversation; see `mergeChatUpdates`.
     ...(chat.conversationActivity &&

@@ -1,0 +1,29 @@
+{
+  "revision": "d67d124c627daabaae332c38439b36e7b09c5280",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"claude-adapter.ts changed only by dropping export from the module-private claudeArtifactsSpawnEnv helper and its env type (dead-code gate); grepped docs: only docs/reference/config.md names the helper, linking to the file, which stays accurate; no claim in this document is affected.","inputs":["docs/architecture/module-map.md","src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"claude-adapter.ts changed only by dropping export from the module-private claudeArtifactsSpawnEnv helper and its env type (dead-code gate); grepped docs: only docs/reference/config.md names the helper, linking to the file, which stays accurate; no claim in this document is affected.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"claude-adapter.ts changed only by dropping export from the module-private claudeArtifactsSpawnEnv helper and its env type (dead-code gate); grepped docs: only docs/reference/config.md names the helper, linking to the file, which stays accurate; no claim in this document is affected.","inputs":["docs/contexts/agent-runtime/CONTEXT.md","src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/design/agent-interaction-capabilities.md","note":"claude-adapter.ts changed only by dropping export from the module-private claudeArtifactsSpawnEnv helper and its env type (dead-code gate); grepped docs: only docs/reference/config.md names the helper, linking to the file, which stays accurate; no claim in this document is affected.","inputs":["docs/design/agent-interaction-capabilities.md","src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"claude-adapter.ts changed only by dropping export from the module-private claudeArtifactsSpawnEnv helper and its env type (dead-code gate); grepped docs: only docs/reference/config.md names the helper, linking to the file, which stays accurate; no claim in this document is affected.","inputs":["docs/design/connections-onboarding.md","src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"claude-adapter.ts changed only by dropping export from the module-private claudeArtifactsSpawnEnv helper and its env type (dead-code gate); grepped docs: only docs/reference/config.md names the helper, linking to the file, which stays accurate; no claim in this document is affected.","inputs":["docs/guides/agent-configuration.md","src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"claude-adapter.ts changed only by dropping export from the module-private claudeArtifactsSpawnEnv helper and its env type (dead-code gate); grepped docs: only docs/reference/config.md names the helper, linking to the file, which stays accurate; no claim in this document is affected.","inputs":["docs/guides/connections.md","src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/development.md","note":"claude-adapter.ts changed only by dropping export from the module-private claudeArtifactsSpawnEnv helper and its env type (dead-code gate); grepped docs: only docs/reference/config.md names the helper, linking to the file, which stays accurate; no claim in this document is affected.","inputs":["docs/guides/development.md","src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"claude-adapter.ts changed only by dropping export from the module-private claudeArtifactsSpawnEnv helper and its env type (dead-code gate); grepped docs: only docs/reference/config.md names the helper, linking to the file, which stays accurate; no claim in this document is affected.","inputs":["docs/guides/self-configuring-agent.md","src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"claude-adapter.ts changed only by dropping export from the module-private claudeArtifactsSpawnEnv helper and its env type (dead-code gate); grepped docs: only docs/reference/config.md names the helper, linking to the file, which stays accurate; no claim in this document is affected.","inputs":["docs/guides/starter-work.md","src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"claude-adapter.ts changed only by dropping export from the module-private claudeArtifactsSpawnEnv helper and its env type (dead-code gate); grepped docs: only docs/reference/config.md names the helper, linking to the file, which stays accurate; no claim in this document is affected.","inputs":["docs/reference/session-api.md","src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"claude-adapter.ts changed only by dropping export from the module-private claudeArtifactsSpawnEnv helper and its env type (dead-code gate); grepped docs: only docs/reference/config.md names the helper, linking to the file, which stays accurate; no claim in this document is affected.","inputs":["examples/self-configuring-agent/README.md","src-server/providers/adapters/claude-adapter.ts"]}
+  ]
+}

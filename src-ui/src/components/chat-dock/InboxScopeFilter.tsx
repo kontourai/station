@@ -11,12 +11,14 @@ import {
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 import type { WorkFactsById } from '../../views/home/work-facts';
 import { workStatus } from '../../views/home/work-status';
+import { useInboxDismissals } from './inbox-dismissals';
 
 export function useInboxScope(
   items: HomeWorkItem[],
   now: number,
   facts?: WorkFactsById,
 ) {
+  const { visible } = useInboxDismissals(items, facts);
   const version = useSyncExternalStore(
     subscribeSnoozes,
     snoozesVersion,
@@ -70,7 +72,7 @@ export function useInboxScope(
         : stationById.get(item.id) === inboxScope);
     const filtered = items.filter(matches);
     const snoozed = readSnoozes(now);
-    const hiddenAttention = items.filter(
+    const hiddenAttention = visible.filter(
       (item) =>
         !matches(item) &&
         !(snoozed[item.id] > now) &&
@@ -83,7 +85,7 @@ export function useInboxScope(
       hiddenAttention,
       onChange: (value: string) => setDeviceSetting('inboxScope', value),
     };
-  }, [items, now, facts, inboxScope, setDeviceSetting, version]);
+  }, [items, visible, now, facts, inboxScope, setDeviceSetting, version]);
 }
 
 export function InboxScopeFilter({

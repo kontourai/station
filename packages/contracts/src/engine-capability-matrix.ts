@@ -321,10 +321,12 @@ export type BuiltInToolsCell =
  * label-without-derivation defect. NO external engine has
  * a wired per-tool disable:
  *
- * - claude: the Claude Agent SDK exposes `disallowedTools`, but
- *   `claude-adapter.ts buildOptions` does not pass it — an upstream option
- *   is not a wired path (the same actually-ships-today rule as codex's
- *   `systemPrompt` cell above).
+ * - claude: `claude-adapter.ts buildOptions` passes the SDK's
+ *   `disallowedTools` only for an Agent's MCP tool selection and to keep
+ *   the `Artifact` tool off while `claudeArtifactsEnabled` is off. Nothing
+ *   carries a per-built-in-tool disable from a person to it, so no control
+ *   is wired (the same actually-ships-today rule as codex's `systemPrompt`
+ *   cell above).
  * - codex: `approvalPolicy`/`sandbox` knobs (codex-approval-mode.ts) are
  *   MODE-level gates over execution, not per-tool disables.
  * - muse / acp / unknown: no channel exists at all.
@@ -969,12 +971,12 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
       evidence:
         "tool identity at the PreToolUse/canUseTool policy seam (claude-adapter.test.ts pins 'Bash' rules and exercises 'Read')",
     },
-    // The SDK's `disallowedTools` option exists UNWIRED — see
-    // BuiltInToolControlCell's audit note. No control may render for this
-    // engine until an adapter wires and proves it.
+    // No per-built-in-tool control is wired — see BuiltInToolControlCell's
+    // audit note. No control may render for this engine until an adapter
+    // wires and proves it.
     builtInToolControl: {
       state: 'none',
-      note: 'SDK disallowedTools exists but claude-adapter does not pass it',
+      note: 'claude-adapter passes SDK disallowedTools only for MCP tool selection and the Artifact setting',
     },
   },
   codex: {

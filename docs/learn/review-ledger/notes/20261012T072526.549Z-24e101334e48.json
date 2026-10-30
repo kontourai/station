@@ -1,0 +1,7 @@
+{
+  "revision": "f4587f12fdc8a2f36cb84ba308d92ddfa24fb08a",
+
+  "notes": [
+    {"path":"docs/design/connections-onboarding.md","note":"No prose change needed. The NewChatModal edit removes the Station control task launcher mount and the now unused task notice state; this document's onboarding and connection claims do not describe that control.","inputs":["docs/design/connections-onboarding.md","src-ui/src/components/modals/NewChatModal.tsx"]}
+  ]
+}

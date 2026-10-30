@@ -36,6 +36,20 @@ import {
 import { deploymentAccountPrincipal } from '../../services/identity/deployment-authentication-service.js';
 import { PrincipalUnresolvedError } from '../../services/identity/principal-resolver.js';
 
+export function accountBoundProjectRouteMayPass(
+  method: string,
+  path: string,
+): boolean {
+  return !(
+    (path === '/api/projects' || path.startsWith('/api/projects/')) &&
+    method !== 'GET' &&
+    method !== 'HEAD' &&
+    !isAccountBoundGuestAdminWrite(path, method) &&
+    !isAccountBoundRoomLeaf(path, method) &&
+    !isAccountBoundLayoutLeaf(path, method)
+  );
+}
+
 /** Structural Hono context — the gate reads/answers, never dispatches. */
 interface GateContext {
   env: unknown;
@@ -216,6 +230,20 @@ function isAccountBoundOwnTokenLeaf(path: string, method: string): boolean {
   );
 }
 
+/** A person's own notification feed and its read/dismiss mutations. */
+function isAccountBoundPersonNotificationLeaf(
+  path: string,
+  method: string,
+): boolean {
+  return (
+    ((method === 'GET' || method === 'HEAD') &&
+      path === '/api/me/notifications') ||
+    (method === 'POST' &&
+      /^\/api\/me\/notifications\/[^/]+\/read$/.test(path)) ||
+    (method === 'DELETE' && /^\/api\/me\/notifications\/[^/]+$/.test(path))
+  );
+}
+
 /**
  * #3586: what an account-tied personal access token may never reach, even
  * inside the account-bound allowlist: the account's own sign-in surface,
@@ -386,14 +414,7 @@ export function installAccountBoundDeviceGate(
           { error: { code: 'account_bound_device_route_forbidden' } },
           403,
         );
-      if (
-        (path === '/api/projects' || path.startsWith('/api/projects/')) &&
-        method !== 'GET' &&
-        method !== 'HEAD' &&
-        !isAccountBoundGuestAdminWrite(path, method) &&
-        !isAccountBoundRoomLeaf(path, method) &&
-        !isAccountBoundLayoutLeaf(path, method)
-      ) {
+      if (!accountBoundProjectRouteMayPass(method, path)) {
         return c.json(
           { error: { code: 'account_bound_device_route_forbidden' } },
           403,
@@ -459,6 +480,7 @@ export function installAccountBoundDeviceGate(
         isAccountBoundLayoutLeaf(path, method) ||
         isTaskRelationshipHttpLeaf(method, path) ||
         isAccountBoundOwnTokenLeaf(path, method) ||
+        isAccountBoundPersonNotificationLeaf(path, method) ||
         (path === '/api/me/preferences' &&
           (method === 'GET' || method === 'HEAD' || method === 'PATCH')) ||
         path === '/api/account-auth' ||

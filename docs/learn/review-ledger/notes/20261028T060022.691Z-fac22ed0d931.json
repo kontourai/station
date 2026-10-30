@@ -1,0 +1,7 @@
+{
+  "revision": "de061f38ec81d33da0ce7a2aa1d7b50956085cfc",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Added WorkspaceVisualFileError and its reason mapping; traced against packages/sdk/src/workspace-file-preview.ts and its integration test (401, 403, 5xx, paired status).","inputs":["docs/reference/sdk.md"]}
+  ]
+}

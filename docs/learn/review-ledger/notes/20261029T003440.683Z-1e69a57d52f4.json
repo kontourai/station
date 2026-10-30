@@ -1,0 +1,7 @@
+{
+  "revision": "4228e8abd4f59783ef1361e44aedce3d86c38649",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Checked the authentication-adapter routing row and its separate Project membership boundary against the clarified enable-route admission in deployment-authentication.md. The link and evidence guidance remain accurate; no integration claim changes.","inputs":["docs/guides/integrating-station.md","docs/guides/deployment-authentication.md"]}
+  ]
+}

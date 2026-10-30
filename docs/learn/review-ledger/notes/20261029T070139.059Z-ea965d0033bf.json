@@ -1,0 +1,13 @@
+{
+  "revision": "e88ead4b83bb40094769d9633bd9098bf8afda79",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Reviewed D7 against the legacy store reader, timestamp validator and import projection: parseable canonical timestamps are retained, while unparseable and extended-year values preserve revocation at importedAt. Writer-backed compatibility tests exercise the four extended-year boundaries; this is contract preparation, not a runtime migration.","inputs":["docs/reference/contracts.md","packages/contracts/src/__tests__/discord-compatibility.test.ts","packages/contracts/src/chat-app.ts"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed the changed contracts reference and chat import behavior against the glossary; its general vocabulary makes no claim about Discord revocation conversion and remains accurate.","inputs":["docs/glossary.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the changed contracts reference against the integration guide's routing and evidence guidance. It makes no Discord import conversion claim; its contract reference link remains accurate.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Reviewed the changed contracts reference against the contracts scope instructions. Domain ownership, pure helpers and explicit compatibility guidance remain accurate for the Discord import fallback.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}

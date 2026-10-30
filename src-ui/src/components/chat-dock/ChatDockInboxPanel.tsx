@@ -15,6 +15,7 @@ import {
 import { MessageGlyph, RefreshGlyph } from '../icons/Glyph';
 import { NewChatAction } from '../NewChatAction';
 import { Empty } from '../state';
+import { useSheetGesturesPreview } from '../useResponsiveSheetGesture';
 import {
   type CollapsibleInboxSectionId,
   InboxGroupList,
@@ -22,6 +23,7 @@ import {
   moveFocusBeforeRemovingInboxRow,
 } from './ChatDockInboxRows';
 import { InboxScopeFilter, useInboxScope } from './InboxScopeFilter';
+import { useInboxDismissActions } from './inbox-dismissals';
 import {
   clearSnooze,
   snoozeKeyFor,
@@ -131,6 +133,7 @@ function ChatDockInboxPanelImpl({
   // A pointer that cannot hover gets the always-visible 44px chrome, the
   // same one the mobile sheet uses, rather than hover-revealed controls.
   const coarsePointer = useCoarsePointer();
+  const swipeActions = useSheetGesturesPreview();
   const panelRef = useRef<HTMLElement>(null);
   // A row that changes lane remounts in another section; keep focus on it.
   useRowFocusPreservation(panelRef, '.chat-dock-inbox__item');
@@ -151,6 +154,7 @@ function ChatDockInboxPanelImpl({
   // inbox toggle's Needs-you count reads, so the two cannot disagree.
   const scope = useInboxScope(items, now, workFacts);
   const groups = useInboxGroups(scope.items, now, workFacts);
+  const dismissals = useInboxDismissActions(items, workFacts);
 
   const toggleSection = (id: CollapsibleInboxSectionId) => {
     setDeviceSetting('inboxSections', { ...sections, [id]: !sections[id] });
@@ -179,6 +183,7 @@ function ChatDockInboxPanelImpl({
         )}
         {hasAnyItems && (
           <InboxGroupList
+            swipeActions={swipeActions}
             groups={groups}
             idPrefix="chat-dock-inbox"
             activeChatSessionId={activeChatSessionId}
@@ -230,6 +235,14 @@ function ChatDockInboxPanelImpl({
               if (wakeAt === null) clearSnooze(key, now);
               else writeSnooze(key, wakeAt, now);
             }}
+            onDismiss={(item, action) => {
+              moveFocusBeforeRemovingInboxRow(panelRef.current, action);
+              dismissals.dismiss(item);
+            }}
+            onRestore={(item, action) => {
+              moveFocusBeforeRemovingInboxRow(panelRef.current, action);
+              dismissals.restore(item);
+            }}
             onCloseChat={(sessionId, action) => {
               moveFocusBeforeRemovingInboxRow(panelRef.current, action);
               onCloseChat(sessionId);
@@ -244,6 +257,7 @@ function ChatDockInboxPanelImpl({
           />
         )}
       </div>
+      {dismissals.notice}
       <footer className="chat-dock-inbox__footer">
         {sync?.failed && (
           <p className="chat-dock-inbox__sync-status" role="status">

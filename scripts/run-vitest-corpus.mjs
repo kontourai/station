@@ -344,6 +344,12 @@ export function buildVitestCommand(
   }
   return [
     ...command,
+    ...(group.name === 'process-exclusive'
+      ? [
+          '--reporter=default',
+          `--reporter=${resolve(root, 'scripts/vitest-inflight-reporter.mjs')}`,
+        ]
+      : []),
     ...files,
     ...(group.noFileParallelism ? ['--no-file-parallelism'] : []),
   ];

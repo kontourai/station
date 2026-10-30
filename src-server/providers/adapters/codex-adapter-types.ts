@@ -223,6 +223,12 @@ export interface CodexSessionRecord extends CodexUsageLimitState {
    */
   childWork?: CodexChildWorkState;
   /**
+   * The absolute `CODEX_HOME` this session's app-server was spawned under,
+   * where Codex writes every thread's rollout (a child's included). Absent
+   * when the home was not an absolute path, so no transcript is offered.
+   */
+  codexHome?: string;
+  /**
    * #2486 review: single-flight guard for the parent's own `turn/interrupt`.
    * `stopProviderTask` (per-child) and `interruptTurn`'s cascade (plain
    * Stop) can both reach the parent step for the SAME record — e.g. two

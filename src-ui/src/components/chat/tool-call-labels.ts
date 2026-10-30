@@ -676,7 +676,138 @@ const INERT_ENV =
  * allow is the whole command. The expanded row prints it verbatim.
  */
 function commandTarget(command: string, trimEnv: boolean): string {
+  // #4266: a call that already ran leads with what it ran. The shell wrapper
+  // an engine puts around every command (`/bin/bash -lc '…'`) says nothing,
+  // and an interpreter fed a heredoc is named with its script's size. What a
+  // user is asked to allow keeps the whole command (see above).
+  if (trimEnv) {
+    const inner = unwrapShellCommand(command) ?? command;
+    const script = heredocScriptTarget(inner);
+    if (script) return script;
+    if (inner !== command) return commandTarget(inner, trimEnv);
+  }
   return withHiddenLines(firstLineTarget(command, trimEnv), command);
+}
+
+const SHELL_PROGRAM = /^(?:\S*\/)?(?:bash|sh|zsh|dash)$/;
+/** The flag right before the script: `-c`, `-lc`. */
+const SHELL_SCRIPT_FLAG = /^-[a-zA-Z]*c[a-zA-Z]*$/;
+const SHELL_FLAG = /^-[a-zA-Z]+$/;
+
+/**
+ * One shell word from the start of `text` (single quotes, double quotes,
+ * backslash escapes, concatenated) and what follows it. Undefined when a
+ * quote is not closed.
+ */
+function readShellWord(
+  text: string,
+): { word: string; rest: string } | undefined {
+  let word = '';
+  let index = 0;
+  while (index < text.length && !/\s/.test(text[index]!)) {
+    const char = text[index]!;
+    if (char === "'") {
+      const end = text.indexOf("'", index + 1);
+      if (end < 0) return undefined;
+      word += text.slice(index + 1, end);
+      index = end + 1;
+    } else if (char === '"') {
+      index += 1;
+      while (text[index] !== '"') {
+        if (index >= text.length) return undefined;
+        const next = text[index + 1] ?? '';
+        if (text[index] === '\\' && '"\\$`\n'.includes(next) && next) {
+          if (next !== '\n') word += next;
+          index += 2;
+        } else {
+          word += text[index];
+          index += 1;
+        }
+      }
+      index += 1;
+    } else if (char === '\\') {
+      if (index + 1 >= text.length) return undefined;
+      word += text[index + 1];
+      index += 2;
+    } else {
+      word += char;
+      index += 1;
+    }
+  }
+  return { word, rest: text.slice(index) };
+}
+
+/**
+ * The script inside `bash|sh|zsh -lc '<script>'` when the command is exactly
+ * that: the wrapper, its flags, and one script word with nothing after it.
+ * Anything else is undefined and shown as written.
+ */
+function unwrapShellCommand(command: string): string | undefined {
+  let rest = command.trim();
+  const words: string[] = [];
+  while (rest) {
+    const read = readShellWord(rest);
+    if (!read) return undefined;
+    words.push(read.word);
+    rest = read.rest.trimStart();
+    if (words.length === 1 && !SHELL_PROGRAM.test(read.word)) return undefined;
+    if (words.length > 1 && !SHELL_FLAG.test(read.word)) return undefined;
+    if (words.length > 1 && SHELL_SCRIPT_FLAG.test(read.word)) break;
+  }
+  if (!rest || words.length < 2) return undefined;
+  const script = readShellWord(rest);
+  if (!script || script.rest.trim() || !script.word.trim()) return undefined;
+  return script.word;
+}
+
+/** The script of an argv shell wrapper (`['/bin/bash', '-lc', '<script>']`). */
+function unwrapShellArgv(command: readonly unknown[]): string | undefined {
+  const words = command.map(String);
+  const flags = words.slice(1, -1);
+  const script = words[words.length - 1] ?? '';
+  return words.length >= 3 &&
+    SHELL_PROGRAM.test(words[0]!) &&
+    flags.every((flag) => SHELL_FLAG.test(flag)) &&
+    SHELL_SCRIPT_FLAG.test(flags[flags.length - 1]!) &&
+    script.trim()
+    ? script
+    : undefined;
+}
+
+const HEREDOC_INTERPRETER =
+  /^((?:\S*\/)?(?:python[0-9.]*|node|deno|bun|ruby|perl|php|bash|sh|zsh))(?:\s+-)?\s*<<(-?)\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\3\s*$/;
+
+/**
+ * "python3 script (8 lines)" for an interpreter fed one heredoc and nothing
+ * else: the first line names the program and the body is the script.
+ */
+function heredocScriptTarget(command: string): string | undefined {
+  const lines = displayLines(command.trim());
+  const match = HEREDOC_INTERPRETER.exec(lines[0]?.trim() ?? '');
+  if (!match) return undefined;
+  const terminator = match[4]!;
+  const end = lines.findIndex(
+    (line, index) =>
+      index > 0 && (match[2] ? line.replace(/^\t+/, '') : line) === terminator,
+  );
+  if (end < 0 || lines.slice(end + 1).some((line) => line.trim()))
+    return undefined;
+  const count = end - 1;
+  return `${truncate(basename(match[1]!))} script (${count} ${count === 1 ? 'line' : 'lines'})`;
+}
+
+/**
+ * What the engine says a command does (Claude's Bash `description`), the
+ * label of a call that is not awaiting approval. The expanded row still
+ * prints the command verbatim.
+ */
+function commandDescription(args: unknown): string | undefined {
+  if (!args || typeof args !== 'object' || Array.isArray(args))
+    return undefined;
+  const description = (args as Record<string, unknown>).description;
+  if (typeof description !== 'string') return undefined;
+  const line = firstLine(description).trim();
+  return line ? truncate(line) : undefined;
 }
 
 function firstLineTarget(command: string, trimEnv: boolean): string {
@@ -728,6 +859,9 @@ function extractTarget(
       // An argv array (`['bash', '-c', 'echo a\nrm -rf /']`) can carry a
       // multi-line script in one element, so it gets the same first line and
       // line count. Never env-trimmed: in an argv, `FOO=1` is the program.
+      // A shell wrapper's script is a command line again.
+      const script = trimEnv ? unwrapShellArgv(command) : undefined;
+      if (script) return commandTarget(script, trimEnv);
       return commandTarget(argvText(command), false);
     }
     return null;
@@ -787,6 +921,12 @@ export function callLabel(
   // What a user is asked to allow is shown whole (see `commandTarget`).
   const trimEnv = resolved !== 'proposed';
   const target = extractTarget(kind, args, trimEnv);
+  // #4266: the engine's own description of a command leads, as written (it
+  // is already a verb phrase), and the command follows it on the same line:
+  // a terse description ("Gate") still shows what ran.
+  const description =
+    kind === 'exec' && trimEnv ? commandDescription(args) : undefined;
+  if (description) return target ? `${description} · ${target}` : description;
   if (target && kind === 'other') {
     // No verb is known, so the tool's own name carries it: "Used delete
     // file on secret.txt", never a guessed "Read secret.txt". Display text

@@ -381,7 +381,7 @@ export type ScheduleAgentNotification = (
   input: AgentNotificationScheduleInput,
 ) => Promise<{
   notification: { id: string };
-  outcome: NotificationScheduleOutcome;
+  outcome: Exclude<NotificationScheduleOutcome, 'suppressed'>;
 }>;
 
 /**
@@ -393,8 +393,16 @@ export type ScheduleAgentNotification = (
 export function scheduleAgentNotificationVia(
   service: Pick<NotificationService, 'scheduleEnveloped'>,
 ): ScheduleAgentNotification {
-  return ({ opts, envelope }) =>
-    service.scheduleEnveloped(AGENT_NOTIFICATION_SOURCE, opts, envelope);
+  return async ({ opts, envelope }) => {
+    const result = await service.scheduleEnveloped(
+      AGENT_NOTIFICATION_SOURCE,
+      opts,
+      envelope,
+    );
+    if (result.outcome === 'suppressed')
+      throw new Error('Agent notifications require a session audience');
+    return result;
+  };
 }
 
 export interface AgentNotificationGateDeps {

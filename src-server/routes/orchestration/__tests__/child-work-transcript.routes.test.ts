@@ -12,6 +12,12 @@ import {
   TRANSCRIPT_AGENT_ID,
 } from '../../../providers/__tests__/claude-subagent-transcript-fixture.js';
 import { replayClaudeTaskCapture } from '../../../providers/__tests__/claude-task-captures.js';
+import {
+  CODEX_COLLAB_STATION_THREAD,
+  CODEX_COLLAB_V1_SPAWN_WAIT_COMPLETED,
+  replayCodexCapture,
+} from '../../../providers/__tests__/codex-collab-fixtures.js';
+import { installCodexSubagentRollout } from '../../../providers/__tests__/codex-subagent-rollout-fixture.js';
 import { createChildWorkTranscriptModule } from '../../../services/orchestration/child-work-transcript.js';
 import type { OrchestrationService } from '../../../services/orchestration/orchestration-service';
 import { createOrchestrationRoutes } from '../orchestration';
@@ -35,7 +41,10 @@ function persistedHistory(): CanonicalRuntimeEvent[] {
   ];
 }
 
-function fixture(history: CanonicalRuntimeEvent[] = persistedHistory()) {
+function fixture(
+  history: CanonicalRuntimeEvent[] = persistedHistory(),
+  thread = THREAD,
+) {
   let current = true;
   let readable = true;
   const listChildWorkHistory = vi.fn(() => history);
@@ -57,7 +66,7 @@ function fixture(history: CanonicalRuntimeEvent[] = persistedHistory()) {
     listChildWorkHistory,
     request: (childId = TRANSCRIPT_AGENT_ID, query = '') =>
       app.request(
-        `/sessions/${THREAD}/child-work/${encodeURIComponent(childId)}/transcript${query}`,
+        `/sessions/${thread}/child-work/${encodeURIComponent(childId)}/transcript${query}`,
       ),
     revokeCaller: () => {
       current = false;
@@ -187,5 +196,47 @@ describe('#3163 GET /sessions/:threadId/child-work/:childId/transcript', () => {
       withAgent: false,
     }));
     await unavailable(await fixture().request(), 503);
+  });
+});
+
+describe('the route reads a Codex child from its own rollout', () => {
+  // The child thread the real codex-cli 0.155.1 capture spawns.
+  const CODEX_CHILD = '00000000-0000-7000-8000-000000000004';
+
+  function codexHistory(codexHome: string): CanonicalRuntimeEvent[] {
+    const { events } = replayCodexCapture(
+      CODEX_COLLAB_V1_SPAWN_WAIT_COMPLETED,
+      {
+        codexHome,
+      },
+    );
+    return events.filter((event) => event.method === 'child-work.updated');
+  }
+
+  test('the codex-thread ref the adapter recorded routes to the rollout under that home', async () => {
+    const { home } = installCodexSubagentRollout(makeTempDir, {
+      threadId: CODEX_CHILD,
+    });
+    const f = fixture(codexHistory(home), CODEX_COLLAB_STATION_THREAD);
+    const response = await f.request(CODEX_CHILD);
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      data: { entries: Array<{ kind: string; text?: string; name?: string }> };
+    };
+    // Codex entries, not Claude's: the module dispatched on the ref's kind.
+    expect(
+      body.data.entries.find((entry) => entry.kind === 'tool-call'),
+    ).toMatchObject({
+      name: 'exec',
+    });
+    expect(body.data.entries.at(-1)?.text).toBe(
+      'Findings: the fixture is clean.',
+    );
+  });
+
+  test('a rollout the engine no longer has is unavailable (503)', async () => {
+    const home = makeTempDir('station-codex-home-');
+    const f = fixture(codexHistory(home), CODEX_COLLAB_STATION_THREAD);
+    await unavailable(await f.request(CODEX_CHILD), 503);
   });
 });

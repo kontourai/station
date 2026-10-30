@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { NotificationEnvelopeV1 } from '@kontourai/station-contracts/notification';
@@ -76,6 +76,28 @@ describe('Notification Routes', () => {
     const body = await json(await app.request('/'));
     expect(body.success).toBe(true);
     expect(body.data).toEqual([]);
+  });
+
+  test('the owner feed and mutations exclude a principal audience', async () => {
+    const owner = await svc.schedule('provider', {
+      category: 'test',
+      title: 'owner notification',
+    });
+    const privateRow = await svc.schedule('provider', {
+      category: 'test',
+      title: 'private notification',
+    });
+    const path = join(dir, 'notifications.json');
+    const rows = JSON.parse(readFileSync(path, 'utf8'));
+    rows.find((row: { id: string }) => row.id === privateRow.id).metadata = {
+      envelope: { audience: { kind: 'principal', principalId: 'member-a' } },
+    };
+    writeFileSync(path, JSON.stringify(rows));
+    const body = await json(await app.request('/'));
+    expect(body.data.map((row: { id: string }) => row.id)).toEqual([owner.id]);
+    expect(
+      (await app.request(`/${privateRow.id}`, { method: 'DELETE' })).status,
+    ).toBe(404);
   });
 
   test('POST / schedules a notification', async () => {
@@ -674,7 +696,7 @@ describe('Notification Routes', () => {
 
   describe('POST /:id/read (#2587)', () => {
     const CLIENT_SESSION = '3f2b8c1e-9a4d-4e6f-8b2a-1c3d5e7f9a0b';
-    const envelope: NotificationEnvelopeV1 = {
+    const envelope = {
       v: 1,
       source: {
         kind: 'agent',
@@ -685,7 +707,7 @@ describe('Notification Routes', () => {
       audience: { kind: 'session-readers', sessionId: 'session-1' },
       urgency: 'done',
       interrupt: 'default',
-    };
+    } satisfies NotificationEnvelopeV1;
 
     function withDevice(deviceId: string) {
       const outer = new Hono();

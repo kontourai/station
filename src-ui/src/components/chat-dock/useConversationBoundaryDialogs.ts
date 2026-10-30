@@ -169,18 +169,21 @@ export function useConversationBoundaryDialogs({
   );
   const contextBoundarySessionId =
     activeSession?.currentSessionId ?? activeSession?.id;
+  // One reason gates every boundary action this hook owns: continuing with
+  // another Agent, switching engines, and replacing engine context. The words
+  // therefore name no single action; each surface supplies its own subject.
   const handoffDisabledReason = !activeSession?.conversationId
-    ? 'Send a message before changing Agent.'
+    ? 'Send a message first.'
     : isSessionExecutionActive(activeSession)
-      ? 'Wait for the current turn to finish before changing Agent.'
+      ? 'Wait for the current turn to finish.'
       : hasLocalDeferredMessages
-        ? 'Resolve queued or offline messages before changing Agent.'
+        ? 'Resolve queued or offline messages first.'
         : durableHandoffQueue.status === 'pending'
-          ? 'Checking queued messages before changing Agent.'
+          ? 'Checking queued messages…'
           : durableHandoffQueue.status === 'error'
             ? 'Queued message state is unavailable. Try again.'
             : durableHandoffQueueCount > 0
-              ? 'Resolve queued or offline messages before changing Agent.'
+              ? 'Resolve queued or offline messages first.'
               : undefined;
 
   const openConversationHandoff = useCallback(

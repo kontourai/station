@@ -1,0 +1,29 @@
+{
+  "revision": "687c63e4895a85182a4aac25dde81e6e795c1f86",
+
+  "notes": [
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"Reviewed home schema and rollback claims against the registry addition: the principal feed is state and does not alter channel isolation or schema policy.","inputs":["docs/adr/0020-distribution-two-trains-channels-as-pointers.md","packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed the historical browser subscription finding against the revised Web Push guide and resolver: principal feeds do not change browser subscriptions or produce push.","inputs":["docs/architecture/abstraction-review.md","docs/guides/web-push-notifications.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed scheduler composition and native notification feed claims against runtime support: membership is passed into NotificationService; scheduler wiring and the decided OS feed are unchanged.","inputs":["docs/architecture/module-map.md","src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Reviewed readiness and evidence ownership against runtime support: injecting Project membership into notifications does not change governance evidence or gate semantics.","inputs":["docs/contexts/evidence-governance/CONTEXT.md","src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Reviewed notification provider, scheduling and delivery distinctions against runtime support and the private feed: provider actions and OS delivery remain separate.","inputs":["docs/contexts/operations/CONTEXT.md","src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/design/automations.md","note":"Reviewed the scheduler and notification foundations in this retained proposal against runtime support: membership injection does not alter automation intake, scheduler dispatch or the proposal status.","inputs":["docs/design/automations.md","src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/design/task-dispatcher.md","note":"Reviewed the dispatch composition and task lifecycle claims against runtime support: notification membership injection does not change Task dispatch, cancellation or recovery.","inputs":["docs/design/task-dispatcher.md","src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/guides/local-speech.md","note":"Reviewed backup and rollback claims against the registry: media tools remain external, and the separate principal notification file is classified as product state.","inputs":["docs/guides/local-speech.md","packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Reviewed resolver, runtime composition and private feed against the service and focused tests: membership is checked before the synchronous write; no principal delivery event or push is emitted; route and preferences remain future work.","inputs":["docs/guides/web-push-notifications.md","src-server/runtime/routes/runtime-route-support.ts","src-server/services/notifications/delivery/audience-resolver.ts","src-server/services/notifications/notification-service.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Reviewed the home backup and rollback description against the registry: the new principal notification file is state and does not change CLI commands or external exclusions.","inputs":["docs/reference/cli.md","packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed notification hooks and owner notification API against the changed contract and service: existing APIs keep their owner behavior; no principal feed SDK route is claimed.","inputs":["docs/reference/sdk.md","packages/contracts/src/notification.ts","src-server/runtime/routes/runtime-route-support.ts","src-server/services/notifications/notification-service.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"Updated and reviewed the envelope write contract against the parser and service: principal writes require a human ID and Project ID, legacy reads remain compatible, and membership admission is separate from shape validation.","inputs":["docs/reference/shared.md","packages/contracts/src/notification.ts","packages/shared/src/notification-envelope.ts","src-server/services/notifications/notification-service.ts"]}
+  ]
+}

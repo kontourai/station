@@ -1,0 +1,7 @@
+{
+  "revision": "db9c9020e96f233c15af1dc2ad1fe8f8462f242c",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Dialog fix round: a restored uncertain request keeps its own model so Retry safely resends the retained request unchanged under the same idempotency key; when its target no longer resolves the disabled retry states why and Check status remains. The retention/Check status/safe-retry claims still hold.","inputs":["docs/reference/session-api.md","src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx"]}
+  ]
+}

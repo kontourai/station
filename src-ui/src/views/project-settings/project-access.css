@@ -44,3 +44,11 @@
 .project-access__member p {
   margin-block: var(--k-space-1);
 }
+
+/* A refused enable, invite or member change, in words. Without this the
+   sentence takes the body's size and reads larger than the section around it. */
+.project-access__error[role="alert"] {
+  margin: 0;
+  color: var(--k-negative);
+  font-size: var(--k-text-sm);
+}

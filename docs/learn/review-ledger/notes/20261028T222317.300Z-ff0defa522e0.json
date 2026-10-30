@@ -1,0 +1,29 @@
+{
+  "revision": "269a1fb6dd5a52ef0b7aff9063ef69e7151af4ca",
+
+  "notes": [
+    {"path":"docs/design/project-membership.md","note":"#4302: added the refused administration read's ProjectAccessRefusalDetails. Checked against project-membership-service.ts accessRefusal (operator() and human-principal checks before reading sharing state) and project-membership-routes.ts (403 details only on the GET access route). The route test covers operator off, account-bound phone and non-member undisclosed for shared/unshared/missing.","inputs":["docs/design/project-membership.md","src-server/routes/projects/project-membership-routes.ts","src-server/services/projects/project-membership-service.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"#4302: People and access now reads 'Sharing is off'. Enable appears only when the server says the caller can enable (operator authority); other callers get an explanation. Checked against AccessSection.tsx and the route's accessRefusal path.","inputs":["docs/guides/deployment-authentication.md","src-server/services/projects/project-membership-service.ts","src-server/services/projects/project-membership-store.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"#4302: documented projectAccessRefusal(error) on project-access-client/project-access. Checked client/project-access.ts: 403 + project_access_forbidden + parseProjectAccessRefusalDetails, undefined otherwise (older Station, other refusals). The rest of the section is unchanged and accurate.","inputs":["docs/reference/sdk.md","packages/sdk/src/client/project-access.ts","packages/sdk/src/project-access.ts","src-server/routes/projects/project-membership-routes.ts","src-server/services/projects/project-membership-service.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"#4302: project-membership row now names ProjectAccessRefusalDetails. Checked the contract module's type and pure parser. Other rows unaffected.","inputs":["docs/reference/contracts.md","packages/contracts/src/project-membership.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#4302: the membership service gained accessRefusal and the store gained isSharedSlug. The module-map ownership description (service holds the revision, store manages members/invitations) remains accurate; no prose change.","inputs":["docs/architecture/module-map.md","src-server/services/projects/project-membership-service.ts","src-server/services/projects/project-membership-store.ts"]},
+
+    {"path":"docs/design/shell-plugins-distributions.md","note":"#4302: the contract gained only refusal details. The role/action claims cited from project-membership.ts (manage-extensions owner-only, admin holds manage-members) are unchanged; no prose change.","inputs":["docs/design/shell-plugins-distributions.md","packages/contracts/src/project-membership.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"#4302: the routing table still points at deployment-authentication.md and sdk.md, whose owners were updated; no claim here changed.","inputs":["docs/guides/integrating-station.md","docs/guides/deployment-authentication.md","docs/reference/contracts.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"#4302: the lab's membership claims (invitation consumption, viewer/contributor, grantsDeviceAccess false) are unaffected by refusal details on the administration read; no prose change.","inputs":["docs/guides/local-collaboration-lab.md","src-server/services/projects/project-membership-service.ts","src-server/services/projects/project-membership-store.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"#4302: Project sharing stays a separate relationship rechecked through current membership; the new refusal details grant nothing. No prose change.","inputs":["docs/guides/machine-relationships.md","src-server/services/projects/project-membership-service.ts","src-server/services/projects/project-membership-store.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"#4302: the administration read is still refused to personal access tokens and admitted only on the account-bound allowlist. The refusal now discloses sharing state only to an operator-authority caller; everyone else gets undisclosed. No boundary claim changed.","inputs":["docs/security/remote-access-threat-model.md","src-server/services/projects/project-membership-service.ts","src-server/services/projects/project-membership-store.ts"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"#4302: sdk.md gained a projectAccessRefusal paragraph; this routing file's guidance is unchanged and accurate.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"#4302: contracts.md gained ProjectAccessRefusalDetails in the project-membership row; this routing file is unchanged and the new helper is a pure boundary parser over its own shape, as it requires.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}

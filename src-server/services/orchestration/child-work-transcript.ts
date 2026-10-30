@@ -9,6 +9,7 @@ import {
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
 import { readClaudeSubagentTranscriptPage } from '../../providers/adapters/claude-subagent-transcript.js';
+import { readCodexSubagentTranscriptPage } from '../../providers/adapters/codex-subagent-transcript.js';
 
 /**
  * #3163: a child's own transcript, read-only and paged.
@@ -19,9 +20,10 @@ import { readClaudeSubagentTranscriptPage } from '../../providers/adapters/claud
  * same after a server restart as before it, and a running or settled child
  * reads the same way.
  *
- * Sources: Claude subagents (`claude-subagent`). Codex child threads have no
- * source that outlives the Codex process Station spawned, so they carry no
- * ref and offer no transcript.
+ * Sources, by the ref's `kind`: Claude subagents (`claude-subagent`, the
+ * subagent's own file under the parent session) and Codex child threads
+ * (`codex-thread`, the child thread's own rollout under the session's
+ * `CODEX_HOME`, which Codex keeps after its app-server exits).
  */
 
 export type ChildWorkTranscriptOutcome =
@@ -112,11 +114,17 @@ export function createChildWorkTranscriptModule(
         Math.max(1, Math.floor(limit)),
         CHILD_WORK_TRANSCRIPT_PAGE_MAX,
       );
+      const page = {
+        offset: Math.max(0, Math.floor(offset)),
+        limit: pageLimit,
+      };
       try {
-        return await readClaudeSubagentTranscriptPage(ref, {
-          offset: Math.max(0, Math.floor(offset)),
-          limit: pageLimit,
-        });
+        switch (ref.kind) {
+          case 'claude-subagent':
+            return await readClaudeSubagentTranscriptPage(ref, page);
+          case 'codex-thread':
+            return await readCodexSubagentTranscriptPage(ref, page);
+        }
       } catch {
         return { status: 'unavailable' };
       }

@@ -1,0 +1,45 @@
+{
+  "revision": "9f1a9b57a3e59f2e6693bc1001ada19901f1cb3d",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Reviewed the affected module-map references against the added chat-app ownership and Discord adapter boundary; existing navigation and unrelated claims remain accurate.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT.md","note":"Reviewed the affected module-map references against the added chat-app ownership and Discord adapter boundary; existing navigation and unrelated claims remain accurate.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"README.md","note":"Reviewed the affected module-map references against the added chat-app ownership and Discord adapter boundary; existing navigation and unrelated claims remain accurate.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/README.md","note":"Reviewed the affected module-map references against the added chat-app ownership and Discord adapter boundary; existing navigation and unrelated claims remain accurate.","inputs":["docs/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"Reviewed against the registry change: chat-app tables use the existing orchestration SQLite entry; no new home root or store path is added.","inputs":["docs/adr/0020-distribution-two-trains-channels-as-pointers.md","packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed the affected module-map references against the added chat-app ownership and Discord adapter boundary; existing navigation and unrelated claims remain accurate.","inputs":["docs/architecture/abstraction-review.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the chat-app and Discord entries against core, store, migration, and adapter; focused SQLite and adapter tests pass, live Discord remains unverified.","inputs":["docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Reviewed the affected module-map references against the added chat-app ownership and Discord adapter boundary; existing navigation and unrelated claims remain accurate.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed the affected module-map references against the added chat-app ownership and Discord adapter boundary; existing navigation and unrelated claims remain accurate.","inputs":["docs/glossary.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/discord-gateway.md","note":"Reviewed import, authorization, live policy ceiling, revocation, kill switch, delivery and token custody against the core and Discord adapter; focused tests pass, live Discord remains unverified.","inputs":["docs/guides/discord-gateway.md","src-server/services/discord/discord-authorization.ts","src-server/services/discord/discord-gateway-config-store.ts","src-server/services/discord/discord-gateway-service.ts"]},
+
+    {"path":"docs/guides/local-speech.md","note":"Reviewed against the registry change: chat-app tables use the existing orchestration SQLite entry; no new home root or store path is added.","inputs":["docs/guides/local-speech.md","packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed the affected module-map references against the added chat-app ownership and Discord adapter boundary; existing navigation and unrelated claims remain accurate.","inputs":["docs/guides/self-configuring-agent.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Reviewed the affected module-map references against the added chat-app ownership and Discord adapter boundary; existing navigation and unrelated claims remain accurate.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/cli.md","note":"Reviewed against the registry change: chat-app tables use the existing orchestration SQLite entry; no new home root or store path is added.","inputs":["docs/reference/cli.md","packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Reviewed the affected module-map references against the added chat-app ownership and Discord adapter boundary; existing navigation and unrelated claims remain accurate.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the affected module-map references against the added chat-app ownership and Discord adapter boundary; existing navigation and unrelated claims remain accurate.","inputs":["docs/reference/station-docs.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/user/concepts.md","note":"Reviewed the affected module-map references against the added chat-app ownership and Discord adapter boundary; existing navigation and unrelated claims remain accurate.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Reviewed the affected module-map references against the added chat-app ownership and Discord adapter boundary; existing navigation and unrelated claims remain accurate.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed the affected module-map references against the added chat-app ownership and Discord adapter boundary; existing navigation and unrelated claims remain accurate.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed the affected module-map references against the added chat-app ownership and Discord adapter boundary; existing navigation and unrelated claims remain accurate.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]}
+  ]
+}

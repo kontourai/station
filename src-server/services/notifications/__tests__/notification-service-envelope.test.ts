@@ -31,7 +31,9 @@ const {
 } = await import('../notification-service.js');
 const { EventBus } = await import('../../orchestration/event-bus.js');
 
-function agentEnvelope(sessionId = 'session-1'): NotificationEnvelopeV1 {
+function agentEnvelope(sessionId = 'session-1'): NotificationEnvelopeV1 & {
+  audience: { kind: 'session-readers'; sessionId: string };
+} {
   return {
     v: 1,
     source: { kind: 'agent', sessionId, agent: 'claude', assurance: 'bound' },
@@ -129,16 +131,19 @@ describe('NotificationService envelope (#2583)', () => {
     return events;
   }
 
-  function scheduleAgent(
+  async function scheduleAgent(
     title = 'Need input',
     envelope: NotificationEnvelopeV1 = agentEnvelope(),
     extra: { dedupeTag?: string; ttl?: number; category?: string } = {},
   ) {
-    return svc.scheduleEnveloped(
+    const result = await svc.scheduleEnveloped(
       'agent',
       { category: extra.category ?? 'agent-attention', title, ...extra },
       envelope,
     );
+    if (result.outcome === 'suppressed')
+      throw new Error('unexpected suppression');
+    return result;
   }
 
   describe('storage compatibility', () => {

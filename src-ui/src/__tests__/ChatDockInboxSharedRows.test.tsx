@@ -636,7 +636,16 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
       screen.getByRole('button', { name: 'Details for Shared row title' }),
     );
     expect(await screen.findByRole('button', { name: '3 hours' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Close chat' })).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Dismiss from inbox' }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '3 hours' }));
+    const snoozed = screen.getByRole('region', { name: 'Snoozed · 1' });
+    expect(
+      within(snoozed).getByRole('button', {
+        name: 'Shared row title, Shared project',
+      }),
+    ).toBeTruthy();
   });
 
   it('the desktop panel’s snooze is one control that opens the duration choice (D7)', () => {
@@ -902,43 +911,114 @@ describe('inbox row engine fallback for a resolved agent without engineId (#3355
     expect(icon?.textContent).toBe('RE');
   });
 
+  // #4266: a row draws the engine(s) that RAN it first, so the gates below
+  // are the agent fallback's (`inboxRowIconAgent`), reached only when no
+  // markable engine is on record.
   it('never stands an engine in for an agent the catalog does not resolve', () => {
     expect(
-      avatar(
-        [reviewer],
+      inboxRowIconAgent(
         rowFor({ agentSlug: 'gone', provider: 'codex' as never }),
+        [reviewer],
       ),
+    ).toBeNull();
+    expect(
+      avatar([reviewer], rowFor({ agentSlug: 'gone', provider: undefined })),
     ).toBeNull();
   });
 
-  it('an ACP-bound agent keeps its initials even beside a branded provider', () => {
+  it('an ACP-bound agent keeps its own identity even beside a branded provider', () => {
     const acpAgent = {
       slug: 'reviewer',
       name: 'Reviewer',
       execution: { agentConnectionId: 'kiro' },
       engineConnectionType: 'acp',
     };
-    const icon = avatar([acpAgent], rowFor({ provider: 'codex' as never }));
-    expect(icon?.getAttribute('data-brand-key')).toBeNull();
-    expect(icon?.textContent).toBe('RE');
+    expect(
+      inboxRowIconAgent(rowFor({ provider: 'codex' as never }), [acpAgent]),
+    ).toBe(acpAgent);
   });
 
-  it('an agent reporting acp keeps its initials', () => {
-    const icon = avatar(
-      [{ ...reviewer, engineId: 'acp' }],
-      rowFor({ provider: 'codex' as never }),
-    );
-    expect(icon?.getAttribute('data-brand-key')).toBeNull();
-    expect(icon?.textContent).toBe('RE');
+  it('an agent reporting acp yields to its own identity, not initials of an engine', () => {
+    const resolved = inboxRowIconAgent(rowFor({ provider: 'codex' as never }), [
+      { ...reviewer, engineId: 'acp' },
+    ]);
+    expect(resolved?.engineId).toBeUndefined();
+    expect(resolved?.slug).toBe('reviewer');
   });
 
   it('an agent with no engine binding is not given the Station mark', () => {
+    const unbound = { slug: 'reviewer', name: 'Reviewer' };
+    expect(
+      inboxRowIconAgent(rowFor({ provider: 'station-agent' as never }), [
+        unbound,
+      ]),
+    ).toBe(unbound);
+  });
+
+  it('the Station agent on an engine with no mark draws Station’s own mark, not "ST"', () => {
+    // The owner's server: Station bound to an ACP OpenCode connection, so the
+    // catalog reports engineId `acp`. The row recorded no engine.
+    const station = {
+      slug: 'station',
+      name: 'Station',
+      engineId: 'acp',
+      engineConnectionType: 'acp',
+      execution: { agentConnectionId: 'opencode' },
+    };
     const icon = avatar(
-      [{ slug: 'reviewer', name: 'Reviewer' }],
-      rowFor({ provider: 'station-agent' as never }),
+      [station],
+      rowFor({
+        agentSlug: 'station',
+        agentLabel: 'Station',
+        provider: undefined,
+      }),
     );
-    expect(icon?.getAttribute('data-brand-key')).toBeNull();
-    expect(icon?.textContent).toBe('RE');
+    expect(icon?.getAttribute('data-brand-key')).toBe('station');
+    expect(icon?.textContent).not.toBe('ST');
+  });
+
+  it('draws every engine the thread ran on, in order, with +N past three', () => {
+    const { container } = renderPanelHost(
+      rowFor({
+        agentSlug: 'station',
+        agentLabel: 'Station',
+        provider: 'codex' as never,
+        executionProviders: ['claude', 'codex'] as never,
+      }),
+      vi.fn(),
+      [] as any,
+    );
+    const marks = [
+      ...container.querySelectorAll(
+        '[data-testid="identity-marks"] .brand-icon',
+      ),
+    ].map((mark) => mark.getAttribute('data-brand-key'));
+    expect(marks).toEqual(['claude', 'codex']);
+    expect(
+      container
+        .querySelector('[data-testid="identity-marks"]')
+        ?.getAttribute('title'),
+    ).toBe('Ran on Claude Code, Codex');
+    // The agent stays named in text beside the marks.
+    expect(container.querySelector('.inbox-row__agent')?.textContent).toBe(
+      'Station',
+    );
+
+    const many = renderPanelHost(
+      rowFor({
+        executionProviders: ['claude', 'codex', 'opencode', 'kiro'] as never,
+      }),
+      vi.fn(),
+      [] as any,
+    );
+    expect(
+      many.container.querySelectorAll(
+        '[data-testid="identity-marks"] .brand-icon',
+      ),
+    ).toHaveLength(3);
+    expect(
+      many.container.querySelector('.identity-marks__more')?.textContent,
+    ).toBe('+1');
   });
 
   it('a recorded engine with no bundled mark adds nothing', () => {

@@ -47,60 +47,6 @@ describe('useHomeWorkLanes', () => {
     vi.useRealTimers();
   });
 
-  it('writes terminal anchors only when they change, including removal', () => {
-    const setItem = vi.spyOn(Storage.prototype, 'setItem');
-    try {
-      const running = item({
-        id: 'persist',
-        lifecycleLabel: 'Running',
-        updatedAt: NOW,
-      });
-      const { rerender } = renderHook(({ items }) => useHomeWorkLanes(items), {
-        initialProps: { items: [running] },
-      });
-      setItem.mockClear();
-      rerender({ items: [{ ...running, title: 'Updated title' }] });
-      act(() => vi.advanceTimersByTime(30_000));
-      expect(setItem).not.toHaveBeenCalled();
-      rerender({ items: [{ ...running, lifecycleLabel: 'Completed' }] });
-      expect(setItem).toHaveBeenCalledTimes(1);
-      expect(
-        JSON.parse(localStorage.getItem('station.activity.terminalSince')!),
-      ).toEqual({ persist: NOW });
-      rerender({ items: [] });
-      expect(setItem).toHaveBeenCalledTimes(2);
-      expect(
-        JSON.parse(localStorage.getItem('station.activity.terminalSince')!),
-      ).toEqual({});
-    } finally {
-      setItem.mockRestore();
-    }
-  });
-
-  it('retries a failed anchor write on the next render', () => {
-    const setItem = vi
-      .spyOn(Storage.prototype, 'setItem')
-      .mockImplementationOnce(() => {
-        throw new Error('temporary storage failure');
-      });
-    try {
-      const terminal = item({
-        id: 'retry',
-        lifecycleLabel: 'Completed',
-        updatedAt: NOW,
-      });
-      const { rerender } = renderHook(() => useHomeWorkLanes([terminal]));
-      expect(localStorage.getItem('station.activity.terminalSince')).toBeNull();
-      rerender();
-      expect(
-        JSON.parse(localStorage.getItem('station.activity.terminalSince')!),
-      ).toEqual({ retry: NOW });
-      expect(setItem).toHaveBeenCalledTimes(2);
-    } finally {
-      setItem.mockRestore();
-    }
-  });
-
   it('AC1: status churn inside a live lane never reorders it', () => {
     // All three idle (Ready/Recent/Current are one lane); churning labels
     // and recency within it must not move a row.
@@ -219,7 +165,7 @@ describe('useHomeWorkLanes', () => {
     expect(result.current.settled.map((i) => i.id)).toEqual(['a']);
   });
 
-  it('AC3 (review fix): a persisted terminal-since anchor survives reload — a stale anchor lands the item directly in settled', () => {
+  it('AC3: a reload after the linger window lands finished work directly in settled', () => {
     const a = item({ id: 'a', lifecycleLabel: 'Completed', updatedAt: NOW });
     const first = renderHook(() => useHomeWorkLanes([a]));
     expect(liveOf(first.result.current)).toEqual([]);
@@ -231,8 +177,7 @@ describe('useHomeWorkLanes', () => {
 
     // Simulate time passing while the tab was closed/reloaded: advance past
     // the linger window, then mount a FRESH hook instance. Nothing in
-    // memory carries over — only whatever terminal-since was persisted to
-    // localStorage by the first instance's effect.
+    // memory carries over; the item's own finish time decides.
     act(() => {
       vi.advanceTimersByTime(TERMINAL_LINGER_MS + 60_000);
     });
@@ -253,37 +198,6 @@ describe('useHomeWorkLanes', () => {
 
     expect(result.current.recentlyFinished).toEqual([]);
     expect(result.current.settled.map((entry) => entry.id)).toEqual(['failed']);
-  });
-
-  it('AC3: a pruned terminal anchor is reseeded from updatedAt, not reload time', () => {
-    localStorage.setItem(
-      'station.activity.terminalSince',
-      JSON.stringify({ completed: NOW - TERMINAL_LINGER_MS - 6 * 60_000 }),
-    );
-    const completed = item({
-      id: 'completed',
-      lifecycleLabel: 'Completed',
-      updatedAt: NOW - TERMINAL_LINGER_MS - 60_000,
-    });
-
-    const { result } = renderHook(() => useHomeWorkLanes([completed]));
-
-    expect(result.current.recentlyFinished).toEqual([]);
-    expect(result.current.settled.map((entry) => entry.id)).toEqual([
-      'completed',
-    ]);
-  });
-});
-
-describe('AC1 regression: stable identity survives real-pipeline id promotions (review finding)', () => {
-  beforeEach(() => {
-    localStorage.clear();
-    vi.useFakeTimers();
-    vi.setSystemTime(NOW);
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
   });
 
   it('a chat promoted from a local session key to a server conversationId does not reorder the live lanes', () => {

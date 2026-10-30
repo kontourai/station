@@ -1,4 +1,5 @@
-import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
+import { parseEngineId } from '@kontourai/station-contracts/agent-identity';
+import { engineMark } from '../../utils/identity-marks';
 import type { SessionIconAgent } from '../../utils/sessionDisplay';
 import { AgentIcon } from '../icons/AgentIcon';
 import { AgentGlyph } from '../icons/Glyph';
@@ -11,18 +12,19 @@ export function ChildWorkIdentity({
   provider?: string;
   agent?: SessionIconAgent;
 }) {
-  const engine = provider
-    ? (engineDisplayLabel(provider) ?? provider)
-    : undefined;
+  const engineId = parseEngineId(provider);
+  const engine = engineId ? engineMark(engineId) : undefined;
   if (!agent && !engine) return <AgentGlyph />;
-  const identity = agent ?? { name: engine!, engineId: provider };
-  const label = [...new Set([agent?.name, engine].filter(Boolean))].join(' · ');
+  const identity = agent ?? engine!;
+  const label = [...new Set([agent?.name, engine?.name].filter(Boolean))].join(
+    ' · ',
+  );
   return (
     <span className="child-work-identity" title={label}>
       <AgentIcon agent={identity} size={24} accessibleLabel={label} />
-      {agent?.slug && provider && (
+      {agent?.slug && engine && (
         <span className="child-work-identity__engine" aria-hidden="true">
-          <AgentIcon agent={{ name: engine!, engineId: provider }} size={14} />
+          <AgentIcon agent={engine} size={14} />
         </span>
       )}
     </span>

@@ -1294,6 +1294,8 @@ describe('orchestration-session-state', () => {
       // #2310: the thread's own turn settles "not a Draft" without the
       // lineage read this caller does not supply.
       draft: false,
+      // The turn.completed that made it idle: the real finish time.
+      lifecycleChangedAt: '2026-04-11T00:00:05.000Z',
       lifecycleState: 'idle',
       previousLifecycleState: 'running',
       transitionReason: 'turn_completed',

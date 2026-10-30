@@ -528,6 +528,40 @@ describe('AttentionCard — device pairing kind (#765 D5)', () => {
     ).toBeTruthy();
   });
 
+  test('offers the passkey review without reporting pairing as approved', () => {
+    pairingMocks.confirmPairingState.error = Object.assign(
+      new Error('review required'),
+      {
+        status: 202,
+        transaction: {
+          reviewUrl: 'https://station.test:8443/consent/review-1',
+        },
+      },
+    );
+    renderCard(basePairing());
+    review();
+    expect(
+      screen
+        .getByRole('link', { name: 'Review and confirm with passkey' })
+        .getAttribute('href'),
+    ).toBe('https://station.test:8443/consent/review-1');
+    expect(screen.getByText(/Approval is pending/)).toBeTruthy();
+  });
+
+  test('offers operator sign-in after the server refuses approval', () => {
+    pairingMocks.confirmPairingState.error = Object.assign(
+      new pairingMocks.MockDevicePairingRequestActionError(403),
+      { signInUrl: 'https://station.test:8443/operator/sign-in' },
+    );
+    renderCard(basePairing({ viewerCanDecide: false }));
+    review();
+    expect(
+      screen
+        .getByRole('link', { name: 'Sign in as operator' })
+        .getAttribute('href'),
+    ).toBe('https://station.test:8443/operator/sign-in');
+  });
+
   test('Deny denies the exact request', () => {
     renderCard(basePairing());
     review();

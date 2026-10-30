@@ -1,0 +1,11 @@
+{
+  "revision": "8f269fb1dfec22ea2aba6f1a03875d14e0e0906e",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Reviewed the person feed client and tests after the mutation 404 change: a missing entry and an older unsupported host remain distinguishable as possibilities, with an update remedy. The list 404 remains unsupported. No live or published-package claim.","inputs":["docs/reference/sdk.md","packages/sdk/src/__tests__/personNotifications.test.tsx","packages/sdk/src/query-domains/personNotifications.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the SDK reference delta against this integration guide: the mutation 404 wording changes no integration or deployment requirement. No deployed integration was exercised.","inputs":["docs/guides/integrating-station.md","docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Reviewed the referenced SDK documentation change; SDK scope, consumer testing and authority-race requirements remain unchanged.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

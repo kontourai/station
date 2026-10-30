@@ -1,0 +1,7 @@
+{
+  "revision": "9f590341aa854cacc45fe158967027676888fc19",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the generated shipped-topic delta: the ConversationSessionLineage topic now states native fork persistence/Request/warm-read limits and unsupported activation, without changing the shipped documentation reader, tool catalog or publication authority. Generator produced the same topic schema; no deployed or native-provider qualification is claimed.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

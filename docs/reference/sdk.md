@@ -943,6 +943,11 @@ Returns a query whose data is the current inbound paired-device registry from
 copy them into session or event records. An authorization or response failure
 is a query error, not an empty device list.
 
+`confirmDevicePairingRequest` throws `StationStepUpRequiredError` when the
+operator must complete a passkey review. Its transaction has an ID, review URL
+and expiry; a 202 response means approval is pending, not completed. The
+caller must review the result before presenting the request as approved.
+
 #### `useStationPeopleQuery(apiBase?)` and personal access tokens
 
 `useStationPeopleQuery` reads `GET /api/pairing/people` (#3557);
@@ -2100,6 +2105,12 @@ the `resolved` arm whether the next ordinary turn starts a new Session
 and so does a server that would refuse that turn (a handoff awaiting its target,
 or a context delivery not yet reconciled). A value that is not a boolean is
 refused as `invalid-response`.
+Every arm may also carry `callerAccess` (`{ continue, startChat }`): whether
+the server's HTTP boundary would let THIS caller post
+`POST /api/orchestration/chat/:conversationId/continue` or
+`POST /api/orchestration/chat`. Older servers, and requests with no
+authenticated principal, omit it; treat absent as unknown. A present value that
+is not that pair of booleans is refused as `invalid-response`.
 Transport, rejection, and invalid wire failures throw a
 typed `ConversationOpenResolutionFailure` rather than degrading to an empty
 chat. Optional `options.signal` cancels the request and `options.timeoutMs`
@@ -2693,6 +2704,15 @@ enable sharing, invite or revoke invitations, change a member, or transfer
 ownership. Capture the returned scope and member revision for writes; do not
 reconstruct authority from a slug or email. Enabling requires the expected local
 Project ID and current Station operator authority.
+
+When the read is refused with 403 `project_access_forbidden`,
+`projectAccessRefusal(error)` returns the server's
+`ProjectAccessRefusalDetails` (from
+`@kontourai/station-contracts/project-membership`): `off` (sharing is not on
+and this caller can enable it), `on` (shared, but this caller does not manage
+people) or `undisclosed` (this caller cannot enable sharing and is not told
+whether the Project is shared). It returns `undefined` for any other error,
+including an older Station that sends no details.
 
 `@kontourai/station-sdk/project-access` also exports `useProjectAccess(slug,
 requestScope)`. Its query keys include the selected Station and authority, and
@@ -3960,6 +3980,20 @@ interface ProviderMetadata {
 ---
 
 ## Notifications API
+
+### Person notification query domain
+
+`fetchPersonNotifications`, `markPersonNotificationRead`,
+`dismissPersonNotification` and their `usePersonNotificationsQuery`,
+`useMarkPersonNotificationReadMutation` and
+`useDismissPersonNotificationMutation` hooks use `/api/me/notifications`.
+They require a captured `{ apiBase, authorityKey, isCurrent }` request scope;
+cache keys include that authority and late responses are refused after it
+changes. Read and dismiss take an id and an optional `clientSessionId`: callers
+without a paired Device identity must supply the session id. A host without the
+list route reports that person notifications are unsupported and suggests an
+update. A mutation's 404 can also mean the notification was not found, so it
+reports both possibilities. See [person notification routes](api.md#person-notifications).
 
 ### `NotificationsAPI`
 
@@ -6162,7 +6196,10 @@ Pass the render-captured request scope and abort signal in `options`. The
 read-only POST returns a validated HTML page plus isolated frame origin, or a
 bounded raster preview. `thread` selects an authorized Session workspace;
 verified Git worktrees of that repository are also eligible. The returned bytes
-are display data, not permission to navigate to a host filesystem URL.
+are display data, not permission to navigate to a host filesystem URL. A failed
+read throws `WorkspaceVisualFileError` with `status` and a `reason`
+(`WorkspaceVisualFileUnavailableReason`): the server's refusal, `unauthorized`,
+`server-error` or `unavailable`. Branch on `reason`, not the message.
 
 ## Walkthroughs
 

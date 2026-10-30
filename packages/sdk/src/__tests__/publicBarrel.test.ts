@@ -43,6 +43,7 @@ const PUBLIC_QUERY_DOMAINS = [
   'peerCredentials',
   'peerEnrollments',
   'personalLayouts',
+  'personNotifications',
   'personalBoards',
   'pluginVisibility',
   'knowledgeStores',

@@ -1,0 +1,7 @@
+{
+  "revision": "85834e86c06115f90d6590b0b1d0d04b2026a209",
+
+  "notes": [
+    {"path":"docs/user/concepts.md","note":"Checked against the held-gap reload change in useSessionEventWindow.ts: last-known status and per-reader failure claims are unaffected; the change only keeps an interrupted gap fill's floor and cursor across a newer reload.","inputs":["docs/user/concepts.md","src-ui/src/hooks/orchestration/useSessionEventWindow.ts"]}
+  ]
+}

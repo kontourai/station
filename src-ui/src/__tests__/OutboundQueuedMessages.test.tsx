@@ -721,6 +721,27 @@ describe('OutboundQueuedMessages (station#2522)', () => {
     );
   });
 
+  // A caller the server refused a new chat gets no handler, and so no offer.
+  it('a refused row offers no New chat when no handler is given', () => {
+    render(
+      <OutboundQueuedMessages
+        sessionId="session-1"
+        turns={[
+          {
+            clientTurnId: 'turn-1',
+            content: 'move this message',
+            status: 'failed',
+            lastError: 'Workspace refusal: worktree is gone',
+          },
+        ]}
+        onError={vi.fn()}
+        onRetry={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/Refused/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'New chat' })).toBeNull();
+  });
+
   it('reports a post-draft discard failure with the kept-row copy', async () => {
     const onError = vi.fn();
     render(

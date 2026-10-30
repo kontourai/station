@@ -53,6 +53,11 @@ export type ClaudeEngineProcess = {
   /** Prevent future spawns and require the owned engine processes to exit. */
   terminate: () => Promise<void>;
   /**
+   * Whether an engine process was spawned and none is running now: the
+   * process's own `exit`, observed. False before a spawn.
+   */
+  exited: () => boolean;
+  /**
    * #2494: the command and arguments the latest engine process was actually
    * spawned with, as passed to the spawn call; `undefined` before one.
    */
@@ -206,6 +211,7 @@ export function createClaudeEngineProcess(
     spawn,
     stderrTail: () => tailOf(redactSecrets(stderrTail)).trim(),
     spawned: () => spawned,
+    exited: () => spawned !== undefined && children.size === 0,
     async terminate() {
       retired = true;
       await Promise.all(

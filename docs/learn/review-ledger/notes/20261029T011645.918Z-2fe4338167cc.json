@@ -1,0 +1,7 @@
+{
+  "revision": "6d334639406ea8d4182f0896eb312af597a42890",
+
+  "notes": [
+    {"path":"docs/design/offline-outbound-queue.md","note":"Reviewed history capture and outbound separation against useSessionEventWindow and offlineReading: successful newest reads save a fenced text projection, failed capture remains best effort, and gap paging and eligibility do not dispatch queued mutations. Focused transcript tests passed; native offline behavior not verified.","inputs":["docs/design/offline-outbound-queue.md","src-ui/src/hooks/orchestration/useSessionEventWindow.ts"]}
+  ]
+}

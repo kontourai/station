@@ -176,11 +176,13 @@ describe('buildStationResetPlan', () => {
       'workspaceCheckpoints',
       // #3188: resume a usage-limit stop at the provider's reset.
       'usageLimitAutoResume',
+      'claudeArtifactsEnabled',
       'reviewGuidesEnabled',
       'reviewGuideModel',
       'reviewGuideInstructions',
       // Chat
       'defaultChatFontSize',
+      'titleModel',
       // Pairing: restore the Station's default-off LAN publication choice.
       'lanDiscoveryEnabled',
     ]);

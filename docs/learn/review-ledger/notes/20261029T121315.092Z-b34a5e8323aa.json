@@ -1,0 +1,7 @@
+{
+  "revision": "ed443a489eedbcd3cdc43ca94c9c36bd0f7288ee",
+
+  "notes": [
+    {"path":"docs/user/concepts.md","note":"ChatDockBody's override-reset refusal defines no new concept and changes none here. Unaffected.","inputs":["docs/user/concepts.md","src-ui/src/components/chat-dock/ChatDockBody.tsx"]}
+  ]
+}

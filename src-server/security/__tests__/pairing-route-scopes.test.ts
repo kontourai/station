@@ -243,6 +243,25 @@ describe('pairing-route-scopes: source-derived coverage (station#1098 R2)', () =
     expect(identities).toEqual([...new Set(identities)]);
   });
 
+  test('classifies only the person notification leaves at their read and mutate tiers', () => {
+    for (const [method, path, scope] of [
+      ['GET', '/api/me/notifications', 'orchestration:read'],
+      ['POST', '/api/me/notifications/:id/read', 'orchestration:operate'],
+      ['DELETE', '/api/me/notifications/:id', 'orchestration:operate'],
+    ] as const) {
+      expect(isLeafScopeDeclared(method, path)).toBe(true);
+      expect(requiredPairingScope(method, path)).toBe(scope);
+      expect(PAIRING_SCOPE_FAMILY_INHERITED_LEAVES).toContainEqual({
+        method,
+        path,
+      });
+    }
+    expect(isLeafScopeDeclared('POST', '/api/me/notifications')).toBe(false);
+    expect(
+      isLeafScopeDeclared('DELETE', '/api/me/notifications/:id/read'),
+    ).toBe(false);
+  });
+
   test('inherits read scope for the local operating-state availability leaf', () => {
     const path = '/api/projects/:slug/operating-state/availability';
     expect(isLeafScopeDeclared('GET', path)).toBe(true);

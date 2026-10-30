@@ -13,6 +13,7 @@ import { applyWalJournalMode } from '../../utils/sqlite-wal.js';
 import { PROJECT_TASK_ROOM_RUNTIME_MIGRATION } from './006-project-task-room-runtime.js';
 import { ensureTurnBoundarySequenceFence } from './014-turn-boundary-sequence-fence.js';
 import { ensureTurnDedupInputDigest } from './015-turn-dedup-input-digest.js';
+import { ensureConversationHistoryTitleSourceColumn } from './025-conversation-history-title-source.js';
 
 const require = createRequire(import.meta.url);
 const { DatabaseSync } = require('node:sqlite') as {
@@ -225,6 +226,7 @@ CREATE TABLE IF NOT EXISTS orchestration_conversation_history (
   agent_slug TEXT,
   project_slug TEXT,
   title TEXT,
+  title_source TEXT,
   message_count INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
@@ -1473,6 +1475,7 @@ export function runOrchestrationEventMigration(projectHomeDir: string): void {
   ensureOrchestrationEventStoreColumns(db);
   ensureOrchestrationAdoptionColumns(db);
   ensureTurnBoundarySequenceFence(db);
+  ensureConversationHistoryTitleSourceColumn(db);
   db.close();
 }
 

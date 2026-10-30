@@ -63,6 +63,8 @@ export interface MessagePart {
   /** Provider output retained in its original JSON-compatible shape. */
   output?: unknown;
   htmlReply?: import('@kontourai/station-contracts/html-reply').HtmlReplyReference;
+  /** A Claude Code Artifact publish's claude.ai page (see `ToolCompletedEvent`). */
+  claudeArtifact?: import('@kontourai/station-contracts/claude-artifact').ClaudeArtifactLink;
   error?: string;
   cancelled?: boolean;
   isError?: boolean;

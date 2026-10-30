@@ -20,6 +20,7 @@ import type {
   BackgroundTaskState,
 } from '../../contexts/background-tasks-store';
 import {
+  CHILD_WORK_STATUS_LABEL,
   formatChildWorkElapsed,
   latestChildTool,
 } from '../../utils/child-work-display';
@@ -59,6 +60,7 @@ const OUTCOME_LABEL: Partial<Record<BackgroundTaskState, string>> = {
   unresolved: 'No result',
   // #2459: never "Stopped" — nothing confirmed the stop took effect.
   'stopped-unconfirmed': 'Stop requested — not confirmed',
+  interrupted: CHILD_WORK_STATUS_LABEL.interrupted,
   failed: 'Failed',
 };
 

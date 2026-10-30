@@ -304,6 +304,7 @@ describe('guest-administration delivery guards', () => {
     expect(fresh.status).toBe(403);
     expect((await fresh.json()) as unknown).toEqual({
       error: { code: 'project_access_forbidden' },
+      details: { sharing: 'undisclosed', canEnable: false },
     });
   });
 

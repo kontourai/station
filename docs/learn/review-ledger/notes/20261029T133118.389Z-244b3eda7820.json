@@ -1,0 +1,7 @@
+{
+  "revision": "e8f37c25832cea6cbad23af1c35bbc2a87662aa4",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"chat.css only adds an aria-disabled look (cursor, opacity) for the composer reset chip, with no media query; the chip now stays in place across turns so the row does not shift. No responsive claim affected.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat/chat.css"]}
+  ]
+}

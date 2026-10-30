@@ -1,0 +1,7 @@
+{
+  "revision": "742c1ba749ff650f9009711098eab70f319891df",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Reviewed the workspace Home contract delta: provider and completion-time descriptions join the existing projection field list and invalidate grants missing those fields. This document does not enumerate that list; its existing claims remain unchanged. Focused contract and UI tests passed; no live deployment was verified.","inputs":["docs/design/placement.md","packages/contracts/src/workspace-home-role.ts"]}
+  ]
+}

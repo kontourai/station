@@ -90,15 +90,18 @@
   display: flex;
 }
 
+/* A toast floats over the transcript, so it takes the raised surface rather
+   than the page's own background. Its shadow stays small: the scrolling
+   stack clips anything wider into a hard-edged slab. */
 .toast-card {
   width: 100%;
   min-width: 0;
   padding: 14px;
-  border: 1px solid var(--border-primary);
-  border-radius: 10px;
-  background: var(--bg-primary);
+  border: 1px solid var(--k-line-strong);
+  border-radius: var(--k-radius-overlay);
+  background: var(--k-panel-raised);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16);
-  color: var(--text-primary);
+  color: var(--k-text);
   pointer-events: auto;
 }
 
@@ -215,6 +218,10 @@
   height: 44px;
   flex: 0 0 auto;
   place-items: center;
+  /* The 44px target reaches into the card's padding instead of growing the
+     card below a one-line message. */
+  margin-block: calc(-1 * var(--k-space-3));
+  margin-inline-end: calc(-1 * var(--k-space-2));
   padding: 0;
   border: 0;
   border-radius: 6px;
@@ -337,14 +344,43 @@
   opacity: 0.7;
 }
 
+/* Severity is the card itself, not just a stripe: the tone's soft fill over
+   the raised surface, a toned border, and a toned label with its mark. */
 .toast-card--success {
-  border-inline-start: var(--k-space-1) solid var(--k-positive);
+  --toast-tone: var(--k-positive);
+  --toast-tone-soft: var(--k-positive-soft);
 }
 .toast-card--warning {
-  border-inline-start: var(--k-space-1) solid var(--k-caution);
+  --toast-tone: var(--k-caution);
+  --toast-tone-soft: var(--k-caution-soft);
 }
 .toast-card--error {
-  border-inline-start: var(--k-space-1) solid var(--k-negative);
+  --toast-tone: var(--k-negative);
+  --toast-tone-soft: var(--k-negative-soft);
+}
+.toast-card--success,
+.toast-card--warning,
+.toast-card--error {
+  border-color: color-mix(in oklab, var(--toast-tone) 55%, var(--k-line));
+  border-inline-start: var(--k-space-1) solid var(--toast-tone);
+  background:
+    linear-gradient(var(--toast-tone-soft), var(--toast-tone-soft)),
+    var(--k-panel-raised);
+}
+
+.toast-card__severity {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-space-1);
+  color: var(--toast-tone);
+  font-weight: 700;
+  vertical-align: top;
+}
+
+.toast-card__severity svg {
+  width: 1.1em;
+  height: 1.1em;
+  flex: 0 0 auto;
 }
 
 @media (max-width: 640px) {

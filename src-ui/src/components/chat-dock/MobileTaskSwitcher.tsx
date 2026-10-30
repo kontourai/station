@@ -9,7 +9,6 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
-  useState,
 } from 'react';
 import { createPortal } from 'react-dom';
 import { navigationStore } from '../../contexts/navigation-store';
@@ -27,21 +26,20 @@ import { registerDialogHistory } from '../dialog-history';
 import { NewChatAction } from '../NewChatAction';
 import { ResponsiveDialogHeader } from '../ResponsiveDialogSurface';
 import { Empty, ErrorState, SkeletonList } from '../state';
+import { useSheetGesturesPreview } from '../useResponsiveSheetGesture';
 import {
   InboxGroupList,
   type InboxGroupListProps,
   moveFocusBeforeRemovingInboxRow,
 } from './ChatDockInboxRows';
 import { InboxScopeFilter, useInboxScope } from './InboxScopeFilter';
+import { useInboxDismissActions } from './inbox-dismissals';
 import {
   clearSnooze,
-  groupMobileActivity,
-  readSnoozes,
-  type SnoozeMap,
   snoozeKeyFor,
   writeSnooze,
 } from './mobile-activity-groups';
-import { useHeldLifecycles } from './useHeldLifecycles';
+import { useInboxGroups } from './useInboxGroups';
 
 const FOCUSABLE =
   'button:not(:disabled), [href], input:not(:disabled), [tabindex]:not([tabindex="-1"])';
@@ -120,6 +118,7 @@ export function MobileTaskSwitcher({
   onRetryLoad?: () => void;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const swipeActions = useSheetGesturesPreview();
   // One coarse tick for the open sheet's relative times; none while closed.
   const now = useCoarseNow(suppliedNow, { enabled: open });
   useRowFocusPreservation(panelRef, '.chat-dock-inbox__item');
@@ -139,7 +138,7 @@ export function MobileTaskSwitcher({
       ),
     [openMembership, tasks],
   );
-  const [snoozed, setSnoozed] = useState<SnoozeMap>({});
+  const dismissals = useInboxDismissActions(tasks, workFacts);
   const returnFocusRef = useRef<HTMLElement[]>([]);
   // Found by station#1245's sweep, not listed on the issue: this sheet is
   // hand-rolled rather than a `ResponsiveDialogSurface` (see the history-layer
@@ -156,19 +155,8 @@ export function MobileTaskSwitcher({
     restoreReturnFocus(chain, panel);
   }, [onClose]);
 
-  // Read snoozes when the sheet opens rather than on every render: the map is
-  // in localStorage and lapsed entries are pruned on read.
-  useEffect(() => {
-    if (open) setSnoozed(readSnoozes(now));
-  }, [now, open]);
-
-  // Status churn must not move rows between groups (see useHeldLifecycles).
   const scope = useInboxScope(collectionTasks, now, workFacts);
-  const heldTasks = useHeldLifecycles(scope.items);
-  const groups = useMemo(
-    () => groupMobileActivity(heldTasks, now ?? Date.now(), snoozed, workFacts),
-    [heldTasks, now, snoozed, workFacts],
-  );
+  const groups = useInboxGroups(scope.items, now, workFacts);
   const visibleGroups = useMemo(
     () => groups.filter((group) => group.items.length > 0),
     [groups],
@@ -196,6 +184,11 @@ export function MobileTaskSwitcher({
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.target instanceof Node &&
+        !panelRef.current?.contains(event.target)
+      )
+        return;
       if (event.key === 'Escape') {
         event.preventDefault();
         event.stopPropagation();
@@ -308,6 +301,7 @@ export function MobileTaskSwitcher({
               anatomy (`ChatDockInboxRows.tsx`) — same richness as the
               desktop panel, with `--touch` chrome for ≥44px targets. */}
           <InboxGroupList
+            swipeActions={swipeActions}
             groups={visibleGroups}
             idPrefix="mobile-task-switcher"
             activeChatSessionId={activeChatSessionId}
@@ -358,11 +352,16 @@ export function MobileTaskSwitcher({
               moveFocusBeforeRemovingInboxRow(panelRef.current, action);
               const clock = now;
               const snoozeKey = snoozeKeyFor(task);
-              setSnoozed(
-                wakeAt === null
-                  ? clearSnooze(snoozeKey, clock)
-                  : writeSnooze(snoozeKey, wakeAt, clock),
-              );
+              if (wakeAt === null) clearSnooze(snoozeKey, clock);
+              else writeSnooze(snoozeKey, wakeAt, clock);
+            }}
+            onDismiss={(item, action) => {
+              moveFocusBeforeRemovingInboxRow(panelRef.current, action);
+              dismissals.dismiss(item);
+            }}
+            onRestore={(item, action) => {
+              moveFocusBeforeRemovingInboxRow(panelRef.current, action);
+              dismissals.restore(item);
             }}
             onCloseChat={
               onCloseChat
@@ -381,6 +380,7 @@ export function MobileTaskSwitcher({
             }}
           />
         </div>
+        {dismissals.notice}
         {onNewChat && (
           <NewChatAction
             className="chat-start__inbox-action"

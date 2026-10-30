@@ -1086,9 +1086,9 @@ export const DEVICE_SETTINGS_REGISTRY = [
     scope: 'device',
     descriptor: { kind: 'boolean' },
     label: 'Sheet gestures preview',
-    help: 'Opt in to dragging phone sheets up to expand them and down to close them.',
+    help: 'Opt in to phone sheet handles and swipe-to-reveal Snooze and Dismiss in the inbox.',
     description:
-      'Add a drag handle to phone sheets: drag up to expand, down to close.',
+      'Drag phone sheets to resize or close them; swipe inbox rows left for actions.',
     defaultValue: false,
   }),
   defineDeviceSetting({

@@ -17,8 +17,8 @@
  *   owner's in-app view only — never push — since nothing resolved who it
  *   was meant for; the forced `silent` carries that.
  * - `parseNotificationEnvelopeForWrite` is what a producer's envelope must
- *   pass: exact keys, known kinds only, no `principal` audience (no resolver
- *   exists yet), and no read/dismiss markers (only the service sets those).
+ *   pass: exact keys, known kinds only, a project for a principal audience,
+ *   and no read/dismiss markers (only the service sets those).
  */
 import {
   AGENT_NOTIFICATION_CATEGORIES,
@@ -36,6 +36,7 @@ import {
   OPENED_NOTIFICATION_QUERY_PARAM,
   type SurfaceId,
 } from '@kontourai/station-contracts/notification';
+import { principalIdMatchesKind } from '@kontourai/station-contracts/principal';
 
 type Fields = Record<string, unknown>;
 type Mode = 'read' | 'write';
@@ -56,6 +57,17 @@ export function readNotificationEnvelope(
   } catch {
     return undefined;
   }
+}
+
+/** A private audience stays private even when its envelope cannot be parsed. */
+export function hasPrincipalNotificationAudience(value: unknown): boolean {
+  if (!isPlainRecord(value) || !isPlainRecord(value.metadata)) return false;
+  const envelope = value.metadata.envelope;
+  return (
+    isPlainRecord(envelope) &&
+    isPlainRecord(envelope.audience) &&
+    envelope.audience.kind === 'principal'
+  );
 }
 
 /**
@@ -97,6 +109,15 @@ function parseEnvelope(
   const source = parseSource(fields.source, mode);
   const audience = parseAudience(fields.audience, mode);
   if (!source || !audience) return undefined;
+  if (
+    mode === 'write' &&
+    audience !== UNKNOWN_KIND &&
+    audience.kind === 'principal' &&
+    source.kind === 'agent' &&
+    source.projectId !== undefined &&
+    source.projectId !== audience.projectId
+  )
+    return undefined;
   if (!isUrgency(fields.urgency)) return undefined;
   if (fields.interrupt !== 'default' && fields.interrupt !== 'silent')
     return undefined;
@@ -192,12 +213,7 @@ function parseAudience(
   value: unknown,
   mode: Mode,
 ): NotificationAudience | typeof UNKNOWN_KIND | undefined {
-  // No resolver turns a principal audience into surfaces yet, so a producer
-  // may not write one; a newer build's record still reads.
-  const known =
-    mode === 'write'
-      ? ['owner', 'session-readers']
-      : ['owner', 'session-readers', 'principal'];
+  const known = ['owner', 'session-readers', 'principal'];
   const kind = kindOf(value, known, mode);
   if (kind === UNKNOWN_KIND) return UNKNOWN_KIND;
   if (kind === 'owner') {
@@ -211,9 +227,28 @@ function parseAudience(
     return { kind: 'session-readers', sessionId: fields.sessionId };
   }
   if (kind === 'principal') {
-    const fields = knownFields(value, mode, ['kind', 'principalId'], []);
+    const fields = knownFields(
+      value,
+      mode,
+      mode === 'write'
+        ? ['kind', 'principalId', 'projectId']
+        : ['kind', 'principalId'],
+      mode === 'write' ? [] : ['projectId'],
+    );
     if (!fields || !isCanonicalText(fields.principalId)) return undefined;
-    return { kind: 'principal', principalId: fields.principalId };
+    if (
+      (mode === 'write' &&
+        !principalIdMatchesKind(fields.principalId, 'human')) ||
+      (fields.projectId !== undefined &&
+        (!isCanonicalText(fields.projectId) ||
+          /\p{Cc}/u.test(fields.projectId)))
+    )
+      return undefined;
+    return {
+      kind: 'principal',
+      principalId: fields.principalId,
+      ...optionalText(fields, 'projectId'),
+    };
   }
   return undefined;
 }

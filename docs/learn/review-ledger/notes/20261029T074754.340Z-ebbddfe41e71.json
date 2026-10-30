@@ -1,0 +1,7 @@
+{
+  "revision": "3ca80ebbceee238c445dfce9bfdb4757dd93720f",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"After merging main (#4161 engine identity, #4194): the gated engine-switch and Use Agent defaults claims still match ChatDockBody (pickerModels filter, engineResetBlockedReason) and ChatInputArea (reset chip disabled with reason). The composer engine-chip claims from #4161 are main's and were not changed here.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/ChatInputArea.test.tsx","src-ui/src/components/chat-dock/ChatDockBody.tsx"]}
+  ]
+}

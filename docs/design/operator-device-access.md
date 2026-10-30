@@ -10,6 +10,10 @@
 > S4 implements per-action step-up with no reusable window. The dated body below retains the original
 > design assumptions and line citations; it is not a complete current-state inventory.
 
+The later pairing approval flow also permits an operator session to request a
+passkey review for an ordinary Device request. It does not enable the remote
+CLI or native-app scenarios excluded by the historical D9 decision below.
+
 A separate scoped administration path now accepts an explicitly promoted
 `access:devices` Device for existing-device list/scope/revoke/remove operations,
 including remote CLI and UI requests. It grants no operator identity and uses

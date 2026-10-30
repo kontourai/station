@@ -336,6 +336,7 @@ export function isOperatorSessionRead(method: string, path: string): boolean {
     (method === 'GET' &&
       [
         '/api/pairing/devices',
+        '/api/pairing/requests',
         '/api/operator/session',
         '/api/operator/passkeys',
         '/api/outside-agent/clients',
@@ -350,6 +351,8 @@ export function isOperatorSessionRead(method: string, path: string): boolean {
 export function isOperatorSessionLeaf(method: string, path: string): boolean {
   return (
     isOperatorSessionRead(method, path) ||
+    (method === 'POST' &&
+      /^\/api\/pairing\/requests\/[^/]+\/confirm$/.test(path)) ||
     (method === 'POST' &&
       (/^\/api\/outside-agent\/requests\/[^/]+\/(approval|denial)$/.test(
         path,

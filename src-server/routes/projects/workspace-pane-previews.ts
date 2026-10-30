@@ -4,8 +4,10 @@ import {
   parseWorkspaceFilePreviewRequest,
   WORKSPACE_FILE_EXISTENCE_MAX_PATHS,
   WORKSPACE_FILE_PREVIEW_MAX_PATH_LENGTH,
+  WORKSPACE_VISUAL_FILE_REFUSAL_STATUS,
   type WorkspaceFileExistenceRequest,
   type WorkspaceFilePreviewRequest,
+  type WorkspaceVisualFileRefusal,
 } from '@kontourai/station-contracts/workspace-file-preview';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod/v3';
@@ -67,6 +69,16 @@ const WORKSPACE_FILE_EXISTENCE_MAX_BODY_BYTES =
   WORKSPACE_FILE_EXISTENCE_MAX_PATHS *
     (WORKSPACE_FILE_PREVIEW_MAX_PATH_LENGTH * 3 + 4) +
   64;
+
+/** The refusal sentence; never the path or anything read from the host. */
+const VISUAL_REFUSAL_MESSAGE: Record<WorkspaceVisualFileRefusal, string> = {
+  missing: 'This file does not exist.',
+  'outside-project': 'This file is outside the Project.',
+  'unsupported-type': 'This file is not a PNG image or HTML page.',
+  'too-large': 'This file is too large to preview.',
+  'no-workspace': 'This Project has no readable workspace.',
+  unreadable: 'Station could not read this file.',
+};
 
 function encodeRfc5987Filename(filename: string): string {
   return encodeURIComponent(filename).replace(
@@ -147,28 +159,36 @@ export function createWorkspacePanePreviewRoutes(
       if (typeof slug !== 'string') return slug;
       const { path, thread } = getBody(c) as { path: string; thread?: string };
       const directory = await directoryFor(c, slug, thread);
+      let read: Awaited<ReturnType<typeof readWorkspaceVisualFile>>;
       try {
-        const visual =
-          directory && (await readWorkspaceVisualFile(directory, path));
-        if (visual)
-          return c.json({
-            success: true,
-            data: {
-              ...visual,
-              ...(visual.kind === 'html'
-                ? { frameOrigin: frameOrigin?.() }
-                : {}),
-            },
-          });
+        read = directory
+          ? await readWorkspaceVisualFile(directory, path)
+          : { refused: 'no-workspace' };
       } catch {
-        // Missing, out-of-scope and invalid visual files share one refusal.
+        read = { refused: 'unreadable' };
+      }
+      if ('visual' in read) {
+        const { visual } = read;
+        return c.json({
+          success: true,
+          data: {
+            ...visual,
+            ...(visual.kind === 'html' ? { frameOrigin: frameOrigin?.() } : {}),
+          },
+        });
       }
       return c.json(
         {
           success: false,
-          error: 'This visual file is unavailable in this Project.',
+          error: VISUAL_REFUSAL_MESSAGE[read.refused],
+          reason: read.refused,
         },
-        404,
+        WORKSPACE_VISUAL_FILE_REFUSAL_STATUS[read.refused] as
+          | 403
+          | 404
+          | 413
+          | 415
+          | 422,
       );
     },
   );

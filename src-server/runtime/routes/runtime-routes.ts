@@ -32,6 +32,7 @@ import { createHomeTransferRoomRoutes } from '../../routes/environments/home-tra
 import { createLiveSurfaceRoutes } from '../../routes/live-surface.js';
 import { createEngineOAuthProxyRoutes } from '../../routes/mcp/engine-oauth-proxy-route.js';
 import { createAccountPreferencesRoutes } from '../../routes/me/account-preferences.js';
+import { createPersonNotificationRoutes } from '../../routes/me/person-notifications.js';
 import { createMediaToolsRoutes } from '../../routes/media-tools.js';
 import { createMobileDeviceRoutes } from '../../routes/mobile-device.js';
 import { createAnalyticsSavedViewRoutes } from '../../routes/operations/analytics-saved-views.js';
@@ -692,7 +693,10 @@ import { actionOperationActorForRequest } from '../../services/operations/action
 import type { ActionOperationService } from '../../services/operations/action-operation-service.js';
 import { AttachmentStagingService } from '../../services/orchestration/attachment-staging-service.js';
 import { recoverCompletedTaskDispatches } from '../../services/orchestration/completed-task-dispatch-recovery.js';
-import { FileConversationAcknowledgementStore } from '../../services/orchestration/conversation-acknowledgement-store.js';
+import {
+  FileConversationAcknowledgementStore,
+  ownerDevicePredicate,
+} from '../../services/orchestration/conversation-acknowledgement-store.js';
 import {
   type DelegationAttemptClaimStore,
   delegationAttemptClaimKey,
@@ -895,6 +899,7 @@ import {
   type RequestDelegationSources,
 } from '../agents/request-delegation.js';
 import {
+  accountBoundProjectRouteMayPass,
   installAccountBoundDeviceGate,
   isTaskRelationshipHttpLeaf,
 } from '../bootstrap/account-bound-device-gate.js';
@@ -1098,6 +1103,7 @@ export interface ConfigureRuntimeRoutesContext {
   /** The Project board aggregate; composed here when absent. */
   workItemProviderService?: Pick<WorkItemProviderService, 'listWorkItems'>;
   orchestrationService: OrchestrationService;
+  nativeForkStoredReadBinder?: import('../../security/native-fork-read-admission.js').NativeForkReadAdmissionDomain['bindAtConversationMount'];
   /** Diagnostics sampler and orchestration's independent engine-start lease. */
   resourcePosture?: import('../../services/infra/resource-posture.js').RuntimeResourcePostureProbe;
   /** Runtime-owned durable operation authority shared with fleet dispatch. */
@@ -3697,7 +3703,10 @@ export function configureRuntimeRoutes(
   // getter that resolves the service per request.
   context.app.route(
     '/api/usage-telemetry',
-    createUsageTelemetryDisclosureRoutes(() => context.getUsageTelemetry?.()),
+    createUsageTelemetryDisclosureRoutes(
+      () => context.getUsageTelemetry?.(),
+      context.environmentSecurityService,
+    ),
   );
   context.app.route(
     '/api/diagnostics',
@@ -5628,6 +5637,22 @@ export function configureRuntimeRoutes(
             )
           : roomRuntime.readPlanForReview(taskId, request);
       },
+      readPlanOrdinals: (taskId, request, revision, revisions) => {
+        const authority = stationControlRequestAuthority(request);
+        return authority?.kind === 'caller'
+          ? roomRuntime.readPlanOrdinalsForSessionReview(
+              taskId,
+              authority.caller.sessionId,
+              revision,
+              revisions,
+            )
+          : roomRuntime.readPlanOrdinalsForReview(
+              taskId,
+              request,
+              revision,
+              revisions,
+            );
+      },
       readAnswers: async (taskId, request, itemId) => {
         const scope =
           context.taskGraphService.readTaskTurnReferenceScope(taskId);
@@ -6377,6 +6402,15 @@ export function configureRuntimeRoutes(
       resolveAgentDispatchActor,
       stationControlDispatchScope,
       isRequestPrincipalCurrent,
+      mayRequestMemoryContinuation: (request, id) =>
+        runtimeRequestPrincipalMayAccessHttpRoute(
+          request,
+          context.environmentSecurityService,
+          {
+            method: 'POST',
+            path: `/api/orchestration/conversations/${encodeURIComponent(id)}/memory-continuation`,
+          },
+        ),
       answerAssessmentModule,
       answerNarrativeBindingModule,
       reviewedSourceBasisResolver,
@@ -7206,6 +7240,28 @@ export function configureRuntimeRoutes(
       context.projectMembership,
       projectMembershipAuthority,
       context.deploymentAuthentication?.publicOrigin,
+      (request, slug) => {
+        const route = {
+          method: 'POST',
+          path: `/api/projects/${slug}/access/enable`,
+        };
+        const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+        const binding =
+          principal?.authority === 'device-credential'
+            ? context.environmentSecurityService.identifyDevice(
+                principal.credential,
+              )?.principalBinding
+            : undefined;
+        return (
+          runtimeRequestPrincipalMayAccessHttpRoute(
+            request,
+            context.environmentSecurityService,
+            route,
+          ) &&
+          (!(binding && 'kind' in binding && binding.kind === 'account') ||
+            accountBoundProjectRouteMayPass(route.method, route.path))
+        );
+      },
     ),
   );
   // #90 Browser pane: personal hosts only (same gate as the device routes),
@@ -9678,6 +9734,13 @@ export function configureRuntimeRoutes(
       },
     }),
   );
+  // Bind the SAME domain as the constructor's verifier to the real final-Request
+  // resolver. Only retained native intents consume handles; replay stays ordinary.
+  const nativeForkStoredReadMount = context.nativeForkStoredReadBinder?.(
+    conversationReadAuthorityForRequest,
+  );
+  if (nativeForkStoredReadMount?.kind === 'unavailable')
+    context.logger.warn('Native fork stored-read mount unavailable');
   context.app.route(
     '/agents',
     createConversationRoutes(
@@ -9723,6 +9786,13 @@ export function configureRuntimeRoutes(
       }),
       conversationReadAuthorityForContext,
       stationControlDispatchScope,
+      {
+        admission:
+          nativeForkStoredReadMount?.kind === 'bound'
+            ? nativeForkStoredReadMount
+            : undefined,
+        service: context.orchestrationService,
+      },
     ),
   );
   // The bytes behind a transcript's attachment chips. Separate from
@@ -9808,6 +9878,9 @@ export function configureRuntimeRoutes(
       undefined,
       new FileConversationAcknowledgementStore(
         context.configLoader.getProjectHomeDir(),
+        ownerDevicePredicate(() =>
+          context.environmentSecurityService.devicePairing.listDevices(),
+        ),
       ),
       conversationReadAuthorityForRequest,
       context.orchestrationService,
@@ -9819,6 +9892,7 @@ export function configureRuntimeRoutes(
           undefined,
           peerCredentialStore,
         ),
+      context.environmentSecurityService,
     ),
   );
   // `rename_session`'s own leaf (never the person's `PATCH`, which stamps
@@ -10232,6 +10306,14 @@ export function configureRuntimeRoutes(
       context.logger,
       conversationReadAuthorityForRequest,
     ),
+  );
+  context.app.route(
+    '/api/me',
+    createPersonNotificationRoutes({
+      service: notificationService,
+      resolvePrincipal: resolveOrchestrationRequestPrincipal,
+      isInternal: (request) => !!stationControlRequestAuthority(request),
+    }),
   );
   context.app.route(
     '/notifications',
@@ -12119,6 +12201,9 @@ export function configureDevicePairingHostRoutes(
       {
         error: 'approval_requires_operator',
         operatorCli: options.operatorCli?.() ?? 'station',
+        ...(options.operatorSessions?.signInUrl
+          ? { signInUrl: options.operatorSessions.signInUrl }
+          : {}),
       },
       403,
     );
@@ -12716,6 +12801,83 @@ export function configureDevicePairingHostRoutes(
   });
   app.post('/api/pairing/requests/:requestId/confirm', async (c) => {
     const requestId = c.req.param('requestId');
+    if (operatorSession(c.req.raw)) {
+      const body =
+        c.req.raw.body === null
+          ? {}
+          : await readPairingOfferJson(c.req.raw, new Set(['', 'scope']));
+      if (
+        !body ||
+        Object.keys(body).some((key) => key !== 'scope') ||
+        (body.scope !== undefined && typeof body.scope !== 'string')
+      )
+        return c.json({ error: 'invalid_request' }, 400);
+      const pending = pairing
+        .listRequests()
+        .find(
+          (entry) =>
+            entry.requestId === requestId && entry.status === 'pending',
+        );
+      if (
+        !pending ||
+        pending.kind === 'delegation' ||
+        pending.requireAccountBinding ||
+        pairing.isRelayEnrollmentRequest(requestId)
+      )
+        return c.json({ error: 'request_not_found' }, 404);
+      const scope = (body.scope as string | undefined) ?? pending.scope;
+      const requested = parsePairingScope(pending.scope);
+      const kept = parsePairingScope(scope);
+      if (
+        !requested ||
+        !kept?.length ||
+        kept.some((entry) => !requested.includes(entry)) ||
+        kept.some(isProtectedPairingPromotionScope)
+      )
+        return c.json({ error: 'invalid_request' }, 400);
+      const targetFor = (entry: typeof pending): ConsentTargetSnapshot => ({
+        kind: 'device-pairing-approval',
+        subject: requestId,
+        fingerprint: JSON.stringify({ entry, scope }),
+      });
+      return stepUp(
+        c,
+        targetFor(pending),
+        `Approve pairing for “${pending.deviceName}”.`,
+        () => {
+          const current = pairing
+            .listRequests()
+            .find(
+              (entry) =>
+                entry.requestId === requestId && entry.status === 'pending',
+            );
+          return current ? targetFor(current) : null;
+        },
+        async (_passkeyId, _sessionId, assertCurrent) => {
+          assertCurrent();
+          return {
+            ...pairing.confirmRequest(
+              requestId,
+              { kind: 'presented-credential' },
+              undefined,
+              { scope },
+            ),
+          };
+        },
+        undefined,
+        [
+          {
+            label: 'Access',
+            detail: kept
+              .map((entry) => PAIRING_SCOPE_DESCRIPTIONS[entry].label)
+              .join(', '),
+          },
+        ],
+        deviceRequestedExtraScopes(scope).length
+          ? 'This device can run commands or skip approval prompts.'
+          : undefined,
+      );
+    }
     // station#1490: the ONLY caller-identity signal this handler has. The
     // granted-scope var is published by `runtime-http.ts` exclusively on the
     // branch where a presented credential was verified AND satisfied the

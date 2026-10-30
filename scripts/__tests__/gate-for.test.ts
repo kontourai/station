@@ -26,6 +26,21 @@ const SCRIPTS: Record<string, string> = JSON.parse(
   readFileSync('package.json', 'utf8'),
 ).scripts;
 
+function hookChecks() {
+  return PRE_PUSH.split('\n')
+    .filter((line) => !/^\s*(?:#|echo\b)/.test(line))
+    .flatMap((line) => {
+      const wrapped =
+        /node scripts\/heavy-check-slot\.mjs\s+\S+\s+(scripts\/\S+\.mjs)(?:\s+([^\n]+))?/.exec(
+          line,
+        );
+      if (wrapped) return [wrapped[0]];
+      const match =
+        /(npm run --silent \S+|node scripts\/\S+\.mjs(?: --\S+)*)/.exec(line);
+      return match ? [match[1].replace('npm run --silent ', 'npm run ')] : [];
+    });
+}
+
 function runJson(args: string[]) {
   const run = spawnSync('node', ['scripts/gate-for.mjs', '--json', ...args], {
     encoding: 'utf8',
@@ -92,7 +107,7 @@ describe('gate-for report', () => {
     expect(scopes.length).toBeGreaterThan(0);
     for (const scope of scopes) {
       expect(scope.runs, scope.name).toBe(true);
-      expect(PRE_PUSH, scope.name).toContain(scope.command);
+      expect(hookChecks(), scope.name).toContain(scope.command);
     }
   });
 
@@ -146,13 +161,7 @@ describe('gate-for report', () => {
         'resolves the liveness factor the checks inherit (#3302); refuses only a malformed override',
       ],
     ]);
-    const hookCommands = PRE_PUSH.split('\n')
-      .filter((line) => !/^\s*(?:#|echo\b)/.test(line))
-      .flatMap((line) => {
-        const match =
-          /(npm run --silent \S+|node scripts\/\S+\.mjs(?: --\S+)*)/.exec(line);
-        return match ? [match[1].replace('npm run --silent ', 'npm run ')] : [];
-      });
+    const hookCommands = hookChecks();
     for (const step of SETUP_STEPS.keys())
       expect(hookCommands, `setup step ${step} left the hook`).toContain(step);
     const plan = gatePlan({ changedPaths: [], baseSha });

@@ -18,8 +18,10 @@ import {
   useNotificationHistory,
   useToast,
 } from '../../contexts/ToastContext';
+import { useCoarsePointer } from '../../hooks/useCoarsePointer';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import { Button } from '../Button';
+import { WarningGlyph } from '../icons/Glyph';
 import {
   focusRenderedApprovalCard,
   getApprovalClaims,
@@ -210,10 +212,14 @@ function ToastCard({
           <div className="toast-card__message">
             {(notification.type === 'warning' ||
               notification.type === 'error') && (
-              <strong>
-                {notification.type === 'error' ? 'Error: ' : 'Warning: '}
+              <strong className="toast-card__severity">
+                <WarningGlyph />
+                {notification.type === 'error' ? 'Error:' : 'Warning:'}
               </strong>
             )}
+            {(notification.type === 'warning' ||
+              notification.type === 'error') &&
+              ' '}
             {headline}
           </div>
           {(notification.occurrences ?? 1) > 1 && (
@@ -382,6 +388,9 @@ export function NotificationContainer() {
   const history = useNotificationHistory();
   const { dismissToast } = useToast();
   const activeChatIds = useActiveChatIds();
+  // A finger has no keyboard chord to press: the card's ⌘1/Ctrl+1 hint is
+  // withheld on a coarse primary pointer rather than shown as dead text.
+  const coarsePointer = useCoarsePointer();
   const { navigate } = useNavigationActions();
   const approvalQueueRef = useRef<HTMLDivElement>(null);
   const approvalQueueTriggerRef = useRef<HTMLButtonElement>(null);
@@ -539,7 +548,7 @@ export function NotificationContainer() {
   );
 
   const getSessionShortcut = (sessionId: string | undefined): string | null => {
-    if (!sessionId) return null;
+    if (!sessionId || coarsePointer) return null;
     const sessionIndex = activeChatIds.indexOf(sessionId);
     if (sessionIndex < 0 || sessionIndex >= 9) return null;
     const isMac = navigator.platform.toUpperCase().includes('MAC');

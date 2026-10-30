@@ -19,6 +19,22 @@ import { transcriptMcpToolRef } from './mcp-app-tool-ref';
  */
 
 import { hasStationControlCallRow } from './agent-message/station-control-calls';
+import { claudeArtifactLinkOf } from './claude-artifact-link';
+
+/** A call shown as its own row rather than one line of a collapsed run. */
+function hasOwnCallRow(part: ToolCallLike): boolean {
+  return (
+    hasStationControlCallRow(part) || claudeArtifactLinkOf(part) !== undefined
+  );
+}
+
+/** A single-call run whose call is a published Claude Code artifact. */
+function isArtifactRun(block: { calls: { part: ToolCallLike }[] }): boolean {
+  return (
+    block.calls.length === 1 &&
+    claudeArtifactLinkOf(block.calls[0]!.part) !== undefined
+  );
+}
 
 /** Minimal duck-typed shape both `ChatMessage['contentParts']` element types
  * (`types.ts` and `contexts/active-chats-state.ts`) already satisfy. */
@@ -115,8 +131,9 @@ export function splitToolCallRuns<P extends ToolCallLike>(
 
   parts.forEach((part, index) => {
     // #3419: a message sent to another Session is its own row, never one line
-    // of a collapsed "used 3 tools" summary.
-    if (isToolCallPart(part) && hasStationControlCallRow(part)) {
+    // of a collapsed "used 3 tools" summary; so is a published artifact,
+    // whose link is the call's deliverable.
+    if (isToolCallPart(part) && hasOwnCallRow(part)) {
       flushRun();
       blocks.push(buildRun([{ part, index }]));
       return;
@@ -196,7 +213,11 @@ export function foldTurnWork<P extends ToolCallLike>(
   const interludes: { part: P; index: number }[] = [];
   const kept: RunBlock<P>[] = [];
   for (const block of blocks.slice(firstRun, lastRun + 1)) {
-    if (block.type === 'tool-call-run') {
+    // A published artifact is something the agent produced: like a file, it
+    // stays in the transcript instead of folding into the work sheet.
+    if (block.type === 'tool-call-run' && isArtifactRun(block)) {
+      kept.push(block);
+    } else if (block.type === 'tool-call-run') {
       calls.push(...block.calls);
     } else if (block.type === 'content-part' && isFoldableProse(block.part)) {
       interludes.push({ part: block.part, index: block.index });
@@ -204,6 +225,8 @@ export function foldTurnWork<P extends ToolCallLike>(
       kept.push(block);
     }
   }
+  // Every call in the span is a published artifact: nothing to fold.
+  if (calls.length === 0) return blocks;
   const after = blocks.slice(lastRun + 1);
   // A turn that ends on a call has no outcome below the row: its last words
   // (often a question for the user) would only be reachable by opening the

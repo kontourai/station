@@ -17,8 +17,8 @@
  *   `canUserReadSession`) — plus the operator when the operator can read it.
  *   An agent notification is session content; a device that cannot open the
  *   session must not be shown its text on a lock screen.
- * - `principal`: reserved for accounts. Nothing resolves it yet, so it
- *   reaches no surface (the in-app feed still carries it) and says so once.
+ * - `principal`: the private in-app feed is its delivery. Push is deferred
+ *   to 2F-b, so no interrupting surface is resolved here.
  *
  * Whatever the audience, a record that NAMES a session (legacy approvals
  * carry `metadata.sessionId`; an envelope may name one too, as turn
@@ -178,11 +178,15 @@ export function createPairingAudienceResolver(
       if (audience.kind === 'owner') return readers(named);
       if (audience.kind === 'session-readers')
         return readers([...new Set([audience.sessionId, ...named])]);
-      if (!warnedPrincipal) {
-        warnedPrincipal = true;
-        deps.logger.warn(
-          'notification-delivery: principal audiences are not supported yet; delivering in-app only',
-        );
+      if (audience.kind === 'principal') {
+        // Principal-targeted push is deferred to 2F-b.
+        if (!warnedPrincipal) {
+          warnedPrincipal = true;
+          deps.logger.warn(
+            'notification-delivery: principal audiences are not supported yet; delivering in-app only',
+          );
+        }
+        return NO_ONE;
       }
       return NO_ONE;
     },

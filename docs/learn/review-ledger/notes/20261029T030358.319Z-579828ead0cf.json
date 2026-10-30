@@ -1,0 +1,7 @@
+{
+  "revision": "3650f87c3e87deaeef4178e49b5f4ec05107e1f1",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the final adapter-retirement.ts diagnostics through runOperationWithinDeadline, shutdownRetirementTasks and OrchestrationService.shutdown. Warning metadata now preserves cleanup identity and up to five bounded direct aggregate causes, using sanitizeFreeText before both durable and stdout logger sinks. Deadlines, retirement ownership, rejection identity and terminal behavior remain unchanged; the module map makes no conflicting logging-field claim. Focused adapter-retirement suite passed all 11 tests including private URL/path redaction; removing diagnostic logging previously caused both intended regression failures. This is local diagnostic evidence only, not a native Codex history or interruption fix. No prose change required.","inputs":["docs/architecture/module-map.md"]}
+  ]
+}

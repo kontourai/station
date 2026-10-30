@@ -681,55 +681,64 @@ describe('chat-lifecycle helpers', () => {
       return { store, updateConversation };
     }
 
-    test('writes the generated title with titleSource "auto" for a new conversation with output', async () => {
-      generateConversationTitle.mockReset();
-      generateConversationTitle.mockResolvedValue('A generated title');
-      const ctx = createRuntimeContext();
-      const { store, updateConversation } = createFakeConversationStorage({
-        'conversation-1': {
-          id: 'conversation-1',
-          title: 'the first fifty characters of the prompt',
-          metadata: { projectSlug: 'proj' },
-        },
-      });
+    // #4266: a first-prompt title (`ensureChatConversation` stamps
+    // 'prompt' on every current conversation) is the fallback a generated
+    // title replaces, as is a legacy record with no source.
+    test.each([
+      ['a legacy record without a source', {}],
+      ['a prompt-derived title', { titleSource: 'prompt' }],
+    ])(
+      'writes the generated title with titleSource "generated" over %s',
+      async (_case, source) => {
+        generateConversationTitle.mockReset();
+        generateConversationTitle.mockResolvedValue('A generated title');
+        const ctx = createRuntimeContext();
+        const { store, updateConversation } = createFakeConversationStorage({
+          'conversation-1': {
+            id: 'conversation-1',
+            title: 'the first fifty characters of the prompt',
+            metadata: { projectSlug: 'proj', ...source },
+          },
+        });
 
-      await finalizeChatRequest({
-        ctx,
-        slug: 'agent-a',
-        plugin: 'plugin-a',
-        input: 'hello there',
-        operationContext: {
-          userId: 'user-1',
-          conversationId: 'conversation-1',
-          traceId: 'trace-1',
-        },
-        completionReason: 'completed',
-        accumulatedText: 'A real answer',
-        reasoningText: '',
-        artifacts: [],
-        result: { usage: Promise.resolve({}) },
-        memoryAdapter: null,
-        conversationStorage: { updateConversation },
-        conversationId: 'conversation-1',
-        isNewConversation: true,
-        chatStartMs: Date.now(),
-        chatSpan: chatSpanStub(),
-      });
-
-      await vi.waitFor(() => expect(updateConversation).toHaveBeenCalled());
-
-      expect(generateConversationTitle).toHaveBeenCalledWith(
-        expect.objectContaining({
+        await finalizeChatRequest({
           ctx,
-          firstUserText: 'hello there',
-          assistantText: 'A real answer',
-        }),
-      );
-      expect(store.get('conversation-1')).toMatchObject({
-        title: 'A generated title',
-        metadata: { projectSlug: 'proj', titleSource: 'auto' },
-      });
-    });
+          slug: 'agent-a',
+          plugin: 'plugin-a',
+          input: 'hello there',
+          operationContext: {
+            userId: 'user-1',
+            conversationId: 'conversation-1',
+            traceId: 'trace-1',
+          },
+          completionReason: 'completed',
+          accumulatedText: 'A real answer',
+          reasoningText: '',
+          artifacts: [],
+          result: { usage: Promise.resolve({}) },
+          memoryAdapter: null,
+          conversationStorage: { updateConversation },
+          conversationId: 'conversation-1',
+          isNewConversation: true,
+          chatStartMs: Date.now(),
+          chatSpan: chatSpanStub(),
+        });
+
+        await vi.waitFor(() => expect(updateConversation).toHaveBeenCalled());
+
+        expect(generateConversationTitle).toHaveBeenCalledWith(
+          expect.objectContaining({
+            ctx,
+            firstUserText: 'hello there',
+            assistantText: 'A real answer',
+          }),
+        );
+        expect(store.get('conversation-1')).toMatchObject({
+          title: 'A generated title',
+          metadata: { projectSlug: 'proj', titleSource: 'generated' },
+        });
+      },
+    );
 
     test('does not write when the conversation already has titleSource "user" (a human rename wins)', async () => {
       generateConversationTitle.mockReset();
@@ -777,48 +786,51 @@ describe('chat-lifecycle helpers', () => {
       });
     });
 
-    test('does not overwrite a provider-reported title with an asynchronous generated title', async () => {
-      generateConversationTitle.mockReset();
-      generateConversationTitle.mockResolvedValue('A generated title');
-      const ctx = createRuntimeContext();
-      const { store, updateConversation } = createFakeConversationStorage({
-        'conversation-1': {
+    test.each(['provider', 'agent'])(
+      'does not overwrite a %s title with an asynchronous generated title',
+      async (titleSource) => {
+        generateConversationTitle.mockReset();
+        generateConversationTitle.mockResolvedValue('A generated title');
+        const ctx = createRuntimeContext();
+        const { store, updateConversation } = createFakeConversationStorage({
+          'conversation-1': {
+            id: 'conversation-1',
+            title: 'Provider reported title',
+            metadata: { titleSource },
+          },
+        });
+
+        await finalizeChatRequest({
+          ctx,
+          slug: 'agent-a',
+          plugin: 'plugin-a',
+          input: 'hello there',
+          operationContext: {
+            userId: 'user-1',
+            conversationId: 'conversation-1',
+            traceId: 'trace-1',
+          },
+          completionReason: 'completed',
+          accumulatedText: 'A real answer',
+          reasoningText: '',
+          artifacts: [],
+          result: { usage: Promise.resolve({}) },
+          memoryAdapter: null,
+          conversationStorage: { updateConversation },
+          conversationId: 'conversation-1',
+          isNewConversation: true,
+          chatStartMs: Date.now(),
+          chatSpan: chatSpanStub(),
+        });
+
+        await vi.waitFor(() => expect(updateConversation).toHaveBeenCalled());
+        expect(store.get('conversation-1')).toEqual({
           id: 'conversation-1',
           title: 'Provider reported title',
-          metadata: { titleSource: 'provider' },
-        },
-      });
-
-      await finalizeChatRequest({
-        ctx,
-        slug: 'agent-a',
-        plugin: 'plugin-a',
-        input: 'hello there',
-        operationContext: {
-          userId: 'user-1',
-          conversationId: 'conversation-1',
-          traceId: 'trace-1',
-        },
-        completionReason: 'completed',
-        accumulatedText: 'A real answer',
-        reasoningText: '',
-        artifacts: [],
-        result: { usage: Promise.resolve({}) },
-        memoryAdapter: null,
-        conversationStorage: { updateConversation },
-        conversationId: 'conversation-1',
-        isNewConversation: true,
-        chatStartMs: Date.now(),
-        chatSpan: chatSpanStub(),
-      });
-
-      await vi.waitFor(() => expect(updateConversation).toHaveBeenCalled());
-      expect(store.get('conversation-1')).toEqual({
-        id: 'conversation-1',
-        title: 'Provider reported title',
-        metadata: { titleSource: 'provider' },
-      });
-    });
+          metadata: { titleSource },
+        });
+      },
+    );
 
     // archive#1566 review (HIGH, TOCTOU): the original shape read the
     // conversation, decided, and only THEN wrote a static object — a rename

@@ -40,8 +40,16 @@ function mergePages(
 
 interface SessionEventWindowReader {
   events: OrchestrationSequencedEvent[];
+  /**
+   * #4266: event ids of `turn.started` events held without the events after
+   * them: a `turnStartDetached` page re-added the start, and no read has
+   * reached it in range yet (the fill is pending, cut short, or left to Load
+   * older). The projection adopts no terminal `outputText` for those turns.
+   */
+  partialTurnStartEventIds: ReadonlySet<string>;
   /** Stable event-log head captured by the window read. */
   watermark: number;
+  memoryContinuation?: OrchestrationConversationEventWindow['memoryContinuation'];
   /** Present for conversation reads when the newest lineage child is known. */
   currentSessionId?: string;
   /** Per-execution-Session Agent identity for historical transcript rows. */
@@ -194,6 +202,34 @@ function newestTurnStart(
   )?.sequence;
 }
 
+const NO_PARTIAL_TURNS: ReadonlySet<string> = new Set();
+
+/**
+ * Updates which held turn starts are detached from the rest of their turn
+ * after reading `page`. A start the page reads in range closes its turn: the
+ * reads that reach it page down contiguously from the events above. A start
+ * a detached page re-added is partial unless a read already closed it.
+ */
+function notePartialTurnStarts(
+  page: Pick<
+    OrchestrationConversationEventWindow,
+    'events' | 'turnStartDetached'
+  >,
+  partial: Set<string>,
+  closed: Set<string>,
+): void {
+  const inRange = page.turnStartDetached ? page.events.slice(1) : page.events;
+  for (const { event } of inRange) {
+    if (event.method !== 'turn.started' || !event.eventId) continue;
+    closed.add(event.eventId);
+    partial.delete(event.eventId);
+  }
+  const anchor = page.turnStartDetached
+    ? page.events[0]?.event.eventId
+    : undefined;
+  if (anchor && !closed.has(anchor)) partial.add(anchor);
+}
+
 function lowest(...values: (number | undefined)[]): number | undefined {
   const defined = values.filter((value) => value !== undefined);
   return defined.length ? Math.min(...defined) : undefined;
@@ -225,6 +261,8 @@ export function useSessionEventWindow(
   >([]);
   const [cursor, setCursor] = useState<string | undefined>();
   const [watermark, setWatermark] = useState(0);
+  const [memoryContinuation, setMemoryContinuation] =
+    useState<OrchestrationConversationEventWindow['memoryContinuation']>();
   const [loading, setLoading] = useState(false);
   const [settled, setSettled] = useState(false);
   const [settledRevision, setSettledRevision] = useState<number | undefined>();
@@ -247,6 +285,15 @@ export function useSessionEventWindow(
   cursorRef.current = cursor;
   const eventsRef = useRef(events);
   const pendingFloorRef = useRef<number | undefined>(undefined);
+  const partialRef = useRef(new Set<string>());
+  // Each cursor owes a continuous read down to its floor. Coalescing the
+  // oldest gaps at the bound retains every anchor and the lowest floor.
+  const heldGapsRef = useRef<
+    Array<{ floor: number; cursor: string; anchors: Set<string> }>
+  >([]);
+  const closedRef = useRef(new Set<string>());
+  const [partialTurnStartEventIds, setPartialTurnStartEventIds] =
+    useState<ReadonlySet<string>>(NO_PARTIAL_TURNS);
   eventsRef.current = events;
   watermarkRef.current = watermark;
   reconcileRevisionRef.current = reconcileRevision;
@@ -275,6 +322,7 @@ export function useSessionEventWindow(
     requestControllerRef.current = controller;
     setLoading(true);
     setSettled(false);
+    setMemoryContinuation(undefined);
     let fill: { cursor: string; floor: number } | undefined;
     try {
       const capability = await fetchSessionEventWindowCapability(apiBase);
@@ -332,6 +380,7 @@ export function useSessionEventWindow(
       setSessionLineage(page.sessionLineage);
       setHandoffs(page.handoffs ?? []);
       setContextBoundaries(page.contextBoundaries ?? []);
+      setMemoryContinuation(page.memoryContinuation);
       const next = page.events;
       if (namespace) {
         void saveOfflineReading(
@@ -351,7 +400,11 @@ export function useSessionEventWindow(
       // A fill a later read cut short still owes its gap, so its floor holds
       // until some fill reaches it.
       const floor = olderLoadedRef.current
-        ? lowest(eventsRef.current.at(-1)?.sequence, pendingFloorRef.current)
+        ? lowest(
+            eventsRef.current.at(-1)?.sequence,
+            pendingFloorRef.current,
+            ...heldGapsRef.current.map((gap) => gap.floor),
+          )
         : newestTurnStart(next);
       if (
         page.nextCursor &&
@@ -364,6 +417,38 @@ export function useSessionEventWindow(
       setEvents((current) =>
         mergePages(olderLoadedRef.current ? current : [], next),
       );
+      // A page that replaces what is held starts the record over.
+      if (!olderLoadedRef.current) {
+        partialRef.current = new Set();
+        closedRef.current = new Set();
+        heldGapsRef.current = [];
+      }
+      notePartialTurnStarts(page, partialRef.current, closedRef.current);
+      // A reload whose detached start was closed by an earlier fill can land
+      // above what is held again: the gap between is owed anew, and the fill
+      // may stop short of it (its page bound, a newer read).
+      const anchor = page.turnStartDetached
+        ? next[0]?.event.eventId
+        : undefined;
+      if (fill && olderLoadedRef.current) {
+        const anchors = new Set(anchor ? [anchor] : []);
+        heldGapsRef.current.push({ ...fill, anchors });
+        if (heldGapsRef.current.length > 128) {
+          const oldest = heldGapsRef.current.shift()!;
+          const next = heldGapsRef.current[0]!;
+          next.floor = Math.min(oldest.floor, next.floor);
+          for (const id of oldest.anchors) next.anchors.add(id);
+        }
+      } else if (!fill) {
+        heldGapsRef.current = heldGapsRef.current.filter((gap) => {
+          if (contiguousFrom(page) > gap.floor) return true;
+          for (const id of gap.anchors) partialRef.current.delete(id);
+          return false;
+        });
+      }
+      for (const gap of heldGapsRef.current)
+        for (const id of gap.anchors) partialRef.current.add(id);
+      setPartialTurnStartEventIds(new Set(partialRef.current));
       if (!olderLoadedRef.current) setCursor(page.nextCursor);
       setWatermark(page.watermark);
       watermarkRef.current = page.watermark;
@@ -450,6 +535,22 @@ export function useSessionEventWindow(
         // have passed. The events it pages lie below that head and never
         // change, so its page merges whatever the reader's head is now.
         setEvents((current) => mergePages(page.events, current));
+        notePartialTurnStarts(page, partialRef.current, closedRef.current);
+        const activeGap = heldGapsRef.current.find(
+          (gap) => gap.cursor === pageCursor,
+        );
+        if (activeGap) {
+          heldGapsRef.current = heldGapsRef.current.filter((gap) => {
+            if (contiguousFrom(page) > gap.floor) return true;
+            for (const id of gap.anchors) partialRef.current.delete(id);
+            return false;
+          });
+          if (heldGapsRef.current.includes(activeGap) && page.nextCursor)
+            activeGap.cursor = page.nextCursor;
+        }
+        for (const gap of heldGapsRef.current)
+          for (const id of gap.anchors) partialRef.current.add(id);
+        setPartialTurnStartEventIds(new Set(partialRef.current));
         if (options.olderLoaded) olderLoadedRef.current = true;
         if (options.adoptCursor) setCursor(page.nextCursor);
         return page;
@@ -471,6 +572,11 @@ export function useSessionEventWindow(
   );
 
   const loadOlder = useCallback(async () => {
+    const heldGap = heldGapsRef.current.at(-1);
+    if (heldGap) {
+      await fillRef.current(heldGap.cursor, heldGap.floor);
+      return;
+    }
     const pageCursor = cursorRef.current;
     if (pageCursor)
       await readOlder(pageCursor, { adoptCursor: true, olderLoaded: true });
@@ -502,7 +608,8 @@ export function useSessionEventWindow(
       }
       // Bounded or out of pages: Load older owns the rest of the gap.
       pendingFloorRef.current = undefined;
-      if (!adoptCursor && pageCursor) setCursor(pageCursor);
+      if (!adoptCursor && pageCursor && !heldGapsRef.current.length)
+        setCursor(pageCursor);
     },
     [readOlder],
   );
@@ -516,6 +623,10 @@ export function useSessionEventWindow(
     requestControllerRef.current?.abort();
     olderLoadedRef.current = false;
     pendingFloorRef.current = undefined;
+    partialRef.current = new Set();
+    closedRef.current = new Set();
+    heldGapsRef.current = [];
+    setPartialTurnStartEventIds(NO_PARTIAL_TURNS);
     if (recoveryTimerRef.current !== undefined) {
       clearTimeout(recoveryTimerRef.current);
       recoveryTimerRef.current = undefined;
@@ -527,6 +638,7 @@ export function useSessionEventWindow(
     setContextBoundaries([]);
     setCursor(undefined);
     setWatermark(0);
+    setMemoryContinuation(undefined);
     setError(undefined);
     setUpgradeRequired(false);
     // A new thread has not been read yet, whatever the previous one reported.
@@ -562,7 +674,7 @@ export function useSessionEventWindow(
       sessionLineage,
       handoffs,
       contextBoundaries,
-      hasMore: Boolean(cursor),
+      hasMore: Boolean(cursor || heldGapsRef.current.length),
       loading,
       settled,
       upgradeRequired,
@@ -591,12 +703,16 @@ export function useSessionEventWindow(
   );
   return {
     events: currentReader ? events : [],
+    partialTurnStartEventIds: currentReader
+      ? partialTurnStartEventIds
+      : NO_PARTIAL_TURNS,
     watermark: currentReader ? watermark : 0,
+    memoryContinuation: currentReader ? memoryContinuation : undefined,
     ...(currentReader && currentSessionId ? { currentSessionId } : {}),
     ...(currentReader && sessionLineage ? { sessionLineage } : {}),
     handoffs: currentReader ? handoffs : [],
     contextBoundaries: currentReader ? contextBoundaries : [],
-    hasMore: currentReader && Boolean(cursor),
+    hasMore: currentReader && Boolean(cursor || heldGapsRef.current.length),
     loadOlder,
     reload,
     upgradeRequired: currentReader && upgradeRequired,

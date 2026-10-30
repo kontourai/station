@@ -1242,7 +1242,7 @@ describe('subagent transcript cards', () => {
     // The first settle's reported end (17m 04s after the reported start).
     expect(within(card).getByText('17:04')).toBeTruthy();
     expect(
-      within(card).getByText('**Verdict: merge as-is.** I found no blockers.'),
+      within(card).getByText('Verdict: merge as-is. I found no blockers.'),
     ).toBeTruthy();
 
     fireEvent.click(within(card).getByRole('button', { expanded: false }));

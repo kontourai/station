@@ -270,6 +270,81 @@ describe('classifyToolCallRun', () => {
     );
   });
 
+  describe('#4266: a command row leads with what ran, not the shell wrapper', () => {
+    const label = (args: unknown, state = 'completed', needsApproval = false) =>
+      classifyFirstRun([
+        toolCall({
+          toolCallId: 'a',
+          toolName: 'Bash',
+          args,
+          state,
+          needsApproval,
+        }),
+      ]).summary;
+    const heredoc = [
+      "/bin/bash -lc \"python3 - <<'PY'",
+      'import json',
+      'for line in open("x"):',
+      '    print(line)',
+      'a = 1',
+      'b = 2',
+      'c = 3',
+      'd = 4',
+      'e = 5',
+      'PY"',
+    ].join('\n');
+
+    test.each([
+      [
+        "/bin/bash -lc 'npx --no @kontourai/veritas readiness'",
+        'Ran npx --no @kontourai/veritas readiness',
+      ],
+      ['bash -c "git status --short"', 'Ran git status --short'],
+      ['/usr/bin/zsh -l -c \'echo "a b"\'', 'Ran echo "a b"'],
+      ["sh -c 'echo it'\\''s'", "Ran echo it's"],
+      [heredoc, 'Ran python3 script (8 lines)'],
+      // Not exactly a wrapper and one script: shown as written.
+      ["bash -c 'echo a' extra", "Ran bash -c 'echo a' extra"],
+      ['bash script.sh', 'Ran bash script.sh'],
+      ["bash -lc 'unterminated", "Ran bash -lc 'unterminated"],
+    ])('a settled %s', (command, expected) => {
+      expect(label({ command })).toBe(expected);
+    });
+
+    test('an argv wrapper is unwrapped too', () => {
+      expect(
+        label({ command: ['/bin/bash', '-lc', 'cargo test --quiet'] }),
+      ).toBe('Ran cargo test --quiet');
+    });
+
+    test("the engine's description leads, followed by the unwrapped command", () => {
+      const args = {
+        command: "/bin/bash -lc 'npx --no @kontourai/veritas readiness'",
+        description: 'Run the Veritas readiness check',
+      };
+      expect(label(args)).toBe(
+        'Run the Veritas readiness check · npx --no @kontourai/veritas readiness',
+      );
+      expect(label(args, 'running')).toBe(
+        'Run the Veritas readiness check · npx --no @kontourai/veritas readiness…',
+      );
+      expect(label({ description: 'Wait for the build' })).toBe(
+        'Wait for the build',
+      );
+    });
+
+    test('a call awaiting approval shows the whole command, wrapper and all, and no description', () => {
+      const command = "/bin/bash -lc 'rm -rf build'";
+      expect(
+        label(
+          { command, description: 'Clean the build' },
+          'awaiting-approval',
+          true,
+        ),
+      ).toBe(`Run ${command}`);
+    });
+  });
+
   test.each([
     'JAVA_TOOL_OPTIONS',
     'npm_config_script_shell',
@@ -415,7 +490,7 @@ describe('classifyToolCallRun', () => {
     expect(group.inProgress).toBe(true);
     // The summary never names the current call (its own child row does):
     // noun inventory, nothing past tense until every call settled.
-    expect(group.summary).toBe('1 file read, 1 command · 1 done');
+    expect(group.summary).toBe('1 file read, 1 command · 1 done · 1 running');
     expect(group.aggregateSummary).toBe('1 file read, 1 command');
     expect(group.activeCalls.map((call) => call.part.toolCallId)).toEqual([
       'b',
@@ -439,8 +514,8 @@ describe('classifyToolCallRun', () => {
       }),
     ];
     const group = classifyFirstRun(parts);
-    // Nothing settled yet: no count to report.
-    expect(group.summary).toBe('1 file read, 1 command');
+    // Nothing settled yet: only what runs is counted.
+    expect(group.summary).toBe('1 file read, 1 command · 2 running');
     expect(group.activeCalls.map((call) => call.part.toolCallId)).toEqual([
       'a',
       'b',
@@ -466,7 +541,7 @@ describe('classifyToolCallRun', () => {
     ];
     const group = classifyFirstRun(parts);
     // Settled, but it failed: "1 done" would call a failure finished work.
-    expect(group.summary).toBe('1 file read, 1 command');
+    expect(group.summary).toBe('1 file read, 1 command · 1 running');
     expect(group.settledCount).toBe(1);
     expect(group.activeCalls.map((call) => call.part.toolCallId)).toEqual([
       'b',
@@ -610,7 +685,7 @@ describe('classifyToolCallRun', () => {
     ];
     const group = classifyFirstRun(parts);
     expect(group.activeCalls[0]?.part.progressMessage).toBe('still going');
-    expect(group.summary).toBe('1 file read, 1 command · 1 done');
+    expect(group.summary).toBe('1 file read, 1 command · 1 done · 1 running');
   });
 
   test('a solo in-progress call gets a progressive label and trailing ellipsis', () => {
@@ -698,7 +773,7 @@ describe('classifyToolCallRun', () => {
       // "Ran" was; the bare verb is the only form true of both, and the
       // ellipsis (which means "still going") is dropped with it.
       // The unresolved call has no outcome: it is not "done" either.
-      expect(group.summary).toBe('2 commands');
+      expect(group.summary).toBe('2 commands · 1 running');
       expect(group.inProgress).toBe(true);
       expect(group.unresolvedCount).toBe(1);
     });
@@ -1501,5 +1576,51 @@ test('"N done" counts only calls that finished successfully', () => {
     toolCall({ toolCallId: 'stopped', toolName: 'Bash', state: 'cancelled' }),
     toolCall({ toolCallId: 'live', toolName: 'Bash', state: 'running' }),
   ]);
-  expect(group.summary).toBe('4 commands · 1 done');
+  expect(group.summary).toBe('4 commands · 1 done · 1 running');
+  expect(group.failedCount).toBe(1);
+  expect(group.cancelledCount).toBe(1);
+});
+
+test('#4266: a live batch header counts every call once, the running one included', () => {
+  const bash = (id: string, overrides: Partial<ToolCallLike>) =>
+    toolCall({
+      toolCallId: id,
+      toolName: 'Bash',
+      args: { command: `echo ${id}` },
+      ...overrides,
+    });
+  const group = classifyFirstRun([
+    ...['a', 'b', 'c', 'd', 'e', 'f'].map((id) =>
+      bash(id, { state: 'completed', result: 'ok' }),
+    ),
+    bash('g', { state: 'error', error: 'exit 1' }),
+    bash('h', { state: 'error', error: 'exit 2' }),
+    bash('i', { state: 'running' }),
+  ]);
+  expect(group.summary).toBe('9 commands · 6 done · 1 running');
+  expect(group.failedCount).toBe(2);
+  const counted =
+    6 +
+    group.activeCalls.length +
+    group.failedCount +
+    group.recoveredCount +
+    group.unresolvedCount +
+    group.awaitingApprovalCount +
+    group.deniedCount +
+    group.cancelledCount;
+  expect(counted).toBe(group.calls.length);
+});
+
+test('#4266: a call both failed and cancelled is counted once, as cancelled', () => {
+  const group = classifyFirstRun([
+    toolCall({ toolCallId: 'a', toolName: 'Bash', state: 'completed' }),
+    toolCall({
+      toolCallId: 'b',
+      toolName: 'Bash',
+      state: 'cancelled',
+      error: 'interrupted',
+    }),
+  ]);
+  expect(group.cancelledCount).toBe(1);
+  expect(group.failedCount).toBe(0);
 });

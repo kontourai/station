@@ -1,0 +1,9 @@
+{
+  "revision": "ff2ef93ef7b92287a1fc4e8ea7c79ad9700af0c2",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Rechecked: owned-process.mjs keeps the coordinator's exact identity once resolved; a failed lookup is not kept and is retried on the next command. The comment now records that the first synchronous lookup can still delay an owned process started earlier through another path. The portable-floor and owned-command runner paragraphs make no claim about identity lookup timing, so they stay accurate.","inputs":["docs/guides/testing.md","scripts/lib/owned-process.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Rechecked: owned-process.mjs keeps an exact coordinator identity once resolved and retries a miss; the rule to reuse owned-process.mjs for process-tree ownership and bounded output is unchanged.","inputs":["scripts/AGENTS.md","scripts/lib/owned-process.mjs"]}
+  ]
+}

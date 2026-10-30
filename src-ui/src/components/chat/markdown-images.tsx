@@ -8,11 +8,16 @@ import type { ComponentPropsWithoutRef, ReactNode } from 'react';
 import { defaultUrlTransform, type UrlTransform } from 'react-markdown';
 import { useOptionalPreview } from '../../contexts/PreviewContext';
 import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
-import { WarningGlyph } from '../icons/Glyph';
 import { useAttachmentObjectUrlState } from './FilePartPreview';
 import { type HostImagesView, useHostImages } from './HostImagesContext';
 import { useMarkdownLinkContext } from './MarkdownLinkContext';
-import { WorkspaceFileReply, workspaceVisualPath } from './WorkspaceFileReply';
+import {
+  VisualUnavailableCard,
+  visualFileFailureText,
+  WorkspaceFileReply,
+  workspaceFilePath,
+  workspaceVisualPath,
+} from './WorkspaceFileReply';
 
 /**
  * An inline image a model wrote as a data URL. Only the raster types chat
@@ -71,6 +76,14 @@ function mediaTypeOf(src: string): string {
 type ImageProps = ComponentPropsWithoutRef<'img'> & { node?: unknown };
 
 /**
+ * A file name Station's visual reader does not show: any extension but HTML
+ * and PNG (`workspaceVisualPath`), save the vector and icon types a page
+ * serves itself. A JPEG, GIF or WebP in the Project is refused there, so it
+ * says so instead of rendering a broken image.
+ */
+const UNSHOWN_FILE = /\.(?!(?:html?|png|svg|avif|bmp|ico)$)[a-z0-9]+$/i;
+
+/**
  * A markdown image that opens the shared previewer (zoom, pinch) on click, so
  * an image in a reply is as inspectable as one the user attached. Outside the
  * chat shell — no previewer mounted — it stays a plain image.
@@ -105,7 +118,27 @@ function LegacyMarkdownImage({ src, alt, node: _node, ...props }: ImageProps) {
   const localPath = workspaceVisualPath(source);
   if (link?.projectSlug && localPath) {
     return (
-      <WorkspaceFileReply path={localPath}>{alt || 'Image'}</WorkspaceFileReply>
+      <WorkspaceFileReply path={localPath} variant="image">
+        {alt || 'Image'}
+      </WorkspaceFileReply>
+    );
+  }
+  // #4266: in a Project chat, an image naming a file Station does not show
+  // (`README.md`, a JPEG) says so, rather than leaving a broken image for a
+  // URL nothing serves. A path with no extension (an API route) or a type a
+  // page serves itself (SVG) keeps the plain image.
+  const filePath = workspaceFilePath(source);
+  if (
+    link?.projectSlug &&
+    !localPath &&
+    filePath &&
+    UNSHOWN_FILE.test(filePath)
+  ) {
+    return (
+      <VisualUnavailableCard
+        label={alt || null}
+        reason={visualFileFailureText('unsupported-type')}
+      />
     );
   }
   const image = (
@@ -181,7 +214,7 @@ function HostPathImage({
     );
   if (!refused && link?.projectSlug && workspaceVisualPath(path))
     return (
-      <WorkspaceFileReply path={path}>
+      <WorkspaceFileReply path={path} variant="image">
         {props.alt || 'Image'}
       </WorkspaceFileReply>
     );
@@ -221,9 +254,16 @@ function CapturedHostImage({
       />
     );
   return (
-    <PreviewButton name={name} url={url} mediaType={image.mimeType}>
-      <img src={url} alt={alt ?? ''} className="markdown-image" />
-    </PreviewButton>
+    <span className="workspace-file-reply workspace-file-reply--image">
+      <PreviewButton name={name} url={url} mediaType={image.mimeType}>
+        <img src={url} alt={alt ?? ''} className="markdown-image" />
+      </PreviewButton>
+      {alt ? (
+        <span className="workspace-file-reply__caption">
+          <span className="workspace-file-reply__label">{alt}</span>
+        </span>
+      ) : null}
+    </span>
   );
 }
 
@@ -235,13 +275,9 @@ function UnavailableHostImage({
   reason: string;
 }) {
   return (
-    <span className="markdown-image-unavailable" role="note">
-      <WarningGlyph aria-hidden="true" />
-      <span>
-        {alt ? <strong>{alt}</strong> : null}
-        {alt ? ' — ' : null}
-        Image not available on this device: {reason}
-      </span>
-    </span>
+    <VisualUnavailableCard
+      label={alt}
+      reason={`Image not available on this device: ${reason}`}
+    />
   );
 }

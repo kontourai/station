@@ -17,6 +17,7 @@ import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
+  cleanup,
   fireEvent,
   render,
   screen,
@@ -352,6 +353,41 @@ function renderDock({
   return Object.assign(view, {
     rerenderSession: (next: ChatSession) => view.rerender(dock(next)),
   });
+}
+
+/**
+ * The open read as the server returns it, with its per-caller `callerAccess`
+ * (`GET /api/conversations/:id/open`). `canContinue` is the conversation's
+ * own state; `callerAccess` is what THIS caller's credential may post.
+ */
+function openState(
+  callerAccess: { continue: boolean; startChat: boolean },
+  canContinue = true,
+) {
+  return {
+    status: 'resolved' as const,
+    conversation: {
+      id: 'cool',
+      source: 'runtime' as const,
+      agentSlug: agentId('codex'),
+      title: 'Cool chat',
+      createdAt: '2026-08-01T00:00:00.000Z',
+      updatedAt: '2026-08-01T00:01:00.000Z',
+      messageCount: 2,
+      mutable: false,
+      answerability: { answerable: true as const },
+    },
+    currentSessionId: 'cool',
+    transcript: {
+      available: true as const,
+      owner: 'runtime' as const,
+      messageCount: 2,
+    },
+    canContinue,
+    answerability: { answerable: true as const },
+    recoveryActions: [] as const,
+    callerAccess,
+  };
 }
 
 describe('ChatDockBody failed-session banner (station#3213)', () => {
@@ -967,6 +1003,290 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     await waitFor(() =>
       expect(chatInputPropsMock.current?.disabled).toBe(false),
     );
+  });
+
+  /*
+   * The phone report: a failed session whose open check also failed stacked
+   * the banner's "You can send a message to try to continue this chat." over
+   * the recovery notice's "sending is paused". The recovery notice now owns
+   * that state alone: the failure banner, with its send invitation, is not
+   * rendered while the open is unproven.
+   */
+  test('a failed session whose open check failed never invites a send beside "Sending is paused"', async () => {
+    renderDock({
+      orchestrationSession: buildOrchestrationSession({
+        blockedReason: 'Internal error: Cannot connect to API',
+      }),
+      session: buildSession({
+        title: 'New chat',
+        conversationId: 'cool',
+        conversationOpenFailed: true,
+      }),
+      onNewChat: vi.fn(),
+      onRetryConversationOpen: vi.fn(),
+    });
+
+    expect(await screen.findByText("Couldn't check this chat.")).toBeTruthy();
+    expect(screen.queryByTestId('chat-dock-session-failure')).toBeNull();
+    expect(document.body.textContent).not.toMatch(/send a message|send again/i);
+    await waitFor(() =>
+      expect(chatInputPropsMock.current?.disabled).toBe(true),
+    );
+  });
+
+  /*
+   * Owner direction: offer only actions this client can take, as the server
+   * reports them. The open read carries `callerAccess`, computed by the same
+   * HTTP gate that would refuse the post. A caller the server says may not
+   * start a chat is not offered "Start new chat". Retry re-reads the open,
+   * which this caller is already making, so it stays.
+   */
+  test('a caller the server says may not start a chat is not offered one', async () => {
+    renderDock({
+      orchestrationSession: buildOrchestrationSession({
+        blockedReason: 'Engine crashed',
+      }),
+      session: buildSession({
+        conversationId: 'cool',
+        // The latest re-read failed over an earlier answer that carried the
+        // caller's access: the failure is current, the access still stands.
+        conversationOpenFailed: true,
+        conversationOpenState: openState({ continue: false, startChat: false }),
+      }),
+      onNewChat: vi.fn(),
+      onRetryConversationOpen: vi.fn(),
+    });
+
+    expect(await screen.findByRole('button', { name: 'Retry' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Start new chat' })).toBeNull();
+  });
+
+  test('a caller the server says may not continue is offered no send: composer disabled with its reason, no invitation', async () => {
+    renderDock({
+      orchestrationSession: buildOrchestrationSession({
+        blockedReason: 'Engine crashed',
+      }),
+      session: buildSession({
+        conversationId: 'cool',
+        conversationOpenState: openState({ continue: false, startChat: false }),
+      }),
+    });
+    // The conversation itself is writable; only this caller may not post,
+    // so Send would 403. It is disabled, and the composer says why.
+    await waitFor(() =>
+      expect(chatInputPropsMock.current?.disabled).toBe(true),
+    );
+    expect(chatInputPropsMock.current?.sendBlockedReason).toBe(
+      "You can read this chat but can't send to it.",
+    );
+    // No "Type a message" placeholder on a composer that cannot send.
+    expect(chatInputPropsMock.current?.sendRefused).toBe(true);
+    expect(
+      screen.getByTestId('chat-dock-session-failure').textContent,
+    ).not.toMatch(/send a message|send again/i);
+  });
+
+  test('a busy wait keeps a draft open only for a caller who may send later', async () => {
+    const busy = {
+      ...openState({ continue: false, startChat: false }, false),
+      continuationPending: true,
+    };
+    renderDock({
+      orchestrationSession: buildOrchestrationSession({
+        status: 'idle',
+        lifecycleState: 'idle',
+      }),
+      session: buildSession({
+        conversationId: 'cool',
+        conversationOpenState: busy,
+      }),
+    });
+    await screen.findByTestId('chat-input-area');
+    await waitFor(() =>
+      expect(chatInputPropsMock.current?.disabled).toBe(true),
+    );
+    expect(chatInputPropsMock.current?.allowDraftWhileDisabled).toBe(false);
+  });
+
+  test('a busy wait still keeps the draft open for a caller who may send', async () => {
+    // Mirror, so a draft withheld from everyone fails.
+    renderDock({
+      orchestrationSession: buildOrchestrationSession({
+        status: 'idle',
+        lifecycleState: 'idle',
+      }),
+      session: buildSession({
+        conversationId: 'cool',
+        conversationOpenState: {
+          ...openState({ continue: true, startChat: true }, false),
+          continuationPending: true,
+        },
+      }),
+    });
+    await screen.findByTestId('chat-input-area');
+    await waitFor(() =>
+      expect(chatInputPropsMock.current?.allowDraftWhileDisabled).toBe(true),
+    );
+  });
+
+  test('an empty chat invites no typing for a caller who may not send', async () => {
+    renderDock({
+      orchestrationSession: null,
+      read: 'absent',
+      session: buildSession({
+        conversationId: 'cool',
+        messages: [],
+        conversationOpenState: openState({ continue: false, startChat: false }),
+      }),
+    });
+    expect(await screen.findByText('This chat is empty')).toBeTruthy();
+    expect(screen.queryByText(/Type a message below/)).toBeNull();
+  });
+
+  test('an empty chat still invites typing when the caller may send', async () => {
+    // Mirror, so an invitation dropped unconditionally fails.
+    renderDock({
+      orchestrationSession: null,
+      read: 'absent',
+      session: buildSession({
+        conversationId: 'cool',
+        messages: [],
+        conversationOpenState: openState({ continue: true, startChat: true }),
+      }),
+    });
+    expect(await screen.findByText(/Type a message below/)).toBeTruthy();
+  });
+
+  test.each([
+    [false, undefined],
+    [true, 'function'],
+  ] as const)(
+    'every new-chat offer follows callerAccess.startChat (startChat=%s)',
+    async (startChat, expected) => {
+      renderDock({
+        orchestrationSession: buildOrchestrationSession({
+          blockedReason: 'Engine crashed',
+        }),
+        session: buildSession({
+          conversationId: 'cool',
+          conversationOpenState: openState({ continue: true, startChat }),
+        }),
+        onNewChat: vi.fn(),
+      });
+      await screen.findByTestId('chat-input-area');
+      // The composer's workspace-refused "Start new chat" (it posts the
+      // draft to POST /api/orchestration/chat).
+      expect(typeof chatInputPropsMock.current?.onStartNewChat).toBe(
+        expected ?? 'undefined',
+      );
+    },
+  );
+
+  test.each([
+    [true, false, undefined],
+    [
+      false,
+      true,
+      "This chat can only continue in its original workspace, and you can't start a new chat here.",
+    ],
+  ] as const)(
+    'a refused workspace offers Start new chat only to a caller allowed one (startChat=%s)',
+    async (startChat, disabled, reason) => {
+      renderDock({
+        orchestrationSession: buildOrchestrationSession({
+          status: 'idle',
+          lifecycleState: 'idle',
+        }),
+        session: buildSession({
+          conversationId: 'cool',
+          conversationOpenState: openState({ continue: true, startChat }),
+          outboundQueuedTurns: [
+            {
+              clientTurnId: 'turn-1',
+              content: 'move this message',
+              status: 'failed',
+              lastError: 'Workspace refusal: worktree is gone',
+            },
+          ] as never,
+        }),
+        onNewChat: vi.fn(),
+      });
+      await screen.findByTestId('chat-input-area');
+      await waitFor(() =>
+        expect(chatInputPropsMock.current?.disabled).toBe(disabled),
+      );
+      // The composer's Send becomes "Start new chat" only when it is allowed.
+      expect(chatInputPropsMock.current?.workspaceRefused).toBe(startChat);
+      expect(chatInputPropsMock.current?.sendBlockedReason).toBe(reason);
+
+      // The refused queued turn's own "New chat", in the real outbox rows the
+      // dock hands the pending list.
+      cleanup();
+      render(<>{queuedMessagesPropsMock.current?.outbox?.node}</>);
+      await screen.findByText(/Refused/);
+      expect(Boolean(screen.queryByRole('button', { name: 'New chat' }))).toBe(
+        startChat,
+      );
+    },
+  );
+
+  test('a read-only verdict names "start a new chat" only to a caller allowed to', async () => {
+    const denied = {
+      ...openState({ continue: false, startChat: false }, false),
+    };
+    renderDock({
+      orchestrationSession: buildOrchestrationSession({
+        status: 'idle',
+        lifecycleState: 'idle',
+      }),
+      session: buildSession({
+        conversationId: 'cool',
+        conversationOpenState: denied,
+      }),
+      onNewChat: vi.fn(),
+      onRetryConversationOpen: vi.fn(),
+    });
+    await waitFor(() =>
+      expect(chatInputPropsMock.current?.sendBlockedReason).toBe(
+        'This conversation is available read-only. Retry resolution to check again.',
+      ),
+    );
+  });
+
+  test('a caller the server says may continue keeps the send invitation', () => {
+    // Mirror of the case above, so a note dropped unconditionally fails.
+    renderDock({
+      orchestrationSession: buildOrchestrationSession({
+        blockedReason: 'Engine crashed',
+      }),
+      session: buildSession({
+        conversationId: 'cool',
+        conversationOpenState: openState({ continue: true, startChat: true }),
+      }),
+    });
+    expect(
+      screen.getByTestId('chat-dock-session-failure').textContent,
+    ).toContain('You can send a message to try to continue this chat.');
+  });
+
+  test('a caller the server says may start a chat keeps Start new chat', async () => {
+    renderDock({
+      orchestrationSession: buildOrchestrationSession({
+        blockedReason: 'Engine crashed',
+      }),
+      session: buildSession({
+        conversationId: 'cool',
+        conversationOpenFailed: true,
+        conversationOpenState: openState({ continue: false, startChat: true }),
+      }),
+      onNewChat: vi.fn(),
+      onRetryConversationOpen: vi.fn(),
+    });
+
+    expect(
+      await screen.findByRole('button', { name: 'Start new chat' }),
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
   });
 
   test('a running session gets no banner and no continuation claim', () => {

@@ -61,9 +61,16 @@ function walkPackageScripts(): { gates: string[]; unmatchedLeaves: string[] } {
         walk(nested[1]);
         continue;
       }
+      // The slot runner executes the named script as its child, not itself
+      // as a policy gate. Keep unknown wrapper shapes visible as leaves.
+      const wrapped =
+        /^node scripts\/heavy-check-slot\.mjs\s+\S+\s+(scripts\/[A-Za-z0-9._-]+\.(?:mjs|ts))(?:\s|$)/.exec(
+          segment,
+        );
+      const command = wrapped ? `node ${wrapped[1]}` : segment;
       GATE.lastIndex = 0;
       let matched = false;
-      for (const match of segment.matchAll(GATE)) {
+      for (const match of command.matchAll(GATE)) {
         gates.add(match[1]);
         matched = true;
       }

@@ -46,7 +46,11 @@ export function ConversationOpenRecoveryNotice({
       ? 'Its execution session is no longer available.'
       : verdict
         ? 'Station could not prove this chat can continue.'
-        : 'Sending is paused. Retry to check again.';
+        : // Names Retry only when Retry is on screen: a caller that cannot
+          // re-check passes no `onRetry`, and the sentence must not point at it.
+          onRetry
+          ? 'Sending is paused. Retry to check again.'
+          : 'Sending is paused.';
 
   return (
     <div className="conversation-open-recovery" role="status">

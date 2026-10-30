@@ -1,0 +1,7 @@
+{
+  "revision": "7e69868eb8427d5db5b396558ece59926f994152",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"ChatDock.tsx remains the orchestration-based chat consumer; the only change withholds the engine-switch callback when conversationCanMutate is false. No API claim affected.","inputs":["docs/reference/api.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

@@ -4,7 +4,8 @@ import {
   type ChildWorkItem,
   type ChildWorkRegistryState,
   type ChildWorkSessionView,
-  type ChildWorkTerminalStatus,
+  type ChildWorkTerminalDisplayStatus,
+  childWorkDisplayStatus,
   childWorkKey,
   childWorkSettleFromItem,
   createEmptyChildWorkRegistry,
@@ -111,15 +112,16 @@ function hasResult(item: ChildWorkItem | undefined): boolean {
  * and `stopped-unconfirmed` (a stop nobody confirmed) used to fall through to
  * "finished" and so announced an outcome Station never saw.
  */
-const SETTLE_HEADING: Record<ChildWorkTerminalStatus, string> = {
+const SETTLE_HEADING: Record<ChildWorkTerminalDisplayStatus, string> = {
   completed: 'Background task finished',
   failed: 'Background task failed',
   cancelled: 'Background task stopped',
   'stopped-unconfirmed': 'Background task stop requested — not confirmed',
   unresolved: 'Background task ended — outcome unknown',
+  interrupted: 'Background task interrupted',
 };
 
-function settleHeading(status: ChildWorkTerminalStatus): string {
+function settleHeading(status: ChildWorkTerminalDisplayStatus): string {
   return SETTLE_HEADING[status];
 }
 
@@ -150,7 +152,10 @@ function announceSettle(
   if (after.backgrounded !== true && before?.backgrounded !== true) return;
   // R6: the registry's resulting status, which is sticky — a later terminal
   // that only enriches must not relabel the outcome it enriches.
-  const heading = settleHeading(after.status as ChildWorkTerminalStatus);
+  const status = childWorkDisplayStatus(
+    after,
+  ) as ChildWorkTerminalDisplayStatus;
+  const heading = settleHeading(status);
   const label = after.title ? `${heading} — ${after.title}` : heading;
   const summary = after.result?.summary;
   const notice = {
@@ -160,7 +165,7 @@ function announceSettle(
       ? `${label}\n\n${after.result?.source ? `${childWorkSummaryLabel(after.result.source)}: ` : ''}${summary}`
       : label,
     backgroundTaskNotice: {
-      status: after.status as ChildWorkTerminalStatus,
+      status,
       ...(after.title ? { title: after.title } : {}),
       ...(summary ? { summary } : {}),
       ...(summary && after.result?.source

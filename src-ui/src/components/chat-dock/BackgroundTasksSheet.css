@@ -303,6 +303,11 @@
   color: var(--text-secondary);
 }
 
+.background-tasks-sheet__chip--interrupted {
+  background: color-mix(in srgb, var(--k-caution) 16%, transparent);
+  color: var(--k-caution);
+}
+
 .background-tasks-sheet__chip--failed {
   background: color-mix(in srgb, var(--error-text, #c62828) 16%, transparent);
   color: var(--error-text, #c62828);

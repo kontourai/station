@@ -1,0 +1,7 @@
+{
+  "revision": "ed443a489eedbcd3cdc43ca94c9c36bd0f7288ee",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"ChatDockBody's override-reset refusal changes no contract or request shape. Unaffected.","inputs":["docs/reference/contracts.md","src-ui/src/components/chat-dock/ChatDockBody.tsx"]}
+  ]
+}

@@ -48,7 +48,12 @@ or TLS. Solo local operation still requires neither accounts nor a provider when
 these opt-ins are absent.
 
 The operator enables sharing in a Project's **People and access** section,
-chooses a role and creates a single-use invitation link. Share the link manually;
+chooses a role and creates a single-use invitation link. Before sharing is on,
+an eligible caller sees **Sharing is off** and **Enable Project sharing**.
+Station offers this only to a human caller with Station owner (operator) authority
+whose Device credential can reach the enable route, for example the operator
+console on the Station's own computer. Other callers see an explanation instead
+and are not told whether the Project is shared. Share the link manually;
 no email is sent. The default link may be accepted by any authenticated person
 who possesses it, once, before its expiry. Cancel a pending link from that same
 section. An optional email restriction requires provider-verified contact
@@ -221,10 +226,12 @@ used by its principal-resolution owner. Project sharing still needs the separate
 member/resource authorization implementation.
 
 A verified person can read and patch their own `/api/me/preferences` from an
-account-bound Device. Exact GET/HEAD/PATCH admission does not open other `/api/me`
-paths. Account preferences are partitioned by person and trusted tenant on this
-Station, and grant no Device or execution authority. See
-[account preferences](../design/settings-architecture.md#account-preferences-and-device-settings).
+account-bound Device. The exact GET/HEAD/PATCH preference admission grants no
+other `/api/me` path; the person's notification feed has its own separately
+admitted read and mutation leaves. Account preferences are partitioned by
+person and trusted tenant on this Station, and grant no Device or execution
+authority. See [account preferences](../design/settings-architecture.md#account-preferences-and-device-settings)
+and [person notifications](../reference/api.md#person-notifications).
 
 ### Account-bound collaborator Devices
 

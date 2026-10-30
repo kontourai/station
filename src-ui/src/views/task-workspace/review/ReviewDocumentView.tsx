@@ -26,7 +26,12 @@ import { ReviewAnchorComposer } from './ReviewAnchorComposer';
 import { useReviewContext } from './ReviewContext';
 import { sameReviewArtifact } from './review-types';
 
-function formatRevision(revision: TaskReviewArtifactRef['revision']) {
+function formatRevision(
+  revision: TaskReviewArtifactRef['revision'],
+  ordinals?: Readonly<Record<string, number>>,
+) {
+  const ordinal = ordinals?.[revision];
+  if (typeof ordinal === 'number') return `v${ordinal}`;
   if (typeof revision === 'number') return `v${revision}`;
   return /^(?:swsr-v1:|sha\d+:|[a-f\d]{40}$|[a-f\d]{64}$)/i.test(revision)
     ? undefined
@@ -117,6 +122,7 @@ const reviewMarkdownComponents: NonNullable<Options['components']> = {
 export function ReviewDocumentView({
   artifact,
   previousArtifact,
+  revisionOrdinals,
   draftScope,
   text: sourceText,
   title,
@@ -126,6 +132,7 @@ export function ReviewDocumentView({
 }: {
   artifact: TaskReviewArtifactRef;
   previousArtifact?: TaskReviewArtifactRef;
+  revisionOrdinals?: Readonly<Record<string, number>>;
   /** Station/account and Task-incarnation identity supplied by the owner. */
   draftScope: string;
   text: string;
@@ -142,10 +149,10 @@ export function ReviewDocumentView({
   const root = useRef<HTMLElement>(null);
   const mobile = useIsMobile();
   const coarse = useCoarsePointer();
-  const revision = formatRevision(artifact.revision);
+  const revision = formatRevision(artifact.revision, revisionOrdinals);
   const previousRevision =
     previousArtifact && sameReviewArtifact(previousArtifact, artifact)
-      ? formatRevision(previousArtifact.revision)
+      ? formatRevision(previousArtifact.revision, revisionOrdinals)
       : undefined;
   const review = useReviewContext();
   const setOutline = review?.setOutline;

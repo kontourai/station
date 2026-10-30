@@ -1,0 +1,117 @@
+{
+  "revision": "f6e2c33f9340248ddc85319d3777f4993c7e500b",
+
+  "notes": [
+    {"path":"deploy/public-ingress/README.md","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Searched this document for readPlanOrdinals and its person/session reader names; none occur.","inputs":["deploy/public-ingress/README.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/README.md","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Searched this document for readPlanOrdinals and its person/session reader names; none occur.","inputs":["docs/README.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Searched this document for readPlanOrdinals and its person/session reader names; none occur.","inputs":["docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Searched this document for readPlanOrdinals and its person/session reader names; none occur.","inputs":["docs/adr/0017-browser-preview-host.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Searched this document for readPlanOrdinals and its person/session reader names; none occur.","inputs":["docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Searched this document for readPlanOrdinals and its person/session reader names; none occur.","inputs":["docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture.md","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Searched this document for readPlanOrdinals and its person/session reader names; none occur.","inputs":["docs/architecture.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked TaskReviewThreads save ordinal persistence, backfill, cache accounting, authority recheck and evidence owners against the changed worker, runtime, Review module and tests; no prose change needed.","inputs":["docs/architecture/module-map.md","src-server/runtime/routes/runtime-routes.ts","src-server/services/orchestration/__tests__/project-task-room-runtime.test.ts","src-server/services/projects/__tests__/task-review-module.test.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Searched this document for readPlanOrdinals and its person/session reader names; none occur.","inputs":["docs/contexts/evidence-governance/CONTEXT.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Searched this document for readPlanOrdinals and its person/session reader names; none occur.","inputs":["docs/contexts/operations/CONTEXT.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Searched this document for readPlanOrdinals and its person/session reader names; none occur.","inputs":["docs/design/answer-share-permalinks.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Searched this document for readPlanOrdinals and its person/session reader names; none occur.","inputs":["docs/design/browser-preview-host-spike.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Searched this document for readPlanOrdinals and its person/session reader names; none occur.","inputs":["docs/design/browser-preview-pane-mvp.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Searched this document for readPlanOrdinals and its person/session reader names; none occur.","inputs":["docs/design/channel-home-authority.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/local-bootstrap-token.md","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Searched this document for readPlanOrdinals and its person/session reader names; none occur.","inputs":["docs/design/local-bootstrap-token.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Searched this document for readPlanOrdinals and its person/session reader names; none occur.","inputs":["docs/design/operator-device-access.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Searched this document for readPlanOrdinals and its person/session reader names; none occur.","inputs":["docs/design/project-membership.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/project-task-room-history.md","note":"Checked history authority, storage and output review claims against the room runtime test diff; its new unavailable ordinal-reader fixture does not alter history behavior.","inputs":["docs/design/project-task-room-history.md","src-server/services/orchestration/__tests__/project-task-room-runtime.test.ts"]},
+
+    {"path":"docs/design/revision-bound-evidence.md","note":"Checked Review freeze and working revision claims against the changed runtime, working-state worker and Review module; ordinal lookup is separate from immutable evidence publication and does not change those claims.","inputs":["docs/design/revision-bound-evidence.md","src-server/services/orchestration/project-task-room-runtime.ts","src-server/services/orchestration/project-task-room-working-state-worker.ts","src-server/services/projects/task-review-module.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Checked request authority, room history and attachment claims against runtime-routes wiring and room runtime test diff; the ordinal reader wiring and unavailable fixture do not alter the request path.","inputs":["docs/design/task-room-agent-requests.md","src-server/runtime/routes/runtime-routes.ts","src-server/services/orchestration/__tests__/project-task-room-runtime.test.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Searched this document for readPlanOrdinals and its person/session reader names; none occur.","inputs":["docs/design/terminal.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/glossary.md","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Searched this document for readPlanOrdinals and its person/session reader names; none occur.","inputs":["docs/glossary.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Searched this document for readPlanOrdinals and its person/session reader names; none occur.","inputs":["docs/guides/browser-workspace.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Searched this document for readPlanOrdinals and its person/session reader names; none occur.","inputs":["docs/guides/delegation-attempt-claims.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Searched this document for readPlanOrdinals and its person/session reader names; none occur.","inputs":["docs/guides/deployment-authentication.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Searched this document for readPlanOrdinals and its person/session reader names; none occur.","inputs":["docs/guides/deployment.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Searched this document for readPlanOrdinals and its person/session reader names; none occur.","inputs":["docs/guides/home-transfer-controller.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Searched this document for readPlanOrdinals and its person/session reader names; none occur.","inputs":["docs/guides/local-collaboration-lab.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Searched this document for readPlanOrdinals and its person/session reader names; none occur.","inputs":["docs/guides/machine-relationships.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Searched this document for readPlanOrdinals and its person/session reader names; none occur.","inputs":["docs/guides/mobile-device-workspace.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Searched this document for readPlanOrdinals and its person/session reader names; none occur.","inputs":["docs/guides/operator-passkeys.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Searched this document for readPlanOrdinals and its person/session reader names; none occur.","inputs":["docs/guides/private-runner-partition.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Searched this document for readPlanOrdinals and its person/session reader names; none occur.","inputs":["docs/guides/product-law-authoring.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Searched this document for readPlanOrdinals and its person/session reader names; none occur.","inputs":["docs/guides/repository-layout.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Searched this document for readPlanOrdinals and its person/session reader names; none occur.","inputs":["docs/guides/starter-work.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/walkthroughs.md","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Searched this document for readPlanOrdinals and its person/session reader names; none occur.","inputs":["docs/guides/walkthroughs.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Searched this document for readPlanOrdinals and its person/session reader names; none occur.","inputs":["docs/guides/web-push-notifications.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Searched this document for readPlanOrdinals and its person/session reader names; none occur.","inputs":["docs/guides/work-board-security.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Searched this document for readPlanOrdinals and its person/session reader names; none occur.","inputs":["docs/guides/workspace-packages.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Searched this document for readPlanOrdinals and its person/session reader names; none occur.","inputs":["docs/reference/api.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Searched this document for readPlanOrdinals and its person/session reader names; none occur.","inputs":["docs/reference/config.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Searched this document for readPlanOrdinals and its person/session reader names; none occur.","inputs":["docs/reference/connect.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Searched this document for readPlanOrdinals and its person/session reader names; none occur.","inputs":["docs/reference/contracts.md","packages/contracts/src/__tests__/task-review.test.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Searched this document for readPlanOrdinals and its person/session reader names; none occur.","inputs":["docs/reference/env-vars.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Searched this document for readPlanOrdinals and its person/session reader names; none occur.","inputs":["docs/reference/sdk.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Searched this document for readPlanOrdinals and its person/session reader names; none occur.","inputs":["docs/reference/session-api.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Searched this document for readPlanOrdinals and its person/session reader names; none occur.","inputs":["docs/reference/usage-telemetry.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Searched this document for readPlanOrdinals and its person/session reader names; none occur.","inputs":["docs/security/remote-access-threat-model.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/pull-request-guides.md","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Searched this document for readPlanOrdinals and its person/session reader names; none occur.","inputs":["docs/user/pull-request-guides.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Searched this document for readPlanOrdinals and its person/session reader names; none occur.","inputs":["docs/user/workspace-checkpoints.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Searched this document for readPlanOrdinals and its person/session reader names; none occur.","inputs":["examples/mcp-ui-demo/README.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/station-sessions-mcp/README.md","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Searched this document for readPlanOrdinals and its person/session reader names; none occur.","inputs":["examples/station-sessions-mcp/README.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Checked this capture is for operator sign-in or step-up, not Review ordinal wiring.","inputs":["docs/learn/media/operator-s4-before-sign-in.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Checked this capture is for operator sign-in or step-up, not Review ordinal wiring.","inputs":["docs/learn/media/operator-s4-after-sign-in.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Checked this capture is for operator sign-in or step-up, not Review ordinal wiring.","inputs":["docs/learn/media/operator-s4-step-up-review.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"Checked the runtime-routes diff: PR #4235 only wires the Review readPlanOrdinals dependency, with no route, auth path, scope or public-surface change. Checked this capture is for operator sign-in or step-up, not Review ordinal wiring.","inputs":["docs/learn/media/operator-s4-after-step-up.png","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

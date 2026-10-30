@@ -1,0 +1,11 @@
+{
+  "revision": "343d40eee43dbfb7dff76c91e79e7ac755bd1af8",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Reviewed Task, principal and capabilities vocabulary against the aligned contract reference; identifier validation does not change the glossary definitions.","inputs":["docs/glossary.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed contract routing, evidence requirements and runtime integration limits against the contract-only chat and approval changes; no operational integration is claimed.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Reviewed subpath ownership, pure helper and compatibility instructions against the shared contract validators and approval channel type; instructions remain applicable.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}

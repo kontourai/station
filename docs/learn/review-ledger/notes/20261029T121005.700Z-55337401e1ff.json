@@ -1,0 +1,7 @@
+{
+  "revision": "ed443a489eedbcd3cdc43ca94c9c36bd0f7288ee",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Updated: shown-but-unavailable only while a locally known reply runs; when the open resolution denies changes (read-only, loading, server-reported running turn) other engines are not listed and Use Agent defaults is unavailable. Matches conversationOpenPhase and ChatDock gating.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat/ChatInputArea.tsx"]}
+  ]
+}

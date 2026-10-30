@@ -1,0 +1,7 @@
+{
+  "revision": "343d40eee43dbfb7dff76c91e79e7ac755bd1af8",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Reviewed chat-app delivery outcome, shared text validation, member and approval identifiers and approval channel claims against contract parsers and focused tests; full typecheck and fault receipt executed. Runtime authorization and provider behavior remain separate.","inputs":["docs/reference/contracts.md","packages/contracts/src/__tests__/chat-app.test.ts","packages/contracts/src/__tests__/task-review.test.ts","packages/contracts/src/contract-validation.ts","packages/contracts/src/task-approval.ts","packages/contracts/src/__tests__/project-task-room.test.ts","packages/contracts/src/__tests__/task-approval.test.ts"]}
+  ]
+}

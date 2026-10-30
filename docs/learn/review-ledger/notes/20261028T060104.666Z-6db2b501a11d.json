@@ -1,0 +1,7 @@
+{
+  "revision": "de061f38ec81d33da0ce7a2aa1d7b50956085cfc",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Integration guidance unaffected: the contracts and SDK reference additions are a new refusal union and typed error on an existing read; no prose change.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md","docs/reference/sdk.md"]}
+  ]
+}

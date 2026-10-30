@@ -1,0 +1,7 @@
+{
+  "revision": "db9c9020e96f233c15af1dc2ad1fe8f8462f242c",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"mobile-chat-composer only re-pinned the Agent button's disabled accessible name ('Can't change Agent yet.' before the reason); the matrix row's coverage claim is unchanged.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/mobile-chat-composer.spec.ts"]}
+  ]
+}

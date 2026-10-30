@@ -82,6 +82,7 @@ export const SessionTranscript = memo(function SessionTranscript({
   const isMobile = useIsMobile();
   const {
     events,
+    partialTurnStartEventIds,
     hasMore,
     loadOlder,
     settled,
@@ -115,6 +116,7 @@ export const SessionTranscript = memo(function SessionTranscript({
   const rows = useMemo(() => {
     let projected = projectRuntimeEventsToMessages(events, {
       stableIds: true,
+      partialTurnStartEventIds,
     }).map((message) => ({
       id: message.id,
       role: message.role,
@@ -141,7 +143,7 @@ export const SessionTranscript = memo(function SessionTranscript({
     );
     previousRows.current = next;
     return next;
-  }, [events, failureShownAbove, session.threadId]);
+  }, [events, partialTurnStartEventIds, failureShownAbove, session.threadId]);
   const activityBinding = useActivityWorkspacePaneBinding();
   const anchor = useMemo(
     () =>

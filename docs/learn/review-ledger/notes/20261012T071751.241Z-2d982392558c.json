@@ -1,0 +1,7 @@
+{
+  "revision": "7e69868eb8427d5db5b396558ece59926f994152",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Added that other engines are shown but unavailable while a reply is running (ChatDockBody pickerModels mapping). Handoff-keeps-draft and reset-label claims re-read and unchanged.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

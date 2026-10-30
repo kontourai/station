@@ -1,0 +1,7 @@
+{
+  "revision": "a560a1867644c1ca3f246db948666394bdcf71e8",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the guardrail inventory traversal and wrapped commands against the testing guide; selection and executable evidence boundaries are unchanged. Focused tests do not establish full qualification.","inputs":["docs/guides/testing.md","scripts/__tests__/guardrail-execution-coverage.test.ts"]}
+  ]
+}

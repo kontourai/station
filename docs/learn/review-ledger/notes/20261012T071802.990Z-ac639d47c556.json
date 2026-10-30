@@ -1,0 +1,7 @@
+{
+  "revision": "7e69868eb8427d5db5b396558ece59926f994152",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Handoff dialog change is copy, field styling and a disabled submit while blockedReason/attachments hold; the uncertain-change retention, Check status and safe retry claims re-read against ConversationHandoffDialog and still hold. No request shape changed.","inputs":["docs/reference/session-api.md","src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx"]}
+  ]
+}

@@ -100,7 +100,10 @@ if [[ "$pure_merge_of_main" -eq 1 ]]; then
   echo "[station pre-push] skipped for a pure merge of main: transfer budgets, static gates, SDK barrel"
 else
 echo "[station pre-push] orchestration transfer budgets"
-node scripts/check-prepush-orchestration-transfer.mjs
+# The three gates below each run Vitest or source scans, so each queues for a
+# host-wide heavy-check slot (scripts/lib/heavy-check-slots.mjs) instead of
+# piling onto other worktrees' checks. A wait that runs out fails the push.
+node scripts/heavy-check-slot.mjs pre-push:transfer-budgets scripts/check-prepush-orchestration-transfer.mjs
 
 # ~7s, and only when this push changes something these gates read (#3208).
 # The UI-contract ratchets live in verify:static, which only full:regression
@@ -124,7 +127,7 @@ node scripts/check-prepush-orchestration-transfer.mjs
 # these ratchets ran only after merge (two motion literals, one undeclared
 # Coding dependency).
 echo "[station pre-push] static gates (UI contracts, content)"
-node scripts/check-prepush-static-gates.mjs
+node scripts/heavy-check-slot.mjs pre-push:static-gates scripts/check-prepush-static-gates.mjs
 
 # ~6s, and only when this push changes the SDK's own sources (#3629). The
 # barrel invariant already exists as a test; what was missing is running it
@@ -132,7 +135,7 @@ node scripts/check-prepush-static-gates.mjs
 # in one day, each caught by that test AFTER merge, each blocking whoever
 # gated next.
 echo "[station pre-push] SDK public barrel"
-node scripts/check-prepush-sdk-barrel.mjs
+node scripts/heavy-check-slot.mjs pre-push:sdk-barrel scripts/check-prepush-sdk-barrel.mjs
 
 # Required hosted fast-checks-statics owns repository-wide Veritas readiness
 # and every typecheck lane through FAST_STATIC_COMMANDS in run-ci-fast.mjs.

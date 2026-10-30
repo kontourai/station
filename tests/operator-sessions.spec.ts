@@ -277,6 +277,116 @@ test('paired browser signs in and changes access only after consent-origin passk
       fullPage: true,
     });
     retainCapture('paired-after-sign-in.png');
+    const pairingOffer = await host('POST', '/api/pairing/offers', {
+      endpoint: appOrigin,
+      scope: 'orchestration:read coding:exec approval:full-access',
+    });
+    const pairingRequest = await first.context.request.post(
+      `${appOrigin}/.well-known/station/v1/pairing/request`,
+      {
+        headers: { Origin: appOrigin },
+        data: {
+          offerId: pairingOffer.offerId,
+          proof: pairingOffer.challenge,
+          deviceName: 'New browser',
+        },
+      },
+    );
+    expect(pairingRequest.status()).toBe(202);
+    const pendingPairing = await pairingRequest.json();
+    const pairingPage = await first.context.newPage();
+    await pairingPage.goto(`${appOrigin}/pairing-fixture`);
+    await expect(pairingPage.getByText(/New browser asks for/)).toBeVisible();
+    await pairingPage
+      .getByRole('button', { name: 'Approve', exact: true })
+      .click();
+    const pairingReview = pairingPage.getByRole('link', {
+      name: 'Review and confirm with passkey',
+    });
+    await expect(pairingReview).toBeVisible();
+    for (const width of [390, 1440]) {
+      for (const theme of ['light', 'dark']) {
+        await pairingPage.setViewportSize({ width, height: 900 });
+        await pairingPage.evaluate(
+          (value) => document.documentElement.setAttribute('data-theme', value),
+          theme,
+        );
+        expect(
+          await pairingPage.evaluate(
+            () => document.documentElement.scrollWidth <= window.innerWidth,
+          ),
+        ).toBe(true);
+        const name = `pairing-review-${width}-${theme}.png`;
+        await pairingPage.screenshot({
+          path: testInfo.outputPath(name),
+          fullPage: true,
+        });
+        retainCapture(name);
+      }
+    }
+    const reviewUrl = await pairingReview.getAttribute('href');
+    expect(reviewUrl).toBeTruthy();
+    const pairingConsent = await first.context.newPage();
+    const pairingCdp = await first.context.newCDPSession(pairingConsent);
+    await pairingCdp.send('WebAuthn.enable');
+    const { authenticatorId: pairingAuthenticator } = await pairingCdp.send(
+      'WebAuthn.addVirtualAuthenticator',
+      {
+        options: {
+          protocol: 'ctap2',
+          transport: 'internal',
+          hasResidentKey: true,
+          hasUserVerification: true,
+          isUserVerified: true,
+          automaticPresenceSimulation: true,
+        },
+      },
+    );
+    const pairingKeys = await cdp.send('WebAuthn.getCredentials', {
+      authenticatorId,
+    });
+    for (const credential of pairingKeys.credentials)
+      await pairingCdp.send('WebAuthn.addCredential', {
+        authenticatorId: pairingAuthenticator,
+        credential,
+      });
+    await pairingConsent.goto(reviewUrl!);
+    await expect(
+      pairingConsent.getByText(/Approve pairing for “New browser”/),
+    ).toBeVisible();
+    const beforePairing = await host('GET', '/api/pairing/requests');
+    expect(
+      beforePairing.requests.find(
+        (entry: { requestId: string }) =>
+          entry.requestId === pendingPairing.requestId,
+      ).status,
+    ).toBe('pending');
+    await pairingConsent
+      .getByRole('button', { name: 'Confirm with passkey' })
+      .click();
+    await expect(pairingConsent.getByRole('status')).toContainText('Applied.');
+    const afterPairing = await host('GET', '/api/pairing/requests');
+    expect(
+      afterPairing.requests.find(
+        (entry: { requestId: string }) =>
+          entry.requestId === pendingPairing.requestId,
+      ).status,
+    ).toBe('confirmed');
+    await expect(
+      pairingPage.getByText('Approval is pending passkey confirmation.'),
+    ).toHaveCount(0);
+    const advancedKeys = await pairingCdp.send('WebAuthn.getCredentials', {
+      authenticatorId: pairingAuthenticator,
+    });
+    for (const credential of advancedKeys.credentials) {
+      await cdp.send('WebAuthn.removeCredential', {
+        authenticatorId,
+        credentialId: credential.credentialId,
+      });
+      await cdp.send('WebAuthn.addCredential', { authenticatorId, credential });
+    }
+    await pairingPage.close();
+    await pairingConsent.close();
     async function hostInventory() {
       const result = await run(
         process.execPath,

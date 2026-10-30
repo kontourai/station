@@ -1,0 +1,7 @@
+{
+  "revision": "e8f37c25832cea6cbad23af1c35bbc2a87662aa4",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Updated: composer reset chip is hidden only when the open resolution denies changes; during a running turn or queue check it stays aria-disabled with the reason as its description (ChatInputArea modelResetOffered, ChatDockBody, chat.css aria-disabled rule).","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/ChatInputArea.test.tsx","src-ui/src/components/chat-dock/ChatDockBody.tsx","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/chat/chat.css"]}
+  ]
+}

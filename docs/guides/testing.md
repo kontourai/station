@@ -1676,6 +1676,85 @@ typecheck through `ci:fast`; the pre-push hook retains cheap and scoped checks. 
 with `npm run gate:for` evidence and a single `typecheck:<lane>`; do not start
 the full aggregate or `ci:fast` in the background and poll for its result.
 
+### Host heavy-check slots
+
+Typecheck slots bound compilers only. Several agents on one small host can
+still run `docs:truth:gate`, Vitest selections and pre-push gates together and
+starve everything else on it, Station included. These heavy checks therefore
+queue for a second host-wide pool, `scripts/lib/heavy-check-slots.mjs`, which
+uses the same lock-file protocol as the typecheck slots (atomic claims,
+dead-holder reclaim, a bounded wait), in its own directory:
+`/tmp/station-heavy-check-slots-<uid>` on macOS and Linux and the per-user
+temp directory on Windows.
+
+`node scripts/heavy-check-slot.mjs <label> <script.mjs> [arguments]` holds a
+slot and then runs the script as the slot holder. These entry points use it:
+
+| Entry point | Label |
+| --- | --- |
+| `npm run test:focused` | `test:focused` |
+| `npm run test:changed` | `test:changed` |
+| `npm run docs:truth:gate` (also a Veritas readiness evidence check) | `docs:truth:gate` |
+| `npm run docs:learn:build`, `npm run docs:learn:check` | `docs:learn:build`, `docs:learn:check` |
+| `npm run typecheck` (its lanes run under this slot) | `typecheck` |
+| Each `scripts/tsc-slot.mjs` compile run on its own (`npm run typecheck:<lane>`) | `typecheck <tsconfig>`, taken before its typecheck slot |
+| Pre-push transfer budgets, static gates, SDK barrel | `pre-push:transfer-budgets`, `pre-push:static-gates`, `pre-push:sdk-barrel` |
+| A verification-coordinator lane that executes (`ci:fast`, `verify:static`, `test-changed`, …) | `verification:<lane>` |
+| Each `full:regression` phase, requested or submitted | `verification:full-regression:<phase>` |
+
+- N is the smaller of one slot per four logical CPUs (floored) and one per
+  8 GiB of RAM (rounded), between 1 and 4. A 4-core, 15 GiB host gets 1.
+- A queued check prints `[heavy-check-slots] waiting for a heavy-check slot
+  for <label>: 1/1 held by pid <N> (<holder label>) in <worktree>`, repeated
+  every minute.
+- Waiters are admitted in arrival order. Each waiter writes a ticket under the
+  pool's `queue/` directory, and only the earliest N live tickets may claim a
+  slot. A ticket whose waiter died is removed by the next reader.
+- The wait is bounded. After `STATION_HEAVY_CHECK_SLOT_WAIT_MS` (default 30
+  minutes) the check fails with exit status 1 and names the holders. It never
+  passes without running.
+- A slotted check started inside another one (for example `test:focused`
+  inside `docs:truth:gate`) runs under its ancestor's slot and prints one line
+  naming it. `STATION_HEAVY_CHECK_SLOT_HELD` names the holder's exact claim
+  (slot directory, index and nonce). A marker for a released, reclaimed or
+  dead claim is ignored.
+- Admission is always taken in one order: the verification coordinator, then
+  a heavy-check slot, then typecheck or Biome.
+  - A coordinator owner takes its slot only after the lane, or each
+    full-regression phase, has been admitted and is about to execute. It
+    releases the slot before the next phase queues.
+  - A request that reuses a receipt or joins a running lane takes no slot.
+  - The wait spends the lane's deadline, as coordinator queueing already
+    does. A full-regression phase's own execution budget starts only once its
+    slot is held. A wait cut short by the lane deadline makes the lane's
+    receipt report a timeout. A cancel during the wait ends the lane as any
+    other cancel would.
+  - A refusal publishes an `infrastructure_error` receipt that names the
+    holders. Only passing receipts are reused, so the next request retries.
+- Do not call the coordinator (`ci:fast`, `verify:static`, `run-verification`)
+  from inside a slotted check. None of the slotted entry points do. A request
+  made there would join another owner's lane while its own ancestor held the
+  slot that owner waits for. That would hold until one of the bounded waits
+  failed.
+- With one slot, a `ci:fast` requested during a long full-regression phase
+  waits for that phase to finish. It fails at its own deadline if the phase
+  outlasts it.
+- If a lane is fenced because its child never settled after a timeout, the
+  coordinator process keeps that lane's slot until it exits.
+- On macOS and Linux the runner becomes the check, so the slot lasts as long
+  as that process. A check that spawns children, such as Vitest under
+  `test:focused`, releases its slot if it is killed without its children.
+  An interrupt from the terminal reaches the whole process group. A targeted
+  `kill` of only the holder leaves its children running outside the cap.
+- Hosted CI (`GITHUB_ACTIONS=true`) takes no slot, because each runner is
+  single-tenant, and prints one line saying so. `CI` alone does not exempt a
+  run, because local tools set it too.
+- A dead holder's slot is reclaimed by the next waiter.
+
+Overrides: `STATION_HEAVY_CHECK_SLOTS` (count, 1–64),
+`STATION_HEAVY_CHECK_SLOT_WAIT_MS`, and `STATION_HEAVY_CHECK_SLOT_DIR` (set it
+identically for every caller).
+
 ### Host-pressure liveness scale (#3302)
 
 A fixed liveness bound is a dead-child guard sized for an idle machine. On a
@@ -1870,6 +1949,13 @@ runners. Persistent jobs also skip automatic `pull_request` execution and run
 only for protected `main` pushes or reviewed manual dispatches; the same gate
 requires that boundary and `persist-credentials: false` on their checkouts.
 Unreviewed PR code belongs on hosted or genuinely one-job ephemeral runners.
+
+Hosted PR and merge-group Chromium setup can restore a cache keyed by runner
+OS, architecture, and the lockfile. The admitted main Nightly source gate warms
+that cache; untrusted jobs only restore it. A cache miss or cache-service failure
+falls back to the required Playwright installation, which still runs on a hit.
+Browser smoke and test failures remain required. Compare cache restore plus
+installation time with uncached setup before treating the cache as a speedup.
 
 Linux CI, Android, publish, and secret-scan jobs run on GitHub-hosted
 images. A private native Windows host remains for the hardware-reference

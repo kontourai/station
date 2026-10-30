@@ -890,7 +890,7 @@ describe('DelegationLauncher', () => {
       {
         environmentId: 'env-peer-b',
         apiBase: 'https://box-b.example.test',
-        scope: 'orchestration:read',
+        scope: 'orchestration:read orchestration:operate',
         label: null,
         createdAt: 1,
         updatedAt: 1,
@@ -911,6 +911,41 @@ describe('DelegationLauncher', () => {
         name: 'https://box-b.example.test — Paired Station',
       }),
     ).toBeTruthy();
+  });
+
+  test('a paired Station whose credential cannot operate is not a destination', () => {
+    peerCredentials = [
+      {
+        environmentId: 'env-peer-b',
+        apiBase: 'https://box-b.example.test',
+        scope: 'orchestration:read',
+        label: 'box-b',
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ];
+    render(
+      <DelegationLauncher
+        isOpen
+        apiBase="http://station.test"
+        initialEnvironmentId="env-peer-b"
+        initialPrompt="Run on the peer"
+        onClose={vi.fn()}
+        onDelegated={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Change routing' }));
+    const option = screen.getByRole('option', {
+      name: 'box-b — Paired Station (can\u2019t start work)',
+    }) as HTMLOptionElement;
+    expect(option.disabled).toBe(true);
+    expect(screen.getByRole('alert').textContent).toContain(
+      'credential can\u2019t start work there',
+    );
+    expect(
+      (screen.getByRole('button', { name: 'Delegate' }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
   });
 
   test('a peer sharing an SSH environmentId is listed once, as its SSH entry', () => {
