@@ -2692,15 +2692,6 @@ people) or `undisclosed` (this caller cannot enable sharing and is not told
 whether the Project is shared). It returns `undefined` for any other error,
 including an older Station that sends no details.
 
-When the read is refused with 403 `project_access_forbidden`,
-`projectAccessRefusal(error)` returns the server's
-`ProjectAccessRefusalDetails` (from
-`@kontourai/station-contracts/project-membership`): `off` (sharing is not on
-and this caller can enable it), `on` (shared, but this caller does not manage
-people) or `undisclosed` (this caller cannot enable sharing and is not told
-whether the Project is shared). It returns `undefined` for any other error,
-including an older Station that sends no details.
-
 `@kontourai/station-sdk/project-access` also exports `useProjectAccess(slug,
 requestScope)` and `useProjectSharingEnablement(slug, requestScope, enabled)`.
 Their query keys include the selected Station and authority, and
