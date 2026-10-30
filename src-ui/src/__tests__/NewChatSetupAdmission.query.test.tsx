@@ -146,6 +146,18 @@ test('real SDK observers cannot admit stale ready rows when notifications lag fa
           }),
           { status: 503, headers: { 'Content-Type': 'application/json' } },
         );
+      // The shared Station chooser reads this caller's authority directly,
+      // rather than the SDK's collection envelope. This fixture is local-only.
+      if (path === '/api/auth/authority')
+        return new Response(
+          JSON.stringify({
+            schemaVersion: 'station.authority-observation/v1',
+            environmentId: '11111111-1111-4111-8111-111111111111',
+            principal: { kind: 'human', id: 'human:local:operator' },
+            grant: { kind: 'operator' },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
       let data: unknown;
       if (path === '/api/agents')
         data = stage === 'changed' ? [NEEDS, fresh] : [NEEDS, OLD_READY];
@@ -173,6 +185,8 @@ test('real SDK observers cannot admit stale ready rows when notifications lag fa
           approvalMode: { selection: 'fixed', resolved: { source: 'none' } },
         };
       else if (
+        path === '/api/environments/ssh' ||
+        path === '/api/environments/peers' ||
         path === '/api/connections/agents' ||
         path === '/api/connections/models' ||
         path === '/acp/connections'
