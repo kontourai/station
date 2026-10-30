@@ -388,6 +388,43 @@ test('shared room names both accounts, refuses a viewer post and closes on revoc
         );
     }
   }
+  const planDocument = (person: (typeof f.people)[number]) =>
+    f.request(person, `${base}/edit-plan`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        intentId: `large-plan-${person.name}`,
+        desiredText: 'a'.repeat(12_000),
+        selection: { anchor: 0, focus: 0 },
+      }),
+    });
+  const contributorPlan = await planDocument(bob!);
+  expect(contributorPlan.status, await contributorPlan.clone().text()).toBe(
+    200,
+  );
+  const planned = (await contributorPlan.json()) as {
+    data: {
+      kind: string;
+      intentId: string;
+      digest: string;
+      operationCount: number;
+    };
+  };
+  expect(planned.data).toMatchObject({
+    kind: 'planned',
+    intentId: expect.any(String),
+    digest: expect.any(String),
+  });
+  expect(planned.data.operationCount).toBeGreaterThan(0);
+  const settlement = await f.request(bob!, `${base}/batches`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      intentId: planned.data.intentId,
+      intentDigest: planned.data.digest,
+    }),
+  });
+  expect(settlement.status).toBe(403);
   const stream = await openStream(f, bob!);
   try {
     await readUntil(stream.reader, 'event: ping', 20000);
@@ -425,6 +462,7 @@ test('shared room names both accounts, refuses a viewer post and closes on revoc
     body: JSON.stringify({ proposalId: 'viewer-post', text: 'Not allowed' }),
   });
   expect(refused.status).toBe(404);
+  expect((await planDocument(bob!)).status).toBe(404);
   const viewerRoom = await f.request(bob!, base);
   const viewerPayload = (await viewerRoom.json()) as {
     data: { capabilities: Record<string, boolean> };
@@ -452,6 +490,7 @@ test('shared room names both accounts, refuses a viewer post and closes on revoc
     revokedStream.abort.abort();
     await revokedStream.reader.cancel();
   }
+  expect((await planDocument(bob!)).status).toBe(404);
   const aliceDevice = f.security.identifyDevice(alice!.credential);
   if (!aliceDevice) throw new Error('expected paired Alice device');
   f.security.devicePairing.setDeviceScope(
