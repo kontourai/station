@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync } from 'node:fs';
+import fs, { readFileSync, writeFileSync } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { join } from 'node:path';
 import { FileAuthorizationLedger } from '@kontourai/dispatch';
 import {
@@ -18,6 +19,7 @@ import {
 import { test, vi } from 'vitest';
 import { RuntimePublicationParticipant } from '../../../runtime/bootstrap/runtime-publication-participant.js';
 import { StationRuntime } from '../../../runtime/bootstrap/station-runtime.js';
+import { HomeWriterOwner } from '../../ssh/home-writer-owner.js';
 import { createReportFlow } from './delegation-source-fixtures/flow.js';
 import { requestFor, setup } from './delegation-source-fixtures/report.js';
 
@@ -391,16 +393,58 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
       continuationOperationKey: retry.operationKey,
     };
     h.owner.close(handle);
-    const retryFinalized = await h.custody.finalizeContinuation(
-      h.f.context(requestFor(h, 'POST')),
-      groupId,
-      retryCommand,
-      dispatch,
-      h.f.owner,
-      participant,
-      (historical) => historical.group,
-    );
-    assert.equal(retryFinalized.result.replayed, false);
+    let acquired = false;
+    const acquire = HomeWriterOwner.prototype.acquire;
+    const acquireSpy = vi
+      .spyOn(HomeWriterOwner.prototype, 'acquire')
+      .mockImplementation(async function (this: HomeWriterOwner, ...args) {
+        const lease = await acquire.apply(this, args);
+        acquired = true;
+        return lease;
+      });
+    const remove = fs.rmSync;
+    const releaseFault = vi
+      .spyOn(fs, 'rmSync')
+      .mockImplementation((path, options) => {
+        if (
+          acquired &&
+          String(path).includes('.home-writer.mutation.guard.stale-')
+        )
+          throw new Error('injected home release fault');
+        return remove(path, options);
+      });
+    syncBuiltinESMExports();
+    try {
+      await assert.rejects(
+        h.custody.finalizeContinuation(
+          h.f.context(requestFor(h, 'POST')),
+          groupId,
+          retryCommand,
+          dispatch,
+          h.f.owner,
+          participant,
+          (historical) => historical.group,
+        ),
+        {
+          code: 'rounds_continuation_publication_uncertain',
+          status: 'published-cleanup-unknown',
+        },
+      );
+      assert.throws(
+        () => acquireStationHomeMaintenanceLease(h.f.home),
+        StationHomeActiveError,
+      );
+    } finally {
+      releaseFault.mockRestore();
+      acquireSpy.mockRestore();
+      syncBuiltinESMExports();
+    }
+    await runtime.shutdown();
+    runtime = new StationRuntime({ projectHomeDir: h.f.home });
+    participant = Reflect.get(
+      runtime,
+      'runtimePublicationParticipant',
+    ) as RuntimePublicationParticipant;
     const retryReplay = await h.custody.finalizeContinuation(
       h.f.context(requestFor(h, 'POST')),
       groupId,
