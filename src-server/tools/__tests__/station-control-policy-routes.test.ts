@@ -160,6 +160,39 @@ const GUIDE_TARGET = {
 
 /** Arguments that pass each tool's own schema, so it reaches Station. */
 const ARGS: Record<string, Record<string, unknown>> = {
+  create_delegation_group: {
+    operationId: 'op',
+    projectSlug: 'project-a',
+    deadlineAt: 2000000000000,
+    maxConcurrent: 1,
+    budget: { inputTokens: 10, outputTokens: 10, costMicros: 100 },
+    members: [
+      {
+        seatId: 'seat',
+        agentId: 'reviewer',
+        brief: 'work',
+        maxOutputTokens: 10,
+      },
+    ],
+  },
+  get_delegation_group: { groupId: 'group' },
+  get_delegation_group_events: { groupId: 'group', afterRevision: 0 },
+  run_delegation_group: {
+    groupId: 'group',
+    operationId: 'op',
+    expectedRevision: 1,
+  },
+  cancel_delegation_group: {
+    groupId: 'group',
+    operationId: 'op',
+    expectedRevision: 1,
+  },
+  get_delegation_group_member_events: {
+    groupId: 'group',
+    seatId: 'seat',
+    afterSequence: 0,
+  },
+  get_delegation_group_member_output: { groupId: 'group', seatId: 'seat' },
   create_session_group: {
     operationId: 'op',
     maxConcurrent: 1,

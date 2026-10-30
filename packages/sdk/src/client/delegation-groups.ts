@@ -121,12 +121,18 @@ export async function createDelegationGroup(
   input: DelegationGroupCreateInput,
   options?: ClientRequestOptions,
 ): Promise<DelegationGroupOperationResult> {
+  const sent = parseDelegationGroupInput(input);
+  return operation.parse(await request(root(base), sent, options));
+}
+export function parseDelegationGroupInput(
+  input: unknown,
+): DelegationGroupCreateInput {
   const sent = parseReportGroupInput(input);
   if (sent.continuation !== undefined)
     throw new DelegationGroupProtocolError(
       'Portable continuation is not supported.',
     );
-  return operation.parse(await request(root(base), sent, options));
+  return sent;
 }
 export async function getDelegationGroup(
   base: string,

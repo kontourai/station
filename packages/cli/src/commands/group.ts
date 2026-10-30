@@ -1,14 +1,23 @@
 import {
   cancelCliSessionGroup,
+  cancelDelegationGroup,
   createCliSessionGroup,
+  createDelegationGroup,
   createEnsembleCliSessionGroup,
   getCliSessionGroup,
+  getDelegationGroup,
   listCliSessionGroups,
+  listDelegationGroups,
   parseCliSessionGroupInput,
   parseCliSessionGroupSyncInput,
+  parseDelegationGroupInput,
   parseEnsembleCliSessionGroupInput,
   readCliSessionGroupEvents,
+  readDelegationGroupEvents,
+  readDelegationGroupMemberEvents,
+  readDelegationGroupMemberOutput,
   runCliSessionGroup,
+  runDelegationGroup,
   subscribeCliSessionGroupEvents,
   syncCliSessionGroup,
 } from '@kontourai/station-sdk/client';
@@ -41,7 +50,108 @@ export async function runGroupCommand(
   if (action?.startsWith('session-'))
     return runSessionGroupCommand(apiBase, parsed);
 
-  throw new Error('Expected group session-* or report-* action.');
+  return runPortableGroupCommand(apiBase, parsed);
+}
+
+async function runPortableGroupCommand(
+  apiBase: string,
+  parsed: ParsedCoreArgs,
+) {
+  const [action, groupId, seatId, ...extra] = parsed.positionals;
+  const create = action === 'create';
+  const list = action === 'list';
+  const member = action === 'member-events' || action === 'member-output';
+  const mutation = action === 'run' || action === 'cancel';
+  if (
+    ![
+      'create',
+      'get',
+      'list',
+      'events',
+      'run',
+      'cancel',
+      'member-events',
+      'member-output',
+    ].includes(action ?? '') ||
+    extra.length ||
+    (create || list ? groupId !== undefined : !groupId) ||
+    (member ? !seatId : seatId !== undefined)
+  )
+    throw Error(
+      'Expected group create|get|list|events|run|cancel|member-events|member-output with the required group and member IDs.',
+    );
+  const allowed = new Set([
+    'json',
+    'api-base',
+    'station',
+    'credential',
+    ...(create ? ['file'] : []),
+    ...(list ? ['after-group'] : []),
+    ...(mutation ? ['operation', 'revision'] : []),
+    ...(action === 'events' ? ['after-revision'] : []),
+    ...(action === 'member-events' ? ['after-sequence'] : []),
+  ]);
+  for (const flag of Object.keys(parsed.flags))
+    if (!allowed.has(flag) || (parsed.repeatedFlags[flag]?.length ?? 0) > 1)
+      throw Error(`Unsupported or repeated group flag --${flag}.`);
+  let result: unknown;
+  if (create)
+    result = await createDelegationGroup(
+      apiBase,
+      parseDelegationGroupInput(
+        readGroupInput(required(parsed, 'file'), 'Delegation group'),
+      ),
+    );
+  else if (list)
+    result = await listDelegationGroups(
+      apiBase,
+      optionalValueFlag(parsed, 'after-group'),
+    );
+  else if (action === 'get')
+    result = await getDelegationGroup(apiBase, groupId!);
+  else if (action === 'events')
+    result = await readDelegationGroupEvents(
+      apiBase,
+      groupId!,
+      cursor(parsed, 'after-revision') ?? 0,
+    );
+  else if (action === 'member-events')
+    result = await readDelegationGroupMemberEvents(
+      apiBase,
+      groupId!,
+      seatId!,
+      cursor(parsed, 'after-sequence') ?? 0,
+    );
+  else if (action === 'member-output')
+    result = await readDelegationGroupMemberOutput(apiBase, groupId!, seatId!);
+  else {
+    const expectedRevision = cursor(parsed, 'revision');
+    if (expectedRevision === undefined)
+      throw Error('--revision=<current revision> is required.');
+    const input = {
+      operationId: required(parsed, 'operation'),
+      expectedRevision,
+    };
+    const stop = new AbortController();
+    const interrupt = () => stop.abort();
+    process.once('SIGINT', interrupt);
+    try {
+      result =
+        action === 'run'
+          ? await runDelegationGroup(apiBase, groupId!, input, {
+              signal: stop.signal,
+              timeoutMs: null,
+            })
+          : await cancelDelegationGroup(apiBase, groupId!, input, {
+              signal: stop.signal,
+            });
+    } finally {
+      process.removeListener('SIGINT', interrupt);
+    }
+  }
+  console.log(
+    terminalSafeJson(result).split('\n').map(terminalSafeText).join('\n'),
+  );
 }
 
 async function runSessionGroupCommand(
