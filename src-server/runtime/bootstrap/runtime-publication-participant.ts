@@ -4,13 +4,13 @@ import {
 } from '@kontourai/station-shared/station-home-lifecycle';
 
 const owners = new WeakSet<object>();
-export class RuntimePublicationUnavailable extends Error {
+class RuntimePublicationUnavailable extends Error {
   readonly code = 'runtime_publication_unavailable';
   constructor() {
     super('Runtime publication is unavailable or still pending.');
   }
 }
-export class RuntimePublicationPending extends Error {
+class RuntimePublicationPending extends Error {
   readonly code = 'runtime_publication_pending';
   constructor() {
     super(

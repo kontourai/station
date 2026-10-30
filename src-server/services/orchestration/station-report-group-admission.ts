@@ -83,7 +83,7 @@ export type StationReportAdmission = {
   };
   signature: string;
 };
-export const REPORT_ADMISSION_DOMAIN = 'station.report-group.admission.v1';
+const REPORT_ADMISSION_DOMAIN = 'station.report-group.admission.v1';
 
 export function reportCredentialDigest(credential: string): string {
   return `sha256:${createHash('sha256').update(credential).digest('hex')}`;

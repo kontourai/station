@@ -45,25 +45,6 @@ export function pageByBytes<T, C extends string | number, P>(input: {
   return result;
 }
 
-/** Existence, correlation and a reserved intent cannot establish provider-turn ownership. */
-export function belongsToAcceptedGroupTurn(
-  binding: {
-    state: string;
-    providerTurnId: string | null;
-    binding: { sessionId: string; invocationId: string };
-  },
-  event: { threadId: string; turnId?: string; invocationId?: string },
-): boolean {
-  return (
-    (binding.state === 'turn-accepted' || binding.state === 'observed') &&
-    binding.providerTurnId !== null &&
-    event.threadId === binding.binding.sessionId &&
-    event.turnId === binding.providerTurnId &&
-    (event.invocationId === undefined ||
-      event.invocationId === binding.binding.invocationId)
-  );
-}
-
 export async function awaitWithAbort<T>(
   promise: Promise<T>,
   signal: AbortSignal,
@@ -238,28 +219,6 @@ export function readGroupStreamCursor(
   )
     throw new Error('group_stream_cursor_invalid');
   return cursor;
-}
-
-export function isActionableGroupRequest(
-  binding: Parameters<typeof belongsToAcceptedGroupTurn>[0],
-  event: Parameters<typeof belongsToAcceptedGroupTurn>[1] & {
-    eventId: string;
-    requestId: string;
-  },
-  current: {
-    state: string;
-    canRespond?: boolean;
-    reference: { threadId: string; requestId: string; requestEventId: string };
-  } | null,
-): boolean {
-  return (
-    belongsToAcceptedGroupTurn(binding, event) &&
-    current?.state === 'open' &&
-    current.canRespond === true &&
-    current.reference.threadId === event.threadId &&
-    current.reference.requestId === event.requestId &&
-    current.reference.requestEventId === event.eventId
-  );
 }
 
 export function createGroupStreamLifetime(

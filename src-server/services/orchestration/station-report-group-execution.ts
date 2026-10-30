@@ -42,7 +42,7 @@ const same = (left: unknown, right: unknown) =>
   canonicalJson(left) === canonicalJson(right);
 const digest = (value: unknown) =>
   `sha256:${createHash('sha256').update(canonicalJson(value)).digest('hex')}`;
-export class StationReportExecutionUnavailable extends Error {
+class StationReportExecutionUnavailable extends Error {
   readonly code = 'group_execution_unavailable';
   constructor() {
     super('Report group execution is unavailable.');

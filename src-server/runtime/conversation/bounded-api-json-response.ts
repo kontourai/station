@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-export class BoundedApiRawResponseUnavailable extends Error {
+class BoundedApiRawResponseUnavailable extends Error {
   readonly code = 'usage_unknown';
   constructor() {
     super('Complete provider response is unavailable.');
