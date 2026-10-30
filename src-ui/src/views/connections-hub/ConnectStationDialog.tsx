@@ -566,7 +566,10 @@ export function ConnectStationDialog({
               </>
             ) : null}
             {peerSelected && reservation ? (
-              <section aria-label="Peer access">
+              <section
+                aria-label="Peer access"
+                className="connect-station-peer"
+              >
                 <h3>
                   {controller.name} → {destination.label}
                 </h3>
@@ -582,18 +585,18 @@ export function ConnectStationDialog({
                           : `Peer setup: ${status}.`}
                 </p>
                 {observed?.error ? <p role="alert">{observed.error}</p> : null}
-                {peerStatus.error ? (
+                {peerStatus.error && !peerAuthorityRefused ? (
                   <p role="alert">
                     Couldn't read the request status. Peer setup needs a trusted
                     operator session on {controller.name}.
                   </p>
                 ) : null}
-                <p>
-                  Approval expires:{' '}
-                  {observed
-                    ? new Date(observed.expiresAt).toLocaleString()
-                    : 'Not yet reported'}
-                </p>
+                {observed && !peerAuthorityRefused ? (
+                  <p>
+                    Approval expires:{' '}
+                    {new Date(observed.expiresAt).toLocaleString()}
+                  </p>
+                ) : null}
                 {peerNeedsRetry && !peerAuthorityRefused ? (
                   <p>
                     The sending Station hasn't confirmed this request. Retry
@@ -603,9 +606,8 @@ export function ConnectStationDialog({
                 ) : null}
                 {peerAuthorityRefused ? (
                   <p>
-                    Open setup from an operator session on {controller.name},
-                    then retry this same request. Device access can be requested
-                    separately.
+                    Open setup from an operator session, then retry this same
+                    request.
                   </p>
                 ) : null}
                 {!peerInvitation &&
