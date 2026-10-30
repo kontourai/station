@@ -18,7 +18,7 @@ From the Station repository root, with Node 24 and managed dependencies installe
 
 ```sh
 npm run dependencies:ci
-node examples/repository-knowledge-graph/export.mjs --output=/tmp/station-knowledge-graph.json
+node examples/repository-knowledge-graph/export.mjs --module=ChildWork --output=/tmp/station-knowledge-graph.json
 ```
 
 Omit `--output` to print JSON. An existing output file is refused. `--repo=<path>`
@@ -27,8 +27,15 @@ atlas, module map and review ledger, including intentional working edits. It
 records HEAD and independent byte hashes; HEAD alone does not describe dirty
 inputs. Symlinks, unsafe paths and changed-during-read inputs are refused.
 
-Current atlas membership determines the module set; it is not hard-coded in the
-exporter. Whole-document ledger dependencies stay on document nodes. A module
+Repeat `--module=<exact atlas module name>` to select a subset. Unknown or
+duplicate names are refused. Omitting it requests the whole atlas, which can
+exceed the unchanged 2,500-record, 15,000-edge or byte limits as the repository
+grows; choose a smaller subset instead of raising those bounds. The snapshot
+records its selection and binds it into record identity. Omitted-reference
+counts describe the selected graph, not modules you did not select.
+
+Current atlas membership determines valid module names; they are not hard-coded
+in the exporter. Whole-document ledger dependencies stay on document nodes. A module
 gets only references found in its own canonical section. Untracked/private
 artifacts, unsupported external URLs and ambiguous short filenames are not
 ingested. Counts disclose omitted references. No raw source-file bodies or

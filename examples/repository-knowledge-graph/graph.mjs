@@ -87,7 +87,10 @@ function git(root, args) {
 }
 
 /** Snapshot public, tracked references. Edges describe documentation, not inferred code calls. */
-export function exportRepositoryKnowledge({ root = process.cwd() } = {}) {
+export function exportRepositoryKnowledge({
+  root = process.cwd(),
+  moduleNames,
+} = {}) {
   root = realpathSync(root);
   if (realpathSync(git(root, ['rev-parse', '--show-toplevel']).trim()) !== root)
     throw new Error('Select the repository root, not a subdirectory.');
@@ -171,6 +174,20 @@ export function exportRepositoryKnowledge({ root = process.cwd() } = {}) {
     new Set(modules).size !== modules.length
   )
     throw new Error('Atlas module identities must be unique.');
+  let selection;
+  if (moduleNames !== undefined) {
+    if (
+      !Array.isArray(moduleNames) ||
+      !moduleNames.length ||
+      moduleNames.some(
+        (name) => typeof name !== 'string' || !modules.includes(name),
+      ) ||
+      new Set(moduleNames).size !== moduleNames.length
+    )
+      throw new Error('Select unique module names from the atlas.');
+    selection = { modules: [...moduleNames].sort(compare) };
+  }
+  const selectedModules = selection?.modules ?? modules;
   const sections = moduleSections(moduleText);
   validateCatalog(atlas, extractModules(moduleText), tracked);
   const nodes = new Map();
@@ -224,6 +241,10 @@ export function exportRepositoryKnowledge({ root = process.cwd() } = {}) {
     tracked,
   ).headings;
   for (const group of atlas.groups) {
+    const groupModules = (group.modules ?? []).filter((name) =>
+      selectedModules.includes(name),
+    );
+    if (!groupModules.length) continue;
     const groupKey = add(`group:${group.id}`, {
       kind: 'subsystem',
       title: group.title,
@@ -233,7 +254,7 @@ export function exportRepositoryKnowledge({ root = process.cwd() } = {}) {
       const target = fileNode(path.split('#')[0]);
       if (target) edge(groupKey, target, 'reading-path');
     }
-    for (const name of group.modules ?? []) {
+    for (const name of groupModules) {
       const body = sections.get(name);
       if (body === undefined)
         throw new Error(`Atlas module has no canonical section: ${name}`);
@@ -360,7 +381,9 @@ export function exportRepositoryKnowledge({ root = process.cwd() } = {}) {
     )
       throw new Error(`Input changed during export: ${input.path}`);
   }
-  const inputDigest = hash(JSON.stringify({ revision, inputs }));
+  const inputDigest = hash(
+    JSON.stringify({ revision, inputs, ...(selection ? { selection } : {}) }),
+  );
   const identities = new Map(
     [...nodes.keys()].map((key) => [
       key,
@@ -438,8 +461,9 @@ export function exportRepositoryKnowledge({ root = process.cwd() } = {}) {
     inputDigest,
     payloadDigest: hash(JSON.stringify(records)),
     inputs,
+    ...(selection ? { selection } : {}),
     counts: {
-      modules: modules.length,
+      modules: selectedModules.length,
       records: records.length,
       edges: edges.size,
       omittedReferences: omitted.size,
@@ -464,9 +488,30 @@ export function validateKnowledgeSnapshot(value) {
   if (
     !Array.isArray(value.inputs) ||
     value.inputDigest !==
-      hash(JSON.stringify({ revision: value.revision, inputs: value.inputs }))
+      hash(
+        JSON.stringify({
+          revision: value.revision,
+          inputs: value.inputs,
+          ...(value.selection ? { selection: value.selection } : {}),
+        }),
+      )
   )
     throw new Error('Snapshot input digest mismatch.');
+  if (value.selection !== undefined) {
+    const selected = value.selection?.modules;
+    const actual = value.records
+      .filter((record) => record.category === 'repository.module')
+      .map((record) => record.title)
+      .sort(compare);
+    if (
+      !Array.isArray(selected) ||
+      !selected.length ||
+      selected.some((name) => typeof name !== 'string') ||
+      new Set(selected).size !== selected.length ||
+      JSON.stringify(selected) !== JSON.stringify(actual)
+    )
+      throw new Error('Snapshot module selection does not match its records.');
+  }
   const paths = new Set();
   for (const input of value.inputs) {
     if (
