@@ -1,0 +1,7 @@
+{
+  "revision": "3d62103991bdcb917a02a39bbcbf1eaa265c6a91",
+
+  "notes": [
+    {"path":"packaging/node-pty-prebuilds/README.md","note":"Scoped lock graph review at 3d62103991b: node-pty remains integrity-pinned 1.1.0 with node-addon-api 7.1.1; the committed manifest artifacts map remains empty and Linux allowlist retains source-build outputs. Inspected stageNodePtyPrebuild: Linux target/version/digest selection and explicit build-from-source opt-out remain, with no libc-floor admission added. README accurately retains missing Linux artifacts, toolchain requirement, musl/libc limitation, and distinct future workflow/attestation obligations. Flow Agents 9.9.1 lock refresh does not populate this channel or establish Linux compatibility. No prose or source changes required for the lock packages/snapshots delta; other unchanged workflow/verifier claims retain prior review. Source and metadata inspection only, no Linux build, native load, handshake, artifact production or hosted acceptance executed.","inputs":["packaging/node-pty-prebuilds/README.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots"]}
+  ]
+}
