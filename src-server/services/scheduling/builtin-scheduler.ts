@@ -288,6 +288,15 @@ export interface BuiltinSchedulerOptions {
   onMonitorTerminal?: (triggerId: string) => void;
   /** Releases server-only monitor observers when the scheduler is disposed. */
   disposeMonitorTasks?: () => void;
+  /**
+   * Automation polling (`github-poll`) rides this scheduler's minute tick and
+   * has no timer of its own. At most one poll is in flight; `stop()` aborts
+   * it, waits for it, then closes the poller.
+   */
+  automationPoller?: {
+    poll(input: { now: number; signal: AbortSignal }): Promise<unknown>;
+    close(): void;
+  };
 }
 
 const STARTER_SCHEDULED_CHECK_JOB_NAME = SCHEDULER_STARTER_CHECK_JOB_NAME;
@@ -363,6 +372,7 @@ export class BuiltinScheduler implements ISchedulerProvider {
     ReturnType<typeof setTimeout>
   >();
   private reconcilingMonitorTerminals = false;
+  private automationPoll: Promise<void> | null = null;
 
   constructor(private readonly options: BuiltinSchedulerOptions) {
     this.notificationService = options.notificationService ?? null;
@@ -439,6 +449,8 @@ export class BuiltinScheduler implements ISchedulerProvider {
     }
     await Promise.all(this.runningJobs.values());
     await Promise.all(this.pendingAnnouncements);
+    await this.automationPoll;
+    this.options.automationPoller?.close();
     if (!this.closed) {
       this.closed = true;
       this.ledger.close();
@@ -758,6 +770,9 @@ export class BuiltinScheduler implements ISchedulerProvider {
     // Before claiming: a job another process left over the threshold is
     // disabled now (synchronously, in the ledger) rather than run again.
     void this.trackAnnouncement(this.reconcileFatigue());
+    // Independent of scheduler storage: an unreadable job ledger must not
+    // stop Automation sources from being observed.
+    this.pollAutomations();
     let receipts: SchedulerDispatchReceipt[];
     try {
       receipts = this.requireRead(this.ledger.claimDue(Date.now()));
@@ -791,6 +806,25 @@ export class BuiltinScheduler implements ISchedulerProvider {
         ),
       );
     }
+  }
+
+  /** Single-flight: a slow poll is never overlapped by the next tick's. */
+  private pollAutomations(): void {
+    const poller = this.options.automationPoller;
+    if (!poller || this.automationPoll) return;
+    this.automationPoll = poller
+      .poll({ now: Date.now(), signal: this.stopController.signal })
+      .then(
+        () => undefined,
+        (error) => {
+          this.options.logger?.warn('Automation poll failed', {
+            error: errorMessage(error),
+          });
+        },
+      )
+      .finally(() => {
+        this.automationPoll = null;
+      });
   }
 
   /**

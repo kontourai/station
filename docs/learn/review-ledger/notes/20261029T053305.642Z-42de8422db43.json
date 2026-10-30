@@ -1,0 +1,7 @@
+{
+  "revision": "8f0111e1a85c5f36a2a9eebfa4a3c18ab8502d9b",
+
+  "notes": [
+    {"path":"docs/guides/deployment-authentication.md","note":"Reviewed local account session witness, invitation acceptance, Device binding and no-account attribution against runtime composition and focused route tests; native and deployed Serve journeys remain unverified.","inputs":["docs/guides/deployment-authentication.md","src-server/runtime/bootstrap/account-bound-device-gate.ts","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

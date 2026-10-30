@@ -102,6 +102,7 @@ _Avoid_: source doc unless it is intended for review
 | Responsibility | Owner | Reading |
 | --- | --- | --- |
 | Knowledge storage, retrieval, and context | [KnowledgeService](../../../src-server/services/knowledge/knowledge-service.ts) | [Knowledge](../../guides/knowledge.md) |
+| Observe-only GitHub intake and delivery history | [GitHub poller](../../../src-server/services/automation/github-poll.ts) | [Automation preview](../../design/automations.md#observe-only-github-preview); no Task dispatch or model invocation |
 | Job ownership and run accounting | [SchedulerService](../../../src-server/services/scheduling/scheduler-service.ts) | [Monitoring](../../guides/monitoring.md) and [Starter Work](../../guides/starter-work.md) |
 | Targeted automation runs | [ScheduledConversationRuns](../../../src-server/services/scheduling/scheduled-conversation-runs.ts) | [Automations](../../user/automations.md) and [the decision](../../decisions/automations-unify-schedules.md) |
 | Stored notifications and source actions | [NotificationService](../../../src-server/services/notifications/notification-service.ts) | [Notification delivery design](../../design/notification-delivery.md), with its stated implementation limits |

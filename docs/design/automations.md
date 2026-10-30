@@ -6,8 +6,10 @@
 > [configuration store](../../src-server/services/automation/automation-store.ts),
 > [SQLite ledger](../../src-server/services/automation/automation-ledger.ts), and
 > [unattended principal context](../../src-server/runtime/agents/unattended-principal-context.ts)
-> now exist. Configuration is stored in `security/automations.json`. The runtime
-> does not yet compose Automation intake or dispatch through those stores.
+> now exist. The default-off `github-automation-observations` Feature Preview
+> composes observe-only GitHub polling and operator delivery history through
+> those stores. Configuration remains `security/automations.json`; there is no
+> public configuration mutation or Task dispatch from this intake yet.
 > The design below retains the original proposal checked at `14c83da3cd`,
 > including its proposed broader source kinds and file layout; current
 > foundation shapes belong to the linked sources. This status review inspected
@@ -27,6 +29,46 @@ Status: **proposal.** It extends the existing
 [scheduler](../../packages/contracts/src/scheduler.ts) paths with one model:
 event sources feed rules, rules start actions, and episodes and grants bound
 what an action may do.
+
+## Observe-only GitHub preview
+
+Enable **GitHub automation observations** in **Settings → Advanced → Feature
+previews** on a personal Station. Hosted mode does not offer these observations.
+The preview makes GitHub API requests but invokes no model, creates no Task,
+publishes no branch and sends no Automation notification. Sources and rules
+remain operator-managed private configuration; enabling the preview alone does
+not configure a source or grant an action.
+
+The runtime reads its own Station home's `security/automations.json`, validates
+both source grants and enabled rules, and polls on the existing scheduler tick.
+Each source has its own interval (five minutes by default). Disabled previews
+perform no polling or ledger allocation. Disabling the preview or changing a
+source while its request is in flight discards that request's observations;
+turning it off prevents the next operation without deleting retained history.
+
+A poll reads at most 20 completed runs per workflow file, up to four pinned
+files, or one repository-wide page when rules do not pin that bounded set.
+This is a bounded observation window, not a complete repository history. A
+response advertising additional runs records `partial`, retains the observations
+it actually received, and does not advance the cursor. A complete response may
+advance the cursor through accepted timestamps with a ten-minute overlap.
+Malformed and future-dated timestamps cannot advance it. Long-running work
+outside the returned page is not qualified by this preview.
+
+`station automation deliveries --limit=50` returns an `AutomationDeliveryPage`:
+`deliveries` contains bounded, payload-free records; `polls` shows each observed
+source's last poll time, last accepted cursor when present, and `ok`, `partial`,
+`unauthorized` or `unavailable`. A failed poll does not erase earlier evidence or
+advance its cursor. Configuration/storage errors remain failures, not empty
+success. This command requires management access; a disabled preview responds
+with `feature_preview_disabled` and its Settings link.
+
+Delivery deduplication, opening/closing episodes and their delivery references
+commit together. A failed episode write leaves the delivery retryable after
+restart. Repeat observations do not reopen or re-close episodes. An episode here
+records rule matching only: it does not establish diagnosis, repair or release
+completion. S3's action dispatcher remains separate, as do signed push ingress
+and automatic publication.
 
 ## 1. Problem and constraints
 
