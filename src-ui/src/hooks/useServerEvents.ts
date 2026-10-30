@@ -8,7 +8,6 @@ import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import {
   applyACPStatusEvent,
   applyServerUpdateStateEvent,
-  fetchSSE,
 } from '@kontourai/station-sdk';
 import { type QueryClient, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef } from 'react';
@@ -20,7 +19,8 @@ import { navigationStore } from '../contexts/NavigationContext';
 import { toastStore } from '../contexts/ToastContext';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import { playDeliveredNotificationSound } from '../lib/notification-sounds';
-import { CLIENT_DOCUMENT_SESSION_ID } from './clientDocumentSession';
+import { ensureOrchestrationEventStream } from './orchestration/ensureOrchestrationEventStream';
+import { subscribeSharedOrchestrationStream } from './orchestration/sharedStreamListeners';
 
 type EventHandler = (data: Record<string, unknown>) => void;
 
@@ -309,15 +309,21 @@ export function useServerEvents(handlers?: Record<string, EventHandler>) {
   handlersRef.current = handlers;
 
   useEffect(() => {
-    const url = `${apiBase}/events`;
-    const authenticatedStream = fetchSSE(url, {
-      authentication: 'required',
-      headers: { 'X-Station-Client-Session': CLIENT_DOCUMENT_SESSION_ID },
-      // archive#1848: see `ensureOrchestrationEventStream.ts` — a ceiling
-      // equal to the initial delay is a fixed poll, not a ladder.
-      retryDelayMs: 3000,
-      maxRetryDelayMs: 30_000,
-      onMessage: (message) => {
+    const subscription = subscribeSharedOrchestrationStream(apiBase, {
+      onMessage: (raw) => {
+        if (raw.event !== 'station:general') return;
+        let message: { event: string; data: string };
+        try {
+          const envelope = JSON.parse(raw.data);
+          if (
+            typeof envelope.event !== 'string' ||
+            typeof envelope.data !== 'string'
+          )
+            return;
+          message = { event: envelope.event, data: envelope.data };
+        } catch {
+          return;
+        }
         // This capture belongs to THIS subscription. Never resolve a fresh
         // authority here: a late event from A must not be adopted by B (or by
         // a later A generation) after the connection has changed.
@@ -413,8 +419,14 @@ export function useServerEvents(handlers?: Record<string, EventHandler>) {
       },
     });
 
+    const release = ensureOrchestrationEventStream(
+      apiBase,
+      undefined,
+      authorityKey,
+    );
     return () => {
-      authenticatedStream.close();
+      subscription.close();
+      release();
     };
   }, [apiBase, authorityKey, queryClient, subscriptionAuthority]);
 }

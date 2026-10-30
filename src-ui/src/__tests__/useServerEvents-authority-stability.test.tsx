@@ -34,7 +34,19 @@ vi.mock('@kontourai/station-sdk', async () => ({
         onMessage: (message: { event: string; data: string }) => void;
       },
     ) => {
-      const stream = { close: vi.fn(), onMessage: options.onMessage };
+      const controller = new AbortController();
+      const stream = {
+        close: vi.fn(() => controller.abort()),
+        signal: controller.signal,
+        completed: new Promise(() => {}),
+        retry: vi.fn(),
+        restart: vi.fn(),
+        onMessage: (message: { event: string; data: string }) =>
+          options.onMessage({
+            event: 'station:general',
+            data: JSON.stringify({ event: message.event, data: message.data }),
+          }),
+      };
       streams.push(stream);
       return stream;
     },

@@ -907,8 +907,17 @@ export function useSessionEventStream(
             apiBase,
             options,
           );
-          ensureOrchestrationEventStream(apiBase, undefined, authorityKey);
-          return subscription;
+          const release = ensureOrchestrationEventStream(
+            apiBase,
+            undefined,
+            authorityKey,
+          );
+          return {
+            close: () => {
+              subscription.close();
+              release();
+            },
+          };
         }
       : fetchSSE;
     authenticatedStream = openStream(
