@@ -964,6 +964,20 @@ Task status alone does not establish that work passed a gate. Read the run and
 review evidence. The [Starter Work guide](https://github.com/kontourai/station/blob/main/docs/guides/starter-work.md) explains
 how Station preserves the same work identity through retries and response loss.
 
+## Tell Running Work From Open Conversations
+
+**Running** means a turn or reported child work is in flight. **Idle** keeps
+an open conversation available for follow-up without calling it active or
+completed. **Needs you** identifies something you can answer; terminal
+outcomes appear under **Just finished** or **Earlier**. Home, Activity and the
+chat inbox use the same status classifier.
+
+A row without a Project can show **Directory · …/folder** from its recorded
+working directory. That label does not make the folder a Project. Delegation
+origin labels such as **CLI (reported)** name the client-reported surface;
+the details distinguish it from the authenticated caller. Station does not
+infer an external orchestrator from prompt text or a user agent.
+
 ## Review Activity Without Changing Your Place
 
 Open **Activity** from the workspace sidebar. Use a row's **More actions →
