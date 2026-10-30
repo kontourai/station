@@ -215,6 +215,7 @@ export function SubagentTranscriptCard({ child }: { child: TranscriptChild }) {
               running={running}
               name={title}
               historyAvailable={!!item.transcript}
+              transcriptOpen={transcriptOpen}
             />
           )}
           {summary ? (
