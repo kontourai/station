@@ -1,0 +1,9 @@
+{
+  "revision": "c5c41beb898fa79c2cea36c086fb3c47fc152dd1",
+
+  "notes": [
+    {"path":"docs/design/pnpm-workspace-installation.md","note":"Reviewed the dependency graph/config delta against this installation contract. Root now selects published Flow Agents9.9.1, Flow5.4.0 and Dispatch0.8.0; the obsolete Flow Agents6.5.1 datum packageExtension is removed with its derived checksum. pnpm11.25.0, hoisted clone-or-copy imports, ignoreScripts, engineStrict,1440-minute third-party release age and @kontourai exemption remain. The managed installer/lock reader have no epic delta. Executed lockfile-sync:gate PASS at c5c41beb898: importers/settings/patches/resolved peers agree. The earlier merged-head managed ci/verify PASS is separate recorded evidence. No prose change needed; no disk-saving, relocated artifact, other-platform, security-advisory or hosted release qualification is claimed.","inputs":["docs/design/pnpm-workspace-installation.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots"]},
+
+    {"path":"docs/reference/play-data-safety.md","note":"Reviewed the locked dependency update against the purpose and limits of this generated declaration. Privacy inventory and its generated Data Safety text have no epic delta; the page still labels its answers conditional, inventory-derived, incomplete and unapproved, with known operational gaps. Flow/Dispatch graph changes and the smol-toml parser addition do not themselves prove a new disclosure tuple or prove the absence of third-party data flows. No generated classification was changed, no generator input required correction from this dependency impact, and no submission or complete dependency privacy audit is approved. Source/dependency-impact review only, not executed data-flow, provider, app-store or physical-device acceptance.","inputs":["docs/reference/play-data-safety.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots"]}
+  ]
+}
