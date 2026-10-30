@@ -1724,6 +1724,20 @@ describe('verification reporter', () => {
     }
   });
 
+  test('persists both streams without nested or boundary-hidden credentials', () => {
+    const workspace = root();
+    const payload = `body={"context":{"inner":{"password":"receipt-secret","safe":"keep"}}} xxx=\napiKey: "boundary-secret"`;
+    const result = persistVerificationOutput({ root: workspace, requestKey, stdout: payload, stderr: payload });
+    expect(result.artifacts).toHaveLength(2);
+    for (const artifact of result.artifacts) {
+      const contents = readFileSync(join(workspace, artifact.path), 'utf8');
+      expect(contents).not.toContain('receipt-secret');
+      expect(contents).not.toContain('boundary-secret');
+      expect(contents).toContain('keep');
+      expect(contents).toContain('xxx=');
+    }
+  });
+
   test('verifies local artifacts and projects exact bytes under a joiner key', () => {
     const source = root();
     const joiner = root();
