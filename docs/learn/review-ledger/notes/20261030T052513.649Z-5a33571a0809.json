@@ -1,0 +1,7 @@
+{
+  "revision": "e74e1b1ea7ceede23facce898a7d6ef837d3ab8f",
+
+  "notes": [
+    {"path":"examples/mcp-ui-demo/README.md","note":"Scoped runtime/lock impact review at e74e1b1ea7c. Read the complete demo README and standalone server; inspected current named ESM export resolution for public MCP server/stdio/App SDK helpers, demo bundle declaration, resource URI/tool metadata and current MCP frame host boundaries. The demo constructs one self-contained App SDK resource with lifecycle/resize initialization and no app tool/message/link calls. The added report-finalizer preview mount is separate from MCP-UI resolution, policy and configured frame-origin composition. Package/peer refresh and public export presence do not prove a sandboxed render, network containment or native/external-host compatibility. README already limits web/native support, distinguishes proxy/srcdoc origins and explicitly discloses WebRTCICE outside CSP isolation. No prose change required for these named inputs; unchanged host dimensions/interactive policy statements retain earlier source reviews. Source/metadata inspection only: no server launch, integration install, tool/resource request, esbuild run, browser/frame or provider/native/hosted acceptance. No baseline/classification/capture change.","inputs":["examples/mcp-ui-demo/README.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}
