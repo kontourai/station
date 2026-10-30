@@ -201,7 +201,8 @@
                 "state": {
                   "enum": [
                     "authorization-failed",
-                    "token-expired-refresh-failed"
+                    "token-expired-refresh-failed",
+                    "client-id-required"
                   ]
                 },
                 "reason": {
@@ -354,7 +355,10 @@
     "untrustedContentPersonOwned": {
       "type": "array",
       "uniqueItems": true,
-      "items": { "type": "string", "enum": ["contentTrust", "permissions", "trustReadOnlyHints"] },
+      "items": {
+        "type": "string",
+        "enum": ["contentTrust", "permissions", "trustReadOnlyHints"]
+      },
       "description": "Storage-owned fields controlled by a person; incoming values are ignored."
     },
     "untrustedContentChanges": {
@@ -379,6 +383,41 @@
         },
         "additionalProperties": false
       }
+    },
+    "oauthClient": {
+      "type": "object",
+      "description": "OAuth client for a remote server: a pre-registered client ID, then a Client ID Metadata Document URL, then Dynamic Client Registration. The client secret is a secret binding id, never the secret.",
+      "properties": {
+        "clientId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "issuer": {
+          "type": "string",
+          "pattern": "^https://[^?#]+$",
+          "maxLength": 2048
+        },
+        "clientMetadataUrl": {
+          "type": "string",
+          "pattern": "^https://",
+          "maxLength": 2048
+        },
+        "scopes": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "clientSecretRef": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,63}$"
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false

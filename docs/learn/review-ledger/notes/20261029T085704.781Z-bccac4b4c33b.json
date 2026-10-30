@@ -1,0 +1,7 @@
+{
+  "revision": "9ab71288ea776f13c59851c039f5a1e14c405cf9",
+
+  "notes": [
+    {"path":"docs/reference/env-vars.md","note":"Edited: added STATION_OAUTH_CLIENT_METADATA_URL (unset by default, startup validation, precedence). Checked against tool-server-oauth.ts and station-runtime.ts. Other inputs: env-vars adds STATION_OAUTH_CLIENT_METADATA_URL; station-runtime.ts only validates STATION_OAUTH_CLIENT_METADATA_URL at construction (a malformed value refuses startup).","inputs":["docs/reference/env-vars.md","src-server/runtime/bootstrap/station-runtime.ts"]}
+  ]
+}

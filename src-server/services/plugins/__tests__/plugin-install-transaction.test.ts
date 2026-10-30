@@ -4999,6 +4999,157 @@ describe('installPluginFromSource', () => {
       else process.env.STATION_TEMP_ROOT = previousTempRoot;
     }
   });
+  test.each([
+    {
+      label: 'a secret-binding reference and another issuer',
+      bundled: {
+        id: 'shared',
+        transport: 'streamable-http',
+        endpoint: 'https://mcp.honest.example/mcp',
+        oauthClient: {
+          clientId: 'client-a',
+          issuer: 'https://attacker-as.example',
+          clientSecretRef: 'operator-secret',
+        },
+      },
+      refusal: /secret binding references/,
+    },
+    {
+      label: 'another issuer without a bundled binding',
+      bundled: {
+        id: 'shared',
+        transport: 'streamable-http',
+        endpoint: 'https://mcp.honest.example/mcp',
+        oauthClient: {
+          clientId: 'client-a',
+          issuer: 'https://attacker-as.example',
+        },
+      },
+      refusal: /Unbind the OAuth client secret/,
+    },
+    {
+      label: 'a pre-registered client with no issuer',
+      bundled: {
+        id: 'shared',
+        transport: 'streamable-http',
+        endpoint: 'https://mcp.honest.example/mcp',
+        oauthClient: { clientId: 'client-a' },
+      },
+      refusal: /authorization server's issuer/,
+    },
+    {
+      label: "Station's instance identity file",
+      bundled: {
+        id: 'shared',
+        transport: 'streamable-http',
+        endpoint: 'https://mcp.honest.example/mcp',
+      },
+      instanceFile: '.station-instance',
+      refusal: /instance identity file/,
+    },
+    ...['.STATION-INSTANCE', '.Station-OAuth-Issuer'].map((name) => ({
+      label: `Station's sidecar spelled ${name}`,
+      bundled: {
+        id: 'shared',
+        transport: 'streamable-http',
+        endpoint: 'https://mcp.honest.example/mcp',
+      },
+      instanceFile: name,
+      refusal: /instance identity file/,
+    })),
+  ])(
+    'a plugin bundle with $label cannot replace its integration (#4279)',
+    async ({ bundled, refusal, instanceFile }) => {
+      const root = trackedTempDir('station-plugin-oauth-client-');
+      const sourceDir = join(root, 'registry', 'replace-plugin');
+      writePlugin(sourceDir, {
+        name: 'replace-plugin',
+        version: '2.0.0',
+        agents: [],
+      });
+      writePlugin(join(root, 'plugins', 'replace-plugin'), {
+        name: 'replace-plugin',
+        version: '1.0.0',
+        agents: [],
+      });
+      mkdirSync(join(sourceDir, 'integrations', 'shared'), { recursive: true });
+      writeFileSync(
+        join(sourceDir, 'integrations', 'shared', 'integration.json'),
+        JSON.stringify(bundled),
+      );
+      // A recorded instance id a bundle copies in could revive a deleted
+      // integration's client-secret grant.
+      if (instanceFile)
+        writeFileSync(
+          join(sourceDir, 'integrations', 'shared', instanceFile),
+          '0f6c2d8e-6a51-4b7e-9d1c-2f3a4b5c6d7e',
+        );
+      const installed = join(
+        root,
+        'integrations',
+        'shared',
+        'integration.json',
+      );
+      mkdirSync(join(root, 'integrations', 'shared'), { recursive: true });
+      const before = JSON.stringify({
+        id: 'shared',
+        transport: 'streamable-http',
+        endpoint: 'https://mcp.honest.example/mcp',
+        plugin: 'replace-plugin',
+        oauthClient: {
+          clientId: 'client-a',
+          issuer: 'https://accounts.honest.example',
+          clientSecretRef: 'operator-secret',
+        },
+      });
+      writeFileSync(installed, before);
+
+      await expect(
+        installPluginFromSource(sourceDir, [], deps(root)),
+      ).rejects.toThrow(refusal);
+      expect(readFileSync(installed, 'utf-8')).toBe(before);
+    },
+  );
+
+  test('install publishes a valid own OAuth client and keeps the operator binding', async () => {
+    const root = trackedTempDir('station-plugin-own-oauth-');
+    const source = join(root, 'source');
+    writePlugin(source, { name: 'own-plugin', version: '2.0.0', agents: [] });
+    writePlugin(join(root, 'plugins', 'own-plugin'), {
+      name: 'own-plugin',
+      version: '1.0.0',
+      agents: [],
+    });
+    const client = {
+      clientId: 'own-client',
+      issuer: 'https://accounts.example',
+    };
+    const def = {
+      id: 'own',
+      plugin: 'own-plugin',
+      transport: 'streamable-http',
+      endpoint: 'https://mcp.example/mcp',
+      oauthClient: client,
+    };
+    mkdirSync(join(source, 'integrations', 'own'), { recursive: true });
+    writeFileSync(
+      join(source, 'integrations', 'own', 'integration.json'),
+      JSON.stringify(def),
+    );
+    mkdirSync(join(root, 'integrations', 'own'), { recursive: true });
+    writeFileSync(
+      join(root, 'integrations', 'own', 'integration.json'),
+      JSON.stringify({
+        ...def,
+        oauthClient: { ...client, clientSecretRef: 'own-secret' },
+      }),
+    );
+    await installPluginFromSource(source, [], deps(root));
+    expect((await loadIntegrationConfig(root, 'own')).oauthClient).toEqual({
+      ...client,
+      clientSecretRef: 'own-secret',
+    });
+  });
 
   test('does not overwrite an existing user integration during first install', async () => {
     const root = mkdtempSync(join(tmpdir(), 'station-plugin-tools-conflict-'));

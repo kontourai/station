@@ -6,6 +6,7 @@ import { LazyBoundary } from '../../components/LazyBoundary';
 import { IntegrationAccountSection } from './IntegrationAccountSection';
 import { IntegrationTrustReview } from './IntegrationTrustReview';
 import { IntegrationTrustSection } from './IntegrationTrustSection';
+import { OAuthClientSection } from './OAuthClientSection';
 
 const loadSecretBindingPicker = () =>
   import('./SecretBindingPicker').then((module) => ({
@@ -247,6 +248,7 @@ export function IntegrationEditorPanel({
             ])}
             integrationId={editForm.id}
             requireSave={secretBindingRequireSave}
+            defaultScopes={editForm.oauthClient?.scopes}
           />
         )}
       {/* A legacy setting waiting for a person is shown even without the
@@ -604,6 +606,17 @@ export function IntegrationEditorPanel({
                   </div>
                 )}
               </div>
+
+              {(editForm.transport === 'sse' ||
+                editForm.transport === 'streamable-http') && (
+                <OAuthClientSection
+                  editForm={editForm}
+                  isNew={isNew}
+                  locked={locked}
+                  requireSave={secretBindingRequireSave}
+                  onUpdate={onUpdate}
+                />
+              )}
 
               <div className="agent-editor__section">
                 <div className="agent-editor__section-header">

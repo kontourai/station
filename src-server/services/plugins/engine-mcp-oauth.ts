@@ -22,8 +22,10 @@ import {
   ConnectAccountRequiredError,
   StationOwnedToolServerError,
   StationToolServerOAuthProvider,
+  type ToolServerOAuthClientSecretSource,
   toolServerCredentialCandidates,
   toolServerCredentialStoreFor,
+  toolServerOAuthClientConfig,
   toolServerOAuthResourceIdentity,
 } from './tool-server-oauth.js';
 import { sharedUntrustedContentLedger } from './untrusted-content-policy.js';
@@ -96,6 +98,8 @@ export function createEngineMcpOAuthResolver(options: {
   port: () => number;
   getIntegration: (id: string) => Promise<ToolDef>;
   needsSignIn?: (id: string, resource: string) => Promise<unknown>;
+  /** Reads a configured OAuth client secret for token refresh. */
+  oauthClientSecrets?: ToolServerOAuthClientSecretSource;
 }) {
   return async (
     servers: readonly ResolvedAgentToolServer[],
@@ -146,6 +150,11 @@ export function createEngineMcpOAuthResolver(options: {
         let knownOAuth = Boolean(
           def.credentialOwnership || def.probe?.authorization,
         );
+        const oauthClient = toolServerOAuthClientConfig(
+          def,
+          options.oauthClientSecrets,
+          { homeDir: options.homeDir() },
+        );
         for (const owner of toolServerCredentialCandidates(
           def,
           principalId,
@@ -158,10 +167,13 @@ export function createEngineMcpOAuthResolver(options: {
             `http://127.0.0.1:${options.port()}/integrations/${encodeURIComponent(def.id)}/oauth/callback`,
             undefined,
             owner,
+            oauthClient,
           );
           const tokens = await provider.tokens();
+          // A configured client already marks the integration as OAuth; do
+          // not read its secret just to learn that.
           knownOAuth ||= Boolean(
-            tokens || (await provider.clientInformation()),
+            tokens || def.oauthClient || (await provider.clientInformation()),
           );
           if (tokens) {
             selected = provider;

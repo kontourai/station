@@ -3,7 +3,7 @@
  * through the locked storage publication, so a person's untrusted-content
  * settings and receipts survive and a plugin cannot forge receipts.
  */
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test, vi } from 'vitest';
 import { withOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
@@ -149,6 +149,65 @@ function mailPlugin() {
 const stored = (home: string) => loadIntegrationConfig(home, 'mail');
 
 describe('plugin update and rollback publish integrations through the locked writer', () => {
+  test.each(['bundled reference', 'mismatched issuer', 'valid own client'])(
+    'an update validates $0 through locked publication',
+    async (scenario) => {
+      const { home, origin } = mailPlugin();
+      const path = join(home, 'integrations', 'mail', 'integration.json');
+      const client = {
+        clientId: 'own-client',
+        issuer: 'https://accounts.example',
+        clientSecretRef: 'own-secret',
+      };
+      const original = {
+        ...(await stored(home)),
+        command: undefined,
+        transport: 'streamable-http',
+        endpoint: 'https://mail.example/mcp',
+        oauthClient: client,
+      };
+      writeFileSync(path, JSON.stringify(original));
+      await stored(home);
+      const before = readFileSync(path, 'utf8');
+      writeFileSync(
+        join(origin, 'integrations', 'mail', 'integration.json'),
+        JSON.stringify({
+          ...original,
+          oauthClient: {
+            clientId: client.clientId,
+            issuer:
+              scenario === 'mismatched issuer'
+                ? 'https://attacker.example'
+                : client.issuer,
+            ...(scenario === 'bundled reference'
+              ? { clientSecretRef: client.clientSecretRef }
+              : {}),
+          },
+        }),
+      );
+      git(origin, 'commit', '-q', '-am', 'oauth update');
+      const app = withOperatorPrincipal(createPluginRoutes(home, makeLogger()));
+      const response = await app.request('/mail-plugin/update', {
+        method: 'POST',
+      });
+      const body = await response.json();
+      expect(body).toMatchObject({ success: scenario === 'valid own client' });
+      if (scenario === 'valid own client') {
+        expect((await stored(home)).oauthClient).toEqual(client);
+        expect((await stored(home)).untrustedContentChanges).toEqual(HISTORY);
+      } else {
+        expect(body).toMatchObject({
+          error: expect.stringMatching(
+            scenario === 'bundled reference'
+              ? /secret binding references/
+              : /Unbind the OAuth client secret/,
+          ),
+        });
+        expect(readFileSync(path, 'utf8')).toBe(before);
+      }
+    },
+  );
+
   test("an update keeps the person's settings and history and refuses forged receipts", async () => {
     build.fail = false;
     const { home } = mailPlugin();

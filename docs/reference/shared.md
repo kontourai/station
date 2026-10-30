@@ -1236,7 +1236,10 @@ plugin lifecycle and consent. This function writes the plugin's bytes as they
 are, including any `untrustedContentChanges`. Station's host paths (install,
 update and rollback) call it only to stage into a private directory, then
 publish through `publishPluginIntegrations`, which applies the integration
-invariants and receipts under each integration's lock
+invariants and receipts under each integration's lock. The same publisher
+also checks OAuth client issuer/endpoint rules and refuses bundled secret-binding
+references and Station identity sidecars; recovery validates restored definitions
+through that boundary too
 ([design](../design/mcp-subregistry-curation.md#untrusted-content-and-outbound-tools)).
 
 ```ts

@@ -3274,6 +3274,7 @@ async function installPluginFromSourceUnderContext(
   // gated on this flag, never on backupRoot existence: the root is created
   // before the backup finishes (archive#1835 delta review).
   let backupComplete = false;
+  let integrationsPublished = false;
   let serverQuiescence: PluginPublicServerQuiescence | null = null;
   let eventSubscriptionQuiescence: { release(): void } | null = null;
   let releaseInstallPublication: (() => Promise<void>) | undefined;
@@ -4210,6 +4211,7 @@ async function installPluginFromSourceUnderContext(
                   copyPluginIntegrations(pluginDir, stagingDir),
               }),
         });
+        integrationsPublished = true;
         for (const integrationId of copiedIntegrations) {
           logger.info(`Copied tool config: ${integrationId}`);
         }
@@ -4623,11 +4625,12 @@ async function installPluginFromSourceUnderContext(
             // providers until the next restart. The lock's release forgets it
             // too, but that is after every read in here.
             forgetPluginContentDigest(pluginsDir, pluginName);
-            await restorePluginOwnedIntegrations(
-              projectHomeDir,
-              pluginName,
-              backupRoot,
-            );
+            if (integrationsPublished)
+              await restorePluginOwnedIntegrations(
+                projectHomeDir,
+                pluginName,
+                backupRoot,
+              );
             await restorePluginDurableState(
               projectHomeDir,
               backupRoot,
@@ -4713,7 +4716,8 @@ async function installPluginFromSourceUnderContext(
                   );
               }
             } else rmSync(pluginDir, { recursive: true, force: true });
-            await publishPluginIntegrations({ projectHomeDir, pluginName });
+            if (integrationsPublished)
+              await publishPluginIntegrations({ projectHomeDir, pluginName });
             if (backupRoot && backupComplete) {
               await restorePluginDurableState(
                 projectHomeDir,

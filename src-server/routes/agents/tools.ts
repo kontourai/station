@@ -33,6 +33,7 @@ import {
   MCPToolDisabledError,
   type ToolServerAccountActor,
 } from '../../services/plugins/mcp-service.js';
+import { parseRequestedOAuthScopes } from '../../services/plugins/tool-server-oauth.js';
 import {
   integrationIconAssetReads,
   mcpUiRenderPermissionAllows,
@@ -162,7 +163,18 @@ const MCP_UI_APPROVAL_REFUSALS: Readonly<
 function integrationReadProjection(
   def: Awaited<ReturnType<MCPService['getIntegration']>>,
 ) {
-  const { env, secretEnv, storedEnvNames, secretEnvRefs, ...safe } = def;
+  const {
+    env,
+    secretEnv,
+    storedEnvNames,
+    secretEnvRefs,
+    oauthClient,
+    ...safe
+  } = def;
+  // Like `secretEnvRefs`, the client-secret binding id is read through the
+  // secret-binding route; a write never carries it.
+  const { clientSecretRef: _clientSecretRef, ...publicOAuthClient } =
+    oauthClient ?? {};
   const probe = safe.probe
     ? {
         ...safe.probe,
@@ -183,6 +195,9 @@ function integrationReadProjection(
     : undefined;
   return {
     ...safe,
+    ...(Object.keys(publicOAuthClient).length > 0
+      ? { oauthClient: publicOAuthClient }
+      : {}),
     ...(safe.disabledTools
       ? {
           disabledTools: canonicalDisabledMcpTools(
@@ -1073,6 +1088,9 @@ export function createToolRoutes(
         param(c, 'id'),
         body.mode,
         accountActor(c, body),
+        body.scopes === undefined
+          ? {}
+          : { scopes: parseRequestedOAuthScopes(body.scopes) },
       );
       return c.json({ success: true, data });
     } catch (error: unknown) {

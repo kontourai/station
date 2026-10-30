@@ -51,6 +51,8 @@ import {
 } from '../../services/plugins/registry-trust-policy.js';
 import { installCatalogServerAddressPolicy } from '../../services/plugins/remote-mcp-address-policy.js';
 import { ToolLibraryService } from '../../services/plugins/tool-library-service.js';
+import { deploymentClientMetadataUrl } from '../../services/plugins/tool-server-oauth.js';
+import { registerToolServerOAuthCapability } from '../../services/plugins/tool-server-oauth-capabilities.js';
 import { sharedUntrustedContentLedger } from '../../services/plugins/untrusted-content-policy.js';
 import { UntrustedConversationMarks } from '../../services/plugins/untrusted-conversation-marks.js';
 import { deriveWorkspaceHomeRoleStatus } from '../../services/plugins/workspace-home-role-service.js';
@@ -847,6 +849,10 @@ export class StationRuntime {
         ? provideSkills.filter((id): id is string => typeof id === 'string')
         : undefined;
     },
+    // Claude Code's Artifact tool (AppConfig.claudeArtifactsEnabled), read
+    // per session start; same lazy-capture posture as `getProvideSkills`.
+    getArtifactsEnabled: async () =>
+      (await this.configLoader.loadAppConfig()).claudeArtifactsEnabled === true,
     resolveSkillDir: async (id) => {
       try {
         const skill = await this.skillService.getSkill(id);
@@ -1152,6 +1158,11 @@ export class StationRuntime {
   // (transaction store + truthful availability state) exists from
   // construction so routes can consult it even when the listener never
   // binds; the listener itself starts during initialize.
+  // A malformed STATION_OAUTH_CLIENT_METADATA_URL throws here, refusing
+  // startup, so sign-in and status reads can rely on it.
+  readonly deploymentClientMetadataUrl = deploymentClientMetadataUrl(
+    process.env,
+  );
   // A malformed STATION_TRUSTED_CONSENT_ORIGIN throws here, refusing startup.
   public readonly consentChannel = new ConsentChannelService({
     trustedOrigin: parseTrustedConsentOrigin(
@@ -1180,6 +1191,12 @@ export class StationRuntime {
     getIntegration: (id) => this.mcpService.getIntegration(id),
     needsSignIn: (id, resource) =>
       this.mcpService.markOAuthNeedsSignIn(id, resource),
+    // Read per refresh: the field is assigned during startup, after this
+    // initializer runs.
+    oauthClientSecrets: {
+      resolveOAuthClientSecret: (input) =>
+        this.secretBindingAdministration.resolveOAuthClientSecret(input),
+    },
   });
 
   private async resolveExternalMcpOAuth(input: ProviderSessionStartInput) {
@@ -1271,6 +1288,7 @@ export class StationRuntime {
   }
 
   constructor(options: StationRuntimeOptions = {}) {
+    registerToolServerOAuthCapability('pre-registered-clients');
     this.virtualApplicationConfiguration = options.virtualApplication
       ? { ...options.virtualApplication }
       : undefined;

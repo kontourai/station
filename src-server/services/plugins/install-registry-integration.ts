@@ -1,3 +1,4 @@
+import { withoutToolBindingReferences } from '@kontourai/station-contracts/tool';
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import type { IIntegrationRegistryProvider } from '../../providers/provider-interfaces.js';
 import { recordIntegrationOrigin } from './integration-origin.js';
@@ -37,13 +38,18 @@ export async function installRegistryIntegration(
   } catch {
     /* First installation. */
   }
-  if (Object.keys(existing?.secretEnvRefs ?? {}).length)
+  if (
+    Object.keys(existing?.secretEnvRefs ?? {}).length ||
+    existing?.oauthClient?.clientSecretRef
+  )
     return {
       success: false,
       message: 'Unbind secrets before replacing this source.',
     };
-  const persisted = { ...definition, enabled: false };
-  delete persisted.secretEnvRefs;
+  const persisted = withoutToolBindingReferences({
+    ...definition,
+    enabled: false,
+  });
   await loader.saveIntegration(definition.id, persisted, {
     externalDefaults: true,
     ...('stationCuratedTrust' in installed && installed.stationCuratedTrust

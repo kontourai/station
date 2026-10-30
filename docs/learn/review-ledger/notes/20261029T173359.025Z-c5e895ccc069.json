@@ -1,0 +1,19 @@
+{
+  "revision": "22f4a3d76a61298a12c71359302bcbc417448148",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked Project membership service ownership against accessRefusal: route admission is now rechecked immediately before sharing-state disclosure; ownership and module boundaries remain unchanged.","inputs":["docs/architecture/module-map.md","src-server/services/projects/project-membership-service.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"Checked the refusal description against the route callback and service ordering: operator and human checks precede the fresh enable-route check and sharing-state read. The documented undisclosed behavior remains accurate; the rescope race regression passed.","inputs":["docs/design/project-membership.md","src-server/routes/projects/project-membership-routes.ts","src-server/services/projects/project-membership-service.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Checked People and access eligibility against the live enable-route admission after account revalidation. A credential that loses its scope no longer receives the enable offer; the guide's human/operator and route-admission conditions remain accurate.","inputs":["docs/guides/deployment-authentication.md","src-server/services/projects/project-membership-service.ts"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Checked the local-account lab's invitation and membership journey against the service delta. Rechecking refusal-route scope changes neither account pairing nor the lab's membership operations.","inputs":["docs/guides/local-collaboration-lab.md","src-server/services/projects/project-membership-service.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Checked the separate Device scope and Project membership claims: refreshing the enable-route check only affects refusal details and does not grant membership or alter guest administration writes.","inputs":["docs/guides/machine-relationships.md","src-server/services/projects/project-membership-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked projectAccessRefusal's documented parsing contract against the route and service delta. The callback changes when the server checks admission, not the refusal shape or SDK parser.","inputs":["docs/reference/sdk.md","src-server/routes/projects/project-membership-routes.ts","src-server/services/projects/project-membership-service.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Checked the Device-scope and Project authorization boundary: accessRefusal now rechecks POST route admission after asynchronous authority resolution and before reading sharing state. The threat boundary remains unchanged and fails closed on rescope.","inputs":["docs/security/remote-access-threat-model.md","src-server/services/projects/project-membership-service.ts"]}
+  ]
+}

@@ -79,8 +79,8 @@ Qualification is derived, not written:
 | Linear | `https://mcp.linear.app/mcp` | dynamic client registration | qualified |
 | Notion | `https://mcp.notion.com/mcp` | dynamic client registration | qualified |
 | Atlassian | `https://mcp.atlassian.com/v2/mcp` | dynamic client registration | qualified |
-| GitHub | `https://api.githubcopilot.com/mcp/` | pre-registered client required | blocked |
-| Gmail (Google Developer Preview) | `https://gmailmcp.googleapis.com/mcp/v1` | pre-registered client required | blocked |
+| GitHub | `https://api.githubcopilot.com/mcp/` | pre-registered client required | setup-required |
+| Gmail (Google Developer Preview) | `https://gmailmcp.googleapis.com/mcp/v1` | pre-registered client required | setup-required |
 
 On 2026-10-28, each endpoint and version matched the official registry
 entry, except Gmail, which Google lists in its Cloud MCP product table but
@@ -98,8 +98,8 @@ capability, `pre-registered-clients`
 at listing time. Registration is not a security boundary: code in the
 server process, including a trusted in-process plugin, already has the
 host's authority, and a false registration only lists an entry as addable
-whose sign-in then fails. Nothing registers it yet; the change that adds
-pre-registered client support registers it with one
+whose sign-in then fails. The Station runtime composition root registers
+pre-registered client support with one
 `registerToolServerOAuthCapability('pre-registered-clients')` call, and
 GitHub and Gmail then list as **setup-required** with nothing changed in
 their records. Gmail also needs your own Google Cloud OAuth client marked

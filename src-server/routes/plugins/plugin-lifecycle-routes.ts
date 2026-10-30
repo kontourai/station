@@ -831,6 +831,7 @@ export function registerPluginLifecycleRoutes(
                 join(backupDir, 'plugin.json'),
               );
               const originalIdentity = originalManifest.name || name;
+              let integrationsPublished = false;
               backupPluginOwnedIntegrations(
                 join(projectHomeDir, 'integrations'),
                 originalIdentity,
@@ -946,6 +947,7 @@ export function registerPluginLifecycleRoutes(
                         }
                       : {}),
                   });
+                  integrationsPublished = true;
                   // archive#4288 — the fix. Consent was given to the bytes
                   // this update just replaced, so it is re-bound HERE: after
                   // the build and the integration copy (the tree is final,
@@ -1045,11 +1047,12 @@ export function registerPluginLifecycleRoutes(
                     // would compare them, derive `changed`, and reload the
                     // restored plugin with no providers at all.
                     forgetPluginContentDigest(pluginsDir, originalIdentity);
-                    await restorePluginIntegrations({
-                      projectHomeDir,
-                      pluginName: originalIdentity,
-                      backupDir: join(backupRoot, 'integrations'),
-                    });
+                    if (integrationsPublished)
+                      await restorePluginIntegrations({
+                        projectHomeDir,
+                        pluginName: originalIdentity,
+                        backupDir: join(backupRoot, 'integrations'),
+                      });
                     // The tree is back to the reviewed bytes, so the consent
                     // recorded against them comes back with it — digest
                     // included, so the restored entry is `bound` again and

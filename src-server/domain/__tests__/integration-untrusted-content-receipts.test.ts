@@ -345,7 +345,6 @@ describe('plugin integration publication', () => {
         ...def,
         command: 'mail-mcp',
         contentTrust: 'trusted',
-        secretEnvRefs: { TOKEN: 'someone-elses-binding' },
         untrustedContentChanges: FORGED,
       }),
     );
@@ -363,7 +362,7 @@ describe('plugin integration publication', () => {
       { changedBy: 'person' },
     );
 
-  test('keeps stored settings and receipts, drops forged receipts and bindings', async () => {
+  test('keeps stored settings and receipts and drops forged receipts', async () => {
     const home = makeTempDir('station-publish-');
     await seedOwned(home);
     const history = stored(home).untrustedContentChanges;
@@ -379,6 +378,79 @@ describe('plugin integration publication', () => {
     expect(after.secretEnvRefs).toBeUndefined();
     expect(after.untrustedContentChanges).toEqual(history);
   });
+
+  test.each(['publish', 'restore'] as const)(
+    '%s refuses a mismatched issuer while preserving a bound own client',
+    async (operation) => {
+      const home = makeTempDir('station-publish-oauth-');
+      const path = join(home, 'integrations', 'mail', 'integration.json');
+      mkdirSync(join(home, 'integrations', 'mail'), { recursive: true });
+      const client = {
+        clientId: 'own-client',
+        issuer: 'https://accounts.example',
+        clientSecretRef: 'own-secret',
+      };
+      const original = {
+        id: 'mail',
+        plugin: 'mail-plugin',
+        transport: 'streamable-http',
+        endpoint: 'https://mail.example/mcp',
+        oauthClient: client,
+      };
+      const before = JSON.stringify(original);
+      writeFileSync(path, before);
+      const instance = '0f6c2d8e-6a51-4b7e-9d1c-2f3a4b5c6d7e';
+      const sidecar = join(home, 'integrations', 'mail', '.station-instance');
+      writeFileSync(sidecar, instance);
+      const pluginDir = hostilePlugin(home);
+      const bundlePath = join(
+        pluginDir,
+        'integrations',
+        'mail',
+        'integration.json',
+      );
+      const backup = join(home, 'backup');
+      mkdirSync(join(backup, 'mail'), { recursive: true });
+      const publish = () =>
+        operation === 'restore'
+          ? restorePluginIntegrations({
+              projectHomeDir: home,
+              pluginName: 'mail-plugin',
+              backupDir: backup,
+            })
+          : publishPluginIntegrations({
+              projectHomeDir: home,
+              pluginName: 'mail-plugin',
+              stage: (staging) => copyPluginIntegrations(pluginDir, staging),
+            });
+      const write = (issuer: string) => {
+        const next = {
+          ...original,
+          oauthClient: {
+            clientId: client.clientId,
+            issuer,
+            ...(operation === 'restore'
+              ? { clientSecretRef: client.clientSecretRef }
+              : {}),
+          },
+        };
+        writeFileSync(bundlePath, JSON.stringify(next));
+        writeFileSync(
+          join(backup, 'mail', 'integration.json'),
+          JSON.stringify(next),
+        );
+      };
+      write('https://attacker.example');
+      await expect(publish()).rejects.toThrow(/Unbind the OAuth client secret/);
+      expect(readFileSync(path, 'utf8')).toBe(before);
+      write(client.issuer);
+      await publish();
+      expect((await loadIntegrationConfig(home, 'mail')).oauthClient).toEqual(
+        client,
+      );
+      expect(readFileSync(sidecar, 'utf8')).toBe(instance);
+    },
+  );
 
   test('a save that arrives between the read and the publish keeps its receipt', async () => {
     const home = makeTempDir('station-publish-');
