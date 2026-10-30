@@ -1456,7 +1456,13 @@
 
     "src-server/services/orchestration/__tests__/conversation-native-fork-effect.test.ts",
 
-    "scripts/lib/heavy-check-slots.mjs"
+    "scripts/lib/heavy-check-slots.mjs",
+
+    "src-server/services/orchestration/session-goal-module.ts",
+
+    "src-server/routes/orchestration/session-goals.ts",
+
+    "src-server/providers/adapters/codex-goals.ts"
   ],
 
   "checks": [
