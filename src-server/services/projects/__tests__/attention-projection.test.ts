@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { isAcknowledgeableAttentionKind } from '@kontourai/station-contracts/attention';
@@ -17,6 +17,9 @@ import {
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
 import { afterAll, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { createLogger } from '../../../utils/logger.js';
+import { FeaturePreviewRegistry } from '../../feature-previews/feature-preview-registry.js';
 import {
   APPROVAL_BETWEEN_TURNS_EVENTS,
   INTERRUPTED_WITH_NO_REQUEST_EVENTS,
@@ -26,6 +29,7 @@ import {
   SETTLEMENT_SESSION,
   SETTLEMENT_THREAD_ID,
 } from '../../orchestration/__tests__/helpers/request-settlement-fixtures.js';
+import { FileConversationAcknowledgementStore } from '../../orchestration/conversation-acknowledgement-store.js';
 import { projectRequestAnswerability } from '../../orchestration/open-requests.js';
 import { buildOrchestrationSessionSummary } from '../../orchestration/orchestration-session-state.js';
 import { PluginLifecycleProposalService } from '../../plugins/plugin-lifecycle-proposals.js';
@@ -34,6 +38,7 @@ import {
   type PausedGateReviewAggregate,
   type PausedGateReviewSource,
 } from '../attention-projection.js';
+import { FileAttentionSnoozeStore } from '../attention-snooze-store.js';
 
 const now = '2026-07-23T12:00:00.000Z';
 
@@ -87,6 +92,7 @@ function decorate(unanswerable: string[]) {
 }
 
 function makeService(opts: {
+  snoozing?: ConstructorParameters<typeof AttentionProjectionService>[12];
   notifications?: Notification[];
   sessions?: unknown[];
   flowRuns?: Record<string, unknown>;
@@ -208,6 +214,8 @@ function makeService(opts: {
         ? gateReviews
         : async () => ({ items: gateReviews, unavailableProjects: [] }),
     pluginProposals,
+    undefined,
+    opts.snoozing,
   );
 }
 
@@ -3527,4 +3535,193 @@ describe('#3071: a request its interrupted turn left behind is not an approval',
       expect(JSON.stringify(withRequest.items)).not.toContain('Allow bash');
     },
   );
+});
+
+describe('versioned attention snooze', () => {
+  const tempDir = trackTempDirs();
+  async function fixture() {
+    const home = tempDir('attention-snooze-');
+    const registry = new FeaturePreviewRegistry(
+      home,
+      createLogger({ name: 'snooze-test' }),
+    );
+    const preview = registry.bind({
+      id: 'attention-snooze',
+      label: 'Attention snooze',
+      description: 'Test snooze',
+    });
+    await registry.setEnabled('attention-snooze', true);
+    let clock = Date.parse(now);
+    const snoozing = {
+      store: new FileAttentionSnoozeStore(home),
+      preview,
+      now: () => clock,
+    };
+    const sessions = [
+      baseSession({ threadId: 'snooze', lifecycleState: 'failed' }),
+    ];
+    return {
+      home,
+      registry,
+      snoozing,
+      sessions,
+      advance: (ms: number) => {
+        clock += ms;
+      },
+    };
+  }
+  const id = 'session-failed:snooze';
+  const until = '2026-07-23T13:00:00.000Z';
+
+  test('snooze removes pending count, retains the item, and expires at until', async () => {
+    const f = await fixture();
+    const service = makeService(f);
+    expect((await service.list()).pendingCount).toBe(1);
+    expect(await service.snooze(id, until)).toBe(until);
+    expect(await service.list()).toMatchObject({
+      pendingCount: 0,
+      items: [{ id, snoozedUntil: until }],
+    });
+    f.advance(3_600_000);
+    const expired = await service.list();
+    expect(expired.pendingCount).toBe(1);
+    expect(expired.items[0]).not.toHaveProperty('snoozedUntil');
+  });
+
+  test('a newer failure resurfaces immediately during the snooze', async () => {
+    const f = await fixture();
+    const service = makeService(f);
+    await service.snooze(id, until);
+    f.sessions[0].updatedAt = '2026-07-23T12:01:00.000Z';
+    const result = await service.list();
+    expect(result.pendingCount).toBe(1);
+    expect(result.items[0]).not.toHaveProperty('snoozedUntil');
+  });
+
+  test('snooze persists across service/store recreation and unsnooze restores pending', async () => {
+    const f = await fixture();
+    await makeService(f).snooze(id, until);
+    const restarted = makeService({
+      ...f,
+      snoozing: { ...f.snoozing, store: new FileAttentionSnoozeStore(f.home) },
+    });
+    expect((await restarted.list()).pendingCount).toBe(0);
+    restarted.unsnooze(id);
+    restarted.unsnooze(id);
+    expect((await restarted.list()).pendingCount).toBe(1);
+  });
+
+  test('per-request users share no snooze or unsnooze state', async () => {
+    const f = await fixture();
+    const service = makeService(f);
+    const a = sessionReadAuthorityFromRequest('a', undefined, undefined);
+    const b = sessionReadAuthorityFromRequest('b', undefined, undefined);
+    await service.snooze(id, until, a);
+    expect((await service.list(a)).pendingCount).toBe(0);
+    expect((await service.list(b)).pendingCount).toBe(1);
+    service.unsnooze(id, b);
+    expect((await service.list(a)).pendingCount).toBe(0);
+  });
+
+  test('a standing requirement can be snoozed while acknowledgement stays refused', async () => {
+    const f = await fixture();
+    const service = makeService({
+      ...f,
+      sessions: [],
+      acknowledgementStore: new FileConversationAcknowledgementStore(f.home),
+      stationSetupRequirement: {
+        agentSlug: 'station',
+        agentName: 'Station',
+        reason: 'Configure a model connection',
+      },
+    });
+    const item = (await service.list()).items[0]!;
+    expect(item.kind).toBe('setup-incomplete');
+    expect(await service.acknowledge(item.id)).toBe(false);
+    await service.snooze(item.id, until);
+    expect(await service.list()).toMatchObject({
+      pendingCount: 0,
+      items: [{ snoozedUntil: until }],
+    });
+  });
+
+  test('decision-resolved kinds snooze without acknowledging or deciding their source', async () => {
+    const f = await fixture();
+    const service = makeService({
+      ...f,
+      sessions: [],
+      acknowledgementStore: new FileConversationAcknowledgementStore(f.home),
+      proposedChanges: [
+        {
+          id: 'change',
+          projectId: 'project',
+          path: 'file.ts',
+          status: 'pending',
+          createdAt: now,
+          updatedAt: now,
+        },
+      ],
+      gateReviews: [
+        {
+          reviewSessionRef: 'review',
+          projectSlug: 'project',
+          workflowSubjectRef: 'flow:build',
+          sessionName: 'Review',
+          updatedAt: now,
+          pendingDecisions: 1,
+        },
+      ],
+    });
+    const initial = await service.list();
+    expect(initial.items.map((item) => item.kind).sort()).toEqual([
+      'gate-review',
+      'proposed-change',
+    ]);
+    for (const item of initial.items) {
+      expect(await service.acknowledge(item.id)).toBe(false);
+      await service.snooze(item.id, until);
+    }
+    const result = await service.list();
+    expect(result.pendingCount).toBe(0);
+    expect(result.items).toHaveLength(2);
+    expect(
+      result.items.every(
+        (item) => item.snoozedUntil === until && !item.acknowledgedAt,
+      ),
+    ).toBe(true);
+  });
+
+  test('writes prune expired entries across users without disturbing active snoozes', async () => {
+    const f = await fixture();
+    const service = makeService(f);
+    await service.snooze(
+      id,
+      until,
+      sessionReadAuthorityFromRequest('expired', undefined, undefined),
+    );
+    f.advance(3_600_000);
+    await service.snooze(id, '2026-07-23T14:00:00.000Z');
+    const data = JSON.parse(
+      readFileSync(join(f.home, 'attention-snoozes.json'), 'utf8'),
+    );
+    expect(data.snoozes).not.toHaveProperty('expired');
+    expect(data.snoozes.default[id]).toEqual({
+      version: now,
+      until: '2026-07-23T14:00:00.000Z',
+    });
+  });
+
+  test('changing the preview choice gates direct mutations and read decoration', async () => {
+    const f = await fixture();
+    const service = makeService(f);
+    await service.snooze(id, until);
+    await f.registry.setEnabled('attention-snooze', false);
+    expect((await service.list()).pendingCount).toBe(1);
+    await expect(service.snooze(id, until)).rejects.toThrow(
+      'Enable Attention snooze',
+    );
+    expect(() => service.unsnooze(id)).toThrow('Enable Attention snooze');
+    await f.registry.setEnabled('attention-snooze', true);
+    expect((await service.list()).pendingCount).toBe(0);
+  });
 });

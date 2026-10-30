@@ -50,7 +50,6 @@ import { engineConnectionId } from '@kontourai/station-contracts/agent-identity'
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import type { ProjectMembershipScope } from '@kontourai/station-contracts/project-membership';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
-import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { resolveStationRoot } from '@kontourai/station-shared/runtime-path-resolver';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -63,6 +62,7 @@ import { SoftwareAuthenticator } from '../../../__test-utils__/software-authenti
 import { readStreamUntil } from '../../../__test-utils__/sse-helpers.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { KnowledgeStoreProvider } from '../../../knowledge-store/knowledge-store-provider.js';
+import { resolveStationBrowserOrigins } from '../../../security/station-browser-origins.js';
 import { ConsentChannelService } from '../../../services/consent/consent-channel.js';
 import { createApplicationSessionRuntime } from '../../../services/identity/application-session-runtime.js';
 import { loadDeploymentAuthentication } from '../../../services/identity/deployment-authentication-loader.js';
@@ -81,6 +81,11 @@ import { ProjectService } from '../../../services/projects/project-service.js';
 import { TaskGraphService } from '../../../services/projects/task-graph-service.js';
 import { DevicePairingError } from '../../../services/ssh/device-pairing-service.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
+import {
+  getInternalApiToken,
+  INTERNAL_API_TOKEN_HEADER,
+  INTERNAL_INGRESS_IDENTITY_HEADER,
+} from '../../../utils/internal-api-token.js';
 import { createConsentApp } from '../../consent/consent-listener.js';
 import {
   configureRuntimeRoutes as configureRuntimeRoutesProduction,
@@ -326,6 +331,7 @@ describe('project guest administration over the production composition', () => {
       { publicOrigin: useLocalAccounts ? ORIGIN : 'http://localhost:4321' },
       { stationId: STATION_ID, homeDirectory: homeDir },
       membership.service,
+      resolveStationBrowserOrigins({ port: 4321, host: '127.0.0.1' }),
     );
     const applicationSessions = createApplicationSessionRuntime(
       homeDir,
@@ -501,8 +507,8 @@ describe('project guest administration over the production composition', () => {
     await result.kitLifecycleReady;
     roomClosers.push(() => result.projectRoomRuntime.close());
 
-    const request = (path: string, init: RequestInit = {}) =>
-      app.request(`${ORIGIN}${path}`, init);
+    const request = (path: string, init: RequestInit = {}, env?: never) =>
+      app.request(`${ORIGIN}${path}`, init, env);
     const ownerHeaders = (extra?: RequestInit) => ({
       ...extra,
       headers: {
@@ -666,6 +672,7 @@ describe('project guest administration over the production composition', () => {
   }
 
   test('real local accounts read only individually shared children through exact Device leaves', async () => {
+    process.env.ALLOWED_ORIGINS = `${ORIGIN},http://localhost:6242`;
     const h = await setup(false, true);
     const project = await h.projectService.createProject({
       name: 'Local relationships',
@@ -683,8 +690,21 @@ describe('project guest administration over the production composition', () => {
       project.id,
       bootstrap,
     );
+    const serveEnv = {
+      incoming: { socket: { remoteAddress: '127.0.0.1' } },
+    } as never;
+    const serveHeaders = {
+      [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+      [INTERNAL_INGRESS_IDENTITY_HEADER]: Buffer.from(
+        JSON.stringify({
+          provider: 'tailscale-serve',
+          login: 'device-owner@example.test',
+        }),
+      ).toString('base64url'),
+    };
     const people: {
       cookie: string;
+      clientInstanceId: string;
       paired: ReturnType<typeof h.pairAccountBound>;
       authenticated: Extract<
         Awaited<ReturnType<typeof h.localAccounts.service.authenticate>>,
@@ -696,7 +716,7 @@ describe('project guest administration over the production composition', () => {
         enabled.scope,
         {
           email: null,
-          role: 'viewer',
+          role: username === 'relationalice' ? 'admin' : 'viewer',
           expiresAt: new Date(Date.now() + 3600000).toISOString(),
         },
         bootstrap,
@@ -750,20 +770,208 @@ describe('project guest administration over the production composition', () => {
         h.localAccounts.service.captureCurrentSession(verifiedRequest)(),
         JSON.stringify(authenticated.session),
       ).toBe(true);
-      await h.membership.service.accept(invitation.token, {
-        current: async () => ({
-          principal: authenticated.principal,
-          verifiedEmails: [],
-        }),
-        operator: async () => {},
-      });
-      const paired = h.pairAccountBound(
-        username,
-        GUEST_GRANT,
+      const accepted = await h.request(
+        '/api/account-auth/accept-invitation',
+        {
+          method: 'POST',
+          headers: {
+            ...serveHeaders,
+            Cookie: cookie,
+            Origin: ORIGIN,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ token: invitation.token }),
+        },
+        serveEnv,
+      );
+      expect(accepted.status, `accept: ${await accepted.clone().text()}`).toBe(
+        200,
+      );
+      const clientInstanceId = crypto.randomUUID();
+      const requested = await h.request(
+        '/.well-known/station/v1/pairing/access-request',
+        {
+          method: 'POST',
+          headers: {
+            ...serveHeaders,
+            Cookie: cookie,
+            Origin: ORIGIN,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            deviceName: username,
+            requireAccountBinding: true,
+            clientInstanceId,
+          }),
+        },
+        serveEnv,
+      );
+      expect(
+        requested.status,
+        `access-request: ${await requested.clone().text()}`,
+      ).toBe(202);
+      const access = await readJson<{
+        offerId: string;
+        proof: string;
+        requestId: string;
+        accountCandidate: { subject: string };
+      }>(requested);
+      expect(access.accountCandidate.subject).toBe(
         authenticated.session.subject,
       );
-      people.push({ cookie, authenticated, paired });
+      const approved = await h.request(
+        `/api/pairing/requests/${access.requestId}/confirm`,
+        h.operatorHeaders({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ bindAccountIdentity: true }),
+        }),
+      );
+      expect(approved.status, `approve: ${await approved.clone().text()}`).toBe(
+        200,
+      );
+      const exchanged = await h.request(
+        '/.well-known/station/v1/pairing/exchange',
+        {
+          method: 'POST',
+          headers: {
+            ...serveHeaders,
+            Cookie: cookie,
+            Origin: ORIGIN,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            offerId: access.offerId,
+            proof: access.proof,
+            requestId: access.requestId,
+            clientInstanceId,
+          }),
+        },
+        serveEnv,
+      );
+      expect(
+        exchanged.status,
+        `exchange: ${await exchanged.clone().text()}`,
+      ).toBe(200);
+      const paired =
+        await readJson<ReturnType<typeof h.pairAccountBound>>(exchanged);
+      people.push({ cookie, authenticated, paired, clientInstanceId });
     }
+    // A correlation id and shared WhoIs do not let Bob replace Alice's Device.
+    const sharedId = people[0]!.clientInstanceId;
+    const exchangeFor = async (
+      cookie: string | undefined,
+      bindAccount: boolean,
+    ) => {
+      const headers = {
+        ...serveHeaders,
+        ...(cookie ? { Cookie: cookie } : {}),
+        Origin: ORIGIN,
+        'Content-Type': 'application/json',
+      };
+      const request = await h.request(
+        '/.well-known/station/v1/pairing/access-request',
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            deviceName: 'Replacement browser',
+            clientInstanceId: sharedId,
+            ...(bindAccount ? { requireAccountBinding: true } : {}),
+          }),
+        },
+        serveEnv,
+      );
+      expect(
+        request.status,
+        `replacement request: ${await request.clone().text()}`,
+      ).toBe(202);
+      const offer = await readJson<{
+        offerId: string;
+        proof: string;
+        requestId: string;
+      }>(request);
+      const approved = await h.request(
+        `/api/pairing/requests/${offer.requestId}/confirm`,
+        h.operatorHeaders({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(
+            bindAccount ? { bindAccountIdentity: true } : {},
+          ),
+        }),
+      );
+      expect(
+        approved.status,
+        `replacement approval: ${await approved.clone().text()}`,
+      ).toBe(200);
+      const result = await h.request(
+        '/.well-known/station/v1/pairing/exchange',
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ ...offer, clientInstanceId: sharedId }),
+        },
+        serveEnv,
+      );
+      expect(
+        result.status,
+        `replacement exchange: ${await result.clone().text()}`,
+      ).toBe(200);
+      return readJson<ReturnType<typeof h.pairAccountBound>>(result);
+    };
+    const alice = people[0]!;
+    const bob = people[1]!;
+    const aliceProject = () =>
+      h.request(
+        `/api/projects/${project.slug}`,
+        {
+          headers: {
+            ...serveHeaders,
+            Cookie: alice.cookie,
+            Authorization: `Bearer ${alice.paired.credential}`,
+          },
+        },
+        serveEnv,
+      );
+    expect((await aliceProject()).status).toBe(200);
+    const bobCollision = await exchangeFor(bob.cookie, true);
+    expect(bobCollision.device.principalBinding).toMatchObject({
+      kind: 'account',
+      subject: bob.authenticated.session.subject,
+    });
+    expect(
+      h.security.devicePairing.identifyDevice(alice.paired.credential),
+      'Bob must not revoke Alice',
+    ).toBeTruthy();
+    expect((await aliceProject()).status).toBe(200);
+    const unbound = await exchangeFor(undefined, false);
+    expect(
+      h.security.devicePairing.identifyDevice(alice.paired.credential),
+    ).toBeTruthy();
+    expect(
+      h.security.devicePairing.identifyDevice(bobCollision.credential),
+    ).toBeTruthy();
+    const aliceOld = alice.paired;
+    alice.paired = await exchangeFor(alice.cookie, true);
+    expect(
+      h.security.devicePairing.identifyDevice(aliceOld.credential),
+    ).toBeFalsy();
+    expect(
+      h.security.devicePairing
+        .listDevices()
+        .find((device) => device.id === aliceOld.device.id)?.revocation,
+    ).toMatchObject({ reason: 'same-client-replacement' });
+    expect(
+      h.security.devicePairing.identifyDevice(alice.paired.credential),
+    ).toBeTruthy();
+    expect(
+      h.security.devicePairing.identifyDevice(bobCollision.credential),
+    ).toBeTruthy();
+    expect(
+      h.security.devicePairing.identifyDevice(unbound.credential),
+    ).toBeTruthy();
+    expect((await aliceProject()).status).toBe(200);
     const parent = await h.graph.createTask({
       projectId: project.id,
       title: 'Shared parent',
@@ -796,6 +1004,103 @@ describe('project guest administration over the production composition', () => {
         sharedBy: humanPrincipal('fixture', 'operator', 'Operator').id,
       });
     share(parent);
+    const serveRequest = (path: string, credential: string, cookie?: string) =>
+      h.request(
+        path,
+        {
+          headers: {
+            ...serveHeaders,
+            Authorization: `Bearer ${credential}`,
+            ...(cookie ? { Cookie: cookie } : {}),
+          },
+        },
+        serveEnv,
+      );
+    const room = `/api/projects/${project.slug}/room`;
+    const initialScope = h.security.devicePairing.effectiveScope(
+      people[0]!.paired.credential,
+    );
+    expect(initialScope).toBe('orchestration:read');
+    const beforePromotion = await h.request(
+      `${room}/init`,
+      h.guestHeaders(
+        people[0]!.paired.credential,
+        people[0]!.cookie,
+      )({
+        method: 'POST',
+        headers: { Origin: ORIGIN, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ expectedProjectId: project.id }),
+      }),
+    );
+    expect(beforePromotion.status).toBe(403);
+    expect(await beforePromotion.json()).toMatchObject({
+      error: { code: 'insufficient_scope' },
+    });
+    const promoted = await h.request(
+      `/api/pairing/devices/${people[0]!.paired.device.id}/scope`,
+      h.operatorHeaders({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scope: GUEST_GRANT.split(' ') }),
+      }),
+    );
+    expect(promoted.status, await promoted.clone().text()).toBe(200);
+    const initialized = await h.request(
+      `${room}/init`,
+      h.guestHeaders(
+        people[0]!.paired.credential,
+        people[0]!.cookie,
+      )({
+        method: 'POST',
+        headers: { Origin: ORIGIN, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ expectedProjectId: project.id }),
+      }),
+    );
+    expect(
+      initialized.status,
+      `room init: ${await initialized.clone().text()}`,
+    ).toBe(200);
+    const roomRead = await serveRequest(
+      room,
+      people[1]!.paired.credential,
+      people[1]!.cookie,
+    );
+    expect(roomRead.status, `room read: ${await roomRead.clone().text()}`).toBe(
+      200,
+    );
+    expect(
+      (
+        await serveRequest(
+          room,
+          people[0]!.paired.credential,
+          people[1]!.cookie,
+        )
+      ).status,
+    ).toBe(403);
+    const projectRead = await serveRequest(
+      `/api/projects/${project.slug}`,
+      people[0]!.paired.credential,
+      people[0]!.cookie,
+    );
+    expect(projectRead.status, await projectRead.clone().text()).toBe(200);
+    expect(
+      (
+        await serveRequest(
+          `/api/projects/${project.slug}`,
+          people[0]!.paired.credential,
+          people[1]!.cookie,
+        )
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await h.request(
+          `/api/projects/${project.slug}`,
+          { headers: serveHeaders },
+          serveEnv,
+        )
+      ).status,
+    ).not.toBe(200);
     const url = `/api/tasks/${parent.id}/children?taskCreatedAt=${encodeURIComponent(parent.createdAt)}`;
     const read = (index: number, withCookie = true) =>
       h.request(url, {
@@ -804,6 +1109,19 @@ describe('project guest administration over the production composition', () => {
           ...(withCookie ? { Cookie: people[index]!.cookie } : {}),
         },
       });
+    const serveRelationship = await serveRequest(
+      url,
+      people[0]!.paired.credential,
+      people[0]!.cookie,
+    );
+    expect(
+      serveRelationship.status,
+      await serveRelationship.clone().text(),
+    ).toBe(200);
+    expect(
+      (await serveRequest(url, people[0]!.paired.credential, people[1]!.cookie))
+        .status,
+    ).toBe(403);
     for (const index of [0, 1]) {
       const response = await read(index);
       expect(response.status, await response.clone().text()).toBe(200);
@@ -846,7 +1164,7 @@ describe('project guest administration over the production composition', () => {
         Cookie: people[1]!.cookie,
       },
     });
-    expect(mismatch.status).toBe(401);
+    expect(mismatch.status).toBe(403);
     const denied = await h.request(`/api/tasks/${parent.id}/children`, {
       method: 'POST',
       headers: {
@@ -879,6 +1197,7 @@ describe('project guest administration over the production composition', () => {
       h.operatorHeaders({
         method: 'POST',
         headers: {
+          ...serveHeaders,
           Cookie: people[0]!.cookie,
           Origin: ORIGIN,
           'Content-Type': 'application/json',
@@ -889,11 +1208,118 @@ describe('project guest administration over the production composition', () => {
           task: { projectId: project.id, title: 'Operator-authorized child' },
         }),
       }),
+      serveEnv,
     );
+    const sdk = await import('@kontourai/station-sdk/client');
+    const deviceUnauthorized = vi.fn();
+    const accountUnauthorized = vi.fn();
+    sdk.setClientCredentialResolver(() => ({
+      origin: ORIGIN,
+      credential: h.operatorCredential,
+      onUnauthorized: deviceUnauthorized,
+      onAccountUnauthorized: accountUnauthorized,
+    }));
+    const transport = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementationOnce(async (input, init) => {
+        const request = new Request(input, init);
+        request.headers.set('Cookie', people[1]!.cookie);
+        for (const [name, value] of Object.entries(serveHeaders))
+          request.headers.set(name, value);
+        return h.app.request(request, undefined, serveEnv);
+      });
+    try {
+      const conflict = await sdk.getJson(
+        `${ORIGIN}/api/projects/${project.slug}`,
+      );
+      expect({
+        status: conflict.status,
+        body: await conflict.json(),
+        deviceUnauthorized: deviceUnauthorized.mock.calls.length,
+        accountUnauthorized: accountUnauthorized.mock.calls.length,
+      }).toEqual({
+        status: 403,
+        body: { error: { code: 'account_identity_conflict' } },
+        deviceUnauthorized: 0,
+        accountUnauthorized: 0,
+      });
+    } finally {
+      transport.mockRestore();
+      sdk.setClientCredentialResolver(undefined);
+    }
     expect(
       operatorAccountEdit.status,
       await operatorAccountEdit.clone().text(),
+    ).toBe(403);
+    // The local UI is an allowed Station origin but is not the auth origin.
+    // Hostile and missing Origins must not consume the account session.
+    for (const origin of ['https://attacker.example.test', undefined]) {
+      const deniedLogout = await h.request('/api/account-auth/sign-out', {
+        method: 'POST',
+        headers: {
+          Cookie: people[1]!.cookie,
+          Authorization: `Bearer ${h.operatorCredential}`,
+          ...(origin ? { Origin: origin } : {}),
+          'Content-Type': 'application/json',
+        },
+        body: '{}',
+      });
+      expect(deniedLogout.status).toBe(403);
+    }
+    const alternateOrigin = 'http://localhost:6242';
+    const foreignLogin = await h.request('/api/account-auth/sign-in/username', {
+      method: 'POST',
+      headers: { Origin: alternateOrigin, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: 'relationbob',
+        password: 'Relationship password 12345',
+      }),
+    });
+    expect(foreignLogin.status).toBe(403);
+    expect(
+      (
+        await h.request('/api/account-auth/session', {
+          headers: { Cookie: people[1]!.cookie, Origin: ORIGIN },
+        })
+      ).status,
     ).toBe(200);
+    const logout = await h.request(
+      '/api/account-auth/sign-out',
+      {
+        method: 'POST',
+        headers: {
+          ...serveHeaders,
+          Cookie: people[1]!.cookie,
+          Authorization: `Bearer ${h.operatorCredential}`,
+          Origin: alternateOrigin,
+          'Content-Type': 'application/json',
+        },
+        body: '{}',
+      },
+      serveEnv,
+    );
+    expect(logout.status, await logout.clone().text()).toBe(200);
+    const clearedCookies = logout.headers.getSetCookie();
+    expect(clearedCookies).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/session_token=.*Max-Age=0/i),
+      ]),
+    );
+    expect(clearedCookies.join(';')).not.toContain('station-device');
+    expect(
+      (
+        await h.request('/api/account-auth/session', {
+          headers: { Cookie: people[1]!.cookie },
+        })
+      ).status,
+    ).toBe(401);
+    const ownerAfterLogout = await h.request(
+      `/api/projects/${project.slug}`,
+      h.operatorHeaders(),
+    );
+    expect(ownerAfterLogout.status, await ownerAfterLogout.clone().text()).toBe(
+      200,
+    );
     h.localAccounts.administration.setDisabled(
       people[1]!.authenticated.session.subject,
       true,
@@ -911,43 +1337,15 @@ describe('project guest administration over the production composition', () => {
     });
     expect((await read(0)).status).toBe(404);
     vi.restoreAllMocks();
-    const graphPath = join(h.homeDir, 'task-graph.json');
-    const beforeLockWait = readFileSync(graphPath, 'utf8');
-    const release = await acquireFileMutationLockAsync(`${graphPath}.mutation`);
-    let prepared = false;
-    const createChild = h.graph.createChildTask.bind(h.graph);
-    vi.spyOn(h.graph, 'createChildTask').mockImplementationOnce((...args) => {
-      prepared = true;
-      return createChild(...args);
-    });
-    const pending = h.request(
-      `/api/tasks/${parent.id}/children`,
-      h.operatorHeaders({
-        method: 'POST',
-        headers: {
-          Cookie: people[0]!.cookie,
-          Origin: ORIGIN,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          operationId: 'revoked-during-runtime-lock-wait',
-          parent: { taskId: parent.id, taskCreatedAt: parent.createdAt },
-          task: { projectId: project.id, title: 'Must never commit' },
-        }),
-      }),
+    await h.localAccounts.service.revokeSessionReference(
+      people[0]!.authenticated.session.sessionId,
+      new AbortController().signal,
     );
-    try {
-      await vi.waitFor(() => expect(prepared).toBe(true));
-      await h.localAccounts.service.revokeSessionReference(
-        people[0]!.authenticated.session.sessionId,
-        new AbortController().signal,
-      );
-    } finally {
-      await release();
-    }
-    expect((await pending).status).toBe(404);
-    expect(readFileSync(graphPath, 'utf8')).toBe(beforeLockWait);
     expect((await read(0)).status).not.toBe(200);
+    expect(
+      (await serveRequest(url, people[0]!.paired.credential, people[0]!.cookie))
+        .status,
+    ).not.toBe(200);
   });
 
   test('production Task relationship mount writes with ordinary operator authority and refuses account snapshots', async () => {

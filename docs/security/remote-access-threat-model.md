@@ -248,6 +248,39 @@ Previously verified cookie sessions require the provider's synchronous live witn
 relationship commit/delivery seams; missing support, revoked/expired sessions and
 pending enrollment fail closed. A historical authenticated result alone is insufficient.
 
+On the scoped surfaces below, a currently witnessed local-account session
+supplies the acting person. A verified Serve WhoIs identity is ingress
+provenance and does not establish membership or link people. Device and account
+bindings must agree, and an account cannot borrow an operator or another Device
+grant. Revoked sessions fail closed. Without an account session, existing
+WhoIs and Device attribution remains unchanged.
+
+The WhoIs exception applies to these exact surfaces:
+
+- Any method on `/api/account-auth` and its descendants.
+- `POST` to `/.well-known/station/v1/pairing/access-request` and `/.well-known/station/v1/pairing/exchange`.
+- Any method on `/api/projects/:slug/access` and its descendants.
+- `GET` or `HEAD` on `/api/projects`, `/api/projects/:slug`, and the Project's `room` and `shared-work` paths and descendants.
+- `GET` or `HEAD` on `/api/tasks/:id/children`, `/api/tasks/:id/work-chats`, and `/api/tasks/:id/work-chats/:chatId`; `PUT` on `/api/tasks/:id/parent`; `POST` on the children and work-chats paths; and `DELETE` on the work-chats path.
+
+Other leaves retain their existing ingress-agreement behavior. This exception
+changes person attribution only; each route still enforces its own admission and
+resource permissions. A conflicting operator or Device caught by the scoped
+local-account rule is refused with `403 account_identity_conflict`. The local
+account's `POST /api/account-auth/sign-out` remains available to end that
+account session; it does not revoke the Device credential. For local accounts,
+the route and provider accept an exact Station-allowed browser Origin for that
+operation only. Missing or untrusted Origins remain refused, and the exception
+does not widen sign-in or other account operations. Account-tied personal tokens
+retain their separate conflict refusal described below.
+
+An approved account-bound Device exchange can supersede a Device with the same
+client-instance correlation only when both approved account issuer and subject
+match, in addition to the existing ingress replacement domain. A different
+account or an unbound Device is not superseded by that exchange. WhoIs and the
+correlation alone do not link accounts or grant authority.
+
+
 The account-authentication exception is specified in the
 [deployment authentication guide](../guides/deployment-authentication.md).
 With authentication unconfigured, that router reports unavailable (`501`),

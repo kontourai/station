@@ -1,0 +1,35 @@
+{
+  "revision": "9a5860f5b877957b9144169ff2547ff6f3d01312",
+
+  "notes": [
+    {"path":"deploy/public-ingress/README.md","note":"Reviewed the owner-approved pairing prerequisite against request-time name disambiguation; ingress and approval authority are unchanged. No deployment run.","inputs":["deploy/public-ingress/README.md","src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed DevicePairingService and request/approval composition against candidate-based display-name reservation. Exchange still uses approved binding; no full module-map audit.","inputs":["docs/architecture/module-map.md","src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Reviewed explicit participant pairing and scopes against the display-name-only change. Home-control grants and approval remain unchanged; no transfer run.","inputs":["docs/design/channel-home-authority.md","src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Reviewed paired-Device notification scope against name reservation. Revocation and subscription delivery are unchanged; no native push run.","inputs":["docs/design/notification-delivery.md","src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Reviewed operator approval and Device inventory guidance against candidate-based name reservation. The displayed label does not grant authority; no passkey or live browser ceremony.","inputs":["docs/design/operator-device-access.md","src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Reviewed the request-access Device name journey against account-aware suffixing. Network, consent and approval instructions remain applicable; no deployed Station run.","inputs":["docs/guides/deployment.md","src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Reviewed owner-approved pairing prerequisites against display-name reservation. Home-control scope and transfer behavior are unchanged; no transfer run.","inputs":["docs/guides/home-transfer-controller.md","src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"Reviewed operator session and pairing references against the name-only change. Passkey and session authority are unchanged; no passkey ceremony.","inputs":["docs/guides/operator-passkeys.md","src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Reviewed Device identity and subscription revocation claims against name reservation. The exchange revocation and push subscription code is unchanged; no push delivery run.","inputs":["docs/guides/web-push-notifications.md","src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed pairing request and Device authorization references against candidate-based name reservation. Route shape, approval and exchange authorization remain unchanged; no complete API audit.","inputs":["docs/reference/api.md","src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed pairing configuration and admission references against the name-only change. No configuration field or default changed; no deployment run.","inputs":["docs/reference/config.md","src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Reviewed pairing labels and client-instance correlation against the focused same-account, different-account and pending-request tests. No installed Connect client or physical Device run.","inputs":["docs/reference/connect.md","src-server/services/ssh/__tests__/device-pairing-service.test.ts","src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed pairing identity and display-name contract references against the request-time change. No wire type, authority field or approval contract changed; no full contract audit.","inputs":["docs/reference/contracts.md","src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Reviewed Origin and pairing environment references against name reservation. No environment variable or default changed; no live Serve run.","inputs":["docs/reference/env-vars.md","src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed Device name disclosure, client correlation and approved-account replacement against the candidate-based name test and exchange caller. Candidates reserve labels only; no live threat exercise.","inputs":["docs/security/remote-access-threat-model.md","src-server/services/ssh/device-pairing-service.ts"]}
+  ]
+}

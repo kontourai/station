@@ -1,4 +1,3 @@
-import { isPendingAttentionItem } from '@kontourai/station-contracts/attention';
 import { isLowContentPrompt } from '@kontourai/station-contracts/conversation-title';
 import { runtimeEventContentText } from '@kontourai/station-contracts/runtime-event-content';
 import {
@@ -417,8 +416,9 @@ export function useMutableSessionDetailState({
         (item) =>
           item.kind === 'session-failed' &&
           isAcknowledgeableAttentionItem(item) &&
-          // Already acknowledged: history, nothing left to dismiss.
-          isPendingAttentionItem(item),
+          // Already acknowledged: history, nothing left to dismiss. Not
+          // `isPendingAttentionItem`: a snoozed failure is still dismissable.
+          !item.acknowledgedAt,
       )
     : undefined;
   const visibleAttentionItems = sessionAttentionItems.filter(
