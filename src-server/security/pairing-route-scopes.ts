@@ -759,6 +759,19 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ORCHESTRATION_READ,
     origin: 'explicit',
   },
+  // Epic #3439: Automation reads (S2 mounts only `GET /automations/deliveries`)
+  // return bounded projections — hashed transport keys, outcome codes and
+  // ids, never a payload or secret. The shared ledger is operator management,
+  // Deliberately NOT a family: `/automations` mutations create and enable
+  // triggers that start agent work, so every mutating method stays unmapped
+  // (refused) until a later slice classifies it on purpose.
+  {
+    id: '/automations:read',
+    method: 'GET',
+    prefix: '/automations',
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
   ...PAIRING_SCOPE_DOMAIN_PREFIXES.flatMap((prefix) => [
     ...READ_METHODS.map(
       (method): PairingScopeRouteRule => ({
@@ -3900,6 +3913,8 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // on local state with no cross-environment read, so the family default
     // (POST → orchestration:operate) is exactly right.
     { method: 'POST', path: '/api/attention/:id/ack' },
+    { method: 'POST', path: '/api/attention/:id/snooze' },
+    { method: 'DELETE', path: '/api/attention/:id/snooze' },
     { method: 'GET', path: '/api/auth/badge-photo/:id' },
     { method: 'POST', path: '/api/auth/renew' },
     // A server-bound, read-only authority fact. The desktop uses an explicit

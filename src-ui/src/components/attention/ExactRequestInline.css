@@ -1,0 +1,84 @@
+/* An approval answered on its inbox row (popover and page). */
+.exact-request {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-2);
+  margin-top: var(--k-space-2);
+  min-width: 0;
+}
+
+.exact-request__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-2);
+}
+
+.exact-request__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--k-space-2);
+  margin-left: auto;
+}
+
+/* The decisions meet the touch floor on phones; in the tray they match the
+   row's other actions in size. */
+.exact-request__actions .button {
+  min-width: var(--touch-target-min, auto);
+  min-height: var(--touch-target-min, auto);
+}
+
+.notification-history .exact-request__actions .button {
+  min-height: var(--touch-target-min, 32px);
+  padding: 0 var(--k-space-3);
+  font-size: var(--k-text-xs);
+}
+
+.exact-request__toggle,
+.exact-request__link {
+  display: inline-flex;
+  min-height: var(--touch-target-min, 32px);
+  align-items: center;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--k-action);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--k-text-xs);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.exact-request__toggle:hover,
+.exact-request__link:hover {
+  text-decoration: underline;
+}
+
+.exact-request__details {
+  padding: var(--k-space-2) var(--k-space-3);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-bg);
+  font-size: var(--k-text-xs);
+  overflow-wrap: anywhere;
+}
+
+.exact-request__body {
+  margin: 0;
+  color: var(--k-text-muted);
+  white-space: pre-wrap;
+}
+
+.exact-request__note {
+  margin: 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+}
+
+.exact-request__meta {
+  margin: var(--k-space-2) 0 0;
+  color: var(--k-text-muted);
+}

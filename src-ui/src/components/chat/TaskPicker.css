@@ -31,6 +31,14 @@
   font-size: var(--text-xs);
   overflow-wrap: anywhere;
 }
+/* The status line's retry action ("Message actions unavailable. Retry"): a
+   bare button is ~21px tall on the phone composer's failure path. The 44px
+   floor is a property of the pointer, not the width, so a touch pointer
+   gets it wherever this line renders. */
+.task-picker__status button {
+  min-width: 44px;
+  min-height: 44px;
+}
 .task-picker__dialog-body {
   display: grid;
   gap: 1rem;

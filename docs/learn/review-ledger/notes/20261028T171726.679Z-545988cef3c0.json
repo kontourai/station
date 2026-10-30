@@ -1,0 +1,7 @@
+{
+  "revision": "7f2e7b4193a0fdc748a43a4aa1344c041419903f",
+
+  "notes": [
+    {"path":"docs/learn/media/oauth-mcp-sign-in-comparison.png","note":"Retained historical illustration, not re-captured: the account panel uses a one-per-line scopes field, always sends the explicit choice, and spaces the status line; the account panel test asserts an explicit empty scope choice. The capture predates the Scopes field, so it does not show it. Source-impact review only; current renders are attached to PR #4279.","inputs":["docs/learn/media/oauth-mcp-sign-in-comparison.png","src-ui/src/views/integrations/IntegrationAccountSection.tsx","src-ui/src/views/integrations/__tests__/IntegrationAccountSection.test.tsx"]}
+  ]
+}

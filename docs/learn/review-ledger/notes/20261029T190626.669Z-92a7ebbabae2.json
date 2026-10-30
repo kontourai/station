@@ -1,0 +1,7 @@
+{
+  "revision": "5c1aadf5e58ca7dcbb969beea648bdc27d7468f7",
+
+  "notes": [
+    {"path":"docs/guides/local-speech.md","note":"Reviewed Backup and update rollback against station-home-store-registry.ts: the sole delta adds attention-snoozes.json as state. media-tools remains external and excluded from both backup kinds; import/transcript state classifications are unchanged. No speech runtime qualification claimed.","inputs":["docs/guides/local-speech.md","packages/shared/src/station-home-store-registry.ts"]}
+  ]
+}

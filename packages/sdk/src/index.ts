@@ -1302,8 +1302,12 @@ export {
 export {
   acknowledgeAttentionItem,
   fetchAttention,
+  snoozeAttentionItem,
+  unsnoozeAttentionItem,
   useAcknowledgeAttentionItemMutation,
   useAttentionQuery,
+  useSnoozeAttentionItemMutation,
+  useUnsnoozeAttentionItemMutation,
 } from './query-domains/attention.js';
 export {
   useBoardQuery,
@@ -1347,6 +1351,10 @@ export {
   usePatchNotificationPreferencesMutation,
   useUpdateNotificationPreferencesMutation,
 } from './query-domains/notificationPreferences.js';
+export {
+  snoozeNotification,
+  useSnoozeNotificationMutation,
+} from './query-domains/notifications.js';
 export {
   peerEnrollmentQueries,
   useCancelPeerEnrollmentMutation,

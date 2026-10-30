@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { useCoarseNow } from '../../hooks/useCoarseNow';
 import {
   clearSnooze,
   readSnoozes,
@@ -17,11 +18,6 @@ import {
 } from './home-lane-model';
 import type { HomeWorkItem } from './home-view-model';
 import type { WorkFactsById } from './work-facts';
-
-/** Re-render cadence so terminal linger / snooze wake / pill expiry progress
- * even without another prop change forcing it. Deliberately coarse — none of
- * these windows need sub-30s precision. */
-const LANE_TICK_MS = 30_000;
 
 export interface HomeWorkLanes {
   childrenById: ReadonlyMap<string, readonly HomeLaneItem[]>;
@@ -65,7 +61,10 @@ export function useHomeWorkLanes(
   items: HomeWorkItem[],
   workFacts?: WorkFactsById,
 ): HomeWorkLanes {
-  const [now, setNow] = useState(() => Date.now());
+  // Lane windows re-derive on the shared coarse clock, so terminal linger /
+  // snooze wake / pill expiry progress without another prop change forcing
+  // it — and every Home surface ages on the same tick.
+  const now = useCoarseNow();
   const [snoozeMap, setSnoozeMap] = useState<SnoozeMap>(() =>
     readSnoozes(Date.now()),
   );
@@ -78,11 +77,6 @@ export function useHomeWorkLanes(
    * from a natural TTL lapse (both just look like "left the snoozed set"),
    * and an explicit wake should dismiss silently rather than show a pill. */
   const explicitWakeRef = useRef(new Set<string>());
-
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), LANE_TICK_MS);
-    return () => clearInterval(id);
-  }, []);
 
   const snoozedUntil = useMemo(
     () => new Map(Object.entries(snoozeMap)),
