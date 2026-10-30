@@ -116,6 +116,9 @@ the same Session. Full returning-request serving, funded answer-informed
 follow-up and live qualification remain open. Source controls do not establish provider, native or
 device acceptance; the [report-group API](../../reference/api.md#report-groups)
 records the current candidate and its limits.
+Metadata-only continuation finalization is currently unavailable and its preview
+is not offered. The installed Flow winner-authentication contract does not
+qualify Station's unfinished publication-exclusion composition.
 
 ## Review a change
 
