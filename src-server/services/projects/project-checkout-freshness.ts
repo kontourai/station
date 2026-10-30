@@ -43,7 +43,7 @@ const logger = createLogger({ name: 'project-checkout-freshness' });
  * How long a read's facts are reused. Short, so a warning clears soon after
  * the person pulls.
  */
-export const FRESHNESS_TTL_MS = 10_000;
+const FRESHNESS_TTL_MS = 10_000;
 /** Directories remembered at once; the oldest is forgotten first. */
 const MAX_REMEMBERED = 256;
 /** Each git call is a local ref read; this only bounds a wedged mount. */
