@@ -1,0 +1,9 @@
+{
+  "revision": "e514d1331ecb197f943650bc970102e1d3ff8cb4",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"Reviewed Device access and remote work relationship claims against ConnectStationDialog and PeerEnrollmentService. Device and peer holders, independent approvals, server custody and operator requirement remain accurate. New recovery controls and exact-Origin startup remedy are documented by the existing Connections guide, which this guide already identifies as the setup owner. No relationship or grant widening.","inputs":["docs/guides/machine-relationships.md","src-ui/src/views/connections-hub/ConnectStationDialog.tsx"]},
+
+    {"path":"docs/reference/connect.md","note":"Reviewed one-time device pairing and PeerEnrollmentService contract against changed UI, request error mapper and route tests. Grant custody, activation policy, endpoint binding, request kind, operator requirement, journal retention and unknown-outcome behavior remain unchanged. Known request refusals now retain specific guidance and cancelled UI setup can choose a new destination; current setup steps live in Connections. Focused connect91, UI17 and service22 tests passed; live peer enrollment plus authenticated bounded forwarding read succeeded, not remote task execution.","inputs":["docs/reference/connect.md","src-ui/src/views/connections-hub/ConnectStationDialog.tsx"]}
+  ]
+}

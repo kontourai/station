@@ -8,6 +8,7 @@
 export const TABLED_CAPABILITY_FLAGS: readonly string[] = Object.freeze([
   'childWorkSteering',
   'connectionRoutes',
+  'coordinatorSession',
   'eventStreamResume',
   'privateOperationalOutcomes',
   'sessionEventWindow',

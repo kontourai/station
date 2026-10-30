@@ -334,10 +334,10 @@ async function startFirstChat(page: Page) {
     .getByRole('button', { name: 'Start your first chat', exact: true })
     .click();
   await expect(
-    page.getByRole('dialog', { name: 'New chat', exact: true }),
+    page.getByRole('region', { name: 'New chat', exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole('dialog', { name: 'New chat', exact: true }),
+    page.getByRole('region', { name: 'New chat', exact: true }),
   ).toHaveCSS('opacity', '1');
   await expect(
     page.getByRole('button', { name: 'Skip the tour', exact: true }),
@@ -1426,7 +1426,7 @@ async function setupReturnFixture(page: Page, chrome: NewChatChrome = 'wide') {
   );
   await page.goto('/');
   await openNewChatFromChrome(page, chrome);
-  const modal = page.getByRole('dialog', { name: 'New chat', exact: true });
+  const modal = page.getByRole('region', { name: 'New chat', exact: true });
   await expect(modal).toBeVisible();
   await modal
     .getByRole('textbox', { name: 'What would you like done?' })

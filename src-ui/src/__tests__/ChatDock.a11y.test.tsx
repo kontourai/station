@@ -105,8 +105,9 @@ describe('ChatDock activity region', () => {
  * "does this callback avoid calling X" is a fact about ChatWorkspacePane's
  * own wiring, not a computation `chat-dock-utils.ts` could isolate).
  */
-function extractBalancedBody(source: string, anchor: string): string {
-  const anchorIndex = source.indexOf(anchor);
+function extractBalancedBody(source: string, anchor: string | RegExp): string {
+  const anchorIndex =
+    typeof anchor === 'string' ? source.indexOf(anchor) : source.search(anchor);
   expect(
     anchorIndex,
     `expected to find "${anchor}" in ChatDock.tsx`,
@@ -140,14 +141,14 @@ describe('ChatDock project-binding wiring (archive#4525)', () => {
   // (an explicit picker pick, an explicit new-chat project choice, or
   // deletion) — it must never sync the ambient binding to the fork
   // source's project. No pure function can carry this: it is a fact about
-  // which of two DIFFERENT callback props (`onSelectNewChat` vs.
-  // `onForkAgentSelect`, dispatched by `ChatDockModalStack`'s own
-  // `handleNewChatSelect`) gets wired to the sync call.
+  // which of two DIFFERENT callback props (`onSelect` vs.
+  // `onForkAgentSelect`, chosen by `DockStartComposer` while forking) gets
+  // wired to the sync call.
   test('a fork confirmation never syncs the project binding (station#4525 review LOW-1)', () => {
     const forkBody = extractBalancedBody(source, 'onForkAgentSelect: async (');
     expect(forkBody).not.toMatch(/setActiveProjectSlug/);
 
-    const nonForkBody = extractBalancedBody(source, 'onSelectNewChat: (');
+    const nonForkBody = extractBalancedBody(source, /onSelect: \(\s*agent,/);
     expect(
       nonForkBody,
       'the non-fork new-chat path must route the explicit project choice through the scoped opener',

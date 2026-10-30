@@ -1,0 +1,7 @@
+{
+  "revision": "6860c3eb283acd348de930ff1a441ed8d52335af",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Reviewed Saved Station addresses against ConnectStationDialog, devicePairing/DevicePairingPanel and peer enrollment service/routes. Confirmed operator-refusal guidance, independently available Device pairing, cancellation destination reset, retained uncertain references and exact published API Origin requirement. Focused regressions pass; live bmedia to desktop-win enrollment and authenticated bounded forwarding read succeeded. Reboot startup and remote Project task execution are not verified. Other guide topics are unchanged by this patch.","inputs":["docs/guides/connections.md","packages/connect/src/__tests__/DevicePairingPanel.test.tsx","src-server/services/peers/__tests__/peer-enrollment-routes.test.ts","src-server/services/peers/peer-enrollment-service.ts","src-ui/src/__tests__/ConnectStationDialog.test.tsx","src-ui/src/views/connections-hub/ConnectStationDialog.tsx"]}
+  ]
+}
