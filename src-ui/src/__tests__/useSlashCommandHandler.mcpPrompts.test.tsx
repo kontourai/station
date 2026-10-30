@@ -107,10 +107,17 @@ describe('#3284 an MCP prompt as a slash command', () => {
       serverId: 'fixture',
       name: 'summarize',
       text: 'Summarize MCP in a brisk tone.',
+      turnOriginSupported: true,
+      originReceipt: 'opaque',
     });
-    await expect(run('/fixture:summarize "MCP" tone=brisk')).resolves.toBe(
-      'Summarize MCP in a brisk tone.',
-    );
+    await expect(run('/fixture:summarize "MCP" tone=brisk')).resolves.toEqual({
+      text: 'Summarize MCP in a brisk tone.',
+      mcpPromptOrigin: {
+        serverId: 'fixture',
+        name: 'summarize',
+        receipt: 'opaque',
+      },
+    });
     expect(mocks.runPrompt).toHaveBeenCalledWith('writer', {
       serverId: 'fixture',
       name: 'summarize',
@@ -127,6 +134,23 @@ describe('#3284 an MCP prompt as a slash command', () => {
       content:
         '/fixture:summarize needs a value for <topic> — nothing was sent',
     });
+  });
+
+  test('refuses to send a prompt from a Station that cannot carry its origin', async () => {
+    mocks.runPrompt.mockResolvedValue({
+      serverId: 'fixture',
+      name: 'summarize',
+      text: 'Untrusted text',
+    });
+    await expect(run('/fixture:summarize topic=x')).resolves.toBe(true);
+    expect(mocks.addEphemeralMessage).toHaveBeenCalledWith(
+      'session-1',
+      expect.objectContaining({
+        content: expect.stringContaining(
+          'cannot safely carry MCP prompt origin',
+        ),
+      }),
+    );
   });
 
   test("the server's refusal is shown and nothing is sent", async () => {

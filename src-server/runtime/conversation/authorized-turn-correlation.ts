@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash, randomUUID } from 'node:crypto';
 import type { DispatchReceipt } from '@kontourai/dispatch';
+import type { VerifiedMcpPromptOrigin } from '@kontourai/station-contracts/mcp-prompts';
 import type { NativeOutputRelayCompanion } from '../native-output-turn-grant.js';
 import type { NativeForegroundRelayCompanion } from './native-foreground-invocation.js';
 import type { NativeMemoryHistoryCompanion } from './native-memory-history.js';
@@ -33,6 +34,7 @@ const turnCorrelations = new AsyncLocalStorage<{
   correlation: AuthorizedTurnCorrelation;
   nativeMemory?: NativeMemoryHistoryCompanion;
   skillExperienceContext?: string;
+  mcpPromptOrigin?: VerifiedMcpPromptOrigin;
 }>();
 const relayHandoffs = new Map<
   string,
@@ -42,6 +44,7 @@ const relayHandoffs = new Map<
     nativeForeground?: NativeForegroundRelayCompanion;
     nativeMemory?: NativeMemoryHistoryCompanion;
     skillExperienceContext?: string;
+    mcpPromptOrigin?: VerifiedMcpPromptOrigin;
     expiresAt: number;
   }
 >();
@@ -155,6 +158,7 @@ export function issueAuthorizedTurnCorrelationHandoff(
   nativeMemory?: NativeMemoryHistoryCompanion,
   nativeForeground?: NativeForegroundRelayCompanion,
   skillExperienceContext?: string,
+  mcpPromptOrigin?: VerifiedMcpPromptOrigin,
 ): string {
   if (
     skillExperienceContext &&
@@ -180,6 +184,9 @@ export function issueAuthorizedTurnCorrelationHandoff(
     ...(nativeForeground ? { nativeForeground } : {}),
     ...(nativeMemory ? { nativeMemory } : {}),
     ...(skillExperienceContext ? { skillExperienceContext } : {}),
+    ...(mcpPromptOrigin
+      ? { mcpPromptOrigin: Object.freeze({ ...mcpPromptOrigin }) }
+      : {}),
     expiresAt: now + RELAY_HANDOFF_TTL_MS,
   });
   return handoffId;
@@ -240,6 +247,7 @@ export function runWithAuthorizedTurnCorrelation<T>(
   work: () => T,
   nativeMemory?: NativeMemoryHistoryCompanion,
   skillExperienceContext?: string,
+  mcpPromptOrigin?: VerifiedMcpPromptOrigin,
 ): T {
   if (
     skillExperienceContext &&
@@ -251,9 +259,26 @@ export function runWithAuthorizedTurnCorrelation<T>(
       correlation,
       ...(nativeMemory ? { nativeMemory } : {}),
       ...(skillExperienceContext ? { skillExperienceContext } : {}),
+      ...(mcpPromptOrigin
+        ? { mcpPromptOrigin: Object.freeze({ ...mcpPromptOrigin }) }
+        : {}),
     },
     work,
   );
+}
+
+export function currentMcpPromptOrigin(): VerifiedMcpPromptOrigin | undefined {
+  return turnCorrelations.getStore()?.mcpPromptOrigin;
+}
+
+export function readMcpPromptOriginRelay(
+  handoffId: string | undefined,
+): VerifiedMcpPromptOrigin | undefined {
+  if (!handoffId || handoffId.length > 128) return undefined;
+  const handoff = relayHandoffs.get(handoffId);
+  return handoff && handoff.expiresAt > Date.now()
+    ? handoff.mcpPromptOrigin
+    : undefined;
 }
 
 /** The current request-scoped correlation, never reconstructed from a receipt. */

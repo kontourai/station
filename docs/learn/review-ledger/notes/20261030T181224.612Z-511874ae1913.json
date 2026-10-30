@@ -1,0 +1,7 @@
+{
+  "revision": "7d22abc525e6eb21df9ec8330548814926c228fd",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"Reviewed the child process test and manifest classification against scripts scope: the test sets windowsHide, executes the real CLI with bounded fixture work, and remains process-heavy; policy and completion requirements are unchanged.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}
