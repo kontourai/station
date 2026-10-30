@@ -175,7 +175,8 @@ export default class extends Reporter {
       writeFileSync(
         resolve(root, 'phase.test.ts'),
         `import { afterEach, expect, test } from 'vitest';
-import { existsSync } from 'node:fs';
+import { existsSync, watch } from 'node:fs';
+import { dirname } from 'node:path';
 const marker = ${JSON.stringify(resolve(root, 'phase-observed'))};
 const delay = () => new Promise((resolve, reject) => {
   const started = Date.now();
@@ -188,8 +189,20 @@ const delay = () => new Promise((resolve, reject) => {
 });
 ${phase === 'collection' ? 'await delay();' : ''}
 ${phase === 'afterEach' ? 'afterEach(delay);' : ''}
+let closeObservation = () => {};
+${phase === 'body' ? 'afterEach(() => closeObservation());' : ''}
+const observeBody = () => new Promise(resolve => {
+  const finish = () => {
+    if (!existsSync(marker)) return;
+    observer.close();
+    resolve();
+  };
+  const observer = watch(dirname(marker), finish);
+  closeObservation = () => observer.close();
+  finish();
+});
 test('private-case-content-must-not-appear-in-progress', async () => {
-  ${phase === 'body' ? 'await delay();' : ''}
+  ${phase === 'body' ? 'await observeBody();' : ''}
   expect(process.env.STATION_VITEST_CORPUS_GROUP).toBe('process-exclusive');
   expect(2 + 2).toBe(4);
 });`,
@@ -200,7 +213,7 @@ test('private-case-content-must-not-appear-in-progress', async () => {
         { root },
       );
       expect(result.error).toBeNull();
-      expect(result.status).toBe(0);
+      expect(result.status, result.output).toBe(0);
       expect(result.passed).toBe(true);
       expect(result.outputTruncated).toBe(false);
       const progress = result.stdout
