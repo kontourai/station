@@ -3567,6 +3567,22 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'POST',
       path: '/api/orchestration/agent-schedule/:conversationId/job-proposals/:proposalId/decline',
     },
+    // #3628: the person's own coordinator designation. Every leaf reads or
+    // writes only the request principal's record and refuses a request that
+    // may be an agent's; designating also needs sending to the conversation.
+    // No leaf is more sensitive than the family.
+    { method: 'GET', path: '/api/orchestration/coordinator' },
+    { method: 'GET', path: '/api/orchestration/coordinator/picture' },
+    {
+      method: 'GET',
+      path: '/api/orchestration/station-control/coordinator-picture',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/station-control/coordinator-picture',
+    },
+    { method: 'PUT', path: '/api/orchestration/coordinator' },
+    { method: 'DELETE', path: '/api/orchestration/coordinator' },
     // #2061 Boards: the family read/mutate split is exactly right here —
     // every leaf resolves its owner from the request principal and can reach
     // no other principal's records, so none is more sensitive than the family.

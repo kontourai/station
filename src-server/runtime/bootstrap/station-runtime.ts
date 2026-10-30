@@ -476,6 +476,7 @@ import {
 import { claudeInProcessStationControlOptions } from '../mcp/station-control-in-process.js';
 import {
   buildStationControlMcpUrl,
+  coordinatorGeneration,
   mintStationControlMcpToken,
   revokeStationControlMcpToken,
 } from '../mcp/station-control-mcp-token.js';
@@ -814,6 +815,27 @@ export class StationRuntime {
   private readonly openCodeSessionSource = new OpenCodeSessionSource();
   private bedrockAdapter = new BedrockAdapter();
   private claudeAdapter = new ClaudeAdapter({
+    isCoordinatorSession: (threadId) => {
+      const principal =
+        this.orchestrationService?.resolveSessionActingPrincipal(threadId);
+      if (!principal || principal.source !== 'session-owner') return false;
+      const conversationId =
+        this.orchestrationEventStore.conversationForSession(threadId)
+          ?.conversationId ?? threadId;
+      return (
+        this.orchestrationEventStore
+          .coordinatorStore()
+          .designationForConversation(conversationId)?.actor.userId ===
+        principal.id
+      );
+    },
+    resolveCoordinatorStationControl: async (threadId) =>
+      this.orchestrationService?.resolveCoordinatorStationControl(threadId),
+    coordinatorGenerationForSession: (threadId) =>
+      coordinatorGeneration(
+        this.orchestrationEventStore.conversationForSession(threadId)
+          ?.conversationId ?? threadId,
+      ),
     resolveMcpOAuth: (input) => this.resolveExternalMcpOAuth(input),
     nativeSessionOwnership: {
       assertMutable: (sessionId) =>
@@ -992,13 +1014,22 @@ export class StationRuntime {
       threadId: string,
       tenantExecutionContext,
       allowedTools,
+      generation,
     ) => {
+      const conversationId =
+        this.orchestrationEventStore.conversationForSession(threadId)
+          ?.conversationId ?? threadId;
       const { token } = mintStationControlMcpToken(
         threadId,
         'url-token',
         undefined,
         tenantExecutionContext,
         allowedTools,
+        generation !== undefined ? 'coordinator-control' : 'station-control',
+        undefined,
+        generation === undefined
+          ? undefined
+          : () => coordinatorGeneration(conversationId) === generation,
       );
       return buildStationControlMcpUrl(this.port, token);
     },
@@ -1006,14 +1037,24 @@ export class StationRuntime {
       threadId,
       tenantExecutionContext,
       allowedTools,
+      generation,
     ) => {
+      const conversationId =
+        this.orchestrationEventStore.conversationForSession(threadId)
+          ?.conversationId ?? threadId;
       const { token } = mintStationControlMcpToken(
         threadId,
         'url-token',
         undefined,
         tenantExecutionContext,
         allowedTools,
-        'station-knowledge',
+        generation !== undefined
+          ? 'coordinator-knowledge'
+          : 'station-knowledge',
+        undefined,
+        generation === undefined
+          ? undefined
+          : () => coordinatorGeneration(conversationId) === generation,
       );
       return buildStationControlMcpUrl(this.port, token, 'station-knowledge');
     },

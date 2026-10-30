@@ -789,6 +789,23 @@ transcript that a turn is a check-back Station sent (its internal origin and
 a send key `parseWakeUpClientTurnId` accepts). A wake-up waiting for a
 person's approval is in state `needs_approval`.
 
+`@kontourai/station-contracts/coordinator` owns a person's coordinator Session
+(#3628): `CoordinatorDesignation`, the route bodies
+(`CoordinatorDesignationRead`, `CoordinatorDesignateRequest`), the refusal
+codes (`CoordinatorRefusalCode`), `CoordinatorAttentionKind` (`needs-you`,
+`failed`, `finished`), the wake bounds (`COORDINATOR_WAKE_COALESCE_MS`,
+`COORDINATOR_WAKE_MAX_PER_HOUR` over `COORDINATOR_WAKE_WINDOW_MS`,
+`COORDINATOR_WAKE_MAX_ITEMS_PER_TURN`, `COORDINATOR_WAKE_MAX_PENDING_ITEMS`,
+the retry delays `COORDINATOR_WAKE_RETRY_DELAYS_MS`, the dedupe window
+`COORDINATOR_WAKE_DEDUPE_WINDOW_MS` and the queued-wake age limit
+`COORDINATOR_WAKE_QUEUED_MAX_AGE_MS`), `CoordinatorDelivery` (wake state,
+pending or unavailable tools, and whether the current Session restarted for
+tools, returned with a designation), the bounded `CoordinatorPictureItem`
+and its status and limits, and
+`coordinatorWakeClientTurnId` with its predicate
+`isCoordinatorWakeClientTurnId`. The handshake advertises the routes as
+`StationCapabilityFlags.coordinatorSession`, withdrawn on a hosted Station.
+
 `@kontourai/station-contracts/station-control-refusal` owns the refusal view
 a transcript shows for a station-control tool (`StationControlRefusalView`:
 code, sentence, out-of-scope reason), `parseStationControlRefusal`, which
@@ -842,6 +859,14 @@ instructs clients to replay a failed or indeterminate action automatically.
 `quota_exhausted` and a reported reset time when available; eligibility remains
 false until that condition changes. Generic failures stay `provider_error`
 unless structured engine evidence supports a narrower kind.
+
+Two startup diagnostics carry fixed, sanitized guidance rather than raw engine
+output. `sandbox_unavailable` maps an explicit Codex bubblewrap user-namespace
+permission denial to `permission_denied`. `provider_model_unavailable` maps
+Claude's explicit HTTP 400 unknown-provider-model response to
+`model_unavailable`; it does not infer quota exhaustion. Neither is retryable
+without correcting the prerequisite. These diagnostics can arrive before a
+session-start receipt, so a failed launch need not produce a normal task handle.
 
 The fixed retryable kinds are `busy` (wait for the competing operation),
 `rate_limited` (respect the reported delay), `timeout`, `engine_crashed` and
@@ -948,6 +973,8 @@ No existing diagnostic code is renamed or removed.
 | `session-reattach-conflict` | `conflict` | `false` |
 | `transcript-line-skipped` | `warning` | `false` |
 | `workload-command-oom-killed` | `warning` | `false` |
+| `sandbox_unavailable` | `permission_denied` | `false` |
+| `provider_model_unavailable` | `model_unavailable` | `false` |
 
 The [source inventory guard](../../scripts/__tests__/provider-failure-inventory.test.ts)
 recursively discovers string `*_CODE` declarations and string-literal `code` class
