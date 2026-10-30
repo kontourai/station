@@ -50,6 +50,20 @@ session-group owners remain in use; this split does not complete the epic.
 
 ## Earlier source checkpoints
 
+### Merged UI focused qualification
+
+At `e076e661411`, two serial `npm run test:focused` selections passed
+175 tests across eight files: background-task retention, global child-work
+state and parity, Home lanes, child-work rows, mounted background-task hooks,
+active identity and directory context. The UI and child-work contract had no
+working diff; separate server publication edits were still in progress and
+are outside this receipt. The runs cover fixture state, subscriptions and
+rendered labels, including reported CLI origin and result provenance. They do
+not establish browser geometry, current device/provider acceptance, CPU
+performance, or finalizer/runtime publication qualification. The exact logs
+and their digests are retained in the local ignored
+`.kontourai/child-work-cli-group/ui-focused-e076e661411.json` receipt.
+
 At `1973398083f`, the branch includes main through `8fa16170bed` by normal
 merge and consumes published Flow Agents 9.7.0. The
 published package's integrity and installed renewal implementation were checked;
