@@ -1,10 +1,6 @@
 {
   "app": {},
   "cli": {
-    "automation deliveries": {
-      "exempt": "person-only",
-      "reason": "Operator-only observation history; the Automation ledger has no Project or agent audience binding."
-    },
     "acp command-options": {
       "missing": 4286,
       "want": "List_acp_command_options"
@@ -74,6 +70,10 @@
     "auth users": {
       "exempt": "person-only",
       "reason": "Person directory lookup (/api/users/search)."
+    },
+    "automation deliveries": {
+      "exempt": "person-only",
+      "reason": "Operator-only observation history; the Automation ledger has no Project or agent audience binding."
     },
     "branding get": {
       "exempt": "presentation",

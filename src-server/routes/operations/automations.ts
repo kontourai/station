@@ -95,7 +95,11 @@ export function createAutomationRoutes(
           detail: error.detail,
         });
         return c.json(
-          { success: false, error: error.message, code: error.code },
+          {
+            success: false,
+            error: 'Automation policy is unavailable.',
+            code: error.code,
+          },
           503,
         );
       }
