@@ -201,7 +201,7 @@ function GoalSurface({
                 {
                   key: 'clear',
                   label: 'Clear goal',
-                  danger: true,
+                  tone: 'danger' as const,
                   disabled: mutation.isPending,
                   onSelect: () => void submit({ operation: 'clear' }),
                 },
