@@ -446,7 +446,10 @@ existing cadence-based credential-activity touch and its failure behavior.
 
 **Borrowing and recovery.** Only an explicit live lease can start a borrowed
 span. Thenables refuse; the span invalidates before return, so a late async
-descendant cannot borrow it. Cleanup retains exact handles and can be retried by
+descendant cannot borrow it. Report rounds transactions also use an explicit
+async lifetime around the exact lease: home is acquired before the group and
+authority locks, while each currentness check and journal rename uses a
+synchronous borrow. Nested lifetimes expire independently. Cleanup retains exact handles and can be retried by
 explicit async acquisition without replaying the callback. The HTTP boundary
 returns 503 before callback admission or 409 when an operation outcome is
 unconfirmed. Registry publication uncertainty fences that service instance;
@@ -457,7 +460,8 @@ Token routes recheck their caller, person binding and required scope inside the
 held mutation, after any wait; reset or narrowed access refuses publication.
 Synchronous local-grant validation shares one home span across its principal,
 scope and host-signature checks. It retains both currentness checks and acquires
-a fresh span for the next validation; no hold crosses an await or stream boundary.
+a fresh span for the next validation; that standalone validation holds no lease
+across an await or stream boundary.
 The report preparation owner also validates its complete roster under one such
 span, so nested credential and Flow checks borrow the same resource hold rather
 than independently publishing locks for each member. Source and Flow admission

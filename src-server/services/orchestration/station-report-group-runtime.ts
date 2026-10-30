@@ -229,7 +229,9 @@ export class StationReportGroupRuntime {
     directory(sourcesRoot);
     const dispatchRoot = join(root, 'dispatch');
     directory(dispatchRoot);
-    const persistence = new StationDelegationPersistence(root);
+    const persistence = new StationDelegationPersistence(root, {
+      homeDir: home,
+    });
     this.#dispatch = new FileAuthorizationLedger({ root: dispatchRoot });
     this.#custody = new StationReportGroupCustody({
       persistence,

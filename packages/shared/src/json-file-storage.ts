@@ -128,6 +128,8 @@ interface JsonFileWriteOptions extends JsonSerializationOptions {
   beforeCommit?: () => void | Promise<void>;
   /** Check current effect authority after staging, without yielding before publication. */
   finalizeCommit?: () => undefined;
+  /** Run the synchronous finalizer and rename within an owning exclusion span. */
+  commitWithin?: (commit: () => void) => void;
   /** Synchronous admission immediately before the atomic rename is invoked. */
   assertCurrent?: () => void;
 }
@@ -171,6 +173,7 @@ export async function publishJsonFileWithOwnedLock(
     | 'label'
     | 'beforeCommit'
     | 'finalizeCommit'
+    | 'commitWithin'
     | 'assertCurrent'
     | 'indent'
     | 'trailingNewline'
@@ -193,13 +196,35 @@ export async function publishJsonFileWithOwnedLock(
       await descriptor.close();
     }
     options?.assertCurrent?.();
-    if (options?.finalizeCommit) {
-      const result: unknown = options.finalizeCommit();
-      if (result !== undefined) {
-        void Promise.resolve(result).catch(() => {});
-        throw new Error('JSON publication finalizer must be synchronous.');
+    if (options?.finalizeCommit || options?.commitWithin) {
+      let called = false;
+      let active = true;
+      const commit = () => {
+        if (!active || called)
+          throw new Error('JSON publication commit is not current.');
+        called = true;
+        const result: unknown = options?.finalizeCommit?.();
+        if (result !== undefined) {
+          void Promise.resolve(result).catch(() => {});
+          throw new Error('JSON publication finalizer must be synchronous.');
+        }
+        renameSync(temporaryPath, path);
+        committed = true;
+      };
+      if (options?.commitWithin) {
+        let result: unknown;
+        try {
+          result = options.commitWithin(commit);
+        } finally {
+          active = false;
+        }
+        if (result !== undefined) void Promise.resolve(result).catch(() => {});
+        if (result !== undefined || !called)
+          throw new Error('JSON publication span must commit synchronously.');
+      } else {
+        commit();
+        active = false;
       }
-      renameSync(temporaryPath, path);
     } else {
       await renameAsync(temporaryPath, path);
     }

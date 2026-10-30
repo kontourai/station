@@ -40,6 +40,7 @@ type Holder = {
   releasing?: Promise<void>;
 };
 type Span = { lease: FileMutationLease; active: boolean };
+type Lifetime = { lease: HomeWriterLease; active: boolean };
 const homeWriterLeaseBrand = Symbol('HomeWriterLease');
 export interface HomeWriterLease {
   readonly [homeWriterLeaseBrand]: true;
@@ -49,6 +50,7 @@ export interface HomeWriterLease {
 const cores = new Map<string, Promise<Core>>();
 const leases = new WeakMap<HomeWriterLease, Holder>();
 const spans = new AsyncLocalStorage<ReadonlyMap<Core, Span>>();
+const lifetimes = new AsyncLocalStorage<ReadonlyMap<Core, Lifetime>>();
 
 function releaseHolder(holder: Holder): Promise<void> {
   holder.active = false;
@@ -222,6 +224,12 @@ export class HomeWriterOwner {
         throw new HomeWriterUnavailableError('borrow-unavailable');
       return this.#span(inherited.lease, body);
     }
+    const lifetime = lifetimes.getStore()?.get(this.#core);
+    if (lifetime) {
+      if (!lifetime.active)
+        throw new HomeWriterUnavailableError('borrow-unavailable');
+      return this.runWithLease(lifetime.lease, body);
+    }
     if (this.#core.holders.size) throw new HomeWriterUnavailableError('busy');
     const attempt = this.#core.prepared.tryAcquire();
     if (attempt.kind !== 'acquired')
@@ -257,6 +265,64 @@ export class HomeWriterOwner {
     if (!holder || holder.core !== this.#core || !holder.active)
       throw new HomeWriterUnavailableError('borrow-unavailable');
     return this.#span(holder.lease, body);
+  }
+
+  async withLeaseLifetime<T>(
+    lease: HomeWriterLease,
+    body: () => Promise<T>,
+  ): Promise<T> {
+    const holder = leases.get(lease);
+    if (!holder || holder.core !== this.#core || !holder.active)
+      throw new HomeWriterUnavailableError('borrow-unavailable');
+    lease.assertCurrent();
+    const existing = lifetimes.getStore()?.get(this.#core);
+    if (existing) {
+      if (!existing.active || existing.lease !== lease)
+        throw new HomeWriterUnavailableError('borrow-unavailable');
+    }
+    const lifetime: Lifetime = { lease, active: true };
+    const current = new Map(lifetimes.getStore());
+    current.set(this.#core, lifetime);
+    try {
+      const result = await lifetimes.run(current, body);
+      if (existing && !existing.active)
+        throw new HomeWriterUnavailableError('borrow-unavailable');
+      lease.assertCurrent();
+      return result;
+    } finally {
+      lifetime.active = false;
+    }
+  }
+
+  async runLifetime<T>(body: () => Promise<T>): Promise<T> {
+    const existing = lifetimes.getStore()?.get(this.#core);
+    if (existing) {
+      if (!existing.active)
+        throw new HomeWriterUnavailableError('borrow-unavailable');
+      return this.withLeaseLifetime(existing.lease, body);
+    }
+    const lease = await this.acquire();
+    let result: T;
+    try {
+      result = await this.withLeaseLifetime(lease, body);
+    } catch (error) {
+      try {
+        await lease.release();
+      } catch (releaseError) {
+        throw new HomeWriterUnavailableError('cleanup-required', true, {
+          cause: new AggregateError([error, releaseError]),
+        });
+      }
+      throw error;
+    }
+    try {
+      await lease.release();
+    } catch (error) {
+      throw new HomeWriterUnavailableError('cleanup-required', true, {
+        cause: error,
+      });
+    }
+    return result;
   }
 
   afterRelease(notify: () => void): void {

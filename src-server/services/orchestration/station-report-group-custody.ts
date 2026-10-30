@@ -954,168 +954,172 @@ export class StationReportGroupCustody {
       );
       hold = await writer.acquire(context.req.raw.signal);
       const held = hold;
-      const baseCurrent = (): undefined => {
-        parent.assertCurrent();
-        writer.runWithLease(held, captured.current);
-        return undefined;
-      };
-      const authorized = { ...captured, current: baseCurrent };
-      const before = await this.#inspect(authorized, groupId);
-      const group = before?.group;
-      const root = before?.authority?.epochs.at(-1)?.root;
-      if (!before || !group || !root || group.spec.topology.kind !== 'flow')
-        refuse();
-      const record = await this.owners.persistence.readReportAdmission(
-        groupId,
-        baseCurrent,
-      );
-      if (!record || !same(record.data, before.admission)) refuse();
-      const locations: Array<{ cwd: string; assertCurrent(): undefined }> = [];
-      for (const member of before.admission.members) {
-        const envelopes = before.admission.envelopes.filter(
-          (entry) => entry.execution_id === member.reservedTaskId,
+      return writer.withLeaseLifetime(held, async () => {
+        const baseCurrent = (): undefined => {
+          parent.assertCurrent();
+          writer.runWithLease(held, captured.current);
+          return undefined;
+        };
+        const authorized = { ...captured, current: baseCurrent };
+        const before = await this.#inspect(authorized, groupId);
+        const group = before?.group;
+        const root = before?.authority?.epochs.at(-1)?.root;
+        if (!before || !group || !root || group.spec.topology.kind !== 'flow')
+          refuse();
+        const record = await this.owners.persistence.readReportAdmission(
+          groupId,
+          baseCurrent,
         );
-        if (envelopes.length !== 1) refuse();
-        locations.push(
-          await sources.readHistoricalFlowLocation({
-            source: envelopes[0]!.execution_binding.source,
-            subject: { groupId, workItemId: member.reservedTaskId },
-            admission: record,
-            principalId: captured.principal.id,
-            hostContextId: captured.lease.hostContextId,
-            current: baseCurrent,
-          }),
-        );
-      }
-      const cwd = locations[0]?.cwd;
-      if (!cwd || locations.some((location) => location.cwd !== cwd)) refuse();
-      const current = (): undefined => {
-        baseCurrent();
-        for (const location of locations) location.assertCurrent();
-        return undefined;
-      };
-      current();
-      const service = createDelegationAuthorityServiceV3(
-        this.owners.persistence.roundsAuthorityStore(current),
-        {
-          now: () => new Date().toISOString(),
-          authorize: async (action, candidate) => {
-            current();
-            return action === 'inspect' && same(candidate, root);
-          },
-          confirmExecution: async () => false,
-          authenticateRenewal: async () => null,
-        },
-        { maxRenewals: 0 },
-      );
-      const command = {
-        kind: 'finalizeContinuation' as const,
-        groupId,
-        ...input,
-        controller: group.spec.controller,
-      };
-      const controller = createDelegationRoundsController({
-        store: this.owners.persistence.roundsStore(current),
-        authorityService: service,
-        dispatchLedger,
-        cwd,
-        host: {
-          authorize: async ({
-            action,
-            groupId: candidate,
-            current: projection,
-            command: sent,
-          }) => {
-            current();
-            return ['finalizeContinuation', 'replay'].includes(action) &&
-              candidate === groupId &&
-              (!projection || same(projection.spec, group.spec)) &&
-              (!sent || same(sent, command))
-              ? root.authenticated_principal_ref
-              : null;
-          },
-          retainContinuation: async (spec, receipt) => {
-            current();
-            if (!same(spec, group.spec)) refuse();
-            return this.owners.persistence.retainReportContinuation(
-              groupId,
-              receipt,
-              current,
-            );
-          },
-          loadContinuation: async (spec, reference) => {
-            current();
-            if (!same(spec, group.spec)) refuse();
-            return this.owners.persistence.loadReportContinuation(
-              groupId,
-              reference,
-              current,
-            );
-          },
-          executionHost: () => refuse(),
-          prepareRequest: async () => refuse(),
-          retainObservation: async () => refuse(),
-          confirmTerminal: async () => refuse(),
-          requestDescendantCancellation: async () => refuse(),
-          flow: {
-            executionHost: () => refuse(),
-            confirmRetainedResult: async () => false,
-            retainEvaluation: async () => refuse(),
-            acquireContinuationPublication: async (original) => {
+        if (!record || !same(record.data, before.admission)) refuse();
+        const locations: Array<{ cwd: string; assertCurrent(): undefined }> =
+          [];
+        for (const member of before.admission.members) {
+          const envelopes = before.admission.envelopes.filter(
+            (entry) => entry.execution_id === member.reservedTaskId,
+          );
+          if (envelopes.length !== 1) refuse();
+          locations.push(
+            await sources.readHistoricalFlowLocation({
+              source: envelopes[0]!.execution_binding.source,
+              subject: { groupId, workItemId: member.reservedTaskId },
+              admission: record,
+              principalId: captured.principal.id,
+              hostContextId: captured.lease.hostContextId,
+              current: baseCurrent,
+            }),
+          );
+        }
+        const cwd = locations[0]?.cwd;
+        if (!cwd || locations.some((location) => location.cwd !== cwd))
+          refuse();
+        const current = (): undefined => {
+          baseCurrent();
+          for (const location of locations) location.assertCurrent();
+          return undefined;
+        };
+        current();
+        const service = createDelegationAuthorityServiceV3(
+          this.owners.persistence.roundsAuthorityStore(current),
+          {
+            now: () => new Date().toISOString(),
+            authorize: async (action, candidate) => {
               current();
-              if (
-                original.action !== 'finalizeContinuation' ||
-                !original.finalizerCommand ||
-                !same(original.finalizerCommand, command) ||
-                !same(original.originalSpec, group.spec) ||
-                original.originalCommand.operationKey !==
-                  input.continuationOperationKey ||
-                !/^[a-f0-9]{64}$/.test(original.originalPrefixDigest)
-              )
-                refuse();
-              const inner = parent.borrow();
-              let released = false;
-              const assertCurrent = (): undefined => {
-                if (released) refuse();
+              return action === 'inspect' && same(candidate, root);
+            },
+            confirmExecution: async () => false,
+            authenticateRenewal: async () => null,
+          },
+          { maxRenewals: 0 },
+        );
+        const command = {
+          kind: 'finalizeContinuation' as const,
+          groupId,
+          ...input,
+          controller: group.spec.controller,
+        };
+        const controller = createDelegationRoundsController({
+          store: this.owners.persistence.roundsStore(current),
+          authorityService: service,
+          dispatchLedger,
+          cwd,
+          host: {
+            authorize: async ({
+              action,
+              groupId: candidate,
+              current: projection,
+              command: sent,
+            }) => {
+              current();
+              return ['finalizeContinuation', 'replay'].includes(action) &&
+                candidate === groupId &&
+                (!projection || same(projection.spec, group.spec)) &&
+                (!sent || same(sent, command))
+                ? root.authenticated_principal_ref
+                : null;
+            },
+            retainContinuation: async (spec, receipt) => {
+              current();
+              if (!same(spec, group.spec)) refuse();
+              return this.owners.persistence.retainReportContinuation(
+                groupId,
+                receipt,
+                current,
+              );
+            },
+            loadContinuation: async (spec, reference) => {
+              current();
+              if (!same(spec, group.spec)) refuse();
+              return this.owners.persistence.loadReportContinuation(
+                groupId,
+                reference,
+                current,
+              );
+            },
+            executionHost: () => refuse(),
+            prepareRequest: async () => refuse(),
+            retainObservation: async () => refuse(),
+            confirmTerminal: async () => refuse(),
+            requestDescendantCancellation: async () => refuse(),
+            flow: {
+              executionHost: () => refuse(),
+              confirmRetainedResult: async () => false,
+              retainEvaluation: async () => refuse(),
+              acquireContinuationPublication: async (original) => {
                 current();
-                inner.assertCurrent();
-                return undefined;
-              };
-              return {
-                assertCurrent,
-                flowAdmission: {
-                  acquire: async () => {
-                    assertCurrent();
-                    const child = parent.borrow();
-                    return {
-                      assertCurrent: (): undefined => {
-                        assertCurrent();
-                        child.assertCurrent();
-                        return undefined;
-                      },
-                      release: async () => {
-                        child.release();
-                      },
-                    };
+                if (
+                  original.action !== 'finalizeContinuation' ||
+                  !original.finalizerCommand ||
+                  !same(original.finalizerCommand, command) ||
+                  !same(original.originalSpec, group.spec) ||
+                  original.originalCommand.operationKey !==
+                    input.continuationOperationKey ||
+                  !/^[a-f0-9]{64}$/.test(original.originalPrefixDigest)
+                )
+                  refuse();
+                const inner = parent.borrow();
+                let released = false;
+                const assertCurrent = (): undefined => {
+                  if (released) refuse();
+                  current();
+                  inner.assertCurrent();
+                  return undefined;
+                };
+                return {
+                  assertCurrent,
+                  flowAdmission: {
+                    acquire: async () => {
+                      assertCurrent();
+                      const child = parent.borrow();
+                      return {
+                        assertCurrent: (): undefined => {
+                          assertCurrent();
+                          child.assertCurrent();
+                          return undefined;
+                        },
+                        release: async () => {
+                          child.release();
+                        },
+                      };
+                    },
                   },
-                },
-                release: async () => {
-                  if (!released) {
-                    inner.release();
-                    released = true;
-                  }
-                },
-              };
+                  release: async () => {
+                    if (!released) {
+                      inner.release();
+                      released = true;
+                    }
+                  },
+                };
+              },
             },
           },
-        },
+        });
+        const result = await controller.finalizeContinuation(command);
+        current();
+        const historical = await this.#inspect(authorized, groupId);
+        if (!historical) refuse();
+        current();
+        return { result, group: project(historical) };
       });
-      const result = await controller.finalizeContinuation(command);
-      current();
-      const historical = await this.#inspect(authorized, groupId);
-      if (!historical) refuse();
-      current();
-      return { result, group: project(historical) };
     };
     let outcome:
       | { ok: true; value: Awaited<ReturnType<typeof execute>> }

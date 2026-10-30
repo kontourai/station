@@ -64,6 +64,52 @@ test('late async descendants cannot borrow a completed synchronous span', async 
   }
 });
 
+test('explicit async lifetime borrows the exact lease and expires for late descendants', async () => {
+  const owner = await HomeWriterOwner.forHome(home());
+  const foreign = await HomeWriterOwner.forHome(home());
+  const lease = await owner.acquire();
+  let resume!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    resume = resolve;
+  });
+  let late!: Promise<unknown>;
+  try {
+    await expect(
+      foreign.withLeaseLifetime(lease, async () => undefined),
+    ).rejects.toMatchObject({ reason: 'borrow-unavailable' });
+    await owner.withLeaseLifetime(lease, async () => {
+      await Promise.resolve();
+      expect(owner.runSynchronous(() => 'current')).toBe('current');
+      late = gate.then(() => owner.runSynchronous(() => 'late'));
+      let wakeNested!: () => void;
+      const nestedGate = new Promise<void>((resolve) => {
+        wakeNested = resolve;
+      });
+      let lateNested!: Promise<unknown>;
+      await owner.runLifetime(async () => {
+        expect(owner.runSynchronous(() => 'nested')).toBe('nested');
+        lateNested = nestedGate.then(() =>
+          owner.runSynchronous(() => 'late nested'),
+        );
+      });
+      wakeNested();
+      await expect(lateNested).rejects.toMatchObject({
+        reason: 'borrow-unavailable',
+      });
+      expect(owner.runSynchronous(() => 'parent current')).toBe(
+        'parent current',
+      );
+    });
+    resume();
+    await expect(late).rejects.toMatchObject({ reason: 'borrow-unavailable' });
+  } finally {
+    await lease.release();
+  }
+  await expect(
+    owner.withLeaseLifetime(lease, async () => undefined),
+  ).rejects.toMatchObject({ reason: 'borrow-unavailable' });
+});
+
 test('thenable callbacks and foreign-home leases cannot become synchronous borrowing authority', async () => {
   const owner = await HomeWriterOwner.forHome(home());
   const foreign = await HomeWriterOwner.forHome(home());

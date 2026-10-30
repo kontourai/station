@@ -30,6 +30,39 @@ function root(): string {
 }
 
 describe('publishJsonFileWithOwnedLock serialization', () => {
+  test('the synchronous commit span contains authority check and rename and cannot escape', async () => {
+    const path = join(root(), 'owned.json');
+    let inside = false;
+    let escaped: (() => void) | undefined;
+    await publishJsonFileWithOwnedLock(
+      path,
+      { revision: 1 },
+      {
+        finalizeCommit: () => {
+          expect(inside).toBe(true);
+          return undefined;
+        },
+        commitWithin: (commit) => {
+          inside = true;
+          escaped = commit;
+          commit();
+          expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({
+            revision: 1,
+          });
+          inside = false;
+        },
+      },
+    );
+    expect(() => escaped!()).toThrow('not current');
+    await expect(
+      publishJsonFileWithOwnedLock(
+        path,
+        { revision: 2 },
+        { commitWithin: () => {} },
+      ),
+    ).rejects.toThrow('must commit synchronously');
+    expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({ revision: 1 });
+  });
   test('revoked effect authority after staging preserves the retained document and removes staging', async () => {
     const directory = root();
     const path = join(directory, 'state.json');
