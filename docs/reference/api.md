@@ -2141,13 +2141,11 @@ owns the protocol, saved authority and failure limits.
 
 The source endpoint `POST /api/orchestration/report-groups/:groupId/continuation/finalize`
 accepts an operation key, expected revision and original continuation operation
-key. On a personal host, the default-off **Report continuation recovery**
-Feature Preview enables metadata-only recovery of an already-recorded Flow
-operation. The current local operator and authenticated historical source
-locator are required. It does not prepare source, invoke a provider or grant a
-retry. When the preview or publication owner is unavailable, it returns
-`report_continuation_finalizer_unavailable`; hosted mode returns
-`report_groups_unavailable`. An older host may return 404.
+key. It currently returns `report_continuation_finalizer_unavailable`, including
+when the **Report continuation recovery** preview is enabled, while Station
+qualifies publication exclusion across its rounds writers. No metadata lookup,
+retention, provider invocation or retry grant occurs. Hosted mode returns
+`report_groups_unavailable`; an older host may return 404.
 
 The personal host mounts `/api/orchestration/report-groups` for bounded reports
 using configured Station Agents and the qualified sealed SDK profile. Requests

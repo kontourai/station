@@ -475,7 +475,7 @@ describe('account-tied personal access tokens over the production composition', 
     const enabled = await request();
     expect(enabled.status).toBe(503);
     expect(await enabled.json()).toMatchObject({
-      code: 'report_group_unavailable',
+      code: 'report_continuation_finalizer_unavailable',
     });
   });
 

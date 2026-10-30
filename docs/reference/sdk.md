@@ -6035,12 +6035,10 @@ or package publication.
 ## Qualified report groups
 
 `finalizeReportGroupContinuation` sends a finalizer operation key, expected
-revision and original continuation operation key. A personal host can enable
-the default-off **Report continuation recovery** Feature Preview to recover
-already-recorded Flow metadata. A disabled preview or unavailable publication
-owner returns `report_continuation_finalizer_unavailable`; a 404 from an older
-host is reported as unsupported. Finalization does not invoke a provider or
-authorize a new retry.
+revision and original continuation operation key. Station currently returns
+`report_continuation_finalizer_unavailable`, even with its preview enabled,
+until publication exclusion across rounds writers is qualified. A 404 from an
+older host is reported as unsupported.
 
 
 `@kontourai/station-sdk/client` exports `createReportGroup`, `getReportGroup`,

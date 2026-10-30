@@ -184,6 +184,7 @@ function view(value: Historical): ReportGroupView {
   };
 }
 
+const REPORT_FINALIZER_PUBLICATION_QUALIFIED = false;
 export class ReportContinuationUnavailable extends Error {
   readonly code = 'report_continuation_finalizer_unavailable';
   constructor() {
@@ -481,6 +482,9 @@ export class StationReportGroupRuntime {
     return { replayed: result.replayed, group };
   }
   #finalizerParticipant() {
+    // Publication exclusion must cover every rounds writer before this is served.
+    if (!REPORT_FINALIZER_PUBLICATION_QUALIFIED)
+      throw new ReportContinuationUnavailable();
     const participant = this.owners.publicationParticipant;
     const preview = this.owners.continuationFinalizerPreview;
     if (!isRuntimePublicationParticipant(participant) || !preview)

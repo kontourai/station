@@ -461,12 +461,14 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
       assert.equal(lookupUnavailable.mock.calls.length, 0);
       lookupUnavailable.mockRestore();
     }
-    const sdkReplay = await finalizeReportGroupContinuation(
-      'http://127.0.0.1:43979',
-      groupId,
-      sdkCommand,
+    await assert.rejects(
+      finalizeReportGroupContinuation(
+        'http://127.0.0.1:43979',
+        groupId,
+        sdkCommand,
+      ),
+      { status: 503, code: 'report_continuation_finalizer_unavailable' },
     );
-    assert.equal(sdkReplay.replayed, true);
     const winner = finalized.group.continuations[0].receipt.reference;
     assert.deepEqual(winner, retainedBeforeFault);
     const winnerPath = join(
@@ -569,12 +571,14 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
       continuationOperationKey: retry.operationKey,
     };
     h.owner.close(handle);
-    const sdkFinalized = await finalizeReportGroupContinuation(
-      'http://127.0.0.1:43979',
-      groupId,
-      retryCommand,
+    await assert.rejects(
+      finalizeReportGroupContinuation(
+        'http://127.0.0.1:43979',
+        groupId,
+        retryCommand,
+      ),
+      { status: 503, code: 'report_continuation_finalizer_unavailable' },
     );
-    assert.equal(sdkFinalized.replayed, false);
     transport.mockRestore();
     await orchestration.shutdown();
     let acquired = false;
@@ -781,7 +785,7 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
     assert.equal(revokedResponse.status, 503);
     assert.deepEqual(await revokedResponse.json(), {
       success: false,
-      code: 'report_group_unavailable',
+      code: 'report_continuation_finalizer_unavailable',
     });
     assert.equal(revokedLookup.mock.calls.length, 0);
     revokedLookup.mockRestore();
