@@ -450,109 +450,121 @@ export class DelegationGroupRuntime {
         );
         const ledger = await service.inspect(groupId);
         const references = [];
+        const pendingSeats: string[] = [];
         for (const seat of metadata.spec.seats) {
-          const member = metadata.members.find(
-            (entry) => entry.seatId === seat.seatId,
-          );
-          if (!member) refuse();
-          const invocation = ledger.invocations.find(
-            (entry) => entry.envelopeId === seat.envelope.id,
-          );
-          if (!invocation) continue;
-          const delivery = this.owners.orchestration.inspectTurnDelivery(
-            member.taskId,
-            member.clientTurnId,
-            authority,
-          );
-          if (
-            delivery?.outcome !== 'started' ||
-            delivery.sessionId !== member.taskId ||
-            !delivery.turnId
-          )
-            refuse();
-          const intent = signReportInterrupt(
-            {
-              groupId,
-              operationId,
-              hostId: metadata.root.issuer_host_id,
-              principalId: principal.id,
-              admissionSignature: admission.signature,
-              seatId: seat.seatId,
-              taskId: member.taskId,
-              clientTurnId: member.clientTurnId,
-              sessionId: delivery.sessionId,
-              turnId: delivery.turnId,
-            },
-            null,
-            this.owners.runtime.environmentSecurityService,
-          );
-          const receipt = await this.#persistence.recordReportInterrupt(
-            intent,
-            current,
-            async () => {
-              current();
-              if (
-                !same(
-                  this.owners.orchestration.inspectTurnDelivery(
-                    member.taskId,
-                    member.clientTurnId,
-                    authority,
-                  ),
-                  delivery,
-                )
-              )
-                refuse();
-              const result =
-                await this.owners.orchestration.dispatchWithReceipt(
-                  {
-                    type: 'interruptTurn',
-                    threadId: delivery.sessionId,
-                    turnId: delivery.turnId,
-                  },
-                  {
-                    userId: principal.id,
-                    principal,
-                    requestCurrent: () => {
-                      try {
-                        current();
-                        return same(
-                          this.owners.orchestration.inspectTurnDelivery(
-                            member.taskId,
-                            member.clientTurnId,
-                            authority,
-                          ),
-                          delivery,
-                        );
-                      } catch {
-                        return false;
-                      }
-                    },
-                  },
-                );
-              current();
-              return signReportInterrupt(
-                intent.intent,
-                reportInterruptResultSchema.parse(result.result),
-                this.owners.runtime.environmentSecurityService,
-              );
-            },
-          );
-          if (
-            !verifyReportInterrupt(
-              receipt.record,
+          try {
+            const member = metadata.members.find(
+              (entry) => entry.seatId === seat.seatId,
+            );
+            if (!member) refuse();
+            const invocation = ledger.invocations.find(
+              (entry) => entry.envelopeId === seat.envelope.id,
+            );
+            if (!invocation) continue;
+            const delivery = this.owners.orchestration.inspectTurnDelivery(
+              member.taskId,
+              member.clientTurnId,
+              authority,
+            );
+            if (
+              delivery?.outcome !== 'started' ||
+              delivery.sessionId !== member.taskId ||
+              !delivery.turnId
+            ) {
+              pendingSeats.push(seat.seatId);
+              continue;
+            }
+            const intent = signReportInterrupt(
+              {
+                groupId,
+                operationId,
+                hostId: metadata.root.issuer_host_id,
+                principalId: principal.id,
+                admissionSignature: admission.signature,
+                seatId: seat.seatId,
+                taskId: member.taskId,
+                clientTurnId: member.clientTurnId,
+                sessionId: delivery.sessionId,
+                turnId: delivery.turnId,
+              },
+              null,
               this.owners.runtime.environmentSecurityService,
-            ) ||
-            !receipt.record.acknowledgement
-          )
-            refuse();
-          references.push(reportInterruptReference(receipt.record));
+            );
+            const receipt = await this.#persistence.recordReportInterrupt(
+              intent,
+              current,
+              async () => {
+                current();
+                if (
+                  !same(
+                    this.owners.orchestration.inspectTurnDelivery(
+                      member.taskId,
+                      member.clientTurnId,
+                      authority,
+                    ),
+                    delivery,
+                  )
+                )
+                  refuse();
+                const result =
+                  await this.owners.orchestration.dispatchWithReceipt(
+                    {
+                      type: 'interruptTurn',
+                      threadId: delivery.sessionId,
+                      turnId: delivery.turnId,
+                    },
+                    {
+                      userId: principal.id,
+                      principal,
+                      requestCurrent: () => {
+                        try {
+                          current();
+                          return same(
+                            this.owners.orchestration.inspectTurnDelivery(
+                              member.taskId,
+                              member.clientTurnId,
+                              authority,
+                            ),
+                            delivery,
+                          );
+                        } catch {
+                          return false;
+                        }
+                      },
+                    },
+                  );
+                current();
+                return signReportInterrupt(
+                  intent.intent,
+                  reportInterruptResultSchema.parse(result.result),
+                  this.owners.runtime.environmentSecurityService,
+                );
+              },
+            );
+            if (
+              !verifyReportInterrupt(
+                receipt.record,
+                this.owners.runtime.environmentSecurityService,
+              ) ||
+              !receipt.record.acknowledgement
+            )
+              refuse();
+            references.push(reportInterruptReference(receipt.record));
+          } catch {
+            // Loss of request authority stops all effects; a seat-local failure
+            // must still allow cancellation of the other current members.
+            current();
+            pendingSeats.push(seat.seatId);
+          }
         }
-        return this.#persistence.retainReportFlowObservation(
+        const reference = await this.#persistence.retainReportFlowObservation(
           groupId,
           'schedule',
-          { kind: 'cancel-requested', operationId, references },
+          { kind: 'cancel-attempt', operationId, references, pendingSeats },
           current,
         );
+        if (pendingSeats.length) refuse();
+        return reference;
       },
     };
     const controller = createDelegationGroupControllerAccountingV1({
