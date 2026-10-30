@@ -1,0 +1,7 @@
+{
+  "revision": "b5822bd5f2b372a32901efbf455c246db467f309",
+
+  "notes": [
+    {"path":"packages/telemetry-broker/README.md","note":"Scoped root build/qualification-script review at b5822bd5f2b. Read the README status, private-run build instructions, live-qualification and sender-diagnostic sections and their evidence limits; inspected the root commands, private package manifest, build.mjs and qualify.mjs entry/lifecycle boundaries. build:telemetry-broker selects the existing esbuild bundle/input-provenance/manifest owner; qualify:telemetry-broker selects the existing Unix qualifier, validates the built manifest, copies both bundles to one private snapshot before import/database setup, requires the explicit qualification database prerequisite and retains failed owned state while successful owned cleanup is bounded to its database/snapshot. New root command entries do not deploy a companion, enable a destination, establish current-source authority, private-backup reconciliation, physical durability or release acceptance. No prose change required for these named script inputs. This is not a renewed semantic audit of all unchanged product/Lite/private-storage paragraphs or historical qualification results. Source/configuration inspection only; no build, PostgreSQL, sender, network, container, provider or deployment execution. No policy, baseline/classification/capture change.","inputs":["packages/telemetry-broker/README.md"]}
+  ]
+}
