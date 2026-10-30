@@ -11,7 +11,11 @@ import {
 } from '@kontourai/flow';
 import { createDelegationAuthorityServiceV3 } from '@kontourai/flow-agents/delegation-authority-service-v3';
 import { createDelegationRoundsController } from '@kontourai/flow-agents/delegation-group-rounds';
-import { test } from 'vitest';
+import {
+  acquireStationHomeMaintenanceLease,
+  StationHomeActiveError,
+} from '@kontourai/station-shared/station-home-lifecycle';
+import { test, vi } from 'vitest';
 import { RuntimePublicationParticipant } from '../../../runtime/bootstrap/runtime-publication-participant.js';
 import { StationRuntime } from '../../../runtime/bootstrap/station-runtime.js';
 import { createReportFlow } from './delegation-source-fixtures/flow.js';
@@ -46,8 +50,8 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
       maxRecoveries: 2,
     },
   });
-  const runtime = new StationRuntime({ projectHomeDir: h.f.home });
-  const participant = Reflect.get(
+  let runtime = new StationRuntime({ projectHomeDir: h.f.home });
+  let participant = Reflect.get(
     runtime,
     'runtimePublicationParticipant',
   ) as RuntimePublicationParticipant;
@@ -180,7 +184,50 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
     const flowAfterLoss = await loadRun(flow.runId, h.f.repo);
     const authorityBefore = await authority.inspect(prepared.root.authority_id);
     h.owner.close(handle);
-    const finalized = await h.custody.finalizeContinuation(
+    let callbackReached!: () => void, releaseCallback!: () => void;
+    let durableReached!: () => void, releaseDurable!: () => void;
+    const callbackReady = new Promise<void>((resolve) => {
+      callbackReached = resolve;
+    });
+    const callbackGate = new Promise<void>((resolve) => {
+      releaseCallback = resolve;
+    });
+    const durableReady = new Promise<void>((resolve) => {
+      durableReached = resolve;
+    });
+    const durableGate = new Promise<void>((resolve) => {
+      releaseDurable = resolve;
+    });
+    const originalStore = persistence.roundsStore.bind(persistence);
+    let transactions = 0;
+    const storeSpy = vi
+      .spyOn(persistence, 'roundsStore')
+      .mockImplementation((...args) => {
+        const store = originalStore(...args);
+        return {
+          transact: async (id, body) => {
+            const ordinal = ++transactions;
+            const result = await store.transact(id, async (journal) => {
+              const outcome = await body(journal);
+              if (ordinal === 2) {
+                callbackReached();
+                await callbackGate;
+              }
+              return outcome;
+            });
+            if (ordinal === 2) {
+              durableReached();
+              await durableGate;
+            }
+            return result;
+          },
+        };
+      });
+    const close = vi.spyOn(
+      Reflect.get(runtime, 'orchestrationEventStore'),
+      'close',
+    );
+    const pending = h.custody.finalizeContinuation(
       h.f.context(requestFor(h, 'POST')),
       groupId,
       {
@@ -193,6 +240,31 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
       participant,
       (historical) => historical.group,
     );
+    await callbackReady;
+    const shutdown = runtime.shutdown();
+    assert.throws(() => participant.acquire());
+    assert.throws(
+      () => acquireStationHomeMaintenanceLease(h.f.home),
+      StationHomeActiveError,
+    );
+    assert.equal(close.mock.calls.length, 0);
+    releaseCallback();
+    await durableReady;
+    assert.equal(close.mock.calls.length, 0);
+    assert.throws(
+      () => acquireStationHomeMaintenanceLease(h.f.home),
+      StationHomeActiveError,
+    );
+    releaseDurable();
+    const finalized = await pending;
+    await shutdown;
+    assert.equal(close.mock.calls.length, 1);
+    storeSpy.mockRestore();
+    runtime = new StationRuntime({ projectHomeDir: h.f.home });
+    participant = Reflect.get(
+      runtime,
+      'runtimePublicationParticipant',
+    ) as RuntimePublicationParticipant;
     assert.equal(finalized.result.replayed, false);
     assert.ok(finalized.group?.continuations[0].receipt);
     const winner = finalized.group.continuations[0].receipt.reference;
