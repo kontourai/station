@@ -1,0 +1,7 @@
+{
+  "revision": "6c4d22ee1c29b5e7cab45fd1c8f0b88fc5146dc1",
+
+  "notes": [
+    {"path":"packaging/node-pty-prebuilds/README.md","note":"Scoped lockfile-impact review at 6c4d22ee1c2. Read the full Linux prebuild README, current manifest, lifecycle allowlist, staging helper and owning workflow path. The node-pty package/snapshot remains 1.1.0 with the same integrity and node-addon-api7.1.1; inspected baseline-to-HEAD lockfile diff contains no node-pty or node-gyp change. The manifest still has an empty artifacts map, Linux allowlist entries still select build/Release/pty.node, and stageNodePtyPrebuild returns unstaged for absent targets or build_from_source, with version/digest checks before any staged copy. New Flow and other dependency closures do not add a Linux prebuild or remove the toolchain prerequisite. README already discloses missing libc/musl admission and separates a future artifact digest from host compatibility. No prose change required for the named package/snapshot input. Source/package-metadata inspection only: no Linux/Windows build, real PTY, artifact attestation, native loader, libc-floor, security or publication acceptance executed; no lifecycle policy, artifact, baseline/classification/capture changes.","inputs":["packaging/node-pty-prebuilds/README.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots"]}
+  ]
+}
