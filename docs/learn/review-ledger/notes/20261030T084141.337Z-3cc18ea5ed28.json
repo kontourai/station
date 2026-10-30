@@ -1,0 +1,7 @@
+{
+  "revision": "8a00ff9ea7663eb0b2d4f53a3756fb1d57309b24",
+
+  "notes": [
+    {"path":"docs/user/concepts.md","note":"Reviewed #1879 report-source and recovery distinctions against the current row/card/reducer/transcript owners. Added explicit missing-return and truncation guidance, with retained-reference/current-access conditions and missing/unreadable refusal. Source labels do not promote provider narration to a structured return; the row reports absence independently of observed completion. Current transcript module dispatches authenticated retained claude-subagent AND codex-thread refs; the installed Codex rollout reader and captured-route fixture contradict the old Claude-only sentence in the SDK reference. Reported that concrete correction to its active owner; prior SDK README review mentioning Claude-only support is superseded on that point, not rewritten. Verified retained254-test log hash48b9eb7a5f0ffb150ee454d665f209e2736934345ab6b7ce61b6d28b2966c151; key provenance/row inputs unchanged since that diagnostic, no rerun or live acceptance upgrade. Links PASS517 after edit; no full epic, provider, native restart or finalizer claim.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]}
+  ]
+}
