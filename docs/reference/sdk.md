@@ -224,6 +224,16 @@ Both mutations also accept `requestScope` in their input.
 disconnects the authenticated caller's selected account and refreshes account and
 integration queries. It does not delete the integration or disconnect other people.
 
+
+`IntegrationViewModel.engineCoverage` says, per external engine, whether
+Station applies the untrusted-content permission to its calls to that server
+(`station-gated`), the engine reaches the server itself (`engine-direct`), or
+Station does not deliver it (`not-delivered`); older hosts omit it.
+`trustReview` lists legacy trust settings waiting for a person; offer
+`useDecideIntegrationTrustReviewMutation({ id, decision: "keep" | "reset" })`
+only for an integration whose `trustReview` this host returned. It
+invalidates the integrations queries.
+
 ## Project tool library
 
 `@kontourai/station-sdk/tool-library` exposes `ToolLibraryClient` with explicit
@@ -4658,6 +4668,16 @@ For new integrations, use `sendExecutionMessage` from
 `@kontourai/station-sdk/client` and the orchestration chat entry described in
 the [Session API](session-api.md). The legacy `streamConversationTurn` export
 targets Station's private compatibility route, `/api/agents/:slug/chat`.
+
+When the input is a Station-fetched MCP prompt, `sendExecutionMessage` accepts
+`mcpPromptOrigin: { serverId, name, receipt }` alongside the unchanged rendered
+message. Carry the receipt returned by the prompt run; it binds the source,
+text and observed classification for ten minutes and expires on server restart.
+Station's own engine uses it to apply
+the source's content classification before the turn's first tool. Prompt sends
+to an external engine or another Station are refused until that origin can be
+carried there. A client should refuse to send when the prompt response lacks
+`turnOriginSupported: true`, because an older Station may ignore the field.
 
 `streamConversationTurn` chooses one `clientTurnId` per call. Pass
 `chatOptions.clientTurnId` to reuse a caller-owned key; an omitted key is generated

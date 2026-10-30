@@ -149,6 +149,8 @@ describe('POST /agents/:slug/mcp-prompts/run', () => {
           serverId: 'fixture',
           name: 'summarize',
           text: 'Summarize MCP in a brisk tone.',
+          turnOriginSupported: true,
+          originReceipt: expect.any(String),
         },
       },
     });

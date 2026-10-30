@@ -8,20 +8,30 @@ let integrations: unknown[] = [];
 let integrationsError: Error | null = null;
 const refetchIntegrations = vi.fn();
 let pathname = '/connections/tools';
+let detail: any;
+let trustPreview = false;
 
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
-  // The REAL save hook, so a refusal travels the real integrations fetcher
-  // (#2708); every other hook is a stub.
+  // The REAL save and trust-review hooks, so requests travel the real
+  // integrations fetcher (#2708); every other hook is a stub.
   useSaveIntegrationMutation: (
     await importOriginal<typeof import('@kontourai/station-sdk')>()
   ).useSaveIntegrationMutation,
+  useDecideIntegrationTrustReviewMutation: (
+    await importOriginal<typeof import('@kontourai/station-sdk')>()
+  ).useDecideIntegrationTrustReviewMutation,
   useIntegrationsQuery: () => ({
     data: integrations,
     isLoading: false,
     error: integrationsError,
     refetch: refetchIntegrations,
   }),
-  useIntegrationQuery: () => ({ data: undefined }),
+  useIntegrationQuery: () => ({ data: detail }),
+  useFeaturePreviewsQuery: () => ({
+    data: trustPreview
+      ? [{ id: 'integration-content-trust', enabled: true }]
+      : [],
+  }),
   useDeleteIntegrationMutation: () => ({ mutate: vi.fn() }),
   useReconnectIntegrationMutation: () => ({ mutate: vi.fn() }),
   useSetIntegrationRenderPermissionMutation: () => ({ mutate: vi.fn() }),
@@ -89,6 +99,8 @@ describe('IntegrationsView (#771)', () => {
     integrations = [];
     integrationsError = null;
     pathname = '/connections/tools';
+    detail = undefined;
+    trustPreview = false;
     refetchIntegrations.mockReset();
   });
 
@@ -176,6 +188,101 @@ describe('IntegrationsView (#771)', () => {
 
     expect(screen.getByText('No tool servers yet')).toBeTruthy();
   });
+
+  test('saves the edited trust policy through the integration API', async () => {
+    const { _setApiBase } = await vi.importActual<
+      typeof import('@kontourai/station-sdk')
+    >('@kontourai/station-sdk');
+    _setApiBase('http://localhost');
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    pathname = '/connections/tools/mail';
+    trustPreview = true;
+    detail = {
+      id: 'mail',
+      kind: 'mcp',
+      transport: 'stdio',
+      command: 'node',
+      contentTrust: 'untrusted',
+      probe: {
+        ok: true,
+        toolCount: 1,
+        checkedAt: '2026-01-01T00:00:00Z',
+        tools: [{ name: 'send_reply' }],
+      },
+    };
+    integrations = [detail];
+    renderView();
+    fireEvent.change(
+      await screen.findByLabelText('send_reply after untrusted content'),
+      { target: { value: 'deny' } },
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const [url, request] = fetchMock.mock.calls[0];
+    expect(url).toBe('http://localhost/integrations/mail');
+    expect(JSON.parse(request.body)).toMatchObject({
+      untrustedContentPermissions: { tools: { send_reply: 'deny' } },
+    });
+    expect(JSON.parse(request.body)).not.toHaveProperty('contentTrust');
+  });
+
+  test.each([false, true])(
+    'legacy trust settings ask for review (preview %s), are not editable, and keeping them posts the decision',
+    async (preview) => {
+      trustPreview = preview;
+      const { _setApiBase } = await vi.importActual<
+        typeof import('@kontourai/station-sdk')
+      >('@kontourai/station-sdk');
+      _setApiBase('http://localhost');
+      const fetchMock = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ success: true }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+      vi.stubGlobal('fetch', fetchMock);
+      pathname = '/connections/tools/mail';
+      detail = {
+        id: 'mail',
+        kind: 'mcp',
+        transport: 'stdio',
+        command: 'node',
+        enabled: false,
+        trustReview: {
+          fields: [
+            {
+              field: 'permissions',
+              value: { default: 'allow', tools: { send_reply: 'deny' } },
+            },
+            { field: 'trustReadOnlyHints', value: true },
+          ],
+        },
+      };
+      integrations = [detail];
+      renderView();
+      expect(await screen.findByText('Needs your review')).toBeTruthy();
+      expect(screen.getByText('default allow, send_reply deny')).toBeTruthy();
+      expect(screen.getByText('Trusted')).toBeTruthy();
+      // Settings that are not loaded are not editable, preview or not.
+      expect(
+        screen.queryByLabelText('Default after untrusted content'),
+      ).toBeNull();
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Keep these settings' }),
+      );
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+      const [url, request] = fetchMock.mock.calls[0];
+      expect(url).toBe('http://localhost/integrations/mail/trust-review');
+      expect(request.method).toBe('POST');
+      expect(JSON.parse(request.body)).toEqual({ decision: 'keep' });
+    },
+  );
 
   test('renders the tool list before advanced secret bindings and uses user-facing unchecked copy', () => {
     integrations = [

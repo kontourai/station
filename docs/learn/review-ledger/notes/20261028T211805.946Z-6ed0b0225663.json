@@ -1,0 +1,7 @@
+{
+  "revision": "2941002b008737f9cc79062b8b6fe1848e6b8cba",
+
+  "notes": [
+    {"path":"docs/reference/shared.md","note":"Round 2: added that copyPluginIntegrations writes plugin bytes as-is and the host install path then applies the storage writer's receipt rule (readStoredIntegrations before removal, recordCopiedIntegrations after copy in plugin-install-transaction.ts). Other shared reference claims unchanged.","inputs":["docs/reference/shared.md","packages/contracts/src/tool.ts","src-server/services/plugins/plugin-install-transaction.ts"]}
+  ]
+}
