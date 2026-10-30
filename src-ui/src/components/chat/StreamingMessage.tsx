@@ -251,7 +251,11 @@ function StreamingMessageWithApps({
             );
           if (block.type === 'tool-call-run') {
             const renderInterlude = (part: ChatContentPart, index: number) =>
-              renderReasoning?.(part.content ?? '', index, true) ?? null;
+              renderReasoning?.(
+                part.content ?? '',
+                index,
+                renderToolCall ? true : hasAnswerText,
+              ) ?? null;
             if (!renderToolCall)
               return (
                 block.interludes?.map(({ part, index }) =>
