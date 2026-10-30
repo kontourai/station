@@ -113,7 +113,9 @@ does not infer an external orchestrator from task text or a User-Agent.
 Child-work reports say where their text came from: **Returned result**,
 **Provider summary**, **Child message**, or **Provider error**. An older summary
 may have no recorded source. **No result** means no outcome was confirmed; it
-does not mean the child completed or stopped. A returned result is still the
+does not mean the child completed or stopped. **Interrupted** means Station
+observed the child's engine exit while the child was running; it does not
+establish successful completion. A returned result is still the
 child's report, not verified evidence or acceptance of its work. Open its
 authorized transcript when you need the underlying detail.
 
