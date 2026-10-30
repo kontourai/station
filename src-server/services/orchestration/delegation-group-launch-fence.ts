@@ -241,7 +241,11 @@ export class FinalFetchLaunchFence {
   readonly #authorities: DelegationAuthorityStore;
   readonly groups: DelegationGroupStoreV2;
   readonly authorities: DelegationAuthorityStore;
-  constructor(private readonly owners: LegacyFinalFetchOwners) {
+  constructor(
+    private readonly owners:
+      | LegacyFinalFetchOwners
+      | Omit<LegacyFinalFetchOwners, 'fetch'>,
+  ) {
     this.#groups = owners.groups;
     this.#authorities = owners.authorities;
     // All services/controller callbacks in this composition use these guarded views.
@@ -268,12 +272,37 @@ export class FinalFetchLaunchFence {
     wireInput: FinalWire,
     signal: AbortSignal,
   ): Promise<{ response: Promise<Response>; intent: FinalWireIntentIdentity }> {
-    forbidNestedOwner();
+    const owners = this.owners;
+    if (!('fetch' in owners))
+      throw new WireIntentRefusal('wire_transport_unavailable');
     const binding = structuredClone(bindingInput);
     const wire = snapshotFinalWire(wireInput);
     requireLaunch(Buffer.byteLength(wire.body) <= 1_048_576);
-    const digest = wireIdentityDigest(wire);
-    requireLaunch(digest === binding.expectedWireDigest);
+    requireLaunch(wireIdentityDigest(wire) === binding.expectedWireDigest);
+    return this.#withCurrentReservation(binding, signal, (current) =>
+      sendReservedWire(owners, current, binding, wire, signal),
+    );
+  }
+
+  /** Validate reservation before Task creation without consuming its wire intent. */
+  async admitTask(
+    binding: ReservedWireBinding,
+    signal: AbortSignal,
+  ): Promise<void> {
+    await this.#withCurrentReservation(binding, signal, async (current) => {
+      await admitReservedInvocation(this.owners, current, binding);
+      assertSynchronous(this.owners.finalizeCurrent);
+      signal.throwIfAborted();
+    });
+  }
+
+  async #withCurrentReservation<T>(
+    bindingInput: ReservedWireBinding,
+    signal: AbortSignal,
+    work: (current: DelegationAuthorityLedger) => Promise<T>,
+  ): Promise<T> {
+    forbidNestedOwner();
+    const binding = structuredClone(bindingInput);
     signal.throwIfAborted();
     assertSynchronous(this.owners.finalizeCurrent);
     const scope = { active: true };
@@ -313,13 +342,7 @@ export class FinalFetchLaunchFence {
             binding.authority.id,
             async (current) => {
               if (!current) throw new WireIntentRefusal('authority_missing');
-              const result = await sendReservedWire(
-                this.owners,
-                current,
-                binding,
-                wire,
-                signal,
-              );
+              const result = await work(current);
               return { ledger: current, result };
             },
           );

@@ -52,6 +52,7 @@ import {
   FileFinalWireIntentStore,
   type FinalWireIntentIdentity,
   type WireFinalizer,
+  WireIntentRefusal,
   wireIdentityDigest,
 } from '../delegation-group-wire-intent-store.js';
 import { createReportFlow } from './delegation-source-fixtures/flow.js';
@@ -727,6 +728,49 @@ const cases = [
   'queued-root-cancel',
   'queued-group-cancel',
 ] as const;
+
+test('V2 Task admission reuses current reservation checks without transport or wire consumption', async () => {
+  const f = await setup('pause-root-cancel', 'legacy');
+  const running = f.run().catch(() => undefined);
+  await within(f.modelEntered.promise, 'model did not reach reservation');
+  assert(f.binding);
+  const admission = new FinalFetchLaunchFence({
+    groups: f.persistence.groupStore(f.finalizeCurrent),
+    authorities: f.persistence.authorityStore(f.finalizeCurrent),
+    host: f.host,
+    intents: f.intents,
+    finalizeCurrent: f.finalizeCurrent,
+  });
+  await admission.admitTask(f.binding, new AbortController().signal);
+  assert.equal(f.starts, 0);
+  assert.equal(
+    await f.intents.lookup(
+      'authority',
+      f.binding.invocationId,
+      f.finalizeCurrent,
+    ),
+    undefined,
+  );
+  await assert.rejects(
+    () => admission.start(f.binding!, f.wire, new AbortController().signal),
+    (error: unknown) =>
+      error instanceof WireIntentRefusal &&
+      error.code === 'wire_transport_unavailable',
+  );
+  await assert.rejects(() =>
+    admission.admitTask(
+      { ...f.binding!, seatId: 'foreign' },
+      new AbortController().signal,
+    ),
+  );
+  await f.service.cancel('authority');
+  await assert.rejects(() =>
+    admission.admitTask(f.binding!, new AbortController().signal),
+  );
+  assert.equal(f.starts, 0);
+  f.allowFence.resolve();
+  await running;
+});
 
 test.each(
   ['legacy', 'rounds'].flatMap((protocol) =>
