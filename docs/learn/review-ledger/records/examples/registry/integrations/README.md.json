@@ -5,9 +5,9 @@
 
   "state": "source-reviewed",
 
-  "summary": "Starter integration setup traced through both manifests, real registry loading, ToolDef schema, disabled save/load and bundled distribution staging. Public registry and competitor recommendations are dated research, not implemented source adapters.",
+  "summary": "Starter recipes traced through catalog install, disabled state, explicit enablement, real MCP probes, restart persistence and managed-Agent raw-tool execution on an isolated macOS Station. Remote catalog status and Lightpanda stdio exclusions are source-reviewed; public registry and competitor recommendations remain dated research.",
 
-  "limits": "Direct anonymous provider calls succeeded for Exa, Context7 and Microsoft Learn. Firecrawl refused anonymous extraction and is excluded. Local runtimes, installed Agent/UI journeys, signed-in providers, Windows/WSL, releases and public registry adapters are not verified.",
+  "limits": "Real provider/API and managed-Agent raw-tool journeys passed on macOS ARM64. Model generation was not invoked. Signed-in services, Windows/WSL, native shells, graphical UI, installed releases, public-registry adapters and every optional upstream tool remain unverified. The original direct-probe checkpoint and Firecrawl refusal are retained as historical evidence.",
 
   "sources": [
     "examples/registry/default.json",

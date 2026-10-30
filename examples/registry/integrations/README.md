@@ -44,6 +44,9 @@ redistribute its binary. Lightpanda sessions have their own cookies and state.
 They do not inherit the shared session, human takeover, graphical screencast
 or network controls of Station's [Browser pane](../../../docs/guides/browser-workspace.md).
 Its PNG/PDF output is text-only rendering, not evidence of a page's visual layout.
+The stdio recipe excludes `session_new`, `session_list` and `session_close`:
+upstream offers those only over HTTP. Each stdio connection has its own default
+session; the remaining navigation, action and extraction tools share it.
 
 MarkItDown-MCP requires Python 3.10 or later. One explicit, isolated install
 with `uv` is:
@@ -152,7 +155,39 @@ excluded from this starter batch despite upstream documenting a keyless tier.
 Do not erase this refusal or describe it as a successful extraction. Its
 account-connected path remains unverified here.
 
-Lightpanda and MarkItDown runtime journeys, signed-in services, Windows/WSL,
-native shells, hosted releases and installed Agent journeys remain
-**NOT_VERIFIED**. Local catalog/schema and distribution checks establish
-configuration integrity only; they cannot qualify those journeys.
+On 2026-10-30 UTC, an isolated source Station completed the following installed
+journey on macOS: authenticated catalog discovery and installation of all five
+entries; disabled-on-install and refused-before-enable checks; explicit
+enablement; successful connection probes; and real tool calls through Station's
+HTTP MCP bridge. Installation and enabled state survived a Station restart.
+The local binaries were installed only in that acceptance environment.
+
+A managed Agent then loaded the five installed sources and executed their
+tools through `POST /agents/:slug/tools/:toolName`:
+
+- Exa searched for the official MCP Registry documentation.
+- Context7 resolved the React documentation library.
+- Microsoft Learn returned Azure Container Apps documentation.
+- Lightpanda navigated to an owned fixture, executed its JavaScript, retained
+  that page across calls, clicked a button and extracted the changed text.
+- MarkItDown converted an owned DOCX document to Markdown. Its HTTP bridge
+  also converted an HTML document before the restart.
+
+Lightpanda was `1.1.0-nightly.11275+78bbb64db`; the downloaded macOS ARM64
+binary matched GitHub's published SHA-256
+`e22ffe3c4f0aaec04a25b963d5cb3e946c71a97867f621c7b27b905283842b74`.
+MarkItDown-MCP was `0.0.1a8`. The managed Agent's model was constructed but
+never invoked: these calls exercise real Agent tool loading/routing and real
+providers, not model-generated tool selection.
+
+The run exposed and repaired a catalog status bug: remote HTTP/SSE definitions
+without commands were labelled `missing binary`. They now display as installed
+without asserting a live connection. Both transport regression cases failed on
+the old owner and passed after the fix. The combined provider/catalog/CLI
+selection passed 108 tests. The three HTTP-only Lightpanda tools were absent
+from the Agent catalog, direct calls to them were refused, disabling MarkItDown
+refused further calls, and removing it cleared installed state.
+
+Signed-in services, Windows/WSL, native shells, hosted releases, model-generated
+chat and graphical UI acceptance remain **NOT_VERIFIED**. The tested source
+runtime is separate from an installed release or every optional provider tool.

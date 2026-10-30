@@ -549,6 +549,10 @@ See [starter integration setup and qualification](../../examples/registry/integr
 for provider data boundaries, local runtime requirements and the public-registry
 direction. Adding an integration saves it disabled; configure and enable it in
 Connections before selecting it for an Agent.
+Remote HTTP/SSE entries have no executable to discover: their marketplace row
+shows installed state rather than `missing binary`. A catalog row does not
+attest that its remote connection or tools are working; inspect the connection
+probe and execute the required task separately.
 
 The fuller catalog at `examples/registry/manifest.json` adds examples that pull
 npm dependencies (`enterprise-layout`, `survey-review-workbench`,
