@@ -199,6 +199,11 @@ const ARGS: Record<string, Record<string, unknown>> = {
   board_unpin: { reference: { kind: 'session', id: 's' }, name: 'w' },
   board_move: { reference: { kind: 'session', id: 's' }, name: 'w' },
   board_read: { reference: { kind: 'session', id: 's' } },
+  coordinator_picture_update: {
+    conversationId: 'c',
+    status: 'waiting',
+    summary: 'Review',
+  },
   schedule_wake_up: { minutes: 5, note: 'check the build' },
   cancel_wake_up: { id: 'w' },
   propose_job: {
