@@ -403,24 +403,6 @@
       "configKey": "defaultMaxTurns"
     },
     {
-      "id": "checkout-stale-after-commits",
-      "label": "Stale checkout after commits",
-      "help": "The stale checkout warning appears once a Project’s checkout is this many commits behind its upstream.",
-      "scope": "station",
-      "section": "agent-runs",
-      "route": "/settings?view=agent-runs&highlight=checkout-stale-after-commits",
-      "configKey": "checkoutStaleAfterCommits"
-    },
-    {
-      "id": "checkout-stale-after-days",
-      "label": "Stale checkout after days",
-      "help": "The stale checkout warning appears once a Project’s checkout has lacked an upstream commit, or gone unfetched, this many days.",
-      "scope": "station",
-      "section": "agent-runs",
-      "route": "/settings?view=agent-runs&highlight=checkout-stale-after-days",
-      "configKey": "checkoutStaleAfterDays"
-    },
-    {
       "id": "default-max-output-tokens",
       "label": "Default max output tokens",
       "help": "A model may produce at most this many tokens in one response, and empty means the model’s own limit applies.",
@@ -446,6 +428,24 @@
       "section": "agent-runs",
       "route": "/settings?view=agent-runs&highlight=workspace-checkpoints",
       "configKey": "workspaceCheckpoints"
+    },
+    {
+      "id": "checkout-stale-after-commits",
+      "label": "Stale checkout after commits",
+      "help": "The stale checkout warning appears once a Project’s checkout is this many commits behind its upstream.",
+      "scope": "station",
+      "section": "agent-runs",
+      "route": "/settings?view=agent-runs&highlight=checkout-stale-after-commits",
+      "configKey": "checkoutStaleAfterCommits"
+    },
+    {
+      "id": "checkout-stale-after-days",
+      "label": "Stale checkout after days",
+      "help": "The stale checkout warning appears once a Project’s checkout has lacked an upstream commit, or gone unfetched, this many days.",
+      "scope": "station",
+      "section": "agent-runs",
+      "route": "/settings?view=agent-runs&highlight=checkout-stale-after-days",
+      "configKey": "checkoutStaleAfterDays"
     },
     {
       "id": "usage-limit-auto-resume",
