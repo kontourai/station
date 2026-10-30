@@ -2,13 +2,12 @@ import {
   chmodSync,
   existsSync,
   mkdirSync,
-  readFileSync,
   realpathSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
+import { chromium } from 'playwright-core';
 import { describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
@@ -22,13 +21,11 @@ import {
 } from '../lib/pinned-vitest-chromium.mjs';
 
 const makeTempDir = trackTempDirs();
-const require = createRequire(import.meta.url);
-const packageFile = require.resolve('playwright-core/package.json');
-const revision = JSON.parse(
-  readFileSync(join(packageFile, '..', 'browsers.json'), 'utf8'),
-).browsers.find(
-  (browser: { name: string }) => browser.name === 'chromium',
-).revision;
+const revision = /[/\\]chromium-(\d+)[/\\]/.exec(
+  chromium.executablePath(),
+)?.[1];
+if (!revision)
+  throw new Error('Playwright must identify its pinned Chromium revision');
 
 function fixture() {
   const home = makeTempDir('station-pinned-browser-');

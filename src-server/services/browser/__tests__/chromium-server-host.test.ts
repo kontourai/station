@@ -1158,15 +1158,16 @@ describe('effective preview WebRTC policy at browser startup', () => {
           };
         if (call.method === 'Page.createIsolatedWorld')
           return { executionContextId: 41 };
-        if (call.method === 'Runtime.evaluate') {
+        if (call.method === 'Runtime.callFunctionOn') {
           const params = call.params as {
-            expression: string;
-            contextId?: number;
+            functionDeclaration: string;
+            executionContextId?: number;
+            arguments: { value: string }[];
             awaitPromise?: boolean;
           };
-          const prefs = committed && params.contextId === 41;
+          const prefs = committed && params.executionContextId === 41;
           const evaluation: Promise<unknown> = runInNewContext(
-            params.expression,
+            `(${params.functionDeclaration})`,
             {
               location: {
                 href: prefs ? preferenceUrl(h.calls) : 'about:blank',
@@ -1184,7 +1185,7 @@ describe('effective preview WebRTC policy at browser startup', () => {
                 },
               },
             },
-          );
+          )(...params.arguments.map((argument) => argument.value));
           const value = params.awaitPromise ? await evaluation : undefined;
           return { result: { value } };
         }
@@ -1277,7 +1278,7 @@ describe('effective preview WebRTC policy at browser startup', () => {
             };
           if (call.method === 'Page.createIsolatedWorld')
             return { executionContextId: 41 };
-          if (call.method === 'Runtime.evaluate') {
+          if (call.method === 'Runtime.callFunctionOn') {
             if (change === 'loader replacement')
               h.emit(
                 'Page.frameNavigated',
@@ -1336,7 +1337,7 @@ describe('effective preview WebRTC policy at browser startup', () => {
             () => h.emit('Page.loadEventFired', {}, call.sessionId),
             800,
           );
-        if (call.method === 'Runtime.evaluate') {
+        if (call.method === 'Runtime.callFunctionOn') {
           await new Promise((resolve) => setTimeout(resolve, 100));
           return {
             result: {
@@ -1387,7 +1388,7 @@ describe('effective preview WebRTC policy at browser startup', () => {
         if (document) return document;
         if (call.method === 'Page.navigate')
           h.emit('Page.loadEventFired', {}, call.sessionId);
-        if (call.method === 'Runtime.evaluate') {
+        if (call.method === 'Runtime.callFunctionOn') {
           policyRead = true;
           return new Promise((resolve) =>
             setTimeout(
@@ -1473,7 +1474,7 @@ describe('effective preview WebRTC policy at browser startup', () => {
           if (document) return document;
           if (call.method === 'Page.navigate')
             h.emit('Page.loadEventFired', {}, call.sessionId);
-          if (call.method === 'Runtime.evaluate') {
+          if (call.method === 'Runtime.callFunctionOn') {
             const url = preferenceUrl(h.calls);
             const body = url.endsWith('ip_handling_policy')
               ? (JSON.stringify(value?.policy) ?? 'not JSON')
@@ -1482,13 +1483,17 @@ describe('effective preview WebRTC policy at browser startup', () => {
                 : value?.urlOverrides === 'malformed'
                   ? 'not JSON'
                   : JSON.stringify(value?.urlOverrides ? [{}] : []);
+            const params = call.params as {
+              functionDeclaration: string;
+              arguments: { value: string }[];
+            };
             const evaluated = await runInNewContext(
-              (call.params as { expression: string }).expression,
+              `(${params.functionDeclaration})`,
               {
                 location: { href: url },
                 document: { readyState: 'complete', body: { innerText: body } },
               },
-            );
+            )(...params.arguments.map((argument) => argument.value));
             return { result: { value: evaluated } };
           }
           return {};

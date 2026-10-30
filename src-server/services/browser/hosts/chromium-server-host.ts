@@ -67,6 +67,21 @@ import {
 } from '../station-listeners.js';
 import { ABOUT_BLANK, isAllowedBrowserUrl } from '../url-policy.js';
 
+const WEBRTC_PREFERENCE_READ = `async function(expectedUrl, preference) {
+  try {
+    if (document.readyState !== 'complete')
+      await new Promise(resolve => addEventListener('load', resolve, {once: true}));
+    if (location.href !== expectedUrl) return null;
+    const text = document.body.innerText;
+    if (preference === 'ip_handling_url' && text.trim() === 'Preference not found: webrtc.ip_handling_url')
+      return {urlOverrides: false};
+    const value = JSON.parse(text);
+    return preference === 'ip_handling_policy'
+      ? {policy: value}
+      : {urlOverrides: !Array.isArray(value) || value.length !== 0};
+  } catch { return null; }
+}`;
+
 /** Chromium's own network-error page. It cannot be navigated to directly. */
 const CHROME_ERROR_PAGE = 'chrome-error://chromewebdata/';
 
@@ -920,14 +935,15 @@ export class ChromiumServerHost implements BrowserHost {
         const result = await transport.send<{
           result: { value?: { policy?: unknown; urlOverrides?: unknown } };
         }>(
-          'Runtime.evaluate',
+          'Runtime.callFunctionOn',
           {
             // This internal page reports resolved values, including managed policy.
             // Return only the network-policy fields, never the full preference dump.
-            expression: `(async()=>{try{if(document.readyState!=='complete')await new Promise(resolve=>addEventListener('load',resolve,{once:true}));if(location.href!==${JSON.stringify(url)})return null;const text=document.body.innerText;if(${JSON.stringify(preference)}==='ip_handling_url'&&text.trim()==='Preference not found: webrtc.ip_handling_url')return {urlOverrides:false};const value=JSON.parse(text);return ${JSON.stringify(preference)}==='ip_handling_policy'?{policy:value}:{urlOverrides:!Array.isArray(value)||value.length!==0};}catch{return null}})()`,
+            functionDeclaration: WEBRTC_PREFERENCE_READ,
+            arguments: [{ value: url }, { value: preference }],
             returnByValue: true,
             awaitPromise: true,
-            contextId,
+            executionContextId: contextId,
           },
           sessionId,
         );
