@@ -8,6 +8,7 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, win32 } from 'node:path';
 import {
   readInstanceRegistry,
@@ -114,6 +115,18 @@ const lifecycle = (baseDir: string) => ({
 // filesystem for manifest behavior.
 const serviceFs = {
   ...nodeFs,
+  lstatSync: (path: nodeFs.PathLike) => {
+    const stat = nodeFs.lstatSync(path);
+    const value = String(path);
+    const isTempAncestor = value === tmpdir() || tmpdir().startsWith(`${value}/`);
+    return ['/', '/usr', '/usr/bin'].includes(value) || isTempAncestor
+      ? Object.assign(Object.create(Object.getPrototypeOf(stat)), stat, {
+          uid: 0,
+          gid: 0,
+          mode: stat.mode & ~0o022,
+        })
+      : stat;
+  },
   realpathSync: (path: nodeFs.PathLike) =>
     path === process.execPath ? '/usr/bin/node' : nodeFs.realpathSync(path),
 } as unknown as ServiceFs;
