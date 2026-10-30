@@ -1,0 +1,14 @@
+--- a/dist/chunk-artifact.js
++++ b/dist/chunk-artifact.js
+@@ -2850,7 +2850,10 @@
+ 			return fn.apply(this, args);
+ 		}
+ 		// Make sure fn is still called even if there are no further calls
+-		pendingCall ??= setTimeout(() => call.bind(this)(...args), ms);
++		pendingCall ??= setTimeout(() => {
++			pendingCall = undefined;
++			call.apply(this, args);
++		}, ms);
+ 	};
+ }
+ // throttle based on summary reporter's DURATION_UPDATE_INTERVAL_MS

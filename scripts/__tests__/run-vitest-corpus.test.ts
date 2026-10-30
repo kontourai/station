@@ -11,6 +11,7 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
+import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
 import {
   buildVitestCommand,
   buildWindowsSerializedCommand,
@@ -138,6 +139,69 @@ describe('Vitest corpus runner', () => {
         onResult: () => {},
       }),
     ).rejects.toThrow(/has no discovered tests/);
+  });
+
+  it('delivers pending runner events after an exact throttle boundary without duplicating an immediate flush', () => {
+    const root = makeTempDir('corpus-update-boundary-');
+    const script = resolve(root, 'probe.mjs');
+    writeFileSync(
+      script,
+      `import assert from 'node:assert/strict';
+let clock = 1000, nextId = 0;
+const timers = new Map();
+Date.now = () => clock;
+globalThis.setTimeout = (callback, delay, ...args) => {
+  const id = ++nextId;
+  timers.set(id, () => callback(...args));
+  return id;
+};
+globalThis.clearTimeout = (id) => timers.delete(id);
+const { updateTask } = await import(${JSON.stringify(import.meta.resolve('@vitest/runner'))});
+const delivered = [];
+const runner = { onTaskUpdate(packs, events) {
+  delivered.push(structuredClone({ packs, events }));
+} };
+const task = { id: 'real-runner-task', result: { state: 'run' }, meta: {} };
+updateTask('test-prepare', task, runner);
+updateTask('after-hook-start', task, runner);
+assert.equal(delivered.length, 1);
+assert.equal(timers.size, 1);
+function fireAt(time) {
+  clock = time;
+  const [id, callback] = timers.entries().next().value ?? [];
+  assert.ok(callback, 'the pending update must retain a timer');
+  timers.delete(id);
+  callback();
+}
+fireAt(1100);
+assert.equal(timers.size, 1, 'a boundary callback must reschedule the pending update');
+fireAt(1200);
+assert.equal(delivered.length, 2);
+assert.deepEqual(delivered[1].events, [['real-runner-task','after-hook-start',undefined]]);
+assert.equal(timers.size, 0);
+updateTask('after-hook-end', task, runner);
+assert.equal(timers.size, 1);
+clock=1400;
+updateTask('test-finished',task,runner);
+assert.equal(delivered.length, 3);
+assert.equal(timers.size, 0, 'an immediate flush must cancel the pending timer');
+assert.deepEqual(delivered[2].events.map(event=>event[1]),['after-hook-end','test-finished']);
+console.log(JSON.stringify({delivered:delivered.length,remainingTimers:timers.size,contract:'public updateTask boundary and cancellation'}));
+
+`,
+    );
+    const result = spawnSyncBounded(process.execPath, [script], {
+      encoding: 'utf8',
+      timeout: 20_000,
+      windowsHide: true,
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual({
+      delivered: 3,
+      remainingTimers: 0,
+      contract: 'public updateTask boundary and cancellation',
+    });
   });
 
   it.each(['collection', 'body', 'afterEach'])(
