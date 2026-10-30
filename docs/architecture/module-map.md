@@ -462,6 +462,10 @@ Synchronous local-grant validation shares one home span across its principal,
 scope and host-signature checks. It retains both currentness checks and acquires
 a fresh span for the next validation; that standalone validation holds no lease
 across an await or stream boundary.
+Report runtime resolution and failure-retention admission can wait for a
+separate request-bound home hold, then recheck the request and credential in a
+synchronous span before releasing it. This does not hold custody across a
+provider call.
 The report preparation owner also validates its complete roster under one such
 span, so nested credential and Flow checks borrow the same resource hold rather
 than independently publishing locks for each member. Source and Flow admission
@@ -2163,8 +2167,8 @@ recovery handle nor read access grants execution or authority to answer a reques
 
 ## StationReportGroupRuntime
 
-The personal-host continuation-finalizer route currently refuses, including
-when its preview is enabled, until rounds-writer publication exclusion is
+The personal-host continuation-finalizer route currently refuses, and its
+preview is not offered, until rounds-writer publication exclusion is
 qualified. The installed Flow Agents 9.9.1 contract authenticates retained
 winner bytes; the metadata-only adapter does not grant provider execution or
 create a retry authorization.

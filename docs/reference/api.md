@@ -2179,9 +2179,9 @@ owns the protocol, saved authority and failure limits.
 
 The source endpoint `POST /api/orchestration/report-groups/:groupId/continuation/finalize`
 accepts an operation key, expected revision and original continuation operation
-key. It currently returns `report_continuation_finalizer_unavailable`, including
-when the **Report continuation recovery** preview is enabled, while Station
-qualifies publication exclusion across its rounds writers. No metadata lookup,
+key. It currently returns `report_continuation_finalizer_unavailable`, and the
+**Report continuation recovery** preview is not offered, while Station qualifies
+publication exclusion across its rounds writers. No metadata lookup,
 retention, provider invocation or retry grant occurs. Hosted mode returns
 `report_groups_unavailable`; an older host may return 404.
 

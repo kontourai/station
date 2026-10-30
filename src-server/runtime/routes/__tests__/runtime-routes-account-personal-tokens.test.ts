@@ -444,16 +444,13 @@ describe('account-tied personal access tokens over the production composition', 
     };
   }
 
-  test('production route composition binds a default-off finalizer only with the bootstrap publication owner', async () => {
+  test('production route composition does not offer the unqualified finalizer', async () => {
     const h = await setup(true);
-    expect(h.previews?.list()).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: 'report-continuation-finalizer',
-          enabled: false,
-        }),
-      ]),
-    );
+    expect(
+      h.previews
+        ?.list()
+        .some((entry) => entry.id === 'report-continuation-finalizer'),
+    ).toBe(false);
     const input = {
       operationKey: 'finish',
       expectedRevision: 0,
@@ -471,12 +468,6 @@ describe('account-tied personal access tokens over the production composition', 
     const disabled = await request();
     expect(disabled.status).toBe(503);
     expect(await disabled.json()).toMatchObject({
-      code: 'report_continuation_finalizer_unavailable',
-    });
-    await h.previews!.setEnabled('report-continuation-finalizer', true);
-    const enabled = await request();
-    expect(enabled.status).toBe(503);
-    expect(await enabled.json()).toMatchObject({
       code: 'report_continuation_finalizer_unavailable',
     });
   });

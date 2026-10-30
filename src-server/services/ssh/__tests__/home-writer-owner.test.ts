@@ -244,6 +244,76 @@ test('the real pairing writer and authentication reader join the home hold', asy
   expect(pairing.verifyCredential(paired.credential)).toBe(false);
 });
 
+test('request admission waits for home custody and refuses a credential revoked while queued', async () => {
+  const path = home();
+  const pairing = await DevicePairingService.create({
+    homeDir: path,
+    environmentId: '11111111-1111-4111-8111-111111111111',
+  });
+  const offer = pairing.createOffer({ endpoint: 'http://127.0.0.1:43979' });
+  const request = pairing.requestPairing({
+    offerId: offer.offerId,
+    proof: offer.challenge,
+    deviceName: 'queued reader',
+    requesterPosition: 'unproven',
+  });
+  pairing.confirmRequest(request.requestId, { kind: 'presented-credential' });
+  const paired = pairing.exchange({
+    offerId: offer.offerId,
+    proof: offer.challenge,
+    requestId: request.requestId,
+  });
+  const owner = await HomeWriterOwner.forHome(path);
+  const held = await owner.acquire();
+  const abort = new AbortController();
+  let checks = 0;
+  const pending = owner.runRequest(abort.signal, () => {
+    checks++;
+    if (!pairing.verifyCredential(paired.credential))
+      throw new Error('revoked');
+    return 'admitted';
+  });
+  const rejected = expect(pending).rejects.toThrow('revoked');
+  owner.runWithLease(held, () =>
+    pairing.revokeDevice(paired.device.id, 'operator-credential'),
+  );
+  await held.release();
+  await rejected;
+  expect(checks).toBe(1);
+  const heldAgain = await owner.acquire();
+  const cancelled = new AbortController();
+  const pendingCancelled = owner.runRequest(cancelled.signal, () => {
+    checks++;
+  });
+  const cancellation = expect(pendingCancelled).rejects.toMatchObject({
+    name: 'AbortError',
+  });
+  cancelled.abort();
+  await heldAgain.release();
+  await cancellation;
+  expect(checks).toBe(1);
+  const heldThird = await owner.acquire();
+  let attempted!: () => void;
+  const started = new Promise<void>((resolve) => {
+    attempted = resolve;
+  });
+  const acquire = owner.acquire.bind(owner);
+  const acquireSpy = vi.spyOn(owner, 'acquire').mockImplementation((signal) => {
+    attempted();
+    return acquire(signal);
+  });
+  let completed = false;
+  const pendingAllowed = owner.runRequest(new AbortController().signal, () => {
+    completed = true;
+    return 'admitted';
+  });
+  await started;
+  acquireSpy.mockRestore();
+  expect(completed).toBe(false);
+  await heldThird.release();
+  await expect(pendingAllowed).resolves.toBe('admitted');
+});
+
 test('pairing construction rejects a runtime constructor bypass and a foreign held lease', async () => {
   const options = {
     homeDir: home(),

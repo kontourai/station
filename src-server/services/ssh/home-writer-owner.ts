@@ -358,6 +358,38 @@ export class HomeWriterOwner {
     return outcome.value;
   }
 
+  /** Admit one request-bound synchronous check after acquiring the home. */
+  async runRequest<T>(signal: AbortSignal, body: () => T): Promise<T> {
+    signal.throwIfAborted();
+    const lease = await this.acquire(signal);
+    let outcome: { ok: true; value: T } | { ok: false; error: unknown };
+    let ran = false;
+    try {
+      outcome = {
+        ok: true,
+        value: this.runWithLease(lease, () => {
+          signal.throwIfAborted();
+          ran = true;
+          const value = body();
+          signal.throwIfAborted();
+          return value;
+        }),
+      };
+    } catch (error) {
+      outcome = { ok: false, error };
+    }
+    try {
+      await lease.release();
+    } catch (error) {
+      throw new HomeWriterUnavailableError('cleanup-required', ran, {
+        cause: outcome.ok ? error : new AggregateError([outcome.error, error]),
+      });
+    }
+    if (!outcome.ok) throw outcome.error;
+    signal.throwIfAborted();
+    return outcome.value;
+  }
+
   async acquire(signal?: AbortSignal): Promise<HomeWriterLease> {
     this.assertCurrent();
     signal?.throwIfAborted();

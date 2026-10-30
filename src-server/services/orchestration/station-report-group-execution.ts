@@ -20,6 +20,7 @@ import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/te
 import type { reservedStationTurnResult } from '../../runtime/conversation/reserved-station-turn.js';
 import type { DelegatedTaskHandle } from '../../tools/station-control-delegation.js';
 import type { EnvironmentSecurityService } from '../ssh/environment-security-service.js';
+import { HomeWriterOwner } from '../ssh/home-writer-owner.js';
 import type { PreparedReservedFinalFetchOwners } from './delegation-group-launch-fence.js';
 import type { StationDelegationPersistence } from './delegation-group-persistence.js';
 import {
@@ -108,6 +109,9 @@ export class StationReportGroupExecution {
     );
     const signal = AbortSignal.any([context.req.raw.signal, deadline.signal]);
     try {
+      const requestWriter = await HomeWriterOwner.forHome(
+        this.owners.environment.getProjectHomeDir(),
+      );
       const prepared = preparation.read(handle, context.req.raw);
       const groupId = await custody.retain(context, preparation, handle);
       const current = (): undefined => {
@@ -202,9 +206,21 @@ export class StationReportGroupExecution {
       );
       const physical: ReturnType<DelegationRoundsHost['executionHost']> = {
         resolveRuntime: async (envelope) => {
-          const { member, seat } = memberFor(envelope);
-          if (!preparation.confirmsExecution(handle, context.req.raw, envelope))
-            refuse();
+          const { member, seat } = await requestWriter.runRequest(
+            signal,
+            () => {
+              const selected = memberFor(envelope);
+              if (
+                !preparation.confirmsExecution(
+                  handle,
+                  context.req.raw,
+                  envelope,
+                )
+              )
+                refuse();
+              return selected;
+            },
+          );
           const runtime: ModelRuntime = {
             id: envelope.execution_binding.runtime.runtime_receipt_ref.id,
             capabilities: () => ({
@@ -340,7 +356,9 @@ export class StationReportGroupExecution {
           return value.attempt.accounting;
         },
         retainFailure: async (_error, envelope, id) => {
-          const { seat } = memberFor(envelope);
+          const { seat } = await requestWriter.runRequest(signal, () =>
+            memberFor(envelope),
+          );
           await persistence.retainReportObservation(
             {
               groupId,

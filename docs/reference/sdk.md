@@ -6121,7 +6121,7 @@ or package publication.
 
 `finalizeReportGroupContinuation` sends a finalizer operation key, expected
 revision and original continuation operation key. Station currently returns
-`report_continuation_finalizer_unavailable`, even with its preview enabled,
+`report_continuation_finalizer_unavailable` and does not offer the preview
 until publication exclusion across rounds writers is qualified. A 404 from an
 older host is reported as unsupported.
 
