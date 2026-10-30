@@ -4300,7 +4300,7 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       path: '/api/orchestration/session-groups/:groupId/events/stream',
     },
     { method: 'POST', path: '/api/orchestration/session-groups/:groupId/run' },
-    // Sync mutates only the credential-owned local group through its current operator fence.
+    // Sync rechecks current request authority for its owned local group.
     { method: 'POST', path: '/api/orchestration/session-groups/:groupId/sync' },
     {
       method: 'POST',
