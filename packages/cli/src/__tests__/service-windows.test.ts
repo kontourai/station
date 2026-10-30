@@ -504,6 +504,8 @@ describe('Windows Task Scheduler service backend', () => {
         ) {
           return { status: 0 };
         }
+        if (!powerShellProgram(args).includes('[int]$task.State'))
+          return { status: 0 };
         stateChecks += 1;
         return {
           status: 0,
