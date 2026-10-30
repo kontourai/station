@@ -1,0 +1,7 @@
+{
+  "revision": "c5c41beb898fa79c2cea36c086fb3c47fc152dd1",
+
+  "notes": [
+    {"path":"docs/guides/workspace-packages.md","note":"Reviewed the child-work dependency and composition delta against the workspace-copy journey. Package format/crypto/Git IO and cloud pack/inspect/unpack/import-project command owners have no epic delta. pnpm configuration removes the obsolete Flow Agents packageExtension while retaining managed inert-install/lifecycle controls; it does not make the package commands install dependencies or transfer credentials. New orchestration group routes and publication participant do not change workspace archive capture, source-paused acknowledgement, fresh destination, verification or Project registration authority. The guide retains manual source/target checks and distinguishes inspect from import and execution. No prose change needed for this impact. Source review only; no cloud/SSH/transfer/Windows or restored-workspace execution was run.","inputs":["docs/guides/workspace-packages.md","packages/sdk/src/client/delegations.ts","pnpm-workspace.yaml","src-server/routes/orchestration/orchestration.ts","src-server/runtime/routes/runtime-routes.ts","src-server/tools/station-control-delegation.ts"]}
+  ]
+}
