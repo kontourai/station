@@ -36,6 +36,20 @@ import {
 import { deploymentAccountPrincipal } from '../../services/identity/deployment-authentication-service.js';
 import { PrincipalUnresolvedError } from '../../services/identity/principal-resolver.js';
 
+export function accountBoundProjectRouteMayPass(
+  method: string,
+  path: string,
+): boolean {
+  return !(
+    (path === '/api/projects' || path.startsWith('/api/projects/')) &&
+    method !== 'GET' &&
+    method !== 'HEAD' &&
+    !isAccountBoundGuestAdminWrite(path, method) &&
+    !isAccountBoundRoomLeaf(path, method) &&
+    !isAccountBoundLayoutLeaf(path, method)
+  );
+}
+
 /** Structural Hono context — the gate reads/answers, never dispatches. */
 interface GateContext {
   env: unknown;
@@ -116,6 +130,8 @@ function isAccountBoundLayoutLeaf(path: string, method: string): boolean {
 }
 
 export interface AccountBoundDeviceGateDeps {
+  localAccountSignOutEnabled?: boolean;
+  accountSessionOwnsPerson?(request: Request): boolean;
   currentRelationshipAccountDevice?(
     request: Request,
     binding: Extract<DevicePrincipalBinding, { kind: 'account' }>,
@@ -340,6 +356,15 @@ export function installAccountBoundDeviceGate(
         deps.identifyIngress(c))
     )
       return c.json({ error: { code: 'account_identity_conflict' } }, 401);
+    // Logout only revokes the account session; it grants no Device authority.
+    if (
+      deps.localAccountSignOutEnabled &&
+      c.req.method === 'POST' &&
+      c.req.path === '/api/account-auth/sign-out'
+    ) {
+      await next();
+      return;
+    }
     const accountOperation =
       c.req.path === '/api/account-auth' ||
       c.req.path.startsWith('/api/account-auth/');
@@ -371,7 +396,14 @@ export function installAccountBoundDeviceGate(
           { error: { code: 'account_authentication_invalid' } },
           401,
         );
-      const ingress = deps.identifyIngress(c);
+      let accountOwnsPerson = false;
+      try {
+        accountOwnsPerson = deps.accountSessionOwnsPerson?.(c.req.raw) === true;
+      } catch (error) {
+        if (!(error instanceof PrincipalUnresolvedError)) throw error;
+        return c.json({ error: { code: 'account_identity_conflict' } }, 403);
+      }
+      const ingress = accountOwnsPerson ? null : deps.identifyIngress(c);
       if (accountBinding && ingress) {
         return c.json({ error: { code: 'account_identity_conflict' } }, 401);
       }
@@ -400,14 +432,7 @@ export function installAccountBoundDeviceGate(
           { error: { code: 'account_bound_device_route_forbidden' } },
           403,
         );
-      if (
-        (path === '/api/projects' || path.startsWith('/api/projects/')) &&
-        method !== 'GET' &&
-        method !== 'HEAD' &&
-        !isAccountBoundGuestAdminWrite(path, method) &&
-        !isAccountBoundRoomLeaf(path, method) &&
-        !isAccountBoundLayoutLeaf(path, method)
-      ) {
+      if (!accountBoundProjectRouteMayPass(method, path)) {
         return c.json(
           { error: { code: 'account_bound_device_route_forbidden' } },
           403,

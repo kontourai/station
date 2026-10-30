@@ -72,9 +72,14 @@ membership. See [peer pairing](station-peer-pairing.md) and
 [PrincipalRef](../../packages/contracts/src/principal.ts) already separates
 human, agent, service and tenant attribution. The
 [request composition](../../src-server/runtime/routes/runtime-routes.ts)
-currently prefers verified ingress identity, then verified operator authority,
-then device identity. Consequently, the same device can resolve to a tailnet
-principal on one route and a device principal on another. A device principal
+without an account session prefers verified ingress identity, then verified
+operator authority, then device identity. Consequently, the same device can
+resolve to a tailnet principal on one route and a device principal on another.
+For the exact account, pairing and membership surfaces listed in the
+[deployment authentication guide](../guides/deployment-authentication.md), a
+current local-account session names the person; Serve WhoIs remains ingress
+provenance and an accompanying Device must be bound to that account. It does
+not grant membership or operator authority. A device principal
 is useful attribution but is not evidence that several devices belong to one
 person. [Identity sources](identity.md) remain provider-qualified.
 
@@ -167,6 +172,17 @@ never grant access to another Project. Friendly role presets select
 these actions; they are not tokens appended to device pairing scopes.
 Only an authorized owner/admin may grant actions within their grant authority.
 Reject removal of the last active owner unless ownership transfer commits first.
+
+Turning sharing on for a Project (`POST .../access/enable`) needs Station
+operator authority, separate from any membership. Until then, the
+administration read `GET .../access` is refused with `403
+project_access_forbidden`, as it is for a non-manager. That refusal carries
+`ProjectAccessRefusalDetails` (#4302). The service reads the sharing state only
+after the caller passes operator and human authority checks and the HTTP
+admission for `POST .../access/enable`, including the pairing scope and
+account-bound Device gate. That caller learns `off` (and that it can enable)
+or `on`. Everyone else gets `undisclosed`, the same for a shared, unshared or
+missing Project.
 
 Private Sessions remain private by default. New Project work must explicitly
 record whether it is Project-shared. Sharing existing work requires a review

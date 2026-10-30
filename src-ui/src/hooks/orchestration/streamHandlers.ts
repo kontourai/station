@@ -1,4 +1,5 @@
 import { chatHostImageMapFromEvent } from '@kontourai/station-contracts/chat-host-images';
+import { claudeArtifactLinkOfEvent } from '@kontourai/station-contracts/claude-artifact';
 import type {
   InputRequestOutcome,
   InputRequestRecord,
@@ -370,6 +371,9 @@ export function handleToolCompletedEvent(
     result: event.output,
     ...(event.spilledContent ? { contentThreadId: event.threadId } : {}),
     ...(event.htmlReply ? { htmlReply: event.htmlReply } : {}),
+    ...(claudeArtifactLinkOfEvent(event)
+      ? { claudeArtifact: claudeArtifactLinkOfEvent(event) }
+      : {}),
     error: event.error,
     ...(event.outputReceipt?.truncated
       ? { outputTruncated: true as const }

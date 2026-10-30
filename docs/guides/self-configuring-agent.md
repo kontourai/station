@@ -906,7 +906,9 @@ Open a project chat and choose **Delegate** in its task-context bar. Station
 loads the Project's execution default before discovering workers. **Change
 routing** lets you choose an Agent, a Station and a model override. A configured
 remote stays selected while its inventory loads or its connection fails; Station
-does not replace it with **This Station**. If the Project defaults cannot be
+does not replace it with **This Station**. A paired Station whose stored
+credential lacks `orchestration:operate` is listed as unable to start work and
+cannot be chosen. If the Project defaults cannot be
 loaded, retry that read or make an explicit Station choice.
 
 Remote environments are re-verified and connected to load their available Agents

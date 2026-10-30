@@ -153,6 +153,11 @@ The latter accepts `bind` or `unbind`, the exact destination grant and an
 hooks. Pass the render-captured request scope: caches partition by API base and
 authority key, and old responses cannot update a replacement authority. Existing
 MCP consumer inputs and results retain their own separate client functions.
+`bindOAuthClientSecret(apiBase, id, {integrationId, expectedRevision})` and
+`unbindOAuthClientSecret` bind a shared binding as one remote integration's
+OAuth client secret, with `useBindOAuthClientSecretMutation` and
+`useUnbindOAuthClientSecretMutation` hooks. `getIntegrationSecretBindings`
+returns the bound id as `oauthClientSecretBindingId`.
 
 ## Integration discovery
 
@@ -173,8 +178,10 @@ withhold stale provenance.
 `useIntegrationAccountQuery(id, projectSlug?, requestScope?)` reads the account
 summary. Pass the captured `ApiRequestScope` to partition account state by
 Station and principal authority and refuse a request after that authority changes.
-`useStartIntegrationOAuthMutation()` accepts `{id, projectSlug?}` and returns an
-`authorizationUrl`. `useFinishIntegrationOAuthMutation()` accepts
+`useStartIntegrationOAuthMutation()` accepts `{id, projectSlug?, scopes?}` and
+returns an `authorizationUrl`; `scopes` is the person's choice for that sign-in,
+and an empty list requests the server's advertised scopes instead of the
+integration default. `useFinishIntegrationOAuthMutation()` accepts
 `{id, projectSlug?, callbackUrl}` for remote sign-in completion, evicts settled
 mutation variables and refreshes account/integration queries. Existing endpoint
 ownership checks still apply; a successful catalog install does not sign in.
@@ -2100,6 +2107,12 @@ the `resolved` arm whether the next ordinary turn starts a new Session
 and so does a server that would refuse that turn (a handoff awaiting its target,
 or a context delivery not yet reconciled). A value that is not a boolean is
 refused as `invalid-response`.
+Every arm may also carry `callerAccess` (`{ continue, startChat }`): whether
+the server's HTTP boundary would let THIS caller post
+`POST /api/orchestration/chat/:conversationId/continue` or
+`POST /api/orchestration/chat`. Older servers, and requests with no
+authenticated principal, omit it; treat absent as unknown. A present value that
+is not that pair of booleans is refused as `invalid-response`.
 Transport, rejection, and invalid wire failures throw a
 typed `ConversationOpenResolutionFailure` rather than degrading to an empty
 chat. Optional `options.signal` cancels the request and `options.timeoutMs`
@@ -2693,6 +2706,15 @@ enable sharing, invite or revoke invitations, change a member, or transfer
 ownership. Capture the returned scope and member revision for writes; do not
 reconstruct authority from a slug or email. Enabling requires the expected local
 Project ID and current Station operator authority.
+
+When the read is refused with 403 `project_access_forbidden`,
+`projectAccessRefusal(error)` returns the server's
+`ProjectAccessRefusalDetails` (from
+`@kontourai/station-contracts/project-membership`): `off` (sharing is not on
+and this caller can enable it), `on` (shared, but this caller does not manage
+people) or `undisclosed` (this caller cannot enable sharing and is not told
+whether the Project is shared). It returns `undefined` for any other error,
+including an older Station that sends no details.
 
 `@kontourai/station-sdk/project-access` also exports `useProjectAccess(slug,
 requestScope)`. Its query keys include the selected Station and authority, and
@@ -3960,6 +3982,50 @@ interface ProviderMetadata {
 ---
 
 ## Notifications API
+
+### Attention and notification snooze hooks
+
+These exports from `@kontourai/station-sdk` use Station's authenticated
+transport. Attention mutations require the host's **Attention snooze**
+(`attention-snooze`) Feature Preview. The notification helper uses the existing
+stored-notification route and does not require that preview.
+
+```ts
+// until is an ISO timestamp string. Attention helpers accept apiBase?: string.
+const { snoozedUntil } = await snoozeAttentionItem(itemId, until, apiBase);
+await unsnoozeAttentionItem(itemId, apiBase);
+useSnoozeAttentionItemMutation(apiBase).mutateAsync({ itemId, until });
+useUnsnoozeAttentionItemMutation(apiBase).mutateAsync(itemId);
+await snoozeNotification(id, until);
+useSnoozeNotificationMutation().mutateAsync({ id, until });
+```
+
+Attention helpers call `POST` / `DELETE /api/attention/:id/snooze`. The POST
+sends `{until}`; it returns the server-normalized `snoozedUntil`. Attention
+hooks invalidate the `['attention']` prefix, including queries with an explicit
+API base. `snoozeNotification` posts `{until}` to
+`/notifications/:id/snooze`; its hook invalidates both `['notifications']` and
+`['attention']`, like dismissal. IDs are URL-encoded.
+
+All helpers throw for a non-OK response or unsuccessful envelope, preserving
+the server's error message. A host without the new attention routes is
+unsupported: an unknown-route 404 suggests updating Station, whether its body
+is JSON or plain text. A typed disabled-preview
+404 instead carries the server's Settings remedy; a missing-item 404 remains
+an error. Unlike `acknowledgeAttentionItem`, snooze never treats a 404 as success.
+
+The [attention API](session-api.md#review-work-in-the-attention-inbox) owns
+validation and versioning: attention snoozes must end strictly in the future
+and within 30 days, and a newer source version resurfaces immediately. Pending
+counts exclude both acknowledged and actively snoozed items while retaining
+them in the projection's `items`. The stored-notification route keeps its
+existing validation and delivery behavior; the new SDK helper does not change
+it.
+
+Source: [attention domain](../../packages/sdk/src/query-domains/attention.ts),
+[notification domain](../../packages/sdk/src/query-domains/notifications.ts).
+[Mutation tests](../../packages/sdk/src/__tests__/snooze-mutations.test.tsx)
+verify request shape, error propagation, and actual mounted-query refetches.
 
 ### Person notification query domain
 

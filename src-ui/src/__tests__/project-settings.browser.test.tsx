@@ -30,6 +30,8 @@ const fixtures: Plugin = {
       `,
       ConfigContext:
         'export const useConfig=()=>({defaultApprovalMode:"ask"});',
+      ApiBaseContext:
+        'export const useHostRequestAuthorityScope=()=>({apiBase:"http://station.test",authorityKey:"fixture"});',
       ProjectsContext: `const project={id:'demo-id',slug:'demo',name:'Demo project',workingDirectory:'/home/developer/projects/station',description:'A workspace for product development'}; export const useScopedProjectQuery=()=>({data:project}); export const useScopedProjectChatDefaultsQuery=()=>({data:undefined});`,
       AgentsContext: 'export const useAgents=()=>[];',
       useShowSurface: 'export const useShowSurface=()=>()=>{};',
@@ -204,3 +206,73 @@ test('project settings remain usable above the dock at phone and desktop widths 
     await browser.close();
   }
 }, 60000);
+
+test('account conflict recovery is legible at phone and desktop widths in both themes', async () => {
+  const accountFixture = `
+    import React from 'react';
+    import { createRoot } from 'react-dom/client';
+    import { AccountIdentityConflict } from './src-ui/src/components/AccountIdentityConflict';
+    createRoot(document.getElementById('root')).render(<main style={{padding:'24px'}}><AccountIdentityConflict apiBase="http://station.test" onRecovered={()=>{}} /></main>);
+  `;
+  const accountMocks: Plugin = {
+    name: 'account-conflict-fixture',
+    setup(builder) {
+      builder.onResolve(
+        {
+          filter: /^@kontourai\/station-sdk\/(account-authentication|client)$/,
+        },
+        (args) => ({ path: args.path, namespace: 'account-fixture' }),
+      );
+      builder.onLoad(
+        { filter: /.*/, namespace: 'account-fixture' },
+        (args) => ({
+          loader: 'js',
+          contents: args.path.endsWith('/client')
+            ? 'export class StationHttpError extends Error {}; export const envelopeReasons = () => [];'
+            : 'export async function runAccountOperation() {}',
+        }),
+      );
+    },
+  };
+  const { browser, page, errors } = await scrollBrowserFixture(accountFixture, [
+    accountMocks,
+  ]);
+  try {
+    await page.addStyleTag({
+      content: resolveCssImports(resolve(import.meta.dirname, '../index.css')),
+    });
+    const out = resolve('.kontourai/account-conflict-visual');
+    mkdirSync(out, { recursive: true });
+    for (const theme of ['dark', 'light']) {
+      await page.evaluate(
+        (value) => document.documentElement.setAttribute('data-theme', value),
+        theme,
+      );
+      for (const width of [390, 1440]) {
+        await page.setViewportSize({ width, height: 900 });
+        const button = page.getByRole('button', {
+          name: 'Sign out of account',
+        });
+        await button.evaluate(async (element) => {
+          await Promise.all(
+            element
+              .getAnimations()
+              .map((animation) => animation.finished.catch(() => undefined)),
+          );
+        });
+        expect(await button.isVisible()).toBe(true);
+        expect(
+          await page
+            .getByText(
+              'This browser is signed in to a Station account. Sign out of that account to use owner controls.',
+            )
+            .isVisible(),
+        ).toBe(true);
+        await page.screenshot({ path: `${out}/${theme}-${width}.png` });
+      }
+    }
+    expect(errors).toEqual([]);
+  } finally {
+    await browser.close();
+  }
+});

@@ -883,3 +883,215 @@ describe('ChatDockBody memory-exhaustion marker', () => {
     expect(sdk.continueAfterMemoryExhaustion).not.toHaveBeenCalled();
   });
 });
+
+/*
+ * The marker's action follows what THIS caller may do, as the server's open
+ * read reported it (`callerAccess`). Three callers: full access (no answer,
+ * so unknown shows everything), one the server refused a new chat, and a
+ * read-only caller refused both. A session that cannot take another message
+ * (`session_ended`, `terminalSession`) offers Send again to nobody.
+ */
+describe('ChatDockBody marker actions follow callerAccess', () => {
+  const CALLERS = {
+    full: undefined,
+    noNewChat: { continue: true, startChat: false },
+    noSend: { continue: false, startChat: true },
+    readOnly: { continue: false, startChat: false },
+  } as const;
+
+  function sessionWith(
+    marker: string,
+    callerAccess: { continue: boolean; startChat: boolean } | undefined,
+  ) {
+    return buildSession({
+      conversationId: 'conversation-access',
+      status: 'idle',
+      messages: [
+        { role: 'user', content: 'are you still there?', timestamp: 1 } as any,
+        { role: 'user', content: marker, timestamp: 2 } as any,
+      ],
+      ...(callerAccess
+        ? {
+            conversationOpenState: {
+              status: 'resolved',
+              conversation: {
+                id: 'conversation-access',
+                source: 'runtime',
+                agentSlug: agentId('codex'),
+                title: 'Access chat',
+                createdAt: '2026-10-01T00:00:00.000Z',
+                updatedAt: '2026-10-01T00:01:00.000Z',
+                messageCount: 2,
+                mutable: false,
+                answerability: { answerable: true },
+              },
+              currentSessionId: 'conversation-access',
+              transcript: {
+                available: true,
+                owner: 'runtime',
+                messageCount: 2,
+              },
+              canContinue: true,
+              answerability: { answerable: true },
+              recoveryActions: [],
+              callerAccess,
+            },
+          }
+        : {}),
+    } as Partial<ChatSession>);
+  }
+
+  const ACTIONS = ['New chat', 'Send again', 'Switch agent', 'Continue'];
+  async function actionsFor(
+    marker: string,
+    caller: keyof typeof CALLERS,
+    headline: RegExp,
+  ) {
+    renderDock(sessionWith(marker, CALLERS[caller]), vi.fn());
+    await screen.findByText(
+      headline,
+      {},
+      { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+    );
+    return ACTIONS.filter((name) => screen.queryByRole('button', { name }));
+  }
+
+  const ENDED =
+    '[SYSTEM_EVENT] [CHAT_ERROR:session_ended] This session has already ended.';
+  test.each([
+    ['full', ['New chat']],
+    ['noNewChat', []],
+    ['readOnly', []],
+  ] as const)(
+    'an ended session offers %s caller %j, never Send again',
+    async (caller, expected) => {
+      expect(await actionsFor(ENDED, caller, /This chat has ended/)).toEqual(
+        expected,
+      );
+      // The hint names a new chat only to a caller allowed one.
+      expect(Boolean(screen.queryByText(/Start a new chat to continue/))).toBe(
+        caller === 'full',
+      );
+    },
+  );
+
+  const LOST = `[SYSTEM_EVENT] [CHAT_ERROR:engine-session-binding-dead] ${RAW_MESSAGE}`;
+  test.each([
+    ['full', ['Send again'], true, true],
+    ['noNewChat', ['Send again'], true, false],
+    // No action and no hint: the card offers this caller nothing, so the hint
+    // must not suggest a new chat it does not offer.
+    ['noSend', [], false, false],
+    ['readOnly', [], false, false],
+  ] as const)(
+    'a lost engine session offers %s caller %j (hint names send=%s, new chat=%s)',
+    async (caller, expected, namesSend, namesNewChat) => {
+      expect(
+        await actionsFor(LOST, caller, /engine session was lost/i),
+      ).toEqual(expected);
+      const text = document.body.textContent ?? '';
+      expect(text.includes('Send your message again')).toBe(namesSend);
+      expect(/start a new chat/i.test(text)).toBe(namesNewChat);
+    },
+  );
+
+  const OOM =
+    '[SYSTEM_EVENT] [CHAT_ERROR:engine-memory-exhausted] Codex ran out of memory and was stopped.';
+  test.each([
+    ['full', ['Continue']],
+    ['noNewChat', ['Continue']],
+    ['noSend', []],
+    ['readOnly', []],
+  ] as const)(
+    'an out-of-memory stop offers %s caller %j',
+    async (caller, expected) => {
+      expect(
+        await actionsFor(OOM, caller, /engine ran out of memory/i),
+      ).toEqual(expected);
+      // The hint names Continue only beside a Continue button.
+      expect(Boolean(screen.queryByText(/Continue picks the task up/))).toBe(
+        expected.length > 0,
+      );
+    },
+  );
+
+  // The second terminal-session error: an unsafe workspace to resume in.
+  const WORKSPACE = `[SYSTEM_EVENT] [CHAT_ERROR:continuation_workspace_worktree_gone] ${RAW_MESSAGE}`;
+  test.each([
+    ['full', ['New chat']],
+    ['noNewChat', []],
+    ['noSend', ['New chat']],
+    ['readOnly', []],
+  ] as const)(
+    'an unsafe workspace offers %s caller %j, never Send again',
+    async (caller, expected) => {
+      expect(await actionsFor(WORKSPACE, caller, /Can't resume/)).toEqual(
+        expected,
+      );
+      // Its hint is "New chat.": shown only to a caller allowed one.
+      expect(Boolean(screen.queryByText('New chat.'))).toBe(
+        expected.length > 0,
+      );
+    },
+  );
+
+  // A reloaded reply bubble (a runtime-error part rehydrated from the
+  // projection), through the dock's real message list and bubble.
+  test.each([
+    ['full', true],
+    ['readOnly', false],
+  ] as const)(
+    "a reloaded reply bubble's hint follows %s caller's access (names send again: %s)",
+    async (caller, namesSend) => {
+      const base = sessionWith('', CALLERS[caller]);
+      renderDock(
+        {
+          ...base,
+          messages: [
+            {
+              role: 'user',
+              content: 'are you still there?',
+              timestamp: 1,
+            } as any,
+            {
+              role: 'assistant',
+              content: '',
+              contentParts: [
+                {
+                  type: 'text',
+                  content: `⚠️ ${RAW_MESSAGE}`,
+                  runtimeError: true,
+                  runtimeErrorCode: 'engine-session-binding-dead',
+                },
+              ],
+              timestamp: 2,
+            } as any,
+          ],
+        },
+        vi.fn(),
+      );
+      await screen.findByText(
+        /engine session was lost/i,
+        {},
+        { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+      );
+      expect(
+        (document.body.textContent ?? '').includes('Send your message again'),
+      ).toBe(namesSend);
+    },
+  );
+
+  const UNKNOWN = '[SYSTEM_EVENT] [CHAT_ERROR] Something unexpected went wrong';
+  test.each([
+    ['full', true],
+    ['noNewChat', true],
+    ['noSend', false],
+    ['readOnly', false],
+  ] as const)(
+    'an unclassified failure tells %s caller retrying may help: %s',
+    async (caller, namesRetry) => {
+      await actionsFor(UNKNOWN, caller, /Something unexpected went wrong/);
+      expect(Boolean(screen.queryByText(/Retrying may help/))).toBe(namesRetry);
+    },
+  );
+});
