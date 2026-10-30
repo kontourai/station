@@ -113,7 +113,7 @@ and where to start reading; it is a pointer, not a reviewed interface contract.
 | Directory | What it owns | Read next |
 | --- | --- | --- |
 | `src-server/services/access/` | Station groups, personal access tokens, and the principal a paired device is tied to (#3557) | [Principals](../design/principals.md) |
-| `src-server/services/automation/` | Foundation only: config validation, store and a delivery ledger for Station Automations. No route or runtime wiring calls it yet (#3439) | [Automations proposal](../design/automations.md) |
+| `src-server/services/automation/` | Default-off observe-only GitHub intake, atomic delivery/episode storage and management-scoped delivery history; action dispatch remains pending (#3439) | [Automations proposal](../design/automations.md) |
 | `src-server/services/board/` | The Board store for one Task or Session (tabs and ordinal widgets; contract in `packages/contracts/src/board.ts`), behind `src-server/routes/board.ts`, which authorizes the owning reference before any store read | Source |
 | `src-server/services/chat-apps/` | Messaging bindings, identity links, kill switches and delivery receipts in the orchestration database; Discord imports its legacy authority once. Live Discord validation remains outstanding. | [Messaging core](../../src-server/services/chat-apps/chat-app-core.ts) |
 | `src-server/services/config/` | The idempotent log-level edit with retained terminal receipts | [Logging configuration](../reference/config.md#logging) |
@@ -4308,6 +4308,19 @@ Task and dispatch it with explicit Project/Agent identity and monitor limits.
 Missing authority or exhausted budget does not fall through to the ordinary
 model-turn adapter. This path is not proof that an arbitrary external source
 or provider is available.
+
+Automation `github-poll` sources (epic #3439) ride the same tick without a
+timer of their own: [BuiltinScheduler](../../src-server/services/scheduling/builtin-scheduler.ts)
+calls the [GitHub poller](../../src-server/services/automation/github-poll.ts)
+single-flight on each tick, and `stop()` aborts, awaits and closes it. The
+poller enforces each source's `pollIntervalMs` from the
+[Automation ledger](../../src-server/services/automation/automation-ledger.ts)'s
+poll state, lists completed workflow runs through the external monitor's REST
+transport and secret-binding credential path, and records each run through the
+[normalizer](../../src-server/services/automation/github-workflow-run.ts) and
+[intake](../../src-server/services/automation/automation-intake.ts) as matched,
+no-match, refused or duplicate, opening and closing episodes. It starts
+nothing yet: no Task, turn or action claim.
 
 [Ledger tests](../../src-server/services/scheduling/__tests__/scheduler-ledger.test.ts),
 [execution tests](../../src-server/services/scheduling/__tests__/builtin-scheduler-execution.test.ts),
