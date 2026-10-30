@@ -1,0 +1,7 @@
+{
+  "revision": "041b73c03c02a6b8ac725f62ab8282296082285e",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Corrects the earlier SDK review that described Codex child transcripts as unsupported: the authenticated bounded transcript owner handles retained Claude subagent and Codex thread references, with route fixture evidence. This does not establish live provider, restart, full transcript or published package acceptance.","inputs":["docs/reference/sdk.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots","src-server/providers/adapters/station-agent-adapter.ts","src-server/runtime/routes/runtime-routes.ts","src-server/security/pairing-route-scopes.ts","src-server/services/orchestration/orchestration-service.ts","packages/contracts/src/provider.ts","packages/sdk/src/index.ts","src-server/routes/orchestration/orchestration.ts","src-server/runtime/bootstrap/runtime-initialize.ts","src-ui/src/hooks/useActiveChatSessionMessaging.ts","packages/sdk/src/__tests__/publicBarrel.test.ts","packages/sdk/src/client/http.ts","packages/sdk/package.json","packages/sdk/src/client/delegations.ts"]}
+  ]
+}
