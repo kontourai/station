@@ -67,6 +67,25 @@ export const ADOPTION_ENGINE_NOT_READY_CODE = 'continuation_engine_not_ready';
 export const ADOPTION_CONTINUATION_IN_PROGRESS_CODE =
   'adoption_continuation_in_progress';
 
+export const ENGINE_STARTUP_FAILURE_GUIDANCE = {
+  sandbox_unavailable:
+    'The host could not create the engine sandbox. Ask its operator to repair the host sandbox prerequisites, then start a new task; keep sandbox protections enabled.',
+  provider_model_unavailable:
+    'The configured provider could not route the requested model. Check provider credentials and model availability before continuing; this error does not establish quota exhaustion.',
+} as const;
+
+export type EngineStartupFailureCode =
+  keyof typeof ENGINE_STARTUP_FAILURE_GUIDANCE;
+
+export function engineStartupFailureGuidance(
+  code: unknown,
+): string | undefined {
+  return typeof code === 'string' &&
+    Object.hasOwn(ENGINE_STARTUP_FAILURE_GUIDANCE, code)
+    ? ENGINE_STARTUP_FAILURE_GUIDANCE[code as EngineStartupFailureCode]
+    : undefined;
+}
+
 /** Fixed eligibility for a caller-requested retry; never an automatic replay instruction. */
 export const PROVIDER_FAILURE_RETRYABLE = {
   warning: false,
@@ -122,6 +141,8 @@ export const PROVIDER_FAILURE_KINDS = {
   stage_invalid_upload: 'input_unsupported',
   stage_capacity: 'busy',
   [PROVIDER_PLAN_QUOTA_EXHAUSTED_CODE]: 'quota_exhausted',
+  sandbox_unavailable: 'permission_denied',
+  provider_model_unavailable: 'model_unavailable',
   [CODEX_DECISION_UNACKNOWLEDGED_CODE]: 'warning',
   [CODEX_DECISION_REPLY_REFUSED_CODE]: 'warning',
   [TRANSCRIPT_LINE_SKIPPED_CODE]: 'warning',

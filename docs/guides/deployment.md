@@ -614,7 +614,46 @@ That was an installation-specific observation, not a portable current package
 contract. Do not assume a present release contains that path, a separate Node
 installation, or the same process-detachment behavior. A source server's schema
 lookups depend on its configured working directory; the service wrapper owns
-that detail. This review did not run a Windows installer or SSH session.
+that detail.
+
+The official Windows task uses the installing user's interactive logon token.
+An SSH connection does not supply that desktop session. If installation cannot
+start the task, Station reports the scheduler's last result and, for an
+interactive-token task, explains the logon requirement before rolling back.
+Logging into the same Windows account is the ordinary supported route.
+`Start-Process` inside SSH is not evidence of persistence: OpenSSH job cleanup
+can terminate descendants after disconnect. Use `service run` as the foreground
+supervisor when another process manager owns its lifetime.
+
+An operator who needs startup before desktop logon can manage a **separate**
+Task Scheduler registration for that existing command. This is not an official
+`service install` registration, and `service status` will not own or recognize
+it. Use the same Windows account at least privilege, a dedicated task name and
+private wrapper/log directory, and the stable channel launcher rather than a
+versioned installation path. Set explicit instance, home, API/UI ports and exact
+allowed origins in the wrapper. For example, after checking those values:
+
+```bat
+@echo off
+call "C:\Users\operator\.local\bin\station-nightly.cmd" service run --instance=nightly --base="C:\Users\operator\.station\instances\nightly" --port=38141 --ui-port=38000 --allowed-origin=https://station.example.ts.net:8443
+```
+
+Register that wrapper with a boot trigger, an S4U principal for the same user,
+`RunLevel Limited`, no execution time limit (`PT0S`), and battery settings that
+allow starting and continuing. Restrict write access to the account and system
+administrators; redirect logs to its private directory. Inspect an existing
+task before replacing anything, and never store a password in the wrapper.
+S4U does **not** provide Windows network credentials or access to encrypted
+files; credential-store-dependent providers need their own qualification.
+Keep the wrapper's executable, working directory and Node dependency (if any)
+valid across updates. Stop or disable this custom task before installing an
+official task for the same instance, so two supervisors cannot compete.
+
+On 2026-10-30, the nightly archive was installed on a Windows host over SSH and
+an operator-managed S4U task running `service run` remained healthy after SSH
+disconnect and reconnect. Tailnet handshake and authenticated peer reads were
+also exercised. This establishes session independence, not reboot recovery or
+provider execution; those require separate checks.
 
 Reachability remains separate from authentication. Inspect the service's actual
 bind address and port, then qualify the intended route from another Device.
@@ -623,6 +662,11 @@ opening a port does not pair the Device. The versioned public handshake can
 confirm an answering Station, while a protected request without credentials is
 expected to be refused. A failed `curl` transport/status `000` can mean DNS,
 TLS, refusal, timeout or routing failure; it is not a unique firewall diagnosis.
+For Tailscale Serve, also allow the exact published HTTPS origin in the
+supervisor startup arguments. A reachable handshake without an Origin header
+does not prove that a browser's pairing request will pass Origin admission.
+Keep other applications' Serve listeners intact; use another HTTPS port when
+the default listener belongs to another service.
 
 Do not replace an existing managed registration or remove a firewall rule by a
 generic display name. Use the exact instance/registration owner and current

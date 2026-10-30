@@ -846,6 +846,14 @@ instructs clients to replay a failed or indeterminate action automatically.
 false until that condition changes. Generic failures stay `provider_error`
 unless structured engine evidence supports a narrower kind.
 
+Two startup diagnostics carry fixed, sanitized guidance rather than raw engine
+output. `sandbox_unavailable` maps an explicit Codex bubblewrap user-namespace
+permission denial to `permission_denied`. `provider_model_unavailable` maps
+Claude's explicit HTTP 400 unknown-provider-model response to
+`model_unavailable`; it does not infer quota exhaustion. Neither is retryable
+without correcting the prerequisite. These diagnostics can arrive before a
+session-start receipt, so a failed launch need not produce a normal task handle.
+
 The fixed retryable kinds are `busy` (wait for the competing operation),
 `rate_limited` (respect the reported delay), `timeout`, `engine_crashed` and
 `unavailable` (session startup failed; a manual attempt may start it again).
@@ -951,6 +959,8 @@ No existing diagnostic code is renamed or removed.
 | `session-reattach-conflict` | `conflict` | `false` |
 | `transcript-line-skipped` | `warning` | `false` |
 | `workload-command-oom-killed` | `warning` | `false` |
+| `sandbox_unavailable` | `permission_denied` | `false` |
+| `provider_model_unavailable` | `model_unavailable` | `false` |
 
 The [source inventory guard](../../scripts/__tests__/provider-failure-inventory.test.ts)
 recursively discovers string `*_CODE` declarations and string-literal `code` class

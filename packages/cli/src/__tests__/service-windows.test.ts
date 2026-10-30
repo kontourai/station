@@ -422,6 +422,33 @@ describe('Windows Task Scheduler service backend', () => {
     });
   });
 
+  test('explains a scheduler start refusal when no interactive user is logged in', () => {
+    const registration = windowsRegistration('agent', lifecycle('C:\\Station'));
+    const run = vi.fn((command: string, args: string[]) => {
+      if (isWindowsUtility(command, 'whoami')) return whoamiIdentity();
+      if (args[0] === '/Query')
+        return { status: 0, stdout: taskXml(registration.unitPath) };
+      if (isWindowsUtility(command, 'powershell')) {
+        return {
+          status: 0,
+          stdout: powerShellProgram(args).includes('Get-ScheduledTaskInfo')
+            ? '3|2147750688\n'
+            : '3\n',
+        };
+      }
+      return { status: 0 };
+    });
+    expect(() =>
+      startWindowsService(registration, {
+        fs: windowsFs(),
+        run,
+        sleep: vi.fn(),
+      }),
+    ).toThrow(
+      /LastTaskResult=0x80041320.*sign into Windows.*SSH login alone/su,
+    );
+  });
+
   test('waits boundedly for a newly started task to report Running', () => {
     const fs = windowsFs();
     const baseDir = `\\tmp\\station-win-delayed-${process.pid}`;

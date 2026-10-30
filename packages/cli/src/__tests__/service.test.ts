@@ -1638,6 +1638,30 @@ describe('station service dispatch', () => {
     log.mockRestore();
   });
 
+  test('reports an absent Windows task without probing its nonexistent scheduling settings', async () => {
+    const { runServiceCommand } = await import('../commands/service.js');
+    const baseDir = makeTempDir('station-service-test-');
+    windowsServiceStatus.mockReturnValue({
+      active: false,
+      enabled: false,
+      present: false,
+      error: null,
+    });
+    const run = vi.fn(() => ({ status: 1, stderr: '#< CLIXML missing task' }));
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await runServiceCommand(['status', '--json'], lifecycle(baseDir), {
+      platform: 'win32',
+      run,
+    });
+    const status = JSON.parse(String(log.mock.calls.at(-1)?.[0]));
+    expect(status.scheduling).toMatchObject({
+      status: 'unknown',
+      reason: 'Station Task Scheduler task is not installed',
+    });
+    expect(status.installed).toBe(false);
+    expect(run).not.toHaveBeenCalled();
+  });
+
   test('fails closed when scheduling policy cannot be read', async () => {
     const { runServiceCommand } = await import('../commands/service.js');
     const baseDir = makeTempDir('station-service-test-');
