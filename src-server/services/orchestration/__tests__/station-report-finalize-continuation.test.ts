@@ -84,6 +84,7 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
     const refuse = (): never => {
       throw Error('unexpected execution');
     };
+    const retentionFails = true;
     const controller = createDelegationRoundsController({
       store: persistence.roundsStore(current),
       authorityService: authority,
@@ -96,8 +97,13 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
         retainObservation: async () => refuse(),
         confirmTerminal: async () => refuse(),
         requestDescendantCancellation: async () => refuse(),
-        retainContinuation: async () => {
-          throw Error('injected receipt retention outage');
+        retainContinuation: async (spec, receipt) => {
+          if (retentionFails) throw Error('injected receipt retention outage');
+          return persistence.retainReportContinuation(
+            spec.groupId,
+            receipt,
+            current,
+          );
         },
         flow: {
           executionHost: refuse,
@@ -183,7 +189,6 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
     const held = await controller.get(groupId);
     const flowAfterLoss = await loadRun(flow.runId, h.f.repo);
     const authorityBefore = await authority.inspect(prepared.root.authority_id);
-    h.owner.close(handle);
     let callbackReached!: () => void, releaseCallback!: () => void;
     let durableReached!: () => void, releaseDurable!: () => void;
     const callbackReady = new Promise<void>((resolve) => {
@@ -297,6 +302,72 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
       (await h.custody.inspect(h.f.context(requestFor(h)), groupId))?.authority
         ?.invocations,
       authorityBefore.invocations,
+    );
+    const reappraised = await loadRun(flow.runId, h.f.repo);
+    const retryCheckpoint = await persistence.retainReportContext(
+      groupId,
+      'retry checkpoint',
+      current,
+    );
+    const retry = {
+      kind: 'authorizeRetry' as const,
+      groupId,
+      operationKey: 'lost-retry',
+      expectedRevision: finalized.group.revision,
+      controller: prepared.spec.controller,
+      checkpoint: retryCheckpoint,
+      flowHead: flowRunHead(reappraised.state),
+      reappraisalKey: 'lost',
+      request: {
+        reason: 'Controlled retry authorization',
+        target_step: 'first',
+        blocked_transition_ref: flowTransitionRef(
+          reappraised.state.transitions.at(-1),
+        ),
+        expected_run_head: flowRunHead(reappraised.state),
+        authority: {
+          kind: 'operator_request' as const,
+          actor: 'fixture-operator',
+          request_ref: 'fixture:retry',
+          requested_at: new Date(Date.now()).toISOString(),
+        },
+      },
+    };
+    await assert.rejects(
+      controller.authorizeRetry(retry),
+      /injected receipt retention outage/,
+    );
+    const retryHeld = await controller.get(groupId);
+    const retryFlow = await loadRun(flow.runId, h.f.repo);
+    const retryCommand = {
+      operationKey: 'finish-retry',
+      expectedRevision: retryHeld.revision,
+      continuationOperationKey: retry.operationKey,
+    };
+    h.owner.close(handle);
+    const retryFinalized = await h.custody.finalizeContinuation(
+      h.f.context(requestFor(h, 'POST')),
+      groupId,
+      retryCommand,
+      dispatch,
+      h.f.owner,
+      participant,
+      (historical) => historical.group,
+    );
+    assert.equal(retryFinalized.result.replayed, false);
+    const retryReplay = await h.custody.finalizeContinuation(
+      h.f.context(requestFor(h, 'POST')),
+      groupId,
+      retryCommand,
+      dispatch,
+      h.f.owner,
+      participant,
+      (historical) => historical.group,
+    );
+    assert.equal(retryReplay.result.replayed, true);
+    assert.equal(
+      flowRunHead((await loadRun(flow.runId, h.f.repo)).state),
+      flowRunHead(retryFlow.state),
     );
     writeFileSync(winnerPath, '{}');
     try {
