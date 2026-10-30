@@ -1012,6 +1012,22 @@ describe('Orchestration Routes', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
+    const foreign = createOrchestrationRoutes(service, {
+      eventBus,
+      logger: { debug: vi.fn() },
+      getUserId: () => 'another-user',
+      isRequestPrincipalCurrent: () => true,
+    });
+    expect(
+      (
+        await foreign.request('/commands', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...command, clientInputId: 'foreign-key' }),
+        })
+      ).status,
+    ).toBe(404);
+    expect(adapter.steerChildWork).not.toHaveBeenCalled();
     expect(await (await send(command)).json()).toMatchObject({
       success: true,
       data: { outcome: 'steered', childId: 'child', turnId: 'child-turn' },
