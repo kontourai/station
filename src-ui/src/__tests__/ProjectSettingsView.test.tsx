@@ -13,6 +13,7 @@ import type {
   useIntegrationsQuery,
   useKnowledgeRootsQuery,
 } from '@kontourai/station-sdk';
+import { StationHttpError } from '@kontourai/station-sdk/client';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -889,6 +890,23 @@ describe('ProjectSettingsView (#250 shell port)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(sdkMocks.refetch).toHaveBeenCalledTimes(1);
+  });
+
+  test('a mixed account conflict explains recovery instead of treating the Device as disconnected', () => {
+    sdkMocks.project = undefined;
+    sdkMocks.isLoading = false;
+    sdkMocks.isError = true;
+    sdkMocks.error = new StationHttpError(403, 'conflict', {
+      code: 'account_identity_conflict',
+    });
+    renderProjectSettings();
+    expect(
+      screen.getByText(/This browser is signed in to a Station account/),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Sign out of account' }),
+    ).toBeTruthy();
+    expect(screen.queryByLabelText('Loading project')).toBeNull();
   });
 
   test('preserves save payload behavior and clears dirty state on success', async () => {

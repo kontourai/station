@@ -197,6 +197,52 @@ describe('Project access administration UI through SDK queries and mutations', (
     expect(screen.queryByDisplayValue('private@example.test')).toBeNull();
   });
 
+  test('an identity conflict preserves the Device and offers account-only sign-out', async () => {
+    let signedIn = true;
+    const logout = vi.fn();
+    vi.mocked(fetch).mockImplementation(async (url, init) => {
+      if (String(url).endsWith('/api/account-auth/sign-out')) {
+        logout();
+        signedIn = false;
+        return Response.json({ success: true });
+      }
+      if (init?.method === 'POST' && signedIn)
+        return Response.json(
+          { error: { code: 'account_identity_conflict' } },
+          { status: 403 },
+        );
+      return reply(view());
+    });
+    mount();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Create invitation' }),
+    );
+    expect(
+      await screen.findByText(/This browser is signed in to a Station account/),
+    ).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Sign out of account' }),
+    );
+    await waitFor(() => expect(logout).toHaveBeenCalledOnce());
+    expect(await screen.findByText('Collaborator')).toBeTruthy();
+  });
+
+  test('a conflict on the access read offers account sign-out instead of enabling sharing', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      Response.json(
+        { error: { code: 'account_identity_conflict' } },
+        { status: 403 },
+      ),
+    );
+    mount();
+    expect(
+      await screen.findByRole('button', { name: 'Sign out of account' }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('button', { name: 'Enable Project sharing' }),
+    ).toBeNull();
+  });
+
   test('sharing off for a caller who can enable it is a neutral state with the Enable action (#4302)', async () => {
     const writes: string[] = [];
     vi.mocked(fetch).mockImplementation(async (url, init) => {
@@ -305,7 +351,11 @@ describe('Project access administration UI through SDK queries and mutations', (
 
 describe('enabling sharing with an operator passkey step-up (#4306)', () => {
   const REVIEW = 'https://station.example.test:8443/consent/tx-1';
-  function route(enablement: Response | (() => Response), statuses: string[]) {
+  function route(
+    enablement: Response | (() => Response),
+    statuses: string[],
+    enableResponse?: Response,
+  ) {
     let shared = false;
     const calls: string[] = [];
     vi.mocked(fetch).mockImplementation(async (input, init) => {
@@ -324,12 +374,15 @@ describe('enabling sharing with an operator passkey step-up (#4306)', () => {
               { status: 403 },
             );
       if (url.pathname === '/api/projects/example/access/enable')
-        return Response.json(
-          {
-            status: 'step_up_required',
-            transaction: { id: 'tx-1', reviewUrl: REVIEW, expiresAt: 1 },
-          },
-          { status: 202 },
+        return (
+          enableResponse?.clone() ??
+          Response.json(
+            {
+              status: 'step_up_required',
+              transaction: { id: 'tx-1', reviewUrl: REVIEW, expiresAt: 1 },
+            },
+            { status: 202 },
+          )
         );
       if (url.pathname === '/api/pairing/device-access-transactions/tx-1') {
         const status = statuses.shift() ?? 'pending';
@@ -365,6 +418,32 @@ describe('enabling sharing with an operator passkey step-up (#4306)', () => {
     ).toBeTruthy();
     expect(calls).toContain('GET /api/pairing/device-access-transactions/tx-1');
   }, 10_000);
+
+  test('identity conflict closes the pre-opened review and offers account recovery', async () => {
+    route(
+      reply({ enable: 'operator-passkey' }),
+      [],
+      Response.json(
+        { error: { code: 'account_identity_conflict' } },
+        { status: 403 },
+      ),
+    );
+    const close = vi.fn();
+    const replace = vi.fn();
+    vi.stubGlobal(
+      'open',
+      vi.fn(() => ({ location: { replace }, close })),
+    );
+    mount();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Enable Project sharing' }),
+    );
+    expect(
+      await screen.findByRole('button', { name: 'Sign out of account' }),
+    ).toBeTruthy();
+    expect(close).toHaveBeenCalledOnce();
+    expect(replace).not.toHaveBeenCalled();
+  });
 
   test('a cancelled review says nothing was applied', async () => {
     route(reply({ enable: 'operator-passkey' }), ['denied']);

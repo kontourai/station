@@ -13,6 +13,10 @@ import {
 } from '@kontourai/station-sdk/project-access';
 import { useQuery } from '@tanstack/react-query';
 import { type ReactNode, useEffect, useState } from 'react';
+import {
+  AccountIdentityConflict,
+  isAccountIdentityConflict,
+} from '../../components/AccountIdentityConflict';
 import { Button } from '../../components/Button';
 import { PageSection } from '../../components/PageSection';
 import { Empty, ErrorState, SkeletonList } from '../../components/state';
@@ -118,6 +122,7 @@ function AccessPanel({
     if (reviewOutcome === 'approved') void query.refetch();
     else setEnableError(STEP_UP_OUTCOMES[reviewOutcome]);
   }, [reviewOutcome, query.refetch]);
+  const [identityConflict, setIdentityConflict] = useState(false);
 
   async function enable() {
     setEnableError(undefined);
@@ -136,18 +141,36 @@ function AccessPanel({
       setReview(result.transaction);
     } catch (cause) {
       reviewWindow?.close();
-      setEnableError(
-        projectAccessErrorMessage(cause, ENABLE_SHARING_FORBIDDEN),
-      );
+      if (isAccountIdentityConflict(cause)) setIdentityConflict(true);
+      else
+        setEnableError(
+          projectAccessErrorMessage(cause, ENABLE_SHARING_FORBIDDEN),
+        );
     }
   }
 
   async function apply(command: ProjectAccessCommand) {
-    return change(command);
+    try {
+      return await change(command);
+    } catch (cause) {
+      if (isAccountIdentityConflict(cause)) setIdentityConflict(true);
+      throw cause;
+    }
   }
 
   if (!authority) {
     return <p>Connect to this Station to manage access.</p>;
+  }
+  if (identityConflict || isAccountIdentityConflict(query.error)) {
+    return (
+      <AccountIdentityConflict
+        apiBase={authority.apiBase}
+        onRecovered={() => {
+          setIdentityConflict(false);
+          void query.refetch();
+        }}
+      />
+    );
   }
   if (query.isPending) {
     return <SkeletonList count={2} />;
