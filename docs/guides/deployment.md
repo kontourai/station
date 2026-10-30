@@ -500,6 +500,10 @@ also rewrite the corresponding session, event, cursor, or related store state.
 Whole-store authenticated integrity with key authority outside that writer is
 follow-up scope.
 
+The GitHub automation observation preview is not offered in hosted mode, and
+`/automations/deliveries` refuses hosted reads because its shared ledger has no
+tenant binding.
+
 Until their storage gains a durable tenant binding, hosted mode suppresses the
 entire `/scheduler` API (including its reads, SSE, webhook, and mutations) and
 the unbound `/api/tasks` task graph. File-memory conversation inventory,
@@ -736,9 +740,11 @@ hostnames, so a different name fails closed with `unauthenticated`. Unset, the
 behavior is unchanged. The origin is never added to `ALLOWED_ORIGINS`.
 
 With this origin set, a paired browser can enroll an operator passkey and sign
-in for read-only device inventory access; see [Operator passkeys](operator-passkeys.md).
-The host-scoped session cookie also reaches the same-host app origin; it grants
-only the three documented reads. No passkey ceremony runs on the app origin.
+in; see [Operator passkeys](operator-passkeys.md). The host-scoped session
+cookie also reaches the same-host app origin. It admits the documented reads
+and requests for per-action review; a fresh passkey confirmation on the consent
+origin is required before a reviewed change commits. No passkey ceremony runs
+on the app origin.
 
 #### Troubleshooting the pairing path
 

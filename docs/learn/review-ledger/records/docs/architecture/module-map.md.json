@@ -1456,7 +1456,13 @@
 
     "scripts/lib/heavy-check-slots.mjs",
 
-    "patches/modelcontextprotocol-client-2.4.0.patch"
+    "patches/modelcontextprotocol-client-2.4.0.patch",
+
+    "src-server/services/automation/github-poll.ts",
+
+    "src-server/services/automation/automation-intake.ts",
+
+    "src-server/services/automation/github-workflow-run.ts"
   ],
 
   "checks": [

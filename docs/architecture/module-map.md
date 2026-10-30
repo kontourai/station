@@ -113,7 +113,7 @@ and where to start reading; it is a pointer, not a reviewed interface contract.
 | Directory | What it owns | Read next |
 | --- | --- | --- |
 | `src-server/services/access/` | Station groups, personal access tokens, and the principal a paired device is tied to (#3557) | [Principals](../design/principals.md) |
-| `src-server/services/automation/` | Foundation only: config validation, store and a delivery ledger for Station Automations. No route or runtime wiring calls it yet (#3439) | [Automations proposal](../design/automations.md) |
+| `src-server/services/automation/` | Default-off observe-only GitHub intake, atomic delivery/episode storage and management-scoped delivery history; action dispatch remains pending (#3439) | [Automations proposal](../design/automations.md) |
 | `src-server/services/board/` | The Board store for one Task or Session (tabs and ordinal widgets; contract in `packages/contracts/src/board.ts`), behind `src-server/routes/board.ts`, which authorizes the owning reference before any store read | Source |
 | `src-server/services/chat-apps/` | Messaging bindings, identity links, kill switches and delivery receipts in the orchestration database; Discord imports its legacy authority once. Live Discord validation remains outstanding. | [Messaging core](../../src-server/services/chat-apps/chat-app-core.ts) |
 | `src-server/services/config/` | The idempotent log-level edit with retained terminal receipts | [Logging configuration](../reference/config.md#logging) |
@@ -233,14 +233,15 @@ behind `station environment operator passkeys`. The
 [session service](../../src-server/services/identity/operator-sessions.ts) verifies
 single-use sign-in assertions on the [consent origin](../../src-server/runtime/consent/operator-sign-in-routes.ts)
 and stores hashed, device-bound sessions in that same private registry. The HTTP
-boundary admits exact session read leaves and per-action access-change requests.
+boundary admits exact session read leaves, including pending pairing requests,
+and per-action access-change requests.
 Those writes return 202 without mutation. The
 [consent store](../../src-server/services/consent/consent-transactions.ts) owns the
 single-use transaction and target fingerprint; the separate consent listener
 requires a UV passkey assertion from its owning session before commit. Cancel
 uses that session and the render nonce on the consent origin to record terminal
-denial without a passkey; it cannot commit. Device
-scope/revoke/removal, people groups, personal tokens and different-passkey
+denial without a passkey; it cannot commit. Ordinary Device pairing approval,
+Device scope/revoke/removal, people groups, personal tokens and different-passkey
 revocation share this boundary. Token secrets appear once in the commit response,
 never in transaction reads. Server-side idle/absolute expiry and live pairing,
 passkey and credential-rotation checks remain enforced; step-up and its status
@@ -2304,8 +2305,41 @@ captures reject before sender construction. These source boundaries need
 executed interleaving controls; they do not establish generic embedded-runtime
 service cleanup after a late startup failure.
 
+`IntegrationSecretResolver.resolveOAuthClientSecret` materializes one remote
+integration's OAuth client secret for its token requests. It requires an exact
+`mcp-integration-oauth-client` grant for that integration on a non-revoked
+instance binding; environment grants confer none. The integration records only
+the binding id at `oauthClient.clientSecretRef`, written by
+`SecretBindingIntegrationService.bindOAuthClientSecret` (grant first) and
+removed by `unbindOAuthClientSecret` (reference first). Binding requires the integration's declared
+`oauthClient.issuer`; the provider never presents the secret to another issuer. The grant
+records the `issuer`, the resource identity and the integration's instance id
+(`.station-instance`, created by `writeIntegrationConfigLocked` on first write
+and removed with the integration directory) at binding.
+`resolveOAuthClientSecret` reads the current instance id itself and releases
+the secret only for that triple. The provider resolves it at every token
+request and never caches it in a consent flow. A definition rewritten by any
+path cannot redirect the secret, and an integration deleted and recreated
+under the same tuple cannot reuse its grant, so grants are not tied to the
+delete paths. A leftover grant stays visible as binding metadata until
+unbound. Without a declared issuer, `claimIntegrationOAuthIssuerPin` records
+the authorization server of the first completed consent for the resource
+(`.station-oauth-issuer`, under the integration lock); the provider then
+refuses any other issuer before registration or redirect. Unbind
+removes every client-secret grant the binding holds for the integration. The
+issuer/endpoint pin and the no-foreign-reference rule
+(`assertToolOAuthClientWritable` in [the tool contract](../../packages/contracts/src/tool.ts))
+run in `writeIntegrationConfigLocked`, the writer behind
+`ConfigLoader.saveIntegration`/`updateIntegration` and `saveIntegrationConfig`.
+`assertPluginIntegrationsWritable` runs before `copyPluginIntegrations`, which
+copies bundles without that writer. The CLI portability import also calls the
+check. Plugin backup restores put back bytes that were already on disk. The secret is never
+cached or written to the credential store; see
+[Use your own OAuth client](../guides/connections.md#use-your-own-oauth-client).
+
 The v1 document retains legacy records unchanged and adds optional
-`telemetryDestinationGrants` only when a telemetry grant is written. Older
+`telemetryDestinationGrants` only when a telemetry grant is written, and
+`oauthClientGrants` only when an OAuth client-secret grant is written. Older
 strict readers reject that new property; an upgrade/rollback must preserve and
 restore a compatible binding document, never delete grants to bypass admission.
 
@@ -4271,6 +4305,19 @@ Task and dispatch it with explicit Project/Agent identity and monitor limits.
 Missing authority or exhausted budget does not fall through to the ordinary
 model-turn adapter. This path is not proof that an arbitrary external source
 or provider is available.
+
+Automation `github-poll` sources (epic #3439) ride the same tick without a
+timer of their own: [BuiltinScheduler](../../src-server/services/scheduling/builtin-scheduler.ts)
+calls the [GitHub poller](../../src-server/services/automation/github-poll.ts)
+single-flight on each tick, and `stop()` aborts, awaits and closes it. The
+poller enforces each source's `pollIntervalMs` from the
+[Automation ledger](../../src-server/services/automation/automation-ledger.ts)'s
+poll state, lists completed workflow runs through the external monitor's REST
+transport and secret-binding credential path, and records each run through the
+[normalizer](../../src-server/services/automation/github-workflow-run.ts) and
+[intake](../../src-server/services/automation/automation-intake.ts) as matched,
+no-match, refused or duplicate, opening and closing episodes. It starts
+nothing yet: no Task, turn or action claim.
 
 [Ledger tests](../../src-server/services/scheduling/__tests__/scheduler-ledger.test.ts),
 [execution tests](../../src-server/services/scheduling/__tests__/builtin-scheduler-execution.test.ts),

@@ -1,7 +1,10 @@
 import './TaskChatStart.css';
 import type { ProjectRunLocations } from '@kontourai/station-contracts/project';
 import type { InstalledSkillExperienceV1 } from '@kontourai/station-contracts/skill-experience';
-import { useSkillExperienceInventoryQuery } from '@kontourai/station-sdk';
+import {
+  type DelegatedTaskHandle,
+  useSkillExperienceInventoryQuery,
+} from '@kontourai/station-sdk';
 import {
   sameSkillExperienceIdentity,
   skillExperienceInputDefaults,
@@ -188,7 +191,8 @@ interface NewChatModalProps {
     approvalMode?: ApprovalMode,
   ) => void | Promise<void>;
   onClose: () => void;
-  onTaskStarted?: () => void;
+  /** A remote start's task was accepted on `stationName`. */
+  onTaskStarted?: (task: DelegatedTaskHandle, stationName: string) => void;
   draftContext?: CodingChatContextDraft | null;
   mode?: NewChatModalMode;
   requestAuthority?: NewChatSetupAuthority;
@@ -315,7 +319,6 @@ export function NewChatModal({
   const startVoice = useStartDictation((text) =>
     setPrompt((current) => appendDictation(current, text)),
   );
-  const [taskNotice, setTaskNotice] = useState<string | null>(null);
   const reportDraft = useEffectEvent((text: string) => onDraftChange?.(text));
   useEffect(() => {
     reportDraft(prompt);
@@ -344,7 +347,7 @@ export function NewChatModal({
   const showStart = composerFirst && !automaticMode;
   // Which chip menu is open, and the control that opened it.
   const [chipMenu, setChipMenu] = useState<{
-    kind: 'agents' | 'project' | 'model';
+    kind: 'agents' | 'project' | 'model' | 'station';
     trigger: HTMLElement | null;
     agentSlug?: string;
   } | null>(null);
@@ -1850,54 +1853,29 @@ export function NewChatModal({
             }
             stationControl={
               <StartStationControl
-                prompt={prompt}
-                projectSlug={viewModel.selectedProject?.slug}
-                projectName={viewModel.selectedProject?.name}
-                defaultEnvironment={
-                  viewModel.selectedProject?.defaultEnvironment
-                }
-                agentSlug={draftAgent?.slug}
-                executionAgentId={
-                  draftAgent
-                    ? start.modelChoiceFor(draftAgent)?.executionAgentId
-                    : undefined
-                }
-                expectedDefinitionFingerprint={
-                  draftAgent
-                    ? start.modelChoiceFor(draftAgent)
-                        ?.expectedDefinitionFingerprint
-                    : undefined
-                }
                 environmentId={
                   draftAgent
                     ? start.modelChoiceFor(draftAgent)?.environmentId
                     : undefined
                 }
-                providerOptions={
-                  draftAgent
-                    ? start.modelChoiceFor(draftAgent)?.providerOptions
-                    : undefined
+                defaultEnvironment={
+                  viewModel.selectedProject?.defaultEnvironment
                 }
-                model={
-                  draftAgent
-                    ? start.modelChoiceFor(draftAgent)?.modelId
-                    : undefined
-                }
+                canChoose={Boolean(draftAgent)}
+                projectSelected={Boolean(viewModel.selectedProject)}
                 disabled={
                   submitting ||
                   Boolean(experience) ||
                   Boolean(draftContext) ||
                   !selectedContextResolved
                 }
-                onPromptChange={setPrompt}
-                onStarted={(_task, station, sentPrompt) => {
-                  setPrompt((current) =>
-                    current === sentPrompt ? '' : current,
-                  );
-                  setTaskNotice(
-                    `Task started on ${station}. Open Activity to follow its progress.`,
-                  );
-                }}
+                onOpen={(trigger) =>
+                  setChipMenu({
+                    kind: 'station',
+                    trigger,
+                    agentSlug: draftAgent?.slug,
+                  })
+                }
               />
             }
             onOpenAgents={(trigger) => {
@@ -1962,7 +1940,6 @@ export function NewChatModal({
                 : undefined
             }
           >
-            {taskNotice && <p role="status">{taskNotice}</p>}
             {visualSkillsEnabled && (skillsOpen || experience) && (
               <SkillExperiencePicker
                 query={experienceInventory}
@@ -2270,12 +2247,12 @@ export function NewChatModal({
               setRemoteLaunch(null);
               setShowChatOptions(true);
             }}
-            onDelegated={(_task, _target, placement) => {
+            onDelegated={(task, _target, placement) => {
               setRemoteLaunch(null);
               setPrompt((current) =>
                 current === placement.prompt ? '' : current,
               );
-              onTaskStarted?.();
+              onTaskStarted?.(task, placement.stationName);
             }}
           />
         </React.Suspense>

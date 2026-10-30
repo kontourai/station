@@ -165,7 +165,7 @@ export function reloadHeldHomeDraftsForTests() {
 }
 
 type ChipMenu = {
-  kind: 'agents' | 'project' | 'model';
+  kind: 'agents' | 'project' | 'model' | 'station';
   trigger: HTMLElement | null;
   agentSlug?: string;
 };
@@ -537,40 +537,21 @@ export function HomeStartComposer({
         }
         stationControl={
           <StartStationControl
-            prompt={prompt}
-            projectSlug={viewModel.selectedProject?.slug}
-            projectName={viewModel.selectedProject?.name}
-            defaultEnvironment={viewModel.selectedProject?.defaultEnvironment}
-            agentSlug={agent?.slug}
-            executionAgentId={
-              agent ? start.modelChoiceFor(agent)?.executionAgentId : undefined
-            }
-            expectedDefinitionFingerprint={
-              agent
-                ? start.modelChoiceFor(agent)?.expectedDefinitionFingerprint
-                : undefined
-            }
             environmentId={
               agent ? start.modelChoiceFor(agent)?.environmentId : undefined
             }
-            providerOptions={
-              agent ? start.modelChoiceFor(agent)?.providerOptions : undefined
-            }
-            model={agent ? start.modelChoiceFor(agent)?.modelId : undefined}
+            defaultEnvironment={viewModel.selectedProject?.defaultEnvironment}
+            canChoose={Boolean(agent)}
+            projectSelected={Boolean(viewModel.selectedProject)}
             disabled={
               pending ||
               contextPending ||
               fixedProjectMissing ||
               !selectedContextResolved
             }
-            onPromptChange={setPrompt}
-            onStarted={(_task, station, sentPrompt) => {
-              clearSent(sentPrompt);
-              setNotice({
-                text: `Task started on ${station}. Open Activity to follow its progress.`,
-                tone: 'status',
-              });
-            }}
+            onOpen={(trigger) =>
+              setMenu({ kind: 'station', trigger, agentSlug: agent?.slug })
+            }
           />
         }
         projectFixed={Boolean(projectSlug)}

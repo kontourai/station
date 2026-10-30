@@ -1,6 +1,7 @@
 import type { PersistedChatAttachment } from './chat-attachment.js';
 import type { ChatHostImageSource } from './chat-host-images.js';
 import type { ChildWorkDelta } from './child-work.js';
+import type { ClaudeArtifactLink } from './claude-artifact.js';
 import type { ClientOrigin } from './client-origin.js';
 import type { HtmlReplyReference } from './html-reply.js';
 import type { PrincipalRef } from './principal.js';
@@ -674,6 +675,12 @@ export interface ToolOutputReceipt {
 export interface ToolCompletedEvent extends CanonicalRuntimeEventBase {
   /** Bounded page display reference retained independently of output excerpts. */
   htmlReply?: HtmlReplyReference;
+  /**
+   * The claude.ai page a Claude Code `Artifact` publish produced, read by
+   * the Claude adapter from the tool's structured output (never its text)
+   * and admitted only as an https://claude.ai URL. See `claude-artifact.ts`.
+   */
+  claudeArtifact?: ClaudeArtifactLink;
   /**
    * A station-control tool's refusal, read from its whole result before a
    * history window cut it to an excerpt (which no longer parses). Bounded;

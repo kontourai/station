@@ -598,7 +598,9 @@ access to this Station**. Station creates a rate-limited, five-minute request
 for that same origin without asking for a URL, camera, code, or operator
 credential. An already trusted session must approve the displayed device name
 and scope or explicitly deny the request; the requesting browser cannot decide
-either outcome itself. The host inbox shows the remaining lifetime and removes
+either outcome itself. At exchange, Station may add a numeric suffix if a
+Device in a different authority domain has reserved or claimed that name; the
+approval still addresses the request ID. The host inbox shows the remaining lifetime and removes
 expired requests automatically. It distinguishes same-origin requests from
 pairing-code requests. A deployment with the explicit Tailscale Serve identity
 adapter also labels a request with the verified tailnet account returned by
@@ -730,6 +732,9 @@ origin commits it. The panel opens that review and polls its server-owned status
 without a credential paste field or a reusable step-up window. **Cancel** on the
 review records terminal denial, and the panel shows **Cancelled**. See
 [Operator passkeys](../guides/operator-passkeys.md).
+An operator session can also request a passkey review for an ordinary Device
+pairing approval. The review binds the pending request and selected scope;
+the request stays pending until confirmation.
 A device explicitly granted `access:approve` can list and decide pending requests (a
 device tied to a person only while that person's Station group is Admin); that
 does not grant device-inventory or offer-management access. The native desktop's local grant, minted using proof of Station-home possession, can manage pairing within its current scope. A host-browser `ui-bootstrap` grant has only the exact Device-administration leaves described above; it does not gain the native desktop consent broker's `local-grant` authority.

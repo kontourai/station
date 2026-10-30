@@ -139,6 +139,55 @@ describe('fetchConversationById distinguishes a miss from a failure', () => {
   });
 });
 
+describe('conversation-open callerAccess', () => {
+  const unavailable = (callerAccess?: unknown) => ({
+    status: 'unavailable',
+    canContinue: false,
+    recoveryActions: ['retry', 'start-new'],
+    conversation: { id: 'c', title: 'Cool', agentSlug: 'codex' },
+    transcript: { available: false, owner: 'runtime' },
+    answerability: { answerable: true },
+    ...(callerAccess === undefined ? {} : { callerAccess }),
+  });
+  const respond = (data: unknown) =>
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ success: true, data }), {
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
+    );
+
+  test('passes the server-reported access through and tolerates its absence', async () => {
+    _setApiBase('https://station.example.test');
+    respond(unavailable({ continue: false, startChat: true }));
+    await expect(resolveConversationOpen('c')).resolves.toMatchObject({
+      callerAccess: { continue: false, startChat: true },
+    });
+    // An older server omits it: still a valid resolution, access unknown.
+    respond(unavailable());
+    const resolution = await resolveConversationOpen('c');
+    expect(resolution.callerAccess).toBeUndefined();
+  });
+
+  test('rejects a malformed access value rather than reading it as unknown', async () => {
+    _setApiBase('https://station.example.test');
+    for (const callerAccess of [
+      { continue: 'yes', startChat: true },
+      { continue: true, startChat: 'yes' },
+      { continue: true },
+      null,
+    ]) {
+      respond(unavailable(callerAccess));
+      await expect(
+        resolveConversationOpen('c'),
+        JSON.stringify(callerAccess),
+      ).rejects.toMatchObject({ kind: 'invalid-response' });
+    }
+  });
+});
+
 describe('conversation intent summary normalization', () => {
   test('rejects hostile and unavailable conversation-open responses as typed failures', async () => {
     _setApiBase('https://station.example.test');

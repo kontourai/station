@@ -1452,11 +1452,49 @@ integration's shared `probe.authorization`. A successful first connection record
 the tool catalog Agents load that integration's tools from.
 
 `GET /integrations/:id/account[?projectSlug=]` returns the caller's own state:
-`{ownership, connectedAs, personal, project?, shared, catalogAvailable}`. It shows
+`{ownership, connectedAs, personal, project?, shared, catalogAvailable,
+rememberedScopes?}`. `rememberedScopes` is the caller's scope choice from
+their last completed sign-in for that account (empty: the server's own). It shows
 owner and availability only, never a token. `DELETE /integrations/:id/account`
 removes the caller's own credential; the next call that needs it refuses.
 
 MCP Apps reads and calls are not available yet for these integrations.
+
+### Remote OAuth client
+
+`POST /integrations/:id/oauth/authorize` also accepts optional `scopes`, the
+signing-in person's choice for that sign-in: at most 32 distinct OAuth scope
+tokens, or a 400. They replace the integration's `oauthClient.scopes` default,
+which replaces the scopes the server advertises; an empty list requests the
+advertised scopes. The choice also applies to a dynamic client registration.
+Nothing is written back.
+
+`oauthClient` on `POST`/`PUT /integrations` accepts `clientId`, `issuer` (an
+HTTPS issuer URL), `clientMetadataUrl` (HTTPS with a path) and `scopes`. It refuses
+`clientSecretRef`, which only `POST /api/secret-bindings/:id/bind` and `unbind`
+with `{kind: "mcp-integration-oauth-client", integrationId, expectedRevision}`
+write; that body accepts no other field. The read projection omits the binding
+id; `GET /api/secret-bindings/integrations/:id` returns it as
+`oauthClientSecretBindingId`. A `clientId` requires `issuer`, and so does
+binding a secret. Changing `clientId`, `issuer` or `clientMetadataUrl` clears
+the integration's tokens. While a secret is bound, the shared integration writer (the API, the
+settings, registry installs, required plugin tools and binding) refuses a
+change to the endpoint or `issuer`, and refuses a definition naming another
+binding. Plugin bundles are checked before copying, and the CLI import before
+writing. Registry, plugin and imported definitions never carry
+`clientSecretRef`. Independently, the client-secret grant records the
+`issuer`, the resource and the integration's server-created instance id at
+binding. At every token request the secret is released only for a definition
+matching all three, so a deleted and recreated integration needs a new
+binding. A declared `issuer` refuses any
+other authorization server before a secret is read, a client is registered
+or a person is redirected. Without a declared `issuer`, the first completed
+sign-in pins its authorization server for the resource (`.station-oauth-issuer`
+beside the definition, shared by every person), and later sign-ins naming
+another server are refused the same way. The callback's `iss` is checked per RFC 9207, and a
+callback with more than one `iss` returns 400. A server without client registration records
+`probe.authorization.state: "client-id-required"`. See
+[Use your own OAuth client](../guides/connections.md#use-your-own-oauth-client).
 
 ### Delete Integration
 
@@ -4653,6 +4691,25 @@ Use the [SDK scheduler client](../../packages/sdk/src/client/scheduler.ts),
 `station schedule`, or corresponding station-control tools for supported
 operator operations. SSE and webhook retain their separate HTTP transport roles.
 
+### Automation Deliveries
+
+`GET /automations/deliveries?limit=<1-200>` (default 50) returns
+`{success: true, data: {deliveries, polls}}`: the newest recorded Automation
+deliveries, newest first, as the [AutomationDeliveryRecord contract](../../packages/contracts/src/automation.ts)
+projection: hashed `deliveryKey`, `sourceId`, `semanticKey`, `eventType`,
+times, `outcome`, optional `reason`, and rule, episode, Task and session ids.
+No payload, secret or delivery GUID is returned. A `limit` outside 1–200 is
+refused with 400 rather than clamped, an unavailable ledger answers 503 with
+`code: "policy_unavailable"`, and hosted mode answers 404. The route
+([source](../../src-server/routes/operations/automations.ts)) needs the
+`access:manage` pairing scope and the enabled `github-automation-observations`
+Feature Preview. Disabled previews return 404 with `feature_preview_disabled`,
+`previewId` and `settingsPath`, before opening the ledger. The `polls` projection
+reports last-poll time, cursor and coverage/failure outcome; `partial` means the
+GitHub page omitted additional runs and did not advance the cursor. No `/automations` mutation is mounted or
+scope-classified yet. Use the [SDK client](../../packages/sdk/src/client/automations.ts)
+or `station automation deliveries`.
+
 ### Open File with System Handler
 
 The former `POST /scheduler/open` route is not registered. Scheduled output is
@@ -4971,6 +5028,15 @@ Project storage, then file-memory adapters, then the authorized orchestration
 reader. Hosted mode skips the two personal storage branches. File-memory Agent
 attribution comes from the stored resource ID, with the adapter key as fallback;
 response shape can also include Project and fork-provenance fields.
+
+`GET /api/conversations/:id/open` resolves a conversation before a client
+treats it as writable (the SDK's `resolveConversationOpen`). Its result may
+carry `callerAccess: {continue, startChat}`, computed for the requesting
+credential by the same boundary gate ingress applies, against
+`POST /api/orchestration/chat/:id/continue` and `POST /api/orchestration/chat`.
+A read-only paired device reads `{continue: false, startChat: false}`. The field
+is omitted when the request has no authenticated principal; clients treat that
+as unknown.
 
 `GET /api/conversations/:id/read?limit=&cursor=&aroundMessageId=` returns one
 page of a conversation's transcript: `{conversationId, access, notice,
@@ -5867,13 +5933,20 @@ nightly build, otherwise `npx @kontourai/station-cli@latest`).
 a non-empty subset of the request's scope, for an ordinary device request only
 (not a delegation, relay or account binding). Omitted, it keeps everything
 requested. Keeping `coding:exec` or `approval:full-access` needs the operator
-credential, a qualifying local-grant credential or that host-issued browser
-session; an `access:approve` Device or
+credential, a qualifying local-grant credential, that host-issued browser
+session, or an operator passkey session followed by per-action review; an `access:approve` Device or
 an unauthenticated approval is refused with 403
 `{ "error": "approval_requires_operator", "operatorCli": "…" }` and may approve
 the rest with them left out. Every such 403 carries `operatorCli`. A device
 pairing **Needs attention** item carries `requestedScope` for an ordinary,
 non-account-bound device request.
+
+A live operator passkey session approving an ordinary Device request receives
+202 `step_up_required` and a transaction review URL. No pairing approval is
+committed until a fresh passkey assertion on the consent origin. The request
+and kept scope are rechecked at commit; delegation, relay, and identity-binding
+requests cannot use this path. A refusal may include `signInUrl` when remote
+operator sign-in is configured.
 
 Sender-side Station peer enrollment is a separate operator-only workflow under
 `/api/environments/peers/enrollments`. Its safe status response never returns the
