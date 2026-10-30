@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import fs, { readFileSync, writeFileSync } from 'node:fs';
+import fs, { readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
 import { join } from 'node:path';
 import { FileAuthorizationLedger } from '@kontourai/dispatch';
@@ -482,6 +482,27 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
     } finally {
       writeFileSync(winnerPath, winnerBytes);
     }
+    unlinkSync(winnerPath);
+    try {
+      await assert.rejects(
+        h.custody.finalizeContinuation(
+          h.f.context(requestFor(h, 'POST')),
+          groupId,
+          {
+            operationKey: 'finish',
+            expectedRevision: held.revision,
+            continuationOperationKey: 'lost',
+          },
+          dispatch,
+          h.f.owner,
+          participant,
+          (historical) => historical.group,
+        ),
+        { code: 'rounds_continuation_winner_unavailable' },
+      );
+    } finally {
+      writeFileSync(winnerPath, winnerBytes);
+    }
     const locatorPath = join(
       h.f.store,
       `snapshot-${prepared.envelopes[0].execution_binding.source.source_admission_receipt.id}.json`,
@@ -506,6 +527,27 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
         { code: 'flow_location_unavailable' },
       );
       assert.deepEqual(readFileSync(winnerPath), winnerBytes);
+    } finally {
+      writeFileSync(locatorPath, locatorBytes);
+    }
+    unlinkSync(locatorPath);
+    try {
+      await assert.rejects(
+        h.custody.finalizeContinuation(
+          h.f.context(requestFor(h, 'POST')),
+          groupId,
+          {
+            operationKey: 'finish',
+            expectedRevision: held.revision,
+            continuationOperationKey: 'lost',
+          },
+          dispatch,
+          h.f.owner,
+          participant,
+          (historical) => historical.group,
+        ),
+        { code: 'flow_location_unavailable' },
+      );
     } finally {
       writeFileSync(locatorPath, locatorBytes);
     }
