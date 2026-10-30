@@ -11,12 +11,15 @@ import { ErrorState, Skeleton } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { openExternalLink } from '../../platform/openExternalLink';
 import { errorText } from '../../utils/errorText';
+import { ScopesField } from './ScopesField';
 
 /** The server resolves account ownership; this view never selects another person. */
 export function IntegrationAccountSection(props: {
   integrationId: string;
   projectSlug?: string;
   requireSave?: boolean;
+  /** The integration's default scopes; the person can change them here. */
+  defaultScopes?: string[];
 }) {
   const scope = useHostRequestAuthorityScope();
   if (!scope) return null;
@@ -27,6 +30,7 @@ export function IntegrationAccountSection(props: {
         scope.authorityKey,
         props.integrationId,
         props.projectSlug,
+        props.defaultScopes,
       ])}
       {...props}
       requestScope={scope}
@@ -39,11 +43,13 @@ function IntegrationAccountControls({
   projectSlug,
   requireSave = false,
   requestScope,
+  defaultScopes,
 }: {
   integrationId: string;
   projectSlug?: string;
   requireSave?: boolean;
   requestScope: ApiRequestScope;
+  defaultScopes?: string[];
 }) {
   const account = useIntegrationAccountQuery(
     integrationId,
@@ -57,6 +63,10 @@ function IntegrationAccountControls({
   const [callbackUrl, setCallbackUrl] = useState('');
   const [error, setError] = useState<string | null>(null);
   const callbackId = useId();
+  const scopesId = useId();
+  // Undefined until the person edits: then the choice remembered from their
+  // last completed sign-in, else the integration default.
+  const [edited, setEdited] = useState<string[] | undefined>();
   const pending = start.isPending || finish.isPending || disconnect.isPending;
   const input = { id: integrationId, projectSlug, requestScope };
 
@@ -65,7 +75,9 @@ function IntegrationAccountControls({
     setAuthorizationUrl(null);
     setCallbackUrl('');
     try {
-      const result = await start.mutateAsync(input);
+      // Always the person's explicit choice for this sign-in. An empty list
+      // means the server's own scopes, never the integration default.
+      const result = await start.mutateAsync({ ...input, scopes });
       setAuthorizationUrl(result.authorizationUrl);
     } catch (cause) {
       setError(errorText(cause));
@@ -98,6 +110,7 @@ function IntegrationAccountControls({
   }
 
   const status = account.data;
+  const scopes = edited ?? status?.rememberedScopes ?? defaultScopes ?? [];
   const sharedAccount = status?.ownership === 'instance';
   const ownAccountConnected = projectSlug
     ? status?.project?.connected
@@ -138,7 +151,17 @@ function IntegrationAccountControls({
         />
       ) : status ? (
         <>
-          <p role="status">{connectedLabel}</p>
+          <p role="status" className="integration-account__status">
+            {connectedLabel}
+          </p>
+          <ScopesField
+            id={scopesId}
+            label="Scopes"
+            hint="One per line. Access you grant at sign-in; empty uses the server's."
+            scopes={scopes}
+            disabled={pending}
+            onChange={setEdited}
+          />
           <Button onClick={() => void begin()} disabled={pending}>
             {start.isPending
               ? 'Preparing sign-in…'

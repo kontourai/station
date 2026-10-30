@@ -2212,6 +2212,191 @@ describe('project guest administration over the production composition', () => {
     ).toBe(200);
   });
 
+  test('access refusal rechecks enable route scope after account revalidation', async () => {
+    const h = await setup();
+    const project = await h.projectService.createProject({
+      name: 'Race',
+      slug: 'race',
+    });
+    const pairing = h.security.devicePairing;
+    const offer = pairing.createOffer({ endpoint: ORIGIN, scope: GUEST_GRANT });
+    const pending = pairing.requestPairing({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'Home operator',
+      requesterPosition: 'off-box',
+    });
+    pairing.confirmRequest(pending.requestId, { kind: 'local-grant' });
+    const device = pairing.exchange({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      requestId: pending.requestId,
+      locality: 'home-possession',
+      mintKind: 'local-grant',
+    });
+    const headers = h.guestHeaders(device.credential, 'fixture_account=owner');
+    const authenticate = h.authentication.service.authenticate.bind(
+      h.authentication.service,
+    );
+    let calls = 0;
+    const spy = vi
+      .spyOn(h.authentication.service, 'authenticate')
+      .mockImplementation(async (request) => {
+        const result = await authenticate(request);
+        if (
+          new URL(request.url).pathname === '/api/projects/race/access' &&
+          ++calls === 3
+        )
+          pairing.setDeviceScope(
+            device.device.id,
+            ['orchestration:read'],
+            operatorApproval,
+          );
+        return result;
+      });
+    let response: Response;
+    try {
+      response = await h.request('/api/projects/race/access', headers());
+    } finally {
+      spy.mockRestore();
+    }
+    expect(calls).toBe(3);
+    expect(response.status).toBe(403);
+    expect((await readJson<{ details: unknown }>(response)).details).toEqual({
+      sharing: 'undisclosed',
+      canEnable: false,
+    });
+    expect(h.security.resolveGrantedScope(device.credential)).toBe(
+      'orchestration:read',
+    );
+    const enable = await h.request(
+      '/api/projects/race/access/enable',
+      headers({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ localProjectId: project.id }),
+      }),
+    );
+    expect(enable.status).toBe(403);
+  });
+
+  test('a refused access read says sharing is off only to a caller who can enable it (#4302)', async () => {
+    const h = await setup();
+    const fresh = await h.projectService.createProject({
+      name: 'Fresh',
+      slug: 'fresh',
+    });
+    await h.shareWithGuestAdmin('shared', 'Shared');
+    const refusal = async (response: Response) => {
+      expect(response.status, await response.clone().text()).toBe(403);
+      const body = (await response.json()) as {
+        error: { code: string };
+        details?: unknown;
+      };
+      expect(body.error).toEqual({ code: 'project_access_forbidden' });
+      return body.details;
+    };
+
+    // The Station's own computer (operator credential): sharing is off and
+    // this caller can turn it on.
+    expect(
+      await refusal(
+        await h.request('/api/projects/fresh/access', h.ownerHeaders()),
+      ),
+    ).toEqual({ sharing: 'off', canEnable: true });
+
+    const pairing = h.security.devicePairing;
+    const offer = pairing.createOffer({
+      endpoint: ORIGIN,
+      scope: 'orchestration:read',
+    });
+    const pending = pairing.requestPairing({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'Home read only',
+      requesterPosition: 'off-box',
+    });
+    pairing.confirmRequest(pending.requestId, { kind: 'local-grant' });
+    const paired = pairing.exchange({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      requestId: pending.requestId,
+      locality: 'home-possession',
+      mintKind: 'local-grant',
+    });
+    const readOnly = h.guestHeaders(paired.credential, 'fixture_account=owner');
+    expect(
+      await refusal(await h.request('/api/projects/fresh/access', readOnly())),
+    ).toEqual({ sharing: 'undisclosed', canEnable: false });
+    expect(
+      (
+        await h.request(
+          '/api/projects/fresh/access/enable',
+          readOnly({
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ localProjectId: fresh.id }),
+          }),
+        )
+      ).status,
+    ).toBe(403);
+
+    // The owner's own account on a paired phone without home possession:
+    // told nothing about sharing, and told it cannot enable.
+    const { credential: phoneCredential } = h.pairAccountBound(
+      'owner-phone',
+      GUEST_GRANT,
+      'owner-person',
+    );
+    const phone = h.guestHeaders(phoneCredential, 'fixture_account=owner');
+    expect(
+      await refusal(await h.request('/api/projects/fresh/access', phone())),
+    ).toEqual({ sharing: 'undisclosed', canEnable: false });
+    // What the details promise holds: the same phone's enable is refused
+    // and commits nothing.
+    const enable = await h.request(
+      '/api/projects/fresh/access/enable',
+      phone({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ localProjectId: fresh.id }),
+      }),
+    );
+    expect(enable.status).toBe(403);
+    expect(
+      await refusal(
+        await h.request('/api/projects/fresh/access', h.ownerHeaders()),
+      ),
+    ).toEqual({ sharing: 'off', canEnable: true });
+
+    // A non-member account gets the same answer for a shared Project as for
+    // an unshared one, so the refusal doesn't reveal which is which.
+    const { credential: peerCredential } = h.pairAccountBound(
+      'peer-kiosk',
+      GUEST_GRANT,
+      PEER_SUBJECT,
+    );
+    const peer = h.guestHeaders(peerCredential, 'fixture_account=peer');
+    for (const slug of ['fresh', 'shared', 'missing'])
+      expect(
+        await refusal(await h.request(`/api/projects/${slug}/access`, peer())),
+      ).toEqual({ sharing: 'undisclosed', canEnable: false });
+
+    // After the operator enables, the same read is the administration view.
+    const enabled = await h.request(
+      '/api/projects/fresh/access/enable',
+      h.ownerHeaders({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ localProjectId: fresh.id }),
+      }),
+    );
+    expect(enabled.status, await enabled.clone().text()).toBe(200);
+    expect(
+      (await h.request('/api/projects/fresh/access', h.ownerHeaders())).status,
+    ).toBe(200);
+  });
+
   test('enable-sharing stays operator-only and generic project mutation stays banned', async () => {
     const h = await setup();
     const { guest } = await h.shareWithGuestAdmin('locked', 'Locked');

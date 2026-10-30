@@ -1,0 +1,7 @@
+{
+  "revision": "98c2c01a4c4486b099b00cc055e621bd9267a37d",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"#4302: contracts.md's project-membership row gained ProjectAccessRefusalDetails. Glossary entries on Project roles, Station groups and membership are unchanged and accurate; no prose change. Re-recorded after the earlier note's commit was amended.","inputs":["docs/glossary.md","docs/reference/contracts.md"]}
+  ]
+}

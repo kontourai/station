@@ -41,6 +41,7 @@ import {
 import * as ConversationManager from '../../runtime/conversation/conversation-manager.js';
 import type { StationControlDispatchScope } from '../../runtime/mcp/station-control-dispatch-scope.js';
 import type { RuntimeContext } from '../../runtime/types.js';
+import type { CurrentRuntimeRequestPrincipalSecurity } from '../../security/runtime-request-security.js';
 import { isPrincipalScopedAgentRequest } from '../../security/station-control-request-authority.js';
 import {
   publicAgentIdFromRuntimeKey,
@@ -105,6 +106,7 @@ import {
   ConversationLineageTooLongError,
   createConversationMessageReader,
 } from './conversation-message-reader.js';
+import { conversationOpenCallerAccess } from './conversation-open-caller-access.js';
 
 export { CONVERSATION_READ_MAX_SESSIONS } from './conversation-message-reader.js';
 
@@ -2549,6 +2551,13 @@ export function createGlobalConversationRoutes(
     }>;
     deferredInstanceCount: number;
   }>,
+  /**
+   * The runtime principal gate. When wired, the open read also reports
+   * whether this caller may continue the conversation or start a chat
+   * (`callerAccess`); unwired, the field is omitted and clients treat it as
+   * unknown.
+   */
+  principalSecurity?: CurrentRuntimeRequestPrincipalSecurity,
 ) {
   const app = new Hono();
   const authorityFor =
@@ -2853,6 +2862,9 @@ export function createGlobalConversationRoutes(
           authority,
         );
       if (resolved) {
+        const callerAccess = principalSecurity
+          ? conversationOpenCallerAccess(c.req.raw, principalSecurity, id)
+          : undefined;
         if (resolved.status === 'fork-ready') {
           const saved = await readSavedForkMetadata(id, authority);
           if (!saved)
@@ -2870,12 +2882,13 @@ export function createGlobalConversationRoutes(
                 updatedAt: saved.updatedAt,
                 titleSource: saved.titleSource,
               },
+              ...(callerAccess ? { callerAccess } : {}),
             },
           });
         }
         return c.json({
           success: true,
-          data: resolved,
+          data: callerAccess ? { ...resolved, callerAccess } : resolved,
         });
       }
       // File-store ownership is not a request principal.  Until it has a
