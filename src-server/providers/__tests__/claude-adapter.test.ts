@@ -159,6 +159,7 @@ import { credentialProfileAppHomeDir } from '../app-home/credential-profile-regi
 import {
   type ClaudeCanUseToolRequest,
   claudeCanUseToolFrame,
+  FakeClaudeChild,
   sdkCanUseToolOptions,
   startFakeClaudeEngine,
 } from './claude-engine-process-test-utils.js';
@@ -8990,6 +8991,8 @@ describe('ClaudeAdapter', () => {
       };
       expect(queryArgs.options).toEqual({
         cwd: undefined,
+        // The artifacts setting is off by default, which disallows the tool.
+        disallowedTools: ['Artifact'],
         model: undefined,
         resume: undefined,
         includePartialMessages: true,
@@ -9005,6 +9008,7 @@ describe('ClaudeAdapter', () => {
         persistSession: false,
         env: scrubBootInternalSecrets({
           ...process.env,
+          CLAUDE_CODE_ARTIFACT: '0',
           TMPDIR: engineSpawnTmpDirPath(),
         }),
         // #2932: Station owns the engine spawn to read permission asks.
@@ -9105,7 +9109,10 @@ describe('ClaudeAdapter', () => {
       const { options } = mockQuery.mock.calls[0][0];
       expect(options.strictMcpConfig).toBe(false);
       expect(options.env.ENABLE_TOOL_SEARCH).toBe('true');
-      expect(options.disallowedTools).toEqual(['mcp__weather__write']);
+      expect(options.disallowedTools).toEqual([
+        'mcp__weather__write',
+        'Artifact',
+      ]);
       const hook = options.hooks.PreToolUse[0].hooks[0];
       for (const name of ['write', 'new_tool']) {
         const refused = await hook(
@@ -9180,7 +9187,10 @@ describe('ClaudeAdapter', () => {
       const { options } = mockQuery.mock.calls[0][0];
       expect(options.strictMcpConfig).toBe(false);
       expect(options.mcpServers.weather.command).toBe(process.execPath);
-      expect(options.disallowedTools).toEqual(['mcp__weather__write']);
+      expect(options.disallowedTools).toEqual([
+        'mcp__weather__write',
+        'Artifact',
+      ]);
       const hook = options.hooks.PreToolUse[0].hooks[0];
       expect(
         await hook(
@@ -10597,6 +10607,7 @@ echo '{"loggedIn":true}'
       expect(call.options.env).toEqual(
         scrubBootInternalSecrets({
           ...augmentedEnv,
+          CLAUDE_CODE_ARTIFACT: '0',
           TMPDIR: engineSpawnTmpDirPath(),
         }),
       );
@@ -10618,6 +10629,7 @@ echo '{"loggedIn":true}'
       expect(call.options.env).toEqual(
         scrubBootInternalSecrets({
           ...process.env,
+          CLAUDE_CODE_ARTIFACT: '0',
           TMPDIR: engineSpawnTmpDirPath(),
         }),
       );
@@ -10649,6 +10661,7 @@ echo '{"loggedIn":true}'
         scrubBootInternalSecrets({
           ...augmentedEnv,
           CLAUDE_CONFIG_DIR: '/station/app-homes/claude',
+          CLAUDE_CODE_ARTIFACT: '0',
           TMPDIR: engineSpawnTmpDirPath(),
         }),
       );
@@ -10677,6 +10690,7 @@ echo '{"loggedIn":true}'
       expect(call.options.env).toEqual(
         scrubBootInternalSecrets({
           ...augmentedEnv,
+          CLAUDE_CODE_ARTIFACT: '0',
           TMPDIR: engineSpawnTmpDirPath(),
         }),
       );
@@ -10764,6 +10778,126 @@ echo '{"loggedIn":true}'
         else process.env.STATION_HOME = previousStationHome;
         rmSync(stationHome, { recursive: true, force: true });
       }
+    });
+  });
+
+  describe('Claude Code artifacts setting at the SDK spawn seam', () => {
+    async function sessionEnv(
+      options: ConstructorParameters<typeof ClaudeAdapter>[0],
+      threadId: string,
+    ) {
+      mockQuery.mockClear();
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const adapter = new ClaudeAdapter(options);
+      await adapter.startSession({ provider: 'claude', threadId });
+      const env = mockQuery.mock.calls.at(-1)?.[0].options.env;
+      await adapter.stopAll();
+      return env as Record<string, string | undefined>;
+    }
+
+    test('on, a session start turns the Artifact tool on', async () => {
+      const getArtifactsEnabled = vi.fn(async () => true);
+      const env = await sessionEnv({ getArtifactsEnabled }, 'artifacts-on');
+      expect(env.CLAUDE_CODE_ARTIFACT).toBe('1');
+      expect(getArtifactsEnabled).toHaveBeenCalledTimes(1);
+    });
+
+    test('off, unwired, or unreadable, a session start turns it off explicitly', async () => {
+      expect(
+        (await sessionEnv({ getArtifactsEnabled: async () => false }, 'off'))
+          .CLAUDE_CODE_ARTIFACT,
+      ).toBe('0');
+      expect((await sessionEnv({}, 'unwired')).CLAUDE_CODE_ARTIFACT).toBe('0');
+      expect(
+        (
+          await sessionEnv(
+            {
+              getArtifactsEnabled: async () => {
+                throw new Error('config unreadable');
+              },
+              logger: { warn: vi.fn() } as never,
+            },
+            'unreadable',
+          )
+        ).CLAUDE_CODE_ARTIFACT,
+      ).toBe('0');
+    });
+
+    test('off wins over an ambient or connection-env enable; on wins over a connection-env disable', async () => {
+      mockAugmentedSpawnEnv.mockResolvedValue({
+        ...process.env,
+        CLAUDE_CODE_ARTIFACT: '1',
+      });
+      expect(
+        (
+          await sessionEnv(
+            {
+              getArtifactsEnabled: async () => false,
+              getConnectionEnv: async () => ({ CLAUDE_CODE_ARTIFACT: '1' }),
+            },
+            'off-over-ambient',
+          )
+        ).CLAUDE_CODE_ARTIFACT,
+      ).toBe('0');
+      mockAugmentedSpawnEnv.mockReset();
+      expect(
+        (
+          await sessionEnv(
+            {
+              getArtifactsEnabled: async () => true,
+              getConnectionEnv: async () => ({ CLAUDE_CODE_ARTIFACT: '0' }),
+            },
+            'on-over-connection',
+          )
+        ).CLAUDE_CODE_ARTIFACT,
+      ).toBe('1');
+    });
+
+    test('off also disallows the tool, which a settings-file env enable cannot undo; on leaves it allowed', async () => {
+      async function disallowed(enabled: boolean, threadId: string) {
+        mockQuery.mockClear();
+        mockQuery.mockReturnValue(createMockQuery([]));
+        const adapter = new ClaudeAdapter({
+          getArtifactsEnabled: async () => enabled,
+        });
+        await adapter.startSession({ provider: 'claude', threadId });
+        const tools = mockQuery.mock.calls.at(-1)?.[0].options
+          .disallowedTools as string[] | undefined;
+        await adapter.stopAll();
+        return tools ?? [];
+      }
+      expect(await disallowed(false, 'artifacts-off-disallowed')).toContain(
+        'Artifact',
+      );
+      expect(await disallowed(true, 'artifacts-on-allowed')).not.toContain(
+        'Artifact',
+      );
+    });
+
+    test('an adopted session reads the setting at its own start', async () => {
+      mockForkSession.mockResolvedValue({ sessionId: 'vendor-child' });
+      mockQuery.mockClear();
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const adapter = new ClaudeAdapter({
+        getArtifactsEnabled: async () => true,
+      });
+      await adapter.adoptSession(
+        {
+          provider: 'claude',
+          threadId: 'artifacts-adopted',
+          sourceSessionId: 'vendor-source',
+          sourceKind: 'claude-transcript',
+          cwd: '/workspace/project',
+        },
+        {
+          onProviderChildCreationStarted: () => {},
+          onProviderChildCreated: () => {},
+        },
+      );
+      expect(
+        mockQuery.mock.calls.at(-1)?.[0].options.env.CLAUDE_CODE_ARTIFACT,
+      ).toBe('1');
+      await adapter.stopAll();
     });
   });
 
@@ -12553,6 +12687,7 @@ describe('ClaudeAdapter — child work at the session seams (#2457)', () => {
     const pending: unknown[] = [];
     let wake: (() => void) | null = null;
     let ended = false;
+    let failure: Error | undefined;
     const end = () => {
       ended = true;
       wake?.();
@@ -12565,9 +12700,15 @@ describe('ClaudeAdapter — child work at the session seams (#2457)', () => {
         wake = null;
       },
       end,
+      /** The SDK iterator failing as it does when the `claude` process dies. */
+      crash(error: Error) {
+        failure = error;
+        end();
+      },
       async *[Symbol.asyncIterator]() {
         for (;;) {
           while (pending.length === 0) {
+            if (failure) throw failure;
             if (ended) return;
             await new Promise<void>((resolve) => {
               wake = resolve;
@@ -12631,7 +12772,10 @@ describe('ClaudeAdapter — child work at the session seams (#2457)', () => {
       event.method === 'child-work.updated' &&
       event.delta.kind === 'settle' &&
       event.delta.childId === capturedChildId
-        ? [event.delta.status]
+        ? [
+            // The wire status, and what a current client shows for it.
+            `${event.delta.status}${event.delta.endedBy ? `:${event.delta.endedBy}` : ''}`,
+          ]
         : [],
     );
 
@@ -12747,6 +12891,53 @@ describe('ClaudeAdapter — child work at the session seams (#2457)', () => {
     expect(settleAt).toBeLessThan(
       seen.findIndex((event) => event.method === 'session.exited'),
     );
+  });
+
+  /** The fake `claude` process the adapter's own spawn starts for the SDK. */
+  function spawnEngine() {
+    const options = mockQuery.mock.calls.at(-1)?.[0]?.options;
+    startFakeClaudeEngine(options);
+    const child = FakeClaudeChild.newest;
+    if (!child) throw new Error('no fake engine spawned');
+    return child;
+  }
+
+  test('the engine process dying settles the running child interrupted, not unresolved', async () => {
+    const threadId = 'thread-child-process-death';
+    const { query, until, seen } = await runningChild(threadId);
+    const engine = spawnEngine();
+    engine.exit(null, 'SIGKILL');
+    engine.closeStderr();
+    query.crash(new Error('Claude Code process terminated by signal SIGKILL'));
+    const settled = await Promise.race([
+      until(
+        (event) =>
+          event.method === 'child-work.updated' &&
+          event.delta.kind === 'settle' &&
+          event.delta.childId === capturedChildId,
+      ),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 2_000)),
+    ]);
+    expect(settled, 'no settle after the engine died').not.toBeNull();
+    expect(childSettles(seen)).toEqual(['unresolved:engine-exit']);
+  });
+
+  test('a stream failure with the engine process still running is no interruption (#4266)', async () => {
+    const threadId = 'thread-child-stream-failure';
+    const { query, until, seen } = await runningChild(threadId);
+    spawnEngine();
+    query.crash(new Error('Unexpected token in JSON at position 0'));
+    const emptied = await Promise.race([
+      until(
+        (event) =>
+          event.method === 'child-work.updated' &&
+          event.delta.kind === 'snapshot' &&
+          event.delta.running.length === 0,
+      ),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 2_000)),
+    ]);
+    expect(emptied, 'no empty snapshot after the stream failed').not.toBeNull();
+    expect(childSettles(seen)).toEqual([]);
   });
 
   test('the engine process ending on its own settles the running child too', async () => {

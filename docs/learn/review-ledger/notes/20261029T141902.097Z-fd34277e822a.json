@@ -1,0 +1,35 @@
+{
+  "revision": "adcb52b8a02011276d4b43ea91c9e6f9037c8a4a",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Rewrote the offer rule: the Runs on list and the task launcher share executionPlacement.ts (no unverified SSH, no SSH with a Project, no paired Station without orchestration:operate); a read-only grant offers This Station only; an unreadable authority observation hides nothing. Checked against useExecutionStations, DelegationLauncher and their tests.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/DelegationLauncher.tsx","src-ui/src/components/chat-start/StartPickerMenus.tsx","src-ui/src/components/chat-start/StartStationControl.tsx","src-ui/src/components/home/HomeStartComposer.tsx","src-ui/src/components/modals/NewChatModal.tsx","src-ui/src/hooks/useExecutionStationCatalog.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Added that SSH is offered only without a Project and a paired Station only when its pairing can run work. Matches executionPlacement.ts as read by the list and the launcher; other claims unchanged.","inputs":["docs/user/getting-started.md","src-ui/src/components/home/HomeStartComposer.tsx","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Added that the launcher lists a paired Station whose credential lacks orchestration:operate as unable to start work and refuses it (DelegationLauncher, peerPlacementRefusals, test 'a paired Station whose credential cannot operate is not a destination').","inputs":["docs/guides/self-configuring-agent.md","src-ui/src/components/chat-dock/DelegationLauncher.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"No prose change. NewChatModal passes projectSelected to the Station control; no module ownership moves. The new src-ui/src/utils/executionPlacement.ts is a UI-local helper read by the start menus and the task launcher.","inputs":["docs/architecture/module-map.md","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"No prose change. NewChatModal passes projectSelected to the Station control; onboarding and connection claims are unaffected.","inputs":["docs/design/connections-onboarding.md","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/design/motion.md","note":"No prose change. tests/screenshots.spec.ts only changes the Home screen's Station assertion; no motion handling changed.","inputs":["docs/design/motion.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"No prose change. tests/screenshots.spec.ts changes one Home assertion; the gallery subset and runner rules described here still hold (verified with npm run test:e2e:screenshot -- --screens=home).","inputs":["docs/guides/testing.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"No prose change. tests/screenshots.spec.ts changes only the Home screen's Station assertion; telemetry disclosure handling is untouched.","inputs":["docs/reference/usage-telemetry.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"No prose change. DelegationLauncher now reads shared placement rules and refuses a paired Station without orchestration:operate; nothing here describes launcher destinations.","inputs":["docs/guides/agent-configuration.md","src-ui/src/components/chat-dock/DelegationLauncher.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"No prose change. DelegationLauncher's new refusal concerns a paired Station credential's scope at launch; pairing and connection steps here are unchanged.","inputs":["docs/guides/connections.md","src-ui/src/components/chat-dock/DelegationLauncher.tsx"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"No prose change. The example's delegation flow is unaffected by the launcher's paired-Station scope refusal.","inputs":["examples/self-configuring-agent/README.md","src-ui/src/components/chat-dock/DelegationLauncher.tsx"]},
+
+    {"path":"docs/learn/media/new-chat-start-before.png","note":"Dated capture, bytes unchanged; this round changes Station list offering and one CSS line-height, kept as revision-bound evidence.","inputs":["docs/learn/media/new-chat-start-before.png","src-ui/src/components/chat-start/StartComposer.css","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/learn/media/new-chat-start-after.png","note":"Dated capture, bytes unchanged; this round changes Station list offering and one CSS line-height, kept as revision-bound evidence.","inputs":["docs/learn/media/new-chat-start-after.png","src-ui/src/components/chat-start/StartComposer.css","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/learn/media/project-start-before.png","note":"Dated capture, bytes unchanged; HomeStartComposer only passes projectSelected to the Station control.","inputs":["docs/learn/media/project-start-before.png","src-ui/src/components/home/HomeStartComposer.tsx"]},
+
+    {"path":"docs/learn/media/project-start-after.png","note":"Dated capture, bytes unchanged; HomeStartComposer only passes projectSelected to the Station control.","inputs":["docs/learn/media/project-start-after.png","src-ui/src/components/home/HomeStartComposer.tsx"]}
+  ]
+}

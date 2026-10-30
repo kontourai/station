@@ -1,4 +1,8 @@
-import { compareTaskRecency, type HomeWorkItem } from './home-view-model';
+import {
+  compareTaskRecency,
+  type HomeWorkItem,
+  isTerminalLifecycle,
+} from './home-view-model';
 import type { WorkFactsById } from './work-facts';
 import { type LiveLaneId, workStatus } from './work-status';
 
@@ -17,52 +21,31 @@ export type { LiveLaneId };
  */
 
 /**
- * How long NON-conversation terminal work lingers in "Recently finished" /
- * "Just finished" before settling. Terminal conversations do not use this —
- * they leave only after their rendered inventory version is durably
- * acknowledged by the server (see `partitionHomeWorkItems`).
+ * How long finished work stays in "Just finished" on time alone (#4266).
  *
- * THE one linger window (archive#3227 A6): desktop Home lanes, the Sessions
- * lanes, and the mobile activity groups (`mobile-activity-groups.ts`) all
- * classify through `partitionHomeWorkItems`, so this constant is the only
- * home the window has. Mobile used to carry its own 10-minute
- * `RECENTLY_SETTLED_WINDOW_MS`, which is how "Active now"/"Just finished"
- * counted differently on two surfaces of the same device.
+ * Finished work is in "Just finished" while it finished less than this long
+ * ago, OR while it finished after the person last viewed it
+ * (`partitionHomeWorkItems`). THE one window (archive#3227 A6): desktop Home
+ * lanes, the Sessions lanes and the mobile activity groups all classify
+ * through `partitionHomeWorkItems`, so this constant is its only home.
  */
 export const TERMINAL_LINGER_MS = 15 * 60 * 1000;
 
 /**
- * Safety margin beyond `TERMINAL_LINGER_MS` used when pruning persisted
- * terminal-since anchors on read (`terminal-since-store.ts`). An anchor
- * older than `TERMINAL_LINGER_MS` is already settled regardless of its exact
- * value, so the margin only needs to cover clock skew / a slow reload, not
- * meaningfully extend how long a settled item's anchor is retained.
+ * When the work finished: the server's recorded terminal time, else its
+ * last activity (`updatedAt`) — for terminal work that is when it stopped,
+ * and it can only err towards finishing later.
  */
-export const TERMINAL_SINCE_PRUNE_MARGIN_MS = 5 * 60 * 1000;
+export function finishedAtOf(
+  item: Pick<HomeWorkItem, 'terminalAt' | 'updatedAt'>,
+): number {
+  return item.terminalAt ?? item.updatedAt;
+}
 
 /** How long a "woke from snooze" pill stays visible after a snooze lapses. */
 export const WOKE_PILL_WINDOW_MS = 15 * 60 * 1000;
 
-/**
- * Settled for lane purposes — deliberately NOT including `'Unanswerable'`
- * (archive#1783). The settled/"Just finished" lane asserts the work FINISHED,
- * and an unanswerable session did not; it stopped being reachable. So it
- * stays in the live lanes (under Idle, see `workStatus`), with its basis on
- * the row.
- *
- * archive#3227 A6: `partitionHomeWorkItems` is the ONE live/finished
- * classifier for every surface — desktop Home lanes, the Sessions lanes
- * (`sessions-lane-model.ts`), the project live-work badge, and the chat dock
- * inbox / mobile activity groups (`mobile-activity-groups.ts`). An earlier
- * version recorded a desktop/mobile divergence as defensible; the audit
- * found the counts contradicting on one device ("Active now 14" vs "Active
- * now 1") and retired it.
- */
-export function isTerminalLifecycle(
-  label: HomeWorkItem['lifecycleLabel'],
-): boolean {
-  return label === 'Completed' || label === 'Failed' || label === 'Stopped';
-}
+export { isTerminalLifecycle };
 
 /**
  * The three live lanes, named by what is actually happening (the owner's
@@ -137,7 +120,7 @@ function identityKeysFor(item: HomeWorkItem): string[] {
 /**
  * Resolves each item's stable logical identity against `aliasMap`, which is
  * mutated in place — an accumulator the caller (`useHomeWorkLanes`) holds
- * across renders, the same ref-cache pattern as `orderRef`/`terminalSinceRef`.
+ * across renders, the same ref-cache pattern as `orderRef`.
  * Also prunes aliases for canonical ids no longer reachable from any item in
  * this call, so the map cannot grow without bound as chats/sessions/tasks
  * come and go.
@@ -174,7 +157,7 @@ export function withStableIds(
 
 /**
  * Generic over the item type (defaulting to `HomeLaneItem`) because the
- * partition only reads `id`/`lifecycleLabel`/`conversationUpdatedAt`/
+ * partition only reads `id`/`lifecycleLabel`/`terminalAt`/`updatedAt`/
  * `acknowledgedAt` — the mobile activity groups (archive#3227 A6) hand it
  * bare `HomeWorkItem`s and must get the SAME object references back, while
  * desktop callers keep their `stableId`-carrying lane items.
@@ -184,8 +167,6 @@ interface LaneInputs<T extends HomeWorkItem = HomeLaneItem> {
   now: number;
   /** item id -> epoch ms at which a live snooze lapses. */
   snoozedUntil: ReadonlyMap<string, number>;
-  /** item id -> epoch ms of the first observed terminal transition. */
-  terminalSince: ReadonlyMap<string, number>;
   workFacts?: WorkFactsById;
 }
 
@@ -213,7 +194,6 @@ export function partitionHomeWorkItems<T extends HomeWorkItem>({
   items,
   now,
   snoozedUntil,
-  terminalSince,
   workFacts,
 }: LaneInputs<T>): LanePartition<T> {
   const live: Record<LiveLaneId, T[]> = {
@@ -231,7 +211,7 @@ export function partitionHomeWorkItems<T extends HomeWorkItem>({
     // A live snooze wins over every other classification, matching the
     // mobile inbox's rule (mobile-activity-groups.ts) — snoozing something
     // still running is the entire point of the verb. Deliberately keyed by
-    // the raw `item.id`, not `stableId` — snooze/terminal-since keying is
+    // the raw `item.id`, not `stableId` — snooze keying is
     // out of scope for the identity-alias fix above (a smaller, disclosed
     // residual risk: an item snoozed/lingering right as its id promotes
     // could momentarily lose that state under its new id).
@@ -250,29 +230,25 @@ export function partitionHomeWorkItems<T extends HomeWorkItem>({
       continue;
     }
     if (lane === 'finished') {
-      // Completed conversations are attention items, not a timed toast.
-      // A fresh terminal version remains in Just finished through reloads and
-      // device changes until the user actually opens it. Non-conversation
-      // work keeps the historic Earlier behavior; it has no transcript to
-      // acknowledge through the conversation inventory.
-      if (item.conversationUpdatedAt) {
-        if (
-          item.acknowledgedAt !== undefined &&
-          item.acknowledgedAt >= Date.parse(item.conversationUpdatedAt)
-        ) {
-          settled.push(item);
-          continue;
-        }
-        recentlyFinished.push(item);
-        continue;
-      }
-      // Non-conversation work has no transcript version to acknowledge.
-      // Retain its historical time-based placement while direct chats and
-      // runtime conversations use the durable path above.
-      const since = terminalSince.get(item.id) ?? now;
-      (now - since >= TERMINAL_LINGER_MS ? settled : recentlyFinished).push(
-        item,
-      );
+      // #4266: Just finished while it finished in the last
+      // `TERMINAL_LINGER_MS`, or after the person last viewed it, and until
+      // they view it again. The last view is per person, not per device
+      // (`conversationAcknowledgementKey` on the server).
+      //
+      // With no view on record at all, only the time rule applies. Absence
+      // is ambiguous — history from before views were recorded, a thread an
+      // automation started that nobody watches, an entry trimmed from the
+      // bounded store — and treating it as "never viewed" would park the
+      // whole finished history here, which is the defect this replaced. A
+      // thread the person started or watched has a view on record: the open
+      // chat pane records one while it is visible (`useAcknowledgeVisibleConversation`).
+      const finishedAt = finishedAtOf(item);
+      const unseen =
+        item.acknowledgedAt !== undefined && item.acknowledgedAt < finishedAt;
+      (now - finishedAt < TERMINAL_LINGER_MS || unseen
+        ? recentlyFinished
+        : settled
+      ).push(item);
       continue;
     }
     live[lane].push(item);
@@ -341,33 +317,6 @@ export function partitionHomeWorkItems<T extends HomeWorkItem>({
 }
 
 /**
- * Fresh-load proxy for the `terminalSince` map on surfaces with no persisted
- * observation store (the Sessions lanes, the mobile activity groups). Home
- * observes terminal transitions live and persists when it first saw one
- * (`terminal-since-store.ts`); a store-less surface has observed nothing, and
- * an empty map would make `partitionHomeWorkItems` read `since = now` for
- * every terminal row — parking the entire finished inventory in "Recently
- * finished"/"Just finished" forever.
- *
- * So the map is seeded from the item's own recency fold (`updatedAt`). That
- * is a PROXY for the transition, not an observation of it: it says when the
- * item last did anything, which for terminal work is when it stopped. It can
- * only be wrong in the harmless direction — terminal work that keeps
- * receiving events lingers a little longer.
- */
-export function terminalSinceFromRecency(
-  items: readonly HomeWorkItem[],
-): Map<string, number> {
-  const terminalSince = new Map<string, number>();
-  for (const item of items) {
-    if (isTerminalLifecycle(item.lifecycleLabel)) {
-      terminalSince.set(item.id, item.updatedAt);
-    }
-  }
-  return terminalSince;
-}
-
-/**
  * ordering invariant: status churn never reorders the live lanes.
  *
  * Computed over the UNION of the live lanes (needsYou/running/idle) and then
@@ -427,14 +376,11 @@ export function sortSnoozedShelf(
 }
 
 /** Paginated settled tail, sorted by when work ended (most recent first). */
-export function sortSettledTail(
-  items: readonly HomeLaneItem[],
-  terminalSince: ReadonlyMap<string, number>,
-): HomeLaneItem[] {
+export function sortSettledTail<T extends HomeWorkItem>(
+  items: readonly T[],
+): T[] {
   return [...items].sort(
-    (left, right) =>
-      (terminalSince.get(right.id) ?? right.updatedAt) -
-      (terminalSince.get(left.id) ?? left.updatedAt),
+    (left, right) => finishedAtOf(right) - finishedAtOf(left),
   );
 }
 

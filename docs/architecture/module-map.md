@@ -115,8 +115,9 @@ and where to start reading; it is a pointer, not a reviewed interface contract.
 | `src-server/services/access/` | Station groups, personal access tokens, and the principal a paired device is tied to (#3557) | [Principals](../design/principals.md) |
 | `src-server/services/automation/` | Foundation only: config validation, store and a delivery ledger for Station Automations. No route or runtime wiring calls it yet (#3439) | [Automations proposal](../design/automations.md) |
 | `src-server/services/board/` | The Board store for one Task or Session (tabs and ordinal widgets; contract in `packages/contracts/src/board.ts`), behind `src-server/routes/board.ts`, which authorizes the owning reference before any store read | Source |
+| `src-server/services/chat-apps/` | Messaging bindings, identity links, kill switches and delivery receipts in the orchestration database; Discord imports its legacy authority once. Live Discord validation remains outstanding. | [Messaging core](../../src-server/services/chat-apps/chat-app-core.ts) |
 | `src-server/services/config/` | The idempotent log-level edit with retained terminal receipts | [Logging configuration](../reference/config.md#logging) |
-| `src-server/services/discord/` | The Discord gateway: private configuration in `<home>/security/discord-gateway.json`, allowlist and identity authorization, channel-to-session bindings and reply relay | [Gateway service](../../src-server/services/discord/discord-gateway-service.ts) |
+| `src-server/services/discord/` | Discord transport and ordered, bounded reply chunks with separate receipts and linked busy refusals; the private token stays in `<home>/security/discord-gateway.json`, whose live policy remains an additional authority ceiling | [Gateway service](../../src-server/services/discord/discord-gateway-service.ts) |
 | `src-server/services/feature-previews/` | The registry of opt-in feature previews this build can run, persisted per Station and shown under Settings → Advanced; served by `src-server/routes/system/feature-previews.ts`. [Contributor workflow](../guides/feature-previews.md) | Source |
 | `src-server/services/kits/` | Installed-Kit observability lifecycle and persistence for the host | Source |
 | `src-server/services/presence/` | Process-local, non-durable focus presence per paired device or client session (#2585) | Source |
@@ -232,14 +233,15 @@ behind `station environment operator passkeys`. The
 [session service](../../src-server/services/identity/operator-sessions.ts) verifies
 single-use sign-in assertions on the [consent origin](../../src-server/runtime/consent/operator-sign-in-routes.ts)
 and stores hashed, device-bound sessions in that same private registry. The HTTP
-boundary admits exact session read leaves and per-action access-change requests.
+boundary admits exact session read leaves, including pending pairing requests,
+and per-action access-change requests.
 Those writes return 202 without mutation. The
 [consent store](../../src-server/services/consent/consent-transactions.ts) owns the
 single-use transaction and target fingerprint; the separate consent listener
 requires a UV passkey assertion from its owning session before commit. Cancel
 uses that session and the render nonce on the consent origin to record terminal
-denial without a passkey; it cannot commit. Device
-scope/revoke/removal, people groups, personal tokens and different-passkey
+denial without a passkey; it cannot commit. Ordinary Device pairing approval,
+Device scope/revoke/removal, people groups, personal tokens and different-passkey
 revocation share this boundary. Token secrets appear once in the commit response,
 never in transaction reads. Server-side idle/absolute expiry and live pairing,
 passkey and credential-rotation checks remain enforced; step-up and its status
@@ -2303,8 +2305,41 @@ captures reject before sender construction. These source boundaries need
 executed interleaving controls; they do not establish generic embedded-runtime
 service cleanup after a late startup failure.
 
+`IntegrationSecretResolver.resolveOAuthClientSecret` materializes one remote
+integration's OAuth client secret for its token requests. It requires an exact
+`mcp-integration-oauth-client` grant for that integration on a non-revoked
+instance binding; environment grants confer none. The integration records only
+the binding id at `oauthClient.clientSecretRef`, written by
+`SecretBindingIntegrationService.bindOAuthClientSecret` (grant first) and
+removed by `unbindOAuthClientSecret` (reference first). Binding requires the integration's declared
+`oauthClient.issuer`; the provider never presents the secret to another issuer. The grant
+records the `issuer`, the resource identity and the integration's instance id
+(`.station-instance`, created by `writeIntegrationConfigLocked` on first write
+and removed with the integration directory) at binding.
+`resolveOAuthClientSecret` reads the current instance id itself and releases
+the secret only for that triple. The provider resolves it at every token
+request and never caches it in a consent flow. A definition rewritten by any
+path cannot redirect the secret, and an integration deleted and recreated
+under the same tuple cannot reuse its grant, so grants are not tied to the
+delete paths. A leftover grant stays visible as binding metadata until
+unbound. Without a declared issuer, `claimIntegrationOAuthIssuerPin` records
+the authorization server of the first completed consent for the resource
+(`.station-oauth-issuer`, under the integration lock); the provider then
+refuses any other issuer before registration or redirect. Unbind
+removes every client-secret grant the binding holds for the integration. The
+issuer/endpoint pin and the no-foreign-reference rule
+(`assertToolOAuthClientWritable` in [the tool contract](../../packages/contracts/src/tool.ts))
+run in `writeIntegrationConfigLocked`, the writer behind
+`ConfigLoader.saveIntegration`/`updateIntegration` and `saveIntegrationConfig`.
+`assertPluginIntegrationsWritable` runs before `copyPluginIntegrations`, which
+copies bundles without that writer. The CLI portability import also calls the
+check. Plugin backup restores put back bytes that were already on disk. The secret is never
+cached or written to the credential store; see
+[Use your own OAuth client](../guides/connections.md#use-your-own-oauth-client).
+
 The v1 document retains legacy records unchanged and adds optional
-`telemetryDestinationGrants` only when a telemetry grant is written. Older
+`telemetryDestinationGrants` only when a telemetry grant is written, and
+`oauthClientGrants` only when an OAuth client-secret grant is written. Older
 strict readers reject that new property; an upgrade/rollback must preserve and
 restore a compatible binding document, never delete grants to bypass admission.
 
@@ -5648,8 +5683,9 @@ indexed Session engine and recorded-owner reads after Session read admission;
 no full transcript or People-management request is needed. Missing identity
 facts fall back to Teammate or Agent. The local operator's profile name wins;
 when only the OS alias is available, its initial is capitalized for display.
-Opaque working-state plan
-revisions are hidden because the room does not expose ordinal plan history.
+Plan revision chips count committed, revision-changing settle batches (saves),
+starting at v1. Multi-operation saves advance once; retries do not advance.
+Opaque digest identity remains separate from the displayed version.
 
 Task review keeps anchored comments in its own append-only store, outside the
 shared room's document and history. Plan references freeze revision evidence
@@ -5678,7 +5714,23 @@ lists metadata and counts for the plan, Task summary (Brief), kept outputs,
 linked answers and captures. List threads are summaries with state, anchor,
 event count, opening-comment preview and latest delivery event alongside the
 last event; a separate thread-detail GET supplies full history. Summary event
-bodies are capped at 500 UTF-16 code units without partial surrogates.
+bodies are capped at 500 UTF-16 code units without partial surrogates by the
+shared contracts `summarizeThreadView` projection. Plan item metadata includes
+`revisionOrdinals` for only the current revision and the threads' anchored plan
+revisions. The working-state worker persists final save revisions in a separate
+SQLite index, in the settle transaction. Operation pruning and operation encoding
+never determine these ordinals; restart preserves them. Existing documents are
+backfilled from committed batch receipts in insertion order, using the historical
+revision format for v0 and counting consecutive unchanged identities once. A
+malformed receipt leaves that document's ordinals unavailable and retryable at
+startup without blocking other documents or inventing versions on later saves.
+Intermediate operation states have no version.
+The Review module caches requested ordinals, including missing identities, per
+Task incarnation, document and latest revision. New anchors fetch only missing
+identities; a new latest revision invalidates that cache. Entries share the
+bounded ReviewCache accounting (UTF-16 serialized payload, keys and allowance),
+with at most 16 entries / 1 MiB. Current document and authority reads still run.
+Unknown historical identities receive no invented version.
 Corrupt rows are logged once per thread/event count within the bounded warning
 cache and projected as unavailable entries while healthy
 threads remain readable. Unavailable entries are omitted from aggregate counts.

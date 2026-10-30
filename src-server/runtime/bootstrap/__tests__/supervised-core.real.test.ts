@@ -245,7 +245,24 @@ describe('a parked core generation', () => {
       children.add(core);
       const output = capture(core);
       const messages: Array<{ type: string }> = [];
-      core.on('message', (message: { type: string }) => messages.push(message));
+      const observedTypes = new Set(['parked', 'listener.bound', 'ready']);
+      const ipcEvents: string[] = [];
+      const started = performance.now();
+      const observe = (event: string) => {
+        if (ipcEvents.length < 32)
+          ipcEvents.push(
+            `${event}@${Math.floor(performance.now() - started)}ms`,
+          );
+      };
+      core.on('message', (message: { type: string }) => {
+        messages.push(message);
+        if (observedTypes.has(message.type)) observe(message.type);
+      });
+      let disconnectObserved = false;
+      core.once('disconnect', () => {
+        disconnectObserved = true;
+        observe('disconnect');
+      });
 
       await waitFor(
         'parked',
@@ -285,13 +302,15 @@ describe('a parked core generation', () => {
       );
 
       // Losing the supervisor's channel ends the generation.
+      observe('disconnect-requested');
       core.disconnect();
       await waitFor(
         'the generation to exit after its IPC channel closed',
         BOOT_TIMEOUT_MS,
         () =>
           core.exitCode !== null || core.signalCode !== null ? true : undefined,
-        output,
+        () =>
+          `${output()}\nIPC: connected=${core.connected}, channel=${Boolean(core.channel)}, disconnectObserved=${disconnectObserved}, events=${ipcEvents.join(',')}`,
       );
     },
     // Above the sum of its three bounded waits, so a stuck one names itself.

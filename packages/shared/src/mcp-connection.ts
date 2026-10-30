@@ -145,6 +145,12 @@ export interface MCPManagerOptions {
   authProvider?: OAuthClientProvider | AuthProvider;
   /** Internal OAuth seam used to complete a browser redirect round trip. */
   onTransport?: (transport: Transport) => void;
+  /**
+   * Wraps the fetch a remote transport uses, including the SDK's OAuth
+   * requests (registration, code exchange), so the OAuth provider can check
+   * each authorization-server request immediately before it is sent.
+   */
+  authorizationFetch?: (fetch: FetchLike) => FetchLike;
   /** Called when a server connects or fails */
   onStatus?: (
     serverId: string,
@@ -362,7 +368,11 @@ export function prepareMCPConnection(
         Promise.resolve().then(async () => {
           try {
             assertCurrent();
-            transport = createMCPTransport(normalized, opts?.authProvider);
+            transport = createMCPTransport(
+              normalized,
+              opts?.authProvider,
+              opts?.authorizationFetch,
+            );
             const rawTransport = transport;
             const originalTransportClose =
               rawTransport.close.bind(rawTransport);
@@ -727,10 +737,37 @@ function createStdioTransport(
   return new StdioClientTransport(ownedParameters);
 }
 
+/**
+ * Set on an OAuth provider whose authorization-server requests must pass
+ * through its own fetch guard. The transport factory refuses such a provider
+ * without `authorizationFetch`, so no caller can build an unguarded OAuth
+ * transport by omission.
+ */
+export const REQUIRES_AUTHORIZATION_FETCH = Symbol.for(
+  'kontourai.station.oauth.requiresAuthorizationFetch',
+);
+
 export function createMCPTransport(
   def: ToolDef,
   authProvider?: OAuthClientProvider | AuthProvider,
+  authorizationFetch?: (fetch: FetchLike) => FetchLike,
 ): Transport {
+  if (
+    authProvider &&
+    (authProvider as { [REQUIRES_AUTHORIZATION_FETCH]?: unknown })[
+      REQUIRES_AUTHORIZATION_FETCH
+    ] === true &&
+    !authorizationFetch
+  )
+    throw new Error(
+      `Tool '${def.id}': this OAuth provider requires its authorization fetch guard`,
+    );
+  const remoteFetch = (base?: FetchLike) =>
+    authorizationFetch
+      ? { fetch: authorizationFetch(base ?? globalThis.fetch.bind(globalThis)) }
+      : base
+        ? { fetch: base }
+        : {};
   const transport = def.transport || (def.command ? 'stdio' : undefined);
 
   switch (transport) {
@@ -747,7 +784,10 @@ export function createMCPTransport(
     case 'sse':
       if (!def.endpoint)
         throw new Error(`Tool '${def.id}': sse transport requires 'endpoint'`);
-      return new SSEClientTransport(new URL(def.endpoint), { authProvider });
+      return new SSEClientTransport(new URL(def.endpoint), {
+        authProvider,
+        ...remoteFetch(),
+      });
 
     case 'streamable-http':
       if (!def.endpoint)
@@ -757,9 +797,11 @@ export function createMCPTransport(
       return new StreamableHTTPClientTransport(new URL(def.endpoint), {
         authProvider,
         requestInit: { redirect: 'error' },
-        ...(def.headers
-          ? { fetch: originBoundLiteralHeaderFetch(def.endpoint, def.headers) }
-          : {}),
+        ...remoteFetch(
+          def.headers
+            ? originBoundLiteralHeaderFetch(def.endpoint, def.headers)
+            : undefined,
+        ),
       });
 
     default:

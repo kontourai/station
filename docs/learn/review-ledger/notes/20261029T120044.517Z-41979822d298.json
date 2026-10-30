@@ -1,0 +1,7 @@
+{
+  "revision": "222d56928518e93b1e638bbc95c38df5ea55e568",
+
+  "notes": [
+    {"path":"docs/reference/agent-plugins.md","note":"Source-impact review: storage reserves sidecar names case- and NFKC-insensitively, trusts only exactly spelled sidecars and removes variant spellings before writing. Searched this document for MCP OAuth consent, issuer pin and integration sidecar claims; none describes the changed behavior beyond links that still resolve, so its claims stay accurate.","inputs":["docs/reference/agent-plugins.md","src-server/domain/config-loader-storage.ts"]}
+  ]
+}

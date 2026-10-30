@@ -16,6 +16,11 @@
 
 ## Interaction stability and conversation continuity
 
+For a memory-exhausted turn restored from history, the dock offers Continue
+only when the conversation window reports that turn eligible. An older server
+without that fact leaves the failure visible without the action. The server
+checks eligibility again when Continue is requested.
+
 Every conversation uses the chat dock's reading surface and header, including
 conversations discovered in another coding app. A quiet "Started in Claude Code"
 (or the observed app name) identifies origin. Discovery is not evidence of running
@@ -140,8 +145,26 @@ coding app's default profile, and does not edit saved Agent defaults. Known
 capability incompatibilities remain visible with a refusal reason; live resource
 and adapter delivery checks still decide admission. In an existing conversation,
 changing or resetting the engine opens an explicit handoff with the real draft
-and the existing context/write-identity confirmation. **Use Agent defaults**
-returns to the authored engine and model through that handoff. In a new-start
+and the existing context/write-identity confirmation. There the picker lists
+only the other engines this client can start (an unready or incompatible one is
+left out rather than shown with a refusal), lists none when the conversation's
+open resolution does not allow changes (read-only, unverified, busy on the
+server or still resolving), and shows them disabled with the reason while a
+turn, queued message or pending check blocks the switch; the handoff's
+**Switch to …** action is disabled for the same reasons ([entry
+point](../../src-ui/src/components/chat-dock/ChatDockBody.tsx),
+[dialog](../../src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx)).
+On an engine override, **Use Agent defaults** returns to the authored engine and
+model through that handoff when the switch is open. Whenever it is not, the
+picker's reset is disabled with the reason (the open resolution's refusal reads
+"This conversation can’t change its engine right now."). The composer's reset
+chip is not shown when the open resolution denies changes. While the reset is
+temporarily blocked (a turn running, or queued or offline messages unresolved,
+still being checked or with their state unavailable) the chip stays in place,
+disabled, with the reason as its accessible description, and the picker states
+the reason as text, so the row does not shift each turn. It never falls
+back to a model-only reset that would leave the engine override in place. In a
+new-start
 picker, resetting also clears an explicit Station choice, restoring configured
 placement defaults rather than leaving a remote destination without its verified
 binding. An explicit This Station choice is carried independently of engine
@@ -163,19 +186,37 @@ none can run), and optionally open a Project. The same inline composer starts
 the conversation. Empty Recent work is omitted only for this confirmed first
 session; loading and failed reads retain their status and recovery.
 
-The **Run a task…** control opens the existing task launcher with the current message, Project, Agent and
-explicit Station/engine/model/options selection, and with its Station/worker/model routing controls expanded. The launcher
-loads the selected environment's own worker inventory and retains portable
-Project/resource admission and the explicit no-fallback refusals. **Run task**
-starts a task; it does not place or migrate a foreground chat on a peer.
-**Connect a Station for this task** keeps the task draft, chosen Station and
-Project resource while setup opens. Returning refreshes discovery and still
-requires an explicit **Run task** action.
-Editing the task message updates the originating draft, so Cancel retains those edits.
-A successful launch clears only the text submitted and names its captured
-Station; newly typed text stays. Remote task submission and Escape do not
-submit or dismiss the underlying foreground composer. Prepared visual skills
-and coding-context drafts keep their existing chat-only path.
+The **Runs on <Station>** control names where this start runs: the explicit
+Station choice, else the Project's saved default environment, else the
+answering Station's host projection. When the server reports another Station
+this caller may run on, it opens a **Where this work runs** list with
+the current Station marked. The list offers only what the task launcher
+accepts, through one shared rule set: a verified SSH environment when no
+Project is selected (a Project is never placed over SSH), or a paired Station
+the caller may list whose credential holds `orchestration:operate`. A caller
+whose authority observation reports a grant without `orchestration:operate`
+is offered This Station only; any failed read of the observation (an older
+Station without it, a refusal, a server error or an unreadable body) hides
+nothing, since starting the task still needs `orchestration:operate` and the
+launcher and the server refuse what is not allowed. It only chooses the destination: This Station
+closes the list, and another Station continues into that Station's Engine &
+model picker, because a remote route needs a verified engine there. **Start**
+then opens the task launcher with the message, Project, Agent and selection,
+retaining portable Project/resource admission and the explicit no-fallback
+refusals; **Run task** starts a task and does not place or migrate a
+foreground chat on a peer. Once the task is accepted the composer closes
+and the dock shows **Task started on <Station>.** with **Open task** into
+Activity. **Connect a Station for this task** keeps the
+task draft, chosen Station and Project resource while setup opens; returning
+refreshes discovery and still requires an explicit **Run task** action.
+Editing the task message updates the originating draft, so Cancel retains
+those edits. A successful launch clears only the text submitted; newly typed
+text stays. Remote task submission and Escape do not submit or dismiss the
+underlying foreground composer. With nothing else to choose, before the Station
+reads answer, or when a read is refused (a scoped Device without
+`access:manage` cannot list paired Stations), the control is plain text with
+no caret. Prepared visual skills and coding-context drafts keep their
+existing chat-only path.
 
 The Project header leads with its name, description and observed Git branch.
 Files & connections holds source controls and the **Where Agent work starts**
@@ -323,6 +364,45 @@ Retry refreshes the capability observation before reloading. The desktop
 inbox footer offers Refresh, which reconnects the same stream and re-reads the
 session list and conversation inventory; when the last read failed, the footer
 says the rows are the last known list.
+
+A conversation's pane offers only what this caller can do there, as the
+server's open read for that conversation reports it. When it says this caller
+may not continue the conversation (`callerAccess.continue`), the composer is
+disabled with "You can read this chat but can't send to it." and no
+placeholder, a busy wait keeps no draft, the failure banner drops its "send a
+message" note, the error card offers neither Send again nor Continue, and an
+empty chat shows "This chat is empty" instead of inviting typing. When it
+says this caller may not start a chat (`callerAccess.startChat`), the pane's
+own new-chat offers are withheld: the recovery notices' Start new chat, the
+terminal-session and error-card New chat and Switch agent actions, the
+refused queued turn's New chat, the workspace-refused composer's Start new
+chat (the composer is then disabled with "This chat can only continue in its
+original workspace, and you can't start a new chat here."), and Enable it in
+a new chat. Error hints follow one default-deny rule on every chat error copy
+surface (the error card, the reply bubble live and after a reload, and the
+send-failure notice). Full access sees each hint unchanged. A caller refused a
+send or a new chat sees only a hint the error's translation declares for that
+kind of caller (a hand-written alternative, or the hint itself where it asks
+for nothing the caller lacks); any other hint is not shown. A declared hint
+never recommends something that caller was refused, and an unconfirmed session
+start keeps its "Station may already have started this session" warning for
+every caller. The live bubble's hint is fixed when the error arrives and
+refreshes when the chat reloads. Not covered: the approval-delivery failure
+line on a tool call, which has its own copy. A read-only verdict says only
+"Retry resolution to check again." A session
+that cannot take another message (`terminalSession`) offers Send again to no
+caller. A failed retry from the picker keeps the last answer for that
+conversation. Not gated: the app-wide New chat entry points (toolbar,
+shortcut, inbox, task switcher), because the answer is per conversation, and
+Fork from turn, which posts `POST /agents/:slug/conversations/:id/fork`, a
+route the answer does not cover. The client does not re-derive scopes; when
+the server sent no answer, everything shows and the server still enforces.
+The answer is as of the last open read, so a scope changed mid-session shows
+on the next one. The agent-turn
+toast's session chord (⌘1/Ctrl+1) and the composer menu's command-launcher
+chord are not shown on a coarse primary pointer. A touch tablet with a hardware
+keyboard loses them too; Station has no keyboard-presence signal, and that
+limit is accepted.
 
 The pill uses compact state labels such as Sending, Starting, Working,
 Thinking, and Reconnecting; it does not expand to display tool names.
@@ -896,9 +976,12 @@ The **Chats and tasks** picker keeps the shared **New chat** action at the lower
 right, outside the scrolling list. Its accessible name and hover label are
 **New chat**; the mobile header uses its icon-only chat-bubble-plus form.
 It uses the same direct-chat or agent-choice flow as Chat actions;
-opening it sends no message. Rows show the catalog's Agent icon, conversation
-title, Project with its icon (or its sidebar colour dot), and a right-aligned status/time. Unresolved Agents retain their
-name. The status line is the ladder's own words (`Needs answer`, `Needs
+opening it sends no message. Rows lead with the marks of the engines that ran
+the conversation (up to three, overlapping, then "+N"; the Agent's own mark
+when no engine with a mark is recorded) beside the Agent's name, then the
+conversation title, the Project with its icon (or a folder when it has none),
+a pencil when this device holds an unsent draft for it, and a right-aligned
+status/time. Unresolved Agents retain their name. The status line is the ladder's own words (`Needs answer`, `Needs
 approval`, …, the same words the dock row prints), prefixed with "Last known:"
 when its latest observation failed. Verified running time uses the
 recorded open-turn start; without one, the row's compact time trails the status

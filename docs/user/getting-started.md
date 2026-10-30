@@ -472,6 +472,12 @@ first; the controls show what **Start** will use:
   returns to, such as **Use project default** for a model-only choice or
   **Use Agent defaults** for an engine override. In an existing conversation,
   changing or resetting the engine opens a handoff confirmation that keeps your draft.
+  In the model picker, while a reply you sent is still running, the other
+  engines and **Use Agent defaults** are shown but unavailable until it
+  finishes. When Station reports that the conversation can't be changed right
+  now (it is read-only, still loading, the check failed, or it is waiting on a
+  turn the server reports as still running), the other engines are not listed
+  and **Use Agent defaults** is unavailable.
 - The **project** control above the message shows the Project's icon (or
   its colour when none is displayable) and name, or **Without a project**.
   Open it to choose a project. The list shows each project's folder and the
@@ -485,15 +491,20 @@ first; the controls show what **Start** will use:
 - **⋯** holds **Use a visual skill** while the **Visual skills** Feature
   Preview is on; with it off there is no **⋯**.
 
-**Run a task…** opens **Run on a Station** with your message, Project and any explicit
-Station/engine/model/options choice kept. Its tooltip names the current Station
-or saved Project default; this action starts a task rather than moving your chat.
-Choose a Station, worker and model there, then choose **Run task** to start a
-resumable task. Available workers come from that Station; unavailable
-destinations keep their refusal instead of falling back to this computer.
-Cancel returns to your message, including edits made in the task chooser.
-Follow a started task in Activity. A foreground chat stays on its existing
-Station; choosing a remote task destination does not move that chat.
+**Runs on <Station>** says which Station runs the work. When you can run work
+on another Station (a verified SSH environment when no Project is chosen,
+or a paired Station you are allowed to list whose pairing can run work, with
+permission to start tasks), it opens **Where this work runs**, with the current one
+checked. Choosing another Station continues to its **Engine & model**, since
+that Station's own engines run the work. **Start** then opens **Run on a
+Station** with your message, Project and choices, and **Run task** starts a
+resumable task there. Unavailable destinations keep their refusal instead of
+falling back to this computer, and Cancel returns to your message, including
+edits made in the task chooser. A started task shows **Task started on
+<Station>.** with **Open task** to follow it in Activity. A
+foreground chat stays on its existing Station; choosing a remote task
+destination does not move that chat. With no other Station to choose, the
+control is plain text.
 
 The Project page opens on **Overview**. **Project room** is shared discussion
 with people in that Project; use **Bring an Agent** for an explicit request
@@ -674,8 +685,9 @@ as icons; if a project's existing icon can't be shown any more, such as one
 saved as a link before that, its settings say so and ask you to choose a new
 one. The icon appears beside the project in
 the sidebar, the project switcher, Home and chat rows, their details, and on
-the project page. Without one, those rows show the project's colour and the
-project page shows its initials. A row for work on another Station shows
+the project page. Without one, those rows show the project's colour (the
+phone's chat list shows a folder instead) and the project page shows its
+initials. A row for work on another Station shows
 neither, since its project belongs to that Station.
 
 ### Prepare a visual skill

@@ -1,4 +1,7 @@
-import type { ConversationListItem } from '@kontourai/station-sdk';
+import type {
+  ConversationListItem,
+  DelegatedTaskHandle,
+} from '@kontourai/station-sdk';
 import type { ComponentProps } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
@@ -114,7 +117,7 @@ interface ChatDockModalStackProps {
     approvalMode?: ApprovalMode,
   ) => void;
   onCloseNewChat: () => void;
-  onNewTaskStarted?: () => void;
+  onNewTaskStarted?: (task: DelegatedTaskHandle, stationName: string) => void;
   onCloseSettings: () => void;
   onCloseSessionPicker: () => void;
   onSessionPickerSelect: (

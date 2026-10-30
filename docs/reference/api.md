@@ -1452,11 +1452,49 @@ integration's shared `probe.authorization`. A successful first connection record
 the tool catalog Agents load that integration's tools from.
 
 `GET /integrations/:id/account[?projectSlug=]` returns the caller's own state:
-`{ownership, connectedAs, personal, project?, shared, catalogAvailable}`. It shows
+`{ownership, connectedAs, personal, project?, shared, catalogAvailable,
+rememberedScopes?}`. `rememberedScopes` is the caller's scope choice from
+their last completed sign-in for that account (empty: the server's own). It shows
 owner and availability only, never a token. `DELETE /integrations/:id/account`
 removes the caller's own credential; the next call that needs it refuses.
 
 MCP Apps reads and calls are not available yet for these integrations.
+
+### Remote OAuth client
+
+`POST /integrations/:id/oauth/authorize` also accepts optional `scopes`, the
+signing-in person's choice for that sign-in: at most 32 distinct OAuth scope
+tokens, or a 400. They replace the integration's `oauthClient.scopes` default,
+which replaces the scopes the server advertises; an empty list requests the
+advertised scopes. The choice also applies to a dynamic client registration.
+Nothing is written back.
+
+`oauthClient` on `POST`/`PUT /integrations` accepts `clientId`, `issuer` (an
+HTTPS issuer URL), `clientMetadataUrl` (HTTPS with a path) and `scopes`. It refuses
+`clientSecretRef`, which only `POST /api/secret-bindings/:id/bind` and `unbind`
+with `{kind: "mcp-integration-oauth-client", integrationId, expectedRevision}`
+write; that body accepts no other field. The read projection omits the binding
+id; `GET /api/secret-bindings/integrations/:id` returns it as
+`oauthClientSecretBindingId`. A `clientId` requires `issuer`, and so does
+binding a secret. Changing `clientId`, `issuer` or `clientMetadataUrl` clears
+the integration's tokens. While a secret is bound, the shared integration writer (the API, the
+settings, registry installs, required plugin tools and binding) refuses a
+change to the endpoint or `issuer`, and refuses a definition naming another
+binding. Plugin bundles are checked before copying, and the CLI import before
+writing. Registry, plugin and imported definitions never carry
+`clientSecretRef`. Independently, the client-secret grant records the
+`issuer`, the resource and the integration's server-created instance id at
+binding. At every token request the secret is released only for a definition
+matching all three, so a deleted and recreated integration needs a new
+binding. A declared `issuer` refuses any
+other authorization server before a secret is read, a client is registered
+or a person is redirected. Without a declared `issuer`, the first completed
+sign-in pins its authorization server for the resource (`.station-oauth-issuer`
+beside the definition, shared by every person), and later sign-ins naming
+another server are refused the same way. The callback's `iss` is checked per RFC 9207, and a
+callback with more than one `iss` returns 400. A server without client registration records
+`probe.authorization.state: "client-id-required"`. See
+[Use your own OAuth client](../guides/connections.md#use-your-own-oauth-client).
 
 ### Delete Integration
 
@@ -2021,6 +2059,11 @@ there is no author confirmation to review. `GET /api/usage-telemetry/disclosure`
 `additionalHost` for an additional destination, including an environment-derived
 address. `GET /api/usage-telemetry/disclosure?publisher=kontour` returns the exact
 build destination for its separate, revision-bound acknowledgement.
+Each disclosure response, and the acknowledgement response, also carries
+`capabilities: { acknowledge, recordNotice, lower, raise, defaults }` for the
+calling credential, decided by the same gates as those writes (`defaults` is
+the DNT-ignored baseline a tier write is compared against); see
+[Usage telemetry](usage-telemetry.md).
 The two Lite sinks send independently after notice; the default Full receipt
 covers operator only; author Full uses a separate destination-bound receipt. `GET /api/usage-telemetry/outbox[?publisher=operator]`
 returns the bounded local payload ledger with `orchestration:read` authority. The optional `limit` is an integer from 1 to 200, defaults to 50, and selects the newest records after publisher filtering; invalid values return 400.
@@ -4720,8 +4763,15 @@ Hosted deployments mount only the session read; the first two answer 404 there.
 
 ### Continue after a memory kill
 
+An authorized `GET /api/orchestration/conversations/:conversationId/event-window`
+may include `memoryContinuation: { eligible, turnId? }`. This is the current
+server decision for a person's Continue, independent of the page's event cap.
+An absent field does not authorize a stored-event action. The POST checks
+current state and sender permission again.
+
 `POST /api/orchestration/conversations/:conversationId/memory-continuation`
 continues a conversation whose latest turn ended with `engine-memory-exhausted`
+(or a Codex memory kill stored before that code, as `isEngineMemoryExhaustedFailure` recognises)
 ([continuation module](../../src-server/services/orchestration/memory-exhaustion-continuation.ts)).
 It sends one Station-authored turn through the conversation inbox as the caller,
 under a key derived from the dead Session and turn, and answers 202 with that
@@ -4959,6 +5009,15 @@ Project storage, then file-memory adapters, then the authorized orchestration
 reader. Hosted mode skips the two personal storage branches. File-memory Agent
 attribution comes from the stored resource ID, with the adapter key as fallback;
 response shape can also include Project and fork-provenance fields.
+
+`GET /api/conversations/:id/open` resolves a conversation before a client
+treats it as writable (the SDK's `resolveConversationOpen`). Its result may
+carry `callerAccess: {continue, startChat}`, computed for the requesting
+credential by the same boundary gate ingress applies, against
+`POST /api/orchestration/chat/:id/continue` and `POST /api/orchestration/chat`.
+A read-only paired device reads `{continue: false, startChat: false}`. The field
+is omitted when the request has no authenticated principal; clients treat that
+as unknown.
 
 `GET /api/conversations/:id/read?limit=&cursor=&aroundMessageId=` returns one
 page of a conversation's transcript: `{conversationId, access, notice,
@@ -5862,13 +5921,20 @@ nightly build, otherwise `npx @kontourai/station-cli@latest`).
 a non-empty subset of the request's scope, for an ordinary device request only
 (not a delegation, relay or account binding). Omitted, it keeps everything
 requested. Keeping `coding:exec` or `approval:full-access` needs the operator
-credential, a qualifying local-grant credential or that host-issued browser
-session; an `access:approve` Device or
+credential, a qualifying local-grant credential, that host-issued browser
+session, or an operator passkey session followed by per-action review; an `access:approve` Device or
 an unauthenticated approval is refused with 403
 `{ "error": "approval_requires_operator", "operatorCli": "…" }` and may approve
 the rest with them left out. Every such 403 carries `operatorCli`. A device
 pairing **Needs attention** item carries `requestedScope` for an ordinary,
 non-account-bound device request.
+
+A live operator passkey session approving an ordinary Device request receives
+202 `step_up_required` and a transaction review URL. No pairing approval is
+committed until a fresh passkey assertion on the consent origin. The request
+and kept scope are rechecked at commit; delegation, relay, and identity-binding
+requests cannot use this path. A refusal may include `signInUrl` when remote
+operator sign-in is configured.
 
 Sender-side Station peer enrollment is a separate operator-only workflow under
 `/api/environments/peers/enrollments`. Its safe status response never returns the

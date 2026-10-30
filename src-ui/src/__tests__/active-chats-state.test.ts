@@ -491,6 +491,57 @@ describe('active chat state helpers', () => {
     expect(chat).toEqual(before);
   });
 
+  describe('assignConversationIdState title (#4266)', () => {
+    const fresh = (overrides: Partial<ChatUIState>): ChatUIState => ({
+      ...createDefaultChatState(),
+      title: 'New chat',
+      ...overrides,
+    });
+
+    test('names a chat from its first meaningful message when its first send is confirmed', () => {
+      expect(
+        assignConversationIdState(
+          fresh({
+            messages: [
+              { role: 'user', content: 'Continue' },
+              { role: 'user', content: 'Fix the dock header' },
+            ] as ChatUIState['messages'],
+          }),
+          'conv-1',
+        ),
+      ).toMatchObject({
+        conversationId: 'conv-1',
+        title: 'Fix the dock header',
+      });
+    });
+
+    test('keeps an existing title, an already-assigned conversation, and a low-content-only chat untitled', () => {
+      const messages = [
+        { role: 'user', content: 'Fix the dock header' },
+      ] as ChatUIState['messages'];
+      expect(
+        assignConversationIdState(fresh({ title: 'Renamed', messages }), 'c')
+          .title,
+      ).toBe('Renamed');
+      expect(
+        assignConversationIdState(
+          fresh({ conversationId: 'c-old', messages }),
+          'c-new',
+        ).title,
+      ).toBe('New chat');
+      expect(
+        assignConversationIdState(
+          fresh({
+            messages: [
+              { role: 'user', content: 'ok' },
+            ] as ChatUIState['messages'],
+          }),
+          'c',
+        ).title,
+      ).toBe('New chat');
+    });
+  });
+
   describe('reorderQueuedMessageState (#613)', () => {
     const chatWithQueue = (queuedMessages: string[]): ChatUIState => ({
       ...createDefaultChatState(),
