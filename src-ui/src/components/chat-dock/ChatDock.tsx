@@ -72,7 +72,10 @@ import { useConversationActivityFeed } from '../../hooks/orchestration/useConver
 import { useACPConnections } from '../../hooks/useACPConnections';
 import { useRehydrateSessions } from '../../hooks/useActiveChatSessions';
 import { useActiveProject } from '../../hooks/useActiveProject';
-import { useChatBackgroundTasks } from '../../hooks/useBackgroundTasks';
+import {
+  useChatBackgroundTasksLimited,
+  useChatBackgroundTasksRunningCount,
+} from '../../hooks/useBackgroundTasks';
 import { useCatalogModelLabel } from '../../hooks/useCatalogModelLabel';
 import {
   type OpenConversationOptions,
@@ -881,9 +884,9 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
 
   // station#1301 slice 1: the active session's running-background-task count,
   // for the tab bar's badge and the Background tasks rows' labels.
-  const backgroundTasksView = useChatBackgroundTasks(activeSessionId);
-  const backgroundTasksRunningCount = backgroundTasksView.running.length;
-  const backgroundTasksLimited = backgroundTasksView.toolHistoryLimited;
+  const backgroundTasksRunningCount =
+    useChatBackgroundTasksRunningCount(activeSessionId);
+  const backgroundTasksLimited = useChatBackgroundTasksLimited(activeSessionId);
 
   // #869 / #1298: a maximized dock is opaque and full-height, so navigating
   // to another part of the app changed the view *underneath* it and nothing

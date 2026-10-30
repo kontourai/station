@@ -4,7 +4,10 @@ import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test } from 'vitest';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { backgroundTasksStore } from '../../contexts/background-tasks-store';
-import { useChatBackgroundTasks } from '../useBackgroundTasks';
+import {
+  useChatBackgroundTasks,
+  useChatBackgroundTasksRunningCount,
+} from '../useBackgroundTasks';
 
 const eventBase = {
   provider: 'codex' as const,
@@ -101,6 +104,42 @@ test('unrelated chat events preserve the selected view and avoid subscriber rend
   );
   expect(result.current).not.toBe(selected);
   expect(result.current.running[0].detail).toBe('Building');
+});
+
+test('running-count subscribers do not render for detail-only changes', () => {
+  startTool('chat-a', 'tool-a');
+  let renders = 0;
+  const { result } = renderHook(() => {
+    renders++;
+    return useChatBackgroundTasksRunningCount('chat-a');
+  });
+  expect(result.current).toBe(1);
+  const before = renders;
+  act(() =>
+    backgroundTasksStore.ingest({
+      ...eventBase,
+      threadId: 'chat-a',
+      method: 'tool.progress',
+      itemId: 'tool-a',
+      toolCallId: 'tool-a',
+      message: 'Building',
+    }),
+  );
+  expect(result.current).toBe(1);
+  expect(renders).toBe(before);
+  act(() =>
+    backgroundTasksStore.ingest({
+      ...eventBase,
+      threadId: 'chat-a',
+      method: 'tool.completed',
+      itemId: 'tool-a',
+      toolCallId: 'tool-a',
+      toolName: 'bash',
+      status: 'success',
+    }),
+  );
+  expect(result.current).toBe(0);
+  expect(renders).toBeGreaterThan(before);
 });
 
 test('provider cards retain their view on unrelated events and refresh the spawning tool and provider updates', () => {

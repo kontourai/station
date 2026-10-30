@@ -132,5 +132,30 @@ export function useChatStoreKey(chatId: string | null): string | null {
 export function useChatBackgroundTasksRunningCount(
   chatThreadId: string | null,
 ): number {
-  return useChatBackgroundTasks(chatThreadId).running.length;
+  const getSnapshot = useCallback(() => {
+    if (!chatThreadId) return 0;
+    return selectChatBackgroundTasks(
+      backgroundTasksStore.getSnapshot(),
+      chatThreadId,
+      activeChatsStore.getSnapshot()[chatThreadId]?.backgroundTasks,
+    ).running.length;
+  }, [chatThreadId]);
+  return useSyncExternalStore(subscribeBoth, getSnapshot, getSnapshot);
+}
+
+export function useChatBackgroundTasksLimited(
+  chatThreadId: string | null,
+): boolean {
+  const getSnapshot = useCallback(
+    () =>
+      !!chatThreadId &&
+      backgroundTasksStore.getSnapshot().limitedToolChats?.[chatThreadId] ===
+        true,
+    [chatThreadId],
+  );
+  return useSyncExternalStore(
+    backgroundTasksStore.subscribe,
+    getSnapshot,
+    getSnapshot,
+  );
 }
