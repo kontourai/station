@@ -71,30 +71,74 @@ export class PortableGroupExecution {
       parsed,
     );
     current();
-    const prior = this.owners.admissions.read(groupId, current);
-    if (prior) {
-      const metadata = this.owners.preparation.inspectAdmission(context, prior);
-      if (!same(metadata.intent, parsed)) refuse();
-      const projection = await this.get(context, groupId);
-      current();
-      return { replayed: true, projection };
-    }
     const intent = canonicalJson(parsed);
     const active = this.#creating.get(groupId);
     if (active) {
       if (active.intent !== intent) refuse();
       const result = await active.promise;
       current();
+      const retained = this.owners.admissions.read(groupId, current);
+      if (
+        !retained ||
+        !same(
+          this.owners.preparation.inspectAdmission(context, retained).intent,
+          parsed,
+        )
+      )
+        refuse();
       return { ...result, replayed: true };
     }
     if (this.#creating.size >= 128) refuse();
-    const promise = this.#createNew(context, parsed, current);
+    const prior = this.owners.admissions.read(groupId, current);
+    if (
+      prior &&
+      !same(
+        this.owners.preparation.inspectAdmission(context, prior).intent,
+        parsed,
+      )
+    )
+      refuse();
+    const promise = prior
+      ? this.#resumeCreate(context, prior, current)
+      : this.#createNew(context, parsed, current);
     this.#creating.set(groupId, { intent, promise });
     try {
       return await promise;
     } finally {
       if (this.#creating.get(groupId)?.promise === promise)
         this.#creating.delete(groupId);
+    }
+  }
+
+  async #resumeCreate(
+    context: RuntimeSourceRequestContext,
+    admission: ReturnType<PortableGroupPreparation['admission']>,
+    current: () => undefined,
+  ) {
+    const metadata = this.owners.preparation.inspectAdmission(
+      context,
+      admission,
+    );
+    const existing = await this.owners.persistence
+      .groupStore(current)
+      .scan(async (journals) =>
+        journals.find((journal) => journal.groupId === metadata.spec.groupId),
+      );
+    if (existing) {
+      const projection = projectDelegationGroupV2(existing);
+      if (!same(projection.spec, metadata.spec)) refuse();
+      return { replayed: true, projection };
+    }
+    const handle = await this.owners.preparation.readmit(context, admission);
+    try {
+      return await this.#publishCreate(
+        context,
+        handle,
+        current,
+        metadata.intent.operationId,
+      );
+    } finally {
+      this.owners.preparation.close(handle);
     }
   }
 
@@ -115,21 +159,36 @@ export class PortableGroupExecution {
         admission,
         current,
       );
-      const composed = this.#compose(context, handle, current);
-      await composed.service.issue(prepared.root);
-      for (const envelope of prepared.envelopes)
-        await composed.service.derive(prepared.root.authority_id, envelope);
-      return await composed.controller.create({
-        kind: 'create',
-        groupId: prepared.spec.groupId,
-        operationKey: input.operationId,
-        expectedRevision: 0,
-        controller: prepared.spec.controller,
-        spec: prepared.spec,
-      });
+      return await this.#publishCreate(
+        context,
+        handle,
+        current,
+        input.operationId,
+      );
     } finally {
       this.owners.preparation.close(handle);
     }
+  }
+
+  async #publishCreate(
+    context: RuntimeSourceRequestContext,
+    handle: PreparedPortableGroup,
+    current: () => undefined,
+    operationId: string,
+  ) {
+    const prepared = this.owners.preparation.read(handle, context.req.raw);
+    const composed = this.#compose(context, handle, current);
+    await composed.service.issue(prepared.root);
+    for (const envelope of prepared.envelopes)
+      await composed.service.derive(prepared.root.authority_id, envelope);
+    return composed.controller.create({
+      kind: 'create',
+      groupId: prepared.spec.groupId,
+      operationKey: operationId,
+      expectedRevision: 0,
+      controller: prepared.spec.controller,
+      spec: prepared.spec,
+    });
   }
 
   async get(context: RuntimeSourceRequestContext, groupId: string) {

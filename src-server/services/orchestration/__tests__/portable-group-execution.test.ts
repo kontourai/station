@@ -85,6 +85,15 @@ test('V2 create and later run dispatch admitted source through real tasks and re
   };
   const owner = new PortableGroupExecution(owners);
   try {
+    // Simulate interruption after durable admission and before authority/journal publication.
+    const initial = await preparation.prepare(h.f.context(), h.input);
+    const admission = preparation.admission(initial, h.f.req);
+    await owners.admissions.retain(
+      admission.payload.spec.groupId,
+      admission,
+      () => undefined,
+    );
+    preparation.close(initial);
     const created = await owner.create(h.f.context(), h.input);
     assert.equal(created.projection.revision, 1);
     const replay = await owner.create(
@@ -121,6 +130,36 @@ test('V2 create and later run dispatch admitted source through real tasks and re
     assert.equal(h.rawFetch.mock.calls.length, 2);
     assert.ok(result.projection.members.every((member) => member.observation));
     assert.equal(relay.mock.calls.length, 0);
+    // A retry arriving after admission publication joins the in-flight create.
+    let release!: () => void;
+    let published!: () => void;
+    const publication = new Promise<void>((resolve) => {
+      published = resolve;
+    });
+    const hold = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const retain = owners.admissions.retain.bind(owners.admissions);
+    vi.spyOn(owners.admissions, 'retain').mockImplementation(
+      async (...args) => {
+        await retain(...args);
+        published();
+        await hold;
+      },
+    );
+    const secondInput = { ...h.input, operationId: 'concurrent-create' };
+    const first = owner.create(h.f.context(requestFor(h, 'POST')), secondInput);
+    await publication;
+    const second = owner.create(
+      h.f.context(requestFor(h, 'POST')),
+      secondInput,
+    );
+    release();
+    const [firstResult, secondResult] = await Promise.all([first, second]);
+    assert.deepEqual(secondResult.projection.spec, firstResult.projection.spec);
+    assert.equal(secondResult.replayed, true);
+    assert.equal(h.rawFetch.mock.calls.length, 2);
+
     const current = (): undefined => undefined;
     const ledger = await persistence
       .authorityStore(current)
