@@ -25,6 +25,10 @@ import { scenarios as deliveryScenarios } from '../../../scripts/engine-delivery
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { MCPToolProvenanceGeneration } from '../../services/orchestration/mcp-tool-provenance.js';
 import { createSessionAgentResolver } from '../../services/orchestration/session-agent-resolution.js';
+import {
+  projectDelegatedTaskEvent,
+  snapshotFor,
+} from '../../tools/station-control-delegation.js';
 import * as claudeEngine from '../adapters/claude-code-spawn.js';
 import {
   CredentialProfileEnvironmentError,
@@ -125,7 +129,10 @@ import {
   createStagedPreToolPolicyEvaluator,
   type StagedPreToolPolicyEvaluator,
 } from '../../runtime/agents/pre-tool-policy.js';
-import { builtinStationControlServerPath } from '../../runtime/bootstrap/station-control-runtime-env.js';
+import {
+  builtinStationControlServerPath,
+  builtinStationKnowledgeServerPath,
+} from '../../runtime/bootstrap/station-control-runtime-env.js';
 import {
   __resetStationControlMcpTokensForTests,
   mintStationControlMcpToken,
@@ -230,6 +237,19 @@ function createControlledMockQuery() {
     setModel: vi.fn().mockResolvedValue(undefined),
     setPermissionMode: vi.fn().mockResolvedValue(undefined),
     applyFlagSettings: vi.fn().mockResolvedValue(undefined),
+    setMcpServers: vi.fn().mockResolvedValue({
+      added: ['station-control'],
+      removed: [],
+      errors: {},
+    }),
+    mcpServerStatus: vi.fn().mockResolvedValue([
+      {
+        name: 'station-control',
+        source: 'sdk',
+        status: 'connected',
+        tools: [{ name: 'delegate_task' }],
+      },
+    ]),
   };
 }
 
@@ -1114,6 +1134,227 @@ describe('ClaudeAdapter', () => {
       },
     });
     await adapter.stopSession('thread-steer');
+  });
+
+  test('a designated running chat adds Station Control in place before its next turn and keeps authored servers', async () => {
+    const controlled = createControlledMockQuery();
+    controlled.mcpServerStatus.mockResolvedValueOnce([]);
+    mockQuery.mockReturnValue(controlled);
+    let designated = false;
+    const instance = { connect: vi.fn(), close: vi.fn() };
+    const adapter = new ClaudeAdapter({
+      isCoordinatorSession: () => designated,
+      resolveCoordinatorStationControl: async () => ({
+        ...GENUINE_STATION_CONTROL_TOOLSERVER,
+        coordinatorDerived: true,
+        coordinatorGeneration: 0,
+      }),
+      createInProcessCoordinatorStationControl: () => instance,
+    });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    const until = async (method: string) => {
+      for (let i = 0; i < 30; i++) {
+        const event = (await iterator.next()).value;
+        if (event?.method === method) return event;
+      }
+      throw new Error('event missing');
+    };
+    const threadId = 'coordinator-refresh';
+    await adapter.startSession({
+      provider: 'claude',
+      threadId,
+      agent: {
+        slug: 'writer',
+        toolServers: [
+          {
+            id: 'third-party',
+            transport: 'stdio',
+            command: process.execPath,
+            args: ['--version'],
+          },
+        ],
+      },
+    });
+    const first = await adapter.sendTurn({ threadId, input: 'first' });
+    await until('turn.started');
+    designated = true;
+    expect(controlled.setMcpServers).not.toHaveBeenCalled();
+    await completeClaudeTurn(controlled, threadId, iterator);
+    const next = await adapter.sendTurn({ threadId, input: 'next' });
+    expect(next.turnId).not.toBe(first.turnId);
+    expect(controlled.setMcpServers).toHaveBeenCalledWith(
+      expect.objectContaining({
+        'third-party': expect.objectContaining({ type: 'stdio' }),
+        'station-control': expect.objectContaining({ type: 'sdk', instance }),
+      }),
+    );
+    expect(controlled.mcpServerStatus).toHaveBeenCalled();
+    await adapter.stopSession(threadId);
+  });
+
+  test('an uncertain MCP refresh refuses the turn and is not repeated', async () => {
+    const controlled = createControlledMockQuery();
+    controlled.mcpServerStatus.mockResolvedValueOnce([]);
+    controlled.setMcpServers.mockRejectedValueOnce(new Error('transport lost'));
+    mockQuery.mockReturnValue(controlled);
+    const adapter = new ClaudeAdapter({
+      isCoordinatorSession: () => true,
+      resolveCoordinatorStationControl: async () => ({
+        ...GENUINE_STATION_CONTROL_TOOLSERVER,
+        coordinatorDerived: true,
+        coordinatorGeneration: 0,
+      }),
+      createInProcessCoordinatorStationControl: () => ({
+        connect: vi.fn(),
+        close: vi.fn(),
+      }),
+    });
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'refresh-uncertain',
+    });
+    await expect(
+      adapter.sendTurn({ threadId: 'refresh-uncertain', input: 'go' }),
+    ).rejects.toThrow('could not confirm');
+    await expect(
+      adapter.sendTurn({ threadId: 'refresh-uncertain', input: 'retry' }),
+    ).rejects.toThrow('could not confirm');
+    expect(controlled.setMcpServers).toHaveBeenCalledTimes(1);
+    await adapter.stopSession('refresh-uncertain');
+  });
+
+  test('concurrent turns cannot start two coordinator refreshes', async () => {
+    const controlled = createControlledMockQuery();
+    let release!: (value: never[]) => void;
+    controlled.mcpServerStatus.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    mockQuery.mockReturnValue(controlled);
+    const adapter = new ClaudeAdapter({
+      isCoordinatorSession: () => true,
+      resolveCoordinatorStationControl: async () => ({
+        ...GENUINE_STATION_CONTROL_TOOLSERVER,
+        coordinatorDerived: true,
+        coordinatorGeneration: 0,
+      }),
+      createInProcessCoordinatorStationControl: () => ({
+        connect: vi.fn(),
+        close: vi.fn(),
+      }),
+    });
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'refresh-concurrent',
+    });
+    const first = adapter.sendTurn({
+      threadId: 'refresh-concurrent',
+      input: 'first',
+    });
+    await expect(
+      adapter.sendTurn({ threadId: 'refresh-concurrent', input: 'second' }),
+    ).rejects.toThrow('could not confirm');
+    release([]);
+    await first;
+    expect(controlled.setMcpServers).toHaveBeenCalledTimes(1);
+    await adapter.stopSession('refresh-concurrent');
+  });
+
+  test('coordinator refresh preserves the Agent tool selection', async () => {
+    const controlled = createControlledMockQuery();
+    controlled.mcpServerStatus.mockResolvedValueOnce([]);
+    controlled.mcpServerStatus.mockResolvedValue([
+      {
+        name: 'station-control',
+        source: 'sdk',
+        status: 'connected',
+        tools: [{ name: 'read_conversation' }],
+      },
+    ]);
+    mockQuery.mockReturnValue(controlled);
+    const createControl = vi.fn(() => ({ connect: vi.fn(), close: vi.fn() }));
+    const adapter = new ClaudeAdapter({
+      isCoordinatorSession: () => true,
+      resolveCoordinatorStationControl: async () => ({
+        id: 'station-control',
+        transport: 'stdio',
+        command: 'node',
+        args: [builtinStationControlServerPath()],
+        toolNames: ['read_conversation', 'delegate_task'],
+        allowedTools: ['read_conversation'],
+        coordinatorDerived: true,
+        coordinatorGeneration: 0,
+      }),
+      createInProcessCoordinatorStationControl: createControl,
+    });
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'refresh-selection',
+    });
+    await adapter.sendTurn({ threadId: 'refresh-selection', input: 'go' });
+    expect(createControl).toHaveBeenCalledWith(
+      'refresh-selection',
+      undefined,
+      ['read_conversation'],
+      0,
+    );
+    await adapter.stopSession('refresh-selection');
+  });
+
+  test('coordinator refresh refuses when the canonical server is unavailable', async () => {
+    const controlled = createControlledMockQuery();
+    controlled.mcpServerStatus.mockResolvedValueOnce([]);
+    mockQuery.mockReturnValue(controlled);
+    const createControl = vi.fn(() => ({ connect: vi.fn(), close: vi.fn() }));
+    const adapter = new ClaudeAdapter({
+      isCoordinatorSession: () => true,
+      resolveCoordinatorStationControl: async () => undefined,
+      createInProcessCoordinatorStationControl: createControl,
+    });
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'refresh-unavailable',
+    });
+    await expect(
+      adapter.sendTurn({ threadId: 'refresh-unavailable', input: 'go' }),
+    ).rejects.toThrow('could not confirm');
+    expect(createControl).not.toHaveBeenCalled();
+    expect(controlled.setMcpServers).not.toHaveBeenCalled();
+    await adapter.stopSession('refresh-unavailable');
+  });
+
+  test('a same-named third-party server is not replaced by coordinator refresh', async () => {
+    const controlled = createControlledMockQuery();
+    mockQuery.mockReturnValue(controlled);
+    const adapter = new ClaudeAdapter({
+      isCoordinatorSession: () => true,
+      createInProcessCoordinatorStationControl: () => ({
+        connect: vi.fn(),
+        close: vi.fn(),
+      }),
+    });
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'refresh-impostor',
+      agent: {
+        slug: 'writer',
+        toolServers: [
+          {
+            id: 'station-control',
+            transport: 'stdio',
+            command: process.execPath,
+            args: ['--version'],
+          },
+        ],
+      },
+    });
+    await expect(
+      adapter.sendTurn({ threadId: 'refresh-impostor', input: 'go' }),
+    ).rejects.toThrow('station-control');
+    expect(controlled.setMcpServers).not.toHaveBeenCalled();
+    await adapter.stopSession('refresh-impostor');
   });
 
   test('#2415: a send racing a dispatched turn is refused before any effect, and the next send after its result is accepted', async () => {
@@ -6801,6 +7042,92 @@ describe('ClaudeAdapter', () => {
     });
   });
 
+  test.each(['result', 'iterator'] as const)(
+    'an unavailable model from the %s reaches delegation without inferring quota or exposing raw details',
+    async (source) => {
+      mockQuery.mockReturnValue({
+        async *[Symbol.asyncIterator]() {
+          const failure =
+            'API Error: 400 unknown provider for model claude-sonnet-5-5 /private/secret-proof';
+          if (source === 'result')
+            yield {
+              type: 'result',
+              subtype: 'success',
+              is_error: true,
+              result: failure,
+              stop_reason: null,
+              usage: { input_tokens: 0, output_tokens: 0 },
+              uuid: 'missing-provider-result',
+              session_id: 'missing-provider-native',
+            };
+          throw new Error(failure);
+        },
+        interrupt: vi.fn().mockResolvedValue(undefined),
+        close: vi.fn(),
+      });
+      const adapter = new ClaudeAdapter();
+      const events: any[] = [];
+      const drain = (async () => {
+        for await (const event of adapter.streamEvents()) events.push(event);
+      })();
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'missing-provider',
+        modelId: 'sonnet',
+      });
+      await vi.waitFor(() =>
+        expect(events.some((event) => event.method === 'runtime.error')).toBe(
+          true,
+        ),
+      );
+      await adapter.stopAll();
+      await drain;
+      const failures = events.filter(
+        (event) => event.method === 'runtime.error',
+      );
+      expect(failures).toHaveLength(1);
+      expect(failures[0]).toMatchObject({
+        code: 'provider_model_unavailable',
+        kind: 'model_unavailable',
+        retryable: false,
+      });
+      const snapshot = snapshotFor({
+        target: {
+          apiBase: 'http://current.invalid',
+          environmentId: 'current',
+          environmentName: 'Current',
+          kind: 'current',
+        },
+        metadata: {
+          taskId: 'missing-provider',
+          conversationId: 'missing-provider',
+          targetKind: 'agent',
+          targetId: 'claude',
+        },
+        detail: {
+          session: {
+            threadId: 'missing-provider',
+            status: 'error',
+            lifecycleState: 'failed',
+            terminalAttribution: { kind: 'runtime_error' },
+          },
+          events: failures,
+        },
+      });
+      expect(snapshot.status).toBe('failed');
+      const reason = snapshot.reason;
+      expect(reason).toMatchObject({
+        code: 'provider_model_unavailable',
+        detail: expect.stringMatching(/provider.*model.*availability/i),
+      });
+      const projected = projectDelegatedTaskEvent(1, failures[0]);
+      expect(projected.text).toBe(reason?.detail);
+      expect(JSON.stringify({ failures, reason, projected })).not.toMatch(
+        /secret-proof|quota.exhausted/i,
+      );
+    },
+  );
+
   test.each([true, false])(
     'a provider refusal emits one failed-turn error with wrapper=%s and leaves native binding status unknown',
     async (throwsWrapper) => {
@@ -9350,6 +9677,104 @@ describe('ClaudeAdapter', () => {
         args: ['--version'],
       },
     ];
+
+    test('a coordinator-added server uses the designation-scoped factory at Session start', async () => {
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const derived = vi.fn(() => ({ connect: vi.fn(), close: vi.fn() }));
+      const independent = vi.fn();
+      const adapter = new ClaudeAdapter({
+        createInProcessCoordinatorStationControl: derived,
+        createInProcessStationControl: independent,
+      });
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'coordinator-start',
+        agent: {
+          slug: 'writer',
+          toolServers: [
+            {
+              ...stationControlToolServers[0]!,
+              coordinatorDerived: true,
+              coordinatorGeneration: 7,
+            },
+          ],
+        },
+      });
+      expect(derived).toHaveBeenCalledWith(
+        'coordinator-start',
+        undefined,
+        undefined,
+        7,
+      );
+      expect(independent).not.toHaveBeenCalled();
+      await adapter.stopSession('coordinator-start');
+    });
+
+    test('a re-designated chat needs a successor when its coordinator credential is from an earlier generation', async () => {
+      mockQuery.mockReturnValue(createMockQuery([]));
+      let generation = 7;
+      const adapter = new ClaudeAdapter({
+        coordinatorGenerationForSession: () => generation,
+        createInProcessCoordinatorStationControl: () => ({
+          connect: vi.fn(),
+          close: vi.fn(),
+        }),
+        createInProcessStationControl: () => ({
+          connect: vi.fn(),
+          close: vi.fn(),
+        }),
+        createInProcessStationKnowledge: () => ({
+          connect: vi.fn(),
+          close: vi.fn(),
+        }),
+      });
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'coordinator-generation',
+        agent: {
+          slug: 'writer',
+          toolServers: [
+            {
+              ...stationControlToolServers[0]!,
+              coordinatorDerived: true,
+              coordinatorGeneration: 7,
+            },
+          ],
+        },
+      });
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'coordinator-knowledge-generation',
+        agent: {
+          slug: 'writer',
+          toolServers: [
+            stationControlToolServers[0]!,
+            {
+              id: 'station-knowledge',
+              transport: 'stdio',
+              command: 'node',
+              args: [builtinStationKnowledgeServerPath()],
+              coordinatorDerived: true,
+              coordinatorGeneration: 7,
+            },
+          ],
+        },
+      });
+      expect(
+        adapter.coordinatorToolsNeedSuccessor('coordinator-generation'),
+      ).toBe(false);
+      generation = 8;
+      expect(
+        adapter.coordinatorToolsNeedSuccessor('coordinator-generation'),
+      ).toBe(true);
+      expect(
+        adapter.coordinatorToolsNeedSuccessor(
+          'coordinator-knowledge-generation',
+        ),
+      ).toBe(true);
+      await adapter.stopSession('coordinator-generation');
+      await adapter.stopSession('coordinator-knowledge-generation');
+    });
 
     test('Station #90 lane D: with in-process delivery wired, the built-in is an sdk server with no command, env or argv credential; the third-party server is untouched', async () => {
       __resetStationControlMcpTokensForTests();
