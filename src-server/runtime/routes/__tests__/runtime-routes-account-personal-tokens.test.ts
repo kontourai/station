@@ -11,7 +11,7 @@
  * enrollment policy (registration is not under test); Project membership is
  * granted over the real invitation routes.
  */
-import { mkdirSync } from 'node:fs';
+import { chmodSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -19,6 +19,7 @@ import { readJson } from '../../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { usageExportOwnerIds } from '../../../analytics/usage-export-reader.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
+import type { FeaturePreviewRegistry } from '../../../services/feature-previews/feature-preview-registry.js';
 import { createApplicationSessionRuntime } from '../../../services/identity/application-session-runtime.js';
 import { deploymentAccountPrincipal } from '../../../services/identity/deployment-authentication-service.js';
 import {
@@ -36,6 +37,7 @@ import {
   INTERNAL_API_TOKEN_HEADER,
   INTERNAL_INGRESS_IDENTITY_HEADER,
 } from '../../../utils/internal-api-token.js';
+import { StationRuntime } from '../../bootstrap/station-runtime.js';
 import { configureRuntimeRoutes as configureRuntimeRoutesProduction } from '../runtime-routes.js';
 
 vi.mock('../runtime-route-support.js', () => {
@@ -81,6 +83,7 @@ describe('account-tied personal access tokens over the production composition', 
   const makeTempDir = trackTempDirs();
   const directories: string[] = [];
   const loaded: LoadedLocalAccounts[] = [];
+  const publicationRuntimes: StationRuntime[] = [];
   const ambientHome = process.env.STATION_HOME;
   const ambientRoot = process.env.STATION_ROOT;
   const ambientOrigins = process.env.ALLOWED_ORIGINS;
@@ -95,6 +98,8 @@ describe('account-tied personal access tokens over the production composition', 
     process.env.ALLOWED_ORIGINS = ORIGIN;
   });
   afterEach(async () => {
+    for (const runtime of publicationRuntimes.splice(0))
+      await runtime.shutdown();
     await notificationServiceForFixture?.shutdown();
     notificationServiceForFixture = undefined;
     for (const accounts of loaded.splice(0)) await accounts.service.close();
@@ -108,9 +113,14 @@ describe('account-tied personal access tokens over the production composition', 
     directories.splice(0);
   });
 
-  async function setup() {
+  async function setup(publication = false) {
     const owned = directories[directories.length - 1];
     const homeDir = join(owned, 'data');
+    if (publication) chmodSync(homeDir, 0o700);
+    const publicationRuntime = publication
+      ? new StationRuntime({ projectHomeDir: homeDir })
+      : undefined;
+    if (publicationRuntime) publicationRuntimes.push(publicationRuntime);
     mkdirSync(join(homeDir, 'security'), { mode: 0o700, recursive: true });
     const security = new EnvironmentSecurityService({ homeDir });
     const { credential: operatorCredential } = await security.initialize();
@@ -144,8 +154,23 @@ describe('account-tied personal access tokens over the production composition', 
     );
 
     const app = new Hono();
+    const previews = publicationRuntime
+      ? (Reflect.get(
+          publicationRuntime,
+          'featurePreviews',
+        ) as FeaturePreviewRegistry)
+      : undefined;
     let appConfig: Record<string, unknown> = {};
     const context = deepStub({
+      ...(publicationRuntime
+        ? {
+            runtimePublicationParticipant: Reflect.get(
+              publicationRuntime,
+              'runtimePublicationParticipant',
+            ),
+            featurePreviews: previews,
+          }
+        : {}),
       projectMembership: membership.service,
       projectSharedTasks: membership.sharedTasks,
       deploymentAuthentication: localAccounts,
@@ -169,7 +194,7 @@ describe('account-tied personal access tokens over the production composition', 
       },
       logger: { debug() {}, info() {}, warn() {}, error() {} },
       activeAgents: new Map(),
-      agentService: { listAgents: () => [] },
+      agentService: { listAgents: () => [], getProjectHomeDir: () => homeDir },
       agentMetadataMap: new Map(),
       agentFixedTokens: new Map(),
       agentTools: new Map(),
@@ -413,8 +438,46 @@ describe('account-tied personal access tokens over the production composition', 
       notifications,
       owner,
       ownerOperator,
+      previews,
     };
   }
+
+  test('production route composition binds a default-off finalizer only with the bootstrap publication owner', async () => {
+    const h = await setup(true);
+    expect(h.previews?.list()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'report-continuation-finalizer',
+          enabled: false,
+        }),
+      ]),
+    );
+    const input = {
+      operationKey: 'finish',
+      expectedRevision: 0,
+      continuationOperationKey: 'original',
+    };
+    const request = () =>
+      h.request(
+        '/api/orchestration/report-groups/unknown/continuation/finalize',
+        h.operator({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(input),
+        }),
+      );
+    const disabled = await request();
+    expect(disabled.status).toBe(503);
+    expect(await disabled.json()).toMatchObject({
+      code: 'report_continuation_finalizer_unavailable',
+    });
+    await h.previews!.setEnabled('report-continuation-finalizer', true);
+    const enabled = await request();
+    expect(enabled.status).toBe(503);
+    expect(await enabled.json()).toMatchObject({
+      code: 'report_group_unavailable',
+    });
+  });
 
   test.each(['self', 'operator', 'scope'] as const)(
     '%s token mint refuses retired admission before publication',
