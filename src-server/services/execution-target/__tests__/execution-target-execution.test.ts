@@ -434,6 +434,23 @@ describe('executeForegroundMessage', () => {
         deps,
       );
 
+    test('records a coordinator tools restart on the successor start', async () => {
+      const deps = restartDependencies();
+      deps.resolveConversationSession = vi.fn(async () => ({
+        sessionId: 'conversation:test:successor',
+        startRequired: true,
+        coordinatorToolsRestart: true,
+      }));
+      await send(deps);
+      expect(deps.startSession).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          threadId: 'conversation:test:successor',
+          metadata: expect.objectContaining({ coordinatorToolsRestart: true }),
+        }),
+      );
+    });
+
     test('stops the predecessor only after the successor has started', async () => {
       const deps = restartDependencies();
       const order: string[] = [];

@@ -214,6 +214,13 @@ server serves the same filtered registrations. A direct call to an omitted
 Station Control tool cannot reach its callback. These filters do not relax the
 existing per-call authority table.
 
+When a running Claude chat becomes the coordinator, the in-place refresh
+re-resolves the designated Agent's Station Control selection, refuses a
+missing or noncanonical server, and gives the in-process server only the
+selected names. Its credential rechecks designation on calls. The adapter and
+in-process MCP tests cover selection and revocation with fixtures; they do not
+establish live-provider behavior.
+
 Probe receipts store server-qualified names. The shared
 [selection translator](../../packages/shared/src/mcp-tool-selection.ts)
 resolves original, qualified and legacy normalized identities for external

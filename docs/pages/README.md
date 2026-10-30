@@ -78,7 +78,8 @@ renders no page for it and this builder never publishes it. The manifest's
 - `docs/guides/!(...)`, `docs/reference/!(...)`: every guide and reference
   except the admitted ones (and the bundle-only manual) named in the
   parentheses.
-- `docs/user/workspace-checkpoints.md`: the one unadmitted user guide.
+- `docs/user/workspace-checkpoints.md` and `docs/user/houston.md`: the
+  unadmitted user guides.
 - `docs/reviews/personal-boards-20261016/README.md`,
   `docs/reviews/workspace-map-20261015/README.md` and
   `docs/ui/reviews/mobile-pickers-20261003/README.md`: dated review evidence,

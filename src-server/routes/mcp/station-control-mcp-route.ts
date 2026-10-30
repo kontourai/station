@@ -169,6 +169,9 @@ export function createStationControlMcpRoutes(
       channels: STATION_CONTROL_MCP_HTTP_CHANNELS,
       serverId,
     });
+    const purpose = verifyStationControlMcpTokenEntry(candidate)?.serverId;
+    const coordinatorCredential =
+      purpose === 'coordinator-control' || purpose === 'coordinator-knowledge';
     const resolveCallerRecord: StationControlCallerRecordResolver | undefined =
       verified?.externalClientLeaseId
         ? (sessionId) => {
@@ -185,6 +188,11 @@ export function createStationControlMcpRoutes(
         : options.resolveCallerRecord;
     if (
       !verified ||
+      (coordinatorCredential &&
+        !resolveStationControlCallerFromToken(
+          candidate,
+          resolveCallerRecord,
+        )) ||
       (verified.externalClientLeaseId && url.searchParams.has('token')) ||
       (verified.externalClientLeaseId &&
         !resolveStationControlCallerFromToken(candidate, resolveCallerRecord))
@@ -297,6 +305,11 @@ export function createStationControlMcpRoutes(
             return (
               current !== undefined &&
               current.sessionId === verified.sessionId &&
+              (!coordinatorCredential ||
+                resolveStationControlCallerFromToken(
+                  candidate,
+                  resolveCallerRecord,
+                ) !== null) &&
               (!current.externalClientLeaseId ||
                 resolveStationControlCallerFromToken(
                   candidate,

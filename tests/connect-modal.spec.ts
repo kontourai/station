@@ -221,6 +221,15 @@ async function receiverFixture(
       // live notifications; this receiver has delivered none.
       return route.fulfill({ json: { success: true, data: [] } });
     }
+    if (
+      request.method() === 'GET' &&
+      path === '/api/orchestration/coordinator'
+    ) {
+      // The paired receiver has no designated coordinator.
+      return route.fulfill({
+        json: { success: true, data: { designation: null } },
+      });
+    }
     if (request.method() === 'GET' && path === '/api/starter-work/start-task') {
       // No Starter Task was bound or launched on this receiver.
       return route.fulfill({
