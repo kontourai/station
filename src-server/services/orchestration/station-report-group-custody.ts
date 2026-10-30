@@ -389,7 +389,10 @@ export class StationReportGroupCustody {
         );
       };
       const service = createDelegationAuthorityServiceV3(
-        this.owners.persistence.roundsAuthorityStore(current),
+        this.owners.persistence.roundsAuthorityStore(current, current, {
+          owner: writer,
+          lease: hold,
+        }),
         {
           now: () => new Date().toISOString(),
           authorize: async (action, candidate, child) => {

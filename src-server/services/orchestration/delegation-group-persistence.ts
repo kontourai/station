@@ -52,7 +52,10 @@ import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycl
 import { z } from 'zod/v3';
 import { priceBoundedApiHistoricalRawUsage } from '../../runtime/conversation/bounded-api-provider-contract.js';
 import type { ReservedProviderEvidence } from '../../runtime/conversation/reserved-provider-fetch.js';
-import { HomeWriterOwner } from '../ssh/home-writer-owner.js';
+import {
+  type HomeWriterLease,
+  HomeWriterOwner,
+} from '../ssh/home-writer-owner.js';
 import {
   assertReportInputTransition,
   type ReportInputStore,
@@ -387,6 +390,7 @@ class PrivateDomain {
  */
 export class StationDelegationPersistence {
   readonly #homeDir?: string;
+  readonly #root: string;
   readonly #authorities: PrivateDomain;
   readonly #groups: PrivateDomain;
   readonly #providerEvidence: PrivateDomain;
@@ -405,6 +409,7 @@ export class StationDelegationPersistence {
     const requested = resolve(privateRoot);
     privateDirectory(requested);
     const root = join(realpathSync(dirname(requested)), basename(requested));
+    this.#root = root;
     privateDirectory(root);
     if (this.#homeDir)
       requirePersistence(
@@ -461,7 +466,19 @@ export class StationDelegationPersistence {
 
   async #roundsLifetime<T>(
     body: (commitWithin?: (commit: () => void) => void) => Promise<T>,
+    existing?: { owner: HomeWriterOwner; lease: HomeWriterLease },
   ): Promise<T> {
+    if (existing) {
+      requirePersistence(
+        existing.owner.homeDir === dirname(this.#root) &&
+          basename(this.#root) === 'report-groups',
+        'delegation_home_custody_mismatch',
+      );
+      existing.owner.runWithLease(existing.lease, () => undefined);
+      return body((commit) =>
+        existing.owner.runWithLease(existing.lease, commit),
+      );
+    }
     if (!this.#homeDir) return body();
     const owner = await HomeWriterOwner.forHome(this.#homeDir);
     return owner.runLifetime(() =>
@@ -1794,6 +1811,7 @@ export class StationDelegationPersistence {
   roundsAuthorityStore(
     finalizeCurrent: DelegationPersistenceFinalizer,
     preparationCurrent: DelegationPersistenceFinalizer = finalizeCurrent,
+    existing?: { owner: HomeWriterOwner; lease: HomeWriterLease },
   ): DelegationAuthorityStoreV3 {
     const domain = this.#roundsAuthorities;
     const publicationCurrent = (): undefined => {
@@ -1820,136 +1838,139 @@ export class StationDelegationPersistence {
     };
     return {
       transact: (authorityId, body) =>
-        this.#roundsLifetime((commitWithin) =>
-          domain.locked(finalizeCurrent, async () => {
-            if (preparationCurrent !== finalizeCurrent)
-              assertCurrent(preparationCurrent);
-            const file = address(authorityId);
-            requirePersistence(
-              readBytes(
-                join(this.#authorities.directory, file),
-                AUTHORITY_MAX_BYTES,
-              ) === null,
-              'delegation_authority_custody_conflict',
-            );
-            const previous = read(file);
-            const next = await body(previous && structuredClone(previous));
-            if (preparationCurrent !== finalizeCurrent)
-              assertCurrent(preparationCurrent);
-            assertCurrent(finalizeCurrent);
-            const ledger = validateDelegationAuthorityLedgerV3(next.ledger);
-            requirePersistence(
-              ledger.importedFromV2 === null &&
-                ledger.epochs[0].root.authority_id === authorityId,
-              'delegation_rounds_authority_identity_mismatch',
-            );
-            if (previous) {
+        this.#roundsLifetime(
+          (commitWithin) =>
+            domain.locked(finalizeCurrent, async () => {
+              if (preparationCurrent !== finalizeCurrent)
+                assertCurrent(preparationCurrent);
+              const file = address(authorityId);
               requirePersistence(
-                ledger.revision ===
-                  previous.revision + (same(previous, ledger) ? 0 : 1) &&
-                  ledger.maxRenewals === previous.maxRenewals &&
-                  (!previous.cancelled || ledger.cancelled) &&
-                  ledger.epochs.length >= previous.epochs.length &&
-                  ledger.epochs.length <= previous.epochs.length + 1 &&
-                  same(
-                    ledger.origins.slice(0, previous.origins.length),
-                    previous.origins,
-                  ),
-                'delegation_rounds_authority_history_changed',
+                readBytes(
+                  join(this.#authorities.directory, file),
+                  AUTHORITY_MAX_BYTES,
+                ) === null,
+                'delegation_authority_custody_conflict',
               );
-              if (ledger.epochs.length > previous.epochs.length)
+              const previous = read(file);
+              const next = await body(previous && structuredClone(previous));
+              if (preparationCurrent !== finalizeCurrent)
+                assertCurrent(preparationCurrent);
+              assertCurrent(finalizeCurrent);
+              const ledger = validateDelegationAuthorityLedgerV3(next.ledger);
+              requirePersistence(
+                ledger.importedFromV2 === null &&
+                  ledger.epochs[0].root.authority_id === authorityId,
+                'delegation_rounds_authority_identity_mismatch',
+              );
+              if (previous) {
                 requirePersistence(
-                  ledger.epochs.at(-1)?.renewal?.command.expectedRevision ===
-                    previous.revision,
+                  ledger.revision ===
+                    previous.revision + (same(previous, ledger) ? 0 : 1) &&
+                    ledger.maxRenewals === previous.maxRenewals &&
+                    (!previous.cancelled || ledger.cancelled) &&
+                    ledger.epochs.length >= previous.epochs.length &&
+                    ledger.epochs.length <= previous.epochs.length + 1 &&
+                    same(
+                      ledger.origins.slice(0, previous.origins.length),
+                      previous.origins,
+                    ),
                   'delegation_rounds_authority_history_changed',
                 );
-              for (let i = 0; i < previous.epochs.length; i++) {
-                const before = previous.epochs[i],
-                  after = ledger.epochs[i];
+                if (ledger.epochs.length > previous.epochs.length)
+                  requirePersistence(
+                    ledger.epochs.at(-1)?.renewal?.command.expectedRevision ===
+                      previous.revision,
+                    'delegation_rounds_authority_history_changed',
+                  );
+                for (let i = 0; i < previous.epochs.length; i++) {
+                  const before = previous.epochs[i],
+                    after = ledger.epochs[i];
+                  requirePersistence(
+                    same(before.root, after.root) &&
+                      same(before.renewal, after.renewal) &&
+                      (i < previous.epochs.length - 1 ||
+                      ledger.epochs.length > previous.epochs.length
+                        ? same(before.envelopes, after.envelopes)
+                        : after.envelopes.length >= before.envelopes.length &&
+                          same(
+                            after.envelopes.slice(0, before.envelopes.length),
+                            before.envelopes,
+                          )),
+                    'delegation_rounds_epoch_history_changed',
+                  );
+                }
+                for (const before of previous.invocations) {
+                  const after = ledger.invocations.find(
+                    (i) => i.invocationId === before.invocationId,
+                  );
+                  requirePersistence(
+                    after &&
+                      after.envelopeId === before.envelopeId &&
+                      same(after.allocation, before.allocation) &&
+                      (!before.terminal || after.terminal) &&
+                      (before.usage === null ||
+                        same(before.usage, after.usage)),
+                    'delegation_invocation_history_changed',
+                  );
+                }
+              }
+              const files = domain.files();
+              requirePersistence(
+                previous || files.length < MAX_FILES,
+                'delegation_store_capacity',
+              );
+              const identities = new Set(
+                ledger.epochs.at(-1)!.envelopes.map((e) => e.execution_id),
+              );
+              for (const otherFile of this.#authorities.filesIfPresent()) {
+                const bytes = readBytes(
+                  join(this.#authorities.directory, otherFile),
+                  AUTHORITY_MAX_BYTES,
+                );
                 requirePersistence(
-                  same(before.root, after.root) &&
-                    same(before.renewal, after.renewal) &&
-                    (i < previous.epochs.length - 1 ||
-                    ledger.epochs.length > previous.epochs.length
-                      ? same(before.envelopes, after.envelopes)
-                      : after.envelopes.length >= before.envelopes.length &&
-                        same(
-                          after.envelopes.slice(0, before.envelopes.length),
-                          before.envelopes,
-                        )),
-                  'delegation_rounds_epoch_history_changed',
+                  bytes !== null,
+                  'delegation_record_disappeared',
+                );
+                const other = validateDelegationAuthorityLedger(
+                  JSON.parse(bytes),
+                );
+                requirePersistence(
+                  !other.envelopes.some((e) => identities.has(e.execution_id)),
+                  'delegation_execution_custody_conflict',
                 );
               }
-              for (const before of previous.invocations) {
-                const after = ledger.invocations.find(
-                  (i) => i.invocationId === before.invocationId,
-                );
+              for (const otherFile of files) {
+                if (otherFile === file) continue;
+                const other = read(otherFile);
                 requirePersistence(
-                  after &&
-                    after.envelopeId === before.envelopeId &&
-                    same(after.allocation, before.allocation) &&
-                    (!before.terminal || after.terminal) &&
-                    (before.usage === null || same(before.usage, after.usage)),
-                  'delegation_invocation_history_changed',
+                  other &&
+                    !other.epochs
+                      .at(-1)!
+                      .envelopes.some((e) => identities.has(e.execution_id)),
+                  'delegation_execution_custody_conflict',
                 );
               }
-            }
-            const files = domain.files();
-            requirePersistence(
-              previous || files.length < MAX_FILES,
-              'delegation_store_capacity',
-            );
-            const identities = new Set(
-              ledger.epochs.at(-1)!.envelopes.map((e) => e.execution_id),
-            );
-            for (const otherFile of this.#authorities.filesIfPresent()) {
-              const bytes = readBytes(
-                join(this.#authorities.directory, otherFile),
-                AUTHORITY_MAX_BYTES,
-              );
               requirePersistence(
-                bytes !== null,
-                'delegation_record_disappeared',
+                Buffer.byteLength(`${canonicalJson(ledger)}\n`) +
+                  authorityCapacityV3(ledger) <=
+                  AUTHORITY_V3_MAX_BYTES,
+                'delegation_settlement_capacity',
               );
-              const other = validateDelegationAuthorityLedger(
-                JSON.parse(bytes),
-              );
+              if (!previous || !same(previous, ledger))
+                await domain.publish(
+                  file,
+                  ledger,
+                  AUTHORITY_V3_MAX_BYTES,
+                  publicationCurrent,
+                  commitWithin,
+                );
               requirePersistence(
-                !other.envelopes.some((e) => identities.has(e.execution_id)),
-                'delegation_execution_custody_conflict',
+                same(read(file), ledger),
+                'delegation_commit_unconfirmed',
               );
-            }
-            for (const otherFile of files) {
-              if (otherFile === file) continue;
-              const other = read(otherFile);
-              requirePersistence(
-                other &&
-                  !other.epochs
-                    .at(-1)!
-                    .envelopes.some((e) => identities.has(e.execution_id)),
-                'delegation_execution_custody_conflict',
-              );
-            }
-            requirePersistence(
-              Buffer.byteLength(`${canonicalJson(ledger)}\n`) +
-                authorityCapacityV3(ledger) <=
-                AUTHORITY_V3_MAX_BYTES,
-              'delegation_settlement_capacity',
-            );
-            if (!previous || !same(previous, ledger))
-              await domain.publish(
-                file,
-                ledger,
-                AUTHORITY_V3_MAX_BYTES,
-                publicationCurrent,
-                commitWithin,
-              );
-            requirePersistence(
-              same(read(file), ledger),
-              'delegation_commit_unconfirmed',
-            );
-            return next.result;
-          }),
+              return next.result;
+            }),
+          existing,
         ),
     };
   }

@@ -2182,6 +2182,12 @@ qualified. The installed Flow Agents 9.9.1 contract authenticates retained
 winner bytes; the metadata-only adapter does not grant provider execution or
 create a retry authorization.
 
+Accounting recovery holds the authenticated home lease before entering its
+authority transaction and lends that exact lease to the journal's synchronous
+currentness check and rename. A foreign or released home lease is refused.
+This recovery-only composition does not establish exclusion for every rounds
+writer or enable the continuation finalizer.
+
 
 [StationReportGroupRuntime](../../src-server/services/orchestration/station-report-group-runtime.ts)
 composes one private personal-host custody root with signed admissions, published

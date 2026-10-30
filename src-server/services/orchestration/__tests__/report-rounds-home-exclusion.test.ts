@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import fs, {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { join } from 'node:path';
 import { FileAuthorizationLedger } from '@kontourai/dispatch';
 import { createDelegationAuthorityServiceV3 } from '@kontourai/flow-agents/delegation-authority-service-v3';
@@ -86,6 +92,72 @@ test('home-first rounds publication excludes a second revoked request and nests 
       controller: prepared.spec.controller,
       spec: prepared.spec,
     });
+    const writer = await HomeWriterOwner.forHome(h.f.home);
+    const held = await writer.acquire();
+    const scopedCurrent = (): undefined => writer.runWithLease(held, current);
+    const scoped = new StationDelegationPersistence(root).roundsAuthorityStore(
+      scopedCurrent,
+      scopedCurrent,
+      { owner: writer, lease: held },
+    );
+    let authorityRenames = 0;
+    const rename = fs.renameSync;
+    const renameProbe = vi
+      .spyOn(fs, 'renameSync')
+      .mockImplementation((from, to) => {
+        if (String(to).includes('/station-rounds-authorities-v3/')) {
+          writer.assertSynchronous();
+          authorityRenames++;
+        }
+        return rename(from, to);
+      });
+    syncBuiltinESMExports();
+    try {
+      const ledger = await scoped.transact(
+        prepared.root.authority_id,
+        async (value) => {
+          assert.ok(value);
+          return {
+            ledger: { ...value, revision: value.revision + 1, cancelled: true },
+            result: value,
+          };
+        },
+      );
+      assert.equal(
+        ledger.epochs[0].root.authority_id,
+        prepared.root.authority_id,
+      );
+    } finally {
+      renameProbe.mockRestore();
+      syncBuiltinESMExports();
+    }
+    assert.equal(authorityRenames, 1);
+    const foreignHome = join(h.f.root, 'foreign-home');
+    mkdirSync(join(foreignHome, 'security'), { mode: 0o700, recursive: true });
+    const foreign = await HomeWriterOwner.forHome(foreignHome);
+    const foreignLease = await foreign.acquire();
+    try {
+      const foreignScope = new StationDelegationPersistence(
+        root,
+      ).roundsAuthorityStore(scopedCurrent, scopedCurrent, {
+        owner: foreign,
+        lease: foreignLease,
+      });
+      await assert.rejects(
+        foreignScope.transact(prepared.root.authority_id, async () => {
+          throw Error('foreign scope must not enter');
+        }),
+        { code: 'delegation_home_custody_mismatch' },
+      );
+    } finally {
+      await foreignLease.release();
+    }
+    await held.release();
+    await assert.rejects(
+      scoped.transact(prepared.root.authority_id, async () => {
+        throw Error('released scope must not enter');
+      }),
+    );
     const request = new Request(h.f.req.url, { method: 'POST' });
     const principal = getRuntimeAuthenticatedRequestPrincipal(h.f.req);
     assert.ok(principal && principal.kind !== 'internal');
