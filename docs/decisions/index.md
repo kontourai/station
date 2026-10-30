@@ -16,6 +16,7 @@ Numbered ADRs under `docs/adr/` are frozen history and are not listed here.
 | [device-agent-control](./device-agent-control.md) | current | Bound agents control host-qualified device live surfaces through the shared lease |
 | [html-replies](./html-replies.md) | current | Contain agent-authored HTML in a page-only sandbox |
 | [mcp-app-transcript-previews](./mcp-app-transcript-previews.md) | current | Display recorded MCP app results in chat without granting session actions |
+| [personal-coordinator-session](./personal-coordinator-session.md) | current | One coordinator Session per person, woken from delivered attention notifications through the conversation inbox |
 | [process-supervisor](./process-supervisor.md) | current | Station process ownership and the process supervisor |
 | [project-room-realtime](./project-room-realtime.md) | current | Keep Room durability independent of realtime transport and harden SSE first |
 | [pull-request-guide-generation](./pull-request-guide-generation.md) | current | Generate shared pull request guides without model execution tools |

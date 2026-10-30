@@ -1284,7 +1284,8 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
         await page.getByRole('button', { name: /^Chats and tasks/ }).click();
         const picker = page.getByRole('dialog', { name: 'Chats and tasks' });
         await expect(picker.getByTestId('inbox-row-status')).toBeInViewport();
-        await expect(picker.getByTestId('inbox-row-status')).not.toContainText(
+        // History recovery cannot clear the independent failed inventory.
+        await expect(picker.getByTestId('inbox-row-status')).toContainText(
           'Last known:',
         );
         await page.screenshot({
@@ -2872,7 +2873,32 @@ const SCREENS: Screen[] = [
     title: 'Mobile — Home',
     path: '/',
     viewport: MOBILE,
-    afterGoto: (page) => assertNoStrayProjectModal(page),
+    afterGoto: async (page) => {
+      await assertNoStrayProjectModal(page);
+      // Exercise the two-line heading seen with the hosted runner's fonts.
+      const style = await page.addStyleTag({
+        content: '.home-view__welcome h1 { max-width: 250px !important; }',
+      });
+      try {
+        const heading = page.locator('.home-view__welcome h1');
+        const action = page.locator('.home-view__action').nth(1);
+        const dock = page.locator('.chat-dock.is-collapsed');
+        await expect(heading).toBeVisible();
+        await expect(action).toBeVisible();
+        await expect(dock).toBeVisible();
+        const headingBox = await heading.boundingBox();
+        const actionBox = await action.boundingBox();
+        const dockBox = await dock.boundingBox();
+        expect(headingBox!.height).toBeGreaterThan(35);
+        expect(actionBox!.y + actionBox!.height).toBeLessThanOrEqual(
+          dockBox!.y,
+        );
+      } finally {
+        await style.evaluate((element) => {
+          element.parentNode?.removeChild(element);
+        });
+      }
+    },
   },
   {
     name: 'mobile-agents',

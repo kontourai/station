@@ -1,0 +1,11 @@
+{
+  "revision": "76af80d9644119c3eead0a2e715ad8aa585d50f8",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Reviewed the token module delta since the previous scoped review: the generation-advance helper was made module-private without changing credential issuance, revocation or request authorization. The documented authority claims are unchanged; no live-provider qualification.","inputs":["docs/guides/connections.md","src-server/runtime/mcp/station-control-mcp-token.ts"]},
+
+    {"path":"docs/guides/knowledge.md","note":"Reviewed the token module delta since the previous scoped review: the generation-advance helper was made module-private without changing credential issuance, revocation or request authorization. The documented authority claims are unchanged; no live-provider qualification.","inputs":["docs/guides/knowledge.md","src-server/runtime/mcp/station-control-mcp-token.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed the token module delta since the previous scoped review: the generation-advance helper was made module-private without changing credential issuance, revocation or request authorization. The documented authority claims are unchanged; no live-provider qualification.","inputs":["docs/security/remote-access-threat-model.md","src-server/runtime/mcp/station-control-mcp-token.ts"]}
+  ]
+}

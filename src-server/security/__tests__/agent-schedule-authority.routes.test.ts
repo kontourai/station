@@ -61,6 +61,7 @@ import {
   createAgentScheduleRoutes,
   WAKE_UP_NEEDS_APPROVAL_COPY,
 } from '../../routes/orchestration/agent-schedule.js';
+import { createCoordinatorRoutes } from '../../routes/orchestration/coordinator.js';
 import { resolveDispatchActor } from '../../routes/orchestration/orchestration.js';
 import { createRunRoutes } from '../../routes/orchestration/runs.js';
 import { createDiagnosticsRoutes } from '../../routes/system/diagnostics.js';
@@ -99,6 +100,7 @@ import {
   wakeUpClientTurnId,
   wakeUpMessage,
 } from '../../services/orchestration/agent-schedule.js';
+import { createSqliteCoordinatorStore } from '../../services/orchestration/coordinator-session.js';
 import { EventBus } from '../../services/orchestration/event-bus.js';
 import { RunService } from '../../services/orchestration/run-service.js';
 import {
@@ -110,6 +112,7 @@ import type { ScheduledConversationRunInput } from '../../services/scheduling/sc
 import { conversationAutomationsFrom } from '../../services/scheduling/scheduled-conversation-runs.js';
 import { createSchedulerLedger } from '../../services/scheduling/scheduler-ledger.js';
 import { SchedulerService } from '../../services/scheduling/scheduler-service.js';
+import { stationControlScopeRefusal } from '../../tools/station-control-policy.js';
 import { STATION_CONTROL_CALLER_TOKEN_HEADER } from '../../tools/station-control-shared.js';
 import {
   getInternalApiToken,
@@ -216,6 +219,7 @@ interface World {
   inboxStore: ThreadInboxStore;
   inbox: ThreadInboxDelivery;
   composition: AgentScheduleComposition;
+  pictureStore: ReturnType<typeof createSqliteCoordinatorStore>;
   refusals: string[];
   /** Every hand-off to the inbox, with the inbox's own answer. */
   submitted: Array<{
@@ -243,6 +247,8 @@ async function boot(options: {
   retargetsGrantedJob?: () => boolean;
 }): Promise<World> {
   const store = createSqliteAgentScheduleStore(new DatabaseSync(':memory:'));
+  const pictureDb = new DatabaseSync(':memory:');
+  const pictureStore = createSqliteCoordinatorStore(pictureDb as never);
   const inboxStore = createSqliteThreadInboxStore(
     new DatabaseSync(':memory:') as never,
   );
@@ -292,7 +298,9 @@ async function boot(options: {
       getRuntimeAuthenticatedRequestPrincipal(request)?.kind === 'internal',
     // A person's credential request is current; nothing else is a person.
     isRequestPrincipalCurrent: (request) =>
-      getRuntimeAuthenticatedRequestPrincipal(request)?.kind === 'credential',
+      ['credential', 'internal'].includes(
+        getRuntimeAuthenticatedRequestPrincipal(request)?.kind ?? '',
+      ),
     requestUserId: () => LOCAL_OPERATOR_PRINCIPAL_ID,
     readAuthorityFor: () => ({ mode: 'personal' }) as never,
     tenantFor: () => undefined,
@@ -379,6 +387,29 @@ async function boot(options: {
     createAgentScheduleRoutes(composition.routeDeps),
   );
   app.route(
+    '/api/orchestration',
+    createCoordinatorRoutes({
+      store: options.hosted ? undefined : pictureStore,
+      person: composition.person,
+      dispatchActor: () => ({ userId: LOCAL_OPERATOR_PRINCIPAL_ID }),
+      picturePreview: { select: ({ enabled }) => enabled() },
+      isInternalRequest: (request) =>
+        getRuntimeAuthenticatedRequestPrincipal(request)?.kind === 'internal',
+      resolvePictureCaller: (request) =>
+        resolveStationControlCallerForRequest(request, resolveRecord),
+      agentMayRead: (caller, conversationId) =>
+        !stationControlScopeRefusal(
+          caller,
+          scope.target(
+            { kind: 'conversation', conversationId, remote: false },
+            'view',
+          ),
+          (id) => id === LOCAL_OPERATOR_PRINCIPAL_ID,
+        ),
+      now: () => clock.now,
+    }),
+  );
+  app.route(
     '/scheduler',
     createSchedulerRoutes(
       options.scheduler ??
@@ -460,11 +491,13 @@ async function boot(options: {
     inboxStore,
     inbox,
     composition,
+    pictureStore,
     refusals,
     submitted,
     addJob,
     close: async () => {
       composition.delivery?.stop();
+      pictureDb.close();
       inbox.stop();
       await new Promise<void>((resolve) => server.close(() => resolve()));
     },
@@ -588,6 +621,45 @@ const PROPOSALS = '/api/orchestration/station-control/job-proposals';
 const FIVE_MINUTES = 5 * 60_000;
 const schedulePath = (conversationId: string) =>
   `/api/orchestration/agent-schedule/${conversationId}`;
+
+describe('coordinator working picture authority', () => {
+  test('only the bound designated caller writes, and a revoked source disappears', async () => {
+    const sessionId = nextSession();
+    world.pictureStore.designate({
+      conversationId: `conv-${sessionId}`,
+      actor: { userId: LOCAL_OPERATOR_PRINCIPAL_ID },
+      replace: true,
+      now: clock.now,
+    });
+    const path = '/api/orchestration/station-control/coordinator-picture';
+    const entry = {
+      conversationId: 'conv-work',
+      status: 'waiting',
+      summary: 'Needs review',
+    };
+    expect(
+      (await agent('bearer-exposed', sessionId, 'POST', path, entry)).status,
+    ).not.toBe(200);
+    expect(
+      (await agent('bound', nextSession(), 'POST', path, entry)).status,
+    ).toBe(404);
+    expect((await agent('bound', sessionId, 'POST', path, entry)).status).toBe(
+      200,
+    );
+    expect(
+      (await personRequest('GET', '/api/orchestration/coordinator/picture'))
+        .body,
+    ).toMatchObject({ data: { items: [{ summary: 'Needs review' }] } });
+    facts.mayNotRead.add('conv-work');
+    expect((await agent('bound', sessionId, 'GET', path)).body).toMatchObject({
+      data: { items: [] },
+    });
+    expect(
+      (await personRequest('GET', '/api/orchestration/coordinator/picture'))
+        .body,
+    ).toMatchObject({ data: { items: [] } });
+  });
+});
 
 describe('schedule_wake_up: the caller’s own chat, bounded', () => {
   for (const channel of [

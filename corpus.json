@@ -283,6 +283,7 @@
     "docs/guides/!(contributing|keyboard-shortcuts|product-law-authoring).md",
     "docs/reference/!(contributor-commands|product-laws|station-docs).md",
     "docs/user/workspace-checkpoints.md",
+    "docs/user/houston.md",
     "docs/decisions/**"
   ],
   "decisions": {

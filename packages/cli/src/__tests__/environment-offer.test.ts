@@ -244,46 +244,64 @@ describe('environment offer', () => {
     },
   );
 
-  test('prints only a decodable payload carrying an explicit forwarded endpoint', async () => {
-    const forwarded = 'http://127.0.0.1:45678';
-    const request = vi
-      .fn<OperatorJsonRequest>()
-      .mockImplementation(async (_apiBase, path, init?: RequestInit) => {
-        if (path === '/.well-known/station/v1')
-          return { environmentId: SNAPSHOT.environmentId };
-        if (path === '/.well-known/station/v1/proof') {
-          const body = JSON.parse(String(init?.body)) as { nonce: string };
-          return proofFor(body.nonce);
-        }
-        if (path === '/api/pairing/offers') {
-          // The desktop SSH launcher's machine flow names no scope: it keeps
-          // the Station's default grant.
-          expect(JSON.parse(String(init?.body))).toEqual({
-            endpoint: forwarded,
-          });
-          return {
-            protocolVersion: DEVICE_PAIRING_PROTOCOL_VERSION,
-            environmentId: '11111111-1111-4111-8111-111111111111',
-            offerId: 'offer-forwarded',
-            challenge: 'challenge-forwarded',
-            manualCode: 'PAIRME2345',
-            endpoint: forwarded,
-            scope: pairingScopePresetString('standard'),
-            expiresAt: Date.now() + 60_000,
-          };
-        }
-        throw new Error(`unexpected path ${path}`);
-      });
-    const deps = dependencies(request);
-    await runEnvironmentCommand(
-      ['offer', '--payload-only', '--advertise-url', forwarded],
-      deps,
-    );
-    const output = deps.stdout.mock.calls[0]?.[0] as string;
-    expect(output.startsWith('station-pairing:v1:')).toBe(true);
-    expect(output).not.toContain('\n');
-    expect(deps.offer.renderQr).not.toHaveBeenCalled();
-  });
+  test.each([
+    ['http://127.0.0.1:45678', 'this offer uses loopback'],
+    ['https://station.example.test', 'verify this advertised endpoint'],
+  ])(
+    'describes an explicit endpoint %s accurately',
+    async (forwarded, reachability) => {
+      const request = vi
+        .fn<OperatorJsonRequest>()
+        .mockImplementation(async (_apiBase, path, init?: RequestInit) => {
+          if (path === '/.well-known/station/v1')
+            return { environmentId: SNAPSHOT.environmentId };
+          if (path === '/.well-known/station/v1/proof') {
+            const body = JSON.parse(String(init?.body)) as { nonce: string };
+            return proofFor(body.nonce);
+          }
+          if (path === '/api/pairing/offers') {
+            // The desktop SSH launcher's machine flow names no scope: it keeps
+            // the Station's default grant.
+            expect(JSON.parse(String(init?.body))).toEqual({
+              endpoint: forwarded,
+              ...(request.mock.calls.filter(
+                ([, path]) => path === '/api/pairing/offers',
+              ).length > 1
+                ? {
+                    scope: pairingScopePresetString('standard'),
+                    approval: 'on-create',
+                  }
+                : {}),
+            });
+            return {
+              protocolVersion: DEVICE_PAIRING_PROTOCOL_VERSION,
+              environmentId: '11111111-1111-4111-8111-111111111111',
+              offerId: 'offer-forwarded',
+              challenge: 'challenge-forwarded',
+              manualCode: 'PAIRME2345',
+              endpoint: forwarded,
+              scope: pairingScopePresetString('standard'),
+              expiresAt: Date.now() + 60_000,
+            };
+          }
+          throw new Error(`unexpected path ${path}`);
+        });
+      const deps = dependencies(request);
+      await runEnvironmentCommand(
+        ['offer', '--payload-only', '--advertise-url', forwarded],
+        deps,
+      );
+      const output = deps.stdout.mock.calls[0]?.[0] as string;
+      expect(output.startsWith('station-pairing:v1:')).toBe(true);
+      expect(output).not.toContain('\n');
+      expect(deps.offer.renderQr).not.toHaveBeenCalled();
+      await runEnvironmentCommand(
+        ['offer', '--advertise-url', forwarded],
+        deps,
+      );
+      expect(deps.stdout.mock.calls[1]?.[0]).toContain(reachability);
+    },
+  );
 
   test('prints a separately routed link for the selected client while payload-only remains raw', async () => {
     const request = vi
@@ -438,6 +456,9 @@ describe('environment offer', () => {
     const output = deps.stdout.mock.calls[0]?.[0] as string;
     expect(output).toContain('published privately on this tailnet');
     expect(output).toContain('tailscale serve --https=443 off');
+    expect(request).toHaveBeenCalledWith(API_BASE, '/.well-known/station/v1', {
+      headers: { Origin: 'https://station.tailnet.ts.net' },
+    });
     expect(command).toHaveBeenCalledWith([
       'serve',
       '--bg',
@@ -516,41 +537,61 @@ describe('environment offer', () => {
     expect(output).toContain('Endpoint: https://station.tailnet.ts.net:8444');
   });
 
-  test('names the alternate port in post-publication mint failure teardown', async () => {
-    const request = vi
-      .fn<OperatorJsonRequest>()
-      .mockImplementation(async (_base, path, init) => {
-        if (path === '/.well-known/station/v1')
-          return { environmentId: SNAPSHOT.environmentId };
-        if (path === '/.well-known/station/v1/proof')
-          return proofFor(
-            (JSON.parse(String(init?.body)) as { nonce: string }).nonce,
-          );
-        if (path === '/api/pairing/offers') throw new Error('mint failed');
-        throw new Error(`unexpected ${path}`);
-      });
-    const deps = dependencies(request);
-    deps.offer.tailscale = {
-      command: async (args) =>
-        args[0] === 'status'
-          ? {
-              exitCode: 0,
-              stdout: JSON.stringify({
-                Self: { DNSName: 'station.tailnet.ts.net.', Online: true },
-              }),
-              stderr: '',
+  test.each([false, true])(
+    'names teardown and preserves the cause when Origin refusal is %s',
+    async (originForbidden) => {
+      const request = vi
+        .fn<OperatorJsonRequest>()
+        .mockImplementation(async (_base, path, init) => {
+          if (path === '/.well-known/station/v1') {
+            if (originForbidden && new Headers(init?.headers).has('Origin')) {
+              throw Object.assign(new Error('HTTP 403'), {
+                code: 'origin_forbidden',
+              });
             }
-          : args[1] === 'status'
-            ? { exitCode: 0, stdout: JSON.stringify({ Web: {} }), stderr: '' }
-            : { exitCode: 0, stdout: '', stderr: '' },
-      probe: async () => 'unreachable',
-    };
-    const failure = await runEnvironmentCommand(
-      ['offer', '--tailscale', '--tailscale-serve-port=8444'],
-      deps,
-    ).catch((error) => error);
-    expect(failure).toBeInstanceOf(Error);
-    expect(String(failure)).toContain('--https=8444 off');
-    expect(String(failure)).not.toContain('--https=443 off');
-  });
+            return { environmentId: SNAPSHOT.environmentId };
+          }
+          if (path === '/.well-known/station/v1/proof')
+            return proofFor(
+              (JSON.parse(String(init?.body)) as { nonce: string }).nonce,
+            );
+          if (path === '/api/pairing/offers') throw new Error('mint failed');
+          throw new Error(`unexpected ${path}`);
+        });
+      const deps = dependencies(request);
+      deps.offer.tailscale = {
+        command: async (args) =>
+          args[0] === 'status'
+            ? {
+                exitCode: 0,
+                stdout: JSON.stringify({
+                  Self: { DNSName: 'station.tailnet.ts.net.', Online: true },
+                }),
+                stderr: '',
+              }
+            : args[1] === 'status'
+              ? { exitCode: 0, stdout: JSON.stringify({ Web: {} }), stderr: '' }
+              : { exitCode: 0, stdout: '', stderr: '' },
+        probe: async () => 'unreachable',
+      };
+      const failure = await runEnvironmentCommand(
+        ['offer', '--tailscale', '--tailscale-serve-port=8444'],
+        deps,
+      ).catch((error) => error);
+      expect(failure).toBeInstanceOf(Error);
+      expect(String(failure)).toContain('--https=8444 off');
+      expect(String(failure)).not.toContain('--https=443 off');
+      if (originForbidden) {
+        expect(String(failure)).toContain(
+          '--allowed-origin=https://station.tailnet.ts.net:8444',
+        );
+        expect(
+          request.mock.calls.some(([, path]) => path === '/api/pairing/offers'),
+        ).toBe(false);
+      } else {
+        expect(String(failure)).toContain('mint failed');
+        expect(String(failure)).not.toContain('--allowed-origin=');
+      }
+    },
+  );
 });

@@ -109,6 +109,10 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   // `continueDelegatedTask`, re-checked by the orchestration service at
   // engine invocation). Senders gate the field on this flag.
   delegatedInputAnswers: true,
+  // #3628: the person's coordinator Session, src-server/routes/orchestration/
+  // coordinator.ts. Hosted deployments withdraw it: see
+  // servesCoordinatorSession.
+  coordinatorSession: true,
   // #3427: the person-facing Session reads under
   // `/api/orchestration/session-reads` (`station sessions wait|digest`,
   // `station activity`). A STATIC protocol fact about this build: whether
@@ -161,12 +165,15 @@ export function servesConnectionRoutes(
   return !deployment.hosted;
 }
 
-/**
- * Whether the scheduler routes, and so automation targets, serve in this
- * deployment. Scheduler storage has no tenant binding, so the scheduler
- * routes answer 404 to every hosted request (`routes/operations/scheduler.ts`).
- */
+/** Scheduler storage is not tenant-bound, so hosted routes refuse these targets. */
 function servesScheduledConversationTarget(
+  deployment: StationCapabilityDeployment,
+): boolean {
+  return !deployment.hosted;
+}
+
+/** Hosted Stations have no conversation inbox through which to wake a coordinator. */
+export function servesCoordinatorSession(
   deployment: StationCapabilityDeployment,
 ): boolean {
   return !deployment.hosted;
@@ -185,6 +192,7 @@ const DEPLOYMENT_SERVED_FLAGS: Readonly<
   webPushNotifications: servesWebPushNotifications,
   connectionRoutes: servesConnectionRoutes,
   scheduledConversationTarget: servesScheduledConversationTarget,
+  coordinatorSession: servesCoordinatorSession,
 };
 
 /**

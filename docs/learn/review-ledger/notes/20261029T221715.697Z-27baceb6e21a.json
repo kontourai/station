@@ -1,0 +1,9 @@
+{
+  "revision": "46bd1f2602e3c6c08b57611b1343db83785798ce",
+
+  "notes": [
+    {"path":"docs/learn/media/new-chat-start-before.png","note":"Frozen historical #3490 comparison at its media-manifest revision, explicitly described as historical in chat-composer.md. Merge #4356 changes current Runs on Station control; neither historical image claims that behavior. No recapture or artifact-byte change. Current canonical Gallery on 0c282674603 passed locally 91/91; hosted startup failure remains 90/91 and is not qualified by these historical images.","inputs":["docs/learn/media/new-chat-start-before.png","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/learn/media/new-chat-start-after.png","note":"Frozen historical #3490 comparison at its media-manifest revision, explicitly described as historical in chat-composer.md. Merge #4356 changes current Runs on Station control; neither historical image claims that behavior. No recapture or artifact-byte change. Current canonical Gallery on 0c282674603 passed locally 91/91; hosted startup failure remains 90/91 and is not qualified by these historical images.","inputs":["docs/learn/media/new-chat-start-after.png","src-ui/src/components/modals/NewChatModal.tsx"]}
+  ]
+}

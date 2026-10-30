@@ -103,6 +103,11 @@ import {
 } from '../llm/effective-model-metadata.js';
 import { providerFailure } from '../provider-failure.js';
 import {
+  classifyEngineStartupFailure,
+  EngineStartupFailure,
+  engineStartupFailureEvent,
+} from '../provider-startup-failure.js';
+import {
   decodeChatAttachments,
   rejectFileAttachments,
 } from '../sessions/chat-attachments.js';
@@ -248,11 +253,13 @@ interface CodexAdapterOptions {
     threadId: string,
     tenantExecutionContext?: import('@kontourai/station-contracts/tenancy').TenantExecutionContext,
     allowedTools?: readonly string[],
+    coordinatorGeneration?: number,
   ) => string | undefined;
   mintStationKnowledgeMcpAuth?: (
     threadId: string,
     tenantExecutionContext?: import('@kontourai/station-contracts/tenancy').TenantExecutionContext,
     allowedTools?: readonly string[],
+    coordinatorGeneration?: number,
   ) => string | undefined;
   /** Best-effort cleanup counterpart to `mintStationControlMcpAuth` — called
    * on ordinary session stop. Never required to be provided; a missing
@@ -2412,6 +2419,19 @@ export class CodexAdapter implements ProviderAdapterShape {
           'Codex startup failed and process termination was not confirmed.',
         );
       }
+      const startupFailure = classifyEngineStartupFailure('codex', error);
+      if (startupFailure) {
+        this.transport.publish({
+          eventId: crypto.randomUUID(),
+          provider: this.provider,
+          threadId: input.threadId,
+          createdAt: this.now().toISOString(),
+          method: 'runtime.error',
+          severity: 'error',
+          ...engineStartupFailureEvent(startupFailure),
+        } satisfies ProviderRuntimeErrorEvent);
+        throw new EngineStartupFailure(startupFailure);
+      }
       throw error;
     }
   }
@@ -2600,6 +2620,14 @@ export class CodexAdapter implements ProviderAdapterShape {
   }> {
     const toolServers = input.agent?.toolServers;
     if (toolServers === undefined) return {};
+    if (
+      toolServers.some(
+        (server) =>
+          server.coordinatorDerived &&
+          server.coordinatorGeneration === undefined,
+      )
+    )
+      throw new Error('Coordinator generation is required.');
 
     const oauthTokens = await this.options.resolveMcpOAuth?.(input);
     const hasBuiltinStationControl = toolServers.some(
@@ -2623,18 +2651,25 @@ export class CodexAdapter implements ProviderAdapterShape {
         )
       : control?.allowedTools;
     const stationControlMcpUrl = hasBuiltinStationControl
-      ? selectedControlTools !== undefined
+      ? control?.coordinatorDerived
         ? this.options.mintStationControlMcpAuth?.(
             input.threadId,
             input.tenantExecutionContext,
             selectedControlTools,
+            control.coordinatorGeneration,
           )
-        : input.tenantExecutionContext
+        : selectedControlTools !== undefined
           ? this.options.mintStationControlMcpAuth?.(
               input.threadId,
               input.tenantExecutionContext,
+              selectedControlTools,
             )
-          : this.options.mintStationControlMcpAuth?.(input.threadId)
+          : input.tenantExecutionContext
+            ? this.options.mintStationControlMcpAuth?.(
+                input.threadId,
+                input.tenantExecutionContext,
+              )
+            : this.options.mintStationControlMcpAuth?.(input.threadId)
       : undefined;
 
     const knowledge = toolServers.find(
@@ -2652,6 +2687,9 @@ export class CodexAdapter implements ProviderAdapterShape {
           input.threadId,
           input.tenantExecutionContext,
           selectedKnowledgeTools,
+          ...(knowledge.coordinatorDerived
+            ? [knowledge.coordinatorGeneration]
+            : []),
         )
       : undefined;
     const { configArgs, deliveredIds, skipped } = resolveCodexMcpServers(
