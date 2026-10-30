@@ -24,6 +24,7 @@ import type {
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { z } from 'zod/v3';
 import type { EnvironmentSecurityService } from '../ssh/environment-security-service.js';
+import { HomeWriterOwner } from '../ssh/home-writer-owner.js';
 import type { PreparedReservedFinalFetchOwners } from './delegation-group-launch-fence.js';
 import type { StationDelegationPersistence } from './delegation-group-persistence.js';
 import type { RuntimeSourceRequestContext } from './delegation-group-source-admission.js';
@@ -166,6 +167,15 @@ export class StationReportGroupContinuation {
       executionSignal.throwIfAborted();
       return undefined;
     };
+    const requestWriter = await HomeWriterOwner.forHome(
+      this.owners.environment.getProjectHomeDir(),
+    );
+    const metadata = <T>(
+      work: (scopedCurrent: () => undefined) => Promise<T>,
+    ) =>
+      requestWriter.runOwnedLease(executionSignal, (lease) =>
+        work(() => requestWriter.runWithLease(lease, current)),
+      );
     const original = loaded.intent.members.find(
       (entry) => entry.seatId === input.seatId,
     );
@@ -185,14 +195,18 @@ export class StationReportGroupContinuation {
       refuse();
     const contextRef =
       input.kind === 'sync'
-        ? await persistence.retainReportContext(groupId, input.text, current)
+        ? await metadata((scopedCurrent) =>
+            persistence.retainReportContext(groupId, input.text, scopedCurrent),
+          )
         : exchange?.command.kind === 'sync'
           ? exchange.command.contextRef
           : refuse();
     const text =
       input.kind === 'sync'
         ? input.text
-        : await persistence.readReportContext(groupId, contextRef, current);
+        : await metadata((scopedCurrent) =>
+            persistence.readReportContext(groupId, contextRef, scopedCurrent),
+          );
     const checkpoint = {
       domain: 'station.report-continuation-checkpoint.v1',
       id: input.operationKey,
@@ -245,22 +259,32 @@ export class StationReportGroupContinuation {
               },
             ],
           };
-    const prior = await persistence
-      .roundsStore(current)
-      .transact(groupId, async (journal) => {
-        if (!journal) refuse();
-        const event = journal.events.find(
-          (entry) =>
-            entry.kind === 'command' &&
-            entry.command.operationKey === input.operationKey,
-        );
-        if (event?.kind === 'command' && !same(event.command, command))
-          refuse();
-        return {
-          journal,
-          result: event ? projectDelegationRounds(journal) : null,
-        };
-      });
+    const prior = await requestWriter.runOwnedLease(
+      executionSignal,
+      (lease) => {
+        const scopedCurrent = (): undefined =>
+          requestWriter.runWithLease(lease, current);
+        return persistence
+          .roundsStore(scopedCurrent, scopedCurrent, {
+            owner: requestWriter,
+            lease,
+          })
+          .transact(groupId, async (journal) => {
+            if (!journal) refuse();
+            const event = journal.events.find(
+              (entry) =>
+                entry.kind === 'command' &&
+                entry.command.operationKey === input.operationKey,
+            );
+            if (event?.kind === 'command' && !same(event.command, command))
+              refuse();
+            return {
+              journal,
+              result: event ? projectDelegationRounds(journal) : null,
+            };
+          });
+      },
+    );
     // A retained command is never a request to recreate the paid operation.
     if (prior) return { replayed: true, projection: prior };
     if (Date.now() >= loaded.intent.deadlineAt) refuse();
@@ -331,23 +355,25 @@ export class StationReportGroupContinuation {
         .filter((a) => a.seatId === input.seatId && a.terminal)
         .at(-1);
       if (!originalAttempt?.terminal) refuse();
-      const originalTerminal = await persistence.readReportObservation(
-        groupId,
-        originalAttempt.invocationId,
-        originalAttempt.terminal,
-        current,
-      );
-      if (
-        originalTerminal.observation.kind !== 'terminal' ||
-        !originalTerminal.observation.recipient ||
-        originalTerminal.observation.sessionId !== member.reservedTaskId
-      )
-        refuse();
-      const observation = await persistence.readReportFlowObservation(
-        groupId,
-        originalTerminal.observation.recipient,
-        current,
-      );
+      const observation = await metadata(async (scopedCurrent) => {
+        const originalTerminal = await persistence.readReportObservation(
+          groupId,
+          originalAttempt.invocationId,
+          originalAttempt.terminal!,
+          scopedCurrent,
+        );
+        if (
+          originalTerminal.observation.kind !== 'terminal' ||
+          !originalTerminal.observation.recipient ||
+          originalTerminal.observation.sessionId !== member.reservedTaskId
+        )
+          refuse();
+        return persistence.readReportFlowObservation(
+          groupId,
+          originalTerminal.observation.recipient,
+          scopedCurrent,
+        );
+      });
       const originalRecipient = z
         .object({ invocationId: z.string(), identity: physicalIdentity })
         .strict()

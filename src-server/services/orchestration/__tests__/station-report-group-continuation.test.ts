@@ -287,7 +287,7 @@ test('returning report sync and paid cancellation keep exact same-Session invoca
       .report(h.f.context(lateRequest), initial.group.groupId, paidCommand)
       .then(
         (value) => ({ kind: 'replayed' as const, value }),
-        () => ({ kind: 'refused' as const }),
+        (error: unknown) => ({ kind: 'refused' as const, error }),
       );
     await lateLoaded;
     let preparedCount = 0,
@@ -328,7 +328,7 @@ test('returning report sync and paid cancellation keep exact same-Session invoca
       .report(h.f.context(secondRequest), initial.group.groupId, paidCommand)
       .then(
         (value) => ({ kind: 'replayed' as const, value }),
-        () => ({ kind: 'refused' as const }),
+        (error: unknown) => ({ kind: 'refused' as const, error }),
       );
     await prepared;
     releaseFirst();
@@ -372,12 +372,11 @@ test('returning report sync and paid cancellation keep exact same-Session invoca
       initial.group.groupId,
     );
     assert.ok(held?.accounting && held.accounting.unsettledInvocations > 0);
-    assert.deepEqual(
-      replays.map((entry) => entry.kind),
-      ['replayed', 'replayed'],
-    );
     for (const entry of replays) {
-      assert.ok(entry.kind === 'replayed');
+      if (entry.kind === 'refused')
+        throw new Error('retained report replay was refused', {
+          cause: entry.error,
+        });
       assert.equal(entry.value.replayed, true);
       assert.equal(
         entry.value.invocationId,
