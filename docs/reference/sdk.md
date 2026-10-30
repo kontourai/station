@@ -401,6 +401,26 @@ offering the action. See [profile sign-in](../guides/connections.md#sign-an-engi
 
 ## Hooks
 
+### Session Goal controls
+
+`@kontourai/station-sdk/session-goals` exposes `useSessionGoalQuery` and
+`useSessionGoalMutation` for one exact Session and captured `ApiRequestScope`.
+`@kontourai/station-sdk/client/session-goals` provides the React-free
+`readSessionGoal(apiBase, sessionId, options)` and
+`controlSessionGoal(apiBase, sessionId, command, options)` clients.
+
+The hooks partition reads by Station origin, authority and Session, reauthorize
+on mount and withhold prior payload during refresh. Mutation retries are off.
+Read capability operations before offering a control; do not choose behavior by
+engine name. An older host's 404 is unsupported rather than an empty Goal.
+An `indeterminate` command may have applied: refresh and inspect before another
+explicit operation. Reads do not start or resume an engine.
+
+The default-off **Session goals** preview currently supports Codex inspection,
+paused-objective saves, pause and clear. Resume and Station-managed objective
+execution remain unavailable. Goal usage is engine-reported and is not a billing
+statement or proof that the requested outcome was achieved.
+
 Use hooks inside the host's React provider tree. Query hooks return a React
 Query result, with values in `data` and separate loading/error state; they do
 not return the data array itself. A hook being exported also does not prove

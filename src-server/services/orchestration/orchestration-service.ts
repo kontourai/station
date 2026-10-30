@@ -6865,6 +6865,13 @@ export class OrchestrationService {
     return this.sessionAuthz.canReadSession(conversationId, authority);
   }
 
+  liveSessionGoalAdapter(
+    threadId: string,
+  ): Pick<ProviderAdapterShape, 'goals'> | undefined {
+    this.initialize();
+    return this.sessionAdapters.get(threadId);
+  }
+
   canUserMutateSession(
     threadId: string,
     userId: string | undefined,

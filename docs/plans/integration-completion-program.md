@@ -1,6 +1,6 @@
 # Integration completion program
 
-Status: implementation in progress. This plan records delivery scope; it does
+Status: implementation in progress under [#4358](https://github.com/kontourai/station/issues/4358). This plan records delivery scope; it does
 not establish provider, browser, device, release or deployment qualification.
 
 ## Shared capability contracts
@@ -20,6 +20,10 @@ separate from Task status and workflow acceptance. Provider-owned goals keep
 their native scheduling and accounting. A Station-owned implementation must
 use existing durable execution and scheduling owners, including admission,
 pause, cancellation and recovery. It is unavailable until that behavior exists.
+The first Codex slice exposes reads, paused-objective saves, pause and clear.
+It does not advertise resume: native autonomous continuation still needs
+Station's durable admission and recovery integration. Other adapters without
+the Goal interface report unsupported.
 Setting or resuming a goal can start work and spend provider allowance; reads
 cannot start or resume a session. New controls ship behind a default-off Feature
 Preview with authorization at every entry point.

@@ -36,6 +36,11 @@ import {
   type ProviderFailureCode,
   type ProviderFailureKind,
 } from '@kontourai/station-contracts/provider-failure';
+import type {
+  SessionGoalCommand,
+  SessionGoalControlResult,
+  SessionGoalRead,
+} from '@kontourai/station-contracts/session-goal';
 import { ProviderRefusalError } from './provider-failure.js';
 
 /** The provider's live turn ended before mid-turn input could be enqueued. */
@@ -425,6 +430,15 @@ export interface ProviderAdapterShape {
   readonly adoptionLifecycle?: 'reported';
   readonly provider: EngineId;
   readonly metadata: ProviderAdapterMetadata;
+
+  /** Absent means unsupported. Neither operation may materialize an engine session. */
+  readonly goals?: {
+    read(threadId: string): Promise<SessionGoalRead>;
+    control(
+      threadId: string,
+      command: SessionGoalCommand,
+    ): Promise<SessionGoalControlResult>;
+  };
 
   /** Read-only projection used to suppress duplicate attached-session aliases. */
   nativeSessionIdentity?(

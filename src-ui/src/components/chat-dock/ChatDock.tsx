@@ -3561,6 +3561,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
       <LazyBoundary
         load={loadChatDockModalStack}
         componentProps={{
+          goalSessionId: activeSession?.currentSessionId,
           agents: forkEligibleAgents,
           projects:
             hasImmutableProjectScope && projectSlug

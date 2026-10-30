@@ -61,6 +61,7 @@ const loadSessionPickerModal = () =>
   }));
 
 interface ChatDockModalStackProps {
+  goalSessionId?: string;
   agents: AgentData[];
   projects: ProjectMetadata[];
   activeProjectSlug?: string | null;
@@ -142,6 +143,7 @@ interface ChatDockModalStackProps {
 }
 
 export function ChatDockModalStack({
+  goalSessionId,
   agents,
   projects,
   activeProjectSlug,
@@ -242,6 +244,7 @@ export function ChatDockModalStack({
           load={loadChatSettingsPanel}
           componentProps={{
             isOpen: showChatSettings,
+            sessionId: goalSessionId,
             onClose: onCloseSettings,
             chatFontSize,
             setChatFontSize: onChatFontSizeChange,
