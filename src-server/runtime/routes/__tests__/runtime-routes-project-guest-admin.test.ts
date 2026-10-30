@@ -257,9 +257,11 @@ describe('project guest administration over the production composition', () => {
   });
   const roomClosers: (() => Promise<void>)[] = [];
   const agentClosers: (() => Promise<void>)[] = [];
+  const fixtureClosers: (() => void | Promise<void>)[] = [];
   afterEach(async () => {
     for (const close of roomClosers.splice(0)) await close();
     for (const close of agentClosers.splice(0)) await close();
+    for (const close of fixtureClosers.splice(0).reverse()) await close();
     if (ambientHome === undefined) delete process.env.STATION_HOME;
     else process.env.STATION_HOME = ambientHome;
     if (ambientRoot === undefined) delete process.env.STATION_ROOT;
@@ -293,18 +295,22 @@ describe('project guest administration over the production composition', () => {
       STATION_ID,
       storage,
     );
+    fixtureClosers.push(() => membership.close());
     const localAccounts = await loadLocalAccounts(
       { publicOrigin: useLocalAccounts ? ORIGIN : 'http://localhost:4321' },
       { stationId: STATION_ID, homeDirectory: homeDir },
       membership.service,
       resolveStationBrowserOrigins({ port: 4321, host: '127.0.0.1' }),
     );
+    fixtureClosers.push(() => localAccounts.service.close());
     const applicationSessions = createApplicationSessionRuntime(
       homeDir,
       STATION_ID,
       localAccounts,
       (value: string) => security.devicePairing.identifyDevice(value),
     );
+
+    fixtureClosers.push(() => applicationSessions?.close());
 
     let appConfig: Record<string, unknown> = {};
     const app = new Hono();

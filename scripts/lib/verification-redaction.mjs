@@ -121,7 +121,13 @@ function redactTrailingCanonicalPrefix(text) {
 
 // Advance past a value only when its key is secret. A harmless container or
 // assignment must not hide another key inside its value from the scan.
-function redactKeyValues(text, keys, values, render, key = (match) => match[1]) {
+function redactKeyValues(
+  text,
+  keys,
+  values,
+  render,
+  key = (match) => match[1],
+) {
   let output = '';
   let copied = 0;
   let match;
