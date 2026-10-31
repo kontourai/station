@@ -61,6 +61,7 @@ export const SESSION_START_INDETERMINATE_CODE = 'SESSION_START_INDETERMINATE';
 export const CONFINED_FULL_ACCESS_UNAVAILABLE_CODE =
   'confined_full_access_unavailable';
 export const SESSION_START_IN_FLIGHT_CODE = 'session_start_in_flight';
+export const APPROVAL_POSTURE_CHANGED_CODE = 'approval-posture-changed';
 export const RESOURCE_ENGINE_START_CAPACITY_CODE =
   'resource_engine_start_capacity';
 export const ADOPTION_ENGINE_NOT_READY_CODE = 'continuation_engine_not_ready';
@@ -175,6 +176,7 @@ export const PROVIDER_FAILURE_KINDS = {
   [EXECUTION_ENGINE_CHANGED_CODE]: 'conflict',
   [AUTH_RATE_LIMITED_ERROR_CODE]: 'rate_limited',
   [APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE]: 'permission_denied',
+  [APPROVAL_POSTURE_CHANGED_CODE]: 'permission_denied',
   [FOREGROUND_MESSAGE_INDETERMINATE_CODE]: 'indeterminate',
   [CONVERSATION_CONTEXT_UNAVAILABLE_CODE]: 'conflict',
   [PRINCIPAL_UNRESOLVED_CODE]: 'auth',

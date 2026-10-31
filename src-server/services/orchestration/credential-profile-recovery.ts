@@ -65,20 +65,17 @@ interface CredentialProfileRecoveryDeps {
    * recorded approval posture applied. The replay otherwise carries the
    * SOURCE turn's posture, which the user may have tightened since.
    */
-  replayModelOptions: (
+  prepareReplayPosture: (
     threadId: string,
     provider: EngineId,
     modelOptions: Record<string, unknown> | undefined,
-  ) => Promise<Record<string, unknown> | undefined>;
+  ) => Promise<{
+    modelOptions: Record<string, unknown> | undefined;
+    confinement: StationConfinement;
+    assertCurrent(): void;
+  }>;
   /** Re-read server-owned retained Project authority after replay preparation. */
   assertRetainedWorkspaceAuthorized: (threadId: string) => Promise<void>;
-  /**
-   * #2493: the session's standing confinement (its start stamp, or a
-   * recorded `never`), which this replay's direct `adapter.sendTurn` must
-   * carry exactly as an ordinary turn dispatch does. Never derived from the
-   * replayed approval mode.
-   */
-  replayConfinement: (threadId: string) => StationConfinement;
   onTurnDispatched: (input: {
     provider: string;
     threadId: string;
@@ -213,12 +210,13 @@ export class CredentialProfileRecovery {
       // in the first place would under-report ('pending' rather than
       // 'delivered') instead of falsely claiming delivery — an accepted,
       // fail-toward-honest gap, not a silent one.
-      const modelOptions = await this.deps.replayModelOptions(
+      const posture = await this.deps.prepareReplayPosture(
         input.threadId,
         adapter.provider,
         input.modelOptions,
       );
       await this.deps.assertRetainedWorkspaceAuthorized(input.threadId);
+      posture.assertCurrent();
       result = await adapter.sendTurn({
         threadId: input.threadId,
         input: composeAmbientTurnText(input.ambientContext, input.input),
@@ -228,8 +226,8 @@ export class CredentialProfileRecovery {
           ? { ambientContext: input.ambientContext }
           : {}),
         ...(input.modelId ? { modelId: input.modelId } : {}),
-        ...(modelOptions ? { modelOptions } : {}),
-        confinement: this.deps.replayConfinement(input.threadId),
+        ...(posture.modelOptions ? { modelOptions: posture.modelOptions } : {}),
+        confinement: posture.confinement,
         recoveryCorrelationId: input.recoveryCorrelationId,
         signal: input.signal,
       });

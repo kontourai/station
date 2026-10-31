@@ -1699,7 +1699,7 @@ export interface RecoveredSessionStartOptions {
   applyApprovalPosture?: (
     adapter: ProviderAdapterShape,
     input: ProviderSessionStartInput,
-  ) => Promise<ProviderSessionStartInput>;
+  ) => Promise<{ input: ProviderSessionStartInput; assertCurrent(): void }>;
   /**
    * archive#3549 review round 4 (independent, Codex), HIGH: recovery applied
    * `resolveSessionAgent` but NOT the agent's credential-profile pin, and
@@ -1817,9 +1817,11 @@ export async function startRecoveredOrchestrationSession(options: {
         ? recoveredMetadata.connectionId
         : undefined;
     await deps.assertAdapterReady(adapter, recoveredConnectionId);
-    if (deps.applyApprovalPosture) {
-      startInput = await deps.applyApprovalPosture(adapter, startInput);
-    }
+    const preparedPosture = await deps.applyApprovalPosture?.(
+      adapter,
+      startInput,
+    );
+    if (preparedPosture) startInput = preparedPosture.input;
     if (deps.resolveSessionAgent) {
       startInput = await deps.resolveSessionAgent(startInput);
     }
@@ -1842,14 +1844,17 @@ export async function startRecoveredOrchestrationSession(options: {
       // #2873: a respawn re-resolves the folder an agent's dispatch recorded
       // and refuses a different result, before any adapter call.
       assertDispatchCwdUnmoved(startInput, startInput.cwd);
+      preparedPosture?.assertCurrent();
+      const invoke = () => {
+        preparedPosture?.assertCurrent();
+        return adapter.startSession(startInput);
+      };
       recovered = await withTenantExecutionContext(
         startInput.tenantExecutionContext,
         () =>
           deps.invokeSessionStart
-            ? deps.invokeSessionStart(startInput.threadId, () =>
-                adapter.startSession(startInput),
-              )
-            : adapter.startSession(startInput),
+            ? deps.invokeSessionStart(startInput.threadId, invoke)
+            : invoke(),
       );
     } finally {
       admissionLease?.release();

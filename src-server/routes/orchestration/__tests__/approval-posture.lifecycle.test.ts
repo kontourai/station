@@ -603,7 +603,14 @@ describe('approval posture probe table under server order (#2436)', () => {
     });
     h.adapter.readyEntered = false;
     const pending = h.service.dispatchWithReceipt(
-      { type: 'sendTurn', input: { threadId, input: 'waiting turn' } },
+      {
+        type: 'sendTurn',
+        input: {
+          threadId,
+          input: 'waiting turn',
+          clientTurnId: 'posture-race-turn',
+        },
+      },
       { userId: OWNER },
     );
     void pending.catch(() => {});
@@ -611,12 +618,23 @@ describe('approval posture probe table under server order (#2436)', () => {
       await eventually(() => expect(h.adapter.readyEntered).toBe(true));
       await h.decide('ask');
       release();
-      await pending.catch(() => undefined);
-      const invoked = h.adapter.turns.slice(before);
-      expect(
-        invoked.every((turn) => turn.modelOptions?.approvalMode === 'ask'),
-      ).toBe(true);
+      await expect(pending).rejects.toThrow(/Approval settings changed/);
+      expect(h.adapter.turns).toHaveLength(before);
       expect(h.decisions().at(-1)).toBe('ask');
+      h.adapter.readyGate = undefined;
+      await h.service.dispatchWithReceipt(
+        {
+          type: 'sendTurn',
+          input: {
+            threadId,
+            input: 'waiting turn',
+            clientTurnId: 'posture-race-turn',
+          },
+        },
+        { userId: OWNER },
+      );
+      expect(h.adapter.turns).toHaveLength(before + 1);
+      expect(h.adapter.turns.at(-1)?.modelOptions?.approvalMode).toBe('ask');
     } finally {
       release();
       await pending.catch(() => undefined);

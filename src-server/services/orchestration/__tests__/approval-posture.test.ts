@@ -141,6 +141,14 @@ function registry(adapters: ProviderAdapterShape[]): IProviderAdapterRegistry {
   };
 }
 
+function deferredVoid() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
 const phone: ClientOrigin = {
   version: 1,
   actor: { kind: 'device', deviceId: 'phone' },
@@ -164,6 +172,7 @@ describe('server-ordered approval posture (#2436)', () => {
   let acpControls: Record<string, AcpApprovalControl>;
   let service: OrchestrationService;
   let beforeAgentResolution: (() => Promise<void>) | undefined;
+  let beforeStationDefaultResolution: (() => Promise<void>) | undefined;
 
   function createService(): OrchestrationService {
     return new OrchestrationService({
@@ -171,7 +180,11 @@ describe('server-ordered approval posture (#2436)', () => {
       eventBus: bus,
       eventStore: store,
       acpApprovalControl: (connectionId) => acpControls[connectionId],
-      resolveStationDefaultApprovalMode: async () => stationDefault,
+      resolveStationDefaultApprovalMode: async () => {
+        const resolved = stationDefault;
+        await beforeStationDefaultResolution?.();
+        return resolved;
+      },
       // #2494: Seatbelt available on any host, so Claude resolves the same.
       confinementProviders: confinementProvidersForTests(),
       // The authored-Agent start gate (resolveSessionAgent) is satisfied the
@@ -200,6 +213,7 @@ describe('server-ordered approval posture (#2436)', () => {
     agentDefaults = {};
     acpControls = {};
     beforeAgentResolution = undefined;
+    beforeStationDefaultResolution = undefined;
     service = createService();
   });
 
@@ -598,8 +612,8 @@ describe('server-ordered approval posture (#2436)', () => {
         }
       }
       const startsBefore = claude.starts.length;
-      const entered = Promise.withResolvers<void>();
-      const release = Promise.withResolvers<void>();
+      const entered = deferredVoid();
+      const release = deferredVoid();
       beforeAgentResolution = async () => {
         entered.resolve();
         await release.promise;
@@ -999,6 +1013,56 @@ describe('server-ordered approval posture (#2436)', () => {
     });
     expect(claude.starts.at(-1)?.modelOptions?.approvalMode).toBe('ask');
     expect(claude.lastTurnMode()).toBe('ask');
+  });
+
+  test('direct credential replay refuses posture overtaken after its process starts', async () => {
+    const threadId = 't-direct-replay-posture-race';
+    stationDefault = 'never';
+    await start(threadId);
+    await decide(threadId, 'connection-default');
+    const entered = deferredVoid();
+    const release = deferredVoid();
+    const originalStart = claude.startSession.bind(claude);
+    const startSpy = vi
+      .spyOn(claude, 'startSession')
+      .mockImplementation(async (input) => {
+        const result = await originalStart(input);
+        beforeStationDefaultResolution = async () => {
+          entered.resolve();
+          await release.promise;
+        };
+        return result;
+      });
+    const turnsBefore = claude.turns.length;
+    const invoke = () =>
+      credentialRecoveryOwner(service).restartRecoverySession({
+        threadId,
+        input: 'retry directly',
+        recoveryCorrelationId: 'direct-posture-race',
+        signal: new AbortController().signal,
+        credentialProfileRef: 'backup',
+      });
+    const pending = invoke();
+    void pending.catch(() => {});
+    try {
+      await entered.promise;
+      expect(await decide(threadId, 'ask', phone)).toMatchObject({
+        recorded: true,
+      });
+      release.resolve();
+      await expect(pending).rejects.toThrow(/Approval settings changed/);
+      expect(claude.turns).toHaveLength(turnsBefore);
+      beforeStationDefaultResolution = undefined;
+      startSpy.mockRestore();
+      await invoke();
+      expect(claude.turns).toHaveLength(turnsBefore + 1);
+      expect(claude.lastTurnMode()).toBe('ask');
+    } finally {
+      release.resolve();
+      await pending.catch(() => undefined);
+      beforeStationDefaultResolution = undefined;
+      startSpy.mockRestore();
+    }
   });
 
   describe('#2493: confinement is a server-derived axis beside the approval mode', () => {

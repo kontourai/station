@@ -104,6 +104,7 @@ import {
   WORKSPACE_PANE_HOST_ACTION_METADATA_KEY,
 } from '@kontourai/station-contracts/provider';
 import {
+  APPROVAL_POSTURE_CHANGED_CODE,
   PROVIDER_FAILURE_KINDS,
   PROVIDER_FAILURE_RETRYABLE,
   type ProviderFailure,
@@ -2607,6 +2608,10 @@ export class OrchestrationService {
   /** Threads whose missing configuration has already been logged for monitoring. */
   private readonly monitoringUnconfiguredThreads = new Set<string>();
   private readonly turnAdmissions = new Set<OrchestrationTurnAdmission>();
+  private readonly preparedStartPostures = new WeakMap<
+    ProviderSessionStartInput,
+    () => void
+  >();
   private started = false;
   /**
    * #2540: threads whose engine this service is parking. Their engine's
@@ -3532,16 +3537,28 @@ export class OrchestrationService {
         this.restartCredentialProfileProviderSession(input),
       reportRedispatchFailed: (threadId, turnId, provider) =>
         this.internalStops.reportRedispatchFailed(threadId, turnId, provider),
-      replayModelOptions: (threadId, provider, modelOptions) =>
-        this.replayModelOptionsWithPosture(threadId, provider, modelOptions),
+      prepareReplayPosture: async (threadId, provider, modelOptions) => {
+        const readConfinement = () =>
+          this.approvalPosture.standingConfinement(
+            threadId,
+            this.readStartConfinementStamp(threadId),
+          );
+        const assertCurrent = this.captureApprovalPostureCurrent(
+          threadId,
+          readConfinement,
+          'turn',
+        );
+        const confinement = readConfinement();
+        const resolved = await this.replayModelOptionsWithPosture(
+          threadId,
+          provider,
+          modelOptions,
+        );
+        return { modelOptions: resolved, confinement, assertCurrent };
+      },
       assertRetainedWorkspaceAuthorized: async (threadId) => {
         await this.authorizedConversationWorkspace(threadId);
       },
-      replayConfinement: (threadId) =>
-        this.approvalPosture.standingConfinement(
-          threadId,
-          this.readStartConfinementStamp(threadId),
-        ),
       onTurnDispatched: (input) =>
         this.monitoringBridge.onTurnDispatched(input),
       forgetCoalescedThread: (threadId) =>
@@ -4107,10 +4124,14 @@ export class OrchestrationService {
       // #2436 HIGH-2: the restart spawns in the conversation's posture (the
       // replay's own is the source turn's), so a recorded full access gets
       // Claude's spawn-only grant and a recorded tightening is not undone.
-      startInput = await this.withApprovalPostureForStart(adapter.provider, {
-        ...startInput,
-        ...(input.modelOptions ? { modelOptions: input.modelOptions } : {}),
-      });
+      const preparedPosture = await this.withApprovalPostureForStart(
+        adapter.provider,
+        {
+          ...startInput,
+          ...(input.modelOptions ? { modelOptions: input.modelOptions } : {}),
+        },
+      );
+      startInput = preparedPosture.input;
       startInput = await this.resolveSessionAgentForStart(startInput);
       throwIfAborted(startInput.signal);
       const admissionLease = await admitEngineStartForIntent(
@@ -4124,12 +4145,14 @@ export class OrchestrationService {
         await this.authorizedConversationWorkspace(input.threadId);
         // #2873: a respawn re-resolves the recorded folder like any start.
         assertDispatchCwdUnmoved(startInput, startInput.cwd);
+        preparedPosture.assertCurrent();
         session = await withTenantExecutionContext(tenantExecutionContext, () =>
           this.runEngineSessionStart(startInput.threadId, () => {
             this.assertForkContextAtProviderStart(startInput, {
               userId: this.sessionAuthz.sessionOwnerUserId(startInput.threadId),
               tenantExecutionContext,
             });
+            preparedPosture.assertCurrent();
             return adapter.startSession(startInput);
           }),
         );
@@ -7726,6 +7749,15 @@ export class OrchestrationService {
             postureInput.threadId,
             context.fullAccessGrant,
           );
+          const assertPostureCurrent = this.captureApprovalPostureCurrent(
+            postureInput.threadId,
+            () =>
+              this.approvalPosture.startConfinement(
+                postureInput.threadId,
+                context.fullAccessGrant,
+              ),
+            'start',
+          );
           const recordedReservedMode = this.readRecordedReservedSourceMode(
             postureInput.threadId,
           );
@@ -8097,9 +8129,17 @@ export class OrchestrationService {
             outcome: 'allowed',
             reason: 'adapter_configured',
           });
+          assertPostureCurrent();
+          this.preparedStartPostures.set(startInput, assertPostureCurrent);
           return startInput;
         },
         start: async (adapter, input, context, internal) => {
+          const assertPostureCurrent = this.preparedStartPostures.get(input);
+          if (!assertPostureCurrent)
+            throw new SessionStartRefusedError(
+              'Prepared approval posture is unavailable.',
+              APPROVAL_POSTURE_CHANGED_CODE,
+            );
           const startedAt = performance.now();
           const admissionLease = await admitEngineStartForIntent(
             this.options.resourcePosture,
@@ -8149,6 +8189,7 @@ export class OrchestrationService {
                 context.dispatchCwdAdmission,
                 binding,
               );
+              assertPostureCurrent();
               return withTenantExecutionContext(
                 context.tenantExecutionContext,
                 () =>
@@ -8167,6 +8208,7 @@ export class OrchestrationService {
                             internal?.forkContextRequester ?? context,
                           );
                           internal?.delegationGroupAdmission?.assertCurrent();
+                          assertPostureCurrent();
                           if (internal?.reservedStationTurn) {
                             if (context.tenantExecutionContext)
                               throw new SessionStartRefusedError(
@@ -9003,36 +9045,21 @@ export class OrchestrationService {
               adapter,
               turnInput,
             );
-          const approvalSequence = this.approvalPosture.decision(
-            turnInput.threadId,
-          )?.sequence;
-          const confinementGrantor = this.readStartConfinementGrantor(
-            turnInput.threadId,
-          );
           // #2493: the session's start stamp or a recorded `never`; never
           // what the turn carries.
           const confinement = this.approvalPosture.standingConfinement(
             turnInput.threadId,
             this.readStartConfinementStamp(turnInput.threadId),
           );
-          const assertTurnPostureCurrent = () => {
-            if (
-              this.approvalPosture.decision(turnInput.threadId)?.sequence !==
-                approvalSequence ||
+          const assertTurnPostureCurrent = this.captureApprovalPostureCurrent(
+            turnInput.threadId,
+            () =>
               this.approvalPosture.standingConfinement(
                 turnInput.threadId,
                 this.readStartConfinementStamp(turnInput.threadId),
-              ) !== confinement ||
-              !samePreparedValue(
-                confinementGrantor ?? null,
-                this.readStartConfinementGrantor(turnInput.threadId) ?? null,
-              )
-            )
-              throw new SendTurnRefusedError(
-                'Approval settings changed before this turn started. Send it again.',
-                'permission_denied',
-              );
-          };
+              ),
+            'turn',
+          );
           // #2436: the conversation's latest recorded posture replaces
           // whatever the turn carried — on every path that sends a turn
           // (#2418), not only the composer's.
@@ -13745,15 +13772,41 @@ export class OrchestrationService {
     });
   }
 
+  /** Capture before resolving options; a later snapshot cannot validate old options. */
+  private captureApprovalPostureCurrent(
+    threadId: string,
+    readConfinement: () => StationConfinement,
+    phase: 'start' | 'turn',
+  ): () => void {
+    const sequence = this.approvalPosture.decision(threadId)?.sequence;
+    const confinement = readConfinement();
+    const grantor = this.readStartConfinementGrantor(threadId);
+    return () => {
+      if (
+        this.approvalPosture.decision(threadId)?.sequence !== sequence ||
+        readConfinement() !== confinement ||
+        !samePreparedValue(
+          grantor ?? null,
+          this.readStartConfinementGrantor(threadId) ?? null,
+        )
+      ) {
+        const message =
+          'Approval settings changed before this turn started. Send it again.';
+        throw phase === 'start'
+          ? new SessionStartRefusedError(message, APPROVAL_POSTURE_CHANGED_CODE)
+          : new SendTurnRefusedError(message, 'permission_denied');
+      }
+    };
+  }
+
   /**
-   * #2436: a (re)spawn's start input in the conversation's posture, for the
-   * paths that start an engine without `prepareStart`: a dormant session's
-   * respawn and a credential-profile restart.
+   * #2436: a (re)spawn's start input and currentness for dormant recovery
+   * and credential-profile restart, which bypass `prepareStart`.
    */
   private async withApprovalPostureForStart(
     provider: EngineId,
     input: ProviderSessionStartInput,
-  ): Promise<ProviderSessionStartInput> {
+  ): Promise<{ input: ProviderSessionStartInput; assertCurrent(): void }> {
     // #2493: a respawn is not a new grant. It keeps the confinement its
     // original start was stamped with (or a recorded `never`), read from the
     // stored start event before this respawn writes a new one; the approval
@@ -13762,6 +13815,15 @@ export class OrchestrationService {
     const confinement = this.approvalPosture.standingConfinement(
       input.threadId,
       stamp,
+    );
+    const assertCurrent = this.captureApprovalPostureCurrent(
+      input.threadId,
+      () =>
+        this.approvalPosture.standingConfinement(
+          input.threadId,
+          this.readStartConfinementStamp(input.threadId),
+        ),
+      'start',
     );
     const modelOptions = await this.approvalPosture.resolve({
       threadId: input.threadId,
@@ -13812,12 +13874,15 @@ export class OrchestrationService {
     // A respawn carries no server workspace binding, so it resolves as
     // `shared`: a provider that needs a proven worktree is refused, never
     // granted one on the persisted metadata's say-so.
-    return this.withConfinement(
-      provider,
-      modelOptions ? { ...restamped, modelOptions } : restamped,
-      confinement,
-      'shared',
-    );
+    return {
+      input: this.withConfinement(
+        provider,
+        modelOptions ? { ...restamped, modelOptions } : restamped,
+        confinement,
+        'shared',
+      ),
+      assertCurrent,
+    };
   }
 
   /**
