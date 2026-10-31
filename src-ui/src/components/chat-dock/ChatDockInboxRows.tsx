@@ -935,10 +935,10 @@ export function InboxRow({
                     separator ("[folder] • name"). */}
                 {displayableProjectIcon(projectIcon) ? (
                   <ProjectAccentSwatch
+                    size={24}
                     accent={projectAccent}
                     icon={projectIcon}
                     name={item.projectLabel}
-                    size={24}
                   />
                 ) : (
                   <FolderGlyph />
