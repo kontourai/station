@@ -432,6 +432,11 @@ through replay. A late provider result cannot undo an indeterminate dispatch.
 Known completion or compensation releases the record; uncertain effects or
 publication preparation retain it. Preparation requires the worker's actual
 durable acknowledgement; an unavailable write cannot be treated as success.
+Same-operation assignment compensation retains the root, subject and actor
+used for the claim. It does not re-resolve a changed Project workspace and
+treat a different namespace's idempotent no-op as cleanup. If the original
+context is unavailable, compensation stays indeterminate. This does not supply
+cross-process or lifecycle reconciliation for every retained external claim.
 The outbox refuses a different payload under an existing intent and refuses
 new lifecycle entries after the source seal. Tasks without a dispatch-associated Agent have no Task-dispatch
 Agent-start publication to prepare; independent room requests retain their own

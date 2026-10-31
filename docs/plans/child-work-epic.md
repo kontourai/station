@@ -29,9 +29,13 @@ provider/account access or complete the remaining group journeys.
 
 Report publication remains incomplete. The existing Flow report case has a
 known currentness failure, and the funded three-seat mixed-family elicitation
-journey is unqualified. The needed public transaction-owner API is being
-qualified in [Flow Agents #1566](https://github.com/kontourai/flow-agents/pull/1566).
-It is not published or adopted here. The metadata finalizer remains unavailable.
+journey is unqualified. The needed public transaction-owner API merged in
+[Flow Agents #1566](https://github.com/kontourai/flow-agents/pull/1566) at
+`560956698ef6c9ba84338b41825d76782499fb58`, with REST-confirmed merge time
+2026-10-31T12:06:23Z. The latest GitHub release and npm `latest` still report
+9.10.0, the earlier release without that feature. No successor containing the
+API is yet qualified or adopted here; Station remains on 9.9.1. The metadata
+finalizer remains unavailable.
 Final combined review, documentation qualification, remaining acceptance and the
 single protected PR landing are still required.
 
@@ -141,6 +145,21 @@ Re-offering and minting a new admission permits an explicit retry. These are
 controlled caller-boundary receipts, not live provider/peer/device, cross-process
 authority atomicity or all-writer qualification. Final independent source review
 of this increment and the remaining broader caller audit are still required.
+
+The later Task-dispatch trace found another concrete compensation mismatch.
+After a claim under workspace A, a definite pre-effect start refusal could
+rebind the Project to B; compensation re-resolved B and accepted its idempotent
+no-claim response while A remained held. The real TaskGraph/Dispatcher and
+AssignmentClaimService composition reproduces the wrong release root through a
+controlled CLI transport; no external CLI or provider is launched. The named
+red remains retained. `b0b8bdca5de` now snapshots the original root/subject/actor
+against the exact reservation object and uses it for same-operation compensation.
+Missing capture stays indeterminate. The four-file owner selection passes 89
+cases; the corrected public-state composition assertions pass both cases and
+server-test types pass. Durable lifecycle/restart release, broader external
+claim reconciliation and independent review remain separate requirements. The
+channel-home documentation proposal was kept unresolved, not recorded as a
+whole-source approval.
 
 The background-work source at `9c51c75f5cda` passed 254 cases across 14 files
 and the UI type lane. Independent review accepted the bounded Station scoping,
