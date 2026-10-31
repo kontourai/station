@@ -348,9 +348,19 @@ export function isOperatorSessionRead(method: string, path: string): boolean {
         /^\/api\/outside-agent\/(requests|transactions)\/[^/]+$/.test(path)))
   );
 }
+export function isAccountBindingConsentLeaf(
+  method: string,
+  path: string,
+): boolean {
+  return (
+    method === 'POST' &&
+    /^\/api\/pairing\/requests\/[^/]+\/account-consent$/.test(path)
+  );
+}
 export function isOperatorSessionLeaf(method: string, path: string): boolean {
   return (
     isOperatorSessionRead(method, path) ||
+    isAccountBindingConsentLeaf(method, path) ||
     (method === 'POST' &&
       /^\/api\/pairing\/requests\/[^/]+\/confirm$/.test(path)) ||
     (method === 'POST' &&

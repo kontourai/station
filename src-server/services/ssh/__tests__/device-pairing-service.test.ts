@@ -3033,6 +3033,52 @@ describe('DevicePairingService', () => {
  * here as `requesterPosition`).
  */
 describe('confirmRequest approval guard (station#1490)', () => {
+  test('account-bound access request is read-only at approval and exchange', () => {
+    const { service } = harness();
+    const access = service.requestAccess({
+      endpoint: 'https://station.example.test',
+      deviceName: 'Member browser',
+      requesterPosition: 'unproven',
+      scope: 'orchestration:read orchestration:operate terminal:operate',
+      requireAccountBinding: true,
+      accountCandidate: {
+        issuer: 'urn:station:test',
+        subject: 'member',
+        displayName: 'Member',
+      },
+      accountCandidateSessionId: 'session-member',
+    });
+    expect(
+      service.listRequests().find((item) => item.requestId === access.requestId)
+        ?.scope,
+    ).toBe('orchestration:read');
+    expect(() =>
+      service.confirmRequest(
+        access.requestId,
+        OPERATOR_APPROVAL,
+        { principalId: LOCAL_OPERATOR_PRINCIPAL_ID, kind: 'account' },
+        { scope: 'orchestration:read orchestration:operate' },
+      ),
+    ).toThrow();
+    service.confirmRequest(access.requestId, OPERATOR_APPROVAL, {
+      principalId: LOCAL_OPERATOR_PRINCIPAL_ID,
+      kind: 'account',
+    });
+    expect(() =>
+      service.exchange({
+        offerId: access.offerId,
+        proof: access.proof,
+        requestId: access.requestId,
+        sessionScope: 'orchestration:read orchestration:operate',
+      }),
+    ).toThrow();
+    const device = service.exchange({
+      offerId: access.offerId,
+      proof: access.proof,
+      requestId: access.requestId,
+    });
+    expect(device.device.scope).toBe('orchestration:read');
+  });
   function accessRequest(
     service: DevicePairingService,
     requesterPosition: PairingRequesterPosition,
