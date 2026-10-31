@@ -2980,3 +2980,16 @@ corrected check reused the same tarball. This is artifact/declaration evidence,
 not installed-consumer behavior or Station adoption. The upstream advisory renewal
 observer failure retains an unknown cause. Groups/finalizer remain disabled until
 the real Station composition and qualification are complete.
+
+Installed-consumer checkpoint: the root pin is now Flow Agents 9.11.0, installed
+through managed lock/CI commands with Flow 5.4.0 retained. Registry and installed
+public JavaScript/declaration hashes match; the public rounds entry imports
+successfully. Dependency/peer/optional declarations are unchanged from 9.9.1;
+lock changes are limited to the Flow Agents identity and existing Console peer
+binding. Dependency policy, lock sync and server-test types pass. The real
+persistence/Flow-admission selection passes 21 cases. These are compatibility
+controls, not qualification of Station's new transaction-owner composition.
+The six controller constructions and outside writers still need explicit scoped
+facades, full durable-return lifetime, provider/sibling separation and shutdown
+proof. Groups and finalizer remain disabled; original report 16/17 and funded-input
+qualification gaps are unchanged.
