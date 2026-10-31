@@ -165,7 +165,6 @@ describe('#2081 — the notification bell closes its own popover', () => {
     // The press must have left focus INSIDE the popover, or the dismissal the
     // second press relies on was never armed and the assertion below would
     // pass against the defect as well as against the fix.
-    // The lazy panel can paint before its passive focus-entry effect runs.
     await waitFor(() => {
       expect(panel()?.contains(document.activeElement)).toBe(true);
     });
