@@ -70,6 +70,11 @@ import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import { createSessionAgentResolver } from '../../../services/orchestration/session-agent-resolution.js';
+import {
+  capturePluginRuntimeArtifact,
+  pluginInstallationGeneration,
+} from '../../../services/plugins/plugin-runtime-artifact.js';
+import { PluginVisibilityService } from '../../../services/plugins/plugin-visibility-service.js';
 import { ProjectManifestStore } from '../../../services/projects/project-manifest-store.js';
 import { createProjectMembershipRuntime } from '../../../services/projects/project-membership-runtime.js';
 import { ProjectService } from '../../../services/projects/project-service.js';
@@ -306,6 +311,8 @@ describe('project guest administration over the production composition', () => {
     );
     fixtureClosers.push(() => applicationSessions?.close());
 
+    fixtureClosers.push(() => applicationSessions?.close());
+
     let appConfig: Record<string, unknown> = {};
     const app = new Hono();
     // A real bus, so /events relays through the production gates.
@@ -449,6 +456,7 @@ describe('project guest administration over the production composition', () => {
       monitoringEvents: [],
       orchestrationEventStore: new Proxy(
         {
+          createPackageMcpAdmissionJournal: () => undefined,
           sessionTurnBoundaryAuthority: () => ({
             reconcile: () => ({ kind: 'available', interrupted: [] }),
           }),
@@ -462,6 +470,7 @@ describe('project guest administration over the production composition', () => {
       ),
       environmentSecurityService: security,
       eventBus,
+      operationalEventPublisher: { append: () => ({ kind: 'appended' }) },
       taskGraphService: graph,
     });
     const result = configureRuntimeRoutesProduction(
@@ -1861,6 +1870,103 @@ describe('project guest administration over the production composition', () => {
     expect(
       await slugs(await h.request('/api/projects', h.operatorHeaders())),
     ).toEqual(['demo', 'private']);
+  });
+
+  test('plugin command admission hides unreadable Projects and Tasks from authenticated people', async () => {
+    const h = await setup();
+    const { project } = await h.shareWithGuestAdmin('demo', 'Demo');
+    const task = await h.graph.createTask({
+      projectId: project.id,
+      title: 'Private task',
+    });
+    // The account session supplies the person while the operator credential
+    // supplies transport authority; account-bound Devices intentionally cannot
+    // reach this plugin route.
+    const account = (subject: 'guest' | 'peer') => (extra?: RequestInit) =>
+      h.operatorHeaders({
+        ...extra,
+        headers: {
+          ...extra?.headers,
+          Cookie: `fixture_account=${subject}`,
+          Origin: ORIGIN,
+        },
+      });
+    const guest = account('guest');
+    const peer = account('peer');
+    const pluginDir = join(h.homeDir, 'plugins', 'demo');
+    mkdirSync(pluginDir, { recursive: true });
+    writeFileSync(
+      join(pluginDir, 'plugin.json'),
+      JSON.stringify({
+        name: 'demo',
+        version: '1.0.0',
+        commands: ['project', 'task'].map((requirement) => ({
+          version: '1.0',
+          id: `demo.${requirement}`,
+          title: requirement,
+          intent: { kind: 'navigate', surfaceId: 'plugins' },
+          requires: [requirement],
+        })),
+      }),
+    );
+    const visibility = new PluginVisibilityService(h.homeDir);
+    for (const subject of [GUEST_SUBJECT, PEER_SUBJECT]) {
+      await visibility.grant(
+        deploymentAccountPrincipal(PROVIDER_ISSUER, subject, 'Person').id,
+        'demo',
+      );
+    }
+    const artifact = capturePluginRuntimeArtifact(
+      join(h.homeDir, 'plugins'),
+      'demo',
+    );
+    if (!artifact) throw new Error('plugin artifact missing');
+    let sequence = 0;
+    const admit = async (
+      caller: typeof guest,
+      requirement: 'project' | 'task',
+      context: Record<string, string>,
+    ) => {
+      const response = await h.request(
+        '/api/plugins/demo/command-effects',
+        caller({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            documentId: 'document-0001',
+            documentKey: 'k'.repeat(43),
+            requestId: `request-${String(++sequence).padStart(4, '0')}`,
+            issuedAt: Date.now(),
+            installationGeneration: pluginInstallationGeneration(artifact),
+            commandId: `demo.${requirement}`,
+            target: { kind: 'destination', destinationId: 'plugins' },
+            context,
+          }),
+        }),
+      );
+      return { status: response.status, body: await response.json() };
+    };
+    for (const [requirement, context, absent] of [
+      ['project', { projectSlug: 'demo' }, { projectSlug: 'unknown' }],
+      [
+        'task',
+        { taskId: task.id, projectSlug: 'demo' },
+        { taskId: 'unknown', projectSlug: 'demo' },
+      ],
+      ['task', { taskId: task.id }, { taskId: 'unknown' }],
+    ] as const) {
+      const denied = await admit(peer, requirement, context);
+      expect(denied.status, JSON.stringify(denied.body)).toBe(409);
+      expect(denied.body).toEqual(
+        (await admit(peer, requirement, absent)).body,
+      );
+      const allowed = await admit(guest, requirement, context);
+      expect(allowed.status, JSON.stringify(allowed.body)).toBe(200);
+    }
+    const operator = await admit(h.operatorHeaders, 'task', {
+      taskId: task.id,
+    });
+    expect(operator.status, JSON.stringify(operator.body)).toBe(200);
   });
 
   test('account-bound pairing exchange refuses a provider session revoked after approval', async () => {
