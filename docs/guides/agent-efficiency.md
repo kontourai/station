@@ -137,3 +137,35 @@ cannot establish that separation on a host with ambient write credentials.
 Source and fixture evidence for these mechanisms does not establish provider
 compatibility, installed/native behavior, live account billing, human usability
 or causal cost savings. Those remain separate acceptance observations.
+
+## Qualify the container boundary
+
+With Docker running, build the public generic worker using an explicit Codex CLI
+version, then supply the immutable local image ID it prints:
+
+```sh
+npm run qualify:isolated-repair:prepare -- --codex-version 0.156.0
+npm run qualify:isolated-repair -- --image sha256:<image-id>
+```
+
+The [qualification command](../../scripts/qualify-isolated-repair.mjs) uses an
+isolated fixture workspace and synthetic provider credentials. A local Responses
+fixture directs the real CLI to change one file. It also exercises the public
+worker's credential-root mount refusal before provider dispatch, verifies absent
+host paths and credential channels, checks read-only root/source mounts, and
+requires container cleanup. It removes only its own temporary workspace and
+network. It does not call a live model or publish anything.
+
+The generated private receipt and patch are under
+`.kontourai/repair-worker-qualification/<invocation>/`; `--output-root` selects
+another parent. A clean source snapshot is required for a `PASS` receipt. A dirty
+snapshot is labelled `DIAGNOSTIC_ONLY`. The source revision, Git status and script
+digest are checked again before writing the result. A completed worker invocation
+retains its captured stdout, stderr and public receipt; admission failures can
+leave no receipt. Missing completion or failed cleanup cannot produce a `PASS`.
+
+The named bridge is pinned by its observed Docker network ID. It permits outbound
+network access; this is credential-mount qualification, not an egress firewall.
+Desktop UID mapping remains unverified. The authenticated Station Task/source,
+patch, independent review, artifact and publication-grant bridge remains separate
+work, so this command does not enable `QUALIFICATION_REPAIR_AGENT=station`.

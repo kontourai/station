@@ -119,7 +119,13 @@ and its structured safe-result API is not a patch custody API. Public Flow Agent
 record observed image, mount, network and forbidden-root constraints. That is a
 candidate execution primitive, not the missing Station Task/source/patch/review
 and publication-grant binding. Its Linux host mapping is qualified separately
-from its platform-default path. This change has not run or qualified that runner.
+from its platform-default path. The manual
+[`qualify:isolated-repair`](../guides/agent-efficiency.md#qualify-the-container-boundary)
+command exercises the public worker with a real pinned CLI, a controlled
+Responses fixture, an actual forbidden-mount refusal and a file change. A clean
+source receipt covers that container boundary and cleanup, not a live provider,
+Station Task, review or publication. The named bridge permits outbound network
+access; platform-default desktop UID mapping remains unverified.
 Neither a prompt nor environment scrubbing can make a local engine unable to
 reach ambient GitHub, SSH or Keychain credentials. Keep
 `QUALIFICATION_REPAIR_AGENT` unchanged until that physical execution and artifact
