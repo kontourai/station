@@ -4988,6 +4988,7 @@ export class StationRuntime {
       serverUpdate,
       analyticsMaintenance,
     } = configureRuntimeRoutes({
+      discordGateway: this.discordGatewayService,
       retainProjectRoomRuntime: (runtime) => {
         this.projectRoomRuntime = runtime;
       },

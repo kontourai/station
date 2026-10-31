@@ -1,3 +1,9 @@
+export {
+  fetchIntegrationStatus,
+  type IntegrationStatus,
+  IntegrationStatusUnsupportedError,
+  useIntegrationStatusQuery,
+} from './query-domains/integrationStatus';
 export { runAgentMcpPrompt } from './query-domains/mcpPromptRun';
 export {
   peerEnrollmentQueries,
@@ -15,6 +21,12 @@ export {
   useProjectS3ProfilesQuery,
   useProjectS3SourcesQuery,
 } from './query-domains/projectS3Sources';
+export {
+  fetchTaskWriteBack,
+  type TaskWriteBackEntry,
+  type TaskWriteBackLog,
+  useTaskWriteBackQuery,
+} from './query-domains/taskWriteBack';
 /**
  * SDK Query Hooks - Wraps React Query for API calls
  * Plugins use these instead of raw useQuery

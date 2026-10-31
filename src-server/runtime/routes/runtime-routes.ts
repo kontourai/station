@@ -416,6 +416,7 @@ import { createTrustBundleRoutes } from '../../routes/evidence/trust-bundles.js'
 import { createVeritasReadinessRoutes } from '../../routes/evidence/veritas-readiness.js';
 import { createWorkflowSidecarRoutes } from '../../routes/evidence/workflow-sidecars.js';
 import { createFleetInferenceRoutes } from '../../routes/inference/fleet-inference.js';
+import { createIntegrationStatusRoutes } from '../../routes/integrations/integration-status-routes.js';
 import {
   createCrossProjectKnowledgeRoutes,
   createKnowledgeRoutes,
@@ -496,6 +497,7 @@ import { createTaskOutputRoutes } from '../../routes/orchestration/task-outputs.
 import { createTaskRelationshipRoutes } from '../../routes/orchestration/task-relationships.js';
 import { createTaskReviewRoutes } from '../../routes/orchestration/task-review.js';
 import { createTaskReviewStationControlRoutes } from '../../routes/orchestration/task-review-station-control.js';
+import { createTaskWriteBackRoutes } from '../../routes/orchestration/task-write-back.js';
 import {
   createTaskRoutes,
   keptRowsForTaskSession,
@@ -639,6 +641,7 @@ import { appHomeActive } from '../../services/connections/connection-env.js';
 import type { ConnectionService } from '../../services/connections/connection-service.js';
 import type { ProviderService } from '../../services/connections/provider-service.js';
 import type { ConsentChannelService } from '../../services/consent/consent-channel.js';
+import type { DiscordGatewayService } from '../../services/discord/discord-gateway-service.js';
 import {
   ANSWER_ASSESSMENT_UPDATED_EVENT,
   AnswerAssessmentModule,
@@ -694,6 +697,10 @@ import { FleetServeReceiptLog } from '../../services/inference/fleet-serve-recei
 import { DiagnosticsService } from '../../services/infra/diagnostics-service.js';
 import { OperatingStateService } from '../../services/infra/operating-state-service.js';
 import { createServerLogReader } from '../../services/infra/server-log-reader.js';
+import {
+  createIntegrationStatusProbes,
+  createIntegrationStatusReader,
+} from '../../services/integrations/integration-status-service.js';
 import { StationKitObservabilityHost } from '../../services/kits/kit-observability-host.js';
 import { StationKitObservabilityRegistry } from '../../services/kits/kit-observability-registry.js';
 import {
@@ -882,6 +889,7 @@ import {
   TerminalSessions,
 } from '../../services/terminal/terminal-sessions.js';
 import type { UsageTelemetryService } from '../../services/usage-telemetry-service.js';
+import { InboundWebhookConfigurationStore } from '../../services/webhooks/inbound-webhook-store.js';
 import { FlowAgentsWorkItemProvider } from '../../services/work-item-providers/flow-agents-work-item-provider.js';
 import {
   GitHubWorkItemObserver,
@@ -1067,6 +1075,7 @@ export async function pullRequestSessionForReader<
 }
 
 export interface ConfigureRuntimeRoutesContext {
+  discordGateway?: Pick<DiscordGatewayService, 'getGatewayStatus'>;
   retainProjectRoomRuntime?: (runtime: { close(): Promise<void> }) => void;
   relayInvitationOwner?: RelayInvitationOwner;
   projectMembership?: ProjectMembershipService;
@@ -4513,6 +4522,28 @@ export function configureRuntimeRoutes(
       context.environmentSecurityService,
     );
   };
+  const integrationStatus = createIntegrationStatusReader(
+    createIntegrationStatusProbes({
+      readDiscord: () =>
+        context.discordGateway?.getGatewayStatus() ?? {
+          state: 'unavailable',
+          reason: 'Discord gateway state is unavailable in this runtime.',
+        },
+      readWebhook: () =>
+        new InboundWebhookConfigurationStore(
+          context.configLoader.getProjectHomeDir(),
+        ).read(),
+    }),
+  );
+  context.app.route(
+    '/api/integrations/status',
+    createIntegrationStatusRoutes({
+      readStatus: integrationStatus,
+      mayRead: (request) =>
+        isOperatorInPersonNotAgent(request) &&
+        isRequestPrincipalCurrent(request),
+    }),
+  );
   // Mobile helpers and the Browser pane belong to the personal operator host,
   // never a shared tenant: neither is mounted on a hosted deployment.
   const isPersonalHost =
@@ -6074,6 +6105,14 @@ export function configureRuntimeRoutes(
         return answers;
       },
     });
+    context.app.route(
+      '/api/tasks',
+      createTaskWriteBackRoutes({
+        runtime: roomRuntime,
+        store: roomEventStore.taskWriteBackStore(),
+        logger: context.logger,
+      }),
+    );
     context.app.route(
       '/api/tasks',
       createTaskReviewRoutes({

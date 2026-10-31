@@ -1,0 +1,57 @@
+{
+  "revision": "1d35028482f097bc0606dbc56b9e8cac8c0abb29",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Checked the successful-persistence versus usable-presentation section against the changed walkthrough captions: the historical Task clipping and Connections hover findings and sample-response qualification remain intact; the added preview note does not claim those findings resolved.","inputs":["docs/architecture/abstraction-review.md","docs/learn/walkthroughs.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the ProjectTaskRoom mounted-tab, provider lifetime, URL selection and Basis-host descriptions against TaskWorkspaceView. The new default-off Details disclosure mounts only on Details and does not change Room, editor, navigation or Basis ownership. Component fixtures, not live collaboration, were exercised.","inputs":["docs/architecture/module-map.md","src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/contexts/workspace-surfaces/CONTEXT.md","note":"Checked the Task collaboration owner table and Task workspace/Pane relationships against TaskWorkspaceView and its changed test. The optional write-back disclosure adds an authorized read in Details without changing Pane ownership, workspace binding or navigation authority.","inputs":["docs/contexts/workspace-surfaces/CONTEXT.md","src-ui/src/__tests__/TaskWorkspaceView.test.tsx","src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Checked URL-selected tabs, authority remount and agent-request ownership against the TaskWorkspaceView test delta. The added mock and preview/Details assertion concern the write-back disclosure only; no request dispatch, editor or retry path changed. Prior browser and provider limits remain.","inputs":["docs/design/task-room-agent-requests.md","src-ui/src/__tests__/TaskWorkspaceView.test.tsx"]},
+
+    {"path":"docs/design/terminal.md","note":"Checked the terminal HTTP control and authority references against the API reference delta. Its new integration-status and Task write-back section is independent of terminal routes, observe/operate admission and transport; no terminal claim or proposal status changed.","inputs":["docs/design/terminal.md","docs/reference/api.md"]},
+
+    {"path":"docs/glossary.md","note":"Checked Connections, Task experience and work identity definitions against the contract and Task view delta. The new status states and optional log do not alter the defined Connection, Task, Session or experience ownership; detailed new vocabulary is in the contracts reference.","inputs":["docs/glossary.md","docs/reference/contracts.md","src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked the new operator-only Integration status instructions, chip reasons, refresh and unverified limits against the Connections frame, component, status SDK query and probe service. Existing Models/Engines setup and cost guidance is unchanged. Component renders and fixture tests do not prove a live provider.","inputs":["docs/guides/connections.md","src-ui/src/views/ConnectionsSectionFrame.tsx"]},
+
+    {"path":"docs/guides/discord-gateway.md","note":"Checked configuration enable/token/restart, connection and failure observations against DiscordGatewayService and the status projection. Clarified that there is no configuration editor while the operator can view preview status; gateway connection does not verify delivery or change existing relay authorization.","inputs":["docs/guides/discord-gateway.md","src-server/services/discord/discord-gateway-service.ts"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Checked the offered default-off chat-apps registry definition and docs table, preview visibility hook, and the two mounted UI consumers. This task specifies UI gating; the separately authorized status and Task log reads remain callable independently as stated in the API reference. Registry/docs check passed; no live-provider qualification.","inputs":["docs/guides/feature-previews.md","docs/user/settings.md","scripts/__tests__/feature-preview-docs-check.test.ts","src-server/services/feature-previews/feature-preview-registry.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked its public API/SDK/contracts routing and version, authority and hosted-evidence guidance against the newly documented status and Task log reads. These are source interfaces with no Task-bound producer or published/deployed qualification; the guide's integration evidence boundaries remain accurate.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md","docs/reference/contracts.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Checked the Add computer, paired Device and remote execution relationship descriptions against the Connections guide delta. The new operator-only integration-status disclosure does not change device pairing, grants, SSH delegation or native route preparation.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Checked Task Overview, Plan and Details placement against TaskWorkspaceView and the on-demand TaskWriteBackSection. The new text identifies recorded attempts and retry links and explicitly excludes unbound PR and external gh writes; it does not assert Task dispatch or provider delivery.","inputs":["docs/guides/starter-work.md","src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Read the Task and Connections captions against the frame and Task view changes, inspected the retained two PNGs and a frame from the Connections tour, and added the preview-status limitation. These are historical captures; the new isolated component renders are not replacement live-app or provider evidence.","inputs":["docs/learn/walkthroughs.md","src-ui/src/views/ConnectionsSectionFrame.tsx","src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Checked the explicit engine smoke turn and Connections entry claims against the frame delta. The new integration status check runs host gh authentication observation, not an agent prompt or engine smoke; existing receipt and live-turn qualifications remain unchanged.","inputs":["docs/reference/agent-smoke-confidence.md","src-ui/src/views/ConnectionsSectionFrame.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"Traced both new GETs through runtime composition, pairing scopes, route authorization, probes and Task store. Documented no-store, refusals, rechecks, bounded attempt history, UI-only preview gating and the absence of Task-bound outbound producers. Fixture tests are not hosted or live-provider proof.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked the integration-status parser/state vocabulary and computedBy/reason bounds, plus Task write-back parser ordering, incarnation, state and retry rules against the contracts and store tests. Documented older closed-parser compatibility and that an identifier alone is not proof of a live probe.","inputs":["docs/reference/contracts.md","packages/contracts/src/__tests__/integration-status.test.ts","packages/contracts/src/integration-status.ts"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Checked Overview/Details navigation and protected subtree incarnation claims against TaskWorkspaceView. The gated Details log does not alter the retained room collaboration fixture; that browser acceptance was not rerun and is not evidence for the new log.","inputs":["docs/reference/project-task-room-collaboration-acceptance.md","src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked fetch and query exports, requestScope keys, no-retention/retry settings, 404 behavior and parser validation against both SDK query domains and public barrel. Source exports do not prove a published SDK or hosted server.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Checked the Task workspace narrative and added preview log paragraph against the Details mount and query; clarified no producer coverage. Regenerated station-docs-content from the canonical manual and checked the 125-topic output; no live Task write was claimed.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the first Task shaping, creation and Starter Work link against the updated Starter guide. The optional Details history is later inspection and does not change creation, agent assignment or dispatch; existing instructions remain accurate.","inputs":["docs/user/getting-started.md","docs/guides/starter-work.md"]},
+
+    {"path":"docs/user/settings.md","note":"Checked the Chat apps table row against the built-in default-off registry entry, both preview UI consumers and gh-auth probe. The row describes visible surfaces and costs without granting route authority or implying delivery.","inputs":["docs/user/settings.md","scripts/__tests__/feature-preview-docs-check.test.ts","src-server/services/feature-previews/feature-preview-registry.ts","src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Checked that the updated contracts reference still routes consumers to domain subpaths and documents the additive state compatibility; the pure parser rules and validation obligations in these instructions are unchanged.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Checked that the SDK reference describes the public root exports, authority-scoped query and refusal behavior; plugin boundary and cancellation guidance in these instructions are unchanged.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/learn/media/shared-task-document.png","note":"Viewed the retained historical Plan/Brief capture and compared TaskWorkspaceView: the new preview disclosure mounts only in Details, so the shown document remains an illustration of that older Plan state. Original capture bytes and revision remain; no current collaboration or provider proof is claimed.","inputs":["docs/learn/media/shared-task-document.png","src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"Viewed the retained sample Models screenshot and compared the frame delta. It predates the optional default-off integration-status disclosure and continues to illustrate the historical sample model form, not current preview state or a live provider; capture identity is unchanged.","inputs":["docs/learn/media/connections-models.png","src-ui/src/views/ConnectionsSectionFrame.tsx"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"Inspected a frame at four seconds and the walkthrough caption against the Connections frame delta. The historical Models/Engines tour predates the optional default-off integration-status disclosure; retained bytes and revision do not prove current preview or provider behavior.","inputs":["docs/learn/media/connections-tour.webm","src-ui/src/views/ConnectionsSectionFrame.tsx"]}
+  ]
+}

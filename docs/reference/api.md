@@ -561,6 +561,37 @@ is sent with the verified project folder; if that Station answers
 `working-directory-not-granted`, the caller gets a fixed message naming a Project
 or the grant.
 
+## Integration capability status and Task write-back
+
+`GET /api/integrations/status` is an operator-in-person read, not available to
+Agents or members. It requires `orchestration:read` for paired Devices and
+rechecks the current principal after probing. A refusal is 403; responses use
+`Cache-Control: no-store`. Success is `{success: true, data: {connections}}`.
+Each connection has `connectionId`, `provider`, and action records with
+`action`, `computedBy`, `state`, and `reason`. GitHub observes `gh auth status`
+on the host; its success does not establish repository permissions. Discord
+reports gateway state, and webhooks report configuration and active start
+grants; neither proves delivery. Slack is not implemented, and Linear and Jira
+are waiting on tracker support. Probe diagnostics do not expose credentials.
+
+`GET /api/tasks/:taskId/write-back` requires the personal Task room's current
+person and Task scope and paired `orchestration:read` where applicable. It is
+mounted with the personal Task room runtime, not hosted Task execution.
+The route rechecks Task incarnation and authority before returning; a refused
+or missing Task is 404 and an unavailable store is 503. Success is
+`{success: true, data: {entries}}` with `Cache-Control: no-store`.
+Entries are ordered attempts with target, initiator, attempt time, state,
+failure reason and `retryOf` identifying the first attempt. Terminal outcomes
+are separate append-only records. The store refuses new attempts beyond 256
+per Task incarnation. This read is not proof of every external write: the
+Task-bound outbound seam has no chat or tracker producer on main yet, and the
+existing PR routes are not Task-bound. See the
+[contracts](contracts.md#integration-status-and-task-write-back) and
+[SDK](sdk.md#integration-capability-status-and-task-write-back).
+
+The **Chat apps** Feature Preview gates the UI surfaces; it does not replace
+the routes' own authority checks or gate these reads.
+
 ## Create a Task from a chat proposal
 
 `POST /api/tasks` accepts an optional `shapingSource: { sessionId, turnId }`
