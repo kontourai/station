@@ -6434,6 +6434,7 @@ describe('Orchestration Routes', () => {
       const response = await app.request('/events?includeGeneral=1', {
         headers: { 'Last-Event-ID': '1', 'x-project': 'allowed' },
       });
+      expect(response.headers.get('X-Station-General-Stream')).toBe('1');
       expect(presence.isConnected(ROUTE_TEST_USER_ID)).toBe(true);
       bus.emit(SERVER_EVENTS.PLUGIN_DRAFTS_REBUILT, {
         project: 'denied',

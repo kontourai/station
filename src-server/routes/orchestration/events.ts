@@ -177,11 +177,7 @@ export function createEventStreamProducer({
     c.req.raw.signal.addEventListener('abort', () => settleDisconnect?.(), {
       once: true,
     });
-    if (
-      (stream as unknown as { aborted?: boolean }).aborted ||
-      c.req.raw.signal.aborted
-    )
-      return;
+    if (stream.aborted || c.req.raw.signal.aborted) return;
     const writeFrame = async (frame: { event: string; data: string }) => {
       if (isPairedDeviceConnectionCurrent?.(c.req.raw) === false) {
         if (!authorizationSettled) {
@@ -195,12 +191,7 @@ export function createEventStreamProducer({
       await (writeFrameOverride?.(frame) ??
         writeSse?.(stream, frame) ??
         stream.writeSSE(frame));
-      if (
-        (stream as unknown as { aborted?: boolean; closed?: boolean })
-          .aborted ||
-        (stream as unknown as { aborted?: boolean; closed?: boolean }).closed ||
-        c.req.raw.signal.aborted
-      ) {
+      if (stream.aborted || stream.closed || c.req.raw.signal.aborted) {
         settleDisconnect?.();
         throw new Error('stream_closed');
       }

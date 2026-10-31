@@ -44,7 +44,12 @@ function setup(mode: TransportMode, productionRetries = false) {
         push = (value) => controller.enqueue(new TextEncoder().encode(value));
       },
     }),
-    { headers: { 'Content-Type': 'text/event-stream' } },
+    {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'X-Station-General-Stream': '1',
+      },
+    },
   );
   let started = 0;
   vi.stubGlobal(

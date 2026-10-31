@@ -6832,6 +6832,9 @@ export function createOrchestrationRoutes(
     // clients or a first-ever connect produce) always takes the snapshot
     // path below, byte-identical to the prior behavior (AC4).
     const cursor = parseResumeCursor(c.req.header('Last-Event-ID'));
+    if (c.req.query('includeGeneral') === '1' && deps.generalEventProducer) {
+      c.header('X-Station-General-Stream', '1');
+    }
     return streamSSE(c, async (stream) => {
       sseOps.add(1, {
         op: threadId ? 'orchestration_connect_thread' : 'orchestration_connect',

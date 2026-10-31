@@ -37,6 +37,8 @@ import type { OrchestrationEvent, OrchestrationSnapshotPayload } from './types';
 
 interface OwnedStream {
   connection: FetchSseConnection;
+  legacyGeneral?: FetchSseConnection;
+  multiplexGeneral: boolean;
   /** Waiting out a terminal (401/403) stop — see `onTerminal` below. */
   parked: boolean;
   /**
@@ -447,6 +449,7 @@ export function ensureOrchestrationEventStream(
     if (owned) {
       activeSources.delete(apiBase);
       clearDeferredParkedRetry(owned);
+      owned.legacyGeneral?.close();
       owned.connection.close();
     }
     if (owners.size === 0) removeRecoveryListeners();
@@ -465,6 +468,7 @@ function connectOrchestrationEventStream(
   ) {
     if (existing) {
       clearDeferredParkedRetry(existing);
+      existing.legacyGeneral?.close();
       existing.connection.close();
     }
     activeSources.delete(apiBase);
@@ -554,6 +558,35 @@ function connectOrchestrationEventStream(
           owned.connection.signal.aborted
         )
           return;
+        owned.multiplexGeneral =
+          response.headers.get('X-Station-General-Stream') === '1';
+        if (owned.multiplexGeneral) {
+          owned.legacyGeneral?.close();
+          owned.legacyGeneral = undefined;
+        } else if (!owned.legacyGeneral) {
+          const legacy = fetchSSE(`${apiBase}/events`, {
+            authentication: 'required',
+            headers: { 'X-Station-Client-Session': CLIENT_DOCUMENT_SESSION_ID },
+            retryDelayMs: 3000,
+            maxRetryDelayMs: 30_000,
+            onMessage: (message) => {
+              if (
+                activeSources.get(apiBase) !== owned ||
+                owned.legacyGeneral !== legacy ||
+                legacy.signal.aborted
+              )
+                return;
+              sharedOrchestrationStreamMessage(apiBase, {
+                event: 'station:general',
+                data: JSON.stringify({
+                  event: message.event,
+                  data: message.data,
+                }),
+              });
+            },
+          });
+          owned.legacyGeneral = legacy;
+        }
         sharedOrchestrationStreamOpened(apiBase, response);
       },
       onMessage: (raw) => {
@@ -562,7 +595,8 @@ function connectOrchestrationEventStream(
           owned.connection.signal.aborted
         )
           return;
-        sharedOrchestrationStreamMessage(apiBase, raw);
+        if (raw.event !== 'station:general' || owned.multiplexGeneral)
+          sharedOrchestrationStreamMessage(apiBase, raw);
         if (raw.event === 'station:general') return;
         if (!receiving) {
           recordReplayConnection(apiBase, 'receiving');
@@ -725,6 +759,9 @@ function connectOrchestrationEventStream(
           owned.connection.signal.aborted
         )
           return;
+        owned.multiplexGeneral = false;
+        owned.legacyGeneral?.close();
+        owned.legacyGeneral = undefined;
         sharedOrchestrationStreamFailed(apiBase, error);
         // Do not leave the last partial answer invisible during retry/backoff.
         settleSemanticDeliveryBuffer(apiBase, false);
@@ -778,6 +815,7 @@ function connectOrchestrationEventStream(
 
   const owned: OwnedStream = {
     connection: authenticatedStream,
+    multiplexGeneral: false,
     parked: false,
     lastParkedRetryAt: 0,
     deferredParkedRetry: undefined,
@@ -790,6 +828,8 @@ function connectOrchestrationEventStream(
   void authenticatedStream.completed.then(
     () => {
       owned.ended = true;
+      owned.legacyGeneral?.close();
+      owned.legacyGeneral = undefined;
       if (activeSources.get(apiBase) === owned)
         sharedOrchestrationStreamFailed(
           apiBase,
@@ -800,6 +840,8 @@ function connectOrchestrationEventStream(
     },
     (error: unknown) => {
       owned.ended = true;
+      owned.legacyGeneral?.close();
+      owned.legacyGeneral = undefined;
       if (activeSources.get(apiBase) === owned)
         sharedOrchestrationStreamFailed(apiBase, error);
       clearDeferredParkedRetry(owned);

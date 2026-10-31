@@ -68,6 +68,11 @@ test('general and orchestration subscribers own one stream and release recovery 
     'https://shared.test/api/orchestration/events?includeGeneral=1',
   );
   expect(stream.options.authentication).toBe('required');
+  act(() =>
+    stream.options.onOpen(
+      new Response(null, { headers: { 'X-Station-General-Stream': '1' } }),
+    ),
+  );
   expect(stream.options.headers['X-Station-Client-Session']).toBeTruthy();
   act(() =>
     stream.options.onMessage({
@@ -126,4 +131,39 @@ test('general and orchestration subscribers own one stream and release recovery 
   differentAuthority();
   remove.mockRestore();
   client.clear();
+});
+
+test('legacy fallback follows each response and is fenced on replacement and release', () => {
+  const seen = vi.fn();
+  const subscription = subscribeSharedOrchestrationStream(
+    'https://shared.test',
+    { onMessage: seen },
+  );
+  const release = ensureOrchestrationEventStream(
+    'https://shared.test',
+    undefined,
+    'legacy-person',
+  );
+  const stream = transport.calls[0];
+  stream.options.onOpen(new Response());
+  const legacy = transport.calls[1];
+  expect(legacy.url).toBe('https://shared.test/events');
+  legacy.options.onMessage({ event: 'example:changed', data: '{"value":1}' });
+  expect(seen).toHaveBeenCalledTimes(1);
+  stream.options.onMessage({ event: 'station:general', data: '{}' });
+  expect(seen).toHaveBeenCalledTimes(1);
+  stream.options.onOpen(
+    new Response(null, { headers: { 'X-Station-General-Stream': '1' } }),
+  );
+  expect(legacy.close).toHaveBeenCalledOnce();
+  legacy.options.onMessage({ event: 'example:changed', data: '{}' });
+  stream.options.onMessage({ event: 'station:general', data: '{}' });
+  expect(seen).toHaveBeenCalledTimes(2);
+  stream.options.onOpen(new Response());
+  const replacement = transport.calls[2];
+  release();
+  expect(replacement.close).toHaveBeenCalledOnce();
+  replacement.options.onMessage({ event: 'example:changed', data: '{}' });
+  expect(seen).toHaveBeenCalledTimes(2);
+  subscription.close();
 });
