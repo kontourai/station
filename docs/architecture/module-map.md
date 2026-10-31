@@ -1805,7 +1805,8 @@ Hosted Stations have no inbox and so no check-backs, and refuse proposals.
 builds the person gate, the delivery and the routes' ports; the
 [authority test](../../src-server/security/__tests__/agent-schedule-authority.routes.test.ts)
 drives that composition through the real boundary, guard and routes per
-credential channel, with a real thread inbox.
+credential channel, with a real thread inbox. A person reads a conversation
+schedule with conversation read access; an agent may read its own.
 
 ## SessionDigest
 
@@ -4421,14 +4422,23 @@ its occurrence and firing time. Terminal outcomes consume that occurrence;
 manual runs do not advance the recurring cursor. Claim and `beginInvocation`
 persist before their respective effects. A dead initial pre-invocation owner
 can release its claim, while an advanced safe retry retains its run/attempt and
-budget. A dead invoked owner becomes indeterminate and is never automatically
+budget and is returned to the tick executor even for a manual run. A dead invoked owner becomes indeterminate and is never automatically
 replayed. A foreign owner's pid is probed before its recorded birth is read, so
 a dead pid releases its claim even when no birth was recorded; a live pid
 without one keeps the fence. One unreadable job record is quarantined in place:
 `claimDue` skips it and reports it once per record revision (BuiltinScheduler
 logs an error), and every other due job still claims. Settling a dead claim on
 such a record advances `last_run_ms` without rewriting the unreadable bytes. Exact revision checks let a concurrent job edit/delete win over old
-completion. Post-commit uncertainty requires exact readback; unavailable storage
+completion. Each claim snapshots its target; a dedicated target reserves its
+conversation identity before starting and records the observed conversation
+against that run, even if the job is retargeted. An unconfirmed start retains
+the reservation without claiming that the conversation exists. A later run adopts an already-started conversation
+through the inbox; a changed target gets a new reservation.
+Run reads use that target. Pre-change records require the creator and current
+conversation read access, except the local operator can read a creatorless,
+untargeted legacy job. Scheduler failure and monitor notices use generic public
+text because their notification audience is not conversation-bound. Fatigue excludes a claim still
+waiting for retry. Post-commit uncertainty requires exact readback; unavailable storage
 is a typed error, not an empty schedule or invented successful run.
 
 Automatic invocations use the published
@@ -4466,6 +4476,35 @@ principal through private async context. Omitted/legacy `default` selects the
 public `station` Agent; the adapter alone maps it to the private runtime key.
 The operator projection exposes the principal for standing-grant management,
 but creation/update does not accept caller-declared execution authority.
+
+**Conversation targets (Automations).** A job with a `target` never uses the
+scheduled-turn adapter. [ScheduledConversationRuns](../../src-server/services/scheduling/scheduled-conversation-runs.ts)
+queues each run on the target conversation's thread inbox as a framed Station
+turn under `scheduler:<runId>`, through the same hand-off check-backs use
+([`submitStationFramedTurn`](../../src-server/services/orchestration/station-turn-handoff.ts)),
+and settles from that turn's terminal event (a completion, an abort, or a
+non-retried `runtime.error`) within a 30-minute deadline. It holds a permit
+from its own pool (`maxConcurrentConversationHandoffs`) only until the turn is
+queued, never while it waits. A dedicated target's first run starts its
+conversation through the foreground execution seam; the ledger records the id
+once, and only if the target is still the one the run started from
+(`bindDedicatedConversation`). The run acts as the job's recorded
+`createdBy`, which no edit changes, with no full-access grant. The scheduler
+route admits a new target only for a person who may send to the conversation
+or an agent naming its own (the `automation-target-stays-in-own-conversation`
+guard rule), and admits every edit, run, enable, disable or delete of a
+targeted job against its stored target the same way. A target refuses
+monitors and retries. The ledger records a targeted occurrence more than six
+hours late as missed (`skipped: 'late'`, with every passed-over occurrence in
+`missedCount`, stamped so the failure outbox skips it). Fatigue disables a
+job after five consecutive failed occurrences (retries of one occurrence count
+once; a re-enable resets the count) through `applyFatigue`, one transaction
+that disables the job and records its owed notification
+(`scheduler_fatigue_announcements`), reconciled at startup, each tick and
+after every failed run. Without an inbox (hosted) no runner is composed and a
+targeted run fails before invocation. See the
+[dispatch test](../../src-server/services/scheduling/__tests__/scheduled-conversation-run-dispatch.test.ts)
+and [automation rule tests](../../src-server/services/scheduling/__tests__/automation-targets.test.ts).
 
 External monitor jobs follow a separate path in the same owner: the
 [monitor evaluator](../../src-server/services/scheduling/external-monitor.ts)

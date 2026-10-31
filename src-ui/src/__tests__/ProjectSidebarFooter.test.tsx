@@ -82,13 +82,18 @@ function renderFooter(
 }
 
 describe('ProjectSidebarFooter', () => {
-  test('places Schedule and Customize before icon-only Updates and the account', () => {
+  test('places Automations and Customize before icon-only Updates and the account', () => {
     renderFooter();
     expect(
       screen
         .getAllByRole('button')
         .map((button) => button.getAttribute('aria-label')),
-    ).toEqual(['Schedule', 'Customize', 'Updates', 'Profile and settings: AL']);
+    ).toEqual([
+      'Automations',
+      'Customize',
+      'Updates',
+      'Profile and settings: AL',
+    ]);
     const updates = screen.getByRole('button', { name: 'Updates' });
     expect(updates.textContent).toBe('');
     expect(updates.classList.contains('updates-control--collapsed')).toBe(true);
@@ -105,29 +110,29 @@ describe('ProjectSidebarFooter', () => {
     ).toBe('customize');
   });
 
-  test('Schedule opens its existing route', () => {
+  test('Automations opens its route', () => {
     const navigate = vi.fn();
     renderFooter({ navigate });
-    fireEvent.click(screen.getByRole('button', { name: 'Schedule' }));
-    expect(navigate).toHaveBeenCalledWith('/schedule');
+    fireEvent.click(screen.getByRole('button', { name: 'Automations' }));
+    expect(navigate).toHaveBeenCalledWith('/automations');
   });
 
   test('closes the mobile drawer after a footer navigation, and only on mobile', () => {
     const onAfterNavigate = vi.fn();
     const { unmount } = renderFooter({ isMobile: false, onAfterNavigate });
-    fireEvent.click(screen.getByRole('button', { name: 'Schedule' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Automations' }));
     expect(onAfterNavigate).not.toHaveBeenCalled();
     unmount();
 
     renderFooter({ isMobile: true, onAfterNavigate });
-    fireEvent.click(screen.getByRole('button', { name: 'Schedule' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Automations' }));
     expect(onAfterNavigate).toHaveBeenCalledTimes(1);
   });
 
   // Exactly one control may claim to be the current location, and it is
   // derived through the registry's view ownership rather than a path-prefix
   // comparison here (#1582 D4's rule).
-  test.each([['/schedule', 'Schedule', 'Customize']])(
+  test.each([['/automations', 'Automations', 'Customize']])(
     'marks the %s control as the current page',
     (path, current, other) => {
       renderFooter({ activePath: path });
@@ -289,7 +294,7 @@ test('the collapsed footer keeps utilities reachable and Customize returns to Mo
   try {
     const navigate = vi.fn();
     renderFooter({ collapsed: true, navigate });
-    expect(screen.queryByRole('button', { name: 'Schedule' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Automations' })).toBeNull();
     expect(screen.queryByRole('button', { name: /^Who is here:/ })).toBeNull();
     expect(screen.getByRole('button', { name: 'Updates' })).toBeTruthy();
     expect(
@@ -312,8 +317,8 @@ test('the collapsed footer keeps utilities reachable and Customize returns to Mo
       screen.queryByRole('dialog', { name: 'Sidebar utilities' }),
     ).toBeNull();
     fireEvent.click(more);
-    fireEvent.click(screen.getByRole('button', { name: 'Schedule' }));
-    expect(navigate).toHaveBeenCalledWith('/schedule');
+    fireEvent.click(screen.getByRole('button', { name: 'Automations' }));
+    expect(navigate).toHaveBeenCalledWith('/automations');
     expect(
       screen.queryByRole('dialog', { name: 'Sidebar utilities' }),
     ).toBeNull();

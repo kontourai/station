@@ -102,6 +102,7 @@ describe('public handshake capability flags (station#1095)', () => {
     expect(handshake.capabilities).toEqual(STATION_CAPABILITY_FLAGS);
     expect(handshake.capabilities).toEqual({
       privateOperationalOutcomes: true,
+      scheduledConversationTarget: true,
       sshEnvironments: true,
       webPushNotifications: true,
       eventStreamResume: true,
@@ -142,6 +143,7 @@ describe('public handshake capability flags (station#1095)', () => {
     // ships those surfaces.
     expect(body.capabilities).toEqual({
       privateOperationalOutcomes: true,
+      scheduledConversationTarget: true,
       sshEnvironments: true,
       webPushNotifications: true,
       eventStreamResume: true,

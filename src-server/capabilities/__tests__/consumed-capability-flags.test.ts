@@ -11,6 +11,7 @@ import type { EnrollmentActor } from '../../analytics/source-enrollment-store.js
 import { SourceEnrollmentStore } from '../../analytics/source-enrollment-store.js';
 import { createPushRoutes } from '../../routes/operations/push-routes.js';
 import { createRecipientCandidateRoutes } from '../../routes/operations/recipient-candidates.js';
+import { createSchedulerRoutes } from '../../routes/operations/scheduler.js';
 import { createCoordinatorRoutes } from '../../routes/orchestration/coordinator.js';
 import { createOrchestrationRoutes } from '../../routes/orchestration/orchestration.js';
 import { createSessionPersonActivityRoutes } from '../../routes/orchestration/session-project-activity.js';
@@ -242,6 +243,41 @@ const CONSUMED_FLAGS: Record<
     } as never);
     return (await routes.request('/routes')).status === 200;
   },
+  // POST /scheduler/jobs accepts a job `target` (an automation that runs in
+  // a conversation). The scheduler routes answer 404 to every hosted request,
+  // whatever the body, because scheduler storage has no tenant binding.
+  scheduledConversationTarget: async ({ hosted }) => {
+    const addJob = vi.fn(async () => "Job 'digest' created");
+    const routes = createSchedulerRoutes(
+      { addJob } as never,
+      { error: vi.fn(), info: vi.fn(), debug: vi.fn() } as never,
+      {
+        readAuthorityForRequest: () =>
+          ({ mode: hosted ? 'hosted' : 'personal' }) as never,
+        admitAutomationTarget: () => ({
+          ok: true,
+          createdBy: { userId: 'owner' },
+        }),
+      },
+    );
+    const response = await routes.request('/jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'digest',
+        schedule: { kind: 'every', everyMs: 3_600_000 },
+        prompt: 'Summarize',
+        target: { kind: 'conversation', conversationId: 'conversation-a' },
+      }),
+    });
+    return (
+      response.status === 200 &&
+      addJob.mock.calls.length === 1 &&
+      (addJob.mock.calls[0] as unknown[])[0] !== undefined &&
+      ((addJob.mock.calls[0] as unknown[])[0] as { target?: unknown })
+        .target !== undefined
+    );
+  },
   // Not gated by a client today, but withdrawn in hosted mode, so pinned too.
   // GET /vapid-public-key answers under resolveRuntimeWebPushEnabled. That
   // configureRuntimeSupportServices composes webPushEnabled from it is pinned
@@ -354,6 +390,7 @@ describe('consumed capability flags match what their routes serve', () => {
   // a tenant reader) still reds.
   const EXPECTED: Record<string, Record<'personal' | 'hosted', boolean>> = {
     privateOperationalOutcomes: { personal: true, hosted: true },
+    scheduledConversationTarget: { personal: true, hosted: false },
     sessionEventWindow: { personal: true, hosted: true },
     sessionInventoryInputRead: { personal: true, hosted: false },
     eventStreamResume: { personal: true, hosted: true },

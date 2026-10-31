@@ -1,0 +1,13 @@
+{
+  "revision": "610b06a1331222e2c2a35de63e28cb2ba939e55e",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Rechecked the Conversation targets paragraph after ANNOUNCEMENT_SKIPPED_LATE_OCCURRENCE became module-private in scheduler-ledger.ts; the paragraph names the behavior (stamped so the failure outbox skips it), not the export, so it stays accurate.","inputs":["docs/architecture/module-map.md","src-server/services/scheduling/scheduler-ledger.ts"]},
+
+    {"path":"docs/design/remote-execution-preparation.md","note":"station-capability-flags.ts gained scheduledConversationTarget, withdrawn in hosted mode, and its predicate became module-private. The table row's claim (static protocol facts, withdrawn where a deployment cannot serve the route; executionPreparation static) is unchanged and accurate.","inputs":["docs/design/remote-execution-preparation.md","src-server/capabilities/station-capability-flags.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"The scheduler-ledger.ts change only made a late-occurrence constant module-private. The starter scheduled-check claims (disabled job, exact run bound before activation) do not involve targets or late occurrences and remain accurate.","inputs":["docs/guides/starter-work.md","src-server/services/scheduling/scheduler-ledger.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"ScheduleView.css now sizes standalone form hints as secondary text. The guide makes no styling claim; its Automations and scheduled-job agent text was reviewed earlier and is unchanged.","inputs":["docs/user/getting-started.md","src-ui/src/views/ScheduleView.css"]}
+  ]
+}
