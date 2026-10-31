@@ -919,11 +919,9 @@
   border-radius: var(--k-radius-md);
 }
 
-@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
-  .coding-workbench__tool-list {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+.coding-workbench__tool-overlay[data-sheet] .coding-workbench__tool-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .coding-workbench[data-mobile]
   .coding-workbench__tool-trigger

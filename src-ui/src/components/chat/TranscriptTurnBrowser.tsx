@@ -5,6 +5,7 @@ import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
 import { Button } from '../Button';
 import { Dialog } from '../Dialog';
+import { CheckGlyph, TimeGlyph, WarningGlyph } from '../icons/Glyph';
 import { Empty, ErrorState, SkeletonList } from '../state';
 import type { TranscriptTurnLandmark } from './transcriptTurnLandmarks';
 import './TranscriptTurnBrowser.css';
@@ -103,7 +104,9 @@ export function TranscriptTurnBrowser({
           />
         )}
         {failure && <ErrorState variant="compact" title={failure} />}
-        {pending && <p role="status">Loading the selected turn…</p>}
+        {pending && (
+          <SkeletonList count={1} label="Loading the selected turn" />
+        )}
         {indexed ? (
           <ol className="transcript-turn-browser__list">
             {turns.map((turn, index) => (
@@ -124,11 +127,13 @@ export function TranscriptTurnBrowser({
                     title={turn.outcome}
                     aria-label={turn.outcome}
                   >
-                    {turn.outcome === 'completed'
-                      ? '✓'
-                      : turn.outcome === 'open'
-                        ? '◌'
-                        : '!'}
+                    {turn.outcome === 'completed' ? (
+                      <CheckGlyph />
+                    ) : turn.outcome === 'open' ? (
+                      <TimeGlyph />
+                    ) : (
+                      <WarningGlyph />
+                    )}
                   </span>
                 </Button>
               </li>
@@ -153,9 +158,7 @@ export function TranscriptTurnBrowser({
             </ol>
           )
         )}
-        {indexed && turns.length === 0 && (
-          <Empty variant="compact" label="No turns yet" />
-        )}
+        {indexed && turns.length === 0 && <Empty variant="compact" />}
         {directory.hasNextPage && (
           <Button
             variant="ghost"

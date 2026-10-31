@@ -249,12 +249,6 @@
   block-size: 16px;
 }
 .chat-dock-inbox__toolbar > button {
-  min-inline-size: 36px;
-  min-block-size: 36px;
-}
-@media (pointer: coarse) {
-  .chat-dock-inbox__toolbar > button {
-    min-inline-size: 44px;
-    min-block-size: 44px;
-  }
+  min-inline-size: 44px;
+  min-block-size: 44px;
 }

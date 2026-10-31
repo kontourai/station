@@ -30,12 +30,14 @@ import { Button } from '../Button';
 import { DisclosureToggle } from '../DisclosureToggle';
 import { DiscardDraftButton } from '../drafts/DiscardDraftButton';
 import {
+  CheckGlyph,
   CloseGlyph,
   DiscardGlyph,
   EditGlyph,
   FolderGlyph,
   InfoGlyph,
   MoreGlyph,
+  RefreshGlyph,
   ReturnGlyph,
   TimeGlyph,
 } from '../icons/Glyph';
@@ -1007,7 +1009,9 @@ export function InboxRow({
               aria-label={`${resolution.settled ? 'Reopen' : 'Settle'} ${item.title}`}
               onClick={(event) => changeResolution(event.currentTarget)}
             >
-              <span aria-hidden="true">{resolution.settled ? '↶' : '✓'}</span>
+              <span aria-hidden="true">
+                {resolution.settled ? <RefreshGlyph /> : <CheckGlyph />}
+              </span>
             </Button>
           )}
           {beside('snooze') && onSnoozeWake && (

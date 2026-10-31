@@ -28,7 +28,7 @@
   stroke: var(--k-line-strong);
 }
 .context-meter__fill {
-  transition: stroke-dasharray 180ms ease;
+  transition: stroke-dasharray var(--motion-base) var(--ease-standard);
   stroke-linecap: round;
 }
 .context-meter__value {
