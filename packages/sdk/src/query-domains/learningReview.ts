@@ -67,7 +67,7 @@ export function useProjectLearningQuery(
           index.items.forEach((item) => checkProject(item, projectId));
         return index;
       }),
-    { enabled: authority.isCurrent(), retry: false, keepPreviousData: false },
+    { enabled: authority.isCurrent(), retry: false },
   );
 }
 export function useProjectLearningDetailQuery(
@@ -88,7 +88,6 @@ export function useProjectLearningDetailQuery(
     {
       enabled: !!id && authority.isCurrent(),
       retry: false,
-      keepPreviousData: false,
     },
   );
 }
@@ -173,7 +172,7 @@ export function useProjectLearningEvidenceQuery(
         projectId,
         signal,
       }),
-    { enabled: authority.isCurrent(), retry: false, keepPreviousData: false },
+    { enabled: authority.isCurrent(), retry: false },
   );
 }
 
@@ -195,7 +194,6 @@ export function usePrepareLearningSourceQuery(
     {
       enabled: enabled && !!projectId && authority.isCurrent(),
       retry: false,
-      keepPreviousData: false,
     },
   );
 }
