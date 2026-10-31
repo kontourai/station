@@ -1907,7 +1907,9 @@ machine", and the difference is the residue, stated without softening:
   existing trust boundary — the same user can already read the local-grant
   secret and operator credential files. API redaction defends paired
   principals **without** terminal/agent authority (a phone using Developer →
-  Logs, `read_logs` over pairing, a scoped grant that cannot spawn a shell).
+  Logs or a scoped grant that cannot spawn a shell). Agent `read_logs` calls
+  are denied unless an operator grants their verified bound session; the grant
+  is not available to caller-less or weaker-assurance channels.
   Scrubbing the token from PTY/engine env closes the cheaper path that used
   to turn `printenv` into an ephemeral `home-possession` principal.
 

@@ -36,21 +36,11 @@ export const LOG_BINDING_KEYS = {
   USER_ID: K.USER_ID,
 } as const;
 
-/**
- * Scheduler job-run identity. A scheduled job invokes an agent directly
- * (`agent.generateText`, see `runtime-route-support.ts`'s `setChatFn` wiring)
- * rather than through the orchestration conversation seam
- * `MonitoringEmitter` instruments, so there is no monitoring-events concept
- * of a "job run" to reuse a key from — these two keys are Station-local, not
- * an alias of a `monitoring-keys.ts` entry. `JOB_NAME` is stable across runs
- * of the same job; `JOB_RUN_ID` (`BuiltinScheduler`'s existing
- * `${job.name}-${Date.now()}` run identifier) is unique per execution
- * attempt. Named with the same `station.*` dot convention as `K` for
- * consistency, not because it claims monitoring alignment.
- */
+/** Opaque scheduler identities are local correlation keys, not conversation IDs. */
 export const SCHEDULER_LOG_BINDING_KEYS = {
-  JOB_NAME: 'station.scheduler.job_name',
+  JOB_ID: 'station.scheduler.job_id',
   JOB_RUN_ID: 'station.scheduler.job_run_id',
+  TARGET_KIND: 'station.scheduler.target_kind',
 } as const;
 
 /**
@@ -76,11 +66,13 @@ export function sessionCorrelationBindings(input: {
 /** Builds the `logger.child()` bindings for one scheduler job execution
  * attempt. */
 export function schedulerJobCorrelationBindings(input: {
-  jobName: string;
+  jobId: string;
   jobRunId: string;
+  targetKind: 'conversation' | 'dedicated' | 'untargeted';
 }): Record<string, unknown> {
   return {
-    [SCHEDULER_LOG_BINDING_KEYS.JOB_NAME]: input.jobName,
+    [SCHEDULER_LOG_BINDING_KEYS.JOB_ID]: input.jobId,
     [SCHEDULER_LOG_BINDING_KEYS.JOB_RUN_ID]: input.jobRunId,
+    [SCHEDULER_LOG_BINDING_KEYS.TARGET_KIND]: input.targetKind,
   };
 }

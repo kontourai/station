@@ -143,6 +143,7 @@ design records. The pre-public repository audit,
 `docs/repo-audit-2026-06-26.md`, stays in the maintainers' archive repository
 (`kontourai/station-archive`, referenced as `archive#N`).
 User-facing docs not named in the audience table:
+[user/automations.md](user/automations.md),
 [user/native-recovery.md](user/native-recovery.md),
 [user/workspace-checkpoints.md](user/workspace-checkpoints.md),
 [user/work-board.md](user/work-board.md),
