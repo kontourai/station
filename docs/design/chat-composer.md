@@ -846,8 +846,11 @@ A failed read after held rows were shown replaces them with a
 **Remove** or **Dismiss** uses the original message key and the server's
 authorization and placement checks; rows without a permitted key are
 read-only. Held rows offer no local edit, reorder, send-now or steer action.
-A busy-composer Queue submission is sent to the server inbox when eligible;
-Station may instead start it immediately if the turn has already ended.
+A busy-composer Queue submission requests inbox admission. Eligible submissions
+may be held; Station may instead return a started-turn receipt if the turn has
+ended or the request takes the live path. Apply a pending approval choice before
+queuing. The browser retires its in-flight outbox row on either accepted receipt.
+If the answer is lost, it retains the original key for delivery inspection.
 This browser's durable outbox for
 the chat (a send that failed or got no answer, and copies queued in another
 window or one that closed) leads the same list, not a second list, and its rows
@@ -877,7 +880,7 @@ collapsed rows announces it when it appears. The region mounts empty and takes
 its text after mount, so a list that first appears already failed is announced
 too, once. Its disclosure
 reveals message content, mode, status and actions; it does not auto-expand during
-a turn. Pending rows retain their selected mode. **Send now** is an explicit immediate
+a turn. Local queued rows retain their selected mode. Their **Send now** is an explicit
 stop override: Station waits for a settled interruption receipt before sending
 the selected row, keeps other rows in order, and retains the message if stopping
 cannot be confirmed. Queued follow-ups currently accept text and quoted context;

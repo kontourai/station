@@ -815,8 +815,9 @@ Keep typing during a turn. **Send** defaults to **Queue**, which delivers after
 the turn finishes; its dropdown offers **Steer**. Claude Code and Codex can take
 native steering. Other engines hold steering until a safe boundary can be proven;
 currently they wait until the turn finishes. Each pending row shows its mode.
-**Send now** deliberately stops the active turn immediately and sends the
-selected message after Station confirms the stop. **Stop** remains separate.
+For a locally queued message, **Send now** stops the active turn and sends the
+selected message after Station confirms the stop. Messages held by Station can
+be removed when permitted, but cannot be edited or sent now from the list. **Stop** remains separate.
 Steer and Queue carry text only. You can still attach files or dictate during a
 turn: files wait in the draft, which says why, until you send it after the turn
 ends.
@@ -825,7 +826,8 @@ A text message is saved on this device before it is sent. If the app closes or
 the connection drops before Station answers, the app asks Station what happened
 at its next launch or reconnect: a message Station never received is sent once,
 with the same identity, and one Station may have started is kept and marked,
-never sent twice. A message with attachments or a visual skill keeps its draft
+never sent twice. If Station reports it queued in its inbox, the local outbox
+keeps the row for inspection rather than settling it automatically. A message with attachments or a visual skill keeps its draft
 until Station answers instead.
 
 Once Station confirms a turn started, a late network error does not queue that
