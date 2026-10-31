@@ -1,0 +1,7 @@
+{
+  "revision": "549215c2e6a0b79bf575d478dae84d7c7764980a",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the outbound dispatch handoff against useOutboundQueueFlush and outboundQueue: a busy identified conversation can hand off to the durable inbox, while a direct queued receipt retires the browser row; a queued lookup remains unsettled. Installer fixture changes do not affect product documentation. The installer focused suites passed 69 tests under a restricted profile-local temp ACL; this does not establish provider or authentication coverage.","inputs":["docs/architecture/module-map.md","src-ui/src/lib/outboundQueue.ts"]}
+  ]
+}

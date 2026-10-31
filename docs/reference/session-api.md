@@ -505,12 +505,12 @@ part of this check.
 
 ### Let Station hold a follow-up
 
-A follow-up sent to a conversation whose turn is still running is refused
-today, and the client holds it until the turn ends. A send to `POST /chat` that
-adds `"whenBusy": "queue"` (with its `conversationId` and `clientTurnId`)
-asks Station to hold it instead, in the conversation's durable inbox. The
-message is stored before the answer arrives, so it survives a closed tab,
-another device and a restart.
+A follow-up sent without a queue request may be refused while the
+conversation's turn is running. A send to `POST /chat` that adds `"whenBusy": "queue"` (with its `conversationId` and `clientTurnId`)
+asks Station to hold it instead, in the conversation's durable inbox when eligible. A queued receipt means the message was stored
+before the answer and survives a closed tab, another device and a restart.
+The request can instead take the live path and return a started receipt or a
+refusal; a request alone does not prove storage.
 
 - When the conversation is busy (its current Session has a turn open, or
   earlier follow-ups are still waiting), the send is held and answered `202`
