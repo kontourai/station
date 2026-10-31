@@ -442,7 +442,8 @@ reconciliation use that namespace with the persisted subject and actor; a later
 Project workspace change cannot redirect release. Reconciliation checks the exact
 Station actor before release and keeps the existing terminal-sibling guard.
 Legacy dispatches without original namespace custody remain unresolved rather than
-using the current workspace. This does not recover claims lost before association
+using the current workspace. Redispatch refuses before acquiring another claim
+when prior self-handoff cannot confirm release. This does not recover claims lost before association
 or establish cross-process custody for every retained external claim.
 The outbox refuses a different payload under an existing intent and refuses
 new lifecycle entries after the source seal. Tasks without a dispatch-associated Agent have no Task-dispatch

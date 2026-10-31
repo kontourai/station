@@ -4582,11 +4582,19 @@ export class TaskGraphService {
         item.claim.subjectId === subjectId,
     );
     if (priorDispatch) {
-      await this.releaseDispatchClaim(
+      const release = await this.releaseDispatchClaim(
         priorDispatch,
         task.id,
         `superseded by redispatch (session ${sessionId})`,
       );
+      if (release !== 'released' && release !== 'skipped') {
+        return {
+          outcome: 'blocked',
+          subjectId,
+          kind: 'operational-error',
+          reason: 'prior assignment claim could not be released',
+        };
+      }
     }
 
     retainContext?.(context);

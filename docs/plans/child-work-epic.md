@@ -2926,3 +2926,14 @@ workspace. Controls preserve another actor's real claim in the rebound workspace
 The three-file owner selection passes89 cases, the final actor-fence keeper passes34,
 and server-test types pass. Independent source review is pending. Claims lost before
 association and broader source/epic qualification remain open.
+
+Independent review found a P2 upgrade interaction: ignored legacy-release refusal
+could admit a new namespace claim, while terminal cleanup repeatedly selected the
+older unresolved dispatch. The first attempted regression stopped at an invalid
+ready-to-done fixture transition and is not fault evidence. The corrected real-CLI
+regression demonstrated redispatch succeeding despite unresolved custody. The
+repair now requires definitive prior release before a new claim. The original claim
+remains held and marked claimed; the rebound namespace stays free and no second
+dispatch is associated. All90 selected cases and server-test types pass. The review
+FAIL is retained pending a fresh bounded recheck. Readiness still fails only the
+documentation-truth evidence check; no combined readiness claim follows.

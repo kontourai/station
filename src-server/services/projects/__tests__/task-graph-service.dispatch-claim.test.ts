@@ -450,6 +450,45 @@ describe('TaskGraphService dispatch-as-claim (#584)', () => {
     },
   );
 
+  test('redispatch refuses unresolved legacy custody before claiming another namespace', async () => {
+    const firstWorkspace = makeTempDir('station-claim-legacy-');
+    const nextWorkspace = makeTempDir('station-claim-newer-');
+    let workspace = firstWorkspace;
+    const home = makeTempDir('station-claim-upgrade-');
+    const service = new TaskGraphService(home, {
+      assignmentClaimService: new AssignmentClaimService(),
+      resolveProjectWorkspace: () => workspace,
+    });
+    const subjectId = 'github:example/project#legacy-custody';
+    const task = await service.createTask({
+      projectId: 'project-alpha',
+      title: 'Cleanup after upgrade',
+      workItemRef: subjectId,
+    });
+    const first = await dispatchTaskForTest(service, task.id, {});
+    expect(first.dispatch.claim?.outcome).toBe('claimed');
+    const graphPath = join(home, 'task-graph.json');
+    const persisted = JSON.parse(readFileSync(graphPath, 'utf8'));
+    delete persisted.dispatchClaimRoots;
+    writeFileSync(graphPath, JSON.stringify(persisted));
+    workspace = nextWorkspace;
+    await expect(dispatchTaskForTest(service, task.id, {})).rejects.toThrow(
+      'prior assignment claim could not be released',
+    );
+    const originalRoot = join(firstWorkspace, '.kontourai', 'flow-agents');
+    const newerRoot = join(nextWorkspace, '.kontourai', 'flow-agents');
+    expect(readAssignmentStatus(newerRoot, subjectId).claimed).toBe(false);
+    expect(readAssignmentStatus(originalRoot, subjectId).claimed).toBe(true);
+    const dispatches: { id: string; claim?: { outcome: string } }[] =
+      JSON.parse(readFileSync(graphPath, 'utf8')).dispatches;
+    expect(dispatches).toHaveLength(1);
+    expect(dispatches[0]).toMatchObject({
+      id: first.dispatch.id,
+      claim: { outcome: 'claimed' },
+    });
+    expect(service.readTask(task.id)?.sessionId).toBe(first.dispatch.sessionId);
+  });
+
   test('dispatch of a local task (no workItemRef) never calls the claim service', async () => {
     const workspace = makeTempDir('station-workspace-');
     let claimCalls = 0;
