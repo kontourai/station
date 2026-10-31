@@ -22,9 +22,11 @@ import type {
   ProjectTaskRoomScope,
 } from '@kontourai/station-contracts/project-task-room';
 import {
+  isProjectTaskRoomMentions,
   isTaskRoomAttachments,
   PROJECT_TASK_ROOM_MAX_PAGE_JSON_ITEMS,
   PROJECT_TASK_ROOM_MAX_PAGE_RECORDS,
+  parseProjectTaskRoomPrincipal,
 } from '@kontourai/station-contracts/project-task-room';
 import {
   projectTaskRoomHistoryDuration,
@@ -1292,6 +1294,7 @@ async function resolveBody(
         kind: 'human-message',
         text: body.text,
         ...(body.attachments ? { attachments: body.attachments } : {}),
+        ...(body.mentions ? { mentions: body.mentions } : {}),
       },
     };
   if (body.kind === 'outcome-link') {
@@ -1419,8 +1422,10 @@ function validAppendBody(value: unknown): value is ProjectTaskRoomAppendBody {
   if (kind === 'output-feedback') return validOutputFeedback(value);
   if (kind === 'human-message')
     return (
-      isPlainOwn(value, ['kind', 'text', 'attachments']) &&
+      isPlainOwn(value, ['kind', 'text', 'attachments', 'mentions']) &&
       text(value.text) &&
+      (value.mentions === undefined ||
+        isProjectTaskRoomMentions(value.mentions)) &&
       (value.attachments === undefined ||
         isTaskRoomAttachments(value.attachments))
     );
@@ -1554,23 +1559,8 @@ function validScope(value: unknown): value is ProjectTaskRoomScope {
 }
 function validPrincipal(value: unknown): value is ProjectTaskRoomPrincipal {
   return (
-    isPlainRecord(value) &&
-    (value.kind === 'operator'
-      ? isPlainOwn(value, ['kind', 'operatorId', 'deviceId']) &&
-        id(value.operatorId) &&
-        id(value.deviceId)
-      : value.kind === 'agent' &&
-        isPlainOwn(value, [
-          'kind',
-          'agentId',
-          'ownerOperatorId',
-          'deviceId',
-          'authorizationReceiptId',
-        ]) &&
-        id(value.agentId) &&
-        id(value.ownerOperatorId) &&
-        id(value.deviceId) &&
-        id(value.authorizationReceiptId))
+    parseProjectTaskRoomPrincipal(value, 'station.project-task-room/v5') !==
+    null
   );
 }
 function validAgentResolution(
@@ -1881,9 +1871,11 @@ function validRecord(
       'station.project-task-room/v2',
       'station.project-task-room/v3',
       'station.project-task-room/v4',
+      'station.project-task-room/v5',
     ].includes(value.schemaVersion) ||
     !validScope(value.scope) ||
     !validPrincipal(value.principal) ||
+    !parseProjectTaskRoomPrincipal(value.principal, value.schemaVersion) ||
     !optionalId(value.correlationId) ||
     !optionalId(value.causationId) ||
     !isPlainRecord(value.envelope) ||
@@ -1892,11 +1884,18 @@ function validRecord(
       (![
         'station.project-task-room/v3',
         'station.project-task-room/v4',
+        'station.project-task-room/v5',
       ].includes(value.schemaVersion) ||
-        value.principal.kind !== 'operator')) ||
+        value.principal.kind === 'agent')) ||
     (value.body.kind === 'human-message' &&
       value.body.attachments !== undefined &&
-      value.schemaVersion !== 'station.project-task-room/v4') ||
+      ![
+        'station.project-task-room/v4',
+        'station.project-task-room/v5',
+      ].includes(value.schemaVersion)) ||
+    (value.body.kind === 'human-message' &&
+      value.body.mentions !== undefined &&
+      value.schemaVersion !== 'station.project-task-room/v5') ||
     !Number.isSafeInteger(value.bodyBytes) ||
     value.bodyBytes < 0 ||
     !id(value.checkpointDigest)
@@ -1965,11 +1964,14 @@ function recordMatchesAuthority(
     payload.grantReceipt.policyRevision !== record.envelope.policyRevision
   )
     return false;
-  if (record.principal.kind === 'operator')
+  if (record.principal.kind !== 'agent')
     return (
       proposal.kind === 'message' &&
       proposal.onBehalfOf === undefined &&
-      proposal.author.memberId === record.principal.operatorId &&
+      proposal.author.memberId ===
+        (record.principal.kind === 'member'
+          ? record.principal.principalId
+          : record.principal.operatorId) &&
       proposal.author.deviceId === record.principal.deviceId &&
       proposal.author.keyId === 'station-local-l0'
     );
@@ -2005,8 +2007,10 @@ function validStoredBody(value: unknown): value is ProjectTaskRoomBody {
   if (value.kind === 'output-feedback') return validOutputFeedback(value);
   if (value.kind === 'human-message')
     return (
-      isPlainOwn(value, ['kind', 'text', 'attachments']) &&
+      isPlainOwn(value, ['kind', 'text', 'attachments', 'mentions']) &&
       text(value.text) &&
+      (value.mentions === undefined ||
+        isProjectTaskRoomMentions(value.mentions)) &&
       (value.attachments === undefined ||
         isTaskRoomAttachments(value.attachments))
     );

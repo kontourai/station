@@ -1,11 +1,11 @@
 import {
-  AgentSideConnection,
-  type Client,
-  ClientSideConnection,
+  agent as agentApp,
   ndJsonStream,
-} from '@agentclientprotocol/sdk';
+} from '@agentclientprotocol/sdk/unstable';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import { describe, expect, test, vi } from 'vitest';
+import { createACPClientApp } from '../../services/acp/acp-bridge-client.js';
+import type { ACPClientCallbacks } from '../../services/acp/acp-bridge-types.js';
 import type {
   ACPProcess,
   ACPProcessOptions,
@@ -24,9 +24,9 @@ import { AcpAdapter } from '../adapters/acp-adapter.js';
  * `-32603`. And neither claim proves the ADAPTER is wired to the policy at
  * all — the defect being fixed was precisely a wiring line.
  *
- * So this file takes the Client object `AcpAdapter` actually built for a live
- * session, attaches it to a real `ClientSideConnection` over a real
- * ndjson stream pair, and has a real `AgentSideConnection` on the other end
+ * So this file takes the callback object `AcpAdapter` actually built for a live
+ * session, attaches it to a real client app over a real
+ * ndjson stream pair, and has a real agent app on the other end
  * make the request Kiro is evidenced making.
  *
  * Nothing here reads an inbound error code to infer support: Station emits
@@ -53,17 +53,17 @@ const CONNECTIONS: ACPConnectionConfig[] = [
 /**
  * Minimal ACPProcess stand-in. Its only job is to invoke `createClient`
  * during `start()` exactly as the real one does, so the test holds the
- * adapter's own Client.
+ * adapter's own ACPClientCallbacks.
  */
 class ClientCapturingProcess {
-  client!: Client;
+  client!: ACPClientCallbacks;
   readonly initResult = {
     protocolVersion: 1,
     agentCapabilities: { promptCapabilities: { image: true } },
   };
   constructor(readonly opts: ACPProcessOptions) {}
   async start() {
-    this.client = this.opts.createClient(undefined as never);
+    this.client = this.opts.createClient();
     return this.initResult;
   }
   async newSession() {
@@ -77,7 +77,7 @@ class ClientCapturingProcess {
 }
 
 async function adapterClientForLiveSession(): Promise<{
-  client: Client;
+  client: ACPClientCallbacks;
   warn: ReturnType<typeof vi.fn>;
   events: CanonicalRuntimeEvent[];
   stop: () => Promise<void>;
@@ -102,7 +102,8 @@ async function adapterClientForLiveSession(): Promise<{
     cwd: '/tmp/project',
     metadata: { connectionId: 'kiro' },
   });
-  if (!captured?.client) throw new Error('adapter did not build a Client');
+  if (!captured?.client)
+    throw new Error('adapter did not build client callbacks');
   return {
     client: captured.client,
     warn,
@@ -118,9 +119,9 @@ describe('inbound ACP extension requests reach the wire as -32601', () => {
   test("Kiro's token-refresh callback is refused, not answered", async () => {
     const { client, warn, stop } = await adapterClientForLiveSession();
     const { clientStream, agentStream } = createStreamPair();
-    // The client end serves the ADAPTER's own Client — the object under test.
-    new ClientSideConnection(() => client, clientStream);
-    const agent = new AgentSideConnection(() => ({}) as never, agentStream);
+    // The client end serves the ADAPTER's own ACPClientCallbacks — the object under test.
+    createACPClientApp(client).connect(clientStream);
+    const agent = agentApp().connect(agentStream).client;
 
     // `_kiro/auth/getAccessToken` — Kiro's host-mediated token-refresh
     // callback (kirodotdev/Kiro#10416). Under `--agent-engine v3` it is
@@ -130,7 +131,7 @@ describe('inbound ACP extension requests reach the wire as -32601', () => {
     // token, which Station never computed.
     let thrown: { code?: number; message?: string } | undefined;
     try {
-      await agent.extMethod('_kiro/auth/getAccessToken', {});
+      await agent.request('_kiro/auth/getAccessToken', {});
     } catch (error) {
       thrown = error as { code?: number; message?: string };
     }
@@ -153,13 +154,13 @@ describe('inbound ACP extension requests reach the wire as -32601', () => {
   test('a non-credential unknown request is refused the same way', async () => {
     const { client, stop } = await adapterClientForLiveSession();
     const { clientStream, agentStream } = createStreamPair();
-    new ClientSideConnection(() => client, clientStream);
-    const agent = new AgentSideConnection(() => ({}) as never, agentStream);
+    createACPClientApp(client).connect(clientStream);
+    const agent = agentApp().connect(agentStream).client;
 
     // Also observed inbound live (ADR 0013). Refused for the ordinary
     // reason, with the same code — a probing agent learns nothing.
     await expect(
-      agent.extMethod('_kiro/terminal/shell_type', {}),
+      agent.request('_kiro/terminal/shell_type', {}),
     ).rejects.toMatchObject({ code: -32601 });
 
     await stop();
@@ -170,11 +171,11 @@ describe('inbound ACP extension requests reach the wire as -32601', () => {
     // here so the refusal change cannot silently take notifications with it.
     const { client, stop } = await adapterClientForLiveSession();
     const { clientStream, agentStream } = createStreamPair();
-    new ClientSideConnection(() => client, clientStream);
-    const agent = new AgentSideConnection(() => ({}) as never, agentStream);
+    createACPClientApp(client).connect(clientStream);
+    const agent = agentApp().connect(agentStream).client;
 
     await expect(
-      agent.extNotification('_kiro.dev/mcp/server_init_failure', {
+      agent.notify('_kiro.dev/mcp/server_init_failure', {
         server: 'whatever',
       }),
     ).resolves.toBeUndefined();
@@ -182,7 +183,7 @@ describe('inbound ACP extension requests reach the wire as -32601', () => {
     // A request on the same connection still refuses — proves the connection
     // is live and the notification's silence was ignoring, not a dead pipe.
     await expect(
-      agent.extMethod('_kiro.dev/mcp/server_init_failure', {}),
+      agent.request('_kiro.dev/mcp/server_init_failure', {}),
     ).rejects.toMatchObject({ code: -32601 });
 
     await stop();
@@ -193,15 +194,15 @@ describe('a refused CREDENTIAL request is legible to the user', () => {
   test('emits one actionable runtime.warning per session per method', async () => {
     const { client, events, stop } = await adapterClientForLiveSession();
     const { clientStream, agentStream } = createStreamPair();
-    new ClientSideConnection(() => client, clientStream);
-    const agent = new AgentSideConnection(() => ({}) as never, agentStream);
+    createACPClientApp(client).connect(clientStream);
+    const agent = agentApp().connect(agentStream).client;
 
     // Kiro under `--agent-engine v3` sends this twice before `initialize`.
     await expect(
-      agent.extMethod('_kiro/auth/getAccessToken', {}),
+      agent.request('_kiro/auth/getAccessToken', {}),
     ).rejects.toMatchObject({ code: -32601 });
     await expect(
-      agent.extMethod('_kiro/auth/getAccessToken', {}),
+      agent.request('_kiro/auth/getAccessToken', {}),
     ).rejects.toMatchObject({ code: -32601 });
 
     const warnings = events.filter(
@@ -238,11 +239,11 @@ describe('a refused CREDENTIAL request is legible to the user', () => {
     // matters. `_kiro/terminal/shell_type` is a routine protocol non-event.
     const { client, events, stop } = await adapterClientForLiveSession();
     const { clientStream, agentStream } = createStreamPair();
-    new ClientSideConnection(() => client, clientStream);
-    const agent = new AgentSideConnection(() => ({}) as never, agentStream);
+    createACPClientApp(client).connect(clientStream);
+    const agent = agentApp().connect(agentStream).client;
 
     await expect(
-      agent.extMethod('_kiro/terminal/shell_type', {}),
+      agent.request('_kiro/terminal/shell_type', {}),
     ).rejects.toMatchObject({ code: -32601 });
 
     expect(
