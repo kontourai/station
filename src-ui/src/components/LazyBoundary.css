@@ -1,6 +1,4 @@
-@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
-  .lazy-boundary__error > button {
-    min-width: 44px;
-    min-height: 44px;
-  }
+.lazy-boundary__error > button {
+  min-width: 44px;
+  min-height: 44px;
 }
