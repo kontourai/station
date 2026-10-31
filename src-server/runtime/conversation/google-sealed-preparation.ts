@@ -19,9 +19,9 @@ import {
 
 const MODEL = 'gemini-2.5-flash-lite';
 const VERSION = 'v1beta';
-const VALID_FROM = Date.parse('2026-10-25T20:05:31Z');
+const VALID_FROM = Date.parse('2026-10-31T00:02:00Z');
 // The earliest retained pricing/cap snapshot bounds freshness; startup cannot extend it.
-const EXPIRES = Date.parse('2026-10-26T20:04:16Z');
+const EXPIRES = Date.parse('2026-10-31T21:57:47.087Z');
 const INPUT_RESERVATION = 1_048_576;
 const SDK = [
   [
@@ -34,13 +34,13 @@ const SDK = [
   ],
 ] as const;
 const SOURCES = [
-  'b3ac3ec61c63d9438626d35d31842058aa90595692081fb98a168817c841a05a',
-  '732ba2175f9376fca461ee8b36984a99698a8e6e9adcfd198f44e926b7f153ee',
-  'b3fc23d05ac51fdeb0c5717c6ece1acc08320fbc0b3d5d62a167b81d5386cf28',
-  '591d10118628b44a9f43f0757cf2dadd84ffaded284a5d56799f50f95733aea3',
-  '5e4a1a83d6dfccba48c3d53b56e6746fe0f7ad4458de7ba81b0a3993b11e61d2',
-  '4e1b587656a82a7aea3e1efd59712f627021d33e99934877727455beb06accc8',
-  'aa10559296041385f4155aab8589fecb5302bfc2cc6aec60d50da358b6ca1dd9',
+  'be045b656ef39e524983f5fdad51ce6708dca2914af318706e4680fe55f03500',
+  '1be990e419cf2be979cc994a5b5a36ec90f545d41e99e2776efb3ae746767012',
+  'a4787c44502444013da7f019960bfd22983af71e6a77daa898cbe0b8324269d0',
+  '0853630e9e01a1cf7330de047553c650ab9db47da9f9cae5e70c61658ec5efcb',
+  '8e4dbf7146d482b09700ec4385aea12fe9d28dca0953debc54c64968406b2a68',
+  '9dbd67810482953aa2d8c0543023ed9294b662c905ce374759216d2f9a83cc2e',
+  '5f140c15fbaa1c91b078967248e1ebc09108a5aa243eb7d7a5c845f73c11ba25',
 ];
 const sha = (value: string | Buffer) =>
   createHash('sha256').update(value).digest('hex');
@@ -195,7 +195,7 @@ export class GoogleSealedPreparation {
     const evidence = {
       authorityKind: 'provider-public-contract' as const,
       authorityRef: 'https://ai.google.dev/gemini-api/docs/pricing',
-      revision: 'flash-lite25-text-20261025',
+      revision: 'flash-lite25-text-20261030',
       sourceSha256s: SOURCES,
       validFromMs: VALID_FROM,
       expiresAtMs: EXPIRES,

@@ -2538,14 +2538,14 @@ validator remains independently required.
 The listed inference tariff is 3 input and 15 output micros per token with zero
 listed fixed inference fee for that feature-free request. This excludes taxes,
 account charges and invoice guarantees. Its conservative input reservation upper
-bound is 1,048,576 tokens, not an advertised provider limit; the explicit output
+bound is 1,048,576 tokens; the documented total context is 1,000,000 tokens; the explicit output
 cap must be at most 128,000. Missing/inconsistent usage remains unknown-held.
 The installed SDK entry and manifest must match reviewed hashes. Facts expire
 at a fixed snapshot-derived deadline; startup cannot extend it. A changed SDK
 or expired profile requires new evidence and review, not a configuration flag. The
 issuer's current fixed validity window admits preparation
-from `2026-10-25T19:56:02Z` until (excluding)
-`2026-10-26T19:51:02Z`. Refreshing those facts does not renew an
+from `2026-10-31T00:02:00Z` until (excluding)
+`2026-10-31T21:57:45.679Z`. Refreshing those facts does not renew an
 existing group's authority or establish provider entitlement.
 
 The authority comes from retained official [model](https://platform.claude.com/docs/en/models/sonnet-4-6/overview),
@@ -2590,8 +2590,8 @@ The retained official [model](https://ai.google.dev/gemini-api/docs/models/gemin
 [pricing](https://ai.google.dev/gemini-api/docs/pricing),
 [billing](https://ai.google.dev/gemini-api/docs/billing), and
 [Generate Content caching](https://ai.google.dev/gemini-api/docs/generate-content/caching)
-snapshots anchor its validity from `2026-10-25T20:05:31Z` until (excluding)
-`2026-10-26T20:04:16Z`. Startup cannot extend that window. The stable model label
+snapshots anchor its validity from `2026-10-31T00:02:00Z` until (excluding)
+`2026-10-31T21:57:47.087Z`. Startup cannot extend that window. The stable model label
 is not an assertion of immutable weights or current-account access; Google
 restricts 2.5 access to prior active users. The installed SDK can request an
 automatic continuation, but Station's single-use source interceptor refuses it

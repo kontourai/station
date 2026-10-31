@@ -16,7 +16,7 @@ import {
   subject,
 } from './delegation-source-fixtures/source.js';
 
-const NOW = Date.parse('2026-10-25T20:10:12Z');
+const NOW = Date.parse('2026-10-31T00:03:00Z');
 afterEach(() => vi.restoreAllMocks());
 const remaining = {
   inputTokens: 1048576,
@@ -27,7 +27,7 @@ const remaining = {
 
 async function prepare(observed = { starts: 0 }, inputTool?: true) {
   vi.spyOn(Date, 'now').mockReturnValue(
-    inputTool ? Date.parse('2026-10-25T20:10:13Z') : NOW,
+    inputTool ? NOW + 1000 : NOW,
   );
   const f = await fixture();
   const credentials = await sdkCredentialFixture(f, 'anthropic');
@@ -186,18 +186,20 @@ test('real preparation derives public profile from actual request/source/credent
 
 test('snapshot-anchored profile expiry refuses without extending validity at startup', async () => {
   const p = await prepare();
-  vi.mocked(Date.now).mockReturnValue(Date.parse('2026-10-25T19:56:02Z') - 1);
+  vi.mocked(Date.now).mockReturnValue(Date.parse('2026-10-31T00:02:00Z') - 1);
   assert.throws(() => p.preparation.assertCurrent(), {
     code: 'stale_contract',
   });
   await assert.rejects(() => AnthropicSealedPreparation.create(), {
     code: 'stale_contract',
   });
-  vi.mocked(Date.now).mockReturnValue(Date.parse('2026-10-25T19:56:02Z'));
+  vi.mocked(Date.now).mockReturnValue(Date.parse('2026-10-31T00:02:00Z'));
   p.preparation.assertCurrent();
-  vi.mocked(Date.now).mockReturnValue(Date.parse('2026-10-26T19:51:02Z') - 1);
+  vi.mocked(Date.now).mockReturnValue(
+    Date.parse('2026-10-31T21:57:45.679Z') - 1,
+  );
   p.preparation.assertCurrent();
-  vi.mocked(Date.now).mockReturnValue(Date.parse('2026-10-26T19:51:02Z'));
+  vi.mocked(Date.now).mockReturnValue(Date.parse('2026-10-31T21:57:45.679Z'));
   assert.throws(() => p.preparation.assertCurrent(), {
     code: 'stale_contract',
   });
@@ -326,11 +328,11 @@ test('input-tool issuance uses a distinct fixed-freshness profile with no new ef
   );
   assert.equal(
     contract.evidence.validFromMs,
-    Date.parse('2026-10-25T19:56:02Z'),
+    Date.parse('2026-10-31T00:02:00Z'),
   );
   assert.equal(
     contract.evidence.expiresAtMs,
-    Date.parse('2026-10-26T19:51:02Z'),
+    Date.parse('2026-10-31T21:57:45.679Z'),
   );
   assert.ok(captured.contract.id.startsWith('anthropic-input:'));
   assert.equal(captured.quote.inputUpperBoundTokens, 1048576);

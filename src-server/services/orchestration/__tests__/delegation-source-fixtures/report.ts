@@ -14,7 +14,7 @@ import { StationReportGroupCustody } from '../../station-report-group-custody.js
 import { StationReportGroupPreparation } from '../../station-report-group-preparation.js';
 import { fixture } from './source.js';
 import { controlledTextStream } from './streamed-text.js';
-export const NOW = Date.parse('2026-10-25T20:10:12Z');
+export const NOW = Date.parse('2026-10-31T00:03:00Z');
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();

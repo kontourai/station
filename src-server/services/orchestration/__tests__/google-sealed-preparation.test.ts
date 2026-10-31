@@ -18,7 +18,7 @@ import {
   subject,
 } from './delegation-source-fixtures/source.js';
 
-const NOW = Date.parse('2026-10-25T20:10:12Z');
+const NOW = Date.parse('2026-10-31T00:03:00Z');
 const MODEL = 'gemini-2.5-flash-lite';
 const remaining = {
   inputTokens: 1048576,
@@ -173,13 +173,15 @@ test('Google issuer binds real source and credentials to budget-zero final wire 
 
 test('Google profile freshness is fixed to retained public snapshots and cannot renew at startup', async () => {
   const p = await prepare();
-  vi.mocked(Date.now).mockReturnValue(Date.parse('2026-10-25T20:05:31Z') - 1);
+  vi.mocked(Date.now).mockReturnValue(Date.parse('2026-10-31T00:02:00Z') - 1);
   await assert.rejects(() => createSealedProviderPreparation('google'), {
     code: 'stale_contract',
   });
-  vi.mocked(Date.now).mockReturnValue(Date.parse('2026-10-26T20:04:16Z') - 1);
+  vi.mocked(Date.now).mockReturnValue(
+    Date.parse('2026-10-31T21:57:47.087Z') - 1,
+  );
   p.preparation.assertCurrent();
-  vi.mocked(Date.now).mockReturnValue(Date.parse('2026-10-26T20:04:16Z'));
+  vi.mocked(Date.now).mockReturnValue(Date.parse('2026-10-31T21:57:47.087Z'));
   assert.throws(() => p.preparation.assertCurrent(), {
     code: 'stale_contract',
   });
