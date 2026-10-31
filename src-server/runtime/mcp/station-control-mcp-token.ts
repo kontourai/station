@@ -20,15 +20,12 @@
  * where the engine is willing to carry it (`station-control-mcp-route.ts`
  * accepts either):
  *
- *  - Query string (`buildStationControlMcpUrl`) — Codex (archive#1195). Its
- *    `-c mcp_servers.<id>.url=` override is a spawn-time argv, not a payload
- *    the app-server stores or forwards, and codex config has no header
- *    channel; the URL is the only field available.
- *  - `Authorization: Bearer` header (`buildStationControlMcpHeaderUrl` +
- *    `acp-mcp-passthrough.ts`) — ACP (archive#1684). An ACP `session/new`
- *    payload IS handed to the external agent app, so the credential goes in
- *    the field ACP designates for MCP credentials (`McpServerHttp.headers`)
- *    and the URL is built with no token in it at all.
+ *  - Header-only URL plus `Authorization: Bearer` — current Codex private
+ *    thread/start, thread/resume and thread/fork configuration, and ACP's
+ *    declared HTTP MCP payload after its observed support check. The bearer
+ *    is not placed in Codex argv. Both remain delegated-custody.
+ *  - Query string (`buildStationControlMcpUrl`) — retained legacy consumers.
+ *    This is bearer-exposed delivery and never supplies bound assurance.
  *
  * This is a DISTINCT trust boundary from `INTERNAL_API_TOKEN`: a valid
  * token here only proves "the caller may open the station-control MCP
@@ -57,6 +54,7 @@ import {
 } from '@kontourai/station-contracts/station-control-external-client';
 import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import { stationControlMcpTokenMinted } from '../../telemetry/metrics.js';
+import { StationControlDisclosure } from '../../tools/station-control-disclosure.js';
 
 export const STATION_CONTROL_MCP_PATH = '/mcp/station-control';
 export const STATION_KNOWLEDGE_MCP_PATH = '/mcp/station-knowledge';
@@ -82,8 +80,8 @@ export const DEFAULT_TTL_MS = 12 * 60 * 60 * 1000;
 /**
  * Which delivery channel a mint is for (archive#1684). Required, not
  * defaulted: the two channels have different exposure — a URL query string
- * the engine holds (Codex) versus an `Authorization` header on an ACP
- * `session/new` payload — and a default would silently attribute one
+ * a legacy engine holds versus an `Authorization` header on the engine's
+ * private configuration payload — and a default would silently attribute one
  * channel's mints to the other on the one metric that can tell them apart.
  */
 export type StationControlMcpTokenChannel =
@@ -157,6 +155,8 @@ interface StationControlMcpTokenEntry {
   externalClientLeaseId?: string;
   callerRecordBinding?: string;
   isIssuerCurrent?: () => boolean;
+  dynamicTools?: boolean;
+  disclosure?: StationControlDisclosure;
 }
 
 const tokensByDigest = new Map<string, StationControlMcpTokenEntry>();
@@ -214,6 +214,7 @@ export function mintStationControlMcpToken(
   serverId: StationMcpCredentialPurpose = 'station-control',
   onRevoke?: () => void,
   isIssuerCurrent?: () => boolean,
+  dynamicTools = false,
 ): MintedStationControlMcpToken {
   if (
     (serverId === 'coordinator-control' ||
@@ -231,6 +232,7 @@ export function mintStationControlMcpToken(
   const tokenDigest = digest(token);
   tokensByDigest.set(tokenDigest, {
     onRevoke,
+    dynamicTools,
     ...(isIssuerCurrent ? { isIssuerCurrent } : {}),
     sessionId,
     serverId,
@@ -377,6 +379,32 @@ export function verifyStationControlMcpTokenEntry(
     }
   }
   return undefined;
+}
+
+/** One disclosure object belongs to the token's private record and dies with it. */
+export function stationControlDisclosureForToken(
+  candidate: string,
+  enabled: () => boolean,
+): StationControlDisclosure | undefined {
+  if (!verifyStationControlMcpTokenEntry(candidate)) return undefined;
+  const tokenDigest = digest(candidate),
+    entry = tokensByDigest.get(tokenDigest);
+  if (
+    !entry ||
+    !entry.dynamicTools ||
+    entry.externalClientLeaseId ||
+    (entry.serverId !== 'station-control' &&
+      entry.serverId !== 'coordinator-control')
+  )
+    return undefined;
+  entry.disclosure ??= new StationControlDisclosure(
+    () =>
+      tokensByDigest.get(tokenDigest) === entry &&
+      entry.expiresAt > Date.now() &&
+      (!entry.isIssuerCurrent || entry.isIssuerCurrent()) &&
+      enabled(),
+  );
+  return entry.disclosure;
 }
 
 function removeTokenEntry(

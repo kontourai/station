@@ -26,6 +26,7 @@ import { createAgentHooks } from './agent-hooks.js';
 import { STATION_CAPABILITY_DISCOVERY_GUIDANCE } from './station-capability-discovery.js';
 
 interface RuntimeDefaultAgentContext {
+  observeModelContext?: AgentHooksDeps['observeModelContext'];
   appConfig: AppConfig;
   configLoader: ConfigLoader;
   framework: IAgentFramework;
@@ -327,6 +328,7 @@ export async function bootstrapRuntimeDefaultAgent(
   // an unattended run can read but a mutating tool fails closed unless an
   // interactive requester (registered via agentHooksMap) approves it.
   const defaultHooks = createAgentHooks({
+    observeModelContext: context.observeModelContext,
     spec: defaultSpec,
     appConfig: context.appConfig,
     configLoader: context.configLoader,

@@ -39,47 +39,56 @@ export function createTaskMemberAdmission(deps: {
   principalId(request: Request): string | undefined;
 }) {
   const requestShares = new WeakMap<Request, Map<string, string | undefined>>();
+  function admitPrincipal(
+    principalId: string,
+    taskId: string,
+    action: ProjectMemberAction,
+    shares: Map<string, string | undefined>,
+  ) {
+    const task = deps.task(taskId);
+    const share = deps.share(taskId);
+    if (!shares.has(taskId)) shares.set(taskId, share?.shareId);
+    if (
+      !task ||
+      !share ||
+      share.taskCreatedAt !== task.createdAt ||
+      shares.get(taskId) !== share.shareId
+    )
+      return undefined;
+    const projects = deps
+      .projects()
+      .filter(
+        (project) =>
+          project.id === task.projectId || project.slug === task.projectId,
+      );
+    if (
+      projects.length !== 1 ||
+      projects[0]!.id !== share.scope.localProjectId ||
+      projects[0]!.slug !== share.scope.localProjectSlug ||
+      deps.portableId(share.scope.localProjectSlug) !==
+        share.scope.portableProjectId
+    )
+      return undefined;
+    return deps
+      .admissions(principalId)
+      .find(
+        ({ scope, member }) =>
+          isDeepStrictEqual(scope, share.scope) &&
+          member.status === 'active' &&
+          member.actions.includes(action),
+      );
+  }
   return {
+    admitPrincipal,
     admit(request: Request, taskId: string, action: ProjectMemberAction) {
       const principalId = deps.principalId(request);
       if (!principalId) return undefined;
-      const task = deps.task(taskId);
-      const share = deps.share(taskId);
       let shares = requestShares.get(request);
       if (!shares) {
         shares = new Map();
         requestShares.set(request, shares);
       }
-      if (!shares.has(taskId)) shares.set(taskId, share?.shareId);
-      if (
-        !task ||
-        !share ||
-        share.taskCreatedAt !== task.createdAt ||
-        shares.get(taskId) !== share.shareId
-      )
-        return undefined;
-      const projects = deps
-        .projects()
-        .filter(
-          (project) =>
-            project.id === task.projectId || project.slug === task.projectId,
-        );
-      if (
-        projects.length !== 1 ||
-        projects[0]!.id !== share.scope.localProjectId ||
-        projects[0]!.slug !== share.scope.localProjectSlug ||
-        deps.portableId(share.scope.localProjectSlug) !==
-          share.scope.portableProjectId
-      )
-        return undefined;
-      return deps
-        .admissions(principalId)
-        .find(
-          ({ scope, member }) =>
-            isDeepStrictEqual(scope, share.scope) &&
-            member.status === 'active' &&
-            member.actions.includes(action),
-        );
+      return admitPrincipal(principalId, taskId, action, shares);
     },
   };
 }

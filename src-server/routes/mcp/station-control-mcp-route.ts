@@ -74,6 +74,7 @@ import {
   STATION_CONTROL_MCP_HTTP_CHANNELS,
   STATION_CONTROL_MCP_PATH,
   STATION_KNOWLEDGE_MCP_PATH,
+  stationControlDisclosureForToken,
   stationControlTokenAssurance,
   verifyStationControlMcpToken,
   verifyStationControlMcpTokenEntry,
@@ -129,6 +130,7 @@ function extractBearerToken(header: string | undefined): string | undefined {
 }
 
 interface StationControlMcpRouteOptions {
+  progressiveToolsEnabled?: () => boolean;
   serverId?: BuiltinStationApiMcpId;
   /** THIS running instance's actually-bound HTTP port — never read from
    * `process.env.PORT`/`STATION_PORT` (see this module's header comment
@@ -271,6 +273,12 @@ export function createStationControlMcpRoutes(
               undefined,
               serverId,
               listableFor,
+              options.progressiveToolsEnabled?.() && candidate
+                ? stationControlDisclosureForToken(
+                    candidate,
+                    options.progressiveToolsEnabled,
+                  )
+                : undefined,
             ),
       { legacy: 'stateless', responseMode: 'auto' },
     );

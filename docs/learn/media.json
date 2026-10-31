@@ -37,7 +37,7 @@
       "digest": "c104e7d0d0251a50957dc40a2f70774bb316425c806322603f1d015bc59e680c",
       "alt": "The Models page shows the settings for an example local model connection.",
       "caption": "Inspect a model connection.",
-      "scenario": "Connections → Models",
+      "scenario": "Connections \u2192 Models",
       "evidence": "Actual UI with sample API responses and display name. Ready is fixture data; no connection or model test ran. Historical capture: predates current intent-first labels and the credential/charge disclosure before Create; see the current Connections guide. Capture identity retained. It does not show the guided engine proxy controls or Check connection action added later. It also predates the inset Connections tab frame and in-pane Add engine journey; it is retained as historical, not current-appearance evidence. Historical navigation chrome: captured before the Quiet tree workspace map. This illustrates the stated central feature, not current sidebar/header appearance.",
       "capturedRevision": "bb07a2df88272a983e6e1c94dd27ca2480faef51",
       "documents": [
@@ -52,7 +52,7 @@
       "digest": "389dbc299fc8f8e384fc666d4f6c3672e754181f5b0e794840211746d9c28cc7",
       "alt": "A request inspector shows the tool scope and Approve once and Deny controls.",
       "caption": "Inspect a request before answering it.",
-      "scenario": "Notifications → Inspect request",
+      "scenario": "Notifications \u2192 Inspect request",
       "evidence": "Actual UI, request routes and event store with a controlled provider and sample display name. No decision or external effect in this capture. Historical navigation chrome: captured before the Quiet tree workspace map. This illustrates the stated central feature, not current sidebar/header appearance. Background bulk-dismiss wording predates the current eligible-items labels; this is historical request-inspection illustration, not proof of current bulk-dismiss wording or behavior.",
       "capturedRevision": "e50107efd7a687b41e383d5503f576bd4651d1e0",
       "documents": [
@@ -67,7 +67,7 @@
       "digest": "68ed6d502d61927620ae4a11318850468067d16adc236e8e7a4e7105c9b97147",
       "alt": "Open the request inspector, expand Request identity and close it without deciding.",
       "caption": "Open Inspect request, expand Request identity, then Close. No decision is made.",
-      "scenario": "Notifications → Inspect request",
+      "scenario": "Notifications \u2192 Inspect request",
       "evidence": "14.20-second silent recording of actual request inspection, identity expansion/collapse and close; isolated Hono/OrchestrationService/SQLite request fixture, sample display name only. No approval/denial or provider effect. Actual Continue Without Setup control used before trim. Temporal trim removes initial loading; raw digest and interval retained. Historical navigation chrome: captured before the Quiet tree workspace map. This illustrates the stated central feature, not current sidebar/header appearance. Background bulk-dismiss wording predates the current eligible-items labels; this is historical request-inspection illustration, not proof of current bulk-dismiss wording or behavior.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
       "documents": [
@@ -81,7 +81,7 @@
       "digest": "8630aae682bb9a47e2b2794ecbc44335c24afdef0967d5840d143fec75cf3bb2",
       "alt": "Browse the example model and engine settings.",
       "caption": "Browse Models and Engines without testing or invoking a provider.",
-      "scenario": "Connections → Models and Engines",
+      "scenario": "Connections \u2192 Models and Engines",
       "evidence": "13.76-second silent recording of actual Models/Engines navigation, with controlled connection GET fixtures and sample display name only. Pauses on configuration/setup states; no provider test/login/inference. Temporal trim removes initial loading; raw capture digest and interval retained. Historical capture: predates current intent-first labels and the credential/charge disclosure before Create; see the current Connections guide. Capture identity retained. It does not show the guided engine proxy controls or Check connection action added later. It also predates the inset Connections tab frame and in-pane Add engine journey; it is retained as historical, not current-appearance evidence. Historical navigation chrome: captured before the Quiet tree workspace map. This illustrates the stated central feature, not current sidebar/header appearance.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
       "documents": [
@@ -94,8 +94,8 @@
       "digest": "ff36a01d202fd05e8face22117d8c73f9051f52ebaaa965c910a8164d235e8a2",
       "alt": "Knowledge Library shows 1656 repository records, 3278 links and the selected KnowledgeStoreProvider canonical record.",
       "caption": "Browse the repository-derived record graph and resolve canonical detail.",
-      "scenario": "Knowledge Library → selected repository record",
-      "evidence": "Actual installed Knowledge Library example plugin (npm run build --prefix examples/knowledge-library, installed through the Plugins page) on an isolated Station built from 171fcbe0c: own home, instance rem-capture-kl, ports 43621/43631. Fresh export of this revision's atlas, module map and review ledger (input digest 1024718b7c30) imported through the public SDK (createKnowledgeRoot, then the example ingest --apply) into a new project root; the first apply stopped after 1656 confirmed creates before its final readback and the identical rerun created nothing and verified 1656 canonical records/3278 links. No graph/detail API fixture. Actual deep selection of KnowledgeStoreProvider; measured at 1440×1000 with no horizontal overflow (document width 1440). Only user.name changed to Sample User, by rewriting that field in the browser's /api/auth/status response. Host was heavily loaded, so the plugin registry needed Retry extensions before the pane loaded; keyboard return and a next selection were not re-run for this capture. No provider, embedding/index or native proof. Repository content is an explicitly derived snapshot at 171fcbe0c; matching source hashes are not semantic approval. Historical navigation chrome: captured before the Quiet tree workspace map. This illustrates the stated central feature, not current sidebar/header appearance.",
+      "scenario": "Knowledge Library \u2192 selected repository record",
+      "evidence": "Actual installed Knowledge Library example plugin (npm run build --prefix examples/knowledge-library, installed through the Plugins page) on an isolated Station built from 171fcbe0c: own home, instance rem-capture-kl, ports 43621/43631. Fresh export of this revision's atlas, module map and review ledger (input digest 1024718b7c30) imported through the public SDK (createKnowledgeRoot, then the example ingest --apply) into a new project root; the first apply stopped after 1656 confirmed creates before its final readback and the identical rerun created nothing and verified 1656 canonical records/3278 links. No graph/detail API fixture. Actual deep selection of KnowledgeStoreProvider; measured at 1440\u00d71000 with no horizontal overflow (document width 1440). Only user.name changed to Sample User, by rewriting that field in the browser's /api/auth/status response. Host was heavily loaded, so the plugin registry needed Retry extensions before the pane loaded; keyboard return and a next selection were not re-run for this capture. No provider, embedding/index or native proof. Repository content is an explicitly derived snapshot at 171fcbe0c; matching source hashes are not semantic approval. Historical navigation chrome: captured before the Quiet tree workspace map. This illustrates the stated central feature, not current sidebar/header appearance.",
       "capturedRevision": "171fcbe0cdcb2a4266aa71ae737baf757b4436dd",
       "documents": [
         "docs/guides/knowledge.md",
@@ -108,8 +108,8 @@
       "digest": "ee41b771796dce8d021bab23f63db99bd9e5ad283ebf37e7c35699dfc78b46c2",
       "alt": "Knowledge Library shows 1656 repository records, 3278 links and the selected KnowledgeStoreProvider canonical record, its title wrapped at the word boundary.",
       "caption": "Browse the repository-derived record graph and resolve canonical detail at a narrow browser width.",
-      "scenario": "Knowledge Library → narrow layout",
-      "evidence": "Actual installed Knowledge Library example plugin on an isolated Station built from 4e900230b (this change's branch): own home, instance rem-capture-kl, ports 43621/43631, the same home and imported project root as the 171fcbe0c capture (1656 canonical records/3278 links imported through the public SDK from that revision's atlas, module map and review ledger, input digest 1024718b7c30). The plugin bundle takes the SDK from the host, so the record heading is this revision's KnowledgeRecall. No graph/detail API fixture. Actual deep selection of KnowledgeStoreProvider, measured at 390×844 with no horizontal overflow (document width 390); the record heading wraps as KnowledgeStore / Provider. Only user.name changed to Sample User, by rewriting that field in the browser's /api/auth/status response. Keyboard return and a next selection were not re-run for this capture. No provider, embedding/index or native proof. Repository content is an explicitly derived snapshot at 171fcbe0c; matching source hashes are not semantic approval. Historical navigation chrome: captured before the Quiet tree workspace map. This illustrates the stated central feature, not current sidebar/header appearance.",
+      "scenario": "Knowledge Library \u2192 narrow layout",
+      "evidence": "Actual installed Knowledge Library example plugin on an isolated Station built from 4e900230b (this change's branch): own home, instance rem-capture-kl, ports 43621/43631, the same home and imported project root as the 171fcbe0c capture (1656 canonical records/3278 links imported through the public SDK from that revision's atlas, module map and review ledger, input digest 1024718b7c30). The plugin bundle takes the SDK from the host, so the record heading is this revision's KnowledgeRecall. No graph/detail API fixture. Actual deep selection of KnowledgeStoreProvider, measured at 390\u00d7844 with no horizontal overflow (document width 390); the record heading wraps as KnowledgeStore / Provider. Only user.name changed to Sample User, by rewriting that field in the browser's /api/auth/status response. Keyboard return and a next selection were not re-run for this capture. No provider, embedding/index or native proof. Repository content is an explicitly derived snapshot at 171fcbe0c; matching source hashes are not semantic approval. Historical navigation chrome: captured before the Quiet tree workspace map. This illustrates the stated central feature, not current sidebar/header appearance.",
       "capturedRevision": "4e900230beb9023bec9a2a8e21cc82327d7139e2",
       "documents": [
         "docs/guides/knowledge.md",
@@ -543,6 +543,110 @@
       "capturedRevision": "e4673c154e93f4eca46c55d5b805a5aacc1d696a",
       "documents": [
         "docs/user/settings.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/agent-efficiency-learning-390-light.png",
+      "kind": "image",
+      "digest": "3669d9ea4f4569f917fad426bc5dbbd6aac4a131e9d182b16175f2e568202410",
+      "alt": "Source inspector and copied learning proposal before and after a protected read refusal.",
+      "caption": "Current component access-state comparison; source content closes on refusal.",
+      "scenario": "Bounded agent work review",
+      "evidence": "Local-file Chromium render of current components/CSS with controlled canonical owner DTOs; source bytes match committed 4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514. Inspected 390/1440 widths and both themes without horizontal overflow/page errors. Learning comparison panels compose granted/refused states of the SAME component, not code-revision comparisons. Hono/SDK tests separately establish authorization/cache behavior. No live account, provider, installed/native or Windows acceptance. See agent-efficiency-captures.json for hashes and scope.",
+      "capturedRevision": "4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514",
+      "documents": [
+        "docs/guides/agent-efficiency.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/agent-efficiency-learning-390-dark.png",
+      "kind": "image",
+      "digest": "4a9e2c5bebdcfa6befb44f25db5fca80ae366296535d2c39b1ae7082cafff6c3",
+      "alt": "Source inspector and copied learning proposal before and after a protected read refusal.",
+      "caption": "Current component access-state comparison; source content closes on refusal.",
+      "scenario": "Bounded agent work review",
+      "evidence": "Local-file Chromium render of current components/CSS with controlled canonical owner DTOs; source bytes match committed 4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514. Inspected 390/1440 widths and both themes without horizontal overflow/page errors. Learning comparison panels compose granted/refused states of the SAME component, not code-revision comparisons. Hono/SDK tests separately establish authorization/cache behavior. No live account, provider, installed/native or Windows acceptance. See agent-efficiency-captures.json for hashes and scope.",
+      "capturedRevision": "4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514",
+      "documents": [
+        "docs/guides/agent-efficiency.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/agent-efficiency-learning-1440-light.png",
+      "kind": "image",
+      "digest": "67ee0c9b9c8f5c0fc071e8675c380718e455c5ad5bd63cbe29838f5e1b434d5f",
+      "alt": "Source inspector and copied learning proposal before and after a protected read refusal.",
+      "caption": "Current component access-state comparison; source content closes on refusal.",
+      "scenario": "Bounded agent work review",
+      "evidence": "Local-file Chromium render of current components/CSS with controlled canonical owner DTOs; source bytes match committed 4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514. Inspected 390/1440 widths and both themes without horizontal overflow/page errors. Learning comparison panels compose granted/refused states of the SAME component, not code-revision comparisons. Hono/SDK tests separately establish authorization/cache behavior. No live account, provider, installed/native or Windows acceptance. See agent-efficiency-captures.json for hashes and scope.",
+      "capturedRevision": "4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514",
+      "documents": [
+        "docs/guides/agent-efficiency.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/agent-efficiency-learning-1440-dark.png",
+      "kind": "image",
+      "digest": "c953aa47dff4dce4f52cec25e34e68c123c67bd917b507e4f3a224e4ebe576cf",
+      "alt": "Source inspector and copied learning proposal before and after a protected read refusal.",
+      "caption": "Current component access-state comparison; source content closes on refusal.",
+      "scenario": "Bounded agent work review",
+      "evidence": "Local-file Chromium render of current components/CSS with controlled canonical owner DTOs; source bytes match committed 4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514. Inspected 390/1440 widths and both themes without horizontal overflow/page errors. Learning comparison panels compose granted/refused states of the SAME component, not code-revision comparisons. Hono/SDK tests separately establish authorization/cache behavior. No live account, provider, installed/native or Windows acceptance. See agent-efficiency-captures.json for hashes and scope.",
+      "capturedRevision": "4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514",
+      "documents": [
+        "docs/guides/agent-efficiency.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/agent-efficiency-working-configuration.png",
+      "kind": "image",
+      "digest": "5dbf31011a7d8245e8dcf2d01851cc3ccd5fce106f2fa0f265c986049022e546",
+      "alt": "Reviewed Project working configuration with rules, checks and source guidance.",
+      "caption": "Controlled Project configuration fixture.",
+      "scenario": "Bounded agent work review",
+      "evidence": "Local-file Chromium render of current components/CSS with controlled canonical owner DTOs; source bytes match committed 4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514. Inspected 390/1440 widths and both themes without horizontal overflow/page errors. Learning comparison panels compose granted/refused states of the SAME component, not code-revision comparisons. Hono/SDK tests separately establish authorization/cache behavior. No live account, provider, installed/native or Windows acceptance. See agent-efficiency-captures.json for hashes and scope.",
+      "capturedRevision": "4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514",
+      "documents": [
+        "docs/guides/agent-efficiency.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/agent-efficiency-compaction.png",
+      "kind": "image",
+      "digest": "7c40856e7d18963af7903033cde691a6cb39fe541d87f48e139d9f0d42b4c76a",
+      "alt": "Context compaction policy and retained Task state controls.",
+      "caption": "Controlled Task context fixture.",
+      "scenario": "Bounded agent work review",
+      "evidence": "Local-file Chromium render of current components/CSS with controlled canonical owner DTOs; source bytes match committed 4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514. Inspected 390/1440 widths and both themes without horizontal overflow/page errors. Learning comparison panels compose granted/refused states of the SAME component, not code-revision comparisons. Hono/SDK tests separately establish authorization/cache behavior. No live account, provider, installed/native or Windows acceptance. See agent-efficiency-captures.json for hashes and scope.",
+      "capturedRevision": "4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514",
+      "documents": [
+        "docs/guides/agent-efficiency.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/agent-efficiency-supervision.png",
+      "kind": "image",
+      "digest": "4be6369b8cfd3dbf78605783ca2b11ac59b838d410500375287de1dc912bcdfc",
+      "alt": "Task supervision with an unknown original wake and pause or stop controls.",
+      "caption": "Controlled supervision fixture; an unknown wake is not resent.",
+      "scenario": "Bounded agent work review",
+      "evidence": "Local-file Chromium render of current components/CSS with controlled canonical owner DTOs; source bytes match committed 4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514. Inspected 390/1440 widths and both themes without horizontal overflow/page errors. Learning comparison panels compose granted/refused states of the SAME component, not code-revision comparisons. Hono/SDK tests separately establish authorization/cache behavior. No live account, provider, installed/native or Windows acceptance. See agent-efficiency-captures.json for hashes and scope.",
+      "capturedRevision": "4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514",
+      "documents": [
+        "docs/guides/agent-efficiency.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/agent-efficiency-usage.png",
+      "kind": "image",
+      "digest": "0bb86aa091669a95f24137fc10ae4acd658901ebe32c27212d1a3d1c5f7364a9",
+      "alt": "Usage rollup with incomplete coverage and separately attributed reported cost.",
+      "caption": "Controlled usage fixture; no live billing qualification.",
+      "scenario": "Bounded agent work review",
+      "evidence": "Local-file Chromium render of current components/CSS with controlled canonical owner DTOs; source bytes match committed 4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514. Inspected 390/1440 widths and both themes without horizontal overflow/page errors. Learning comparison panels compose granted/refused states of the SAME component, not code-revision comparisons. Hono/SDK tests separately establish authorization/cache behavior. No live account, provider, installed/native or Windows acceptance. See agent-efficiency-captures.json for hashes and scope.",
+      "capturedRevision": "4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514",
+      "documents": [
+        "docs/guides/agent-efficiency.md"
       ]
     }
   ]

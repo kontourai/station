@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { networkInterfaces } from 'node:os';
 import { join } from 'node:path';
 import { ACPStatus } from '@kontourai/station-contracts/acp';
@@ -23,6 +24,7 @@ import {
 } from '../../services/automation/automation-ledger.js';
 import { AutomationStore } from '../../services/automation/automation-store.js';
 import { composeGitHubAutomationObservation } from '../../services/automation/github-poll.js';
+import { IsolatedRepairController } from '../../services/automation/repair-controller.js';
 import { lanDiscoveryFor } from '../../services/connections/lan-discovery.js';
 import { createStationRoutesResolver } from '../../services/connections/station-routes.js';
 import type { FlowRunService } from '../../services/flow/flow-run-service.js';
@@ -48,6 +50,7 @@ import {
   ownerDevicePredicate,
 } from '../../services/orchestration/conversation-acknowledgement-store.js';
 import { UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION } from '../../services/orchestration/session-owner-attribution.js';
+import type { ThreadInboxDelivery } from '../../services/orchestration/thread-inbox.js';
 import {
   wireInternalStopRedispatchFailureNotifications,
   wireTurnCompletionNotifications,
@@ -59,6 +62,7 @@ import {
   type PausedGateReviewAggregate,
 } from '../../services/projects/attention-projection.js';
 import { FileAttentionSnoozeStore } from '../../services/projects/attention-snooze-store.js';
+import { defaultedProjectWorkingDirectory } from '../../services/projects/project-service.js';
 import type { ScheduledTurnAdapter } from '../../services/scheduling/builtin-scheduler.js';
 import { MonitorTaskTurnSupervisor } from '../../services/scheduling/monitor-task-supervisor.js';
 import type { ScheduledConversationRunner } from '../../services/scheduling/scheduled-conversation-runs.js';
@@ -66,8 +70,10 @@ import { SchedulerService } from '../../services/scheduling/scheduler-service.js
 import { DevicePairingNotificationProvider } from '../../services/ssh/device-pairing-notifications.js';
 import { publicIngressOriginResolver } from '../../services/tailscale/public-ingress-origin.js';
 import { errorMessage } from '../../utils/error-message.js';
+import { expandTilde } from '../../utils/paths.js';
 import { isExternalEngineBoundAgent } from '../agents/agent-engine-classification.js';
 import { runWithUnattendedPrincipal } from '../agents/unattended-principal-context.js';
+import { createAutomationActionsRuntime } from '../automation-actions-runtime.js';
 import { isHostedTenantExecutionRequired } from '../bootstrap/runtime-tenant-context.js';
 import {
   createStationEngineAvailabilityReader,
@@ -387,6 +393,9 @@ export function configureRuntimeSupportServices(
   flowRunService: Pick<FlowRunService, 'getRunConsole'>,
   options: {
     webPushEnabled?: boolean;
+    threadInbox?: () =>
+      | Pick<ThreadInboxDelivery, 'submit' | 'entry'>
+      | undefined;
     /**
      * #2064 (D4): paused Survey/Flow gate review sessions for the attention
      * projection. Injected rather than constructed here because the
@@ -500,19 +509,79 @@ export function configureRuntimeSupportServices(
   // ride the scheduler's tick through the external monitor's transport. One
   // lazily opened ledger serves the poller and the read route.
   const automationHome = context.configLoader.getProjectHomeDir();
-  const automationLedger = new SharedAutomationLedger(() =>
-    createAutomationLedger({ directory: join(automationHome, 'automation') }),
+  const automationLedger = new SharedAutomationLedger(
+    () =>
+      createAutomationLedger({ directory: join(automationHome, 'automation') }),
+    () => existsSync(join(automationHome, 'automation', 'automation.sqlite')),
   );
+  const automationStore = new AutomationStore(automationHome);
   const automationObservation = composeGitHubAutomationObservation(
     context.featurePreviews,
     isHostedTenantExecutionRequired(),
     {
-      store: new AutomationStore(automationHome),
+      store: automationStore,
       ledger: automationLedger,
       integrationSecretResolver,
       logger: context.logger,
     },
   );
+  const automationActions =
+    !isHostedTenantExecutionRequired() && context.orchestrationEventStore
+      ? createAutomationActionsRuntime({
+          hosted: false,
+          featurePreviews: context.featurePreviews,
+          store: automationStore,
+          isProjectCurrent: (id) =>
+            context.projectService
+              .listProjects()
+              .some((project) => project.id === id),
+          ledger: () => automationLedger.get(),
+          existingLedger: () => automationLedger.getExisting(),
+          taskGraph: context.taskGraphService,
+          taskDispatcher: context.taskDispatcher,
+          orchestration: context.orchestrationService,
+          eventStore: context.orchestrationEventStore,
+          eventBus: context.eventBus,
+          inbox: () => options.threadInbox?.(),
+          logger: context.logger,
+        })
+      : undefined;
+  const repairPreview = isHostedTenantExecutionRequired()
+    ? undefined
+    : context.featurePreviews.bind({
+        id: 'isolated-github-repairs',
+        label: 'Isolated GitHub repairs',
+        description:
+          'Run bounded repairs in Docker, then review and separately grant draft PR publication. Can spend provider credits.',
+      });
+  const isolatedRepairs = isHostedTenantExecutionRequired()
+    ? undefined
+    : new IsolatedRepairController({
+        home: automationHome,
+        enabled: () =>
+          repairPreview?.select({
+            enabled: () => true,
+            disabled: () => false,
+          }) === true,
+        policy: automationStore,
+        ledger: () => automationLedger.get(),
+        tasks: context.taskGraphService,
+        projectRoot: (id) => {
+          const project = context.projectService
+            .listProjects()
+            .find((p) => p.id === id);
+          if (!project) return undefined;
+          const config = context.projectService.getProject(project.slug);
+          return config.workingDirectory
+            ? expandTilde(config.workingDirectory)
+            : defaultedProjectWorkingDirectory(project.slug, automationHome);
+        },
+        isAgentCurrent: async (id) =>
+          (await context.agentService.listAgents()).some(
+            (agent) => agent.slug === id,
+          ),
+        logger: context.logger,
+      });
   const schedulerService = new SchedulerService({
     logger: context.logger,
     builtin: {
@@ -522,7 +591,19 @@ export function configureRuntimeSupportServices(
         ? { conversationRuns: options.conversationRuns }
         : {}),
       integrationSecretResolver,
-      automationPoller: automationObservation.poller,
+      automationPoller: {
+        async poll(input) {
+          await automationObservation.poller?.poll(input);
+          if (!input.signal.aborted) await automationActions?.tick();
+          if (!input.signal.aborted) await isolatedRepairs?.tick();
+        },
+        async close() {
+          await isolatedRepairs?.close();
+          automationActions?.close();
+          automationObservation.poller?.close();
+          automationLedger.close();
+        },
+      },
       onActionableMonitor: async (input) => {
         const task = await context.taskGraphService.createTaskIdempotent(
           {
@@ -819,6 +900,8 @@ export function configureRuntimeSupportServices(
     schedulerService,
     automationLedger,
     automationPreview: automationObservation.preview,
+    automationActions,
+    isolatedRepairs,
     notificationService,
     approvalInboxProvider,
     attentionProjection,
