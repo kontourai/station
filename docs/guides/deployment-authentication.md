@@ -108,8 +108,10 @@ Settings → Advanced → Feature previews. With it on:
 - **Sign in.** **Sign in with a passkey** needs no username.
 - **Manage.** A signed-in member lists, adds and removes their passkeys. Adding
   one needs a sign-in from the last 15 minutes, so someone holding an old
-  session cannot quietly add a credential. Station refuses to remove a
-  passkey-only account's last passkey.
+  session cannot quietly add a credential. The same session must still be
+  current when the credential is saved: signing out or revoking that session
+  during the ceremony prevents the addition. Sign in again before retrying.
+  Station refuses to remove a passkey-only account's last passkey.
 - **Recover.** The operator's recovery link offers **Add a passkey instead**
   next to the password form. The link is the same single-use, 20-minute token,
   so whichever path completes first uses it. Like a password reset, it ends the

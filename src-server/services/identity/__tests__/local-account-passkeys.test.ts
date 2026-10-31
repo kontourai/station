@@ -4,6 +4,7 @@
  * The software authenticator produces real WebAuthn bytes, so every accepted
  * ceremony passed the maintained plugin's verification, not a stub.
  */
+import { DatabaseSync } from 'node:sqlite';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { SoftwareAuthenticator } from '../../../__test-utils__/software-authenticator.js';
@@ -26,6 +27,7 @@ import {
 const makeTempDir = trackTempDirs();
 const loaded: LoadedLocalAccounts[] = [];
 afterEach(async () => {
+  vi.restoreAllMocks();
   vi.useRealTimers();
   for (const accounts of loaded.splice(0)) await accounts.service.close();
 });
@@ -668,6 +670,142 @@ describe('member passkeys over the production account routes', () => {
     const fresh = new Browser(ORIGIN);
     expect((await signIn(target, fresh, device)).status).toBe(200);
     expect((await target.verified(fresh)).kind).toBe('authenticated');
+  });
+
+  test.each(['revoke-sessions', 'sign-out'] as const)(
+    '%s during add verification prevents a new login credential',
+    async (action) => {
+      const target = await station();
+      const browser = new Browser(ORIGIN);
+      const first = new Device();
+      await signUp(target, browser, first, 'adding');
+      const id = accountId(target, 'adding');
+      const admitted = new Request(ORIGIN, {
+        headers: { Cookie: browser.header() },
+      });
+      const options = await target.call(browser, '/passkey/add', {
+        step: 'options',
+      });
+      expect(options.status).toBe(200);
+      const proposed = new Device();
+      const response = proposed.register(
+        options.data!.options as Record<string, unknown>,
+        ORIGIN,
+      );
+      let entered!: () => void;
+      let release!: () => void;
+      const atVerification = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const barrier = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const digest = crypto.subtle.digest.bind(crypto.subtle);
+      let held = false;
+      const spy = vi
+        .spyOn(crypto.subtle, 'digest')
+        .mockImplementation(async (algorithm, data) => {
+          const bytes = ArrayBuffer.isView(data)
+            ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
+            : new Uint8Array(data);
+          if (
+            !held &&
+            new TextDecoder().decode(bytes) === new URL(ORIGIN).hostname
+          ) {
+            held = true;
+            entered();
+            await barrier;
+          }
+          return digest(algorithm, data);
+        });
+      const pending = target.call(browser, '/passkey/add', {
+        step: 'verify',
+        response,
+      });
+      try {
+        await atVerification;
+        if (action === 'revoke-sessions') {
+          const admin = createLocalAccountAdministrationRoutes(
+            target.accounts,
+            undefined,
+            async () => {},
+          );
+          const revoked = await admin.request(`${ORIGIN}/${id}/actions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action }),
+          });
+          expect(revoked.status).toBe(200);
+        } else {
+          expect((await target.call(browser, '/sign-out', {})).status).toBe(
+            200,
+          );
+        }
+        expect(
+          (await target.accounts.service.authenticate(admitted)).kind,
+        ).toBe('invalid');
+      } finally {
+        release();
+      }
+      const added = await pending;
+      spy.mockRestore();
+      expect(added.status, JSON.stringify(added)).toBe(403);
+      expect((await signIn(target, new Browser(ORIGIN), proposed)).status).toBe(
+        401,
+      );
+      const fresh = new Browser(ORIGIN);
+      expect((await signIn(target, fresh, first)).status).toBe(200);
+      const listed = await target.call(fresh, '/passkey/list', {});
+      expect(listed.data!.passkeys).toHaveLength(1);
+    },
+  );
+
+  test('revocation after the final session check still prevents credential insertion', async () => {
+    const target = await station();
+    const browser = new Browser(ORIGIN);
+    const first = new Device();
+    await signUp(target, browser, first, 'last-check');
+    const id = accountId(target, 'last-check');
+    const options = await target.call(browser, '/passkey/add', {
+      step: 'options',
+    });
+    expect(options.status).toBe(200);
+    const proposed = new Device();
+    const response = proposed.register(
+      options.data!.options as Record<string, unknown>,
+      ORIGIN,
+    );
+    const prepare = DatabaseSync.prototype.prepare;
+    let revoked = false;
+    const spy = vi
+      .spyOn(DatabaseSync.prototype, 'prepare')
+      .mockImplementation(function (this: DatabaseSync, sql: string) {
+        if (!revoked && /^insert into ["`]?passkey["`]?\s/i.test(sql)) {
+          revoked = true;
+          target.accounts.administration.revokeSessions(id);
+        }
+        return prepare.call(this, sql);
+      });
+    let added;
+    try {
+      added = await target.call(browser, '/passkey/add', {
+        step: 'verify',
+        response,
+      });
+    } finally {
+      spy.mockRestore();
+    }
+    expect(revoked).toBe(true);
+    expect(added.status, JSON.stringify(added)).toBe(503);
+    expect((await target.verified(browser)).kind).toBe('invalid');
+    expect((await signIn(target, new Browser(ORIGIN), proposed)).status).toBe(
+      401,
+    );
+    const fresh = new Browser(ORIGIN);
+    expect((await signIn(target, fresh, first)).status).toBe(200);
+    expect(
+      (await target.call(fresh, '/passkey/list', {})).data!.passkeys,
+    ).toHaveLength(1);
   });
 
   test('members add, list and remove passkeys; a removed passkey no longer signs in; the last sign-in method stays', async () => {

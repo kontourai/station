@@ -103,6 +103,7 @@ type Scope =
 
 export interface MemberPasskeyAccount {
   userId: string;
+  sessionId: string;
   authenticatedAt: string;
 }
 
@@ -170,6 +171,38 @@ export function createMemberPasskeys(host: MemberPasskeyHost): MemberPasskeys {
 
   const rejected = (message = 'Passkey registration was refused.') =>
     APIError.from('FORBIDDEN', { code: 'PASSKEY_REFUSED', message });
+
+  function guardAddedCredential(
+    account: MemberPasskeyAccount,
+    credentialId: string,
+  ) {
+    const literal = (value: string) => {
+      const quoted = host.database
+        .prepare('SELECT quote(?) AS value')
+        .get(value)?.value;
+      if (typeof quoted !== 'string') throw rejected();
+      return quoted;
+    };
+    const trigger = `station_passkey_add_${randomUUID().replaceAll('-', '')}`;
+    // The plugin awaits verification and adapter hooks. Check at the INSERT,
+    // without enrolling another request's acknowledged revocation in a rollback.
+    host.database.exec(`CREATE TEMP TRIGGER ${trigger} BEFORE INSERT ON main.passkey
+      WHEN NEW.credentialID = ${literal(credentialId)}
+      BEGIN
+        SELECT RAISE(ABORT, 'Passkey authorizing session is no longer current')
+        WHERE NOT EXISTS (
+          SELECT 1 FROM session s LEFT JOIN station_account_policy p ON p.account_id = s.userId
+          WHERE s.id = ${literal(account.sessionId)} AND s.userId = ${literal(account.userId)}
+            AND NEW.userId = s.userId AND s.createdAt = ${literal(account.authenticatedAt)}
+            AND s.stationPendingEnrollmentId IS NULL
+            AND s.expiresAt > strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+            AND unixepoch('now', 'subsec') - unixepoch(s.createdAt, 'subsec') <= ${PASSKEY_ADD_FRESHNESS_MS / 1000}
+            AND COALESCE(p.disabled, 0) = 0
+            AND (p.account_id IS NULL OR unixepoch(s.createdAt, 'subsec') * 1000 > p.sessions_revoked_at)
+        );
+      END`);
+    return () => host.database.exec(`DROP TRIGGER temp.${trigger}`);
+  }
 
   const plugin = passkey({
     rpID,
@@ -559,21 +592,34 @@ export function createMemberPasskeys(host: MemberPasskeyHost): MemberPasskeys {
         .strict()
         .safeParse(body);
       if (!input.success) return refuse(400, 'invalid_request');
-      return registrationVerify(
-        'add',
-        {
-          kind: 'add',
-          complete: async (ceremony) => {
-            if (
-              ceremony.userId !== account.userId ||
-              !host.administration.permits(account.userId)
-            )
-              throw rejected();
-            return account.userId;
+      const credentialId = input.data.response.id;
+      if (typeof credentialId !== 'string')
+        return refuse(400, 'invalid_request');
+      const release = guardAddedCredential(account, credentialId);
+      try {
+        return await registrationVerify(
+          'add',
+          {
+            kind: 'add',
+            complete: async (ceremony) => {
+              const current = await runtime.currentAccount(request);
+              if (
+                ceremony.userId !== account.userId ||
+                current?.userId !== account.userId ||
+                current.sessionId !== account.sessionId ||
+                current.authenticatedAt !== account.authenticatedAt ||
+                now() - Date.parse(current.authenticatedAt) >
+                  PASSKEY_ADD_FRESHNESS_MS
+              )
+                throw rejected();
+              return account.userId;
+            },
           },
-        },
-        input.data,
-      );
+          input.data,
+        );
+      } finally {
+        release();
+      }
     }
 
     async function recover(): Promise<Response> {

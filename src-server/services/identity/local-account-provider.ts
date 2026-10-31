@@ -786,6 +786,7 @@ export async function createLocalAccountProvider(
           return result.kind === 'authenticated'
             ? {
                 userId: result.session.subject,
+                sessionId: result.session.sessionId,
                 authenticatedAt: result.session.authenticatedAt,
               }
             : undefined;
