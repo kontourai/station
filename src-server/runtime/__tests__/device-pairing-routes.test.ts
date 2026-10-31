@@ -5327,7 +5327,9 @@ test('authenticates a crowded cookie jar with bounded fresh home admissions', as
         resolveCredentialDeviceKind: (credential) =>
           readIdentity(() => {
             const kind = security.identifyDevice(credential)?.kind;
-            return kind === 'device' || kind === 'delegation' ? kind : undefined;
+            return kind === 'device' || kind === 'delegation'
+              ? kind
+              : undefined;
           }),
         resolvePairingSource: (credential) =>
           readIdentity(() => security.identifyDevice(credential)?.source),

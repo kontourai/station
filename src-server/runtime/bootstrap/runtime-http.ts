@@ -1386,14 +1386,34 @@ function configureRuntimeSecurity(
     if (valid) {
       const aliasFailure = checkAliasAdmission(credential!);
       if (aliasFailure) return aliasFailure;
-      const authority = security.resolveCredentialAuthority?.(credential!);
-      const deviceId = security.resolveCredentialDeviceId?.(credential!);
-      const deviceKind = deviceId
-        ? security.resolveCredentialDeviceKind?.(credential!)
-        : undefined;
-      const pairingSource = security.resolvePairingSource?.(credential!);
-      const locality = security.resolveCredentialLocality?.(credential!);
-      const mintKind = security.resolveCredentialMintKind?.(credential!);
+      const readIdentity = () => {
+        const authority = security.resolveCredentialAuthority?.(credential!);
+        const deviceId = security.resolveCredentialDeviceId?.(credential!);
+        const deviceKind = deviceId
+          ? security.resolveCredentialDeviceKind?.(credential!)
+          : undefined;
+        const pairingSource = security.resolvePairingSource?.(credential!);
+        const locality = security.resolveCredentialLocality?.(credential!);
+        const mintKind = security.resolveCredentialMintKind?.(credential!);
+        return {
+          authority,
+          deviceId,
+          deviceKind,
+          pairingSource,
+          locality,
+          mintKind,
+        };
+      };
+      const {
+        authority,
+        deviceId,
+        deviceKind,
+        pairingSource,
+        locality,
+        mintKind,
+      } = security.withCurrentCredentialResolution
+        ? security.withCurrentCredentialResolution(readIdentity)
+        : readIdentity();
       setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
         kind: 'credential',
         credential: credential!,
