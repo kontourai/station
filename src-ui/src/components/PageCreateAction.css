@@ -11,6 +11,6 @@
 /* A maximized chat or an open detail sheet owns the screen; the collection's
    "+" belongs to the list underneath it. */
 :root:has(.app__main--mobile-dock-fullscreen, .split-pane__right--sheet)
-.page-create-action {
+  .page-create-action {
   display: none;
 }

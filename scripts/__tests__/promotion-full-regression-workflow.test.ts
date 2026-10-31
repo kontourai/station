@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { JSON_SCHEMA, load } from 'js-yaml';
 import { describe, expect, test } from 'vitest';
+import { VERIFIED_PNPM_SETUP_ACTION } from '../actionlint-gate.mjs';
 import { runnerProfile } from '../release-pipeline.mjs';
 import { FULL_REGRESSION_PHASES } from '../verification-lanes.mjs';
 
@@ -68,9 +69,7 @@ describe('promotion full-regression workflow', () => {
     (jobId) => {
       const job = workflow('full-regression.yml').jobs?.[jobId] ?? {};
       const setup = namedStep(job, 'Setup pinned pnpm');
-      expect(setup.uses).toBe(
-        'kontourai/station/.github/actions/setup-verified-pnpm@4c7804d0d71f4e18d7a0da62fb6db43973481a20',
-      );
+      expect(setup.uses).toBe(VERIFIED_PNPM_SETUP_ACTION);
       expect(setup.with).toBeUndefined();
       const steps = job.steps ?? [];
       expect(steps.indexOf(setup)).toBeLessThan(
