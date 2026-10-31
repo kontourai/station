@@ -707,9 +707,14 @@ test('the mobile header receives the dock’s future Project binding', async () 
 test('a changed future Project binding preserves the active chat and supplies the next draft', async () => {
   openForeignChatInPulseBoundDock();
   await act(async () => {});
+  const selectedChat = navigationStore.getSnapshot().activeChat;
+  expect(selectedChat).toBe('chat-a');
+  const writesBefore = updateChat.mock.calls.length;
   // The picker’s UI owns selection; this parent seam observes its persisted binding.
   act(() => deviceSettingsStore.set('chatDockProjectSlug', 'other'));
   await act(async () => {});
+  expect(navigationStore.getSnapshot().activeChat).toBe(selectedChat);
+  expect(updateChat).toHaveBeenCalledTimes(writesBefore);
   expect(screen.queryByRole('region', { name: 'New chat picker' })).toBeNull();
   expect(pickerProps).toHaveLength(0);
   expect(screen.getByTestId('active-chat-body')).toBeTruthy();
@@ -717,6 +722,7 @@ test('a changed future Project binding preserves the active chat and supplies th
   clickDockedNewChat();
   await screen.findByRole('region', { name: 'New chat picker' });
   expect(pickerProps.at(-1)!.activeProjectSlug).toBe('other');
+  expect(updateChat).toHaveBeenCalledTimes(writesBefore);
   expect(createChatSession).not.toHaveBeenCalled();
 });
 
