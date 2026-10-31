@@ -132,6 +132,10 @@ class StrandsAgentWrapper implements IAgent {
     },
     readonly instructions?: string | (() => string),
     private readonly toolView?: (tools: ITool[]) => IAgent,
+    private readonly modelContext?: {
+      modelId: string;
+      afterModelGeneration?: IAgentHooks['afterModelGeneration'];
+    },
   ) {
     this.strandsAgent = strandsAgent;
     this.memory = memory;
@@ -397,6 +401,46 @@ class StrandsAgentWrapper implements IAgent {
           if (mapped) {
             // Accumulate usage from metadata events
             if (mapped.type === 'usage') {
+              const last = mapped as {
+                promptTokens?: number;
+                completionTokens?: number;
+              };
+              if (
+                self.modelContext?.afterModelGeneration &&
+                Number.isSafeInteger(last.promptTokens) &&
+                last.promptTokens! >= 0 &&
+                Number.isSafeInteger(last.completionTokens) &&
+                last.completionTokens! >= 0
+              ) {
+                const raw = (
+                  event as {
+                    event?: {
+                      usage?: {
+                        cacheReadInputTokens?: number;
+                        cacheWriteInputTokens?: number;
+                      };
+                    };
+                  }
+                ).event?.usage;
+                await self.modelContext.afterModelGeneration({
+                  invocation: resolveStrandsInvocationContext(
+                    invokeOptions.invocationState,
+                    self._invocationCtx,
+                  ),
+                  modelId: self.modelContext.modelId,
+                  modelIdentitySource: 'runtime-model',
+                  source: 'strands-metadata',
+                  inputTokenAccounting: 'provider-specific',
+                  inputTokens: last.promptTokens!,
+                  outputTokens: last.completionTokens!,
+                  ...(Number.isSafeInteger(raw?.cacheReadInputTokens)
+                    ? { cacheReadInputTokens: raw!.cacheReadInputTokens }
+                    : {}),
+                  ...(Number.isSafeInteger(raw?.cacheWriteInputTokens)
+                    ? { cacheWriteInputTokens: raw!.cacheWriteInputTokens }
+                    : {}),
+                });
+              }
               observedUsage = true;
               accUsage.promptTokens += (mapped as any).promptTokens || 0;
               accUsage.completionTokens +=
@@ -585,6 +629,10 @@ export class StrandsFramework {
             undefined,
             addAgentTools(tools, additions),
           );
+        },
+        {
+          modelId: resolvedModel,
+          afterModelGeneration: config.hooks?.afterModelGeneration,
         },
       );
       if (history)

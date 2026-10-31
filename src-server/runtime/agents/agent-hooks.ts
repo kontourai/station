@@ -56,6 +56,8 @@ import { createStagedPreToolPolicyEvaluator } from './pre-tool-policy.js';
 // ── Hook factory dependencies ──────────────────────────
 
 export interface AgentHooksDeps {
+  /** Exact model-step context measurement; never an invocation billing total. */
+  observeModelContext?: NonNullable<IAgentHooks['afterModelGeneration']>;
   projectToolPolicy?: (
     invocation: InvocationContext,
     tool: ToolCallContext,
@@ -216,6 +218,22 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
   });
 
   hooks = {
+    afterModelGeneration: async (observation) => {
+      if (
+        !observation.invocation.sessionId ||
+        !observation.invocation.turnId ||
+        !observation.invocation.principalId ||
+        deps.isCurrentRuntimeGeneration?.(hooks) === false
+      )
+        return;
+      try {
+        await deps.observeModelContext?.(observation);
+      } catch {
+        deps.logger.warn('Model context observation unavailable', {
+          agentSlug: observation.invocation.agentSlug,
+        });
+      }
+    },
     registerApprovalRequester: (conversationId, requester) => {
       approvalRequesters.set(conversationId, requester);
       return () => {

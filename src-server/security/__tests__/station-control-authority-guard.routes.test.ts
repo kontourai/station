@@ -87,7 +87,10 @@ import {
   INTERNAL_PROXY_CALLER_HEADER,
 } from '../../utils/internal-api-token.js';
 import type { Logger } from '../../utils/logger.js';
-import { isBoundRuntimeLocalOperator } from '../runtime-request-security.js';
+import {
+  isBoundRuntimeLocalOperator,
+  setRuntimeAuthenticatedRequestPrincipal,
+} from '../runtime-request-security.js';
 import {
   createStationControlAuthorityGuard,
   STATION_CONTROL_GUARD_CARVE_OUTS,
@@ -1827,5 +1830,79 @@ describe('after untrusted content, station-control applies the permission (#3483
     expect(await rest('PUT', '/config/app', headers, { theme: 'x' })).toEqual({
       status: 200,
     });
+  });
+});
+
+describe('bounded authority inspection', () => {
+  test('refuses oversized and malformed bodies and preserves valid leaf bodies', async () => {
+    const headers = internalHeaders({
+      [STATION_CONTROL_CALLER_TOKEN_HEADER]: forwardedCaller(
+        'bound',
+        nextSession('op-'),
+      )!,
+    });
+    const app = new Hono();
+    app.use(
+      '*',
+      createStationControlAuthorityGuard({
+        resolveCaller: (request) =>
+          resolveStationControlCallerForRequest(request, resolveRecord),
+        isOperatorPrincipal: (id) => id === LOCAL_OPERATOR_PRINCIPAL_ID,
+      }),
+    );
+    const leafBodies: unknown[] = [];
+    app.post('/scheduler/jobs', async (c) => {
+      leafBodies.push(await c.req.json());
+      return c.json({ success: true });
+    });
+    const request = (body: RequestInit['body']) => {
+      const options: RequestInit & { duplex: 'half' } = {
+        method: 'POST',
+        headers,
+        body,
+        duplex: 'half',
+      };
+      const value = new Request('http://guard.test/scheduler/jobs', options);
+      setRuntimeAuthenticatedRequestPrincipal(value, {
+        kind: 'internal',
+        credential: getInternalApiToken(),
+        authority: undefined,
+        source: 'bearer',
+      });
+      return value;
+    };
+    const chunk = new TextEncoder().encode('x'.repeat(262144));
+    let chunks = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (chunks++ < 5) controller.enqueue(chunk);
+        else controller.close();
+      },
+    });
+    const response = await app.fetch(request(body));
+    expect(response.status).toBe(413);
+    expect(await response.json()).toHaveProperty(
+      'code',
+      'station_control_request_body_refused',
+    );
+    expect(leafBodies).toEqual([]);
+    for (const malformed of [' ', '{', new Uint8Array([0xff])]) {
+      const rejected = await app.fetch(request(malformed));
+      expect(rejected.status).toBe(400);
+      expect(await rejected.json()).toHaveProperty(
+        'code',
+        'station_control_request_body_refused',
+      );
+    }
+    expect(leafBodies).toEqual([]);
+    const control = {
+      name: 'bounded-control',
+      prompt: 'preserved',
+      agent: 'station',
+    };
+    expect((await app.fetch(request(JSON.stringify(control)))).status).toBe(
+      200,
+    );
+    expect(leafBodies).toEqual([control]);
   });
 });

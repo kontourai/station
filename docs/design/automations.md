@@ -1,28 +1,28 @@
 # Station Automations
 
-> **Reading status: retained proposal with implemented foundations; tracked by
-> [#3439](https://github.com/kontourai/station/issues/3439).** The
-> [Automation contract](../../packages/contracts/src/automation.ts),
+> **Reading status: retained proposal with default-off implemented previews;
+> tracked by [#3439](https://github.com/kontourai/station/issues/3439).**
+> Current owners are the [Automation contract](../../packages/contracts/src/automation.ts),
 > [configuration store](../../src-server/services/automation/automation-store.ts),
-> [SQLite ledger](../../src-server/services/automation/automation-ledger.ts), and
-> [unattended principal context](../../src-server/runtime/agents/unattended-principal-context.ts)
-> now exist. The default-off `github-automation-observations` Feature Preview
-> composes observe-only GitHub polling and operator delivery history through
-> those stores. Configuration remains `security/automations.json`; there is no
-> public configuration mutation or Task dispatch from this intake yet.
-> The design below retains the original proposal checked at `14c83da3cd`,
-> including its proposed broader source kinds and file layout; current
-> foundation shapes belong to the linked sources. This status review inspected
-> source only and reran no tests or GitHub delivery. Section 9 records the owner
-> decisions; the foundations do not prove the complete automation journey.
+> [SQLite ledger](../../src-server/services/automation/automation-ledger.ts),
+> [Task action runtime](../../src-server/runtime/automation-actions-runtime.ts), and
+> [isolated repair controller](../../src-server/services/automation/repair-controller.ts).
+> The operator repair API can create disabled poll sources/rules and enable an
+> exact configuration. The original broader proposal below remains a design;
+> it does not describe every currently implemented source, file or UI.
+> See [bounded agent work](../guides/agent-efficiency.md#run-an-isolated-github-repair)
+> for the implemented setup, review, publication and recovery path. Fixtures
+> establish caller behavior; container qualification, live model/account use,
+> release qualification and broader S5/S6 delivery remain separate evidence.
 
 > **Automation is the umbrella.** Since
 > [the automations decision](../decisions/automations-unify-schedules.md),
 > Automations is the product surface for scheduled work: a scheduler job with
 > an optional target runs each time as a turn in a conversation, on any engine,
 > and agent check-backs are listed with it. That part ships. The GitHub event
-> sources, rules and episodes below (slices S2–S6) remain this proposal; they
-> are a future trigger for the same automations, not a separate product.
+> sources now have the default-off observation and bounded Task-action previews
+> described below. An isolated repair/publication API preview is also available; broader sources and full management UI remain proposed. They extend
+> the same Automations surface.
 
 Status: **proposal.** It extends the existing
 [inbound webhook](../../src-server/routes/webhooks/inbound-webhooks.ts) and
@@ -34,8 +34,9 @@ what an action may do.
 
 Enable **GitHub automation observations** in **Settings → Advanced → Feature
 previews** on a personal Station. Hosted mode does not offer these observations.
-The preview makes GitHub API requests but invokes no model, creates no Task,
-publishes no branch and sends no Automation notification. Sources and rules
+The observation preview makes GitHub API requests but invokes no model,
+creates no Task and publishes no branch. The separately enabled actions preview
+can dispatch explicitly granted matching rules into bounded Tasks. Sources and rules
 remain operator-managed private configuration; enabling the preview alone does
 not configure a source or grant an action.
 
@@ -67,8 +68,82 @@ Delivery deduplication, opening/closing episodes and their delivery references
 commit together. A failed episode write leaves the delivery retryable after
 restart. Repeat observations do not reopen or re-close episodes. An episode here
 records rule matching only: it does not establish diagnosis, repair or release
-completion. S3's action dispatcher remains separate, as do signed push ingress
-and automatic publication.
+completion. The separate `github-automation-actions` preview consumes retained
+normalized action intents through the real Task dispatcher and durable inbox.
+Signed push ingress and automatic publication remain separate.
+
+### Bounded Task actions
+
+Enable **GitHub automation Tasks** separately from observation. An accepted
+match retains its normalized action intent atomically with delivery and episode
+state. Dispatch rechecks current source, rule, grant and policy fingerprint;
+capacity refusal does not spend an execution attempt. Claims fence concurrent
+starts and rule rate limits. The actual provider-start boundary persists the
+invocation transition before the effect; uncertain effects retain their original
+identity and are not retried as fresh work.
+
+Task creation and Session seeding alone do not start a repair turn. The actions
+runtime submits the framed prompt to the existing durable inbox, retaining the
+server-issued intent, original turn key and automation-rule principal. Placement
+and final provider admission recheck the policy. Startup restores retained
+Session restrictions before scheduler polling, including when the actions preview
+is disabled; an unreadable recovery journal cannot authorize a turn.
+MonitorTaskTurnSupervisor owns
+turn, token and wall limits; full-access grants remain absent. Token enforcement
+depends on canonical provider usage arriving; missing usage is unknown, not a
+hard billing reservation. A completed action records the first turn terminal,
+not Task acceptance or successful repair. A green run closes
+the episode and prevents later placement for it.
+
+These Tasks can diagnose the normalized failing run. The quoted `head_sha` is
+source evidence, not proof that the execution workspace is that exact checkout.
+The current Task dispatcher resolves the Project workspace; source-bound repair
+preparation still belongs to the workspace/preparation owner.
+
+### Isolated repair and draft publication
+
+The **Isolated GitHub repairs** preview (`isolated-github-repairs`) is independent
+of ordinary Task dispatch. A source must grant `isolated-repair` to the same
+Project/Agent pair as its rule. The rule names an enabled execution profile,
+immutable Docker image, explicit model, and provider-request/wall budget. It
+creates a canonical Task with a separate durable execution; it does not invent
+a native ProviderSession or reuse the native Task dispatcher's token limits.
+
+[Source preparation](../../src-server/services/automation/repair-source.ts) reads
+admitted immutable Git objects from the Project's local `origin/main`. It binds
+the observed failing SHA separately from that selected repair base. After the
+exact owned worker is removed, regular-file bytes and modes produce both the
+review patch and the expected published tree. The host never runs Git in the
+model-mutated workspace. Protected policy, authority, automation and publisher
+paths require owner work outside this repair path.
+
+An operator reviews the exact binding/result digests through the private
+[repair API](../../src-server/routes/operations/repairs.ts). Approval completes
+the Task but grants no publication. A separate, expiring, single-use grant pins
+the review and an enabled App publisher profile; the source must additionally
+grant `publish-branch`. The [publisher](../../src-server/services/automation/repair-publisher.ts)
+uses GitHub Git Data APIs, rechecks main/base/repository/App identity, and opens
+a draft with no autoland label. It never merges or arms auto-merge. App secrets
+are materialized only after admission and worker-stop verification. Provider
+and App references are separate, and external secret-tool reads are bounded
+asynchronous process groups.
+
+Unknown worker or publication effects remain indeterminate. Recovery inspects
+only the planned container name and exact owner/run labels and never relaunches
+an unknown attempt. Explicit operator resolution can release global admission
+after ownership and worker stop are settled; it retains unknown-effect evidence,
+consumed grants and the no-replay fence. Disabling the preview stops new work;
+operator audit, disable, revoke, cancellation, resolution and archival remain
+available for cleanup. Setup writes recheck the preview inside their file lock.
+
+The container [qualification command](../guides/agent-efficiency.md#qualify-the-container-boundary)
+uses a real pinned CLI and synthetic Responses. The caller fixture uses a real
+Task graph and Git source/patch application, with fixture worker and GitHub
+transports. Neither establishes live inference/billing or hosted operation.
+The ordinary Docker bridge permits outbound traffic; desktop UID mapping and
+Windows execution remain unverified. No source or action is enabled by
+installation. CI's `QUALIFICATION_REPAIR_AGENT` selector is unchanged; Station's
+poller is configured independently and requires no AI key in GitHub CI.
 
 ## 1. Problem and constraints
 

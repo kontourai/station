@@ -1,0 +1,11 @@
+{
+  "path": "docs/learn/media/agent-efficiency-supervision.png",
+
+  "sources": [
+    "src-ui/src/views/task-workspace/TaskSupervisionPanel.tsx",
+
+    "src-ui/src/index.css"
+  ],
+
+  "reviewNotes": []
+}

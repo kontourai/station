@@ -323,19 +323,21 @@ slice 3 for what that means when the same evidence crosses a machine boundary.
 
 This is the section most likely to be skimmed and most likely to invalidate a
 plan. The authority boundary in #98's first comment describes six owners;
-**Bearing is not a direct Station dependency and Datum is declared only by the
-contracts package for secret references; Conduit is used only for the
-agent-host hook seam; Dispatch and Relay are pinned at the versions used by
-the implemented fleet path.**
+**Station consumes Bearing for optional reviewed retail-price snapshots.**
+Datum remains declared by the contracts package for secret references; Conduit
+serves the agent-host hook seam. Dispatch and Relay serve the implemented fleet
+path. These uses do not establish the broader fleet capability-observation
+composition proposed below.
 
 **Historical declared/resolved/installed snapshot:** the table below records
 this design's earlier dependency assessment. Current pins come from
 [package.json](../../package.json) and [pnpm-lock.yaml](../../pnpm-lock.yaml).
 Conduit is now used at its current pinned hook contract, and contracts expose
 [Datum secret references](../../packages/contracts/src/datum-secret-reference.ts).
-Station no longer depends on Bearing directly; its unwired OpenRouter pricing
-consumer was deleted. These uses do not establish the proposed fleet
-Datum/Bearing composition.
+The earlier unwired OpenRouter pricing consumer was deleted. The separate
+[reviewed retail-price consumer](../guides/agent-efficiency.md#compare-usage-and-outcomes-honestly)
+now uses Bearing through its public catalog contract. Its snapshots do not
+establish the proposed fleet Datum/Bearing capability composition.
 
 
 | Package | `package.json` | lockfile (root) | installed in this tree | published latest |
@@ -464,7 +466,7 @@ by default; nothing is routed to unverified; nothing degrades silently.
 | Owner | Owns | Status today |
 |---|---|---|
 | `KnownEnvironment` | Host execution authority, environment identity | shipped (§2.2) |
-| Bearing | Evidence-backed capability observations | installed transitively, **zero imports** (§2.6) |
+| Bearing | Evidence-backed capability observations | Fleet capability composition remains proposed; the separate optional retail consumer is described in §2.6. |
 | Datum | Resolving configured candidates | secret-reference seam only; **no fleet imports** (§2.6) |
 | Dispatch | Ordered routing/fallback receipts | wired at 0.5.0 with fleet routing receipts (§2.5/§2.6) |
 | Relay | Invocation without credential leakage | pinned at 0.6.0; direct error-vocabulary imports in `fleet-inference-model.ts` and fake-runtime imports in routing tests; no native streaming (§2.6/§2.7) |

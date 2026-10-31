@@ -21,7 +21,7 @@ This record holds two things with different status:
   below, and the leased hover, pointer, select and color-scheme actions
   (#3779).
 - **Decided, not implemented:** the cross-engine bound channel. Its decision
-  is that Codex URL-token and ACP header-token passthrough stay
+  is that Codex and ACP header-token passthrough stay
   `caller-not-bound` until a provider can supply independent proof, and the
   four-step design below is the required shape. No engine supplies that proof
   today, so no external-engine Session receives browser authority. #122 owns
@@ -80,8 +80,8 @@ The current owners are
 [`station-control-mcp-route.ts`](../../src-server/routes/mcp/station-control-mcp-route.ts),
 [`codex-mcp-passthrough.ts`](../../src-server/providers/adapters/codex-mcp-passthrough.ts)
 and [`acp-mcp-passthrough.ts`](../../src-server/providers/adapters/acp-mcp-passthrough.ts).
-Codex receives a URL token in spawn argv; ACP receives an HTTP-header token in
-its session payload. Token records identify their minting Session, but possession
+Codex receives an HTTP-header token in private thread JSON-RPC configuration;
+ACP receives one in its session payload. Neither credential is bound. Token records identify their minting Session, but possession
 does not prove the presenting connection belongs to it. Echoing a Session ID,
 MCP transport session ID, nonce or second bearer obtained with the first token
 adds no independent evidence. Neither does moving the same capability from a

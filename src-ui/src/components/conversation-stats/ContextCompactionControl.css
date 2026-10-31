@@ -1,0 +1,15 @@
+.context-compaction-control {
+  display: grid;
+  gap: var(--k-space-3);
+  max-width: 100%;
+}
+.context-compaction-control :is(label, input) {
+  min-height: 44px;
+}
+.context-compaction-control input[type="number"] {
+  width: 100%;
+  box-sizing: border-box;
+}
+.context-compaction-control :is(p, li) {
+  overflow-wrap: anywhere;
+}

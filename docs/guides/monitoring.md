@@ -1079,6 +1079,15 @@ live in [the shared usage fold](../../packages/shared/src/usage-fold.ts); the
 [receipt fold](../../packages/shared/src/usage-rollup.ts) owns rollup grouping.
 The Muse serve fixture replay also exercises per-answer usage visibility.
 
+### Task outcomes and reviewed retail value
+
+Usage receipts can carry separately attributed Task outcomes and optional
+reviewed published-rate value. A done Task is an owner status, not an independent
+quality score. Reported cost, estimates, retail value, billing and quota remain
+different facts; missing evidence stays unknown. See
+[bounded agent work](agent-efficiency.md#compare-usage-and-outcomes-honestly)
+for capture provenance, current-authority checks and measurement limits.
+
 ### Usage with children
 
 The conversation statistics dialog shows **Usage with children**: one total

@@ -339,6 +339,7 @@ export class GitHubPollAutomationPoller {
       const result = recordAutomationEvent({
         ledger,
         rules: currentRules,
+        source,
         event: normalized.event,
         transportId: normalized.event.semanticKey,
         now: observedAt,

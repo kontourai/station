@@ -22,6 +22,7 @@ import type { WorkItemCapture } from '../work-item-capture.js';
 import { type AgentHooksDeps, createAgentHooks } from './agent-hooks.js';
 
 interface RuntimeAgentBuilderContext {
+  observeModelContext?: AgentHooksDeps['observeModelContext'];
   validateProjectTools?: (
     slug: string,
     spec: AgentSpec,
@@ -131,6 +132,7 @@ export async function prepareRuntimeAgentInstance(
   });
 
   const hooks = createAgentHooks({
+    observeModelContext: context.observeModelContext,
     projectToolPolicy: (invocation, tool) => {
       const source = preparationState.toolNameMapping.get(
         tool.toolName,
