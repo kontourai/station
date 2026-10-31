@@ -83,8 +83,23 @@ A delayed active-handle diagnostic showed that the deferred file watchers had
 closed; the one remaining listener was the voice WebSocket at server port + 2.
 The real runtime regression retained an intended `EADDRINUSE` failure when
 rebinding that port after shutdown, with its other three cases passing.
-The voice-listener ownership repair and its qualification remain in progress.
-No second physical device is available in the current device inventory.
+The repair at `f1b5a176a54` captures the exact listener before initialization
+returns and retires it on initialization failure and shutdown. It joins binding
+and close, terminates only its own clients, and preserves its owner and home
+lease after a failed or pending close. The corrected focused selection passed
+10 cases; the final runtime/registry/lock selection passed 102 with one Linux-only
+case skipped on macOS. Server-test types passed. The first failed-initialization
+fixture did not reach its intended fault and remains excluded from acceptance.
+
+A fresh controlled source-CLI journey at that exact repair commit passed all
+16 checks and exited naturally with stable inputs and retained input snapshots.
+Independent Sol review accepted the bounded listener and minifier changes.
+The later Monument/host/HTTP selection passed 529 cases, and the canonical input,
+Codex wire-ID and approval-ordering selection passed 116. These are local
+controlled receipts, not whole-epic or installed-package release qualification.
+The ignored `voice-owner-qualification-f1b5a176a54.json` index binds the earlier
+failures, final logs, private runner receipts and review hash. No second physical
+device is available in the current device inventory.
 
 ## Published Flow 9.9.1 pin (#91)
 
