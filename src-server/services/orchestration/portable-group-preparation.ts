@@ -73,6 +73,14 @@ import {
   StationReportPreparationUnavailable,
 } from './station-report-group-input.js';
 
+export class PortableGroupBudgetInsufficient extends Error {
+  readonly code = 'group_budget_insufficient';
+  readonly phase = 'refused' as const;
+  constructor() {
+    super('The group budget cannot reserve all admitted seats.');
+  }
+}
+
 function assertSupportedInput(input: StationReportGroupInput): void {
   if (input.continuation || input.members.some((member) => member.input))
     refuse();
@@ -625,8 +633,9 @@ export class PortableGroupPreparation {
           (sum, envelope) => sum + envelope.budget[field],
           0,
         );
-        if (!Number.isSafeInteger(allocated) || allocated > budget[field])
-          refuse();
+        if (!Number.isSafeInteger(allocated)) refuse();
+        if (allocated > budget[field])
+          throw new PortableGroupBudgetInsufficient();
       }
       validateDelegationAncestryV2(root, [parent], new Date(now).toISOString());
       for (const envelope of children)
