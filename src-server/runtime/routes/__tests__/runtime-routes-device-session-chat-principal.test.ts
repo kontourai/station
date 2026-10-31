@@ -717,6 +717,8 @@ describe('device-session chat principal resolution over the REAL auth path (stat
               canUserReadConversation:
                 orchestration!.canUserReadConversation.bind(orchestration),
               listSessions: orchestration!.listSessions.bind(orchestration),
+              listConversationHistoryPage:
+                orchestration!.listConversationHistoryPage.bind(orchestration),
               attachmentCandidateOwnerIds:
                 orchestration!.attachmentCandidateOwnerIds.bind(orchestration),
               readableSessionOwnerIds:
@@ -4578,6 +4580,13 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         {
           personalSharing: true,
           seed: (seedStore) => {
+            seedStore.upsertSession({
+              provider: 'claude',
+              threadId: 'operator-attachment-owned',
+              status: 'closed',
+              createdAt: '2026-09-24T00:00:00Z',
+              updatedAt: '2026-09-24T00:00:01Z',
+            });
             ref = attachmentTurn(
               seedStore,
               'operator-attachment-owned',
@@ -4610,6 +4619,19 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       const shared = await fetchAttachment(app, ref, paired.credential);
       expect(shared.status, shared.body.toString()).toBe(200);
       expect(shared.body).toEqual(operatorBytes);
+
+      const history = await app.request(
+        '/api/conversations?limit=100',
+        { headers: { Authorization: `Bearer ${paired.credential}` } },
+        REMOTE_TAILNET_ENV,
+      );
+      expect(history.status, await history.clone().text()).toBe(200);
+      const page = await responseData<{ items: Array<{ id: string }> }>(history);
+      const ids = page.items.map((item) => item.id);
+      expect(ids).toContain('operator-attachment-owned');
+      expect(ids).not.toContain('ownerless-attachment');
+      expect(ids).not.toContain('alias-owned');
+      expect(ids).not.toContain('whois-owned');
 
       const refused = await fetchAttachment(
         app,
