@@ -27,6 +27,11 @@ import { isForegroundIndeterminateShape } from '../../../routes/orchestration/or
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
+import {
+  ProjectSupervision,
+  type ProjectSupervisionObservation,
+  projectSupervisionWakeKey,
+} from '../project-supervision.js';
 import { ProjectTaskRoomRuntime } from '../project-task-room-runtime.js';
 import { ACTIVE_TURN_FOLD_METHODS } from '../session-lifecycle-service.js';
 import { TURN_DEDUP_MAX_ENTRIES } from '../sqlite-turn-dedup-persistence.js';
@@ -99,6 +104,7 @@ interface World {
   submitted: ThreadInboxPayload[];
   /** The inbox's own log. */
   inboxWarn: ReturnType<typeof vi.fn>;
+  questionWake: TaskQuestionWake;
 }
 
 const open: World[] = [];
@@ -108,6 +114,9 @@ function boot(
   options: {
     task?: TaskRecord;
     wrapStore?: (store: ThreadInboxStore) => ThreadInboxStore;
+    placementRefusal?: ConstructorParameters<
+      typeof ThreadInboxDelivery
+    >[0]['placementRefusal'];
   } = {},
 ): World {
   incarnation += 1;
@@ -134,6 +143,9 @@ function boot(
   });
   const inboxStore = store.threadInboxStore();
   const inbox = new ThreadInboxDelivery({
+    ...(options.placementRefusal
+      ? { placementRefusal: options.placementRefusal }
+      : {}),
     store: options.wrapStore ? options.wrapStore(inboxStore) : inboxStore,
     foldEvents: (threadId) =>
       store
@@ -208,6 +220,8 @@ function boot(
   const committedAtSubmit: number[] = [];
   const submitted: ThreadInboxPayload[] = [];
   const wake = new TaskQuestionWake({
+    outbox: store.taskMemoryStore(),
+    mayReadTask: () => true,
     readTask: (id) => (id === task.current.id ? task.current : null),
     conversationOf: (sessionId) =>
       store.conversationForSession(sessionId)?.conversationId ?? sessionId,
@@ -225,6 +239,10 @@ function boot(
     logger: { warn },
   });
   const runtime = new ProjectTaskRoomRuntime({
+    conversationOfSession: (id) =>
+      store.conversationForSession(id)?.conversationId ?? id,
+    currentConversationSessionId: (id) =>
+      service.currentConversationSessionId(id),
     taskGraph: {
       readTaskView: (id) => (id === task.current.id ? task.current : null),
     },
@@ -276,6 +294,7 @@ function boot(
     committedAtSubmit,
     submitted,
     inboxWarn,
+    questionWake: wake,
   };
   open.push(world);
   return world;
@@ -369,6 +388,296 @@ afterEach(async () => {
 describe('Task question lead wake (#4003)', () => {
   const path = () =>
     join(makeTempDir('task-question-wake-'), 'orchestration.sqlite');
+
+  test('a crash after the question version commits but before its wake hook submits is recovered through the original key once', async () => {
+    const file = path();
+    const first = boot(file);
+    await bindAll(first);
+    await startLead(first);
+    expect(
+      first.store.taskMemoryStore().writeRecord({
+        projectId: 'project-1',
+        taskId: TASK_ID,
+        taskCreatedAt: CREATED_AT,
+        author: { kind: 'session', sessionId: HELPER },
+        write: { kind: 'question', key: 'commit-gap', text: QUESTION },
+      }),
+    ).toMatchObject({ kind: 'recorded' });
+    expect(first.store.taskMemoryStore().pendingQuestionWakes()).toHaveLength(
+      1,
+    );
+    expect(wakeSends()).toEqual([]);
+    await crash(first);
+    const second = boot(file);
+    await startLead(second);
+    await second.questionWake.reconcile();
+    await settle(second);
+    expect(wakeSends()).toHaveLength(1);
+    expect(wakeSends()[0]).toContain('commit-gap');
+    expect(second.store.taskMemoryStore().pendingQuestionWakes()).toEqual([]);
+    await second.questionWake.reconcile();
+    await settle(second);
+    expect(wakeSends()).toHaveLength(1);
+    await crash(second);
+    const third = boot(file);
+    await startLead(third);
+    await third.questionWake.reconcile();
+    await third.inbox.reconcile();
+    await settle(third);
+    expect(wakeSends()).toHaveLength(1);
+  });
+
+  test('Project supervision races and restart admit one coordinator wake, while pause fences a queued late action', async () => {
+    const file = path();
+    let supervisor: ProjectSupervision | undefined;
+    const world = boot(file, {
+      placementRefusal: (input) =>
+        supervisor?.placementRefusal({
+          ...input,
+          userId: input.payload.actor.userId,
+        }),
+    });
+    await startLead(world);
+    let now = 100_000;
+    let observation: ProjectSupervisionObservation = {
+      taskId: TASK_ID,
+      taskCreatedAt: CREATED_AT,
+      ownerUserId: OWNER,
+      coordinatorConversationId: LEAD,
+      wait: 'actionable',
+      reason: 'A child completed with actionable evidence.',
+      actionKey: 'child-completed-1',
+      cursor: 'event-1',
+      checkpointRevision: 'checkpoint-1',
+      sourceBinding: 'workspace-1:revision-1',
+      nextEligibleAt: now,
+      uncertainEffect: false,
+    };
+    const store = world.store.projectSupervisionStore();
+    const config = {
+      projectId: 'project-1',
+      taskId: TASK_ID,
+      taskCreatedAt: CREATED_AT,
+      ownerUserId: OWNER,
+      coordinatorConversationId: LEAD,
+      state: 'active' as const,
+      policy: {
+        maxWakes: 3,
+        maxNoProgressWakes: 2,
+        minIntervalMs: 1000,
+        stopAt: now + 3600_000,
+      },
+    };
+    const intent = store.configure(config, 0, () => true);
+    const ports = {
+      store,
+      now: () => now,
+      enabled: () => true,
+      observe: async () => observation,
+      placementCurrent: () =>
+        !observation.uncertainEffect && observation.wait === 'actionable',
+      inspect: (
+        wake: Parameters<
+          ConstructorParameters<typeof ProjectSupervision>[0]['inspect']
+        >[0],
+      ) =>
+        world.inbox
+          .list(wake.conversationId)
+          .some(
+            (entry) =>
+              entry.clientTurnId === projectSupervisionWakeKey(wake.id),
+          )
+          ? ('accepted' as const)
+          : ('absent' as const),
+      submit: (
+        input: Parameters<
+          ConstructorParameters<typeof ProjectSupervision>[0]['submit']
+        >[0],
+      ) => world.inbox.submit(input),
+    };
+    supervisor = new ProjectSupervision(ports);
+    const rival = new ProjectSupervision(ports);
+    await Promise.all([supervisor.reconcile(), rival.reconcile()]);
+    await settle(world);
+    expect(
+      sends.filter((text) => text.includes('Station Project supervision')),
+    ).toHaveLength(1);
+    expect(world.inbox.list(LEAD)).toHaveLength(1);
+    const restarted = new ProjectSupervision({
+      ...ports,
+      store: world.store.projectSupervisionStore(),
+    });
+    await restarted.reconcile();
+    await settle(world);
+    expect(
+      sends.filter((text) => text.includes('Station Project supervision')),
+    ).toHaveLength(1);
+    now += 2000;
+    observation = {
+      ...observation,
+      actionKey: 'child-completed-2',
+      cursor: 'event-2',
+      checkpointRevision: 'checkpoint-2',
+      nextEligibleAt: now,
+    };
+    await supervisor.reconcile();
+    expect(world.inbox.list(LEAD)).toHaveLength(2);
+    store.configure(
+      { ...config, state: 'paused' },
+      intent.generation,
+      () => true,
+    );
+    await emit(world, 'turn.completed', { turnId: 'turn-1' }, invocations[0]);
+    await settle(world);
+    expect(
+      sends.filter((text) => text.includes('Station Project supervision')),
+    ).toHaveLength(1);
+    expect(world.inbox.list(LEAD)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ state: 'refused' })]),
+    );
+  });
+
+  test('Project supervision holds explicit waits, future eligibility and unknown effects without reserving a model wake', async () => {
+    const world = boot(path());
+    await startLead(world);
+    const store = world.store.projectSupervisionStore();
+    const now = 100_000;
+    const intent = store.configure(
+      {
+        projectId: 'project-1',
+        taskId: TASK_ID,
+        taskCreatedAt: CREATED_AT,
+        ownerUserId: OWNER,
+        coordinatorConversationId: LEAD,
+        state: 'active',
+        policy: {
+          maxWakes: 2,
+          maxNoProgressWakes: 1,
+          minIntervalMs: 1000,
+          stopAt: now + 1000_000,
+        },
+      },
+      0,
+      () => true,
+    );
+    let observation: ProjectSupervisionObservation = {
+      taskId: TASK_ID,
+      taskCreatedAt: CREATED_AT,
+      ownerUserId: OWNER,
+      coordinatorConversationId: LEAD,
+      wait: 'approval',
+      reason: 'Waiting for authorization',
+      actionKey: 'wait-1',
+      cursor: 'event-1',
+      checkpointRevision: 'checkpoint-1',
+      sourceBinding: 'worktree-1',
+      nextEligibleAt: now,
+      uncertainEffect: false,
+    };
+    const submit = vi.fn(
+      (
+        input: Parameters<
+          ConstructorParameters<typeof ProjectSupervision>[0]['submit']
+        >[0],
+      ) => world.inbox.submit(input),
+    );
+    const supervisor = new ProjectSupervision({
+      store,
+      now: () => now,
+      enabled: () => true,
+      observe: async () => observation,
+      placementCurrent: () => true,
+      inspect: () => 'absent',
+      submit,
+    });
+    for (const wait of [
+      'approval',
+      'capacity',
+      'quota',
+      'child',
+      'working',
+      'paused',
+      'unknown',
+      'completed',
+      'cancelled',
+    ] as const) {
+      observation = { ...observation, wait };
+      await supervisor.reconcile();
+    }
+    observation = {
+      ...observation,
+      wait: 'actionable',
+      nextEligibleAt: now + 1,
+    };
+    await supervisor.reconcile();
+    observation = {
+      ...observation,
+      nextEligibleAt: now,
+      uncertainEffect: true,
+    };
+    await supervisor.reconcile();
+    expect(submit).not.toHaveBeenCalled();
+    expect(store.pending()).toEqual([]);
+    expect(store.read(intent.key)?.attention).toContain('Uncertain');
+  });
+
+  test.each([LEAD, HELPER])(
+    'current Task successor of %s retains record access while predecessor writes are fenced',
+    async (predecessor) => {
+      const world = boot(path());
+      await bindAll(world);
+      await startLead(world);
+      if (predecessor === HELPER)
+        await world.service.dispatch({
+          type: 'startSession',
+          input: { threadId: HELPER, provider: 'claude' },
+        });
+      const predecessorAccess =
+        await world.runtime.sessionTaskContextAccess(predecessor);
+      expect(predecessorAccess.kind).toBe('granted');
+      const successor = world.store.reserveNextConversationSession({
+        conversationId: predecessor,
+        predecessorSessionId: predecessor,
+        proposedSessionId: `${predecessor}-successor`,
+        createdAt: new Date().toISOString(),
+      }).lineage.sessionId;
+      expect(
+        await world.store.bindProjectTaskRoomExecution({
+          projectId: 'project-1',
+          taskId: TASK_ID,
+          sessionId: successor,
+        }),
+      ).toEqual({ kind: 'bound' });
+      expect(
+        await world.runtime.writeTaskRecordForSession({
+          sessionId: successor,
+          write: {
+            kind: 'decision',
+            key: 'continued',
+            text: 'A current successor decision.',
+          },
+        }),
+      ).toMatchObject({ kind: 'recorded' });
+      expect(
+        (await world.runtime.sessionTaskReviewAccess(successor)).kind,
+      ).toBe(predecessor === LEAD ? 'granted' : 'no-task');
+      expect(
+        await world.runtime.writeTaskRecordForSession({
+          sessionId: predecessor,
+          write: {
+            kind: 'decision',
+            key: 'old-parent',
+            text: 'Must not commit.',
+          },
+        }),
+      ).not.toMatchObject({ kind: 'recorded' });
+      expect(
+        predecessorAccess.kind === 'granted' &&
+          predecessorAccess.write.beforeCommit(),
+      ).toBe(false);
+      expect(records(world).map((record) => record.key)).toEqual(['continued']);
+    },
+  );
 
   test("a helper Session's question reaches the idle lead once, as a turn naming the key, the asker and how to answer", async () => {
     const world = boot(path());

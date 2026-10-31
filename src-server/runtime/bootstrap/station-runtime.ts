@@ -2,11 +2,14 @@ import type { DeploymentAuthenticationConfiguration } from '@kontourai/station-c
 import { isProjectKnowledgeRoot } from '@kontourai/station-contracts/knowledge-store';
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
 import { analyticsHomeExportActivation } from '../../analytics/analytics-activation.js';
+import { ReviewedTariffConfigurationService } from '../../analytics/reviewed-tariff-config.js';
+import { parseProjectPortableIdentity } from '../../domain/project-identity-record.js';
 import { getBrandingProvider } from '../../providers/registries/registry.js';
 import { ClaudeTranscriptSessionSource } from '../../providers/sessions/claude-transcript-session-source.js';
 import { CodexRolloutSessionSource } from '../../providers/sessions/codex-rollout-session-source.js';
 import { GrokSessionSource } from '../../providers/sessions/grok-session-source.js';
 import { OpenCodeSessionSource } from '../../providers/sessions/opencode-session-source.js';
+import { createConversationMessageReader } from '../../routes/chat/conversation-message-reader.js';
 import { engineSignIn } from '../../services/acp/engine-sign-in.js';
 import { lanDiscoveryFor } from '../../services/connections/lan-discovery.js';
 import { NativeSurfaceRegistry } from '../../services/connections/native-surface-registry.js';
@@ -56,6 +59,7 @@ import { registerToolServerOAuthCapability } from '../../services/plugins/tool-s
 import { sharedUntrustedContentLedger } from '../../services/plugins/untrusted-content-policy.js';
 import { UntrustedConversationMarks } from '../../services/plugins/untrusted-conversation-marks.js';
 import { deriveWorkspaceHomeRoleStatus } from '../../services/plugins/workspace-home-role-service.js';
+import { ProjectManifestStore } from '../../services/projects/project-manifest-store.js';
 import { createProjectMembershipRuntime } from '../../services/projects/project-membership-runtime.js';
 import { createProjectNativeToolLoader } from '../../services/projects/project-native-tools.js';
 import { hasProjectS3Sources } from '../../services/projects/project-s3-sources.js';
@@ -68,7 +72,13 @@ import {
 } from '../../services/work-item-providers/github-work-item-observer.js';
 import { awaitSettlementWithin } from '../../utils/bounded-async.js';
 import { errorMessage } from '../../utils/error-message.js';
+import { recordManagedModelContext } from '../context-efficiency-runtime.js';
 import { currentNativeForegroundRelay } from '../conversation/native-foreground-invocation.js';
+import {
+  composeLearningReviewRuntime,
+  type LearningReviewRuntime,
+} from '../learning-review-runtime.js';
+import { createCanonicalTaskSourceReader } from '../task-source-read-authority.js';
 import {
   createNativeDeviceProofRuntime,
   type NativeApplicationConnectorConfiguration,
@@ -276,6 +286,10 @@ import {
   startMcpUiFrameServer,
 } from '../mcp/mcp-ui-frame-server.js';
 import { createNativeOutputDeclarationTool } from '../native-output-declaration.js';
+import {
+  composeProjectWorkingRuntime,
+  type ProjectWorkingRuntime,
+} from '../project-working-configuration-runtime.js';
 import { isAutoApprovedExternalTool } from '../tools/tool-executor.js';
 import { composeLocalMedia } from './local-media-runtime.js';
 
@@ -481,7 +495,7 @@ import {
 } from '../mcp/station-control-caller.js';
 import { claudeInProcessStationControlOptions } from '../mcp/station-control-in-process.js';
 import {
-  buildStationControlMcpUrl,
+  buildStationControlMcpHeaderUrl,
   coordinatorGeneration,
   mintStationControlMcpToken,
   revokeStationControlMcpToken,
@@ -1029,7 +1043,7 @@ export class StationRuntime {
           ?.conversationId ?? threadId;
       const { token } = mintStationControlMcpToken(
         threadId,
-        'url-token',
+        'http-header-token',
         undefined,
         tenantExecutionContext,
         allowedTools,
@@ -1038,8 +1052,9 @@ export class StationRuntime {
         generation === undefined
           ? undefined
           : () => coordinatorGeneration(conversationId) === generation,
+        true,
       );
-      return buildStationControlMcpUrl(this.port, token);
+      return { url: buildStationControlMcpHeaderUrl(this.port), token };
     },
     mintStationKnowledgeMcpAuth: (
       threadId,
@@ -1052,7 +1067,7 @@ export class StationRuntime {
           ?.conversationId ?? threadId;
       const { token } = mintStationControlMcpToken(
         threadId,
-        'url-token',
+        'http-header-token',
         undefined,
         tenantExecutionContext,
         allowedTools,
@@ -1063,8 +1078,12 @@ export class StationRuntime {
         generation === undefined
           ? undefined
           : () => coordinatorGeneration(conversationId) === generation,
+        true,
       );
-      return buildStationControlMcpUrl(this.port, token, 'station-knowledge');
+      return {
+        url: buildStationControlMcpHeaderUrl(this.port, 'station-knowledge'),
+        token,
+      };
     },
     revokeStationControlMcpAuth: (threadId: string) =>
       revokeStationControlMcpToken(threadId),
@@ -1174,10 +1193,33 @@ export class StationRuntime {
   /** archive#1398 — see {@link StationRuntime.fleetProbes}. */
   private fleetProbeService: FleetProbeService | undefined;
   private readonly featurePreviews: FeaturePreviewRegistry;
+  private projectWorkingConfiguration: ProjectWorkingRuntime | undefined;
+  private learningReview: LearningReviewRuntime | undefined;
+  private reviewedTariffConfiguration:
+    | ReviewedTariffConfigurationService
+    | undefined;
+  private reviewedTariffsPreview: FeaturePreviewSelector | undefined;
+  private readonly reviewedTariffsEnabled = () =>
+    this.reviewedTariffsPreview?.select({
+      enabled: () => true,
+      disabled: () => false,
+    }) ?? false;
+  private readonly getReviewedTariffConfiguration = () => {
+    if (!this.reviewedTariffsEnabled()) return undefined;
+    try {
+      return (this.reviewedTariffConfiguration ??=
+        new ReviewedTariffConfigurationService(
+          join(this.configLoader.getProjectHomeDir(), 'security'),
+        ));
+    } catch {
+      return undefined;
+    }
+  };
   /** Bound during composition, then selected at the fleet-routing branch. */
   private fleetConsumerProbesPreview!: FeaturePreviewSelector;
   private chatHostImagesPreview!: FeaturePreviewSelector;
   private memberPasskeysPreview!: FeaturePreviewSelector;
+  private progressiveToolsPreview!: FeaturePreviewSelector;
   private sshEnvironmentService: SshEnvironmentService;
   private timers: NodeJS.Timeout[] = [];
   private analyticsMaintenance?: (
@@ -1538,9 +1580,26 @@ export class StationRuntime {
         projectHomeDir,
         this.logger,
       );
+      if (
+        !isHostedTenantExecutionRequired() &&
+        !loadHostedTenantRegistryFromEnvironment()
+      ) {
+        this.reviewedTariffsPreview = this.featurePreviews.bind({
+          id: 'reviewed-usage-tariffs',
+          label: 'Reviewed tariff sources',
+          description:
+            'Review exact published price observations separately from engine costs and account billing.',
+        });
+      }
       this.bindFleetConsumerProbesPreview();
       this.bindChatHostImagesPreview();
       this.bindMemberPasskeysPreview();
+      this.progressiveToolsPreview = this.featurePreviews.bind({
+        id: 'progressive-station-tools',
+        label: 'Progressive Station tools',
+        description:
+          'Load authorized Station tool families on demand for compatible Codex sessions. Other engines retain their existing tool loading.',
+      });
       // Journal consumers wire after the quarantine notice: the runtime must
       // report a recorded corruption before anything asks the store for more
       // than its publisher.
@@ -1631,6 +1690,27 @@ export class StationRuntime {
         });
         return resolveProjectWorkspacePath(projectId, { resolver });
       };
+      this.projectWorkingConfiguration = composeProjectWorkingRuntime(
+        this.featurePreviews,
+        {
+          home: projectHomeDir,
+          hosted: isHostedTenantExecutionRequired(),
+          projects: () => this.projectService.listProjects(),
+          resolveDirectory: this.resolveTaskDispatchWorkspace,
+          canRead: (projectId, principalId) =>
+            principalId === LOCAL_OPERATOR_PRINCIPAL_ID ||
+            Boolean(
+              this.projectMembership?.service
+                .admissionsForResolvedPrincipal(principalId)
+                .some(
+                  (entry) =>
+                    entry.scope.localProjectId === projectId &&
+                    entry.member.status === 'active' &&
+                    entry.member.actions.includes('view'),
+                ),
+            ),
+        },
+      );
       this.approvalRegistry = new ApprovalRegistry(this.logger, {
         eventBus: this.eventBus,
       });
@@ -3537,6 +3617,9 @@ export class StationRuntime {
     const builtinEngineBinding =
       await this.resolveBuiltinEngineBinding(appConfig);
     await bootstrapRuntimeDefaultAgent({
+      observeModelContext: (
+        observation: import('../types.js').ModelGenerationObservation,
+      ) => recordManagedModelContext(this.orchestrationEventStore, observation),
       appConfig,
       builtinEngineBinding,
       configLoader: composition
@@ -4102,6 +4185,7 @@ export class StationRuntime {
             this.connectionService.createCredentialProfileRecoveryAdapter(
               credentialRecoveryRuntimeConnectionId,
             ),
+          getReviewedTariffConfiguration: this.getReviewedTariffConfiguration,
           usageAggregator: this.usageAggregator,
           // archive#3245 / #2568: see `orchestrationUsageRefFor`.
           orchestrationUsageRef: orchestrationUsageRefFor(
@@ -4198,6 +4282,165 @@ export class StationRuntime {
             // route or capability can read runtime context.
             const briefTenantRegistry =
               loadHostedTenantRegistryFromEnvironment();
+            if (
+              !isHostedTenantExecutionRequired() &&
+              process.platform !== 'win32'
+            ) {
+              const learningManifests = new ProjectManifestStore(
+                this.configLoader.getProjectHomeDir(),
+                this.storageAdapter,
+              );
+              const readLearningTaskSource = createCanonicalTaskSourceReader({
+                readTask: (id) => this.taskGraphService.readTaskView(id),
+                projects: () => this.projectService.listProjects(),
+                shares: this.projectMembership?.sharedTasks,
+                membership: this.projectMembership?.service,
+                portableProjectId: (slug) => {
+                  const manifest = learningManifests.readRecord(slug);
+                  return manifest
+                    ? parseProjectPortableIdentity(manifest).id
+                    : undefined;
+                },
+              });
+              const learningSessionSource =
+                createStationControlCallerRecordResolver(
+                  stationControlCallerRecordSources({
+                    orchestrationService: this.orchestrationService,
+                    eventStore: this.orchestrationEventStore,
+                    getProject: (slug) => this.storageAdapter.getProject(slug),
+                  }),
+                );
+              this.learningReview = composeLearningReviewRuntime(
+                this.featurePreviews,
+                {
+                  home: this.configLoader.getProjectHomeDir(),
+                  authority: `station:${this.environmentSecurityService.devicePairing.environmentId()}`,
+                  projects: () => this.projectService.listProjects(),
+                  readTask: (id) => this.taskGraphService.readTaskView(id),
+                  memory: () => this.orchestrationEventStore?.taskMemoryStore(),
+                  mayReadProject: (projectId, actorId) =>
+                    actorId === LOCAL_OPERATOR_PRINCIPAL_ID ||
+                    Boolean(
+                      this.projectMembership?.service
+                        .admissionsForResolvedPrincipal(actorId)
+                        .some(
+                          (entry) =>
+                            entry.scope.localProjectId === projectId &&
+                            entry.member.status === 'active' &&
+                            entry.member.actions.includes('view'),
+                        ),
+                    ),
+                  mayReadTask: (taskId, actorId, shares) =>
+                    readLearningTaskSource(taskId, actorId, {
+                      operatorInPerson: actorId === LOCAL_OPERATOR_PRINCIPAL_ID,
+                      shares,
+                    }),
+                  mayReadSession: (sessionId, actorId) =>
+                    this.orchestrationService.canUserReadSession(
+                      sessionId,
+                      sessionReadAuthorityFromRequest(
+                        actorId,
+                        undefined,
+                        undefined,
+                      ),
+                    ),
+                  contributions: (projectId, ref, actorId) => {
+                    const project = this.projectService
+                      .listProjects()
+                      .find((project) => project.id === projectId);
+                    const store = this.orchestrationEventStore;
+                    if (!project || !store) return [];
+                    const authority = sessionReadAuthorityFromRequest(
+                      actorId,
+                      undefined,
+                      undefined,
+                    );
+                    return store
+                      .readRecentTaskLearningContributions([
+                        project.id,
+                        project.slug,
+                      ])
+                      .filter(
+                        (row) =>
+                          this.orchestrationService.canUserReadSession(
+                            row.sessionId,
+                            authority,
+                          ) &&
+                          row.contributions.some(
+                            (value) =>
+                              value.authority === ref.authority &&
+                              value.kind === ref.kind &&
+                              value.id === ref.id &&
+                              value.revision === ref.revision,
+                          ),
+                      )
+                      .map((row) => ({
+                        turnRef: {
+                          authority: `station:${this.environmentSecurityService.devicePairing.environmentId()}`,
+                          kind: 'turn',
+                          id: row.turnId,
+                          revision: row.eventId,
+                        },
+                        activeRevisionRef: ref,
+                        coordinate: {
+                          sessionId: row.sessionId,
+                          turnId: row.turnId,
+                          conversationId:
+                            store.conversationForSession(row.sessionId)
+                              ?.conversationId ?? row.sessionId,
+                        },
+                      }));
+                  },
+                  captureRatingEvidence: () =>
+                    this.feedbackService.captureRatingEvidence(),
+                  projectForSession: (id) => {
+                    const record = learningSessionSource(id);
+                    return record?.projectIdSource === 'session-record'
+                      ? record.localProjectId
+                      : undefined;
+                  },
+                  messages: async (conversationId, agentSlug, actorId) => {
+                    const authority = sessionReadAuthorityFromRequest(
+                      actorId,
+                      undefined,
+                      undefined,
+                    );
+                    const sessions =
+                      this.orchestrationService.conversationSessionIds(
+                        conversationId,
+                      );
+                    if (
+                      sessions.length > 64 ||
+                      sessions.some(
+                        (id) =>
+                          !this.orchestrationService.canUserReadSession(
+                            id,
+                            authority,
+                          ),
+                      )
+                    )
+                      return [];
+                    const reader = createConversationMessageReader({
+                      getAdapter: (slug) =>
+                        this.memoryAdapters.get(slug) ?? null,
+                      authorityFor: () => authority,
+                      sessionMessageReader: this.orchestrationService,
+                      logger: this.logger,
+                    });
+                    return (
+                      await reader.readConversationMessages(
+                        new Request(
+                          'http://station.internal/learning-evidence',
+                        ),
+                        agentSlug,
+                        conversationId,
+                        authority,
+                      )
+                    ).messages;
+                  },
+                },
+              );
+            }
             this.taskDispatcher = composeTaskDispatcher(
               this.taskGraphService,
               {
@@ -4207,6 +4450,11 @@ export class StationRuntime {
                 // Epic #4003: the brief a dispatched Session's first turn
                 // carries. The room runtime is composed later; read lazily.
                 taskBrief: composeTaskBriefSource({
+                  workingConfiguration:
+                    this.projectWorkingConfiguration?.forTask,
+                  learningContext: (task, owner) =>
+                    this.learningReview?.forTask(task, owner) ??
+                    Promise.resolve(undefined),
                   taskGraph: this.taskGraphService,
                   eventStore: this.orchestrationEventStore,
                   sessionReadModel: this.orchestrationService,
@@ -4866,6 +5114,15 @@ export class StationRuntime {
       getMcpUiFrameOrigin: () => this.mcpUiFrameServer?.origin,
       getPluginFrameOrigin: () => this.mcpUiFrameServer?.origin,
       featurePreviews: this.featurePreviews,
+      progressiveToolsEnabled: () =>
+        this.progressiveToolsPreview.select({
+          enabled: () => true,
+          disabled: () => false,
+        }),
+      projectWorkingConfiguration: this.projectWorkingConfiguration,
+      learningReview: this.learningReview,
+      getReviewedTariffConfiguration: this.getReviewedTariffConfiguration,
+      reviewedTariffsEnabled: this.reviewedTariffsEnabled,
       mediaTools: localMedia.mediaTools,
       walkthroughImportDependencies: {
         resolver: localMedia.mediaTools,
@@ -5048,6 +5305,9 @@ export class StationRuntime {
     composition?: PluginActivationComposition,
   ) {
     return {
+      observeModelContext: (
+        observation: import('../types.js').ModelGenerationObservation,
+      ) => recordManagedModelContext(this.orchestrationEventStore, observation),
       agentSlug,
       validateProjectTools: (
         slug: string,

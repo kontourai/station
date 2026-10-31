@@ -81,6 +81,11 @@ import {
 import { conformAgentHooks } from './conduit-framework-adapter.js';
 import { createVoltAgentManagedModel } from './framework-model-factory.js';
 import {
+  modelConnectionConfigurationDigest,
+  modelGenerationIdentity,
+  observeDirectModelIdentity,
+} from './model-generation-identity.js';
+import {
   extractToolPurpose,
   rememberToolPurpose,
   toolSchemaWithPurpose,
@@ -863,6 +868,35 @@ export function createVoltAgentLifecycleHooks(
   >();
 
   return createHooks({
+    onStepFinish: async ({ context, step, agent }) => {
+      const actualModel = agent.model;
+      const usage = step?.usage;
+      const inputTokens = usage?.inputTokens ?? usage?.promptTokens;
+      const outputTokens = usage?.outputTokens ?? usage?.completionTokens;
+      const modelId = step?.response?.modelId;
+      if (
+        typeof modelId !== 'string' ||
+        !modelId ||
+        !Number.isSafeInteger(inputTokens) ||
+        inputTokens < 0 ||
+        !Number.isSafeInteger(outputTokens) ||
+        outputTokens < 0
+      )
+        return;
+      const invocation = voltAgentInvocationContext(
+        slug,
+        context as typeof context & { traceId?: string },
+      );
+      await sharedHooks?.afterModelGeneration?.({
+        ...modelGenerationIdentity(actualModel, invocation, step?.response),
+        invocation,
+        modelId,
+        source: 'voltagent-step',
+        inputTokenAccounting: 'total',
+        inputTokens,
+        outputTokens,
+      });
+    },
     onToolStart: async ({ tool, context, args, options }) => {
       const currentCount =
         (context.context.get('toolCallCount') as number) || 0;
@@ -1262,12 +1296,22 @@ export class VoltAgentFramework {
       binding,
     );
     if (dispatchModel) return dispatchModel;
-    return createVoltAgentManagedModel({
+    const model = await createVoltAgentManagedModel({
       providerConnection: binding.providerConnection,
       modelId: binding.modelId,
       spec,
       appConfig: config.appConfig,
     });
+    if (typeof model === 'object' && model !== null)
+      return observeDirectModelIdentity(model, {
+        connectionId: binding.providerConnection.id,
+        modelId: binding.modelId,
+        providerType: binding.providerConnection.type,
+        configurationDigest: modelConnectionConfigurationDigest(
+          binding.providerConnection,
+        ),
+      });
+    return model;
   }
 
   async createTempAgent(opts: {

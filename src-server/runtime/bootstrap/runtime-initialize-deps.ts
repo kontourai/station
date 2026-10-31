@@ -55,6 +55,7 @@ type ToolNameMapping = Map<
 >;
 
 interface RuntimeInitializationContext {
+  getReviewedTariffConfiguration?: InitializeRuntimeDeps['getReviewedTariffConfiguration'];
   validateProjectTools?: InitializeRuntimeDeps['validateProjectTools'];
   resolveProjectToolServers?: InitializeRuntimeDeps['resolveProjectToolServers'];
   attachedSessionSources?: AttachedSessionSource[];
@@ -202,6 +203,7 @@ export function createRuntimeInitializationDeps(
     orchestrationEventStore: context.orchestrationEventStore,
     hostImagesPreview: context.hostImagesPreview,
     credentialProfileRecoveryAdapter: context.credentialProfileRecoveryAdapter,
+    getReviewedTariffConfiguration: context.getReviewedTariffConfiguration,
     usageAggregator: context.usageAggregator,
     orchestrationUsageRef: context.orchestrationUsageRef,
     monitoringEmitter: context.monitoringEmitter,

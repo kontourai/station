@@ -186,7 +186,11 @@
 
     "src-server/services/projects/task-room-attachments.ts",
 
-    "src-server/services/connections/lan-discovery.ts"
+    "src-server/services/connections/lan-discovery.ts",
+
+    "src-server/services/automation/repair-store.ts",
+
+    "packages/shared/src/station-home-store-registry.ts"
   ],
 
   "checks": [

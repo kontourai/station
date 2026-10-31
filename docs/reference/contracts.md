@@ -9,6 +9,15 @@ scope and conversation. `LAYOUT_PANELS_LAYOUT_BOUND` and
 `LAYOUT_PANELS_SESSION_BOUND` bound retention. The v3 device envelope retires the
 pre-release Coding-only panel preference; it does not preserve those old sizes.
 
+`@kontourai/station-contracts/isolated-repair` owns request/wall budget and bounded
+repair-run projection shapes. A projection is observational; it cannot grant
+execution or publication. `automation` adds the `isolated-repair` rule action and
+source `publish-branch` capability; an isolated repair requires an episode policy.
+`qualification-repair-policy` is a dependency-free `.mjs` protected-path validator
+shared by pre-install CI intake and the trusted Station publisher. Its `.d.mts`
+entry supplies types without duplicating the implementation. See
+[isolated repairs](../guides/agent-efficiency.md#run-an-isolated-github-repair).
+
 ## Ownership rules
 
 - This package owns stable cross-package types and constants. Existing domain
@@ -2306,3 +2315,30 @@ comparison retain the existing saved-view owner and revision protocol.
 `PrivateOperationalOutcomeSummary.observedTurns` counts distinct retained turns
 with terminal observations; completed/aborted/failed partition those observations,
 with unknown retained-only coverage. Independent source populations stay separate.
+
+
+## Bounded context and reviewed learning
+
+`@kontourai/station-contracts/project-working-configuration` owns the reviewed
+repository sources, editable draft, revision/digest and bounded Task context.
+Discovery and apply carry Project incarnation and source identity; declared
+commands carry no execution authority. The server owns persistence and scope.
+
+`@kontourai/station-contracts/learning-review` owns the seven-stage projection,
+typed source selection, proposal/owner intent and receipt views. Source capture,
+evaluation, approval, activation, observed effect and retirement stay distinct.
+A missing owner fact stays a typed gap. The immutable Project request header
+prevents slug-reuse races and is not authorization. Knowledge Kit's public
+`knowledge.learning/v1` API owns lifecycle transitions; Station's projection is
+not a second store or an inference from raw Knowledge `status`.
+
+`@kontourai/station-contracts/conversation-context-boundary` extends the existing
+durable boundary with bounded summary and Task-state seeds. Their successor
+cuts earlier model history without deleting the transcript; exact source and
+summary provenance remain attached. Unknown native state is omitted explicitly.
+
+`@kontourai/station-contracts/project-supervision` names opt-in supervision,
+Task incarnation, checkpoint, coordinator and known wait facts. The server
+reconciles through the existing inbox; it does not infer a new workflow DAG.
+See [bounded agent work](../guides/agent-efficiency.md) for current consumers and
+qualification limits.

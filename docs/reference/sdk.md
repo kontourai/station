@@ -6295,3 +6295,31 @@ management caller. It returns `AutomationDeliveryPage` with `deliveries` and
 preserves the preview refusal's code and Settings link; a 404 from an older
 host reports the unsupported capability. No mutation or agent invocation is
 performed. See [Automation intake](../design/automations.md#observe-only-github-preview).
+
+
+## Reviewed Project context and learning
+
+`@kontourai/station-sdk/client/project-working-configuration` exposes bounded
+repository discovery and exact-revision apply. Pass the current host request
+scope and immutable Project identity. A 404/501 is unavailable/update guidance;
+a preview refusal does not enable the feature. Apply saves defaults only.
+
+`@kontourai/station-sdk/client/learning-review` exports
+`fetchProjectLearning`, `fetchProjectLearningDetail`, `proposeProjectLearning`
+and `applyProjectLearningIntent`. Every options object carries `requestScope`
+and `projectId`; the latter is a currentness precondition. The response parser
+keeps stage gaps distinct and requires exact receipt references.
+
+`@kontourai/station-sdk/learning-review-query` exposes the corresponding
+Project index, detail, proposal and intent hooks. Query identity includes host
+base, authority key, immutable Project, slug, learning id and comparison id.
+Changed authority or a reused slug cannot display or mutate an older Project's
+cached learning. Classified parent/evidence/source read refusal clears protected
+scope queries, closes an open inspector or copied proposal, and requires a fresh
+authoritative read before reopening. An initial unsupported-host read preserves
+its update guidance. Mutations route to the Knowledge Kit owner and retain its
+revision conflict/unsupported/unavailable result. A transport success does not
+establish activation or an observed effect.
+
+See [bounded agent work](../guides/agent-efficiency.md) for the mounted operator
+flow and the separate setup, provider and release boundaries.

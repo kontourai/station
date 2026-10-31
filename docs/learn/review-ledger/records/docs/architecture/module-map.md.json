@@ -1476,7 +1476,31 @@
 
     "src-server/services/automation/automation-intake.ts",
 
-    "src-server/services/automation/github-workflow-run.ts"
+    "src-server/services/automation/github-workflow-run.ts",
+
+    "packages/contracts/src/isolated-repair.ts",
+
+    "packages/contracts/src/qualification-repair-policy.mjs",
+
+    "src-server/services/automation/repair-controller.ts",
+
+    "src-server/services/automation/repair-source.ts",
+
+    "src-server/services/automation/repair-store.ts",
+
+    "src-server/services/automation/repair-worker.mjs",
+
+    "src-server/services/automation/repair-credentials.mjs",
+
+    "src-server/services/automation/repair-publisher.ts",
+
+    "src-server/routes/operations/repairs.ts",
+
+    "src-server/services/automation/__tests__/repair-controller.test.ts",
+
+    "src-server/services/automation/__tests__/repair-worker.test.ts",
+
+    "src-server/services/automation/__tests__/repair-publisher.test.ts"
   ],
 
   "checks": [
