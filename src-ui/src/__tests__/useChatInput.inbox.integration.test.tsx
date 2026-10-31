@@ -4,6 +4,8 @@ import { SDKProvider } from '@kontourai/station-sdk';
 import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  act,
+  cleanup,
   fireEvent,
   render,
   screen,
@@ -24,6 +26,14 @@ import { ActiveChatsProvider } from '../contexts/ActiveChatsContext';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { PreviewProvider } from '../contexts/PreviewContext';
 import { useChatInput } from '../hooks/useChatInput';
+import { useOutboundQueueFlush } from '../hooks/useOutboundQueueFlush';
+import {
+  _resetOutboundQueueStorage,
+  _setOutboundQueueStorage,
+  outboundDispatch,
+} from '../lib/outboundQueue';
+
+const connection = vi.hoisted(() => ({ status: 'connected' }));
 
 vi.mock('../components/chat/FileAttachmentInput', () => ({
   FileAttachmentInput: () => null,
@@ -51,6 +61,7 @@ vi.mock('../contexts/ToastContext', () => ({
 }));
 
 vi.mock('@kontourai/station-connect', () => ({
+  useConnectionStatus: () => connection,
   useConnections: () => ({
     activeConnection: { id: 'test', name: 'Test' },
     captureCredentialEvidence: () => undefined,
@@ -114,6 +125,11 @@ vi.mock('../hooks/orchestration/useActiveChatTranscript', () => ({
 const apiBase = 'http://inbox.station';
 const sessionId = 'mounted-inbox';
 
+function Flush() {
+  useOutboundQueueFlush(apiBase);
+  return null;
+}
+
 function Composer() {
   const chat = useChatInput({
     apiBase,
@@ -129,7 +145,23 @@ function Composer() {
   return (
     <PreviewProvider>
       <ChatDockBody
-        activeSession={sessions[sessionId]}
+        activeSession={{
+          id: sessionId,
+          agentSlug: AGENT,
+          agentName: 'Claude',
+          title: 'Inbox',
+          messages: sessions[sessionId]?.messages ?? [],
+          input: sessions[sessionId]?.input ?? '',
+          attachments: sessions[sessionId]?.attachments ?? [],
+          queuedMessages: sessions[sessionId]?.queuedMessages ?? [],
+          status: sessions[sessionId]?.status ?? 'idle',
+          createdAt: 0,
+          hasUnread: false,
+          inputHistory: [],
+          requestedModel: sessions[sessionId]?.requestedModel ?? undefined,
+          source: 'manual',
+          updatedAt: 0,
+        }}
         activeOrchestrationSession={null}
         activeOrchestrationSessionRead="absent"
         onRetryOrchestrationSessions={() => {}}
@@ -151,9 +183,143 @@ function Composer() {
 describe('mounted composer inbox handoff (test-scoped caller)', () => {
   const station = createInboxHarness();
   afterEach(() => {
+    cleanup();
     activeChatsStore.removeChat(sessionId);
     setClientCredentialResolver(undefined);
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    _resetOutboundQueueStorage();
+  });
+
+  test('reconnect hands an offline busy send to the durable inbox', async () => {
+    vi.stubGlobal(
+      'Uint8Array',
+      Object.getPrototypeOf(Buffer.prototype).constructor,
+    );
+    let stored: unknown;
+    _setOutboundQueueStorage({
+      getItem: async () => stored,
+      setItem: async (_key, value) => {
+        stored = value;
+      },
+      updateItem: async (_key, updater) => {
+        stored = updater(stored);
+      },
+    });
+    const world = station();
+    await world.busy();
+    let online = false;
+    let submissions = 0;
+    vi.spyOn(navigator, 'onLine', 'get').mockImplementation(() => online);
+    connection.status = 'disconnected';
+    vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) => {
+      if (!online) return Promise.reject(new TypeError('network unavailable'));
+      const request = new Request(input, init);
+      if (
+        request.method === 'POST' &&
+        new URL(request.url).pathname === '/api/orchestration/chat'
+      )
+        submissions++;
+      return world.app.request(request);
+    });
+    activeChatsStore.initChat(sessionId, {
+      agentSlug: AGENT,
+      agentName: 'Claude',
+      title: 'Inbox',
+      conversationId: CONVERSATION,
+    });
+    activeChatsStore.updateChat(sessionId, {
+      status: 'sending',
+      orchestrationProvider: 'acp',
+      currentSessionId: 'fixture-execution',
+      openTurnId: 'fixture-turn',
+      messages: [],
+      input: 'offline follow-up',
+    });
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, enabled: false } },
+    });
+    const tree = () => (
+      <QueryClientProvider client={client}>
+        <SDKProvider value={{ apiBase, contexts: {}, hooks: {} }}>
+          <ActiveChatsProvider>
+            <Flush />
+            <Composer />
+          </ActiveChatsProvider>
+        </SDKProvider>
+      </QueryClientProvider>
+    );
+    const mounted = render(tree());
+    fireEvent.click(await screen.findByRole('button', { name: 'Send' }));
+    await waitFor(async () =>
+      expect(await outboundDispatch.snapshot()).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            content: 'offline follow-up',
+            status: 'invoking',
+          }),
+        ]),
+      ),
+    );
+    expect(world.inbox.list(CONVERSATION)).toHaveLength(0);
+    await waitFor(() =>
+      expect(activeChatsStore.getSnapshot()[sessionId]?.status).toBe('queued'),
+    );
+    act(() =>
+      activeChatsStore.updateChat(sessionId, {
+        status: 'sending',
+        conversationActivity: {
+          conversationId: CONVERSATION,
+          asOfSequence: 1,
+          openTurn: {
+            turnId: 'fixture-turn',
+            threadId: 'fixture-execution',
+            startedAt: '2026-10-15T00:00:00.000Z',
+            trigger: 'provider',
+          },
+        },
+      }),
+    );
+    online = true;
+    connection.status = 'connected';
+    mounted.rerender(tree());
+    fireEvent(window, new Event('online'));
+    await waitFor(async () =>
+      expect({
+        inbox: world.inbox.list(CONVERSATION),
+        outbox: await outboundDispatch.snapshot(),
+      }).toMatchObject({
+        inbox: [
+          expect.objectContaining({
+            message: 'offline follow-up',
+            state: 'queued',
+          }),
+        ],
+      }),
+    );
+    expect(submissions).toBe(1);
+    const response = await world.listInbox(READER);
+    expect((await response.json()).data.entries).toEqual([
+      expect.objectContaining({ message: 'offline follow-up' }),
+    ]);
+    await waitFor(async () =>
+      expect(await outboundDispatch.snapshot()).toEqual([]),
+    );
+    world.adapter.complete();
+    await waitFor(() =>
+      expect(
+        world.prompts().filter((text) => text === 'offline follow-up'),
+      ).toHaveLength(1),
+    );
+    await waitFor(() =>
+      expect(
+        world.inbox
+          .list(CONVERSATION)
+          .filter((entry) => entry.state === 'queued'),
+      ).toHaveLength(0),
+    );
+    mounted.unmount();
+    client.clear();
   });
 
   test('ordinary busy send queues through the dock when native steering is unavailable', async () => {

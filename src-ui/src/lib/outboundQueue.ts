@@ -190,6 +190,8 @@ export type OutboundSettlement =
  */
 export type OutboundDispatchTransportResult =
   | { kind: 'accepted'; providerTurnId: string }
+  /** Station durably accepted the key into its conversation inbox. */
+  | { kind: 'queued' }
   /** A temporary pre-provider gate. Releasing it must not consume an attempt. */
   | { kind: 'deferred'; reason?: string }
   | { kind: 'not-invoked'; reason?: string };
@@ -1992,6 +1994,33 @@ async function flush(
           if (accepted === 'unavailable' || accepted === 'stale') {
             unavailableClaims.add(claimed.clientTurnId);
             unavailable ||= accepted === 'unavailable';
+          }
+        } else if (result.kind === 'queued') {
+          try {
+            const outcome = await mutateState((state) => {
+              const index = state.turns.findIndex((entry) =>
+                exact(entry, claimed!),
+              );
+              if (index < 0)
+                return { state, result: 'stale' as const, changed: false };
+              return {
+                state: withRetired(
+                  {
+                    ...state,
+                    turns: state.turns.filter((_, i) => i !== index),
+                  },
+                  claimed!.clientTurnId,
+                  'accepted',
+                ),
+                result: 'applied' as const,
+                changed: true,
+              };
+            });
+            if (outcome !== 'applied')
+              unavailableClaims.add(claimed.clientTurnId);
+          } catch {
+            unavailableClaims.add(claimed.clientTurnId);
+            unavailable = true;
           }
         } else if (result.kind === 'deferred') {
           const released = await releaseDeferred(claimed);

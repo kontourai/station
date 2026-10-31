@@ -42,6 +42,7 @@ import {
   activeChatsStore,
   type ChatUIState,
 } from '../contexts/active-chats-store';
+import { conversationOpenPhase } from '../contexts/conversation-open-policy';
 import {
   type ObservedAgentCatalog,
   observedEngine,
@@ -559,7 +560,11 @@ export function useSendMessage(
       // #2309: "is a turn busy" is the server's open turn (on any device, in
       // any lineage child) or this composer's own unacknowledged send. A
       // server that sends no activity record keeps the legacy local status.
-      const turnBusy = isTurnInFlight(currentState);
+      const turnBusy =
+        isTurnInFlight(currentState) ||
+        (!!options?.dispatch &&
+          !!currentState &&
+          conversationOpenPhase(currentState) === 'busy');
 
       if (turnBusy && currentState) {
         if (/^\/[^\s:]+:[^\s]+/.test(content)) {
@@ -578,21 +583,15 @@ export function useSendMessage(
           });
           return false;
         }
-        if (options?.skipInMemoryQueueOnBusy) {
-          // A turn still running is a temporary gate, not a refusal: the
-          // message waits without spending one of its attempts, so a queue
-          // replayed during a long turn never wears out to failed.
-          return options?.dispatch
-            ? ({
-                kind: 'deferred',
-                reason: 'A turn is still running in this conversation.',
-              } satisfies OutboundDispatchTransportResult)
-            : undefined;
+        if (options?.skipInMemoryQueueOnBusy && !options.dispatch) {
+          // This caller forbids adding a duplicate legacy local queue entry.
+          return undefined;
         }
         // #2324 (D4): a turn the engine opened on its own is not a turn the
         // user is steering. Their message waits for it to finish, queued,
         // rather than being folded into a reply they did not ask for.
         const steeringCapable =
+          !options?.dispatch &&
           !options?.queueOnBusy &&
           !currentState.queueSendNowPending &&
           !currentState.queueDrainSettling &&
@@ -1156,7 +1155,9 @@ export function useSendMessage(
           });
           invalidate(['conversation-inbox']);
           options?.onAdmission?.('accepted');
-          return true;
+          return options?.dispatch
+            ? ({ kind: 'queued' } satisfies OutboundDispatchTransportResult)
+            : true;
         }
         const receipt = queueBusyFollowUp
           ? queuedResult!.receipt
