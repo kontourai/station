@@ -26,6 +26,8 @@ import {
   PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_PATH,
 } from '@kontourai/station-contracts';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
+import { acquireStationHomeRuntimeLease } from '@kontourai/station-shared/station-home-lifecycle';
+import { ensureStationHomeSchemaSync } from '@kontourai/station-shared/station-home-schema';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { openOutsideHostChannel } from '../../../packages/cli/src/commands/outside-host-channel.js';
@@ -39,6 +41,7 @@ import type { EventBus } from '../../services/orchestration/event-bus.js';
 import { openRelayEnrollmentJournal } from '../../services/relay/relay-enrollment-journal.js';
 import { ClientConnectionPresence } from '../../services/ssh/client-connection-presence.js';
 import { DevicePairingService } from '../../services/ssh/device-pairing-service.js';
+import { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
 import { HomeWriterOwner } from '../../services/ssh/home-writer-owner.js';
 import {
   devicePairingRequests,
@@ -53,7 +56,10 @@ import {
   INTERNAL_PROXY_PEER_HEADER,
 } from '../../utils/internal-api-token.js';
 import type { Logger } from '../../utils/logger.js';
-import { configureRuntimeHttp } from '../bootstrap/runtime-http.js';
+import {
+  configureRuntimeHttp,
+  deviceSessionCookieName,
+} from '../bootstrap/runtime-http.js';
 import {
   configureDevicePairingHostRoutes,
   configureDevicePairingPublicRoutes,
@@ -5231,5 +5237,180 @@ test('outside host CLI channels reuse live keyring credentials without growing d
       '127.0.0.219',
     );
     expect(desktop.status).toBe(200);
+  }
+});
+
+test('authenticates a crowded cookie jar with bounded fresh home admissions', async () => {
+  const homeDir = mkdtempSync(join(tmpdir(), 'station-cookie-cost-'));
+  let runtimeLease:
+    | ReturnType<typeof acquireStationHomeRuntimeLease>
+    | undefined;
+  try {
+    ensureStationHomeSchemaSync(homeDir);
+    runtimeLease = acquireStationHomeRuntimeLease(homeDir);
+    const security = new EnvironmentSecurityService({
+      homeDir,
+      hostIdentity: 'cookie-cost-host',
+    });
+    const record = await security.initialize();
+    const pairing = security.devicePairing;
+    const pair = (deviceName: string) => {
+      const offer = pairing.createOffer({
+        endpoint: 'https://station.example.test',
+      });
+      const request = pairing.requestPairing({
+        requesterPosition: 'off-box',
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        deviceName,
+      });
+      pairing.confirmRequest(request.requestId, {
+        kind: 'presented-credential',
+      });
+      return pairing.exchange({
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        requestId: request.requestId,
+      });
+    };
+    const first = pair('First device');
+    const second = pair('Second device');
+    const logger: Logger = {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+      trace: vi.fn(),
+      fatal: vi.fn(),
+      child: vi.fn().mockReturnThis(),
+      setLevel: vi.fn(),
+      getLevel: vi.fn(() => 'info' as const),
+    };
+    const app = new Hono<{ Bindings: TestBindings }>();
+    configureRuntimeHttp({
+      app: app as never,
+      logger,
+      eventBus: { emit: vi.fn() } as unknown as EventBus,
+      security: {
+        verifyCredential: (credential, request) =>
+          request
+            ? security.authorizeCredential(credential, request)
+            : security.verifyCredential(credential),
+        recognizeCredential: (credential) =>
+          security.verifyCredential(credential),
+        resolveGrantedScope: (credential) =>
+          security.resolveGrantedScope(credential),
+        withCurrentCredentialResolution: (select) =>
+          pairing.withCurrentRegistry(select),
+        resolveCredentialAuthority: (credential) =>
+          security.verifyOperatorCredential(credential)
+            ? 'operator-credential'
+            : pairing.identifyDevice(credential)
+              ? 'device-credential'
+              : undefined,
+        resolveCredentialDeviceId: (credential) =>
+          security.identifyDevice(credential)?.id,
+        allowedOrigins: ['https://station.example.test'],
+        maxFailures: 100,
+      },
+    });
+    app.get('/api/projects', (c) =>
+      c.json({
+        deviceId: getRuntimeAuthenticatedRequestPrincipal(c.req.raw)?.deviceId,
+      }),
+    );
+    const request = (cookie: string) =>
+      app.request('/api/projects', { headers: { Cookie: cookie } }, {
+        incoming: { socket: { remoteAddress: REMOTE_PEER } },
+      } as TestBindings);
+    const name = deviceSessionCookieName(false, record.environmentId);
+    const cookie = (credential: string) => `${name}=${credential}`;
+    const foreign = Array.from(
+      { length: 27 },
+      (_, i) =>
+        `station-device-${(i + 1).toString(16).padStart(16, '0')}=${'A'.repeat(42)}${String.fromCharCode(65 + (i % 26))}`,
+    );
+    const originalRun = HomeWriterOwner.prototype.runSynchronous;
+    let depth = 0;
+    let admissions = 0;
+    const spy = vi
+      .spyOn(HomeWriterOwner.prototype, 'runSynchronous')
+      .mockImplementation(function <T>(
+        this: HomeWriterOwner,
+        body: () => T,
+      ): T {
+        if (depth === 0) admissions += 1;
+        depth += 1;
+        try {
+          return originalRun.call(this, body) as T;
+        } finally {
+          depth -= 1;
+        }
+      });
+    const baseline = await request(cookie(first.credential));
+    expect(baseline.status).toBe(200);
+    expect(await baseline.json()).toEqual({ deviceId: first.device.id });
+    const baselineAdmissions = admissions;
+    admissions = 0;
+    const crowded = await request(
+      [...foreign, cookie(first.credential)].join('; '),
+    );
+    expect(crowded.status).toBe(200);
+    expect(await crowded.json()).toEqual({ deviceId: first.device.id });
+    const crowdedAdmissions = admissions;
+    spy.mockRestore();
+    const otherName = 'station-device-ffffffffffffffff';
+    expect(
+      (
+        await request(
+          `${cookie(first.credential)}; ${otherName}=${second.credential}`,
+        )
+      ).status,
+    ).toBe(401);
+    expect(
+      (
+        await request(
+          `${cookie(first.credential)}; ${cookie(first.credential)}`,
+        )
+      ).status,
+    ).toBe(401);
+    expect(
+      (await request(`${cookie(first.credential)}; ${otherName}=malformed`))
+        .status,
+    ).toBe(401);
+    const independentSecurity = new EnvironmentSecurityService({
+      homeDir,
+      hostIdentity: 'cookie-cost-host',
+    });
+    await independentSecurity.initialize();
+    independentSecurity.devicePairing.revokeDevice(
+      first.device.id,
+      'operator-credential',
+    );
+    expect(
+      (await request([...foreign, cookie(first.credential)].join('; '))).status,
+    ).toBe(401);
+    const stillCurrent = await request(
+      [...foreign, `${otherName}=${second.credential}`].join('; '),
+    );
+    expect(stillCurrent.status).toBe(200);
+    expect(await stillCurrent.json()).toEqual({ deviceId: second.device.id });
+    const mixedAfterRevocation = await request(
+      [
+        ...foreign,
+        cookie(first.credential),
+        `${otherName}=${second.credential}`,
+      ].join('; '),
+    );
+    expect(mixedAfterRevocation.status).toBe(200);
+    expect(await mixedAfterRevocation.json()).toEqual({
+      deviceId: second.device.id,
+    });
+    // Independent canonical admissions must not scale with foreign cookie count.
+    expect(crowdedAdmissions).toBeLessThanOrEqual(baselineAdmissions + 2);
+  } finally {
+    vi.restoreAllMocks();
+    runtimeLease?.release();
+    rmSync(homeDir, { recursive: true, force: true });
   }
 });

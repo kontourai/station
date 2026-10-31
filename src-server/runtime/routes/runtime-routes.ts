@@ -1730,6 +1730,10 @@ export function configureRuntimeRoutes(
       context.environmentSecurityService.verifyCredential(credential),
     resolveGrantedScope: (credential: string) =>
       context.environmentSecurityService.resolveGrantedScope(credential),
+    withCurrentCredentialResolution: <T>(select: () => T): T =>
+      context.environmentSecurityService.devicePairing.withCurrentRegistry(
+        select,
+      ),
     resolveCredentialAuthority: (credential: string) =>
       context.environmentSecurityService.verifyOperatorCredential(credential)
         ? 'operator-credential'

@@ -389,6 +389,8 @@ export interface RuntimeHttpSecurityOptions {
   resolveCredentialAuthority?: (
     credential: string,
   ) => RuntimeCredentialAuthority | undefined;
+  /** Runs one synchronous credential selection against a fresh home snapshot. */
+  withCurrentCredentialResolution?: <T>(select: () => T) => T;
   /** Server-side paired-device lookup used only for durable provenance. */
   resolveCredentialDeviceId?: (credential: string) => string | undefined;
   /** Alias credentials require their exact account continuation on every request. */
