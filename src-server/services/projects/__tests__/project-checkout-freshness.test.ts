@@ -105,6 +105,19 @@ describe('project checkout freshness', () => {
     land(3);
     git(checkout, ['fetch', '-q']);
     const fetchedAt = statSync(join(checkout, '.git', 'FETCH_HEAD')).mtime;
+    const reflog = join(
+      checkout,
+      '.git',
+      'logs',
+      'refs',
+      'remotes',
+      'origin',
+      'main',
+    );
+    // Git may update the reflog after FETCH_HEAD. The newest record wins.
+    const later = new Date(fetchedAt.getTime() + 1000);
+    utimesSync(reflog, later, later);
+    const newestRecord = statSync(reflog).mtime;
     const result = await createProjectCheckoutFreshnessReader().read(
       checkout,
       THRESHOLDS,
@@ -114,7 +127,7 @@ describe('project checkout freshness', () => {
       staleBecause: ['commits'],
       behind: 3,
       ahead: 0,
-      upstreamFetchedAt: fetchedAt.toISOString(),
+      upstreamFetchedAt: newestRecord.toISOString(),
     });
   });
 
