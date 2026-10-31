@@ -10846,6 +10846,44 @@ export class OrchestrationService {
               : undefined;
           const answer = () => {
             assertAnswerCurrent();
+            if (
+              context?.personAnswer === true &&
+              (decision === 'accept' || decision === 'acceptForSession') &&
+              currentQuestionRequest?.state === 'found'
+            ) {
+              const opened = currentQuestionRequest.event.payload as {
+                requestType?: unknown;
+                payload?: { toolName?: unknown };
+              };
+              if (
+                opened.requestType === 'approval' &&
+                !recordPersonApprovedExternalTool(
+                  command.threadId,
+                  opened.payload?.toolName,
+                  {
+                    requestId: command.requestId,
+                    requestEventId: currentQuestionRequest.event.id,
+                    assertCurrent: assertAnswerCurrent,
+                    isClosed: (reference) => {
+                      const observed =
+                        this.options.eventStore?.readCurrentRequestEvent(
+                          reference.conversationId,
+                          reference.requestId,
+                        );
+                      return (
+                        observed?.state === 'found' &&
+                        (observed.event.id !== reference.requestEventId ||
+                          observed.event.payload.method === 'request.resolved')
+                      );
+                    },
+                  },
+                )
+              )
+                throw new RequestEventGuardError(
+                  'request_event_changed',
+                  'This approval handoff is unavailable. Inspect the current request before answering.',
+                );
+            }
             return requestContext
               ? adapter.respondToRequest(
                   command.threadId,
@@ -10859,23 +10897,6 @@ export class OrchestrationService {
                   decision,
                 );
           };
-          // #3483: recorded before the engine hears the answer, so its next
-          // call through a Station seam finds the approval.
-          if (
-            context?.personAnswer === true &&
-            (decision === 'accept' || decision === 'acceptForSession') &&
-            currentQuestionRequest?.state === 'found'
-          ) {
-            const opened = currentQuestionRequest.event.payload as {
-              requestType?: unknown;
-              payload?: { toolName?: unknown };
-            };
-            if (opened.requestType === 'approval')
-              recordPersonApprovedExternalTool(
-                command.threadId,
-                opened.payload?.toolName,
-              );
-          }
           if (
             command.expectedSkillExperience &&
             (decision === 'accept' || decision === 'acceptForSession')

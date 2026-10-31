@@ -32,6 +32,13 @@ const APPROVAL_TTL_MS = 10 * 60_000;
 const APPROVAL_LIMIT = 1_000;
 
 const approvals = new Map<string, number[]>();
+interface ApprovedRequest {
+  readonly conversationId: string;
+  readonly requestId: string;
+  readonly requestEventId: string;
+}
+// A consumed or expired token cannot make an unresolved handoff approvable again.
+const approvedRequests = new Map<string, ApprovedRequest>();
 const approvalKey = (conversationId: string, serverId: string, tool: string) =>
   JSON.stringify([conversationId, serverId, tool]);
 
@@ -72,11 +79,43 @@ export function recordPersonApprovedCall(
 export function recordPersonApprovedExternalTool(
   conversationId: string,
   externalToolName: unknown,
-): void {
-  if (typeof externalToolName !== 'string') return;
+  request?: {
+    requestId: string;
+    requestEventId: string;
+    isClosed(reference: ApprovedRequest): boolean;
+    assertCurrent(): void;
+  },
+): boolean {
+  if (typeof externalToolName !== 'string') return true;
   const parsed = parseExternalMcpToolName(externalToolName);
-  if (parsed)
-    recordPersonApprovedCall(conversationId, parsed.serverId, parsed.toolName);
+  if (!parsed) return true;
+  if (request) {
+    for (const [key, reference] of approvedRequests) {
+      try {
+        if (request.isClosed(reference)) approvedRequests.delete(key);
+      } catch {
+        // An unavailable request lookup cannot retire an uncertain handoff.
+      }
+    }
+    const key = JSON.stringify([
+      conversationId,
+      request.requestId,
+      request.requestEventId,
+    ]);
+    if (approvedRequests.has(key) || approvedRequests.size >= APPROVAL_LIMIT)
+      return false;
+    request.assertCurrent();
+    approvedRequests.set(
+      key,
+      Object.freeze({
+        conversationId,
+        requestId: request.requestId,
+        requestEventId: request.requestEventId,
+      }),
+    );
+  }
+  recordPersonApprovedCall(conversationId, parsed.serverId, parsed.toolName);
+  return true;
 }
 
 function consumeApproval(key: string, now: number): boolean {
@@ -91,6 +130,7 @@ function consumeApproval(key: string, now: number): boolean {
 /** For tests: forget every recorded approval. */
 export function resetPersonApprovedCalls(): void {
   approvals.clear();
+  approvedRequests.clear();
 }
 
 /**
