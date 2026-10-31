@@ -1751,7 +1751,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      "P1-G5 packaged proof for managed, connected Claude/Codex, ACP, conversation, agent, and project switching. kontourai/station#793 adds desktop-anchored-popover and mobile-edge-sheet coverage for the chat-dock project switcher (ChatDockProjectSwitcherSheet), reusing this spec's Alpha/Beta project fixtures.",
+      'P1-G5 packaged proof for managed, connected Claude/Codex, ACP, conversation, agent, and project switching. The October 30 header decision is covered through the desktop start-composer Project chooser and active-chat binding preservation. At 320/390/412px, the empty-dock Projects sheet retains workspace navigation and hold hints, while active chats retain Inbox/New/Chat actions and choose future Projects only in the start composer. These reuse the Alpha/Beta fixtures.',
     exceptions: [],
   },
   {
