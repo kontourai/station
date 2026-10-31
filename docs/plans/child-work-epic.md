@@ -3055,3 +3055,16 @@ pass. These controls have no launched attempts: live interruption, signed intent
 writers and confirmation with actual member work remain open, as do five other
 controller constructions and all-writer/funded qualification. Independent review,
 updated cleanup mutation and readiness remain pending; flags remain disabled.
+
+The updated cleanup-join mutation fails exactly the physical-fault row: shutdown
+remains pending on retry without the parent joining retired child cleanup. The
+other two cases pass. Byte-exact restoration passes all three keeper cases.
+Independent bounded review is READY for the outside authority-cancellation scope,
+historical-read scopes and fresh-runtime empty-work finalize/replay. It finds no
+public whole-cancellation definitive-refusal/retry promise from scope-local busy
+errors: report routes retain generic 503 and SDK mutation retries remain disabled.
+Busy/abort-after-begin transport behavior was source-traced, not newly executed.
+Readiness remains FAIL on documentation-truth, with other selected checks passing.
+Active interruption/intent/ACK publication, launched-attempt confirmation, the five
+other controller constructions, authentic continuation borrowing, funded journeys
+and final combined qualification remain open. No capability or PR was enabled.
