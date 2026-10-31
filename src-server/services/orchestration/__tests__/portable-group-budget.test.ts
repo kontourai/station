@@ -1,28 +1,28 @@
 import assert from 'node:assert/strict';
-import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { FileAuthorizationLedger } from '@kontourai/dispatch';
+import { Hono } from 'hono';
 import { test, vi } from 'vitest';
+import {
+  createDelegationGroup,
+  DelegationGroupBudgetInsufficientError,
+} from '../../../../packages/sdk/src/client/delegation-groups.js';
 import { createGateTestRegistry } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { StationAgentAdapter } from '../../../providers/adapters/station-agent-adapter.js';
-import { captureEnvironmentLocalGrantObservationOwner } from '../../../runtime/conversation/local-grant-observation-owner.js';
+import { createDelegationGroupRoutes } from '../../../routes/orchestration/delegation-groups.js';
+import {
+  bindRuntimeLocalOperator,
+  getRuntimeAuthenticatedRequestPrincipal,
+  setRuntimeAuthenticatedRequestPrincipal,
+} from '../../../security/runtime-request-security.js';
 import { ApprovalRegistry } from '../../approvals/approval-registry.js';
-import { StationDelegationPersistence } from '../delegation-group-persistence.js';
-import { FileFinalWireIntentStore } from '../delegation-group-wire-intent-store.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
-import { PortableGroupAdmissionStore } from '../portable-group-admission-store.js';
-import { PortableGroupExecution } from '../portable-group-execution.js';
-import {
-  PortableGroupBudgetInsufficient,
-  PortableGroupPreparation,
-} from '../portable-group-preparation.js';
+import { DelegationGroupRuntime } from '../portable-group-runtime.js';
 import { createSessionAgentResolver } from '../session-agent-resolution.js';
 import {
   installControl,
   NOW,
-  requestFor,
   setup,
 } from './delegation-source-fixtures/report.js';
 
@@ -32,12 +32,6 @@ test('underfunded three-seat admission refuses before Task or provider effects; 
   const started = wallNow();
   vi.mocked(Date.now).mockImplementation(() => NOW + wallNow() - started);
   installControl(h);
-  const root = join(h.f.root, 'portable');
-  const admissionsRoot = join(root, 'admissions');
-  const dispatchRoot = join(root, 'dispatch');
-  mkdirSync(root, { mode: 0o700 });
-  mkdirSync(admissionsRoot, { mode: 0o700 });
-  mkdirSync(dispatchRoot, { mode: 0o700 });
   const bus = new EventBus();
   const eventStore = new EventStore(
     join(h.f.root, 'portable-execution.sqlite'),
@@ -64,29 +58,51 @@ test('underfunded three-seat admission refuses before Task or provider effects; 
       resolveSkillDir: async () => null,
     }),
   });
-  const preparation = new PortableGroupPreparation(h.preparationOwners);
-  const persistence = new StationDelegationPersistence(root);
-  const owners: ConstructorParameters<typeof PortableGroupExecution>[0] = {
-    preparation,
-    admissions: new PortableGroupAdmissionStore(admissionsRoot),
-    persistence,
-    dispatchLedger: new FileAuthorizationLedger({ root: dispatchRoot }),
-    wireIntents: new FileFinalWireIntentStore(root),
+  const runtime = new DelegationGroupRuntime({
+    runtime: h.preparationOwners.runtime,
     orchestration,
-    authorize: async (context) => {
-      const authority = await captureEnvironmentLocalGrantObservationOwner(
-        context.req.raw,
-        h.f.environment,
-        h.f.environment,
-      );
-      const lease = authority.requireCurrentLocalGrant(context.req.raw);
-      return () => {
-        lease.assertCurrent();
-        return undefined;
-      };
+    rawFetch: h.rawFetch,
+  });
+  const stamped = getRuntimeAuthenticatedRequestPrincipal(h.f.req);
+  assert.ok(stamped && stamped.kind !== 'internal');
+  const app = new Hono();
+  app.use('*', async (context, next) => {
+    setRuntimeAuthenticatedRequestPrincipal(context.req.raw, {
+      ...stamped,
+      credential:
+        context.req.header('Authorization')?.replace(/^Bearer /, '') ?? '',
+    });
+    if (context.req.header('X-Test-Operator') === 'yes')
+      bindRuntimeLocalOperator(context.req.raw);
+    await next();
+  });
+  app.route('/api/orchestration/groups', createDelegationGroupRoutes(runtime));
+  const controlFetch = globalThis.fetch;
+  const responses: { status: number; body: unknown }[] = [];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn<typeof fetch>(async (source, init) => {
+      const request = new Request(source, init);
+      if (
+        !new URL(request.url).pathname.startsWith('/api/orchestration/groups')
+      )
+        return controlFetch(source, init);
+      const response = await app.fetch(request);
+      if (response.status === 409)
+        responses.push({
+          status: response.status,
+          body: await response.clone().json(),
+        });
+      return response;
+    }),
+  );
+  const base = 'http://report-control.test';
+  const options = {
+    headers: {
+      Authorization: `Bearer ${h.f.paired.credential}`,
+      'X-Test-Operator': 'yes',
     },
   };
-  const owner = new PortableGroupExecution(owners);
   const starts = vi.spyOn(orchestration, 'startSessionInternal');
   const input = {
     ...h.input,
@@ -102,20 +118,32 @@ test('underfunded three-seat admission refuses before Task or provider effects; 
   };
   try {
     await assert.rejects(
-      () => owner.create(h.f.context(), input),
+      () => createDelegationGroup(base, input, options),
       (error: unknown) =>
-        error instanceof PortableGroupBudgetInsufficient &&
+        error instanceof DelegationGroupBudgetInsufficientError &&
+        error.status === 409 &&
         error.code === 'group_budget_insufficient' &&
-        error.phase === 'refused',
+        error.failurePhase === 'refused',
     );
+    assert.deepEqual(responses, [
+      {
+        status: 409,
+        body: {
+          success: false,
+          code: 'group_budget_insufficient',
+          failurePhase: 'refused',
+        },
+      },
+    ]);
     assert.equal(starts.mock.calls.length, 0);
     assert.equal(h.rawFetch.mock.calls.length, 0);
     assert.equal(relay.mock.calls.length, 0);
-    const funded = await owner.create(h.f.context(requestFor(h, 'POST')), {
-      ...h.input,
-      operationId: 'funded-two',
-    });
-    assert.equal(funded.projection.spec.seats.length, 2);
+    const funded = await createDelegationGroup(
+      base,
+      { ...h.input, operationId: 'funded-two' },
+      options,
+    );
+    assert.equal(funded.group.members.length, 2);
     assert.equal(starts.mock.calls.length, 0);
     assert.equal(h.rawFetch.mock.calls.length, 0);
   } finally {
