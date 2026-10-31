@@ -3,8 +3,14 @@
 import { SDKProvider } from '@kontourai/station-sdk';
 import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { type ReactNode, useRef } from 'react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
+import { type ReactNode, useSyncExternalStore } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   AGENT,
@@ -12,10 +18,11 @@ import {
   createInboxHarness,
   READER,
 } from '../../../src-server/routes/orchestration/__tests__/helpers/thread-inbox-harness';
-import { ChatInputArea } from '../components/chat/ChatInputArea';
 import { ConversationInboxMessages } from '../components/chat/ConversationInboxMessages';
+import { ChatDockBody } from '../components/chat-dock/ChatDockBody';
 import { ActiveChatsProvider } from '../contexts/ActiveChatsContext';
 import { activeChatsStore } from '../contexts/active-chats-store';
+import { PreviewProvider } from '../contexts/PreviewContext';
 import { useChatInput } from '../hooks/useChatInput';
 
 vi.mock('../components/chat/FileAttachmentInput', () => ({
@@ -43,6 +50,67 @@ vi.mock('../contexts/ToastContext', () => ({
   useToast: () => ({ showToast: vi.fn() }),
 }));
 
+vi.mock('@kontourai/station-connect', () => ({
+  useConnections: () => ({
+    activeConnection: { id: 'test', name: 'Test' },
+    captureCredentialEvidence: () => undefined,
+  }),
+}));
+vi.mock('../contexts/AgentsContext', () => ({
+  useAgents: () => [{ slug: AGENT, name: 'Claude' }],
+  useAgentsLoaded: () => true,
+  useAgent: () => ({ slug: AGENT, name: 'Claude' }),
+}));
+vi.mock('../contexts/NavigationContext', () => {
+  const navigation = () => ({ navigate: vi.fn() });
+  return {
+    useNavigation: (
+      selector?: (state: ReturnType<typeof navigation>) => unknown,
+    ) => (selector ? selector(navigation()) : navigation()),
+    useNavigationActions: navigation,
+  };
+});
+vi.mock('../contexts/AuthContext', () => ({
+  useAuth: () => ({ user: { alias: 'operator' } }),
+}));
+vi.mock('../contexts/MessageContextContext', () => ({
+  useMessageContextContext: () => ({ getComposedContext: () => '' }),
+}));
+vi.mock('../hooks/useACPConnections', () => ({
+  useACPConnections: () => ({ data: [] }),
+}));
+vi.mock('../hooks/useShareReceiver', () => ({ useShareReceiver: () => {} }));
+vi.mock('../hooks/useSTT', () => ({
+  useSTT: () => ({
+    supported: false,
+    state: 'idle',
+    transcript: '',
+    startListening: vi.fn(),
+    stopListening: vi.fn(),
+  }),
+}));
+vi.mock('../hooks/useTTS', () => ({
+  useTTS: () => ({
+    supported: false,
+    speaking: false,
+    speak: vi.fn(),
+    cancel: vi.fn(),
+  }),
+}));
+vi.mock('../hooks/orchestration/useActiveChatTranscript', () => ({
+  useActiveChatTranscript: () => ({
+    enabled: false,
+    messages: [],
+    events: [],
+    hasMore: false,
+    loading: false,
+    settled: true,
+    upgradeRequired: false,
+    loadOlder: vi.fn(),
+    reload: vi.fn(),
+  }),
+}));
+
 const apiBase = 'http://inbox.station';
 const sessionId = 'mounted-inbox';
 
@@ -54,46 +122,29 @@ function Composer() {
     conversationId: CONVERSATION,
     availableModels: [],
   });
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const noop = () => {};
+  const sessions = useSyncExternalStore(
+    activeChatsStore.subscribe,
+    activeChatsStore.getSnapshot,
+  );
   return (
-    <ChatInputArea
-      input={chat.input}
-      attachments={[]}
-      textareaRef={textareaRef}
-      disabled={false}
-      turnInFlight
-      busyFollowUp="queue"
-      onQueueFollowUp={() =>
-        chat.handleSend(undefined, undefined, { queueOnBusy: true })
-      }
-      modelSupportsAttachments
-      fontSize={14}
-      dockHeight={600}
-      canModelSelect={false}
-      availableModels={[]}
-      modelQuery={null}
-      commandQuery={null}
-      slashCommands={[]}
-      onInputChange={noop}
-      onSend={async () => {}}
-      onCancel={noop}
-      onClearInput={noop}
-      onRemoveAttachment={noop}
-      onClearAttachments={noop}
-      onModelSelect={noop}
-      onModelReset={noop}
-      onModelClose={noop}
-      onModelOpen={noop}
-      onModelRuntimeOptionChange={noop}
-      onApprovalModeChange={noop}
-      onCommandSelect={async () => {}}
-      onCommandClose={noop}
-      onHistoryUp={noop}
-      onHistoryDown={noop}
-      updateFromInput={noop}
-      closeAll={noop}
-    />
+    <PreviewProvider>
+      <ChatDockBody
+        activeSession={sessions[sessionId]}
+        activeOrchestrationSession={null}
+        activeOrchestrationSessionRead="absent"
+        onRetryOrchestrationSessions={() => {}}
+        chatFontSize={14}
+        dockHeight={400}
+        showStatsPanel={false}
+        showReasoning={false}
+        showToolDetails={false}
+        modelSupportsAttachments={false}
+        fileAttachmentsSupported={false}
+        availableModels={[]}
+        chatInput={chat}
+        setShowStatsPanel={() => {}}
+      />
+    </PreviewProvider>
   );
 }
 
@@ -124,6 +175,7 @@ describe('mounted composer inbox handoff (test-scoped caller)', () => {
     });
     activeChatsStore.updateChat(sessionId, {
       status: 'sending',
+      messages: [],
       input: 'then summarize',
     });
     const client = new QueryClient({
@@ -137,7 +189,12 @@ describe('mounted composer inbox handoff (test-scoped caller)', () => {
       </QueryClientProvider>
     );
     const mounted = render(<Composer />, { wrapper });
-    fireEvent.keyDown(screen.getByRole('textbox'), {
+    const textbox = await screen.findByRole('textbox');
+    fireEvent.click(screen.getByRole('button', { name: /Send mode:/ }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Queue for next turn' }),
+    );
+    fireEvent.keyDown(textbox, {
       key: 'Enter',
       ctrlKey: true,
     });
@@ -153,6 +210,9 @@ describe('mounted composer inbox handoff (test-scoped caller)', () => {
         ]),
       );
     });
+    fireEvent.change(textbox, { target: { value: 'then explain' } });
+    fireEvent.keyDown(textbox, { key: 'Enter', ctrlKey: true });
+    await waitFor(() => expect(world.inbox.list(CONVERSATION)).toHaveLength(2));
     // READER is the existing fixture's scoped caller switch, not authentication coverage.
     const response = await world.listInbox(READER);
     expect(response.status).toBe(200);
@@ -179,10 +239,13 @@ describe('mounted composer inbox handoff (test-scoped caller)', () => {
       origin: apiBase,
       requestAuthority: scope,
     }));
-    const readerClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    });
-    const reader = () => (
+    const makeClient = () =>
+      new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+    const firstClient = makeClient();
+    const secondClient = makeClient();
+    const reader = (readerClient: QueryClient) => (
       <QueryClientProvider client={readerClient}>
         <ActiveChatsProvider>
           <ConversationInboxMessages
@@ -193,19 +256,46 @@ describe('mounted composer inbox handoff (test-scoped caller)', () => {
         </ActiveChatsProvider>
       </QueryClientProvider>
     );
-    const view = render(reader());
-    await screen.findByText('1 pending');
-    view.unmount();
-    readerClient.clear();
-    const reloaded = render(reader());
-    await screen.findByText('1 pending');
-    world.adapter.complete();
-    await waitFor(() =>
-      expect(world.inbox.list(CONVERSATION)[0]?.state).toBe('sent'),
+    const first = render(reader(firstClient));
+    const second = render(reader(secondClient));
+    await within(first.container).findByText('2 pending');
+    await within(second.container).findByText('2 pending');
+    fireEvent.click(
+      within(first.container).getByRole('button', {
+        name: '2 pending messages',
+      }),
     );
-    await readerClient.refetchQueries({ queryKey: ['conversation-inbox'] });
-    await waitFor(() => expect(screen.queryByText('1 pending')).toBeNull());
+    fireEvent.click(
+      within(first.container).getByRole('button', {
+        name: 'Remove held message: then summarize',
+      }),
+    );
+    await within(first.container).findByText('1 pending');
+    await secondClient.refetchQueries({ queryKey: ['conversation-inbox'] });
+    await within(second.container).findByText('1 pending');
+    first.unmount();
+    firstClient.clear();
+    const reloadedClient = makeClient();
+    const reloaded = render(reader(reloadedClient));
+    await within(reloaded.container).findByText('1 pending');
+    world.adapter.complete();
+    await waitFor(() => expect(world.prompts()).toContain('then explain'));
+    expect(world.prompts()).not.toContain('then summarize');
+    await Promise.all(
+      [secondClient, reloadedClient].map((c) =>
+        c.refetchQueries({ queryKey: ['conversation-inbox'] }),
+      ),
+    );
+    await waitFor(() => {
+      expect(within(second.container).queryByText('1 pending')).toBeNull();
+      expect(within(reloaded.container).queryByText('1 pending')).toBeNull();
+    });
+    expect(
+      world.prompts().filter((text) => text === 'then explain'),
+    ).toHaveLength(1);
+    second.unmount();
     reloaded.unmount();
-    readerClient.clear();
+    secondClient.clear();
+    reloadedClient.clear();
   });
 });
