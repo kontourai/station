@@ -404,6 +404,8 @@ export interface DevicePairingAttentionItem extends AttentionItemBase {
    * before approving. Optional because an older Station does not send it.
    */
   requestedScope?: string;
+  /** Review must continue in pairing management when account binding is required. */
+  requiresAccountBinding?: true;
   /**
    * Whether THE CALLER OF THIS READ could actually act on those approve/deny
    * routes — derived per response at the HTTP seam from the same two gates

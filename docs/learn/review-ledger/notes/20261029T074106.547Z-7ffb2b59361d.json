@@ -1,0 +1,15 @@
+{
+  "revision": "e1a44f90d3030ca63f68a58d8ba17da6b7ad16eb",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the DeploymentAuthentication operator-session and consent paragraphs against the account-consent route, current-session admission, and the focused composition test. Other module claims were not re-reviewed.","inputs":["docs/architecture/module-map.md","src-server/runtime/bootstrap/runtime-http.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/identity/operator-sessions.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Reviewed the account-bound Device ceremony against both confirmation routes, the account-session recheck and the composition test. The fixture does not establish a real provider or two-person journey.","inputs":["docs/guides/deployment-authentication.md","src-server/runtime/bootstrap/runtime-http.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"Reviewed enrollment prerequisites and the changed account-binding instructions against the session service, consent listener and pairing panel. Rendered and real-passkey qualification remains unverified.","inputs":["docs/guides/operator-passkeys.md","packages/connect/src/react/DevicePairingPanel.tsx","src-server/runtime/bootstrap/runtime-http.ts","src-server/runtime/consent/__tests__/operator-sessions.test.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/identity/operator-sessions.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the pairing confirmation and new account-consent API description against route validation, session admission and the consent response. Other API sections were not re-reviewed.","inputs":["docs/reference/api.md","packages/connect/src/react/DevicePairingPanel.tsx","src-server/runtime/bootstrap/runtime-http.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/identity/operator-sessions.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed the operator-session and per-action consent paragraphs against the exact account-consent admission and commit revalidation. This is a scoped source review, not a full threat-model audit.","inputs":["docs/security/remote-access-threat-model.md","src-server/runtime/bootstrap/runtime-http.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/identity/operator-sessions.ts"]}
+  ]
+}

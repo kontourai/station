@@ -1366,11 +1366,18 @@ export class AttentionProjectionService {
           return {
             id: `device-pairing:${request.requestId}`,
             kind: 'device-pairing' as const,
-            title: 'A device is asking to pair',
-            body: `${request.deviceName} is waiting for approval on this Station.`,
+            title: request.requireAccountBinding
+              ? 'A browser is asking for access'
+              : 'A device is asking to pair',
+            body: request.requireAccountBinding
+              ? 'A browser is waiting for approval on this Station.'
+              : `${request.deviceName} is waiting for approval on this Station.`,
             createdAt: timestamp,
             updatedAt: timestamp,
             deviceName: request.deviceName,
+            ...(request.requireAccountBinding
+              ? { requiresAccountBinding: true as const }
+              : {}),
             // Only a request the approver may trim: an ordinary device
             // request. A delegation or account-bound grant is approved as asked.
             ...(request.kind !== 'delegation' && !request.requireAccountBinding
