@@ -175,6 +175,9 @@ describe('mounted composer inbox handoff (test-scoped caller)', () => {
     });
     activeChatsStore.updateChat(sessionId, {
       status: 'sending',
+      orchestrationProvider: 'claude',
+      currentSessionId: 'fixture-execution',
+      openTurnId: 'fixture-turn',
       messages: [],
       input: 'then summarize',
     });
