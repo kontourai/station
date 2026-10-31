@@ -158,7 +158,9 @@ export function TranscriptTurnBrowser({
             </ol>
           )
         )}
-        {indexed && turns.length === 0 && <Empty variant="compact" />}
+        {indexed && turns.length === 0 && (
+          <Empty variant="compact" label="Turns will appear here" />
+        )}
         {directory.hasNextPage && (
           <Button
             variant="ghost"
