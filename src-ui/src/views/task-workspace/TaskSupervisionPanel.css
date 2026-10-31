@@ -1,0 +1,11 @@
+.task-supervision-panel {
+  display: grid;
+  gap: var(--k-space-3);
+}
+.task-supervision-panel input {
+  min-height: 44px;
+  max-width: 100%;
+}
+.task-supervision-panel :is(p, dd, li) {
+  overflow-wrap: anywhere;
+}

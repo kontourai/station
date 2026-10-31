@@ -103,6 +103,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [RuntimeResourcePostureController](#runtimeresourceposturecontroller) | Report host CPU diagnostics without influencing product work. | `src-server/services/infra/resource-posture.ts` |
 | [OutboundDispatchModule](#outbounddispatchmodule) | Queue and dispatch one offline message without replaying a possible provider effect. | `src-ui/src/lib/outboundQueue.ts` |
 | [SchedulerLedger and BuiltinScheduler](#schedulerledger-and-builtinscheduler) | Own scheduled-job state, occurrence receipts, and safe unattended execution. | `src-server/services/scheduling/scheduler-ledger.ts` |
+| [IsolatedRepairController](#isolatedrepaircontroller) | Bind a canonical Task to immutable source, an isolated execution, exact operator review and one draft-publication grant. | `src-server/services/automation/repair-controller.ts` |
 | [TaskDispatcher and TaskGraph](#taskdispatcher-and-taskgraph) | Dispatch a task while keeping graph state and orchestration detail local. | `src-server/services/projects/task-dispatcher.ts` |
 | [StationInstanceReconciler](#stationinstancereconciler) | Observe and converge one installed Station instance safely. | `packages/cli/src/commands/station-instance-reconciler.ts` |
 
@@ -114,7 +115,7 @@ and where to start reading; it is a pointer, not a reviewed interface contract.
 | Directory | What it owns | Read next |
 | --- | --- | --- |
 | `src-server/services/access/` | Station groups, personal access tokens, and the principal a paired device is tied to (#3557) | [Principals](../design/principals.md) |
-| `src-server/services/automation/` | Default-off observe-only GitHub intake, atomic delivery/episode storage and management-scoped delivery history; action dispatch remains pending (#3439) | [Automations proposal](../design/automations.md) |
+| `src-server/services/automation/` | Default-off GitHub intake, bounded native Tasks, isolated repair execution and separately granted draft publication (#3439) | [Automations proposal](../design/automations.md) |
 | `src-server/services/board/` | The Board store for one Task or Session (tabs and ordinal widgets; contract in `packages/contracts/src/board.ts`), behind `src-server/routes/board.ts`, which authorizes the owning reference before any store read | Source |
 | `src-server/services/chat-apps/` | Messaging bindings, identity links, kill switches and delivery receipts in the orchestration database; Discord imports its legacy authority once. Live Discord validation remains outstanding. | [Messaging core](../../src-server/services/chat-apps/chat-app-core.ts) |
 | `src-server/services/config/` | The idempotent log-level edit with retained terminal receipts | [Logging configuration](../reference/config.md#logging) |
@@ -3800,42 +3801,65 @@ absence of a journal.
 
 ## LearningReviewProjection
 
-**Status and purpose.** [The learning-review
-contract](../../packages/contracts/src/learning-review.ts) defines a read-only,
-owner-supplied lifecycle projection. It is retained contract work: no runtime producer
-or mounted view supplies the complete projection. The earlier
-`learningReviewViewModel()` and its unmounted UI were deleted. The working
-[source-observation path](#knowledgesourceobservation) returns a separate
-`LearningSourceObservation`; it does not populate missing lifecycle stages.
+[The learning-review contract](../../packages/contracts/src/learning-review.ts)
+keeps source, candidate, evaluation, decision, activation, effect and retirement
+separate. [LearningReviewService](../../src-server/services/learning-review/learning-review-service.ts)
+projects Knowledge Kit's public revisioned records. The
+[runtime adapter](../../src-server/runtime/learning-review-runtime.ts) resolves
+canonical standing Task records and rated responses, rechecks exact source
+versions and Project access, and supplies approved active revisions to both Task
+brief consumers. Station retains no parallel lifecycle index.
 
-**Declared semantics.** The seven stages are source, candidate, evaluation, decision,
-activation, effect and retirement. Available stages carry exact owner references;
-absent, restricted, unavailable, corrupt and unsupported-version states carry no stage
-value. Approval and activation are different facts. Activation needs its exact revision
-and contribution disclosures; retirement has a separate owner receipt. Empty effect
-observations mean not observed, never success. The historical view-model design required
-mixed or unresolved observations and retirement gaps to remain visible rather than
-converting them into a positive outcome. Those presentation rules are requirements for a
-future consumer, not calculations currently performed by Station.
+[Project routes](../../src-server/routes/projects/learning-review-routes.ts)
+derive authority from the operator request. Intent JSON cannot supply actor,
+scope or decision capability. The immutable Project header is a currentness
+precondition, never authority. Guarded release and SDK cache keys also bind the
+Project incarnation and host authority.
 
-The TypeScript unions describe identity and access-state boundaries. This file is not a
-runtime parser for arbitrary incoming data. A future owner adapter must validate those
-boundaries before presentation, including exact revision references and explicit
-activation/retirement/effect evidence. No Station learning ledger, text-similarity
-inference or mutation authority follows from these types.
+The [mounted panel](../../src-ui/src/views/learning-review/LearningReviewPanel.tsx)
+is an off-by-default personal POSIX preview in Sources. It retains explicit
+unsupported, restricted, unavailable, corrupt and not-captured states, and exact
+owner receipt references. Approval does not imply activation; activation
+registers guidance, rather than installing or deploying an asset. Empty effect
+observations do not become success. A source without an owner-captured timestamp
+stays not-captured. Retirement stops future context contribution while retaining
+history. The private file adapter's host trust boundary is not hostile-same-UID
+isolation.
 
-**Current integration limits.** The installed Flow Agents package has a CLI-generated
-workflow-learning projection, explicitly non-authoritative, but its stable
-`console-contract` export does not publish that shape. Its portable Kit observability
-contract admits a `learning` kind with owner-defined data. That is not the full Station
-lifecycle projection or a Knowledge Kit activation contract. Promotion, rejection,
-rollback and retirement UI remain unwired.
+The real owner/runtime integration test, route tests, SDK tests and component
+tests own distinct persistence, authority, transport and presentation checks.
+They do not establish live owner publication, provider consumption, causal
+improvement or human usability. See [bounded agent work](../guides/agent-efficiency.md).
 
-**Evidence.** `packages/contracts/src/__tests__/learning-review.test.ts` checks the
-schema/version and seven-stage constants plus typed restricted/unavailable examples. It
-does not test a runtime validator, live owner integration or lifecycle presentation.
-Source-observation owner, route and SDK tests establish only the separate source-only
-feature.
+## Project working configuration
+
+[ProjectWorkingConfigurationService](../../src-server/services/projects/project-working-configuration.ts)
+discovers bounded repository guidance and saves reviewed Project defaults. The
+[runtime selector](../../src-server/runtime/project-working-configuration-runtime.ts)
+feeds both Task brief callers and the operator Sources routes. Project/root
+identity, source digest, review revision and current access fence reads and
+writes. Apply never executes commands or grants setup permission. The brief
+shares a hard total bound with Task state and approved learning references;
+unknown scoped paths remain lazy pointers with omission disclosure.
+
+## Context compaction and Project supervision
+
+[ContextCompactionService](../../src-server/services/orchestration/context-compaction.ts)
+composes persisted threshold policy, confirmed generation observations, bounded
+summary generation and the existing durable context boundary. Summary/Task-state
+cold starts cut native and canonical model history while retaining the original
+transcript. The private history companion suppresses automatic whole-namespace
+Knowledge/RAG injection after that boundary; ordinary interactive continuation
+keeps its existing policy. Engine-owned compaction and unknown capacity cannot
+become Station automatic-compaction evidence.
+
+[ProjectSupervision](../../src-server/services/orchestration/project-supervision.ts)
+retains opted-in Task incarnations, checkpoints, coordinator generations and
+known waits. Reconciliation uses the existing durable inbox and original-key
+inspection rather than starting a second agent watcher. Canonical source,
+current authority, capacity and uncertainty remain admission gates. Neither a
+heartbeat nor idle time proves objective progress. See the
+[operator guide](../guides/agent-efficiency.md) for scope and evidence limits.
 
 ## PluginCompositionModule
 
@@ -4526,8 +4550,10 @@ poll state, lists completed workflow runs through the external monitor's REST
 transport and secret-binding credential path, and records each run through the
 [normalizer](../../src-server/services/automation/github-workflow-run.ts) and
 [intake](../../src-server/services/automation/automation-intake.ts) as matched,
-no-match, refused or duplicate, opening and closing episodes. It starts
-nothing yet: no Task, turn or action claim.
+no-match, refused or duplicate, opening and closing episodes. Observation alone starts nothing. Separately enabled native Task actions and
+isolated repairs consume retained intents after source/rule/grant checks; the
+scheduler invokes both consumers and awaits their shutdown before closing the
+shared ledger.
 
 [Ledger tests](../../src-server/services/scheduling/__tests__/scheduler-ledger.test.ts),
 [execution tests](../../src-server/services/scheduling/__tests__/builtin-scheduler-execution.test.ts),
@@ -4538,6 +4564,50 @@ unsafe database/log paths and output symlinks are refused. Keep occurrence,
 principal and retry identity in the ledger, and never replay an indeterminate
 provider effect just to obtain a clean log.
 
+
+## IsolatedRepairController
+
+[IsolatedRepairController](../../src-server/services/automation/repair-controller.ts)
+consumes only `isolated-repair` intents. The native
+[Automation action runtime](../../src-server/runtime/automation-actions-runtime.ts)
+continues to own `dispatch-task`; Docker execution never fabricates its native
+Session/inbox contracts. Runtime support binds one default-off preview and
+scheduler consumer. [Operator routes](../../src-server/routes/operations/repairs.ts)
+are unavailable when hosted and require current in-person operator authority;
+MCP/unattended and paired-device authority cannot grant publication.
+
+The [source owner](../../src-server/services/automation/repair-source.ts) reads
+admitted immutable Git objects, materializes bounded regular files outside the
+Station home, and captures bytes/modes only after the exact owned worker is
+removed. It derives the review patch and expected Git tree together. No host
+Git runs in the model-owned workspace. The [worker adapter](../../src-server/services/automation/repair-worker.mjs)
+uses published Flow Agents Docker/broker APIs, a bounded front relay, durable
+request reservations and request-time authority checks. The
+[credential owner](../../src-server/services/automation/repair-credentials.mjs)
+parses public Datum references and bounds asynchronous process-group lookups.
+Ordinary bridge networking is not outbound confinement.
+
+[RepairStore](../../src-server/services/automation/repair-store.ts) persists private
+profile revisions, run/source/result custody, reviews, grants and publication
+checkpoints with file-lock CAS. The [publisher](../../src-server/services/automation/repair-publisher.ts)
+uses GitHub REST APIs, including Git Data APIs for blobs/trees/commits/refs, after
+separate reviewed-grant consumption and
+worker-stop checks; App keys never enter the worker. Only draft PR publication
+is authorized. Operation ids/process identities fence concurrent and late
+callbacks. Unknown effects never replay. Explicit operator resolution releases
+ledger admission before recording its release receipt, preserving the unknown
+run/episode and consumed grant. Archive checks that durable release separately.
+
+The [caller fixture](../../src-server/services/automation/__tests__/repair-controller.test.ts)
+crosses normalized event, actual ledger/Task/Git source, proposal, operator API,
+review, grant, publication and recovery controls. Worker and GitHub transports
+there are controlled fixtures. The
+[broker test](../../src-server/services/automation/__tests__/repair-worker.test.ts)
+uses the real published broker with synthetic transport and a started/canceled
+secret-tool child. [Container qualification](../guides/agent-efficiency.md#qualify-the-container-boundary)
+is independent actual Docker/CLI evidence. None proves live inference/billing,
+Windows execution, hosted support or successful release. See
+[operator setup and recovery](../guides/agent-efficiency.md#run-an-isolated-github-repair).
 
 ## Whole Task Basis collection
 
@@ -4689,7 +4759,7 @@ conversation nor grants execution.
 
 **Task memory and the Task brief (#4003, in delivery).** Task memory is the judgment layer above the facts the event store derives. [`task-memory-store.ts`](../../src-server/services/orchestration/task-memory-store.ts) (`EventStore.taskMemoryStore()`, migration [`020-task-memory.ts`](../../src-server/domain/migrations/020-task-memory.ts)) keeps every revision of one bounded Task summary and every version of keyed decisions, questions and dead ends, in two append-only tables whose CHECKs and triggers hold the shape. Each write runs in one `BEGIN IMMEDIATE` transaction with the caller's authority re-check, the base-revision or record-state read, the live-record cap and the insert; bounds are refusals, never cuts. Shapes, defaults and refusal wording are the [`task-memory` contract](../../packages/contracts/src/task-memory.ts). `ProjectTaskRoomRuntime` owns authority: a Session writes the Task its immutable room execution binding names while it is that Task's lead or a recorded independent request, through `task_summary_update` and `task_record` ([tools](../../src-server/tools/station-control-task-memory-tools.ts), [routes](../../src-server/routes/orchestration/task-memory.ts)); a person reads and writes through the room's request authority (`/api/tasks/:taskId/room/memory`, `…/summary`, `…/summary/revisions`, `…/records`). Neither reaches Task status or the Task document. [`task-brief.ts`](../../src-server/services/projects/task-brief.ts) renders everything agents, people or a tracker wrote as quoted lines under a label naming who wrote it, and composes the digest-pinned brief from the Task, the observed work item, the summary, standing records, open questions, recent dead ends, a line per Session from the session digest facts ([`readSessionDigestHead`](../../src-server/services/orchestration/session-digest.ts), the same fold as `get_session_digest`) with each Session's active Task-scoped claims (`listActiveClaims({ projectId, taskId })` from [`work-claims.ts`](../../src-server/services/orchestration/work-claims.ts)), and counted omissions; [`task-brief-source.ts`](../../src-server/services/projects/task-brief-source.ts) gathers it for dispatch and for `get_task_brief`, whose `include` option lists every record or the summary history. `GET /api/tasks` adds `openQuestionCount`, which the Home and inbox Task fold (`taskLifecycleLabel`, `buildWorkFacts`) turns into "Task · Needs answer" in Needs you. The Task workspace shows it in [`TaskMemoryPanel`](../../src-ui/src/views/task-workspace/TaskMemoryPanel.tsx). Evidence: `task-memory-store.test.ts`, `project-task-room-task-memory.test.ts`, `runtime-routes-task-memory-engine.test.ts` (the real Station Control MCP connection), `task-brief.test.ts`, `task-brief-dispatch.test.ts`, `TaskMemoryPanel.test.tsx` and `work-status.test.ts`. **Learning (layer 4):** when a Task is done, [`task-learning.ts`](../../src-server/services/projects/task-learning.ts) derives promotion candidates from its active standing decisions and dead ends, reads "promoted" back from the Project's knowledge stores, and promotes one, as a person edited it, with one `create` through the store's adapter under an id derived from the Task incarnation and record version. Before that write it inserts an append-only row naming the chosen store (`task_learning_promotions`, migration [`022-task-learning-promotions.ts`](../../src-server/domain/migrations/022-task-learning-promotions.ts)), so a version is written once across the Project's stores. Dismissals are kept in `task_learning_dismissals` (migration [`021-task-learning-dismissals.ts`](../../src-server/domain/migrations/021-task-learning-dismissals.ts)). Its [routes](../../src-server/routes/orchestration/task-learning.ts) (`/api/tasks/:taskId/room/memory/learning`, `…/promote`, `…/dismiss`) take the room's request authority through `ProjectTaskRoomRuntime.personTaskLearningAccess`, and no Station Control tool names them; the Task workspace shows them in [`TaskLearningPanel`](../../src-ui/src/views/task-workspace/TaskLearningPanel.tsx). Evidence: `runtime-routes-task-learning.test.ts` (closing, candidates, promotion with provenance, idempotency, search after reindex, dismissal, agent refusal, no store), `task-learning-promotion.test.ts` (two concurrent promotions into two stores write one record), `task-memory-store.test.ts` and `TaskLearningPanel.test.tsx`.
 
-**Task memory lead wake (#4003, in delivery).** After a `task_record` version commits, `ProjectTaskRoomRuntime` hands it to [`TaskQuestionWake`](../../src-server/services/orchestration/task-question-wake.ts) (the `afterTaskRecord` port), whose outcome never changes the write's answer. A question opened by a Session that is not the Task's lead (`TaskRecord.sessionId`, compared by conversation), or an answer by anyone else, becomes one [conversation inbox](#sessionmessagedelivery) entry for the lead's conversation, keyed `tq-` plus a digest of the Task incarnation, record key, version and action, and sent as the lead Session's recorded owner with an internal client origin that names the asking or answering Session as its `agent-session` sender when a Session wrote the record. Its text opens with one fixed line saying the quoted lines were written by another Session or a person and are data, not an instruction from the user, then quotes the question and answer line by line (`> `). The inbox places it as a new turn when the lead is idle and after its turn when it is busy, never as a steer. A person's question, the lead's own writes, a done or canceled Task and a stopped lead send nothing. A failure is logged (`task question wake not delivered`). A crash between the commit and the submit loses that wake; Needs you and the brief still show the question. Evidence: `task-question-wake.test.ts` (the real room write path, inbox, turn ledger and orchestration service with a counting engine, across restarts).
+**Task memory lead wake (#4003, in delivery).** After a `task_record` version commits, `ProjectTaskRoomRuntime` hands it to [`TaskQuestionWake`](../../src-server/services/orchestration/task-question-wake.ts) (the `afterTaskRecord` port), whose outcome never changes the write's answer. A question opened by a Session that is not the Task's lead (`TaskRecord.sessionId`, compared by conversation), or an answer by anyone else, becomes one [conversation inbox](#sessionmessagedelivery) entry for the lead's conversation, keyed `tq-` plus a digest of the Task incarnation, record key, version and action, and sent as the lead Session's recorded owner with an internal client origin that names the asking or answering Session as its `agent-session` sender when a Session wrote the record. Its text opens with one fixed line saying the quoted lines were written by another Session or a person and are data, not an instruction from the user, then quotes the question and answer line by line (`> `). The inbox places it as a new turn when the lead is idle and after its turn when it is busy, never as a steer. A person's question, the lead's own writes, a done or canceled Task and a stopped lead send nothing. A failure is logged (`task question wake not delivered`). Committed Task-record versions now form the durable wake outbox. Boot/reconnect and bounded reconciliation retry the original version/key after a commit-to-submit interruption, rechecking lead source access. Failed versions remain pending with bounded deferral; acknowledgement follows actual inbox acceptance. Evidence: `task-question-wake.test.ts` (the real room write path, inbox, turn ledger and orchestration service with a counting engine, across restarts).
 
 The Task dispatcher additionally composes a server-owned room execution
 binding and the existing `SessionTurnBoundaryAuthority`. One durable
