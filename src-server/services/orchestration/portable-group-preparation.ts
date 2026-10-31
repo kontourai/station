@@ -74,11 +74,7 @@ import {
 } from './station-report-group-input.js';
 
 function assertSupportedInput(input: StationReportGroupInput): void {
-  if (
-    input.flow ||
-    input.continuation ||
-    input.members.some((member) => member.input)
-  )
+  if (input.continuation || input.members.some((member) => member.input))
     refuse();
 }
 
@@ -1022,6 +1018,25 @@ export class PortableGroupPreparation {
           grant.source,
         );
         pendingSnapshot = sealed.capability;
+        const flow = intent.flow
+          ? await this.owners.sources.prepareFlowSnapshot(
+              context,
+              { groupId: spec.groupId, workItemId: entry.taskId },
+              sealed.capability,
+              intent.flow.runId,
+            )
+          : undefined;
+        if (flow) {
+          const schedule = await flow.readSchedule();
+          if (
+            !samePortable(flow.topology, spec.topology) ||
+            !samePortable(flow.source, grant.source) ||
+            !seat.stepId ||
+            intent.flow?.steps[entry.seatId] !== seat.stepId ||
+            !schedule.reportSteps.includes(seat.stepId)
+          )
+            refuse();
+        } else if (spec.topology.kind !== 'independent-advisory') refuse();
         const sessionCapability =
           stationControlRequestAuthority(context.req.raw)?.kind === 'caller'
             ? await this.owners.sources.captureStationControlCredentialAuthority(
@@ -1115,6 +1130,7 @@ export class PortableGroupPreparation {
           sdkHandle: prepared.sdkHandle,
           snapshot: sealed.capability,
           dispatched: false,
+          ...(flow ? { flow } : {}),
         });
         pendingSnapshot = undefined;
       }
@@ -1204,9 +1220,13 @@ export class PortableGroupPreparation {
     const seat = state.spec.seats.find((s) => s.seatId === seatId);
     if (!member || !seat || member.dispatched) refuse();
     if (member.flow) {
-      // Flow launch requires a V2 final-wire claim fence.
-      refuse();
-    }
+      if (
+        attempt.transport.launch.protocol === 'rounds-v1' ||
+        !attempt.transport.reservation.flowClaim
+      )
+        refuse();
+      attempt.transport.launch.flow = member.flow;
+    } else if (attempt.transport.reservation.flowClaim) refuse();
     const captured = inspectSdkSourceWire(member.owner, member.sdkHandle);
     const reserved = attempt.transport.reservation;
     const invocationId = reserved.invocationId;

@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import type { AuthorizationLedger } from '@kontourai/dispatch';
+import type { FlowDurableStepClaim } from '@kontourai/flow';
 import { createDelegationAuthorityService } from '@kontourai/flow-agents/delegation-authority-service';
 import type { DelegationEnvelopeV2 } from '@kontourai/flow-agents/delegation-envelope-v2';
 import {
@@ -269,7 +270,14 @@ export class PortableGroupExecution {
     const signal = AbortSignal.any([context.req.raw.signal, deadline.signal]);
     try {
       if (prepared.spec.groupId !== groupId) refuse();
-      const composed = this.#compose(context, handle, current);
+      const flow =
+        prepared.spec.topology.kind === 'flow'
+          ? this.owners.preparation.flow(handle, context.req.raw)
+          : undefined;
+      if (prepared.spec.topology.kind === 'flow' && !flow) refuse();
+      const cwd = flow ? (await flow.readSchedule()).cwd : undefined;
+      current();
+      const composed = this.#compose(context, handle, current, cwd);
       return await composed.controller.run(
         {
           kind: 'run',
@@ -291,6 +299,7 @@ export class PortableGroupExecution {
     context: RuntimeSourceRequestContext,
     handle: PreparedPortableGroup,
     requestCurrent: () => undefined,
+    cwd?: string,
   ) {
     const { preparation, persistence } = this.owners;
     const prepared = preparation.read(handle, context.req.raw);
@@ -303,7 +312,9 @@ export class PortableGroupExecution {
     const invocation = new AsyncLocalStorage<{
       envelope: DelegationEnvelopeV2;
       id: string;
+      claim?: FlowDurableStepClaim;
     }>();
+    const claims = new Map<string, FlowDurableStepClaim>();
     const memberFor = (envelope: DelegationEnvelopeV2) => {
       current();
       const member = prepared.members.find(
@@ -419,6 +430,7 @@ export class PortableGroupExecution {
                     invocationId: selected.id,
                     effect: seat.effect,
                     allocation: seat.allocation,
+                    ...(selected.claim ? { flowClaim: selected.claim } : {}),
                   },
                   contract: captured.contract,
                   provider: member.provider,
@@ -464,7 +476,14 @@ export class PortableGroupExecution {
       },
       invokeFenced: async (envelope, id, invoke) => {
         memberFor(envelope);
-        return invocation.run({ envelope, id }, invoke);
+        const claim = claims.get(envelope.envelope_id);
+        if (prepared.spec.topology.kind === 'flow' && !claim) refuse();
+        if (prepared.spec.topology.kind !== 'flow' && claim) refuse();
+        if (claim) claims.delete(envelope.envelope_id);
+        return invocation.run(
+          { envelope, id, ...(claim ? { claim } : {}) },
+          invoke,
+        );
       },
       retainResult: async (result, envelope, id) => {
         const { seat } = memberFor(envelope);
@@ -510,10 +529,49 @@ export class PortableGroupExecution {
           current,
         );
       },
-      recordScheduleEvent: async () => refuse(),
-      confirmClaim: async () => false,
-      prepareRequest: async () => refuse(),
-      recordMemberOutcome: async () => refuse(),
+      recordScheduleEvent: async (event) => {
+        current();
+        await persistence.retainReportFlowObservation(
+          prepared.spec.groupId,
+          'schedule',
+          event,
+          current,
+        );
+      },
+      confirmClaim: async (claim, envelope) => {
+        const { seat } = memberFor(envelope);
+        const owner = preparation.flow(handle, context.req.raw, seat.seatId);
+        if (!owner || claim.step_id !== seat.stepId) return false;
+        await owner.withCurrentClaim(claim, () => ({ value: undefined }));
+        current();
+        return true;
+      },
+      prepareRequest: async (claim, envelope) => {
+        const { seat, member } = memberFor(envelope);
+        const owner = preparation.flow(handle, context.req.raw, seat.seatId);
+        if (
+          !owner ||
+          claim.step_id !== seat.stepId ||
+          claims.has(envelope.envelope_id)
+        )
+          refuse();
+        await owner.withCurrentClaim(claim, () => ({ value: undefined }));
+        current();
+        claims.set(envelope.envelope_id, structuredClone(claim));
+        return {
+          messages: [{ role: 'user', content: member.brief }],
+          maxOutputTokens: seat.allocation.outputTokens,
+        };
+      },
+      recordMemberOutcome: async (claim, envelope, outcome) => {
+        const { seat } = memberFor(envelope);
+        await persistence.retainReportFlowObservation(
+          prepared.spec.groupId,
+          'member',
+          { claim, seatId: seat.seatId, envelope: seat.envelope, outcome },
+          current,
+        );
+      },
     };
     const retain = (kind: 'member' | 'schedule', value: unknown) =>
       persistence.retainReportFlowObservation(
@@ -555,6 +613,7 @@ export class PortableGroupExecution {
         authorityService: service,
         dispatchLedger: this.owners.dispatchLedger,
         host: groupHost,
+        ...(cwd ? { cwd } : {}),
       }),
     };
   }
