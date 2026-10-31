@@ -505,9 +505,8 @@ part of this check.
 
 ### Let Station hold a follow-up
 
-A follow-up sent to a conversation whose turn is still running is refused
-today, and the client holds it until the turn ends. A send to `POST /chat` that
-adds `"whenBusy": "queue"` (with its `conversationId` and `clientTurnId`)
+A follow-up sent without a queue request may be refused while the
+conversation's turn is running. A send to `POST /chat` that adds `"whenBusy": "queue"` (with its `conversationId` and `clientTurnId`)
 asks Station to hold it instead, in the conversation's durable inbox. The
 message is stored before the answer arrives, so it survives a closed tab,
 another device and a restart.
