@@ -1,5 +1,47 @@
 [
   {
+    "timestampUtc": "2026-10-31T14:45:12Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2495.1",
+    "sha": "ee3a07d023d4919c48a3ae65e3918d41135024a6",
+    "artifactBuiltAt": "2026-10-31T14:03:13.734Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/41207606546",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 41207606546)"
+    ],
+    "changelog": {
+      "previousSha": "0dda10432fe6e4f594936ac6787f8758e2eb7364",
+      "groups": {
+        "feat": [
+          "[#4316](https://github.com/kontourai/station/pull/4316) feat(projects): warn when a Project's checkout is far behind its upstream",
+          "[#4216](https://github.com/kontourai/station/pull/4216) feat(sdk): preserve foreground turn keys across uncertain sends",
+          "[#4371](https://github.com/kontourai/station/pull/4371) feat(chat): make Inbox the mobile dock home",
+          "[#4351](https://github.com/kontourai/station/pull/4351) feat: surface integration status and task write-back history",
+          "[#4347](https://github.com/kontourai/station/pull/4347) feat(review): record and play task walkthrough clips",
+          "[#4289](https://github.com/kontourai/station/pull/4289) feat(automations): run scheduled work in a conversation on any engine",
+          "[#4343](https://github.com/kontourai/station/pull/4343) feat(rooms): deliver compact documents with member admission",
+          "[#4334](https://github.com/kontourai/station/pull/4334) feat(task): add overview timeline and device capture",
+          "[#4280](https://github.com/kontourai/station/pull/4280) feat(registry): curated MCP subregistry and ask-by-default after untrusted content"
+        ],
+        "fix": [
+          "[#4368](https://github.com/kontourai/station/pull/4368) fix: protect plugin approvals, account reads and command admission",
+          "[#4370](https://github.com/kontourai/station/pull/4370) fix: share general and orchestration event streams"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4349](https://github.com/kontourai/station/pull/4349) build(deps): consolidate Dependabot updates and migrate ACP SDK 2"
+        ]
+      },
+      "note": null,
+      "commitCount": 12
+    }
+  },
+  {
     "timestampUtc": "2026-10-31T14:04:47Z",
     "channel": "nightly-npm",
     "version": "0.11.0-nightly.2495.41207606546",
