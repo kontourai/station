@@ -828,8 +828,9 @@ saved draft. If the app closes or
 the connection drops before Station answers, the app asks Station what happened
 at its next launch or reconnect: a message Station never received is sent once,
 with the same identity, and one Station may have started is kept and marked,
-never sent twice. If Station reports it queued in its inbox, the local outbox
-keeps the row for inspection rather than settling it automatically. A message with attachments or a visual skill keeps its draft
+never sent twice. If Station accepts the reconnect send into its inbox, the local outbox
+settles that row. If a later delivery lookup finds it queued, the local row
+remains for inspection. A message with attachments or a visual skill keeps its draft
 until Station answers instead.
 
 Once Station confirms a turn started, a late network error does not queue that

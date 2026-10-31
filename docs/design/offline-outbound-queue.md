@@ -52,10 +52,11 @@ settled, even if that window then closed). A message that could not be sent for
 another reason, such as a turn still running, is not retried on every notice. That
 send only sends: it asks Station about nothing and never re-holds the window's
 queued follow-ups (which would take back a follow-up a duplicated tab also holds,
-and that tab would do the same in turn). A queued message is not sent while a turn is
-running in its chat; it goes when the turn ends. If one is tried anyway, it waits
-without using up an attempt and is not tried again for a moment and a half,
-whatever asks; it is retried once that wait ends. A send another window has claimed reads "Sending", with no Check,
+and that tab would do the same in turn). An offline outbox message can be handed to the durable inbox while its known
+conversation is busy. A queued receipt retires its browser row; Station delivers
+it after the running turn. A busy chat without a conversation identity waits
+without spending an attempt. Other temporary deferrals wait a moment and a half
+before retry, whatever asks. A send another window has claimed reads "Sending", with no Check,
 only while that window is proven running (it holds its renderer lock); a claim
 left by a window that closed or crashed reads "No answer yet" like its bubble,
 with Check and Discard…, and the discard checks again that the window is gone.
