@@ -286,7 +286,7 @@ export function UsageRollupPanel() {
                 </table>
               </div>
             ) : (
-              <Empty label="No Task outcome attribution in this usage window" />
+              <Empty label="Task outcomes not reported in this usage window" />
             )}
           </section>
           <div className="usage-rollup__footer">

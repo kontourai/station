@@ -170,7 +170,8 @@ test('the existing Task lesson entry prepares and pins the actual record before 
   ).toBeTruthy();
   expect(screen.queryByLabelText('Task ID')).toBeNull();
   expect(
-    (screen.getByLabelText('Proposed guidance') as HTMLTextAreaElement).value,
+    (screen.getByLabelText('Proposed instructions') as HTMLTextAreaElement)
+      .value,
   ).toBe('Canonical source body');
   fireEvent.change(screen.getByLabelText('Expected effect'), {
     target: { value: 'Retain review evidence' },
@@ -289,7 +290,7 @@ test('a later canonical Task record can be selected as an effect source through 
   fireEvent.change(screen.getByLabelText('Learning action'), {
     target: { value: 'effect' },
   });
-  fireEvent.change(await screen.findByLabelText('Active guidance'), {
+  fireEvent.change(await screen.findByLabelText('Active learning'), {
     target: { value: 'learning-one' },
   });
   fireEvent.click(
@@ -330,7 +331,7 @@ test.each(['proposal', 'effect'] as const)(
       fireEvent.change(screen.getByLabelText('Learning action'), {
         target: { value: 'effect' },
       });
-      fireEvent.change(await screen.findByLabelText('Active guidance'), {
+      fireEvent.change(await screen.findByLabelText('Active learning'), {
         target: { value: 'learning-one' },
       });
       expect(screen.getByText('Canonical source body')).toBeTruthy();

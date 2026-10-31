@@ -251,7 +251,9 @@ function ProjectLearningReview({
       <div className="learning-review__heading">
         <div>
           <h3 id={`${id}-title`}>Learning review</h3>
-          <p>Review owner evidence and register approved context guidance.</p>
+          <p>
+            Review owner evidence and register approved context instructions.
+          </p>
         </div>
         {proposalSource && (
           <Button
@@ -302,7 +304,7 @@ function ProjectLearningReview({
             <p>Some owner records or evidence are unavailable.</p>
           )}
           {records.length === 0 ? (
-            <Empty label="No reviewable learning records" />
+            <Empty label="Nothing to review" />
           ) : (
             <label htmlFor={`${id}-learning`}>
               Learning
@@ -351,14 +353,14 @@ function ProjectLearningReview({
                 <Badge
                   value={
                     details.active
-                      ? 'Active guidance'
+                      ? 'Active learning'
                       : details.supersededBy
                         ? 'Superseded'
                         : 'Not active'
                   }
                 />
                 <p>
-                  Activation registers context guidance; installation and
+                  Activation registers context instructions; installation and
                   provider execution are separate.
                 </p>
                 <dl className="learning-review__facts">
@@ -424,7 +426,7 @@ function ProjectLearningReview({
                       setCompareId(event.target.value || undefined)
                     }
                   >
-                    <option value="">No comparison</option>
+                    <option value="">Without comparison</option>
                     {records
                       .filter((item) => item.id !== details.id)
                       .map((item) => (
@@ -447,7 +449,7 @@ function ProjectLearningReview({
                       <Badge
                         value={
                           details.comparison.active
-                            ? 'Active guidance'
+                            ? 'Active learning'
                             : 'Not active'
                         }
                       />
@@ -529,7 +531,7 @@ function ProjectLearningReview({
                           )}
                         </ul>
                       ) : (
-                        <p>No attachment receipts returned.</p>
+                        <p>Attachment receipts not returned.</p>
                       )}
                     </section>
                   )}
@@ -548,7 +550,7 @@ function ProjectLearningReview({
                     )}
                   </ul>
                 ) : (
-                  <p>No effect observed.</p>
+                  <p>Effect not observed.</p>
                 )}
                 {details.projection.retirement.state === 'available' &&
                   details.projection.retirement.value.status === 'retired' && (
@@ -803,7 +805,7 @@ export function LearningReviewProposalDialog({
               });
             }}
           >
-            <option value="proposal">Propose guidance</option>
+            <option value="proposal">Propose learning</option>
             <option value="effect">Observe effect</option>
           </LearningSelect>
         </div>
@@ -931,7 +933,7 @@ export function LearningReviewProposalForm({
       </p>
       {source.truncated && (
         <p>
-          Source excerpt; review the full response before proposing guidance.
+          Source excerpt; review the full response before proposing a learning.
         </p>
       )}
       <label>
@@ -944,7 +946,7 @@ export function LearningReviewProposalForm({
         />
       </label>
       <label>
-        Proposed guidance
+        Proposed instructions
         <textarea
           required
           maxLength={16384}
@@ -1062,12 +1064,12 @@ function LearningSourceEffectForm({
       ) : read.error ? (
         <ErrorState
           variant="compact"
-          title="Active guidance unavailable"
+          title="Active learning unavailable"
           action={<Button onClick={() => void read.refetch()}>Retry</Button>}
         />
       ) : records.length ? (
         <>
-          <label htmlFor={`${id}-target`}>Active guidance</label>
+          <label htmlFor={`${id}-target`}>Active learning</label>
           <LearningSelect
             id={`${id}-target`}
             required
@@ -1083,7 +1085,7 @@ function LearningSourceEffectForm({
               onDirty(true);
             }}
           >
-            <option value="">Choose active guidance</option>
+            <option value="">Choose active learning</option>
             {records.map((item) => (
               <option key={item.id} value={item.id}>
                 {item.projection.candidate.state === 'available'
@@ -1094,7 +1096,7 @@ function LearningSourceEffectForm({
           </LearningSelect>
         </>
       ) : (
-        <Empty label="No active guidance to assess" />
+        <Empty label="Nothing active to assess" />
       )}
       <label htmlFor={`${id}-assessment`}>Assessment</label>
       <LearningSelect

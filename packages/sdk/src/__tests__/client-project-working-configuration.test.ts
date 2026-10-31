@@ -23,16 +23,28 @@ test.each([404, 501])(
     vi.stubGlobal(
       'fetch',
       vi.fn(async () =>
-        Response.json({ success: false, error: 'unavailable' }, { status }),
+        Response.json(
+          {
+            success: false,
+            error: 'unavailable',
+            code: 'feature_preview_disabled',
+            previewId: 'project-working-configuration',
+          },
+          { status },
+        ),
       ),
     );
     await expect(
       fetchProjectWorkingConfiguration(authority.apiBase, 'work', {
         requestScope: authority,
       }),
-    ).rejects.toThrow(
-      'Project working configuration is unavailable. Enable its Feature Preview or update this Station.',
-    );
+    ).rejects.toMatchObject({
+      status,
+      code: 'feature_preview_disabled',
+      previewId: 'project-working-configuration',
+      message:
+        'Project working configuration is unavailable. Enable its Feature Preview or update this Station.',
+    });
   },
 );
 test('unknown successful response shapes are refused instead of becoming editable defaults', async () => {

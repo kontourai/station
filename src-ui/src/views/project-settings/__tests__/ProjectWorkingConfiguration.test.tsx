@@ -104,7 +104,9 @@ test('the real Sources editor applies reviewed defaults once, retains edits on r
   ).toHaveLength(1);
   writeFileSync(join(cwd, 'AGENTS.md'), 'Changed repository rule.');
   fireEvent.click(
-    screen.getByRole('button', { name: 'Discover repository guidance again' }),
+    screen.getByRole('button', {
+      name: 'Discover repository instructions again',
+    }),
   );
   await screen.findByText('Reviewed revision 1 · Repository sources changed');
   fireEvent.click(

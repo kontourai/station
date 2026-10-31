@@ -112,7 +112,7 @@ test('real Project review renders evidence and receipts, and an activation ackno
     target: { value: 'learning-one' },
   });
   expect(await screen.findByText('Proposed guidance')).toBeTruthy();
-  expect(screen.getByText('No effect observed.')).toBeTruthy();
+  expect(screen.getByText('Effect not observed.')).toBeTruthy();
   fireEvent.click(
     screen.getAllByRole('button', { name: 'Inspect source' })[0]!,
   );
@@ -146,7 +146,7 @@ test('real Project review renders evidence and receipts, and an activation ackno
     ),
   );
   await waitFor(() => expect(screen.getByText('Not active')).toBeTruthy());
-  expect(screen.queryByText('Active guidance')).toBeNull();
+  expect(screen.queryByText('Active learning')).toBeNull();
 });
 
 test('unsupported host gives a retryable upgrade/preview explanation without exposing a proposal editor by default', async () => {
@@ -181,5 +181,5 @@ test('unsupported host gives a retryable upgrade/preview explanation without exp
     await screen.findByText(/Learning review is unsupported on this host/),
   ).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
-  expect(screen.queryByLabelText('Proposed guidance')).toBeNull();
+  expect(screen.queryByLabelText('Proposed instructions')).toBeNull();
 });

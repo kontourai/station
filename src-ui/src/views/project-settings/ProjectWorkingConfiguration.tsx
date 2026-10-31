@@ -11,6 +11,7 @@ import {
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useId, useState } from 'react';
+import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
 import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
 import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
@@ -160,7 +161,7 @@ function WorkingConfigurationEditor({
             </details>
           )}
           {view.sources.length === 0 ? (
-            <Empty label="No repository guidance found" />
+            <Empty label="Repository instructions not found" />
           ) : (
             <details>
               <summary>Discovered sources ({view.sources.length})</summary>
@@ -182,11 +183,6 @@ function WorkingConfigurationEditor({
                 ))}
               </ul>
             </details>
-          )}
-          {!review && (
-            <Button onClick={() => begin(false)}>
-              Review working configuration
-            </Button>
           )}
           {review && (
             <>
@@ -278,7 +274,7 @@ function WorkingConfigurationEditor({
                 }
               />
               <label htmlFor={`${id}-evidence`}>
-                Evidence and guidance pointers, one per line
+                Evidence and instruction pointers, one per line
               </label>
               <textarea
                 id={`${id}-evidence`}
@@ -336,35 +332,63 @@ function WorkingConfigurationEditor({
                   }
                 />
               )}
-              <Button
-                variant="primary"
-                disabled={save.isPending}
-                onClick={() => save.mutate()}
-              >
-                Apply reviewed defaults
-              </Button>
-              <Button
-                disabled={save.isPending}
-                onClick={() => guard(() => setReview(null))}
-              >
-                Cancel review
-              </Button>
             </>
           )}
-          <Button
-            disabled={read.isFetching || save.isPending}
-            onClick={() => void read.refetch()}
-          >
-            Discover repository guidance again
-          </Button>
-          {review && (
-            <Button
-              disabled={save.isPending}
-              onClick={() => guard(() => begin(true))}
-            >
-              Review new suggestions
-            </Button>
-          )}
+          <ActionRow
+            overflowLabel="More configuration actions"
+            primary={
+              review ? (
+                <Button
+                  variant="primary"
+                  disabled={save.isPending}
+                  onClick={() => save.mutate()}
+                >
+                  Apply reviewed defaults
+                </Button>
+              ) : (
+                <Button onClick={() => begin(false)}>
+                  Review working configuration
+                </Button>
+              )
+            }
+            secondary={
+              review ? (
+                <Button
+                  disabled={save.isPending}
+                  onClick={() => guard(() => setReview(null))}
+                >
+                  Cancel review
+                </Button>
+              ) : (
+                <Button
+                  disabled={read.isFetching || save.isPending}
+                  onClick={() => void read.refetch()}
+                >
+                  Discover repository instructions again
+                </Button>
+              )
+            }
+            overflow={
+              review
+                ? [
+                    {
+                      key: 'discover',
+                      label: 'Discover repository instructions again',
+                      disabled: read.isFetching || save.isPending,
+                      onSelect: () => {
+                        void read.refetch();
+                      },
+                    },
+                    {
+                      key: 'suggestions',
+                      label: 'Review new suggestions',
+                      disabled: save.isPending,
+                      onSelect: () => guard(() => begin(true)),
+                    },
+                  ]
+                : []
+            }
+          />
         </>
       )}
       <DiscardModal />

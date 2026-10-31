@@ -11,6 +11,7 @@ import type {
 } from '@kontourai/station-contracts/learning-review';
 import { LEARNING_REVIEW_PROJECT_HEADER } from '@kontourai/station-contracts/learning-review';
 import { z } from 'zod';
+import { envelopeError } from './api-error-message';
 import {
   type ApiRequestScope,
   type ClientRequestOptions,
@@ -229,23 +230,19 @@ const mutation: z.ZodType<LearningReviewMutationResult> = z.object({
 const path = (apiBase: string, slug: string) =>
   `${apiBase}/api/projects/${encodeURIComponent(slug)}/learning`;
 async function unwrap<T>(response: Response, schema: z.ZodType<T>): Promise<T> {
-  if (response.status === 404 || response.status === 501)
-    throw new StationHttpError(
-      response.status,
-      'Learning review is unsupported on this host. Enable its Feature Preview or update this Station.',
-      { code: 'learning_review_unsupported' },
-    );
   const body = await readJsonBody(response);
-  if (!response.ok) {
-    const error = z
-      .object({ error: z.string(), code: z.string().optional() })
-      .safeParse(body);
-    throw new StationHttpError(
-      response.status,
-      error.success ? error.data.error : 'Learning review unavailable',
-      { code: error.success ? error.data.code : 'unavailable' },
+  if (response.status === 404 || response.status === 501)
+    throw envelopeError(
+      response,
+      body,
+      'Learning review is unsupported on this host. Enable its Feature Preview or update this Station.',
+      {
+        message:
+          'Learning review is unsupported on this host. Enable its Feature Preview or update this Station.',
+      },
     );
-  }
+  if (!response.ok)
+    throw envelopeError(response, body, 'Learning review unavailable');
   return z.object({ success: z.literal(true), data: schema }).parse(body).data;
 }
 const bounded = (options: Options): Options => ({

@@ -21,7 +21,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-test('old-host non-JSON 404 remains an actionable unsupported result before JSON parsing', async () => {
+test('old-host non-JSON 404 retains its status and an actionable update remedy', async () => {
   vi.stubGlobal(
     'fetch',
     vi.fn(async () => new Response('Not found', { status: 404 })),
@@ -33,7 +33,8 @@ test('old-host non-JSON 404 remains an actionable unsupported result before JSON
     }),
   ).rejects.toMatchObject({
     status: 404,
-    code: 'learning_review_unsupported',
+    message:
+      'Learning review is unsupported on this host. Enable its Feature Preview or update this Station.',
   });
 });
 test('restricted projections reject identity payloads and remain value-free', async () => {
@@ -67,4 +68,31 @@ test('restricted projections reject identity payloads and remain value-free', as
       { requestScope: authority, projectId: 'project-id' },
     ),
   ).toEqual({ state: 'restricted' });
+});
+
+test('an owner refusal preserves structured error evidence for current-authority callers', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () =>
+      Response.json(
+        {
+          success: false,
+          error: 'Source access changed',
+          code: 'restricted',
+          details: { source: 'withdrawn' },
+        },
+        { status: 403 },
+      ),
+    ),
+  );
+  await expect(
+    fetchProjectLearning(authority.apiBase, 'work', {
+      requestScope: authority,
+      projectId: 'project-id',
+    }),
+  ).rejects.toMatchObject({
+    status: 403,
+    code: 'restricted',
+    details: { source: 'withdrawn' },
+  });
 });

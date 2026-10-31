@@ -5,11 +5,13 @@ import {
   type ProjectWorkingConfigurationView,
 } from '@kontourai/station-contracts/project-working-configuration';
 import { z } from 'zod';
+import { envelopeError } from './api-error-message';
 import {
   type ApiRequestScope,
   type ClientRequestOptions,
   getJson,
   mutateJson,
+  readJsonBody,
 } from './http';
 
 type Options = ClientRequestOptions & { requestScope: ApiRequestScope };
@@ -67,19 +69,23 @@ const view = z.strictObject({
   stale: z.boolean(),
 });
 async function unwrap<T>(response: Response, schema: z.ZodType<T>): Promise<T> {
+  const body = await readJsonBody(response);
   if (response.status === 404 || response.status === 501)
-    throw new Error(
+    throw envelopeError(
+      response,
+      body,
       'Project working configuration is unavailable. Enable its Feature Preview or update this Station.',
+      {
+        message:
+          'Project working configuration is unavailable. Enable its Feature Preview or update this Station.',
+      },
     );
-  const body: unknown = await response.json();
-  if (!response.ok) {
-    const error = z.object({ error: z.string() }).safeParse(body);
-    throw new Error(
-      error.success
-        ? error.data.error
-        : 'Project working configuration is unavailable.',
+  if (!response.ok)
+    throw envelopeError(
+      response,
+      body,
+      'Project working configuration unavailable',
     );
-  }
   return z.object({ success: z.literal(true), data: schema }).parse(body).data;
 }
 const path = (apiBase: string, slug: string) =>

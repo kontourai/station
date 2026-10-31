@@ -86,6 +86,8 @@ const PUBLIC_QUERY_DOMAINS = [
  * inline reason.
  */
 const INTERNAL_QUERY_DOMAINS: Record<string, string> = {
+  learningReview:
+    'Published only from the documented learning-review-query subpath; keep scoped owner lifecycle reads and mutations outside the eager root entry.',
   privateInsights:
     'Published only from the documented private-insights-query subpath for the scoped personal Insights surface; keep private query validators and saved-view controls outside the eager root entry.',
   projectRoomAgents:
