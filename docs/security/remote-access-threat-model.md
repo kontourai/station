@@ -97,6 +97,14 @@ startup. Follow-up, out of scope here: the consent cookie is not `Secure`;
 marking it so would break the plain-http consent path. See
 the [deployment guide](../guides/deployment.md#reaching-the-consent-origin-over-https).
 
+The Project sharing setting uses a transaction-bound consent session and the
+separate review page to isolate its decision from app-origin scripts. This is
+not a fresh passkey assertion or proof of human presence or same-machine
+location: a caller holding the operator credential can automate the HTTP
+review and decision, and a holder of the exact transaction cookie can decide
+that transaction. Browser Origin and Fetch Metadata do not authenticate raw
+HTTP callers. The S4 passkey ceremony below is a stronger, separate authority.
+
 Operator passkey enrollment (#3257, slice S2b) runs on this origin and only when
 `STATION_TRUSTED_CONSENT_ORIGIN` is set; without it enrollment is unavailable
 (an IP-only Station has no remote operator sign-in). A paired browser opens an

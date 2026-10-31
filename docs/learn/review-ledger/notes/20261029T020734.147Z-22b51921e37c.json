@@ -1,0 +1,13 @@
+{
+  "revision": "414859c744207dcb928f83f17ab4fb456b3693c7",
+
+  "notes": [
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"#4305 delta in runtime-routes.ts only mounts /api/operator/account-sharing behind the existing operator() check and adds route-context fields; it changes no operator sign-in, session or step-up route, page or response these captures show. Images unchanged; no recapture needed.","inputs":["docs/learn/media/operator-s4-before-sign-in.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"#4305 delta in runtime-routes.ts only mounts /api/operator/account-sharing behind the existing operator() check and adds route-context fields; it changes no operator sign-in, session or step-up route, page or response these captures show. Images unchanged; no recapture needed.","inputs":["docs/learn/media/operator-s4-after-sign-in.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"#4305 delta in runtime-routes.ts only mounts /api/operator/account-sharing behind the existing operator() check and adds route-context fields; it changes no operator sign-in, session or step-up route, page or response these captures show. Images unchanged; no recapture needed.","inputs":["docs/learn/media/operator-s4-step-up-review.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"#4305 delta in runtime-routes.ts only mounts /api/operator/account-sharing behind the existing operator() check and adds route-context fields; it changes no operator sign-in, session or step-up route, page or response these captures show. Images unchanged; no recapture needed.","inputs":["docs/learn/media/operator-s4-after-step-up.png","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

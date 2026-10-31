@@ -396,6 +396,19 @@ invitation acceptance and ownership transfer. The SDK's `project-access`,
 and the separate browser account entry. Account entry does not mount personal connection
 providers or persisted Project caches.
 
+Without deployment configuration, the operator can also choose the built-in provider in
+Settings (#4305). `account-sharing-setting.ts` owns the stored choice in
+`<home>/config/account-sharing.json` and its boot protocol: a change is staged unarmed,
+armed after supervisor drain begins, then `StationRuntime` marks it attempted before use,
+commits it after initialization, and rolls back
+an attempted change that never committed; a stored choice that fails to load starts the
+Station with sharing off. `account-sharing-origins.ts` derives the offered sign-in
+origins from UI ingress and UI-targeted Serve evidence, filtered by browser admission. `account-sharing-routes.ts`
+(`/api/operator/account-sharing`, operator only, `project-sharing-setting` Feature
+Preview) creates an action-bound consent transaction; its separate-origin approval
+validates and stages a change and asks the process supervisor for a handoff.
+Deployment variables lock the setting; the stored shape cannot name a module.
+
 **Evidence and limits.** External-module HTTP fixtures and the real runtime
 principal-composition suite exercise refusal and identity propagation. They do not prove
 a production identity provider, email delivery, visual design or physical two-human

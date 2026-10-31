@@ -103,8 +103,9 @@ Browser sessions. Every image read repeats authorization. Station-control
 Project unless the caller is a bound operator. A bearer-exposed connection
 (such as Codex's wire MCP transport) does not inherit the operator's standing:
 its recorded owner needs active Project admin/owner membership. On a personal
-Station this requires the existing Project sharing mechanism
-(`STATION_PROJECT_SHARING=1`) and an explicit Project owner grant; see
+Station this requires Project sharing enabled by deployment configuration or
+the [Settings control](deployment-authentication.md#turn-it-on-from-settings),
+and an explicit Project owner grant; see
 [Project membership](../design/project-membership.md#current-seams-and-limits).
 An agentless raw tool invocation has no verified calling session and is refused.
 Their inputs are closed; frame pages contain at most four images, with
