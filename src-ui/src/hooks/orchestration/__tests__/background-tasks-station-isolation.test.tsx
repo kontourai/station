@@ -415,3 +415,83 @@ test('settled continuation reporter aliases stay bounded while live and uncertai
   expect(aliases['uncertain-reporter']).toBe(parent);
   expect(Object.keys(aliases).length).toBeLessThanOrEqual(52);
 });
+
+test('a resumed continuation reporter keeps its alias when a new child arrives at the inactive limit', () => {
+  const view = renderHook(() => useChatBackgroundTasks(parent, stationA));
+  const upsert = (reporter: string, childId: string, title: string) =>
+    handleOrchestrationEvent(stationA, {
+      provider: 'codex',
+      threadId: reporter,
+      createdAt: '2026-10-30T00:00:00.000Z',
+      method: 'child-work.updated',
+      delta: {
+        kind: 'upsert',
+        item: {
+          producer: 'engine-subagent',
+          reporterThreadId: reporter,
+          childId,
+          status: 'running',
+          title,
+        },
+      },
+    });
+  act(() => {
+    for (let index = 0; index < 100; index++) {
+      const reporter = `resumable-${index}`;
+      activeChatsStore.updateChat(parent, { currentSessionId: reporter });
+      upsert(reporter, 'old-child', 'Previous child');
+      handleOrchestrationEvent(stationA, {
+        provider: 'codex',
+        threadId: reporter,
+        createdAt: '2026-10-30T00:00:00.000Z',
+        method: 'child-work.updated',
+        delta: {
+          kind: 'settle',
+          producer: 'engine-subagent',
+          reporterThreadId: reporter,
+          childId: 'old-child',
+          status: 'completed',
+        },
+      });
+    }
+  });
+  const aliases =
+    backgroundTasksStore.getSnapshot(stationA).providerReporters ?? {};
+  const oldest = Object.keys(aliases)[0];
+  act(() => {
+    upsert(
+      'late-bound-reporter',
+      'first-child',
+      'Already running before opening',
+    );
+    activeChatsStore.updateChat(parent, {
+      currentSessionId: 'late-bound-reporter',
+    });
+    upsert(
+      'late-bound-reporter',
+      'first-child',
+      'Now associated with the chat',
+    );
+    handleOrchestrationEvent(stationA, {
+      provider: 'codex',
+      threadId: 'late-bound-reporter',
+      createdAt: '2026-10-30T00:00:00.000Z',
+      method: 'child-work.updated',
+      delta: {
+        kind: 'settle',
+        producer: 'engine-subagent',
+        reporterThreadId: 'late-bound-reporter',
+        childId: 'first-child',
+        status: 'completed',
+      },
+    });
+  });
+  expect(oldest).toBeDefined();
+  act(() => {
+    activeChatsStore.updateChat(parent, { currentSessionId: oldest });
+    upsert(oldest, 'new-child', 'Resumed authoritative child');
+  });
+  expect(view.result.current.running.map((row) => row.title)).toContain(
+    'Resumed authoritative child',
+  );
+});

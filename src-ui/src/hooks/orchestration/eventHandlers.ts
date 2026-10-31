@@ -156,6 +156,8 @@ export function handleOrchestrationEvent(
   const replayThread = isReplayThread(event.threadId);
   if (!replayThread) {
     backgroundTasksStore.ingest(event, apiBase);
+    // Alias retention must classify the current child transition.
+    childWorkGlobalStore.ingest(apiBase, event);
     if (
       event.method === 'child-work.updated' ||
       event.method === 'extension.notification'
@@ -174,9 +176,6 @@ export function handleOrchestrationEvent(
     // its chat was since rebound to a newer session (the guard below would
     // drop it), or the chat keeps the dead session's children.
     observeChildWorkLifecycle(event);
-    // #2459: the Agents pane's "All" scope — every session's engine
-    // subagents, including sessions no chat has open (a CLI delegate).
-    childWorkGlobalStore.ingest(apiBase, event);
     // A settled request's approval toast goes whether or not any chat still
     // routes this thread: the toast (and the header "Approval needed" count
     // built from it) is global, and the chat that raised it may be closed
