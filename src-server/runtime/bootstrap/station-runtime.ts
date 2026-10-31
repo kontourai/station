@@ -470,6 +470,7 @@ import {
   type MCPToolProvenanceGeneration,
 } from '../../services/orchestration/mcp-tool-provenance.js';
 import { disposeAllPluginPublicServerModules } from '../../services/plugins/plugin-public-server.js';
+import type { TaskBrowserRecording } from '../../services/projects/task-browser-recording.js';
 import {
   createRuntimeSearch,
   type RuntimeSearch,
@@ -798,6 +799,8 @@ export class StationRuntime {
   private projectTaskRoomRuntime?: ProjectTaskRoomRuntime;
   /** #90 Browser pane (personal hosts only); its Chromium processes stop with us. */
   private browserService?: BrowserService;
+  private taskRecordings?: TaskBrowserRecording;
+  private taskRecordingsShutdown?: Promise<void>;
   private deviceToolchainService?: DeviceToolchainService;
   /** #1970 device sessions (personal hosts only); their decoders stop with us. */
   private deviceSessions?: DeviceSessionService;
@@ -4645,9 +4648,14 @@ export class StationRuntime {
     this.pluginDraftService = undefined;
     await attempt(() => engineSignIn()?.dispose());
     // #2443: route composition may have built these before the failure. The
-    // same order as shutdown(): browsers, then device sessions (their
+    // same order as shutdown(): recordings, browsers, then device sessions (their
     // producers read the hub the toolchain stops), SSH device hosts, the
     // toolchain, and the live-surface registry once every producer stopped.
+    const recordingsClosed = await attempt(
+      () => this.taskRecordingsShutdown ?? this.taskRecordings?.dispose(),
+    );
+    this.taskRecordingsShutdown = undefined;
+    if (recordingsClosed) this.taskRecordings = undefined;
     if (await attempt(() => this.browserService?.shutdown()))
       this.browserService = undefined;
     if (await attempt(() => this.deviceSessions?.dispose()))
@@ -4969,6 +4977,7 @@ export class StationRuntime {
       projectTaskRoomRuntime,
       projectRoomRuntime,
       browserService,
+      taskRecordings,
       deviceToolchainService,
       deviceSessions,
       liveSurfaceRegistry,
@@ -5118,6 +5127,7 @@ export class StationRuntime {
     this.projectTaskRoomRuntime = projectTaskRoomRuntime;
     this.projectRoomRuntime = projectRoomRuntime;
     this.browserService = browserService;
+    this.taskRecordings = taskRecordings;
     this.deviceToolchainService = deviceToolchainService;
     this.deviceSessions = deviceSessions;
     this.agentActivityPublisher = agentActivityPublisher;
@@ -5605,6 +5615,10 @@ export class StationRuntime {
    * Shutdown the runtime
    */
   async shutdown(): Promise<void> {
+    if (this.taskRecordings && !this.taskRecordingsShutdown) {
+      this.taskRecordingsShutdown = this.taskRecordings.dispose();
+      void this.taskRecordingsShutdown.catch(() => {});
+    }
     this.uninstallCatalogAddressPolicy?.();
     this.uninstallCatalogAddressPolicy = undefined;
     sharedUntrustedContentLedger.attachDurableMarks(undefined);
@@ -5672,6 +5686,14 @@ export class StationRuntime {
     const mcpUiFrameServer = this.mcpUiFrameServer;
     const consentListener = this.consentListener;
     const failures: unknown[] = [];
+    try {
+      await (this.taskRecordingsShutdown ?? this.taskRecordings?.dispose());
+      this.taskRecordings = undefined;
+    } catch (error) {
+      failures.push(error);
+    } finally {
+      this.taskRecordingsShutdown = undefined;
+    }
     try {
       await this.nativeRelayEnrollment?.close();
       this.nativeRelayEnrollment = undefined;

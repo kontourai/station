@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-// Every Station Control tool and every `station` CLI action is classified in
+// Every Station Control and Station Browser tool and every `station` CLI action is classified in
 // scripts/cli-mcp-parity.json: a counterpart on the other side, a deliberate
 // exemption, or a gap tracked by an issue. Before this check, the two
 // surfaces were mapped once by hand and nothing noticed a new tool shipping
 // with no CLI action, or a CLI verb no agent could reach.
 //
-// The tool list is the authority table (STATION_CONTROL_TOOL_POLICY), the
+// The tool lists are the Station Control and Browser policy inventories; the
 // CLI list is help.ts's knownCommands()/actionsFor(): the same registries
 // the server and the CLI dispatch from, loaded rather than pattern-matched.
 //
@@ -61,6 +61,7 @@ export async function loadSurfaces() {
   const discovery = await importTs(
     'src-server/tools/station-control-disclosure.ts',
   );
+  const browser = await importTs('src-server/tools/station-browser-policy.ts');
   const verbs = help.knownCommands();
   const cli = verbs.flatMap(
     (verb) =>
@@ -70,6 +71,7 @@ export async function loadSurfaces() {
     tools: [
       ...Object.keys(policy.STATION_CONTROL_TOOL_POLICY),
       ...Object.values(discovery.STATION_CONTROL_DISCOVERY_TOOL_NAMES),
+      ...browser.STATION_BROWSER_TOOL_NAMES,
     ],
     cli,
     verbs,

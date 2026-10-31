@@ -6132,6 +6132,16 @@ must revoke it. Content stays Task-scoped, uses authenticated fetch and throws
 `TaskReviewCreateCaptureRequest` and `TaskCaptureBrowserSession` are exported
 from both the root and query barrels.
 
+For Task-bound Browser clips, `fetchTaskWalkthroughPage(taskId, requestScope,
+cursor?, signal?)` reads at most five validated manifests. `useTaskWalkthroughsQuery`
+accepts `{requestScope, taskCreatedAt}` and exposes additional pages on request.
+`useTaskWalkthroughVideoQuery(taskId, clip, scope)` reads one bounded video;
+mount it only for an open player. The hooks partition by Station, authority and
+Task incarnation, and remove the video's cached bytes after the player unmounts.
+Pass the captured `ApiRequestScope`; the SDK checks it against the active
+credential on request and body reads. Callers own and must revoke object URLs.
+These are Task Review reads, separate from the Project import fetchers above.
+
 `useSendReviewThreadsMutation(taskId)` takes the shared `TaskReviewSendRequest`
 `{threadIds, operationId, mode}`, where `mode` is `send` or `send-and-resolve`. It returns `{deliveryKey, status,
 threads, reason?}` and invalidates the review list and thread detail queries.

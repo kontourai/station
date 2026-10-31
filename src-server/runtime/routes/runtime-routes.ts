@@ -188,6 +188,7 @@ import {
 import { ProjectSharedTaskService } from '../../services/projects/project-shared-task-service.js';
 import type { ProjectSharedTaskStore } from '../../services/projects/project-shared-task-store.js';
 import { TaskBrowserCapture } from '../../services/projects/task-browser-capture.js';
+import { TaskBrowserRecording } from '../../services/projects/task-browser-recording.js';
 import { createTaskCaptureBlobStoreFactory } from '../../services/projects/task-capture-blob-store-factory.js';
 import { TaskRoomAttachments } from '../../services/projects/task-room-attachments.js';
 import { createTaskRoomContext } from '../../services/projects/task-room-context.js';
@@ -219,6 +220,7 @@ import {
   readTelemetryCompanionInstallation,
 } from '../../services/telemetry-companion-install.js';
 import { TelemetryIncidentLinks } from '../../services/telemetry-incident-links.js';
+import { TaskWalkthroughStore } from '../../services/walkthroughs/task-walkthrough-store.js';
 import { WalkthroughService } from '../../services/walkthroughs/walkthrough-service.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { canonicalPath } from '../../utils/path-containment.js';
@@ -1270,6 +1272,8 @@ interface ConfigureRuntimeRoutesResult {
    * multi-tenant deployments, where the routes are not mounted at all.
    */
   liveSurfaceRegistry?: LiveSurfaceRegistry;
+  /** Task Browser recordings are joined before Browser shutdown. */
+  taskRecordings?: TaskBrowserRecording;
   /** Personal hosts only; the runtime shuts it down on stop. */
   browserService?: BrowserService;
   /** Personal hosts only; the runtime stops the managed hub on stop. */
@@ -1693,6 +1697,7 @@ export function configureRuntimeRoutes(
   let pluginDraftService: PluginDraftService | undefined;
   let projectTaskRoomLifecycleReady: Promise<void> = Promise.resolve();
   let liveSurfaceRegistry: LiveSurfaceRegistry | undefined;
+  let taskRecordings: TaskBrowserRecording | undefined;
   let browserService: BrowserService | undefined;
   let deviceToolchainService: DeviceToolchainService | undefined;
   let deviceShareStore: DeviceShareStore | undefined;
@@ -7909,7 +7914,47 @@ export function configureRuntimeRoutes(
     const captureRegistry = browserService.registry;
     const captureProjectIdFor = (identity: string) =>
       localProjectIdFor(context.projectService, identity);
+    const captureForbiddenRoots = () => [
+      ...context.projectService.listProjects().flatMap((project) => {
+        const dir = context.projectService.getProject(
+          project.slug,
+        )?.workingDirectory;
+        return dir ? [resolve(expandTilde(dir))] : [];
+      }),
+      ...context.taskGraphService.listWorkspaceRoots(),
+    ];
     const taskCaptures = taskCaptureService;
+    const taskWalkthroughs =
+      taskCaptures && liveSurfaceRegistry && localMediaPreviews
+        ? new TaskWalkthroughStore({
+            files: () =>
+              new ProjectFileTransactions(
+                context.configLoader.getProjectHomeDir(),
+              ),
+            projectSlugFor: (identity) => {
+              const localId = captureProjectIdFor(identity);
+              return context.projectService
+                .listProjects()
+                .find((project) => project.id === localId)?.slug;
+            },
+            forbiddenRoots: captureForbiddenRoots,
+          })
+        : undefined;
+    taskRecordings =
+      taskCaptures &&
+      taskWalkthroughs &&
+      liveSurfaceRegistry &&
+      localMediaPreviews
+        ? new TaskBrowserRecording({
+            captures: taskCaptures,
+            registry: captureRegistry,
+            surfaces: liveSurfaceRegistry,
+            surfaceIdFor: browserService.surfaceIdFor,
+            resolver: context.walkthroughImportDependencies.resolver,
+            preview: localMediaPreviews.walkthroughsPreview,
+            store: taskWalkthroughs,
+          })
+        : undefined;
     if (taskCaptures && captureRuntime)
       context.app.route(
         '/api/tasks',
@@ -7918,6 +7963,14 @@ export function configureRuntimeRoutes(
           logger: context.logger,
           runtime: captureRuntime,
           captures: taskCaptures,
+          ...(taskWalkthroughs && localMediaPreviews
+            ? {
+                walkthroughs: {
+                  store: taskWalkthroughs,
+                  preview: localMediaPreviews.walkthroughsPreview,
+                },
+              }
+            : {}),
           registry: captureRegistry,
           authorizeProject: authorizeBrowserProject,
           isStationInternalRequest,
@@ -7957,6 +8010,7 @@ export function configureRuntimeRoutes(
                 localProjectIdFor: captureProjectIdFor,
                 runtime: captureRuntime,
                 captures: taskCaptures,
+                ...(taskRecordings ? { recordings: taskRecordings } : {}),
                 registry: captureRegistry,
               },
             }
@@ -11258,6 +11312,7 @@ export function configureRuntimeRoutes(
     projectTaskRoomRuntime,
     projectRoomRuntime,
     liveSurfaceRegistry,
+    taskRecordings,
     browserService,
     deviceToolchainService,
     deviceSessions,
