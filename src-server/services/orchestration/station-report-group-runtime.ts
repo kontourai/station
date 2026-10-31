@@ -34,6 +34,10 @@ import {
 import { pageByBytes } from './delegation-group-transport.js';
 import { FileFinalWireIntentStore } from './delegation-group-wire-intent-store.js';
 import type { OrchestrationService } from './orchestration-service.js';
+import {
+  type ReportRoundsPublication,
+  withReportRoundsPublication,
+} from './report-rounds-publication.js';
 import { StationReportGroupContinuation } from './station-report-group-continuation.js';
 import {
   StationReportCustodyUnavailable,
@@ -625,40 +629,62 @@ export class StationReportGroupRuntime {
     };
   }
 
+  async #withRoundsPublication<T>(
+    context: RuntimeSourceRequestContext,
+    work: (publication?: ReportRoundsPublication) => Promise<T>,
+  ): Promise<T> {
+    const participant = this.owners.publicationParticipant;
+    if (participant === undefined) return work();
+    return withReportRoundsPublication(
+      {
+        participant,
+        home: this.owners.runtime.configLoader.getProjectHomeDir(),
+        signal: context.req.raw.signal,
+      },
+      work,
+    );
+  }
+
   async finalizeCancel(
     context: RuntimeSourceRequestContext,
     groupId: string,
     command: ReportGroupFinalizeCancelInput,
   ) {
-    const result = await this.#custody.finalizeCancel(
-      context,
-      groupId,
-      command,
-      this.owners.orchestration,
-      this.#dispatch,
-    );
-    return {
-      replayed: result.replayed,
-      revision: result.projection.revision,
-      cancellation: result.projection.cancellation,
-    };
+    return this.#withRoundsPublication(context, async (publication) => {
+      const result = await this.#custody.finalizeCancel(
+        context,
+        groupId,
+        command,
+        this.owners.orchestration,
+        this.#dispatch,
+        publication,
+      );
+      return {
+        replayed: result.replayed,
+        revision: result.projection.revision,
+        cancellation: result.projection.cancellation,
+      };
+    });
   }
   async cancel(
     context: RuntimeSourceRequestContext,
     groupId: string,
     command: { operationKey: string; expectedRevision: number },
   ) {
-    const result = await this.#custody.cancel(
-      context,
-      groupId,
-      command,
-      this.owners.orchestration,
-      this.#dispatch,
-    );
-    return {
-      replayed: result.replayed,
-      revision: result.projection.revision,
-      cancellation: result.projection.cancellation,
-    };
+    return this.#withRoundsPublication(context, async (publication) => {
+      const result = await this.#custody.cancel(
+        context,
+        groupId,
+        command,
+        this.owners.orchestration,
+        this.#dispatch,
+        publication,
+      );
+      return {
+        replayed: result.replayed,
+        revision: result.projection.revision,
+        cancellation: result.projection.cancellation,
+      };
+    });
   }
 }

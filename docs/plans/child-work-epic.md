@@ -2993,3 +2993,30 @@ The six controller constructions and outside writers still need explicit scoped
 facades, full durable-return lifetime, provider/sibling separation and shutdown
 proof. Groups and finalizer remain disabled; original report 16/17 and funded-input
 qualification gaps are unchanged.
+
+### First installed transaction-owner composition: cancellation
+
+The runtime cancellation and cancellation-finalization paths now use the published
+9.11.0 transaction owner. An admitted runtime parent spans the operation, and each
+transaction borrows a runtime child while acquiring its own explicit home lease.
+The group store, V3 service and host are rebuilt against that exact lease; no
+controller-wide home lease or async borrowing wrapper supplies custody. Home stays
+held through the outer store return, then releases before descendant interruption.
+The scoped interrupt callback refuses under home custody. Retired child cleanup is
+joined before parent release; failed cleanup stays registered for shutdown retry.
+The home owner exposes its existing pending-cleanup step without acquiring a new
+lease or releasing an active sibling.
+
+The actual StationReportGroupRuntime cancellation regression holds both the journal
+callback and the completed store's outer return, observes sibling exclusion and
+runtime-home retention, then joins real shutdown. Its qualified pre-fix failure is
+the missing sibling HomeWriterUnavailableError. Earlier setup failures (existing
+directory, nonexistent preparation cleanup method and wall-clock/fixture-clock
+mismatch) are retained and excluded as custody evidence. Owned home-guard removal
+failure returns uncertainty, refuses maintenance and blocks shutdown; restoring the
+filesystem operation permits cleanup retry. The first fault selection passes 22
+cases across the caller and home owner. An initial typecheck found two missing
+callback annotations; explicit published types repair them and server-test types
+pass. The final guarded selection passes 27 cases across the caller, home owner
+and runtime participant. Cleanup-join mutation and independent review remain pending. Other five controller constructions, public continuation-parent borrowing,
+outside writers, funded groups and final feature enablement remain open.

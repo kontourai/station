@@ -11,12 +11,18 @@ import { join } from 'node:path';
 import { FileAuthorizationLedger } from '@kontourai/dispatch';
 import { createDelegationAuthorityServiceV3 } from '@kontourai/flow-agents/delegation-authority-service-v3';
 import { createDelegationRoundsController } from '@kontourai/flow-agents/delegation-group-rounds';
+import {
+  acquireStationHomeMaintenanceLease,
+  StationHomeActiveError,
+} from '@kontourai/station-shared/station-home-lifecycle';
 import { test, vi } from 'vitest';
 import {
   executeOwnedProcess,
   terminateSuiteExecution,
   waitForSuiteSettlement,
 } from '../../../../scripts/lib/owned-process.mjs';
+import { isRuntimePublicationParticipant } from '../../../runtime/bootstrap/runtime-publication-participant.js';
+import { StationRuntime } from '../../../runtime/bootstrap/station-runtime.js';
 import { captureEnvironmentLocalGrantObservationOwner } from '../../../runtime/conversation/local-grant-observation-owner.js';
 import {
   bindRuntimeLocalOperator,
@@ -25,13 +31,16 @@ import {
 } from '../../../security/runtime-request-security.js';
 import { HomeWriterOwner } from '../../ssh/home-writer-owner.js';
 import { StationDelegationPersistence } from '../delegation-group-persistence.js';
+import { EventBus } from '../event-bus.js';
+import { OrchestrationService } from '../orchestration-service.js';
+import { StationReportGroupRuntime } from '../station-report-group-runtime.js';
 import { newGrant, setup } from './delegation-source-fixtures/report.js';
 
 test('home-first rounds publication excludes a second revoked request and nests authority under the same lease', async () => {
   const h = await setup();
   const other = newGrant(h);
   const root = join(h.f.home, 'report-groups');
-  mkdirSync(root, { mode: 0o700 });
+  mkdirSync(root, { mode: 0o700, recursive: true });
   const dispatchRoot = join(root, 'dispatch');
   mkdirSync(dispatchRoot, { mode: 0o700 });
   const persistence = new StationDelegationPersistence(root, {
@@ -360,3 +369,213 @@ try {
     h.owner.close(handle);
   }
 }, 60_000);
+
+test.each([false, true])(
+  'runtime cancellation holds scoped home through full store return and retries cleanup on shutdown (fault=%s)',
+  async (fault) => {
+    const h = await setup();
+    const handle = await h.owner.prepare(h.f.context(), {
+      ...h.input,
+      maxConcurrent: 1,
+      members: h.input.members.slice(0, 1),
+    });
+    const runtime = new StationRuntime({ projectHomeDir: h.f.home });
+    const participant = Reflect.get(runtime, 'runtimePublicationParticipant');
+    assert.ok(isRuntimePublicationParticipant(participant));
+    const deny = (): never => {
+      throw Error('no provider or adapter work in cancellation fixture');
+    };
+    const orchestration = new OrchestrationService({
+      adapterRegistry: { register: deny, get: deny, list: () => [] },
+      eventBus: new EventBus(),
+      logger: { debug() {}, warn() {} },
+    });
+    let releaseBody!: () => void, releaseReturn!: () => void;
+    const bodyHeld = new Promise<void>((resolve) => {
+      releaseBody = resolve;
+    });
+    const returnHeld = new Promise<void>((resolve) => {
+      releaseReturn = resolve;
+    });
+    let bodyEntered!: () => void, storeReturned!: () => void;
+    const inBody = new Promise<void>((resolve) => {
+      bodyEntered = resolve;
+    });
+    const afterStore = new Promise<void>((resolve) => {
+      storeReturned = resolve;
+    });
+    let pending: Promise<unknown> | undefined;
+    let shutdown: Promise<void> | undefined;
+    let releaseFault: { mockRestore(): void } | undefined;
+    let storeProbe: { mockRestore(): void } | undefined;
+    try {
+      const prepared = h.owner.read(handle, h.f.req);
+      const groupId = await h.custody.retain(h.f.context(), h.owner, handle);
+      const persistence = h.custodyOwners.persistence;
+      const current = (): undefined => {
+        h.owner.assertCurrent(handle, h.f.req);
+        return undefined;
+      };
+      const service = createDelegationAuthorityServiceV3(
+        persistence.roundsAuthorityStore(current),
+        {
+          now: () => new Date(Date.now()).toISOString(),
+          authorize: async (_action, root, envelope) =>
+            h.owner.authorizes(handle, h.f.req, root, envelope),
+          confirmExecution: async (envelope) =>
+            h.owner.confirmsExecution(handle, h.f.req, envelope),
+          authenticateRenewal: async () => null,
+        },
+        { maxRenewals: 0 },
+      );
+      await service.issue(prepared.root);
+      for (const envelope of prepared.envelopes)
+        await service.derive(prepared.root.authority_id, envelope);
+      const report = new StationReportGroupRuntime({
+        runtime: h.preparationOwners.runtime,
+        orchestration,
+        rawFetch: h.rawFetch,
+        publicationParticipant: participant,
+      });
+      const root = join(h.f.home, 'report-groups');
+      const dispatch = new FileAuthorizationLedger({
+        root: join(root, 'dispatch'),
+      });
+      const controller = createDelegationRoundsController({
+        store: persistence.roundsStore(current),
+        authorityService: service,
+        dispatchLedger: dispatch,
+        host: {
+          authorize: async () => prepared.root.authenticated_principal_ref,
+          executionHost: deny,
+          prepareRequest: async () => deny(),
+          retainObservation: async () => deny(),
+          confirmTerminal: async () => deny(),
+          requestDescendantCancellation: async () => deny(),
+        },
+      });
+      const created = await controller.create({
+        kind: 'create',
+        groupId,
+        operationKey: 'create',
+        expectedRevision: 0,
+        controller: prepared.spec.controller,
+        spec: prepared.spec,
+      });
+      const roundsStore = StationDelegationPersistence.prototype.roundsStore;
+      let first = true;
+      storeProbe = vi
+        .spyOn(StationDelegationPersistence.prototype, 'roundsStore')
+        .mockImplementation(function (
+          this: StationDelegationPersistence,
+          ...args
+        ) {
+          const actual = roundsStore.apply(this, args);
+          return {
+            ...actual,
+            transact: async (id, body) => {
+              let selected = false;
+              const result = await actual.transact(id, async (journal) => {
+                const value = await body(journal);
+                if (
+                  first &&
+                  value.journal?.events.some(
+                    (event) =>
+                      event.kind === 'command' &&
+                      event.command.kind === 'cancel' &&
+                      event.command.operationKey === 'cancel-owned',
+                  )
+                ) {
+                  first = false;
+                  selected = true;
+                  bodyEntered();
+                  await bodyHeld;
+                }
+                return value;
+              });
+              if (selected) {
+                storeReturned();
+                await returnHeld;
+              }
+              return result;
+            },
+          };
+        });
+      const writer = await HomeWriterOwner.forHome(h.f.home);
+      pending = report.cancel(h.f.context(), groupId, {
+        operationKey: 'cancel-owned',
+        expectedRevision: created.projection.revision,
+      });
+      const premature = pending.then(() => {
+        throw Error('cancellation returned before held store');
+      });
+      await Promise.race([inBody, premature]);
+      assert.throws(() => writer.runSynchronous(() => undefined), {
+        name: 'HomeWriterUnavailableError',
+        reason: 'busy',
+      });
+      if (fault) {
+        const remove = fs.rmSync;
+        releaseFault = vi
+          .spyOn(fs, 'rmSync')
+          .mockImplementation((path, options) => {
+            if (String(path).includes('.home-writer.mutation.guard.stale-'))
+              throw Error('injected owned home retirement failure');
+            return remove(path, options);
+          });
+        syncBuiltinESMExports();
+      }
+      shutdown = runtime.shutdown();
+      const blockedShutdown = fault
+        ? assert.rejects(shutdown, { code: 'runtime_publication_pending' })
+        : undefined;
+      assert.throws(() => participant.acquire());
+      assert.throws(
+        () => acquireStationHomeMaintenanceLease(h.f.home),
+        StationHomeActiveError,
+      );
+      releaseBody();
+      await Promise.race([afterStore, premature]);
+      assert.throws(() => writer.runSynchronous(() => undefined), {
+        name: 'HomeWriterUnavailableError',
+        reason: 'busy',
+      });
+      assert.throws(
+        () => acquireStationHomeMaintenanceLease(h.f.home),
+        StationHomeActiveError,
+      );
+      releaseReturn();
+      if (fault) {
+        await assert.rejects(pending, { code: 'rounds_transaction_uncertain' });
+        await blockedShutdown;
+        assert.throws(
+          () => acquireStationHomeMaintenanceLease(h.f.home),
+          StationHomeActiveError,
+        );
+        releaseFault?.mockRestore();
+        releaseFault = undefined;
+        syncBuiltinESMExports();
+        shutdown = runtime.shutdown();
+        await shutdown;
+      } else {
+        await pending;
+        await shutdown;
+      }
+      writer.runSynchronous(() => undefined);
+      const maintenance = acquireStationHomeMaintenanceLease(h.f.home);
+      maintenance.release();
+    } finally {
+      releaseFault?.mockRestore();
+      syncBuiltinESMExports();
+      releaseBody();
+      releaseReturn();
+      await pending?.catch(() => {});
+      storeProbe?.mockRestore();
+      await shutdown?.catch(() => {});
+      await runtime.shutdown();
+      await orchestration.shutdown();
+      await h.owner.closeInputs(handle);
+      h.owner.close(handle);
+    }
+  },
+);

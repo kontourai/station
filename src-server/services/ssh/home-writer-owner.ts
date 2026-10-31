@@ -443,17 +443,23 @@ export class HomeWriterOwner {
     return outcome.value;
   }
 
-  async acquire(signal?: AbortSignal): Promise<HomeWriterLease> {
+  /** Retire only failed cleanup; this never releases an active sibling lease. */
+  async settlePendingCleanup(): Promise<void> {
     this.assertCurrent();
-    signal?.throwIfAborted();
-    if (spans.getStore()?.has(this.#core))
-      throw new HomeWriterUnavailableError('borrow-unavailable');
     await this.#core.prepared.settlePendingCleanup();
     for (const holder of this.#core.holders)
       if (!holder.active) {
         await releaseHolder(holder);
       }
     if (!this.#core.holders.size) flushNotifications(this.#core);
+  }
+
+  async acquire(signal?: AbortSignal): Promise<HomeWriterLease> {
+    this.assertCurrent();
+    signal?.throwIfAborted();
+    if (spans.getStore()?.has(this.#core))
+      throw new HomeWriterUnavailableError('borrow-unavailable');
+    await this.settlePendingCleanup();
     let base: PreparedFileMutationLease;
     try {
       base = await acquireFileMutationLeaseAsync(this.#core.lock);

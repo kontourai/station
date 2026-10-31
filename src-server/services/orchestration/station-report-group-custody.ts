@@ -39,6 +39,7 @@ import {
 } from '../../security/runtime-request-security.js';
 import type { EnvironmentSecurityService } from '../ssh/environment-security-service.js';
 import {
+  type HomeWriterLease,
   HomeWriterOwner,
   HomeWriterUnavailableError,
 } from '../ssh/home-writer-owner.js';
@@ -52,6 +53,7 @@ import {
   wireIdentityDigest,
 } from './delegation-group-wire-intent-store.js';
 import type { OrchestrationService } from './orchestration-service.js';
+import type { ReportRoundsPublication } from './report-rounds-publication.js';
 import {
   type ReportAccountingRecoveryIntent,
   signReportAccountingRecoveryIntent,
@@ -738,137 +740,165 @@ export class StationReportGroupCustody {
     requestOperationKey: string | null,
     orchestration: OrchestrationService,
     dispatchLedger: AuthorizationLedger,
+    publication?: ReportRoundsPublication,
   ) {
     const authorized = await this.#context(context, 'POST');
     const before = await this.#inspect(authorized, groupId);
     if (!before?.group || !before.authority) refuse();
     const group = before.group;
     const root = before.authority.epochs.at(-1)!.root;
-    const service = createDelegationAuthorityServiceV3(
-      this.owners.persistence.roundsAuthorityStore(authorized.current),
-      {
-        now: () => new Date().toISOString(),
-        authorize: async (action, candidate) => {
-          authorized.current();
-          return (
-            ['cancel', 'inspect'].includes(action) && same(candidate, root)
-          );
-        },
-        confirmExecution: async () => false,
-        authenticateRenewal: async () => null,
-      },
-      { maxRenewals: 0 },
-    );
-    const host: DelegationRoundsHost = {
-      authorize: async ({ action, groupId: candidate, current }) => {
-        authorized.current();
-        const actions =
-          requestOperationKey === null
-            ? ['finalizeCancel', 'replay']
-            : ['cancel', 'replay', 'get', 'record'];
-        return actions.includes(action) &&
-          candidate === groupId &&
-          (!current ||
-            (same(current.spec, before.admission.spec) &&
-              (requestOperationKey !== null || same(current, group))))
-          ? root.authenticated_principal_ref
-          : null;
-      },
-      confirmCancellation: async (spec, original) => {
-        if (!same(spec, before.admission.spec)) refuse();
-        const receipts = [];
-        // Flow holds the group lock here. Read only the independent signed receipt sidecar.
-        for (const attempt of this.#cancellationWork(before)) {
-          authorized.current();
-          if (attempt.terminal) {
-            receipts.push({
-              invocationId: attempt.invocationId,
-              terminal: attempt.terminal,
-            });
-            continue;
-          }
-          const retained = await this.#readMemberInterrupt(
-            authorized,
-            before,
-            attempt.seatId,
-            attempt.continuation ? attempt.invocationId : undefined,
-          );
-          if (
-            !retained?.reference ||
-            retained.record.intent.operationId !== original.operationKey
-          )
-            return null;
-          receipts.push({
-            invocationId: attempt.invocationId,
-            request: retained.reference,
-          });
-        }
-        authorized.current();
-        return {
-          domain: 'station.report-cancellation.v1',
-          id: groupId,
-          digest: `sha256:${createHash('sha256')
-            .update(canonicalJson([groupId, original.operationKey, receipts]))
-            .digest('hex')}`,
-        };
-      },
-      executionHost: () => refuse(),
-      prepareRequest: async () => refuse(),
-      retainObservation: async () => refuse(),
-      confirmTerminal: async () => refuse(),
-      requestDescendantCancellation: async (spec) => {
-        if (requestOperationKey === null) refuse();
-        const state = await this.#inspect(authorized, groupId);
-        if (
-          !state?.group ||
-          !state.authority?.cancelled ||
-          !same(spec, state.admission.spec)
-        )
-          refuse();
-        const receipts = [];
-        for (const attempt of this.#cancellationWork(state)) {
-          authorized.current();
-          if (attempt.terminal) {
-            receipts.push({
-              invocationId: attempt.invocationId,
-              terminal: attempt.terminal,
-            });
-            continue;
-          }
-          const requested = await this.requestMemberInterrupt(
-            context,
-            groupId,
-            attempt.seatId,
-            requestOperationKey,
-            orchestration,
-            attempt.continuation ? attempt.invocationId : undefined,
-          );
-          authorized.current();
-          if (!requested.reference) refuse();
-          receipts.push({
-            invocationId: attempt.invocationId,
-            request: requested.reference,
-          });
-        }
-        authorized.current();
-        return {
-          domain: 'station.report-cancellation.v1',
-          id: groupId,
-          digest: `sha256:${createHash('sha256')
-            .update(canonicalJson([groupId, requestOperationKey, receipts]))
-            .digest('hex')}`,
-        };
-      },
+    const baseCurrent = (): undefined => {
+      publication?.assertCurrent();
+      return authorized.current();
     };
+    const build = (
+      current: () => undefined,
+      within?: { owner: HomeWriterOwner; lease: HomeWriterLease },
+    ) => {
+      const scoped = { ...authorized, current };
+      const service = createDelegationAuthorityServiceV3(
+        this.owners.persistence.roundsAuthorityStore(
+          scoped.current,
+          scoped.current,
+          within,
+        ),
+        {
+          now: () => new Date().toISOString(),
+          authorize: async (action, candidate) => {
+            scoped.current();
+            return (
+              ['cancel', 'inspect'].includes(action) && same(candidate, root)
+            );
+          },
+          confirmExecution: async () => false,
+          authenticateRenewal: async () => null,
+        },
+        { maxRenewals: 0 },
+      );
+      const host: DelegationRoundsHost = {
+        authorize: async ({ action, groupId: candidate, current }) => {
+          scoped.current();
+          const actions =
+            requestOperationKey === null
+              ? ['finalizeCancel', 'replay']
+              : ['cancel', 'replay', 'get', 'record'];
+          return actions.includes(action) &&
+            candidate === groupId &&
+            (!current ||
+              (same(current.spec, before.admission.spec) &&
+                (requestOperationKey !== null || same(current, group))))
+            ? root.authenticated_principal_ref
+            : null;
+        },
+        confirmCancellation: async (spec, original) => {
+          if (!same(spec, before.admission.spec)) refuse();
+          const receipts = [];
+          // Flow holds the group lock here. Read only the independent signed receipt sidecar.
+          for (const attempt of this.#cancellationWork(before)) {
+            scoped.current();
+            if (attempt.terminal) {
+              receipts.push({
+                invocationId: attempt.invocationId,
+                terminal: attempt.terminal,
+              });
+              continue;
+            }
+            const retained = await this.#readMemberInterrupt(
+              scoped,
+              before,
+              attempt.seatId,
+              attempt.continuation ? attempt.invocationId : undefined,
+            );
+            if (
+              !retained?.reference ||
+              retained.record.intent.operationId !== original.operationKey
+            )
+              return null;
+            receipts.push({
+              invocationId: attempt.invocationId,
+              request: retained.reference,
+            });
+          }
+          scoped.current();
+          return {
+            domain: 'station.report-cancellation.v1',
+            id: groupId,
+            digest: `sha256:${createHash('sha256')
+              .update(canonicalJson([groupId, original.operationKey, receipts]))
+              .digest('hex')}`,
+          };
+        },
+        executionHost: () => refuse(),
+        prepareRequest: async () => refuse(),
+        retainObservation: async () => refuse(),
+        confirmTerminal: async () => refuse(),
+        requestDescendantCancellation: async (spec) => {
+          if (within) refuse();
+          if (requestOperationKey === null) refuse();
+          const state = await this.#inspect(scoped, groupId);
+          if (
+            !state?.group ||
+            !state.authority?.cancelled ||
+            !same(spec, state.admission.spec)
+          )
+            refuse();
+          const receipts = [];
+          for (const attempt of this.#cancellationWork(state)) {
+            scoped.current();
+            if (attempt.terminal) {
+              receipts.push({
+                invocationId: attempt.invocationId,
+                terminal: attempt.terminal,
+              });
+              continue;
+            }
+            const requested = await this.requestMemberInterrupt(
+              context,
+              groupId,
+              attempt.seatId,
+              requestOperationKey,
+              orchestration,
+              attempt.continuation ? attempt.invocationId : undefined,
+            );
+            scoped.current();
+            if (!requested.reference) refuse();
+            receipts.push({
+              invocationId: attempt.invocationId,
+              request: requested.reference,
+            });
+          }
+          scoped.current();
+          return {
+            domain: 'station.report-cancellation.v1',
+            id: groupId,
+            digest: `sha256:${createHash('sha256')
+              .update(canonicalJson([groupId, requestOperationKey, receipts]))
+              .digest('hex')}`,
+          };
+        },
+      };
+      return {
+        store: this.owners.persistence.roundsStore(current, current, within),
+        authorityService: service,
+        host,
+      };
+    };
+    const transactionOwner = publication?.transactionOwner({
+      groupId,
+      owner: await HomeWriterOwner.forHome(
+        this.owners.environment.getProjectHomeDir(),
+      ),
+      current: baseCurrent,
+      build: (scope) => build(scope.current, scope),
+    });
     const controller = createDelegationRoundsController({
-      store: this.owners.persistence.roundsStore(authorized.current),
-      authorityService: service,
+      ...build(baseCurrent),
       dispatchLedger,
-      host,
+      ...(transactionOwner ? { transactionOwner } : {}),
     });
     return {
       controller,
-      current: authorized.current,
+      current: baseCurrent,
       identity: before.admission.spec.controller,
     };
   }
@@ -879,6 +909,7 @@ export class StationReportGroupCustody {
     input: ReportGroupCancelInput,
     orchestration: OrchestrationService,
     dispatchLedger: AuthorizationLedger,
+    publication?: ReportRoundsPublication,
   ) {
     const command = Object.freeze({
       operationKey: input.operationKey,
@@ -891,6 +922,7 @@ export class StationReportGroupCustody {
       command.operationKey,
       orchestration,
       dispatchLedger,
+      publication,
     );
     const result = await owner.controller.cancel({
       kind: 'cancel',
@@ -907,6 +939,7 @@ export class StationReportGroupCustody {
     input: ReportGroupFinalizeCancelInput,
     orchestration: OrchestrationService,
     dispatchLedger: AuthorizationLedger,
+    publication?: ReportRoundsPublication,
   ) {
     const command = Object.freeze({
       operationKey: input.operationKey,
@@ -921,6 +954,7 @@ export class StationReportGroupCustody {
       null,
       orchestration,
       dispatchLedger,
+      publication,
     );
     const result = await owner.controller.finalizeCancel({
       kind: 'finalizeCancel',

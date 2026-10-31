@@ -448,11 +448,14 @@ existing cadence-based credential-activity touch and its failure behavior.
 
 **Borrowing and recovery.** Only an explicit live lease can start a borrowed
 span. Thenables refuse; the span invalidates before return, so a late async
-descendant cannot borrow it. An experimental rounds-store lifetime carries an
-exact lease through nested transactions, but production report composition does
-not use it: concurrent report callbacks encounter busy authority checks and
-need a separately qualified coordination design. Cleanup retains exact handles and can be retried by
-explicit async acquisition without replaying the callback. The HTTP boundary
+descendant cannot borrow it. Runtime-admitted report cancellation builds
+transaction-local group, authority and host facades against an exact lease.
+The runtime parent spans the operation; each child releases home after the full
+store return and before descendant-interrupt work. Other report writers still
+need coordination qualification. Cleanup retains exact handles; explicit pending
+cleanup retires only failed/inactive holders, preserving active siblings.
+A runtime parent joins its retired children before release, without replaying
+an operation callback. The HTTP boundary
 returns 503 before callback admission or 409 when an operation outcome is
 unconfirmed. Registry publication uncertainty fences that service instance;
 reconstruction is required before further registry use. Committed access and
@@ -2333,15 +2336,27 @@ still unqualified.
 
 The personal-host continuation-finalizer route currently refuses, and its
 preview is not offered, until rounds-writer publication exclusion is
-qualified. The installed Flow Agents 9.9.1 contract authenticates retained
-winner bytes; the metadata-only adapter does not grant provider execution or
-create a retry authorization.
+qualified. The installed Flow Agents 9.11.0 contract supplies optional
+transaction ownership and authenticates retained winner bytes; the metadata-only
+adapter does not grant provider execution or create a retry authorization.
 
 Accounting recovery holds the authenticated home lease before entering its
 authority transaction and lends that exact lease to the journal's synchronous
 currentness check and rename. A foreign or released home lease is refused.
 This recovery-only composition does not establish exclusion for every rounds
 writer or enable the continuation finalizer.
+
+[Report rounds publication](../../src-server/services/orchestration/report-rounds-publication.ts)
+now owns runtime-admitted cancellation and cancellation finalization. One runtime
+admission spans the operation. Each published transaction acquires home before
+group/authority, builds all three lexical facades, and holds home through the
+actual durable store return. Descendant interruption runs outside that home hold.
+Failed guard retirement retains the runtime admission for shutdown retry; parent
+cleanup joins retired child cleanup before releasing the runtime home. Actual
+runtime/store holds and an owned guard-removal fault exercise these boundaries.
+Continuation-parent borrowing and the other controller constructions remain open;
+group/finalizer flags stay disabled. Legacy compositions without the runtime
+participant do not establish these ownership guarantees.
 
 
 [StationReportGroupRuntime](../../src-server/services/orchestration/station-report-group-runtime.ts)
@@ -2357,8 +2372,10 @@ block historical reads or replay. Current operator authority is checked through
 awaits and again before HTTP release. Independent advisory and explicitly selected
 Flow-run topology share this custody. The source owner privately supplies the
 workspace, definition and actor; published Flow rounds own readiness, claims,
-joins and evaluation. Station selects Flow Agents 9.9.1 and Flow 5.4.0.
-The installed rounds module and types match the 9.9.1 registry artifact.
+joins and evaluation. Station selects Flow Agents 9.11.0 and Flow 5.4.0.
+The installed rounds module and types match the independently verified 9.11.0
+registry artifact. Installed-entry, type and persistence/Flow-admission controls
+establish compatibility, not all-writer or funded-journey qualification.
 Earlier controlled composed consumer suites passed 40 cases at their
 recorded source; positive execution uses a 240-second input. The earlier 120-second
 Flow input exhausted its deadline, so this is functional qualification rather
