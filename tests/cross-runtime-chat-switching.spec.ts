@@ -1180,6 +1180,9 @@ async function emitExactTurn(page: Page, path: ProductPath) {
       },
     });
   await emit('started', 'turn.started', { prompt: path.prompt });
+  // The fixture's history is already installed. Match the server's replay
+  // boundary before asserting live execution status, including on slow hosts.
+  await emitMockOrchestrationEvent(page, 'orchestration:caughtUp', {});
   // Before its first content the composer pill carries the turn; the
   // streaming row draws nothing until then.
   await expect(page.locator('[data-chat-status-pill="working"]')).toBeVisible();
