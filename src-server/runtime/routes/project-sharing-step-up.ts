@@ -177,7 +177,7 @@ export function createProjectSharingStepUp(deps: ProjectSharingStepUpDeps) {
       });
       const target = targetFor(owner.id);
       const assertCurrent = () => {
-        if (!bound.isCurrent())
+        if (!bound.isCurrent() || !deps.mayPostEnable(request, slug))
           throw new ConsentCommitRefusedError(
             SESSION_ENDED,
             false,
@@ -186,7 +186,26 @@ export function createProjectSharingStepUp(deps: ProjectSharingStepUpDeps) {
       };
       // Pins the reviewed owner: a different principal at commit refuses.
       const reviewedOwner = async () => {
-        const actor = await deps.authority(request).current();
+        let actor: Awaited<ReturnType<ProjectMembershipAuthority['current']>>;
+        try {
+          actor = await deps.authority(request).current();
+        } catch (error) {
+          assertCurrent();
+          if (error instanceof ProjectMembershipRefusal) {
+            if (error.code === 'forbidden' || error.code === 'conflict')
+              throw new ConsentCommitRefusedError(
+                CHANGED,
+                false,
+                'target_changed',
+              );
+            throw new ConsentCommitRefusedError(
+              'Account authority is temporarily unavailable. Nothing was applied.',
+              true,
+            );
+          }
+          throw error;
+        }
+        assertCurrent();
         if (actor.principal.id !== owner.id)
           throw new ConsentCommitRefusedError(CHANGED, false, 'target_changed');
         return actor;
@@ -212,14 +231,7 @@ export function createProjectSharingStepUp(deps: ProjectSharingStepUpDeps) {
         },
         revalidateTarget: async () => {
           assertCurrent();
-          try {
-            return targetFor(
-              (await deps.authority(request).current()).principal.id,
-            );
-          } catch (error) {
-            if (error instanceof ProjectMembershipRefusal) return null;
-            throw error;
-          }
+          return targetFor((await reviewedOwner()).principal.id);
         },
         commitApproval: async (passkeyId) => {
           assertCurrent();

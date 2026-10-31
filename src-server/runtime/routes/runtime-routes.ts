@@ -7585,6 +7585,8 @@ export function configureRuntimeRoutes(
           ),
         };
       }
+      if (account?.kind === 'unavailable')
+        throw new ProjectMembershipRefusal('unavailable');
       if (account && account.kind !== 'absent')
         throw new ProjectMembershipRefusal('forbidden');
       const principal = roomRequestPrincipals.get(request);

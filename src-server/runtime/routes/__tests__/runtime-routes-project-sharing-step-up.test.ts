@@ -14,6 +14,7 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import type { DeploymentAuthenticationResult } from '@kontourai/station-contracts/deployment-authentication';
 import type { ProjectAccessAdministrationView } from '@kontourai/station-contracts/project-membership';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -791,6 +792,89 @@ describe('remote Project sharing enable with operator passkey step-up (#4306)', 
       );
       expect(status.status).toBe(200);
       expect(await status.json()).toEqual({ status: 'target_changed' });
+      expect(h.shared()).toBe(false);
+      expect(changed).not.toHaveBeenCalled();
+      expect(h.warn).not.toHaveBeenCalledWith(
+        'Project sharing enabled',
+        expect.anything(),
+      );
+    },
+  );
+
+  test.each(
+    [1, 3].flatMap((at) =>
+      ['unavailable', 'invalid', 'owner-changed', 'device-revoked'].map(
+        (outcome) => ({ at, outcome }),
+      ),
+    ),
+  )(
+    'authority $outcome at decision lookup $at preserves the proper terminal boundary',
+    async ({ at, outcome }) => {
+      let calls = 0;
+      let armed = false;
+      let invalidateDevice = () => {};
+      const authenticated = (
+        subject: string,
+      ): DeploymentAuthenticationResult => ({
+        kind: 'authenticated',
+        session: {
+          subject,
+          displayName: subject,
+          sessionId: 'review-session',
+          authenticatedAt: new Date(Date.now() - 1000).toISOString(),
+          expiresAt: new Date(Date.now() + 600000).toISOString(),
+          contacts: [],
+        },
+      });
+      const service = new DeploymentAuthenticationService({
+        version: 'station.authentication/v1',
+        issuer: 'https://identity.example.test',
+        displayName: 'Identity provider',
+        sessionCookies: ['review_account'],
+        endpoints: [
+          { path: '/logout', methods: ['POST'], operation: 'logout' },
+        ],
+        authenticate: async () => {
+          if (armed && ++calls >= at) {
+            if (outcome === 'device-revoked') invalidateDevice();
+            if (outcome === 'unavailable') return { kind: 'unavailable' };
+            if (outcome === 'invalid')
+              return { kind: 'invalid', reason: 'revoked' };
+            if (outcome === 'owner-changed')
+              return authenticated('different-person');
+          }
+          return authenticated('reviewed-person');
+        },
+        handle: async () => new Response(null, { status: 204 }),
+      });
+      const h = await setup({ publicOrigin: APP, service });
+      const signed = await h.signIn();
+      signed.cookie += '; review_account=valid';
+      const transaction = await h.requestStepUp(signed);
+      const rendered = await h.review(signed, transaction.id);
+      invalidateDevice = () => {
+        h.security.devicePairing.revokeDevice(
+          h.phone.device.id,
+          'operator-credential',
+        );
+      };
+      const changed = vi.fn();
+      const unsubscribe = h.membership.service.subscribe(changed);
+      armed = true;
+      const result = await h.decide(signed, transaction.id, rendered);
+      unsubscribe();
+      const reason =
+        outcome === 'unavailable'
+          ? 'commit_refused'
+          : outcome === 'device-revoked'
+            ? 'session_ended'
+            : 'target_changed';
+      const status = outcome === 'unavailable' ? 'pending' : reason;
+      expect(result.status).toBe(409);
+      expect(await result.json()).toMatchObject({ error: reason });
+      expect(
+        h.channel.store.get(h.channel.tenantId, transaction.id)?.status,
+      ).toBe(status);
       expect(h.shared()).toBe(false);
       expect(changed).not.toHaveBeenCalled();
       expect(h.warn).not.toHaveBeenCalledWith(
