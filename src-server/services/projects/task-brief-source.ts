@@ -1,3 +1,4 @@
+import type { LearningReviewTaskContext } from '@kontourai/station-contracts/learning-review';
 /**
  * Gathers what a Task brief is built from (epic #4003): the Task record, the
  * Task document (the person-authored brief it was seeded with), Task memory
@@ -25,6 +26,7 @@
  */
 
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
+import type { ProjectWorkingContext } from '@kontourai/station-contracts/project-working-configuration';
 import { sessionLadderWord } from '@kontourai/station-contracts/session-attention';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import type {
@@ -57,6 +59,8 @@ import {
   type TaskBriefObservation,
   type TaskBriefSessionFacts,
   type TaskBriefSnapshot,
+  TaskContextAdmissionError,
+  taskMandatoryContextDigest,
 } from './task-brief.js';
 
 /**
@@ -84,6 +88,15 @@ export interface TaskBriefMemoryReader {
 }
 
 export interface TaskBriefSourceDeps {
+  learningContext?(
+    task: TaskRecord,
+    viewerUserId: string | undefined,
+  ): Promise<LearningReviewTaskContext | undefined>;
+  /** Reviewed, current Project rules under the dispatched owner's authority. A refusal must stop dispatch. */
+  workingConfiguration?(
+    task: TaskRecord,
+    viewerUserId: string | undefined,
+  ): Promise<ProjectWorkingContext>;
   readTask(taskId: string): TaskRecord | null;
   /** Every Session dispatched for the Task, oldest first. */
   listTaskSessions(
@@ -148,6 +161,10 @@ export interface TaskBriefForDispatch {
 }
 
 export interface TaskBriefSource {
+  assertMandatoryContextCurrent(
+    sessionId: string,
+    expectedDigest: string,
+  ): Promise<void>;
   /** The brief a Session dispatched for `task` receives with its first turn. */
   forDispatch(
     task: TaskRecord,
@@ -376,19 +393,66 @@ export function createTaskBriefSource(
     return { kind: 'task', task, projectId: binding.projectId };
   };
 
+  const requiredWorkingContext = async (
+    task: TaskRecord,
+    owner: string | undefined,
+  ) => {
+    try {
+      const [working, learning] = await Promise.all([
+        deps.workingConfiguration?.(task, owner),
+        deps.learningContext?.(task, owner),
+      ]);
+      return { working, learning };
+    } catch (error) {
+      throw new TaskContextAdmissionError(error);
+    }
+  };
+
   return {
+    async assertMandatoryContextCurrent(sessionId, expectedDigest) {
+      const bound = boundTask(sessionId);
+      if (bound.kind !== 'task')
+        throw new TaskContextAdmissionError(
+          new Error('Task binding is unavailable'),
+        );
+      const context = await requiredWorkingContext(
+        bound.task,
+        deps.ownerOf?.(sessionId),
+      );
+      const task = deps.readTask(bound.task.id);
+      if (
+        !task ||
+        task.createdAt !== bound.task.createdAt ||
+        task.projectId !== bound.task.projectId ||
+        taskMandatoryContextDigest({
+          task,
+          workingContext: context.working,
+          learningContext: context.learning,
+        }) !== expectedDigest
+      )
+        throw new TaskContextAdmissionError(
+          new Error('Mandatory Task context changed before provider placement'),
+        );
+    },
     async forDispatch(task, sessionId, ownerUserId) {
       const [document, observation, lines] = await Promise.all([
         readDocument(task.id),
         observe(task),
         sessions(task, sessionId, ownerUserId),
       ]);
+      const workingContext = await requiredWorkingContext(task, ownerUserId);
       const brief = buildTaskBrief({
         task,
         document,
         memory: readMemory(task),
         sessions: lines,
         ...(observation ? { observation } : {}),
+        ...(workingContext.working
+          ? { workingContext: workingContext.working }
+          : {}),
+        ...(workingContext.learning
+          ? { learningContext: workingContext.learning }
+          : {}),
       });
       return {
         brief,
@@ -407,6 +471,10 @@ export function createTaskBriefSource(
         observe(task),
         sessions(task, sessionId, deps.ownerOf?.(sessionId)),
       ]);
+      const workingContext = await requiredWorkingContext(
+        task,
+        deps.ownerOf?.(sessionId),
+      );
       // The binding is immutable, but the Task can be replaced while the
       // document read crosses its worker boundary.
       const current = deps.readTask(task.id);
@@ -427,6 +495,12 @@ export function createTaskBriefSource(
           memory: readMemory(current),
           sessions: lines,
           ...(observation ? { observation } : {}),
+          ...(workingContext.working
+            ? { workingContext: workingContext.working }
+            : {}),
+          ...(workingContext.learning
+            ? { learningContext: workingContext.learning }
+            : {}),
         }),
       };
     },
@@ -466,6 +540,8 @@ export function createTaskBriefSource(
  * consumer's wiring can drift from the other's.
  */
 export function composeTaskBriefSource(input: {
+  learningContext?: TaskBriefSourceDeps['learningContext'];
+  workingConfiguration?: TaskBriefSourceDeps['workingConfiguration'];
   taskGraph: {
     readTaskView(taskId: string): TaskRecord | null;
     listTaskDispatchSessions(
@@ -526,6 +602,12 @@ export function composeTaskBriefSource(input: {
 }): TaskBriefSource {
   const store = input.eventStore;
   return createTaskBriefSource({
+    ...(input.learningContext
+      ? { learningContext: input.learningContext }
+      : {}),
+    ...(input.workingConfiguration
+      ? { workingConfiguration: input.workingConfiguration }
+      : {}),
     readTask: (taskId) => input.taskGraph.readTaskView(taskId),
     listTaskSessions: (taskId) =>
       input.taskGraph.listTaskDispatchSessions(taskId),

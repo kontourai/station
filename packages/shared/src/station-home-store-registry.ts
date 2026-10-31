@@ -108,6 +108,7 @@ export const STATION_HOME_ROOTS: Readonly<
   'project-resource-shadow.json': 'state',
   // Private source selections and AWS profile names; credentials stay with AWS.
   'project-s3-sources.json': 'state',
+  'project-working-configuration': 'state',
   projects: 'state',
   prompts: 'state',
   'proposed-changes.json': 'state',

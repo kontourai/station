@@ -1,0 +1,7 @@
+{
+  "revision": "a0643a7396baa10734b3bace537e051f5aa47b06",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Scoped review of the changed Session API successor: private Codex header delivery remains delegated custody and explicit context compaction adds a durable cold-start boundary. The ADR status note still correctly routes current behavior to ADR0014 and the Session API; its superseded flag, rollback and migration discussion remains historical. No original rollout probe or live provider journey was rerun.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md"]}
+  ]
+}

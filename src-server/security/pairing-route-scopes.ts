@@ -786,6 +786,13 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
   // triggers that start agent work, so every mutating method stays unmapped
   // (refused) until a later slice classifies it on purpose.
   {
+    id: '/api/isolated-repairs:operator',
+    method: '*',
+    prefix: '/api/isolated-repairs',
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  {
     id: '/automations:read',
     method: 'GET',
     prefix: '/automations',
@@ -3972,6 +3979,16 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'POST', path: '/api/analytics/rescan' },
     { method: 'DELETE', path: '/api/analytics/usage' },
     { method: 'GET', path: '/api/analytics/usage' },
+    // Reviewed tariffs are local catalog/configuration data, not account
+    // charges or a provider request. GET reads and PUT saves only that state;
+    // the other all(...) methods return 405. The bound local-operator and
+    // current-authority checks remain independent of the family scope.
+    { method: 'GET', path: '/api/analytics/reviewed-tariffs' },
+    { method: 'HEAD', path: '/api/analytics/reviewed-tariffs' },
+    { method: 'POST', path: '/api/analytics/reviewed-tariffs' },
+    { method: 'PUT', path: '/api/analytics/reviewed-tariffs' },
+    { method: 'PATCH', path: '/api/analytics/reviewed-tariffs' },
+    { method: 'DELETE', path: '/api/analytics/reviewed-tariffs' },
     { method: 'GET', path: '/api/attention' },
     // Action operations are a visibility-filtered status envelope. Creation
     // and settlement remain with the owning domain mutation; cancel inherits
@@ -4557,6 +4574,22 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // and the model and approval mode the caller's own last chat here
     // started with. A read of the caller's own history; mutates nothing.
     { method: 'GET', path: '/api/projects/:slug/chat-defaults' },
+    // This Station's Project-scoped learning records and canonical sources.
+    // Intents change owner lifecycle state, not execution/installation grants;
+    // POST source/evidence reads conservatively retain the operate tier.
+    // Every leaf separately requires the current operator, Project incarnation
+    // and source authority. No peer/other-Station data or model call is added.
+    { method: 'GET', path: '/api/projects/:slug/learning' },
+    { method: 'GET', path: '/api/projects/:slug/learning/:id' },
+    { method: 'POST', path: '/api/projects/:slug/learning/source' },
+    { method: 'POST', path: '/api/projects/:slug/learning/:id/evidence' },
+    { method: 'POST', path: '/api/projects/:slug/learning/proposals' },
+    { method: 'POST', path: '/api/projects/:slug/learning/:id/intents' },
+    // Bounded files in the Project's admitted local execution root and saved
+    // review defaults. Applying defaults executes no command; operator and
+    // root/content-currentness checks still fence both family-tier leaves.
+    { method: 'GET', path: '/api/projects/:slug/working-configuration' },
+    { method: 'PUT', path: '/api/projects/:slug/working-configuration' },
     // How far the Project's checkout is behind its upstream, from local git
     // refs: its branch, upstream name, commit counts and an update command
     // naming the working directory `GET /:slug` already returns. A read that

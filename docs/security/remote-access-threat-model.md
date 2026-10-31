@@ -17,8 +17,9 @@ mobile continuity baseline; the earlier reconnect work is recorded in
 
 Tool-server OAuth credentials are plaintext JSON with mode `0600` under
 `<home>/security/` (`tool-server-credentials.json` and
-`tool-server-principal-credentials.json`). Same-user processes, including agents
-outside macOS Seatbelt confinement, can read remote tokens directly. Remote MCP
+`tool-server-principal-credentials.json`). Same-user host processes without
+filesystem confinement, including Agent processes with those host permissions,
+can read remote tokens directly. Remote MCP
 proxy delivery does not provide encryption at rest or protection from same-user
 filesystem access. See [connected accounts](../guides/connections.md#connect-an-oauth-mcp-server-to-an-agent).
 
