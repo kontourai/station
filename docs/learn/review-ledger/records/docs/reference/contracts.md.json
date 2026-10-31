@@ -344,6 +344,8 @@
 
     "src-ui/src/__tests__/ChatDockBody.offlineSettling.test.tsx",
 
+    "packages/contracts/src/project-checkout-freshness.ts",
+
     "packages/contracts/src/session-goal.ts"
   ],
 
