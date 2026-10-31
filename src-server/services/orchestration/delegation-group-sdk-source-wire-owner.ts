@@ -78,6 +78,12 @@ type SdkResult = Readonly<{
   finishReason: unknown;
   inputRequest?: Readonly<{ id: string; question: string }>;
 }>;
+
+export type SdkSourceCheck = <Value>(body: () => Value) => Value;
+export interface SdkSourceAdmission {
+  check<Value>(body: () => Value): Promise<Value>;
+  publish(body: (check: SdkSourceCheck) => void): Promise<void>;
+}
 type State = {
   owner: object;
   lease: object;
@@ -100,12 +106,24 @@ type State = {
   release: boolean;
   deadline: ReturnType<typeof setTimeout>;
   abortListener?: () => void;
-  onTextDelta?: (text: string) => void;
+  onTextDelta?: (text: string, check: SdkSourceCheck) => void;
+  admission?: SdkSourceAdmission;
 };
 const owners = new WeakMap<object, Options>();
 const syncContexts = new WeakMap<object, string>();
 const handles = new WeakMap<object, State>();
 const usedOwners = new WeakSet<object>();
+function checkSdkSource<Value>(s: State, body: () => Value): Promise<Value> {
+  return s.admission ? s.admission.check(body) : Promise.resolve(body());
+}
+function publishSdkSource(
+  s: State,
+  body: (check: SdkSourceCheck) => void,
+): Promise<void> {
+  if (s.admission) return s.admission.publish(body);
+  body((work) => work());
+  return Promise.resolve();
+}
 function stateFor(owner: object, handle: object) {
   const s = handles.get(handle);
   if (!owners.has(owner) || !s || s.owner !== owner)
@@ -123,6 +141,7 @@ function finishDisposal(s: State) {
   s.quote = undefined;
   s.response = undefined;
   s.onTextDelta = undefined;
+  s.admission = undefined;
   s.rawResponse = undefined;
   clearTimeout(s.deadline);
   s.disposed.resolve();
@@ -479,45 +498,50 @@ export function beginSdkSourceWire(owner: object, leaseToken: object): object {
             | Extract<LanguageModelV3StreamPart, { type: 'finish' }>
             | undefined;
           for await (const part of stream) {
-            signal.throwIfAborted();
-            lease.assertDisclosureCurrentSync();
-            if (terminal) fail('sdk_stream_after_finish');
-            if (part.type === 'text-delta') {
-              bytes += Buffer.byteLength(part.delta);
-              if (bytes > 8 * 1024 * 1024) fail('sdk_stream_oversized');
-              text.push(part.delta);
-              s.onTextDelta?.(part.delta);
-            } else if (o.inputTool && part.type === 'tool-call') {
-              if (
-                inputRequest ||
-                part.toolName !== REPORT_INPUT_TOOL_NAME ||
-                part.providerExecuted ||
-                !part.toolCallId ||
-                part.toolCallId.length > 128
-              )
-                fail('sdk_input_request_unsupported');
-              inputRequest = Object.freeze({
-                id: part.toolCallId,
-                ...parseReportInputArguments(part.input),
+            await publishSdkSource(s, (check) => {
+              check(() => {
+                signal.throwIfAborted();
+                lease.assertDisclosureCurrentSync();
+                if (terminal) fail('sdk_stream_after_finish');
+                if (part.type === 'text-delta') {
+                  bytes += Buffer.byteLength(part.delta);
+                  if (bytes > 8 * 1024 * 1024) fail('sdk_stream_oversized');
+                  text.push(part.delta);
+                } else if (o.inputTool && part.type === 'tool-call') {
+                  if (
+                    inputRequest ||
+                    part.toolName !== REPORT_INPUT_TOOL_NAME ||
+                    part.providerExecuted ||
+                    !part.toolCallId ||
+                    part.toolCallId.length > 128
+                  )
+                    fail('sdk_input_request_unsupported');
+                  inputRequest = Object.freeze({
+                    id: part.toolCallId,
+                    ...parseReportInputArguments(part.input),
+                  });
+                } else if (part.type === 'finish') terminal = part;
+                else if (
+                  ![
+                    'stream-start',
+                    'response-metadata',
+                    'text-start',
+                    'text-end',
+                  ].includes(part.type) &&
+                  !(
+                    o.inputTool &&
+                    [
+                      'tool-input-start',
+                      'tool-input-delta',
+                      'tool-input-end',
+                    ].includes(part.type)
+                  )
+                )
+                  fail('sdk_non_text_output');
               });
-            } else if (part.type === 'finish') terminal = part;
-            else if (
-              ![
-                'stream-start',
-                'response-metadata',
-                'text-start',
-                'text-end',
-              ].includes(part.type) &&
-              !(
-                o.inputTool &&
-                [
-                  'tool-input-start',
-                  'tool-input-delta',
-                  'tool-input-end',
-                ].includes(part.type)
-              )
-            )
-              fail('sdk_non_text_output');
+              if (part.type === 'text-delta')
+                s.onTextDelta?.(part.delta, check);
+            });
           }
           if (!terminal) fail('sdk_stream_incomplete');
           if (
@@ -535,36 +559,37 @@ export function beginSdkSourceWire(owner: object, leaseToken: object): object {
       : model.doGenerate(call);
   s.result = Promise.resolve(sdk)
     .then(
-      (result) => {
-        if (result.content.some((part) => part.type !== 'text'))
-          fail('sdk_non_text_output');
-        if (!s.wire || !s.contract) fail('sdk_wire_unavailable');
-        assertCredentialWire(o, s.wire, s.contract);
-        lease.assertCurrentSync();
-        return Object.freeze({
-          ...('inputRequest' in result && result.inputRequest
-            ? { inputRequest: result.inputRequest }
-            : {}),
-          text: result.content
-            .filter((part) => part.type === 'text')
-            .map((part) => part.text)
-            .join(''),
-          usage: result.usage,
-          finishReason: result.finishReason,
-        });
-      },
-      () => {
+      (result) =>
+        checkSdkSource(s, () => {
+          if (result.content.some((part) => part.type !== 'text'))
+            fail('sdk_non_text_output');
+          if (!s.wire || !s.contract) fail('sdk_wire_unavailable');
+          assertCredentialWire(o, s.wire, s.contract);
+          lease.assertCurrentSync();
+          return Object.freeze({
+            ...('inputRequest' in result && result.inputRequest
+              ? { inputRequest: result.inputRequest }
+              : {}),
+            text: result.content
+              .filter((part) => part.type === 'text')
+              .map((part) => part.text)
+              .join(''),
+            usage: result.usage,
+            finishReason: result.finishReason,
+          });
+        }),
+      async () => {
         try {
-          lease.assertDisclosureCurrentSync();
+          await checkSdkSource(s, () => lease.assertDisclosureCurrentSync());
         } catch {
           throw new SdkSourceRefusal('sdk_disclosure_unavailable');
         }
         throw new SdkSourceRefusal('sdk_attempt_failed');
       },
     )
-    .catch(() => {
+    .catch(async () => {
       try {
-        lease.assertDisclosureCurrentSync();
+        await checkSdkSource(s, () => lease.assertDisclosureCurrentSync());
       } catch {
         throw new SdkSourceRefusal('sdk_disclosure_unavailable');
       }
@@ -738,10 +763,15 @@ export function refuseSdkResponse(owner: object, handle: object): void {
 export function sdkResultPromise(
   owner: object,
   handle: object,
-  onTextDelta?: (text: string) => void,
+  onTextDelta?: (text: string, check: SdkSourceCheck) => void,
+  admission?: SdkSourceAdmission,
 ) {
   const s = stateFor(owner, handle);
   s.authorization.assertDisclosureCurrentSync();
+  if (admission) {
+    if (s.delivered || s.admission) fail('sdk_stream_consumer_unavailable');
+    s.admission = admission;
+  }
   if (onTextDelta) {
     if (s.delivered || s.onTextDelta) fail('sdk_stream_consumer_unavailable');
     s.onTextDelta = onTextDelta;

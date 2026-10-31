@@ -39,6 +39,7 @@ import {
   WireIntentRefusal,
   wireIdentityDigest,
 } from './delegation-group-wire-intent-store.js';
+import type { ReportRoundsScope } from './report-rounds-publication.js';
 
 const launchContext = new AsyncLocalStorage<{ active: boolean }>();
 function forbidNestedOwner(): void {
@@ -118,6 +119,16 @@ export type RoundsFinalFetchOwners = LaunchOwners & {
     persistence: StationDelegationPersistence;
     current: WireFinalizer;
     preparationCurrent: WireFinalizer;
+    withHome?<Value>(
+      current: WireFinalizer,
+      body: (
+        scope: Pick<ReportRoundsScope, 'current' | 'check'>,
+      ) => Promise<Value>,
+    ): Promise<Value>;
+    invokeCurrent?<Value>(
+      current: WireFinalizer,
+      invoke: (check: <Result>(work: () => Result) => Result) => Promise<Value>,
+    ): Promise<Value>;
   };
   flowScope?: { owner: HomeWriterOwner; lease: HomeWriterLease };
 };

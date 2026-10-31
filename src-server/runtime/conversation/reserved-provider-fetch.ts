@@ -77,35 +77,42 @@ export class ReservedProviderFetch {
       reject = no;
     });
     void this.evidence.catch(() => {});
-    const known = (
+    const home =
+      launch.protocol === 'rounds-v1' ? launch.reportHome : undefined;
+    const checkCurrent = <Value>(body: () => Value): Promise<Value> =>
+      home?.withHome
+        ? home.withHome(home.current, async (scope) => scope.check(body))
+        : Promise.resolve(body());
+    const known = async (
       quote: BoundedApiAttemptQuote,
-      raw: unknown,
+      readRaw: () => unknown,
       rawBodySha256: string,
       intent: FinalWireIntentIdentity,
     ) => {
-      const rawResponseJson = JSON.stringify(raw);
-      const pricedAtMs = owners.now();
-      const usage = priceBoundedApiProviderRawUsage(
-        owners.contract,
-        quote,
-        rawResponseJson,
-        pricedAtMs,
-      );
-      const historicalPricingJson = captureBoundedApiHistoricalPricing(
-        owners.contract,
-        quote,
-        pricedAtMs,
-      );
-      resolve(
-        Object.freeze({
+      const evidence = await checkCurrent(() => {
+        const rawResponseJson = JSON.stringify(readRaw());
+        const pricedAtMs = owners.now();
+        const usage = priceBoundedApiProviderRawUsage(
+          owners.contract,
+          quote,
+          rawResponseJson,
+          pricedAtMs,
+        );
+        const historicalPricingJson = captureBoundedApiHistoricalPricing(
+          owners.contract,
+          quote,
+          pricedAtMs,
+        );
+        return Object.freeze({
           intent,
           usage,
           quote,
           rawBodySha256,
           rawResponseJson,
           historicalPricingJson,
-        }),
-      );
+        });
+      });
+      resolve(evidence);
     };
     this.fetch = async (input, init) => {
       try {
@@ -129,16 +136,18 @@ export class ReservedProviderFetch {
           headers: [...new Headers(init.headers).entries()],
           body: init.body,
         });
-        const quote = quoteBoundedApiProviderAttempt(
-          owners.contract,
-          {
-            ...wire,
-            headers: Object.fromEntries(wire.headers),
-            redirect: 'error',
-            requestOrdinal: 1,
-          },
-          { ...reservation.allocation, currency: 'USD' },
-          owners.now(),
+        const quote = await checkCurrent(() =>
+          quoteBoundedApiProviderAttempt(
+            owners.contract,
+            {
+              ...wire,
+              headers: Object.fromEntries(wire.headers),
+              redirect: 'error',
+              requestOrdinal: 1,
+            },
+            { ...reservation.allocation, currency: 'USD' },
+            owners.now(),
+          ),
         );
         const guardedLaunch = {
           ...launch,
@@ -192,12 +201,13 @@ export class ReservedProviderFetch {
           const finish = observed.complete.then((e) =>
             known(
               quote,
-              owners.provider === 'anthropic'
-                ? assembleAnthropicStream(
-                    e.frames,
-                    boundedApiUsesReportInput(owners.contract, owners.now()),
-                  )
-                : assembleGoogleStream(e.frames),
+              () =>
+                owners.provider === 'anthropic'
+                  ? assembleAnthropicStream(
+                      e.frames,
+                      boundedApiUsesReportInput(owners.contract, owners.now()),
+                    )
+                  : assembleGoogleStream(e.frames),
               e.rawBodySha256,
               begun.intent,
             ),
@@ -210,7 +220,12 @@ export class ReservedProviderFetch {
           owners.maxResponseBytes,
           signal,
         );
-        known(quote, observed.raw, observed.rawBodySha256, begun.intent);
+        await known(
+          quote,
+          () => observed.raw,
+          observed.rawBodySha256,
+          begun.intent,
+        );
         return observed.response;
       } catch (error) {
         reject(error);

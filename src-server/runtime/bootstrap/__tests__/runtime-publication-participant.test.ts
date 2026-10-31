@@ -16,11 +16,11 @@ test('stopping refuses new work and waits for the admitted body and child releas
     const participant = new RuntimePublicationParticipant(
       captureStationHomeRuntimeProof(home, homeLease),
     );
-    expect(() =>
-      participant.assertHome(join(temp('foreign-home-'), 'home')),
-    ).toThrow();
+    const foreignHome = join(temp('foreign-home-'), 'home');
+    expect(() => participant.assertHome(foreignHome)).toThrow();
     const lease = participant.acquire();
-    const child = lease.borrow();
+    expect(() => lease.borrow(foreignHome)).toThrow();
+    const child = lease.borrow(home);
     participant.stop();
     expect(() => participant.acquire()).toThrow('publication');
     expect(() => child.assertCurrent()).not.toThrow();
@@ -64,7 +64,10 @@ test('lost home proof retains uncertain admission instead of claiming a clean dr
     captureStationHomeRuntimeProof(home, homeLease),
   );
   const lease = participant.acquire();
+  const child = lease.borrow(home);
   homeLease.release();
+  expect(() => child.assertCurrent()).toThrow();
+  expect(() => lease.borrow(home)).toThrow();
   expect(() => lease.release()).toThrow();
   participant.stop();
   await expect(participant.drain(1)).rejects.toMatchObject({

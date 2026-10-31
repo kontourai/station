@@ -436,7 +436,12 @@ legacy environment lock. Public handshake and proof reads initialize until the
 service has completed initialization successfully. Later reads validate the retained
 home identity and read the current atomic environment record without taking the
 writer hold or caching credentials across rotation. A synchronous contender
-refuses busy rather than waiting or probing another process. Filesystem calls themselves remain synchronous.
+refuses busy while home is held or an earlier asynchronous admission is pending,
+rather than waiting or probing another process. Local asynchronous admissions
+queue in arrival order. Aborted or timed-out waiters remove only their own entry;
+confirmed physical release advances the queue. Local waiting consumes the existing
+ten-second lock-wait budget, with the remaining budget passed to physical
+acquisition. Filesystem calls themselves remain synchronous.
 
 Complete synchronous authority checks share a validated pairing-registry snapshot
 under that home hold. The outer check re-reads its retained bytes before returning;
@@ -448,12 +453,22 @@ existing cadence-based credential-activity touch and its failure behavior.
 
 **Borrowing and recovery.** Only an explicit live lease can start a borrowed
 span. Thenables refuse; the span invalidates before return, so a late async
-descendant cannot borrow it. Runtime-admitted report cancellation builds
+descendant cannot borrow it. Runtime-admitted report cancellation and initial execution build
 group, authority and host facades for controller transactions against an exact lease.
 The runtime parent spans the operation; each child releases home after the full
 store return. Its separate authority cancellation and historical execution reads
 use short metadata scopes too, ending before descendant-interrupt work. Other
-report writers still need their own exclusion qualification. Cleanup retains exact handles; explicit pending
+report writers still need their own exclusion qualification. Initial execution's
+SDK registration, response delivery, pricing, evidence reads and publication use
+separate short admissions. A pending execution owns its result before queued
+claim admission; duplicate execution refuses, and result readers join that promise
+outside home custody. Stream/completion checks borrow synchronously while actual
+event publication runs outside the borrowed async context. Completion admission
+settles before the reserved result resolves. Runtime home binding and child
+currentness share one compound proof check; source checks retain their own
+request/credential validation without a duplicate runtime check in that checkpoint.
+This neither caches authority across awaits nor changes the underlying process
+identity probe. Cleanup retains exact handles; explicit pending
 cleanup retires only failed/inactive holders, preserving active siblings.
 A runtime parent joins its retired children before release, without replaying
 an operation callback. The HTTP boundary
@@ -486,7 +501,14 @@ inspection borrow that same domain without retaining a lease in returned data.
 
 **Evidence and limits.** [Owner and composed pairing tests](../../src-server/services/ssh/__tests__/home-writer-owner.test.ts)
 exercise actual locks, alias/directory custody, short-span borrowing, contention
-and cleanup. [Persistence-fault tests](../../src-server/services/ssh/__tests__/device-pairing-persistence-fault.test.ts)
+and cleanup. The [initial HTTP/SDK caller](../../src-server/services/orchestration/__tests__/station-report-group-execution.test.ts)
+adds physical-lock and no-ambient-loan checks through underlying store return,
+provider-response holds, queued result/duplicate/late-callback controls, real
+credential revocation, and metadata/publication retirement faults with runtime-home
+shutdown retry. Its separately composed event store is not proof of storage-dependency
+retention. Other controller/writer and continuation-parent qualification, input,
+final device/native and hosted evidence remain separate. Report capabilities stay
+disabled pending that combined qualification. [Persistence-fault tests](../../src-server/services/ssh/__tests__/device-pairing-persistence-fault.test.ts)
 exercise publication and replay fences. Personal-token mint, revoke and clear acquire
 the same home hold; reset explicitly lends its live lease to both clears. Token
 lookup uses a synchronous best-effort activity touch and leaves no deferred writer.

@@ -340,9 +340,11 @@ export class StationReportGroupRuntime {
     );
   }
   async create(context: RuntimeSourceRequestContext, input: unknown) {
-    const result = await this.#execution.execute(context, input);
-    if (!result.group) throw new StationReportCustodyUnavailable();
-    return { replayed: result.replayed, group: view(result.group) };
+    return this.#withRoundsPublication(context, async (publication) => {
+      const result = await this.#execution.execute(context, input, publication);
+      if (!result.group) throw new StationReportCustodyUnavailable();
+      return { replayed: result.replayed, group: view(result.group) };
+    });
   }
   async checkpoint(
     context: RuntimeSourceRequestContext,

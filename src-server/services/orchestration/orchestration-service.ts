@@ -598,7 +598,7 @@ interface OrchestrationDispatchInternalOptions {
   taskBrief?: SessionCommandInternalOptions['taskBrief'];
   foregroundInvocationAdmission?: ForegroundInvocationAdmission;
   /** Server-owned initial group dispatch fence; never public command JSON. */
-  delegationGroupAdmission?: { assertCurrent(): void; signal: AbortSignal };
+  delegationGroupAdmission?: SessionCommandInternalOptions['delegationGroupAdmission'];
   /**
    * #484 phase A: receiver-owned portable-execution recheck, awaited inside
    * the provider-effect path (start/sendTurn) adjacent to the adapter
@@ -8217,30 +8217,47 @@ export class OrchestrationService {
                           ? undefined
                           : context.userId,
                         () => {
-                          this.assertForkContextAtProviderStart(
-                            input,
-                            internal?.forkContextRequester ?? context,
-                          );
-                          internal?.delegationGroupAdmission?.assertCurrent();
-                          assertPostureCurrent();
-                          if (internal?.reservedStationTurn) {
-                            if (context.tenantExecutionContext)
-                              throw new SessionStartRefusedError(
-                                'Reserved Station source execution is personal-only.',
-                                SESSION_REATTACH_CONFLICT_CODE,
+                          const group = internal?.delegationGroupAdmission;
+                          const invoke = (
+                            check: <Value>(work: () => Value) => Value,
+                          ) => {
+                            check(() => {
+                              if (group?.invokeCurrent)
+                                this.assertDispatchCwdAtSpawn(
+                                  input,
+                                  context.dispatchCwdAdmission,
+                                  binding,
+                                );
+                              this.assertForkContextAtProviderStart(
+                                input,
+                                internal?.forkContextRequester ?? context,
                               );
-                            if (adapter.provider !== 'station-agent')
-                              throw new Error(
-                                'Reserved Station turn requires the Station engine.',
+                              internal?.delegationGroupAdmission?.assertCurrent();
+                              assertPostureCurrent();
+                            });
+                            if (internal?.reservedStationTurn) {
+                              if (context.tenantExecutionContext)
+                                throw new SessionStartRefusedError(
+                                  'Reserved Station source execution is personal-only.',
+                                  SESSION_REATTACH_CONFLICT_CODE,
+                                );
+                              if (adapter.provider !== 'station-agent')
+                                throw new Error(
+                                  'Reserved Station turn requires the Station engine.',
+                                );
+                              return withReservedStationTurn(
+                                internal.reservedStationTurn,
+                                context.userId,
+                                input.threadId,
+                                () => adapter.startSession(input),
+                                check,
                               );
-                            return withReservedStationTurn(
-                              internal.reservedStationTurn,
-                              context.userId,
-                              input.threadId,
-                              () => adapter.startSession(input),
-                            );
-                          }
-                          return adapter.startSession(input);
+                            }
+                            return adapter.startSession(input);
+                          };
+                          return group?.invokeCurrent
+                            ? group.invokeCurrent(invoke)
+                            : invoke((work) => work());
                         },
                       ),
                     internal?.sessionStartAdmission,
@@ -9659,27 +9676,41 @@ export class OrchestrationService {
                                 turnInput.threadId,
                                 turnInput.invocationId,
                               );
-                            internal?.delegationGroupAdmission?.assertCurrent();
-                            this.assertActivationAccess(
-                              turnInput.threadId,
-                              turnInput.clientTurnId ?? '',
-                            );
-                            assertTurnPostureCurrent();
-                            providerInvoked = true;
                             const sendTurn = () => {
-                              if (internal?.reservedStationTurn) {
-                                if (adapter.provider !== 'station-agent')
-                                  throw new Error(
-                                    'Reserved Station turn requires the Station engine.',
+                              const invoke = (
+                                check: <Value>(work: () => Value) => Value,
+                              ) => {
+                                check(() => {
+                                  internal?.delegationGroupAdmission?.assertCurrent();
+                                  this.assertActivationAccess(
+                                    turnInput.threadId,
+                                    turnInput.clientTurnId ?? '',
                                   );
-                                return withReservedStationTurn(
-                                  internal.reservedStationTurn,
-                                  context?.principal?.id ?? context?.userId,
-                                  turnInput.threadId,
-                                  () => adapter.sendTurn(turnInput),
-                                );
-                              }
-                              return adapter.sendTurn(turnInput);
+                                  assertTurnPostureCurrent();
+                                });
+                                const send = () => {
+                                  providerInvoked = true;
+                                  return adapter.sendTurn(turnInput);
+                                };
+                                if (internal?.reservedStationTurn) {
+                                  if (adapter.provider !== 'station-agent')
+                                    throw new Error(
+                                      'Reserved Station turn requires the Station engine.',
+                                    );
+                                  return withReservedStationTurn(
+                                    internal.reservedStationTurn,
+                                    context?.principal?.id ?? context?.userId,
+                                    turnInput.threadId,
+                                    send,
+                                    check,
+                                  );
+                                }
+                                return send();
+                              };
+                              const group = internal?.delegationGroupAdmission;
+                              return group?.invokeCurrent
+                                ? group.invokeCurrent(invoke)
+                                : invoke((work) => work());
                             };
                             const send = () =>
                               nativeForeground

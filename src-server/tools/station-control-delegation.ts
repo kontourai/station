@@ -145,6 +145,7 @@ import {
   type PresentableOpenRequest,
   presentOpenRequest,
 } from '../services/orchestration/request-presentation.js';
+import type { SessionCommandInternalOptions } from '../services/orchestration/session-command-module.js';
 import type { StartOwnerAttribution } from '../services/orchestration/session-owner-attribution.js';
 import { SessionStartIndeterminateError } from '../services/orchestration/session-turn-boundary.js';
 import { snapshotTurnSubmissionFields } from '../services/orchestration/turn-submission-digest.js';
@@ -406,7 +407,7 @@ export interface DelegateTaskInput {
   /** Server-owned sealed SDK turn; no public delegation schema accepts it. */
   reservedStationTurn?: ReservedStationTurn;
   /** Trusted group admission, checked synchronously at initial session/turn effects. */
-  delegationGroupAdmission?: { assertCurrent(): void; signal: AbortSignal };
+  delegationGroupAdmission?: SessionCommandInternalOptions['delegationGroupAdmission'];
   /** Server-minted first-turn join for a durable session group. */
   initialClientTurnId?: string;
   /** Server-only current-host staging authority, composed by the authenticated route. */

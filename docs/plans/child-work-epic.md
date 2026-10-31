@@ -3068,3 +3068,61 @@ Readiness remains FAIL on documentation-truth, with other selected checks passin
 Active interruption/intent/ACK publication, launched-attempt confirmation, the five
 other controller constructions, authentic continuation borrowing, funded journeys
 and final combined qualification remain open. No capability or PR was enabled.
+
+### Initial execution and disclosure ownership candidate
+
+The installed 9.11.0 transaction-owner composition now also covers the initial
+execution controller. Each transaction builds its actual store, V3 service and
+host callbacks from the exact home lease and awaits the full store return before
+release. Outside transactions, preparation/admission reads, authority operations,
+SDK consumer registration and response delivery, raw quote/pricing and evidence
+work enter separate short metadata scopes. SDK stream publication awaits explicit
+admission for every part. Guards borrow synchronously; actual event emission runs
+outside borrowed async context. Completion publication is joined into the reserved
+result promise. Provider response and result waiting remain outside home custody.
+
+Execution installs one pending token/result before its first queued admission,
+captures compared submission values, then performs the original source/session/
+abort checks before claiming. Duplicate execution refuses. A result reader captures
+the existing promise under metadata admission, awaits it without home, and validates
+retained evidence under a fresh scope. Definite pre-claim refusal clears only its
+own pending token; claimed or uncertain attempts retain their no-resend state.
+
+The actual caller exposed local home-acquisition overtaking and later unqueued
+checks in startup, turn send, SDK disclosure and pricing. Local home admissions
+now queue fairly, retain their entry through confirmed release, and discard only
+aborted/timed-out waiters. The owner regression reached its intended pre-fix red;
+all 21 owner controls pass. Runtime proof profiling then identified repeated real
+OS identity probes inside the same checkpoint. Home binding is composed into
+child admission, and a child's compound check supplies runtime currentness while
+owned source guards retain request/source checks. The underlying fresh identity
+probe is unchanged; no authority is cached across awaits. The isolated real-lease
+profile reduced ten owned metadata checks from 60 real process lookups to 20,
+retaining late refusal and confirmed cleanup. Earlier 240-second Flow deadline
+failures and the historical 146-second unknown remain retained evidence, not
+reclassified as passing runs.
+
+Current controlled evidence: all 172 SDK/adapter/Session-replacement controls pass;
+29 runtime/home/cancellation ownership controls pass; server-test types pass.
+The actual HTTP/SDK caller passes six cases: independent seats, a Flow frontier
+and join, mixed Anthropic/Google seats, real credential revocation before a queued
+claim, metadata-retirement failure, and publication-retirement failure. These
+retain original tariffs, raw-result paging, historical replay and cancellation
+controls. Direct physical-lock and independent no-ambient-loan probes run during
+journal callbacks and after underlying store return. Each final-fetch owner
+returns while its controlled response remains pending. A pending-result reader
+joins the actual attempt; duplicate execution refuses; an expired publication
+check cannot invoke its body while another real sibling lease is current.
+Revocation produces no provider HTTP or protected output. Both retirement faults
+retain the authentic runtime home through failed shutdown and retry cleanup
+without another provider request or publisher callback. The fixture's separately
+composed event store does not establish storage-dependency retention.
+
+This is bounded candidate evidence. Clean-baseline mutation/restoration and
+independent review remain to be completed for this increment. The other four
+controller constructions, active cancellation intent/ACK writers, final-wire
+exact-facade/runtime-cleanup composition, authentic continuation-parent borrowing,
+funded input/context journeys and final combined/native/device/hosted/documentation
+qualification remain open. B10 is now paired and available in the Device panel;
+no Station app state or physical acceptance was changed by that connection.
+Report groups and finalizer remain disabled. No Station PR or push exists.

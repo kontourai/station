@@ -50,14 +50,14 @@ import {
   INTERNAL_NATIVE_FOREGROUND_HEADER,
 } from '../../runtime/conversation/native-foreground-invocation.js';
 import {
+  admitReservedStationSessionBinding,
+  admitReservedStationSessionOpen,
   assertReservedStationTurnCurrent,
   bindReservedStationSession,
   currentReservedStationTurn,
   executeReservedStationTurn,
-  openReservedStationSession,
   type ReservedStationInputOpen,
   type ReservedStationSession,
-  reservedStationTurnHasInput,
 } from '../../runtime/conversation/reserved-station-turn.js';
 import {
   extractToolPurpose,
@@ -945,14 +945,16 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       throw new Error(`Unknown Station agent: ${agentId ?? '(none provided)'}`);
     }
     const preparedReservedTurn = currentReservedStationTurn();
-    const reservedInput = preparedReservedTurn
-      ? reservedStationTurnHasInput(preparedReservedTurn)
-      : false;
+    const reserved = preparedReservedTurn
+      ? await admitReservedStationSessionOpen(
+          preparedReservedTurn,
+          input.threadId,
+          recovered?.reservedSourceIdentity,
+        )
+      : undefined;
+    const reservedInput = reserved?.hasInput ?? false;
     const reservedSourceIdentity =
-      openReservedStationSession(
-        input.threadId,
-        recovered?.reservedSourceIdentity,
-      ) ?? recovered?.reservedSourceIdentity;
+      reserved?.identity ?? recovered?.reservedSourceIdentity;
     const now = this.now().toISOString();
     const projectSlug =
       stringField(input.metadata?.projectSlug) ?? recovered?.projectSlug;
@@ -1008,11 +1010,18 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     };
     const threadId = input.threadId;
     this.sessions.set(threadId, record);
-    record.reservedSession = bindReservedStationSession(
-      threadId,
-      record,
-      () => this.sessions.get(threadId) === record,
-    );
+    record.reservedSession = preparedReservedTurn
+      ? await admitReservedStationSessionBinding(
+          preparedReservedTurn,
+          threadId,
+          record,
+          () => this.sessions.get(threadId) === record,
+        )
+      : bindReservedStationSession(
+          threadId,
+          record,
+          () => this.sessions.get(threadId) === record,
+        );
     this.publish({
       eventId: crypto.randomUUID(),
       provider: this.provider,
@@ -1176,13 +1185,15 @@ export class StationAgentAdapter implements ProviderAdapterShape {
           record.reservedSourceIdentity,
           record,
           controller.signal,
-          (delta) => {
-            assertReservedStationTurnCurrent(reservedTurn);
-            if (
-              record.activeTurnId !== turnId ||
-              record.activeController !== controller
-            )
-              throw new Error('Reserved stream turn changed.');
+          (delta, check) => {
+            check(() => {
+              assertReservedStationTurnCurrent(reservedTurn);
+              if (
+                record.activeTurnId !== turnId ||
+                record.activeController !== controller
+              )
+                throw new Error('Reserved stream turn changed.');
+            });
             this.publish({
               eventId: crypto.randomUUID(),
               provider: this.provider,
@@ -1206,72 +1217,75 @@ export class StationAgentAdapter implements ProviderAdapterShape {
               () => assertReservedStationTurnCurrent(reservedTurn),
               inputSignal,
             ),
+          (attempt, check) => {
+            const current = check(() => {
+              assertReservedStationTurnCurrent(reservedTurn);
+              return (
+                this.sessions.get(input.threadId) === record &&
+                record.activeTurnId === turnId &&
+                record.activeController === controller
+              );
+            });
+            if (!current) return;
+            const reason = attempt.sdkResult.finishReason;
+            const observedFinish =
+              reason && typeof reason === 'object' && 'unified' in reason
+                ? reason.unified
+                : reason;
+            this.publish({
+              eventId: crypto.randomUUID(),
+              provider: this.provider,
+              threadId: input.threadId,
+              turnId,
+              ...origin,
+              createdAt: this.now().toISOString(),
+              method: 'token-usage.updated',
+              promptTokens: attempt.accounting.inputTokens,
+              completionTokens: attempt.accounting.outputTokens,
+            });
+            this.publish({
+              eventId: crypto.randomUUID(),
+              provider: this.provider,
+              threadId: input.threadId,
+              turnId,
+              ...origin,
+              createdAt: this.now().toISOString(),
+              method: 'turn.completed',
+              finishReason: controller.signal.aborted
+                ? 'cancelled'
+                : observedFinish === 'stop'
+                  ? 'stop'
+                  : observedFinish === 'length'
+                    ? 'max-tokens'
+                    : 'other',
+              outputText: attempt.sdkResult.text,
+              metadata: {
+                ...modelMetadata,
+                [RESERVED_SOURCE_EXECUTION_METADATA_KEY]: {
+                  identity: record.reservedSourceIdentity,
+                  mode: attempt.sdkResult.inputRequest
+                    ? 'sealed-source-input'
+                    : 'sealed-source-no-tools',
+                  outputDelivery: attempt.outputDelivery,
+                  providerEvidence: attempt.evidenceReference,
+                  ...(attempt.inputReceipt
+                    ? { inputReceipt: attempt.inputReceipt }
+                    : {}),
+                },
+              },
+            });
+            this.updateSession(record, 'ready');
+            this.publishState(record, 'running', 'idle');
+            this.clearReservedTurn(record, turnId);
+          },
         );
       } catch (error) {
         this.failTurn(record, turnId, controller, origin);
         throw error;
       }
-      void result
-        .then((attempt) => {
-          assertReservedStationTurnCurrent(reservedTurn);
-          if (
-            this.sessions.get(input.threadId) !== record ||
-            record.activeTurnId !== turnId ||
-            record.activeController !== controller
-          )
-            return;
-          const reason = attempt.sdkResult.finishReason;
-          const observedFinish =
-            reason && typeof reason === 'object' && 'unified' in reason
-              ? reason.unified
-              : reason;
-          this.publish({
-            eventId: crypto.randomUUID(),
-            provider: this.provider,
-            threadId: input.threadId,
-            turnId,
-            ...origin,
-            createdAt: this.now().toISOString(),
-            method: 'token-usage.updated',
-            promptTokens: attempt.accounting.inputTokens,
-            completionTokens: attempt.accounting.outputTokens,
-          });
-          this.publish({
-            eventId: crypto.randomUUID(),
-            provider: this.provider,
-            threadId: input.threadId,
-            turnId,
-            ...origin,
-            createdAt: this.now().toISOString(),
-            method: 'turn.completed',
-            finishReason: controller.signal.aborted
-              ? 'cancelled'
-              : observedFinish === 'stop'
-                ? 'stop'
-                : observedFinish === 'length'
-                  ? 'max-tokens'
-                  : 'other',
-            outputText: attempt.sdkResult.text,
-            metadata: {
-              ...modelMetadata,
-              [RESERVED_SOURCE_EXECUTION_METADATA_KEY]: {
-                identity: record.reservedSourceIdentity,
-                mode: attempt.sdkResult.inputRequest
-                  ? 'sealed-source-input'
-                  : 'sealed-source-no-tools',
-                outputDelivery: attempt.outputDelivery,
-                providerEvidence: attempt.evidenceReference,
-                ...(attempt.inputReceipt
-                  ? { inputReceipt: attempt.inputReceipt }
-                  : {}),
-              },
-            },
-          });
-          this.updateSession(record, 'ready');
-          this.publishState(record, 'running', 'idle');
-          this.clearReservedTurn(record, turnId);
-        })
-        .catch(() => this.failReservedTurn(record, turnId, controller, origin));
+      void result.catch(() =>
+        this.failReservedTurn(record, turnId, controller, origin),
+      );
       return {
         threadId: input.threadId,
         turnId,

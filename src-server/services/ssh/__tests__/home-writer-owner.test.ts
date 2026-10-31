@@ -45,6 +45,71 @@ test('one canonical home excludes independent writes while explicit synchronous 
   expect(other.runSynchronous(() => ++writes)).toBe(2);
 });
 
+test('a queued asynchronous writer cannot be overtaken by an independent synchronous write', async () => {
+  const owner = await HomeWriterOwner.forHome(home());
+  const unrelated = await HomeWriterOwner.forHome(home());
+  let entered!: () => void;
+  let resume!: () => void;
+  const started = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const gate = new Promise<void>((resolve) => {
+    resume = resolve;
+  });
+  const acquire = lifecycle.acquireFileMutationLeaseAsync;
+  const spy = vi
+    .spyOn(lifecycle, 'acquireFileMutationLeaseAsync')
+    .mockImplementationOnce(async (...args) => {
+      entered();
+      await gate;
+      return acquire(...args);
+    });
+  const pending = owner.acquire();
+  void pending.catch(() => {});
+  let writes = 0;
+  try {
+    await started;
+    expect(() => owner.runSynchronous(() => ++writes)).toThrow(
+      expect.objectContaining({ reason: 'busy', operationRan: false }),
+    );
+    expect(writes).toBe(0);
+    expect(unrelated.runSynchronous(() => 'independent home')).toBe(
+      'independent home',
+    );
+  } finally {
+    resume();
+    spy.mockRestore();
+    const admitted = await pending;
+    await admitted.release();
+  }
+  expect(owner.runSynchronous(() => ++writes)).toBe(1);
+});
+
+test('a local admission timeout leaves the held writer current and removes only its waiting request', async () => {
+  const owner = await HomeWriterOwner.forHome(home());
+  const held = await owner.acquire();
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  try {
+    const pending = owner.acquire();
+    const refused = expect(pending).rejects.toMatchObject({
+      reason: 'busy',
+      operationRan: false,
+    });
+    await vi.advanceTimersByTimeAsync(10_000);
+    await refused;
+    held.assertCurrent();
+    expect(owner.runWithLease(held, () => 'original writer')).toBe(
+      'original writer',
+    );
+  } finally {
+    vi.useRealTimers();
+    await held.release();
+  }
+  const next = await owner.acquire();
+  next.assertCurrent();
+  await next.release();
+});
+
 test('late async descendants cannot borrow a completed synchronous span', async () => {
   const owner = await HomeWriterOwner.forHome(home());
   const lease = await owner.acquire();

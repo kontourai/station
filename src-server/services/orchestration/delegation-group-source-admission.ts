@@ -1672,10 +1672,18 @@ export class LocalSourceAdmissionOwner {
       topology,
       source: state.source,
       assertCurrent,
-      async readSchedule() {
-        assertCurrent();
+      async readSchedule(scope?: {
+        owner: HomeWriterOwner;
+        lease: HomeWriterLease;
+      }) {
+        if (scope && scope.owner.homeDir !== sourceHome)
+          refuse('flow_home_mismatch');
+        const check = scope
+          ? () => scope.owner.runWithLease(scope.lease, assertCurrent)
+          : assertCurrent;
+        check();
         const current = await loadRun(runId, cwd);
-        assertCurrent();
+        check();
         assertLifecycleEligible('persist', current.state.status);
         if (
           !isDeepStrictEqual(definitionIdentity(current.definition), definition)
@@ -2224,7 +2232,10 @@ export interface SourceFlowLaunchOwner {
   }>;
   readonly source: Readonly<SourceTuple>;
   assertCurrent(): void;
-  readSchedule(): Promise<{
+  readSchedule(scope?: {
+    owner: HomeWriterOwner;
+    lease: HomeWriterLease;
+  }): Promise<{
     cwd: string;
     runHead: string;
     readySteps: string[];

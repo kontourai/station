@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync } from 'node:fs';
+import fs, { readFileSync, writeFileSync } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { join } from 'node:path';
 import { inspect } from 'node:util';
 import { type FlowMultiCursorClaimEvent, loadRun } from '@kontourai/flow';
@@ -11,23 +12,30 @@ import {
   readReportGroupEvents,
   readReportGroupResult,
 } from '@kontourai/station-sdk/client';
+import { prepareFileMutationOwner } from '@kontourai/station-shared/lifecycle-events';
+import {
+  acquireStationHomeMaintenanceLease,
+  StationHomeActiveError,
+} from '@kontourai/station-shared/station-home-lifecycle';
 import { Hono } from 'hono';
 import { test, vi } from 'vitest';
 import { runCli } from '../../../../packages/cli/src/cli.js';
 import { createGateTestRegistry } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { StationAgentAdapter } from '../../../providers/adapters/station-agent-adapter.js';
 import { createReportGroupRoutes } from '../../../routes/orchestration/report-groups.js';
+import { isRuntimePublicationParticipant } from '../../../runtime/bootstrap/runtime-publication-participant.js';
+import { StationRuntime } from '../../../runtime/bootstrap/station-runtime.js';
 import { AnthropicSealedPreparation } from '../../../runtime/conversation/anthropic-sealed-preparation.js';
+import * as reservedTurns from '../../../runtime/conversation/reserved-station-turn.js';
 import {
   bindRuntimeLocalOperator,
   getRuntimeAuthenticatedRequestPrincipal,
   setRuntimeAuthenticatedRequestPrincipal,
 } from '../../../security/runtime-request-security.js';
+import { createLogger } from '../../../utils/logger.js';
 import { ApprovalRegistry } from '../../approvals/approval-registry.js';
-import {
-  HomeWriterOwner,
-  HomeWriterUnavailableError,
-} from '../../ssh/home-writer-owner.js';
+import { HomeWriterOwner } from '../../ssh/home-writer-owner.js';
+import { RoundsFinalFetchLaunchFence } from '../delegation-group-launch-fence.js';
 import { StationDelegationPersistence } from '../delegation-group-persistence.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
@@ -50,12 +58,26 @@ import { controlledTextStream } from './delegation-source-fixtures/streamed-text
 type View = NonNullable<Awaited<ReturnType<StationReportGroupRuntime['get']>>>;
 type Operation = Awaited<ReturnType<StationReportGroupRuntime['create']>>;
 
-test.each(['independent', 'flow', 'mixed'] as const)(
-  'report HTTP owner runs %s seats through canonical tasks and retained tariffs; expired-profile replay reads without qualification or resend',
-  async (mode) => {
+test.each([
+  'independent',
+  'flow',
+  'mixed',
+  'revoked-before-claim',
+  'metadata-release-fault',
+  'publication-release-fault',
+] as const)(
+  'report HTTP owner qualifies %s source custody and truthful accounting',
+  async (scenario) => {
+    const revokeBeforeClaim = scenario === 'revoked-before-claim';
+    const metadataReleaseFault = scenario === 'metadata-release-fault';
+    const publicationReleaseFault = scenario === 'publication-release-fault';
+    const retirementFault = metadataReleaseFault || publicationReleaseFault;
+    const mode =
+      scenario === 'flow' || scenario === 'mixed' ? scenario : 'independent';
     const wallNow = Date.now;
     const h = await setup();
     const startedAt = wallNow();
+    const diagnosticStartedAt = performance.now();
     const runNow = NOW;
     vi.mocked(Date.now).mockImplementation(
       () => runNow + wallNow() - startedAt,
@@ -91,9 +113,232 @@ test.each(['independent', 'flow', 'mixed'] as const)(
         { id: 'join', needs: ['left', 'right'] },
       ]);
     }
+    const heldResponses = new Map<
+      string,
+      { release(): void; forced: boolean }
+    >();
+    const responseTimers = new Set<ReturnType<typeof setTimeout>>();
+    let returnedBeforeResponse = 0;
+    const start = RoundsFinalFetchLaunchFence.prototype.start;
+    vi.spyOn(RoundsFinalFetchLaunchFence.prototype, 'start').mockImplementation(
+      async function (this: RoundsFinalFetchLaunchFence, ...args) {
+        const result = await start.apply(this, args);
+        const gate = heldResponses.get(args[1].body);
+        assert.ok(gate, 'actual provider request reached its response hold');
+        let settled = false;
+        void result.response.then(
+          () => {
+            settled = true;
+          },
+          () => {
+            settled = true;
+          },
+        );
+        await Promise.resolve();
+        assert.equal(
+          gate.forced,
+          false,
+          'launch must return before proof response deadline',
+        );
+        assert.equal(
+          settled,
+          false,
+          'launch lease must close while provider response is pending',
+        );
+        returnedBeforeResponse++;
+        gate.release();
+        return result;
+      },
+    );
+    const requestWriter = await HomeWriterOwner.forHome(h.f.home);
+    let releaseFault: { mockRestore(): void } | undefined;
+    let completedPublishCallbacks = 0;
+    const installReleaseFault = () => {
+      assert.equal(releaseFault, undefined);
+      const remove = fs.rmSync;
+      releaseFault = vi
+        .spyOn(fs, 'rmSync')
+        .mockImplementation((path, options) => {
+          if (
+            String(path).startsWith(
+              join(h.f.home, 'security', '.home-writer.mutation.guard.stale-'),
+            )
+          )
+            throw Error('controlled report home retirement failure');
+          return remove(path, options);
+        });
+      syncBuiltinESMExports();
+    };
+    let queuedExecutionWitness: Promise<void> | undefined;
+    let witnessedExecution = false;
+    const execute = reservedTurns.executeReservedStationTurn;
+    vi.spyOn(reservedTurns, 'executeReservedStationTurn').mockImplementation(
+      (...args) => {
+        if (witnessedExecution) return execute(...args);
+        witnessedExecution = true;
+        const siblingHome = requestWriter.acquire();
+        void siblingHome.catch(() => {});
+        try {
+          const complete = args[8];
+          assert.ok(
+            complete,
+            'actual adapter supplies its protected completion callback',
+          );
+          let latePublication: Promise<void> | undefined;
+          args[8] = (attempt, check) => {
+            complete(attempt, check);
+            completedPublishCallbacks++;
+            if (publicationReleaseFault) {
+              installReleaseFault();
+              return;
+            }
+            latePublication = Promise.resolve().then(async () => {
+              const sibling = await requestWriter.acquire();
+              try {
+                sibling.assertCurrent();
+                let effects = 0;
+                assert.throws(() =>
+                  check(() => {
+                    effects++;
+                  }),
+                );
+                assert.equal(
+                  effects,
+                  0,
+                  'expired publication check cannot borrow a live sibling lease',
+                );
+              } finally {
+                await sibling.release();
+              }
+            });
+            void latePublication.catch(() => {});
+          };
+          const actual = execute(...args);
+          let settled = false;
+          void actual.then(
+            () => {
+              settled = true;
+            },
+            () => {
+              settled = true;
+            },
+          );
+          assert.throws(() => execute(...args), {
+            code: 'reserved_station_turn_unavailable',
+          });
+          const reader = reservedTurns.reservedStationTurnResult(args[0]);
+          void reader.catch(() => {});
+          queuedExecutionWitness = siblingHome.then(async (held) => {
+            try {
+              held.assertCurrent();
+              assert.equal(
+                h.rawFetch.mock.calls.length,
+                0,
+                'queued claim cannot start a provider under sibling custody',
+              );
+              assert.equal(
+                settled,
+                false,
+                'pending execution result is owned before admission',
+              );
+              if (revokeBeforeClaim)
+                requestWriter.runWithLease(held, () => {
+                  assert.equal(
+                    h.f.environment.devicePairing.verifyCredential(
+                      h.f.paired.credential,
+                    ),
+                    true,
+                  );
+                  h.f.environment.devicePairing.revokeDevice(
+                    h.f.paired.device.id,
+                    'operator-credential',
+                  );
+                  assert.equal(
+                    h.f.environment.devicePairing.verifyCredential(
+                      h.f.paired.credential,
+                    ),
+                    false,
+                  );
+                });
+            } finally {
+              await held.release();
+            }
+            if (metadataReleaseFault) installReleaseFault();
+            if (revokeBeforeClaim || retirementFault) {
+              const refused = await Promise.allSettled([actual, reader]);
+              assert.ok(
+                refused.every((result) => result.status === 'rejected'),
+              );
+              assert.equal(latePublication, undefined);
+              return;
+            }
+            const [attempt, readback] = await Promise.all([actual, reader]);
+            assert.deepEqual(
+              readback.evidenceReference,
+              attempt.evidenceReference,
+            );
+            assert.deepEqual(readback.accounting, attempt.accounting);
+            assert.equal(readback.sdkResult.text, attempt.sdkResult.text);
+            assert.ok(
+              latePublication,
+              'completion publication joined the actual result',
+            );
+            await latePublication;
+          });
+          void queuedExecutionWitness.catch(() => {});
+          return actual;
+        } catch (error) {
+          queuedExecutionWitness = siblingHome.then(async (held) => {
+            await held.release();
+            throw error;
+          });
+          void queuedExecutionWitness.catch(() => {});
+          throw error;
+        }
+      },
+    );
+    const physicalHomeProbe = await prepareFileMutationOwner(
+      join(h.f.home, 'security', '.home-writer.mutation'),
+    );
+    const assertPhysicalHomeHeld = async () => {
+      const attempt = physicalHomeProbe.tryAcquire();
+      if (attempt.kind === 'acquired') await attempt.lease.release();
+      assert.equal(
+        attempt.kind,
+        'busy',
+        'publication must retain the physical home lock',
+      );
+      assert.throws(
+        () => requestWriter.runSynchronous(() => undefined),
+        { name: 'HomeWriterUnavailableError', reason: 'busy' },
+        'publication must not lend ambient home authority to a sibling',
+      );
+    };
     const reportText = 'Controlled report '.repeat(1200);
-    h.rawFetch.mockImplementation(async (url) =>
-      String(url).startsWith('https://generativelanguage.googleapis.com/')
+    h.rawFetch.mockImplementation(async (url, init) => {
+      const body = init?.body;
+      assert.ok(typeof body === 'string');
+      assert.equal(heldResponses.has(body), false);
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const gate = { release, forced: false };
+      const timer = setTimeout(() => {
+        gate.forced = true;
+        gate.release();
+      }, 30_000);
+      responseTimers.add(timer);
+      gate.release = () => {
+        clearTimeout(timer);
+        responseTimers.delete(timer);
+        release();
+      };
+      heldResponses.set(body, gate);
+      await held;
+      return String(url).startsWith(
+        'https://generativelanguage.googleapis.com/',
+      )
         ? controlledTextStream('google', 'gemini-2.5-flash-lite', reportText, {
             promptTokenCount: 4,
             candidatesTokenCount: 8000,
@@ -107,8 +352,8 @@ test.each(['independent', 'flow', 'mixed'] as const)(
             output_tokens: 8000,
             cache_read_input_tokens: 0,
             cache_creation_input_tokens: 0,
-          }),
-    );
+          });
+    });
     const input = {
       ...h.input,
       deadlineAt: runNow + 240_000,
@@ -146,6 +391,18 @@ test.each(['independent', 'flow', 'mixed'] as const)(
     };
 
     const bus = new EventBus();
+    const protectedPublications: string[] = [];
+    const stopPublicationObservation = bus.subscribe(({ event, data }) => {
+      if (
+        event !== 'orchestration:event' ||
+        !data?.event ||
+        typeof data.event !== 'object'
+      )
+        return;
+      const method = Reflect.get(data.event, 'method');
+      if (method === 'content.text-delta' || method === 'turn.completed')
+        protectedPublications.push(method);
+    });
     const eventStore = new EventStore(
       join(h.f.root, 'report-execution.sqlite'),
     );
@@ -171,11 +428,69 @@ test.each(['independent', 'flow', 'mixed'] as const)(
         resolveSkillDir: async () => null,
       }),
     });
+    const runtimeOwner = new StationRuntime({ projectHomeDir: h.f.home });
+    const publicationParticipant = Reflect.get(
+      runtimeOwner,
+      'runtimePublicationParticipant',
+    );
+    assert.ok(isRuntimePublicationParticipant(publicationParticipant));
     const owners = {
+      publicationParticipant,
       runtime: h.preparationOwners.runtime,
       orchestration,
       rawFetch: h.rawFetch,
     };
+    const roundsStore = StationDelegationPersistence.prototype.roundsStore;
+    let groupWrites = 0;
+    let groupStoreReturns = 0;
+    const journalPhases: { kind: string; phase: string; elapsedMs: number }[] =
+      [];
+    const recordJournalPhase = (kind: string, phase: string) => {
+      journalPhases.push({
+        kind,
+        phase,
+        elapsedMs: performance.now() - diagnosticStartedAt,
+      });
+      if (journalPhases.length > 48) journalPhases.shift();
+    };
+    vi.spyOn(
+      StationDelegationPersistence.prototype,
+      'roundsStore',
+    ).mockImplementation(function (
+      this: StationDelegationPersistence,
+      ...args
+    ) {
+      const actual = roundsStore.apply(this, args);
+      return {
+        ...actual,
+        transact: async (groupId, body) => {
+          let wrote = false;
+          let lastKind = 'none';
+          const result = await actual.transact(groupId, async (journal) => {
+            const prior = journal?.events.length ?? 0;
+            const next = await body(journal);
+            if (next.journal && next.journal.events.length > prior) {
+              const last = next.journal.events.at(-1);
+              lastKind =
+                last?.kind === 'command'
+                  ? `command:${last.command.kind}`
+                  : (last?.kind ?? 'none');
+              recordJournalPhase(lastKind, 'body');
+              await assertPhysicalHomeHeld();
+              wrote = true;
+              groupWrites++;
+            }
+            return next;
+          });
+          if (wrote) {
+            await assertPhysicalHomeHeld();
+            groupStoreReturns++;
+            recordJournalPhase(lastKind, 'store-returned');
+          }
+          return result;
+        },
+      };
+    });
     const qualifies = vi.spyOn(AnthropicSealedPreparation, 'create');
     const stampedPrincipal = getRuntimeAuthenticatedRequestPrincipal(h.f.req);
     assert.ok(stampedPrincipal && stampedPrincipal.kind !== 'internal');
@@ -199,24 +514,6 @@ test.each(['independent', 'flow', 'mixed'] as const)(
       );
       return app;
     }
-    const homeFailures: string[] = [];
-    const runSynchronous = HomeWriterOwner.prototype.runSynchronous;
-    vi.spyOn(HomeWriterOwner.prototype, 'runSynchronous').mockImplementation(
-      function <T>(this: HomeWriterOwner, body: () => T): T {
-        try {
-          return runSynchronous.call(this, body) as T;
-        } catch (error) {
-          if (
-            error instanceof HomeWriterUnavailableError &&
-            homeFailures.length < 8
-          )
-            homeFailures.push(
-              `${error.reason} operationRan=${error.operationRan}\n${error.stack?.split('\n').slice(0, 12).join('\n')}`,
-            );
-          throw error;
-        }
-      },
-    );
     const createFailures: unknown[] = [];
     const create = StationReportGroupRuntime.prototype.create;
     vi.spyOn(StationReportGroupRuntime.prototype, 'create').mockImplementation(
@@ -284,17 +581,106 @@ test.each(['independent', 'flow', 'mixed'] as const)(
           }, input.deadlineAt - Date.now());
         }),
       ]);
+      for (const gate of heldResponses.values()) gate.release();
+      for (const timer of responseTimers) clearTimeout(timer);
       if (watchdog) clearTimeout(watchdog);
       const body = (await response.json()) as {
         success: boolean;
         data: Operation;
       };
-      assert.equal(
-        response.status,
-        200,
-        `${JSON.stringify(body)} ${createFailures.map((error) => inspect(error, { depth: 8 })).join('\n')}\n${homeFailures.join('\n')}`,
+      const flowDiagnostic =
+        mode === 'flow' && response.status !== 200
+          ? await loadRun(flowRunId, h.f.repo).then(
+              (run) => ({
+                status: run.state.status,
+                currentStep: run.state.current_step,
+                nextAction: run.state.next_action,
+                activeClaims: run.state.multi_cursor.active_claims,
+                claimHistory: run.state.multi_cursor.claim_history,
+                blockedSteps: run.state.multi_cursor.blocked_steps,
+                gateOutcomes: run.state.gate_outcomes,
+              }),
+              (error: unknown) => ({
+                readError: error instanceof Error ? error.name : typeof error,
+              }),
+            )
+          : undefined;
+      createLogger({
+        name: 'controlled-report-execution-profile',
+        level: 'info',
+      }).info('Controlled report execution phase timing', {
+        scenario,
+        mode,
+        responseElapsedMs: performance.now() - diagnosticStartedAt,
+        journalPhases: mode === 'flow' ? journalPhases : undefined,
+        flowDiagnostic,
+      });
+      if (!revokeBeforeClaim && !retirementFault)
+        assert.equal(
+          response.status,
+          200,
+          `${JSON.stringify(body)} ${createFailures.map((error) => inspect(error, { depth: 8 })).join('\n')}\n${JSON.stringify({ journalPhases, flowDiagnostic, fetches: h.rawFetch.mock.calls.length, held: heldResponses.size, returnedBeforeResponse })}`,
+        );
+      assert.ok(
+        queuedExecutionWitness,
+        'actual reserved execution reached its queued ownership witness',
       );
-      assert.equal(body.success, true);
+      await queuedExecutionWitness;
+      if (retirementFault) {
+        assert.equal(response.status, 503, JSON.stringify(body));
+        assert.ok(
+          releaseFault,
+          'actual metadata/publication retirement fault was installed',
+        );
+        const providerCalls = h.rawFetch.mock.calls.length;
+        const publisherCalls = completedPublishCallbacks;
+        if (metadataReleaseFault) {
+          assert.equal(providerCalls, 0);
+          assert.equal(publisherCalls, 0);
+          assert.deepEqual(protectedPublications, []);
+        } else {
+          assert.ok(providerCalls > 0);
+          assert.equal(publisherCalls, 1);
+          assert.ok(protectedPublications.includes('turn.completed'));
+        }
+        await assert.rejects(runtimeOwner.shutdown(), {
+          code: 'runtime_publication_pending',
+        });
+        assert.throws(
+          () => acquireStationHomeMaintenanceLease(h.f.home),
+          StationHomeActiveError,
+        );
+        releaseFault.mockRestore();
+        releaseFault = undefined;
+        syncBuiltinESMExports();
+        await runtimeOwner.shutdown();
+        assert.equal(
+          h.rawFetch.mock.calls.length,
+          providerCalls,
+          'cleanup retry cannot resend a provider request',
+        );
+        assert.equal(
+          completedPublishCallbacks,
+          publisherCalls,
+          'cleanup retry cannot rerun publication',
+        );
+        const maintenance = acquireStationHomeMaintenanceLease(h.f.home);
+        maintenance.release();
+        return;
+      }
+      if (revokeBeforeClaim) {
+        assert.equal(response.status, 503, JSON.stringify(body));
+        assert.equal(h.rawFetch.mock.calls.length, 0);
+        assert.deepEqual(protectedPublications, []);
+        return;
+      }
+      assert.equal(body.success, true, `${mode}: report execution succeeded`);
+      assert.equal(
+        protectedPublications.filter((method) => method === 'turn.completed')
+          .length,
+        memberCount,
+      );
+      assert.ok(protectedPublications.includes('content.text-delta'));
       const result = body.data;
       assert.equal(result.replayed, false);
       assert.equal(result.group.execution, 'returned');
@@ -336,7 +722,11 @@ test.each(['independent', 'flow', 'mixed'] as const)(
           costMicros:
             mode === 'mixed' && member.seatId === 'right' ? 3201 : 120012,
         });
-        assert.equal(member.attempts[0].accountingTerminal, true);
+        assert.equal(
+          member.attempts[0].accountingTerminal,
+          true,
+          `${mode}: member accounting is terminal`,
+        );
         assert.ok(member.attempts[0].terminal);
         const terminal = JSON.parse(
           readFileSync(
@@ -356,6 +746,7 @@ test.each(['independent', 'flow', 'mixed'] as const)(
         assert.equal(
           verifyReportTerminalWitness(witness, h.f.environment),
           true,
+          `${mode}: retained terminal witness verifies`,
         );
         assert.equal(witness.data.groupId, result.group.groupId);
         assert.equal(
@@ -449,7 +840,7 @@ test.each(['independent', 'flow', 'mixed'] as const)(
         input,
         sdkOptions,
       );
-      assert.equal(sdkReplay.replayed, true);
+      assert.equal(sdkReplay.replayed, true, `${mode}: SDK replay recognized`);
       assert.deepEqual(sdkReplay.group, result.group);
       assert.deepEqual(
         await getReportGroup(
@@ -498,7 +889,11 @@ test.each(['independent', 'flow', 'mixed'] as const)(
       );
       assert.equal(replayResponse.status, 200);
       const replay = (await replayResponse.json()) as { data: Operation };
-      assert.equal(replay.data.replayed, true);
+      assert.equal(
+        replay.data.replayed,
+        true,
+        `${mode}: HTTP replay recognized`,
+      );
       assert.deepEqual(replay.data.group, result.group);
       assert.equal(qualifies.mock.calls.length, 2);
       const changed = await send(
@@ -615,7 +1010,11 @@ test.each(['independent', 'flow', 'mixed'] as const)(
       ).data;
       assert.equal(raw.kind, 'result');
       assert.equal(raw.text, reportText.slice(0, 16_384));
-      assert.equal(raw.hasMore, true);
+      assert.equal(
+        raw.hasMore,
+        true,
+        `${mode}: retained result requires another page`,
+      );
       assert.deepEqual(
         await readReportGroupResult(
           'http://report-control.test',
@@ -675,15 +1074,14 @@ test.each(['independent', 'flow', 'mixed'] as const)(
         operationKey: 'cancel-completed',
         expectedRevision: result.group.revision,
       };
-      const originalRoundsStore =
-        StationDelegationPersistence.prototype.roundsStore;
+      const originalRoundsStore = roundsStore;
       const journalCommit = vi
         .spyOn(StationDelegationPersistence.prototype, 'roundsStore')
         .mockImplementation(function (
           this: StationDelegationPersistence,
-          current,
+          ...args
         ) {
-          const store = originalRoundsStore.call(this, current);
+          const store = originalRoundsStore.apply(this, args);
           return {
             transact: (id, body) =>
               store.transact(id, async (previous) => {
@@ -715,6 +1113,7 @@ test.each(['independent', 'flow', 'mixed'] as const)(
         ((await repeated.json()) as { data: { replayed: boolean } }).data
           .replayed,
         true,
+        `${mode}: cancellation replay recognized after journal failure`,
       );
       const pending = await getReportGroup(
         'http://report-control.test',
@@ -758,15 +1157,26 @@ test.each(['independent', 'flow', 'mixed'] as const)(
         finalLog.mockRestore();
         process.exitCode = priorExitCode;
       }
-      assert.equal(JSON.parse(finalCli[0]).replayed, true);
+      assert.equal(
+        JSON.parse(finalCli[0]).replayed,
+        true,
+        `${mode}: CLI cancellation replay recognized`,
+      );
       const after = await send(
         'GET',
         `/${groupId}`,
         undefined,
         returning.credential,
       );
+      assert.ok(groupWrites > 0);
+      assert.equal(groupStoreReturns, groupWrites);
+      assert.equal(returnedBeforeResponse, memberCount);
       const afterView = ((await after.json()) as { data: View }).data;
-      assert.equal(afterView.authorityRevoked, true);
+      assert.equal(
+        afterView.authorityRevoked,
+        true,
+        `${mode}: later read observes authority revocation`,
+      );
       assert.deepEqual(afterView.members, result.group.members);
       assert.equal(interrupt.mock.calls.length, 0);
       assert.equal(h.rawFetch.mock.calls.length, memberCount);
@@ -776,10 +1186,19 @@ test.each(['independent', 'flow', 'mixed'] as const)(
         503,
       );
     } finally {
+      releaseFault?.mockRestore();
+      syncBuiltinESMExports();
+      for (const gate of heldResponses.values()) gate.release();
+      for (const timer of responseTimers) clearTimeout(timer);
       if (watchdog) clearTimeout(watchdog);
       abort.abort();
+      await queuedExecutionWitness?.catch(() => {});
       await orchestration.shutdown();
+      stopPublicationObservation();
+      await physicalHomeProbe.close();
+      await runtimeOwner.shutdown();
       eventStore.close();
+      if (revokeBeforeClaim) assert.deepEqual(protectedPublications, []);
     }
   },
   270_000,

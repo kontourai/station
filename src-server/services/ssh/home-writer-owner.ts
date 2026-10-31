@@ -32,12 +32,14 @@ type Core = {
   securityIdentity: Stats;
   prepared: PreparedFileMutationOwner;
   holders: Set<Holder>;
+  admissions: Array<{ enter(): void }>;
   notifications: Array<() => void>;
 };
 type Holder = {
   core: Core;
   lease: PreparedFileMutationLease;
   active: boolean;
+  retireAdmission(): void;
   releasing?: Promise<void>;
 };
 type Span = { lease: FileMutationLease; active: boolean };
@@ -58,14 +60,14 @@ function releaseHolder(holder: Holder): Promise<void> {
   if (holder.releasing) return holder.releasing;
   if (holder.lease.tryRelease() === 'released') {
     holder.core.holders.delete(holder);
-    if (!holder.core.holders.size) flushNotifications(holder.core);
+    holder.retireAdmission();
     return Promise.resolve();
   }
   holder.releasing = holder.lease
     .release()
     .then(() => {
       holder.core.holders.delete(holder);
-      if (!holder.core.holders.size) flushNotifications(holder.core);
+      holder.retireAdmission();
     })
     .finally(() => {
       holder.releasing = undefined;
@@ -74,6 +76,7 @@ function releaseHolder(holder: Holder): Promise<void> {
 }
 
 function flushNotifications(core: Core): void {
+  if (core.holders.size || core.admissions.length) return;
   const notifications = core.notifications.splice(0);
   spans.exit(() => {
     for (const notify of notifications) {
@@ -82,6 +85,60 @@ function flushNotifications(core: Core): void {
       } catch {}
     }
   });
+}
+
+const HOME_ACQUISITION_WAIT_MS = 10_000;
+
+/** Local ordering grants no lease: each admitted writer still takes the physical lock. */
+function queueAdmission(core: Core, signal?: AbortSignal) {
+  const deadline = performance.now() + HOME_ACQUISITION_WAIT_MS;
+  let entered = false;
+  let retired = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let wake!: () => void;
+  let reject!: (error: unknown) => void;
+  const ready = new Promise<void>((resolve, refuse) => {
+    wake = resolve;
+    reject = refuse;
+  });
+  void ready.catch(() => {});
+  const clear = () => {
+    if (timer !== undefined) clearTimeout(timer);
+    signal?.removeEventListener('abort', abort);
+  };
+  const entry = {
+    enter: () => {
+      if (entered || retired) return;
+      entered = true;
+      clear();
+      wake();
+    },
+  };
+  const release = () => {
+    if (retired) return;
+    retired = true;
+    clear();
+    const index = core.admissions.indexOf(entry);
+    core.admissions.splice(index, 1);
+    if (index === 0) core.admissions[0]?.enter();
+    flushNotifications(core);
+  };
+  const cancel = (error: unknown) => {
+    if (entered || retired) return;
+    reject(error);
+    release();
+  };
+  const abort = () => cancel(signal?.reason);
+  core.admissions.push(entry);
+  if (core.admissions.length === 1) entry.enter();
+  else {
+    timer = setTimeout(
+      () => cancel(new HomeWriterUnavailableError('busy')),
+      HOME_ACQUISITION_WAIT_MS,
+    );
+    signal?.addEventListener('abort', abort, { once: true });
+  }
+  return { ready, deadline, release };
 }
 
 function sameDirectory(current: Stats, captured: Stats): boolean {
@@ -147,6 +204,7 @@ export class HomeWriterOwner {
           securityIdentity,
           prepared,
           holders: new Set(),
+          admissions: [],
           notifications: [],
         };
         assertCore(core);
@@ -236,7 +294,8 @@ export class HomeWriterOwner {
         throw new HomeWriterUnavailableError('borrow-unavailable');
       return this.runWithLease(lifetime.lease, body);
     }
-    if (this.#core.holders.size) throw new HomeWriterUnavailableError('busy');
+    if (this.#core.holders.size || this.#core.admissions.length)
+      throw new HomeWriterUnavailableError('busy');
     const attempt = this.#core.prepared.tryAcquire();
     if (attempt.kind !== 'acquired')
       throw new HomeWriterUnavailableError(
@@ -459,38 +518,54 @@ export class HomeWriterOwner {
     signal?.throwIfAborted();
     if (spans.getStore()?.has(this.#core))
       throw new HomeWriterUnavailableError('borrow-unavailable');
-    await this.settlePendingCleanup();
-    let base: PreparedFileMutationLease;
+    const admission = queueAdmission(this.#core, signal);
+    let registered = false;
     try {
-      base = await acquireFileMutationLeaseAsync(this.#core.lock);
-    } catch (error) {
-      throw new HomeWriterUnavailableError('busy', false, { cause: error });
-    }
-    const holder: Holder = { core: this.#core, lease: base, active: true };
-    this.#core.holders.add(holder);
-    const lease: HomeWriterLease = Object.freeze({
-      [homeWriterLeaseBrand]: true as const,
-      assertCurrent: () => {
-        if (!holder.active)
-          throw new HomeWriterUnavailableError('borrow-unavailable');
-        this.assertCurrent();
-        base.assertCurrent();
-      },
-      release: () => {
-        return releaseHolder(holder);
-      },
-    });
-    leases.set(lease, holder);
-    try {
+      await this.settlePendingCleanup();
+      await admission.ready;
       signal?.throwIfAborted();
-      lease.assertCurrent();
-      for (const other of this.#core.holders)
-        if (other !== holder && !other.active) {
-          await releaseHolder(other);
-        }
-      return lease;
+      this.assertCurrent();
+      const remaining = Math.ceil(admission.deadline - performance.now());
+      if (remaining <= 0) throw new HomeWriterUnavailableError('busy');
+      let base: PreparedFileMutationLease;
+      try {
+        base = await acquireFileMutationLeaseAsync(this.#core.lock, {
+          timeoutMs: remaining,
+        });
+      } catch (error) {
+        throw new HomeWriterUnavailableError('busy', false, { cause: error });
+      }
+      const holder: Holder = {
+        core: this.#core,
+        lease: base,
+        active: true,
+        retireAdmission: admission.release,
+      };
+      this.#core.holders.add(holder);
+      registered = true;
+      const lease: HomeWriterLease = Object.freeze({
+        [homeWriterLeaseBrand]: true as const,
+        assertCurrent: () => {
+          if (!holder.active)
+            throw new HomeWriterUnavailableError('borrow-unavailable');
+          this.assertCurrent();
+          base.assertCurrent();
+        },
+        release: () => releaseHolder(holder),
+      });
+      leases.set(lease, holder);
+      try {
+        signal?.throwIfAborted();
+        lease.assertCurrent();
+        for (const other of this.#core.holders)
+          if (other !== holder && !other.active) await releaseHolder(other);
+        return lease;
+      } catch (error) {
+        await lease.release();
+        throw error;
+      }
     } catch (error) {
-      await lease.release();
+      if (!registered) admission.release();
       throw error;
     }
   }

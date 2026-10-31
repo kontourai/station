@@ -30,6 +30,10 @@ import {
 import type { RuntimeSourceRequestContext } from './delegation-group-source-admission.js';
 import type { FileFinalWireIntentStore } from './delegation-group-wire-intent-store.js';
 import type { OrchestrationService } from './orchestration-service.js';
+import type {
+  ReportRoundsPublication,
+  ReportRoundsScope,
+} from './report-rounds-publication.js';
 import type { StationReportGroupCustody } from './station-report-group-custody.js';
 import { parseStationReportGroupInput } from './station-report-group-input.js';
 import {
@@ -80,7 +84,11 @@ export class StationReportGroupExecution {
     this.owners = Object.freeze({ ...owners });
   }
 
-  async execute(context: RuntimeSourceRequestContext, sent: unknown) {
+  async execute(
+    context: RuntimeSourceRequestContext,
+    sent: unknown,
+    publication?: ReportRoundsPublication,
+  ) {
     const input = parseStationReportGroupInput(sent);
     const { custody, persistence, orchestration } = this.owners;
     const existing = await custody.findOperationForMutation(
@@ -115,106 +123,171 @@ export class StationReportGroupExecution {
       const prepared = preparation.read(handle, context.req.raw);
       const groupId = await custody.retain(context, preparation, handle);
       const current = (): undefined => {
+        publication?.assertCurrent();
         requestCurrent();
         return undefined;
       };
-      const executionCurrent = (): undefined =>
+      const sourceCurrent = (): undefined =>
         this.owners.environment.withCurrentAuthority(() => {
-          current();
+          requestCurrent();
           signal.throwIfAborted();
           preparation.assertCurrent(handle, context.req.raw);
           return undefined;
         });
+      const executionCurrent = (): undefined => {
+        publication?.assertCurrent();
+        return sourceCurrent();
+      };
       const retained = new Map<string, Retained>();
       const invocation = new AsyncLocalStorage<{
         envelope: DelegationEnvelopeV2;
         id: string;
       }>();
-      const memberFor = (envelope: DelegationEnvelopeV2) =>
-        this.owners.environment.withCurrentAuthority(() => {
-          current();
-          const member = prepared.members.find(
-            (m) => m.taskId === envelope.execution_id,
-          );
-          const seat = prepared.spec.seats.find(
-            (s) => s.seatId === member?.seatId,
-          );
-          if (
-            !member ||
-            !seat ||
-            !preparation.authorizes(
-              handle,
-              context.req.raw,
-              prepared.root,
-              envelope,
-            )
-          )
-            refuse();
-          return { member, seat };
-        });
-      const host = {
-        now: () => new Date(Date.now()).toISOString(),
-        authorize: async (
-          _action: unknown,
-          root: typeof prepared.root,
-          envelope: DelegationEnvelopeV2 | null,
-        ) => preparation.authorizes(handle, context.req.raw, root, envelope),
-        confirmExecution: async (envelope: DelegationEnvelopeV2) =>
-          preparation.confirmsExecution(handle, context.req.raw, envelope),
-        confirmReconciliation: async (candidate: {
-          invocationId: string;
-          envelopeId: string;
-          usage: unknown;
-          terminal: boolean;
-        }) => {
-          current();
-          const result = retained.get(candidate.invocationId);
-          if (!result) return false;
-          await persistence.assertProviderEvidenceRetained(
-            result.attempt.evidence,
-            result.attempt.evidenceReference,
-            current,
-          );
-          return (
-            !!result &&
-            candidate.envelopeId === result.envelopeId &&
-            candidate.terminal &&
-            same(candidate.usage, {
-              inputTokens: result.attempt.accounting.inputTokens,
-              outputTokens: result.attempt.accounting.outputTokens,
-              costMicros: result.attempt.accounting.costMicros,
-            })
-          );
-        },
-        authenticateRenewal: async () => null,
-      };
-      const launch: PreparedReservedFinalFetchOwners = {
-        protocol: 'rounds-v1',
-        groups: persistence.roundsStore(current, executionCurrent),
-        authorities: persistence.roundsAuthorityStore(
-          current,
-          executionCurrent,
-        ),
-        host,
-        intents: this.owners.wireIntents,
-        finalizeCurrent: executionCurrent,
-        reportHome: {
-          owner: requestWriter,
-          persistence,
-          current,
-          preparationCurrent: executionCurrent,
-        },
-      };
-      const service = createDelegationAuthorityServiceV3(
-        launch.authorities,
-        host,
-        { maxRenewals: prepared.spec.policy.maxRenewals ?? 0 },
+      const flow = await requestWriter.runRequest(signal, () =>
+        preparation.flow(handle, context.req.raw),
       );
-      const physical: ReturnType<DelegationRoundsHost['executionHost']> = {
-        resolveRuntime: async (envelope) => {
-          const { member, seat } = await requestWriter.runRequest(
-            signal,
-            () => {
+      const readSchedule = () =>
+        flow
+          ? publication
+            ? publication.withHome(
+                { owner: requestWriter, current: sourceCurrent },
+                (scope) => flow.readSchedule(scope),
+              )
+            : flow.readSchedule()
+          : Promise.resolve(undefined);
+      const schedule = await readSchedule();
+      await requestWriter.runRequest(signal, current);
+      const build = (scope?: ReportRoundsScope) => {
+        const current =
+          scope?.current ??
+          (() => {
+            requestCurrent();
+            publication?.assertCurrent();
+            return undefined;
+          });
+        const preparationCurrent = scope?.current ?? executionCurrent;
+        const check = <Value>(body: () => Value): Value =>
+          scope
+            ? scope.check(body)
+            : this.owners.environment.withCurrentAuthority(body);
+        const checkAsync = <Value>(body: () => Value): Promise<Value> =>
+          scope
+            ? Promise.resolve(check(body))
+            : requestWriter.runRequest(signal, () => check(body));
+        const memberFor = (envelope: DelegationEnvelopeV2) =>
+          check(() => {
+            current();
+            const member = prepared.members.find(
+              (m) => m.taskId === envelope.execution_id,
+            );
+            const seat = prepared.spec.seats.find(
+              (s) => s.seatId === member?.seatId,
+            );
+            if (
+              !member ||
+              !seat ||
+              !preparation.authorizes(
+                handle,
+                context.req.raw,
+                prepared.root,
+                envelope,
+              )
+            )
+              refuse();
+            return { member, seat };
+          });
+        const host = {
+          now: () => new Date(Date.now()).toISOString(),
+          authorize: async (
+            _action: unknown,
+            root: typeof prepared.root,
+            envelope: DelegationEnvelopeV2 | null,
+          ) =>
+            check(() =>
+              preparation.authorizes(handle, context.req.raw, root, envelope),
+            ),
+          confirmExecution: async (envelope: DelegationEnvelopeV2) =>
+            check(() =>
+              preparation.confirmsExecution(handle, context.req.raw, envelope),
+            ),
+          confirmReconciliation: async (candidate: {
+            invocationId: string;
+            envelopeId: string;
+            usage: unknown;
+            terminal: boolean;
+          }) => {
+            current();
+            const result = retained.get(candidate.invocationId);
+            if (!result) return false;
+            await persistence.assertProviderEvidenceRetained(
+              result.attempt.evidence,
+              result.attempt.evidenceReference,
+              current,
+            );
+            return (
+              !!result &&
+              candidate.envelopeId === result.envelopeId &&
+              candidate.terminal &&
+              same(candidate.usage, {
+                inputTokens: result.attempt.accounting.inputTokens,
+                outputTokens: result.attempt.accounting.outputTokens,
+                costMicros: result.attempt.accounting.costMicros,
+              })
+            );
+          },
+          authenticateRenewal: async () => null,
+        };
+        const launch: PreparedReservedFinalFetchOwners = {
+          protocol: 'rounds-v1',
+          groups: persistence.roundsStore(current, preparationCurrent, scope),
+          authorities: persistence.roundsAuthorityStore(
+            current,
+            preparationCurrent,
+            scope,
+          ),
+          host,
+          intents: this.owners.wireIntents,
+          finalizeCurrent: preparationCurrent,
+          reportHome: {
+            owner: requestWriter,
+            persistence,
+            current,
+            preparationCurrent,
+            ...(publication
+              ? {
+                  withHome: <Value>(
+                    guard: () => undefined,
+                    body: (
+                      scope: Pick<ReportRoundsScope, 'current' | 'check'>,
+                    ) => Promise<Value>,
+                  ) =>
+                    publication.withHome(
+                      { owner: requestWriter, current: guard },
+                      body,
+                    ),
+                  invokeCurrent: <Value>(
+                    guard: () => undefined,
+                    invoke: (
+                      check: <Result>(work: () => Result) => Result,
+                    ) => Promise<Value>,
+                  ) =>
+                    publication.invokeCurrent(
+                      { owner: requestWriter, current: guard },
+                      invoke,
+                    ),
+                }
+              : {}),
+          },
+        };
+        const service = createDelegationAuthorityServiceV3(
+          launch.authorities,
+          host,
+          { maxRenewals: prepared.spec.policy.maxRenewals ?? 0 },
+        );
+        const physical: ReturnType<DelegationRoundsHost['executionHost']> = {
+          resolveRuntime: async (envelope) => {
+            if (scope) refuse();
+            const { member, seat } = await checkAsync(() => {
               const selected = memberFor(envelope);
               if (
                 !preparation.confirmsExecution(
@@ -225,195 +298,211 @@ export class StationReportGroupExecution {
               )
                 refuse();
               return selected;
-            },
-          );
-          const runtime: ModelRuntime = {
-            id: envelope.execution_binding.runtime.runtime_receipt_ref.id,
-            capabilities: () => ({
-              structuredTools: false,
-              streaming: false,
-              abort: true,
-              usage: true,
-              outputTokenLimitFidelity: 'native',
-            }),
-            invoke: async (request, options) => {
-              current();
-              const selected = invocation.getStore();
+            });
+            const runtime: ModelRuntime = {
+              id: envelope.execution_binding.runtime.runtime_receipt_ref.id,
+              capabilities: () => ({
+                structuredTools: false,
+                streaming: false,
+                abort: true,
+                usage: true,
+                outputTokenLimitFidelity: 'native',
+              }),
+              invoke: async (request, options) => {
+                const { selected, sdk, captured } = await checkAsync(() => {
+                  current();
+                  const selected = invocation.getStore();
+                  if (
+                    !selected ||
+                    !same(selected.envelope, envelope) ||
+                    !same(request, {
+                      messages: [{ role: 'user', content: member.brief }],
+                      maxOutputTokens: seat.allocation.outputTokens,
+                    })
+                  )
+                    refuse();
+                  const sdk = preparation.sdk(
+                    handle,
+                    context.req.raw,
+                    seat.seatId,
+                  );
+                  const captured = inspectSdkSourceWire(
+                    sdk.owner,
+                    sdk.sdkHandle,
+                  );
+                  return { selected, sdk, captured };
+                });
+                const started = Date.now();
+                const dispatched = await preparation.dispatch(
+                  handle,
+                  context,
+                  seat.seatId,
+                  {
+                    persistence,
+                    transport: {
+                      launch,
+                      reservation: {
+                        groupId,
+                        controller: prepared.spec.controller,
+                        seatId: seat.seatId,
+                        authority: prepared.spec.rootAuthorityRef,
+                        envelope: seat.envelope,
+                        invocationId: selected.id,
+                        effect: seat.effect,
+                        allocation: seat.allocation,
+                      },
+                      contract: captured.contract,
+                      provider: member.provider,
+                      signal: options?.signal
+                        ? AbortSignal.any([signal, options.signal])
+                        : signal,
+                      now: Date.now,
+                      maxResponseBytes: 1024 * 1024,
+                    },
+                  },
+                  orchestration,
+                );
+                const attempt = await dispatched.result;
+                await sdkDisposalPromise(sdk.owner, sdk.sdkHandle);
+                await checkAsync(() => {
+                  current();
+                  retained.set(selected.id, {
+                    attempt,
+                    task: dispatched.task,
+                    recipient: dispatched.recipient,
+                    envelopeId: envelope.envelope_id,
+                  });
+                });
+                const accounting = attempt.accounting;
+                return {
+                  provider: member.provider,
+                  model: member.modelId,
+                  outputText: attempt.sdkResult.text,
+                  toolCalls: [],
+                  usage: {
+                    inputTokens: accounting.inputTokens,
+                    outputTokens: accounting.outputTokens,
+                    totalTokens:
+                      accounting.inputTokens + accounting.outputTokens,
+                  },
+                  latencyMs: Math.max(0, Date.now() - started),
+                };
+              },
+            };
+            return {
+              runtime,
+              runtimeReceipt:
+                envelope.execution_binding.runtime.runtime_receipt_ref,
+              modelReceipt:
+                envelope.execution_binding.runtime.model_receipt_ref,
+            };
+          },
+          invokeFenced: async (envelope, id, invoke) => {
+            if (scope) refuse();
+            await checkAsync(() => memberFor(envelope));
+            return invocation.run({ envelope, id }, invoke);
+          },
+          retainResult: async (result, envelope, id) => {
+            const { seat } = memberFor(envelope);
+            const value = retained.get(id);
+            if (!value || value.attempt.sdkResult.text !== result.outputText)
+              refuse();
+            await persistence.assertProviderEvidenceRetained(
+              value.attempt.evidence,
+              value.attempt.evidenceReference,
+              current,
+            );
+            if (value.attempt.inputReceipt) {
+              const receipt = await persistence.readReportInputReceipt(
+                value.attempt.inputReceipt,
+                {
+                  groupId,
+                  invocationId: id,
+                  seatId: seat.seatId,
+                  threadId: value.task.sessionId,
+                  turnId: value.task.initialTurnId ?? refuse(),
+                },
+                current,
+              );
               if (
-                !selected ||
-                !same(selected.envelope, envelope) ||
-                !same(request, {
-                  messages: [{ role: 'user', content: member.brief }],
-                  maxOutputTokens: seat.allocation.outputTokens,
-                })
+                !same(
+                  receipt.binding.recipient,
+                  check(() => value.recipient()),
+                )
               )
                 refuse();
-              const sdk = preparation.sdk(handle, context.req.raw, seat.seatId);
-              const captured = inspectSdkSourceWire(sdk.owner, sdk.sdkHandle);
-              const started = Date.now();
-              const dispatched = await preparation.dispatch(
-                handle,
-                context,
-                seat.seatId,
-                {
-                  persistence,
-                  transport: {
-                    launch,
-                    reservation: {
-                      groupId,
-                      controller: prepared.spec.controller,
-                      seatId: seat.seatId,
-                      authority: prepared.spec.rootAuthorityRef,
-                      envelope: seat.envelope,
-                      invocationId: selected.id,
-                      effect: seat.effect,
-                      allocation: seat.allocation,
-                    },
-                    contract: captured.contract,
-                    provider: member.provider,
-                    signal: options?.signal
-                      ? AbortSignal.any([signal, options.signal])
-                      : signal,
-                    now: Date.now,
-                    maxResponseBytes: 1024 * 1024,
-                  },
-                },
-                orchestration,
-              );
-              const attempt = await dispatched.result;
-              await sdkDisposalPromise(sdk.owner, sdk.sdkHandle);
-              current();
-              retained.set(selected.id, {
-                attempt,
-                task: dispatched.task,
-                recipient: dispatched.recipient,
-                envelopeId: envelope.envelope_id,
-              });
-              const accounting = attempt.accounting;
-              return {
-                provider: member.provider,
-                model: member.modelId,
-                outputText: attempt.sdkResult.text,
-                toolCalls: [],
-                usage: {
-                  inputTokens: accounting.inputTokens,
-                  outputTokens: accounting.outputTokens,
-                  totalTokens: accounting.inputTokens + accounting.outputTokens,
-                },
-                latencyMs: Math.max(0, Date.now() - started),
-              };
-            },
-          };
-          return {
-            runtime,
-            runtimeReceipt:
-              envelope.execution_binding.runtime.runtime_receipt_ref,
-            modelReceipt: envelope.execution_binding.runtime.model_receipt_ref,
-          };
-        },
-        invokeFenced: async (envelope, id, invoke) => {
-          memberFor(envelope);
-          return invocation.run({ envelope, id }, invoke);
-        },
-        retainResult: async (result, envelope, id) => {
-          const { seat } = memberFor(envelope);
-          const value = retained.get(id);
-          if (!value || value.attempt.sdkResult.text !== result.outputText)
-            refuse();
-          await persistence.assertProviderEvidenceRetained(
-            value.attempt.evidence,
-            value.attempt.evidenceReference,
-            current,
-          );
-          if (value.attempt.inputReceipt) {
-            const receipt = await persistence.readReportInputReceipt(
-              value.attempt.inputReceipt,
+            }
+            await persistence.retainReportObservation(
               {
                 groupId,
-                invocationId: id,
                 seatId: seat.seatId,
-                threadId: value.task.sessionId,
-                turnId: value.task.initialTurnId ?? refuse(),
+                invocationId: id,
+                observation: {
+                  kind: 'result',
+                  evidence: value.attempt.evidenceReference,
+                  ...(value.attempt.inputReceipt
+                    ? { inputReceipt: value.attempt.inputReceipt }
+                    : {}),
+                  text: result.outputText,
+                  modelId: result.model,
+                  inputTokens: value.attempt.accounting.inputTokens,
+                  outputTokens: value.attempt.accounting.outputTokens,
+                  costMicros: value.attempt.accounting.costMicros,
+                },
               },
               current,
             );
-            if (!same(receipt.binding.recipient, value.recipient())) refuse();
-          }
-          await persistence.retainReportObservation(
-            {
-              groupId,
-              seatId: seat.seatId,
-              invocationId: id,
-              observation: {
-                kind: 'result',
-                evidence: value.attempt.evidenceReference,
-                ...(value.attempt.inputReceipt
-                  ? { inputReceipt: value.attempt.inputReceipt }
-                  : {}),
-                text: result.outputText,
-                modelId: result.model,
-                inputTokens: value.attempt.accounting.inputTokens,
-                outputTokens: value.attempt.accounting.outputTokens,
-                costMicros: value.attempt.accounting.costMicros,
+            return value.attempt.accounting;
+          },
+          retainFailure: async (_error, envelope, id) => {
+            const { seat } = await checkAsync(() => memberFor(envelope));
+            await persistence.retainReportObservation(
+              {
+                groupId,
+                seatId: seat.seatId,
+                invocationId: id,
+                observation: {
+                  kind: 'failure',
+                  code: 'report_attempt_unavailable',
+                },
               },
-            },
-            current,
-          );
-          return value.attempt.accounting;
-        },
-        retainFailure: async (_error, envelope, id) => {
-          const { seat } = await requestWriter.runRequest(signal, () =>
-            memberFor(envelope),
-          );
-          await persistence.retainReportObservation(
-            {
-              groupId,
-              seatId: seat.seatId,
-              invocationId: id,
-              observation: {
-                kind: 'failure',
-                code: 'report_attempt_unavailable',
-              },
-            },
-            current,
-          );
-        },
-      };
-      const observeRecipient = (
-        spec: DelegationRoundsSpec,
-        seat: RoundSeat,
-        envelope: DelegationEnvelopeV2,
-      ) => {
-        const { member } = memberFor(envelope);
-        if (
-          !same(spec, prepared.spec) ||
-          !same(
-            seat,
-            prepared.spec.seats.find((s) => s.seatId === member.seatId),
-          )
-        )
-          refuse();
-        const candidates = [...retained.values()].filter(
-          (value) => value.task.sessionId === member.taskId,
-        );
-        if (candidates.length !== 1) refuse();
-        return {
-          ...candidates[0].recipient(),
-          authority: structuredClone(spec.rootAuthorityRef),
-          envelope: { id: seat.envelope.id, digest: seat.envelope.digest },
-          runtimeReceipt: structuredClone(
-            envelope.execution_binding.runtime.runtime_receipt_ref,
-          ),
-          modelReceipt: structuredClone(
-            envelope.execution_binding.runtime.model_receipt_ref,
-          ),
+              current,
+            );
+          },
         };
-      };
-      const flow = preparation.flow(handle, context.req.raw);
-      const schedule = flow ? await flow.readSchedule() : undefined;
-      current();
-      const flowHost: NonNullable<DelegationRoundsHost['flow']> = {
-        executionHost: () => ({
+        const observeRecipient = (
+          spec: DelegationRoundsSpec,
+          seat: RoundSeat,
+          envelope: DelegationEnvelopeV2,
+        ) => {
+          const { member } = memberFor(envelope);
+          if (
+            !same(spec, prepared.spec) ||
+            !same(
+              seat,
+              prepared.spec.seats.find((s) => s.seatId === member.seatId),
+            )
+          )
+            refuse();
+          const candidates = [...retained.values()].filter(
+            (value) => value.task.sessionId === member.taskId,
+          );
+          if (candidates.length !== 1) refuse();
+          return {
+            ...check(() => candidates[0].recipient()),
+            authority: structuredClone(spec.rootAuthorityRef),
+            envelope: { id: seat.envelope.id, digest: seat.envelope.digest },
+            runtimeReceipt: structuredClone(
+              envelope.execution_binding.runtime.runtime_receipt_ref,
+            ),
+            modelReceipt: structuredClone(
+              envelope.execution_binding.runtime.model_receipt_ref,
+            ),
+          };
+        };
+        const flowExecution: ReturnType<
+          NonNullable<DelegationRoundsHost['flow']>['executionHost']
+        > = {
           ...physical,
           recordScheduleEvent: async (event) => {
             current();
@@ -425,7 +514,9 @@ export class StationReportGroupExecution {
             );
           },
           confirmClaim: async (claim, envelope) => {
-            return requestWriter.runOwnedLease(signal, async (lease) => {
+            const confirm = async (
+              lease: import('../ssh/home-writer-owner.js').HomeWriterLease,
+            ) => {
               const { member, owner } = requestWriter.runWithLease(
                 lease,
                 () => {
@@ -458,7 +549,10 @@ export class StationReportGroupExecution {
               );
               requestWriter.runWithLease(lease, current);
               return true;
-            });
+            };
+            return scope
+              ? confirm(scope.lease)
+              : requestWriter.runOwnedLease(signal, confirm);
           },
           prepareRequest: async (_claim, envelope) => {
             const { member, seat } = memberFor(envelope);
@@ -481,222 +575,357 @@ export class StationReportGroupExecution {
               current,
             );
           },
-        }),
-        confirmRetainedResult: async (_spec, attempt, reference) => {
-          current();
-          const value = retained.get(attempt.invocationId);
-          if (!value) return false;
-          const observation = await persistence.readReportObservation(
-            groupId,
-            attempt.invocationId,
-            reference,
-            current,
-          );
-          if (
-            observation.seatId !== attempt.seatId ||
-            observation.observation.kind !== 'result' ||
-            !same(
-              observation.observation.evidence,
-              value.attempt.evidenceReference,
-            )
-          )
-            return false;
-          await persistence.assertProviderEvidenceRetained(
-            value.attempt.evidence,
-            value.attempt.evidenceReference,
-            current,
-          );
-          return true;
-        },
-        retainEvaluation: async (_spec, action, receipt) => {
-          current();
-          return persistence.retainReportFlowObservation(
-            groupId,
-            'evaluation',
-            { action, receipt },
-            current,
-          );
-        },
-      };
-      const roundsHost: DelegationRoundsHost = {
-        ...(flow ? { flow: flowHost } : {}),
-        accountingProtocol: 'retained-tariff-v1',
-        recipient: {
-          resolve: async (spec, seat, envelope) => {
-            const identity = observeRecipient(spec, seat, envelope);
-            const resolved = await physical.resolveRuntime(envelope);
+        };
+        const flowHost: NonNullable<DelegationRoundsHost['flow']> = {
+          executionHost: () => flowExecution,
+          confirmRetainedResult: async (_spec, attempt, reference) => {
             current();
-            if (!same(identity, observeRecipient(spec, seat, envelope)))
-              refuse();
+            const value = retained.get(attempt.invocationId);
+            if (!value) return false;
+            const observation = await persistence.readReportObservation(
+              groupId,
+              attempt.invocationId,
+              reference,
+              current,
+            );
+            if (
+              observation.seatId !== attempt.seatId ||
+              observation.observation.kind !== 'result' ||
+              !same(
+                observation.observation.evidence,
+                value.attempt.evidenceReference,
+              )
+            )
+              return false;
+            await persistence.assertProviderEvidenceRetained(
+              value.attempt.evidence,
+              value.attempt.evidenceReference,
+              current,
+            );
+            return true;
+          },
+          retainEvaluation: async (_spec, action, receipt) => {
+            current();
+            return persistence.retainReportFlowObservation(
+              groupId,
+              'evaluation',
+              { action, receipt },
+              current,
+            );
+          },
+        };
+        const roundsHost: DelegationRoundsHost = {
+          ...(flow ? { flow: flowHost } : {}),
+          accountingProtocol: 'retained-tariff-v1',
+          recipient: {
+            resolve: async (spec, seat, envelope) => {
+              if (scope) refuse();
+              const identity = await checkAsync(() =>
+                observeRecipient(spec, seat, envelope),
+              );
+              const resolved = await physical.resolveRuntime(envelope);
+              await checkAsync(() => {
+                current();
+                if (!same(identity, observeRecipient(spec, seat, envelope)))
+                  refuse();
+              });
+              return {
+                identity,
+                runtime: resolved.runtime,
+                retainResult: physical.retainResult,
+                retainFailure: physical.retainFailure,
+                invokeFenced: physical.invokeFenced,
+              };
+            },
+          },
+          authorize: async ({ current: projection, groupId: candidate }) => {
+            current();
+            return candidate === groupId &&
+              (!projection || same(projection.spec, prepared.spec))
+              ? prepared.root.authenticated_principal_ref
+              : null;
+          },
+          executionHost: () => {
+            if (scope) refuse();
+            return physical;
+          },
+          prepareRequest: async (_spec, seat) => {
+            current();
+            const member = prepared.members.find(
+              (m) => m.seatId === seat.seatId,
+            );
+            if (!member) refuse();
             return {
-              identity,
-              runtime: resolved.runtime,
-              retainResult: physical.retainResult,
-              retainFailure: physical.retainFailure,
-              invokeFenced: physical.invokeFenced,
+              messages: [{ role: 'user', content: member.brief }],
+              maxOutputTokens: seat.allocation.outputTokens,
             };
           },
-        },
-        authorize: async ({ current: projection, groupId: candidate }) => {
-          current();
-          return candidate === groupId &&
-            (!projection || same(projection.spec, prepared.spec))
-            ? prepared.root.authenticated_principal_ref
-            : null;
-        },
-        executionHost: () => physical,
-        prepareRequest: async (_spec, seat) => {
-          current();
-          const member = prepared.members.find((m) => m.seatId === seat.seatId);
-          if (!member) refuse();
-          return {
-            messages: [{ role: 'user', content: member.brief }],
-            maxOutputTokens: seat.allocation.outputTokens,
-          };
-        },
-        retainObservation: async (_spec, attempt) => {
-          const value = retained.get(attempt.invocationId);
-          return persistence.retainReportObservation(
-            {
-              groupId,
-              seatId: attempt.seatId,
-              invocationId: attempt.invocationId,
-              observation: value
-                ? {
-                    kind: 'result',
-                    evidence: value.attempt.evidenceReference,
-                    ...(value.attempt.inputReceipt
-                      ? { inputReceipt: value.attempt.inputReceipt }
-                      : {}),
-                    text: value.attempt.sdkResult.text,
-                    modelId:
-                      prepared.members.find((m) => m.seatId === attempt.seatId)
-                        ?.modelId ?? refuse(),
-                    inputTokens: value.attempt.accounting.inputTokens,
-                    outputTokens: value.attempt.accounting.outputTokens,
-                    costMicros: value.attempt.accounting.costMicros,
-                  }
-                : { kind: 'failure', code: 'report_attempt_unavailable' },
-            },
-            current,
-          );
-        },
-        confirmTerminal: async (_spec, attempt) => {
-          current();
-          const value = retained.get(attempt.invocationId);
-          if (!value?.task.initialTurnId) return null;
-          await persistence.assertProviderEvidenceRetained(
-            value.attempt.evidence,
-            value.attempt.evidenceReference,
-            current,
-          );
-          const window = await orchestration.readSessionEventWindow(
-            value.task.sessionId,
-            {
-              turnLimit: 20,
-              authority: sessionReadAuthorityFromRequest(
-                prepared.root.authenticated_principal_ref.id,
-                undefined,
-                undefined,
-              ),
-            },
-          );
-          current();
-          const terminal = window?.events.find(
-            ({ event }) =>
-              event.threadId === value.task.sessionId &&
-              event.turnId === value.task.initialTurnId &&
-              event.method === 'turn.completed',
-          );
-          if (!terminal) return null;
-          const seat = prepared.spec.seats.find(
-            (s) => s.seatId === attempt.seatId,
-          );
-          const envelope = prepared.envelopes.find(
-            (e) => e.envelope_id === seat?.envelope.id,
-          );
-          if (!seat || !envelope) refuse();
-          const recipient = observeRecipient(prepared.spec, seat, envelope);
-          const observed = value.recipient();
-          const terminalCurrent = (): undefined => {
-            current();
-            if (!same(observed, value.recipient())) refuse();
-            return undefined;
-          };
-          const member = prepared.members.find(
-            (candidate) => candidate.seatId === attempt.seatId,
-          );
-          if (!member) refuse();
-          const witness = captureReportTerminalWitness(
-            {
-              environment: this.owners.environment,
-              orchestration,
-              current: terminalCurrent,
-            },
-            {
-              groupId,
-              seatId: attempt.seatId,
-              invocationId: attempt.invocationId,
-              root: rootAuthorityReferenceV2(prepared.root),
-              envelope: {
-                id: envelope.envelope_id,
-                generation: envelope.generation,
-                digest: delegationEnvelopeDigestV2(envelope),
-              },
-              evidence: value.attempt.evidenceReference,
-              ownerId: prepared.root.authenticated_principal_ref.id,
-              turn: {
-                conversationId: value.task.taskId,
-                sessionId: value.task.sessionId,
-                clientTurnId: member.clientTurnId,
-                turnId: value.task.initialTurnId,
-              },
-            },
-          );
-          if (
-            !witness ||
-            witness.data.terminal.terminalEventId !== terminal.event.eventId
-          )
-            return null;
-          const recipientReference =
-            await persistence.retainReportFlowObservation(
-              groupId,
-              'recipient',
+          retainObservation: async (_spec, attempt) => {
+            const value = retained.get(attempt.invocationId);
+            return persistence.retainReportObservation(
               {
+                groupId,
+                seatId: attempt.seatId,
                 invocationId: attempt.invocationId,
-                identity: recipient,
+                observation: value
+                  ? {
+                      kind: 'result',
+                      evidence: value.attempt.evidenceReference,
+                      ...(value.attempt.inputReceipt
+                        ? { inputReceipt: value.attempt.inputReceipt }
+                        : {}),
+                      text: value.attempt.sdkResult.text,
+                      modelId:
+                        prepared.members.find(
+                          (m) => m.seatId === attempt.seatId,
+                        )?.modelId ?? refuse(),
+                      inputTokens: value.attempt.accounting.inputTokens,
+                      outputTokens: value.attempt.accounting.outputTokens,
+                      costMicros: value.attempt.accounting.costMicros,
+                    }
+                  : { kind: 'failure', code: 'report_attempt_unavailable' },
+              },
+              current,
+            );
+          },
+          confirmTerminal: async (_spec, attempt) => {
+            current();
+            const value = retained.get(attempt.invocationId);
+            const initialTurnId = value?.task.initialTurnId;
+            if (!value || !initialTurnId) return null;
+            await persistence.assertProviderEvidenceRetained(
+              value.attempt.evidence,
+              value.attempt.evidenceReference,
+              current,
+            );
+            const window = await orchestration.readSessionEventWindow(
+              value.task.sessionId,
+              {
+                turnLimit: 20,
+                authority: sessionReadAuthorityFromRequest(
+                  prepared.root.authenticated_principal_ref.id,
+                  undefined,
+                  undefined,
+                ),
+              },
+            );
+            current();
+            const terminal = window?.events.find(
+              ({ event }) =>
+                event.threadId === value.task.sessionId &&
+                event.turnId === initialTurnId &&
+                event.method === 'turn.completed',
+            );
+            if (!terminal) return null;
+            const seat = prepared.spec.seats.find(
+              (s) => s.seatId === attempt.seatId,
+            );
+            const envelope = prepared.envelopes.find(
+              (e) => e.envelope_id === seat?.envelope.id,
+            );
+            if (!seat || !envelope) refuse();
+            const recipient = observeRecipient(prepared.spec, seat, envelope);
+            const observed = check(() => value.recipient());
+            const terminalCurrent = (): undefined => {
+              current();
+              if (
+                !same(
+                  observed,
+                  check(() => value.recipient()),
+                )
+              )
+                refuse();
+              return undefined;
+            };
+            const member = prepared.members.find(
+              (candidate) => candidate.seatId === attempt.seatId,
+            );
+            if (!member) refuse();
+            const witness = check(() =>
+              captureReportTerminalWitness(
+                {
+                  environment: this.owners.environment,
+                  orchestration,
+                  current: terminalCurrent,
+                },
+                {
+                  groupId,
+                  seatId: attempt.seatId,
+                  invocationId: attempt.invocationId,
+                  root: rootAuthorityReferenceV2(prepared.root),
+                  envelope: {
+                    id: envelope.envelope_id,
+                    generation: envelope.generation,
+                    digest: delegationEnvelopeDigestV2(envelope),
+                  },
+                  evidence: value.attempt.evidenceReference,
+                  ownerId: prepared.root.authenticated_principal_ref.id,
+                  turn: {
+                    conversationId: value.task.taskId,
+                    sessionId: value.task.sessionId,
+                    clientTurnId: member.clientTurnId,
+                    turnId: initialTurnId,
+                  },
+                },
+              ),
+            );
+            if (
+              !witness ||
+              witness.data.terminal.terminalEventId !== terminal.event.eventId
+            )
+              return null;
+            const recipientReference =
+              await persistence.retainReportFlowObservation(
+                groupId,
+                'recipient',
+                {
+                  invocationId: attempt.invocationId,
+                  identity: recipient,
+                },
+                terminalCurrent,
+              );
+            return persistence.retainReportObservation(
+              {
+                groupId,
+                seatId: attempt.seatId,
+                invocationId: attempt.invocationId,
+                observation: {
+                  kind: 'terminal',
+                  evidence: value.attempt.evidenceReference,
+                  taskId: value.task.taskId,
+                  sessionId: value.task.sessionId,
+                  turnId: initialTurnId,
+                  eventId: terminal.event.eventId,
+                  witness,
+                  recipient: recipientReference,
+                },
               },
               terminalCurrent,
             );
-          return persistence.retainReportObservation(
-            {
-              groupId,
-              seatId: attempt.seatId,
-              invocationId: attempt.invocationId,
-              observation: {
-                kind: 'terminal',
-                evidence: value.attempt.evidenceReference,
-                taskId: value.task.taskId,
-                sessionId: value.task.sessionId,
-                turnId: value.task.initialTurnId,
-                eventId: terminal.event.eventId,
-                witness,
-                recipient: recipientReference,
-              },
-            },
-            terminalCurrent,
-          );
-        },
-        requestDescendantCancellation: async () => refuse(),
+          },
+          requestDescendantCancellation: async () => refuse(),
+        };
+        return {
+          launch,
+          service,
+          physical,
+          flowExecution,
+          flowHost,
+          roundsHost,
+        };
       };
+      const base = build();
+      const metadata = <Value>(
+        work: (facades: ReturnType<typeof build>) => Promise<Value>,
+      ): Promise<Value> =>
+        publication
+          ? publication.withHome(
+              { owner: requestWriter, current: sourceCurrent },
+              (scope) => work(build(scope)),
+            )
+          : work(base);
+      const service: typeof base.service = publication
+        ? {
+            issue: (...args) =>
+              metadata((value) => value.service.issue(...args)),
+            derive: (...args) =>
+              metadata((value) => value.service.derive(...args)),
+            inspect: (...args) =>
+              metadata((value) => value.service.inspect(...args)),
+            admitEffect: (...args) =>
+              metadata((value) => value.service.admitEffect(...args)),
+            reserveInvocation: (...args) =>
+              metadata((value) => value.service.reserveInvocation(...args)),
+            reconcileInvocation: (...args) =>
+              metadata((value) => value.service.reconcileInvocation(...args)),
+            cancel: (...args) =>
+              metadata((value) => value.service.cancel(...args)),
+            renew: (...args) =>
+              metadata((value) => value.service.renew(...args)),
+            importV2: (...args) =>
+              metadata((value) => value.service.importV2(...args)),
+          }
+        : base.service;
+      const physical: typeof base.physical = publication
+        ? {
+            ...base.physical,
+            retainResult: (...args) =>
+              metadata((value) => value.physical.retainResult(...args)),
+            retainFailure: (...args) =>
+              metadata((value) => value.physical.retainFailure(...args)),
+          }
+        : base.physical;
+      const flowExecution: typeof base.flowExecution = publication
+        ? {
+            ...physical,
+            recordScheduleEvent: (...args) =>
+              metadata((value) =>
+                value.flowExecution.recordScheduleEvent(...args),
+              ),
+            confirmClaim: (...args) =>
+              metadata((value) => value.flowExecution.confirmClaim(...args)),
+            prepareRequest: (...args) =>
+              metadata((value) => value.flowExecution.prepareRequest(...args)),
+            recordMemberOutcome: (...args) =>
+              metadata((value) =>
+                value.flowExecution.recordMemberOutcome(...args),
+              ),
+          }
+        : base.flowExecution;
+      const roundsHost: DelegationRoundsHost = publication
+        ? {
+            ...base.roundsHost,
+            executionHost: () => physical,
+            authorize: (...args) =>
+              metadata((value) => value.roundsHost.authorize(...args)),
+            prepareRequest: (...args) =>
+              metadata((value) => value.roundsHost.prepareRequest(...args)),
+            retainObservation: (...args) =>
+              metadata((value) => value.roundsHost.retainObservation(...args)),
+            confirmTerminal: (...args) =>
+              metadata((value) => value.roundsHost.confirmTerminal(...args)),
+            ...(flow
+              ? {
+                  flow: {
+                    executionHost: () => flowExecution,
+                    confirmRetainedResult: (...args) =>
+                      metadata((value) =>
+                        value.flowHost.confirmRetainedResult(...args),
+                      ),
+                    retainEvaluation: (...args) =>
+                      metadata((value) =>
+                        value.flowHost.retainEvaluation(...args),
+                      ),
+                  },
+                }
+              : {}),
+          }
+        : base.roundsHost;
       await service.issue(prepared.root);
       for (const envelope of prepared.envelopes)
         await service.derive(prepared.root.authority_id, envelope);
       const controller = createDelegationRoundsController({
-        store: launch.groups,
+        store: base.launch.groups,
         authorityService: service,
         dispatchLedger: this.owners.dispatchLedger,
         host: roundsHost,
+        ...(publication
+          ? {
+              transactionOwner: publication.transactionOwner({
+                groupId,
+                owner: requestWriter,
+                current: sourceCurrent,
+                build: (scope) => {
+                  const scoped = build(scope);
+                  return {
+                    store: scoped.launch.groups,
+                    authorityService: scoped.service,
+                    host: scoped.roundsHost,
+                  };
+                },
+              }),
+            }
+          : {}),
         ...(schedule ? { cwd: schedule.cwd } : {}),
       });
       const created = await controller.create({
@@ -710,7 +939,7 @@ export class StationReportGroupExecution {
       let projection = created.projection;
       for (let round = 0; round < prepared.spec.policy.maxRounds; round++) {
         if (projection.attempts.length === prepared.members.length) break;
-        const currentSchedule = flow ? await flow.readSchedule() : undefined;
+        const currentSchedule = await readSchedule();
         current();
         const seats = prepared.spec.seats.filter(
           (seat) =>

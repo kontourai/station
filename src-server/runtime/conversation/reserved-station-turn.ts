@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID } from 'node:crypto';
+import { DelegationRoundsTransactionUncertainError } from '@kontourai/flow-agents/delegation-group-rounds';
 import { canonicalJson } from '@kontourai/relay';
 import type {
   InputRequestForm,
@@ -8,7 +9,10 @@ import type {
 import type { ProviderSendTurnInput } from '@kontourai/station-contracts/provider';
 import type { ReportGroupReference } from '@kontourai/station-contracts/report-group';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
-import { inspectSdkSourceWire } from '../../services/orchestration/delegation-group-sdk-source-wire-owner.js';
+import {
+  inspectSdkSourceWire,
+  type SdkSourceCheck,
+} from '../../services/orchestration/delegation-group-sdk-source-wire-owner.js';
 import {
   assertSynchronous,
   wireIdentityDigest,
@@ -86,6 +90,7 @@ type State = {
   identity: string;
   opened: boolean;
   claimed: boolean;
+  pending?: object;
   session?: SessionState;
   result?: Promise<Result>;
   inputRuntime?: ReservedStationInputRuntime;
@@ -249,10 +254,10 @@ export function assertReservedStationEnvironment(
   if (state(handle).binding.environmentId !== environmentId) refuse();
 }
 
-async function admitReservedStationCheck(
+async function admitReservedStationCheck<Value>(
   handle: ReservedStationTurn,
-  check: () => void,
-): Promise<void> {
+  check: () => Value,
+): Promise<Value> {
   const value = states.get(handle);
   if (!value) refuse();
   const home =
@@ -260,10 +265,37 @@ async function admitReservedStationCheck(
       ? value.attempt.transport.launch.reportHome
       : undefined;
   if (!home) {
-    check();
-    return;
+    return check();
   }
-  await home.owner.runRequest(value.attempt.transport.signal, check);
+  if (home.withHome)
+    return home.withHome(
+      value.attempt.transport.launch.finalizeCurrent,
+      async (scope) => scope.check(check),
+    );
+  return home.owner.runRequest(value.attempt.transport.signal, check);
+}
+
+export async function admitReservedStationPublication(
+  handle: ReservedStationTurn,
+  publish: (check: SdkSourceCheck) => void,
+): Promise<void> {
+  const value = states.get(handle);
+  if (!value) refuse();
+  const home =
+    value.attempt.transport.launch.protocol === 'rounds-v1'
+      ? value.attempt.transport.launch.reportHome
+      : undefined;
+  const invoke = (check: SdkSourceCheck) => {
+    check(() => state(handle));
+    publish(check);
+    return Promise.resolve();
+  };
+  if (home?.invokeCurrent)
+    await home.invokeCurrent(
+      value.attempt.transport.launch.finalizeCurrent,
+      invoke,
+    );
+  else await invoke((work) => work());
 }
 
 export async function admitReservedStationTurnBinding(
@@ -297,8 +329,13 @@ export function withReservedStationTurn<T>(
   principalId: string | undefined,
   threadId: string,
   work: () => T,
+  check?: <Value>(work: () => Value) => Value,
 ): T {
-  assertReservedStationTurnBinding(handle, principalId, threadId);
+  if (check)
+    check(() =>
+      assertReservedStationTurnBinding(handle, principalId, threadId),
+    );
+  else assertReservedStationTurnBinding(handle, principalId, threadId);
   if (context.getStore()) refuse();
   return context.run(handle, work);
 }
@@ -323,6 +360,29 @@ export function openReservedStationSession(
     refuse();
   value.opened = true;
   return value.identity;
+}
+
+/** Queue only reserved-session metadata; the adapter publishes after this returns. */
+export async function admitReservedStationSessionOpen(
+  handle: ReservedStationTurn,
+  threadId: string,
+  recoveredIdentity?: string,
+): Promise<{ hasInput: boolean; identity: string | undefined }> {
+  return admitReservedStationCheck(handle, () => ({
+    hasInput: reservedStationTurnHasInput(handle),
+    identity: openReservedStationSession(threadId, recoveredIdentity),
+  }));
+}
+
+export async function admitReservedStationSessionBinding(
+  handle: ReservedStationTurn,
+  threadId: string,
+  record: object,
+  isCurrent: () => boolean,
+): Promise<ReservedStationSession | undefined> {
+  return admitReservedStationCheck(handle, () =>
+    bindReservedStationSession(threadId, record, isCurrent),
+  );
 }
 
 /** Bind the turn to the adapter-owned record, never a serialized resume cursor. */
@@ -448,134 +508,204 @@ export function executeReservedStationTurn(
   sessionIdentity: string | undefined,
   sessionRecord: object,
   signal: AbortSignal,
-  onTextDelta?: (text: string) => void,
+  onTextDelta?: (text: string, check: SdkSourceCheck) => void,
   openInput?: (
     form: InputRequestForm,
     beforeOpen: Parameters<ReservedStationInputOpen>[1],
     signal: AbortSignal,
   ) => Promise<InputRequestResponse>,
+  onComplete?: (result: Result, check: SdkSourceCheck) => void,
 ): Promise<Result> {
-  const value = state(handle);
+  const value = states.get(handle);
+  if (!value) refuse();
   const expected = value.binding;
-  if (
-    value.claimed ||
-    !value.opened ||
-    sessionIdentity !== value.session?.resumeIdentity ||
-    input.threadId !== expected.threadId ||
-    input.clientTurnId !== expected.clientTurnId ||
-    input.input !== expected.input ||
-    (input.displayInput !== undefined &&
-      input.displayInput !== expected.input) ||
-    input.modelId !== expected.modelId ||
-    input.attachments?.length ||
-    input.ambientContext ||
-    canonicalJson(input.modelOptions ?? {}) !==
-      canonicalJson(expected.modelOptions ?? {})
-  )
-    refuse();
+  const submitted = {
+    threadId: input.threadId,
+    clientTurnId: input.clientTurnId,
+    input: input.input,
+    displayInput: input.displayInput,
+    modelId: input.modelId,
+    hasAttachments: Boolean(input.attachments?.length),
+    hasAmbientContext: Boolean(input.ambientContext),
+    modelOptions: canonicalJson(input.modelOptions ?? {}),
+  };
+  const validate = () => {
+    if (
+      !value.opened ||
+      sessionIdentity !== value.session?.resumeIdentity ||
+      submitted.threadId !== expected.threadId ||
+      submitted.clientTurnId !== expected.clientTurnId ||
+      submitted.input !== expected.input ||
+      (submitted.displayInput !== undefined &&
+        submitted.displayInput !== expected.input) ||
+      submitted.modelId !== expected.modelId ||
+      submitted.hasAttachments ||
+      submitted.hasAmbientContext ||
+      submitted.modelOptions !== canonicalJson(expected.modelOptions ?? {})
+    )
+      refuse();
+  };
+  validate();
+  if (value.claimed || value.pending) refuse();
+  const pending = {};
+  value.pending = pending;
   const executionSignal = AbortSignal.any([
     signal,
     value.attempt.transport.signal,
   ]);
-  assertSession(value, sessionRecord);
-  executionSignal.throwIfAborted();
-  value.claimed = true;
   const assertSessionCurrent = (): undefined => {
     if (value.attempt.assertSessionCurrent)
       assertSynchronous(value.attempt.assertSessionCurrent);
     assertSession(value, sessionRecord);
     return undefined;
   };
-  value.result = runReservedSdkSourceAttempt({
-    ...value.attempt,
-    assertSessionCurrent,
-    onTextDelta: (text) => {
-      assertSessionCurrent();
-      executionSignal.throwIfAborted();
-      onTextDelta?.(text);
-    },
-    transport: {
-      ...value.attempt.transport,
-      signal: executionSignal,
-    },
-  }).then(async (result) => {
-    if (result.sdkResult.inputRequest) {
-      assertSessionCurrent();
-      executionSignal.throwIfAborted();
-      if (!value.inputRuntime || !openInput) refuse();
-      const inputReceipt = await value.inputRuntime(
-        Object.freeze({
-          ...result.sdkResult.inputRequest,
-          providerEvidence: result.evidenceReference,
-          binding: {
-            groupId: result.evidence.intent.groupId,
-            rootId: result.evidence.intent.root.id,
-            executionId: result.evidence.intent.executionId,
-            authority: structuredClone(result.evidence.intent.root),
-            envelope: structuredClone(result.evidence.intent.envelope),
-            seatId: result.evidence.intent.seatId,
-            invocationId: result.evidence.intent.invocationId,
-            usage: {
-              inputTokens: result.accounting.inputTokens,
-              outputTokens: result.accounting.outputTokens,
-              costMicros: result.accounting.costMicros,
-            },
-            providerToolCallId: result.sdkResult.inputRequest.id,
-            providerEvidence: result.evidenceReference,
-            threadId: expected.threadId,
-            turnId: nativeTurnId,
-            recipient: structuredClone(value.session!.recipient),
-            question: result.sdkResult.inputRequest.question,
-          },
-        }),
-        (() => {
-          let opened = false;
-          return (form, beforeOpen, requestSignal) => {
-            if (opened) refuse();
+  const result: Promise<Result> = Promise.resolve()
+    .then(async () => {
+      await admitReservedStationCheck(handle, () => {
+        state(handle);
+        if (value.pending !== pending || value.claimed) refuse();
+        validate();
+        assertSession(value, sessionRecord);
+        executionSignal.throwIfAborted();
+        value.claimed = true;
+      });
+      return runReservedSdkSourceAttempt({
+        ...value.attempt,
+        assertSessionCurrent,
+        onTextDelta: (text, check) => {
+          check(() => {
             assertSessionCurrent();
             executionSignal.throwIfAborted();
-            opened = true;
-            return openInput(
-              form,
-              beforeOpen,
-              requestSignal
-                ? AbortSignal.any([executionSignal, requestSignal])
-                : executionSignal,
-            );
-          };
-        })(),
-        executionSignal,
-        () => {
-          state(handle);
-          assertSessionCurrent();
-          executionSignal.throwIfAborted();
-          return undefined;
+          });
+          onTextDelta?.(text, check);
         },
-      );
-      assertSessionCurrent();
-      executionSignal.throwIfAborted();
-      return { ...result, ...(inputReceipt ? { inputReceipt } : {}) };
-    }
-    return result;
-  });
-  void value.result.catch(() => {});
-  return value.result;
+        transport: {
+          ...value.attempt.transport,
+          signal: executionSignal,
+        },
+      });
+    })
+    .then(async (result) => {
+      if (result.sdkResult.inputRequest) {
+        assertSessionCurrent();
+        executionSignal.throwIfAborted();
+        if (!value.inputRuntime || !openInput) refuse();
+        const inputReceipt = await value.inputRuntime(
+          Object.freeze({
+            ...result.sdkResult.inputRequest,
+            providerEvidence: result.evidenceReference,
+            binding: {
+              groupId: result.evidence.intent.groupId,
+              rootId: result.evidence.intent.root.id,
+              executionId: result.evidence.intent.executionId,
+              authority: structuredClone(result.evidence.intent.root),
+              envelope: structuredClone(result.evidence.intent.envelope),
+              seatId: result.evidence.intent.seatId,
+              invocationId: result.evidence.intent.invocationId,
+              usage: {
+                inputTokens: result.accounting.inputTokens,
+                outputTokens: result.accounting.outputTokens,
+                costMicros: result.accounting.costMicros,
+              },
+              providerToolCallId: result.sdkResult.inputRequest.id,
+              providerEvidence: result.evidenceReference,
+              threadId: expected.threadId,
+              turnId: nativeTurnId,
+              recipient: structuredClone(value.session!.recipient),
+              question: result.sdkResult.inputRequest.question,
+            },
+          }),
+          (() => {
+            let opened = false;
+            return (form, beforeOpen, requestSignal) => {
+              if (opened) refuse();
+              assertSessionCurrent();
+              executionSignal.throwIfAborted();
+              opened = true;
+              return openInput(
+                form,
+                beforeOpen,
+                requestSignal
+                  ? AbortSignal.any([executionSignal, requestSignal])
+                  : executionSignal,
+              );
+            };
+          })(),
+          executionSignal,
+          () => {
+            state(handle);
+            assertSessionCurrent();
+            executionSignal.throwIfAborted();
+            return undefined;
+          },
+        );
+        assertSessionCurrent();
+        executionSignal.throwIfAborted();
+        return { ...result, ...(inputReceipt ? { inputReceipt } : {}) };
+      }
+      return result;
+    })
+    .then(async (result) => {
+      if (onComplete)
+        await admitReservedStationPublication(handle, (check) =>
+          onComplete(result, check),
+        );
+      return result;
+    })
+    .catch((error) => {
+      if (
+        !value.claimed &&
+        value.pending === pending &&
+        !(error instanceof DelegationRoundsTransactionUncertainError)
+      ) {
+        delete value.pending;
+        if (value.result === result) delete value.result;
+      }
+      throw error;
+    });
+  value.result = result;
+  void result.catch(() => {});
+  return result;
 }
 
 /** Reauthorize disclosure independently of the asynchronous attempt's completion. */
 export async function reservedStationTurnResult(
   handle: ReservedStationTurn,
 ): Promise<Result> {
-  const value = state(handle);
-  if (!value.result) refuse();
-  const result = await value.result;
-  state(handle);
-  await value.attempt.persistence.assertProviderEvidenceRetained(
-    result.evidence,
-    result.evidenceReference,
-    value.attempt.transport.launch.finalizeCurrent,
-  );
-  state(handle);
+  const value = states.get(handle);
+  if (!value) refuse();
+  const captured = await admitReservedStationCheck(handle, () => {
+    state(handle);
+    if (!value.result) refuse();
+    return { result: value.result };
+  });
+  const result = await captured.result;
+  const withHome =
+    value.attempt.transport.launch.protocol === 'rounds-v1'
+      ? value.attempt.transport.launch.reportHome?.withHome
+      : undefined;
+  if (withHome) {
+    await withHome(
+      value.attempt.transport.launch.finalizeCurrent,
+      async (scope) => {
+        scope.check(() => state(handle));
+        await value.attempt.persistence.assertProviderEvidenceRetained(
+          result.evidence,
+          result.evidenceReference,
+          scope.current,
+        );
+        scope.check(() => state(handle));
+      },
+    );
+  } else {
+    state(handle);
+    await value.attempt.persistence.assertProviderEvidenceRetained(
+      result.evidence,
+      result.evidenceReference,
+      value.attempt.transport.launch.finalizeCurrent,
+    );
+    state(handle);
+  }
   return result;
 }
 

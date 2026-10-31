@@ -28,6 +28,7 @@ export interface ReportRoundsScope {
   readonly owner: HomeWriterOwner;
   readonly lease: HomeWriterLease;
   current(): undefined;
+  check<T>(body: () => T): T;
 }
 
 export interface ReportRoundsPublication {
@@ -36,6 +37,10 @@ export interface ReportRoundsPublication {
     input: HomeScopeInput,
     body: (scope: ReportRoundsScope) => Promise<T>,
   ): Promise<T>;
+  invokeCurrent<Value>(
+    input: HomeScopeInput,
+    invoke: (check: <Result>(work: () => Result) => Result) => Promise<Value>,
+  ): Promise<Value>;
   transactionOwner(
     input: HomeScopeInput & {
       groupId: string;
@@ -84,10 +89,10 @@ export async function withReportRoundsPublication<T>(
     return undefined;
   };
   const acquireHome = async (options: HomeScopeInput) => {
-    current();
+    if (!active) throw new HomeWriterUnavailableError('borrow-unavailable');
+    signal.throwIfAborted();
     const { owner, current: sourceCurrent } = options;
-    participant.assertHome(owner.homeDir);
-    const child = parent.borrow();
+    const child = parent.borrow(owner.homeDir);
     let lease: HomeWriterLease | undefined;
     let scopeActive = true;
     let cleanup: (() => Promise<void>) | undefined;
@@ -108,16 +113,26 @@ export async function withReportRoundsPublication<T>(
       return cleanup();
     };
     const assertCurrent = (): undefined => {
-      current();
-      if (!scopeActive || !lease)
+      if (!active || !scopeActive || !lease)
         throw new HomeWriterUnavailableError('borrow-unavailable');
       child.assertCurrent();
+      signal.throwIfAborted();
       return owner.runWithLease(lease, sourceCurrent);
     };
     try {
       lease = await owner.acquire(signal);
       assertCurrent();
-      return { scope: { owner, lease, current: assertCurrent }, release };
+      const held = lease;
+      const check = <Value>(body: () => Value): Value => {
+        assertCurrent();
+        const value = owner.runWithLease(held, body);
+        assertCurrent();
+        return value;
+      };
+      return {
+        scope: { owner, lease: held, current: assertCurrent, check },
+        release,
+      };
     } catch (error) {
       return finish<never>({ ok: false, error }, release);
     }
@@ -148,6 +163,53 @@ export async function withReportRoundsPublication<T>(
         };
       }
       return finish(outcome, held.release);
+    },
+    invokeCurrent: async <Value>(
+      options: HomeScopeInput,
+      invoke: (check: <Result>(work: () => Result) => Result) => Promise<Value>,
+    ): Promise<Value> => {
+      const held = await acquireHome(options);
+      let effect: ReturnType<typeof parent.borrow>;
+      try {
+        held.scope.current();
+        effect = parent.borrow();
+      } catch (error) {
+        return finish<never>({ ok: false, error }, held.release);
+      }
+      let work: Promise<Value>;
+      try {
+        held.scope.current();
+        // Only the synchronous guard borrows home. Startup inherits no home span.
+        work = invoke(held.scope.check);
+      } catch (error) {
+        effect.release();
+        return finish<never>({ ok: false, error }, held.release);
+      }
+      const join: () => Promise<void> = participant.retainCleanup(async () => {
+        await work.then(
+          () => undefined,
+          () => undefined,
+        );
+        effect.release();
+        retiredScopes.delete(join);
+      });
+      retiredScopes.add(join);
+      // Call release immediately, before the startup Promise can resume.
+      try {
+        await held.release();
+      } catch (error) {
+        throw new DelegationRoundsTransactionUncertainError(
+          'returned-cleanup-unknown',
+          [error],
+        );
+      }
+      let outcome: Outcome<Value>;
+      try {
+        outcome = { ok: true, value: await work };
+      } catch (error) {
+        outcome = { ok: false, error };
+      }
+      return finish(outcome, join);
     },
     transactionOwner: (
       options: Parameters<ReportRoundsPublication['transactionOwner']>[0],

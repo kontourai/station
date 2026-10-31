@@ -52,7 +52,6 @@ import {
   type DelegatedTaskHandle,
   delegateTask,
 } from '../../tools/station-control-delegation.js';
-import { HomeWriterOwner } from '../ssh/home-writer-owner.js';
 import { RoundsFinalFetchLaunchFence } from './delegation-group-launch-fence.js';
 import {
   createPreparedSdkSourceWireOwner,
@@ -65,6 +64,7 @@ import {
 } from './delegation-group-source-admission.js';
 import { assertSynchronous } from './delegation-group-wire-intent-store.js';
 import type { OrchestrationService } from './orchestration-service.js';
+import type { ReportRoundsScope } from './report-rounds-publication.js';
 import {
   reportAdmissionData,
   reportAdmissionSignatureMatches,
@@ -854,49 +854,6 @@ export class StationReportGroupPreparation {
         launch: { ...attempt.transport.launch },
       },
     };
-    const state = this.#state(handle, context.req.raw);
-    const member = state.members.find((m) => m.seatId === seatId);
-    const seat = state.spec.seats.find((s) => s.seatId === seatId);
-    if (!member || !seat || member.dispatched) refuse();
-    if (member.flow) {
-      if (attempt.transport.launch.protocol !== 'rounds-v1') refuse();
-      attempt.transport.launch.flow = member.flow;
-    }
-    const captured = inspectSdkSourceWire(member.owner, member.sdkHandle);
-    const reserved = attempt.transport.reservation;
-    const invocationId = reserved.invocationId;
-    const reservation = {
-      groupId: reserved.groupId,
-      controller: reserved.controller,
-      seatId: reserved.seatId,
-      authority: reserved.authority,
-      envelope: reserved.envelope,
-      effect: reserved.effect,
-      allocation: reserved.allocation,
-    };
-    if (
-      typeof invocationId !== 'string' ||
-      !invocationId ||
-      attempt.transport.launch.protocol !== 'rounds-v1' ||
-      attempt.transport.provider !== member.provider ||
-      attempt.transport.contract !== captured.contract ||
-      canonicalJson(reservation) !==
-        canonicalJson({
-          groupId: state.spec.groupId,
-          controller: state.spec.controller,
-          seatId,
-          authority: state.spec.rootAuthorityRef,
-          envelope: seat.envelope,
-          effect: seat.effect,
-          allocation: seat.allocation,
-        })
-    )
-      refuse();
-    const principal = createOrchestrationRequestPrincipalResolver({
-      environmentSecurityService:
-        this.owners.runtime.environmentSecurityService,
-    })(context);
-    if (principal.id !== state.root.authenticated_principal_ref.id) refuse();
     const signal = AbortSignal.any([
       context.req.raw.signal,
       attempt.transport.signal,
@@ -908,39 +865,103 @@ export class StationReportGroupPreparation {
       signal.throwIfAborted();
       return undefined;
     };
-    finalizeCurrent();
+    const withHome =
+      attempt.transport.launch.protocol === 'rounds-v1'
+        ? attempt.transport.launch.reportHome?.withHome
+        : undefined;
+    const withMetadata = <Value>(
+      body: (
+        scope: Pick<ReportRoundsScope, 'current' | 'check'>,
+      ) => Promise<Value>,
+    ): Promise<Value> =>
+      withHome
+        ? withHome(finalizeCurrent, body)
+        : body({ current: finalizeCurrent, check: (work) => work() });
+    const { state, member, captured, principal, invocationId } =
+      await withMetadata(async (scope) => {
+        const prepared = scope.check(() => {
+          const state = this.#state(handle, context.req.raw);
+          const member = state.members.find((m) => m.seatId === seatId);
+          const seat = state.spec.seats.find((s) => s.seatId === seatId);
+          if (!member || !seat || member.dispatched) refuse();
+          if (member.flow) {
+            if (attempt.transport.launch.protocol !== 'rounds-v1') refuse();
+            attempt.transport.launch.flow = member.flow;
+          }
+          const captured = inspectSdkSourceWire(member.owner, member.sdkHandle);
+          const reserved = attempt.transport.reservation;
+          const invocationId = reserved.invocationId;
+          const reservation = {
+            groupId: reserved.groupId,
+            controller: reserved.controller,
+            seatId: reserved.seatId,
+            authority: reserved.authority,
+            envelope: reserved.envelope,
+            effect: reserved.effect,
+            allocation: reserved.allocation,
+          };
+          if (
+            typeof invocationId !== 'string' ||
+            !invocationId ||
+            attempt.transport.launch.protocol !== 'rounds-v1' ||
+            attempt.transport.provider !== member.provider ||
+            attempt.transport.contract !== captured.contract ||
+            canonicalJson(reservation) !==
+              canonicalJson({
+                groupId: state.spec.groupId,
+                controller: state.spec.controller,
+                seatId,
+                authority: state.spec.rootAuthorityRef,
+                envelope: seat.envelope,
+                effect: seat.effect,
+                allocation: seat.allocation,
+              })
+          )
+            refuse();
+          const principal = createOrchestrationRequestPrincipalResolver({
+            environmentSecurityService:
+              this.owners.runtime.environmentSecurityService,
+          })(context);
+          if (principal.id !== state.root.authenticated_principal_ref.id)
+            refuse();
+          member.dispatched = true;
+          return { state, member, captured, principal, invocationId };
+        });
+        const stored = await attempt.persistence.readReportAdmission(
+          prepared.state.spec.groupId,
+          scope.current,
+        );
+        scope.check(() => {
+          finalizeCurrent();
+          const authenticated = getRuntimeAuthenticatedRequestPrincipal(
+            context.req.raw,
+          );
+          if (
+            !stored ||
+            !authenticated ||
+            authenticated.kind === 'internal' ||
+            !reportAdmissionSignatureMatches(
+              stored,
+              this.owners.runtime.environmentSecurityService,
+            ) ||
+            canonicalJson(stored.data) !==
+              canonicalJson(
+                reportAdmissionData(
+                  this.read(handle, context.req.raw),
+                  reportCredentialDigest(authenticated.credential),
+                ),
+              )
+          )
+            refuse();
+          finalizeCurrent();
+        });
+        return prepared;
+      });
+    if (attempt.transport.launch.protocol !== 'rounds-v1') refuse();
     const admission = new RoundsFinalFetchLaunchFence({
       ...attempt.transport.launch,
       finalizeCurrent,
     });
-    // Reserve the handoff before any await; an ambiguous failure cannot resend it.
-    member.dispatched = true;
-    const stored = await attempt.persistence.readReportAdmission(
-      state.spec.groupId,
-      finalizeCurrent,
-    );
-    finalizeCurrent();
-    const authenticated = getRuntimeAuthenticatedRequestPrincipal(
-      context.req.raw,
-    );
-    if (
-      !stored ||
-      !authenticated ||
-      authenticated.kind === 'internal' ||
-      !reportAdmissionSignatureMatches(
-        stored,
-        this.owners.runtime.environmentSecurityService,
-      ) ||
-      canonicalJson(stored.data) !==
-        canonicalJson(
-          reportAdmissionData(
-            this.read(handle, context.req.raw),
-            reportCredentialDigest(authenticated.credential),
-          ),
-        )
-    )
-      refuse();
-    finalizeCurrent();
     await admission.admitTask(
       {
         ...attempt.transport.reservation,
@@ -948,85 +969,100 @@ export class StationReportGroupPreparation {
       },
       signal,
     );
-    finalizeCurrent();
-    const launch = attempt.transport.launch;
-    if (launch.protocol !== 'rounds-v1') refuse();
-    const inputRuntime = state.intent.members.find(
-      (entry) => entry.seatId === seatId,
-    )?.input
-      ? createReportInputRuntime({
-          persistence: attempt.persistence,
-          authorize: async (binding) => {
-            finalizeCurrent();
-            if (
-              binding.groupId !== state.spec.groupId ||
-              binding.invocationId !== invocationId ||
-              binding.seatId !== seatId ||
-              binding.executionId !== member.taskId
-            )
-              refuse();
-            const service = createDelegationAuthorityServiceV3(
-              launch.authorities,
-              {
-                ...launch.host,
-                // The paid wire is disposed; input authority cannot revive it.
-                confirmExecution: async (envelope) => {
-                  finalizeCurrent();
-                  return (
-                    envelope.execution_id === member.taskId &&
-                    this.authorizes(
-                      handle,
-                      context.req.raw,
-                      state.root,
-                      envelope,
-                    )
-                  );
-                },
-                authenticateRenewal: async () => null,
+    const { launch, port } = await withMetadata(async (scope) =>
+      scope.check(() => {
+        finalizeCurrent();
+        const launch = attempt.transport.launch;
+        if (launch.protocol !== 'rounds-v1') refuse();
+        const inputRuntime = state.intent.members.find(
+          (entry) => entry.seatId === seatId,
+        )?.input
+          ? createReportInputRuntime({
+              persistence: attempt.persistence,
+              authorize: async (binding) => {
+                finalizeCurrent();
+                if (
+                  binding.groupId !== state.spec.groupId ||
+                  binding.invocationId !== invocationId ||
+                  binding.seatId !== seatId ||
+                  binding.executionId !== member.taskId
+                )
+                  refuse();
+                const service = createDelegationAuthorityServiceV3(
+                  launch.authorities,
+                  {
+                    ...launch.host,
+                    // The paid wire is disposed; input authority cannot revive it.
+                    confirmExecution: async (envelope) => {
+                      finalizeCurrent();
+                      return (
+                        envelope.execution_id === member.taskId &&
+                        this.authorizes(
+                          handle,
+                          context.req.raw,
+                          state.root,
+                          envelope,
+                        )
+                      );
+                    },
+                    authenticateRenewal: async () => null,
+                  },
+                  { maxRenewals: state.spec.policy.maxRenewals ?? 0 },
+                );
+                const admitted = await service.admitEffect(
+                  binding.rootId,
+                  binding.envelope.id,
+                  'report',
+                );
+                finalizeCurrent();
+                return admitted.envelope;
               },
-              { maxRenewals: state.spec.policy.maxRenewals ?? 0 },
-            );
-            const admitted = await service.admitEffect(
-              binding.rootId,
-              binding.envelope.id,
-              'report',
-            );
-            finalizeCurrent();
-            return admitted.envelope;
+            })
+          : undefined;
+        member.inputRuntime = inputRuntime;
+        const port = prepareReservedStationTurn(
+          {
+            principalId: principal.id,
+            environmentId: state.root.issuer_host_id,
+            threadId: member.taskId,
+            clientTurnId: member.clientTurnId,
+            input: member.brief,
+            modelId: member.modelId,
           },
-        })
-      : undefined;
-    member.inputRuntime = inputRuntime;
-    const port = prepareReservedStationTurn(
-      {
-        principalId: principal.id,
-        environmentId: state.root.issuer_host_id,
-        threadId: member.taskId,
-        clientTurnId: member.clientTurnId,
-        input: member.brief,
-        modelId: member.modelId,
-      },
-      {
-        ...attempt,
-        sdkOwner: member.owner,
-        sdkHandle: member.sdkHandle,
-        transport: {
-          ...attempt.transport,
-          signal,
-          now: Date.now,
-          launch: { ...attempt.transport.launch, finalizeCurrent },
-        },
-      },
-      undefined,
-      inputRuntime,
+          {
+            ...attempt,
+            sdkOwner: member.owner,
+            sdkHandle: member.sdkHandle,
+            transport: {
+              ...attempt.transport,
+              signal,
+              now: Date.now,
+              launch: { ...attempt.transport.launch, finalizeCurrent },
+            },
+          },
+          undefined,
+          inputRuntime,
+        );
+        return { launch, port };
+      }),
     );
-    const postDispatchWriter = await HomeWriterOwner.forHome(
-      this.owners.runtime.environmentSecurityService.getProjectHomeDir(),
-    );
+    const invokeCurrent = launch.reportHome?.invokeCurrent;
     const task = await delegateTask(
       {
         reservedStationTurn: port,
-        delegationGroupAdmission: { assertCurrent: finalizeCurrent, signal },
+        delegationGroupAdmission: {
+          assertCurrent: finalizeCurrent,
+          signal,
+          ...(invokeCurrent
+            ? {
+                invokeCurrent: <Value>(
+                  invoke: (
+                    check: <Result>(work: () => Result) => Result,
+                  ) => Promise<Value>,
+                ) => invokeCurrent(finalizeCurrent, invoke),
+              }
+            : {}),
+        },
         prompt: member.brief,
         sessionId: member.taskId,
         initialClientTurnId: member.clientTurnId,
@@ -1042,13 +1078,17 @@ export class StationReportGroupPreparation {
       },
       orchestration,
     );
-    await postDispatchWriter.runRequest(signal, finalizeCurrent);
-    if (
-      task.taskId !== member.taskId ||
-      task.sessionId !== member.taskId ||
-      !task.initialTurnId
-    )
-      refuse();
+    await withMetadata(async (scope) =>
+      scope.check(() => {
+        finalizeCurrent();
+        if (
+          task.taskId !== member.taskId ||
+          task.sessionId !== member.taskId ||
+          !task.initialTurnId
+        )
+          refuse();
+      }),
+    );
     const result = reservedStationTurnResult(port);
     void result.catch(() => {});
     return {

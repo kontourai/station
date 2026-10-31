@@ -8,6 +8,8 @@ import {
   enterFinalFetch,
   inspectSdkSourceWire,
   refuseSdkResponse,
+  type SdkSourceAdmission,
+  type SdkSourceCheck,
   sdkResultPromise,
 } from '../../services/orchestration/delegation-group-sdk-source-wire-owner.js';
 import {
@@ -29,7 +31,7 @@ export async function runReservedSdkSourceAttempt(input: {
   sdkHandle: object;
   /** Session replacement fences launch; retained response evidence uses the original authority. */
   assertSessionCurrent?: WireFinalizer;
-  onTextDelta?: (text: string) => void;
+  onTextDelta?: (text: string, check: SdkSourceCheck) => void;
   transport: Omit<
     ConstructorParameters<typeof ReservedProviderFetch>[0],
     'launch'
@@ -45,11 +47,47 @@ export async function runReservedSdkSourceAttempt(input: {
     throw new ReservedProviderUnavailable(
       'Reserved source attempt already claimed',
     );
-  const { wire, outputDelivery } = inspectSdkSourceWire(sdkOwner, sdkHandle);
   claimedAttempts.add(sdkHandle);
-  const result = sdkResultPromise(sdkOwner, sdkHandle, input.onTextDelta);
-  void result.catch(() => {});
   try {
+    const reportHome =
+      input.transport.launch.protocol === 'rounds-v1'
+        ? input.transport.launch.reportHome
+        : undefined;
+    const withHome = reportHome?.withHome;
+    const invokeCurrent = reportHome?.invokeCurrent;
+    const admissionCurrent = reportHome?.current;
+    const admission: SdkSourceAdmission | undefined =
+      withHome && invokeCurrent && admissionCurrent
+        ? {
+            check: <Value>(body: () => Value) =>
+              withHome(admissionCurrent, async (scope) => scope.check(body)),
+            publish: (publish) =>
+              invokeCurrent(admissionCurrent, (check) => {
+                publish(check);
+                return Promise.resolve();
+              }),
+          }
+        : undefined;
+    const register = () => {
+      const { wire, outputDelivery } = inspectSdkSourceWire(
+        sdkOwner,
+        sdkHandle,
+      );
+      return {
+        wire,
+        outputDelivery,
+        result: sdkResultPromise(
+          sdkOwner,
+          sdkHandle,
+          input.onTextDelta,
+          admission,
+        ),
+      };
+    };
+    const { wire, outputDelivery, result } = admission
+      ? await admission.check(register)
+      : register();
+    void result.catch(() => {});
     const assertFetchCurrent = (): undefined => {
       assertSynchronous(finalizeCurrent);
       if (assertSessionCurrent) assertSynchronous(assertSessionCurrent);
@@ -71,35 +109,51 @@ export async function runReservedSdkSourceAttempt(input: {
       redirect: 'error',
       signal: input.transport.signal,
     });
-    deliverSdkResponse(sdkOwner, sdkHandle, response);
+    if (admission)
+      await admission.check(() =>
+        deliverSdkResponse(sdkOwner, sdkHandle, response),
+      );
+    else deliverSdkResponse(sdkOwner, sdkHandle, response);
     const [sdkResult, evidence] = await Promise.all([
       result,
       transport.evidence,
     ]);
-    const reportHome =
-      input.transport.launch.protocol === 'rounds-v1'
-        ? input.transport.launch.reportHome
-        : undefined;
-    const evidenceReference = reportHome
-      ? await reportHome.owner.runOwnedLease(input.transport.signal, (lease) =>
+    const evidenceReference = withHome
+      ? await withHome(finalizeCurrent, (scope) =>
           persistence.retainProviderEvidence(
             evidence,
-            () => reportHome.owner.runWithLease(lease, finalizeCurrent),
-            (commit) => reportHome.owner.runWithLease(lease, commit),
+            scope.current,
+            (commit) => scope.check(commit),
           ),
         )
-      : await persistence.retainProviderEvidence(evidence, finalizeCurrent);
-    if (reportHome)
+      : reportHome
+        ? await reportHome.owner.runOwnedLease(
+            input.transport.signal,
+            (lease) =>
+              persistence.retainProviderEvidence(
+                evidence,
+                () => reportHome.owner.runWithLease(lease, finalizeCurrent),
+                (commit) => reportHome.owner.runWithLease(lease, commit),
+              ),
+          )
+        : await persistence.retainProviderEvidence(evidence, finalizeCurrent);
+    if (admission)
+      await admission.check(() => assertSynchronous(finalizeCurrent));
+    else if (reportHome)
       await reportHome.owner.runRequest(
         input.transport.signal,
         finalizeCurrent,
       );
     else assertSynchronous(finalizeCurrent);
-    const rawInput = readBoundedApiReportInput(
-      input.transport.contract,
-      evidence.rawResponseJson,
-      input.transport.now(),
-    );
+    const readRawInput = () =>
+      readBoundedApiReportInput(
+        input.transport.contract,
+        evidence.rawResponseJson,
+        input.transport.now(),
+      );
+    const rawInput = admission
+      ? await admission.check(readRawInput)
+      : readRawInput();
     if (!isDeepStrictEqual(sdkResult.inputRequest, rawInput))
       throw new ReservedProviderUnavailable(
         'SDK and raw input request disagree',
