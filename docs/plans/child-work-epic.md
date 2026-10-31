@@ -2884,3 +2884,28 @@ Public transport qualification: 51 tests pass across the recovery, SDK and CLI
 owners. The SDK and server-test typecheck lanes and lint pass. This is controlled
 local evidence; readiness still fails documentation freshness, and no provider,
 device, registry publication or hosted acceptance follows from it.
+
+### Requested second-device simulator substitute
+
+The user accepted an emulator or simulator instead of the unreachable physical
+phone. At source `b946716caac06e0635da08d836ef855f9bc809d0`, a freshly built
+iOS 26.5 development simulator app paired through the normal offer/review/exchange
+with a distinct read/operate device grant. Its installed executable matched the
+built artifact (SHA-256
+`ed91b9bccbd43049ca83ca4221ecfafd6e56dabaa4793785967a0552dd85fd3e`),
+and the client manifest and server identity matched the source revision.
+
+The controlled CLI journey observed Running/Live, Done, actual assistant
+`CLI_CONTEXT_OK` (also visible in historical replay), explicit Directory context,
+and the same Task/Session facts after app relaunch and reselection. The authenticated
+paired-device actor remained distinct from CLI self-reporting. All sixteen backend
+checks passed with one controlled loopback model request; both stages exited zero
+naturally, source/input hashes stayed stable, and the owned listeners were gone
+after cleanup. The earlier fifteen-minute observation timeout remains a failed
+attempt; the fresh attempt extended only the bounded observation window.
+
+Activity selection still resets across relaunch: this remains FAIL even though
+reselection restores the task facts. Warm pairing intake was exercised; cold-link
+intake is unqualified. This is simulator evidence, not physical-phone, live-provider,
+packet-isolation, store-signing, hosted, release or whole-epic acceptance. The private
+review and indexed receipts remain outside tracked public content.
