@@ -101,6 +101,23 @@ The ignored `voice-owner-qualification-f1b5a176a54.json` index binds the earlier
 failures, final logs, private runner receipts and review hash. No second physical
 device is available in the current device inventory.
 
+The later independent browser attempt at `5eae8a53d5b` observed the same Task
+after reload, live Running/No progress and the reported CLI/device distinction,
+but the Task failed with provider HTTP 500 before response release. Directory,
+successful output and the complete viewport/theme matrix were not verified.
+Its designated stop was refused in that phase; root requested graceful owned
+shutdown, which completed with failure status and stable input hashes. This
+independent run remains failed and does not upgrade the earlier root observations.
+
+That fixture held the model response before sending HTTP headers. Node's native
+HTTP client has a five-minute header timeout; the original first timeout cause
+was not retained. A separate non-provider framing control produced
+`UND_ERR_HEADERS_TIMEOUT` for delayed headers under a stricter diagnostic deadline,
+and succeeded with immediate headers and keepalive comments. The revised fixture
+now starts SSE before holding its output and allows early failure cleanup. No
+production timeout, retry policy, journey deadline or success assertion changed.
+The revised independent browser journey still needs qualification.
+
 ## Published Flow 9.9.1 pin (#91)
 
 Station selects the registry Flow Agents 9.9.1 and Flow 5.4.0 packages. The
