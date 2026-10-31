@@ -22953,16 +22953,24 @@ describe('OrchestrationService', () => {
     expect(eventStore.readSessions()).toEqual([]);
   });
 
-  test.each(['absent', 'active', 'unknown'] as const)(
-    'preserves a failed smoke only when released adapter ownership is confirmed (%s)',
-    async (ownership) => {
+  test.each(
+    (['absent', 'active', 'unknown'] as const).flatMap((ownership) =>
+      [false, true].map((releasedDuringStop) => ({ ownership, releasedDuringStop })),
+    ),
+  )(
+    'preserves a failed smoke only when released adapter ownership is confirmed ($ownership, releasedDuringStop=$releasedDuringStop)',
+    async ({ ownership, releasedDuringStop }) => {
+      let bound = releasedDuringStop;
       const dispatch = vi
         .fn<OrchestrationService['dispatch']>()
         .mockResolvedValueOnce(undefined)
         .mockRejectedValueOnce(
           new Error('smoke provider disconnected before acknowledging turn'),
         )
-        .mockRejectedValue(new Error('No provider session for smoke thread'));
+        .mockImplementation(async () => {
+          bound = false;
+          throw new Error('No provider session for smoke thread');
+        });
       vi.spyOn(claude, 'hasSession').mockImplementation(async () => {
         if (ownership === 'unknown') throw new Error('ownership unavailable');
         return ownership === 'active';
@@ -22980,7 +22988,7 @@ describe('OrchestrationService', () => {
           await operation;
         },
         adapterFor: () => claude,
-        hasThreadProvider: () => false,
+        hasThreadProvider: () => bound,
         armInternalStop: vi.fn(),
         deleteThread,
         invalidateSessionOwner: vi.fn(),
@@ -22999,9 +23007,15 @@ describe('OrchestrationService', () => {
           reason: 'smoke provider disconnected before acknowledging turn',
         });
         expect(deleteThread).toHaveBeenCalledOnce();
-        expect(dispatch).toHaveBeenCalledTimes(2);
+        expect(dispatch).toHaveBeenCalledTimes(releasedDuringStop ? 3 : 2);
       } else {
-        expect(result).toMatchObject({ ok: false, reasonCode: 'cleanup-failed' });
+        expect(result).toMatchObject({
+          ok: false,
+          reasonCode: 'cleanup-failed',
+          reason: expect.stringContaining(
+            'smoke provider disconnected before acknowledging turn',
+          ),
+        });
         expect(deleteThread).not.toHaveBeenCalled();
       }
     },

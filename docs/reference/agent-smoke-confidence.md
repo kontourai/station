@@ -55,8 +55,11 @@ events after confirmed cleanup; if cleanup cannot be confirmed, the result is
 does not promise that the underlying provider process stopped.
 If a session already exited, cleanup is confirmed only when Station has no
 tracked provider and the adapter confirms absence within that same grace.
+This includes a stop that fails after releasing a stale provider binding;
+an active session or an unavailable ownership check still fails cleanup.
 Station retains the original diagnostic outcome; absence does not turn a
-failed smoke into a successful one.
+failed smoke into a successful one. A cleanup failure also includes the
+original failed diagnostic in its reason.
 
 ```sh
 station environment credential show | npm run dogfood:agent-smoke -- \
