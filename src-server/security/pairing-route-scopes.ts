@@ -3697,6 +3697,19 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/tasks/:taskId/write-back' },
     { method: 'GET', path: '/api/tasks/:taskId/review' },
     { method: 'GET', path: '/api/tasks/:taskId/review/capture-sessions' },
+    { method: 'GET', path: '/api/tasks/:taskId/review/walkthroughs' },
+    {
+      method: 'GET',
+      path: '/api/tasks/:taskId/review/walkthroughs/:walkthroughId',
+    },
+    {
+      method: 'GET',
+      path: '/api/tasks/:taskId/review/walkthroughs/:walkthroughId/video',
+    },
+    {
+      method: 'GET',
+      path: '/api/tasks/:taskId/review/walkthroughs/:walkthroughId/frames/:frameId',
+    },
     { method: 'POST', path: '/api/tasks/:taskId/review/captures' },
     {
       method: 'GET',

@@ -6416,6 +6416,24 @@ Task room request authority. Reads require `orchestration:read`; comment
 mutations and persisting Browser captures require `orchestration:operate`.
 Comment mutations require a stable `operationId`.
 
+The Task clip read leaves also require the **Walkthroughs** preview. They use
+the Task's current person-review authority and `orchestration:read`; internal
+Station requests are refused. The responses are `Cache-Control: no-store`.
+Clips are scoped to Project, Task and creation time:
+
+- `GET /api/tasks/:taskId/review/walkthroughs?limit=25&cursor=...` returns
+  `{items, nextCursor?}` with full `station.walkthrough/v1` manifests. Limit is
+  1–50 and defaults to 25; the cursor is the preceding page's last ID.
+- `GET /api/tasks/:taskId/review/walkthroughs/:walkthroughId` returns
+  `{walkthrough}`; `/video` returns digest-verified `video/webm`, and
+  `/frames/:frameId` returns a bounded JPEG. Both binary leaves set
+  `X-Content-Type-Options: nosniff`.
+
+Missing or other-Task clips return 404. Preview state and request authority
+are rechecked after reading. `browser_record_to_task` creates clips through a
+bound lead Session; see [Task clips](../guides/walkthroughs.md#record-a-task-clip)
+for input limits, storage and failure behavior.
+
 - `GET /api/tasks/:taskId/review?state=open|outdated|resolved` returns
   `station.task-review/v1`, item metadata, thread summaries and unfiltered counts.
   Artifact text and full event arrays are excluded. Available summaries carry
