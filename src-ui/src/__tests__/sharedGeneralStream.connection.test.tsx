@@ -15,6 +15,7 @@ vi.mock('../contexts/ApiBaseContext', () => ({
   }),
 }));
 
+import { ClientBootstrapContext } from '../contexts/AuthorityPersistenceContext';
 import { useServerEvents } from '../hooks/useServerEvents';
 
 test('general events start without waiting for orchestration response headers', async () => {
@@ -46,8 +47,57 @@ test('general events start without waiting for orchestration response headers', 
   try {
     await waitFor(() => expect(handler).toHaveBeenCalledWith({ value: 7 }));
     expect(requests).toContain('/events');
-    expect(requests).toContain('/api/orchestration/events?includeGeneral=1');
+    expect(requests).toContain('/api/orchestration/events');
     expect(handler).toHaveBeenCalledTimes(1);
+  } finally {
+    hook.unmount();
+    client.clear();
+    for (const stream of streams) stream.destroy();
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+  }
+});
+
+test('waits for bootstrap then shares one real transport for both event families', async () => {
+  const requests: string[] = [];
+  const streams: ServerResponse[] = [];
+  const server = createServer((request, response) => {
+    requests.push(request.url ?? '');
+    streams.push(response);
+    response.writeHead(200, { 'Content-Type': 'text/event-stream' });
+    response.write(
+      'event: station:general\ndata: {"event":"example:changed","data":"{\\"value\\":7}"}\n\n',
+    );
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  if (!address || typeof address === 'string')
+    throw new Error('missing address');
+  scope.base = `http://127.0.0.1:${address.port}`;
+  const client = new QueryClient();
+  const handler = vi.fn();
+  let readiness: { status: 'pending' | 'settled'; sharedRealtime: boolean } = {
+    status: 'pending',
+    sharedRealtime: false,
+  };
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={client}>
+      <ClientBootstrapContext.Provider value={readiness}>
+        {children}
+      </ClientBootstrapContext.Provider>
+    </QueryClientProvider>
+  );
+  const hook = renderHook(
+    () => useServerEvents({ 'example:changed': handler }),
+    { wrapper },
+  );
+  try {
+    expect(requests).toEqual([]);
+    readiness = { status: 'settled', sharedRealtime: true };
+    hook.rerender();
+    await waitFor(() => expect(handler).toHaveBeenCalledWith({ value: 7 }));
+    expect(requests).toEqual(['/api/orchestration/events?includeGeneral=1']);
   } finally {
     hook.unmount();
     client.clear();

@@ -37,6 +37,7 @@ export function useAuthorityPersistence(): AuthorityPersistenceContextValue {
 export interface ClientBootstrapReadiness {
   status: 'pending' | 'settled';
   sharedRealtime: boolean;
+  authorityKey?: string;
 }
 
 export const ClientBootstrapContext = createContext<ClientBootstrapReadiness>({

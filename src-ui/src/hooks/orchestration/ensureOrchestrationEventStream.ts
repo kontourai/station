@@ -123,6 +123,7 @@ const requestedBases = new Set<string>();
 const owners = new Map<string, number>();
 const generalOwners = new Map<string, number>();
 const streamAuthorities = new Map<string, string | undefined>();
+const streamModes = new Map<string, boolean>();
 let recoveryListenersInstalled = false;
 let hiddenSince: number | undefined;
 /** apiBases whose chats this document has already seeded from a snapshot. */
@@ -426,7 +427,16 @@ export function ensureOrchestrationEventStream(
   queryClient?: QueryClient,
   authorityKey?: string,
   general = false,
+  sharedRealtime = false,
 ): () => void {
+  const replacedAuthority =
+    authorityKey !== undefined &&
+    streamAuthorities.has(apiBase) &&
+    streamAuthorities.get(apiBase) !== authorityKey;
+  if (replacedAuthority) {
+    owners.delete(apiBase);
+    generalOwners.delete(apiBase);
+  }
   const releaseClient = queryClient
     ? registerOrchestrationStreamQueryClient(apiBase, queryClient, authorityKey)
     : () => {};
@@ -435,13 +445,24 @@ export function ensureOrchestrationEventStream(
     generalOwners.set(apiBase, (generalOwners.get(apiBase) ?? 0) + 1);
   requestedBases.add(apiBase);
   installRecoveryListeners();
+  if (
+    !streamModes.has(apiBase) ||
+    (authorityKey !== undefined &&
+      streamAuthorities.get(apiBase) !== authorityKey)
+  )
+    streamModes.set(apiBase, sharedRealtime);
   connectOrchestrationEventStream(apiBase, authorityKey);
-  if (general) startLegacyGeneral(apiBase);
+  if (general && !streamModes.get(apiBase)) startLegacyGeneral(apiBase);
   let released = false;
   return () => {
     if (released) return;
     released = true;
     releaseClient();
+    if (
+      authorityKey !== undefined &&
+      streamAuthorities.get(apiBase) !== authorityKey
+    )
+      return;
     if (general) {
       const count = (generalOwners.get(apiBase) ?? 1) - 1;
       if (count > 0) generalOwners.set(apiBase, count);
@@ -459,6 +480,7 @@ export function ensureOrchestrationEventStream(
     }
     owners.delete(apiBase);
     requestedBases.delete(apiBase);
+    streamModes.delete(apiBase);
     const owned = activeSources.get(apiBase);
     if (owned) {
       activeSources.delete(apiBase);
@@ -543,7 +565,7 @@ function connectOrchestrationEventStream(
   let receiving = false;
   sharedOrchestrationStreamRetrying(apiBase);
   const authenticatedStream = fetchSSE(
-    `${apiBase}/api/orchestration/events?includeGeneral=1`,
+    `${apiBase}/api/orchestration/events${streamModes.get(apiBase) ? '?includeGeneral=1' : ''}`,
     {
       authentication: 'required',
       initialLastEventId,
@@ -580,7 +602,7 @@ function connectOrchestrationEventStream(
           owned.connection.signal.aborted
         )
           return;
-        if (raw.event !== 'station:general')
+        if (raw.event !== 'station:general' || streamModes.get(apiBase))
           sharedOrchestrationStreamMessage(apiBase, raw);
         if (raw.event === 'station:general') return;
         if (!receiving) {
@@ -803,7 +825,8 @@ function connectOrchestrationEventStream(
     ended: false,
   };
   activeSources.set(apiBase, owned);
-  if (generalOwners.has(apiBase)) startLegacyGeneral(apiBase);
+  if (generalOwners.has(apiBase) && !streamModes.get(apiBase))
+    startLegacyGeneral(apiBase);
   // station#2301 review (L1): the abort signal covers every abort, but the
   // loop can also end by REJECTING — a callback above throwing inside the
   // SDK's catch — without aborting. Either way the connection is gone.

@@ -15,6 +15,7 @@ import {
   useApiBase,
   useHostRequestAuthorityScope,
 } from '../contexts/ApiBaseContext';
+import { useClientBootstrapReadiness } from '../contexts/AuthorityPersistenceContext';
 import { navigationStore } from '../contexts/NavigationContext';
 import { toastStore } from '../contexts/ToastContext';
 import { deviceSettingsStore } from '../lib/device-settings-store';
@@ -305,10 +306,12 @@ export function useServerEvents(handlers?: Record<string, EventHandler>) {
     [authorityApiBase, authorityIsCurrent, authorityKey],
   );
   const queryClient = useQueryClient();
+  const bootstrap = useClientBootstrapReadiness();
   const handlersRef = useRef(handlers);
   handlersRef.current = handlers;
 
   useEffect(() => {
+    if (bootstrap.status !== 'settled') return;
     const subscription = subscribeSharedOrchestrationStream(apiBase, {
       onMessage: (raw) => {
         if (raw.event !== 'station:general') return;
@@ -424,10 +427,18 @@ export function useServerEvents(handlers?: Record<string, EventHandler>) {
       undefined,
       authorityKey,
       true,
+      bootstrap.sharedRealtime,
     );
     return () => {
       subscription.close();
       release();
     };
-  }, [apiBase, authorityKey, queryClient, subscriptionAuthority]);
+  }, [
+    apiBase,
+    authorityKey,
+    queryClient,
+    subscriptionAuthority,
+    bootstrap.status,
+    bootstrap.sharedRealtime,
+  ]);
 }

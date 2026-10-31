@@ -56,8 +56,7 @@ function setup(mode: TransportMode, productionRetries = false) {
     'fetch',
     vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url === `${origin}/api/orchestration/events?includeGeneral=1`)
-        return sse;
+      if (url === `${origin}/api/orchestration/events`) return sse;
       if (url !== `${origin}/api/orchestration/sessions/read-model`)
         throw new Error(`Unexpected request: ${url}`);
       const read = ++started;

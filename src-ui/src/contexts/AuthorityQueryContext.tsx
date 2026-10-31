@@ -164,8 +164,8 @@ import { usePlatformProfile } from '../platform/PlatformProfileContext';
 import { useHostRequestAuthorityScope } from './ApiBaseContext';
 import {
   AuthorityPersistenceContext,
-  ClientBootstrapContext,
   type AuthorityPersistenceContextValue,
+  ClientBootstrapContext,
 } from './AuthorityPersistenceContext';
 import { activeChatsStore } from './active-chats-store';
 
@@ -703,6 +703,7 @@ export function AuthorityQueryProvider({
                 ? {
                     status: 'settled',
                     sharedRealtime: bootCapability.sharedRealtime,
+                    authorityKey: boundScope?.authorityKey,
                   }
                 : { status: 'pending', sharedRealtime: false }
             }
