@@ -60,10 +60,15 @@ interface AutomationActionsOptions {
   logger: Logger;
 }
 
+export interface AutomationActions extends AutomationInboxPlacement {
+  tick(): Promise<void>;
+  close(): void;
+}
+
 /** Automation actions have a separate operator opt-in from observe-only intake. */
 export function createAutomationActionsRuntime(
   options: AutomationActionsOptions,
-) {
+): AutomationActions {
   const preview = options.hosted
     ? undefined
     : options.featurePreviews.bind({
@@ -75,7 +80,7 @@ export function createAutomationActionsRuntime(
   return new AutomationActionsRuntime(options, preview);
 }
 
-class AutomationActionsRuntime implements AutomationInboxPlacement {
+class AutomationActionsRuntime implements AutomationActions {
   private readonly supervisor: MonitorTaskTurnSupervisor;
   private readonly active = new Map<string, AbortController>();
   private readonly sessionIntents = new Map<string, string>();
