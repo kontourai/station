@@ -16,9 +16,12 @@ The latest smoke result is reported separately as `not-tested`, `passed`, or
 `failed`. A failed smoke keeps independently proven catalog evidence visible,
 while its failure reason and next action remain explicit. Smoke proof is fresh
 for 24 hours; stale proof no longer promotes a connection to `smoke-passed`.
-The receipt must also match the current connection configuration. A newer
-connection check can outrank an older smoke receipt; a passing smoke does not
-hide a later authentication refusal.
+The receipt must also match the current connection configuration. For model
+connections, a newer gating connection-check receipt outranks an older smoke
+receipt. Engine runtime-authentication failures lower status and prerequisites
+separately; a matching smoke receipt can currently retain the `smoke-passed`
+evidence tier until it is replaced, expires, or its configuration no longer
+matches. Check current status and prerequisites as well as the smoke receipt.
 
 Receipts are stored in `connection-smoke.json` under `STATION_HOME`. They contain
 connection/provider/model identifiers, a configuration fingerprint, timing,
