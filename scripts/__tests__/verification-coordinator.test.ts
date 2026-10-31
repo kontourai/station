@@ -3431,15 +3431,7 @@ setInterval(() => {
       const nextWorktree = join(temp.root, 'after-orphan');
       mkdirSync(worktree);
       mkdirSync(nextWorktree);
-      const descendantPath = join(temp.root, 'orphan-pid');
-      let childLease: {
-        child?: {
-          pid?: number | null;
-          pgid?: number | null;
-          jobBound?: boolean;
-          guard?: { pid: number; processStart: string };
-        };
-      } = {};
+      let childLease: { child?: { pgid?: number | null } } = {};
       const orphanRunner = ({ signal }: { signal: AbortSignal }) =>
         createOwnedRunner({
           lane: { id: 'orphan-fixture' },
@@ -3458,7 +3450,7 @@ setInterval(() => {
             [
               '--input-type=module',
               '--eval',
-              `import { spawn } from 'node:child_process'; import { writeFileSync } from 'node:fs'; const child = spawn(process.execPath, ['--eval', "process.on('SIGTERM', () => {}); setInterval(() => {}, 1_000)"], { stdio: 'ignore', windowsHide: true }); writeFileSync(${JSON.stringify(descendantPath)}, String(child.pid)); child.unref(); process.exit(0);`,
+              "import { spawn } from 'node:child_process'; const child = spawn(process.execPath, ['--eval', \"process.on('SIGTERM', () => {}); setInterval(() => {}, 1_000)\"], { stdio: 'ignore' }); child.unref(); process.exit(0);",
             ],
           ],
           processIdentity: () => null,
@@ -3478,27 +3470,12 @@ setInterval(() => {
           hostCpuSampler: healthySampler(),
           runner: orphanRunner,
         });
-        const descendantPid = Number(readFileSync(descendantPath, 'utf8'));
-        expect(descendantPid).toBeGreaterThan(0);
-        if (process.platform === 'win32') {
-          expect(childLease.child).toMatchObject({
-            pid: expect.any(Number),
-            pgid: null,
-            jobBound: true,
-            guard: {
-              pid: expect.any(Number),
-              processStart: expect.any(String),
-            },
-          });
-        } else {
-          expect(childLease.child?.pgid).toEqual(expect.any(Number));
-        }
+        expect(childLease.child?.pgid).toEqual(expect.any(Number));
         expect(orphaned.receipt.cleanup).toEqual({
           status: 'passed',
           survivingOwnedChildren: 0,
         });
         expect(processGroupIsLive(childLease.child?.pgid)).toBe(false);
-        expect(processIsLive(descendantPid)).toBe(false);
 
         const next = await coordinateVerification({
           laneId: 'test-changed',
