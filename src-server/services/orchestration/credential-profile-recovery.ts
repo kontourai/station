@@ -76,6 +76,8 @@ interface CredentialProfileRecoveryDeps {
   }>;
   /** Re-read server-owned retained Project authority after replay preparation. */
   assertRetainedWorkspaceAuthorized: (threadId: string) => Promise<void>;
+  /** Same fork/handoff/seed currentness as ordinary sends, at provider entry. */
+  assertReplayContext: (input: ProviderSendTurnInput) => void;
   onTurnDispatched: (input: {
     provider: string;
     threadId: string;
@@ -216,8 +218,7 @@ export class CredentialProfileRecovery {
         input.modelOptions,
       );
       await this.deps.assertRetainedWorkspaceAuthorized(input.threadId);
-      posture.assertCurrent();
-      result = await adapter.sendTurn({
+      const turn: ProviderSendTurnInput = {
         threadId: input.threadId,
         input: composeAmbientTurnText(input.ambientContext, input.input),
         displayInput: input.input,
@@ -230,7 +231,10 @@ export class CredentialProfileRecovery {
         confinement: posture.confinement,
         recoveryCorrelationId: input.recoveryCorrelationId,
         signal: input.signal,
-      });
+      };
+      posture.assertCurrent();
+      this.deps.assertReplayContext(turn);
+      result = await adapter.sendTurn(turn);
     } catch (error) {
       this.deps.reportRedispatchFailed(
         input.threadId,

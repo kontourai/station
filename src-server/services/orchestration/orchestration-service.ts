@@ -3559,6 +3559,8 @@ export class OrchestrationService {
       assertRetainedWorkspaceAuthorized: async (threadId) => {
         await this.authorizedConversationWorkspace(threadId);
       },
+      assertReplayContext: (input) =>
+        this.assertForkContextAtProviderTurn(input),
       onTurnDispatched: (input) =>
         this.monitoringBridge.onTurnDispatched(input),
       forgetCoalescedThread: (threadId) =>
