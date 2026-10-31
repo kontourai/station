@@ -7,7 +7,7 @@ normally before publication. Open one PR when the combined work is ready.
 
 ## Current delivery state
 
-Main is integrated through `ae37b325503` by normal merge `75176b4355a`.
+Main is integrated through `659ce5918c5` by normal merge `f560cf80a13`.
 This branch has not been pushed or opened as a PR and is not ready to land.
 
 The bounded portable surface is restored: real caller and Project custody,
@@ -155,6 +155,60 @@ in the process-heavy pool and gives the new cookie fixture tracked temp cleanup;
 127 pairing cases, 66 manifest/policy cases and the verification-policy command
 passed. Browser/device, published Flow adoption and final combined qualification
 remain open.
+
+The History diagnostic led to a separate owner-narrowing repair at
+`56a4131ddaa`. Direct Session reads already admitted approved members of a
+personal conversation account, but History queried only the requesting
+principal before applying that policy. History now obtains its personal owner
+set from the existing SessionAuthorization owner, narrows in SQL before grouping
+and pagination, and still authorizes every returned record. Hosted reads retain
+their exact owner/tenant path; an explicit empty owner set returns no records.
+The real pairing/HTTP/orchestration regression reached the intended omission
+after direct attachment access passed. Its first fixture run returned 500 because
+the real History method was not bound and is excluded from defect evidence.
+The first post-fix run also exposed an invalid outsider control: that identity
+belonged to the approved personal account. The corrected unpaired-principal
+control retained the ownerless and alias refusals. The final auth/history
+selection passed 72 cases, pagination/storage passed 251, server-test types passed,
+and independent source review found no blocking issue.
+
+A fresh browser at that repair showed History · 1 and restored the saved chat
+after reload, but transient history transport failure remained. A separate
+whole-process CPU diagnostic sampled about 35.6 seconds in synchronous fsync
+paths, including about 17.3 seconds under repeated identifyDevice lock acquisition
+and release. This includes startup and is not a benchmark delta or sole-outage
+causality claim. Repair `9cd332d0e17` resolves consecutive synchronous HTTP
+identity metadata getters inside one fresh registry/home span. It preserves
+getter order, later independent scope verification and direct behavior without
+the optional owner callback; no lease crosses an await. The added owner-boundary
+control failed before the repair with 126 other cases passing. Afterward, 302
+focused cases, server-test types and scoped Biome passed. Independent source
+review accepted the bounded change.
+
+The independent normal browser recheck at `9cd332d0e17` verified Running and
+completed/ready states, explicit Directory, reported CLI versus authenticated
+Device attribution, the actual assistant result, History and reloaded task
+facts. Home, Activity and Session completion views passed at 390 and 1440 pixels
+in both themes. Activity row selection still reset on remount/reload; it remains
+a separate failed observation. Transient loading recovered without an unresolved
+transport error. The owned backend passed 16 checks with one controlled model
+request, natural zero exit and stable input hashes. Earlier browser failures
+remain failures, and one successful bounded run does not establish general
+transport reliability. Physical-device, current desktop-shell, live-provider
+and whole-epic acceptance remain unverified. The ignored
+`qualification-9cd332d0e17.json` index binds this pre-merge evidence.
+
+The subsequent normal main merge brings shared general/orchestration event
+streams and the mobile dock Inbox behavior. Conflict resolution retains the
+runtime publication drain and exact voice-listener retirement while starting
+main's task-recording shutdown before awaiting the drain and joining both
+cleanup paths before home release. Generated Station Docs content was rebuilt
+from resolved sources. The eight-file focused selection passed 61 cases;
+server-test/UI types, CLI/MCP parity and scoped Biome passed. The combined UI
+build passed unchanged budgets at 383,944/390,000 JavaScript and 53,553/56,000 CSS
+normalized gzip bytes. These results do not promote the pre-merge browser
+receipt to the combined source. Published Flow adoption, supported group/input
+journeys, remaining documentation and final combined review still need work.
 
 The live request-capability clone control now has executed mutation evidence
 at clean `b0ea8c39508`: its baseline passed; removing only the exact Request
