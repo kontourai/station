@@ -120,6 +120,28 @@ scoped Biome pass. This is controlled caller-boundary evidence, not a fresh
 installed-native, live-provider or all-recovery qualification. Other caller and
 recovery-ledger gaps from the accumulated audit remain open.
 
+The cold portable-materialization gap also reached a controlled counterexample.
+The real Project contribution, ConfigLoader, manifest, binding and resolver
+owners admitted a retained Session; withdrawing the execution offer while Agent
+preparation waited still allowed the cold provider-start callback for both lazy
+send and explicit reattach. The first fixture run omitted the admitted cwd and
+failed before that scenario; it remains a setup diagnostic, not the product red.
+`193e16e888b` retains the original receiver association, rechecks after recovery
+preparation and verifies the actual prepared association at provider entry. Known
+receiver refusals stay typed, nonretryable and rejected in the durable event and
+outer receipt. The parity control separately reproduced a lazy posture refusal
+losing its code and failure metadata; typed start refusals now preserve the same
+closed diagnostics as explicit starts.
+
+The combined receiver/recovery/posture/wire/portable-route selection passes 340
+cases and server-test types pass. From the clean repair commit, removing only
+the final receiver recheck makes both new controls fail on one stale start
+instead of zero; byte-exact restoration passes all 23 retained-recovery cases.
+Re-offering and minting a new admission permits an explicit retry. These are
+controlled caller-boundary receipts, not live provider/peer/device, cross-process
+authority atomicity or all-writer qualification. Final independent source review
+of this increment and the remaining broader caller audit are still required.
+
 The background-work source at `9c51c75f5cda` passed 254 cases across 14 files
 and the UI type lane. Independent review accepted the bounded Station scoping,
 cold continuation association and reporter-alias ordering corrections. The

@@ -953,6 +953,14 @@ the refusal does not authorize automatic replay.
 provider entry; `reserved_station_turn_unavailable` refuses missing or stale
 reserved-turn authority. None is eligible for automatic replay.
 
+Cold portable starts recheck the execution offer after preparation and verify
+the prepared input against the admitted Project association before provider
+entry. The receiver's `not_offered`, `unavailable`, `authority_changed` and
+`consent_stale` refusal codes retain nonretryable permission-denial metadata.
+Lazy materialization preserves a typed start refusal's closed code and rejected
+receipt just as an explicit start does. A refusal does not revoke work that was
+already accepted under an earlier admission.
+
 | Diagnostic code | Kind | Retryable |
 | --- | --- | --- |
 | `delegation_files_unsupported` | `input_unsupported` | `false` |
@@ -978,6 +986,10 @@ reserved-turn authority. None is eligible for automatic replay.
 | `usage_unknown` | `indeterminate` | `false` |
 | `bounded_api_execution_unavailable` | `input_unsupported` | `false` |
 | `reserved_station_turn_unavailable` | `permission_denied` | `false` |
+| `receiver_execution_not_offered` | `permission_denied` | `false` |
+| `receiver_execution_unavailable` | `permission_denied` | `false` |
+| `receiver_execution_authority_changed` | `permission_denied` | `false` |
+| `receiver_execution_consent_stale` | `permission_denied` | `false` |
 | `foreground_invocation_unavailable` | `conflict` | `false` |
 | `delegation_attempt_capacity` | `busy` | `true` |
 | `continuation_place_refused` | `input_unsupported` | `false` |
