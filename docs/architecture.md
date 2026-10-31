@@ -175,7 +175,8 @@ These are navigation entry points, not an exhaustive inventory:
 ConfigLoader reads and writes JSON configuration and watches supported Agent and
 integration changes; it is not the storage owner for all product state.
 SchedulerService supports the configured cron, interval and one-shot contracts,
-not just cron. MonitoringEmitter publishes to its own monitoring EventEmitter
+not just cron, and a job's optional `target` runs each occurrence as a turn in a
+conversation (Automations) rather than as a Station-engine file run. MonitoringEmitter publishes to its own monitoring EventEmitter
 and persistence callback, not the orchestration EventBus. Follow each owner
 before treating a similarly named helper as the current implementation.
 

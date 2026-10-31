@@ -365,10 +365,12 @@ waits on an approval request where it used to run on the guardian's allow.
 
 ### Unattended runs
 
-A run with nobody to confirm a tool call — a scheduled job, `/invoke`, the CLI,
-or a delegated child session that cannot grant approvals — never waits on an
-approval request. Station's engine either allows the call without asking or
-denies it.
+A run with nobody to confirm a tool call — a scheduled job without a target,
+`/invoke`, the CLI, or a delegated child session that cannot grant approvals —
+never waits on an approval request. Station's engine either allows the call
+without asking or denies it. An automation that runs in a conversation is not
+unattended in this sense: its turn uses the conversation's own approval mode,
+and a tool call that needs approval waits for the person there.
 
 Sessions started by an [inbound webhook](inbound-webhooks.md) or the
 [Discord gateway](discord-gateway.md) are also unattended: nobody can answer an
