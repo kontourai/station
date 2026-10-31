@@ -20,8 +20,6 @@
 
     "src-ui/src/lib/foregroundMessageDispatch.ts",
 
-    "src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx",
-
     "src-ui/src/components/chat-dock/ChatDockProjectSwitcherSheet.tsx",
 
     "src-ui/src/components/chat-dock/ChatDockProjectContext.tsx",
@@ -194,7 +192,9 @@
 
     "src-ui/src/components/chat/ToolCallBatch.tsx",
 
-    "src-ui/src/__tests__/ToolCallBatch.test.tsx"
+    "src-ui/src/__tests__/ToolCallBatch.test.tsx",
+
+    "src-ui/src/components/chat-dock/MobileInboxPanel.tsx"
   ],
 
   "checks": [
