@@ -814,7 +814,9 @@
 
     "src-ui/src/components/chat/SessionGoalControl.tsx",
 
-    "packages/sdk/src/client/automations.ts"
+    "packages/sdk/src/client/automations.ts",
+
+    "packages/sdk/src/query-domains/learningReview.ts"
   ],
 
   "checks": [
