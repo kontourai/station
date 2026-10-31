@@ -167,13 +167,13 @@ importers:
         specifier: ^0.5.1
         version: link:packages/connect
       '@kontourai/station-contracts':
-        specifier: ^0.13.0
+        specifier: ^0.14.0
         version: link:packages/contracts
       '@kontourai/station-sdk':
-        specifier: ^0.13.0
+        specifier: ^0.14.0
         version: link:packages/sdk
       '@kontourai/station-shared':
-        specifier: ^0.13.0
+        specifier: ^0.14.0
         version: link:packages/shared
       '@kontourai/surface':
         specifier: 6.2.1
@@ -595,7 +595,7 @@ importers:
         specifier: 0.15.0
         version: 0.15.0(@ai-sdk/provider@3.0.19)(@anthropic-ai/sdk@0.122.0(zod@4.6.7))(@kontourai/bearing@0.2.0(playwright@1.64.1))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.89)(@smithy/signature-v4@5.7.4)(ws@8.22.0)(zod@4.6.7))(playwright@1.64.1)(supports-color@7.2.0)(typescript@7.0.2)
       '@kontourai/station-sdk':
-        specifier: ^0.13.0
+        specifier: ^0.14.0
         version: link:../../packages/sdk
     devDependencies:
       '@tanstack/react-query':
@@ -647,10 +647,10 @@ importers:
   packages/basis-pane:
     dependencies:
       '@kontourai/station-contracts':
-        specifier: ^0.13.0
+        specifier: ^0.14.0
         version: link:../contracts
       '@kontourai/station-sdk':
-        specifier: ^0.13.0
+        specifier: ^0.14.0
         version: link:../sdk
       '@kontourai/surface':
         specifier: ^6.2.1
@@ -693,10 +693,10 @@ importers:
         specifier: ^0.3.0
         version: 0.3.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@kontourai/station-contracts':
-        specifier: ^0.13.0
+        specifier: ^0.14.0
         version: link:../contracts
       '@kontourai/station-sdk':
-        specifier: ^0.13.0
+        specifier: ^0.14.0
         version: link:../sdk
       '@kontourai/ui':
         specifier: ^1.19.0
@@ -728,13 +728,13 @@ importers:
         specifier: ^0.5.1
         version: link:../connect
       '@kontourai/station-contracts':
-        specifier: ^0.13.0
+        specifier: ^0.14.0
         version: link:../contracts
       '@kontourai/station-sdk':
-        specifier: ^0.13.0
+        specifier: ^0.14.0
         version: link:../sdk
       '@kontourai/station-shared':
-        specifier: ^0.13.0
+        specifier: ^0.14.0
         version: link:../shared
       commander:
         specifier: ^15.0.0
@@ -752,10 +752,10 @@ importers:
   packages/connect:
     dependencies:
       '@kontourai/station-contracts':
-        specifier: ^0.13.0
+        specifier: ^0.14.0
         version: link:../contracts
       '@kontourai/station-shared':
-        specifier: ^0.13.0
+        specifier: ^0.14.0
         version: link:../shared
       jsqr:
         specifier: ^1.4.0
@@ -821,10 +821,10 @@ importers:
         specifier: 9.7.0
         version: 9.7.0(@ai-sdk/provider@3.0.19)(@kontourai/bearing@0.2.0(playwright@1.64.1))(playwright@1.64.1)(supports-color@7.2.0)(typescript@7.0.2)(zod@4.6.7)
       '@kontourai/station-contracts':
-        specifier: ^0.13.0
+        specifier: ^0.14.0
         version: link:../contracts
       '@kontourai/station-shared':
-        specifier: ^0.13.0
+        specifier: ^0.14.0
         version: link:../shared
       '@kontourai/surface':
         specifier: ^6.2.1
@@ -861,7 +861,7 @@ importers:
   packages/shared:
     dependencies:
       '@kontourai/station-contracts':
-        specifier: ^0.13.0
+        specifier: ^0.14.0
         version: link:../contracts
       '@kontourai/thread':
         specifier: 0.5.0
@@ -3789,14 +3789,17 @@ packages:
   '@smithy/core@3.33.3':
     resolution: {integrity: sha512-CsOeKq/9kA3y6VJHt+/+VTCtBaxJ4OTFpgrjIUhPpDIKxBci1k2bJaQASF2h/ELWrulGp+t97DZ0mevfAD8idg==}
     engines: {node: '>=18.0.0'}
+    deprecated: Deprecated due to a bug in custom logger data redaction. See https://github.com/aws/aws-sdk-js-v3/issues/8393.
 
   '@smithy/core@3.36.0':
     resolution: {integrity: sha512-3hJiwG1F5t1SoXqp/yOCmYXziyx7ZVqF63S5W6YU201e/qwVaHPex+E/3vvyY9a3ORq/b+BydeNZpP2saQ9X2g==}
     engines: {node: '>=18.0.0'}
+    deprecated: Deprecated due to a bug in custom logger data redaction. See https://github.com/aws/aws-sdk-js-v3/issues/8393.
 
   '@smithy/core@3.37.0':
     resolution: {integrity: sha512-97imTcCyiPd8k0e9+ts/Sp0W65Dn9Ti357J7M09Ov4tI8Q1JDJVFSoAJtjEVKqfHEr3Pdo2jfolqKCaaiszH0g==}
     engines: {node: '>=18.0.0'}
+    deprecated: Deprecated due to a bug in custom logger data redaction. See https://github.com/aws/aws-sdk-js-v3/issues/8393.
 
   '@smithy/credential-provider-imds@4.5.2':
     resolution: {integrity: sha512-A9uSdn72ozbRUSit0eib0TW7nXuNPlaeM0zcGkJ+nE6tFcSDbnmtwoxbTCFBukVQcszDAyvsd7+rTduPTXpygg==}
@@ -11993,7 +11996,7 @@ snapshots:
 
   '@smithy/credential-provider-imds@4.5.2':
     dependencies:
-      '@smithy/core': 3.36.0
+      '@smithy/core': 3.37.0
       '@smithy/types': 4.19.0
       tslib: 2.8.1
 
@@ -12022,7 +12025,7 @@ snapshots:
 
   '@smithy/signature-v4@5.7.4':
     dependencies:
-      '@smithy/core': 3.36.0
+      '@smithy/core': 3.37.0
       '@smithy/types': 4.19.0
       tslib: 2.8.1
 

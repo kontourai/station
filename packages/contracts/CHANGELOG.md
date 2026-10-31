@@ -1,5 +1,111 @@
 # @kontourai/station-contracts
 
+## 0.14.0
+
+### Minor Changes
+
+- 4350458: Station Automations, observe-only intake: `github-poll` sources are polled on
+  the scheduler's existing tick, and each completed workflow run is normalized to
+  the allow-listed fields, deduped, matched against the source's enabled rules
+  and recorded, with episodes opened and closed. Nothing is started yet. The
+  contracts add `AutomationDeliveryRecord`; the SDK client adds
+  `listAutomationDeliveries`; the CLI adds `station automation deliveries`,
+  served by the read-only `GET /automations/deliveries`.
+  
+  The Feature Preview is off by default and operator reads require management
+  access. Delivery and episode updates commit atomically. Poll coverage and
+  failures are retained in `AutomationDeliveryPage.polls`; a bounded partial page
+  never advances its cursor or claims complete source coverage.
+- 3096837: Add the `chat-host-images` contract subpath and the `content.host-images` canonical runtime event: a settled turn's map from each host image path its reply named to the attachment Station stored, or to the reason it did not keep it. `projectRuntimeEventsToMessages` now carries that map on the turn's assistant rows as `metadata.hostImages`. Engines cannot emit the event (`ProviderRuntimeEvent` excludes it).
+- 027f81a: Add explicit local operator setup and revocation for selected external Station
+  Control clients, with independent bounded leases, server-recorded Session and
+  Project scope, header-only delegated custody, and private CLI configuration.
+  This does not add remote OAuth, browser-bound authority or engine takeover.
+  
+  Keep text context across engine changes and fork starts, and refuse ordinary
+  continuation when its first context delivery fails or cannot be confirmed.
+  Allow saved forks to reopen before first send and to be deleted safely before
+  starting an engine.
+  
+  Confirm a first native identity from its correlated engine completion when it
+  arrives after turn preparation, while refusing conflicting identities and
+  preventing later carrier rebinds from borrowing that completion.
+- e057f3b: `OrchestrationSessionSummary` and `ConversationListItem` carry `lifecycleChangedAt`, when the current lifecycle state was entered (a finished session's real finish time), and `ConversationListItem` carries `executionProviders`, the distinct engines the conversation ran on in lineage order.
+- e057f3b: Add the `conversation-title` contract subpath with `isLowContentPrompt`, the shared rule that keeps a prompt such as "Continue" from naming a conversation, and the optional `titleModel` app setting that names a conversation after its first reply. Runtime `ConversationListItem`s now carry `titleSource` (`prompt`, `provider` or `generated`).
+  
+  Behavior change: Station generates chat titles only when `titleModel` is set. Until now, a chat kept by a file-store Agent was titled by `structureModel` when `titleModel` was empty; that fallback is gone, because the title prompt quotes the conversation and `structureModel` is configured for another purpose. Such chats now keep a title derived from their first message. To get generated titles back, set `titleModel` (Settings → Chat → Chat title model, or `titleModel` in the Station config) to the model `structureModel` names. A hosted Station never generates titles.
+- cd46072: Add the layout contract fields `primary`, `presentation` and `drillIns`, with `parseLayoutPresentationDeclaration` refusing unknown values and unresolvable drill-ins, the `layoutPresentationDeclaration`, `layoutClaimsPrimaryChat`, `layoutPresentsAsStack` and `findPrimaryChatLayout` readers, and the `layout.primaryChat` plugin permission. Built-in Coding declares `primary: 'chat'`, `presentation: 'stack'` and its drill-ins, and any plugin layout declaring the same fields gets the same stack host, Chat centre and ⌘D routing.
+- 450bcf4: Remote MCP integrations can use an OAuth client the operator registered: `ToolDef.oauthClient` adds a pre-registered `clientId` with its declared authorization server `issuer` (required with any client ID, and optional otherwise to pin registration), a Client ID Metadata Document `clientMetadataUrl`, default `scopes`, and `clientSecretRef`, a secret binding id written only by the secret-binding routes. A new `mcp-integration-oauth-client` grant (`SecretBinding.oauthClientGrants`) authorizes a binding as one integration's client secret at the `issuer`, `resource` and integration `instanceId` it was bound for, and a server with no client registration reports the `client-id-required` authorization state. The SDK adds `bindOAuthClientSecret`/`unbindOAuthClientSecret`, their query hooks, and an optional per-sign-in `scopes` choice on `useStartIntegrationOAuthMutation` (an empty list requests the server's advertised scopes). The tool contract adds `toolServerOAuthResourceIdentity`, `assertToolOAuthClientWritable` and `withoutToolBindingReferences`; the shared credential store adds `compareAndUpsertMany`; the CLI import refuses, and export strips, OAuth client-secret references. `ToolAccountStatus.rememberedScopes` returns the caller's scope choice from their last completed sign-in. The tool contract adds `isToolClientMetadataDocumentUrl`, and `STATION_OAUTH_CLIENT_METADATA_URL` sets an optional deployment-wide metadata-document client ID. The shared MCP module adds an optional `authorizationFetch` transport option and exports `REQUIRES_AUTHORIZATION_FETCH`: a provider carrying that symbol is refused by `createMCPTransport` without `authorizationFetch`.
+- 17b366c: Add optional layout subjects, principal-isolated personal Project layouts and
+  read-only template binding. Enforce Project pane/plugin policy on writes and
+  reads, add clone without moving the source, and require Project layout-management
+  authority for shared layout mutations and promotion. Existing stored Boards
+  retain their shape and content.
+- 8ba48bf: Projects can choose how a new chat starts: on the project's set model and approval mode, or on what your last chat in that project started with. `@kontourai/station-contracts/project-chat-defaults` adds the selection, posture and `GET /api/projects/:slug/chat-defaults` view shapes and their one resolver; `ProjectConfig` gains `defaultModelSelection`, `defaultApprovalMode` and `defaultApprovalModeSelection`. The SDK adds `getProjectChatDefaults` and `useProjectChatDefaultsQuery`.
+- b207cfe: Plugin preview and `listPlugins` rows carry the host-persisted registry receipt as `registryTrust` (verified receipt and pin, `none`, or `unavailable`). `RegistryAcquisitionReceipt`, `PluginRegistryTrust` and their exact-shape checks are exported from `@kontourai/station-contracts/registry-trust`.
+- c102e03: Resolve required Home and Inbox/Chat surfaces through non-removable defaults,
+  fall back from unavailable Home overrides using live installation standing,
+  and report default failures for kernel recovery. Reject explicit empty slot
+  assignments and attempts to disable or uninstall a default filler.
+- d2ec5ee: Add Session reads a person can make from the CLI (#3427). `station sessions wait|digest|transcript|search` and `station activity` read your own Sessions with your saved credential, never as an agent. `sessions wait` reports a turn that a Station restart interrupted as `restart-interrupted` (exit 3), never as settled. The SDK adds `waitForSession`, `getSessionDigest` and `listSessionActivity`, gated on the new `sessionPersonReads` capability flag. They throw `SessionReadsUnsupportedError` on a Station that predates them. The wait, digest and activity reads are behind the `session-cli-reads` Feature Preview.
+- 6b4917e: Add provider-neutral Session Goal contracts and authenticated SDK controls behind a default-off preview. The initial Codex implementation supports inspection, paused-objective saves, pause and clear; automatic activation remains unavailable.
+- 7c2bfae: Add the `project-checkout-freshness` contract subpath: how far a Project's checkout is behind its upstream branch, read from local git refs, with the thresholds that make it stale and the update command. It also adds the `checkoutStaleAfterCommits` and `checkoutStaleAfterDays` Station settings. The SDK adds `getProjectCheckoutFreshness` and `useProjectCheckoutFreshnessQuery`, which answer `null` when the host does not offer the read.
+- 1f9c869: Add scoped Companion installation, start/stop, retained-operation recovery and received-product-trends clients. Queries partition by captured Station authority, validate bounded responses and keep current runtime/storage observations separate from historical operation receipts. Mutations do not retry automatically.
+  
+  Add additive preparation metadata, managed lifecycle DTOs and a bounded product-trends contract with a pure decoder. Product aggregates preserve retention, producer-clock time and unknown delivery coverage; they do not represent personal usage or billing. Engine and outcome dimensions must match the existing disclosure inventory.
+  
+  These APIs require a compatible server. Installation and start admission still require an authenticated architecture-qualified artifact and explicit operator intent. This change does not issue that qualification, enable sending, acknowledge disclosure or grant personal source access.
+  
+  Add the metadata-only `AnalyticsSourceEnrollmentIntent` DTO for preparing or cancelling a personal source enrollment proposal. Its destination-verification and export-authority flags remain false; it neither issues a credential nor enables synchronization.
+  
+  Add public receiving-key candidate contracts for person/tenant-scoped analytics key slots. Candidates bind a source proposal and return signed public keys only; signature integrity is not remote-person authentication, source approval or an export grant. Source credential delivery and synchronization remain separate work.
+  
+  Add `AnalyticsSourceApproval` for recorded source-user consent. Personal reviews use the existing distinct-origin consent channel with a requester-bound decision policy and exact source/key/policy revalidation. Recorded approval remains separate from source credential issuance and export activation.
+  
+  Add encrypted source credential delivery and receiving-custody DTOs. Approved source policies produce idempotent recipient-bound ciphertext with hash-only source storage; receiving APIs return metadata and retain plaintext privately. These stages do not activate source export or verify source identity.
+  
+  Add a receiving delivery-possession proof and a single scoped source export endpoint. Each read checks the current approved policy, Device/account standing, tenant, owner set and credential hash, with grant-bound continuations and queued-response revocation. The static proof grants no general API identity; receiving source verification and automatic synchronization remain separate work.
+  
+  Add explicit same-policy source credential rotation with expected-revision checks, bounded operation replay custody and idempotent encrypted delivery recovery. Rotation invalidates previous export credentials, proofs, continuations and queued responses; receiving materialization refuses rollback. It does not extend or broaden source permission.
+  
+  Add explicit receiving-source address confirmation through personal consent and a bounded HTTPS canonical-page reader. Core retains the narrow credential privately, checks source identity before sending it, validates pages through a shared pure contract decoder and rechecks source/receiving authority before queued release. Source rotation clears confirmation. This adds no durable index, background sync or installed/native qualification.
+  
+  Journal private source deletion and owner/tenant scope changes transactionally with their EventStore mutations. Bound retained invalidations to 10,000 entries, refuse changed/missing evidence, and fence canonical continuations plus queued source/receiving pages against destructive changes. The source revision header is distinct from credential rotation; old opaque cursors require a fresh first page. Companion invalidation replay and restored-home generation fencing remain separate work.
+  
+  Add grant-scoped retained invalidation replay with bounded fixed-head pages, exact owner/tenant selection, generation-bound cursors and explicit 410 responses for pruned checkpoints. Epoch changes, rotation, revocation and lost journal evidence refuse instead of advancing a replica blindly. Companion materialization remains separate work.
+  
+  Add strict private usage commit/checkpoint/receipt contracts and isolated companion storage. An operator service provisions only an empty key hash; private capabilities alone bind/read data. Page, checkpoint and receipt commit atomically with stale-writer/incarnation checks and idempotent lost-reply recovery. Retained storage is not current source authority; Core sync, invalidation application, current Insights and deployment qualification remain separate work.
+  
+  Add page-bounded Core private usage capture and operation-ID recovery. It derives a target/grant-specific private capability from owned analytics custody, rechecks source/person access before writes, and keeps keys and staged summaries out of API results. Temporary outbox bodies expire while content-free recovery intent remains. Historical capture status does not establish a live index; invalidation application and current Insights remain separate work.
+  
+  Add private companion invalidation commit/checkpoint/receipt contracts and a schema-v2 migration. Withdraw older captured facts, preserve newer thread incarnations, advance replay and recovery evidence atomically, and reject late older writes across windows. Existing data upgrades without assuming deletion history was applied. Core replay orchestration and live indexed query qualification remain separate work.
+  
+  Connect Core sync to bounded source invalidation replay before advancing fact pages. Persist private replay intent, recover lost replies by the original operation, and recheck person/source access at the final write. Return replay progress without exposing facts or credentials; retained gaps refuse reconciliation, and completed mutations restart the selected snapshot. Current Insights, restore fencing and deployment qualification remain separate work.
+  
+  Add bounded selected-window private receipt indexing and a receiving-person query API. Reuse canonical sparse/cumulative receipt reconciliation, pin source/checkpoint/index continuations, refuse stale or revoked reads, and invalidate derived copies with retention/withdrawal. Preserve numeric event order and report retained-only coverage; grouped/saved Insights and installed/native qualification remain separate work.
+  
+  Add resumable server-side grouped totals over normalized private receipts, preserving complete indexed material beyond the interactive 500-receipt cap. Keep comparison-window caches independent, bind filter/group continuations, withhold partial totals, and bound each aggregation step and retained cache. Reuse one shared row accumulator; correct mixed-currency/snapshot shortcuts and cost-only-first pricing status. Saved definitions, SDK/Insights UI and deployment qualification remain separate work.
+  
+  Add principal-owned saved query definitions with restart persistence, revision checks, scoped export and content-erasing tombstones. Wire the scoped SDK and existing Profile/Insights surface to private source/date/group/measure/comparison controls, foreground sync, receipt/provenance details and guarded historical display. Known source refusal cannot be undone by an older response or later outage. Source onboarding controls, restore authority and installed/native/release qualification remain separate work.
+- de27744: Add a React-free TerminalOutputSession for authenticated observation of an existing terminal through the Station API listener. Replay credit follows applied output; retention resets await the renderer, and bounded reconnect resumes the same terminal from its applied cursor. Older hosts return an explicit unsupported result. Broker and credential-less native transports are refused.
+  
+  This client sends no shell input or terminal lifecycle commands. It does not replace the Coding view or qualify remote pairing, native transport, Ghostty or installed-device reconnection.
+  
+  Export the enforced terminal outstanding-frame limit from the public terminal transport contract. Updated hosts advertise the additive bound; the SDK requires it before consuming output.
+- 853bd6e: Add an explicit terminal:observe scope without changing presets or existing grants, and publish the terminal binary frame codec. Add a personal-operator multiplexed terminal socket on the main API listener with sequence resume, bounded credit and command queues, replay/input safety and latest queued resize handling. Keep legacy terminals while paired-device/remote admission, the SDK store and Coding migration follow separately under #3994.
+- 3d41457: Add the explicit terminal:observe vocabulary without widening defaults or presets. Require terminal scopes on the scoped session HTTP leaves, and batch journal appends with PTY read backpressure so ordinary large output bursts preserve shell life and readable bounded history.
+- e057f3b: Add `WorkspaceVisualFileRefusal`, `WORKSPACE_VISUAL_FILE_REFUSAL_STATUS` and `workspaceVisualFileUnavailableReason` to the `workspace-file-preview` contract subpath. `readProjectWorkspaceVisualFile` now throws `WorkspaceVisualFileError` with `status` and `reason` (the server's refusal, `unauthorized`, `server-error` or `unavailable`) instead of one message for every failure.
+
+### Patch Changes
+
+- 68e6f96: Share session-list reads across authority-bound shell and Board consumers, use stream invalidation with a 60-second safety poll even with a healthy stream, and share public capability discovery between session history and stream resume.
+  
+  Notify connected session lists after committed Draft and alias deletion without retaining private thread identity, and refuse ambient host authority when a Board has no request scope.
+- fa98d8a: Forward connected OAuth MCP accounts to Claude Code and Codex through a loopback proxy with session-and-server-scoped credentials. Keep remote tokens in Station, coordinate refresh across clients, and surface sign-in refusals before launch and during tool use.
+- 06d2a34: Record operator-passkey provenance when a per-action passkey confirmation revokes a paired Device.
+- 74dc7e0: Add Project-authorized local HTML and raster previews for inline conversation visuals.
+- c01c023: Check Tailscale pairing Origin admission before minting offers, describe advertised endpoint reachability accurately, and report actionable Windows scheduled-task startup results. Add sanitized engine startup diagnostics for unavailable sandbox prerequisites and provider models.
+
 ## 0.13.0
 
 ### Minor Changes
