@@ -82,7 +82,13 @@
 
     "src-ui/src/contexts/PushNotificationsContext.tsx",
 
-    "src-ui/src/App.tsx"
+    "src-ui/src/App.tsx",
+
+    "src-server/routes/presence/focus-presence-routes.ts",
+
+    "src-server/routes/orchestration/events.ts",
+
+    "src-server/routes/orchestration/orchestration.ts"
   ],
 
   "checks": [
