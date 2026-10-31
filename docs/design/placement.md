@@ -1971,6 +1971,34 @@ measured width at fold time deciding the unfold.
 
 ## What the dock header holds (2026-10-20)
 
+### Mobile inbox entry (2026-10-30)
+
+On a phone, Chat opens at its Inbox unless navigation names a conversation.
+The Inbox is the dock's reading surface, not a modal over the current chat.
+Its explicit header icon switches between the Inbox and the retained reader;
+the chat title identifies the conversation rather than opening a second list.
+Selecting a chat, an imported session, or New chat reveals that destination.
+A failed open keeps the Inbox visible and reports the failure. Durable Tasks
+still open their task details through canonical navigation.
+
+The Inbox and reader stay mounted while switching between them, preserving
+list position, the search, and unsent composer text. Collapse and reopen retain
+the selected view. A new conversation URL reveals its reader. A covered reader
+does not count as viewed and cannot take composer focus.
+
+The Inbox uses the shared work rows, status ladder, scope filter and section
+preferences. Saved work remains listed even when it has no open local tab.
+Project artwork and engine marks identify rows; titles wrap to two lines,
+status remains explicit, and real recency timestamps stay separate. Search is
+local to the loaded, scoped work list. Task review, Activity, snooze, dismissal
+and recovery keep their existing owners. The mobile bar owns New chat.
+
+The implementation owners are `ChatDock.tsx`, `useChatDockOverlays.ts`,
+`ChatDockMobileHeader.tsx` and `MobileInboxPanel.tsx`.
+The mounted pane journey is covered in
+`ChatWorkspacePaneComposerDraft.test.tsx`; shared rows, retained search, and
+open failures are covered in `ChatDockInboxSharedRows.test.tsx`.
+
 **The bar names the chat on screen and carries the dock's primary verbs;
 everything else is one menu away.** The owner's report was that the bar was
 crowded and that nothing said what belonged in it. The rule:
@@ -1989,8 +2017,7 @@ A control earns a place in the bar when it is about the chat on screen or is
 the dock's primary verb, and it is used often enough that a menu would cost
 more than its width. Anything else is a row of the More menu. Chords keep
 working wherever their control lives. The phone's bar is
-`ChatDockMobileHeader` and is unchanged by this (product law
-`station.mobile-context.primary-actions`). A region host decides per pane:
+`ChatDockMobileHeader`; its current Inbox entry is described above. A region host decides per pane:
 Chat absorbs the region's rows; Activity and the other panes keep the bar's
 buttons, so their bars are unchanged.
 

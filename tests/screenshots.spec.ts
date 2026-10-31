@@ -1105,8 +1105,8 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
     );
     await expect(row.locator('.inbox-row__elapsed')).toHaveCount(0);
   } else {
-    await page.getByRole('button', { name: /^Chats and tasks/ }).click();
-    const picker = page.getByRole('dialog', { name: 'Chats and tasks' });
+    await page.getByRole('button', { name: /^(Inbox|Back to chat)$/ }).click();
+    const picker = page.getByRole('region', { name: 'Inbox', exact: true });
     await expect(picker.getByTestId('inbox-row-status')).toBeInViewport();
     await expect(picker.getByTestId('inbox-row-status')).toContainText(
       'Last known:',
@@ -1286,8 +1286,10 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
         animations: 'disabled',
       });
       if (width === 390) {
-        await page.getByRole('button', { name: /^Chats and tasks/ }).click();
-        const picker = page.getByRole('dialog', { name: 'Chats and tasks' });
+        await page
+          .getByRole('button', { name: /^(Inbox|Back to chat)$/ })
+          .click();
+        const picker = page.getByRole('region', { name: 'Inbox', exact: true });
         await expect(picker.getByTestId('inbox-row-status')).toBeInViewport();
         // History recovery cannot clear the independent failed inventory.
         await expect(picker.getByTestId('inbox-row-status')).toContainText(

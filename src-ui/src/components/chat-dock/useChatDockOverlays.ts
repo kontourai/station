@@ -38,12 +38,17 @@ export function useChatDockOverlays({
   composerMenuTriggerRef,
   setDeviceSetting,
   setShowNewChatModalState,
+  hasConversationIntent = false,
 }: {
   isMobile: boolean;
   composerMenuTriggerRef: RefObject<HTMLButtonElement | null>;
   setDeviceSetting: DeviceSettingsActions['setDeviceSetting'];
   setShowNewChatModalState: (open: boolean) => void;
+  hasConversationIntent?: boolean;
 }) {
+  const [mobileInboxOpen, setMobileInboxOpen] = useState(
+    isMobile && !hasConversationIntent,
+  );
   const [importedSessionId, setImportedSessionId] = useState<string | null>(
     null,
   );
@@ -52,14 +57,15 @@ export function useChatDockOverlays({
   const consumeIntent = regionModel?.consumeSurfaceIntent;
   useEffect(() => {
     if (!incoming?.session) return;
+    setMobileInboxOpen(false);
     setImportedSessionId(incoming.session);
     consumeIntent?.('chat', incoming.token);
   }, [incoming, consumeIntent]);
   // An imported conversation occupies the same reading surface as an owned chat.
-  const onOpenInboxSession = useCallback(
-    (threadId: string) => setImportedSessionId(threadId),
-    [],
-  );
+  const onOpenInboxSession = useCallback((threadId: string) => {
+    setMobileInboxOpen(false);
+    setImportedSessionId(threadId);
+  }, []);
   const [newChatTaskShaping, setNewChatTaskShaping] = useState(false);
   const [newChatInitialPrompt, setNewChatInitialPrompt] = useState<
     string | undefined
@@ -101,6 +107,7 @@ export function useChatDockOverlays({
       setNewChatHandoff(open ? options?.handoff : undefined);
       setNewChatSelectionInvalid(open && options?.selectionInvalid === true);
       if (open) {
+        setMobileInboxOpen(false);
         setImportedSessionId(null);
         setNewChatRequestEpoch((epoch) => epoch + 1);
       }
@@ -123,7 +130,6 @@ export function useChatDockOverlays({
     useState(false);
   const [activeWorkPanel, setActiveWorkPanel] =
     useState<ActiveWorkPanel | null>(null);
-  const [isTaskSwitcherOpen, setIsTaskSwitcherOpen] = useState(false);
   // station#1301 slice 1: one shared open/close boolean for the Background
   // tasks sheet, opened from either entry point (desktop tab-bar button,
   // the phone's ⋯ sheet row, or the transcript banner tap target).
@@ -134,7 +140,7 @@ export function useChatDockOverlays({
   const backgroundTasksTriggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    if (!isMobile) setIsTaskSwitcherOpen(false);
+    if (!isMobile) setMobileInboxOpen(false);
   }, [isMobile]);
 
   /**
@@ -210,8 +216,8 @@ export function useChatDockOverlays({
     openDelegationLauncher,
     activeWorkPanel,
     setActiveWorkPanel,
-    isTaskSwitcherOpen,
-    setIsTaskSwitcherOpen,
+    mobileInboxOpen,
+    setMobileInboxOpen,
     isBackgroundTasksOpen,
     setIsBackgroundTasksOpen,
     backgroundTasksTriggerRef,

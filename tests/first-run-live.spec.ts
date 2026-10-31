@@ -555,13 +555,11 @@ test('phone first run recovers from no provider to a real streamed reply', async
     await stationAgent.click();
     const currentChat = new URL(page.url()).searchParams.get('chat');
     expect(currentChat).toBeTruthy();
-    const taskSwitcher = page.getByRole('button', { name: 'Chats and tasks' });
-    const taskDialog = page.getByRole('dialog', { name: 'Chats and tasks' });
-    // #1642: the same lazy-chunk shape as the sheet above (`MobileTaskSwitcher`,
-    // also `pending={null}`, also not prewarmed), so it gets the same wait. This
-    // trigger publishes NO open state — no `aria-expanded`, no `aria-haspopup` —
-    // so there is deliberately no `openIndicator` here and the wait's timeout
-    // says as much rather than implying it knows the click landed.
+    const taskSwitcher = page.getByRole('button', {
+      name: /^(Inbox|Back to chat)$/,
+    });
+    const taskDialog = page.getByRole('region', { name: 'Inbox', exact: true });
+    // Await the inbox's lazy boundary before acting on its rows.
     const openTaskSwitcher = async (occasion: string) => {
       // Counted before each click, for the same reason as the sheet above: only a
       // boundary failure that appears across THIS interaction is this sheet's.
@@ -598,43 +596,20 @@ test('phone first run recovers from no provider to a real streamed reply', async
     await taskDialog
       .locator('.chat-dock-inbox__item:not([aria-current="true"])')
       .click();
-    // #1642: selecting a row calls `closeAndRestoreFocus`, so the sheet goes on
-    // its own — but nothing here used to say so, and the next two steps re-open
-    // it and then act on rows INSIDE it with no precondition of their own. A
-    // reopen that failed or lagged was therefore reported as a row locator, which
-    // names the wrong thing. That missing precondition is what this closes.
-    //
-    // An earlier version of this comment also claimed the reused `currentTaskIndex`
-    // was racing a re-render free to reorder the list. Review traced that as
-    // unreachable in this journey — selecting a row touches no field the group
-    // comparator orders on — so the claim is withdrawn rather than left standing as
-    // a hazard nobody can reproduce. Keying the row on a stable identifier would
-    // earn it back; asserting it without that would be inventing a danger.
-    //
-    // Asserting the close is also what makes the reopen a real reopen. It carries
-    // no budget deliberately: the close is a synchronous state change with no
-    // network and no chunk behind it, so the runner default is the correct bound
-    // and anything larger would be a number with nothing behind it.
-    //
-    // (What this does NOT claim: that a click on the trigger while the sheet is up
-    // would close it. `onOpenTaskSwitcher` only ever sets open to true — it is not
-    // a toggle — and the portaled overlay closes on a pointerdown that hits the
-    // overlay itself, which is not where Playwright clicks. The defect fixed here
-    // is the missing precondition, not a toggle race.)
-    await expect(taskDialog).toHaveCount(0);
+    await expect(taskDialog).toBeHidden();
     await expect
       .poll(() => new URL(page.url()).searchParams.get('chat'))
       .not.toBe(currentChat);
     await openTaskSwitcher('reopened to return to the first task');
     await taskRows.nth(currentTaskIndex).click();
-    await expect(taskDialog).toHaveCount(0);
+    await expect(taskDialog).toBeHidden();
     await openTaskSwitcher('reopened to read back the restored selection');
     await expect(taskRows.nth(currentTaskIndex)).toHaveAttribute(
       'aria-current',
       'true',
     );
-    await taskDialog
-      .getByRole('button', { name: 'Close task switcher' })
+    await page
+      .getByRole('button', { name: 'Back to chat', exact: true })
       .click();
 
     const composer = page.locator('textarea[placeholder*="Type a message"]');

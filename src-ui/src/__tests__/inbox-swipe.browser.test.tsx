@@ -11,7 +11,7 @@ const fixture = `
   import {createRoot} from 'react-dom/client';
   import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
   import {ChatDockInboxPanel} from './src-ui/src/components/chat-dock/ChatDockInboxPanel';
-  import {MobileTaskSwitcher} from './src-ui/src/components/chat-dock/MobileTaskSwitcher';
+  import {MobileInboxPanel} from './src-ui/src/components/chat-dock/MobileInboxPanel';
   import {deviceSettingsStore} from './src-ui/src/lib/device-settings-store';
   const items = [
     {id:'saved', kind:'orchestration', kindLabel:'Conversation', title:'Review the inbox', projectLabel:'Station', agentLabel:'Codex', modelLabel:'GPT', updatedAt:Date.now(), lifecycleLabel:'Running'},
@@ -29,7 +29,7 @@ const fixture = `
     const props = { activeChatSessionId:null, openChatSessionIds:[], onFocusChat:()=>window.opens++, onOpenConversation:()=>{window.opens++;return true}, onOpenSession:()=>window.opens++, onCloseChat:()=>window.closes++ };
     root = createRoot(document.getElementById('root'));
     root.render(<QueryClientProvider client={new QueryClient()}>
-      {mobile ? <MobileTaskSwitcher {...props} open tasks={items} triggerRef={React.createRef()} visualViewportStyle={{}} onClose={()=>{}} /> : <div style={{width:340}}><ChatDockInboxPanel {...props} items={items} onOpenHistory={()=>{}} /></div>}
+      {mobile ? <MobileInboxPanel {...props} open tasks={items} triggerRef={React.createRef()}  onClose={()=>{}} /> : <div style={{width:340}}><ChatDockInboxPanel {...props} items={items} onOpenHistory={()=>{}} /></div>}
     </QueryClientProvider>);
   };
 `;
@@ -138,6 +138,7 @@ test('mobile swipes reveal existing actions without opening or stopping a conver
       .getByRole('button', { name: 'Snooze Review the inbox', exact: true })
       .click();
     await page.getByRole('menuitem', { name: '1 hour', exact: true }).click();
+    await page.getByRole('button', { name: 'Snoozed · 1' }).click();
     expect(
       await page
         .getByRole('region', { name: /Snoozed/ })

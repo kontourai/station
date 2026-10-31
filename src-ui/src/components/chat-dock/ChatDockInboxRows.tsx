@@ -167,16 +167,18 @@ function ProjectAccentSwatch({
   accent,
   icon,
   name,
+  size = 12,
 }: {
   accent: string | undefined;
   icon: string | undefined;
   name: string;
+  size?: number;
 }) {
   return (
     <ProjectIcon
       project={{ name, icon }}
       accent={accent}
-      size={12}
+      size={size}
       className="inbox-row__project-accent"
     />
   );
@@ -925,16 +927,7 @@ export function InboxRow({
             >
               {item.title}
             </strong>
-            <InboxRowStatusLine
-              id={statusId}
-              status={status}
-              now={now}
-              // The picker hides the time slot (its status sits there), so
-              // the time trails the status line instead.
-              lastActivityAt={
-                actionsInDetails && hasTime ? item.updatedAt : undefined
-              }
-            />
+            <InboxRowStatusLine id={statusId} status={status} now={now} />
             {actionsInDetails && (
               <span className="inbox-row__project-context">
                 {/* One project mark: its own icon when it has one, else the
@@ -945,6 +938,7 @@ export function InboxRow({
                     accent={projectAccent}
                     icon={projectIcon}
                     name={item.projectLabel}
+                    size={24}
                   />
                 ) : (
                   <FolderGlyph />

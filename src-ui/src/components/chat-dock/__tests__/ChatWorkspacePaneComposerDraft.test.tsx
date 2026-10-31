@@ -128,12 +128,12 @@ vi.mock('../ChatDockMobileHeader', () => ({
     activeCount,
     projectSwitcher,
     sessionProjectMismatchLabel,
-    onOpenTaskSwitcher,
+    onToggleInbox,
   }: {
     activeCount: number;
     projectSwitcher?: { projectName: string } | null;
     sessionProjectMismatchLabel?: string;
-    onOpenTaskSwitcher?: () => void;
+    onToggleInbox?: () => void;
   }) => (
     <>
       <div data-testid="mobile-dock-work-badge">{activeCount}</div>
@@ -143,7 +143,7 @@ vi.mock('../ChatDockMobileHeader', () => ({
       <div data-testid="mobile-dock-mismatch">
         {sessionProjectMismatchLabel}
       </div>
-      <button type="button" onClick={onOpenTaskSwitcher}>
+      <button type="button" onClick={onToggleInbox}>
         Open task switcher
       </button>
     </>
@@ -777,6 +777,39 @@ test('the open pane records the chat on screen as viewed (#4266)', async () => {
   await act(async () => {});
   expect(screen.getByTestId('active-chat-body')).toBeTruthy();
   expect(acknowledgeCalls.at(-1)).toEqual({ id: 'chat-a', visible: true });
+});
+
+test('a phone opens its dock at the inbox without adding a modal layer', async () => {
+  dockProbe.mobile = true;
+  openChatA();
+  navigationStore.navigate('/', { dock: 'open' });
+  renderDockedPane();
+  const inbox = await screen.findByRole('region', { name: 'Inbox' });
+  expect(inbox.closest('.chat-dock__workspace')).not.toBeNull();
+  expect(screen.queryByRole('dialog', { name: 'Chats and tasks' })).toBeNull();
+  expect(
+    screen.getByRole('button', { name: 'Pulse chat, pulse' }),
+  ).toBeTruthy();
+});
+
+test('returning to the inbox keeps the reader mounted and preserves its unsent text', async () => {
+  dockProbe.mobile = true;
+  openChatA();
+  navigationStore.navigate('/', { chat: 'chat-a', dock: 'open' });
+  renderDockedPane();
+  const composer = await screen.findByRole('textbox', {
+    name: 'Chat composer',
+  });
+  fireEvent.change(composer, { target: { value: 'Keep this draft' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Open task switcher' }));
+  const inbox = await screen.findByRole('region', { name: 'Inbox' });
+  expect(composer.isConnected).toBe(true);
+  expect(composer.closest('[hidden]')).not.toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Open task switcher' }));
+  expect(screen.queryByRole('region', { name: 'Inbox' })).toBeNull();
+  expect(inbox.isConnected).toBe(true);
+  expect(screen.getByRole('textbox', { name: 'Chat composer' })).toBe(composer);
+  expect((composer as HTMLTextAreaElement).value).toBe('Keep this draft');
 });
 
 test('the phone’s task switcher covers the chat, so it stops counting as viewed (#4266)', async () => {

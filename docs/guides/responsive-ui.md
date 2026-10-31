@@ -244,13 +244,16 @@ not a universal accessibility, keyboard or device certificate.
 At the shared mobile breakpoint, `responsive-surface-panel` raises the compact
 Station text aliases to the published Kontour UI tokens: supporting text uses
 `--k-text-md` (14px), and shared sheet headings and action-menu labels use
-`--k-text-lg` (18px). Desktop density remains owned by each surface. The task
-picker uses 18px titles with up to two lines, the marks of the engines that ran
-each row beside its Agent name, 14px project/status
-metadata, and a pinned New chat action at the lower right. Project names wrap.
+`--k-text-lg` (18px). Desktop density remains owned by each surface.
+The embedded mobile Inbox uses two-line titles, project artwork and engine
+marks, short status labels, and a separate recency timestamp. Search opens
+from its icon without opening the keyboard on Inbox entry. The dock header
+owns New chat. This Inbox replaces the title-triggered Chats and tasks sheet
+and shares the desktop Inbox's scope and history preferences. It stays mounted
+behind a conversation, retaining its search and list position.
 The project picker retains [PickerCreateAction](../../src-ui/src/components/PickerCreateAction.tsx)
 for its 52px add button. Chat creation shares [NewChatAction](../../src-ui/src/components/NewChatAction.tsx)
-across the task picker, desktop inbox, the collapsed dock bar (icon only) and
+across the desktop inbox, the collapsed dock bar (icon only) and
 the open, empty dock. The mobile bar composes the same conversation-plus glyph
 with its toolbar button styles. Both forms retain a 44px minimum target and
 an accessible name. It opens the start composer, in the dock as a draft in the
@@ -259,7 +262,7 @@ Project control, and **Run a task…** when there is more than one Station) wrap
 rather than overflow, and attach, mic and the overflow sit with Start, so a
 phone gets the chips first and [attach mic ⋯ … Start] on the next row with no
 viewport query; every target is 44px, and the chip menus are edge sheets on a phone with their own
-scrolling list. Creation controls remain outside the scrolling lists. The task picker presents
+scrolling list. Creation controls remain outside the scrolling lists. The mobile Inbox presents
 Input/Approval compactly and keeps reasons readable in full through details;
 Git and PR data are read only when that details surface opens.
 

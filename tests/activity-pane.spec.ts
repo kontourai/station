@@ -835,10 +835,9 @@ fixtureTest.describe('Earlier history paging', () => {
           route.fulfill({ json: { success: true, data: summaries } }),
         );
         await page.goto(mobile ? '/?dock=open' : '/?surface=activity');
-        if (mobile)
-          await page.getByRole('button', { name: /^Chats and tasks/ }).click();
+
         const root = mobile
-          ? page.getByRole('dialog', { name: 'Chats and tasks' })
+          ? page.getByRole('region', { name: 'Inbox', exact: true })
           : surfaceDockShell(page, 'Activity');
         const rows = root.locator(
           mobile
