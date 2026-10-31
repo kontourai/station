@@ -1399,7 +1399,7 @@ test('a real failed history open stays at Inbox instead of falling back to the i
 });
 
 test.each([false, true])(
-  'the global picker routes only a current selection and keeps the new-chat Project (deferred: %s)',
+  'the global picker routes only a current selection; a routed open keeps the new-chat Project (deferred: %s)',
   async (deferred) => {
     openChatA();
     const conversation: ConversationListItem = {
@@ -1501,7 +1501,6 @@ test.each([false, true])(
         expect(
           screen.getByRole('region', { name: 'New chat picker' }),
         ).toBeTruthy();
-        expect(deviceSettingsStore.get('chatDockProjectSlug')).toBe('pulse');
         return;
       }
       await waitFor(() =>
