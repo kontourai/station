@@ -214,7 +214,7 @@ are separate integration requirements.
 
 A task carries typed references — to files, artifacts, receipts, sessions, runs, or external work items — and those references preserve exact identity. Similar titles or paths are not treated as correlation.
 
-The Task workspace opens on **Overview**, with status, completion criteria, subtasks and kept deliverables. **Conversation** is the shared Task discussion, **Plan** holds the autosaved document, and **Work chats** opens separately authorized Agent conversations. **Details** retains workspace bindings, changed files, on-demand Basis, receipts and exact Session correlation. Opening the Task makes the viewer present. Explicit Agent requests can publish answers into the personal Task conversation; shared-member Task projection includes human messages and the document, not private Agent execution or answers. Linking a child Task or work chat does not publish it, grant access or complete its parent.
+The Task workspace opens on **Overview**, with status, completion criteria, subtasks and kept deliverables. **Conversation** is the shared Task discussion, **Plan** holds the autosaved document, and **Work chats** opens separately authorized Agent conversations. **Details** retains workspace bindings, changed files, on-demand Basis, receipts and exact Session correlation. Opening the Task makes the viewer present. Explicit Agent requests can publish answers into the personal Task conversation. The Project shared-work projection includes human messages and the document, not Agent answers. An admitted member of the exact shared Task can also read the personal Task room's published history, including room-published Agent answers; private Session access remains separately authorized. Linking a child Task or work chat does not publish it, grant access or complete its parent.
 
 A Task's captured workspace is re-evaluated as `available`, `ambiguous`, or
 `unavailable` when reopened. Available bindings permit the relevant local
@@ -231,10 +231,18 @@ An agent on any engine can declare a pull request it opened with the Station Con
 ## Scheduled jobs and notifications
 
 A scheduled job can use a cron expression, a fixed interval (`every`), or a
-one-time timestamp (`at`); manual runs are also supported. The built-in
-scheduler invokes an Agent with unattended-deny approval policy and records
-its scheduler outcome.
+one-time timestamp (`at`); manual runs are also supported. The product calls
+these Automations. A job with a `target` runs each time as a turn in its
+conversation, on that conversation's engine and approval mode, and its result
+is in the chat; a job without one invokes a Station-engine Agent with
+unattended-deny approval policy and writes its output to a file. Either way
+the scheduler records its outcome. See [Automations](../user/automations.md).
 See the [scheduler API](api.md#scheduler) for exact inputs and outcomes.
+
+Previously written server logs may still contain automation names and errors.
+Upgrading does not rewrite those files; review access to retained files and
+collector copies. The active UTC day is retained even if retention limits are
+lowered. See [server log retention](config.md#logging).
 
 Scheduler receipts describe the observed execution outcome. They do not attach
 a Flow run or prove the requested business result by themselves. Inspect the

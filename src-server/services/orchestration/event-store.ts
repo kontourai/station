@@ -10436,6 +10436,7 @@ export class EventStore {
     methods: readonly string[],
     limit: number,
     invocationId?: string,
+    afterSequence = 0,
   ): PersistedRuntimeEvent[] {
     if (methods.length === 0) {
       throw new Error('An event-method query requires at least one method');
@@ -10443,13 +10444,16 @@ export class EventStore {
     if (!Number.isInteger(limit) || limit < 1 || limit > 5_000) {
       throw new Error('A turn event read limit must be between 1 and 5000');
     }
+    if (!Number.isInteger(afterSequence) || afterSequence < 0) {
+      throw new Error('A turn event cursor must be a non-negative integer');
+    }
     const placeholders = methods.map(() => '?').join(', ');
     return (
       this.db
         .prepare(
           `SELECT id, provider, thread_id, turn_id, method, payload, created_at, sequence, global_sequence
            FROM orchestration_events
-           WHERE thread_id = ? AND turn_id = ? AND method IN (${placeholders})
+           WHERE thread_id = ? AND turn_id = ? AND sequence > ? AND method IN (${placeholders})
              ${invocationId === undefined ? '' : "AND json_extract(payload, '$.invocationId') = ?"}
            ORDER BY sequence ASC
            LIMIT ?`,
@@ -10457,6 +10461,7 @@ export class EventStore {
         .all(
           threadId,
           turnId,
+          afterSequence,
           ...methods,
           ...(invocationId === undefined ? [] : [invocationId]),
           limit,

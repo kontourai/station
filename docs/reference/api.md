@@ -603,6 +603,29 @@ Both routes are personal-runtime only (hosted requests get `404`), and no
 Station Control tool names them. See
 [Tracker-backed Tasks](../design/tracker-backed-tasks.md).
 
+## Account-bound Task room access
+
+On a personal Station, an account-bound Device may reach the exact Task room
+leaves `GET /api/tasks/:taskId/room`, `/room/history`, `/room/document` and
+`/room/events`, and `POST /room/messages`, `/room/live` and `/room/edit-plan`.
+Reads require `orchestration:read`; POSTs require `orchestration:operate`.
+The resolved account must have current Project membership and the Task must be
+explicitly shared to that exact Project and Task incarnation. `view` admits
+room reads and presence, `discuss` admits messages, and `edit` admits edit
+planning. An unshared Task or a membership action refused by the room returns
+404; transport and account gates can refuse earlier. The member
+revision and current transport/account authority are checked again before
+effects and delivery. Membership changes wake subscribed streams; an invalid
+captured admission closes the stream, and the 15-second idle recheck remains.
+
+Account-bound Devices cannot settle `/room/batches` or reach room attachments,
+memory, review or agent-request leaves in this slice; the discovery response
+does not advertise document writing for them. Member-started agent turns are
+not part of this delivery. The default-off `task-collaboration` preview changes
+member presentation, not authorization. These are personal runtime routes;
+local route and fixture-render evidence does not establish hosted or real
+two-person/device acceptance.
+
 ## Task room attachments
 
 Personal Task rooms expose these authenticated routes:
@@ -4592,7 +4615,8 @@ provider-name strings.
 
 `GET /scheduler/events` relays serialized scheduler events and sends named
 `ping` keepalives every 30 seconds. The provider/event owner determines the event
-payload; a live frame is not a durable completed-run receipt.
+payload; a live frame is not a durable completed-run receipt. Job events are
+limited to jobs the caller can read, and run events to the recorded run target.
 
 ### Scheduler Webhook Receiver
 
@@ -4605,14 +4629,19 @@ instruction to execute a job.
 
 `GET /scheduler/jobs` returns `{success: true, data: jobs}`. Rows use the
 [SchedulerJob contract](../../packages/contracts/src/scheduler.ts), including
-job `name` and provider-neutral schedule information. Provider read failures
+job `name`, provider-neutral schedule information, an automation's `target`
+and `createdBy.userId`, and the derived `consecutiveFailures` and
+`lastSuccessAt`. An agent sees jobs targeting its own conversation; a person
+sees jobs for conversations they can read, plus untargeted jobs. Run-derived
+fields are withheld if the job has unreadable runs. Provider read failures
 propagate rather than becoming a fabricated empty schedule.
 
 ### Get Scheduler Stats
 
 `GET /scheduler/stats` returns `{success: true, data: {providers, summary}}`.
 Summary includes total jobs, total recorded runs, and a rounded success-rate
-percentage derived from provider job statistics (zero when no runs exist).
+percentage derived from the caller’s readable run records (zero when no runs
+exist). Provider status job counts are scoped to readable jobs.
 
 ### Get Scheduler Status
 
@@ -4637,7 +4666,12 @@ when previewing it.
 `GET /scheduler/jobs/:target/logs?count=20` returns `{success: true, data}` from
 the owning provider. `providerId` can select the provider explicitly; count
 defaults to 20. These are provider run-log records, not arbitrary server log
-files.
+files. Run logs and output use the target recorded when each run was claimed,
+not a job's later target. For old runs without a recorded target, only the
+creator who can read the current target can read them; agents cannot. The local
+operator retains access to older runs of creatorless, untargeted jobs. A
+nonexistent or inaccessible job returns 404. See the
+[automation decision](../decisions/automations-unify-schedules.md#rules).
 
 ### Read Run Output
 
@@ -4680,14 +4714,32 @@ apply prompt limits and schedule validation. The response is
 `{success: true, data: {output}}`, where output is the provider's result text;
 it is not proof that a future run completed.
 
+An optional `target` (`SchedulerAutomationTarget`) makes the job an
+automation that runs in a conversation: `{kind: "conversation",
+conversationId}` or `{kind: "dedicated", agent, workspace?}`. Each run is
+then a framed Station turn on that conversation's inbox, on its engine, and
+settles from the turn's terminal (see
+[the decision](../decisions/automations-unify-schedules.md)). The route records
+the admitted creator as `createdBy`; a body cannot set it. A person must be
+able to send to the conversation (404 `automation_target_not_found`); an
+agent's request may name only its own conversation and no dedicated one (403,
+`other-conversation` from the guard, or `automation_target_out_of_scope`).
+A target with a `monitor` or a `retryCount` above 0 is refused (400). A
+Station that cannot run a turn in a conversation answers 503
+`automation_target_unavailable`; hosted Stations answer 404 like every
+scheduler route. Clients gate offering it on the `scheduledConversationTarget`
+capability flag. `notifyStart` is accepted and ignored.
+
 A person approves an agent's job proposal (`propose_job`) by sending this
 route the proposed job with its `proposalId`. The route then creates the job
 only when the request is a person's own (a request that may be an agent's
 answers 403 `person-approval-required`), the person may send to the
 proposal's conversation (404 `job_proposal_not_found` otherwise), the
 proposal is still open (409 `job_proposal_settled`), and the body is exactly
-the proposed `name`, `schedule`, `prompt` and `agent` with nothing more (409
-`job_proposal_mismatch`). Admission claims the proposal (a Decline after it
+the proposed `name`, `schedule`, `prompt`, `agent` and `target` with nothing
+more (409 `job_proposal_mismatch`). A proposal recorded since automations
+could target a conversation carries the proposing chat as its `target`, so
+the approved job runs there, acting as the approving person. Admission claims the proposal (a Decline after it
 changes nothing); the route then creates the job and records the proposal
 approved, or gives it back to `open` if creating it failed. The
 `proposalId` is never passed to the scheduler. A hosted Station approves no
@@ -4698,9 +4750,10 @@ proposal (404).
 `GET /api/orchestration/agent-schedule/:conversationId` answers a
 `ConversationAgentSchedule`: the conversation's waiting check-backs
 (`wakeUps`), its open job proposals, up to 20 jobs approved from it (`jobs`,
-by name), and a usage-limit stop waiting for a known reset
-(`usageLimitResume`). It needs a person who may read every Session of the
-conversation.
+by name), the automations whose runs land in it (`automations`, absent when
+the scheduler could not be read), and a usage-limit stop waiting for a known
+reset (`usageLimitResume`). A person must be able to read every Session of
+the conversation; an agent may read only its own conversation.
 `POST .../wake-ups/:wakeUpId/cancel` (or `/decline`, the same act) cancels a
 check-back, `POST .../wake-ups/:wakeUpId/approve` approves one waiting for a
 person (`needs_approval`; 409 `wake_up_settled` once it is decided or due,
@@ -4708,7 +4761,7 @@ person (`needs_approval`; 409 `wake_up_settled` once it is decided or due,
 shutdown; it stays `needs_approval`),
 and `POST .../job-proposals/:proposalId/decline` declines a proposal; each
 needs a person who may send to the conversation, and answers 404 to anyone
-else. An agent's request reaches none of them. The agent's own side is the station-control tools in
+else. An agent cannot take those person-only actions. The agent's own side is the station-control tools in
 [the self-configuring agent guide](../guides/self-configuring-agent.md#wake-an-agent-later).
 
 ### A person's coordinator Session
@@ -4750,7 +4803,18 @@ are the coordinator's account, not live work status.
 ### Update Job
 
 `PUT /scheduler/jobs/:target` accepts supported partial job options, including
-that schedule union, and returns `{success: true, data: {output}}`.
+that schedule union and `target` (`null` removes it, under the same admission
+as create), and returns `{success: true, data: {output}}`. An edit never
+changes `createdBy`. Re-enabling a disabled job resets its
+`consecutiveFailures`.
+
+For a job that already has a `target`, every edit (any field), `run`,
+`enable`, `disable` and `DELETE` is admitted against the **stored** target
+first, whatever the body names: a person must be able to send to its
+conversation (for a dedicated target not started yet, only its creator), and
+an agent's request may only act on a job targeting its own conversation.
+Refusals are 404 `automation_not_found` for a person and 403
+`automation_target_out_of_scope` for an agent.
 
 ### Run Job Now
 

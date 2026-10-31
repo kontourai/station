@@ -601,6 +601,13 @@ idempotency, compatibility and the meaning of reviewer acceptance.
 
 ### Task room attachments
 
+Account-bound Devices admitted to a shared Task room can use the existing room
+reads, messages and presence calls subject to their Device scope and current
+membership. The account-bound allowlist does not admit the attachment routes,
+document batch settlement or agent-request routes in this slice; discovery
+reports document writing unavailable. See the [Task room API](api.md#account-bound-task-room-access)
+for the exact leaves and action mapping.
+
 `@kontourai/station-sdk/project-task-rooms` exports
 `uploadTaskRoomAttachments(apiBase, taskId, taskCreatedAt, attachments, options?)`
 and `fetchTaskRoomAttachment(apiBase, taskId, taskCreatedAt, id, options?)`.
@@ -4630,6 +4637,20 @@ Some family subclasses are `StationHttpError`s too. The scheduler's
 `SchedulerRunFailedError`, `SchedulerRunRefusedError`) are built from the
 error the envelope helper made of the response, so they keep its status,
 `details` and `Retry-After`; a run error's `code` stays its own fixed value.
+`useScheduledConversationTargetCapability()` reads the host's public
+handshake: `true` when it advertises `scheduledConversationTarget`, so a job
+may carry a `target` that runs in a conversation on any engine, `false` when
+it does not, and `null` when the handshake could not be read. Offer other
+engines only on `true`.
+While observed in a foreground client, the hook reads a fresh descriptor every
+10 seconds; Station also invalidates it after reconnect and a recorded host
+boot change. A failed read returns `null` rather than assuming support.
+Scheduler list, statistics and status results are scoped to the caller.
+Job logs and scheduled run output use each run's recorded target; a retargeted
+job does not transfer its earlier conversation's history to the new target.
+Older runs without a recorded target require the creator and current-target
+read access, except creatorless, untargeted jobs remain readable by the local
+operator. An agent can read only its own conversation's runs.
 `PluginCollectionHttpError` is built the same way: it keeps the envelope's
 `code` on the error and on its `envelope`, and keeps the refusal's `details`
 and `Retry-After`.
