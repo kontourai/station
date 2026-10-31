@@ -220,6 +220,12 @@ type PersistedTaskRecord = TaskRecord & {
   dispatchReservation?: PersistedTaskDispatchReservation;
 };
 
+interface DispatchAssignmentClaimContext {
+  readonly subjectId: string;
+  readonly artifactRoot: string;
+  readonly actor: Readonly<AssignmentClaimActor>;
+}
+
 interface TaskDispatchReservation extends DispatcherReservation {
   task: PersistedTaskRecord;
   persisted: PersistedTaskDispatchReservation;
@@ -3765,6 +3771,10 @@ export class TaskGraphService {
           reservation as TaskDispatchReservation,
         ),
     };
+    const claimContexts = new WeakMap<
+      DispatcherReservation,
+      DispatchAssignmentClaimContext
+    >();
     const claims = {
       claim: (
         reservation: DispatcherReservation,
@@ -3776,14 +3786,22 @@ export class TaskGraphService {
           signal,
           assignmentClaimService,
           resolveProjectWorkspace,
+          (context) =>
+            claimContexts.set(
+              reservation,
+              Object.freeze({
+                ...context,
+                actor: Object.freeze({ ...context.actor }),
+              }),
+            ),
         ),
       compensate: (reservation: DispatcherReservation, cause: unknown) =>
         this.compensateFailedDispatchClaim(
           reservation.task,
           reservation.sessionId,
           cause,
+          claimContexts.get(reservation),
           assignmentClaimService,
-          resolveProjectWorkspace,
         ),
     };
     const remoteSessions = {
@@ -4397,9 +4415,8 @@ export class TaskGraphService {
   /** Resolves the (subjectId, artifactRoot, actor) triple a claim/release
    * call needs for this task+session, or null when claim tracking doesn't
    * apply (no/unnamespaced workItemRef, or no resolvable project
-   * workspace). Shared by `claimForDispatch` and the compensating-release
-   * path so both derive the SAME actor/artifactRoot, never a second,
-   * drifting computation.
+   * workspace). Compensation retains this original triple: re-resolving a
+   * rebound Project can select another assignment namespace.
    *
    * It performs no I/O of its OWN; since archive#1501 the injected
    * `resolveProjectWorkspace` does (a live filesystem/git check through
@@ -4410,11 +4427,7 @@ export class TaskGraphService {
     task: TaskRecord,
     sessionId: string,
     resolveProjectWorkspace = this.resolveProjectWorkspace,
-  ): Promise<{
-    subjectId: string;
-    artifactRoot: string;
-    actor: AssignmentClaimActor;
-  } | null> {
+  ): Promise<DispatchAssignmentClaimContext | null> {
     const subjectId = task.workItemRef;
     if (!subjectId || !isNamespacedWorkItemRef(subjectId)) return null;
     const workspace = await resolveProjectWorkspace?.(task.projectId);
@@ -4451,6 +4464,7 @@ export class TaskGraphService {
     signal?: AbortSignal,
     assignmentClaimService = this.assignmentClaimService,
     resolveProjectWorkspace = this.resolveProjectWorkspace,
+    retainContext?: (context: DispatchAssignmentClaimContext) => void,
   ): Promise<TaskAssignmentClaimSummary | undefined> {
     signal?.throwIfAborted();
     const subjectId = task.workItemRef;
@@ -4517,6 +4531,7 @@ export class TaskGraphService {
       );
     }
 
+    retainContext?.(context);
     const result = await assignmentClaimService.claim({
       artifactRoot,
       subjectId,
@@ -4563,8 +4578,8 @@ export class TaskGraphService {
     task: TaskRecord,
     sessionId: string,
     originalError: unknown,
+    context: DispatchAssignmentClaimContext | undefined,
     assignmentClaimService = this.assignmentClaimService,
-    resolveProjectWorkspace = this.resolveProjectWorkspace,
   ): Promise<{ kind: 'released' } | { kind: 'indeterminate'; reason: string }> {
     try {
       if (!assignmentClaimService) {
@@ -4573,15 +4588,11 @@ export class TaskGraphService {
           reason: 'assignment claim service is not configured for compensation',
         };
       }
-      const context = await this.buildClaimContext(
-        task,
-        sessionId,
-        resolveProjectWorkspace,
-      );
       if (!context) {
         return {
           kind: 'indeterminate',
-          reason: 'project workspace is not resolvable for compensation',
+          reason:
+            'original assignment claim context is unavailable for compensation',
         };
       }
       const result = await assignmentClaimService.release({

@@ -147,7 +147,8 @@ describe('TaskDispatcher runtime composition', () => {
     expect(claimRoots).toHaveLength(1);
     expect(releaseRoots).toEqual(claimRoots);
     expect(held.size).toBe(0);
-    expect(graph.readTask(task.id)?.dispatchReservation).toBeUndefined();
+    expect(graph.readTask(task.id)?.status).toBe(task.status);
+    expect(graph.readTask(task.id)?.sessionId).toBe(task.sessionId);
   });
 
   test('composes real graph, session, and telemetry Adapters behind the dispatcher Interface', async () => {
