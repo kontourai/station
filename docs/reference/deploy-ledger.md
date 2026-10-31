@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-31T14:45:15Z | nightly-desktop | 0.1.11-nightly.2495.1 | `ee3a07d` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/41207606546) |
 | 2026-10-31T14:45:12Z | nightly-android | 0.1.11-nightly.2495.1 | `ee3a07d` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/41207606546) |
 | 2026-10-31T14:04:47Z | nightly-npm | 0.11.0-nightly.2495.41207606546 | `ee3a07d` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/41207606546) |
 | 2026-10-31T07:43:13Z | nightly-npm | 0.11.0-nightly.2495.41180842651 | `4ff64b5` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/41180842651) |
@@ -389,6 +390,38 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-10-31T14:45:15Z · nightly-desktop · 0.1.11-nightly.2495.1
+
+- Ship SHA: `ee3a07d023d4919c48a3ae65e3918d41135024a6`
+- Artifact built at: `2026-10-31T14:03:17.749Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 41207606546)
+
+### Changelog
+
+Commits since `0dda104` ([full sha](https://github.com/kontourai/station/commit/0dda10432fe6e4f594936ac6787f8758e2eb7364)):
+
+**Features**
+
+- [#4316](https://github.com/kontourai/station/pull/4316) feat(projects): warn when a Project's checkout is far behind its upstream
+- [#4216](https://github.com/kontourai/station/pull/4216) feat(sdk): preserve foreground turn keys across uncertain sends
+- [#4371](https://github.com/kontourai/station/pull/4371) feat(chat): make Inbox the mobile dock home
+- [#4351](https://github.com/kontourai/station/pull/4351) feat: surface integration status and task write-back history
+- [#4347](https://github.com/kontourai/station/pull/4347) feat(review): record and play task walkthrough clips
+- [#4289](https://github.com/kontourai/station/pull/4289) feat(automations): run scheduled work in a conversation on any engine
+- [#4343](https://github.com/kontourai/station/pull/4343) feat(rooms): deliver compact documents with member admission
+- [#4334](https://github.com/kontourai/station/pull/4334) feat(task): add overview timeline and device capture
+- [#4280](https://github.com/kontourai/station/pull/4280) feat(registry): curated MCP subregistry and ask-by-default after untrusted content
+
+**Fixes**
+
+- [#4368](https://github.com/kontourai/station/pull/4368) fix: protect plugin approvals, account reads and command admission
+- [#4370](https://github.com/kontourai/station/pull/4370) fix: share general and orchestration event streams
+
+**Other**
+
+- [#4349](https://github.com/kontourai/station/pull/4349) build(deps): consolidate Dependabot updates and migrate ACP SDK 2
 
 ## 2026-10-31T14:45:12Z · nightly-android · 0.1.11-nightly.2495.1
 
