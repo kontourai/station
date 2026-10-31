@@ -13,7 +13,6 @@ import {
 } from '@kontourai/station-contracts/tenancy';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { streamSSE } from '../../sse-response.js';
 import {
   createGateTestRegistry,
   GateTestAdapter,
@@ -25,6 +24,7 @@ import {
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import { UI_NAVIGATE_AUDIENCE_FIELD } from '../../projects/ui-commands.js';
+import { streamSSE } from '../../sse-response.js';
 
 // archive#1205: this file's new real-service ownership-gate suite imports
 // the real `OrchestrationService`, which (via `EventStore`) touches several
