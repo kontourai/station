@@ -2449,7 +2449,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
       conversationUpdatedAt?: string,
       acceptedModel?: string,
     ) =>
-      openConversationInScopedPane(
+      openSelectedConversationInScopedPane(
         conversationId,
         agentSlug,
         targetProjectSlug,
@@ -2458,7 +2458,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
         conversationUpdatedAt,
         acceptedModel,
       ),
-    [openConversationInScopedPane],
+    [openSelectedConversationInScopedPane],
   );
   const openColdConversationInScopedPane = useCallback(
     (
@@ -2474,7 +2474,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
         options?.model,
         options?.conversationUpdatedAt,
         options?.acceptedModel,
-        options?.revealDock === false ? { revealDock: false } : undefined,
+        options,
       ),
     [openConversationInScopedPane],
   );
@@ -2555,6 +2555,12 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
             conversationUpdatedAt,
           ),
         ).then((opened) => {
+          if (opened === 'unavailable') {
+            showInboxOpenFailure(
+              'Could not open this conversation. Try again.',
+            );
+            return;
+          }
           if (opened === false) {
             // Same catalog rule as the inbox click path (#3724 review): an
             // unanswered catalog is not a deleted agent — say to wait
@@ -2643,6 +2649,19 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     requestNewChat,
   ]);
 
+  const beginColdReaderOpen = useCallback(() => {
+    const request = beginReaderOpen();
+    return {
+      current: request.current,
+      isCurrent: request.dataCurrent,
+      beforeFocus: () => {
+        if (!request.current()) return false;
+        request.accept();
+        return true;
+      },
+      finish: request.finish,
+    };
+  }, [beginReaderOpen]);
   // Sync activeChat (conversationId) from URL to local state
   useChatDockActiveChatSync({
     activeChat,
@@ -2654,6 +2673,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     apiBase,
     sessions,
     openConversation: openColdConversationInScopedPane,
+    beginOpen: beginColdReaderOpen,
     setActiveSessionId,
     updateParams,
     showSurface,
@@ -3995,7 +4015,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                           },
                           onClose: dismissNewChatDraft,
                           onLeave: closeNewChatDraft,
-                          historyActive: workspaceShown,
+                          historyActive: workspaceShown && !mobileInboxShown,
                           onReturnFromSetup: revealDockForDraft,
                         }}
                         pending={

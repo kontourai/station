@@ -1986,7 +1986,8 @@ routing occurs only after the reader's focus guard accepts the destination.
 The Inbox and reader stay mounted while switching between them, preserving
 list position, the search, and unsent composer text. Collapse and reopen retain
 the selected view. A new conversation URL reveals its reader. A covered reader
-does not count as viewed and cannot take composer focus.
+does not count as viewed and cannot take composer focus. A hidden New chat
+draft releases its Back-history entry until it is shown again.
 
 The Inbox uses the shared work rows, status ladder, scope filter and section
 preferences. Saved work remains listed even when it has no open local tab.

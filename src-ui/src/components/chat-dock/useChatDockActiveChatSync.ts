@@ -26,6 +26,12 @@ interface UseChatDockActiveChatSyncArgs {
     options?: OpenConversationOptions,
   ) => Promise<boolean | undefined> | boolean | undefined;
   setActiveSessionId: (value: string | null) => void;
+  beginOpen?: () => {
+    current: () => boolean;
+    isCurrent: () => boolean;
+    beforeFocus: () => boolean;
+    finish: () => void;
+  };
 }
 
 export function useChatDockActiveChatSync({
@@ -38,6 +44,7 @@ export function useChatDockActiveChatSync({
   setActiveSessionId,
   updateParams,
   showSurface,
+  beginOpen,
 }: UseChatDockActiveChatSyncArgs) {
   const [lookupRetryGeneration, setLookupRetryGeneration] = useState(0);
   const attemptRef = useRef<{
@@ -46,6 +53,8 @@ export function useChatDockActiveChatSync({
   } | null>(null);
   const requestGenerationRef = useRef(0);
   const openConversationRef = useRef(openConversation);
+  const beginOpenRef = useRef(beginOpen);
+  beginOpenRef.current = beginOpen;
   const updateParamsRef = useRef(updateParams);
   const showSurfaceRef = useRef(showSurface);
   const sessionsRef = useRef(sessions);
@@ -93,6 +102,17 @@ export function useChatDockActiveChatSync({
     attempt.attemptKeys.push(attemptKey);
     const requestGeneration = ++requestGenerationRef.current;
     let cancelled = false;
+    const request = beginOpenRef.current?.();
+    const isCurrent = () =>
+      !cancelled &&
+      requestGeneration === requestGenerationRef.current &&
+      request?.current() !== false;
+    const execution = request
+      ? {
+          isCurrent: request.isCurrent,
+          beforeFocus: () => isCurrent() && request.beforeFocus(),
+        }
+      : {};
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
     const catalogWasLoadedForThisAttempt = agentsLoaded;
     /**
@@ -128,8 +148,7 @@ export function useChatDockActiveChatSync({
     (async () => {
       try {
         const conversation = await fetchConversationById(activeChat, apiBase);
-        if (cancelled || requestGeneration !== requestGenerationRef.current)
-          return;
+        if (!isCurrent()) return;
         // A persisted tab can hydrate while a cold lookup is in flight. Its
         // durable local identity wins; never reopen it or clear the URL based
         // on the now-stale lookup result.
@@ -153,6 +172,7 @@ export function useChatDockActiveChatSync({
                   model: conversation.model,
                   acceptedModel: conversation.acceptedModel,
                   revealDock: false,
+                  ...execution,
                 },
               )
             : await openConversationRef.current(
@@ -161,8 +181,10 @@ export function useChatDockActiveChatSync({
                 {
                   projectSlug: conversation.projectSlug ?? undefined,
                   revealDock: false,
+                  ...execution,
                 },
               );
+        if (!isCurrent()) return;
         // A loaded catalog that refuses the conversation's owner is a real
         // miss (#801). Before it loads, the same refusal may only mean the
         // Agent is not ready; preserve the pointer while a retry remains.
@@ -175,8 +197,7 @@ export function useChatDockActiveChatSync({
           revealActivityForSession();
         }
       } catch {
-        if (cancelled || requestGeneration !== requestGenerationRef.current)
-          return;
+        if (!isCurrent()) return;
         if (hydratedLocally()) return;
         // A just-dispatched runtime conversation can become addressable a
         // moment after its URL/session pointer is written. A single bounded
@@ -193,11 +214,14 @@ export function useChatDockActiveChatSync({
         // unknown rather than settled. An unresolved pointer keeps
         // station#1284's reveal; only a definitive miss loses it.
         revealActivityForSession();
+      } finally {
+        request?.finish();
       }
     })();
 
     return () => {
       cancelled = true;
+      request?.finish();
       if (retryTimer !== undefined) clearTimeout(retryTimer);
     };
   }, [

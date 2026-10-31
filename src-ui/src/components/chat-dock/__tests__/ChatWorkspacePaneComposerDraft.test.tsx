@@ -59,6 +59,7 @@ import {
 import { ToastProvider, toastStore } from '../../../contexts/ToastContext';
 import { useShowSurface } from '../../../contexts/useShowSurface';
 import { isChatInForeground } from '../../../hooks/orchestration/chatForeground';
+import type { useOpenConversation } from '../../../hooks/useActiveChatSessionLifecycle';
 import { deviceSettingsStore } from '../../../lib/device-settings-store';
 import { dispatchNewChatIntent } from '../../../lib/newChatIntent';
 import {
@@ -80,7 +81,9 @@ const {
   openConversationAction,
 } = vi.hoisted(() => ({
   sendAdmission: {} as { onActiveSessionChange?: (id: string) => void },
-  openConversationAction: vi.fn().mockResolvedValue(null),
+  openConversationAction: vi
+    .fn<ReturnType<typeof useOpenConversation>>()
+    .mockResolvedValue(null),
   createChatSession: vi.fn(() => 'new-session'),
   sendMessage: vi.fn(),
   updateChat: vi.fn(),
@@ -1171,6 +1174,7 @@ test.each([false, true])(
         screen.getByRole('button', { name: 'Open task switcher' }),
       );
       await screen.findByRole('region', { name: 'Inbox' });
+      expect(pickerProps.at(-1)!.historyActive).toBe(false);
     }
 
     act(() => {
@@ -1529,11 +1533,9 @@ test.each(['another-chat', 'new-chat', 'same-loading-chat'] as const)(
       projectSlug: 'pulse',
     } as Parameters<typeof activeChatsStore.initChat>[1]);
     let finishOpen: ((id: string) => void) | undefined;
-    let hydration:
-      | { initialized: (id: string) => void; current: () => boolean }
-      | undefined;
-    openConversationAction.mockImplementationOnce((...args: unknown[]) => {
-      hydration = args[8] as typeof hydration;
+    let hydration: Parameters<ReturnType<typeof useOpenConversation>>[8];
+    openConversationAction.mockImplementationOnce((...args) => {
+      hydration = args[8];
       hydration!.initialized('late-saved-tab');
       return new Promise<string>((resolve) => {
         finishOpen = resolve;
@@ -1594,6 +1596,88 @@ test.each(['another-chat', 'new-chat', 'same-loading-chat'] as const)(
         screen.getByRole('region', { name: 'New chat picker' }),
       ).toBeTruthy();
       expect(navigationStore.getSnapshot().activeChat).toBe('chat-a');
+    }
+  },
+);
+
+test.each(['external-history', 'url-lookup', 'url-history'] as const)(
+  'a pending %s open cannot replace a later New chat draft',
+  async (entry) => {
+    dockProbe.mobile = true;
+    openChatA();
+    let finishHistory: ((id: string) => void) | undefined;
+    let finishLookup: (() => void) | undefined;
+    openConversationAction.mockImplementationOnce(
+      () =>
+        new Promise<string>((resolve) => {
+          finishHistory = resolve;
+        }),
+    );
+    const fetchBefore = globalThis.fetch;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url =
+          typeof input === 'string'
+            ? input
+            : input instanceof URL
+              ? input.href
+              : input.url;
+        if (url.endsWith('/api/conversations/cold-conversation')) {
+          if (entry === 'url-lookup')
+            await new Promise<void>((resolve) => {
+              finishLookup = resolve;
+            });
+          return Response.json({
+            success: true,
+            data: {
+              id: 'cold-conversation',
+              agentSlug: 'assistant',
+              projectSlug: 'other',
+            },
+          });
+        }
+        return fetchBefore(input, init);
+      }),
+    );
+    try {
+      navigationStore.navigate('/', {
+        dock: 'open',
+        chat: entry === 'external-history' ? 'chat-a' : 'cold-conversation',
+      });
+      renderDockedPane();
+      await act(async () => {});
+      if (entry === 'external-history')
+        act(() =>
+          openChatsStore.focus({
+            conversationId: 'cold-conversation',
+            agentSlug: 'assistant',
+            projectSlug: 'other',
+            threadId: 'cold-thread',
+          }),
+        );
+      await waitFor(() =>
+        expect(
+          entry === 'url-lookup' ? finishLookup : finishHistory,
+        ).toBeDefined(),
+      );
+      act(() => dispatchNewChatIntent({}));
+      await screen.findByRole('region', { name: 'New chat picker' });
+      await act(async () => {
+        if (entry === 'url-lookup') finishLookup!();
+        else finishHistory!('late-cold-tab');
+      });
+      expect(
+        screen.getByRole('region', { name: 'New chat picker' }),
+      ).toBeTruthy();
+      expect(navigationStore.getSnapshot().activeChat).toBe(
+        entry === 'external-history' ? 'chat-a' : 'cold-conversation',
+      );
+      expect(navigationStore.getSnapshot().pathname).toBe('/');
+      if (entry === 'url-lookup')
+        expect(openConversationAction).not.toHaveBeenCalled();
+    } finally {
+      vi.stubGlobal('fetch', fetchBefore);
     }
   },
 );

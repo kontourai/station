@@ -391,7 +391,8 @@ an epoch change before resolution settles discards the result, without opening,
 patching the chat, or publishing activity. Within the same epoch, inventory
 pruning may retire the observation token but cannot discard an imperative open
 or its chat update. Only a current observation token publishes read success or
-failure; mounting the opened chat re-establishes observation. Picker selection is captured before asynchronous resolution. Closing the picker,
+failure; mounting the opened chat re-establishes observation. Picker selection and cold URL reader intent are captured before asynchronous
+resolution. External conversation focus uses the same selection fence. Closing the picker,
 choosing another chat, or opening New chat retires that selection's focus and
 visible completion. History publication instead checks caller authority and the
 stream epoch; changing the visible reader does not cancel healthy history data. Focusing or
