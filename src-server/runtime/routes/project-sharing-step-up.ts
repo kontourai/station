@@ -22,6 +22,20 @@ const CHANGED =
   'This changed since you asked. Nothing was applied; open a new request.';
 const SESSION_ENDED = 'Your operator session ended; sign in again.';
 
+// The Project lease transports deliberate membership refusals as data. Carry
+// consent's terminal reason through it, then unwrap after releasing the lease.
+class ProjectSharingConsentRefusal extends ProjectMembershipRefusal {
+  constructor(readonly refusal: ConsentCommitRefusedError) {
+    super('forbidden');
+  }
+}
+
+function preserveConsentRefusal(error: unknown): never {
+  if (error instanceof ConsentCommitRefusedError)
+    throw new ProjectSharingConsentRefusal(error);
+  throw error;
+}
+
 export interface ProjectSharingStepUpDeps {
   membership: ProjectMembershipService | undefined;
   authority: (request: Request) => ProjectMembershipAuthority;
@@ -214,20 +228,32 @@ export function createProjectSharingStepUp(deps: ProjectSharingStepUpDeps) {
           // `operator()` is satisfied only by this transaction's live session,
           // checked again inside the Project lease at the mutation seam.
           const approved: ProjectMembershipAuthority = {
-            current: reviewedOwner,
-            operator: async () => assertCurrent(),
+            current: () => reviewedOwner().catch(preserveConsentRefusal),
+            operator: async () => {
+              try {
+                assertCurrent();
+              } catch (error) {
+                preserveConsentRefusal(error);
+              }
+            },
           };
           try {
             await membership.enable(slug, localProjectId, approved, () => {
-              assertCurrent();
-              if (!deps.operatorSessions?.isStepUpPasskeyCurrent(passkeyId))
-                throw new ConsentCommitRefusedError(
-                  CHANGED,
-                  false,
-                  'target_changed',
-                );
+              try {
+                assertCurrent();
+                if (!deps.operatorSessions?.isStepUpPasskeyCurrent(passkeyId))
+                  throw new ConsentCommitRefusedError(
+                    CHANGED,
+                    false,
+                    'target_changed',
+                  );
+              } catch (error) {
+                preserveConsentRefusal(error);
+              }
             });
           } catch (error) {
+            if (error instanceof ProjectSharingConsentRefusal)
+              throw error.refusal;
             if (error instanceof ConsentCommitRefusedError) throw error;
             if (error instanceof ProjectMembershipRefusal)
               throw new ConsentCommitRefusedError(

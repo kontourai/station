@@ -672,6 +672,8 @@ describe('remote Project sharing enable with operator passkey step-up (#4306)', 
     const rendered = await h.review(signed, transaction.id);
     let calls = 0;
     let revoked = false;
+    const changed = vi.fn();
+    const unsubscribe = h.membership.service.subscribe(changed);
     hook = async () => {
       if (++calls === 3) {
         await new Promise<void>((resolve) => setImmediate(resolve));
@@ -683,10 +685,20 @@ describe('remote Project sharing enable with operator passkey step-up (#4306)', 
       transaction.id,
       rendered,
     );
+    unsubscribe();
     expect(calls).toBe(3);
     expect(revoked).toBe(true);
     expect(result.status, await result.clone().text()).toBe(409);
+    expect(await result.json()).toEqual({ error: 'session_ended' });
+    expect(
+      h.channel.store.get(h.channel.tenantId, transaction.id)?.status,
+    ).toBe('session_ended');
     expect(h.shared()).toBe(false);
+    expect(changed).not.toHaveBeenCalled();
+    expect(h.warn).not.toHaveBeenCalledWith(
+      'Project sharing enabled',
+      expect.anything(),
+    );
   });
 
   test('revoking a different approving passkey after verification refuses the write', async () => {
@@ -697,6 +709,8 @@ describe('remote Project sharing enable with operator passkey step-up (#4306)', 
     const rendered = await h.review(signed, transaction.id);
     const enable = h.membership.service.enable.bind(h.membership.service);
     let revoked = false;
+    const changed = vi.fn();
+    const unsubscribe = h.membership.service.subscribe(changed);
     vi.spyOn(h.membership.service, 'enable').mockImplementationOnce(
       async (...args) => {
         revoked = h.registry.existing()!.revoke(approving.passkey.id);
@@ -708,9 +722,25 @@ describe('remote Project sharing enable with operator passkey step-up (#4306)', 
       transaction.id,
       rendered,
     );
+    unsubscribe();
     expect(revoked).toBe(true);
     expect(result.status, await result.clone().text()).toBe(409);
+    expect(await result.json()).toEqual({ error: 'target_changed' });
+    expect(
+      h.channel.store.get(h.channel.tenantId, transaction.id)?.status,
+    ).toBe('target_changed');
+    const status = await h.call(
+      `/api/pairing/device-access-transactions/${transaction.id}`,
+      signed.cookie,
+    );
+    expect(status.status).toBe(200);
+    expect(await status.json()).toEqual({ status: 'target_changed' });
     expect(h.shared()).toBe(false);
+    expect(changed).not.toHaveBeenCalled();
+    expect(h.warn).not.toHaveBeenCalledWith(
+      'Project sharing enabled',
+      expect.anything(),
+    );
   });
 
   test('the operator credential still enables directly, without a step-up', async () => {
