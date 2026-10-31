@@ -62,9 +62,29 @@ The new source-CLI/SDK controlled journey reached Running and then completed
 Task/ready Session with retained directory and reported CLI origin. Its browser
 reload failed because the source-import harness omitted the normal build SHA
 and boot identity, producing `identity_unavailable`; cleanup also failed natural
-process exit. The revised harness is unexecuted and must verify the actual
-identity endpoint, deferred watcher cleanup, browser reload and natural process
-exit. No current #2868 acceptance follows from these partial observations.
+process exit. The next identity preflight incorrectly called the protected
+endpoint without authentication and stopped with 401 before dispatch. That
+failed receipt remains retained; the subsequent check uses the real local-grant
+credential.
+
+The authenticated journey at `5fedd320812` passed all 16 behavioral checks,
+including exact source/instance/boot identity and one controlled model request.
+The compiled UI showed the same Task after reload, directory context without
+Project membership, `CLI (reported)` separately from its paired-device actor,
+and the exact output after Task completion while its Session remained ready.
+Light and dark layouts were inspected at 390 and 1440 pixels. A reused browser
+origin showed stale connection/history failures; the separately allowed fresh
+`localhost` origin remained connected. The long-held response also exercised
+the truthful No progress state before completion. These are controlled browser
+observations, not physical-device, provider or Tauri-shell acceptance.
+
+Natural process exit still failed, so the journey as a whole remains failed.
+A delayed active-handle diagnostic showed that the deferred file watchers had
+closed; the one remaining listener was the voice WebSocket at server port + 2.
+The real runtime regression retained an intended `EADDRINUSE` failure when
+rebinding that port after shutdown, with its other three cases passing.
+The voice-listener ownership repair and its qualification remain in progress.
+No second physical device is available in the current device inventory.
 
 ## Published Flow 9.9.1 pin (#91)
 
