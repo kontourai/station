@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import type { AuthorizationLedger } from '@kontourai/dispatch';
 import type { FlowDurableStepClaim } from '@kontourai/flow';
 import { createDelegationAuthorityService } from '@kontourai/flow-agents/delegation-authority-service';
+import type { DelegationDispatchAccountingOutcomeV1 } from '@kontourai/flow-agents/delegation-dispatch';
 import type { DelegationEnvelopeV2 } from '@kontourai/flow-agents/delegation-envelope-v2';
 import {
   createDelegationGroupControllerAccountingV1,
@@ -315,6 +316,54 @@ export class PortableGroupExecution {
       claim?: FlowDurableStepClaim;
     }>();
     const claims = new Map<string, FlowDurableStepClaim>();
+    const invocationByEnvelope = new Map<string, string>();
+    const resultReferences = new Map<
+      string,
+      Awaited<
+        ReturnType<StationDelegationPersistence['retainReportObservation']>
+      >
+    >();
+    const outcomeManifest = (
+      seat: (typeof prepared.spec.seats)[number],
+      outcome: DelegationDispatchAccountingOutcomeV1,
+    ) => {
+      const invocationId = invocationByEnvelope.get(seat.envelope.id);
+      const value = invocationId ? retained.get(invocationId) : undefined;
+      const resultRef = invocationId
+        ? resultReferences.get(invocationId)
+        : undefined;
+      if (outcome.result) {
+        if (
+          !invocationId ||
+          !value ||
+          value.envelopeId !== seat.envelope.id ||
+          !resultRef ||
+          outcome.result.outputText !== value.attempt.sdkResult.text ||
+          outcome.result.model !==
+            prepared.members.find((member) => member.seatId === seat.seatId)
+              ?.modelId ||
+          outcome.result.usage?.inputTokens !==
+            value.attempt.accounting.inputTokens ||
+          outcome.result.usage?.outputTokens !==
+            value.attempt.accounting.outputTokens
+        )
+          refuse();
+      }
+      if (resultRef && (!value || value.envelopeId !== seat.envelope.id))
+        refuse();
+      return {
+        seatId: seat.seatId,
+        invocationId: invocationId ?? null,
+        outcome: outcome.outcome,
+        dispatchReceipt: outcome.dispatchReceipt,
+        ...(outcome.reportedCostUsd === undefined
+          ? {}
+          : { reportedCostUsd: outcome.reportedCostUsd }),
+        accountedCostUsd: outcome.accountedCostUsd,
+        costBasis: outcome.costBasis,
+        resultRef: resultRef ?? null,
+      };
+    };
     const memberFor = (envelope: DelegationEnvelopeV2) => {
       current();
       const member = prepared.members.find(
@@ -476,6 +525,8 @@ export class PortableGroupExecution {
       },
       invokeFenced: async (envelope, id, invoke) => {
         memberFor(envelope);
+        if (invocationByEnvelope.has(envelope.envelope_id)) refuse();
+        invocationByEnvelope.set(envelope.envelope_id, id);
         const claim = claims.get(envelope.envelope_id);
         if (prepared.spec.topology.kind === 'flow' && !claim) refuse();
         if (prepared.spec.topology.kind !== 'flow' && claim) refuse();
@@ -495,7 +546,7 @@ export class PortableGroupExecution {
           value.attempt.evidenceReference,
           current,
         );
-        await persistence.retainReportObservation(
+        const resultRef = await persistence.retainReportObservation(
           {
             groupId: prepared.spec.groupId,
             seatId: seat.seatId,
@@ -512,6 +563,12 @@ export class PortableGroupExecution {
           },
           current,
         );
+        if (
+          invocationByEnvelope.get(envelope.envelope_id) !== id ||
+          resultReferences.has(id)
+        )
+          refuse();
+        resultReferences.set(id, resultRef);
         return value.attempt.accounting;
       },
       retainFailure: async (_error, envelope, id) => {
@@ -568,7 +625,7 @@ export class PortableGroupExecution {
         await persistence.retainReportFlowObservation(
           prepared.spec.groupId,
           'member',
-          { claim, seatId: seat.seatId, envelope: seat.envelope, outcome },
+          { claim, envelope: seat.envelope, ...outcomeManifest(seat, outcome) },
           current,
         );
       },
@@ -597,7 +654,7 @@ export class PortableGroupExecution {
         };
       },
       retainMemberOutcome: async (_spec, seat, outcome) => {
-        const ref = await retain('member', { seatId: seat.seatId, outcome });
+        const ref = await retain('member', outcomeManifest(seat, outcome));
         return { outcomeRef: ref, dissentRefs: [], uncertaintyRefs: [ref] };
       },
       retainRunObservation: async (_spec, observation) =>
