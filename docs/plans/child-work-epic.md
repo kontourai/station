@@ -7,7 +7,7 @@ normally before publication. Open one PR when the combined work is ready.
 
 ## Current delivery state
 
-Main is integrated through `659ce5918c5` by normal merge `f560cf80a13`.
+Main is integrated through `7c2bfae5d9b` by normal merge `2bf406dcd5c`.
 This branch has not been pushed or opened as a PR and is not ready to land.
 
 The bounded portable surface is restored: real caller and Project custody,
@@ -88,6 +88,24 @@ passes 131 cases; server-test types and scoped Biome pass. The original failed
 inventory receipt remains retained. Independent review of this classification
 delta and the conditional post-accounting final-fence cleanup concern are still
 required; neither this result nor the earlier 377 cases qualifies the full epic.
+
+The conditional final-fence cleanup concern was subsequently reproduced through
+the existing synchronous group-admission callback. It recorded Ask after durable
+invocation accounting but before adapter entry; the guard refused, yet the old
+catch converted that known refusal to indeterminate. `08a7635e6bb` allows the
+existing definitive-refusal settlement when `notInvoked` is stale on a begun
+intent. Unavailable storage and unknown errors retain uncertainty. The control
+requires explicit posture refusal, zero stale sends and a successful new explicit
+Ask request. The four-file selection passes 158 cases and server-test types pass.
+This is callback-boundary evidence, not a live group or provider qualification.
+
+The normal main merge `2bf406dcd5c` includes the foreground-key SDK change and
+Project checkout warning. The SDK prose conflict was resolved against the actual
+shortcut priorities; MCP content was regenerated. The integrated key, delivery,
+approval and inventory selection passes 189 cases; SDK and server-test types
+pass. Read-only GitHub inspection still reports Flow Agents #1566 open and
+unmerged at `9925be29fbbd`, with auto-merge enabled. No unpublished API is adopted.
+Independent review of the residual repairs and integration remains pending.
 
 The background-work source at `9c51c75f5cda` passed 254 cases across 14 files
 and the UI type lane. Independent review accepted the bounded Station scoping,
