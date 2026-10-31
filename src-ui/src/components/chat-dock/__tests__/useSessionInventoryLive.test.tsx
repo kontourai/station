@@ -57,3 +57,47 @@ test('the live inventory reads the captured Station partition', () => {
   rerender({ scope: scopeB });
   expect(result.current.running.map((entry) => entry.id)).toEqual(['b-tool']);
 });
+
+test('switching Station authority replaces a colliding inventory row and its kind', () => {
+  const scopeA = {
+    apiBase: 'http://inventory-a.test',
+    authorityKey: 'a',
+    isCurrent: () => true,
+  };
+  const scopeB = {
+    apiBase: 'http://inventory-b.test',
+    authorityKey: 'b',
+    isCurrent: () => true,
+  };
+  const { result, rerender } = renderHook(
+    ({ scope }) => useSessionInventoryLive(scope, chat, chat),
+    { initialProps: { scope: scopeA } },
+  );
+  act(() => {
+    handleOrchestrationEvent(scopeA.apiBase, {
+      provider: 'claude',
+      threadId: chat,
+      createdAt: new Date(Date.now() + 1000).toISOString(),
+      method: 'tool.started',
+      itemId: 'shared',
+      toolCallId: 'shared',
+      toolName: 'bash',
+    });
+    handleOrchestrationEvent(scopeB.apiBase, {
+      provider: 'claude',
+      threadId: 'shared',
+      sessionId: 'shared',
+      createdAt: new Date(Date.now() + 1000).toISOString(),
+      method: 'session.started',
+      metadata: { taskId: 'shared', parentTaskId: chat },
+    });
+  });
+  expect(result.current.running[0]?.kind).toBe('tool');
+  rerender({ scope: scopeB });
+  expect(result.current.running).toHaveLength(1);
+  expect(result.current.running[0]).toMatchObject({
+    id: 'shared',
+    kind: 'agent',
+    source: 'delegate-session',
+  });
+});

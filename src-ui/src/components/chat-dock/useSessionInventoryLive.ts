@@ -31,7 +31,10 @@ export function useSessionInventoryLive(
   sessionId: string,
   chatStoreId?: string,
 ) {
-  const cache = useRef<unknown>(null);
+  const cache = useRef<{
+    encoded: string;
+    value: SessionInventoryLiveOverlay;
+  } | null>(null);
   const subscribe = useCallback(
     (listener: () => void) => {
       const a = backgroundTasksStore.subscribe(listener);
@@ -55,7 +58,11 @@ export function useSessionInventoryLive(
   );
   const snapshot = useCallback(() => {
     if (!requestScope?.isCurrent?.() || !chatStoreId) return EMPTY;
-    const floorKey = `${chatStoreId}\u0000${sessionId}`;
+    const floorKey = JSON.stringify([
+      requestScope.apiBase,
+      chatStoreId,
+      sessionId,
+    ]);
     const previousFloor = floors.get(floorKey);
     if (
       !previousFloor ||
@@ -89,14 +96,14 @@ export function useSessionInventoryLive(
       ),
     ];
     const encoded = JSON.stringify([
-      next.map((entry) => [entry.id, entry.state]),
+      requestScope.apiBase,
+      requestScope.authorityKey,
+      sessionId,
+      chatStoreId,
+      next,
       pendingApprovalIds,
     ]);
-    if (
-      cache.current &&
-      (cache.current as { encoded: string }).encoded === encoded
-    )
-      return (cache.current as { value: SessionInventoryLiveOverlay }).value;
+    if (cache.current?.encoded === encoded) return cache.current.value;
     const value = { running: next, pendingApprovalIds };
     cache.current = { encoded, value };
     return value;

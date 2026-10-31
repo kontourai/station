@@ -734,10 +734,25 @@ export function applyOrchestrationSnapshot(
   if (!replayId) {
     reconcileChildWorkSnapshot(payload.sessions);
     if (options?.apiBase) {
+      childWorkGlobalStore.reconcileSnapshot(options.apiBase, payload.sessions);
+      const chats = Object.entries(activeChatsStore.getSnapshot());
+      const matchingChats = (id: string) =>
+        chats
+          .filter(
+            ([key, chat]) =>
+              key === id ||
+              chat.currentSessionId === id ||
+              chat.conversationId === id,
+          )
+          .map(([key]) => key);
       for (const session of payload.sessions) {
-        const chatKey = activeChatsStore.getChatKeyForExecutionSession(
-          session.threadId,
-        );
+        const direct = matchingChats(session.threadId);
+        const candidates = direct.length
+          ? direct
+          : session.conversationId
+            ? matchingChats(session.conversationId)
+            : [];
+        const chatKey = candidates.length === 1 ? candidates[0] : undefined;
         if (chatKey)
           backgroundTasksStore.bindProviderReporter(
             options.apiBase,
@@ -750,10 +765,6 @@ export function applyOrchestrationSnapshot(
         new Set(payload.sessions.map((session) => session.threadId)),
       );
     }
-    // A snapshot names its Station; one without (no caller today) folds into
-    // no partition rather than a guessed one.
-    if (options?.apiBase)
-      childWorkGlobalStore.reconcileSnapshot(options.apiBase, payload.sessions);
   }
 
   if (!replayId && options?.apiBase) {

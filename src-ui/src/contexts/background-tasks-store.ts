@@ -1077,20 +1077,47 @@ export class BackgroundTasksStore {
     chatThreadId: string,
   ) {
     const previous = this.stateFor(apiBase);
-    if (previous.providerReporters?.[reporterThreadId] === chatThreadId) return;
-    this.commit(apiBase, {
-      ...previous,
-      providerReporters: {
-        ...previous.providerReporters,
-        [reporterThreadId]: chatThreadId,
-      },
-    });
+    let aliases = previous.providerReporters ?? {};
+    if (aliases[reporterThreadId] !== chatThreadId)
+      aliases = { ...aliases, [reporterThreadId]: chatThreadId };
+    const needed = this.neededProviderReporters(apiBase);
+    const inactiveByChat = new Map<string, string[]>();
+    for (const [reporter, chat] of Object.entries(aliases)) {
+      if (needed.has(reporter)) continue;
+      const inactive = inactiveByChat.get(chat) ?? [];
+      inactive.push(reporter);
+      inactiveByChat.set(chat, inactive);
+    }
+    for (const inactive of inactiveByChat.values()) {
+      for (const reporter of inactive.slice(
+        0,
+        Math.max(0, inactive.length - CLOSED_CHAT_RECOVERY_LIMIT),
+      )) {
+        if (aliases === previous.providerReporters) aliases = { ...aliases };
+        delete aliases[reporter];
+      }
+    }
+    if (aliases === previous.providerReporters) return;
+    this.commit(apiBase, { ...previous, providerReporters: aliases });
+  }
+  private neededProviderReporters(apiBase: string): Set<string> {
+    return new Set(
+      Object.values(childWorkGlobalStore.getPartition(apiBase).registry.items)
+        .filter(
+          (item) =>
+            item.status === 'running' ||
+            item.status === 'unresolved' ||
+            item.status === 'stopped-unconfirmed',
+        )
+        .map((item) => item.reporterThreadId),
+    );
   }
   reconcileProviderReporters(apiBase: string, threadIds: ReadonlySet<string>) {
     const previous = this.stateFor(apiBase);
     if (!previous.providerReporters) return;
+    const needed = this.neededProviderReporters(apiBase);
     const entries = Object.entries(previous.providerReporters).filter(
-      ([threadId]) => threadIds.has(threadId),
+      ([threadId]) => threadIds.has(threadId) || needed.has(threadId),
     );
     if (entries.length === Object.keys(previous.providerReporters).length)
       return;
