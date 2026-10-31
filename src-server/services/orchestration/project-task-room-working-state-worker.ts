@@ -15,6 +15,7 @@ import {
 } from '../../domain/revision-bound-evidence.js';
 import {
   DEFAULT_RETAINED_WORKING_STATE_OPERATIONS,
+  MAX_WORKING_STATE_SNAPSHOT_BYTES,
   SharedWorkingState,
   type TextDocumentOperation,
   type WorkingStateSnapshot,
@@ -134,7 +135,8 @@ const maxRetainedOperations = Number.isSafeInteger(
 )
   ? workerData.maxRetainedOperations
   : DEFAULT_RETAINED_WORKING_STATE_OPERATIONS;
-const MAX_REVISION_PUBLICATION_SNAPSHOT_BYTES = 512 * 1024;
+const MAX_REVISION_PUBLICATION_SNAPSHOT_BYTES =
+  MAX_WORKING_STATE_SNAPSHOT_BYTES;
 const maxWorkingSnapshotBytes = Number.isSafeInteger(
   workerData.maxWorkingSnapshotBytes,
 )
@@ -1024,7 +1026,14 @@ async function handle(message: any) {
         const snapshotJson = JSON.stringify(snapshot);
         const snapshotBytes = Buffer.byteLength(snapshotJson, 'utf8');
         // Deterministic: no retry of this write can fit, so name it (#4007).
-        if (snapshotBytes > maxWorkingSnapshotBytes) {
+        // Keep deletion headroom even for diagnostic workloads that skip the
+        // evidence ledger. Deleting inside a live run can grow its snapshot.
+        const reserveBytes = (value.operations as TextDocumentOperation[]).some(
+          (operation) => operation.kind === 'insert',
+        )
+          ? TASK_ROOM_INSERT_RESERVE_BYTES
+          : 0;
+        if (snapshotBytes + reserveBytes > maxWorkingSnapshotBytes) {
           db.exec('ROLLBACK');
           return send(id, { kind: 'rejected', reason: 'document-full' });
         }

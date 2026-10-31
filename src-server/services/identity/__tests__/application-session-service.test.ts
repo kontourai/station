@@ -481,6 +481,98 @@ async function nativeContinuationFixture() {
   };
 }
 
+describe.each(['browser', 'native'] as const)(
+  '%s continuation currentness at the real authentication seam',
+  (transport) => {
+    test.each(['grant', 'provider', 'device', 'transport'] as const)(
+      'a captured witness refuses %s revocation without replaying the proof',
+      async (owner) => {
+        const native =
+          transport === 'native'
+            ? await nativeContinuationFixture()
+            : undefined;
+        const h = native?.h ?? (await harness());
+        const browser = native
+          ? undefined
+          : await h.client.establish({
+              username: 'alice',
+              password: h.password,
+            });
+        const continuation = native?.continuation ?? browser!;
+        const request = native
+          ? await native.authenticateRequest()
+          : new Request(`${origin}/resource`, {
+              headers: {
+                ...(await h.client.headers(browser!, {
+                  method: 'GET',
+                  url: `${origin}/resource`,
+                })),
+                Authorization: `Bearer ${h.device.credential}`,
+              },
+            });
+        const authentication = h.accounts().service;
+        expect(authentication.captureCurrentSession(request)()).toBe(false);
+        expect((await authentication.authenticate(request)).kind).toBe(
+          'authenticated',
+        );
+        const current = authentication.captureCurrentSession(request);
+        expect(current()).toBe(true);
+        const replacement = new Request(request);
+        authentication.transferRequest(request, replacement);
+        const transferred = authentication.captureCurrentSession(replacement);
+        expect(transferred()).toBe(true);
+        // A copied Request without the owner's transfer has no admitted proof.
+        expect(
+          authentication.captureCurrentSession(new Request(request))(),
+        ).toBe(false);
+        const database = new DatabaseSync(
+          join(h.home, 'authentication', 'application-sessions.sqlite'),
+        );
+        try {
+          const table =
+            transport === 'native'
+              ? 'application_session_native_sessions'
+              : 'application_sessions';
+          const hash = nativeHash(continuation.credential);
+          const row = database
+            .prepare(`SELECT record FROM ${table} WHERE token_hash=?`)
+            .get(hash);
+          if (typeof row?.record !== 'string')
+            throw new Error('Continuation fixture missing');
+          const record = JSON.parse(row.record) as {
+            sessionId: string;
+            providerSessionId?: string;
+          };
+          if (owner === 'grant') {
+            expect(
+              database
+                .prepare(`DELETE FROM ${table} WHERE token_hash=?`)
+                .run(hash).changes,
+            ).toBe(1);
+          } else if (owner === 'provider') {
+            await authentication.revokeSessionReference(
+              record.providerSessionId ?? record.sessionId,
+              request.signal,
+            );
+          } else if (owner === 'transport') {
+            if (native) h.setNativeRequestFacts(undefined);
+            else {
+              request.headers.set('Origin', alternateOrigin);
+              replacement.headers.set('Origin', alternateOrigin);
+            }
+          } else {
+            h.pairing.revokeDevice(h.device.device.id, 'operator-credential');
+          }
+          expect(current()).toBe(false);
+          expect(transferred()).toBe(false);
+        } finally {
+          database.close();
+        }
+      },
+    );
+  },
+);
+
 describe('native application-session continuation service seam', () => {
   test('uses the native SDK through verified virtual ingress for provider login, read and write', async () => {
     const h = await harness({
