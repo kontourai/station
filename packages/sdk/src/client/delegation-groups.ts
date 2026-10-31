@@ -87,6 +87,15 @@ export class DelegationGroupUnsupportedError extends Error {
   }
 }
 export class DelegationGroupProtocolError extends Error {}
+export class DelegationGroupBudgetInsufficientError extends StationHttpError {
+  constructor() {
+    super(409, 'The group reservations exceed its declared budget.', {
+      code: 'group_budget_insufficient',
+      failurePhase: 'refused',
+    });
+    this.name = 'DelegationGroupBudgetInsufficientError';
+  }
+}
 
 const root = (base: string) => `${base}/api/orchestration/groups`;
 const path = (base: string, groupId: string) =>
@@ -114,6 +123,13 @@ async function request(
       await mutateJson(url, 'POST', bounded, input),
     );
   } catch (error) {
+    if (
+      error instanceof StationHttpError &&
+      error.status === 409 &&
+      error.code === 'group_budget_insufficient' &&
+      error.failurePhase === 'refused'
+    )
+      throw new DelegationGroupBudgetInsufficientError();
     if (error instanceof StationHttpError && error.status === 404)
       throw new DelegationGroupUnsupportedError();
     throw error;

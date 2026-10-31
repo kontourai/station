@@ -20,6 +20,10 @@ caller-owned group routes. An older host's 404 becomes
 support for a selected source, model or topology. Group capability advertising
 remains off while combined qualification is unfinished.
 
+Creation checks aggregate reservation feasibility before invocation. Insufficient
+declared budget produces `DelegationGroupBudgetInsufficientError` with HTTP 409,
+code `group_budget_insufficient` and failure phase `refused`.
+
 Each member's `selection` records the Agent, runtime protocol, provider and model
 authenticated by the retained admission. It is an observation of that selection, not a fresh
 inventory or execution grant. Execution returning and cancellation being requested

@@ -1,5 +1,7 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import {
+  createDelegationGroup,
+  DelegationGroupBudgetInsufficientError,
   DelegationGroupUnsupportedError,
   getDelegationGroup,
   readDelegationGroupEvents,
@@ -7,6 +9,47 @@ import {
 } from '../client/delegation-groups';
 
 afterEach(() => vi.unstubAllGlobals());
+
+test('group SDK preserves an explicit preflight budget refusal', async () => {
+  const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+    Response.json(
+      {
+        success: false,
+        code: 'group_budget_insufficient',
+        failurePhase: 'refused',
+      },
+      { status: 409 },
+    ),
+  );
+  vi.stubGlobal('fetch', fetch);
+  const request = createDelegationGroup('https://groups.test', {
+    operationId: 'budget',
+    projectSlug: 'source',
+    resourceId: 'local:source',
+    deadlineAt: Date.parse('2026-10-31T00:05:00Z'),
+    maxConcurrent: 2,
+    budget: {
+      inputTokens: 2 * 1048576,
+      outputTokens: 30,
+      costMicros: 2 * 3145878,
+    },
+    members: ['left', 'right', 'join'].map((seatId) => ({
+      seatId,
+      agentId: 'reviewer',
+      brief: 'Review the source',
+      maxOutputTokens: 10,
+    })),
+  });
+  await expect(request).rejects.toBeInstanceOf(
+    DelegationGroupBudgetInsufficientError,
+  );
+  await expect(request).rejects.toMatchObject({
+    status: 409,
+    code: 'group_budget_insufficient',
+    failurePhase: 'refused',
+  });
+  expect(fetch).toHaveBeenCalledTimes(1);
+});
 const base = 'https://groups.test';
 const page = {
   groupId: 'group',

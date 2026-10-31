@@ -2,6 +2,7 @@ import { DELEGATION_GROUP_LIMITS } from '@kontourai/station-contracts/delegation
 import { type Context, Hono } from 'hono';
 import { z } from 'zod/v3';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
+import { PortableGroupBudgetInsufficient } from '../../services/orchestration/portable-group-preparation.js';
 import type { DelegationGroupRuntime } from '../../services/orchestration/portable-group-runtime.js';
 import { parseStationReportGroupInput } from '../../services/orchestration/station-report-group-input.js';
 
@@ -45,6 +46,11 @@ export function createDelegationGroupRoutes(
         );
       return context.json({ success: true, data });
     } catch (error) {
+      if (error instanceof PortableGroupBudgetInsufficient)
+        return context.json(
+          { success: false, code: error.code, failurePhase: error.phase },
+          409,
+        );
       if (error instanceof z.ZodError || error instanceof SyntaxError)
         return context.json({ success: false, code: 'group_invalid' }, 400);
       return context.json({ success: false, code: 'group_unavailable' }, 503);
