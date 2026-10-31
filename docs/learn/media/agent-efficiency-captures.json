@@ -19,28 +19,48 @@
   },
   "sourceFiles": [
     {
-      "path": "src-ui/src/views/learning-review/LearningReviewPanel.tsx",
-      "sha256": "6cc21edf125a509d3406efee395aa3d124f4057944ce8502f1a592f9d4785dee"
-    },
-    {
-      "path": "src-ui/src/views/learning-review/LearningRecordActions.tsx",
-      "sha256": "fa85d9b4140d0c1872efda8bc1dc535955252dac15f55bc4e053f9280d73c33b"
-    },
-    {
       "path": "packages/sdk/src/query-domains/learningReview.ts",
       "sha256": "f69adff052ff0f8f44d5c34cd46a6c49f82d266d261f5964a4104c086b561519"
     },
     {
-      "path": "src-ui/src/views/project-settings/ProjectWorkingConfiguration.tsx",
-      "sha256": "10737d2858f4935fe798d16ac39a5de682b0cc6a99d58ecbddfb0f69d1a95112"
+      "path": "src-ui/src/components/conversation-stats/ContextCompactionControl.tsx",
+      "sha256": "da6872090445beb443d862f27fa547fcd4ad30ef40cf6799be6c547fd0cc53ee"
+    },
+    {
+      "path": "src-ui/src/components/editor-controls.css",
+      "sha256": "e70c06cdb1aff3b22b266995d1b7ce8316e5193dad7c1ebc0e59c2d7d1ec9d0a"
+    },
+    {
+      "path": "src-ui/src/components/usage-stats/UsageRollupPanel.tsx",
+      "sha256": "d4fa3f778d80491346f5db115466601230dbc23b98a2b6456bf560fd7ce3de41"
     },
     {
       "path": "src-ui/src/index.css",
       "sha256": "ea0c24a4d07996de5f7407f6aaed9245695520d932e93c09b2af1654fcdb708b"
     },
     {
+      "path": "src-ui/src/views/learning-review/LearningRecordActions.tsx",
+      "sha256": "fa85d9b4140d0c1872efda8bc1dc535955252dac15f55bc4e053f9280d73c33b"
+    },
+    {
       "path": "src-ui/src/views/learning-review/LearningReviewPanel.css",
       "sha256": "f23cbc37cbaf7b678f01fde77a191fb485bf58095680230e77e1138c2f35f7fc"
+    },
+    {
+      "path": "src-ui/src/views/learning-review/LearningReviewPanel.tsx",
+      "sha256": "6cc21edf125a509d3406efee395aa3d124f4057944ce8502f1a592f9d4785dee"
+    },
+    {
+      "path": "src-ui/src/views/project-settings/ProjectSourcesSection.css",
+      "sha256": "594a814c16410c22c186048229ee34278fc1a618f1d7facc9e1eaba562385146"
+    },
+    {
+      "path": "src-ui/src/views/project-settings/ProjectWorkingConfiguration.tsx",
+      "sha256": "10737d2858f4935fe798d16ac39a5de682b0cc6a99d58ecbddfb0f69d1a95112"
+    },
+    {
+      "path": "src-ui/src/views/task-workspace/TaskSupervisionPanel.tsx",
+      "sha256": "92cd395a28f214e680cfecc32a6e31cb56b7dac191dd38d6f6b094011ce67976"
     }
   ],
   "artifacts": [

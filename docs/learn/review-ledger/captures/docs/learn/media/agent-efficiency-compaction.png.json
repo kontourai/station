@@ -1,6 +1,7 @@
 {
   "path": "docs/learn/media/agent-efficiency-compaction.png",
   "sources": [
+    "src-ui/src/components/conversation-stats/ContextCompactionControl.tsx",
     "src-ui/src/index.css"
   ],
   "reviewNotes": []
