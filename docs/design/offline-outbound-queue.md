@@ -87,9 +87,12 @@ only ever sent to, or settled by, that Station; for another it waits, listed.
 Station can also hold a follow-up itself, in the conversation's durable inbox
 ([#3568](https://github.com/kontourai/station/issues/3568), `whenBusy: 'queue'`
 in the [Session API](../reference/session-api.md#let-station-hold-a-follow-up)).
-The app does not use it yet; until it does, the rules below apply.
+A busy composer hands an eligible Queue submission to this inbox. If the
+turn has ended, Station can start it immediately. A pending approval change
+must be applied before queuing. Existing browser-local follow-ups and offline
+outbox entries remain subject to the rules below.
 
-Follow-ups held behind a running turn stay in the tab's session storage, and
+Browser-local follow-ups held behind a running turn stay in the tab's session storage, and
 each keeps a durable copy in the queue under the key the queue will send it
 with. Nothing sends that copy automatically: the window's own queue sends it
 when the turn ends, a reload's restored queue takes the copies back (so an

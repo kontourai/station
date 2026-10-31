@@ -846,8 +846,9 @@ A failed read after held rows were shown replaces them with a
 **Remove** or **Dismiss** uses the original message key and the server's
 authorization and placement checks; rows without a permitted key are
 read-only. Held rows offer no local edit, reorder, send-now or steer action.
-This view does not transfer ordinary busy-composer submissions from
-browser-local storage into the server inbox. This browser's durable outbox for
+A busy-composer Queue submission is sent to the server inbox when eligible;
+Station may instead start it immediately if the turn has already ended.
+This browser's durable outbox for
 the chat (a send that failed or got no answer, and copies queued in another
 window or one that closed) leads the same list, not a second list, and its rows
 keep their own Send, Retry, Check and Discard actions. Order numbers follow the
