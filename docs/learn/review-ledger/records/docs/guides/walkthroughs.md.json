@@ -54,7 +54,9 @@
 
     "src-ui/src/views/task-workspace/review/TaskReviewClips.tsx",
 
-    "packages/sdk/src/query-domains/taskReview.ts"
+    "packages/sdk/src/query-domains/taskReview.ts",
+
+    "src-server/routes/browser-agent.ts"
   ],
 
   "checks": [

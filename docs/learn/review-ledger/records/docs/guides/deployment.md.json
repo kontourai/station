@@ -90,7 +90,9 @@
 
     "scripts/__tests__/service-container-command.test.ts",
 
-    "deployment/telemetry/compose.dev.yaml"
+    "deployment/telemetry/compose.dev.yaml",
+
+    "src-server/services/projects/task-browser-recording.ts"
   ],
 
   "checks": [

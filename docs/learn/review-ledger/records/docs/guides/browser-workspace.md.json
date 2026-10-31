@@ -136,7 +136,9 @@
 
     "src-server/tools/station-browser-policy.ts",
 
-    "src-ui/src/views/task-workspace/review/TaskReviewClips.tsx"
+    "src-ui/src/views/task-workspace/review/TaskReviewClips.tsx",
+
+    "src-server/services/orchestration/project-task-room-runtime.ts"
   ],
 
   "checks": [
