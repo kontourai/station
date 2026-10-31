@@ -199,7 +199,7 @@ import {
   type NativeMemoryHistoryCompanion,
 } from '../../runtime/conversation/native-memory-history.js';
 import {
-  assertReservedStationTurnBinding,
+  admitReservedStationTurnBinding,
   type ReservedStationSession,
   type ReservedStationTurn,
   ReservedStationTurnUnavailable,
@@ -7729,7 +7729,7 @@ export class OrchestrationService {
             try {
               if (!internal?.reservedStationTurn)
                 throw new Error('Reserved turn required');
-              assertReservedStationTurnBinding(
+              await admitReservedStationTurnBinding(
                 internal.reservedStationTurn,
                 context.userId,
                 postureInput.threadId,
@@ -9506,7 +9506,7 @@ export class OrchestrationService {
                                   throw new Error(
                                     'Reserved Station turn requires the Station engine.',
                                   );
-                                assertReservedStationTurnBinding(
+                                await admitReservedStationTurnBinding(
                                   internal.reservedStationTurn,
                                   context?.principal?.id ?? context?.userId,
                                   turnInput.threadId,

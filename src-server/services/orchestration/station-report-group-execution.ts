@@ -198,6 +198,12 @@ export class StationReportGroupExecution {
         host,
         intents: this.owners.wireIntents,
         finalizeCurrent: executionCurrent,
+        reportHome: {
+          owner: requestWriter,
+          persistence,
+          current,
+          preparationCurrent: executionCurrent,
+        },
       };
       const service = createDelegationAuthorityServiceV3(
         launch.authorities,
@@ -419,23 +425,40 @@ export class StationReportGroupExecution {
             );
           },
           confirmClaim: async (claim, envelope) => {
-            const { member } = memberFor(envelope);
-            const owner = preparation.flow(
-              handle,
-              context.req.raw,
-              member.seatId,
-            );
-            if (
-              !owner ||
-              claim.step_id !==
-                prepared.spec.seats.find(
-                  (seat) => seat.seatId === member.seatId,
-                )?.stepId
-            )
-              return false;
-            await owner.withCurrentClaim(claim, () => ({ value: undefined }));
-            current();
-            return true;
+            return requestWriter.runOwnedLease(signal, async (lease) => {
+              const { member, owner } = requestWriter.runWithLease(
+                lease,
+                () => {
+                  const { member } = memberFor(envelope);
+                  return {
+                    member,
+                    owner: preparation.flow(
+                      handle,
+                      context.req.raw,
+                      member.seatId,
+                    ),
+                  };
+                },
+              );
+              if (
+                !owner ||
+                claim.step_id !==
+                  prepared.spec.seats.find(
+                    (seat) => seat.seatId === member.seatId,
+                  )?.stepId
+              )
+                return false;
+              await owner.withCurrentClaim(
+                claim,
+                () => ({ value: undefined }),
+                {
+                  owner: requestWriter,
+                  lease,
+                },
+              );
+              requestWriter.runWithLease(lease, current);
+              return true;
+            });
           },
           prepareRequest: async (_claim, envelope) => {
             const { member, seat } = memberFor(envelope);

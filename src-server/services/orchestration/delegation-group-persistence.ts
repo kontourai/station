@@ -1433,6 +1433,7 @@ export class StationDelegationPersistence {
   async retainProviderEvidence(
     evidence: ReservedProviderEvidence,
     finalizeCurrent: DelegationPersistenceFinalizer,
+    commitWithin?: (commit: () => void) => void,
   ) {
     const record = structuredClone({ version: 1, evidence });
     const domain = this.#providerEvidence;
@@ -1458,7 +1459,13 @@ export class StationDelegationPersistence {
           domain.files().length < MAX_FILES,
           'delegation_store_capacity',
         );
-        await domain.publish(file, record, maxBytes, finalizeCurrent);
+        await domain.publish(
+          file,
+          record,
+          maxBytes,
+          finalizeCurrent,
+          commitWithin,
+        );
       }
       const committed = readBytes(path, maxBytes);
       requirePersistence(

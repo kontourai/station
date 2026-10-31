@@ -25,6 +25,7 @@ import {
   isRuntimeRequestPrincipalCurrent,
   runtimeRequestPrincipalMayAccessHttpRoute,
 } from '../../../security/runtime-request-security.js';
+import { HomeWriterOwner } from '../../ssh/home-writer-owner.js';
 import type { TrustedFinalWireOwnerPort } from '../delegation-group-source-admission.js';
 import {
   deferred,
@@ -713,6 +714,40 @@ test('source-owned Flow launch admits a renewed active claim and refuses removed
   });
   let launches = 0;
   const pending = deferred<Response>();
+  const homeOwner = await HomeWriterOwner.forHome(f.home);
+  const heldHome = await homeOwner.acquire();
+  const scoped = await flow.withCurrentClaim(
+    claimed.claim,
+    () => {
+      homeOwner.assertSynchronous();
+      return { value: 'scoped' };
+    },
+    { owner: homeOwner, lease: heldHome },
+  );
+  assert.equal(scoped.value, 'scoped');
+  await heldHome.release();
+  await assert.rejects(
+    flow.withCurrentClaim(claimed.claim, () => ({ value: ++launches }), {
+      owner: homeOwner,
+      lease: heldHome,
+    }),
+  );
+  const foreignHome = join(f.root, 'foreign-flow-home');
+  mkdirSync(join(foreignHome, 'security'), { recursive: true, mode: 0o700 });
+  const foreignOwner = await HomeWriterOwner.forHome(foreignHome);
+  const foreignLease = await foreignOwner.acquire();
+  try {
+    await assert.rejects(
+      flow.withCurrentClaim(claimed.claim, () => ({ value: ++launches }), {
+        owner: foreignOwner,
+        lease: foreignLease,
+      }),
+      { code: 'flow_home_mismatch' },
+    );
+  } finally {
+    await foreignLease.release();
+  }
+  assert.equal(launches, 0);
   const launched = await flow.withCurrentClaim(claimed.claim, () => ({
     value: { response: pending.promise, count: ++launches },
   }));

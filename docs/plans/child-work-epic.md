@@ -25,6 +25,32 @@ complete publisher exclusion.
 Missing or altered location evidence refuses; no provider execution or #91
 completion follows from this work.
 
+### Report publication working checkpoint
+
+The current report launch and request-admission changes are retained as work in
+progress, not a qualified Flow serving path. The focused launch-fence selection
+passed 47 cases. The later report execution and source-owner selection passed
+16 of 17 cases; the Flow report case failed when its rounds transaction's
+post-body currentness check encountered a concurrent home-held launch. The
+earlier, separate 146-second report failure remains unknown. These controlled
+results do not establish an end-to-end publisher exclusion or CAS-loser proof.
+
+The new funded three-seat mixed-family input journey is unqualified: its HTTP
+create returned a generic refusal in its diagnostic run. A private test-boundary
+observer now retains the runtime error for a later run. The older input fixture's
+clock was corrected to the current qualified fixture interval, but that change
+has not been rerun. Neither fixture establishes provider or billing acceptance.
+
+The installed public rounds transaction supplies the journal to its callback,
+while nested authority and host callbacks are captured outside that transaction.
+Station cannot safely lend an exact home lease to those callbacks through the
+current interface without admitting unrelated siblings or reversing home-to-group
+lock order. An upstream owner is investigating a transaction-scoped public seam;
+it has not been published or adopted. The metadata continuation finalizer remains
+unavailable until actual installed composition and positive, negative, cleanup,
+shutdown and publication-exclusion proofs pass. The preserved source is not a
+completion or enablement claim.
+
 ## Private publication lifetime (#91)
 
 Bootstrap captures the exact current home runtime lease into a private publication

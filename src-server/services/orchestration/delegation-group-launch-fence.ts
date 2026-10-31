@@ -25,6 +25,11 @@ import {
   projectDelegationGroupV2,
 } from '@kontourai/flow-agents/delegation-group-v2';
 import { canonicalJson } from '@kontourai/relay';
+import type {
+  HomeWriterLease,
+  HomeWriterOwner,
+} from '../ssh/home-writer-owner.js';
+import type { StationDelegationPersistence } from './delegation-group-persistence.js';
 import type { SourceFlowLaunchOwner } from './delegation-group-source-admission.js';
 import {
   assertSynchronous,
@@ -108,6 +113,13 @@ export type RoundsFinalFetchOwners = LaunchOwners & {
   groups: DelegationRoundsStore;
   authorities: DelegationAuthorityStoreV3;
   flow?: SourceFlowLaunchOwner;
+  reportHome?: {
+    owner: HomeWriterOwner;
+    persistence: StationDelegationPersistence;
+    current: WireFinalizer;
+    preparationCurrent: WireFinalizer;
+  };
+  flowScope?: { owner: HomeWriterOwner; lease: HomeWriterLease };
 };
 export type ReservedFinalFetchOwners =
   | LegacyFinalFetchOwners
@@ -461,8 +473,15 @@ export class RoundsFinalFetchLaunchFence {
     return this.#withCurrentReservation(
       binding,
       signal,
-      (current, flowLaunch) =>
-        sendReservedWire(owners, current, binding, wire, signal, flowLaunch),
+      (current, flowLaunch, scoped) =>
+        sendReservedWire(
+          scoped as RoundsFinalFetchOwners,
+          current,
+          binding,
+          wire,
+          signal,
+          flowLaunch,
+        ),
     );
   }
 
@@ -473,11 +492,15 @@ export class RoundsFinalFetchLaunchFence {
     signal: AbortSignal,
   ): Promise<void> {
     const captured = structuredClone(binding);
-    await this.#withCurrentReservation(captured, signal, async (current) => {
-      await admitReservedInvocation(this.owners, current, captured);
-      assertSynchronous(this.owners.finalizeCurrent);
-      signal.throwIfAborted();
-    });
+    await this.#withCurrentReservation(
+      captured,
+      signal,
+      async (current, _flow, scoped) => {
+        await admitReservedInvocation(scoped, current, captured);
+        assertSynchronous(scoped.finalizeCurrent);
+        signal.throwIfAborted();
+      },
+    );
   }
 
   async #withCurrentReservation<T>(
@@ -485,12 +508,68 @@ export class RoundsFinalFetchLaunchFence {
     signal: AbortSignal,
     work: (
       current: DelegationAuthorityLedger,
-      flowLaunch?: Parameters<typeof sendReservedWire>[5],
+      flowLaunch: Parameters<typeof sendReservedWire>[5],
+      scoped: RoundsFinalFetchOwners | Omit<RoundsFinalFetchOwners, 'fetch'>,
     ) => Promise<T>,
   ): Promise<T> {
     forbidNestedOwner();
     const binding = structuredClone(bindingInput);
     signal.throwIfAborted();
+    const reportHome = this.owners.reportHome;
+    if (reportHome) {
+      return reportHome.owner.runOwnedLease(signal, (lease) => {
+        const within = <R>(body: () => R): R =>
+          reportHome.owner.runWithLease(lease, () => {
+            signal.throwIfAborted();
+            return body();
+          });
+        const current = (): undefined =>
+          within(() => {
+            assertSynchronous(reportHome.current);
+            assertSynchronous(reportHome.preparationCurrent);
+            assertSynchronous(this.owners.finalizeCurrent);
+            return undefined;
+          });
+        const host = this.owners.host;
+        const transport =
+          'fetch' in this.owners ? this.owners.fetch : undefined;
+        const scopedHost = {
+          ...host,
+          authorize: (...args: Parameters<typeof host.authorize>) =>
+            within(() => ({ value: host.authorize(...args) })).value,
+          confirmExecution: (
+            ...args: Parameters<typeof host.confirmExecution>
+          ) => within(() => ({ value: host.confirmExecution(...args) })).value,
+        };
+        const scoped = {
+          ...this.owners,
+          reportHome: undefined,
+          flowScope: { owner: reportHome.owner, lease },
+          host: scopedHost,
+          groups: reportHome.persistence.roundsStore(current, current, {
+            owner: reportHome.owner,
+            lease,
+          }),
+          authorities: reportHome.persistence.roundsAuthorityStore(
+            current,
+            current,
+            { owner: reportHome.owner, lease },
+          ),
+          finalizeCurrent: current,
+          ...(transport
+            ? {
+                fetch: (...args: Parameters<typeof fetch>) =>
+                  within(() => ({ value: transport(...args) })).value,
+              }
+            : {}),
+        };
+        return new RoundsFinalFetchLaunchFence(scoped).#withCurrentReservation(
+          binding,
+          signal,
+          work,
+        );
+      });
+    }
     assertSynchronous(this.owners.finalizeCurrent);
     const scope = { active: true };
     try {
@@ -571,6 +650,7 @@ export class RoundsFinalFetchLaunchFence {
               const result = await flow.withCurrentHead(
                 command.flowHead,
                 () => ({ value: launch() }),
+                this.owners.flowScope,
               );
               return result.value;
             };
@@ -605,9 +685,11 @@ export class RoundsFinalFetchLaunchFence {
                   same(claim.actor, group.spec.topology.actor),
               );
               flowLaunch = async (launch) => {
-                const result = await flow.withCurrentClaim(claim, () => ({
-                  value: launch(),
-                }));
+                const result = await flow.withCurrentClaim(
+                  claim,
+                  () => ({ value: launch() }),
+                  this.owners.flowScope,
+                );
                 return result.value;
               };
             }
@@ -669,7 +751,7 @@ export class RoundsFinalFetchLaunchFence {
                     prior.envelopeId === binding.envelope.id,
                 );
               }
-              const result = await work(current, flowLaunch);
+              const result = await work(current, flowLaunch, this.owners);
               return { ledger, result };
             },
           );

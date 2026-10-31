@@ -40,6 +40,7 @@ import {
 } from '@kontourai/relay';
 import { afterEach, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { HomeWriterOwner } from '../../ssh/home-writer-owner.js';
 import {
   FinalFetchLaunchFence,
   type FinalWire,
@@ -100,9 +101,15 @@ async function setup(
   mode: string,
   protocol: 'legacy' | 'rounds' = 'legacy',
   flow?: { owner: SourceFlowLaunchOwner; cwd: string },
+  useHome = false,
 ) {
-  const root = realpathSync(makeTempDir('station-group-launch-fence-'));
+  const temp = realpathSync(makeTempDir('station-group-launch-fence-'));
+  const home = useHome ? join(temp, 'home') : undefined;
+  if (home) mkdirSync(join(home, 'security'), { recursive: true, mode: 0o700 });
+  const root = home ? join(home, 'report-groups') : temp;
+  if (home) mkdirSync(root, { mode: 0o700 });
   const persistence = new StationDelegationPersistence(root);
+  const writer = home ? await HomeWriterOwner.forHome(home) : undefined;
   let active = true;
   let now = '2026-10-21T00:00:00.000Z';
   let starts = 0;
@@ -293,6 +300,19 @@ async function setup(
           intents,
           finalizeCurrent,
           fetch: controlledFetch,
+          ...(writer
+            ? {
+                reportHome: {
+                  owner: writer,
+                  persistence,
+                  current: () => {
+                    writer.assertSynchronous();
+                    return finalizeCurrent();
+                  },
+                  preparationCurrent: finalizeCurrent,
+                },
+              }
+            : {}),
         })
       : undefined;
   const fence = roundsFence ?? legacyFence;
@@ -691,6 +711,7 @@ async function setup(
   });
   return {
     root,
+    writer,
     persistence,
     service,
     controller,
@@ -817,6 +838,21 @@ test('V2 Task admission reuses current reservation checks without transport or w
   );
   assert.equal(f.starts, 0);
   f.allowFence.resolve();
+  await running;
+});
+
+test('rounds launch borrows one home lease and releases it before provider response', async () => {
+  const f = await setup('success-pending-response', 'rounds', undefined, true);
+  assert.ok(f.writer);
+  const running = f.run();
+  await within(f.sent.promise, 'reserved wire did not start');
+  const contender = await within(
+    f.writer.acquire(),
+    'home lease retained while provider response was pending',
+  );
+  await contender.release();
+  assert.equal(f.starts, 1);
+  f.allowResponse.resolve();
   await running;
 });
 

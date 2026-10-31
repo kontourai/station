@@ -6,8 +6,11 @@ import { flowRunHead, flowTransitionRef, loadRun } from '@kontourai/flow';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import {
   continueReportGroupReport,
+  createReportGroup,
   narrowReportGroupAfterInput,
   readReportGroupContextCheckpoint,
+  readReportGroupEvents,
+  readReportGroupResult,
   syncReportGroupAfterInput,
 } from '@kontourai/station-sdk/client';
 import { Hono } from 'hono';
@@ -33,6 +36,7 @@ import { StationReportGroupRuntime } from '../station-report-group-runtime.js';
 import { createReportFlow } from './delegation-source-fixtures/flow.js';
 import {
   installControl,
+  NOW,
   requestFor,
   setup,
 } from './delegation-source-fixtures/report.js';
@@ -41,8 +45,277 @@ import {
   controlledTextStream,
 } from './delegation-source-fixtures/streamed-text.js';
 
+test('funded three-seat mixed-model report serves input, member results and accounting through HTTP and SDK', async () => {
+  const h = await setup('local-grant', NOW);
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(NOW);
+  onTestFinished(() => {
+    vi.useRealTimers();
+  });
+  installControl(h);
+  await h.f.storage.saveProviderConnection({
+    id: 'google-1',
+    name: 'Controlled Google',
+    type: 'google',
+    enabled: true,
+    capabilities: ['llm'],
+    config: {
+      apiKey: 'synthetic-google-not-live',
+      baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+    },
+  });
+  await h.f.loader.saveAgent('google-reviewer', {
+    name: 'Google reviewer',
+    prompt: 'Review source',
+    execution: {
+      modelConnectionId: 'google-1',
+      modelId: 'gemini-2.5-flash-lite',
+    },
+  });
+  const flow = await createReportFlow(h.f, 'input-mixed-journey', [
+    { id: 'left' },
+    { id: 'right' },
+    { id: 'join', needs: ['left', 'right'] },
+  ]);
+  const bus = new EventBus();
+  const eventStore = new EventStore(
+    join(h.f.root, 'input-mixed-journey.sqlite'),
+  );
+  const logger = createLogger({
+    name: 'report-input-mixed-fixture',
+    level: 'error',
+  });
+  const relay = vi.fn<typeof fetch>(async () => {
+    throw Error('unexpected relay');
+  });
+  const adapter = new StationAgentAdapter({
+    apiBase: 'http://report-control.test',
+    hasAgent: () => true,
+    eventBus: bus,
+    approvalRegistry: new ApprovalRegistry(logger, { eventBus: bus }),
+    fetch: relay,
+  });
+  const starts = vi.spyOn(adapter, 'startSession');
+  const orchestration = new OrchestrationService({
+    adapterRegistry: createGateTestRegistry(adapter),
+    eventBus: bus,
+    eventStore,
+    logger,
+    resolveSessionAgent: createSessionAgentResolver({
+      loadAgentSpec: (slug) => h.f.loader.loadAgent(slug),
+      resolveToolServer: async () => null,
+      resolveSkillDir: async () => null,
+    }),
+  });
+  onTestFinished(async () => {
+    await orchestration.shutdown();
+    eventStore.close();
+  });
+  h.rawFetch.mockImplementation(async (url, init) => {
+    if (String(url).startsWith('https://generativelanguage.googleapis.com/'))
+      return controlledTextStream(
+        'google',
+        'gemini-2.5-flash-lite',
+        'Google report',
+        {
+          promptTokenCount: 4,
+          candidatesTokenCount: 2,
+          thoughtsTokenCount: 0,
+          totalTokenCount: 6,
+          cachedContentTokenCount: 0,
+          serviceTier: 'standard',
+        },
+      );
+    return JSON.parse(String(init?.body)).tools
+      ? controlledInputStream('claude-sonnet-4-6', 'Which scope?')
+      : controlledTextStream(
+          'anthropic',
+          'claude-sonnet-4-6',
+          'Anthropic report',
+          {
+            input_tokens: 4,
+            output_tokens: 2,
+            cache_read_input_tokens: 0,
+            cache_creation_input_tokens: 0,
+          },
+        );
+  });
+  const runtime = new StationReportGroupRuntime({
+    runtime: h.preparationOwners.runtime,
+    orchestration,
+    rawFetch: h.rawFetch,
+  });
+  let runtimeFailure: unknown;
+  const create = runtime.create.bind(runtime);
+  const observeCreate = vi
+    .spyOn(runtime, 'create')
+    .mockImplementation(async (...args) => {
+      try {
+        return await create(...args);
+      } catch (error) {
+        runtimeFailure = error;
+        throw error;
+      }
+    });
+  onTestFinished(() => {
+    observeCreate.mockRestore();
+  });
+  const principal = getRuntimeAuthenticatedRequestPrincipal(h.f.req);
+  assert.ok(principal && principal.kind !== 'internal');
+  const app = new Hono();
+  app.use('*', async (c, next) => {
+    setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
+      ...principal,
+      credential: c.req.header('Authorization')?.replace(/^Bearer /, '') ?? '',
+    });
+    if (c.req.header('X-Test-Operator') === 'yes')
+      bindRuntimeLocalOperator(c.req.raw);
+    await next();
+  });
+  app.route(
+    '/api/orchestration/report-groups',
+    createReportGroupRoutes(runtime),
+  );
+  const controlFetch = globalThis.fetch;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn<typeof fetch>(async (url, init) =>
+      String(url).startsWith(
+        'http://report-control.test/api/orchestration/report-groups',
+      )
+        ? app.fetch(new Request(url, init))
+        : controlFetch(url, init),
+    ),
+  );
+  const input = {
+    ...h.input,
+    flow,
+    maxConcurrent: 2,
+    members: [
+      { ...h.input.members[0], input: 'operator-clarification-v1' as const },
+      { ...h.input.members[1], agentId: 'google-reviewer' },
+      { ...h.input.members[0], seatId: 'join', brief: 'Combine findings' },
+    ],
+    continuation: {
+      attemptsPerMember: 4,
+      maxRounds: 4,
+      maxSyncs: 2,
+      maxRenewals: 1,
+      maxEvaluations: 2,
+      maxRecoveries: 1,
+    },
+    budget: {
+      inputTokens: 12 * 1048576,
+      outputTokens: 120,
+      costMicros: 12 * 3145878,
+    },
+  };
+  const options = {
+    credential: h.f.paired.credential,
+    credentialOrigin: 'http://report-control.test',
+    headers: { 'X-Test-Operator': 'yes' },
+  };
+  let failure: unknown;
+  const running = createReportGroup(
+    'http://report-control.test',
+    input,
+    options,
+  ).catch((error: unknown) => {
+    failure = new Error('report create failed at runtime boundary', {
+      cause: runtimeFailure ?? error,
+    });
+    throw failure;
+  });
+  void running.catch(() => {});
+  let opened:
+    | Extract<
+        ReturnType<EventStore['listEvents']>[number]['payload'],
+        { method: 'request.opened' }
+      >
+    | undefined;
+  await vi.waitFor(
+    () => {
+      if (failure) throw failure;
+      const event = starts.mock.calls
+        .flatMap(([started]) => eventStore.listEvents(started.threadId))
+        .find(({ payload }) => payload.method === 'request.opened')?.payload;
+      if (event?.method !== 'request.opened') throw Error('No canonical input');
+      opened = event;
+    },
+    { timeout: 60000 },
+  );
+  assert.ok(opened);
+  await orchestration.dispatch({
+    type: 'respondToRequest',
+    threadId: opened.threadId,
+    requestId: opened.requestId,
+    expectedRequestEventId: opened.eventId,
+    decision: 'accept',
+    content: { answer: 'Current source only' },
+  });
+  const result = await running;
+  assert.equal(result.replayed, false);
+  assert.equal(result.group.members.length, 3);
+  assert.deepEqual(
+    new Set(result.group.members.map((member) => member.requestedModelId)),
+    new Set(['claude-sonnet-4-6', 'gemini-2.5-flash-lite']),
+  );
+  assert.equal(h.rawFetch.mock.calls.length, 3);
+  assert.equal(relay.mock.calls.length, 0);
+  const events = await readReportGroupEvents(
+    'http://report-control.test',
+    result.group.groupId,
+    0,
+    options,
+  );
+  assert.ok(events.events.length > 0);
+  let inputTokens = 0,
+    outputTokens = 0,
+    costMicros = 0;
+  for (const member of result.group.members) {
+    assert.ok(events.events.some((event) => event.seatId === member.seatId));
+    assert.equal(member.attempts.length, 1);
+    const attempt = member.attempts[0];
+    assert.ok(attempt.usage && attempt.accountingTerminal);
+    inputTokens += attempt.usage.inputTokens;
+    outputTokens += attempt.usage.outputTokens;
+    costMicros += attempt.usage.costMicros;
+    const raw = await readReportGroupResult(
+      'http://report-control.test',
+      result.group.groupId,
+      member.seatId,
+      attempt.invocationId,
+      0,
+      options,
+    );
+    assert.equal(raw.kind, 'result');
+    if (raw.kind === 'result')
+      assert.equal(
+        raw.text,
+        member.seatId === 'right'
+          ? 'Google report'
+          : member.seatId === 'left'
+            ? ''
+            : 'Anthropic report',
+      );
+  }
+  assert.deepEqual(result.group.accounting?.knownTerminalUsage, {
+    inputTokens,
+    outputTokens,
+    costMicros,
+  });
+  assert.equal(result.group.accounting?.unsettledInvocations, 0);
+  const replay = await createReportGroup(
+    'http://report-control.test',
+    input,
+    options,
+  );
+  assert.equal(replay.replayed, true);
+  assert.equal(h.rawFetch.mock.calls.length, 3);
+}, 240000);
+
 test('explicit report input crosses real Flow dispatch, canonical answer and retained accounting once', async () => {
-  const now = Date.parse('2026-10-25T20:10:14Z');
+  const now = NOW + 2_000;
   const h = await setup('local-grant', now);
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(now);

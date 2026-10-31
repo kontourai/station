@@ -66,6 +66,10 @@ import { ProjectMembershipService } from '../projects/project-membership-service
 import { ProjectResourceResolver } from '../projects/project-resource-resolver.js';
 import { ProjectService } from '../projects/project-service.js';
 import { EnvironmentSecurityService } from '../ssh/environment-security-service.js';
+import type {
+  HomeWriterLease,
+  HomeWriterOwner,
+} from '../ssh/home-writer-owner.js';
 import {
   assertSdkSourceWireCurrentSync,
   beginSdkSourceWire,
@@ -1661,8 +1665,9 @@ export class LocalSourceAdmissionOwner {
       actor,
     });
     const mutationKey = JSON.stringify([cwd, runId]);
-    const enqueue = <T>(operation: () => Promise<T>) =>
-      this.#withFlowMutation(mutationKey, assertCurrent, operation);
+    const sourceHome = this.#home;
+    const enqueue = <T>(operation: () => Promise<T>, current = assertCurrent) =>
+      this.#withFlowMutation(mutationKey, current, operation);
     return Object.freeze({
       topology,
       source: state.source,
@@ -1694,70 +1699,91 @@ export class LocalSourceAdmissionOwner {
       async withCurrentHead<T>(
         expectedHead: string,
         launch: () => { value: T },
+        scope?: { owner: HomeWriterOwner; lease: HomeWriterLease },
       ): Promise<{ value: T }> {
+        if (scope && scope.owner.homeDir !== sourceHome)
+          refuse('flow_home_mismatch');
+        const scopedCurrent = scope
+          ? () => scope.owner.runWithLease(scope.lease, assertCurrent)
+          : assertCurrent;
         if (!/^[a-f0-9]{64}$/.test(expectedHead)) refuse('flow_head_invalid');
-        return enqueue(() =>
-          withRunMutationLock(runId, cwd, async () => {
-            const current = await loadRun(runId, cwd);
-            assertCurrent();
-            assertLifecycleEligible('persist', current.state.status);
-            if (
-              !isDeepStrictEqual(
-                definitionIdentity(current.definition),
-                definition,
+        return enqueue(
+          () =>
+            withRunMutationLock(runId, cwd, async () => {
+              const current = await loadRun(runId, cwd);
+              scopedCurrent();
+              assertLifecycleEligible('persist', current.state.status);
+              if (
+                !isDeepStrictEqual(
+                  definitionIdentity(current.definition),
+                  definition,
+                )
               )
-            )
-              refuse('flow_definition_changed');
-            if (flowRunHead(current.state) !== expectedHead)
-              refuse('flow_head_changed');
-            assertCurrent();
-            return launch();
-          }),
+                refuse('flow_definition_changed');
+              if (flowRunHead(current.state) !== expectedHead)
+                refuse('flow_head_changed');
+              scopedCurrent();
+              return scope
+                ? scope.owner.runWithLease(scope.lease, launch)
+                : launch();
+            }),
+          scopedCurrent,
         );
       },
       async withCurrentClaim<T>(
         claimInput: FlowDurableStepClaim,
         launch: () => { value: T },
+        scope?: { owner: HomeWriterOwner; lease: HomeWriterLease },
       ): Promise<{ value: T }> {
+        if (scope && scope.owner.homeDir !== sourceHome)
+          refuse('flow_home_mismatch');
+        const scopedCurrent = scope
+          ? () => scope.owner.runWithLease(scope.lease, assertCurrent)
+          : assertCurrent;
         const expected = structuredClone(claimInput);
-        return enqueue(() =>
-          withRunMutationLock(runId, cwd, async () => {
-            const current = await loadRun(runId, cwd);
-            assertCurrent();
-            assertLifecycleEligible('persist', current.state.status);
-            const claims: unknown = current.state.multi_cursor?.active_claims;
-            if (!Array.isArray(claims)) refuse('flow_active_claim_unavailable');
-            const stored = claims.find(
-              (value: FlowDurableStepClaim) =>
-                value.claim_id === expected.claim_id,
-            );
-            if (!stored) refuse('flow_active_claim_unavailable');
-            const claim = validateDurableStepClaim(
-              current.definition,
-              current.state,
-              stored,
-              new Date(),
-            );
-            const captured = validateDurableStepClaim(
-              current.definition,
-              current.state,
-              expected,
-            );
-            const identityOf = ({
-              renewed_at: _renewed,
-              expires_at: _expires,
-              ...identity
-            }: FlowDurableStepClaim) => identity;
-            if (
-              claim.run_id !== runId ||
-              !isDeepStrictEqual(claim.actor, actor) ||
-              !isDeepStrictEqual(claim.definition, definition) ||
-              !isDeepStrictEqual(identityOf(claim), identityOf(captured))
-            )
-              refuse('flow_claim_binding_changed');
-            assertCurrent();
-            return launch();
-          }),
+        return enqueue(
+          () =>
+            withRunMutationLock(runId, cwd, async () => {
+              const current = await loadRun(runId, cwd);
+              scopedCurrent();
+              assertLifecycleEligible('persist', current.state.status);
+              const claims: unknown = current.state.multi_cursor?.active_claims;
+              if (!Array.isArray(claims))
+                refuse('flow_active_claim_unavailable');
+              const stored = claims.find(
+                (value: FlowDurableStepClaim) =>
+                  value.claim_id === expected.claim_id,
+              );
+              if (!stored) refuse('flow_active_claim_unavailable');
+              const claim = validateDurableStepClaim(
+                current.definition,
+                current.state,
+                stored,
+                new Date(),
+              );
+              const captured = validateDurableStepClaim(
+                current.definition,
+                current.state,
+                expected,
+              );
+              const identityOf = ({
+                renewed_at: _renewed,
+                expires_at: _expires,
+                ...identity
+              }: FlowDurableStepClaim) => identity;
+              if (
+                claim.run_id !== runId ||
+                !isDeepStrictEqual(claim.actor, actor) ||
+                !isDeepStrictEqual(claim.definition, definition) ||
+                !isDeepStrictEqual(identityOf(claim), identityOf(captured))
+              )
+                refuse('flow_claim_binding_changed');
+              scopedCurrent();
+              return scope
+                ? scope.owner.runWithLease(scope.lease, launch)
+                : launch();
+            }),
+          scopedCurrent,
         );
       },
     });
@@ -2207,10 +2233,12 @@ export interface SourceFlowLaunchOwner {
   withCurrentHead<T>(
     expectedHead: string,
     launch: () => { value: T },
+    scope?: { owner: HomeWriterOwner; lease: HomeWriterLease },
   ): Promise<{ value: T }>;
   withCurrentClaim<T>(
     claim: FlowDurableStepClaim,
     launch: () => { value: T },
+    scope?: { owner: HomeWriterOwner; lease: HomeWriterLease },
   ): Promise<{ value: T }>;
 }
 type SealedState = {

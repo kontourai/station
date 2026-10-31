@@ -24,6 +24,10 @@ import {
   setRuntimeAuthenticatedRequestPrincipal,
 } from '../../../security/runtime-request-security.js';
 import { ApprovalRegistry } from '../../approvals/approval-registry.js';
+import {
+  HomeWriterOwner,
+  HomeWriterUnavailableError,
+} from '../../ssh/home-writer-owner.js';
 import { StationDelegationPersistence } from '../delegation-group-persistence.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
@@ -195,6 +199,24 @@ test.each(['independent', 'flow', 'mixed'] as const)(
       );
       return app;
     }
+    const homeFailures: string[] = [];
+    const runSynchronous = HomeWriterOwner.prototype.runSynchronous;
+    vi.spyOn(HomeWriterOwner.prototype, 'runSynchronous').mockImplementation(
+      function <T>(this: HomeWriterOwner, body: () => T): T {
+        try {
+          return runSynchronous.call(this, body) as T;
+        } catch (error) {
+          if (
+            error instanceof HomeWriterUnavailableError &&
+            homeFailures.length < 8
+          )
+            homeFailures.push(
+              `${error.reason} operationRan=${error.operationRan}\n${error.stack?.split('\n').slice(0, 12).join('\n')}`,
+            );
+          throw error;
+        }
+      },
+    );
     const createFailures: unknown[] = [];
     const create = StationReportGroupRuntime.prototype.create;
     vi.spyOn(StationReportGroupRuntime.prototype, 'create').mockImplementation(
@@ -270,7 +292,7 @@ test.each(['independent', 'flow', 'mixed'] as const)(
       assert.equal(
         response.status,
         200,
-        `${JSON.stringify(body)} ${createFailures.map((error) => inspect(error, { depth: 8 })).join('\n')}`,
+        `${JSON.stringify(body)} ${createFailures.map((error) => inspect(error, { depth: 8 })).join('\n')}\n${homeFailures.join('\n')}`,
       );
       assert.equal(body.success, true);
       const result = body.data;
@@ -377,7 +399,7 @@ test.each(['independent', 'flow', 'mixed'] as const)(
       ])
         assert.ok(!JSON.stringify(body).includes(privateValue), privateValue);
       assert.equal(qualifies.mock.calls.length, 1);
-      vi.mocked(Date.now).mockReturnValue(Date.parse('2026-10-26T19:51:03Z'));
+      vi.mocked(Date.now).mockReturnValue(Date.parse('2026-10-31T21:57:48Z'));
       await assert.rejects(() => AnthropicSealedPreparation.create(), {
         code: 'stale_contract',
       });

@@ -442,6 +442,12 @@ export class StationReportGroupContinuation {
         intents: this.owners.wireIntents,
         finalizeCurrent: current,
         flow: selected.flow,
+        reportHome: {
+          owner: requestWriter,
+          persistence,
+          current,
+          preparationCurrent: current,
+        },
       };
       const service = createDelegationAuthorityServiceV3(
         launch.authorities,
@@ -793,11 +799,22 @@ export class StationReportGroupContinuation {
                       !selected.flow
                     )
                       return false;
-                    await selected.flow.withCurrentClaim(claim, () => ({
-                      value: undefined,
-                    }));
-                    current();
-                    return true;
+                    const flow = selected.flow;
+                    return requestWriter.runOwnedLease(
+                      executionSignal,
+                      async (lease) => {
+                        await flow.withCurrentClaim(
+                          claim,
+                          () => ({ value: undefined }),
+                          {
+                            owner: requestWriter,
+                            lease,
+                          },
+                        );
+                        requestWriter.runWithLease(lease, current);
+                        return true;
+                      },
+                    );
                   },
                   prepareRequest: async () => ({
                     messages: [

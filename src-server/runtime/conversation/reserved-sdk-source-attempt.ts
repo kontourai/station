@@ -76,11 +76,25 @@ export async function runReservedSdkSourceAttempt(input: {
       result,
       transport.evidence,
     ]);
-    const evidenceReference = await persistence.retainProviderEvidence(
-      evidence,
-      finalizeCurrent,
-    );
-    assertSynchronous(finalizeCurrent);
+    const reportHome =
+      input.transport.launch.protocol === 'rounds-v1'
+        ? input.transport.launch.reportHome
+        : undefined;
+    const evidenceReference = reportHome
+      ? await reportHome.owner.runOwnedLease(input.transport.signal, (lease) =>
+          persistence.retainProviderEvidence(
+            evidence,
+            () => reportHome.owner.runWithLease(lease, finalizeCurrent),
+            (commit) => reportHome.owner.runWithLease(lease, commit),
+          ),
+        )
+      : await persistence.retainProviderEvidence(evidence, finalizeCurrent);
+    if (reportHome)
+      await reportHome.owner.runRequest(
+        input.transport.signal,
+        finalizeCurrent,
+      );
+    else assertSynchronous(finalizeCurrent);
     const rawInput = readBoundedApiReportInput(
       input.transport.contract,
       evidence.rawResponseJson,

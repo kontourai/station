@@ -5523,10 +5523,10 @@ export async function delegateTask(
     orchestrationService,
   );
   if (input.reservedStationTurn) {
-    const { assertReservedStationEnvironment } = await import(
+    const { admitReservedStationEnvironment } = await import(
       '../runtime/conversation/reserved-station-turn.js'
     );
-    assertReservedStationEnvironment(
+    await admitReservedStationEnvironment(
       input.reservedStationTurn,
       selectedTarget.environmentId,
     );

@@ -249,6 +249,48 @@ export function assertReservedStationEnvironment(
   if (state(handle).binding.environmentId !== environmentId) refuse();
 }
 
+async function admitReservedStationCheck(
+  handle: ReservedStationTurn,
+  check: () => void,
+): Promise<void> {
+  const value = states.get(handle);
+  if (!value) refuse();
+  const home =
+    value.attempt.transport.launch.protocol === 'rounds-v1'
+      ? value.attempt.transport.launch.reportHome
+      : undefined;
+  if (!home) {
+    check();
+    return;
+  }
+  await home.owner.runRequest(value.attempt.transport.signal, check);
+}
+
+export async function admitReservedStationTurnBinding(
+  handle: ReservedStationTurn,
+  principalId: string | undefined,
+  threadId: string,
+  recordedMode?: unknown,
+): Promise<void> {
+  await admitReservedStationCheck(handle, () =>
+    assertReservedStationTurnBinding(
+      handle,
+      principalId,
+      threadId,
+      recordedMode,
+    ),
+  );
+}
+
+export async function admitReservedStationEnvironment(
+  handle: ReservedStationTurn,
+  environmentId: string,
+): Promise<void> {
+  await admitReservedStationCheck(handle, () =>
+    assertReservedStationEnvironment(handle, environmentId),
+  );
+}
+
 /** Only internal orchestration options carry this capability; never command JSON or metadata. */
 export function withReservedStationTurn<T>(
   handle: ReservedStationTurn,
