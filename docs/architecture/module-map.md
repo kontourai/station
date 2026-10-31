@@ -449,10 +449,11 @@ existing cadence-based credential-activity touch and its failure behavior.
 **Borrowing and recovery.** Only an explicit live lease can start a borrowed
 span. Thenables refuse; the span invalidates before return, so a late async
 descendant cannot borrow it. Runtime-admitted report cancellation builds
-controller-transaction group, authority and host facades against an exact lease.
+group, authority and host facades for controller transactions against an exact lease.
 The runtime parent spans the operation; each child releases home after the full
-store return and before descendant-interrupt work. Constructor-service cancellation,
-preparatory reads and outside writers still need their own exclusion qualification. Cleanup retains exact handles; explicit pending
+store return. Its separate authority cancellation and historical execution reads
+use short metadata scopes too, ending before descendant-interrupt work. Other
+report writers still need their own exclusion qualification. Cleanup retains exact handles; explicit pending
 cleanup retires only failed/inactive holders, preserving active siblings.
 A runtime parent joins its retired children before release, without replaying
 an operation callback. The HTTP boundary
@@ -2354,8 +2355,11 @@ actual durable store return. Descendant interruption runs outside that home hold
 Failed guard retirement retains the runtime admission for shutdown retry; parent
 cleanup joins retired child cleanup before releasing the runtime home. Actual
 runtime/store holds and an owned guard-removal fault exercise the zero-attempt cancel
-path. The constructor service's separate `cancel` call, preparatory inspection,
-active interruption writers and actual finalizeCancel execution remain unqualified.
+path. The constructor service's separate `cancel` call and cancellation's historical
+execution inspections now acquire their own short home scopes before domain locks.
+A fresh runtime finalizes the retained empty-work cancellation and replays it without
+another authority-cancellation write. Active interruption writers and confirmation
+with launched attempts remain unqualified.
 Continuation-parent borrowing and the other controller constructions remain open;
 group/finalizer flags stay disabled. Legacy compositions without the runtime
 participant do not establish these ownership guarantees.

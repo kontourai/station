@@ -3033,3 +3033,25 @@ exclusion to those outside operations. Five other controller constructions and
 all-writer/funded qualification remain open. Readiness still fails the required
 documentation-truth check; the other selected checks pass. No feature flag or PR
 has been enabled.
+
+### Cancellation metadata operations outside controller transactions
+
+The published controller's separate authority cancellation now rebuilds its V3
+service under an invocation-local short home scope. That scope holds through the
+actual authority-store return. Initial and inter-transaction historical execution
+inspections also enter home before their group/authority domains. Metadata scopes
+share the runtime parent and cleanup dependency machinery with transaction scopes;
+no async callback is placed inside an ambient borrowed span. Descendant interruption
+still starts after the metadata scope releases home.
+
+The actual caller's authority-store probe first missed the transition because its
+input ledger was mutable; that zero-observation fixture failure is excluded as
+custody proof. Capturing pre-body state reproduces the intended unowned cancellation
+write. A separate historical-read probe reproduces both unowned read entries.
+The repairs pass the three-file 27-case selection. Its fault case restarts the real
+runtime after retained cleanup, finalizes the empty-work pending cancellation and
+replays finalization without another authority-cancellation write. Server-test types
+pass. These controls have no launched attempts: live interruption, signed intent/ACK
+writers and confirmation with actual member work remain open, as do five other
+controller constructions and all-writer/funded qualification. Independent review,
+updated cleanup mutation and readiness remain pending; flags remain disabled.

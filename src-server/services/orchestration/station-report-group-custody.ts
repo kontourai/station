@@ -16,6 +16,7 @@ import {
   ContinuationPublicationUncertainError,
   createDelegationRoundsController,
   type DelegationRoundsHost,
+  type DelegationRoundsTransactionOwner,
 } from '@kontourai/flow-agents/delegation-group-rounds';
 import { canonicalJson } from '@kontourai/relay';
 import type {
@@ -743,14 +744,26 @@ export class StationReportGroupCustody {
     publication?: ReportRoundsPublication,
   ) {
     const authorized = await this.#context(context, 'POST');
-    const before = await this.#inspect(authorized, groupId);
-    if (!before?.group || !before.authority) refuse();
-    const group = before.group;
-    const root = before.authority.epochs.at(-1)!.root;
     const baseCurrent = (): undefined => {
       publication?.assertCurrent();
       return authorized.current();
     };
+    const owner = publication
+      ? await HomeWriterOwner.forHome(
+          this.owners.environment.getProjectHomeDir(),
+        )
+      : undefined;
+    const inspect = () =>
+      publication && owner
+        ? publication.withHome({ owner, current: baseCurrent }, (scope) =>
+            this.#inspect({ ...authorized, current: scope.current }, groupId),
+          )
+        : this.#inspect(authorized, groupId);
+    const before = await inspect();
+    if (!before?.group || !before.authority) refuse();
+    const group = before.group;
+    const root = before.authority.epochs.at(-1)!.root;
+
     const build = (
       current: () => undefined,
       within?: { owner: HomeWriterOwner; lease: HomeWriterLease },
@@ -835,7 +848,7 @@ export class StationReportGroupCustody {
         requestDescendantCancellation: async (spec) => {
           if (within) refuse();
           if (requestOperationKey === null) refuse();
-          const state = await this.#inspect(scoped, groupId);
+          const state = await inspect();
           if (
             !state?.group ||
             !state.authority?.cancelled ||
@@ -883,16 +896,25 @@ export class StationReportGroupCustody {
         host,
       };
     };
-    const transactionOwner = publication?.transactionOwner({
-      groupId,
-      owner: await HomeWriterOwner.forHome(
-        this.owners.environment.getProjectHomeDir(),
-      ),
-      current: baseCurrent,
-      build: (scope) => build(scope.current, scope),
-    });
+    const defaults = build(baseCurrent);
+    let transactionOwner: DelegationRoundsTransactionOwner | undefined;
+    if (publication && owner) {
+      transactionOwner = publication.transactionOwner({
+        groupId,
+        owner,
+        current: baseCurrent,
+        build: (scope) => build(scope.current, scope),
+      });
+      defaults.authorityService = {
+        ...defaults.authorityService,
+        cancel: (...args) =>
+          publication.withHome({ owner, current: baseCurrent }, (scope) =>
+            build(scope.current, scope).authorityService.cancel(...args),
+          ),
+      };
+    }
     const controller = createDelegationRoundsController({
-      ...build(baseCurrent),
+      ...defaults,
       dispatchLedger,
       ...(transactionOwner ? { transactionOwner } : {}),
     });

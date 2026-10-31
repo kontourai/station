@@ -379,7 +379,7 @@ test.each([false, true])(
       maxConcurrent: 1,
       members: h.input.members.slice(0, 1),
     });
-    const runtime = new StationRuntime({ projectHomeDir: h.f.home });
+    let runtime = new StationRuntime({ projectHomeDir: h.f.home });
     const participant = Reflect.get(runtime, 'runtimePublicationParticipant');
     assert.ok(isRuntimePublicationParticipant(participant));
     const deny = (): never => {
@@ -407,6 +407,8 @@ test.each([false, true])(
     let pending: Promise<unknown> | undefined;
     let shutdown: Promise<void> | undefined;
     let releaseFault: { mockRestore(): void } | undefined;
+    let readProbe: { mockRestore(): void } | undefined;
+    let authorityProbe: { mockRestore(): void } | undefined;
     let storeProbe: { mockRestore(): void } | undefined;
     try {
       const prepared = h.owner.read(handle, h.f.req);
@@ -464,6 +466,7 @@ test.each([false, true])(
       });
       const roundsStore = StationDelegationPersistence.prototype.roundsStore;
       let first = true;
+      let cancellationRevision = 0;
       storeProbe = vi
         .spyOn(StationDelegationPersistence.prototype, 'roundsStore')
         .mockImplementation(function (
@@ -488,6 +491,7 @@ test.each([false, true])(
                 ) {
                   first = false;
                   selected = true;
+                  cancellationRevision = value.journal.events.length;
                   bodyEntered();
                   await bodyHeld;
                 }
@@ -502,6 +506,58 @@ test.each([false, true])(
           };
         });
       const writer = await HomeWriterOwner.forHome(h.f.home);
+      const authorityStore =
+        StationDelegationPersistence.prototype.roundsAuthorityStore;
+      let cancellationWrites = 0;
+      authorityProbe = vi
+        .spyOn(StationDelegationPersistence.prototype, 'roundsAuthorityStore')
+        .mockImplementation(function (
+          this: StationDelegationPersistence,
+          ...args
+        ) {
+          const actual = authorityStore.apply(this, args);
+          return {
+            ...actual,
+            transact: (id, body) =>
+              actual.transact(id, async (ledger) => {
+                const wasCancelled = ledger?.cancelled;
+                const next = await body(ledger);
+                if (wasCancelled === false && next.ledger?.cancelled) {
+                  assert.throws(
+                    () => writer.runSynchronous(() => undefined),
+                    {
+                      name: 'HomeWriterUnavailableError',
+                      reason: 'busy',
+                    },
+                    'authority cancellation must hold home through its store body',
+                  );
+                  cancellationWrites++;
+                }
+                return next;
+              }),
+          };
+        });
+
+      const readExecution =
+        StationDelegationPersistence.prototype.readReportExecution;
+      let executionReads = 0;
+      readProbe = vi
+        .spyOn(StationDelegationPersistence.prototype, 'readReportExecution')
+        .mockImplementation(function (
+          this: StationDelegationPersistence,
+          ...args
+        ) {
+          assert.throws(
+            () => writer.runSynchronous(() => undefined),
+            {
+              name: 'HomeWriterUnavailableError',
+              reason: 'busy',
+            },
+            'historical execution read must enter holding home',
+          );
+          executionReads++;
+          return readExecution.apply(this, args);
+        });
       pending = report.cancel(h.f.context(), groupId, {
         operationKey: 'cancel-owned',
         expectedRevision: created.projection.revision,
@@ -557,10 +613,48 @@ test.each([false, true])(
         syncBuiltinESMExports();
         shutdown = runtime.shutdown();
         await shutdown;
+        runtime = new StationRuntime({ projectHomeDir: h.f.home });
+        const returningParticipant = Reflect.get(
+          runtime,
+          'runtimePublicationParticipant',
+        );
+        assert.ok(isRuntimePublicationParticipant(returningParticipant));
+        const returning = new StationReportGroupRuntime({
+          runtime: h.preparationOwners.runtime,
+          orchestration,
+          rawFetch: h.rawFetch,
+          publicationParticipant: returningParticipant,
+        });
+        assert.ok(cancellationRevision > 0);
+        const recovery = {
+          operationKey: 'finish-cancel-owned',
+          expectedRevision: cancellationRevision,
+          cancelOperationKey: 'cancel-owned',
+        };
+        const finalized = await returning.finalizeCancel(
+          h.f.context(),
+          groupId,
+          recovery,
+        );
+        assert.equal(finalized.replayed, false);
+        assert.equal(finalized.cancellation, 'requested');
+        assert.equal(cancellationWrites, 1);
+        const replayed = await returning.finalizeCancel(
+          h.f.context(),
+          groupId,
+          recovery,
+        );
+        assert.equal(replayed.replayed, true);
+        assert.equal(replayed.revision, finalized.revision);
+        assert.equal(cancellationWrites, 1);
+        shutdown = runtime.shutdown();
+        await shutdown;
       } else {
         await pending;
+        assert.equal(cancellationWrites, 1);
         await shutdown;
       }
+      assert.ok(executionReads > 0);
       writer.runSynchronous(() => undefined);
       const maintenance = acquireStationHomeMaintenanceLease(h.f.home);
       maintenance.release();
@@ -570,6 +664,8 @@ test.each([false, true])(
       releaseBody();
       releaseReturn();
       await pending?.catch(() => {});
+      readProbe?.mockRestore();
+      authorityProbe?.mockRestore();
       storeProbe?.mockRestore();
       await shutdown?.catch(() => {});
       await runtime.shutdown();
