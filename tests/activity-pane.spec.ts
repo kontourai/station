@@ -688,10 +688,10 @@ async function captureFooter(
 }
 
 /**
- * The sidebar footer's one row: Schedule and Customize at its start, the
+ * The sidebar footer's one row: Automations and Customize at its start, the
  * icon-only Updates control and the account control at its end. Measured on
  * the 216px expanded sidebar in both themes, on the collapsed rail (where
- * Schedule and Customize move behind Sidebar utilities while Updates and the
+ * Automations and Customize move behind Sidebar utilities while Updates and the
  * account stay on the rail) and in the phone drawer at 390 and 320px, where
  * the row keeps its order and every control takes the 44px touch floor. Geometry from the rendered page,
  * not class names.
@@ -706,7 +706,10 @@ fixtureTest.describe('Sidebar footer controls', () => {
       await page.goto('/settings');
       await page.evaluate(() => document.fonts.ready);
       const controlsIn = (root: Locator) => ({
-        Schedule: root.getByRole('button', { name: 'Schedule', exact: true }),
+        Automations: root.getByRole('button', {
+          name: 'Automations',
+          exact: true,
+        }),
         Customize: root.getByRole('button', {
           name: 'Customize',
           exact: true,
@@ -727,7 +730,7 @@ fixtureTest.describe('Sidebar footer controls', () => {
         // room than that.
         expect((await footer.boundingBox())?.width).toBeLessThanOrEqual(216);
         await expectFooterControlsApart(footer, expanded);
-        // One row, in reading order: Schedule, Customize, Updates, account.
+        // One row, in reading order: Automations, Customize, Updates, account.
         await expectOneRowInOrder(expanded);
         await captureFooter(footer, testInfo, `footer-${theme}-expanded.png`);
       }
@@ -745,13 +748,13 @@ fixtureTest.describe('Sidebar footer controls', () => {
         Updates: controlsIn(rail).Updates,
         account: controlsIn(rail).account,
       });
-      // Schedule and Customize leave the rail for the popover, not both.
-      await expect(controlsIn(rail).Schedule).toHaveCount(0);
+      // Automations and Customize leave the rail for the popover, not both.
+      await expect(controlsIn(rail).Automations).toHaveCount(0);
       await expect(controlsIn(rail).Customize).toHaveCount(0);
       await captureFooter(rail, testInfo, 'footer-collapsed.png');
       await utilitiesTrigger.click();
       const utilities = page.getByRole('dialog', { name: 'Sidebar utilities' });
-      for (const name of ['Schedule', 'Customize']) {
+      for (const name of ['Automations', 'Customize']) {
         await expect(
           utilities.getByRole('button', { name, exact: true }),
         ).toBeVisible();

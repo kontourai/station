@@ -1,0 +1,9 @@
+{
+  "revision": "83c9b76bb41e0935ca5392fc492f47561887e496",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Regenerated station-docs-content.ts from the canonical docs with docs:mcp:generate; the shipped topics now carry the Automations wording reviewed in the canonical inputs. Checked the Scheduled jobs and notifications section against invokeConversationTarget.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Changed the Automations link to its absolute GitHub URL because the guide is not admitted to Pages (docs:public:hygiene). Claim text unchanged from the earlier review.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

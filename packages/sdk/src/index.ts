@@ -1182,6 +1182,7 @@ export {
   useSaveFeedbackRatingMutation,
   useSaveIntegrationMutation,
   useSaveModelConnectionMutation,
+  useScheduledConversationTargetCapability,
   useSchedulerJobs,
   useSchedulerProviders,
   useSchedulerStats,

@@ -78,8 +78,8 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
   // link back to `/developer` once it mounts.
   developer: { eyebrow: 'Developer', width: 'full', body: 'fill' },
   schedule: {
-    title: 'Schedule',
-    subtitle: 'Manage scheduled jobs and automation',
+    title: 'Automations',
+    subtitle: 'Recurring work and check-backs that run in a chat',
     firstRunAnchor: 'schedule',
   },
   settings: {
