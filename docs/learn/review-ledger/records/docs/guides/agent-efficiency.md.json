@@ -42,7 +42,9 @@
 
     "src-server/analytics/reviewed-tariff-config.ts",
 
-    "src-server/runtime/mcp/station-control-mcp-token.ts"
+    "src-server/runtime/mcp/station-control-mcp-token.ts",
+
+    "src-ui/src/slashCommands/builtins.ts"
   ],
 
   "checks": [
