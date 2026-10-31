@@ -392,6 +392,33 @@
       "exempt": "local-host",
       "reason": "Acts on this machine's install, not a Station API."
     },
+    "group cancel": {
+      "tools": ["cancel_delegation_group"]
+    },
+    "group create": {
+      "tools": ["create_delegation_group"],
+      "note": "CLI reads local JSON; the tool accepts the same inert group input inline. Both use the caller-owned group route."
+    },
+    "group events": {
+      "tools": ["get_delegation_group_events"],
+      "note": "Bounded revision pages share afterRevision; returned work is not semantic acceptance."
+    },
+    "group get": {
+      "tools": ["get_delegation_group"]
+    },
+    "group list": {
+      "tools": ["list_delegation_groups"]
+    },
+    "group member-events": {
+      "tools": ["get_delegation_group_member_events"],
+      "note": "Both read bounded pages for the exact owned member turn using afterSequence."
+    },
+    "group member-output": {
+      "tools": ["get_delegation_group_member_output"]
+    },
+    "group run": {
+      "tools": ["run_delegation_group"]
+    },
     "group session-cancel": {
       "tools": ["cancel_session_group"]
     },
@@ -1084,6 +1111,9 @@
       "missing": 4282,
       "want": "Board unpin"
     },
+    "cancel_delegation_group": {
+      "cli": ["group cancel"]
+    },
     "cancel_session_group": {
       "cli": ["group session-cancel"]
     },
@@ -1115,6 +1145,9 @@
     },
     "create_agent": {
       "cli": ["agents create"]
+    },
+    "create_delegation_group": {
+      "cli": ["group create"]
     },
     "create_integration": {
       "cli": ["tools create"],
@@ -1211,6 +1244,18 @@
     },
     "get_conversation_messages": {
       "cli": ["agents messages"]
+    },
+    "get_delegation_group": {
+      "cli": ["group get"]
+    },
+    "get_delegation_group_events": {
+      "cli": ["group events"]
+    },
+    "get_delegation_group_member_events": {
+      "cli": ["group member-events"]
+    },
+    "get_delegation_group_member_output": {
+      "cli": ["group member-output"]
     },
     "get_integration": {
       "cli": ["tools get"]
@@ -1323,6 +1368,9 @@
     },
     "list_delegation_environments": {
       "cli": ["environment list"]
+    },
+    "list_delegation_groups": {
+      "cli": ["group list"]
     },
     "list_delegation_targets": {
       "cli": ["delegate targets"]
@@ -1481,6 +1529,9 @@
     },
     "respond_to_task_request": {
       "cli": ["delegate respond"]
+    },
+    "run_delegation_group": {
+      "cli": ["group run"]
     },
     "run_independent_review": {
       "cli": ["review run"]
