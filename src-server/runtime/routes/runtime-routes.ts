@@ -1,5 +1,11 @@
 import { hostname } from 'node:os';
 import { isDeepStrictEqual } from 'node:util';
+import {
+  APPLICATION_SESSION_HEADER,
+  APPLICATION_SESSION_NATIVE_HEADER,
+  APPLICATION_SESSION_NATIVE_PROOF_HEADER,
+  APPLICATION_SESSION_PROOF_HEADER,
+} from '@kontourai/station-contracts/application-session';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import { isPersonalTokenScope } from '@kontourai/station-contracts/personal-tokens';
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
@@ -182,6 +188,7 @@ import {
 import { ProjectSharedTaskService } from '../../services/projects/project-shared-task-service.js';
 import type { ProjectSharedTaskStore } from '../../services/projects/project-shared-task-store.js';
 import { TaskBrowserCapture } from '../../services/projects/task-browser-capture.js';
+import { TaskBrowserRecording } from '../../services/projects/task-browser-recording.js';
 import { createTaskCaptureBlobStoreFactory } from '../../services/projects/task-capture-blob-store-factory.js';
 import { TaskRoomAttachments } from '../../services/projects/task-room-attachments.js';
 import { createTaskRoomContext } from '../../services/projects/task-room-context.js';
@@ -213,6 +220,7 @@ import {
   readTelemetryCompanionInstallation,
 } from '../../services/telemetry-companion-install.js';
 import { TelemetryIncidentLinks } from '../../services/telemetry-incident-links.js';
+import { TaskWalkthroughStore } from '../../services/walkthroughs/task-walkthrough-store.js';
 import { WalkthroughService } from '../../services/walkthroughs/walkthrough-service.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { canonicalPath } from '../../utils/path-containment.js';
@@ -441,7 +449,10 @@ import {
 } from '../../routes/operations/notification-preferences.js';
 import { createNotificationRoutes } from '../../routes/operations/notifications.js';
 import { createPushRoutes } from '../../routes/operations/push-routes.js';
-import { createSchedulerRoutes } from '../../routes/operations/scheduler.js';
+import {
+  createSchedulerReadProjection,
+  createSchedulerRoutes,
+} from '../../routes/operations/scheduler.js';
 import { createSshEnvironmentRoutes } from '../../routes/operations/ssh-environments.js';
 import { createTelemetryRoutes } from '../../routes/operations/telemetry-events.js';
 import { createUsageTelemetryDisclosureRoutes } from '../../routes/operations/usage-telemetry-disclosure.js';
@@ -737,6 +748,7 @@ import {
 } from '../../services/orchestration/session-lifecycle-service.js';
 import type { StartOwnerAttribution } from '../../services/orchestration/session-owner-attribution.js';
 import { createSessionWorkItemModule } from '../../services/orchestration/session-work-item-module.js';
+import { STATION_FRAMED_TURN_CLIENT_ORIGIN } from '../../services/orchestration/station-turn-handoff.js';
 import {
   createTaskLeadReader,
   TaskQuestionWake,
@@ -803,6 +815,11 @@ import { GitHubPullRequestProvider } from '../../services/pull-requests/github-p
 import { GitLabPullRequestProvider } from '../../services/pull-requests/gitlab-pull-request-provider.js';
 import { PullRequestRepositoryContextResolver } from '../../services/pull-requests/pull-request-repository-context-resolver.js';
 import { createRemoteStationForwarder } from '../../services/remote-stations/remote-station-forwarder.js';
+import {
+  conversationAutomationsFrom,
+  readStoredScheduledTurnTerminal,
+  ScheduledConversationRuns,
+} from '../../services/scheduling/scheduled-conversation-runs.js';
 import type { SchedulerService } from '../../services/scheduling/scheduler-service.js';
 import type {
   IntegrationSecretResolver,
@@ -919,6 +936,7 @@ import {
   accountBoundProjectRouteMayPass,
   installAccountBoundDeviceGate,
   isTaskRelationshipHttpLeaf,
+  isTaskRoomHttpLeaf,
 } from '../bootstrap/account-bound-device-gate.js';
 import {
   accountMemberCaller,
@@ -969,6 +987,7 @@ import type {
   RuntimeContext,
 } from '../types.js';
 import {
+  type AgentScheduleComposition,
   agentWakeUpConversation,
   composeAgentSchedule,
 } from './agent-schedule-composition.js';
@@ -988,6 +1007,11 @@ import {
   createRuntimeSystemRouteDeps,
 } from './runtime-route-support.js';
 import { createTaskBasisMcpInitialRead } from './task-basis-mcp-initial-read.js';
+import {
+  createTaskMemberAdmission,
+  type TaskRoomAdmissionCapability,
+  taskRoomMemberAction,
+} from './task-member-admission.js';
 import { createTaskRelationshipAuthority } from './task-relationship-authority.js';
 import {
   createRuntimeWorkspacePaneHostActions,
@@ -1232,6 +1256,8 @@ interface ConfigureRuntimeRoutesResult {
    * multi-tenant deployments, where the routes are not mounted at all.
    */
   liveSurfaceRegistry?: LiveSurfaceRegistry;
+  /** Task Browser recordings are joined before Browser shutdown. */
+  taskRecordings?: TaskBrowserRecording;
   /** Personal hosts only; the runtime shuts it down on stop. */
   browserService?: BrowserService;
   /** Personal hosts only; the runtime stops the managed hub on stop. */
@@ -1519,6 +1545,10 @@ export async function jobEditRetargetsGrantedWork(
 export function configureRuntimeRoutes(
   context: ConfigureRuntimeRoutesContext,
 ): ConfigureRuntimeRoutesResult {
+  // Shared by the operator grant routes and diagnostics admission.
+  const unattendedGrantStore = new UnattendedGrantStore(
+    context.configLoader.getProjectHomeDir(),
+  );
   const connectedClientPresence = new ClientConnectionPresence({
     record: (op) => connectedClientPresenceOps.add(1, { op }),
   });
@@ -1649,6 +1679,7 @@ export function configureRuntimeRoutes(
   let pluginDraftService: PluginDraftService | undefined;
   let projectTaskRoomLifecycleReady: Promise<void> = Promise.resolve();
   let liveSurfaceRegistry: LiveSurfaceRegistry | undefined;
+  let taskRecordings: TaskBrowserRecording | undefined;
   let browserService: BrowserService | undefined;
   let deviceToolchainService: DeviceToolchainService | undefined;
   let deviceShareStore: DeviceShareStore | undefined;
@@ -1989,7 +2020,11 @@ export function configureRuntimeRoutes(
       { kind: 'account' }
     >,
   ) =>
-    isTaskRelationshipHttpLeaf(request.method, new URL(request.url).pathname) &&
+    (isTaskRelationshipHttpLeaf(
+      request.method,
+      new URL(request.url).pathname,
+    ) ||
+      isTaskRoomHttpLeaf(request.method, new URL(request.url).pathname)) &&
     context.deploymentAuthentication?.service.current(request)?.kind ===
       'absent' &&
     context.localAccounts?.accountDirectory.issuer === binding.issuer &&
@@ -2000,6 +2035,17 @@ export function configureRuntimeRoutes(
   // Only the local provider can independently witness current session revocation.
   // WhoIs then describes ingress, while device bindings remain independent authority.
   const accountSessionOwnsPerson = (request: Request): boolean => {
+    // Only cookie sessions replace ingress identity. Continuations retain their
+    // independently admitted Device/grant authority, including bootstrap pairing.
+    if (
+      [
+        APPLICATION_SESSION_HEADER,
+        APPLICATION_SESSION_PROOF_HEADER,
+        APPLICATION_SESSION_NATIVE_HEADER,
+        APPLICATION_SESSION_NATIVE_PROOF_HEADER,
+      ].some((name) => request.headers.has(name))
+    )
+      return false;
     const path = new URL(request.url).pathname;
     const read = request.method === 'GET' || request.method === 'HEAD';
     const scoped =
@@ -3872,6 +3918,13 @@ export function configureRuntimeRoutes(
           'server',
         ),
       }),
+      {
+        agentGrant: (sessionId) =>
+          unattendedGrantStore.isGranted(
+            JSON.stringify({ kind: 'diagnostics-session', sessionId }),
+            'station-control:read_logs',
+          ),
+      },
     ),
   );
   context.app.route(
@@ -5035,10 +5088,18 @@ export function configureRuntimeRoutes(
       context.logger,
     );
   const relationshipRequestWitnesses = new WeakMap<Request, () => boolean>();
-  const relationshipRequestShares = new WeakMap<
-    Request,
-    Map<string, string | undefined>
-  >();
+  const taskMemberAdmission = createTaskMemberAdmission({
+    task: (id) => context.taskGraphService.readTask(id),
+    share: (id) => context.projectSharedTasks?.admission(id),
+    projects: () => context.projectService.listProjects(),
+    portableId: (slug) => {
+      const manifest = contributionResolution.manifests.readRecord(slug);
+      return manifest ? parseProjectPortableIdentity(manifest).id : undefined;
+    },
+    admissions: (id) =>
+      context.projectMembership?.admissionsForResolvedPrincipal(id) ?? [],
+    principalId: (request) => roomRequestPrincipals.get(request)?.id,
+  });
   context.app.use('/api/tasks/*', primeRoomRequestPrincipal);
   context.app.route(
     '/api/tasks',
@@ -5169,47 +5230,7 @@ export function configureRuntimeRoutes(
             isOperatorInPersonNotAgent(request)
           )
             return true;
-          const task = context.taskGraphService.readTask(id);
-          const share = context.projectSharedTasks?.admission(id);
-          let shares = relationshipRequestShares.get(request);
-          if (!shares) {
-            shares = new Map();
-            relationshipRequestShares.set(request, shares);
-          }
-          if (!shares.has(id)) shares.set(id, share?.shareId);
-          if (!task || !share || share.taskCreatedAt !== task.createdAt)
-            return false;
-          if (shares.get(id) !== share.shareId) return false;
-          const projects = context.projectService
-            .listProjects()
-            .filter(
-              (p) => p.id === task.projectId || p.slug === task.projectId,
-            );
-          if (
-            projects.length !== 1 ||
-            projects[0]!.id !== share.scope.localProjectId ||
-            projects[0]!.slug !== share.scope.localProjectSlug
-          )
-            return false;
-          const manifest = contributionResolution.manifests.readRecord(
-            share.scope.localProjectSlug,
-          );
-          if (
-            !manifest ||
-            parseProjectPortableIdentity(manifest).id !==
-              share.scope.portableProjectId
-          )
-            return false;
-          return (
-            context.projectMembership
-              ?.admissionsForResolvedPrincipal(person.id)
-              .some(
-                ({ scope, member }) =>
-                  isDeepStrictEqual(scope, share.scope) &&
-                  member.status === 'active' &&
-                  member.actions.includes('view'),
-              ) === true
-          );
+          return !!taskMemberAdmission.admit(request, id, 'view');
         },
         mayEdit: (request, id) =>
           (!isDeploymentAccountPrincipalId(
@@ -5472,7 +5493,11 @@ export function configureRuntimeRoutes(
       },
       logger: context.logger,
     });
-    const resolveRoomPerson = (request: Request) => {
+    const resolveRoomPerson = (
+      request: Request,
+      taskId?: string,
+      capability?: TaskRoomAdmissionCapability | 'other',
+    ) => {
       const authenticated = getRuntimeAuthenticatedRequestPrincipal(request);
       if (!authenticated) return { kind: 'revoked' as const };
       const principal = roomRequestPrincipals.get(request);
@@ -5480,6 +5505,67 @@ export function configureRuntimeRoutes(
       const device = context.environmentSecurityService.identifyDevice(
         authenticated.credential,
       );
+      if (
+        device?.principalBinding &&
+        'kind' in device.principalBinding &&
+        device.principalBinding.kind === 'account'
+      ) {
+        const account =
+          context.deploymentAuthentication?.service.current(request);
+        const accountCurrent =
+          device.credentialKind === 'personal-token'
+            ? account?.kind === 'absent'
+            : account?.kind === 'authenticated'
+              ? account.principal.id === principal.id &&
+                context.deploymentAuthentication?.service.captureCurrentSession(
+                  request,
+                )() === true
+              : account?.kind === 'absent' &&
+                currentRelationshipAccountDevice(
+                  request,
+                  device.principalBinding,
+                );
+        if (
+          !taskId ||
+          !capability ||
+          capability === 'other' ||
+          !isRequestPrincipalCurrent(request) ||
+          !accountCurrent
+        )
+          return { kind: 'revoked' as const };
+        const writeLeaf =
+          capability === 'message-write'
+            ? 'messages'
+            : capability === 'edit-plan'
+              ? 'edit-plan'
+              : undefined;
+        if (
+          writeLeaf &&
+          !runtimeRequestPrincipalMayAccessHttpRoute(
+            request,
+            context.environmentSecurityService,
+            {
+              method: 'POST',
+              path: `/api/tasks/${encodeURIComponent(taskId)}/room/${writeLeaf}`,
+            },
+          )
+        )
+          return { kind: 'revoked' as const };
+        const admission = taskMemberAdmission.admit(
+          request,
+          taskId,
+          taskRoomMemberAction(capability),
+        );
+        if (!admission) return { kind: 'revoked' as const };
+        return {
+          kind: 'granted' as const,
+          member: true as const,
+          operatorId: principal.id,
+          displayName: principal.display,
+          deviceId: device.id,
+          policyRevision: `member:${admission.member.revision}`,
+        };
+      }
       if (device)
         return {
           kind: 'granted' as const,
@@ -5501,6 +5587,12 @@ export function configureRuntimeRoutes(
         : { kind: 'revoked' as const };
     };
     const roomRuntime = new ProjectTaskRoomRuntime({
+      ...(context.projectMembership
+        ? {
+            subscribeMembershipChanges: (listener) =>
+              context.projectMembership!.subscribe(listener),
+          }
+        : {}),
       attachments: new TaskRoomAttachments(
         join(context.configLoader.getProjectHomeDir(), 'task-room-attachments'),
       ),
@@ -5556,12 +5648,14 @@ export function configureRuntimeRoutes(
         // cached principal (resolution never ran, or threw
         // `PrincipalUnresolvedError`) revokes the grant rather than falling
         // back to any default identity.
-        resolve: async (request) => resolveRoomPerson(request),
-        isCurrent: (request, expected) => {
+        resolve: async (request, taskId, capability) =>
+          resolveRoomPerson(request, taskId, capability),
+        isCurrent: (request, expected, taskId, capability) => {
           if (!isRequestPrincipalCurrent(request)) return false;
-          const now = resolveRoomPerson(request);
+          const now = resolveRoomPerson(request, taskId, capability);
           return (
             now.kind === 'granted' &&
+            'member' in now === (expected.member === true) &&
             now.operatorId === expected.operatorId &&
             now.deviceId === expected.deviceId &&
             now.policyRevision === expected.policyRevision
@@ -5632,13 +5726,28 @@ export function configureRuntimeRoutes(
       // the lead's conversation through its durable inbox. `threadInbox` is
       // composed later in this function and read when a record is written.
       afterTaskRecord: (input) => taskQuestionWake.wake(input),
-      readDisplayName: async (id) =>
-        context.environmentSecurityService.devicePairing
-          .listKnownPrincipals()
-          .find((principal) => principal.id === id)?.display ??
-        (id === LOCAL_OPERATOR_PRINCIPAL_ID
-          ? getCachedUser().alias
-          : undefined),
+      readDisplayName: async (id, taskId) => {
+        const share = context.projectSharedTasks?.admission(taskId);
+        if (share && context.projectMembership) {
+          try {
+            const name = context.projectMembership.memberDisplayName(
+              share.scope,
+              id,
+            );
+            if (name) return name;
+          } catch {
+            // Attribution is optional; room authority is checked separately.
+          }
+        }
+        return (
+          context.environmentSecurityService.devicePairing
+            .listKnownPrincipals()
+            .find((principal) => principal.id === id)?.display ??
+          (id === LOCAL_OPERATOR_PRINCIPAL_ID
+            ? getCachedUser().alias
+            : undefined)
+        );
+      },
       readAgentLabel: async (agentId) => {
         try {
           return (await context.agentService.getAgent(agentId)).name;
@@ -6232,6 +6341,67 @@ export function configureRuntimeRoutes(
     };
   }
 
+  /**
+   * An automation run's conversation turn: queued on the inbox, or for a
+   * dedicated target's first run, started through the same foreground seam
+   * an inbound webhook uses, as the automation's recorded creator and never
+   * with a full-access grant.
+   */
+  function createScheduledConversationRuns(
+    inbox: ThreadInboxDelivery,
+    eventStore: EventStore,
+  ): ScheduledConversationRuns {
+    return new ScheduledConversationRuns({
+      submit: (input) => inbox.submit(input),
+      conversationExists: (conversationId) =>
+        eventStore.conversationSessions(conversationId).length > 0,
+      entry: (conversationId, clientTurnId) =>
+        inbox.entry(conversationId, clientTurnId),
+      turnTerminal: (sessionId, turnId) =>
+        readStoredScheduledTurnTerminal(eventStore, sessionId, turnId),
+      startDedicated: stationServerEntry(
+        async ({
+          agent,
+          workspace,
+          message,
+          clientTurnId,
+          conversationId,
+          actor,
+        }) => {
+          const handle = await executeExecutionTargetMessage(
+            {
+              target: {
+                environment: { kind: 'current' },
+                agent: agentId(agent),
+                ...(workspace ? { workspace } : {}),
+              },
+              message,
+              clientTurnId,
+              conversationId,
+              userId: actor.userId,
+              ...(actor.principal ? { principal: actor.principal } : {}),
+              ...(actor.ownerAttribution
+                ? { ownerAttribution: actor.ownerAttribution }
+                : {}),
+              clientOrigin: STATION_FRAMED_TURN_CLIENT_ORIGIN,
+              fullAccessGrant: null,
+              readAuthority: readAuthorityForExecution(actor.userId),
+            },
+            context.orchestrationService,
+            undefined,
+            remoteStations,
+          );
+          return {
+            conversationId: handle.conversationId,
+            sessionId: handle.sessionId,
+            turnId: handle.providerTurnId,
+          };
+        },
+      ),
+      isIndeterminateStart: isForegroundIndeterminateShape,
+    });
+  }
+
   /** #3568: follow-ups a busy conversation holds until its turn ends. */
   /**
    * #3628: the coordinator wake's placement policy, bound once the wake
@@ -6421,6 +6591,18 @@ export function configureRuntimeRoutes(
     }
   })();
 
+  // Automations that target a conversation run there as a framed Station
+  // turn through the same inbox, so they run on whatever engine the
+  // conversation runs on. Without an inbox (hosted) such a job fails without
+  // invoking anything.
+  const scheduledConversationRuns =
+    threadInbox && context.orchestrationEventStore
+      ? createScheduledConversationRuns(
+          threadInbox,
+          context.orchestrationEventStore,
+        )
+      : undefined;
+
   // A Session killed for exhausting its workload memory continues once,
   // through the same inbox (capped, idempotent per dead turn). The person's
   // Continue reaches the same entry through the orchestration route.
@@ -6445,7 +6627,7 @@ export function configureRuntimeRoutes(
   // same placement rules (wait for a running turn, the live continuation's
   // permission rule, no stored full-access grant) apply. Without an inbox
   // (hosted), the tool answers that check-backs are unavailable.
-  const agentSchedule = composeAgentSchedule({
+  const agentSchedule: AgentScheduleComposition = composeAgentSchedule({
     store: context.orchestrationEventStore?.agentScheduleStore(),
     threadInbox,
     scope: stationControlDispatchScope,
@@ -6471,6 +6653,19 @@ export function configureRuntimeRoutes(
       ),
     agentProject: async (agentSlug) =>
       (await context.agentService.getAgent(agentSlug)).project,
+    // Read when a chat asks, after the scheduler below exists.
+    ...(hostedTenantRegistry === undefined
+      ? {
+          conversationAutomations: async (conversationId: string, c: Context) =>
+            conversationAutomationsFrom(
+              await createSchedulerReadProjection(
+                schedulerService,
+                agentSchedule,
+              ).visibleJobs(c),
+              conversationId,
+            ),
+        }
+      : {}),
     logger: context.logger,
   });
   const agentWakeUps = agentSchedule.delivery;
@@ -7621,7 +7816,47 @@ export function configureRuntimeRoutes(
     const captureRegistry = browserService.registry;
     const captureProjectIdFor = (identity: string) =>
       localProjectIdFor(context.projectService, identity);
+    const captureForbiddenRoots = () => [
+      ...context.projectService.listProjects().flatMap((project) => {
+        const dir = context.projectService.getProject(
+          project.slug,
+        )?.workingDirectory;
+        return dir ? [resolve(expandTilde(dir))] : [];
+      }),
+      ...context.taskGraphService.listWorkspaceRoots(),
+    ];
     const taskCaptures = taskCaptureService;
+    const taskWalkthroughs =
+      taskCaptures && liveSurfaceRegistry && localMediaPreviews
+        ? new TaskWalkthroughStore({
+            files: () =>
+              new ProjectFileTransactions(
+                context.configLoader.getProjectHomeDir(),
+              ),
+            projectSlugFor: (identity) => {
+              const localId = captureProjectIdFor(identity);
+              return context.projectService
+                .listProjects()
+                .find((project) => project.id === localId)?.slug;
+            },
+            forbiddenRoots: captureForbiddenRoots,
+          })
+        : undefined;
+    taskRecordings =
+      taskCaptures &&
+      taskWalkthroughs &&
+      liveSurfaceRegistry &&
+      localMediaPreviews
+        ? new TaskBrowserRecording({
+            captures: taskCaptures,
+            registry: captureRegistry,
+            surfaces: liveSurfaceRegistry,
+            surfaceIdFor: browserService.surfaceIdFor,
+            resolver: context.walkthroughImportDependencies.resolver,
+            preview: localMediaPreviews.walkthroughsPreview,
+            store: taskWalkthroughs,
+          })
+        : undefined;
     if (taskCaptures && captureRuntime)
       context.app.route(
         '/api/tasks',
@@ -7630,6 +7865,14 @@ export function configureRuntimeRoutes(
           logger: context.logger,
           runtime: captureRuntime,
           captures: taskCaptures,
+          ...(taskWalkthroughs && localMediaPreviews
+            ? {
+                walkthroughs: {
+                  store: taskWalkthroughs,
+                  preview: localMediaPreviews.walkthroughsPreview,
+                },
+              }
+            : {}),
           registry: captureRegistry,
           authorizeProject: authorizeBrowserProject,
           isStationInternalRequest,
@@ -7669,6 +7912,7 @@ export function configureRuntimeRoutes(
                 localProjectIdFor: captureProjectIdFor,
                 runtime: captureRuntime,
                 captures: taskCaptures,
+                ...(taskRecordings ? { recordings: taskRecordings } : {}),
                 registry: captureRegistry,
               },
             }
@@ -8678,9 +8922,6 @@ export function configureRuntimeRoutes(
   // station#2037: persistent exact-tool grants share the runtime's STATION_HOME
   // with the resolver already wired by slice 3. The narrower route-family
   // scope below makes this an operator-management surface, never an agent tool.
-  const unattendedGrantStore = new UnattendedGrantStore(
-    context.configLoader.getProjectHomeDir(),
-  );
   registerPullRequestProvider(new GitHubPullRequestProvider());
   registerPullRequestProvider(new GitLabPullRequestProvider());
   const reviewGuides = new PullRequestReviewGuideService(
@@ -10181,6 +10422,9 @@ export function configureRuntimeRoutes(
   } = configureRuntimeSupportServices(context, flowRunService, {
     focus: focusPresence,
     inAppLiveness: clientStreamPresence.inAppLiveness,
+    ...(scheduledConversationRuns
+      ? { conversationRuns: scheduledConversationRuns }
+      : {}),
     // #2064 (D4): the same aggregate `/api/survey-flow-reviews` serves, over
     // the same live project inventory — one read, so a paused review counted
     // by the bell is the same row the Review page lists.
@@ -10523,6 +10767,15 @@ export function configureRuntimeRoutes(
       readAuthorityForRequest,
       // A person approving an agent's `propose_job`.
       jobProposals: agentSchedule.jobProposals,
+      // Where an automation's runs land, and as whom. Acting on an
+      // existing targeted job is admitted even without a runner, so it can
+      // still be inspected, disabled or deleted.
+      admitAutomationJob: agentSchedule.admitAutomationJob,
+      mayReadAutomationJob: agentSchedule.mayReadAutomationJob,
+      mayReadAutomationRun: agentSchedule.mayReadAutomationRun,
+      ...(scheduledConversationRuns
+        ? { admitAutomationTarget: agentSchedule.admitAutomationTarget }
+        : {}),
     }),
   );
   context.app.route(
@@ -10543,6 +10796,10 @@ export function configureRuntimeRoutes(
       runService,
       context.logger,
       conversationReadAuthorityForRequest,
+      async (c) => {
+        const jobs = await schedulerService.listJobs();
+        return agentSchedule.scheduleRunReadFilter(c, jobs);
+      },
     ),
   );
   context.app.route(
@@ -10737,6 +10994,7 @@ export function configureRuntimeRoutes(
     projectTaskRoomRuntime,
     projectRoomRuntime,
     liveSurfaceRegistry,
+    taskRecordings,
     browserService,
     deviceToolchainService,
     deviceSessions,

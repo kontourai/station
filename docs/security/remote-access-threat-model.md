@@ -240,11 +240,21 @@ current canonical Conversation lineage and reader access. Ordinary account membe
 does not authorize relationship mutations. Linking neither publishes a Task or private
 conversation nor grants execution.
 
+The personal Task-room leaves separately compose current Device scope and
+account standing with the exact shared Task incarnation and Project membership.
+`view` permits reads and presence, `discuss` permits messages, and `edit`
+permits edit planning. The account-bound allowlist excludes batch settlement,
+attachments, memory, review and agent requests. A changed membership revision
+invalidates the captured stream admission; an in-process notification prompts
+closure and the idle cadence rechecks within its 15-second interval. Per-delivery
+checks remain. Neither the member preview nor a Task share grants host execution
+or access to a private Session.
+
 Previously verified cookie sessions require the provider's synchronous live witness at
 relationship commit/delivery seams; missing support, revoked/expired sessions and
 pending enrollment fail closed. A historical authenticated result alone is insufficient.
 
-On the scoped surfaces below, a currently witnessed local-account session
+On the scoped surfaces below, a currently witnessed local-account cookie session
 supplies the acting person. A verified Serve WhoIs identity is ingress
 provenance and does not establish membership or link people. Device and account
 bindings must agree, and an account cannot borrow an operator or another Device
@@ -605,6 +615,14 @@ rate bucket but uses the 22 MiB attachment-command body ceiling so bounded
 base64 image data fits. Adjacent Task mutations retain the standard body limit.
 Room upload, reference resolution and byte reads also enforce their current
 Task capability and incarnation; a paired route-family grant alone is insufficient.
+
+Task Review Walkthrough list, manifest, frame and video reads inherit the Task
+family's `orchestration:read` tier and independently recheck person-review
+authority, the Task incarnation and the live Walkthroughs preview. They refuse
+Station-internal requests and use `no-store`; video reads verify the retained
+length and digest. The sensitive Browser recording tool requires a bound lead
+Session and publishes only after authority and clean-workspace rechecks. A clip
+can expose page contents and is served through that Task's authorized reads.
 
 The exact `POST /api/projects/:projectSlug/walkthroughs/import` and
 `POST /api/transcription` uploads also retain the standard principal rate
@@ -1897,7 +1915,9 @@ machine", and the difference is the residue, stated without softening:
   existing trust boundary — the same user can already read the local-grant
   secret and operator credential files. API redaction defends paired
   principals **without** terminal/agent authority (a phone using Developer →
-  Logs, `read_logs` over pairing, a scoped grant that cannot spawn a shell).
+  Logs or a scoped grant that cannot spawn a shell). Agent `read_logs` calls
+  are denied unless an operator grants their verified bound session; the grant
+  is not available to caller-less or weaker-assurance channels.
   Scrubbing the token from PTY/engine env closes the cheaper path that used
   to turn `printenv` into an ephemeral `home-possession` principal.
 

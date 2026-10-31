@@ -784,7 +784,16 @@ and the hourly create limits `AGENT_WAKE_UP_MAX_CREATED_PER_WINDOW` and
 scheduler's approval uses, and `isStationCheckBackTurn`, which tells a
 transcript that a turn is a check-back Station sent (its internal origin and
 a send key `parseWakeUpClientTurnId` accepts). A wake-up waiting for a
-person's approval is in state `needs_approval`.
+person's approval is in state `needs_approval`. A proposal's job carries the
+proposing chat as its `target`, and `ConversationAgentSchedule.automations`
+(`ConversationAutomation`) lists the automations whose runs land in the
+conversation. The scheduler contract owns automation targets:
+`SchedulerAutomationTarget`, `SchedulerAutomationCreator`,
+`SchedulerLogEntry.runTarget` (the claimed target, or `null` for an
+untargeted run; absent for older records),
+`AUTOMATION_RUN_POLICY` (fatigue threshold, lateness cutoff, turn deadline),
+`automationRunClientTurnId`, and `SCHEDULER_EXECUTION_LIMITS.maxConcurrentConversationHandoffs`
+(the separate pool a targeted run holds only until its turn is queued).
 
 `@kontourai/station-contracts/coordinator` owns a person's coordinator Session
 (#3628): `CoordinatorDesignation`, the route bodies
@@ -1144,8 +1153,13 @@ live witness for a previously verified session. It must re-read session existenc
 subject and timestamps, expiry and account policy, and reject pending enrollment. It
 does not authenticate a caller-supplied session ID and is not part of the public
 descriptor. The local-account provider implements it; adapters without it fail closed at
-synchronous authority seams. `captureCurrentSession` also pins the verified identity and
-cookie and refuses continuation-only authority.
+synchronous authority seams. `captureCurrentSession` pins the verified identity and
+transport. An admitted application/native proof additionally needs the application-session
+owner's current exact stored grant, Device and alias or trusted native target. Provider
+currentness uses the original provider session, before projected continuation expiry
+clipping. Revocation of either grant or provider session refuses the witness; absent
+provider currentness or trusted native facts also refuse. These server-private witnesses
+do not consume another request proof or grant Project membership.
 
 The [relay-management contract](../../packages/contracts/src/relay-management.ts)
 exports `RelayInvitationLifetime`, `RelaySetupApproval`, `RelayPendingDevice`
@@ -1903,8 +1917,8 @@ for limits and observation-window semantics.
 The room contract declares `station.project-task-room/v5` with
 `ProjectTaskRoomMemberPrincipal {kind: 'member', principalId, deviceId}`.
 `ProjectTaskRoomV5Principal` and `ProjectTaskRoomV5Record` carry the new wire
-shape. The existing `ProjectTaskRoomPrincipal` and `ProjectTaskRoomRecord`
-remain legacy types until runtime member admission is wired. The pure
+shape. `ProjectTaskRoomPrincipal` and `ProjectTaskRoomRecord` also include the
+member and v5 forms used by the personal room runtime. The pure
 `parseProjectTaskRoomPrincipal` accepts members only with v5; legacy operator
 and agent shapes remain supported. Both version-gated parsers require an
 explicit schema version and refuse a missing one rather than assuming v5. This structural check grants no authority.
@@ -1935,9 +1949,9 @@ An empty `mentions: []` does not select v5, and every parser refuses it. A
 defined `attachments` array, even `[]`, selects at least v4, whose parser
 accepts it. The helper
 accepts both append bodies and resolved record bodies directly.
-The persisted-record parser and permanent old-writer fence are still runtime
-work in #4136; this contract addition does not activate member writes or enforce
-a database fence. The closed record budget includes both copies of the message
+The history worker and parent validate persisted v5 records, and a durable
+per-room marker fences older writers after activation. The ordinary room
+message HTTP route does not yet accept structured mentions. The closed record budget includes both copies of the message
 body, the maximal principal and embedded grant receipt, and page continuation.
 
 `TaskReviewListProjection` requires `{view, comment, send}` capabilities;
@@ -1972,9 +1986,10 @@ creation time is canonical ISO UTC. Review values are `comment`,
 transition or workflow approval. The browser DTO retains this target and the
 attributed human actor in ordinary room history.
 
-Room records accept legacy `station.project-task-room/v2` and new
-`station.project-task-room/v3`; output feedback requires v3 and an operator
-principal. Existing records retain their exact bytes and integrity digests.
+Room records accept `station.project-task-room/v2` through v5; output feedback
+requires v3 or newer and a human principal. The account-bound Task room gate
+does not admit the output-feedback route in this slice. Existing records retain
+their exact bytes and integrity digests.
 See the [API review contract](api.md#review-an-immutable-task-output) for the
 per-room old-writer fence and permanent duplicate identity behavior.
 
@@ -2180,6 +2195,12 @@ units (including tokens), 32,768 tokens, 256 units per token, 2,048 points per
 mark, 16,384 pixels per dimension and 8 MiB encoded manifest. Tokens stay within
 their segment's ordered time interval. Frame-selection counts account for
 intentional importer selection; `kept` equals the frame event count.
+
+The optional `source.commit` accepts a lowercase 40- or 64-character Git object
+ID. Optional `source.recording` has a safe plain filename, `video/webm` media
+type, positive byte length and lowercase SHA-256 digest. The shared parser bounds
+that length by the 512 MiB upload ceiling; the Task Browser recorder applies a
+separate 16 MiB encoded limit. Imported manifests may omit both fields.
 
 `MEDIA_UPLOAD_POLICIES` and `mediaUploadPolicy(method, path, policies)` share
 the exact Walkthrough/transcription POST matches, byte ceilings, receive idle/total

@@ -50,6 +50,8 @@
 
     "src-ui/src/views/project-settings/ProjectCheckoutFreshnessNotice.tsx",
 
+    "src-ui/src/views/task-workspace/review/TaskReviewClips.tsx",
+
     "src-server/routes/orchestration/session-goals.ts",
 
     "src-server/providers/adapters/codex-goals.ts",

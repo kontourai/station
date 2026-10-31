@@ -950,6 +950,13 @@ describe('pairing-route-scopes: table-driven lookups', () => {
     ['GET', '/api/skills/experiences', 'orchestration:read'],
     ['GET', '/api/tasks/task-1/user-input-references', 'orchestration:read'],
     ['POST', '/api/tasks/task-1/references', 'orchestration:operate'],
+    ['GET', '/api/tasks/task-1/room', 'orchestration:read'],
+    ['GET', '/api/tasks/task-1/room/history', 'orchestration:read'],
+    ['GET', '/api/tasks/task-1/room/document', 'orchestration:read'],
+    ['GET', '/api/tasks/task-1/room/events', 'orchestration:read'],
+    ['POST', '/api/tasks/task-1/room/messages', 'orchestration:operate'],
+    ['POST', '/api/tasks/task-1/room/live', 'orchestration:operate'],
+    ['POST', '/api/tasks/task-1/room/edit-plan', 'orchestration:operate'],
     ['POST', '/api/tasks/task-1/room/output-feedback', 'orchestration:operate'],
     ['GET', '/api/projects/my-proj/knowledge/status', 'orchestration:read'],
     ['POST', '/api/projects', 'orchestration:operate'],
@@ -2036,6 +2043,13 @@ test('declares exact inventory input inspection at the read tier', () => {
 });
 
 test('Task capture and review comments require operate scope; capture reads use read scope', () => {
+  for (const path of [
+    '/api/tasks/task-a/review/walkthroughs',
+    '/api/tasks/task-a/review/walkthroughs/clip-a',
+    '/api/tasks/task-a/review/walkthroughs/clip-a/video',
+    '/api/tasks/task-a/review/walkthroughs/clip-a/frames/frame-a',
+  ])
+    expect(requiredPairingScope('GET', path)).toBe('orchestration:read');
   expect(
     requiredPairingScope('POST', '/api/tasks/task-a/review/captures'),
   ).toBe('orchestration:operate');

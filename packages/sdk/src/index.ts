@@ -1185,6 +1185,7 @@ export {
   useSaveFeedbackRatingMutation,
   useSaveIntegrationMutation,
   useSaveModelConnectionMutation,
+  useScheduledConversationTargetCapability,
   useSchedulerJobs,
   useSchedulerProviders,
   useSchedulerStats,
@@ -1472,6 +1473,7 @@ export {
   fetchTaskReview,
   fetchTaskReviewItem,
   fetchTaskReviewThread,
+  fetchTaskWalkthroughPage,
   TASK_REVIEW_OPENING_PREVIEW_CHARS,
   type TaskCapture,
   type TaskCaptureBrowserSession,
@@ -1498,6 +1500,8 @@ export {
   useTaskReviewItemQuery,
   useTaskReviewQuery,
   useTaskReviewThreadQuery,
+  useTaskWalkthroughsQuery,
+  useTaskWalkthroughVideoQuery,
 } from './query-domains/taskReview';
 export type { TelemetryIncidentLinkMutation } from './query-domains/telemetryCompanion';
 export {

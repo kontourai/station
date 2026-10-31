@@ -220,6 +220,12 @@ event-loop delays; foreground config reads still check the current signature.
 
 Station's server logger (`src-server/utils/logger.ts`) writes structured trace/debug/info/warn/error/fatal lines to stdout and, once boot has installed the sink, to a durable NDJSON store under `<STATION_HOME>/logs/server/server-YYYY-MM-DD.ndjson` (one file per UTC day). Retention mirrors the runtime event log: age- and size-bounded, with the active day always protected.
 
+**Upgrade note for Automations.** Previously written server logs may still
+contain automation names and engine errors. Upgrading does not rewrite or
+redact those files. Review access to retained files and copies at external
+collectors. The retention settings below remove older, inactive day files;
+the active UTC day is retained even when a lower limit is configured.
+
 The local store batches pending lines for 10 ms, draining earlier at 64 KiB.
 The actual batch write is synchronous; this removes the syscall per line but
 can still block briefly on slow storage. Day rollover, sink replacement, close,
@@ -257,7 +263,8 @@ The internal server token starts with home-possession, but the
 [station-control authority guard](../../src-server/security/station-control-authority-guard.ts)
 withdraws it from ordinary tool requests unless their caller is a bound
 operator. A tool's use of a local HTTP hop does not by itself guarantee
-unredacted logs. The [mint routes](../../src-server/runtime/routes/runtime-routes.ts)
+unredacted logs. Agent access additionally requires the session-specific grant
+described below. The [mint routes](../../src-server/runtime/routes/runtime-routes.ts)
 and [diagnostics handler](../../src-server/routes/system/diagnostics.ts) show the
 issuance and read boundaries.
 
@@ -318,9 +325,21 @@ for per-message limits and Task incarnation binding.
 
 The write side above has a matching self-read path — Station can answer "what did you just log" without an operator tailing a file by hand.
 
-- **`GET /api/diagnostics/logs`** — query params `level` (minimum severity floor, `trace`..`fatal`; invalid values 400 naming the accepted list), `since`/`until` (inclusive bounds; send ISO 8601 timestamps, although the current route accepts any string `Date.parse` can parse and returns 400 only when parsing fails), `q` (case-insensitive substring matched against the rendering **the caller will actually receive**, never the other one — a remote caller can only search what a remote caller could see; `q=[REDACTED]` matches any redacted-path entry that had a field redacted), `limit` (default 200, hard cap 1000, clamped rather than rejected). Scans the daily files newest-first, reading each one backward in bounded chunks (never a whole-file load), and returns the **last N matches found in its bounded backward scan, ordered by parsed timestamp** (it does not scan the entire history to prove the globally newest timestamps), stopping early once `limit` is satisfied or a 32 MiB per-query scan budget (`DEFAULT_SERVER_LOG_SCAN_BUDGET_BYTES`) is spent. Response: `{ entries, truncated, scannedFiles, unreadableFiles, oldestScannedDay, skippedMalformedLines, scanBudgetExhausted }` — the reader is explicit about what it actually covered: an unopenable day file counts in `unreadableFiles` (and forces `truncated: true`) rather than silently shrinking coverage (a successfully-opened but 0-byte day file yields no lines and is excluded from `scannedFiles`/`oldestScannedDay`; content coverage is unaffected), and `scanBudgetExhausted` names the I/O cap specifically when it's the reason for truncation. Gated at the same pairing-scope tier as `GET /api/diagnostics/bundle` (`src-server/security/pairing-route-scopes.ts`). Locality does not change who may hit the route; it changes whether the body is redacted.
+- **`GET /api/diagnostics/logs`** — query params `level` (minimum severity floor, `trace`..`fatal`; invalid values 400 naming the accepted list), `since`/`until` (inclusive bounds; send ISO 8601 timestamps, although the current route accepts any string `Date.parse` can parse and returns 400 only when parsing fails), `q` (case-insensitive substring matched against the rendering **the caller will actually receive**, never the other one — a remote caller can only search what a remote caller could see; `q=[REDACTED]` matches any redacted-path entry that had a field redacted), `limit` (default 200, hard cap 1000, clamped rather than rejected). Scans the daily files newest-first, reading each one backward in bounded chunks (never a whole-file load), and returns the **last N matches found in its bounded backward scan, ordered by parsed timestamp** (it does not scan the entire history to prove the globally newest timestamps), stopping early once `limit` is satisfied or a 32 MiB per-query scan budget (`DEFAULT_SERVER_LOG_SCAN_BUDGET_BYTES`) is spent. Response: `{ entries, truncated, scannedFiles, unreadableFiles, oldestScannedDay, skippedMalformedLines, scanBudgetExhausted }` — the reader is explicit about what it actually covered: an unopenable day file counts in `unreadableFiles` (and forces `truncated: true`) rather than silently shrinking coverage (a successfully-opened but 0-byte day file yields no lines and is excluded from `scannedFiles`/`oldestScannedDay`; content coverage is unaffected), and `scanBudgetExhausted` names the I/O cap specifically when it's the reason for truncation. Gated at the same pairing-scope tier as `GET /api/diagnostics/bundle` (`src-server/security/pairing-route-scopes.ts`). The pairing-scope gate still applies; agent callers also need the grant below.
 - **`read_logs`** MCP tool (station-control) — calls the same HTTP handler. Its caller binding determines redaction; the internal hop alone is insufficient. Its tool schema accepts integer limits 1–1000, while the HTTP route clamps an out-of-range value.
 - **Redaction on egress:** without bound home-possession, the reader applies `redactDeep` to secret-named fields and secret-pattern redaction to string leaves, including message and error text. Both filtering and output use this rendering. With bound home-possession, the reader uses the unredacted stored entry. This differs from stdout, where write-time redaction remains in place.
+
+Agent log reads are denied by default, including calls made with the internal
+token and no verified caller. An operator may grant one verified **bound**
+session through `POST /api/agents/unattended-grants` with an operator credential
+and `access:manage`. Use `toolName: "station-control:read_logs"` and a
+`principalKey` that is the JSON string for
+`{"kind":"diagnostics-session","sessionId":"<session-id>"}`. Revoke the
+same pair through `POST /api/agents/unattended-grants/revoke`. This grant can
+expose unrelated conversation content; it is not a conversation-scoped read.
+An agent cannot grant itself access, and caller-less, delegated-custody and
+bearer-exposed calls remain denied even if a session has a grant. A failed or
+revoked grant lookup denies the read.
 
 ### Correlating `read_logs` output with monitoring events (station#1897)
 
@@ -343,11 +362,12 @@ retain it.
 | Station user id | `station.user.id` | `station.user.id` | `POST /api/orchestration/chat` |
 
 [Scheduler attempts](../../src-server/services/scheduling/builtin-scheduler.ts)
-bind `station.scheduler.job_name` and `station.scheduler.job_run_id`. These are
-scheduler-local keys: a run ID is not a conversation ID. The
+bind `station.scheduler.job_run_id`, an opaque job id and target kind for
+all jobs. Job names and engine errors remain in admitted run records. These are scheduler-local keys: a run ID is not a conversation ID. The
 [execution owner](../../src-server/services/scheduling/builtin-scheduler-execution.ts)
-invokes the scheduled-turn adapter after durable admission; monitor actions
-have their own Task dispatch path. Use the job's receipts when following an
+invokes the scheduled-turn adapter after durable admission; a job with a
+`target` uses the conversation runner instead, whose turn carries the key
+`scheduler:<runId>`; monitor actions have their own Task dispatch path. Use the job's receipts when following an
 attempt into any resulting session, rather than assuming the IDs match.
 
 ---

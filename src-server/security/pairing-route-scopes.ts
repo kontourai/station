@@ -3633,9 +3633,8 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // what a call may contain, and neither implies the other. This entry
     // records the first; `project-layout-admission.ts` owns the second.
     { method: 'POST', path: '/api/me/layouts/:layoutSlug/promote' },
-    // Personal task-room reads disclose only the already-paired operator's
-    // own task projection. Mutations are closed room commands and inherit
-    // orchestration:operate from /api/tasks.
+    // Task-room transport uses the task family's read and operate tiers;
+    // the room separately checks the current person's Task admission.
     { method: 'GET', path: '/api/tasks/:taskId/children' },
     { method: 'POST', path: '/api/tasks/:taskId/children' },
     { method: 'PUT', path: '/api/tasks/:taskId/parent' },
@@ -3687,6 +3686,19 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // through the lead conversation inbox.
     { method: 'GET', path: '/api/tasks/:taskId/review' },
     { method: 'GET', path: '/api/tasks/:taskId/review/capture-sessions' },
+    { method: 'GET', path: '/api/tasks/:taskId/review/walkthroughs' },
+    {
+      method: 'GET',
+      path: '/api/tasks/:taskId/review/walkthroughs/:walkthroughId',
+    },
+    {
+      method: 'GET',
+      path: '/api/tasks/:taskId/review/walkthroughs/:walkthroughId/video',
+    },
+    {
+      method: 'GET',
+      path: '/api/tasks/:taskId/review/walkthroughs/:walkthroughId/frames/:frameId',
+    },
     { method: 'POST', path: '/api/tasks/:taskId/review/captures' },
     {
       method: 'GET',
