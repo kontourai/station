@@ -1,3 +1,4 @@
+import { SESSION_STATUS_WORDS } from '@kontourai/station-contracts/session-attention';
 import {
   clearSnooze,
   readSnoozes,
@@ -160,7 +161,7 @@ export function groupMobileActivity(
       { id: 'drafts' as const, label: 'Drafts', items: partition.drafts ?? [] },
       {
         id: 'external' as const,
-        label: 'Read only',
+        label: SESSION_STATUS_WORDS.elsewhere,
         items: partition.external ?? [],
       },
     ].map((group) => ({ ...group, childrenById: partition.childrenById }));
@@ -191,7 +192,7 @@ export function groupMobileActivity(
       ? [
           {
             id: 'external' as const,
-            label: 'Read only',
+            label: SESSION_STATUS_WORDS.elsewhere,
             items: partition.external,
           },
         ]

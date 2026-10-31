@@ -818,7 +818,13 @@
 
     "src-ui/src/components/chat/SessionGoalControl.tsx",
 
-    "packages/sdk/src/client/automations.ts"
+    "packages/sdk/src/client/automations.ts",
+
+    "src-server/routes/chat/conversation-work-state.ts",
+
+    "src-server/routes/chat/__tests__/conversation-work-state.test.ts",
+
+    "src-ui/src/components/chat/TranscriptTurnBrowser.tsx"
   ],
 
   "checks": [
