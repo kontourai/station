@@ -17,9 +17,13 @@ multiplexed stream per client or of a saturated-pool input-latency guarantee.
 The original decision, alternatives, and connection-budget constraints remain
 below; no live connection-budget or browser/native qualification was rerun here.
 
-**Current implementation:** The browser requests general events on its shared
-orchestration stream. See the [Session API](../reference/session-api.md#live-sse-feed-get-events)
-for the current wire contract. The connection counts below are historical.
+**Current implementation:** After boot settles for the current authority, the
+browser requests general events on its shared orchestration stream only when
+boot advertises `sharedRealtime: true`. Missing support or a missing stream
+acknowledgement uses the legacy `/events` connection too. General frames have
+no replay ID; `Last-Event-ID` tracks orchestration history. See the
+[Session API](../reference/session-api.md#live-sse-feed-get-events) for the
+wire contract. The connection counts below are historical.
 
 ## Context
 

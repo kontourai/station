@@ -1860,7 +1860,10 @@ Live `orchestration:event` frames carry `{ event: CanonicalRuntimeEvent }`;
 `threadId` filters the stream and caller authorization still applies. Coalesced
 activity may also arrive as `orchestration:activity`, without a durable cursor.
 The browser opts in to general events with `?includeGeneral=1` on the shared
-orchestration stream. A capable host acknowledges this with the response header
+orchestration stream only when its current authority's boot payload advertises
+`sharedRealtime: true`. A missing or failed boot read selects the legacy path;
+the boot advertisement is separate from the capabilities section. A capable
+host acknowledges the stream request with the response header
 `X-Station-General-Stream: 1`. Without that acknowledgement, the browser uses
 the legacy `/events` connection as well; general events remain ephemeral and can
 be missed while either connection is reconnecting. These frames use `event: station:general` and contain a

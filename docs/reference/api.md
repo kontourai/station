@@ -3680,6 +3680,12 @@ the server event bus, sends the current ACP status, then drains events queued
 during that initial read. It sends a named `ping` every 30 seconds.
 This is a live connection-state/cache-invalidation stream, not durable Session
 history replay with a resume cursor.
+The browser can instead receive these events on its orchestration stream when
+its current authority’s boot payload advertises `sharedRealtime: true` and the
+stream acknowledges that request. Older hosts and missing acknowledgements use
+this legacy route alongside orchestration. General frames have no replay ID;
+authorization and presence lifecycle still apply independently. See the
+[Session API](session-api.md#live-sse-feed-get-events) for negotiation and recovery.
 
 Only events admitted by the broadcast-safety policy or the relevant scoped
 notification, approval, plugin, draft, navigation, and answer-evidence gate are
