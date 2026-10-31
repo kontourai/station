@@ -857,8 +857,8 @@ window or one that closed) leads the same list, not a second list, and its rows
 keep their own Send, Retry, Check and Discard actions. Order numbers follow the
 order messages send, 1 at the bottom: what Station holds goes as the turn ends,
 then this window's queued follow-ups, one per turn. Outbox rows carry no
-number: they go when the turn ends too, and which lands first is not known
-ahead. Needs review marks a row only the person can settle: a send that failed
+number: reconnect may hand one to Station while the turn is busy, and the
+relative delivery order is not known ahead. Needs review marks a row only the person can settle: a send that failed
 or may have reached the agent, unconfirmed delivery, or a copy from a window
 proven closed (its Web Lock is gone; liveness that cannot be read is not
 closed). A failed send marks it **Not sent** instead. A copy another open
