@@ -3553,7 +3553,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     );
   });
 
-  it('a durable replay into a running turn waits without spending an attempt, however often it is tried', async () => {
+  it('hands a durable replay to the busy conversation inbox once and retires its browser row', async () => {
     outboundQueueMode.useActual = true;
     let entries: unknown;
     _setOutboundQueueStorage({
@@ -3572,8 +3572,14 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
         agentSlug: 'codex',
         content: 'after the running turn',
       });
-      const [written] = await outboundDispatch.snapshot();
-      activeChatsStore.updateChat(sessionId, { status: 'sending' });
+      activeChatsStore.updateChat(sessionId, {
+        status: 'sending',
+        conversationId: sessionId,
+      });
+      queueExecutionMessageMock.mockResolvedValueOnce({
+        outcome: 'queued',
+        entry: {},
+      });
       const { result } = renderHook(() => useSendMessage('http://api.test'));
       const replay = async (
         turn: QueuedOutboundTurn,
@@ -3593,19 +3599,22 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
           ? outcome
           : { kind: 'not-invoked' as const };
       };
-      // More tries than OUTBOUND_QUEUE_MAX_ATTEMPTS (5) while the turn runs.
-      for (let pass = 0; pass < 6; pass += 1)
-        await act(async () => {
-          await outboundDispatch.flush(replay);
-        });
+      await act(async () => {
+        await outboundDispatch.flush(replay);
+        await outboundDispatch.flush(replay);
+      });
       expect(sendExecutionMessageMock).not.toHaveBeenCalled();
-      expect(await outboundDispatch.snapshot()).toEqual([
+      expect(queueExecutionMessageMock).toHaveBeenCalledOnce();
+      expect(queueExecutionMessageMock).toHaveBeenCalledWith(
+        'http://api.test',
         expect.objectContaining({
+          conversationId: sessionId,
           clientTurnId: 'waits-for-the-turn',
-          status: 'pending',
-          attempts: written!.attempts,
+          message: 'after the running turn',
         }),
-      ]);
+        expect.any(Object),
+      );
+      expect(await outboundDispatch.snapshot()).toEqual([]);
     } finally {
       outboundQueueMode.useActual = false;
     }
