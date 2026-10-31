@@ -154,7 +154,7 @@ describe("CronPreview asks the server in the schedule's zone", () => {
  * the hour its own `meta` line advertises, on the weekdays it names.
  */
 describe('a starter schedule fires when its meta line says', () => {
-  test('Morning Briefing lands on 8:00 on weekdays in Australia/Brisbane', () => {
+  test('the daily repo digest lands on 8:00 on weekdays in Australia/Brisbane', () => {
     const morning = getScheduleStarterTemplates()[0];
     expect(morning.meta).toBe('Weekdays · 8:00 AM');
     expect(morning.schedule.kind).toBe('cron');

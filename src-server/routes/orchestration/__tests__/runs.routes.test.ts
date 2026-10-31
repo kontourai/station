@@ -54,8 +54,11 @@ describe('Run Routes', () => {
       readRun: vi.fn(),
       readOutput: vi.fn(),
     };
-    const app = createRunRoutes(service as any, logger as any, () =>
-      sessionReadAuthorityFromRequest('test-user', undefined, undefined),
+    const app = createRunRoutes(
+      service as any,
+      logger as any,
+      () => sessionReadAuthorityFromRequest('test-user', undefined, undefined),
+      async () => () => true,
     );
 
     const res = await app.request('/?source=schedule&providerId=built-in');
@@ -79,8 +82,11 @@ describe('Run Routes', () => {
       readRun: vi.fn(),
       readOutput: vi.fn(),
     };
-    const app = createRunRoutes(service as any, logger as any, () =>
-      sessionReadAuthorityFromRequest('test-user', undefined, undefined),
+    const app = createRunRoutes(
+      service as any,
+      logger as any,
+      () => sessionReadAuthorityFromRequest('test-user', undefined, undefined),
+      async () => () => true,
     );
     const res = await app.request('/?source=voice');
     expect(res.status).toBe(200);
@@ -107,8 +113,11 @@ describe('Run Routes', () => {
       }),
       readOutput: vi.fn(),
     };
-    const app = createRunRoutes(service as any, logger as any, () =>
-      sessionReadAuthorityFromRequest('test-user', undefined, undefined),
+    const app = createRunRoutes(
+      service as any,
+      logger as any,
+      () => sessionReadAuthorityFromRequest('test-user', undefined, undefined),
+      async () => () => true,
     );
 
     const res = await app.request('/schedule:built-in:daily:daily-1');
@@ -124,11 +133,14 @@ describe('Run Routes', () => {
   test('POST /output resolves opaque output references through the service bridge', async () => {
     const service = {
       listRuns: vi.fn(),
-      readRun: vi.fn(),
+      readRun: vi.fn().mockResolvedValue({ source: 'schedule' }),
       readOutput: vi.fn().mockResolvedValue('run output'),
     };
-    const app = createRunRoutes(service as any, logger as any, () =>
-      sessionReadAuthorityFromRequest('test-user', undefined, undefined),
+    const app = createRunRoutes(
+      service as any,
+      logger as any,
+      () => sessionReadAuthorityFromRequest('test-user', undefined, undefined),
+      async () => () => true,
     );
 
     const ref = {
@@ -150,6 +162,33 @@ describe('Run Routes', () => {
       ref,
       expect.objectContaining({ userId: 'test-user', mode: 'personal' }),
     );
+  });
+
+  test('schedule reads fail closed when the admission callback is absent', async () => {
+    const run = {
+      runId: 'schedule:built-in:daily:daily-1',
+      source: 'schedule',
+    };
+    const service = {
+      listRuns: vi.fn().mockResolvedValue([run]),
+      readRun: vi.fn().mockResolvedValue(run),
+      readOutput: vi.fn().mockResolvedValue('secret'),
+    };
+    const app = createRunRoutes(service as any, logger as any);
+    expect((await readJson(await app.request('/'))).data).toEqual([]);
+    expect((await app.request('/schedule:built-in:daily:daily-1')).status).toBe(
+      404,
+    );
+    expect(
+      (
+        await app.request('/output', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ source: 'schedule', runId: run.runId }),
+        })
+      ).status,
+    ).toBe(404);
+    expect(service.readOutput).not.toHaveBeenCalled();
   });
 
   test('hosted mode omits unbound schedule runs and output while retaining authorized orchestration runs', async () => {

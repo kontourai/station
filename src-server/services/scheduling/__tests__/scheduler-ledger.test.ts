@@ -1218,7 +1218,7 @@ describe('SchedulerLedger', () => {
     restarted.close();
   });
 
-  test('does not strand a dead manual retry when another manual caller recovers only its own capability', () => {
+  test('periodic recovery returns dead manual retries to the executor without resetting attempts', () => {
     const owner = createSchedulerLedger({ directory: tempDir });
     for (const name of ['manual-a', 'manual-b']) {
       owner.create({
@@ -1240,15 +1240,21 @@ describe('SchedulerLedger', () => {
     owner.close();
 
     const restarted = createSchedulerLedger({ directory: tempDir });
-    // A timer tick must not take ownership of either manual retry before the
-    // corresponding operator asks for it.
-    expect(read(restarted.claimDue(Date.now()))).toEqual([]);
-    const a = restarted.claimManual('manual-a', Date.now());
-    expect(a).toMatchObject({ kind: 'claimed', receipt: { attempt: 2 } });
-    // Recovering A cannot quietly make B live under this owner. B remains
-    // reclaimable by the exact manual caller rather than permanently busy.
-    const b = restarted.claimManual('manual-b', Date.now());
-    expect(b).toMatchObject({ kind: 'claimed', receipt: { attempt: 2 } });
+    const recovered = read(restarted.claimDue(Date.now()));
+    expect(recovered).toHaveLength(2);
+    expect(
+      recovered.map((receipt) => [
+        receipt.job.name,
+        receipt.attempt,
+        receipt.manual,
+      ]),
+    ).toEqual([
+      ['manual-a', 2, true],
+      ['manual-b', 2, true],
+    ]);
+    expect(restarted.claimManual('manual-a', Date.now())).toEqual({
+      kind: 'busy',
+    });
     restarted.close();
   });
 

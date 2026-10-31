@@ -25,6 +25,7 @@ import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { AgentScheduleNotes } from '../components/chat-dock/AgentScheduleNotes';
 import { SessionScheduledSection } from '../components/chat-dock/SessionScheduledSection';
+import { schedulerJobDialogStore } from '../contexts/scheduler-job-dialog-store';
 
 const API = 'http://station.test';
 const CONVERSATION = 'conv-1';
@@ -45,6 +46,7 @@ vi.mock('../contexts/NavigationContext', () => ({
 }));
 const scheduler = vi.hoisted(() => ({
   jobs: [] as unknown[],
+  conversationTargets: false as boolean | undefined,
   run: vi.fn(),
   toggle: vi.fn(),
 }));
@@ -56,6 +58,9 @@ vi.mock('../hooks/useScheduler', () => ({
   }),
   useRunJob: () => ({ mutate: scheduler.run, isPending: false }),
   useToggleJob: () => ({ mutate: scheduler.toggle, isPending: false }),
+  useScheduledConversationTargetCapability: () => ({
+    data: scheduler.conversationTargets,
+  }),
 }));
 
 const NOW = Date.parse('2026-10-20T14:00:00.000Z');
@@ -100,6 +105,7 @@ beforeEach(() => {
   schedule = { wakeUps: [wakeUp], jobProposals: [proposal], jobs: [] };
   calls = [];
   scheduler.jobs = [];
+  scheduler.conversationTargets = false;
   setClientCredentialResolver(() => ({
     origin: authority.current.apiBase,
     requestAuthority: authority.current,
@@ -394,7 +400,7 @@ describe('in-chat notes', () => {
   });
 });
 
-describe('the "This chat" card’s Scheduled section', () => {
+describe('the "This chat" card’s Automations section', () => {
   const wrap = (action: () => void) => action();
 
   test('lists the check-back, the proposal and an approved job, each with its own actions', async () => {
@@ -420,7 +426,7 @@ describe('the "This chat" card’s Scheduled section', () => {
     mount(
       <SessionScheduledSection conversationId={CONVERSATION} wrap={wrap} />,
     );
-    const section = await screen.findByRole('region', { name: 'Scheduled' });
+    const section = await screen.findByRole('region', { name: 'Automations' });
     expect(section.textContent).toContain('check the deploy');
     expect(section.textContent).toContain('Check-back at 4:12 PM');
     expect(section.textContent).toContain('Resume after usage limit');
@@ -436,9 +442,61 @@ describe('the "This chat" card’s Scheduled section', () => {
       enabled: true,
     });
     fireEvent.click(screen.getByRole('button', { name: 'Edit nightly' }));
-    expect(navigate).toHaveBeenCalledWith('/schedule', { job: 'nightly' });
-    fireEvent.click(screen.getByRole('button', { name: 'All jobs' }));
-    expect(navigate).toHaveBeenCalledWith('/schedule');
+    expect(navigate).toHaveBeenCalledWith('/automations', { job: 'nightly' });
+    fireEvent.click(screen.getByRole('button', { name: 'All automations' }));
+    expect(navigate).toHaveBeenCalledWith('/automations');
+  });
+
+  // A host that runs automations in a chat offers one for this chat even
+  // when nothing is listed, opening the form with "This chat" chosen.
+  test('offers a new automation for this chat when the host supports it', async () => {
+    scheduler.conversationTargets = true;
+    schedule = { wakeUps: [], jobProposals: [], jobs: [] };
+    const open = vi.spyOn(schedulerJobDialogStore, 'open');
+    mount(
+      <SessionScheduledSection conversationId={CONVERSATION} wrap={wrap} />,
+    );
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'New automation' }),
+    );
+    expect(open).toHaveBeenCalledWith(
+      expect.objectContaining({ prefill: { conversationId: CONVERSATION } }),
+    );
+    open.mockRestore();
+  });
+
+  // An automation whose runs land in this chat is listed beside the chat's
+  // check-backs, with the same row actions, though no proposal created it.
+  test('lists the automations targeting this chat beside its check-backs', async () => {
+    schedule = {
+      wakeUps: [wakeUp],
+      jobProposals: [],
+      jobs: [],
+      automations: [
+        { name: 'repo-digest', enabled: true, consecutiveFailures: 2 },
+      ],
+    };
+    scheduler.jobs = [
+      {
+        name: 'repo-digest',
+        provider: 'builtin',
+        prompt: 'p',
+        enabled: true,
+        consecutiveFailures: 2,
+        target: { kind: 'conversation', conversationId: CONVERSATION },
+        schedule: { kind: 'every', everyMs: 3_600_000 },
+      },
+    ];
+    mount(
+      <SessionScheduledSection conversationId={CONVERSATION} wrap={wrap} />,
+    );
+    const section = await screen.findByRole('region', { name: 'Automations' });
+    expect(section.textContent).toContain('check the deploy');
+    expect(section.textContent).toContain('repo-digest');
+    expect(section.textContent).toContain('Every 60 min · 2 failed');
+    expect(
+      screen.getByRole('button', { name: 'Run repo-digest now' }),
+    ).toBeTruthy();
   });
 
   test('the usage-limit resume’s Cancel is the per-stop Don’t resume', async () => {
@@ -478,7 +536,7 @@ describe('the "This chat" card’s Scheduled section', () => {
     });
     expect(row.hasAttribute('inert')).toBe(true);
     await act(async () => finishTransition(row, 'opacity'));
-    expect(screen.queryByRole('region', { name: 'Scheduled' })).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Automations' })).toBeNull();
   });
 
   test('a check-back waiting for the person reads “Needs your approval”, with no Cancel', async () => {
