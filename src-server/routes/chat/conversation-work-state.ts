@@ -48,7 +48,7 @@ export function createConversationWorkStateRoutes(deps: {
     return next();
   };
   app.use('/work-state', guard);
-  app.use('/:conversationId/work-state', guard);
+  app.use('/:id/work-state', guard);
   const person = (request: Request) =>
     conversationAcknowledgementKey(
       deps.authorityFor(request),
@@ -64,14 +64,14 @@ export function createConversationWorkStateRoutes(deps: {
     c.header('Cache-Control', 'private, no-store');
     return c.json({ success: true, data: { settled: deps.store.read(key) } });
   });
-  app.put('/:conversationId/work-state', async (c) => {
+  app.put('/:id/work-state', async (c) => {
     const key = person(c.req.raw);
     if (!key)
       return c.json(
         { success: false, error: 'A person credential is required' },
         403,
       );
-    const id = c.req.param('conversationId');
+    const id = c.req.param('id');
     if (!id || id.length > 512)
       return c.json(
         { success: false, error: 'Invalid conversation identity' },
