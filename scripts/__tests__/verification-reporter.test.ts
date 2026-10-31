@@ -886,13 +886,13 @@ describe('verification reporter', () => {
     // Not vacuous: the sweep really does contain the oscillating class.
     expect(cycleShapesResolved).toBeGreaterThan(0);
 
-    // Round-6 review, M2: the unquoted-JSON-value form of the same cycle. This
-    // one is fourteen bytes -- far below any bound -- so nothing ever cancels
-    // the bracket the redactor appends each pass, and round 5's at-cap fix
-    // could not reach it. Refused forever before this round, silently.
-    expect(normalizeDeclaredCause('{"apiKey":123}')).toBe(
-      '{"apiKey":[REDACTED]}',
-    );
+    // A numeric credential in valid JSON remains parseable and masked. This
+    // previously exercised an unquoted-marker cycle that refused the cause.
+    const numericCredential = normalizeDeclaredCause('{"apiKey":123}');
+    expect(numericCredential).not.toBeNull();
+    expect(JSON.parse(numericCredential as string)).toEqual({
+      apiKey: '[REDACTED]',
+    });
     // And the same class at a bound, where the far end loses a byte per pass
     // as well. Round 7 corrected what this comment used to claim about it: the
     // collapsed forms are EQUAL here, not a prefix, so this is a second
