@@ -2473,9 +2473,8 @@ async function applyDeliveryAnswer(
                 lastError: NOT_RECEIVED_STOPPED,
               };
         break;
-      // #3568: Station holds the message in the conversation's inbox. This
-      // queue never hands a send to the inbox, so it cannot meet one of its
-      // own keys there yet: like an unknown answer, change nothing.
+      // A lookup reporting a queued row does not provide the direct admission
+      // receipt used by flush settlement. Keep the row until stronger evidence.
       case 'queued':
         return { state, result: undefined, changed: false };
       default: {

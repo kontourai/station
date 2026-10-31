@@ -1,12 +1,5 @@
 import { createHash, type KeyObject } from 'node:crypto';
-import {
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { deflateRawSync } from 'node:zlib';
@@ -161,53 +154,50 @@ process.exit(process.env.STATION_TEST_CLI_FAIL === \`\${args[0]}@\${version}\` ?
 let windowsNodeWrapper: Buffer | undefined;
 
 /** Compile once per test worker, using the Windows compiler already used by native fixture tests. */
-function nativeNodeWrapper(): Buffer {
+function nativeNodeWrapper(fixtureDir: string): Buffer {
   if (windowsNodeWrapper) return windowsNodeWrapper;
-  const dir = mkdtempSync(join(tmpdir(), 'station-node-wrapper-'));
-  try {
-    const source = join(dir, 'wrapper.cs');
-    const exe = join(dir, 'wrapper.exe');
-    // Preserve the original Windows command line, including its quoting, when forwarding.
-    writeFileSync(
-      source,
-      `using System;
+  const dir = join(fixtureDir, 'node-wrapper');
+  mkdirSync(dir, { recursive: true });
+  const source = join(dir, 'wrapper.cs');
+  const exe = join(dir, 'wrapper.exe');
+  // Preserve the original Windows command line, including its quoting, when forwarding.
+  writeFileSync(
+    source,
+    `using System;
 using System.Diagnostics;
 class Wrapper {
-  static int Main() {
-    string line = Environment.CommandLine;
-    int end = line[0] == '"' ? line.IndexOf('"', 1) + 1 : line.IndexOf(' ');
-    string args = end < 0 ? "" : line.Substring(end).TrimStart();
-    var start = new ProcessStartInfo(${JSON.stringify(process.execPath)}, args);
-    start.UseShellExecute = false;
-    using (var child = Process.Start(start)) { child.WaitForExit(); return child.ExitCode; }
-  }
+static int Main() {
+  string line = Environment.CommandLine;
+  int end = line[0] == '"' ? line.IndexOf('"', 1) + 1 : line.IndexOf(' ');
+  string args = end < 0 ? "" : line.Substring(end).TrimStart();
+  var start = new ProcessStartInfo(${JSON.stringify(process.execPath)}, args);
+  start.UseShellExecute = false;
+  using (var child = Process.Start(start)) { child.WaitForExit(); return child.ExitCode; }
+}
 }`,
+  );
+  const compiler = join(
+    process.env.SystemRoot ?? 'C:\\Windows',
+    'Microsoft.NET',
+    'Framework64',
+    'v4.0.30319',
+    'csc.exe',
+  );
+  const result = spawnSyncBounded(
+    compiler,
+    ['/nologo', `/out:${exe}`, source],
+    {
+      encoding: 'utf8',
+      windowsHide: true,
+      timeout: 10_000,
+    },
+  );
+  if (result.error || result.status !== 0)
+    throw new Error(
+      `Native node fixture compilation failed: ${result.error?.message || result.stderr || result.stdout}`,
     );
-    const compiler = join(
-      process.env.SystemRoot ?? 'C:\\Windows',
-      'Microsoft.NET',
-      'Framework64',
-      'v4.0.30319',
-      'csc.exe',
-    );
-    const result = spawnSyncBounded(
-      compiler,
-      ['/nologo', `/out:${exe}`, source],
-      {
-        encoding: 'utf8',
-        windowsHide: true,
-        timeout: 10_000,
-      },
-    );
-    if (result.error || result.status !== 0)
-      throw new Error(
-        `Native node fixture compilation failed: ${result.error?.message || result.stderr || result.stdout}`,
-      );
-    windowsNodeWrapper = readFileSync(exe);
-    return windowsNodeWrapper;
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+  windowsNodeWrapper = readFileSync(exe);
+  return windowsNodeWrapper;
 }
 
 /**
@@ -278,7 +268,7 @@ export function buildWindowsArchive(
       name: 'station/runtime/node.exe',
       data:
         process.platform === 'win32'
-          ? nativeNodeWrapper()
+          ? nativeNodeWrapper(dir)
           : `#!/bin/sh\nexec '${process.execPath}' "$@"\n`,
       unixMode: 0o100755,
     },
