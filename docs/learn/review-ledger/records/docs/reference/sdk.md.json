@@ -824,7 +824,9 @@
 
     "src-ui/src/views/learning-review/LearningRecordActions.tsx",
 
-    "src-ui/src/views/learning-review/__tests__/LearningRecordActions.test.tsx"
+    "src-ui/src/views/learning-review/__tests__/LearningRecordActions.test.tsx",
+
+    "src-server/services/identity/local-account-passkeys.ts"
   ],
 
   "checks": [
