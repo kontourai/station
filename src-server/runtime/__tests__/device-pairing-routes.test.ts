@@ -5278,6 +5278,17 @@ test('authenticates a crowded cookie jar with bounded fresh home admissions', as
     };
     const first = pair('First device');
     const second = pair('Second device');
+    const writer = await HomeWriterOwner.forHome(homeDir);
+    const identityScopes: boolean[] = [];
+    const readIdentity = <T>(read: () => T): T => {
+      try {
+        writer.assertSynchronous();
+        identityScopes.push(true);
+      } catch {
+        identityScopes.push(false);
+      }
+      return read();
+    };
     const logger: Logger = {
       info: vi.fn(),
       warn: vi.fn(),
@@ -5312,7 +5323,18 @@ test('authenticates a crowded cookie jar with bounded fresh home admissions', as
               ? 'device-credential'
               : undefined,
         resolveCredentialDeviceId: (credential) =>
-          security.identifyDevice(credential)?.id,
+          readIdentity(() => security.identifyDevice(credential)?.id),
+        resolveCredentialDeviceKind: (credential) =>
+          readIdentity(() => {
+            const kind = security.identifyDevice(credential)?.kind;
+            return kind === 'device' || kind === 'delegation' ? kind : undefined;
+          }),
+        resolvePairingSource: (credential) =>
+          readIdentity(() => security.identifyDevice(credential)?.source),
+        resolveCredentialLocality: (credential) =>
+          readIdentity(() => security.credentialLocality(credential)),
+        resolveCredentialMintKind: (credential) =>
+          readIdentity(() => security.credentialMintKind(credential)),
         allowedOrigins: ['https://station.example.test'],
         maxFailures: 100,
       },
@@ -5411,6 +5433,8 @@ test('authenticates a crowded cookie jar with bounded fresh home admissions', as
     });
     // Independent canonical admissions must not scale with foreign cookie count.
     expect(crowdedAdmissions).toBeLessThanOrEqual(baselineAdmissions + 2);
+    expect(identityScopes.length).toBeGreaterThan(0);
+    expect(identityScopes.every(Boolean)).toBe(true);
   } finally {
     vi.restoreAllMocks();
     runtimeLease?.release();
