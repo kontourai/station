@@ -80,6 +80,7 @@ describe('FeaturePreviewRegistry', () => {
 
     expect(registry.list()).toEqual([
       expect.objectContaining({ id: 'task-review', enabled: false }),
+      expect.objectContaining({ id: 'task-collaboration', enabled: false }),
       expect.objectContaining({ id: 'visual-skills', enabled: false }),
       expect.objectContaining({
         id: 'integration-content-trust',
@@ -89,6 +90,7 @@ describe('FeaturePreviewRegistry', () => {
     const probe = bindProbe(registry);
     expect(registry.list()).toEqual([
       expect.objectContaining({ id: 'task-review', enabled: false }),
+      expect.objectContaining({ id: 'task-collaboration', enabled: false }),
       expect.objectContaining({ id: 'visual-skills', enabled: false }),
       expect.objectContaining({
         id: 'integration-content-trust',
@@ -127,6 +129,7 @@ describe('FeaturePreviewRegistry', () => {
 
     expect(registry.list()).toEqual([
       expect.objectContaining({ id: 'task-review', enabled: false }),
+      expect.objectContaining({ id: 'task-collaboration', enabled: false }),
       expect.objectContaining({ id: 'visual-skills', enabled: false }),
       expect.objectContaining({
         id: 'integration-content-trust',

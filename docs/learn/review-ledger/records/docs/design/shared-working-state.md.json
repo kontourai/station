@@ -18,7 +18,9 @@
 
     "src-server/services/orchestration/event-store.ts",
 
-    "src-server/services/orchestration/project-task-room-working-state.ts"
+    "src-server/services/orchestration/project-task-room-working-state.ts",
+
+    "src-server/domain/__fixtures__/shared-working-state-v1.json"
   ],
 
   "checks": [
