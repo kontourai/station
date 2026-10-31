@@ -18,7 +18,13 @@
  * resolvers are table-tested in `chat-dock-utils.test.ts`; these tests pin
  * that the pane hands their results to the right surfaces.
  */
-import { orchestrationQueries } from '@kontourai/station-sdk';
+import { agentId } from '@kontourai/station-contracts/agent-identity';
+import type { ConversationOpenResolution } from '@kontourai/station-contracts/orchestration';
+import {
+  type ConversationListItem,
+  conversationQueries,
+  orchestrationQueries,
+} from '@kontourai/station-sdk';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
@@ -34,7 +40,10 @@ import { ActiveChatsProvider } from '../../../contexts/ActiveChatsContext';
 import { activeChatsStore } from '../../../contexts/active-chats-store';
 import { ConversationsProvider } from '../../../contexts/ConversationsContext';
 import { KeyboardShortcutsProvider } from '../../../contexts/KeyboardShortcutsContext';
-import { NavigationProvider } from '../../../contexts/NavigationContext';
+import {
+  NavigationProvider,
+  useNavigation,
+} from '../../../contexts/NavigationContext';
 import { navigationStore } from '../../../contexts/navigation-store';
 import { openChatsStore } from '../../../contexts/open-chats-store';
 import {
@@ -349,6 +358,19 @@ function renderPane(projectSlug: string) {
       projectSlug={projectSlug}
       layoutSlug="coding"
     />,
+  );
+}
+
+function RouteScopedChatPane() {
+  const { selectedProject, selectedProjectLayout } = useNavigation();
+  if (!selectedProject || !selectedProjectLayout) return null;
+  return (
+    <ChatWorkspacePane
+      key={`${selectedProject}:${selectedProjectLayout}`}
+      placement="fullscreen"
+      projectSlug={selectedProject}
+      layoutSlug={selectedProjectLayout}
+    />
   );
 }
 
@@ -1368,6 +1390,93 @@ test('a real failed history open stays at Inbox instead of falling back to the i
   expect(openConversationAction).toHaveBeenCalledOnce();
   expect(screen.getByRole('region', { name: 'Inbox' })).toBeTruthy();
   expect(navigationStore.getSnapshot().activeChat).toBe('chat-a');
+});
+
+test('the global picker focuses an existing conversation after accepted cross-project routing', async () => {
+  openChatA();
+  const conversation: ConversationListItem = {
+    id: 'other-conversation',
+    source: 'runtime',
+    agentSlug: agentId('assistant'),
+    title: 'Other Project conversation',
+    projectSlug: 'other',
+    mutable: true,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    messageCount: 2,
+    answerability: { answerable: true },
+  };
+  const resolution: ConversationOpenResolution = {
+    status: 'resolved',
+    conversation,
+    currentSessionId: conversation.id,
+    transcript: { available: true, owner: 'runtime', messageCount: 2 },
+    canContinue: true,
+    answerability: { answerable: true },
+    recoveryActions: [],
+  };
+  dockProbe.sessions.push({
+    ...chatSession('chat-b'),
+    conversationId: conversation.id,
+    projectSlug: 'other',
+    title: conversation.title,
+  });
+  activeChatsStore.initChat('chat-b', {
+    agentSlug: agentId('assistant'),
+    agentName: 'Assistant',
+    title: conversation.title,
+    projectSlug: 'other',
+    conversationId: conversation.id,
+  });
+  const fetchBefore = globalThis.fetch;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url =
+        typeof input === 'string'
+          ? input
+          : input instanceof URL
+            ? input.href
+            : input.url;
+      if (url.endsWith('/api/conversations/other-conversation/open'))
+        return Response.json({ success: true, data: resolution });
+      return fetchBefore(input, init);
+    }),
+  );
+  try {
+    navigationStore.setLayout('pulse', 'coding');
+    navigationStore.setActiveChat('chat-a');
+    renderInProviders(<RouteScopedChatPane />);
+    await act(async () => {});
+    act(() =>
+      paneQueryClient!.setQueryData(conversationQueries.inventory().queryKey, {
+        pages: [{ items: [conversation], hasMore: false }],
+        pageParams: [undefined],
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'More dock actions' }));
+    fireEvent.click(
+      await screen.findByRole('menuitem', { name: /^Open chat/ }),
+    );
+    await screen.findByRole('dialog', { name: 'Open chat' });
+    fireEvent.click(
+      screen.getByRole('button', { name: /Other Project conversation/ }),
+    );
+    await waitFor(() =>
+      expect(navigationStore.getSnapshot().pathname).toContain(
+        '/projects/other/',
+      ),
+    );
+    await waitFor(() =>
+      expect(navigationStore.getSnapshot().activeChat).toBe(conversation.id),
+    );
+    expect(navigationStore.getSnapshot().pathname).toContain(
+      '/projects/other/',
+    );
+    expect(openConversationAction).not.toHaveBeenCalled();
+  } finally {
+    vi.stubGlobal('fetch', fetchBefore);
+  }
 });
 
 test.each(['another-chat', 'new-chat'] as const)(

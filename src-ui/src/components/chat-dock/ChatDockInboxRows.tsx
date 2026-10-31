@@ -78,10 +78,9 @@ const SETTLED_PAGE_SIZE = 20;
  *
  * Row and group anatomy is defined here once and consumed by every inbox
  * surface: the desktop dock panel (`ChatDockInboxPanel`), the mobile
- * portaled sheet (`MobileTaskSwitcher`), Home's work lanes (`HomeWorkRow`)
- * and the project sidebar's open chats. Only the chrome stays host-owned —
- * panel scroll/footer vs sheet portal, focus trap, sticky header, and
- * visual-viewport sizing (the #1051 fixes live in the sheet).
+ * embedded Inbox (`MobileInboxPanel`), Home's work lanes (`HomeWorkRow`)
+ * and the project sidebar's open chats. Scroll, header and responsive layout
+ * stay host-owned; work grouping and status remain shared.
  *
  * THE ROW (#3043) has a fixed line budget: a meta line (agent mark, agent
  * and project, time), the title, ONE status line chosen by the status ladder

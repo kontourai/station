@@ -2192,19 +2192,24 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
         execution?.beforeFocus?.() === false
       )
         return false;
-      // station#3687 seam 2: routing to the row's project used to RETURN
-      // here (`undefined`), so a cross-project click navigated the whole app
-      // and then opened nothing — and `undefined` also skipped the #801
-      // deleted-agent fallback in the open policy. Teleporting is the
-      // intended half (the destination project is where the conversation
-      // lives); the click's promise is the conversation, so open it there.
-      routeToScopedChatProject(targetProjectSlug, true);
+      // Failed or superseded hydration must not switch Projects. Route only
+      // after the focus guard accepts, and still complete the open (#3687).
       return openConversation(conversationId, agentSlug, {
         projectSlug: targetProjectSlug,
         projectName,
         model,
         acceptedModel,
         ...execution,
+        beforeFocus: () => {
+          if (
+            execution?.signal?.aborted ||
+            execution?.isCurrent?.() === false ||
+            execution?.beforeFocus?.() === false
+          )
+            return false;
+          routeToScopedChatProject(targetProjectSlug, true);
+          return true;
+        },
         revealDock: execution?.revealDock !== false && !isFullscreenPlacement,
         conversationUpdatedAt,
       });

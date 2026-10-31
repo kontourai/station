@@ -104,7 +104,7 @@ export interface ChatDockInboxPanelProps {
  * Desktop chrome for the shared inbox rows (kontourai/station#3312): the
  * dock's side panel — scroll container, persisted collapsible sections, and
  * the history footer. Row/group anatomy lives in `ChatDockInboxRows.tsx`,
- * shared with `MobileTaskSwitcher`'s sheet chrome.
+ * shared with the embedded `MobileInboxPanel`.
  */
 function ChatDockInboxPanelImpl({
   items,

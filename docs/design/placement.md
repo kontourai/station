@@ -1980,6 +1980,8 @@ the chat title identifies the conversation rather than opening a second list.
 Selecting a chat, an imported session, or New chat reveals that destination.
 A failed open keeps the Inbox visible and reports the failure. Durable Tasks
 still open their task details through canonical navigation.
+Pending opens cannot replace a later selection or New chat draft. Cross-project
+routing occurs only after the reader's focus guard accepts the destination.
 
 The Inbox and reader stay mounted while switching between them, preserving
 list position, the search, and unsent composer text. Collapse and reopen retain
