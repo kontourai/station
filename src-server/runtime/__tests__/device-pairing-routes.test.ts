@@ -32,6 +32,7 @@ import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { openOutsideHostChannel } from '../../../packages/cli/src/commands/outside-host-channel.js';
 import type { ProfileCredentialStore } from '../../../packages/cli/src/commands/profile-credentials.js';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { PairingFailureLimiter } from '../../security/pairing-failure-limiter.js';
 import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
 import { OperatorPasskeyEnrollmentService } from '../../services/identity/operator-passkey-enrollment.js';
@@ -5240,8 +5241,10 @@ test('outside host CLI channels reuse live keyring credentials without growing d
   }
 });
 
+const makeCookieCostHome = trackTempDirs();
+
 test('authenticates a crowded cookie jar with bounded fresh home admissions', async () => {
-  const homeDir = mkdtempSync(join(tmpdir(), 'station-cookie-cost-'));
+  const homeDir = makeCookieCostHome('station-cookie-cost-');
   let runtimeLease:
     | ReturnType<typeof acquireStationHomeRuntimeLease>
     | undefined;
@@ -5411,6 +5414,5 @@ test('authenticates a crowded cookie jar with bounded fresh home admissions', as
   } finally {
     vi.restoreAllMocks();
     runtimeLease?.release();
-    rmSync(homeDir, { recursive: true, force: true });
   }
 });

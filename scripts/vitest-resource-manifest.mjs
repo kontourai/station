@@ -157,6 +157,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/orchestration/__tests__/google-sealed-preparation.test.ts',
   'src-server/services/orchestration/__tests__/delegation-flow-lock-admission.test.ts',
   'src-server/services/orchestration/__tests__/delegation-group-sdk-source-wire-owner.test.ts',
+  // One owned Node contender exercises cross-process home exclusion and bounded cleanup.
+  'src-server/services/orchestration/__tests__/report-rounds-home-exclusion.test.ts',
 
   // Exercises the serialized CLI UI listener in an owned Node child.
   'src-server/runtime/frameworks/__tests__/http-receive.integration.test.ts',
