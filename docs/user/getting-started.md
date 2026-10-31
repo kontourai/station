@@ -822,7 +822,9 @@ Steer and Queue carry text only. You can still attach files or dictate during a
 turn: files wait in the draft, which says why, until you send it after the turn
 ends.
 
-A text message is saved on this device before it is sent. If the app closes or
+The app attempts to save a text message on this device before sending it. If
+the write fails or times out, it sends without that saved row and keeps the
+saved draft. If the app closes or
 the connection drops before Station answers, the app asks Station what happened
 at its next launch or reconnect: a message Station never received is sent once,
 with the same identity, and one Station may have started is kept and marked,

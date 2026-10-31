@@ -82,8 +82,10 @@ inspection (the outbox does not yet settle that answer); possibly started, or th
 on another Station → kept as unconfirmed, with a Check that asks Station again
 and never resends, and a Discard… that removes it only after the user confirms
 "I checked, discard it" with the risk stated (its key is retired, so it is never
-sent again). Each row records the Station it was written for and is
-only ever sent to, or settled by, that Station; for another it waits, listed.
+sent again). Rows written with Station identity are sent to or settled by that Station;
+for another they wait, listed. A verified environment ID takes precedence over
+the address; rows that never learned an ID use the normalized address. Older
+rows without a Station identity retain their legacy any-Station behavior.
 
 Station can also hold a follow-up itself, in the conversation's durable inbox
 ([#3568](https://github.com/kontourai/station/issues/3568), `whenBusy: 'queue'`
