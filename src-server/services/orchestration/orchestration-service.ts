@@ -9853,8 +9853,15 @@ export class OrchestrationService {
                             claimOutcome = 'release';
                             throw error;
                           }
-                          claimOutcome = 'retain';
-                          throw new SessionTurnStartIndeterminateError();
+                          // A begun intent needs definitive-refusal settlement,
+                          // even when the final guard prevented adapter entry.
+                          if (
+                            retired.kind !== 'stale' ||
+                            !(error instanceof SendTurnRefusedError)
+                          ) {
+                            claimOutcome = 'retain';
+                            throw new SessionTurnStartIndeterminateError();
+                          }
                         }
                         if (
                           !providerInvoked &&
