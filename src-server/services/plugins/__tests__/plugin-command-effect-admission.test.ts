@@ -26,8 +26,8 @@ describe('plugin command requirements answer for the caller (M5)', () => {
   const resolver = createPluginCommandRequirementResolver({
     canReadSession: (sessionId, authority) =>
       readable.get(sessionId) === authority,
-    projectExists: (slug) => slug === 'demo',
-    taskInProject: (taskId, projectSlug) =>
+    canReadProject: async (slug) => slug === 'demo',
+    canReadTask: async (taskId, projectSlug) =>
       taskId === 'task-1' && (!projectSlug || projectSlug === 'demo'),
   });
   const resolve = (
@@ -76,7 +76,7 @@ describe('plugin command requirements answer for the caller (M5)', () => {
     ).resolves.toBe('missing');
   });
 
-  test('project and task use the existence authority their routes answer with', async () => {
+  test('project and task delegate to the caller read predicates', async () => {
     await expect(
       resolve('project', { projectSlug: 'demo' }, bob),
     ).resolves.toBe('available');

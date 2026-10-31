@@ -1,0 +1,19 @@
+{
+  "revision": "362d5accfedfbc18eb2629b5646f873da643064c",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Compared runtime composition and authorized domain-flow diagrams with plugin command Project/Task admission and conversation Knowledge owner callback: both are narrower authorization within existing API/domain boundaries, not new diagram edges. No runtime/device journey run.","inputs":["docs/architecture.md","src-server/runtime/bootstrap/station-runtime.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/plugin-installation-lifecycle.md","note":"Compared installation, grant and generation lifecycle with bootstrap delta: conversation file-memory owner filtering does not change plugin installation or durable grant publication. No install/recovery journey run.","inputs":["docs/design/plugin-installation-lifecycle.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"Compared current membership, private Session and composed extension authority claims with runtime delta: plugin command requirements now require Project read and exact Task membership; this is consistent with the stated independent resource checks, and conversation Knowledge callback does not grant membership. No two-human journey run.","inputs":["docs/design/project-membership.md","src-server/runtime/bootstrap/station-runtime.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Compared Project/Task incarnation, request and publication authority with runtime deltas: plugin command requirement resolution is separate from room agent request admission, and conversation Knowledge filtering does not broaden room execution. No model or room journey run.","inputs":["docs/design/task-room-agent-requests.md","src-server/runtime/bootstrap/station-runtime.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/glossary.md","note":"Compared Project, Task, personal authority and extension vocabulary with runtime plugin command checks and corrected module-map durability: the changes refine admission and platform evidence, not these definitions. No live journey run.","inputs":["docs/glossary.md","docs/architecture/module-map.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"Compared command declaration grants-nothing guidance and its API reference link with runtime bootstrap delta: file-memory Knowledge owner filtering does not change plugin installation; the linked API now describes Project/Task read requirements. No installed plugin journey run.","inputs":["docs/guides/plugins.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Compared integration contract routing and explicit hosted design limits with corrected Plugin Command Effects API and bootstrap owner callback: public API remains the detailed authority and source filtering does not qualify a cloud integration. No external integration run.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md","src-server/runtime/bootstrap/station-runtime.ts"]}
+  ]
+}

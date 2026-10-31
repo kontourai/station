@@ -27,7 +27,9 @@ import {
 import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
 import { ConfigLoader } from '../../../domain/config-loader.js';
+import { capturePluginAgentInvocation } from '../../../domain/config-loader-agents.js';
 import { PLUGIN_AGENT_OWNER_FILE } from '../../../domain/plugin-agent-ownership.js';
+import { createAgentHooks } from '../../../runtime/agents/agent-hooks.js';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
 import { AgentService } from '../../../services/agents/agent-service.js';
 import type { EventBus } from '../../../services/orchestration/event-bus.js';
@@ -60,6 +62,7 @@ async function fixture(declared: string | undefined) {
   const installPluginCopy = (
     approvalMode: string | undefined,
     extraFiles: Record<string, string> = {},
+    tools?: { autoApprove?: string[]; unattendedAutoApprove?: string[] },
   ) => {
     rmSync(agentDir, { recursive: true, force: true });
     mkdirSync(agentDir, { recursive: true });
@@ -68,6 +71,7 @@ async function fixture(declared: string | undefined) {
       JSON.stringify({
         name: 'Plugin Builder',
         prompt: 'Build.',
+        tools,
         execution: {
           agentConnectionId: 'claude',
           ...(approvalMode ? { approvalMode } : {}),
@@ -186,6 +190,7 @@ async function fixture(declared: string | undefined) {
 
   return {
     home,
+    configLoader,
     operator,
     pair,
     put,
@@ -284,4 +289,65 @@ test("an edit that leaves execution out does not copy the effective default into
   expect(res.status).toBe(200);
   expect(f.declaredOnDisk()).toBe('ask');
   expect(await f.effectiveDefault()).toBe('never');
+});
+
+test('plugin tool grants require operator authority and survive replacement into pre-tool policy', async () => {
+  const f = await fixture('ask');
+  f.installPluginCopy(
+    'ask',
+    {},
+    { autoApprove: ['*'], unattendedAutoApprove: ['danger'] },
+  );
+  const delegate = f.pair('Delegate', 'delegation');
+  const spec = await f.configLoader.loadAgent(SLUG);
+  expect(spec.tools?.autoApprove).toEqual([]);
+  expect(spec.tools?.unattendedAutoApprove).toBeUndefined();
+  const hooks = (agent: typeof spec) =>
+    createAgentHooks({
+      spec: agent,
+      appConfig: {},
+      configLoader: f.configLoader,
+      agentFixedTokens: new Map(),
+      memoryAdapters: new Map(),
+      approvalRegistry: {},
+      toolNameMapping: new Map(),
+      logger: { debug() {}, info() {}, warn() {}, error() {} },
+    } as never);
+  const call = { toolName: 'danger', toolArgs: {} } as never;
+  expect(
+    await hooks(spec).beforeToolCall!(call, { agentSlug: SLUG }),
+  ).toMatchObject({ allowed: false });
+  expect(
+    (
+      await f.put(delegate.credential, {
+        tools: { autoApprove: ['*'], unattendedAutoApprove: ['danger'] },
+      })
+    ).status,
+  ).toBe(403);
+  expect(
+    (
+      await f.put(f.operator.credential, {
+        tools: { autoApprove: ['*'], unattendedAutoApprove: ['danger'] },
+      })
+    ).status,
+  ).toBe(200);
+  f.installPluginCopy(
+    'auto',
+    {},
+    { autoApprove: ['*'], unattendedAutoApprove: ['other'] },
+  );
+  const captured = await capturePluginAgentInvocation(f.home, SLUG, PLUGIN);
+  const effective = captured.read();
+  expect(effective.tools?.unattendedAutoApprove).toEqual(['danger']);
+  expect(effective.tools?.autoApprove).toEqual(['*']);
+  expect(
+    await hooks(effective).beforeToolCall!(call, { agentSlug: SLUG }),
+  ).toBe(true);
+  writeFileSync(
+    join(f.home, 'agents', SLUG, PLUGIN_AGENT_OWNER_FILE),
+    JSON.stringify({ plugin: 'another-plugin' }),
+  );
+  expect(
+    (await f.configLoader.loadAgent(SLUG)).tools?.unattendedAutoApprove,
+  ).toBeUndefined();
 });

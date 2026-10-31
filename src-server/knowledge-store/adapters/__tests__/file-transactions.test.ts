@@ -40,7 +40,7 @@ const fixture = join(
   'fixtures',
   'knowledge-file-transaction-child.ts',
 );
-const tsx = join(process.cwd(), 'node_modules', '.bin', 'tsx');
+const tsx = join(process.cwd(), 'node_modules', 'tsx', 'dist', 'cli.mjs');
 
 async function temporaryRoot(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'knowledge-transactions-'));
@@ -112,6 +112,7 @@ function runChild(
     [tsx, fixture, root, mode, readyPath ?? '', releasePath ?? ''],
     {
       stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
     },
   );
 }
@@ -404,7 +405,7 @@ describe('KnowledgeFileTransactions', () => {
     });
 
     expect(published).toEqual([
-      'records/new.md',
+      join('records', 'new.md'),
       'metadata.json',
       'graph-index.json',
       'path-index.json',

@@ -80,6 +80,99 @@ describe('verification output redaction', () => {
     expect(output).toContain('safe=keep');
   });
 
+  test('scans nested and encoded objects across keys, depths, offsets and buffer caps', () => {
+    const keys = [
+      'password',
+      'apiKey',
+      'client_secret',
+      'accessToken',
+      'authorization',
+    ];
+    let checked = 0;
+    for (const key of keys) {
+      for (const depth of [1, 2, 8, 32]) {
+        let value: unknown = { [key]: 'corpus-secret', safe: 'keep' };
+        for (let i = 0; i < depth; i += 1) value = { context: value };
+        const json = JSON.stringify(value);
+        for (const encoded of [
+          json,
+          JSON.stringify(json),
+          JSON.stringify(JSON.stringify(json)),
+        ]) {
+          for (const offset of [0, 7, 63]) {
+            const raw = `${'x'.repeat(offset)} prefix ${encoded} suffix`;
+            for (const cap of [
+              64,
+              Buffer.byteLength(raw),
+              Buffer.byteLength(raw) + 16,
+            ]) {
+              const redactor = createVerificationRedactor({
+                maxBytes: Math.max(64, cap),
+              });
+              redactor.push(raw.slice(0, 13));
+              redactor.push(raw.slice(13));
+              const output = redactor.flush();
+              expect(output).not.toContain('corpus-secret');
+              if (Buffer.byteLength(raw) <= Math.max(64, cap)) {
+                expect(output).toContain('keep');
+                expect(output).toContain('prefix');
+                expect(output).toContain('suffix');
+                expect(redactVerificationOutput(output)).toBe(output);
+              } else expect(output).toContain('output omitted');
+              checked += 1;
+            }
+          }
+        }
+      }
+    }
+    expect(checked).toBe(540);
+  });
+
+  test.each([' ', '\n', `${String.fromCharCode(27)}[32m\n`])(
+    'does not let a harmless assignment hide a following secret across %j',
+    (boundary) => {
+      const output = redactVerificationOutput(
+        `xxx=${boundary}apiKey: "boundary-secret"Basic dXNlcjpwYXNz`,
+      );
+      expect(output).not.toContain('boundary-secret');
+      expect(output).not.toContain('dXNlcjpwYXNz');
+      expect(output).toContain('xxx=');
+      expect(redactVerificationOutput(output)).toBe(output);
+    },
+  );
+
+  test('keeps JSON delimiters and existing markers stable', () => {
+    const raw =
+      '{"context":{"password":"secret","safe":"keep"},"token":[REDACTED],"other":42}';
+    const output = redactVerificationOutput(raw);
+    expect(output).toBe(
+      '{"context":{"password":"[REDACTED]","safe":"keep"},"token":[REDACTED],"other":42}',
+    );
+    expect(redactVerificationOutput(output)).toBe(output);
+  });
+
+  test('preserves phase commands and JSON quotes while redacting assignments', () => {
+    const command = 'npm run test:full:credential-ledger-exclusive:raw';
+    const raw = JSON.stringify(
+      {
+        phase: { command },
+        output: 'prefix:token=secret-value',
+        other: 'token=another-secret',
+        colon: 'prefix:password:secret-value',
+      },
+      null,
+      2,
+    );
+    const output = redactVerificationOutput(raw);
+    expect(JSON.parse(output)).toEqual({
+      phase: { command },
+      output: 'prefix:token=[REDACTED]',
+      other: 'token=[REDACTED]',
+      colon: 'prefix:password:[REDACTED]',
+    });
+    expect(redactVerificationOutput(output)).toBe(output);
+  });
+
   test.each([
     'attachment: /tmp/token=report-secret.zip',
     String.raw`attachment: E:\tmp\token=report-secret.zip`,

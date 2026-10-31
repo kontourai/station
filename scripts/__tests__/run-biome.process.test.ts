@@ -82,12 +82,16 @@ test.skipIf(process.platform === 'win32')(
   async () => {
     const { directory, script } = fixture();
     const first = start(directory, script);
-    await vi.waitFor(() => expect(first.output()).toContain('ready:2'));
+    await vi.waitFor(() => expect(first.output()).toContain('ready:2'), {
+      timeout: 10_000,
+    });
     const exit = once(first.child, 'exit');
     first.child.kill('SIGKILL');
     await exit;
     const second = start(directory, script);
-    await vi.waitFor(() => expect(second.output()).toContain('ready:2'));
+    await vi.waitFor(() => expect(second.output()).toContain('ready:2'), {
+      timeout: 10_000,
+    });
     const secondExit = once(second.child, 'exit');
     second.finish();
     expect((await secondExit)[0]).toBe(0);

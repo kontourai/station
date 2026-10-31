@@ -1,0 +1,15 @@
+{
+  "revision": "87e0f23920132deda49baad629bc9852c30daad1",
+
+  "notes": [
+    {"path":"docs/design/answer-share-permalinks.md","note":"Compared share token mint, viewing and session-read reauthorization claims with runtime route delta: plugin command requirements are a separate admission path and do not change share credential or dereference behavior. No recipient or internet journey run.","inputs":["docs/design/answer-share-permalinks.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Compared staged home identity, decision and transfer boundaries with runtime route delta: plugin command Project/Task requirements do not activate a target or change channel authority. No cross-host transfer run.","inputs":["docs/design/channel-home-authority.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/local-bootstrap-token.md","note":"Compared historical mint/exchange design and current-purpose-token caveat with runtime route delta: plugin command requirement checks do not alter UI bootstrap. No live launch or origin test run.","inputs":["docs/design/local-bootstrap-token.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Compared connection setup and historical provider audit scope with runtime bootstrap delta: the added file-memory owner callback is specific to conversation Knowledge reads, not provider detection or onboarding. No live provider qualification run.","inputs":["docs/design/connections-onboarding.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Compared knowledgeStores startup consumer and persistence caveat with conversation-root bootstrap delta: registration remains personal and read-only; the added callback constrains which file-memory owner may be read and does not change the setting or remove existing roots. No live settings journey run.","inputs":["docs/design/settings-architecture.md","src-server/knowledge-store/conversation-root-bootstrap.ts"]}
+  ]
+}

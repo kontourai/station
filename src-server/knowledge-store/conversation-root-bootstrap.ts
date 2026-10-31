@@ -57,11 +57,11 @@ interface EnsureConversationKnowledgeRootDeps {
   sessionReader: ConversationSessionReader;
   fileStores: Map<string, ConversationFileStoreReader>;
   getUserId: () => string | undefined;
+  canReadFileOwner?: (requesterId: string, ownerId: string) => boolean;
   /**
-   * The authority the adapter's session leg reads with. The file-memory leg
-   * keeps keying on `getUserId`; the session leg must read as a principal,
-   * because a session is readable only by its recorded principal owner (or
-   * that owner's personal conversation account).
+   * Request authority applies to both legs. The file-memory OS alias maps
+   * only to the operator's personal account; principal owners retain their
+   * ordinary owner and account access.
    */
   getReadAuthority?: () =>
     | SessionReadAuthority
@@ -95,6 +95,7 @@ export async function ensureConversationKnowledgeRoot(
       sessionReader: deps.sessionReader,
       fileStores: deps.fileStores,
       getUserId: deps.getUserId,
+      canReadFileOwner: deps.canReadFileOwner,
       ...(deps.getReadAuthority
         ? { getReadAuthority: deps.getReadAuthority }
         : {}),
@@ -142,6 +143,7 @@ export async function registerRuntimeConversationKnowledgeRoot(deps: {
   };
   fileStores: Map<string, ConversationFileStoreReader>;
   fileMemoryUserId: () => string | undefined;
+  canReadFileOwner: (requesterId: string, ownerId: string) => boolean;
   projectHomeDir: string;
   knowledgeStoresEnabled: AppConfig['knowledgeStores'];
 }): Promise<void> {
@@ -158,6 +160,7 @@ export async function registerRuntimeConversationKnowledgeRoot(deps: {
     },
     fileStores: deps.fileStores,
     getUserId: deps.fileMemoryUserId,
+    canReadFileOwner: deps.canReadFileOwner,
     getReadAuthority: currentKnowledgeReadScope,
     projectHomeDir: deps.projectHomeDir,
     knowledgeStoresEnabled: deps.knowledgeStoresEnabled,

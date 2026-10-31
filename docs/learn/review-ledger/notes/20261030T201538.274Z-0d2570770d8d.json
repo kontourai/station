@@ -1,0 +1,15 @@
+{
+  "revision": "72dae3e0e1f7b188d13b7da944959b6c6380bfcd",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Compared pre-tool evaluator and engine grant-delivery limits with bootstrap delta: file-memory Knowledge owner callback changes read authorization, not Claude/ACP tool-policy delivery. Historical provider probes were not rerun.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Compared receipt, readiness, Flow and exception distinctions with Agent grant, plugin command route and conversation Knowledge wiring deltas: none changes these evidence ownership definitions. No readiness or provider result inferred.","inputs":["docs/contexts/evidence-governance/CONTEXT.md","src-server/routes/agents/agents.ts","src-server/runtime/bootstrap/station-runtime.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Compared Knowledge scope, telemetry and verification-lane definitions with Agent grant, plugin command and conversation-root authority changes: those do not change the context vocabulary or verification evidence boundary. No operator journey run.","inputs":["docs/contexts/operations/CONTEXT.md","src-server/routes/agents/agents.ts","src-server/runtime/bootstrap/station-runtime.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"deploy/public-ingress/README.md","note":"Compared single-owner ingress, authenticated enrollment, SSE and listener limitations with runtime route/bootstrap deltas: plugin command Project reads and file-memory Knowledge owner filtering do not change Caddy exposure or enrollment. No public deployment or TLS journey run.","inputs":["deploy/public-ingress/README.md","src-server/runtime/bootstrap/station-runtime.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/README.md","note":"Compared the documentation map and authority routing with module-map corrections and runtime plugin command admission delta: links still route to the corrected owners without asserting old existence or Windows durability behavior. No publication run.","inputs":["docs/README.md","docs/architecture/module-map.md","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

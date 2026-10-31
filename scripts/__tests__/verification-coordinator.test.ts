@@ -14,10 +14,13 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { delimiter, join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
-import { lookupProcessBirthFingerprint } from '../../packages/shared/src/process-identity.mjs';
+import {
+  lookupProcessBirthFingerprint,
+  resolveOwnProcessIdentity,
+} from '../../packages/shared/src/process-identity.mjs';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   latestE2EEvidenceBinding,
@@ -4110,16 +4113,24 @@ setInterval(() => {
           heartbeatAt: Date.now(),
         }),
       ).toBe(true);
-      expect(
+      let quarantine: string | undefined;
+      let movedLease: unknown;
+      const outcome =
         __verificationCoordinatorInternals.createOwnedDirectoryRemover({
           removeDirectory: (target: string, options: object) => {
-            expect(target).toMatch(/scheduler\.lock\.remove-[0-9a-f-]+$/);
-            expect(target.startsWith(`${temp.root}/`)).toBe(true);
-            expect(target.startsWith(`${outside}/`)).toBe(false);
+            quarantine = target;
+            movedLease = JSON.parse(
+              readFileSync(join(target, 'lease.json'), 'utf8'),
+            );
             rmSync(target, { recursive: true, force: true, ...options });
           },
-        })(directory, owner),
-      ).toMatchObject({ kind: 'released' });
+        })(directory, owner);
+      expect(outcome).toMatchObject({ kind: 'released' });
+      expect(quarantine).toMatch(/scheduler\.lock\.remove-[0-9a-f-]+$/);
+      expect(dirname(quarantine!)).toBe(temp.root);
+      expect(movedLease).toMatchObject({ owner });
+      expect(existsSync(quarantine!)).toBe(false);
+      expect(existsSync(directory)).toBe(false);
       expect(readdirSync(outside)).toEqual([]);
     } finally {
       temp.remove();
@@ -4272,6 +4283,11 @@ setInterval(() => {
         processStart: nativeProcessStart(process.pid),
         nonce: randomUUID(),
       };
+      const identity = resolveOwnProcessIdentity(process.pid);
+      expect(identity.state).toBe('exact');
+      if (identity.state !== 'exact')
+        throw new Error('fixture identity unavailable');
+      owner.processStart = identity.identity.start;
       const writer = { ...owner, nonce: randomUUID() };
       try {
         expect(

@@ -1,0 +1,27 @@
+{
+  "revision": "72dae3e0e1f7b188d13b7da944959b6c6380bfcd",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Compared the context relationships and routing links to the module-map changes: corrected transaction platform durability and plugin command admission do not change the mapped responsibilities. No integration execution.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT.md","note":"Compared the work, extension and evidence boundaries to the module-map corrections: plugin declaration still grants no authority, and the Windows sync qualification does not change the context model. No product journey run.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"README.md","note":"Compared the product overview and module-map link with corrected Project admission and Windows transaction durability: neither changes the introductory product or install claims. No installation or device journey run.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Compared its source-observation status and Knowledge provider-choice investigation to the module-map delta: the corrected file publication and plugin admission details do not change those documented boundary observations. No new abstraction audit run.","inputs":["docs/architecture/abstraction-review.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/user/concepts.md","note":"Compared Project, Task, Agent and extension concepts with the module-map corrections: caller-specific plugin command admission and Windows directory sync do not change their user-facing definitions. No user journey run.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Compared its module-map routing and server guidance with the corrected KnowledgeFileTransactions and PluginCommandEffects sections: the guidance still routes to the current owners and does not assert the old details. No policy change.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Compared the UI instruction to consult the module map and preserve backing runtime truth with the map corrections; neither changes UI navigation or rendering requirements. No UI render run.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Compared the EventStore ledger extraction and recovery routing to the module-map delta: Knowledge file publication and plugin command requirements do not change EventStore ledger ownership. No cross-process recovery run.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Compared Settings catalog and unsaved navigation contract with the module-map delta: transaction directory sync and plugin command admission are separate from Settings deep-link resolution. No browser journey run.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Compared exporter snapshot, attributed excerpts and freshness limitations with the module-map delta: corrected sections remain canonical export inputs and do not change graph identity or ingestion contract. No export or isolated ingestion run.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Compared static manual and architecture-topic compilation contract with corrected module-map source and generated station-docs-content: generated topic reflects both reviewed corrections; retrieval remains static, not live state. Generator executed; no live MCP client run.","inputs":["docs/reference/station-docs.md","docs/architecture/module-map.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

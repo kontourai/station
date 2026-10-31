@@ -126,6 +126,7 @@ describe('conversation-store adapter (station#1879)', () => {
       sessionReader,
       fileStores: emptyFileStores(),
       getUserId: () => 'user-1',
+      canReadFileOwner: () => true,
     });
     const adapter = await descriptor.create({ storeRoot: '/unused' });
 
@@ -220,6 +221,7 @@ describe('conversation-store adapter (station#1879)', () => {
       sessionReader,
       fileStores,
       getUserId: () => 'user-1',
+      canReadFileOwner: () => true,
     });
     const adapter = await descriptor.create({ storeRoot: '/unused' });
 
@@ -249,6 +251,7 @@ describe('conversation-store adapter (station#1879)', () => {
       sessionReader: new FakeSessionReader(sessions),
       fileStores: emptyFileStores(),
       getUserId: () => 'user-1',
+      canReadFileOwner: () => true,
     });
     const adapter = await descriptor.create({ storeRoot: '/unused' });
 
@@ -306,6 +309,7 @@ describe('conversation-store adapter (station#1879)', () => {
       sessionReader,
       fileStores,
       getUserId: () => 'user-1',
+      canReadFileOwner: () => true,
     });
     const adapter = await descriptor.create({ storeRoot: '/unused' });
 
@@ -336,6 +340,7 @@ describe('conversation-store adapter (station#1879)', () => {
       sessionReader,
       fileStores: emptyFileStores(),
       getUserId: () => 'user-1',
+      canReadFileOwner: () => true,
     });
     const adapter = await descriptor.create({ storeRoot: '/unused' });
 
@@ -352,6 +357,7 @@ describe('conversation-store adapter (station#1879)', () => {
       sessionReader: emptySessionReader(),
       fileStores: emptyFileStores(),
       getUserId: () => 'user-1',
+      canReadFileOwner: () => true,
     });
     const adapter = await descriptor.create({ storeRoot: '/unused' });
     expect(await adapter.getLinks('anything')).toEqual({
@@ -365,6 +371,7 @@ describe('conversation-store adapter (station#1879)', () => {
       sessionReader: emptySessionReader(),
       fileStores: emptyFileStores(),
       getUserId: () => 'user-1',
+      canReadFileOwner: () => true,
     });
     const adapter = await descriptor.create({ storeRoot: '/unused' });
 
@@ -481,7 +488,7 @@ describe('ConversationStoreAdapter.readableIds (cheap readability)', () => {
       {
         id: 'file-conversation',
         resourceId: 'agent',
-        userId: 'alias',
+        userId: 'user-1',
         title: 'file',
         createdAt: '2026-01-01T00:00:00.000Z',
         updatedAt: '2026-01-01T00:00:00.000Z',
@@ -495,6 +502,7 @@ describe('ConversationStoreAdapter.readableIds (cheap readability)', () => {
       },
       fileStores: new Map([['agent', { getConversations, getMessages }]]),
       getUserId: () => 'user-1',
+      canReadFileOwner: () => true,
     });
     const adapter = (await descriptor.create({
       storeRoot: '/unused',
@@ -570,6 +578,7 @@ describe('conversation-store never indexes a pre-fix failed-turn marker verbatim
       sessionReader: emptySessionReader(),
       fileStores,
       getUserId: () => 'user-1',
+      canReadFileOwner: () => true,
     }).create({ storeRoot: '/unused' });
   }
 

@@ -1,0 +1,13 @@
+{
+  "revision": "f440ac1fced255be3a4c448ae6fcee18b2eff9cf",
+
+  "notes": [
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"Visually inspected the retained capture and its caption against the runtime-routes diff: plugin command Project and Task read authorization changed, while operator sign-in and per-action step-up composition did not. This is a historical fixture capture; no new browser, physical authenticator, or current-head pixel verification was performed.","inputs":["docs/learn/media/operator-s4-before-sign-in.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"Visually inspected the retained capture and its caption against the runtime-routes diff: plugin command Project and Task read authorization changed, while operator sign-in and per-action step-up composition did not. This is a historical fixture capture; no new browser, physical authenticator, or current-head pixel verification was performed.","inputs":["docs/learn/media/operator-s4-after-sign-in.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"Visually inspected the retained capture and its caption against the runtime-routes diff: plugin command Project and Task read authorization changed, while operator sign-in and per-action step-up composition did not. This is a historical fixture capture; no new browser, physical authenticator, or current-head pixel verification was performed.","inputs":["docs/learn/media/operator-s4-step-up-review.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"Visually inspected the retained capture and its caption against the runtime-routes diff: plugin command Project and Task read authorization changed, while operator sign-in and per-action step-up composition did not. This is a historical fixture capture; no new browser, physical authenticator, or current-head pixel verification was performed.","inputs":["docs/learn/media/operator-s4-after-step-up.png","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "87e0f23920132deda49baad629bc9852c30daad1",
+
+  "notes": [
+    {"path":"docs/reference/verification-receipts.md","note":"Reviewed declared-cause redaction ordering and convergence against verification-reporter and the shared redactor delta; replaced the obsolete #1835 open-leak claim with the bounded nested/encoded regression coverage and retained the pre-bound tradeoff. The package scripts change routes readiness through a Windows shell wrapper and does not change receipt semantics. Source and test inspection; no new execution in this review.","inputs":["docs/reference/verification-receipts.md","package.json#/scripts","scripts/lib/verification-redaction.mjs"]}
+  ]
+}
