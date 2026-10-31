@@ -48,7 +48,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 // under test is the real one.
 import { _getApiBase } from '../../../packages/sdk/src/api-core';
 import { ApiBaseProvider } from '../contexts/ApiBaseContext';
-import { useAuthorityPersistence } from '../contexts/AuthorityPersistenceContext';
+import {
+  useAuthorityPersistence,
+  useClientBootstrapReadiness,
+} from '../contexts/AuthorityPersistenceContext';
 import {
   AuthorityQueryProvider,
   type FetchAuthorityObservation,
@@ -245,6 +248,7 @@ function createHarness(): Harness {
 
 function Probe() {
   const { status, namespace, refused, reobserve } = useAuthorityPersistence();
+  const boot = useClientBootstrapReadiness();
   (Probe as unknown as { reobserve?: () => void }).reobserve = reobserve;
   const client = useQueryClient();
   const harness = (Probe as unknown as { harness: Harness }).harness;
@@ -289,6 +293,8 @@ function Probe() {
     <div
       data-testid="probe"
       data-status={status}
+      data-boot-status={boot.status}
+      data-shared-realtime={String(boot.sharedRealtime)}
       data-refused={String(refused === true)}
       data-namespace={namespace ?? ''}
       data-projects={
@@ -1106,6 +1112,63 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
     },
   );
 
+  it.each([
+    [{ sharedRealtime: true }, 'true'],
+    [{}, 'false'],
+    [{ sharedRealtime: 'true' }, 'false'],
+  ])(
+    'settles boot capability only from a boolean advertisement: %s',
+    async (capability, expected) => {
+      const url = homeUrl('boot-capability');
+      const harness = createHarness();
+      harness.observationPlan.set('default', async () => OBS_DEFAULT);
+      const gate = deferred<void>();
+      stubFetch(async (requested) => {
+        if (requested === `${url}/api/boot`) {
+          await gate.promise;
+          return new Response(
+            JSON.stringify({ version: 1, sections: {}, ...capability }),
+          );
+        }
+        return new Response('not found', { status: 404 });
+      });
+      vi.mocked(resolveLocalUiSession).mockImplementation(async (base) =>
+        base === url ? { kind: 'authenticated' } : { kind: 'host-unavailable' },
+      );
+      const mounted = renderTree(harness, { localUiApiBase: url });
+      const { id } = await addHome('boot-capability', url);
+      harness.observationPlan.set(url, async () => OBS_A);
+      try {
+        await switchTo(id);
+        await waitFor(() =>
+          expect(probe().getAttribute('data-namespace')).toBe(NS_A),
+        );
+        expect(probe().getAttribute('data-boot-status')).toBe('pending');
+        expect(probe().getAttribute('data-shared-realtime')).toBe('false');
+        await act(async () => gate.resolve());
+        await waitFor(() =>
+          expect(probe().getAttribute('data-boot-status')).toBe('settled'),
+        );
+        expect(probe().getAttribute('data-shared-realtime')).toBe(expected);
+        if (expected === 'true') {
+          const other = await addHome('boot-capability-other');
+          harness.observationPlan.set(other.url, async () => OBS_B);
+          await switchTo(other.id);
+          await waitFor(() =>
+            expect(probe().getAttribute('data-namespace')).toBe(NS_B),
+          );
+          await waitFor(() =>
+            expect(probe().getAttribute('data-boot-status')).toBe('settled'),
+          );
+          expect(probe().getAttribute('data-shared-realtime')).toBe('false');
+        }
+      } finally {
+        gate.resolve();
+        mounted.unmount();
+      }
+    },
+  );
+
   it("a delayed boot payload never seeds another identity's shelf", async () => {
     const urlA = homeUrl('homea');
     const harness = createHarness();
@@ -1113,6 +1176,7 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
     const bootGate = deferred<unknown>();
     const bootPayload = {
       version: 1,
+      sharedRealtime: true,
       sections: {
         branding: { data: { success: true, data: { name: 'boot-A-marker' } } },
       },
@@ -1137,6 +1201,8 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
       expect(probe().getAttribute('data-namespace')).toBe(NS_A),
     );
     const heldClient = harness.activeClient!;
+    expect(probe().getAttribute('data-boot-status')).toBe('pending');
+    expect(probe().getAttribute('data-shared-realtime')).toBe('false');
     // A's seed holds its boot fetch (at A's captured origin) open…
     await waitFor(() => {
       const calls = (globalThis.fetch as unknown as ReturnType<typeof vi.fn>)
@@ -1157,6 +1223,8 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
       bootGate.resolve(null);
     });
     await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(probe().getAttribute('data-boot-status')).toBe('settled');
+    expect(probe().getAttribute('data-shared-realtime')).toBe('false');
     expect(heldClient.getQueryData(['branding'])).toBeUndefined();
     expect(harness.activeClient?.getQueryData(['branding'])).toBeUndefined();
     expect(probe().getAttribute('data-projects')).toContain(idB);

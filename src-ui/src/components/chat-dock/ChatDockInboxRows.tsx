@@ -78,10 +78,9 @@ const SETTLED_PAGE_SIZE = 20;
  *
  * Row and group anatomy is defined here once and consumed by every inbox
  * surface: the desktop dock panel (`ChatDockInboxPanel`), the mobile
- * portaled sheet (`MobileTaskSwitcher`), Home's work lanes (`HomeWorkRow`)
- * and the project sidebar's open chats. Only the chrome stays host-owned —
- * panel scroll/footer vs sheet portal, focus trap, sticky header, and
- * visual-viewport sizing (the #1051 fixes live in the sheet).
+ * embedded Inbox (`MobileInboxPanel`), Home's work lanes (`HomeWorkRow`)
+ * and the project sidebar's open chats. Scroll, header and responsive layout
+ * stay host-owned; work grouping and status remain shared.
  *
  * THE ROW (#3043) has a fixed line budget: a meta line (agent mark, agent
  * and project, time), the title, ONE status line chosen by the status ladder
@@ -167,16 +166,18 @@ function ProjectAccentSwatch({
   accent,
   icon,
   name,
+  size = 12,
 }: {
   accent: string | undefined;
   icon: string | undefined;
   name: string;
+  size?: number;
 }) {
   return (
     <ProjectIcon
       project={{ name, icon }}
       accent={accent}
-      size={12}
+      size={size}
       className="inbox-row__project-accent"
     />
   );
@@ -925,16 +926,7 @@ export function InboxRow({
             >
               {item.title}
             </strong>
-            <InboxRowStatusLine
-              id={statusId}
-              status={status}
-              now={now}
-              // The picker hides the time slot (its status sits there), so
-              // the time trails the status line instead.
-              lastActivityAt={
-                actionsInDetails && hasTime ? item.updatedAt : undefined
-              }
-            />
+            <InboxRowStatusLine id={statusId} status={status} now={now} />
             {actionsInDetails && (
               <span className="inbox-row__project-context">
                 {/* One project mark: its own icon when it has one, else the
@@ -942,6 +934,7 @@ export function InboxRow({
                     separator ("[folder] • name"). */}
                 {displayableProjectIcon(projectIcon) ? (
                   <ProjectAccentSwatch
+                    size={24}
                     accent={projectAccent}
                     icon={projectIcon}
                     name={item.projectLabel}

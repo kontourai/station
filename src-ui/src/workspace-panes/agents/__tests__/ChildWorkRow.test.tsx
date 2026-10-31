@@ -154,12 +154,12 @@ test('a settled child with no reported end shows no elapsed', () => {
 test('unresolved and unconfirmed-stop terminals never read as Completed or Stopped', () => {
   mount(row({ status: 'unresolved' }));
   expect(screen.getByText('No result')).toBeTruthy();
-  expect(screen.queryByText('Completed')).toBeNull();
+  expect(screen.queryByText('Run finished')).toBeNull();
   cleanup();
   mount(row({ status: 'stopped-unconfirmed' }));
   expect(screen.getByText('Stop requested — not confirmed')).toBeTruthy();
   expect(screen.queryByText('Stopped')).toBeNull();
-  expect(screen.queryByText('Completed')).toBeNull();
+  expect(screen.queryByText('Run finished')).toBeNull();
 });
 
 test('a transcript-file handle gets no button; a session handle opens that session', () => {
