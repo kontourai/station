@@ -863,6 +863,9 @@ describe('fast-checks shard execution verdicts', () => {
     ]);
     expect(substituted.status).toBe('parser_error');
     expect(substituted.executions[0].error).toContain('suite identities');
+    const duplicate = await execute([files[0], files[0]]);
+    expect(duplicate.status).toBe('parser_error');
+    expect(duplicate.executions[0].error).toContain('suite identities');
   });
 
   test('keeps the redacted JSON report of a failing slice, and nothing for a passing one (#3101 C)', async () => {
