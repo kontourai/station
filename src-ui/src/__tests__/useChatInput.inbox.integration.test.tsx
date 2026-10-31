@@ -156,6 +156,67 @@ describe('mounted composer inbox handoff (test-scoped caller)', () => {
     vi.unstubAllGlobals();
   });
 
+  test('ordinary busy send queues through the dock when native steering is unavailable', async () => {
+    vi.stubGlobal(
+      'Uint8Array',
+      Object.getPrototypeOf(Buffer.prototype).constructor,
+    );
+    const world = station();
+    await world.busy();
+    vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) =>
+      world.app.request(new Request(input, init)),
+    );
+    activeChatsStore.initChat(sessionId, {
+      agentSlug: AGENT,
+      agentName: 'Claude',
+      title: 'Inbox',
+      conversationId: CONVERSATION,
+    });
+    activeChatsStore.updateChat(sessionId, {
+      status: 'sending',
+      orchestrationProvider: 'acp',
+      currentSessionId: 'fixture-execution',
+      openTurnId: 'fixture-turn',
+      messages: [],
+      input: 'ordinary follow-up',
+    });
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, enabled: false } },
+    });
+    const mounted = render(
+      <QueryClientProvider client={client}>
+        <SDKProvider value={{ apiBase, contexts: {}, hooks: {} }}>
+          <ActiveChatsProvider>
+            <Composer />
+          </ActiveChatsProvider>
+        </SDKProvider>
+      </QueryClientProvider>,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Send' }));
+    await waitFor(() =>
+      expect(world.inbox.list(CONVERSATION)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            message: 'ordinary follow-up',
+            state: 'queued',
+          }),
+        ]),
+      ),
+    );
+    expect(activeChatsStore.getSnapshot()[sessionId]?.queuedMessages).toEqual(
+      [],
+    );
+    world.adapter.complete();
+    await waitFor(() =>
+      expect(world.prompts()).toContain('ordinary follow-up'),
+    );
+    expect(
+      world.prompts().filter((text) => text === 'ordinary follow-up'),
+    ).toHaveLength(1);
+    mounted.unmount();
+    client.clear();
+  });
+
   test('queues a busy follow-up through SDK and Hono for an independent reader', async () => {
     // SQLite returns Node-realm blobs; use that realm's byte-array constructor.
     vi.stubGlobal(
