@@ -156,11 +156,13 @@ export class TaskCaptureBlobStore {
       digest: `sha256:${string}`;
       byteLength: number;
     }) => T extends PromiseLike<unknown> ? never : T,
+    authorizePublication?: () => Promise<void>,
   ): Promise<T>;
   async put<T>(
     bytes: Buffer,
     mediaType: string,
     commit?: (blob: { digest: `sha256:${string}`; byteLength: number }) => T,
+    authorizePublication?: () => Promise<void>,
   ): Promise<T | { digest: `sha256:${string}`; byteLength: number }> {
     if (bytes.length > TASK_CAPTURE_MAX_BLOB_BYTES)
       throw new TaskCaptureBlobStoreError('blob-too-large');
@@ -202,7 +204,9 @@ export class TaskCaptureBlobStore {
               throw new TaskCaptureBlobStoreError('home-cap-exceeded');
             await this.publish(root, digest, snapshot);
           }
+          // Storage may await another publisher; recheck source authority after I/O.
           committing = true;
+          await authorizePublication?.();
           return commit ? commit(blob) : blob;
         } catch (error) {
           if (!priorBytes) {

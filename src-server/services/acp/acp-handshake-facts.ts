@@ -1,4 +1,4 @@
-import type { AgentCapabilities } from '@agentclientprotocol/sdk';
+import type { AgentCapabilities } from '@agentclientprotocol/sdk/unstable';
 import type {
   ProviderDeclaredAuthMethod,
   ProviderDeclaredHandshake,

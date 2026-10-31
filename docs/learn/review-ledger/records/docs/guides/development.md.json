@@ -124,8 +124,6 @@
 
     "packages/shared/src/mcp-connection.ts",
 
-    "patches/modelcontextprotocol-client-2.3.1.patch",
-
     "src-server/index.ts",
 
     "src-server/routes/system/resource-posture-routes.ts",
@@ -154,7 +152,9 @@
 
     ".github/actions/setup-verified-pnpm/bootstrap.mjs",
 
-    "scripts/__tests__/verified-pnpm-bootstrap.test.ts"
+    "scripts/__tests__/verified-pnpm-bootstrap.test.ts",
+
+    "patches/modelcontextprotocol-client-2.4.0.patch"
   ],
 
   "checks": [
