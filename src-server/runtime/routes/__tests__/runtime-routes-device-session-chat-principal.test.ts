@@ -4568,7 +4568,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       expect(remoteOperator.status, remoteOperator.body.toString()).toBe(404);
     });
 
-    test('personal conversation sharing admits a paired device to the operator’s thread, and still not to an ownerless one', async () => {
+    test('personal conversation sharing includes the operator in device history while refusing unpaired and ownerless records', async () => {
       let ref = '';
       let ownerlessRef = '';
       const { app, roomRuntime, paired, pairing } = await setup(
@@ -4579,6 +4579,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         false,
         {
           personalSharing: true,
+          extraSessions: [['stranger-owned', 'human:device:unpaired']],
           seed: (seedStore) => {
             seedStore.upsertSession({
               provider: 'claude',
@@ -4615,6 +4616,12 @@ describe('device-session chat principal resolution over the REAL auth path (stat
           LOCAL_OPERATOR_PRINCIPAL_ID,
         ),
       ).toBe(true);
+      expect(
+        pairing.canSharePersonalConversation(
+          devicePrincipal,
+          'human:device:unpaired',
+        ),
+      ).toBe(false);
 
       const shared = await fetchAttachment(app, ref, paired.credential);
       expect(shared.status, shared.body.toString()).toBe(200);
@@ -4626,12 +4633,14 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         REMOTE_TAILNET_ENV,
       );
       expect(history.status, await history.clone().text()).toBe(200);
-      const page = await responseData<{ items: Array<{ id: string }> }>(history);
+      const page = await responseData<{ items: Array<{ id: string }> }>(
+        history,
+      );
       const ids = page.items.map((item) => item.id);
       expect(ids).toContain('operator-attachment-owned');
       expect(ids).not.toContain('ownerless-attachment');
       expect(ids).not.toContain('alias-owned');
-      expect(ids).not.toContain('whois-owned');
+      expect(ids).not.toContain('stranger-owned');
 
       const refused = await fetchAttachment(
         app,

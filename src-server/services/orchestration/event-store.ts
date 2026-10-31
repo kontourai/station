@@ -11099,6 +11099,7 @@ export class EventStore {
 
   listConversationHistoryPage(options: {
     ownerUserId: string;
+    ownerUserIds?: readonly string[];
     tenantId?: string;
     agentSlug?: string;
     requireBound?: boolean;
@@ -11118,13 +11119,12 @@ export class EventStore {
       created_at: string;
       updated_at: string;
     };
+    const owners = options.ownerUserIds ?? [options.ownerUserId];
+    if (owners.length === 0) return { records: [], hasMore: false };
     const readRows = (ownerPredicate: string): HistoryRow[] => {
       const memberPredicates = [ownerPredicate];
       const conversationPredicates = ['row_rank = 1'];
-      const values: unknown[] = [];
-      if (ownerPredicate === 'h.owner_user_id = ?') {
-        values.push(options.ownerUserId);
-      }
+      const values: unknown[] = [...owners];
       if (options.tenantId !== undefined) {
         memberPredicates.push('h.tenant_id = ?');
         values.push(options.tenantId);
@@ -11241,7 +11241,9 @@ export class EventStore {
         )
         .all(...values) as HistoryRow[];
     };
-    const rows = readRows('h.owner_user_id = ?');
+    const rows = readRows(
+      `h.owner_user_id IN (${owners.map(() => '?').join(', ')})`,
+    );
     const hasMore = rows.length > options.limit;
     const records = rows.slice(0, options.limit).map((row) => ({
       threadId: row.thread_id,

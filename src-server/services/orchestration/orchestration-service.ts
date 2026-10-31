@@ -3288,6 +3288,8 @@ export class OrchestrationService {
         eventStore: options.eventStore,
         canReadSession: (threadId, authority) =>
           this.sessionAuthz.canReadSession(threadId, authority),
+        personalOwnerIds: (authority) =>
+          this.sessionAuthz.transcriptOwnerConstraint(authority).ownerUserIds,
         hydratePersistedSession: (threadId) => {
           const persisted = options.eventStore?.readSessionByThread(threadId);
           if (persisted)
