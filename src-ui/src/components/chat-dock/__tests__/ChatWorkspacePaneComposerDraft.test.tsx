@@ -1555,6 +1555,7 @@ test.each(['another-chat', 'new-chat', 'same-loading-chat'] as const)(
         title: 'Loading saved chat',
       });
       activeChatsStore.initChat('late-saved-tab', {
+        title: 'Loading saved chat',
         agentSlug: agentId('assistant'),
         agentName: 'Assistant',
         conversationId: 'saved-conversation',
