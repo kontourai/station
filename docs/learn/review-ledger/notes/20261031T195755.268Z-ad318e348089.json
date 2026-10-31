@@ -1,0 +1,7 @@
+{
+  "revision": "420e83ca2d3a46bca37f6499cb684b322a67f670",
+
+  "notes": [
+    {"path":"docs/guides/agent-efficiency.md","note":"Bounded review of auth integration changes to module-map and Settings inputs after main549. Existing efficiency previews remain independent, off by default and confer no extra tool authority. Account-sharing controls and account-bound browser consent do not enable progressive tools, learning, compaction or isolated-repair execution/publication; their separate operator, source, profile and grant requirements remain unchanged. Reviewed the guide feature-preview and authority claims against these input deltas; no broader container/live-model/physical-device qualification is claimed.","inputs":["docs/guides/agent-efficiency.md","docs/architecture/module-map.md","docs/user/settings.md"]}
+  ]
+}
