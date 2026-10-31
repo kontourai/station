@@ -85,7 +85,7 @@ bytes for a fresh append. Exact committed retries therefore survive byte evictio
 Uncertain main-composer sends preserve attachment references with the original
 operation/proposal for explicit retries, including after reload. Unsent local
 files are guarded as dirty state but are not restored after reload. An upload
-failure keeps the draft and prevents dispatch. Room records advance to v4 with a permanent old-writer fence; the private request
+failure keeps the draft and prevents dispatch. Attachment-bearing room records advance to at least v4 with a permanent old-writer fence; member records advance the room to v5. The private request
 journal advances to `station.task-room-work-store/v4`. Older binaries reject
 these formats; use matching server/client
 versions when introducing attachment-bearing room records.
@@ -140,8 +140,11 @@ reconciliation repeats publication idempotently, never provider execution.
 
 Conversation hides brief revision links and presence events; Details retains the raw
 history. Owner history rebuilds display names and run identities from durable
-principal, agent and Session sources. Guest history retains its anonymized
-Participant/Agent labels and filters owner status and thread fragments.
+principal, agent and Session sources. The Project shared-work history projection
+retains anonymized Participant/Agent labels and filters owner status and thread
+fragments. Direct personal Task-room history for an admitted member is a separate
+projection of room-published history; opening a private Session still needs its
+own authority.
 Answers are clamped with Show more, and Keep remains disabled after confirmation.
 The Conversation view groups replies to an agent answer by its Session. The thread replaces
 the desktop rail and fills the room on narrow screens. A reply uses

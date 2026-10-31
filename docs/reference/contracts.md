@@ -1152,8 +1152,13 @@ live witness for a previously verified session. It must re-read session existenc
 subject and timestamps, expiry and account policy, and reject pending enrollment. It
 does not authenticate a caller-supplied session ID and is not part of the public
 descriptor. The local-account provider implements it; adapters without it fail closed at
-synchronous authority seams. `captureCurrentSession` also pins the verified identity and
-cookie and refuses continuation-only authority.
+synchronous authority seams. `captureCurrentSession` pins the verified identity and
+transport. An admitted application/native proof additionally needs the application-session
+owner's current exact stored grant, Device and alias or trusted native target. Provider
+currentness uses the original provider session, before projected continuation expiry
+clipping. Revocation of either grant or provider session refuses the witness; absent
+provider currentness or trusted native facts also refuse. These server-private witnesses
+do not consume another request proof or grant Project membership.
 
 The [relay-management contract](../../packages/contracts/src/relay-management.ts)
 exports `RelayInvitationLifetime`, `RelaySetupApproval`, `RelayPendingDevice`
@@ -1911,8 +1916,8 @@ for limits and observation-window semantics.
 The room contract declares `station.project-task-room/v5` with
 `ProjectTaskRoomMemberPrincipal {kind: 'member', principalId, deviceId}`.
 `ProjectTaskRoomV5Principal` and `ProjectTaskRoomV5Record` carry the new wire
-shape. The existing `ProjectTaskRoomPrincipal` and `ProjectTaskRoomRecord`
-remain legacy types until runtime member admission is wired. The pure
+shape. `ProjectTaskRoomPrincipal` and `ProjectTaskRoomRecord` also include the
+member and v5 forms used by the personal room runtime. The pure
 `parseProjectTaskRoomPrincipal` accepts members only with v5; legacy operator
 and agent shapes remain supported. Both version-gated parsers require an
 explicit schema version and refuse a missing one rather than assuming v5. This structural check grants no authority.
@@ -1943,9 +1948,9 @@ An empty `mentions: []` does not select v5, and every parser refuses it. A
 defined `attachments` array, even `[]`, selects at least v4, whose parser
 accepts it. The helper
 accepts both append bodies and resolved record bodies directly.
-The persisted-record parser and permanent old-writer fence are still runtime
-work in #4136; this contract addition does not activate member writes or enforce
-a database fence. The closed record budget includes both copies of the message
+The history worker and parent validate persisted v5 records, and a durable
+per-room marker fences older writers after activation. The ordinary room
+message HTTP route does not yet accept structured mentions. The closed record budget includes both copies of the message
 body, the maximal principal and embedded grant receipt, and page continuation.
 
 `TaskReviewListProjection` requires `{view, comment, send}` capabilities;
@@ -1980,9 +1985,10 @@ creation time is canonical ISO UTC. Review values are `comment`,
 transition or workflow approval. The browser DTO retains this target and the
 attributed human actor in ordinary room history.
 
-Room records accept legacy `station.project-task-room/v2` and new
-`station.project-task-room/v3`; output feedback requires v3 and an operator
-principal. Existing records retain their exact bytes and integrity digests.
+Room records accept `station.project-task-room/v2` through v5; output feedback
+requires v3 or newer and a human principal. The account-bound Task room gate
+does not admit the output-feedback route in this slice. Existing records retain
+their exact bytes and integrity digests.
 See the [API review contract](api.md#review-an-immutable-task-output) for the
 per-room old-writer fence and permanent duplicate identity behavior.
 

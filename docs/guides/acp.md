@@ -35,6 +35,16 @@ Station's API.
 
 ## Architecture
 
+Station uses the SDK 2 app API through `@agentclientprotocol/sdk/unstable`
+while continuing to speak ACP v1. That profile retains the provider routing
+and session features Station already consumes; it does not select draft ACP v2.
+`ACPProcess` sends requests and notifications through the app connection, and
+`createACPClientApp` registers the file, terminal, approval and session callbacks.
+Vendor extension request fallbacks still pass through Station's inbound-extension
+policy; notification fallbacks keep their existing adapter path. Selecting this
+SDK profile grants no additional engine authority.
+
+
 ```mermaid
 graph TD
     UI["Station UI\n(React)\nOrchestration chat"]

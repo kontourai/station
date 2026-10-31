@@ -603,6 +603,29 @@ Both routes are personal-runtime only (hosted requests get `404`), and no
 Station Control tool names them. See
 [Tracker-backed Tasks](../design/tracker-backed-tasks.md).
 
+## Account-bound Task room access
+
+On a personal Station, an account-bound Device may reach the exact Task room
+leaves `GET /api/tasks/:taskId/room`, `/room/history`, `/room/document` and
+`/room/events`, and `POST /room/messages`, `/room/live` and `/room/edit-plan`.
+Reads require `orchestration:read`; POSTs require `orchestration:operate`.
+The resolved account must have current Project membership and the Task must be
+explicitly shared to that exact Project and Task incarnation. `view` admits
+room reads and presence, `discuss` admits messages, and `edit` admits edit
+planning. An unshared Task or a membership action refused by the room returns
+404; transport and account gates can refuse earlier. The member
+revision and current transport/account authority are checked again before
+effects and delivery. Membership changes wake subscribed streams; an invalid
+captured admission closes the stream, and the 15-second idle recheck remains.
+
+Account-bound Devices cannot settle `/room/batches` or reach room attachments,
+memory, review or agent-request leaves in this slice; the discovery response
+does not advertise document writing for them. Member-started agent turns are
+not part of this delivery. The default-off `task-collaboration` preview changes
+member presentation, not authorization. These are personal runtime routes;
+local route and fixture-render evidence does not establish hosted or real
+two-person/device acceptance.
+
 ## Task room attachments
 
 Personal Task rooms expose these authenticated routes:

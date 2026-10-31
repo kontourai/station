@@ -25,6 +25,7 @@ import { Empty, SkeletonBlock, SkeletonList } from '../components/state';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import { openChatsStore } from '../contexts/open-chats-store';
 import { useElapsedClock } from '../hooks/useElapsedClock';
+import { useSurfaceVisibilityFlags } from '../hooks/useSurfaceVisibilityFlags';
 import { useTaskRoomAttachments } from '../hooks/useTaskRoomAttachments';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { useProjectTaskRoomContext } from './ProjectTaskRoomContext';
@@ -125,6 +126,8 @@ export function ProjectTaskRoomConversation({
   taskCreatedAt?: string;
 }) {
   const scope = useHostRequestAuthorityScope();
+  const collaborationEnabled =
+    useSurfaceVisibilityFlags().has('task-collaboration');
   const discover = useProjectTaskRoomDiscoveryQuery(taskId);
   const shared = useProjectTaskRoomContext(taskId);
   const history = useProjectTaskRoomHistoryQuery(taskId);
@@ -384,6 +387,10 @@ export function ProjectTaskRoomConversation({
     previous?: ProjectTaskRoomBrowserRecord,
     inThread = false,
   ) => {
+    const authorLabel =
+      record.actor.standing === 'member' && !collaborationEnabled
+        ? 'Teammate'
+        : record.actor.label;
     if (
       record.body.kind === 'live-work-finished' &&
       record.body.outcome === 'failed'
@@ -447,7 +454,7 @@ export function ProjectTaskRoomConversation({
       >
         {!grouped && (
           <RoomAvatar
-            name={record.actor.label}
+            name={authorLabel}
             agent={record.actor.kind === 'agent'}
           />
         )}
@@ -455,7 +462,7 @@ export function ProjectTaskRoomConversation({
           <header>
             {!grouped && (
               <>
-                <strong>{record.actor.label}</strong>
+                <strong>{authorLabel}</strong>
                 {record.actor.kind === 'agent' && (
                   <span className="task-room-agent-badge">Agent</span>
                 )}
