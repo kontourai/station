@@ -942,6 +942,11 @@ partial/background work; they do not fail or replay the completed turn. Generic 
 can carry a more specific kind when structured quota details establish it.
 No existing diagnostic code is renamed or removed.
 
+`approval-posture-changed` refuses a provider start when the captured approval
+decision, effective confinement or grantor changed during preparation. The
+caller must inspect the current posture before making a new explicit attempt;
+the refusal does not authorize automatic replay.
+
 | Diagnostic code | Kind | Retryable |
 | --- | --- | --- |
 | `delegation_files_unsupported` | `input_unsupported` | `false` |
@@ -972,6 +977,7 @@ No existing diagnostic code is renamed or removed.
 | `adoption_continuation_in_progress` | `busy` | `true` |
 | `approval-escalation-requires-restart` | `warning` | `false` |
 | `approval-full-access-not-granted` | `permission_denied` | `false` |
+| `approval-posture-changed` | `permission_denied` | `false` |
 | `attachment_input_unsupported` | `input_unsupported` | `false` |
 | `authentication_rate_limited` | `rate_limited` | `true` |
 | `client_protocol_invalid` | `input_unsupported` | `false` |

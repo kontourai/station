@@ -35,6 +35,42 @@ It is not published or adopted here. The metadata finalizer remains unavailable.
 Final combined review, documentation qualification, remaining acceptance and the
 single protected PR landing are still required.
 
+### Approval handoff and preparation-race checkpoint
+
+The accumulated caller audit found two authority defects: refused or duplicate
+person answers could mint surplus mediated MCP approval, and a newer Ask could
+be overtaken by an operation that captured older posture before asynchronous
+preparation. Retained pre-fix controls reproduce both original defects. The
+handoff now records only after final request and Skill admission and claims the
+exact request/open-event identity once. Claims remain scoped to the actual
+EventStore identity, including after token consumption. Independent review found
+that the first global capacity set could retain retired owners indefinitely;
+the additional red control reproduces cross-owner exhaustion. `c74006579d4`
+bounds claims within each weakly held owner instead, preserving unresolved-claim
+refusal without consuming unrelated owners' capacity.
+
+At `dcc6f7481fc`, ordinary turns, fresh provider starts, dormant recovery,
+credential restart and direct credential replay carry invocation-specific
+posture currentness through preparation to the final provider callback. Fresh
+start binds its closure to the exact prepared input; recovery and replay carry
+explicit lexical preparation results. No home lease crosses an await. Three
+start controls and a separate direct-replay control retain intended pre-fix
+failures. They now require explicit refusal, zero stale provider effects and a
+successful new attempt at Ask. The ordinary readiness control also verifies
+refusal and successful same-client-key continuation. The combined seven-file
+selection passes 377 cases; server-test types and scoped Biome pass. These are
+controlled local diagnostics, not all-writer or live-provider proof. Independent
+review of the final combined repair remains required; the earlier bounded
+review does not approve the later repair or the entire service.
+
+An additional failure-consumer selection passes its projection and delivery
+suites but fails the accumulated source inventory: 13 diagnostic class codes
+remain unmapped and the reserved-turn runtime-error writer lacks the required
+strict type annotation. That failure remains open, with its original log
+retained. Readiness also retains its documentation-truth failure. No whole-module
+documentation baseline is renewed, no PR is opened, and the Flow, physical-device,
+hosted and release limits above remain unchanged.
+
 ### Subsequent local qualification checkpoint
 
 The background-work source at `9c51c75f5cda` passed 254 cases across 14 files
