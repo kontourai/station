@@ -118,6 +118,16 @@ now starts SSE before holding its output and allows early failure cleanup. No
 production timeout, retry policy, journey deadline or success assertion changed.
 The revised independent browser journey still needs qualification.
 
+The live request-capability clone control now has executed mutation evidence
+at clean `b0ea8c39508`: its baseline passed; removing only the exact Request
+object comparison produced the intended Missing expected exception at the
+live reopened-capability clone assertion. Capability membership and currentness
+checks remained intact. Byte-exact restoration returned the same test to green
+and the tree to clean. The ignored
+`source-request-guard-mutation-b0ea8c39508.json` receipt retains both source
+hashes and all three log hashes. This qualifies that assertion's specificity,
+not all-writer publication or the broader group journey.
+
 ## Published Flow 9.9.1 pin (#91)
 
 Station selects the registry Flow Agents 9.9.1 and Flow 5.4.0 packages. The
