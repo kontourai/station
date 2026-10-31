@@ -146,13 +146,13 @@ function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
     }
   }
   if (item.controlMode === 'read-only-attached') {
-    // The row's meta line already names the app; the word says only that
-    // this Station cannot answer in it.
+    // Engine identity does not establish which app started this conversation.
+    // The word says only that this Station cannot answer in it.
     return {
       rung: 'external',
       lane: 'external',
       tone: 'neutral',
-      word: 'Read only',
+      word: SESSION_STATUS_WORDS.elsewhere,
       reason: `${item.agentLabel} · Replies unavailable here`,
     };
   }
@@ -191,7 +191,7 @@ function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
         rung: 'unanswerable',
         lane: 'idle',
         tone: 'neutral',
-        word: 'Read only',
+        word: SESSION_STATUS_WORDS.elsewhere,
         reason: item.unanswerableNotice,
       };
     case 'Running': {

@@ -240,9 +240,7 @@ describe('mobile conversation focus', () => {
       screen.queryByRole('button', { name: /^Switch project/ }),
     ).toBeNull();
     expect(screen.getByRole('button', { name: 'Chat actions' })).toBeTruthy();
-    expect(
-      screen.getByRole('button', { name: 'Inbox' }),
-    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Inbox' })).toBeTruthy();
   });
   test('the activity dot on chat actions says what it means', () => {
     renderHeader({ activeCount: 2, unreadCount: 1 });
@@ -403,24 +401,26 @@ describe('mobile switcher names include their visible text', () => {
       .toLowerCase()
       .replace(/[^\p{L}\p{N}]+/gu, ' ')
       .trim();
-  test.each([['the project switcher', /^Switch project/]])('%s', (_label, name) => {
-    renderHeader({ agentIdentity: null, sessionProjectMismatchLabel: 'This chat: Alpha' });
-    const button = screen.getByRole('button', { name });
-    const visible = words(button.textContent ?? '');
-    expect(visible.length).toBeGreaterThan(0);
-    expect(words(button.getAttribute('aria-label') ?? '')).toContain(visible);
-  });
+  test.each([['the project switcher', /^Switch project/]])(
+    '%s',
+    (_label, name) => {
+      renderHeader({
+        agentIdentity: null,
+        sessionProjectMismatchLabel: 'This chat: Alpha',
+      });
+      const button = screen.getByRole('button', { name });
+      const visible = words(button.textContent ?? '');
+      expect(visible.length).toBeGreaterThan(0);
+      expect(words(button.getAttribute('aria-label') ?? '')).toContain(visible);
+    },
+  );
 });
 
 /** #928 C2b retires occupant switching; primary context actions remain direct. */
 describe('the mobile dock bar control set (#928 C2b)', () => {
   test('an open bar exposes navigation, primary context actions, and secondary actions', () => {
     renderHeader();
-    for (const name of [
-      'Collapse chat',
-      'Inbox',
-      'Chat actions',
-    ]) {
+    for (const name of ['Collapse chat', 'Inbox', 'Chat actions']) {
       expect(screen.getByRole('button', { name })).toBeTruthy();
     }
   });

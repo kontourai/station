@@ -54,6 +54,14 @@ always inserts a line; Ctrl/Cmd+Return sends. Return never submits during IME
 composition. During a turn, the shortcut uses the composer's selected Queue or
 Steer mode. This preference is included in device-settings export/import.
 
+## Restore a dismissed conversation
+
+After dismissing an inbox conversation, choose **Undo** in the toast or press
+**⌘Z** on macOS / **Ctrl+Z** on Windows and Linux. **Undo inbox dismissal** can
+be rebound in Keyboard shortcuts. The command declines inside text fields,
+contenteditable editors, CodeMirror and terminals, preserving their own Undo.
+Dismissal does not stop work or delete conversation history.
+
 ## Dispatch and limits
 
 The registry orders matching shortcuts by priority, then registry order.

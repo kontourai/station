@@ -67,8 +67,7 @@ Existing installations retain their choice and previously imported history.
 
 ## Inspect what a chat used
 
-Choose **Inventory** in the chat header on desktop, or **⋯** then **Chat
-inventory** in the phone chat header. Pick a group,
+Choose **⋯** then **Chat inventory** in the chat header. Pick a group,
 then **View details** on an item to read the authored message, attachment
 metadata, or recorded tool result. **Recorded origin** identifies the Session,
 turn and event; **Open session** opens the surrounding work. Output rows keep
@@ -77,7 +76,7 @@ state rather than an empty result. The answer's **Basis** chip still opens
 inspection scoped to that answer.
 
 To see how much of the model's context window a chat has used, read the meter
-beside the model under the message box, or choose **⋯** then **Conversation
+beside Send under the message box, or choose **⋯** then **Conversation
 stats** in the phone chat header, which names the share used. Either opens the
 chat's stats.
 
@@ -660,10 +659,18 @@ from inbox**. On mobile, use the row’s Details menu; with **Sheet gestures
 preview** enabled in Settings → Advanced → Developer tools, swipe left to
 reveal the clock and × controls. The clock opens Snooze duration choices; ×
 dismisses the conversation. Dismissal leaves running work and history intact.
-Choose **Undo**, or expand **Dismissed** and choose **Restore to inbox**.
+Choose **Undo** in the toast, press **⌘Z** / **Ctrl+Z** outside an editor,
+or expand **Dismissed** and choose **Restore to inbox**.
 Dismissal is saved on this browser/device, like Snooze. A changed status, a
 changed attention kind, or newer activity outside a running turn brings the
 conversation back; streaming progress during the same running turn does not.
+
+With **Open and Settled inbox** enabled in Feature previews, unfinished
+conversations stay **Open** after an Agent finishes a turn. Choose **Settle**
+when the conversation's work is done, or **Reopen** to bring it back. Closed
+Tasks follow their existing close-on-merge setting; standalone linked PRs do
+not settle a conversation automatically. Settlement syncs across your devices
+and is separate from dismissal or deletion. Each inbox group can collapse.
 
 The workspace map lists Projects and their named Layouts, followed by your
 **Personal Boards**. Its **+** creates a Board and lets you name it, even
@@ -680,11 +687,8 @@ Sidebar utilities. Conversations and composer drafts stay in the chat dock and
 its inbox (⌘D).
 
 Selecting a project in the sidebar opens its workspace and makes it the default
-for new chats. An existing chat stays with its original project. On a computer,
-the project beside **New** in the dock header shows that default; choose it to
-pick another without leaving the workspace. On a phone, the chat bar's **New
-chats** value does the same, and with a long chat title it shows only a folder
-icon.
+for new chats. An existing chat stays with its original project. Choose a
+different Project in the new-chat composer before starting a conversation.
 The next sidebar project selection updates that default again.
 
 To give a project an icon, open its settings and choose the icon beside its

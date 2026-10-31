@@ -44,6 +44,25 @@ authorities. The [runtime composition](../../src-server/runtime/routes/runtime-r
 mounts handlers and their request boundaries. A handler existing in source does
 not mean every deployment mounts or admits it.
 
+## Personal conversation resolution
+
+The default-off **Open and Settled inbox** (`conversation-resolution`) Feature
+Preview adds `GET /api/conversations/work-state` and
+`PUT /api/conversations/:id/work-state`. Both inherit `orchestration:read`
+transport admission and require a current person/owner-device identity.
+The GET returns `{success:true,data:{settled:{[conversationId]:timestamp}}}`
+with private, no-store caching. The PUT accepts exactly `{settled:boolean}`,
+rechecks conversation read admission and current authority before persisting,
+and returns `{success:true}`. Invalid input returns 400; missing person or stale
+authority returns 403; an unreadable conversation returns 404. A disabled
+preview returns 404 with `code:feature_preview_disabled` and a Settings link.
+
+State is personal and durable across devices. Settlement changes neither
+provider execution nor history, and is separate from dismissal and deletion.
+See the [route owner](../../src-server/routes/chat/conversation-work-state.ts),
+[route tests](../../src-server/routes/chat/__tests__/conversation-work-state.test.ts)
+and [SDK helpers](sdk.md#personal-conversation-resolution-and-turn-directory).
+
 ## Local speech and media tools
 
 Personal hosts mount these Project-independent routes; hosted deployments do

@@ -314,7 +314,7 @@ since its slug names that Station's Project. The hover card's Project row
 repeats that mark, and its Git section reads the row's local session folder, as
 in the dock.
 The shared New chat action remains directly reachable in mobile chrome and
-the desktop Inbox footer. The phone Inbox is the dock's initial reader, not
+the desktop Inbox header. The phone Inbox is the dock's initial reader, not
 a modal reached through the title. Its explicit icon returns to the retained
 Inbox without unmounting the conversation. Completed answers expose an
 icon-only Branch action beside Copy, using the recorded turn's existing fork
@@ -411,9 +411,9 @@ preserves failures and sequence fences. Pruning requires absence from the loaded
 inventory and no subscribed rows or mounted readers; authority cache clear also
 releases them. Other conversations and Station authorities remain independent. History
 Retry refreshes the capability observation before reloading. The desktop
-inbox footer offers Refresh, which reconnects the same stream and re-reads the
-session list and conversation inventory; when the last read failed, the footer
-says the rows are the last known list.
+inbox overflow offers Refresh, which reconnects the same stream and re-reads the
+session list and conversation inventory; a failed read shows a direct retry
+and says the rows are the last known list.
 
 A conversation's pane offers only what this caller can do there, as the
 server's open read for that conversation reports it. When it says this caller
