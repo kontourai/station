@@ -356,6 +356,7 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
               ? new Error(replayHistory.errorMessage)
               : undefined,
             loadOlder: () => requestReplayHistory(session.id),
+            loadTurn: async () => false,
             reload: () => requestReplayHistory(session.id),
           }
         : { ...serverWindow, reload: retryHistory },

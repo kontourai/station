@@ -1,0 +1,13 @@
+{
+  "revision": "602d5a3337db90fd02eef1b800ef4ce75b1f8927",
+
+  "notes": [
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"Delta-only review of the home registry addition: conversation-work-state.json is personal product data and is explicitly classified as state, matching the existing data-safe default. The signed channel, host/client protocol, service-owned live roots, external roots and dated qualification claims remain unchanged. No new update/rollback execution is claimed.","inputs":["docs/adr/0020-distribution-two-trains-channels-as-pointers.md","packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/guides/local-speech.md","note":"Checked the backup/rollback section against the registry delta. Adding the personal conversation settlement JSON as state does not alter media-tools' re-acquirable external classification, transcript/import product state, or download consent. Existing speech/platform qualification limits remain.","inputs":["docs/guides/local-speech.md","packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Checked home backup/restore claims against explicit settlement-file registration. The JSON store is ordinary backed-up/restored product state, which was already the data-safe default for unknown roots. SQLite checkpoint/integrity admission, volatile/live exclusions, external workspace handling and media-tools exclusions are unchanged; no new live backup is claimed.","inputs":["docs/reference/cli.md","packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed the home registry addition against configuration and persistence ownership. Personal preview settlement is product state, not an app configuration or portable-settings key. Explicit state classification changes no config resolution, validation, export/import or external/live-root behavior. Existing review limits remain.","inputs":["docs/reference/config.md","packages/shared/src/station-home-store-registry.ts"]}
+  ]
+}

@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import type { ChatLiveUsage } from '../../contexts/active-chats-state';
 import { useStats } from '../../contexts/StatsContext';
+import { Button } from '../Button';
 import { getContextWindowColor } from './utils';
 import './ContextPercentage.css';
 
@@ -67,13 +68,8 @@ export function useContextPercentage({
 }
 
 /**
- * The composer's context meter: a short track and the rounded share of the
- * context window used. It sits in the composer's meta row beside the model it
- * measures; the exact figure is the tooltip, the breakdown is the stats panel
- * it opens.
- *
- * The track has its own width. It used to be `flex: 1` inside a shrink-to-fit
- * button, so it resolved to 0px and the meter read "Context:  (4.0%)".
+ * Context usage beside Send. The ring contains the rounded percentage;
+ * its tooltip names the exact share and activation opens conversation stats.
  */
 export function ContextPercentage({
   agentSlug,
@@ -96,26 +92,33 @@ export function ContextPercentage({
 
   const label = `Context ${percentage.toFixed(1)}% used${compaction ? ` · Compaction ${compaction.state} at ${compaction.threshold}%` : ''}`;
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
       onClick={onClick}
       disabled={!onClick}
       className="context-meter"
       aria-label={label}
       title={label}
     >
-      <span className="context-meter__track" aria-hidden="true">
-        <span
+      <svg
+        className="context-meter__ring"
+        viewBox="0 0 40 40"
+        aria-hidden="true"
+      >
+        <circle className="context-meter__track" cx="20" cy="20" r="17" />
+        <circle
           className="context-meter__fill"
-          style={{
-            transform: `scaleX(${Math.min(percentage, 100) / 100})`,
-            background: getContextWindowColor(percentage),
-          }}
+          cx="20"
+          cy="20"
+          r="17"
+          pathLength="100"
+          strokeDasharray={`${Math.min(percentage, 100)} 100`}
+          style={{ stroke: getContextWindowColor(percentage) }}
         />
-      </span>
+      </svg>
       <span className="context-meter__value" aria-hidden="true">
         {Math.round(percentage)}%
       </span>
-    </button>
+    </Button>
   );
 }

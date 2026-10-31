@@ -160,7 +160,7 @@ describe('LocalUiSessionGate (station#2093)', () => {
       { timeout: LOCAL_UI_SESSION_HOST_RETRY_TOTAL_DELAY_MS + 750 },
     );
     expect(screen.getByRole('alert').textContent).toMatch(
-      /keep Station running on your computer, then retry/i,
+      /Station is temporarily unavailable\.\s+Reconnecting automatically\./i,
     );
     expect(screen.queryByText('Connect to Station')).toBeNull();
     expect(

@@ -4091,6 +4091,8 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // sensitivity is no greater than the surrounding orchestration-read
     // family.
     { method: 'GET', path: '/api/conversations/search' },
+    { method: 'GET', path: '/api/conversations/work-state' },
+    { method: 'PUT', path: '/api/conversations/:id/work-state' },
     // Agent-only work discovery; same read scope and transcript admission.
     { method: 'GET', path: '/api/conversations/work/search' },
     { method: 'GET', path: '/api/conversations/:id' },

@@ -628,6 +628,10 @@
 
     "src-server/routes/operations/automations.ts",
 
+    "src-server/routes/chat/conversation-work-state.ts",
+
+    "src-server/routes/chat/__tests__/conversation-work-state.test.ts",
+
     "src-server/routes/operations/repairs.ts",
 
     "src-server/services/automation/repair-controller.ts"

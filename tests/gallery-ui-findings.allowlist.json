@@ -30,13 +30,7 @@
       "axe:label-content-name-mismatch:button.session-context-card__action[Pull requests unavailable — open chat details]",
       "axe:label:input.attachment-input[type=file]",
       "axe:scrollable-region-focusable:div.chat-messages[role=status]",
-      "hit-target:overlap:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B] / [data-testid=inbox-row] button.chat-dock-inbox__row-action[Dismiss Mismatch demo chat from inbox]",
-      "hit-target:overlap:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B] / [data-testid=inbox-row] button.chat-dock-inbox__row-action[Snooze Mismatch demo chat]",
       "hit-target:overlap:[data-testid=starter-work-card] button.button[Create task] / button.session-context-card__action[Last known: Waiting on you, Background tasks]",
-      "hit-target:overlap:button.disclosure-toggle[Earlier] / button.chat-dock-inbox__refresh[Refresh inbox]",
-      "hit-target:overlap:button.disclosure-toggle[Snoozed · #] / button[History]",
-      "hit-target:overlap:button.home-view__action[ProjectNew ProjectRepository, folder, documents or tools] / button.button[New chat]",
-      "hit-target:overlap:button.home-view__action[ProjectNew ProjectRepository, folder, documents or tools] / button.chat-dock__icon-btn[Hide inbox]",
       "hit-target:overlap:button.sidebar__project-btn[Open Project A workspace] / button.sidebar__reorder-handle[Reorder Project A]",
       "hit-target:overlap:button.sidebar__project-btn[Open Project B workspace] / button.sidebar__reorder-handle[Reorder Project B]"
     ],
@@ -135,7 +129,6 @@
       "hit-target:small:summary[Build details]",
       "hit-target:small:summary[Connection details]",
       "hit-target:small:summary[Details]",
-      "hit-target:small:summary[Source installation details]",
       "overflow:element:div.settings__update-meta span"
     ],
     "mobile-access-request-error-390": [
@@ -151,8 +144,7 @@
       "hit-target:small:summary[Advanced]",
       "hit-target:small:summary[Build details]",
       "hit-target:small:summary[Connection details]",
-      "hit-target:small:summary[Details]",
-      "hit-target:small:summary[Source installation details]"
+      "hit-target:small:summary[Details]"
     ],
     "mobile-agent-editor": [
       "hit-target:overlap:button.button[New agent] / button.split-pane__back[← Back to list]",
@@ -194,7 +186,6 @@
     ],
     "mobile-home": [
       "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
-      "hit-target:overlap:button.home-view__action[# · Add a Project, if you need oneNew ProjectOptional: ordinary chats can start without a Project. Repository, folder, d] / [data-testid=chat-dock-mobile-header] button.chat-dock__mobile-identity[Chats and tasks — Chat]",
       "hit-target:small:input.attachment-input[type=file]"
     ],
     "mobile-http-consent-320": [
@@ -210,7 +201,6 @@
       "hit-target:small:summary[Advanced]",
       "hit-target:small:summary[Build details]",
       "hit-target:small:summary[Details]",
-      "hit-target:small:summary[Source installation details]",
       "overflow:element:div.settings__update-meta span"
     ],
     "mobile-http-consent-390": [
@@ -225,12 +215,10 @@
       "hit-target:small:input[type=radio][name=*][Don't share]",
       "hit-target:small:summary[Advanced]",
       "hit-target:small:summary[Build details]",
-      "hit-target:small:summary[Details]",
-      "hit-target:small:summary[Source installation details]"
+      "hit-target:small:summary[Details]"
     ],
     "mobile-onboarding-setup": [
       "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
-      "hit-target:overlap:button.home-view__action[# · Add a Project, if you need oneNew ProjectOptional: ordinary chats can start without a Project. Repository, folder, d] / [data-testid=chat-dock-mobile-header] button.chat-dock__mobile-identity[Chats and tasks — Chat]",
       "hit-target:small:input.attachment-input[type=file]"
     ],
     "mobile-settings-overview": [
@@ -245,8 +233,7 @@
       "hit-target:small:input[type=radio][name=*][Don't share]",
       "hit-target:small:summary[Advanced]",
       "hit-target:small:summary[Build details]",
-      "hit-target:small:summary[Details]",
-      "hit-target:small:summary[Source installation details]"
+      "hit-target:small:summary[Details]"
     ],
     "motion-reduced-mobile-chat": [
       "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
@@ -279,8 +266,7 @@
       "hit-target:small:input[type=radio][name=*][Don't share]",
       "hit-target:small:summary[Advanced]",
       "hit-target:small:summary[Build details]",
-      "hit-target:small:summary[Details]",
-      "hit-target:small:summary[Source installation details]"
+      "hit-target:small:summary[Details]"
     ],
     "overlay-dock-project-bound": [
       "axe:label-content-name-mismatch:button.choice-trigger[Project: Demo Project]"
@@ -299,11 +285,6 @@
       "hit-target:overlap:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B] / [data-testid=inbox-row] button.chat-dock-inbox__row-action[Dismiss Mismatch demo chat from inbox]",
       "hit-target:overlap:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B] / [data-testid=inbox-row] button.chat-dock-inbox__row-action[Snooze Mismatch demo chat]",
       "hit-target:overlap:[data-testid=starter-work-card] button.button[Create task] / button.session-context-card__action[Last known: Waiting on you, Background tasks]",
-      "hit-target:overlap:button.disclosure-toggle[Earlier] / button.chat-dock-inbox__refresh[Refresh inbox]",
-      "hit-target:overlap:button.disclosure-toggle[Snoozed · #] / button[History]",
-      "hit-target:overlap:button.home-view__action[AgentsExplore agents] / button.chat-dock__active-identity-close[Close chat]",
-      "hit-target:overlap:button.home-view__action[ProjectNew ProjectRepository, folder, documents or tools] / button.button[New chat]",
-      "hit-target:overlap:button.home-view__action[ProjectNew ProjectRepository, folder, documents or tools] / button.chat-dock__icon-btn[Hide inbox]",
       "hit-target:overlap:button.sidebar__project-btn[Open Project A workspace] / button.sidebar__reorder-handle[Reorder Project A]",
       "hit-target:overlap:button.sidebar__project-btn[Open Project B workspace] / button.sidebar__reorder-handle[Reorder Project B]"
     ],
@@ -406,10 +387,6 @@
       "hit-target:small:input[type=radio][name=*][Don't share]"
     ],
     "telemetry-feedback-mobile": [
-      "hit-target:overlap:[data-testid=app-toolbar-connection] / select.editor-input[Kontour telemetry]",
-      "hit-target:overlap:button.app-toolbar__icon-btn[More actions] / select.editor-input[Kontour telemetry]",
-      "hit-target:overlap:button.app-toolbar__icon-btn[Notifications, # need attention] / select.editor-input[Kontour telemetry]",
-      "hit-target:overlap:button.app-toolbar__sidebar-toggle[Toggle menu] / select.editor-input[Kontour telemetry]",
       "hit-target:small:input[type=radio][name=*][Anonymous usage counts]",
       "hit-target:small:input[type=radio][name=*][Detailed usage to help improve Station]",
       "hit-target:small:input[type=radio][name=*][Don't share]"

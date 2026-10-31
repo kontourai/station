@@ -1125,7 +1125,9 @@ function MessageBubbleComponent({
             ? msg.role === 'user' && !sender && userControlCount > 0
               ? `calc(100% - ${8 + 44 * userControlCount}px)`
               : undefined
-            : '70%',
+            : msg.role === 'assistant' && !sender
+              ? undefined
+              : '70%',
         }}
         onContextMenu={onBubbleContextMenu}
         // Only to learn whether a finger is down: its long-press is text

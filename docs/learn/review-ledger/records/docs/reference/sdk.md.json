@@ -820,6 +820,12 @@
 
     "packages/sdk/src/client/automations.ts",
 
+    "src-server/routes/chat/conversation-work-state.ts",
+
+    "src-server/routes/chat/__tests__/conversation-work-state.test.ts",
+
+    "src-ui/src/components/chat/TranscriptTurnBrowser.tsx",
+
     "packages/sdk/src/query-domains/learningReview.ts",
 
     "src-ui/src/views/learning-review/LearningRecordActions.tsx",

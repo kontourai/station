@@ -9215,7 +9215,22 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   background: var(--warning-primary);
 }
 
+/* Assistant answer widths are independent of the user's bubble width. */
+.chat-messages[data-answer-width="comfortable"] .message.assistant {
+  max-width: min(80%, 72ch);
+}
+.chat-messages[data-answer-width="wide"] .message.assistant {
+  max-width: 96%;
+}
+.chat-messages[data-answer-width="full"] .message.assistant {
+  max-width: 100%;
+}
+
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  .chat-messages[data-answer-width] .message.assistant {
+    max-width: 100%;
+  }
+
   .chat-dock__subtitle {
     display: none;
   }

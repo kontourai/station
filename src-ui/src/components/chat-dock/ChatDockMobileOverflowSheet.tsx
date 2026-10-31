@@ -1,4 +1,6 @@
 import './ChatDockMobileOverflowSheet.css';
+import { Button } from '../Button';
+import { requestTurnBrowser } from '../chat/transcript-turn-browser-events';
 import { useContextPercentage } from '../conversation-stats/ContextPercentage';
 import {
   ResponsiveDialogHeader,
@@ -113,6 +115,21 @@ export function ChatDockMobileOverflowSheet({
               ? `This chat — ${overflow.sessionContextStatus}`
               : 'This chat'}
           </button>
+        )}
+        {overflow.sessionInventory && (
+          <Button
+            variant="ghost"
+            role="menuitem"
+            className="composer-actions-menu__item"
+            aria-haspopup="dialog"
+            onClick={() =>
+              run(() =>
+                requestTurnBrowser(overflow.sessionInventory!.chatStoreId),
+              )
+            }
+          >
+            Browse turns
+          </Button>
         )}
         {overflow.onOpenInventory && (
           <button

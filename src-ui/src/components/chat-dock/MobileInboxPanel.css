@@ -189,6 +189,7 @@
 }
 .mobile-inbox .chat-dock-inbox__group-label,
 .mobile-inbox .chat-dock-inbox__section-toggle {
+  min-height: 44px;
   display: flex;
   align-items: center;
   gap: var(--k-space-2);
