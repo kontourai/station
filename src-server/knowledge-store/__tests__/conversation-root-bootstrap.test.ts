@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import type { KnowledgeStoreRoot } from '@kontourai/station-contracts/knowledge-store';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { afterEach, describe, expect, test } from 'vitest';
@@ -250,6 +251,8 @@ describe('ensureConversationKnowledgeRoot (station#1879)', () => {
     });
 
     const root = await deps.provider.getRoot(CONVERSATION_ROOT_ID);
-    expect(root?.storeRoot).toBe('/tmp/fake-home/data/orchestration.sqlite');
+    expect(root?.storeRoot).toBe(
+      join('/tmp/fake-home', 'data', 'orchestration.sqlite'),
+    );
   });
 });

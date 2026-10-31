@@ -1,0 +1,15 @@
+{
+  "revision": "362d5accfedfbc18eb2629b5646f873da643064c",
+
+  "notes": [
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Compared security, account and browser lab boundaries with runtime route delta: plugin command requirement Project reads do not change the lab endpoints, TLS or two-person evidence limits. Lab not run.","inputs":["docs/guides/local-collaboration-lab.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"Compared simulator device-host setup, personal-host mount and shared live-surface authorization with runtime route delta: plugin command requirements do not alter device producer or helper lifecycle. No simulator or physical-device run.","inputs":["docs/guides/mobile-device-workspace.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Compared pinned work-reference read authority and trusted renderer boundary with runtime route delta: plugin command Project/Task checks do not turn Board pins into grants or discovery. No UI journey run.","inputs":["docs/guides/work-board-security.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Compared Connect pairing, native link custody and status-recovery claims with runtime route delta: plugin command Project/Task requirement admission is separate from Device credential exchange. No native or pairing journey run.","inputs":["docs/reference/connect.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Compared disclosure, publisher choice and receiver boundaries with runtime bootstrap and route deltas: conversation Knowledge owner filtering and plugin command admission do not change telemetry tier or receipt semantics. No telemetry delivery run.","inputs":["docs/reference/usage-telemetry.md","src-server/runtime/bootstrap/station-runtime.ts","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

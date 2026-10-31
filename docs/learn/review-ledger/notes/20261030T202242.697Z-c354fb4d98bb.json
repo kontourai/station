@@ -1,0 +1,15 @@
+{
+  "revision": "362d5accfedfbc18eb2629b5646f873da643064c",
+
+  "notes": [
+    {"path":"docs/design/operator-device-access.md","note":"Compared historical passkey proposal and current Device administration caveats with runtime route/bootstrap deltas: plugin command Project/Task reads and conversation Knowledge owner filtering do not change passkey or step-up authority. No WebAuthn ceremony run.","inputs":["docs/design/operator-device-access.md","src-server/runtime/bootstrap/station-runtime.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"Compared consent-origin enrollment, paired-device and per-action step-up requirements with runtime deltas: plugin command requirements and conversation file-owner filtering do not change the passkey ceremony. No passkey/device journey run.","inputs":["docs/guides/operator-passkeys.md","src-server/runtime/bootstrap/station-runtime.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Compared Device pairing, peer delegation and native broker distinctions with route delta: plugin command Project read checks do not grant Device, peer or compute authority. No remote machine journey run.","inputs":["docs/guides/machine-relationships.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Compared account session, Project membership and private Session distinctions with plugin command requirement route: member callers now require Project read for Project/Task context, consistent with independent membership authority. No two-person authentication journey run.","inputs":["docs/guides/deployment-authentication.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Compared isolated-home, ingress and hosted-foundation guidance with runtime deltas: file-memory Knowledge owner filtering and plugin command Project checks do not change deployment setup or qualify tenant isolation. No deployment performed.","inputs":["docs/guides/deployment.md","src-server/runtime/bootstrap/station-runtime.ts","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

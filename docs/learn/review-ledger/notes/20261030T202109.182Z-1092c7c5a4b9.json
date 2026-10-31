@@ -1,0 +1,15 @@
+{
+  "revision": "362d5accfedfbc18eb2629b5646f873da643064c",
+
+  "notes": [
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Compared completed removal inventory and plugin lifecycle identity scope with module-map changes: Windows sync and plugin command admission corrections do not reintroduce synthetic identity paths. Existing inventory result not rerun.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Compared smoke receipt, one-turn and no-tool-sandbox limits with Agent route/service grant changes and conversation Knowledge bootstrap: plugin grant persistence and file read ownership do not promote or qualify a smoke receipt. No live smoke run.","inputs":["docs/reference/agent-smoke-confidence.md","src-server/routes/agents/agents.ts","src-server/runtime/bootstrap/station-runtime.ts","src-server/services/agents/agent-service.ts"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Compared real-browser fixture scope and seeded dispatch limitations with bootstrap delta: conversation Knowledge file-owner callback does not change room presence, edit or restart fixture. Browser acceptance not rerun.","inputs":["docs/reference/project-task-room-collaboration-acceptance.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Compared telemetry ownership and delivery claims with device-session test delta: fixture adds file-memory Knowledge authorization and ensures EventBus/room cleanup, not a new monitoring or exporter result. No telemetry delivery run.","inputs":["docs/guides/monitoring.md","src-server/runtime/routes/__tests__/runtime-routes-device-session-chat-principal.test.ts"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Compared directory responsibilities and local-instruction routing to runtime route delta: Project/Task plugin command admission remains server runtime composition and changes no repository placement. No layout migration.","inputs":["docs/guides/repository-layout.md","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}
