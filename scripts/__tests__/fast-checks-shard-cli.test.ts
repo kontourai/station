@@ -757,6 +757,9 @@ describe('fast-checks shard execution verdicts', () => {
       numTotalTests: total,
       numPassedTests: total - failed,
       numFailedTests: failed,
+      testResults: [
+        { name: resolve(root, slice.files[0]), assertionResults: [] },
+      ],
     });
   const boundExecution = () => ({
     env: { STATION_VERIFICATION_HISTORY_REF: 'f'.repeat(40) },
@@ -798,6 +801,69 @@ describe('fast-checks shard execution verdicts', () => {
       expect(result.status).toBe(expected);
     },
   );
+
+  test.each([
+    ['substituted', ['scripts/__tests__/changed-verification.test.ts']],
+    ['duplicate', [slice.files[0], slice.files[0]]],
+    ['missing identities', []],
+    ['outside checkout', [resolve(root, '../outside.test.ts')]],
+  ])(
+    'rejects %s suite identities despite passing counts',
+    async (_name, names) => {
+      const contents = JSON.stringify({
+        numTotalTestSuites: 1,
+        numTotalTests: 2,
+        numPassedTests: 2,
+        numFailedTests: 0,
+        testResults: names.map((name) => ({ name, assertionResults: [] })),
+      });
+      const result = await runChangedVerificationShard(
+        { deferredLanes: [] },
+        slice,
+        {
+          root,
+          run: fakeRun(0, contents),
+          vitestPath: 'vitest.mjs',
+          prepareExecution: boundExecution,
+        },
+      );
+      expect(result.status).toBe('parser_error');
+      expect(result.executions[0].error).toContain('suite identities');
+    },
+  );
+
+  test('compares the complete planned group, including equal-count substitution', async () => {
+    const files = [
+      slice.files[0],
+      'scripts/__tests__/changed-verification.test.ts',
+    ];
+    const group = { groups: [{ resourceGroup: 'ordinary', files }], files };
+    const execute = async (names: string[]) =>
+      runChangedVerificationShard({ deferredLanes: [] }, group, {
+        root,
+        run: fakeRun(
+          0,
+          JSON.stringify({
+            numTotalTestSuites: 2,
+            numTotalTests: 2,
+            numPassedTests: 2,
+            numFailedTests: 0,
+            testResults: names.map((name) => ({ name, assertionResults: [] })),
+          }),
+        ),
+        vitestPath: 'vitest.mjs',
+        prepareExecution: boundExecution,
+      });
+    expect(
+      (await execute([resolve(root, files[1]), `./${files[0]}`])).status,
+    ).toBe('completed');
+    const substituted = await execute([
+      files[0],
+      'scripts/__tests__/unplanned.test.ts',
+    ]);
+    expect(substituted.status).toBe('parser_error');
+    expect(substituted.executions[0].error).toContain('suite identities');
+  });
 
   test('keeps the redacted JSON report of a failing slice, and nothing for a passing one (#3101 C)', async () => {
     const directory = makeTempDir('station-fast-checks-reports-');
