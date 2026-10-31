@@ -1,8 +1,11 @@
 {
   "path": "docs/learn/media/agent-efficiency-usage.png",
+
   "sources": [
     "src-ui/src/components/usage-stats/UsageRollupPanel.tsx",
+
     "src-ui/src/index.css"
   ],
+
   "reviewNotes": []
 }
