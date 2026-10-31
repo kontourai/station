@@ -73,6 +73,22 @@ hosted and release limits above remain unchanged.
 
 ### Subsequent local qualification checkpoint
 
+The later approval review confirmed the named stale-effect windows but found
+that dormant recovery persisted a permission refusal as retryable unavailability.
+The added durable-event assertion fails with that exact mismatch before the
+repair. `2874d5e1f11` preserves typed start-refusal code, kind, eligibility and
+refused phase; 185 focused cases and server-test types pass. Generic and
+indeterminate recovery failures retain their prior classification.
+
+The diagnostic inventory repair adds three provider-facing mappings, independent
+wire rows and eight exact file/class/value dispositions for non-provider
+lifecycle and group-custody errors. It also checks the reserved-turn error writer
+against the strict event type. The inventory/wire/projection/delivery selection
+passes 131 cases; server-test types and scoped Biome pass. The original failed
+inventory receipt remains retained. Independent review of this classification
+delta and the conditional post-accounting final-fence cleanup concern are still
+required; neither this result nor the earlier 377 cases qualifies the full epic.
+
 The background-work source at `9c51c75f5cda` passed 254 cases across 14 files
 and the UI type lane. Independent review accepted the bounded Station scoping,
 cold continuation association and reporter-alias ordering corrections. The

@@ -947,6 +947,11 @@ decision, effective confinement or grantor changed during preparation. The
 caller must inspect the current posture before making a new explicit attempt;
 the refusal does not authorize automatic replay.
 
+`usage_unknown` classifies incomplete raw-provider evidence as indeterminate.
+`bounded_api_execution_unavailable` refuses unsupported bounded execution before
+provider entry; `reserved_station_turn_unavailable` refuses missing or stale
+reserved-turn authority. None is eligible for automatic replay.
+
 | Diagnostic code | Kind | Retryable |
 | --- | --- | --- |
 | `delegation_files_unsupported` | `input_unsupported` | `false` |
@@ -969,6 +974,9 @@ the refusal does not authorize automatic replay.
 | `stage_incomplete` | `input_unsupported` | `false` |
 | `stage_invalid_upload` | `input_unsupported` | `false` |
 | `stage_capacity` | `busy` | `true` |
+| `usage_unknown` | `indeterminate` | `false` |
+| `bounded_api_execution_unavailable` | `input_unsupported` | `false` |
+| `reserved_station_turn_unavailable` | `permission_denied` | `false` |
 | `foreground_invocation_unavailable` | `conflict` | `false` |
 | `delegation_attempt_capacity` | `busy` | `true` |
 | `continuation_place_refused` | `input_unsupported` | `false` |
@@ -1052,6 +1060,10 @@ turn execution or session startup. Class-field exclusions separately name applic
 configuration, storage, policy, and non-provider lifecycle failures. The guard refuses
 a new unclassified constant or class-field code. Object-literal API/validation codes
 are outside this inventory; strict `runtime.error` construction is checked separately.
+The exact lifecycle dispositions include bootstrap publication/drain, private
+group credential observations and report-group custody/preparation/finalizer
+errors. Those codes do not identify one Session's provider outcome; the group
+routes retain their separate refusal and unavailable responses.
 Existing server import paths forward the relocated contract constants.
 
 The inventory also reads the delegation-file refusal union in `attachment-staging.ts`
