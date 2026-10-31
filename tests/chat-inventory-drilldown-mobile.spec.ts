@@ -233,7 +233,7 @@ test.describe('Chat inventory item drill-down on a phone', () => {
       await expect(async () => {
         const headerBox = await box(header);
         const titleBox = await box(
-          header.getByRole('button', { name: /^Chats and tasks — / }),
+          header.locator('.chat-dock__mobile-identity'),
         );
         const actionBoxes = [
           await box(chatActions),

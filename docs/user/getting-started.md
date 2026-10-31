@@ -580,7 +580,7 @@ as you left it in the dock, the same way as a draft from setup (below). If no
 chat dock is open to take it, Home keeps the message and says so.
 
 In the chat dock, the **New chat** button (the conversation-plus icon on the collapsed bar),
-**⌘T**, and **New chat** in **Chats and tasks** open the same composer.
+**⌘T**, and the phone header's compose icon open the same composer.
 **Explore agents** remains available for deliberate customization.
 
 Setup from Home continues in the chat dock. When you choose **Connect**,
@@ -636,9 +636,12 @@ the dock’s chat list.
 At the end of first-run setup, **Take the tour** and **Connect another device**
 are optional alternatives to **Start your first chat**. Both save the same selected answers before opening their next step.
 
-On a phone, use the compose button at the right of the chat bar, or tap the
-current chat title to open **Chats and tasks** and choose **New chat** at the
-lower right. The three-dot menu holds chat actions, including **This chat**:
+On a phone, the dock starts at **Inbox** unless you open a specific
+conversation. Its Inbox icon returns to the work list; the chat title stays
+as context. Search opens from the magnifier. Your search, list position and
+unsent message stay in place when switching back to a conversation. Collapse
+and reopen restore the last view. Use the compose icon at the right of the
+chat bar for **New chat**. The three-dot menu holds chat actions, including **This chat**:
 the chat's workspace, branch and changed files, status, background tasks and
 linked pull requests, each opening its own view. On a computer, a wide dock
 shows the same panel beside the transcript, and a narrower one puts it behind
@@ -646,7 +649,7 @@ a chip in the dock header. Connection health remains in the app header. In fulls
 management remains in the chat actions menu. **Projects** has the same add control
 for creating a project, including a short first-project prompt when empty.
 
-In **Chats and tasks**, delegated work folds under its recorded parent.
+In **Inbox**, delegated work folds under its recorded parent.
 Expand the subtask count to read the children; children that need you stay
 visible. Task-owned chats appear under their Task as sessions. **Show work**
 filters by project or Station and stays selected on this device. If work needs

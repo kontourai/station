@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import type { CDPSession, Page } from '@playwright/test';
@@ -6,16 +7,17 @@ import { expect, test } from 'vitest';
 import { resolveCssImports } from '../../../tests/helpers/css-cascade-fixture';
 import { scrollBrowserFixture } from './scroll-browser-fixture';
 
+const projectArtwork = `data:image/png;base64,${readFileSync(resolve('src-ui/public/favicon.png')).toString('base64')}`;
 const fixture = `
   import React from 'react';
   import {createRoot} from 'react-dom/client';
   import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
   import {ChatDockInboxPanel} from './src-ui/src/components/chat-dock/ChatDockInboxPanel';
-  import {MobileTaskSwitcher} from './src-ui/src/components/chat-dock/MobileTaskSwitcher';
+  import {MobileInboxPanel} from './src-ui/src/components/chat-dock/MobileInboxPanel';
   import {deviceSettingsStore} from './src-ui/src/lib/device-settings-store';
   const items = [
-    {id:'saved', kind:'orchestration', kindLabel:'Conversation', title:'Review the inbox', projectLabel:'Station', agentLabel:'Codex', modelLabel:'GPT', updatedAt:Date.now(), lifecycleLabel:'Running'},
-    {id:'idle', kind:'orchestration', kindLabel:'Conversation', title:'Plan the next release', projectLabel:'Station', agentLabel:'Claude', modelLabel:'Sonnet', updatedAt:Date.now(), lifecycleLabel:'Ready'},
+    {id:'saved', kind:'orchestration', kindLabel:'Conversation', title:'Review the inbox', projectSlug:'station', projectLabel:'Station', agentSlug:'codex', agentLabel:'Codex', provider:'codex', executionProviders:['codex','claude','pi','kiro'], modelLabel:'GPT', updatedAt:Date.now(), lifecycleLabel:'Running'},
+    {id:'idle', kind:'orchestration', kindLabel:'Conversation', title:'Plan the next release', projectSlug:'station', projectLabel:'Station', agentSlug:'claude', agentLabel:'Claude', provider:'claude', modelLabel:'Sonnet', updatedAt:Date.now(), lifecycleLabel:'Ready'},
   ];
   let root;
   window.mount = (preview, mobile) => {
@@ -26,10 +28,10 @@ const fixture = `
     deviceSettingsStore.set('experimentalSheetGesturesEnabled', preview);
     document.body.dataset.theme = document.documentElement.dataset.theme;
     window.opens = 0; window.closes = 0;
-    const props = { activeChatSessionId:null, openChatSessionIds:[], onFocusChat:()=>window.opens++, onOpenConversation:()=>{window.opens++;return true}, onOpenSession:()=>window.opens++, onCloseChat:()=>window.closes++ };
+    const props = { agents:[{slug:'codex',name:'Codex',engineId:'codex'},{slug:'claude',name:'Claude',engineId:'claude'}], projectIconBySlug:new Map([['station',${JSON.stringify(projectArtwork)}]]), activeChatSessionId:null, openChatSessionIds:[], onFocusChat:()=>window.opens++, onOpenConversation:()=>{window.opens++;return true}, onOpenSession:()=>window.opens++, onCloseChat:()=>window.closes++ };
     root = createRoot(document.getElementById('root'));
     root.render(<QueryClientProvider client={new QueryClient()}>
-      {mobile ? <MobileTaskSwitcher {...props} open tasks={items} triggerRef={React.createRef()} visualViewportStyle={{}} onClose={()=>{}} /> : <div style={{width:340}}><ChatDockInboxPanel {...props} items={items} onOpenHistory={()=>{}} /></div>}
+      {mobile ? <MobileInboxPanel {...props} open tasks={items} triggerRef={React.createRef()}  onClose={()=>{}} /> : <div style={{width:340}}><ChatDockInboxPanel {...props} items={items} onOpenHistory={()=>{}} /></div>}
     </QueryClientProvider>);
   };
 `;
@@ -138,6 +140,7 @@ test('mobile swipes reveal existing actions without opening or stopping a conver
       .getByRole('button', { name: 'Snooze Review the inbox', exact: true })
       .click();
     await page.getByRole('menuitem', { name: '1 hour', exact: true }).click();
+    await page.getByRole('button', { name: 'Snoozed · 1' }).click();
     expect(
       await page
         .getByRole('region', { name: /Snoozed/ })
@@ -181,6 +184,15 @@ test('mobile swipes reveal existing actions without opening or stopping a conver
           document.documentElement.dataset.theme = theme;
         }, theme);
         await mount(page, true, mobile);
+        await page
+          .locator('[data-testid="identity-marks"] svg')
+          .first()
+          .waitFor();
+        await page.screenshot({
+          path: resolve(artifacts, `inbox-${width}-${theme}.png`),
+          fullPage: true,
+          animations: 'disabled',
+        });
         if (mobile) await swipe(cdp, page, -90);
         else {
           await page.mouse.move(1300, 850);

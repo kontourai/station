@@ -22,19 +22,19 @@ export function registerFullscreenChatSurface(): () => void {
 }
 
 /**
- * How many New chat drafts cover a dock's chat. The draft shows in place of
- * the chat on screen, so while one is up that chat is not being read.
+ * Opaque readers, including Inbox and New chat, cover the retained chat.
+ * A covered transcript is not being read, even while its dock stays open.
  */
-let chatDraftCovers = 0;
+let chatReaderCovers = 0;
 
-/** Called by a dock for as long as its New chat draft covers its chat. */
-export function registerChatDraftCover(): () => void {
-  chatDraftCovers += 1;
+/** Register only while an opaque reader visibly covers this chat. */
+export function registerChatReaderCover(): () => void {
+  chatReaderCovers += 1;
   let released = false;
   return () => {
     if (released) return;
     released = true;
-    chatDraftCovers -= 1;
+    chatReaderCovers -= 1;
   };
 }
 
@@ -56,7 +56,7 @@ export function isChatInForeground(ids: {
   }
   const navigation = navigationStore.getSnapshot();
   if (!navigation.isDockOpen && fullscreenChatSurfaces === 0) return false;
-  if (chatDraftCovers > 0) return false;
+  if (chatReaderCovers > 0) return false;
   const candidates = [ids.chatKey, ids.threadId, ids.conversationId].filter(
     (value): value is string => Boolean(value),
   );

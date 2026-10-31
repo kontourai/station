@@ -41,6 +41,7 @@
 .subagent-card__glyph {
   grid-column: 1;
   grid-row: 1;
+  align-self: start;
   display: inline-flex;
   flex-shrink: 0;
   align-items: center;
@@ -64,11 +65,10 @@
 }
 
 .subagent-card__headline {
-  display: flex;
+  display: grid;
   min-width: 0;
-  flex-wrap: nowrap;
   align-items: center;
-  column-gap: var(--k-space-2);
+  row-gap: var(--k-space-1);
 }
 
 .subagent-card__title {
@@ -79,13 +79,16 @@
   font-size: var(--k-text-sm);
   font-weight: 600;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .subagent-card__status {
   display: inline-flex;
   flex-shrink: 0;
-  max-width: 45%;
+  max-width: 100%;
   align-items: center;
   gap: var(--k-space-1);
   color: var(--k-text-muted);
@@ -144,6 +147,13 @@
   white-space: nowrap;
 }
 
+.subagent-card__preview {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
+}
+
 .subagent-card__model {
   font-family: var(--k-font-mono);
 }
@@ -156,6 +166,7 @@
 }
 
 .subagent-card__aside {
+  align-self: start;
   grid-column: 3;
   grid-row: 1;
   display: flex;
@@ -266,6 +277,7 @@
 }
 
 .subagent-card__main[aria-expanded="true"] .subagent-card__title {
+  display: block;
   white-space: normal;
   overflow-wrap: anywhere;
 }
