@@ -69,6 +69,7 @@
     "scripts/lib/module-entry.mjs",
     "scripts/lib/portable-server-archive.mjs",
     "scripts/lib/portable-smoke-diagnostics.mjs",
+    "scripts/lib/portable-smoke-ports.mjs",
     "scripts/lib/server-build-config.mjs",
     "scripts/lib/station-stop-hint.mjs",
     "scripts/lib/desktop-node-runtime.mjs",
