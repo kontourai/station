@@ -210,6 +210,34 @@ normalized gzip bytes. These results do not promote the pre-merge browser
 receipt to the combined source. Published Flow adoption, supported group/input
 journeys, remaining documentation and final combined review still need work.
 
+The independent post-merge browser journey at `497c7e93b8e` verified task facts,
+completion views, both viewport/theme pairs and the mobile Inbox path. It
+observed `includeGeneral=1` negotiation; legacy stream presence was not verified.
+Activity selection still reset, and transient loading recovered. The owned
+backend again passed 16 checks and exited naturally with stable inputs. This is
+controlled browser evidence, not physical-device or desktop-shell acceptance.
+
+Subsequent source tracing found a distinct shared-stream publication race. The
+ordinary bus subscriber checked request currency when an event arrived, but a
+shared general frame could finish asynchronous audience authorization after
+that route grant ceased to be current. The real EventBus, EventStore,
+OrchestrationService and HTTP route control received the forbidden frame with
+148 other cases passing. Its request-current and audience callbacks are injected
+route-boundary controls, not an actual pairing-registry grant mutation. Repair
+`6e237dc676c` reuses the existing stream/current-request predicate immediately
+before both general and ordinary frame writes; it changes neither audience
+selection nor replay IDs. The focused event/boot selection passed 191 cases,
+server-test types and scoped Biome passed, and independent source review found
+no blocking finding. Actual grant-registry mutation and post-repair browser
+acceptance remain unverified; the earlier browser receipt stays at its source.
+
+Post-merge learning generation passed. Governance readiness still fails on
+documentation truth: outstanding recorded-source reviews remain. The physical
+device inventory is empty. The upstream transaction-owner release remains
+unpublished; its retained owner identified shared CI concurrency admission,
+rather than an executed feature-test failure, as the outstanding hosted blocker.
+Station has not adopted candidate aliases or enabled the finalizer.
+
 The live request-capability clone control now has executed mutation evidence
 at clean `b0ea8c39508`: its baseline passed; removing only the exact Request
 object comparison produced the intended Missing expected exception at the
