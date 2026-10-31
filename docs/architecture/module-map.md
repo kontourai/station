@@ -3091,10 +3091,13 @@ also return `replayed`; missing dependencies can still defer. The text,
 content-addressed revision, snapshot, compaction and resync APIs expose document
 state without granting transport, storage or participant-directory authority.
 
-**Invariants.** Version-one operations require well-formed Unicode and exact
+**Invariants.** Version-two operations require well-formed Unicode and exact
 document identity. Actor ID and current writer epoch are checked before live
 duplicate/defer decisions and again when deferred live work is released.
 Same operation ID with a different digest is `operation_equivocation`.
+V1 operations and stored atom snapshots remain readable. A v1 snapshot keeps
+its exact revision until an accepted mutation writes canonical v2 runs;
+resync requires explicit v2 support.
 Authoritative replay of an identical deferred operation promotes it to trusted;
 recovery without a current grant leaves live obligations pending. Causal parents,
 predecessor atoms and tombstones determine ordering, not wall-clock timestamps.
@@ -3106,9 +3109,26 @@ identity. A snapshot preserves pending obligations and validates its claimed
 revision on restore. Rejecting deferred live work invalidates the affected
 replay window; resync returns a snapshot rather than an impossible delta.
 Deferred count/byte and replay limits bound those windows, not total process
-memory for an indefinitely growing document. Presence and cursors never enter
+memory for an indefinitely growing document. Runs retain text once per insert
+and compact deleted ranges without losing old scalar anchors. Operation
+digests still grow with edits; worker admission enforces the same 512 KiB
+snapshot bound as evidence and the unchanged SQLite CHECK. Each small save adds
+about 180 B of metadata, for roughly 2.5–3k saves per document before explicit
+`document-full`, depending on text and fragmentation. Inserts leave a 16 KiB
+deletion reserve in both snapshot and evidence-record budgets; deletes can
+spend it even when splitting a run grows stored bytes. That reserve is finite. Ordinary saves coalesce an unclaimed candidate; a
+full Station-wide ledger can still refuse a requested immutable reference.
+Presence and cursors never enter
 the durable document facts. The [design record](../design/shared-working-state.md)
 explains mechanism choices and historical constraints.
+
+**Downgrade.** The pre-v2 reader's exact schema fence rejects v2 snapshots.
+Its worker returns unavailable rather than an empty document; the runtime
+propagates this and the document route returns HTTP 503 `Room unavailable`.
+The stored snapshot is preserved and further settlements refuse. Like room
+v4/v5 schema fences, this needs a compatible reader or a pre-upgrade home
+backup for rollback; no implicit conversion or document reset is supported.
+This compatibility conclusion is source-derived, not an executed downgrade.
 
 **Current composition.** [ProjectTaskRoomWorkingState](../../src-server/services/orchestration/project-task-room-working-state.ts)
 and its worker own private SQLite settlement and snapshots. They instantiate
@@ -3260,6 +3280,19 @@ The [route](../../src-server/routes/orchestration/project-task-rooms.ts) emits
 closed browser DTOs; exact-order document events take priority over queued
 presence events without bypassing the final currentness check.
 
+For account-bound Devices, [Task member admission](../../src-server/runtime/routes/task-member-admission.ts)
+requires current transport and account authority, the exact Task/share and
+Project incarnation, and the member action. `view` admits reads and presence,
+`discuss` admits messages, and `edit` admits edit planning. The account-bound
+allowlist does not admit document batch settlement, attachments, review, memory
+or agent-request leaves in this slice. Discovery reports message and document
+write availability. A captured membership revision fences delayed effects and
+stream delivery; post-commit membership notifications close stale streams, with
+the 15-second idle check retained. The `task-collaboration` preview reveals
+member message names and member avatars in the header; it does not grant access.
+Local real-account route tests and fixture-based renders do not establish the
+two-person, two-device acceptance journey.
+
 Personal runtime composition also mounts the
 [TaskRoomWorkModule](../../src-server/services/projects/task-room-work-module.ts),
 a separate Station-wide JSON journal for explicit agent requests. It reserves
@@ -3281,8 +3314,8 @@ binds descriptors to the Project, Task and creation time and keeps bytes in a
 separate content-addressed store. Upload and provider resolution require current
 message-write authority; downloads require history-read authority. Room messages
 and request journals retain descriptors, while dispatch passes resolved bytes to
-the provider attachment contract. Attachment-bearing history advances to v4 with
-a permanent old-writer fence, and the private request journal advances to v4;
+the provider attachment contract. Attachment-bearing history advances to at least
+v4; member records advance to v5, with permanent old-writer fences. The private request journal advances to v4;
 see [images and files](../design/task-room-agent-requests.md#images-and-files)
 for limits and retention. Focused SDK/HTTP/worker tests cover restart and authority;
 they do not qualify native image insertion or real-provider image understanding.
@@ -3308,9 +3341,12 @@ origin requires a server-recorded admission in the private request journal;
 a client turn prefix alone is insufficient. Abandoned publication holds expire
 after 30 seconds. Each answer pass opens history once and truncates oversized
 text precisely at a code-point boundary within both string and body byte limits.
-Shared Task projection continues to publish human messages and the document;
-it excludes agent answers and private execution metadata. Invited/public agent
-results and actual-provider acceptance remain separate qualification scopes.
+The Project shared-work projection continues to publish human messages and the
+document; it excludes agent answers and private execution metadata. The direct
+personal Task room's admitted members can read its published history, including
+room-published agent answers; private Session access remains separate.
+Invited/public agent execution and actual-provider acceptance remain separate
+qualification scopes.
 
 Immutable output review uses the same room history, rather than a second
 feedback journal. [TaskOutputModule](../../src-server/services/projects/task-output-module.ts)
@@ -3437,16 +3473,22 @@ and nested byte budgets are bounded, including sparse arrays and surrogate
 escaping; element and member counts are bounded by the byte budget itself, not
 a fixed count (a 4,096-element cap refused Task documents of more than 4,096
 atoms, [#4007](https://github.com/kontourai/station/issues/4007)). The room
+
 working-state worker applies the same per-document bounds before it commits a
-write (`revisionEvidenceAdmission`). Ordinary person and agent saves replace an
-unclaimed full-snapshot candidate rather than reserving or freezing a receipt.
-Task Review claims the exact working revision before creating a plan anchor;
-only requested references consume the shared 256-receipt / 4 MiB ledger. A Task
-document still holds about 5,400 plain characters ever typed, deleted ones
-included. A full ledger refuses new references; a deterministic freeze refusal
-releases the unmarked claim so later saves can replace the candidate. See the
-[freeze policy](../decisions/revision-evidence-freeze-policy.md).
+write (`revisionEvidenceAdmission`). A Task document uses run snapshots, admits
+a 12,000-character proposal brief, and compacts deleted ranges while retaining
+operation identities and scalar anchors. Runs make the 256 KiB visible-text and
+768 KiB record limits reachable; the worker checks both alongside the 512 KiB
+snapshot limit, reserving 16 KiB in snapshot and record budgets on inserts for
+deletions. About 180 B of metadata per small save gives a document roughly 2.5–3k
+lifetime saves before explicit `document-full`, depending on text and fragmentation.
+Ordinary saves replace an unclaimed full-snapshot candidate. Task Review claims
+the exact revision before creating a plan anchor; only requested references consume
+the shared 256-receipt / 4 MiB ledger. A full ledger refuses new references; a
+deterministic freeze refusal releases the unmarked claim so later saves can
+replace the candidate. See the [freeze policy](../decisions/revision-evidence-freeze-policy.md).
 Missing compatible attribution is `attribution_unverified`; a portable
+
 file alone grants no trust. Returned records, exports and projections are cloned.
 
 [EventStore](../../src-server/services/orchestration/event-store.ts) composes the
@@ -5856,7 +5898,12 @@ facts fall back to Teammate or Agent. The local operator's profile name wins;
 when only the OS alias is available, its initial is capitalized for display.
 Plan revision chips count committed, revision-changing settle batches (saves),
 starting at v1. Multi-operation saves advance once; retries do not advance.
-Opaque digest identity remains separate from the displayed version.
+Opaque digest identity remains separate from the displayed version. When no
+save ordinal is known for a revision, the chip falls back to a compact
+`swsr-v1`/`swsr-v2` digest, including transitions across a v1-to-v2 save, with
+the full revision in the title. Existing v1-era thread anchors relocate by
+quote against current v2 text; a revision prefix change alone does not make a
+thread Outdated.
 
 Task review keeps anchored comments in its own append-only store, outside the
 shared room's document and history. Plan references freeze revision evidence
