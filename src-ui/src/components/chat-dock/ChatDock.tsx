@@ -927,12 +927,12 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
       cancelReaderOpen();
       const intent = readerIntent.current;
       const navigation = navigationStore.getSnapshot();
-      const generation = workObservation.streamEpochGeneration();
+      const generation = workObservation?.streamEpochGeneration();
       const request = { accepted: false };
       pendingReaderOpen.current = request;
       const dataCurrent = () =>
         requestAuthority?.isCurrent() !== false &&
-        workObservation.streamEpochGeneration() === generation &&
+        workObservation?.streamEpochGeneration() === generation &&
         callerCurrent?.() !== false;
       const ownsRequest = () =>
         readerIntent.current === intent && dataCurrent();
