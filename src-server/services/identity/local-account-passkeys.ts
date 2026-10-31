@@ -198,7 +198,7 @@ export function createMemberPasskeys(host: MemberPasskeyHost): MemberPasskeys {
             AND s.expiresAt > strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
             AND unixepoch('now', 'subsec') - unixepoch(s.createdAt, 'subsec') <= ${PASSKEY_ADD_FRESHNESS_MS / 1000}
             AND COALESCE(p.disabled, 0) = 0
-            AND (p.account_id IS NULL OR unixepoch(s.createdAt, 'subsec') * 1000 > p.sessions_revoked_at)
+            AND (p.account_id IS NULL OR round(unixepoch(s.createdAt, 'subsec') * 1000) > p.sessions_revoked_at)
         );
       END`);
     return () => host.database.exec(`DROP TRIGGER temp.${trigger}`);

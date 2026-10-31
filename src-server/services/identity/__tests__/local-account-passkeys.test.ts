@@ -786,15 +786,14 @@ describe('member passkeys over the production account routes', () => {
         }
         return prepare.call(this, sql);
       });
-    let added;
-    try {
-      added = await target.call(browser, '/passkey/add', {
+    const added = await target
+      .call(browser, '/passkey/add', {
         step: 'verify',
         response,
+      })
+      .finally(() => {
+        spy.mockRestore();
       });
-    } finally {
-      spy.mockRestore();
-    }
     expect(revoked).toBe(true);
     expect(added.status, JSON.stringify(added)).toBe(503);
     expect((await target.verified(browser)).kind).toBe('invalid');
