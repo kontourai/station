@@ -1392,95 +1392,129 @@ test('a real failed history open stays at Inbox instead of falling back to the i
   expect(navigationStore.getSnapshot().activeChat).toBe('chat-a');
 });
 
-test('the global picker focuses an existing conversation after accepted cross-project routing', async () => {
-  openChatA();
-  const conversation: ConversationListItem = {
-    id: 'other-conversation',
-    source: 'runtime',
-    agentSlug: agentId('assistant'),
-    title: 'Other Project conversation',
-    projectSlug: 'other',
-    mutable: true,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    messageCount: 2,
-    answerability: { answerable: true },
-  };
-  const resolution: ConversationOpenResolution = {
-    status: 'resolved',
-    conversation,
-    currentSessionId: conversation.id,
-    transcript: { available: true, owner: 'runtime', messageCount: 2 },
-    canContinue: true,
-    answerability: { answerable: true },
-    recoveryActions: [],
-  };
-  dockProbe.sessions.push({
-    ...chatSession('chat-b'),
-    conversationId: conversation.id,
-    projectSlug: 'other',
-    title: conversation.title,
-  });
-  activeChatsStore.initChat('chat-b', {
-    agentSlug: agentId('assistant'),
-    agentName: 'Assistant',
-    title: conversation.title,
-    projectSlug: 'other',
-    conversationId: conversation.id,
-  });
-  const fetchBefore = globalThis.fetch;
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url =
-        typeof input === 'string'
-          ? input
-          : input instanceof URL
-            ? input.href
-            : input.url;
-      if (url.endsWith('/api/conversations/other-conversation/open'))
-        return Response.json({ success: true, data: resolution });
-      return fetchBefore(input, init);
-    }),
-  );
-  try {
-    navigationStore.setLayout('pulse', 'coding');
-    navigationStore.setActiveChat('chat-a');
-    renderInProviders(<RouteScopedChatPane />);
-    await act(async () => {});
-    act(() =>
-      paneQueryClient!.setQueryData(conversationQueries.inventory().queryKey, {
-        pages: [{ items: [conversation], hasMore: false }],
-        pageParams: [undefined],
+test.each([false, true])(
+  'the global picker routes only a current selection (deferred: %s)',
+  async (deferred) => {
+    openChatA();
+    const conversation: ConversationListItem = {
+      id: 'other-conversation',
+      source: 'runtime',
+      agentSlug: agentId('assistant'),
+      title: 'Other Project conversation',
+      projectSlug: 'other',
+      mutable: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      messageCount: 2,
+      answerability: { answerable: true },
+    };
+    const resolution: ConversationOpenResolution = {
+      status: 'resolved',
+      conversation,
+      currentSessionId: conversation.id,
+      transcript: { available: true, owner: 'runtime', messageCount: 2 },
+      canContinue: true,
+      answerability: { answerable: true },
+      recoveryActions: [],
+    };
+    dockProbe.sessions.push({
+      ...chatSession('chat-b'),
+      conversationId: conversation.id,
+      projectSlug: 'other',
+      title: conversation.title,
+    });
+    activeChatsStore.initChat('chat-b', {
+      agentSlug: agentId('assistant'),
+      agentName: 'Assistant',
+      title: conversation.title,
+      projectSlug: 'other',
+      conversationId: conversation.id,
+    });
+    let resolveOpen: (() => void) | undefined;
+    const fetchBefore = globalThis.fetch;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url =
+          typeof input === 'string'
+            ? input
+            : input instanceof URL
+              ? input.href
+              : input.url;
+        if (url.endsWith('/api/conversations/other-conversation/open')) {
+          if (deferred)
+            await new Promise<void>((resolve) => {
+              resolveOpen = resolve;
+            });
+          return Response.json({ success: true, data: resolution });
+        }
+        return fetchBefore(input, init);
       }),
     );
-    fireEvent.click(screen.getByRole('button', { name: 'More dock actions' }));
-    fireEvent.click(
-      await screen.findByRole('menuitem', { name: /^Open chat/ }),
-    );
-    await screen.findByRole('dialog', { name: 'Open chat' });
-    fireEvent.click(
-      screen.getByRole('button', { name: /Other Project conversation/ }),
-    );
-    await waitFor(() =>
+    try {
+      navigationStore.setLayout('pulse', 'coding');
+      navigationStore.setActiveChat('chat-a');
+      renderInProviders(<RouteScopedChatPane />);
+      await act(async () => {});
+      act(() =>
+        paneQueryClient!.setQueryData(
+          conversationQueries.inventory().queryKey,
+          {
+            pages: [{ items: [conversation], hasMore: false }],
+            pageParams: [undefined],
+          },
+        ),
+      );
+      fireEvent.click(
+        screen.getByRole('button', { name: 'More dock actions' }),
+      );
+      fireEvent.click(
+        await screen.findByRole('menuitem', { name: /^Open chat/ }),
+      );
+      await screen.findByRole('dialog', { name: 'Open chat' });
+      fireEvent.click(
+        screen.getByRole('button', { name: /Other Project conversation/ }),
+      );
+      if (deferred) {
+        await waitFor(() => expect(resolveOpen).toBeDefined());
+        fireEvent.keyDown(document, { key: 'Escape' });
+        await waitFor(() =>
+          expect(
+            screen.queryByRole('dialog', { name: 'Open chat' }),
+          ).toBeNull(),
+        );
+        act(() => dispatchNewChatIntent({}));
+        await screen.findByRole('region', { name: 'New chat picker' });
+        await act(async () => resolveOpen!());
+        expect(navigationStore.getSnapshot().activeChat).toBe('chat-a');
+        expect(navigationStore.getSnapshot().pathname).toContain(
+          '/projects/pulse/',
+        );
+        expect(
+          screen.getByRole('region', { name: 'New chat picker' }),
+        ).toBeTruthy();
+        return;
+      }
+      await waitFor(() =>
+        expect(navigationStore.getSnapshot().pathname).toContain(
+          '/projects/other/',
+        ),
+      );
+      await waitFor(() =>
+        expect(navigationStore.getSnapshot().activeChat).toBe(conversation.id),
+      );
       expect(navigationStore.getSnapshot().pathname).toContain(
         '/projects/other/',
-      ),
-    );
-    await waitFor(() =>
-      expect(navigationStore.getSnapshot().activeChat).toBe(conversation.id),
-    );
-    expect(navigationStore.getSnapshot().pathname).toContain(
-      '/projects/other/',
-    );
-    expect(openConversationAction).not.toHaveBeenCalled();
-  } finally {
-    vi.stubGlobal('fetch', fetchBefore);
-  }
-});
+      );
+      expect(openConversationAction).not.toHaveBeenCalled();
+    } finally {
+      vi.stubGlobal('fetch', fetchBefore);
+    }
+  },
+);
 
-test.each(['another-chat', 'new-chat'] as const)(
-  'a delayed saved conversation cannot replace %s',
+test.each(['another-chat', 'new-chat', 'same-loading-chat'] as const)(
+  'a delayed saved open preserves healthy hydration after selecting %s',
   async (next) => {
     dockProbe.mobile = true;
     openChatA();
@@ -1495,12 +1529,16 @@ test.each(['another-chat', 'new-chat'] as const)(
       projectSlug: 'pulse',
     } as Parameters<typeof activeChatsStore.initChat>[1]);
     let finishOpen: ((id: string) => void) | undefined;
-    openConversationAction.mockImplementationOnce(
-      () =>
-        new Promise<string>((resolve) => {
-          finishOpen = resolve;
-        }),
-    );
+    let hydration:
+      | { initialized: (id: string) => void; current: () => boolean }
+      | undefined;
+    openConversationAction.mockImplementationOnce((...args: unknown[]) => {
+      hydration = args[8] as typeof hydration;
+      hydration!.initialized('late-saved-tab');
+      return new Promise<string>((resolve) => {
+        finishOpen = resolve;
+      });
+    });
     navigationStore.navigate('/', { dock: 'open', chat: 'chat-a' });
     renderDockedPane();
     await act(async () => {});
@@ -1510,17 +1548,46 @@ test.each(['another-chat', 'new-chat'] as const)(
       await screen.findByRole('button', { name: 'Saved conversation, pulse' }),
     );
     expect(finishOpen).toBeDefined();
-    if (next === 'another-chat')
+    if (next === 'same-loading-chat') {
+      dockProbe.sessions.push({
+        ...chatSession('late-saved-tab'),
+        conversationId: 'saved-conversation',
+        title: 'Loading saved chat',
+      });
+      activeChatsStore.initChat('late-saved-tab', {
+        agentSlug: agentId('assistant'),
+        agentName: 'Assistant',
+        conversationId: 'saved-conversation',
+        projectSlug: 'pulse',
+      });
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Open task switcher' }),
+      );
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Open task switcher' }),
+      );
+      act(() => openChatsStore.focus({ sessionId: 'late-saved-tab' }));
+    } else if (next === 'another-chat')
       fireEvent.click(
         screen.getByRole('button', { name: 'Later conversation, pulse' }),
       );
     else act(() => dispatchNewChatIntent({}));
     if (next === 'another-chat')
       expect(navigationStore.getSnapshot().activeChat).toBe('chat-b');
-    else await screen.findByRole('region', { name: 'New chat picker' });
+    else if (next === 'new-chat')
+      await screen.findByRole('region', { name: 'New chat picker' });
+    else
+      expect(navigationStore.getSnapshot().activeChat).toBe(
+        'saved-conversation',
+      );
+    expect(hydration!.current()).toBe(true);
     await act(async () => finishOpen!('late-saved-tab'));
     if (next === 'another-chat')
       expect(navigationStore.getSnapshot().activeChat).toBe('chat-b');
+    else if (next === 'same-loading-chat')
+      expect(navigationStore.getSnapshot().activeChat).toBe(
+        'saved-conversation',
+      );
     else {
       expect(
         screen.getByRole('region', { name: 'New chat picker' }),

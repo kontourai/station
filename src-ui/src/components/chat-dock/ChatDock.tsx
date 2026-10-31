@@ -910,13 +910,55 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const notifyTaskStarted = useTaskStartedNotice(collapseDockForNavigation);
 
   const readerIntent = useRef(0);
-  const pendingReaderOpen = useRef<AbortController | null>(null);
+  const pendingReaderOpen = useRef<{ accepted: boolean } | null>(null);
   const cancelReaderOpen = useCallback(() => {
     readerIntent.current += 1;
-    pendingReaderOpen.current?.abort();
     pendingReaderOpen.current = null;
   }, []);
-  useEffect(() => cancelReaderOpen, [cancelReaderOpen]);
+  useEffect(
+    () => () => {
+      // Accepted cross-project opens finish binding after this pane unmounts.
+      if (!pendingReaderOpen.current?.accepted) cancelReaderOpen();
+    },
+    [cancelReaderOpen],
+  );
+  const beginReaderOpen = useCallback(
+    (callerCurrent?: () => boolean) => {
+      cancelReaderOpen();
+      const intent = readerIntent.current;
+      const navigation = navigationStore.getSnapshot();
+      const generation = workObservation.streamEpochGeneration();
+      const request = { accepted: false };
+      pendingReaderOpen.current = request;
+      const dataCurrent = () =>
+        requestAuthority?.isCurrent() !== false &&
+        workObservation.streamEpochGeneration() === generation &&
+        callerCurrent?.() !== false;
+      const ownsRequest = () =>
+        readerIntent.current === intent && dataCurrent();
+      return {
+        dataCurrent,
+        ownsRequest,
+        current: () => {
+          const current = navigationStore.getSnapshot();
+          return (
+            ownsRequest() &&
+            (request.accepted ||
+              (current.activeChat === navigation.activeChat &&
+                current.pathname === navigation.pathname))
+          );
+        },
+        accept: () => {
+          request.accepted = true;
+        },
+        finish: () => {
+          if (pendingReaderOpen.current === request)
+            pendingReaderOpen.current = null;
+        },
+      };
+    },
+    [cancelReaderOpen, requestAuthority, workObservation],
+  );
   const { setDeviceSetting } = useDeviceSettingsActions();
   const {
     importedSessionId,
@@ -2189,7 +2231,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
       if (
         !agentsLoaded ||
         execution?.signal?.aborted ||
-        execution?.beforeFocus?.() === false
+        execution?.isCurrent?.() === false
       )
         return false;
       // Failed or superseded hydration must not switch Projects. Route only
@@ -2221,32 +2263,19 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
       routeToScopedChatProject,
     ],
   );
-  const openSelectedConversationInScopedPane = useCallback(
+  const openReaderConversation = useCallback(
     async (
-      ...args: Parameters<typeof openConversationInScopedPane>
+      args: Parameters<typeof openConversationInScopedPane>,
+      request: ReturnType<typeof beginReaderOpen>,
+      revealReader = true,
     ): Promise<ConversationOpenResult> => {
-      cancelReaderOpen();
-      const request = readerIntent.current;
-      const controller = new AbortController();
-      pendingReaderOpen.current = controller;
       const execution = args[7];
-      let expectedNavigation = navigationStore.getSnapshot();
-      const ownsRequest = () =>
-        readerIntent.current === request &&
-        !controller.signal.aborted &&
-        requestAuthority?.isCurrent() !== false;
-      const isCurrent = () => {
-        const current = navigationStore.getSnapshot();
-        return (
-          ownsRequest() &&
-          !execution?.signal?.aborted &&
-          execution?.isCurrent?.() !== false &&
-          current.activeChat === expectedNavigation.activeChat &&
-          current.pathname === expectedNavigation.pathname
-        );
-      };
+      const isCurrent = () =>
+        request.current() &&
+        !execution?.signal?.aborted &&
+        execution?.isCurrent?.() !== false;
       try {
-        const opening = openConversationInScopedPane(
+        const opened = await openConversationInScopedPane(
           args[0],
           args[1],
           args[2],
@@ -2256,42 +2285,52 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
           args[6],
           {
             ...execution,
-            signal: controller.signal,
-            isCurrent,
-            beforeFocus: () =>
-              isCurrent() && execution?.beforeFocus?.() !== false,
+            // Selecting another reader retires focus, not healthy history data.
+            isCurrent: request.dataCurrent,
+            beforeFocus: () => {
+              if (!isCurrent() || execution?.beforeFocus?.() === false)
+                return false;
+              request.accept();
+              return true;
+            },
           },
         );
-        // Project routing can commit synchronously; bind focus to that destination.
-        expectedNavigation = navigationStore.getSnapshot();
-        const opened = await opening;
-        if (!ownsRequest() || (!opened && !isCurrent())) return 'cancelled';
+        if (!request.ownsRequest() || (!opened && !isCurrent()))
+          return 'cancelled';
         if (!opened)
           return agentsLoaded && agents.some((agent) => agent.slug === args[1])
             ? 'unavailable'
             : false;
-        setMobileInboxOpen(false);
-        leaveNewChatDraft();
-        setImportedSessionId(null);
+        if (revealReader) {
+          setMobileInboxOpen(false);
+          leaveNewChatDraft();
+          setImportedSessionId(null);
+        }
         return true;
       } catch (error) {
         if (!isCurrent()) return 'cancelled';
         throw error;
-      } finally {
-        if (pendingReaderOpen.current === controller)
-          pendingReaderOpen.current = null;
       }
     },
     [
       agents,
       agentsLoaded,
-      requestAuthority,
-      cancelReaderOpen,
       leaveNewChatDraft,
       openConversationInScopedPane,
       setImportedSessionId,
       setMobileInboxOpen,
     ],
+  );
+  const openSelectedConversationInScopedPane = useCallback(
+    async (...args: Parameters<typeof openConversationInScopedPane>) => {
+      const request = beginReaderOpen(args[7]?.isCurrent);
+      try {
+        return await openReaderConversation(args, request);
+      } finally {
+        request.finish();
+      }
+    },
+    [beginReaderOpen, openReaderConversation],
   );
   const openUserSelectedConversationInScopedPane = useCallback(
     async (...args: Parameters<typeof openConversationInScopedPane>) =>
@@ -2305,46 +2344,67 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
       keepReader = false,
       options?: { revealDock?: boolean },
     ) => {
-      const controller = await loadConversationOpenController();
-      const opened = await controller.openConversationForDock(conversation, {
-        apiBase,
-        observation: workObservation,
-        open: (id, agent, slug, name, model, updated, accepted, execution) => {
-          const open = keepReader
-            ? openConversationInScopedPane
-            : openUserSelectedConversationInScopedPane;
-          return open(id, agent, slug, name, model, updated, accepted, {
-            ...execution,
-            ...options,
-          });
-        },
-        projectName: (slug) =>
-          projects.find((project) => project.slug === slug)?.name,
-        findTab: (conversationId) =>
-          Object.entries(activeChatsStore.getSnapshot()).find(
-            ([, chat]) => chat.conversationId === conversationId,
-          )?.[0],
-        updateChat,
-        readChat: (tabId) => activeChatsStore.getSnapshot()[tabId],
-        agentName: (id) => agents.find((agent) => agent.slug === id)?.name,
-        setRecovery: setConversationOpenRecovery,
-        lastCallerAccess: (conversationId) => {
-          const last = conversationOpenRecoveryRef.current;
-          return last?.conversation.id === conversationId
-            ? last.callerAccess
-            : undefined;
-        },
-        isCurrent,
-      });
-      if (keepReader && opened) setImportedSessionId(null);
-      return opened;
+      const request = beginReaderOpen(isCurrent);
+      try {
+        const controller = await loadConversationOpenController();
+        if (!request.current()) return false;
+        const opened = await controller.openConversationForDock(conversation, {
+          apiBase,
+          observation: workObservation,
+          open: async (
+            id,
+            agent,
+            slug,
+            name,
+            model,
+            updated,
+            accepted,
+            execution,
+          ) =>
+            (await openReaderConversation(
+              [
+                id,
+                agent,
+                slug,
+                name,
+                model,
+                updated,
+                accepted,
+                { ...execution, ...options },
+              ],
+              request,
+              !keepReader,
+            )) === true,
+          projectName: (slug) =>
+            projects.find((project) => project.slug === slug)?.name,
+          findTab: (conversationId) =>
+            Object.entries(activeChatsStore.getSnapshot()).find(
+              ([, chat]) => chat.conversationId === conversationId,
+            )?.[0],
+          updateChat,
+          readChat: (tabId) => activeChatsStore.getSnapshot()[tabId],
+          agentName: (id) => agents.find((agent) => agent.slug === id)?.name,
+          setRecovery: setConversationOpenRecovery,
+          lastCallerAccess: (conversationId) => {
+            const last = conversationOpenRecoveryRef.current;
+            return last?.conversation.id === conversationId
+              ? last.callerAccess
+              : undefined;
+          },
+          isCurrent: request.current,
+        });
+        if (keepReader && opened) setImportedSessionId(null);
+        return opened;
+      } finally {
+        request.finish();
+      }
     },
     [
       apiBase,
       workObservation,
-      openConversationInScopedPane,
+      beginReaderOpen,
+      openReaderConversation,
       setImportedSessionId,
-      openUserSelectedConversationInScopedPane,
       projects,
       updateChat,
       agents,
@@ -4369,7 +4429,10 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                   conversationId: activeSession.conversationId,
                 }
               : undefined,
-          onCloseSessionPicker: () => setShowSessionPicker(false),
+          onCloseSessionPicker: () => {
+            cancelReaderOpen();
+            setShowSessionPicker(false);
+          },
           // Discovery is not proof that a writable Session exists. The lazy
           // controller resolves, opens, and binds this row as one command.
           onSessionPickerSelect: openConversationForDock,

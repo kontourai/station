@@ -99,9 +99,7 @@ export function MobileInboxPanel({
   /** Injectable clock for the recency boundary; defaults to wall time. */
   now?: number;
   /**
-   * station#2802: live agent catalog for the rows' leading agent icons — the
-   * same shared-row affordance the desktop panel gets, so the two chromes do
-   * not drift into different row anatomy. Omitted renders no icons.
+   * Live agent catalog for shared row icons. Omitted renders no icons.
    */
   agents?: InboxGroupListProps['agents'];
   /** Status facts by item id; see `InboxGroupListProps.workFacts`. */
@@ -122,7 +120,6 @@ export function MobileInboxPanel({
   const { inboxSections } = useDeviceSettings();
   const { setDeviceSetting } = useDeviceSettingsActions();
   const swipeActions = useSheetGesturesPreview();
-  // Keep one recency clock for the visible inbox.
   const now = useCoarseNow(suppliedNow, { enabled: open });
   useRowFocusPreservation(panelRef, '.chat-dock-inbox__item');
   const openMembership = useMemo(
@@ -282,9 +279,6 @@ export function MobileInboxPanel({
             )}
           </p>
         )}
-        {/* kontourai/station#3312: rows/groups are the shared inbox
-              anatomy (`ChatDockInboxRows.tsx`) — same richness as the
-              desktop panel, with `--touch` chrome for ≥44px targets. */}
         <InboxGroupList
           swipeActions={swipeActions}
           groups={visibleGroups}
@@ -343,7 +337,7 @@ export function MobileInboxPanel({
           }}
           onSnoozeWake={(task, wakeAt, action) => {
             // The row leaves its group on snooze/unsnooze; keep focus in
-            // the sheet rather than stranding it on a removed node (#1054).
+            // the Inbox rather than stranding it on a removed node (#1054).
             moveFocusBeforeRemovingInboxRow(panelRef.current, action);
             const clock = now;
             const snoozeKey = snoozeKeyFor(task);

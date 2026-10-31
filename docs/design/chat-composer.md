@@ -391,9 +391,10 @@ an epoch change before resolution settles discards the result, without opening,
 patching the chat, or publishing activity. Within the same epoch, inventory
 pruning may retire the observation token but cannot discard an imperative open
 or its chat update. Only a current observation token publishes read success or
-failure; mounting the opened chat re-establishes observation. Picker validity
-also gates focus and the final patch after awaited hydration. Hydration checks
-command currency before publishing to the message cache or tab. Focusing or
+failure; mounting the opened chat re-establishes observation. Picker selection is captured before asynchronous resolution. Closing the picker,
+choosing another chat, or opening New chat retires that selection's focus and
+visible completion. History publication instead checks caller authority and the
+stream epoch; changing the visible reader does not cancel healthy history data. Focusing or
 reopening a hydrating tab adopts its cleanup ownership without cancelling a
 healthy same-epoch response; a superseded command cannot remove that adopted
 tab. These commands add no deadline or abort signal to resolution or transcript
