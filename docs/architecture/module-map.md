@@ -242,7 +242,7 @@ Those writes return 202 without mutation. The
 single-use transaction and target fingerprint; the separate consent listener
 requires a UV passkey assertion from its owning session before commit. Cancel
 uses that session and the render nonce on the consent origin to record terminal
-denial without a passkey; it cannot commit. Ordinary Device pairing approval,
+denial without a passkey; it cannot commit. Ordinary and account-bound Device pairing approval,
 Device scope/revoke/removal, people groups, personal tokens and different-passkey
 revocation share this boundary. Turning on Project sharing
 ([step-up](../../src-server/runtime/routes/project-sharing-step-up.ts), #4306) uses

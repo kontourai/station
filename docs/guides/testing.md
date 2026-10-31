@@ -2584,8 +2584,11 @@ receipt); `fast-checks-statics` runs `ci:fast` with
 UI bundle budget, enforced by the fresh browser startup build rather than a
 second standalone UI build. `fast-checks` requires successful plan/statics jobs.
 The `aggregate` command independently validates empty-plan omission or proves
-that each allocated shard ran its exact slice. An unexpected skip, cancellation,
-missing receipt, or receipt for another plan or head fails the check. A deferred
+that each allocated shard ran its exact slice. Each nonempty resource group also
+compares Vitest’s reported file identities with its planned files; missing,
+duplicate, unexpected, or outside-checkout identities cause a parser error even
+when aggregate test counts pass. An unexpected skip, cancellation, missing
+receipt, or receipt for another plan or head fails the check. A deferred
 selection (the selector's exit 3) is reported and passes only when its executed
 mapped tests pass; a real assertion or infrastructure failure is not converted
 into deferral. The unresolved obligation remains for main/release full

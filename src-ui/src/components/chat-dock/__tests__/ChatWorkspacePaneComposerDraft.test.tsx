@@ -1399,7 +1399,7 @@ test('a real failed history open stays at Inbox instead of falling back to the i
 });
 
 test.each([false, true])(
-  'the global picker routes only a current selection (deferred: %s)',
+  'the global picker routes only a current selection; a routed open keeps the new-chat Project (deferred: %s)',
   async (deferred) => {
     openChatA();
     const conversation: ConversationListItem = {
@@ -1460,6 +1460,8 @@ test.each([false, true])(
     try {
       navigationStore.setLayout('pulse', 'coding');
       navigationStore.setActiveChat('chat-a');
+      // Entering Pulse's workspace chose Pulse for new chats.
+      expect(deviceSettingsStore.get('chatDockProjectSlug')).toBe('pulse');
       renderInProviders(<RouteScopedChatPane />);
       await act(async () => {});
       act(() =>
@@ -1512,6 +1514,9 @@ test.each([false, true])(
       expect(navigationStore.getSnapshot().pathname).toContain(
         '/projects/other/',
       );
+      // Opening an existing conversation routes to its own Project without
+      // replacing the Project chosen for new chats.
+      expect(deviceSettingsStore.get('chatDockProjectSlug')).toBe('pulse');
       expect(openConversationAction).not.toHaveBeenCalled();
     } finally {
       vi.stubGlobal('fetch', fetchBefore);

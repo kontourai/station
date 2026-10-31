@@ -116,6 +116,14 @@ A browser on the Station host without a configured HTTPS consent origin can no
 longer change device access from this panel. Use `station environment access …`
 on the host instead.
 
+To approve an invited person's browser, open pairing management and choose the
+account's Project access. Approve opens a separate passkey review naming the
+browser, Station account and read-only access; account details expose the
+provider and account ID. Confirm with a fresh
+passkey; the request stays pending until that confirmation succeeds. If needed,
+enroll and sign in as described above, then return and approve again. Without a
+configured HTTPS consent origin, use the host CLI's `--bind-account` path.
+
 1. Sign in as operator. Choose **Change access**, select permissions, and choose
    **Apply**. Revoking a device or removing its revoked record uses the same flow.
 2. The panel opens a separate consent-origin review. If the browser blocks the

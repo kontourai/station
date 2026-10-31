@@ -1,5 +1,41 @@
 [
   {
+    "timestampUtc": "2026-10-31T22:08:50Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.2495.41245722791",
+    "sha": "4037fadb92bf4fd7257237b3f5ed3d2ce97af782",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/41245722791",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.2495.41245722791 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "ee3a07d023d4919c48a3ae65e3918d41135024a6",
+      "groups": {
+        "feat": [
+          "[#4321](https://github.com/kontourai/station/pull/4321) feat(settings): turn on Project sharing with local accounts from Settings",
+          "[#4372](https://github.com/kontourai/station/pull/4372) feat(efficiency): bound agent work, learning and isolated repairs"
+        ],
+        "fix": [
+          "[#4409](https://github.com/kontourai/station/pull/4409) fix: validate shard suite coverage",
+          "[#4374](https://github.com/kontourai/station/pull/4374) fix(chat): send busy composer follow-ups to the durable inbox"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4378](https://github.com/kontourai/station/pull/4378) test(chat-dock): pin that opening an existing conversation keeps the new-chat Project",
+          "[#4373](https://github.com/kontourai/station/pull/4373) build(deps-dev): bump glob from 13.0.6 to 14.0.2"
+        ]
+      },
+      "note": null,
+      "commitCount": 6
+    }
+  },
+  {
     "timestampUtc": "2026-10-31T14:45:15Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2495.1",
