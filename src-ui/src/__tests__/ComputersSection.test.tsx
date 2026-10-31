@@ -86,6 +86,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   // The section rail's own reads. They are here because two of these tests
   // render the FRAME around this section, which is the only way to compare
   // the rail's count against the rows the body actually drew.
+  useFeaturePreviewsQuery: () => ({ data: [] }),
   useConnectionsQuery: () => ({ data: [] }),
   useModelConnectionsQuery: () => ({ data: [] }),
   useEngineConnectionsQuery: () => ({ data: [] }),

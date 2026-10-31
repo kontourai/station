@@ -122,6 +122,6 @@ describe('an interrupted subagent', () => {
     ]);
     expect(
       screen.getByRole('button', { name: /5 subagents/ }).textContent,
-    ).toContain('4 interrupted · 1 completed');
+    ).toContain('4 interrupted · 1 run finished');
   });
 });

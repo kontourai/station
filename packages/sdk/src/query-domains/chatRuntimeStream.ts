@@ -1,10 +1,12 @@
 import { FOREGROUND_MESSAGE_INDETERMINATE_CODE } from '@kontourai/station-contracts/orchestration';
 import { readWithStallWatchdog } from '@kontourai/station-contracts/stall-watchdog';
 import type { UIBlock } from '@kontourai/station-contracts/ui-block';
-import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { StationHttpError } from '../client/api-error-message';
 import { ChatHttpError } from '../client/chatHttpError';
-import { rememberSentTurnKey } from '../client/sent-turn-key';
+import {
+  chooseSentTurnKey,
+  rememberSentTurnKey,
+} from '../client/sent-turn-key';
 import { isStationAnswer } from '../client/station-envelope';
 import { resolveApiBase } from '../query-core';
 import type {
@@ -368,17 +370,7 @@ type ConversationTurnResult = {
 export async function streamConversationTurn(
   input: ConversationTurnInput,
 ): Promise<ConversationTurnResult> {
-  const suppliedKey = input.chatOptions?.clientTurnId;
-  if (
-    suppliedKey !== undefined &&
-    (typeof suppliedKey !== 'string' ||
-      !suppliedKey.trim() ||
-      suppliedKey.length > 200)
-  )
-    throw new TypeError(
-      'clientTurnId must be a non-empty string of at most 200 characters',
-    );
-  const clientTurnId = suppliedKey ?? randomCorrelationId();
+  const clientTurnId = chooseSentTurnKey(input.chatOptions?.clientTurnId);
   try {
     return await streamKeyedConversationTurn(input, clientTurnId);
   } catch (error) {

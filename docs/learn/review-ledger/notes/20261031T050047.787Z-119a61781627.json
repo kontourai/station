@@ -1,0 +1,7 @@
+{
+  "revision": "6a0091138b4120acc5b103f95708a031c0b0fa4e",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Reviewed ChatDock UI open-path delta through existing authoritative conversation controller and SDK resolution. Selection fencing and deferred focus/routing change no HTTP route, request/response schema, authorization grant or server-side mutation. This records that narrow API-impact review, not a repeat audit of the entire API guide.","inputs":["docs/reference/api.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

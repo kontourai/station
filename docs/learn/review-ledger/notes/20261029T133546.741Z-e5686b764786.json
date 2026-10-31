@@ -1,0 +1,7 @@
+{
+  "revision": "18da8014b08a4a0ed7de8cbc8d3934cf15503e20",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"After merging the person-notification change, checked the new person feed authority and per-person read/dismiss descriptions against its retained runtime test, and the integration-status operator and member-refusal descriptions against the preserved adjacent status test. Both tests ran in the 15-file merge suite; neither proves hosted or live-provider behavior.","inputs":["docs/reference/api.md","src-server/runtime/routes/__tests__/runtime-routes-account-personal-tokens.test.ts"]}
+  ]
+}
