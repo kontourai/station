@@ -1599,6 +1599,18 @@ function verifyReceiverStartEffect(
     );
 }
 
+function refuseReceiverStart(error: unknown): never {
+  if (
+    error instanceof ReceiverExecutionRefusal &&
+    (error.code === 'receiver_execution_not_offered' ||
+      error.code === 'receiver_execution_unavailable' ||
+      error.code === 'receiver_execution_authority_changed' ||
+      error.code === 'receiver_execution_consent_stale')
+  )
+    throw new SessionStartRefusedError(error.message, error.code);
+  throw error;
+}
+
 /**
  * #484 continuation: the refusal for a marked portable thread that arrives
  * at an effect WITHOUT a fresh admission. A pre-incarnation (two-field)
@@ -11061,6 +11073,7 @@ export class OrchestrationService {
           // so routes answer the exact 403 (never a 400 with a bare
           // message) and session-turn-boundary receipts stay truthful.
           error instanceof ReceiverExecutionRefusal ||
+          error instanceof SessionStartRefusedError ||
           error instanceof TurnIdempotencySettledError ||
           // #2494: a respawn refused for its confinement started nothing.
           error instanceof ConfinementRefusedError
@@ -11091,6 +11104,8 @@ export class OrchestrationService {
         // inner errors keep their existing (message-only) projection
         // deliberately — widening which codes leak through this seam is a
         // separate, per-code decision.
+        // A typed start refusal from lazy recovery preserves the same closed
+        // diagnostic and failure metadata as an explicit start command.
         // #484 continuation: a portable refusal's closed code is already a
         // public contract (fixed copy per code, 403-mapped at every route),
         // so it survives here exactly like the ended-session code.
@@ -11108,6 +11123,7 @@ export class OrchestrationService {
           error instanceof DraftDiscardBusyError ||
           error instanceof RequestEventGuardError ||
           error instanceof ReceiverExecutionRefusal ||
+          error instanceof SessionStartRefusedError ||
           error instanceof AttachmentInputUnsupportedError ||
           error instanceof TurnIdempotencySettledError ||
           error instanceof ApprovalGovernanceRefusedError ||
@@ -11123,7 +11139,8 @@ export class OrchestrationService {
             ? error.code
             : retryableAdapterRefusalCode(error),
         error instanceof SendTurnRefusedError ||
-          error instanceof ProviderRefusalError
+          error instanceof ProviderRefusalError ||
+          error instanceof SessionStartRefusedError
           ? error
           : undefined,
       );
@@ -14911,10 +14928,46 @@ export class OrchestrationService {
    */
   private recoveredSessionStartOptions(
     admission?: SessionCommandInternalOptions['sessionStartAdmission'],
+    receiverAdmission?: ReceiverExecutionEffectAdmission,
   ): RecoveredSessionStartOptions {
     return {
       assertRetainedWorkspaceAuthorized: async (threadId) => {
         await this.authorizedConversationWorkspace(threadId);
+      },
+      prepareReceiverStart: async (input) => {
+        const verify = () => {
+          try {
+            const admitted = receiverAdmission?.admitted;
+            if (admitted) {
+              verifyReceiverStartEffect(receiverAdmission, {
+                threadId: input.threadId,
+                cwd: input.cwd,
+                projectSlug: input.metadata?.projectSlug,
+                consent: portableConsentOfStartedMetadata(input.metadata),
+              });
+              verifyReceiverTurnEffect(
+                admitted,
+                input,
+                this.latestStartedMetadataOfThread(input.threadId),
+                this.persistedPortableConsentOfThread(input.threadId),
+              );
+            } else {
+              const consent = this.persistedPortableConsentOfThread(
+                input.threadId,
+              );
+              if (consent) throw portableRefusalForUnadmittedThread(consent);
+            }
+          } catch (error) {
+            refuseReceiverStart(error);
+          }
+        };
+        try {
+          await receiverAdmission?.recheck();
+        } catch (error) {
+          refuseReceiverStart(error);
+        }
+        verify();
+        return verify;
       },
       invokeSessionStart: (threadId, invoke) =>
         this.runEngineSessionStart(threadId, invoke, admission),
@@ -15074,11 +15127,17 @@ export class OrchestrationService {
     // resumeCursor untouched — the session stays dormant and re-routable,
     // never quarantined or closed. Ordinary retained Project authority is
     // checked separately at the provider start inside recovery preparation.
-    const recoveredAdmitted = receiverAdmission?.admitted
-      ? { ...receiverAdmission.admitted }
+    const recoveredReceiver = receiverAdmission
+      ? {
+          recheck: receiverAdmission.recheck,
+          ...(receiverAdmission.admitted
+            ? { admitted: { ...receiverAdmission.admitted } }
+            : {}),
+        }
       : undefined;
-    if (recoveredAdmitted && receiverAdmission) {
-      await receiverAdmission.recheck();
+    const recoveredAdmitted = recoveredReceiver?.admitted;
+    if (recoveredAdmitted && recoveredReceiver) {
+      await recoveredReceiver.recheck();
       verifyReceiverTurnEffect(
         recoveredAdmitted,
         { threadId: session.threadId, cwd: session.cwd },
@@ -15097,7 +15156,7 @@ export class OrchestrationService {
       session,
       adapter,
       ...(tenantExecutionContext ? { tenantExecutionContext } : {}),
-      options: this.recoveredSessionStartOptions(admission),
+      options: this.recoveredSessionStartOptions(admission, recoveredReceiver),
     });
     return adapter;
   }

@@ -649,6 +649,13 @@ describe('server-ordered approval posture (#2436)', () => {
         await expect(pending).rejects.toThrow(/Approval settings changed/);
         expect(claude.starts).toHaveLength(startsBefore);
         if (path === 'dormant') {
+          await expect(pending).rejects.toMatchObject({
+            code: 'approval-posture-changed',
+            receipt: { status: 'rejected' },
+            kind: 'permission_denied',
+            failurePhase: 'refused',
+            retryable: false,
+          });
           expect(
             store
               .listEvents(threadId)

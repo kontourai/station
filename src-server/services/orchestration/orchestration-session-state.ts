@@ -1663,6 +1663,10 @@ function recoveryFailureEventId(threadId: string, message: string): string {
 export interface RecoveredSessionStartOptions {
   /** Production composition reauthorizes the retained Project after preparation. */
   assertRetainedWorkspaceAuthorized?: (threadId: string) => Promise<void>;
+  /** Recheck receiver authority after preparation; verify the exact input at entry. */
+  prepareReceiverStart?: (
+    input: ProviderSessionStartInput,
+  ) => Promise<() => void>;
   /** Production composition joins the same durable start/turn authority. */
   invokeSessionStart?: (
     threadId: string,
@@ -1845,8 +1849,10 @@ export async function startRecoveredOrchestrationSession(options: {
       // #2873: a respawn re-resolves the folder an agent's dispatch recorded
       // and refuses a different result, before any adapter call.
       assertDispatchCwdUnmoved(startInput, startInput.cwd);
+      const verifyReceiver = await deps.prepareReceiverStart?.(startInput);
       preparedPosture?.assertCurrent();
       const invoke = () => {
+        verifyReceiver?.();
         preparedPosture?.assertCurrent();
         return adapter.startSession(startInput);
       };

@@ -248,7 +248,6 @@ describe('retained Project authority at recovery provider effects', () => {
         {
           portableProjectId: manifest.id,
           resourceId: manifest.repos[0].id,
-          localProjectId: project.id,
         },
         () => true,
       );
@@ -267,31 +266,34 @@ describe('retained Project authority at recovery provider effects', () => {
     const initialReceiver = portable
       ? await mintReceiverAdmission()
       : undefined;
-    await runtime.dispatch(
-      {
-        type: 'startSession',
-        input: {
-          threadId,
-          provider: 'claude',
-          ...(initialReceiver ? { cwd: initialReceiver.admitted.cwd } : {}),
-          metadata: {
-            projectSlug: project.slug,
-            executionAgentId: 'retained-agent',
+    const initialInput = {
+      threadId,
+      provider: 'claude' as const,
+      ...(initialReceiver ? { cwd: initialReceiver.admitted.cwd } : {}),
+      metadata: {
+        projectSlug: project.slug,
+        executionAgentId: 'retained-agent',
+      },
+    };
+    if (initialReceiver) {
+      runtime.initialize();
+      await awaitSessionRecoveryCompleted(runtime);
+      const begun = await runtime.startSessionInternal(
+        { type: 'start-session', input: initialInput },
+        {},
+        {
+          receiverExecutionAdmission: initialReceiver,
+          portableExecutionConsent: {
+            portableProjectId: manifest.id,
+            resourceId: manifest.repos[0].id,
+            localProjectId: project.id,
           },
         },
-      },
-      undefined,
-      initialReceiver
-        ? {
-            receiverExecutionAdmission: initialReceiver,
-            portableExecutionConsent: {
-              portableProjectId: manifest.id,
-              resourceId: manifest.repos[0].id,
-              localProjectId: project.id,
-            },
-          }
-        : undefined,
-    );
+      );
+      expect(begun).toMatchObject({ status: 'accepted' });
+    } else {
+      await runtime.dispatch({ type: 'startSession', input: initialInput });
+    }
     await vi.waitFor(() =>
       expect(runtime.firstStartedMetadataOfThread(threadId)).toMatchObject(
         identity === 'qualified'
@@ -654,13 +656,33 @@ describe('retained Project authority at recovery provider effects', () => {
         await f.setReceiverOffer(false);
         expect(coldEngine.startSession).not.toHaveBeenCalled();
         held.release();
-        await expect(recovering).rejects.toMatchObject({
-          code: 'receiver_execution_not_offered',
-        });
+        const refusal = await recovering.then(
+          () => undefined,
+          (error: unknown) => error,
+        );
         expect(coldEngine.startSession).not.toHaveBeenCalled();
         expect(coldEngine.sendTurn).not.toHaveBeenCalled();
+        expect(refusal).toMatchObject({
+          code: 'receiver_execution_not_offered',
+          receipt: { status: 'rejected' },
+          kind: 'permission_denied',
+          failurePhase: 'refused',
+          retryable: false,
+        });
         expect(coldStore.readSessionByThread(f.threadId)).toMatchObject({
           resumeCursor: { cursor: 'retained-provider' },
+        });
+        expect(
+          coldStore
+            .listEvents(f.threadId)
+            .filter((row) => row.payload.method === 'runtime.error')
+            .at(-1)?.payload,
+        ).toMatchObject({
+          code: 'receiver_execution_not_offered',
+          kind: 'permission_denied',
+          failurePhase: 'refused',
+          retryable: false,
+          retriable: false,
         });
         await f.setReceiverOffer(true);
         await cold.dispatch(command, undefined, {
