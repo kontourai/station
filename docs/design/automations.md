@@ -21,8 +21,9 @@
 > Automations is the product surface for scheduled work: a scheduler job with
 > an optional target runs each time as a turn in a conversation, on any engine,
 > and agent check-backs are listed with it. That part ships. The GitHub event
-> sources, rules and episodes below (slices S2–S6) remain this proposal; they
-> are a future trigger for the same automations, not a separate product.
+> sources now have the default-off observation and bounded Task-action previews
+> described below. Publication and broader sources remain proposed. They extend
+> the same Automations surface.
 
 Status: **proposal.** It extends the existing
 [inbound webhook](../../src-server/routes/webhooks/inbound-webhooks.ts) and
@@ -85,7 +86,10 @@ identity and are not retried as fresh work.
 Task creation and Session seeding alone do not start a repair turn. The actions
 runtime submits the framed prompt to the existing durable inbox, retaining the
 server-issued intent, original turn key and automation-rule principal. Placement
-and final provider admission recheck the policy. MonitorTaskTurnSupervisor owns
+and final provider admission recheck the policy. Startup restores retained
+Session restrictions before scheduler polling, including when the actions preview
+is disabled; an unreadable recovery journal cannot authorize a turn.
+MonitorTaskTurnSupervisor owns
 turn, token and wall limits; full-access grants remain absent. Token enforcement
 depends on canonical provider usage arriving; missing usage is unknown, not a
 hard billing reservation. A completed action records the first turn terminal,

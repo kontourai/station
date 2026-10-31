@@ -1653,7 +1653,7 @@ set it; Station strips any value a caller supplies):
   `runtime-attested` (Station's own runtime vouched for it): the session is
   real work of your conversation that runs under another owner. In hosted
   mode that happens when Station can't attribute the dispatch to a bound
-  caller (for example a Codex session calling through its URL token), so the
+  caller (for example an external engine using a delegated-custody Session capability), so the
   delegate is the Station operator's. It is counted as not visible: no node,
   and the total is partial with one line saying how many such tasks there are.
   The stamp counts only on the session's start record, beside the parent it
