@@ -56,6 +56,7 @@ import {
   SESSION_CONFINEMENT_ROOT_METADATA_KEY,
   SESSION_LOCAL_PROJECT_ID_METADATA_KEY,
 } from '../../../services/orchestration/session-project-identity.js';
+import type { ScheduledConversationRunner } from '../../../services/scheduling/scheduled-conversation-runs.js';
 import { createStationControlMcpServer } from '../../../tools/station-control-mcp-server.js';
 import {
   STATION_CONTROL_CALLER_TOKEN_HEADER,
@@ -99,18 +100,26 @@ const support = vi.hoisted(() => ({
   withoutConnectionReader: false,
   /** The real routes' address, for a tool's request to this Station's API. */
   routeBase: undefined as string | undefined,
+  conversationRuns: undefined as ScheduledConversationRunner | undefined,
 }));
 
 vi.mock('../runtime-route-support.js', () => {
   const stub = new Proxy({}, { get: () => () => undefined });
   return {
-    configureRuntimeSupportServices: () => ({
-      schedulerService: stub,
-      notificationService: support.notificationService,
-      attentionProjection: stub,
-      webPushService: stub,
-      webPushEnabled: false,
-    }),
+    configureRuntimeSupportServices: (
+      _context: unknown,
+      _flow: unknown,
+      options: { conversationRuns?: ScheduledConversationRunner },
+    ) => {
+      support.conversationRuns = options.conversationRuns;
+      return {
+        schedulerService: stub,
+        notificationService: support.notificationService,
+        attentionProjection: stub,
+        webPushService: stub,
+        webPushEnabled: false,
+      };
+    },
     createRuntimeSystemRouteDeps: () => stub,
   };
 });
@@ -304,6 +313,7 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
     support.beforeSpawn = undefined;
     support.withoutConnectionReader = false;
     support.routeBase = undefined;
+    support.conversationRuns = undefined;
     for (const close of closers.splice(0)) await close();
     vi.unstubAllGlobals();
     if (previousApiBase === undefined) delete process.env.STATION_API_BASE;
@@ -551,6 +561,60 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
       },
     };
   }
+
+  test('a dedicated automation passes its reserved conversation to the real foreground start', async () => {
+    const { adapter, eventStore } = await setup();
+    const runner = support.conversationRuns;
+    if (!runner)
+      throw new Error('runtime did not wire the conversation runner');
+    const conversationId = `conversation:${randomUUID()}`;
+    const controller = new AbortController();
+    const startedIds: string[] = [];
+    const result = await runner.run({
+      jobId: randomUUID(),
+      jobName: 'dedicated-probe',
+      runId: randomUUID(),
+      prompt: 'Check the workspace',
+      target: { kind: 'dedicated', agent: 'writer' },
+      createdBy: { userId: LOCAL_OPERATOR_PRINCIPAL_ID },
+      lastSuccessAt: undefined,
+      reserveDedicatedConversation: () => conversationId,
+      onConversationStarted: (id) => {
+        startedIds.push(id);
+        throw new Error('simulated lost save');
+      },
+      onHandedOff: () => controller.abort(),
+      signal: controller.signal,
+    });
+    expect(adapter.starts.map((start) => start.input.threadId)).toEqual([
+      conversationId,
+    ]);
+    expect(startedIds).toEqual([conversationId]);
+    expect(eventStore.conversationSessions(conversationId)).toHaveLength(1);
+    expect(['completed', 'indeterminate']).toContain(result.kind);
+    expect(result).toMatchObject({ conversationId });
+    const next = new AbortController();
+    const recovered = await runner.run({
+      jobId: randomUUID(),
+      jobName: 'dedicated-probe',
+      runId: randomUUID(),
+      prompt: 'Check the workspace again',
+      target: { kind: 'dedicated', agent: 'writer' },
+      createdBy: { userId: LOCAL_OPERATOR_PRINCIPAL_ID },
+      lastSuccessAt: undefined,
+      reserveDedicatedConversation: () => conversationId,
+      onConversationStarted: (id) => startedIds.push(id),
+      onHandedOff: () => next.abort(),
+      signal: next.signal,
+    });
+    expect(['completed', 'indeterminate']).toContain(recovered.kind);
+    expect(recovered).toMatchObject({ conversationId });
+    expect(startedIds).toEqual([conversationId, conversationId]);
+    expect(adapter.starts.map((start) => start.input.threadId)).toEqual([
+      conversationId,
+    ]);
+    expect(eventStore.conversationSessions(conversationId)).toHaveLength(1);
+  });
 
   const internal = (extra: Record<string, string> = {}) => ({
     'content-type': 'application/json',

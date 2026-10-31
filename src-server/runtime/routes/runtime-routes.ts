@@ -446,7 +446,10 @@ import {
 } from '../../routes/operations/notification-preferences.js';
 import { createNotificationRoutes } from '../../routes/operations/notifications.js';
 import { createPushRoutes } from '../../routes/operations/push-routes.js';
-import { createSchedulerRoutes } from '../../routes/operations/scheduler.js';
+import {
+  createSchedulerReadProjection,
+  createSchedulerRoutes,
+} from '../../routes/operations/scheduler.js';
 import { createSshEnvironmentRoutes } from '../../routes/operations/ssh-environments.js';
 import { createTelemetryRoutes } from '../../routes/operations/telemetry-events.js';
 import { createUsageTelemetryDisclosureRoutes } from '../../routes/operations/usage-telemetry-disclosure.js';
@@ -742,6 +745,7 @@ import {
 } from '../../services/orchestration/session-lifecycle-service.js';
 import type { StartOwnerAttribution } from '../../services/orchestration/session-owner-attribution.js';
 import { createSessionWorkItemModule } from '../../services/orchestration/session-work-item-module.js';
+import { STATION_FRAMED_TURN_CLIENT_ORIGIN } from '../../services/orchestration/station-turn-handoff.js';
 import {
   createTaskLeadReader,
   TaskQuestionWake,
@@ -808,6 +812,11 @@ import { GitHubPullRequestProvider } from '../../services/pull-requests/github-p
 import { GitLabPullRequestProvider } from '../../services/pull-requests/gitlab-pull-request-provider.js';
 import { PullRequestRepositoryContextResolver } from '../../services/pull-requests/pull-request-repository-context-resolver.js';
 import { createRemoteStationForwarder } from '../../services/remote-stations/remote-station-forwarder.js';
+import {
+  conversationAutomationsFrom,
+  readStoredScheduledTurnTerminal,
+  ScheduledConversationRuns,
+} from '../../services/scheduling/scheduled-conversation-runs.js';
 import type { SchedulerService } from '../../services/scheduling/scheduler-service.js';
 import type {
   IntegrationSecretResolver,
@@ -975,6 +984,7 @@ import type {
   RuntimeContext,
 } from '../types.js';
 import {
+  type AgentScheduleComposition,
   agentWakeUpConversation,
   composeAgentSchedule,
 } from './agent-schedule-composition.js';
@@ -1530,6 +1540,10 @@ export async function jobEditRetargetsGrantedWork(
 export function configureRuntimeRoutes(
   context: ConfigureRuntimeRoutesContext,
 ): ConfigureRuntimeRoutesResult {
+  // Shared by the operator grant routes and diagnostics admission.
+  const unattendedGrantStore = new UnattendedGrantStore(
+    context.configLoader.getProjectHomeDir(),
+  );
   const connectedClientPresence = new ClientConnectionPresence({
     record: (op) => connectedClientPresenceOps.add(1, { op }),
   });
@@ -3898,6 +3912,13 @@ export function configureRuntimeRoutes(
           'server',
         ),
       }),
+      {
+        agentGrant: (sessionId) =>
+          unattendedGrantStore.isGranted(
+            JSON.stringify({ kind: 'diagnostics-session', sessionId }),
+            'station-control:read_logs',
+          ),
+      },
     ),
   );
   context.app.route(
@@ -6314,6 +6335,67 @@ export function configureRuntimeRoutes(
     };
   }
 
+  /**
+   * An automation run's conversation turn: queued on the inbox, or for a
+   * dedicated target's first run, started through the same foreground seam
+   * an inbound webhook uses, as the automation's recorded creator and never
+   * with a full-access grant.
+   */
+  function createScheduledConversationRuns(
+    inbox: ThreadInboxDelivery,
+    eventStore: EventStore,
+  ): ScheduledConversationRuns {
+    return new ScheduledConversationRuns({
+      submit: (input) => inbox.submit(input),
+      conversationExists: (conversationId) =>
+        eventStore.conversationSessions(conversationId).length > 0,
+      entry: (conversationId, clientTurnId) =>
+        inbox.entry(conversationId, clientTurnId),
+      turnTerminal: (sessionId, turnId) =>
+        readStoredScheduledTurnTerminal(eventStore, sessionId, turnId),
+      startDedicated: stationServerEntry(
+        async ({
+          agent,
+          workspace,
+          message,
+          clientTurnId,
+          conversationId,
+          actor,
+        }) => {
+          const handle = await executeExecutionTargetMessage(
+            {
+              target: {
+                environment: { kind: 'current' },
+                agent: agentId(agent),
+                ...(workspace ? { workspace } : {}),
+              },
+              message,
+              clientTurnId,
+              conversationId,
+              userId: actor.userId,
+              ...(actor.principal ? { principal: actor.principal } : {}),
+              ...(actor.ownerAttribution
+                ? { ownerAttribution: actor.ownerAttribution }
+                : {}),
+              clientOrigin: STATION_FRAMED_TURN_CLIENT_ORIGIN,
+              fullAccessGrant: null,
+              readAuthority: readAuthorityForExecution(actor.userId),
+            },
+            context.orchestrationService,
+            undefined,
+            remoteStations,
+          );
+          return {
+            conversationId: handle.conversationId,
+            sessionId: handle.sessionId,
+            turnId: handle.providerTurnId,
+          };
+        },
+      ),
+      isIndeterminateStart: isForegroundIndeterminateShape,
+    });
+  }
+
   /** #3568: follow-ups a busy conversation holds until its turn ends. */
   /**
    * #3628: the coordinator wake's placement policy, bound once the wake
@@ -6503,6 +6585,18 @@ export function configureRuntimeRoutes(
     }
   })();
 
+  // Automations that target a conversation run there as a framed Station
+  // turn through the same inbox, so they run on whatever engine the
+  // conversation runs on. Without an inbox (hosted) such a job fails without
+  // invoking anything.
+  const scheduledConversationRuns =
+    threadInbox && context.orchestrationEventStore
+      ? createScheduledConversationRuns(
+          threadInbox,
+          context.orchestrationEventStore,
+        )
+      : undefined;
+
   // A Session killed for exhausting its workload memory continues once,
   // through the same inbox (capped, idempotent per dead turn). The person's
   // Continue reaches the same entry through the orchestration route.
@@ -6527,7 +6621,7 @@ export function configureRuntimeRoutes(
   // same placement rules (wait for a running turn, the live continuation's
   // permission rule, no stored full-access grant) apply. Without an inbox
   // (hosted), the tool answers that check-backs are unavailable.
-  const agentSchedule = composeAgentSchedule({
+  const agentSchedule: AgentScheduleComposition = composeAgentSchedule({
     store: context.orchestrationEventStore?.agentScheduleStore(),
     threadInbox,
     scope: stationControlDispatchScope,
@@ -6553,6 +6647,19 @@ export function configureRuntimeRoutes(
       ),
     agentProject: async (agentSlug) =>
       (await context.agentService.getAgent(agentSlug)).project,
+    // Read when a chat asks, after the scheduler below exists.
+    ...(hostedTenantRegistry === undefined
+      ? {
+          conversationAutomations: async (conversationId: string, c: Context) =>
+            conversationAutomationsFrom(
+              await createSchedulerReadProjection(
+                schedulerService,
+                agentSchedule,
+              ).visibleJobs(c),
+              conversationId,
+            ),
+        }
+      : {}),
     logger: context.logger,
   });
   const agentWakeUps = agentSchedule.delivery;
@@ -8739,9 +8846,6 @@ export function configureRuntimeRoutes(
   // station#2037: persistent exact-tool grants share the runtime's STATION_HOME
   // with the resolver already wired by slice 3. The narrower route-family
   // scope below makes this an operator-management surface, never an agent tool.
-  const unattendedGrantStore = new UnattendedGrantStore(
-    context.configLoader.getProjectHomeDir(),
-  );
   registerPullRequestProvider(new GitHubPullRequestProvider());
   registerPullRequestProvider(new GitLabPullRequestProvider());
   const reviewGuides = new PullRequestReviewGuideService(
@@ -10242,6 +10346,9 @@ export function configureRuntimeRoutes(
   } = configureRuntimeSupportServices(context, flowRunService, {
     focus: focusPresence,
     inAppLiveness: clientStreamPresence.inAppLiveness,
+    ...(scheduledConversationRuns
+      ? { conversationRuns: scheduledConversationRuns }
+      : {}),
     // #2064 (D4): the same aggregate `/api/survey-flow-reviews` serves, over
     // the same live project inventory — one read, so a paused review counted
     // by the bell is the same row the Review page lists.
@@ -10584,6 +10691,15 @@ export function configureRuntimeRoutes(
       readAuthorityForRequest,
       // A person approving an agent's `propose_job`.
       jobProposals: agentSchedule.jobProposals,
+      // Where an automation's runs land, and as whom. Acting on an
+      // existing targeted job is admitted even without a runner, so it can
+      // still be inspected, disabled or deleted.
+      admitAutomationJob: agentSchedule.admitAutomationJob,
+      mayReadAutomationJob: agentSchedule.mayReadAutomationJob,
+      mayReadAutomationRun: agentSchedule.mayReadAutomationRun,
+      ...(scheduledConversationRuns
+        ? { admitAutomationTarget: agentSchedule.admitAutomationTarget }
+        : {}),
     }),
   );
   context.app.route(
@@ -10604,6 +10720,10 @@ export function configureRuntimeRoutes(
       runService,
       context.logger,
       conversationReadAuthorityForRequest,
+      async (c) => {
+        const jobs = await schedulerService.listJobs();
+        return agentSchedule.scheduleRunReadFilter(c, jobs);
+      },
     ),
   );
   context.app.route(
