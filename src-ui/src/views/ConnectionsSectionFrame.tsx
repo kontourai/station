@@ -18,6 +18,7 @@ import {
   CONNECTION_SECTIONS,
   type ConnectionSectionId,
 } from './connections-hub/connection-sections';
+import { IntegrationStatusSection } from './connections-hub/IntegrationStatusSection';
 
 // archive#4463: the rail now renders the shared `Tabs` primitive,
 // which self-imports `.page__tabs`/`.page__tab`'s stylesheet — the frame no
@@ -121,6 +122,7 @@ function ConnectionsSectionFrameInner({
           navigate(CONNECTION_SECTIONS.find((entry) => entry.id === key)!.path)
         }
       />
+      <IntegrationStatusSection />
       <div
         role="tabpanel"
         id={tabPanelElementId(TABS_ID, sectionId)}

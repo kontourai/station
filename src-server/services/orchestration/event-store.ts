@@ -160,6 +160,7 @@ import {
 } from '../../domain/migrations/024-event-content.js';
 import { ensureProjectTaskRoomRevisionFreezeColumn } from '../../domain/migrations/024-project-task-room-revision-freeze.js';
 import { ensureConversationHistoryTitleSourceColumn } from '../../domain/migrations/025-conversation-history-title-source.js';
+import { TASK_WRITE_BACK_MIGRATION } from '../../domain/migrations/026-task-write-back.js';
 import {
   type CanonicalProposedChangeLookup,
   type RevisionAttributionAuthority,
@@ -411,6 +412,10 @@ import {
   createSqliteTaskReviewStore,
   type TaskReviewStore,
 } from './task-review-store.js';
+import {
+  createSqliteTaskWriteBackStore,
+  type TaskWriteBackStore,
+} from './task-write-back-store.js';
 import {
   createSqliteThreadInboxStore,
   type ThreadInboxStore,
@@ -2636,6 +2641,7 @@ export class EventStore {
   private threadInbox?: ThreadInboxStore;
   private taskMemory?: TaskMemoryStore;
   private taskReview?: TaskReviewStore;
+  private taskWriteBack?: TaskWriteBackStore;
   private agentSchedule?: AgentScheduleStore;
   private coordinator?: CoordinatorStore;
   private resumeChoices?: UsageLimitResumeChoices;
@@ -2961,6 +2967,7 @@ export class EventStore {
       this.db.exec(TASK_LEARNING_PROMOTIONS_MIGRATION);
       ensureUsageExportInvalidations(this.db);
       this.db.exec(TASK_REVIEW_MIGRATION);
+      this.db.exec(TASK_WRITE_BACK_MIGRATION);
       this.db.exec(EVENT_CONTENT_MIGRATION);
       this.sweepOrphanedEventContent();
       this.db
@@ -15725,6 +15732,11 @@ export class EventStore {
   taskMemoryStore(): TaskMemoryStore {
     this.taskMemory ??= createSqliteTaskMemoryStore(this.db);
     return this.taskMemory;
+  }
+
+  taskWriteBackStore(): TaskWriteBackStore {
+    this.taskWriteBack ??= createSqliteTaskWriteBackStore(this.db);
+    return this.taskWriteBack;
   }
 
   taskReviewStore(): TaskReviewStore {
