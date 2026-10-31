@@ -53,10 +53,13 @@ interface Walkthrough {
   createdAt: string;            // ISO 8601
   title?: string;
   source: {
-    adapter: string;            // 'video-import', later 'annotate', 'native'
+    adapter: string;            // e.g. 'video-import' or 'browser-screencast'
     adapterVersion: string;
     originalName?: string;      // file name only, never a path
     durationMs: number;
+    commit?: string;            // Task Browser recording's pinned commit
+    recording?: { file: string; mediaType: 'video/webm'; byteLength: number;
+      digest: `sha256:${string}` };
   };
   capture: {
     platform: 'desktop' | 'web' | 'ios' | 'android' | 'unknown';
@@ -339,7 +342,8 @@ an agent or person explicitly attaches them to something outside Station.
 - Streaming dictation for voice.
 - The triage skill that groups a Walkthrough into findings and routes them
   to a tracker.
-- A UI for recording or reviewing Walkthroughs.
+- A UI for importing Project Walkthroughs. Task-bound Browser clips can be
+  opened in Review's Screens area; see [Task clips](../guides/walkthroughs.md#record-a-task-clip).
 
 ### Import verification repairs
 
