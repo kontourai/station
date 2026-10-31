@@ -4298,6 +4298,26 @@ test('build gallery — capture key screens', async ({ page }) => {
         if (screen.beforeGoto) {
           await screen.beforeGoto(page);
         }
+        // Delivery is live-only. Observe this document's general-event stream
+        // before navigation so the POST cannot beat its subscription.
+        const notificationStream = [
+          'motion-reduced-notification',
+          'overlay-toast',
+          'overlay-toast-action',
+        ].includes(screen.name)
+          ? page.waitForResponse(
+              (response) => {
+                const url = new URL(response.url());
+                return (
+                  response.status() === 200 &&
+                  (url.pathname === '/events' ||
+                    (url.pathname === '/api/orchestration/events' &&
+                      url.searchParams.get('includeGeneral') === '1'))
+                );
+              },
+              { timeout: 10_000 },
+            )
+          : null;
         // #1650: the ORDER of everything below lives in
         // `runScreenshotCaptureSequence` so it is a unit a test can execute —
         // a passing gallery run compares pixels and can never report a step
@@ -4353,6 +4373,7 @@ test('build gallery — capture key screens', async ({ page }) => {
           // a precondition of the refactor rather than a property of the file.
           afterGoto: screen.afterGoto
             ? async () => {
+                await notificationStream;
                 await screen.afterGoto?.(page);
               }
             : null,
