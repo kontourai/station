@@ -2962,14 +2962,14 @@ token controls are pending. The earlier failures remain historical evidence.
 
 The relocated token controls now have executed mutation proof: removing only the
 two final token currentness callbacks causes exactly the named mint/revoke tests
-to fail (HTTP200 instead of409), with122 other cases passing. Byte-exact restoration
-passes124 cases. Independent bounded repair review is READY and the checked
+to fail (HTTP200 instead of409), with 122 other cases passing. Byte-exact restoration
+passes 124 cases. Independent bounded repair review is READY and the checked
 operator-device design impact requires no prose change. Ordinary-caller deferred
 currentness and whole-module/epic qualification remain outside that verdict.
 
 ### Published transaction-owner prerequisite available
 
-Flow Agents9.11.0 is now published from
+Flow Agents 9.11.0 is now published from
 `dca0f02dbd01becaa3368249db16c1837b2ce7bd`, containing the transaction-owner
 feature. The upstream owner supplied normal release/publisher success. Station's
 independent exact registry read and downloaded tarball verify the source gitHead,
