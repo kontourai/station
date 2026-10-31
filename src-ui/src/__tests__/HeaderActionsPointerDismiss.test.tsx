@@ -27,7 +27,13 @@
 
 import type { AttentionProjection } from '@kontourai/station-contracts/attention';
 import type { Notification } from '@kontourai/station-contracts/notification';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { useState } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -159,7 +165,10 @@ describe('#2081 — the notification bell closes its own popover', () => {
     // The press must have left focus INSIDE the popover, or the dismissal the
     // second press relies on was never armed and the assertion below would
     // pass against the defect as well as against the fix.
-    expect(panel()?.contains(document.activeElement)).toBe(true);
+    // The lazy panel can paint before its passive focus-entry effect runs.
+    await waitFor(() => {
+      expect(panel()?.contains(document.activeElement)).toBe(true);
+    });
 
     pointerClick(bell);
 
