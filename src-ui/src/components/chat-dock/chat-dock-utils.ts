@@ -313,7 +313,7 @@ export function resolveNewChatModalDefaultProjectSlug(input: {
 }
 
 type OpenChatsCollectionRoute =
-  | { surface: 'task-switcher-sheet' }
+  | { surface: 'mobile-inbox' }
   | {
       surface: 'inbox-panel';
       /** The panel does not mount here yet; move the dock first. */
@@ -331,7 +331,7 @@ type OpenChatsCollectionRoute =
 export function routeToOpenChatsCollection(
   chrome: DockChrome,
 ): OpenChatsCollectionRoute {
-  if (chrome.isMobile) return { surface: 'task-switcher-sheet' };
+  if (chrome.isMobile) return { surface: 'mobile-inbox' };
   return {
     surface: 'inbox-panel',
     switchToBottomMode: !inboxPanelMounts(chrome),

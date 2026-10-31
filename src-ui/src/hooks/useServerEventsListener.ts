@@ -1,0 +1,436 @@
+/**
+ * useServerEvents — single SSE connection to /events.
+ * Dispatches server-pushed events to React Query invalidations and callbacks.
+ */
+
+import { TURN_COMPLETION_NOTIFICATION_SOURCE } from '@kontourai/station-contracts/notification';
+import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
+import {
+  applyACPStatusEvent,
+  applyServerUpdateStateEvent,
+} from '@kontourai/station-sdk';
+import { type QueryClient, useQueryClient } from '@tanstack/react-query';
+import { useLayoutEffect, useMemo, useRef } from 'react';
+import {
+  useApiBase,
+  useHostRequestAuthorityScope,
+} from '../contexts/ApiBaseContext';
+import { useClientBootstrapReadiness } from '../contexts/AuthorityPersistenceContext';
+import { navigationStore } from '../contexts/NavigationContext';
+import { toastStore } from '../contexts/ToastContext';
+import { deviceSettingsStore } from '../lib/device-settings-store';
+import { playDeliveredNotificationSound } from '../lib/notification-sounds';
+import { subscribeSharedOrchestrationStream } from './orchestration/sharedStreamListeners';
+
+type EventHandler = (data: Record<string, unknown>) => void;
+
+function reloadPluginRegistry(): void {
+  void import('../core/PluginRegistry')
+    .then(({ pluginRegistry }) => pluginRegistry.reload())
+    .catch(() => {});
+}
+
+/**
+ * Fixed toast display duration for a NOTIFICATION_DELIVERED event
+ * (archive#1100 fix). Deliberately decoupled from
+ * `Notification.ttl`: that field now has two live meanings —
+ * the Web Push protocol TTL header (`push-payload-composer.ts`) and the
+ * stored-record/inbox expiry (`NOTIFICATION_TTL_MS`,
+ * `@kontourai/station-shared/notification-priority`), both sized in
+ * minutes-to-hours (up to 24h for needs-input/failed). Reading `data.ttl`
+ * here for toast duration — as this code used to — meant a job-failure
+ * toast (job-failure now triggers a web push too, archive#1100) would
+ * persist in the on-screen toast stack for up to 24 HOURS instead of a few
+ * seconds. A fixed duration is simplest and matches how every other
+ * `toastStore.show` call in this file already works (e.g.
+ * `PLUGINS_UPDATES_AVAILABLE` hardcodes 10000ms, `BUILD_UPDATED` hardcodes
+ * 0/sticky) — a clamp was considered and rejected: nothing in this codebase
+ * intentionally sets `ttl` to signal a desired toast duration, so a clamp
+ * would just let record-expiry values leak into toast display (capped, but
+ * still coupled) for no benefit.
+ */
+export const NOTIFICATION_TOAST_DISPLAY_MS = 8000;
+
+/**
+ * The server's turn-completion listener (`turn-completion-notifications.ts`)
+ * writes its records under this source. A connected client already toasts a
+ * turn ending itself (`turnAttentionNotifications.ts`: a toast for a
+ * background chat, none for the chat in front of the user), so toasting the
+ * record as well would show the same news twice.
+ */
+const TURN_COMPLETION_SOURCE = TURN_COMPLETION_NOTIFICATION_SOURCE;
+
+/**
+ * NOTIFICATION_DELIVERED data handler. Every delivery plays its category's
+ * sound — turn ends included, even for the chat the user is watching (owner
+ * decision: always chime). It then shows a toast, except for an
+ * `approval-request` (its own approval UI) and a turn-completion record (the
+ * client's own end-of-turn toast owns it), either of which would otherwise
+ * double-surface. Exported so it's directly unit-testable without standing
+ * up the full SSE hook.
+ */
+export function handleNotificationDeliveredToast(
+  data: Record<string, unknown>,
+  isCurrent: () => boolean = () => true,
+): void {
+  if (!isCurrent()) return;
+  const category = data.category;
+  if (typeof category === 'string') {
+    playDeliveredNotificationSound(
+      category,
+      deviceSettingsStore.get('featureSettings').notificationSounds,
+    );
+  }
+  if (
+    data.category === 'approval-request' ||
+    data.source === TURN_COMPLETION_SOURCE
+  ) {
+    return;
+  }
+  const title = data.title as string | undefined;
+  if (!title) return;
+  const body = data.body as string | undefined;
+  const metadata = data.metadata as Record<string, unknown> | undefined;
+  const showPlainToast = () => {
+    if (!isCurrent()) return;
+    toastStore.show(
+      title + (body ? ` — ${body}` : ''),
+      undefined,
+      NOTIFICATION_TOAST_DISPLAY_MS,
+      undefined,
+      metadata,
+    );
+  };
+  if (metadata?.envelope) {
+    // #2587: attribution + Open, loaded on first enveloped delivery. A chunk
+    // that fails to load (offline, a deploy replaced it) must not cost the
+    // user the toast itself.
+    void import('../lib/notification-envelope-toast')
+      .then((module) =>
+        module.showEnvelopeNotificationToast(
+          data,
+          NOTIFICATION_TOAST_DISPLAY_MS,
+          isCurrent,
+        ),
+      )
+      .catch(showPlainToast);
+    return;
+  }
+  showPlainToast();
+}
+
+/** Apply an authorized personal-mode ui:navigate event through the shared seam. */
+export function handleUiNavigate(data: Record<string, unknown>): void {
+  const path = data.path;
+  if (typeof path === 'string' && path.startsWith('/')) {
+    navigationStore.navigate(path);
+  }
+}
+
+/** Handlers that receive event data (for side-effects beyond query invalidation) */
+const DATA_HANDLERS: Record<
+  string,
+  (data: Record<string, unknown>, isCurrent?: () => boolean) => void
+> = {
+  [SERVER_EVENTS.NOTIFICATION_DELIVERED]: handleNotificationDeliveredToast,
+  [SERVER_EVENTS.PLUGINS_UPDATES_AVAILABLE]: (data) => {
+    const count = data.count as number | undefined;
+    const updates = data.updates as
+      | Array<{
+          name: string;
+          currentVersion: string;
+          latestVersion: string;
+          source: string;
+        }>
+      | undefined;
+    if (count && count > 0) {
+      const detail = updates
+        ?.map(
+          (u) =>
+            `${u.name}: ${u.currentVersion} → ${u.latestVersion} (${u.source})`,
+        )
+        .join('\n');
+      toastStore.show(
+        `${count} plugin update${count > 1 ? 's' : ''} available`,
+        undefined,
+        10000,
+        [
+          {
+            label: 'View Updates',
+            variant: 'primary',
+            onClick: () => navigationStore.navigate('/plugins'),
+          },
+        ],
+        { detail },
+      );
+    }
+  },
+  [SERVER_EVENTS.UI_NAVIGATE]: handleUiNavigate,
+  [SERVER_EVENTS.BUILD_UPDATED]: () => {
+    toastStore.show(
+      'App updated — refresh to get the latest version',
+      undefined,
+      0,
+      [
+        {
+          label: 'Refresh',
+          variant: 'primary',
+          onClick: () => window.location.reload(),
+        },
+      ],
+    );
+  },
+};
+
+function refreshEngineReadiness(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: ['agents'] });
+  queryClient.invalidateQueries({ queryKey: ['model-picker-catalog'] });
+  // Connection hooks do not refetch on mount, so refresh their inactive
+  // caches too before a person returns to a picker or connection detail.
+  queryClient.invalidateQueries({
+    queryKey: ['connections'],
+    refetchType: 'all',
+    predicate: ({ queryKey }) =>
+      queryKey.length <= 2 ||
+      (queryKey.length === 3 &&
+        queryKey[1] === 'engines' &&
+        queryKey[2] === 'catalog'),
+  });
+  for (const key of [
+    'acp-connections',
+    'acp-unregistered-connections',
+    'acp-connection-registry',
+  ]) {
+    queryClient.invalidateQueries({ queryKey: [key], refetchType: 'all' });
+  }
+}
+
+const EVENT_HANDLERS: Record<string, (queryClient: any) => void> = {
+  [SERVER_EVENTS.AGENTS_CHANGED]: refreshEngineReadiness,
+  [SERVER_EVENTS.ACP_STATUS]: (qc) => {
+    refreshEngineReadiness(qc);
+    qc.invalidateQueries({ queryKey: ['system-status'] });
+  },
+  [SERVER_EVENTS.CONFIG_CHANGED]: (qc) => {
+    qc.invalidateQueries({ queryKey: ['config'], refetchType: 'none' });
+    qc.invalidateQueries({ queryKey: ['agents'], refetchType: 'none' });
+    qc.invalidateQueries({ queryKey: ['trust-bundles'] });
+    qc.invalidateQueries({ queryKey: ['trust-report'] });
+    qc.invalidateQueries({ queryKey: ['task-turn-references'] });
+    qc.invalidateQueries({ queryKey: ['answer-support'] });
+  },
+  [SERVER_EVENTS.RUNTIME_HEALTH_CHANGED]: (qc) => {
+    qc.invalidateQueries({ queryKey: ['connections'] });
+    qc.invalidateQueries({ queryKey: ['agents'] });
+  },
+  [SERVER_EVENTS.SYSTEM_STATUS_CHANGED]: (qc) =>
+    qc.invalidateQueries({ queryKey: ['system-status'] }),
+  // Epic #2323 S3: a Project's plugin draft built a new revision. Only the
+  // status is refreshed; a Plugin preview pane shows "Revision N ready" and
+  // never runs it without the viewer's click.
+  [SERVER_EVENTS.PLUGIN_DRAFTS_REBUILT]: (qc) =>
+    qc.invalidateQueries({ queryKey: ['plugin-draft'] }),
+  [SERVER_EVENTS.PLUGINS_INSTALLED]: (qc) => {
+    qc.invalidateQueries({ queryKey: ['projects'] });
+    qc.invalidateQueries({ queryKey: ['plugins'] });
+    qc.invalidateQueries({ queryKey: ['layouts'] });
+    qc.invalidateQueries({ queryKey: ['agents'] });
+    reloadPluginRegistry();
+  },
+  [SERVER_EVENTS.PLUGINS_REMOVED]: (qc) => {
+    qc.invalidateQueries({ queryKey: ['plugins'] });
+    qc.invalidateQueries({ queryKey: ['projects'] });
+    qc.invalidateQueries({ queryKey: ['layouts'] });
+    qc.invalidateQueries({ queryKey: ['agents'] });
+    reloadPluginRegistry();
+  },
+  [SERVER_EVENTS.PLUGINS_UPDATED]: (qc) => {
+    qc.invalidateQueries({ queryKey: ['projects'] });
+    qc.invalidateQueries({ queryKey: ['agents'] });
+    qc.invalidateQueries({ queryKey: ['plugins'] });
+    qc.invalidateQueries({ queryKey: ['layouts'] });
+    reloadPluginRegistry();
+  },
+  // archive#3815: a withdrawn permission must stop working in
+  // ALREADY-LOADED frames. `PluginRegistry` copies `permissions.granted` into
+  // each loaded layout record, and `PluginFrameHost` authorizes frame
+  // navigation and its authenticated API bridge against that snapshot — so
+  // invalidating the `plugins` query alone left an open frame bridging with
+  // a permission the panel had just reported as removed, until some
+  // unrelated reload happened to refresh the registry.
+  [SERVER_EVENTS.PLUGINS_GRANTS_CHANGED]: (qc) => {
+    qc.invalidateQueries({ queryKey: ['projects'] });
+    qc.invalidateQueries({ queryKey: ['plugins'] });
+    reloadPluginRegistry();
+  },
+  [SERVER_EVENTS.PLUGINS_UPDATES_AVAILABLE]: (qc) => {
+    qc.invalidateQueries({ queryKey: ['plugin-updates'] });
+  },
+  [SERVER_EVENTS.NOTIFICATION_DELIVERED]: invalidateInboxQueries,
+  [SERVER_EVENTS.NOTIFICATION_DISMISSED]: invalidateInboxQueries,
+  [SERVER_EVENTS.NOTIFICATION_UPDATED]: invalidateInboxQueries,
+  [SERVER_EVENTS.NOTIFICATION_CLEARED]: invalidateInboxQueries,
+  [SERVER_EVENTS.UI_NAVIGATE]: () => {},
+};
+
+function invalidateInboxQueries(queryClient: {
+  invalidateQueries: (options: { queryKey: string[] }) => unknown;
+}) {
+  queryClient.invalidateQueries({ queryKey: ['notifications'] });
+  queryClient.invalidateQueries({ queryKey: ['attention'] });
+}
+
+export function invalidateQueriesForServerEvent(
+  event: string,
+  queryClient: { invalidateQueries: (options: any) => unknown },
+) {
+  EVENT_HANDLERS[event]?.(queryClient);
+}
+
+export function useServerEventsListener(
+  handlers?: Record<string, EventHandler>,
+) {
+  const { apiBase } = useApiBase();
+  const requestAuthority = useHostRequestAuthorityScope();
+  const authorityApiBase = requestAuthority?.apiBase;
+  const authorityKey = requestAuthority?.authorityKey;
+  const authorityIsCurrent = requestAuthority?.isCurrent;
+  const subscriptionAuthority = useMemo(
+    () =>
+      authorityApiBase && authorityKey && authorityIsCurrent
+        ? {
+            apiBase: authorityApiBase,
+            authorityKey,
+            isCurrent: authorityIsCurrent,
+          }
+        : undefined,
+    [authorityApiBase, authorityIsCurrent, authorityKey],
+  );
+  const queryClient = useQueryClient();
+  const bootstrap = useClientBootstrapReadiness();
+  const handlersRef = useRef(handlers);
+  handlersRef.current = handlers;
+
+  // Register before passive transport effects, including a chat pane that
+  // starts the shared stream in the same bootstrap commit.
+  useLayoutEffect(() => {
+    if (bootstrap.status !== 'settled') return;
+    const subscription = subscribeSharedOrchestrationStream(apiBase, {
+      onMessage: (raw) => {
+        if (raw.event !== 'station:general') return;
+        let message: { event: string; data: string };
+        try {
+          const envelope = JSON.parse(raw.data);
+          if (
+            typeof envelope.event !== 'string' ||
+            typeof envelope.data !== 'string'
+          )
+            return;
+          message = { event: envelope.event, data: envelope.data };
+        } catch {
+          return;
+        }
+        // This capture belongs to THIS subscription. Never resolve a fresh
+        // authority here: a late event from A must not be adopted by B (or by
+        // a later A generation) after the connection has changed.
+        if (!subscriptionAuthority?.isCurrent()) return;
+        const event = message.event;
+        if (
+          event === SERVER_EVENTS.ANSWER_ASSESSMENT_UPDATED ||
+          event === SERVER_EVENTS.ANSWER_NARRATIVE_UPDATED
+        ) {
+          if (!authorityKey) return;
+          try {
+            const payload = JSON.parse(message.data);
+            // Basis invalidation is a rare, exact-answer event. Keep its
+            // parser and cache fence out of first paint, then recheck the
+            // captured authority so an A-era event cannot mutate B after the
+            // lazy boundary settles.
+            void import('@kontourai/station-sdk/answer-assessment-events')
+              .then(({ refreshAnswerAssessmentQueries }) => {
+                if (!subscriptionAuthority.isCurrent()) return;
+                refreshAnswerAssessmentQueries(
+                  queryClient,
+                  payload,
+                  subscriptionAuthority,
+                );
+              })
+              .catch(() => {});
+          } catch {
+            // A malformed scoped notification has no cache effect.
+          }
+          return;
+        }
+        if (event === SERVER_EVENTS.SERVER_UPDATE_CHANGED) {
+          // #3851: the payload IS the server's update state; written straight
+          // into its query, so clients follow a download without polling.
+          try {
+            applyServerUpdateStateEvent(
+              queryClient,
+              apiBase,
+              JSON.parse(message.data),
+            );
+          } catch {
+            // A malformed payload leaves the last known state.
+          }
+          return;
+        }
+        if (event === SERVER_EVENTS.ACP_STATUS) {
+          try {
+            applyACPStatusEvent(
+              queryClient,
+              JSON.parse(message.data),
+              subscriptionAuthority,
+            );
+          } catch {
+            // A malformed status cannot replace the last applied observation.
+          }
+        }
+        if (event !== SERVER_EVENTS.ACP_STATUS && EVENT_HANDLERS[event]) {
+          invalidateQueriesForServerEvent(event, queryClient);
+          // Also run data handler if one exists for this event
+          if (DATA_HANDLERS[event]) {
+            try {
+              DATA_HANDLERS[event](
+                JSON.parse(message.data),
+                subscriptionAuthority.isCurrent,
+              );
+            } catch {
+              /* ignore parse errors */
+            }
+          }
+        }
+        if (event === SERVER_EVENTS.DATA_CHANGED) {
+          try {
+            const data = JSON.parse(message.data);
+            if (data.resync === true) {
+              void queryClient.invalidateQueries();
+            }
+            const keys = data.keys as string[] | undefined;
+            if (keys) {
+              for (const key of keys) {
+                queryClient.invalidateQueries({ queryKey: [key] });
+              }
+            }
+          } catch {}
+        }
+        const handler = handlersRef.current?.[event];
+        if (handler) {
+          try {
+            handler(JSON.parse(message.data));
+          } catch {
+            handler({});
+          }
+        }
+      },
+    });
+
+    return () => subscription.close();
+  }, [
+    apiBase,
+    authorityKey,
+    queryClient,
+    subscriptionAuthority,
+    bootstrap.status,
+  ]);
+}

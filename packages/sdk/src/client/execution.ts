@@ -40,6 +40,7 @@ import {
 import { ChatHttpError } from './chatHttpError';
 import { type ClientRequestOptions, getJson, mutateJson } from './http';
 import { rethrowDeadline } from './request-deadline';
+import { chooseSentTurnKey, rememberSentTurnKey } from './sent-turn-key';
 import { isStationAnswer } from './station-envelope';
 /**
  * #2436: an approval-posture decision a send carries (a pick made before the
@@ -106,6 +107,11 @@ export interface ForegroundMessageReceipt {
    */
   approvalMode?: import('@kontourai/station-contracts/orchestration').SetApprovalModeResult;
 }
+
+/** Receipt from a foreground SDK call that chose and sent a turn key. */
+export type KeyedForegroundMessageReceipt = ForegroundMessageReceipt & {
+  readonly clientTurnId: string;
+};
 
 export interface ConversationHandoffReceipt {
   predecessorSessionId: string;
@@ -324,40 +330,48 @@ export async function sendExecutionMessageWithInventory(
   input: ForegroundMessageInput,
   readInventory: SkillExperienceInventoryReader,
   opts?: ClientRequestOptions,
-): Promise<ForegroundMessageReceipt> {
-  if (input.skillExperience) {
-    if (input.automaticBackground)
-      throw new Error(
-        'Visual skill starts require an explicit foreground send.',
-      );
-    if (!readSkillExperienceStartInput(input.skillExperience))
-      throw new Error('The selected visual skill input is unsupported.');
-    const inventory = await readInventory(apiBase, opts);
-    if (!skillExperiencesCanExecute(inventory))
-      throw new Error(
-        'This Station cannot execute visual skill starts. Your selection has not been sent.',
-      );
-    if (
-      !inventory.experiences.some((entry) =>
-        sameSkillExperienceIdentity(
-          entry.identity,
-          input.skillExperience!.identity,
-        ),
+): Promise<KeyedForegroundMessageReceipt> {
+  const clientTurnId = chooseSentTurnKey(input.clientTurnId);
+  try {
+    if (input.skillExperience) {
+      if (input.automaticBackground)
+        throw new Error(
+          'Visual skill starts require an explicit foreground send.',
+        );
+      if (!readSkillExperienceStartInput(input.skillExperience))
+        throw new Error('The selected visual skill input is unsupported.');
+      const inventory = await readInventory(apiBase, opts);
+      if (!skillExperiencesCanExecute(inventory))
+        throw new Error(
+          'This Station cannot execute visual skill starts. Your selection has not been sent.',
+        );
+      if (
+        !inventory.experiences.some((entry) =>
+          sameSkillExperienceIdentity(
+            entry.identity,
+            input.skillExperience!.identity,
+          ),
+        )
       )
-    )
-      throw new Error(
-        'The selected visual skill source changed or is unavailable. Review it before starting.',
-      );
+        throw new Error(
+          'The selected visual skill source changed or is unavailable. Review it before starting.',
+        );
+    }
+    const { automaticBackground, ...body } = input;
+    const response = await mutateJson(
+      `${apiBase}/api/orchestration/chat${automaticBackground ? '/background' : ''}`,
+      'POST',
+      opts,
+      { ...body, clientTurnId },
+    );
+    const result = (await readExecutionBody(
+      response,
+    )) as ExecutionErrorResponse;
+    return { ...readExecutionReceipt(response, result), clientTurnId };
+  } catch (error) {
+    rememberSentTurnKey(error, clientTurnId);
+    throw error;
   }
-  const { automaticBackground, ...body } = input;
-  const response = await mutateJson(
-    `${apiBase}/api/orchestration/chat${automaticBackground ? '/background' : ''}`,
-    'POST',
-    opts,
-    body,
-  );
-  const result = (await readExecutionBody(response)) as ExecutionErrorResponse;
-  return readExecutionReceipt(response, result);
 }
 
 /**
@@ -493,19 +507,27 @@ export async function continueExecutionMessage(
   conversationId: string,
   input: ContinueForegroundMessageInput,
   opts?: ClientRequestOptions,
-): Promise<ForegroundMessageReceipt> {
-  if ('skillExperience' in input && input.skillExperience !== undefined)
-    throw new Error(
-      'Visual skill starts use the canonical foreground chat route.',
+): Promise<KeyedForegroundMessageReceipt> {
+  const clientTurnId = chooseSentTurnKey(input.clientTurnId);
+  try {
+    if ('skillExperience' in input && input.skillExperience !== undefined)
+      throw new Error(
+        'Visual skill starts use the canonical foreground chat route.',
+      );
+    const response = await mutateJson(
+      `${apiBase}/api/orchestration/chat/${encodeURIComponent(conversationId)}/continue`,
+      'POST',
+      opts,
+      { ...input, clientTurnId },
     );
-  const response = await mutateJson(
-    `${apiBase}/api/orchestration/chat/${encodeURIComponent(conversationId)}/continue`,
-    'POST',
-    opts,
-    input,
-  );
-  const result = (await readExecutionBody(response)) as ExecutionErrorResponse;
-  return readExecutionReceipt(response, result);
+    const result = (await readExecutionBody(
+      response,
+    )) as ExecutionErrorResponse;
+    return { ...readExecutionReceipt(response, result), clientTurnId };
+  } catch (error) {
+    rememberSentTurnKey(error, clientTurnId);
+    throw error;
+  }
 }
 
 /** Explicitly hand a durable conversation to another configured Agent/engine. */

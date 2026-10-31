@@ -32,3 +32,19 @@ export const AuthorityPersistenceContext =
 export function useAuthorityPersistence(): AuthorityPersistenceContextValue {
   return useContext(AuthorityPersistenceContext);
 }
+
+/** Boot capability for the current verified authority activation. */
+export interface ClientBootstrapReadiness {
+  status: 'pending' | 'settled';
+  sharedRealtime: boolean;
+  authorityKey?: string;
+}
+
+export const ClientBootstrapContext = createContext<ClientBootstrapReadiness>({
+  status: 'settled',
+  sharedRealtime: false,
+});
+
+export function useClientBootstrapReadiness(): ClientBootstrapReadiness {
+  return useContext(ClientBootstrapContext);
+}
