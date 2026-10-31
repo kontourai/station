@@ -6,6 +6,7 @@ import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { tenantExecutionContextFromSession } from '@kontourai/station-contracts/tenancy';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import { Agent, type ServerProviderFactory, VoltAgent } from '@voltagent/core';
+import type { ReviewedTariffConfigurationService } from '../../analytics/reviewed-tariff-config.js';
 import type {
   OrchestrationUsageRef,
   UsageAggregator,
@@ -126,6 +127,7 @@ import {
   bootstrapRuntimeDefaultAgent,
   materializeBuiltinIntegrations,
 } from '../agents/runtime-default-agent.js';
+import { recordManagedModelContext } from '../context-efficiency-runtime.js';
 import type { RuntimeEventLog } from '../conversation/runtime-event-log.js';
 import { safeSanitizeUIBlockEventProvenance } from '../conversation/ui-block-provenance.js';
 import { withPrivateOrchestrationAdapter } from '../frameworks/orchestration-adapter-registry.js';
@@ -173,6 +175,9 @@ import {
 type RuntimeFramework = VoltAgentFramework | StrandsFramework;
 
 export interface InitializeRuntimeDeps {
+  getReviewedTariffConfiguration?: () =>
+    | ReviewedTariffConfigurationService
+    | undefined;
   validateProjectTools?: (
     slug: string,
     spec: AgentSpec,
@@ -651,7 +656,15 @@ export async function initializeRuntime(
     // The budget an engine is told about is the one its scope enforces.
     workloadEngineLimits: (sessionId) => enforcedWorkloadLimits(sessionId),
     pricingSnapshotCapture: {
-      capture: async (input) => usagePricingSnapshotCapture?.capture(input),
+      capture: async (input) => {
+        const reviewed = deps.getReviewedTariffConfiguration?.();
+        if (reviewed) {
+          const snapshot = await reviewed.capture(input);
+          if (snapshot && deps.getReviewedTariffConfiguration?.() === reviewed)
+            return snapshot;
+        }
+        return usagePricingSnapshotCapture?.capture(input);
+      },
     },
     turnDeduplicator: orchestrationEventStore.createTurnDeduplicator(),
     // #764: a user-requested continuation of a stopped ACP conversation must
@@ -1014,6 +1027,8 @@ export async function initializeRuntime(
     logger,
     bootstrapDefaultAgent: async () =>
       (await bootstrapRuntimeDefaultAgent({
+        observeModelContext: (observation) =>
+          recordManagedModelContext(orchestrationEventStore, observation),
         appConfig,
         builtinEngineBinding,
         configLoader: deps.configLoader as any,

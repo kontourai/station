@@ -16,6 +16,8 @@ export interface ContextPercentageSource {
 
 interface ContextPercentageProps extends ContextPercentageSource {
   onClick?: () => void;
+  /** Server-owned policy/result, supplied by the existing stats/composer owner. */
+  compaction?: { threshold: number; state: string };
 }
 
 function contextPercentage(
@@ -80,6 +82,7 @@ export function ContextPercentage({
   messageCount,
   liveUsage,
   onClick,
+  compaction,
 }: ContextPercentageProps) {
   const percentage = useContextPercentage({
     agentSlug,
@@ -91,7 +94,7 @@ export function ContextPercentage({
 
   if (percentage === null) return null;
 
-  const label = `Context ${percentage.toFixed(1)}% used`;
+  const label = `Context ${percentage.toFixed(1)}% used${compaction ? ` · Compaction ${compaction.state} at ${compaction.threshold}%` : ''}`;
   return (
     <button
       type="button"

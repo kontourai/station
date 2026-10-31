@@ -40,7 +40,13 @@
 
     "src-server/services/automation/automation-intake.ts",
 
-    "src-server/services/automation/github-workflow-run.ts"
+    "src-server/services/automation/github-workflow-run.ts",
+
+    "scripts/qualify-isolated-repair.mjs",
+
+    "package.json#/scripts/qualify:isolated-repair",
+
+    "package.json#/scripts/qualify:isolated-repair:prepare"
   ],
 
   "checks": [

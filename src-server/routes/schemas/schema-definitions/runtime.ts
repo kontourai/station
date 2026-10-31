@@ -509,6 +509,11 @@ export const chatSchema = z.object({
 
 // Feedback
 export const rateSchema = z.object({
+  agentSlug: z.string().optional(),
+  messagePreview: z.string().max(10000).optional(),
+  expectedSessionId: z.string().min(1).max(512).optional(),
+  expectedTurnId: z.string().min(1).max(512).optional(),
+  target: z.never().optional(),
   messageIndex: z.number().int().min(0),
   rating: z.enum(['thumbs_up', 'thumbs_down']),
   conversationId: z.string().optional(),

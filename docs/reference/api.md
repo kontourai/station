@@ -6733,3 +6733,30 @@ or missing/expired, with refresh/request-again/update recovery.
 
 See [the user journey](../guides/monitoring.md#connect-a-personal-source-in-insights).
 This source contract has not established installed/native/release acceptance.
+
+
+## Reviewed Project context and learning previews
+
+These personal-host routes are off by default. They require the operator in
+person; Station Control cannot create its own working rules or learning grants.
+Older hosts or disabled previews return unavailable/preview guidance.
+
+| Method | Path | Operation |
+| --- | --- | --- |
+| GET | `/api/projects/:slug/working-configuration` | Discover bounded repository guidance and read the current reviewed defaults. |
+| PUT | `/api/projects/:slug/working-configuration` | Apply an exact Project/revision/source-digest draft with a stable operation id. Runs no command. |
+| GET | `/api/projects/:slug/learning` | Read the owner queue with complete or partial coverage. |
+| GET | `/api/projects/:slug/learning/:id` | Inspect one owner projection; optional `compareId` selects a comparison. |
+| POST | `/api/projects/:slug/learning/proposals` | Propose wording from an exact canonical Task-standing or rated-response source. |
+| POST | `/api/projects/:slug/learning/:id/evidence` | Inspect only exact evidence references already admitted by the current owner record. |
+| POST | `/api/projects/:slug/learning/:id/intents` | Evaluate, decide, activate, observe effect, retire or supersede at an expected owner revision. |
+| GET | `/api/analytics/reviewed-tariffs` | Read the private reviewed tariff configuration and revision. |
+| PUT | `/api/analytics/reviewed-tariffs` | Review bounded Bearing catalog bytes and exact tariff bindings under a stable operation id/revision. |
+
+Learning requests include `x-station-learning-project-id` with the immutable
+Project incarnation. It grants no authority; a reused slug refuses before owner
+access. Intent JSON cannot supply actor, Project scope or decision capability.
+Source withdrawal and changed authority withhold protected content at release.
+Knowledge Kit retains the lifecycle, while tariff configuration retains approved
+source bytes rather than a Station-maintained price table. See
+[bounded agent work](../guides/agent-efficiency.md) for evidence limits.

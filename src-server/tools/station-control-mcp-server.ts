@@ -4,6 +4,7 @@ import {
 } from '@modelcontextprotocol/ext-apps/server';
 import {
   McpServer,
+  type RegisteredTool,
   type StandardSchemaWithJSON,
   type ToolCallback,
 } from '@modelcontextprotocol/server';
@@ -15,6 +16,10 @@ import { registerBoardTools } from './station-control-board-tools.js';
 import { registerCatalogTools } from './station-control-catalog-tools.js';
 import { registerDeclarePullRequestTools } from './station-control-declare-pull-request-tools.js';
 import { registerDeviceTools } from './station-control-device-tools.js';
+import {
+  STATION_CONTROL_DISCOVERY_TOOL_NAMES,
+  StationControlDisclosure,
+} from './station-control-disclosure.js';
 import { registerHtmlReplyTools } from './station-control-html-reply-tools.js';
 import { registerNotifyTools } from './station-control-notify-tools.js';
 import { registerOperationsTools } from './station-control-operations-tools.js';
@@ -144,6 +149,8 @@ interface StationControlAppCatalog {
 }
 
 export class StationControlToolRegistry {
+  private readonly families = new Map<string, RegisteredTool[]>();
+
   constructor(
     private readonly server: McpServer,
     private readonly catalog?: (
@@ -161,7 +168,96 @@ export class StationControlToolRegistry {
      * with no caller): every tool is registered, as before.
      */
     private readonly listableFor?: StationControlPolicyCaller['assurance'],
+    private readonly disclosure?: StationControlDisclosure,
   ) {}
+
+  private disclose(name: string, tool: RegisteredTool): RegisteredTool {
+    if (!this.disclosure) return tool;
+    const execute = tool.executor;
+    tool.update({
+      callback: (args, context) =>
+        this.disclosure?.current()
+          ? execute(args, context)
+          : jsonToolResult(
+              stationControlRefusalBody(
+                stationControlRefusal('station_control_caller_required'),
+              ),
+            ),
+    });
+    const family =
+      stationControlToolMetadata(name)._meta['ai.kontour/tool-group'];
+    const members = this.families.get(family) ?? [];
+    members.push(tool);
+    this.families.set(family, members);
+    if (!this.disclosure.has(family)) tool.disable();
+    return tool;
+  }
+
+  registerDiscovery(): void {
+    const disclosure = this.disclosure;
+    if (!disclosure) return;
+    const callerCurrent = async () =>
+      disclosure.current() && (await getStationControlCaller()) !== null;
+    this.server.registerTool(
+      STATION_CONTROL_DISCOVERY_TOOL_NAMES.listFamilies,
+      {
+        description:
+          'List available Station tool families. Load a family to discover its tools.',
+        inputSchema: z.object({}),
+        annotations: { readOnlyHint: true },
+      },
+      async () => {
+        if (!(await callerCurrent()) || !disclosure.current())
+          return jsonToolResult(
+            stationControlRefusalBody(
+              stationControlRefusal('station_control_caller_required'),
+            ),
+          );
+        return jsonToolResult({
+          families: [...this.families].map(([name, tools]) => ({
+            name,
+            toolCount: tools.length,
+            loaded: disclosure.has(name),
+          })),
+        });
+      },
+    );
+    this.server.registerTool(
+      STATION_CONTROL_DISCOVERY_TOOL_NAMES.loadFamily,
+      {
+        description:
+          'Load one Station tool family. Visibility never grants permission to call its tools.',
+        inputSchema: z.object({ family: z.string().min(1).max(80) }),
+        annotations: { readOnlyHint: true },
+      },
+      async ({ family }) => {
+        if (!(await callerCurrent()) || !disclosure.current())
+          return jsonToolResult(
+            stationControlRefusalBody(
+              stationControlRefusal('station_control_caller_required'),
+            ),
+          );
+        const tools = this.families.get(family);
+        if (!tools)
+          return jsonToolResult({
+            error: 'Unknown tool family',
+            code: 'tool_family_unavailable',
+          });
+        if (!disclosure.load(family))
+          return jsonToolResult(
+            stationControlRefusalBody(
+              stationControlRefusal('station_control_caller_required'),
+            ),
+          );
+        for (const tool of tools) tool.enable();
+        return jsonToolResult({
+          family,
+          loaded: true,
+          toolCount: tools.length,
+        });
+      },
+    );
+  }
 
   /** Whether this server offers `name` at all. */
   private offers(name: string): boolean {
@@ -179,14 +275,17 @@ export class StationControlToolRegistry {
   ) {
     if (!this.offers(name)) return;
     this.catalog?.(name, description, shape);
-    return this.server.registerTool(
+    return this.disclose(
       name,
-      {
-        ...stationControlToolMetadata(name),
-        description,
-        inputSchema: z.object(shape),
-      },
-      withToolSideRefusal(name, callback),
+      this.server.registerTool(
+        name,
+        {
+          ...stationControlToolMetadata(name),
+          description,
+          inputSchema: z.object(shape),
+        },
+        withToolSideRefusal(name, callback),
+      ),
     );
   }
 
@@ -198,10 +297,13 @@ export class StationControlToolRegistry {
   ) {
     if (!this.offers(name)) return;
     this.catalog?.(name, description);
-    return this.server.registerTool(
+    return this.disclose(
       name,
-      { ...stationControlToolMetadata(name), description, inputSchema },
-      withToolSideRefusal(name, callback),
+      this.server.registerTool(
+        name,
+        { ...stationControlToolMetadata(name), description, inputSchema },
+        withToolSideRefusal(name, callback),
+      ),
     );
   }
 
@@ -235,21 +337,24 @@ export class StationControlToolRegistry {
     });
     const callback = withToolSideRefusal(name, unguardedCallback);
     const metadata = stationControlToolMetadata(name);
-    return registerAppTool(
-      this.server as unknown as Parameters<typeof registerAppTool>[0],
+    return this.disclose(
       name,
-      {
-        description,
-        inputSchema,
-        ...metadata,
-        ...config,
-        _meta: { ...metadata._meta, ...config._meta },
-        annotations: {
-          ...metadata.annotations,
-          ...config.annotations,
-        },
-      } as unknown as Parameters<typeof registerAppTool>[2],
-      callback as unknown as Parameters<typeof registerAppTool>[3],
+      registerAppTool(
+        this.server as unknown as Parameters<typeof registerAppTool>[0],
+        name,
+        {
+          description,
+          inputSchema,
+          ...metadata,
+          ...config,
+          _meta: { ...metadata._meta, ...config._meta },
+          annotations: {
+            ...metadata.annotations,
+            ...config.annotations,
+          },
+        } as unknown as Parameters<typeof registerAppTool>[2],
+        callback as unknown as Parameters<typeof registerAppTool>[3],
+      ),
     );
   }
 
@@ -291,6 +396,7 @@ export function createSelectedStationControlMcpServer(
   profile: 'station-control' | 'station-knowledge' = 'station-control',
   /** The session credential's assurance; see `StationControlToolRegistry`. */
   listableFor?: StationControlPolicyCaller['assurance'],
+  disclosure?: StationControlDisclosure,
 ): McpServer {
   const server = new McpServer(
     {
@@ -298,10 +404,13 @@ export function createSelectedStationControlMcpServer(
       version: '2.0.0',
     },
     {
-      capabilities: { tools: {} },
+      capabilities: { tools: disclosure ? { listChanged: true } : {} },
       cacheHints: {
         'server/discover': { ttlMs: 300_000, cacheScope: 'private' },
-        'tools/list': { ttlMs: 300_000, cacheScope: 'private' },
+        'tools/list': {
+          ttlMs: disclosure ? 0 : 300_000,
+          cacheScope: 'private',
+        },
       },
     },
   );
@@ -311,9 +420,11 @@ export function createSelectedStationControlMcpServer(
     allowedTools,
     undefined,
     listableFor,
+    disclosure,
   );
   if (profile === 'station-knowledge') {
     registerKnowledgeDataTools(registry);
+    registry.registerDiscovery();
     return server;
   }
   registerDeviceTools(registry);
@@ -343,6 +454,7 @@ export function createSelectedStationControlMcpServer(
   registerTaskMemoryTools(registry);
   registerTaskThreadTools(registry);
   registerReviewGuideTools(registry);
+  registry.registerDiscovery();
   return server;
 }
 

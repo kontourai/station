@@ -21,8 +21,9 @@
 > Automations is the product surface for scheduled work: a scheduler job with
 > an optional target runs each time as a turn in a conversation, on any engine,
 > and agent check-backs are listed with it. That part ships. The GitHub event
-> sources, rules and episodes below (slices S2–S6) remain this proposal; they
-> are a future trigger for the same automations, not a separate product.
+> sources now have the default-off observation and bounded Task-action previews
+> described below. Publication and broader sources remain proposed. They extend
+> the same Automations surface.
 
 Status: **proposal.** It extends the existing
 [inbound webhook](../../src-server/routes/webhooks/inbound-webhooks.ts) and
@@ -34,8 +35,9 @@ what an action may do.
 
 Enable **GitHub automation observations** in **Settings → Advanced → Feature
 previews** on a personal Station. Hosted mode does not offer these observations.
-The preview makes GitHub API requests but invokes no model, creates no Task,
-publishes no branch and sends no Automation notification. Sources and rules
+The observation preview makes GitHub API requests but invokes no model,
+creates no Task and publishes no branch. The separately enabled actions preview
+can dispatch explicitly granted matching rules into bounded Tasks. Sources and rules
 remain operator-managed private configuration; enabling the preview alone does
 not configure a source or grant an action.
 
@@ -67,8 +69,67 @@ Delivery deduplication, opening/closing episodes and their delivery references
 commit together. A failed episode write leaves the delivery retryable after
 restart. Repeat observations do not reopen or re-close episodes. An episode here
 records rule matching only: it does not establish diagnosis, repair or release
-completion. S3's action dispatcher remains separate, as do signed push ingress
-and automatic publication.
+completion. The separate `github-automation-actions` preview consumes retained
+normalized action intents through the real Task dispatcher and durable inbox.
+Signed push ingress and automatic publication remain separate.
+
+### Bounded Task actions
+
+Enable **GitHub automation Tasks** separately from observation. An accepted
+match retains its normalized action intent atomically with delivery and episode
+state. Dispatch rechecks current source, rule, grant and policy fingerprint;
+capacity refusal does not spend an execution attempt. Claims fence concurrent
+starts and rule rate limits. The actual provider-start boundary persists the
+invocation transition before the effect; uncertain effects retain their original
+identity and are not retried as fresh work.
+
+Task creation and Session seeding alone do not start a repair turn. The actions
+runtime submits the framed prompt to the existing durable inbox, retaining the
+server-issued intent, original turn key and automation-rule principal. Placement
+and final provider admission recheck the policy. Startup restores retained
+Session restrictions before scheduler polling, including when the actions preview
+is disabled; an unreadable recovery journal cannot authorize a turn.
+MonitorTaskTurnSupervisor owns
+turn, token and wall limits; full-access grants remain absent. Token enforcement
+depends on canonical provider usage arriving; missing usage is unknown, not a
+hard billing reservation. A completed action records the first turn terminal,
+not Task acceptance or successful repair. A green run closes
+the episode and prevents later placement for it.
+
+These Tasks can diagnose the normalized failing run. The quoted `head_sha` is
+source evidence, not proof that the execution workspace is that exact checkout.
+The current Task dispatcher resolves the Project workspace; source-bound repair
+preparation still belongs to the workspace/preparation owner.
+
+### Repair publication prerequisite
+
+S4 is not enabled by Task dispatch. Existing CI uses separate repair and publish
+jobs: checkout does not persist credentials, and the publish job resolves the
+App token only after repair finishes. Its deterministic
+[patch publisher](../../scripts/qualification-repair.mjs) checks base identity,
+protected paths, patch and file modes before a branch push. Human merge policy
+remains in force.
+
+Station does not yet have the authenticated bridge from a proven credential-free
+repair runner to that publisher: source/run/episode/base identity, patch digest,
+artifact custody and a separate App publication grant must travel together.
+The sealed runner explicitly does not provide secrecy from its invoking UID,
+and its structured safe-result API is not a patch custody API. Public Flow Agents
+9.9.1 also exports `docker-worker` and `provider-broker`; the Docker worker can
+record observed image, mount, network and forbidden-root constraints. That is a
+candidate execution primitive, not the missing Station Task/source/patch/review
+and publication-grant binding. Its Linux host mapping is qualified separately
+from its platform-default path. The manual
+[`qualify:isolated-repair`](../guides/agent-efficiency.md#qualify-the-container-boundary)
+command exercises the public worker with a real pinned CLI, a controlled
+Responses fixture, an actual forbidden-mount refusal and a file change. A clean
+source receipt covers that container boundary and cleanup, not a live provider,
+Station Task, review or publication. The named bridge permits outbound network
+access; platform-default desktop UID mapping remains unverified.
+Neither a prompt nor environment scrubbing can make a local engine unable to
+reach ambient GitHub, SSH or Keychain credentials. Keep
+`QUALIFICATION_REPAIR_AGENT` unchanged until that physical execution and artifact
+boundary is available and qualified. No automation is enabled by installation.
 
 ## 1. Problem and constraints
 

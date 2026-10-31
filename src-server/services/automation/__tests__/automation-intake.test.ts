@@ -165,6 +165,189 @@ describe('recordAutomationEvent (observe-only)', () => {
     }
   });
 
+  test('normalized dispatch intent, episode and delivery commit together and an uncertain invocation never replays', () => {
+    const source = {
+      id: 'source-1',
+      kind: 'github-poll' as const,
+      name: 'source',
+      enabled: true,
+      repository: 'kontourai/station',
+      grants: [
+        {
+          projectId: 'station',
+          agentId: 'repairer',
+          actions: ['dispatch-task' as const],
+        },
+      ],
+    };
+    const rule = {
+      ...QUALIFICATION_RULE,
+      action: {
+        kind: 'dispatch-task' as const,
+        projectId: 'station',
+        agentId: 'repairer',
+        instructions: 'Diagnose.',
+        budget: { maxTurns: 1, maxTokens: 1000, maxWallRuntimeMs: 60000 },
+      },
+    };
+    const input = {
+      ledger,
+      source,
+      rules: [rule],
+      event: { ...red(), deliveryId: 'transport-guid-not-retained' },
+      transportId: 'workflow_run:37423043587:1:completed',
+      now: NOW,
+    };
+    const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite');
+    const database = new DatabaseSync(join(directory, 'automation.sqlite'));
+    database.exec(
+      `CREATE TRIGGER refuse_intent BEFORE INSERT ON automation_action_intents BEGIN SELECT RAISE(ABORT, 'injected intent failure'); END`,
+    );
+    try {
+      expect(() => recordAutomationEvent(input)).toThrow(
+        AutomationPolicyUnavailableError,
+      );
+      expect(ledger.listDeliveries()).toEqual([]);
+      expect(ledger.listEpisodes()).toEqual([]);
+      expect(ledger.listActionIntents()).toEqual([]);
+      database.exec('DROP TRIGGER refuse_intent');
+      expect(recordAutomationEvent(input).outcome).toBe('matched');
+      expect(recordAutomationEvent(input).outcome).toBe('duplicate');
+      const [intent] = ledger.listActionIntents();
+      expect(intent).toBeDefined();
+      const bytes = database
+        .prepare(
+          'SELECT body FROM automation_action_intents WHERE intent_id = ?',
+        )
+        .get(intent!.intentId) as { body: string };
+      expect(JSON.parse(bytes.body).event.deliveryId).toBeUndefined();
+      const claimed = ledger.claimAction({
+        episodeKey: intent!.episodeKey,
+        deliveryKey: intent!.deliveryKey,
+        now: NOW,
+        maxConcurrentActions: 2,
+        maxStartsPerHour: 2,
+      });
+      expect(claimed.kind).toBe('claimed');
+      if (claimed.kind !== 'claimed') throw new Error('Expected action claim');
+      expect(claimed.receipt.beginInvocation(NOW)).toBe('applied');
+      ledger.close();
+      ledger = createAutomationLedger({ directory });
+      expect(ledger.listActionIntents()).toEqual([
+        expect.objectContaining({
+          intentId: intent!.intentId,
+          state: 'indeterminate',
+        }),
+      ]);
+      expect(
+        ledger.claimAction({
+          episodeKey: intent!.episodeKey,
+          deliveryKey: intent!.deliveryKey,
+          now: NOW,
+        }).kind,
+      ).toBe('indeterminate');
+      const otherRule = { ...rule, id: 'rule-other' };
+      const later = red({ id: 37423043590, updatedAt: RED_AT });
+      recordAutomationEvent({
+        ledger,
+        source,
+        rules: [otherRule],
+        event: later,
+        transportId: later.semanticKey,
+        now: NOW,
+      });
+      const waiting = ledger
+        .listActionIntents()
+        .find((intent) => intent.ruleId === otherRule.id)!;
+      expect(
+        ledger.claimAction({
+          episodeKey: waiting.episodeKey,
+          expectedEpisodeId: waiting.episodeId,
+          deliveryKey: waiting.deliveryKey,
+          now: NOW,
+          maxConcurrentActions: 1,
+        }).kind,
+      ).toBe('busy');
+      expect(ledger.episode(waiting.episodeKey)?.attemptCount).toBe(0);
+    } finally {
+      database.close();
+    }
+  });
+
+  test('red-green-red creates distinct episode intents and never lends an old delivery the new episode claim', () => {
+    const source = {
+      id: 'source-1',
+      kind: 'github-poll' as const,
+      name: 'source',
+      enabled: true,
+      repository: 'kontourai/station',
+      grants: [
+        {
+          projectId: 'station',
+          agentId: 'repairer',
+          actions: ['dispatch-task' as const],
+        },
+      ],
+    };
+    const rule = {
+      ...QUALIFICATION_RULE,
+      action: {
+        kind: 'dispatch-task' as const,
+        projectId: 'station',
+        agentId: 'repairer',
+        instructions: 'Diagnose.',
+        budget: { maxTurns: 1, maxTokens: 1000, maxWallRuntimeMs: 60000 },
+      },
+    };
+    const observe = (value: AutomationEvent) =>
+      recordAutomationEvent({
+        ledger,
+        source,
+        rules: [rule],
+        event: value,
+        transportId: value.semanticKey,
+        now: NOW,
+      });
+    observe(red());
+    const first = ledger.listActionIntents()[0]!;
+    observe(
+      event(
+        workflowRun({
+          id: 37423043588,
+          conclusion: 'success',
+          updatedAt: RED_AT,
+        }),
+      ),
+    );
+    observe(red({ id: 37423043589, updatedAt: RED_AT }));
+    const intents = ledger.listActionIntents();
+    expect(intents).toHaveLength(2);
+    const second = intents.find(
+      (intent) => intent.episodeId === '37423043589',
+    )!;
+    expect(second.intentId).not.toBe(first.intentId);
+    expect(second.episodeKey).toBe(first.episodeKey);
+    expect(
+      ledger.claimAction({
+        episodeKey: first.episodeKey,
+        expectedEpisodeId: first.episodeId,
+        deliveryKey: first.deliveryKey,
+        now: NOW,
+      }).kind,
+    ).toBe('not-found');
+    const claimed = ledger.claimAction({
+      episodeKey: second.episodeKey,
+      expectedEpisodeId: second.episodeId,
+      deliveryKey: second.deliveryKey,
+      now: NOW,
+    });
+    if (claimed.kind !== 'claimed')
+      throw new Error('Expected new episode claim');
+    claimed.receipt.beginInvocation(NOW);
+    expect(ledger.readIntent(first.intentId)?.state).toBe('pending');
+    expect(ledger.readIntent(second.intentId)?.state).toBe('invoking');
+  });
+
   test('a fork run is no-match and opens nothing', () => {
     expect(
       record(red({ headRepository: 'someone/station', updatedAt: RED_AT })),
