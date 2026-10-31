@@ -1,0 +1,7 @@
+{
+  "revision": "647677c056290a7caf7447d264c6b28cd4a2495d",
+
+  "notes": [
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Reviewed the Vite transport evidence link and OAuth exact-origin and loopback claims. This test-only change constructs the same Vite /@fs absolute URL on Windows and retains the no-CORS and 403 assertions; it changes no OAuth route or origin policy. The focused Windows suite passed 11 tests. It does not renew hosted-client or release qualification.","inputs":["docs/reference/outside-agent-oauth.md","src-ui/src/__tests__/vite-dev-proxy.test.ts"]}
+  ]
+}

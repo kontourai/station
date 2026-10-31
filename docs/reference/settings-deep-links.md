@@ -3,7 +3,7 @@
 On phones, the **Settings section** picker lists topics; computers show the
 same topics in a navigation rail. Both stay within Settings. General is the
 default. Customize opens management destinations from a separate sidebar-footer
-button beside Schedule and Settings, or from Sidebar utilities when the
+button beside Automations and Settings, or from Sidebar utilities when the
 workspace map is collapsed. Route changes still use the
 unsaved-changes guard. When a dialog is open, section navigation updates its
 selection without scrolling or focusing the page behind that dialog.

@@ -28,12 +28,15 @@ only when this Station's build can run it; if none is, the section says
 | `fleet-consumer-probes` | Fleet consumer probes | Sends a test request to a peer-contributed model before routing work to it. | Can spend a completion on another Station. |
 | `integration-content-trust` | Integration content trust | Shows trust classification and after-untrusted-content permissions for integrations in Connections. | Saved choices remain effective when the preview is off; enforcement depends on the engine and integration path. |
 | `plugin-recovery-inventory` | Plugin recovery inventory | Enables the operator's retained plugin backup listing and manual recovery guidance. | The listing reveals local backup paths to the operator; it does not restore backups. |
-| `walkthroughs` | Walkthroughs | Imports narrated screen recordings into transcripts and frames agents can read, using local processing. | One-time consented media/speech tool download; CPU use; recordings may contain private information. |
+| `walkthroughs` | Walkthroughs | Imports narrated recordings and enables Task-bound Browser clips. | One-time consented media/speech tool download; CPU use; recordings may contain private information. |
 | `local-speech` | Local speech | Offers Station (local) in Voice → Speech-to-text: record a message, then transcribe it on this Station. | One-time consented tool/model download; English batch dictation only; microphone permission; shares one recognizer and a bounded wait queue with Walkthroughs. |
 | `chat-host-images` | Chat images from the host | Shows images an agent saves on this Station and names by absolute path in its reply, on any device, and tells agents where to save them. | Station copies each admitted image (up to 5 per reply, 512 KiB each) into the chat's attachment storage; engines started while it is on get a per-session temporary folder. |
+| `stale-project-checkout` | Stale checkout warning | Warns in a Project's Workspace settings, and in `get_project` for agents, when the Project's checkout is far behind its upstream branch. | Reads local git refs (cached for ten seconds); never fetches or updates the checkout. |
 | `github-automation-observations` | GitHub automation observations | Observes configured GitHub workflow runs without starting agents. | Uses GitHub API requests and bounded private delivery storage. Off by default; management configuration is separate. Turning it off stops new observation effects and discards in-flight results; existing history remains. |
 | `task-review` | Task review | Adds a Review tab and Overview Timeline to Tasks for Screens and anchored comments that can be sent to the lead agent. | Sending starts or queues a lead-agent turn; Screen capture needs a committed workspace. |
 | `member-passkeys` | Member passkeys | Lets invited people with Station accounts create an account, sign in and recover with a passkey (see [member passkeys](https://github.com/kontourai/station/blob/main/docs/guides/deployment-authentication.md#member-passkeys-feature-preview)). | Passkeys work only at the address in `STATION_AUTHENTICATION_ORIGIN`; changing its hostname orphans them. Turning it off keeps stored passkeys, but they cannot sign in. |
+| `task-collaboration` | Task collaboration | Shows member names and presence in shared Task rooms. | Project membership and an explicit Task share are still required. |
+| `chat-apps` | Chat apps | Shows integration capability status in Connections and write-back history in Task Details. | Status checks can run `gh auth status` on the Station host; an unverified result does not prove delivery. |
 | `visual-skills` | Visual skills | Offers installed visual skills in the start composer (**⋯ → Use a visual skill**) and the New Chat agent list. | Only the entry points are the preview: installing, validating and authoring visual skills work either way, and a chat already started with one keeps its skill view and any unsent next stage. Turning it off mid-draft stops New Chat showing or starting a chosen, unsent visual skill; turning it back on restores that choice. |
 | `workload-budget-settings` | Workload budget settings | Shows a memory budget editor under **Settings → Advanced → Host options**: per-engine and total memory for engine workloads, beside the host's memory and where each value comes from. | Only the editor is the preview; budgets themselves are enforced either way. On a Linux Station service a lower budget kills memory-heavy commands sooner, and a total below current use is refused; an environment variable still overrides the saved value; elsewhere the values are only saved. Turning the preview off keeps saved values in force (save empty fields first to clear them). |
 | `session-cli-reads` | Session reads from the station CLI | Lets a person wait on, digest and list their own Sessions from the CLI: `station sessions wait`, `station sessions digest` and `station activity`. | Read-only. A wait holds one connection for up to 50 seconds at a time, from a bounded per-person pool. |
@@ -56,6 +59,10 @@ authorized device Screen; see [device capture](https://github.com/kontourai/stat
 Turning the preview off hides Review and Timeline; a
 `taskView=review` link then opens Overview.
 
+With **Walkthroughs** also enabled, Browser clips made by the Task's bound
+agent appear under **Screens** with their commit and duration. Open a clip to
+load its video; close the player to release it. See [Task clips](https://github.com/kontourai/station/blob/main/docs/guides/walkthroughs.md#record-a-task-clip).
+
 **Chat images from the host** (`chat-host-images`): when a reply finishes,
 Station copies the PNG, JPEG, GIF and WebP images it names by absolute path or
 `file:` URL, from the chat's working folder, a verified worktree of it, or the
@@ -63,6 +70,21 @@ chat's own temporary folder, and shows them in the reply on every device. See
 [visual replies](html-replies.md#images-saved-on-the-host) for what is admitted
 and what each "not available" message means. Turning it off stops new copies;
 copies already made stay with their chat.
+
+**Stale checkout warning** (`stale-project-checkout`): an agent started in a
+Project reads that checkout's instructions, so a checkout far behind its
+upstream can give it rules the upstream has since dropped. With the preview on,
+Project settings → **Workspace** warns when the current branch is at least
+**Stale checkout after commits** (default 50) behind its upstream, has lacked
+an upstream commit for **Stale checkout after days** (default 3), or was last
+fetched at least that many days ago, and shows `git -C <directory> pull
+--ff-only` to copy. Station never runs it. The counts come from the last
+fetch, whose time the warning shows; Station does not fetch. A checkout whose
+git config sets options Station does not run git with (for example a
+credential helper) shows a line saying it was not compared, and one Station
+could not read says it could not compare it. A folder that is not a git
+checkout, a detached HEAD, or a branch without a local upstream shows nothing.
+The two thresholds are in **Settings → General → Agent runs**.
 
 Turning a preview on affects everyone who uses this Station.
 

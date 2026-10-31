@@ -66,6 +66,7 @@ export interface ApplicationSessionResolver {
   authenticateNative?(
     request: Request,
   ): Promise<ResolvedDeploymentAuthentication>;
+  captureCurrentSession?(request: Request): () => boolean;
   transferRequest(source: Request, replacement: Request): void;
   revoke(request: Request): Promise<void>;
 }
@@ -420,29 +421,43 @@ export class DeploymentAuthenticationService {
   captureCurrentSession(request: Request): () => boolean {
     const captured = this.current(request);
     const cookie = request.headers.get('cookie');
-    // Continuations need an independently current application/native grant.
-    // A live provider session alone cannot witness that grant's revocation.
-    if (
-      captured?.kind !== 'authenticated' ||
-      this.hasContinuation(request) ||
-      !this.provider.isVerifiedSessionCurrent
-    )
-      return () => false;
+    if (captured?.kind !== 'authenticated') return () => false;
+    const continuationHeaders = [
+      APPLICATION_SESSION_HEADER,
+      APPLICATION_SESSION_PROOF_HEADER,
+      APPLICATION_SESSION_NATIVE_HEADER,
+      APPLICATION_SESSION_NATIVE_PROOF_HEADER,
+    ].map((name) => [name, request.headers.get(name)] as const);
+    const ownerCurrent = this.hasContinuation(request)
+      ? this.continuation?.captureCurrentSession?.(request)
+      : this.captureVerifiedSession(captured.session);
     return () => {
       const current = this.current(request);
       if (
         current?.kind !== 'authenticated' ||
-        this.hasContinuation(request) ||
         request.headers.get('cookie') !== cookie ||
+        continuationHeaders.some(
+          ([name, value]) => value !== request.headers.get(name),
+        ) ||
         current.issuer !== captured.issuer ||
         current.principal.id !== captured.principal.id ||
         JSON.stringify(current.session) !== JSON.stringify(captured.session)
       )
         return false;
+      return ownerCurrent?.() === true;
+    };
+  }
+
+  /** The provider receives its original verified session, before continuation expiry clipping. */
+  captureVerifiedSession(
+    session: VerifiedAuthenticationSession,
+  ): () => boolean {
+    const captured = structuredClone(session);
+    return () => {
+      if (this.closing || Date.parse(captured.expiresAt) <= this.now())
+        return false;
       try {
-        return (
-          this.provider.isVerifiedSessionCurrent!(captured.session) === true
-        );
+        return this.provider.isVerifiedSessionCurrent?.(captured) === true;
       } catch {
         return false;
       }

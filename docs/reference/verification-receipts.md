@@ -290,25 +290,23 @@ not a fixed point, which is why the function is not idempotent and why no
 consumer re-applies it. A value neither condition can reach is refused rather
 than recorded.
 
-Two limits on what that boundary is worth, both real and neither closed here.
+The shared redactor removes only the patterns it recognizes; it is not a
+guarantee that arbitrary secrets cannot appear in a receipt. The fix for #1835
+scans past non-secret keys rather than letting their values hide a later secret
+key. Its regression corpus covers nested and encoded objects, assignment
+boundaries, offsets and output caps. That corpus is bounded evidence, not an
+exhaustive proof for every possible input.
 
-It removes what `scripts/lib/verification-redaction.mjs` matches, and nothing
-else. One gap in that shared redactor is known and filed as **#1835**: its
-value matcher is greedy, so a nested key is shielded behind a non-secret outer
-key whose value match consumes it. It is pre-existing and shared with the
-stdout and stderr redaction on `main`, which independent verification showed
-leaks the same class identically — the boundary here is not what introduced
-it, and not where it gets fixed.
+Complete JSON output is redacted as structured data and serialized when a
+value changes, preserving valid JSON in phase attachments. Unchanged JSON keeps
+its original bytes. The canonical credential-ledger phase command is retained
+as a command rather than interpreted as a credential assignment.
 
-And redacting before the bound **widens what is eligible** for the receipt.
-Redaction shortens what it rewrites, so bytes past the cap in the input can be
-pulled inside it — where bounding first would have discarded them
-unconditionally. For the #1835 class that is a regression against a
-bound-first order, measured on a line whose secret sits at offset 533: a
-bound-first order persists 320 bytes without it, this order persists 400 bytes
-with it. The order is kept because in aggregate it leaks less (3,421 against
-4,153 across the reviewer's sweep) and closes the encoded-JSON classes
-entirely. It is a trade that was made, not one that was avoided.
+Redacting before the bound can pull later input bytes inside the retained limit
+when replacements shorten text. An earlier comparison measured a nested-key
+leak in that order before the #1835 fix; those measurements describe the old
+redactor, not the current matcher. The full-text pass remains necessary to
+recognize encoded JSON before a cut makes it unparseable.
 
 The schema's `maxLength: 512` counts **code points**, so it is a looser outer
 wall that a byte-bounded value can never reach; where the two differ, the byte

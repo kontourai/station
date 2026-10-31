@@ -15,6 +15,7 @@ import {
   type WorkingStateScope,
   type WorkingStateSnapshot,
   type WorkingStateWriteAuthorization,
+  workingStateVisibleAtoms,
 } from './shared-working-state.js';
 
 export const MAX_SHARED_EDIT_TEXT_CODE_UNITS = 256 * 1024;
@@ -37,9 +38,9 @@ const LOW_SORTING_ID = /^!([0-9a-z]{8})/;
  * Shape: `!`, a fixed-width base-36 counter one below the lowest existing
  * counter (so lexicographic order is numeric order), then a random suffix that
  * keeps concurrent identities distinct. `!` sorts below every other id this
- * runtime has minted (UUIDs, `p:` seeds). Short on purpose: every atom stores
- * its own id and its predecessor's, so id length is most of each character's
- * stored bytes (#4007). Returns null only when the counter space is exhausted.
+ * runtime has minted (UUIDs, `p:` seeds). Short identities also bound
+ * per-operation metadata in run snapshots (#4007). Returns null only when
+ * the counter space is exhausted.
  */
 export function lowSortingIntentId(
   below: string | null,
@@ -302,34 +303,16 @@ function deepFreeze<T>(value: T): T {
 }
 
 function visibleAtoms(snapshot: WorkingStateSnapshot): readonly VisibleAtom[] {
-  const children = new Map<
-    string | null,
-    WorkingStateSnapshot['atoms'][number][]
-  >();
-  for (const atom of snapshot.atoms) {
-    const siblings = children.get(atom.after) ?? [];
-    siblings.push(atom);
-    children.set(atom.after, siblings);
-  }
-  for (const siblings of children.values())
-    siblings.sort((left, right) => compareWorkingStateIds(left.id, right.id));
   const result: VisibleAtom[] = [];
-  const stack = [...(children.get(null) ?? [])].reverse();
   let offset = 0;
-  while (stack.length > 0) {
-    const atom = stack.pop()!;
-    if (!atom.deleted) {
-      result.push({
-        id: atom.id,
-        value: atom.value,
-        start: offset,
-        end: offset + atom.value.length,
-      });
-      offset += atom.value.length;
-    }
-    const descendants = children.get(atom.id) ?? [];
-    for (let index = descendants.length - 1; index >= 0; index -= 1)
-      stack.push(descendants[index]);
+  for (const atom of workingStateVisibleAtoms(snapshot)) {
+    result.push({
+      id: atom.id,
+      value: atom.value,
+      start: offset,
+      end: offset + atom.value.length,
+    });
+    offset += atom.value.length;
   }
   return result;
 }
@@ -440,9 +423,14 @@ export function createSharedWorkingStateEditingCapability(options: {
         const atoms = visibleAtoms(planningSnapshot);
         const predecessor =
           [...atoms].reverse().find((atom) => atom.end <= start)?.id ?? null;
-        // Snapshot atoms are sorted by id, so the first is the lowest.
+        // Include deleted positions when choosing an identity below every branch.
         const intentId = options.nextIntentId({
-          below: planningSnapshot.atoms[0]?.id ?? null,
+          below:
+            planningSnapshot.schemaVersion === 1
+              ? (planningSnapshot.atoms[0]?.id ?? null)
+              : (planningSnapshot.runs
+                  .map((run) => `${run.operationId}:0`)
+                  .sort(compareWorkingStateIds)[0] ?? null),
         });
         const existingBranch = atoms.find((atom) => atom.start >= start);
         // RGA siblings are ordered by immutable operation identity. If the new

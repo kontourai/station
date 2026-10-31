@@ -85,6 +85,17 @@ export class FeaturePreviewRegistry {
       description:
         'Review Task plans, outputs and Screens with anchored comments and send them to the lead agent.',
     });
+    this.rememberConsumer({
+      id: 'task-collaboration',
+      label: 'Task collaboration',
+      description: 'Show member names and presence in shared Task rooms.',
+    });
+    this.rememberConsumer({
+      id: 'chat-apps',
+      label: 'Chat apps',
+      description:
+        'Show integration capability status and Task write-back history.',
+    });
     // Consumed by the start composers' "Use a visual skill" entry points. The
     // inventory route and authoring contract stay unconditional: hiding the
     // entry points does not change what an installed plugin may declare.

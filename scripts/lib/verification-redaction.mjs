@@ -119,35 +119,64 @@ function redactTrailingCanonicalPrefix(text) {
     .replace(/:\/\/[^\s/@:]+:[^\s/@]*$/g, `://${REDACTED}`);
 }
 
+// Advance past a value only when its key is secret. A harmless container or
+// assignment must not hide another key inside its value from the scan.
+function redactKeyValues(
+  text,
+  keys,
+  values,
+  render,
+  key = (match) => match[1],
+) {
+  let output = '';
+  let copied = 0;
+  let match;
+  while ((match = keys.exec(text)) !== null) {
+    if (!secretKey(key(match))) continue;
+    values.lastIndex = keys.lastIndex;
+    const value = values.exec(text);
+    if (!value) continue;
+    output += text.slice(copied, match.index) + render(match, value[0]);
+    copied = values.lastIndex;
+    keys.lastIndex = copied;
+  }
+  return output + text.slice(copied);
+}
+
 function redactPlainText(text) {
-  const json = redactCanonicalTokens(text).replace(
-    /"([^"\\]+)"(\s*:\s*)("(?:\\.|[^"\\])*"|[^,\r\n}\]]+)/g,
-    (match, key, separator, value) =>
-      secretKey(key)
-        ? `"${key}"${separator}${redactValue(value.trim())}`
-        : match,
+  const json = redactKeyValues(
+    redactCanonicalTokens(text),
+    /"([^"\\]+)"(\s*:\s*)/g,
+    /\[REDACTED\]|"(?:\\.|[^"\\])*"|[^,\r\n}\]]+/y,
+    (match, value) => `"${match[1]}"${match[2]}${redactValue(value.trim())}`,
   );
   // Scan path/query-like values before the broad contextual matcher. On
   // Windows, backslashes let that matcher consume an entire path such as
   // `E:\\tmp\\token=secret` as one nonsecret value and shield the nested key.
-  const nested = json.replace(
-    /\b([A-Za-z][A-Za-z0-9_-]*)\s*(=|:)\s*[^\s\\/?&;]+/g,
-    (match, key, separator) =>
-      secretKey(key) ? `${key}${separator}${REDACTED}` : match,
+  const nested = redactKeyValues(
+    json,
+    /\b([A-Za-z][A-Za-z0-9_-]*)[^\S\r\n]*(=|:)[^\S\r\n]*/g,
+    /\[REDACTED\]|[^\s\\/?&;]+/y,
+    (match) => `${match[1]}${match[2]}${REDACTED}`,
+    assignmentKey,
   );
-  const contextual = nested.replace(
-    /(^|[?&;\s])(?:"([^"\r\n]+)"|'([^'\r\n]+)'|([A-Za-z][A-Za-z0-9_-]*))(\s*(?:=|:)\s*)("(?:\\.|[^"\\])*"|'[^']*'|\S+)(?=$|[&;\r\n])/gim,
-    (match, boundary, double, single, plain, separator, value) => {
-      const key = double ?? single ?? plain ?? '';
-      if (!secretKey(key)) return match;
+  const contextual = redactKeyValues(
+    nested,
+    /(^|[?&;\s])(?:"([^"\r\n]+)"|'([^'\r\n]+)'|([A-Za-z][A-Za-z0-9_-]*))(\s*(?:=|:)\s*)/gim,
+    /(\[REDACTED\]|"(?:\\.|[^"\\])*"|'[^']*'|\S+)(?=$|[&;\r\n])/y,
+    (match, value) => {
+      const [, boundary, double, single, plain, separator] = match;
       const rendered = double ? `"${double}"` : single ? `'${single}'` : plain;
       return `${boundary}${rendered}${separator}${redactValue(value)}`;
     },
+    (match) => match[2] ?? match[3] ?? match[4] ?? '',
   );
-  const output = contextual.replace(
-    /\b([A-Za-z][A-Za-z0-9_-]*)\s*(=|:)\s*("(?:\\.|[^"\\])*"|'[^']*'|\S+)/g,
-    (match, key, separator, raw) =>
-      secretKey(key) ? `${key}${separator}${redactValue(raw)}` : match,
+  const output = redactKeyValues(
+    contextual,
+    /\b([A-Za-z][A-Za-z0-9_-]*)\s*(=|:)\s*/g,
+    /\[REDACTED\]|"(?:\\.|[^"\\])*"|'[^']*'|\S+/y,
+    (match, raw) => `${match[1]}${match[2]}${redactValue(raw)}`,
+    assignmentKey,
   );
   return redactTrailingCanonicalPrefix(
     redactCanonicalTokens(output).replace(
@@ -155,6 +184,17 @@ function redactPlainText(text) {
       `://${REDACTED}@`,
     ),
   );
+}
+
+// This canonical npm script is a phase command, not a credential assignment.
+// Keep other colon-delimited credential values subject to redaction.
+function assignmentKey(match) {
+  return match[1] === 'credential-ledger-exclusive' &&
+    match[2] === ':' &&
+    match.input.slice(0, match.index).endsWith('npm run test:full:') &&
+    /^raw(?=$|[\s"'])/.test(match.input.slice(match.index + match[0].length))
+    ? ''
+    : match[1];
 }
 
 function parseStructuredJson(value) {
@@ -199,10 +239,8 @@ function redactEncodedJsonStrings(text) {
     }
     const nested = parseStructuredJson(decoded);
     if (nested === undefined) return match;
-    // One string layer was decoded to reach this value. Count it so five
-    // encoded layers are interpreted and the sixth becomes a fail-closed
-    // placeholder rather than a potentially secret-bearing opaque string.
-    return JSON.stringify(redactStructuredValue(nested, 1));
+    // Preserve the outer JSON string layer, including on repeated passes.
+    return JSON.stringify(redactStructuredValue(decoded, 0));
   });
 }
 
@@ -212,7 +250,14 @@ function redactEncodedJsonStrings(text) {
  * five layers; deeper payloads are omitted fail-closed by redactStructuredValue.
  */
 export function redactVerificationOutput(value) {
-  return redactPlainText(redactEncodedJsonStrings(String(value)));
+  const text = String(value);
+  const structured = parseStructuredJson(text);
+  if (structured !== undefined) {
+    const redacted = redactStructuredValue(structured, 0);
+    if (JSON.stringify(redacted) === JSON.stringify(structured)) return text;
+    return `${JSON.stringify(redacted, null, text.includes('\n') ? 2 : undefined)}${text.endsWith('\n') ? '\n' : ''}`;
+  }
+  return redactPlainText(redactEncodedJsonStrings(text));
 }
 
 export function redactVerificationValue(value, depth = 0) {

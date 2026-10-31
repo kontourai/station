@@ -479,6 +479,16 @@ export const PAIRING_SCOPE_CATCH_ALL_MOUNT_EXCEPTIONS: readonly string[] = [
 ];
 
 export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
+  ...(['GET', 'HEAD'] as const).map(
+    (method): PairingScopeRouteRule => ({
+      id: `/api/integrations/status:${method}`,
+      method,
+      prefix: '/api/integrations/status',
+      exact: true,
+      scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+      origin: 'explicit',
+    }),
+  ),
   ...(['GET', 'POST'] as const).map(
     (method): PairingScopeRouteRule => ({
       id: `/api/operator/telemetry-companion/private-usage-preparations:${method}`,
@@ -3633,9 +3643,8 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // what a call may contain, and neither implies the other. This entry
     // records the first; `project-layout-admission.ts` owns the second.
     { method: 'POST', path: '/api/me/layouts/:layoutSlug/promote' },
-    // Personal task-room reads disclose only the already-paired operator's
-    // own task projection. Mutations are closed room commands and inherit
-    // orchestration:operate from /api/tasks.
+    // Task-room transport uses the task family's read and operate tiers;
+    // the room separately checks the current person's Task admission.
     { method: 'GET', path: '/api/tasks/:taskId/children' },
     { method: 'POST', path: '/api/tasks/:taskId/children' },
     { method: 'PUT', path: '/api/tasks/:taskId/parent' },
@@ -3685,8 +3694,22 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // exact room/Project authority. Reads use read standing; append-only person
     // comments and transitions use operate standing. Send starts an agent turn
     // through the lead conversation inbox.
+    { method: 'GET', path: '/api/tasks/:taskId/write-back' },
     { method: 'GET', path: '/api/tasks/:taskId/review' },
     { method: 'GET', path: '/api/tasks/:taskId/review/capture-sessions' },
+    { method: 'GET', path: '/api/tasks/:taskId/review/walkthroughs' },
+    {
+      method: 'GET',
+      path: '/api/tasks/:taskId/review/walkthroughs/:walkthroughId',
+    },
+    {
+      method: 'GET',
+      path: '/api/tasks/:taskId/review/walkthroughs/:walkthroughId/video',
+    },
+    {
+      method: 'GET',
+      path: '/api/tasks/:taskId/review/walkthroughs/:walkthroughId/frames/:frameId',
+    },
     { method: 'POST', path: '/api/tasks/:taskId/review/captures' },
     {
       method: 'GET',
@@ -4524,6 +4547,11 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // and the model and approval mode the caller's own last chat here
     // started with. A read of the caller's own history; mutates nothing.
     { method: 'GET', path: '/api/projects/:slug/chat-defaults' },
+    // How far the Project's checkout is behind its upstream, from local git
+    // refs: its branch, upstream name, commit counts and an update command
+    // naming the working directory `GET /:slug` already returns. A read that
+    // never fetches or writes, behind the `stale-project-checkout` preview.
+    { method: 'GET', path: '/api/projects/:slug/checkout-freshness' },
     // archive#1502 — the resolution surface. BOTH of its leaves take
     // the `/api/projects` family tier (read for `resolution`, operate for
     // `bind`) as a RECORDED decision, not by omission.

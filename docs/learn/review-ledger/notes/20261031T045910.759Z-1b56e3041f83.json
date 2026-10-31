@@ -1,0 +1,7 @@
+{
+  "revision": "6a0091138b4120acc5b103f95708a031c0b0fa4e",
+
+  "notes": [
+    {"path":"docs/design/pane-relationships.md","note":"Reviewed ChatDock delta against ongoing-work retention, canonical route/unsaved-guard ownership, phone child destinations and Activity conversation policy. Embedded Inbox hides the retained reader and uses existing Task navigation; no new pane relationship, history entry or domain ancestry is invented. Scope is changed chat entry behavior, not all relationship implementations.","inputs":["docs/design/pane-relationships.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

@@ -40,7 +40,11 @@
 
     "src-server/runtime/routes/__tests__/project-room-access.test.ts",
 
-    "src-server/runtime/routes/runtime-routes.ts"
+    "src-server/runtime/routes/runtime-routes.ts",
+
+    "src-server/runtime/routes/task-member-admission.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-task-room-members.test.ts"
   ],
 
   "checks": [

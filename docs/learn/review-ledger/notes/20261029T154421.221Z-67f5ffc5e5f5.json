@@ -1,0 +1,7 @@
+{
+  "revision": "3ef8d0a4c8b503acfa2d744c6035c95593de7929",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Merge review: checked person notification feed admission, per-person storage and read/dismiss routes against main notification service and route, and the branch scheduler public projection redaction against its scheduler producers. The API reference remains accurate: the person feed is caller-bound and separate from the owner feed; scheduler notices remain generic in the shared projection. Focused principal notification, scheduler execution and docs MCP suites passed; no live push or device evidence.","inputs":["docs/reference/api.md","src-server/services/notifications/notification-service.ts"]}
+  ]
+}

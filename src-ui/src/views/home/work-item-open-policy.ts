@@ -213,11 +213,16 @@ export function focusChatEventDetailForAction(
   }
 }
 
+export type ConversationOpenResult =
+  | boolean
+  | undefined
+  | 'unavailable'
+  | 'cancelled';
+
 export interface WorkItemOpenHandlers {
   onFocusChat: (chatSessionId: string) => void;
-  /** Mirrors `useChatDockActions`' `openConversation` — resolves `false`
-   *  when the row's agent no longer exists, in which case the executor
-   *  falls back to `onOpenSession`. */
+  /** Explicit unavailable/cancelled results never fall back. Legacy false
+   * retains the missing-agent fallback once the catalog is known. */
   onOpenConversation: (
     conversationId: string,
     agentSlug: string,
@@ -225,17 +230,11 @@ export interface WorkItemOpenHandlers {
     projectName?: string,
     model?: string,
     conversationUpdatedAt?: string,
-  ) => Promise<boolean> | boolean | undefined;
+  ) => Promise<ConversationOpenResult> | ConversationOpenResult;
   onOpenSession: (threadId: string) => void;
-  /**
-   * archive#3687: whether the agent catalog has resolved successfully at
-   * least once (`useAgentsLoaded`). `openConversation`'s `false` means "the
-   * agent does not exist" ONLY once the catalog has answered — while it is
-   * pending or failed, `useAgents` supplies the shared empty array and
-   * EVERY rehydrate resolves `false`, which used to bounce every inbox click
-   * to Activity. Absent means "unknown", which is treated as loaded so
-   * existing callers keep the archive#801 fallback.
-   */
+  /** An unanswered catalog must not turn a legacy false into navigation
+   * (archive#3687). Omitted preserves the archive#801 fallback. Callers that
+   * distinguish a failed read from a missing agent report unavailable. */
   agentsLoaded?: boolean;
 }
 
@@ -252,12 +251,14 @@ type WorkItemOpenOutcome =
   | 'fallback'
   /** The agent catalog has not answered yet — nothing was navigated. */
   | 'catalog-pending'
+  | 'unavailable'
+  | 'cancelled'
   /** The row deliberately has no open action (durable task, remote session). */
   | 'none';
 
 /**
  * Execute the resolved action for a surface with direct callback access
- * (`ChatDockInboxPanel`, `MobileTaskSwitcher` — both rendered inside
+ * (`ChatDockInboxPanel`, `MobileInboxPanel` — both rendered inside
  * `ChatDock`, which owns `openConversation`). Awaits the rehydrate attempt
  * so a stale/deleted agent still reveals Activity instead of a
  * silent no-op (archive#801's rule, extended to this seam).
@@ -288,6 +289,7 @@ export async function openWorkItem(
             action.projectName,
             action.model,
           );
+      if (opened === 'unavailable' || opened === 'cancelled') return opened;
       if (opened === false) {
         // archive#3687 seam 1: `false` from an unanswered catalog is not
         // "this agent was deleted" — it is "nothing is known yet". Bouncing
@@ -317,8 +319,10 @@ export async function openWorkItem(
  */
 export function workItemOpenFailureMessage(
   item: HomeWorkItem,
-  outcome: Extract<WorkItemOpenOutcome, 'catalog-pending' | 'none'>,
+  outcome: Exclude<WorkItemOpenOutcome, 'opened' | 'fallback' | 'cancelled'>,
 ): string {
+  if (outcome === 'unavailable')
+    return 'Could not open this conversation. Try again.';
   if (outcome === 'catalog-pending') {
     return 'Still loading your agents — try this item again in a moment.';
   }

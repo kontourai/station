@@ -36,6 +36,7 @@ import {
   type AgentWakeUpState,
   CONVERSATION_SCHEDULED_JOBS_LIMIT,
   type ConversationAgentSchedule,
+  type ConversationAutomation,
   type ConversationUsageLimitResume,
   jobMatchesProposal,
 } from '@kontourai/station-contracts/agent-schedule';
@@ -192,6 +193,14 @@ export interface AgentScheduleRoutesDeps {
    * would approve them is not offered there.
    */
   hosted?: boolean;
+  /**
+   * The automations whose runs land in this conversation, read from the
+   * scheduler. Absent (hosted): the chat lists none.
+   */
+  conversationAutomations?(
+    conversationId: string,
+    context: Context,
+  ): Promise<readonly ConversationAutomation[]>;
   now?: () => number;
 }
 
@@ -412,6 +421,10 @@ export function createAgentScheduleRoutes(deps: AgentScheduleRoutesDeps) {
       schedule: job.data.schedule as AgentJobProposalJob['schedule'],
       prompt: job.data.prompt,
       ...(job.data.agent ? { agent: job.data.agent } : {}),
+      // An approved proposal runs in the chat that proposed it, on that
+      // chat's own engine: never as a Station-engine run of an Agent that
+      // engine may not have.
+      target: { kind: 'conversation', conversationId: caller.conversationId },
     };
     const result = deps.store.insertJobProposal({
       conversationId: caller.conversationId,
@@ -462,14 +475,28 @@ export function createAgentScheduleRoutes(deps: AgentScheduleRoutesDeps) {
 
   app.get('/agent-schedule/:conversationId', async (c) => {
     const conversationId = c.req.param('conversationId');
-    const person = personFor(c, conversationId, 'read');
-    if (person instanceof Response) return person;
+    if (requestMayBeAnAgent(c.req.raw)) {
+      const caller = callerOf(c);
+      if ('refused' in caller) return caller.refused;
+      if (caller.conversationId !== conversationId) return otherConversation(c);
+    } else {
+      const person = personFor(c, conversationId, 'read');
+      if (person instanceof Response) return person;
+    }
     let usageLimitResume: ConversationUsageLimitResume | undefined;
     try {
       usageLimitResume = await deps.usageLimitResume?.(conversationId);
     } catch {
       // The banner reads the stop itself; this list just leaves it out.
       usageLimitResume = undefined;
+    }
+    let automations: readonly ConversationAutomation[] | undefined;
+    try {
+      automations = await deps.conversationAutomations?.(conversationId, c);
+    } catch {
+      // The scheduler being unreadable is not "no automations": leave the
+      // field out so the chat does not claim there are none.
+      automations = undefined;
     }
     const data: ConversationAgentSchedule = {
       wakeUps:
@@ -483,6 +510,7 @@ export function createAgentScheduleRoutes(deps: AgentScheduleRoutesDeps) {
           CONVERSATION_SCHEDULED_JOBS_LIMIT,
         ) ?? [],
       ...(usageLimitResume ? { usageLimitResume } : {}),
+      ...(automations ? { automations } : {}),
     };
     return c.json({ success: true, data }, 200, NO_STORE);
   });
@@ -588,6 +616,7 @@ const APPROVABLE_FIELDS: ReadonlySet<string> = new Set([
   'schedule',
   'prompt',
   'agent',
+  'target',
 ]);
 
 /**

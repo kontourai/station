@@ -1,0 +1,15 @@
+{
+  "revision": "216f0c8c8ef5ece530c8fc1802b87a31987fe3c4",
+
+  "notes": [
+    {"path":"docs/README.md","note":"Reviewed the documentation navigation and authority descriptions against the runtime-routes diff: its event producer wiring does not alter the navigation or authority claims. Source inspection only.","inputs":["docs/README.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","note":"Reviewed the historical knowledge store/index decision and its current-reading qualification against the runtime-routes diff. The change rewires general events and does not modify the knowledge store or index claims; no storage journey was executed.","inputs":["docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"Reviewed the historical and supersession labels and browser preview host decisions against the runtime-routes diff, which changes general event wiring rather than browser hosting. No native or browser host journey was executed.","inputs":["docs/adr/0017-browser-preview-host.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Reviewed the definitions of receipts, gate verdicts and readiness and the implementation route against the runtime-routes change. The general event wiring does not change those governance distinctions; no governance run was executed.","inputs":["docs/contexts/evidence-governance/CONTEXT.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Reviewed the operations vocabulary, especially notification delivery versus storage and telemetry, and the analytics composition link against the runtime-routes diff. Event-producer composition changed, not the documented analytics routes; no delivery or telemetry journey was executed.","inputs":["docs/contexts/operations/CONTEXT.md","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}
