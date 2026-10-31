@@ -38,7 +38,8 @@ interface ApprovedRequest {
   readonly requestEventId: string;
 }
 // A consumed or expired token cannot make an unresolved handoff approvable again.
-const approvedRequests = new Map<string, ApprovedRequest>();
+const approvedRequests = new Set<ApprovedRequest>();
+let requestScopes = new WeakMap<object, Map<string, ApprovedRequest>>();
 const approvalKey = (conversationId: string, serverId: string, tool: string) =>
   JSON.stringify([conversationId, serverId, tool]);
 
@@ -80,6 +81,7 @@ export function recordPersonApprovedExternalTool(
   conversationId: string,
   externalToolName: unknown,
   request?: {
+    scope: object | undefined;
     requestId: string;
     requestEventId: string;
     isClosed(reference: ApprovedRequest): boolean;
@@ -90,9 +92,18 @@ export function recordPersonApprovedExternalTool(
   const parsed = parseExternalMcpToolName(externalToolName);
   if (!parsed) return true;
   if (request) {
-    for (const [key, reference] of approvedRequests) {
+    if (!request.scope) return false;
+    let scope = requestScopes.get(request.scope);
+    if (!scope) {
+      scope = new Map();
+      requestScopes.set(request.scope, scope);
+    }
+    for (const [key, reference] of scope) {
       try {
-        if (request.isClosed(reference)) approvedRequests.delete(key);
+        if (request.isClosed(reference)) {
+          scope.delete(key);
+          approvedRequests.delete(reference);
+        }
       } catch {
         // An unavailable request lookup cannot retire an uncertain handoff.
       }
@@ -102,17 +113,15 @@ export function recordPersonApprovedExternalTool(
       request.requestId,
       request.requestEventId,
     ]);
-    if (approvedRequests.has(key) || approvedRequests.size >= APPROVAL_LIMIT)
-      return false;
+    if (scope.has(key) || approvedRequests.size >= APPROVAL_LIMIT) return false;
     request.assertCurrent();
-    approvedRequests.set(
-      key,
-      Object.freeze({
-        conversationId,
-        requestId: request.requestId,
-        requestEventId: request.requestEventId,
-      }),
-    );
+    const reference = Object.freeze({
+      conversationId,
+      requestId: request.requestId,
+      requestEventId: request.requestEventId,
+    });
+    scope.set(key, reference);
+    approvedRequests.add(reference);
   }
   recordPersonApprovedCall(conversationId, parsed.serverId, parsed.toolName);
   return true;
@@ -131,6 +140,7 @@ function consumeApproval(key: string, now: number): boolean {
 export function resetPersonApprovedCalls(): void {
   approvals.clear();
   approvedRequests.clear();
+  requestScopes = new WeakMap();
 }
 
 /**

@@ -9003,6 +9003,36 @@ export class OrchestrationService {
               adapter,
               turnInput,
             );
+          const approvalSequence = this.approvalPosture.decision(
+            turnInput.threadId,
+          )?.sequence;
+          const confinementGrantor = this.readStartConfinementGrantor(
+            turnInput.threadId,
+          );
+          // #2493: the session's start stamp or a recorded `never`; never
+          // what the turn carries.
+          const confinement = this.approvalPosture.standingConfinement(
+            turnInput.threadId,
+            this.readStartConfinementStamp(turnInput.threadId),
+          );
+          const assertTurnPostureCurrent = () => {
+            if (
+              this.approvalPosture.decision(turnInput.threadId)?.sequence !==
+                approvalSequence ||
+              this.approvalPosture.standingConfinement(
+                turnInput.threadId,
+                this.readStartConfinementStamp(turnInput.threadId),
+              ) !== confinement ||
+              !samePreparedValue(
+                confinementGrantor ?? null,
+                this.readStartConfinementGrantor(turnInput.threadId) ?? null,
+              )
+            )
+              throw new SendTurnRefusedError(
+                'Approval settings changed before this turn started. Send it again.',
+                'permission_denied',
+              );
+          };
           // #2436: the conversation's latest recorded posture replaces
           // whatever the turn carried — on every path that sends a turn
           // (#2418), not only the composer's.
@@ -9010,12 +9040,6 @@ export class OrchestrationService {
             const agentSlug = this.readLatestSessionStartMetadata(
               turnInput.threadId,
             )?.agentSlug;
-            // #2493: the session's start stamp or a recorded `never`; never
-            // what the turn carries.
-            const confinement = this.approvalPosture.standingConfinement(
-              turnInput.threadId,
-              this.readStartConfinementStamp(turnInput.threadId),
-            );
             turnGovernance = {
               agentSlug: typeof agentSlug === 'string' ? agentSlug : undefined,
               prior: this.approvalPosture.appliedOf(turnInput.threadId),
@@ -9541,6 +9565,7 @@ export class OrchestrationService {
                                 );
                               }
                             }
+                            assertTurnPostureCurrent();
                             if (boundary.prepareIntent) {
                               const captured = captureTurnIntent(turnInput, {
                                 binding: this.preparedTurnBinding(
@@ -9598,6 +9623,7 @@ export class OrchestrationService {
                               turnInput.threadId,
                               turnInput.clientTurnId ?? '',
                             );
+                            assertTurnPostureCurrent();
                             providerInvoked = true;
                             const sendTurn = () => {
                               if (internal?.reservedStationTurn) {
@@ -10861,6 +10887,7 @@ export class OrchestrationService {
                   command.threadId,
                   opened.payload?.toolName,
                   {
+                    scope: this.options.eventStore,
                     requestId: command.requestId,
                     requestEventId: currentQuestionRequest.event.id,
                     assertCurrent: assertAnswerCurrent,
