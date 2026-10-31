@@ -4282,6 +4282,11 @@ export class StationRuntime {
               fileStores: this.memoryAdapters,
               // Legacy file-memory conversations are keyed by the OS alias.
               fileMemoryUserId: () => getCachedUser().alias,
+              canReadFileOwner: (requester, owner) =>
+                this.environmentSecurityService.canSharePersonalConversation(
+                  requester,
+                  owner,
+                ),
               projectHomeDir: this.configLoader.getProjectHomeDir(),
               knowledgeStoresEnabled: this.appConfig?.knowledgeStores,
             });
@@ -4740,6 +4745,7 @@ export class StationRuntime {
       serverUpdate,
       analyticsMaintenance,
     } = configureRuntimeRoutes({
+      discordGateway: this.discordGatewayService,
       retainProjectRoomRuntime: (runtime) => {
         this.projectRoomRuntime = runtime;
       },

@@ -1,0 +1,7 @@
+{
+  "revision": "7082bdceba1a9ddb7b786f00cbb08ffa2aeae790",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Reviewed shared general-event envelope and cursor isolation against the producer, orchestration route and UI consumer. Route tests cover replay, authorization and release; a Windows HTTP/1.1 probe observed general, snapshot, caught-up and heartbeat frames. Older-host compatibility, native and proxy paths remain unqualified.","inputs":["docs/reference/session-api.md","src-server/routes/orchestration/events.ts","src-server/routes/orchestration/orchestration.ts","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

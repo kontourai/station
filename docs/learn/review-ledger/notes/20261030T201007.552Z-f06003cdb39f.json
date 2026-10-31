@@ -1,0 +1,19 @@
+{
+  "revision": "87e0f23920132deda49baad629bc9852c30daad1",
+
+  "notes": [
+    {"path":"docs/design/pnpm-workspace-installation.md","note":"Compared the managed pnpm installation and npm script-interface contract to package scripts delta: only Veritas readiness entry points now use a Node wrapper, not a change to lock, installer or lifecycle authority. dependencies:ci succeeded in this checkout; no cross-platform install claim.","inputs":["docs/design/pnpm-workspace-installation.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/repository-knowledge-graph.md","note":"Compared the freshness-command and snapshot boundaries to package scripts delta: docs:freshness:check is unchanged; the Veritas readiness wrapper does not alter graph export or provenance. No graph ingestion or browser journey run.","inputs":["docs/guides/repository-knowledge-graph.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/code-hygiene.md","note":"Compared required lint:hygiene and veritas:plan guidance with package scripts delta: only readiness entry points use the wrapper, retaining Veritas as evidence owner. No new hygiene qualification run.","inputs":["docs/guides/code-hygiene.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Compared hosted readiness and hook routing guidance to package scripts and readiness wrapper: ci:fast still requests readiness and the wrapper passes its arguments to the installed Veritas entry; hook commands are unchanged. No hosted result inferred.","inputs":["docs/guides/code-quality.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Compared advisory scan, locked graph and release gate claims with package scripts delta: the readiness wrapper changes no advisory command or dependency inputs. No registry scan or release performed.","inputs":["docs/guides/dependency-security.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/development.md","note":"Compared managed dependency setup, CI verification and readiness process descriptions with package scripts delta and Windows wrapper: arguments still reach installed Veritas, with Git shell added on Windows. dependencies:ci completed here; no hosted or native qualification inferred.","inputs":["docs/guides/development.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/testing.md","note":"Compared readiness JSON/ci:fast and verification-policy descriptions with package scripts, readiness wrapper and evidence-check gate delta: wrapper forwards arguments and gate recognizes the direct installed Veritas entry while retaining fast-lane routing. No broad CI or promotion receipt inferred.","inputs":["docs/guides/testing.md","package.json#/scripts","scripts/evidence-check-execution-gate.mjs"]}
+  ]
+}

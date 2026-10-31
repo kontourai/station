@@ -31,6 +31,7 @@ import { ProjectManifestStore } from '../../../services/projects/project-manifes
 import { createProjectMembershipRuntime } from '../../../services/projects/project-membership-runtime.js';
 import { ProjectService } from '../../../services/projects/project-service.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
+import * as gitExec from '../../../utils/git-exec.js';
 import {
   getInternalApiToken,
   INTERNAL_API_TOKEN_HEADER,
@@ -146,6 +147,12 @@ describe('account-tied personal access tokens over the production composition', 
     const app = new Hono();
     let appConfig: Record<string, unknown> = {};
     const context = deepStub({
+      discordGateway: {
+        getGatewayStatus: () => ({
+          state: 'unavailable' as const,
+          reason: 'Gateway is not configured.',
+        }),
+      },
       projectMembership: membership.service,
       projectSharedTasks: membership.sharedTasks,
       deploymentAuthentication: localAccounts,
@@ -417,6 +424,22 @@ describe('account-tied personal access tokens over the production composition', 
       ownerOperator,
     };
   }
+
+  test('integration status composes operator authority and the live probe', async () => {
+    const exec = vi
+      .spyOn(gitExec, 'execGitContextCommand')
+      .mockResolvedValue({ stdout: '', stderr: '' });
+    const h = await setup();
+    const response = await h.request('/api/integrations/status', h.operator());
+    expect(response.status, await response.clone().text()).toBe(200);
+    const body = await readJson<{
+      data: { connections: Array<{ provider: string }> };
+    }>(response);
+    expect(
+      body.data.connections.map((connection) => connection.provider),
+    ).toEqual(['github', 'discord', 'slack', 'webhook', 'linear', 'jira']);
+    expect(exec).toHaveBeenCalledOnce();
+  });
 
   test('person notifications isolate paired accounts and persist their read and dismiss state', async () => {
     const h = await setup();
@@ -927,12 +950,25 @@ describe('account-tied personal access tokens over the production composition', 
     );
     expect(deviceAccess.status, await deviceAccess.clone().text()).toBe(200);
 
+    const integrationStatus = await h.request(
+      '/api/integrations/status',
+      member.device(),
+    );
+    expect(
+      integrationStatus.status,
+      await integrationStatus.clone().text(),
+    ).toBe(403);
+    expect(await integrationStatus.json()).toEqual({
+      error: { code: 'account_bound_device_route_forbidden' },
+    });
+
     // Each refusal names the layer that made it: the pairing-scope table
     // refuses tokens on the Project access leaves (`personalTokens:
     // 'refused'`) before the account-bound gate runs; the gate refuses the
     // rest. Both layers refuse the access leaves; only the first is seen.
     for (const [path, init, code] of [
       ['/api/agents', {}, 'account_bound_device_route_forbidden'],
+      ['/api/integrations/status', {}, 'account_bound_device_route_forbidden'],
       ['/api/projects/demo/access', {}, 'insufficient_scope'],
       [
         '/api/projects/demo/access/invitations',

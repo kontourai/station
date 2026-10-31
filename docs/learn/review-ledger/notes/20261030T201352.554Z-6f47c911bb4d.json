@@ -1,0 +1,15 @@
+{
+  "revision": "72dae3e0e1f7b188d13b7da944959b6c6380bfcd",
+
+  "notes": [
+    {"path":"docs/design/browser-preview-host-spike.md","note":"Compared the historical Tauri host-selection and supersession scope with runtime route delta: plugin command Project/Task admission does not change the preview host or its native evidence. No native experiment rerun.","inputs":["docs/design/browser-preview-host-spike.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"Compared the historical pane v1 and superseding v2 status with the runtime route delta: plugin command requirement admission does not modify browser session or pane migration. No browser/native journey run.","inputs":["docs/design/browser-preview-pane-mvp.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Compared MCP Apps host resolution, frame and custody scope with the bootstrap delta: conversation Knowledge file-owner authorization does not change MCP host or external tool effects. No live MCP server or native frame tested.","inputs":["docs/design/mcp-ui-host.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Compared the personal-operator terminal seam and its API reference link against the runtime route and API reference changes: plugin command requirement Project reads do not grant terminal access or change its separate observe/operate boundary. No PTY or remote journey run.","inputs":["docs/design/terminal.md","docs/reference/api.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Compared personal-host Browser access and session lifecycle with the runtime route delta: plugin command Project/Task admission is separate from browser authorization and does not widen Browser profile access. No browser or physical-device run.","inputs":["docs/guides/browser-workspace.md","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}
