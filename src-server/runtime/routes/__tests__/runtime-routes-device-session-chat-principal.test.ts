@@ -1496,9 +1496,17 @@ describe('device-session chat principal resolution over the REAL auth path (stat
           )
         ).status,
       ).toBe(404);
-      expect(
-        (await projectRead(`/api/tasks/${sharedTaskId}/room/history`)).status,
-      ).toBe(403);
+      const memberHistory = await projectRead(
+        `/api/tasks/${sharedTaskId}/room/history`,
+      );
+      expect(memberHistory.status).toBe(200);
+      expect(await memberHistory.json()).toMatchObject({
+        success: true,
+        data: {
+          kind: 'available',
+          records: [{ body: { kind: 'human-message', text: messageMarker } }],
+        },
+      });
       // #3193: the bound guest reads the publication MemberProjectPage gates
       // history and document on, and sees exactly the shared-work list's
       // summary. An unshared Task and an unknown id are one uniform 404.
