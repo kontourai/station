@@ -60,7 +60,7 @@
  */
 import { existsSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
-import type { EnvVariable, McpServer } from '@agentclientprotocol/sdk';
+import type { EnvVariable, McpServer } from '@agentclientprotocol/sdk/unstable';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import { builtinStationApiServerId } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import { findCliBinary } from '../auth/cli-auth.js';

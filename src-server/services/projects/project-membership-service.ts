@@ -54,8 +54,18 @@ export interface ProjectMembershipMutationIntent {
   expectedActorId?: string;
 }
 
+export interface ProjectMembershipChange {
+  readonly projectId: string;
+  readonly principalId: string;
+  readonly revision: number;
+}
+
 /** Couples membership transactions to the selected Project's current incarnation. */
 export class ProjectMembershipService {
+  private readonly listeners = new Set<
+    (change: ProjectMembershipChange) => void
+  >();
+
   constructor(
     private readonly stationId: string,
     private readonly storage: IStorageAdapter,
@@ -63,6 +73,22 @@ export class ProjectMembershipService {
       Partial<Pick<ProjectManifestStore, 'ensureProjectManifest'>>,
     private readonly members: ProjectMembershipStore,
   ) {}
+
+  subscribe(listener: (change: ProjectMembershipChange) => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  private emitChange(projectId: string, principalId: string, revision: number) {
+    const change = { projectId, principalId, revision };
+    for (const listener of [...this.listeners]) {
+      try {
+        listener(change);
+      } catch {
+        /* A listener cannot undo a committed mutation. */
+      }
+    }
+  }
 
   async enable(
     slug: string,
@@ -81,8 +107,11 @@ export class ProjectMembershipService {
         if (scope.localProjectId !== expectedLocalId)
           throw new ProjectMembershipRefusal('conflict');
         assertLiveAuthority?.();
-        this.members.enable(scope, actor.principal);
-        return this.members.administration(scope, actor.principal);
+        const revision = this.members.enable(scope, actor.principal);
+        if (revision !== undefined)
+          this.emitChange(scope.localProjectId, actor.principal.id, revision);
+        const view = this.members.administration(scope, actor.principal);
+        return view;
       },
       async (localId) => {
         await authority.operator();
@@ -228,6 +257,14 @@ export class ProjectMembershipService {
     return this.members.readableProjectAdmissionsForPrincipalId(principalId);
   }
 
+  /** Only for attribution after the caller has authorized this exact scope. */
+  memberDisplayName(
+    scope: ProjectMembershipScope,
+    principalId: string,
+  ): string | undefined {
+    return this.members.memberDisplayName(scope, principalId);
+  }
+
   async requireProjectRead(
     slug: string,
     authority: ProjectMembershipAuthority,
@@ -356,7 +393,17 @@ export class ProjectMembershipService {
     const scope = this.members.invitationScope(token);
     return this.withProject(scope.localProjectSlug, scope, async () => {
       const actor = await this.currentActor(authority, initial.principal.id);
-      return this.members.accept(token, actor.principal, actor.verifiedEmails);
+      const accepted = this.members.accept(
+        token,
+        actor.principal,
+        actor.verifiedEmails,
+      );
+      this.emitChange(
+        scope.localProjectId,
+        actor.principal.id,
+        accepted.revision,
+      );
+      return accepted.scope;
     });
   }
 
@@ -404,6 +451,7 @@ export class ProjectMembershipService {
           revision,
           capturedChange,
         );
+        this.emitChange(capturedScope.localProjectId, targetId, revision + 1);
         return { changed: true as const };
       },
       capturedIntent,
@@ -422,11 +470,17 @@ export class ProjectMembershipService {
       capturedScope,
       authority,
       (actor) => {
-        this.members.transferOwnership(
+        const changes = this.members.transferOwnership(
           capturedScope,
           actor.principal,
           recipientId,
         );
+        for (const change of changes)
+          this.emitChange(
+            capturedScope.localProjectId,
+            change.principalId,
+            change.revision,
+          );
         return { changed: true as const };
       },
       capturedIntent,

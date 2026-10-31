@@ -1,10 +1,11 @@
 import { readFile, stat, writeFile } from 'node:fs/promises';
 import * as pathModule from 'node:path';
 import {
-  type Client,
   type CreateTerminalRequest,
   type CreateTerminalResponse,
+  client,
   type KillTerminalRequest,
+  methods,
   type ReadTextFileRequest,
   type ReadTextFileResponse,
   type ReleaseTerminalRequest,
@@ -17,17 +18,67 @@ import {
   type WaitForTerminalExitRequest,
   type WaitForTerminalExitResponse,
   type WriteTextFileRequest,
-} from '@agentclientprotocol/sdk';
+} from '@agentclientprotocol/sdk/unstable';
 import { spawnChildWorkload as spawn } from '@kontourai/station-shared/child-workload';
 import { childProcessEnvironment } from '../../utils/child-process-environment.js';
 import { ApprovalRegistry } from '../approvals/approval-registry.js';
 import type {
+  ACPClientCallbacks,
   ExtendedCreateTerminalRequest,
   ExtendedRequestPermissionRequest,
   ManagedTerminal,
 } from './acp-bridge-types.js';
 
 type ACPStreamWriter = (chunk: any) => Promise<void>;
+
+function extensionParams(params: unknown): Record<string, unknown> {
+  if (params === undefined) return {};
+  if (typeof params !== 'object' || params === null || Array.isArray(params)) {
+    throw RequestError.invalidParams(
+      undefined,
+      'Extension params must be an object.',
+    );
+  }
+  return params as Record<string, unknown>;
+}
+
+/** Bind Station's callbacks to the SDK's validated v1 app dispatch. */
+export function createACPClientApp(callbacks: ACPClientCallbacks) {
+  return client()
+    .onNotification(methods.client.session.update, ({ params }) =>
+      callbacks.sessionUpdate(params),
+    )
+    .onRequest(methods.client.session.requestPermission, ({ params }) =>
+      callbacks.requestPermission(params),
+    )
+    .onRequest(methods.client.fs.readTextFile, ({ params }) =>
+      callbacks.readTextFile(params),
+    )
+    .onRequest(methods.client.fs.writeTextFile, ({ params }) =>
+      callbacks.writeTextFile(params),
+    )
+    .onRequest(methods.client.terminal.create, ({ params }) =>
+      callbacks.createTerminal(params),
+    )
+    .onRequest(methods.client.terminal.output, ({ params }) =>
+      callbacks.terminalOutput(params),
+    )
+    .onRequest(methods.client.terminal.release, ({ params }) =>
+      callbacks.releaseTerminal(params),
+    )
+    .onRequest(methods.client.terminal.waitForExit, ({ params }) =>
+      callbacks.waitForTerminalExit(params),
+    )
+    .onRequest(methods.client.terminal.kill, ({ params }) =>
+      callbacks.killTerminal(params),
+    )
+    .onRequest('*', ({ method, params }) =>
+      callbacks.extMethod(method, extensionParams(params)),
+    )
+    .onNotification('*', ({ method, params }) =>
+      callbacks.extNotification(method, extensionParams(params)),
+    );
+}
 
 interface ACPBridgeClientContext {
   cwd: string;
@@ -104,7 +155,9 @@ function assertClientFileAccess(
   return normalized;
 }
 
-export function createACPBridgeClient(context: ACPBridgeClientContext): Client {
+export function createACPBridgeClient(
+  context: ACPBridgeClientContext,
+): ACPClientCallbacks {
   return {
     sessionUpdate: async (params: SessionNotification) => {
       await context.onSessionUpdate(params);
