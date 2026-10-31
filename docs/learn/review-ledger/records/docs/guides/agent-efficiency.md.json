@@ -44,7 +44,13 @@
 
     "src-server/runtime/mcp/station-control-mcp-token.ts",
 
-    "src-ui/src/slashCommands/builtins.ts"
+    "src-ui/src/slashCommands/builtins.ts",
+
+    "scripts/qualify-isolated-repair.mjs",
+
+    "package.json#/scripts/qualify:isolated-repair",
+
+    "package.json#/scripts/qualify:isolated-repair:prepare"
   ],
 
   "checks": [
