@@ -164,6 +164,7 @@ import { usePlatformProfile } from '../platform/PlatformProfileContext';
 import { useHostRequestAuthorityScope } from './ApiBaseContext';
 import {
   AuthorityPersistenceContext,
+  ClientBootstrapContext,
   type AuthorityPersistenceContextValue,
 } from './AuthorityPersistenceContext';
 import { activeChatsStore } from './active-chats-store';
@@ -538,16 +539,23 @@ export function AuthorityQueryProvider({
   // survive client replacement and skip a new client's seed.
   const [nativeBootFinished, setNativeBootFinished] =
     useState<QueryClient | null>(null);
+  const [bootCapability, setBootCapability] = useState<{
+    scope: NonNullable<typeof boundScope>;
+    client: QueryClient;
+    sharedRealtime: boolean;
+  } | null>(null);
   const seededRef = useRef<{
     namespace: string;
     client: QueryClient;
+    scope: NonNullable<typeof boundScope>;
   } | null>(null);
   useEffect(() => {
     if (!verifiedNamespace || !active || !boundScope) return;
     if (active.namespace !== verifiedNamespace) return;
     if (
       seededRef.current?.namespace === verifiedNamespace &&
-      seededRef.current.client === active.queryClient
+      seededRef.current.client === active.queryClient &&
+      seededRef.current.scope === boundScope
     )
       return;
     let sameOrigin = false;
@@ -557,7 +565,14 @@ export function AuthorityQueryProvider({
     } catch {
       sameOrigin = false;
     }
-    if (!profile.isTauri && !sameOrigin) return;
+    if (!profile.isTauri && !sameOrigin) {
+      setBootCapability({
+        scope: boundScope,
+        client: active.queryClient,
+        sharedRealtime: false,
+      });
+      return;
+    }
     const scopeAtSeed = boundScope;
     const clientAtSeed = active.queryClient;
     const namespaceAtSeed = verifiedNamespace;
@@ -573,7 +588,13 @@ export function AuthorityQueryProvider({
         const read = bootReadRef.current;
         if (read?.scope !== scopeAtSeed) return;
         const result = await read.promise;
-        if (!result || !stillCurrent()) return;
+        if (!stillCurrent()) return;
+        setBootCapability({
+          scope: scopeAtSeed,
+          client: clientAtSeed,
+          sharedRealtime: result?.payload?.sharedRealtime === true,
+        });
+        if (!result) return;
         await result.boot.seedBootPayloadGuarded(
           clientAtSeed,
           result.payload,
@@ -584,6 +605,7 @@ export function AuthorityQueryProvider({
         seededRef.current = {
           namespace: namespaceAtSeed,
           client: clientAtSeed,
+          scope: scopeAtSeed,
         };
       } catch {
         // Best-effort fast path only; ordinary queries fetch on demand.
@@ -674,7 +696,19 @@ export function AuthorityQueryProvider({
         >
           <AuthoritySwitchInvalidator />
           <OfflineSessionIndex />
-          <SessionReadModelProvider>{children}</SessionReadModelProvider>
+          <ClientBootstrapContext.Provider
+            value={
+              bootCapability?.scope === boundScope &&
+              bootCapability.client === active.queryClient
+                ? {
+                    status: 'settled',
+                    sharedRealtime: bootCapability.sharedRealtime,
+                  }
+                : { status: 'pending', sharedRealtime: false }
+            }
+          >
+            <SessionReadModelProvider>{children}</SessionReadModelProvider>
+          </ClientBootstrapContext.Provider>
         </PersistQueryClientProvider>
       </AuthorityPersistenceContext.Provider>
     );
