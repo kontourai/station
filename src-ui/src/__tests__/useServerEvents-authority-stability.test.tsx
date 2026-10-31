@@ -15,11 +15,19 @@ const host = vi.hoisted(() => ({
   authorityGeneration: 1,
   bindingId: 'binding-a',
 }));
+const inbox = vi.hoisted(() => ({
+  entries: [] as Array<Record<string, string>>,
+}));
+vi.mock('@kontourai/station-sdk/client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-sdk/client')>()),
+  listConversationInbox: vi.fn(async () => inbox.entries),
+}));
 const streams = vi.hoisted(
   () =>
     [] as Array<{
       close: ReturnType<typeof vi.fn>;
       onMessage: (message: { event: string; data: string }) => void;
+      onRaw: (message: { event: string; data: string }) => void;
     }>,
 );
 
@@ -41,6 +49,7 @@ vi.mock('@kontourai/station-sdk', async () => ({
         completed: new Promise(() => {}),
         retry: vi.fn(),
         restart: vi.fn(),
+        onRaw: options.onMessage,
         onMessage: (message: { event: string; data: string }) =>
           options.onMessage({
             event: 'station:general',
@@ -134,6 +143,8 @@ import {
   ApiBaseProvider,
   useHostRequestAuthorityScope,
 } from '../contexts/ApiBaseContext';
+import { ClientBootstrapContext } from '../contexts/AuthorityPersistenceContext';
+import { useConversationInbox } from '../hooks/useConversationInbox';
 import { useServerEvents } from '../hooks/useServerEvents';
 
 function provider(client: QueryClient) {
@@ -141,7 +152,15 @@ function provider(client: QueryClient) {
     React.createElement(
       ApiBaseProvider,
       undefined,
-      React.createElement(QueryClientProvider, { client }, children),
+      React.createElement(
+        QueryClientProvider,
+        { client },
+        React.createElement(
+          ClientBootstrapContext.Provider,
+          { value: { status: 'settled', sharedRealtime: true } },
+          children,
+        ),
+      ),
     );
 }
 
@@ -313,9 +332,32 @@ describe('useServerEvents authority stability through the real host capture hook
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
-    const hook = renderHook(() => useServerEvents(), {
-      wrapper: provider(client),
-    });
+    const general = vi.fn();
+    inbox.entries = [];
+    let boot: { status: 'pending' | 'settled'; sharedRealtime: boolean } = {
+      status: 'settled',
+      sharedRealtime: true,
+    };
+    const BaseProvider = provider(client);
+    const hook = renderHook(
+      () => {
+        useServerEvents({ 'example:changed': general });
+        return useConversationInbox('conversation');
+      },
+      {
+        wrapper: ({ children }: { children: ReactNode }) =>
+          React.createElement(
+            BaseProvider,
+            undefined,
+            React.createElement(
+              ClientBootstrapContext.Provider,
+              { value: boot },
+              children,
+            ),
+          ),
+      },
+    );
+    await waitFor(() => expect(hook.result.current.entries).toEqual([]));
     const streamA1 = streams[0]!;
 
     hook.rerender();
@@ -369,5 +411,66 @@ describe('useServerEvents authority stability through the real host capture hook
       });
     });
     expect(client.getQueryData(key)).toEqual({ policy: 'current-a' });
+    // Retire this authority while the next authority's boot is unresolved.
+    const retired = streams.at(-1)!;
+    host.authorityGeneration = 4;
+    boot = { status: 'pending', sharedRealtime: false };
+    hook.rerender();
+    expect(retired.close).toHaveBeenCalledOnce();
+    const count = streams.length;
+    await act(async () =>
+      retired.onMessage({
+        event: 'example:changed',
+        data: '{"subject":"old"}',
+      }),
+    );
+    expect(general).not.toHaveBeenCalled();
+    boot = { status: 'settled', sharedRealtime: true };
+    hook.rerender();
+    expect(streams).toHaveLength(count + 1);
+    const current = streams.at(-1)!;
+    inbox.entries = [
+      {
+        conversationId: 'conversation',
+        clientTurnId: 'new',
+        kind: 'follow-up',
+        state: 'queued',
+        message: 'new subject',
+        createdAt: '2026-01-01',
+        updatedAt: '2026-01-01',
+      },
+    ];
+    await act(async () => {
+      current.onMessage({
+        event: 'example:changed',
+        data: '{"subject":"new"}',
+      });
+      current.onRaw({
+        event: SERVER_EVENTS.ORCHESTRATION_INBOX_CHANGED,
+        data: '{"conversationId":"conversation"}',
+      });
+      retired.onMessage({
+        event: 'example:changed',
+        data: '{"subject":"old"}',
+      });
+      retired.onRaw({
+        event: SERVER_EVENTS.ORCHESTRATION_INBOX_CHANGED,
+        data: '{"conversationId":"conversation"}',
+      });
+    });
+    expect(general.mock.calls).toEqual([[{ subject: 'new' }]]);
+    await waitFor(() =>
+      expect(hook.result.current.entries?.[0]?.message).toBe('new subject'),
+    );
+    inbox.entries = [{ ...inbox.entries[0]!, message: 'old subject' }];
+    await act(async () =>
+      retired.onRaw({
+        event: SERVER_EVENTS.ORCHESTRATION_INBOX_CHANGED,
+        data: '{"conversationId":"conversation"}',
+      }),
+    );
+    expect(hook.result.current.entries?.[0]?.message).toBe('new subject');
+    hook.unmount();
+    client.clear();
   });
 });
