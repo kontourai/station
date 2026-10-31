@@ -126,6 +126,13 @@ async function sameWalk(
   );
 }
 
+/** Match Node's ordinary stat millisecond rounding while retaining exact identities. */
+function modificationTime(stats: BigIntStats): Date {
+  const seconds = stats.mtimeNs / 1_000_000_000n;
+  const nanoseconds = stats.mtimeNs % 1_000_000_000n;
+  return new Date(Number(seconds) * 1_000 + Number(nanoseconds) / 1_000_000);
+}
+
 /** A record's modification time, when it is a regular file reached without a link. */
 async function recordTime(
   base: string,
@@ -133,7 +140,9 @@ async function recordTime(
 ): Promise<Date | undefined> {
   const seen = await walk(base, parts);
   if (!seen?.stat.isFile()) return undefined;
-  return (await sameWalk(base, parts, seen)) ? seen.stat.mtime : undefined;
+  return (await sameWalk(base, parts, seen))
+    ? modificationTime(seen.stat)
+    : undefined;
 }
 
 /**
@@ -185,7 +194,7 @@ async function readRecord(
     }
     result = {
       text: bytes.subarray(0, read).toString('utf8'),
-      mtime: stats.mtime,
+      mtime: modificationTime(stats),
     };
   } catch {
     return undefined;

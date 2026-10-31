@@ -220,6 +220,33 @@ describe('project checkout freshness', () => {
     });
   });
 
+  test('fetch timestamps use the same millisecond rounding as ordinary stat', async () => {
+    const { checkout } = fixture();
+    git(checkout, ['fetch', '-q']);
+    const timestamp = new Date('2026-10-30T22:40:00.001Z');
+    const fetchHead = join(checkout, '.git', 'FETCH_HEAD');
+    utimesSync(fetchHead, timestamp, timestamp);
+    for (const name of ['main', 'HEAD']) {
+      const reflog = join(
+        checkout,
+        '.git',
+        'logs',
+        'refs',
+        'remotes',
+        'origin',
+        name,
+      );
+      if (existsSync(reflog)) utimesSync(reflog, timestamp, timestamp);
+    }
+    const result = await createProjectCheckoutFreshnessReader().read(
+      checkout,
+      THRESHOLDS,
+    );
+    expect(result).toMatchObject({
+      upstreamFetchedAt: statSync(fetchHead).mtime.toISOString(),
+    });
+  });
+
   test('a local branch as upstream reports no fetch time', async () => {
     const { checkout, land } = fixture();
     land(1);
