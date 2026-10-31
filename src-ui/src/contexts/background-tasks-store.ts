@@ -24,6 +24,7 @@
 import {
   type ChildWorkDisplayStatus,
   type ChildWorkItem,
+  type ChildWorkRegistryState,
   childWorkDisplayStatus,
 } from '@kontourai/station-contracts/child-work';
 import type { OrchestrationDelegationContext } from '@kontourai/station-contracts/orchestration';
@@ -33,6 +34,7 @@ import type {
   OrchestrationSnapshotPayload,
 } from '../hooks/orchestration/types';
 import type { ChatBackgroundTask } from './active-chats-state';
+import { childWorkGlobalStore } from './child-work-global-store';
 
 type BackgroundTaskKind = 'tool' | 'agent';
 type BackgroundTaskSource = 'tool-event' | 'delegate-session' | 'provider-task';
@@ -100,6 +102,8 @@ export interface BackgroundTasksState {
   limitedToolChats?: Record<string, true>;
   /** Present after chat lifecycle tracking begins; retains only open aliases. */
   openChatThreads?: Record<string, true>;
+  /** Source-scoped reporter to chat association for engine subagents. */
+  providerReporters?: Record<string, string>;
 }
 
 /** Finished list is bounded per chat, drop-oldest (by end time), per the plan §3. */
@@ -854,6 +858,39 @@ export interface ChatBackgroundTasksView {
   toolHistoryLimited?: true;
 }
 
+/** Provider tasks are selected only from the Station that reported them. */
+export function selectStationProviderItems(
+  state: BackgroundTasksState,
+  registry: ChildWorkRegistryState,
+  chatThreadId: string,
+): ChildWorkItem[] {
+  return Object.values(registry.items).filter(
+    (item) =>
+      item.producer === 'engine-subagent' &&
+      item.status === 'running' &&
+      state.providerReporters?.[item.reporterThreadId] === chatThreadId,
+  );
+}
+export function stationProviderTasks(
+  items: readonly ChildWorkItem[],
+): ChatBackgroundTask[] {
+  return items.map((item) => ({
+    taskId: item.childId,
+    toolCallId: item.parent?.toolCallId,
+    description: item.title,
+    subagentType: item.kindLabel,
+    ...(item.model ? { model: item.model } : {}),
+    backgrounded: item.backgrounded === true,
+    spawnDepth: item.depth,
+    sessionThreadId: item.reporterThreadId,
+    ...(item.controls?.stop === 'provider-task-stop'
+      ? { stop: 'provider-task-stop' as const }
+      : {}),
+    ...(item.progress ? { progress: item.progress } : {}),
+    ...(item.latestTool ? { latestTool: item.latestTool } : {}),
+  }));
+}
+
 /**
  * The one read the UI consumes: this chat's Running/Finished entries, with
  * provider background subagents (`ChatUIState.backgroundTasks`, tracked
@@ -954,62 +991,170 @@ function pruneClosedChatHistory(
 }
 
 // Constructed in unit tests via dynamic import; the app uses the singleton below.
+const EMPTY_BACKGROUND_TASKS_STATE = createEmptyBackgroundTasksState();
+
 export class BackgroundTasksStore {
-  private state: BackgroundTasksState = createEmptyBackgroundTasksState();
+  private partitions = new Map<string, BackgroundTasksState>();
   private listeners = new Set<() => void>();
+  private retainedPartitions = new Map<string, number>();
+  private openChatThreads: Record<string, true> | undefined;
 
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
   };
-
-  getSnapshot = (): BackgroundTasksState => this.state;
-
-  private commit(next: BackgroundTasksState) {
-    if (next === this.state) return;
-    this.state = pruneClosedChatHistory(next);
+  getSnapshot = (apiBase = ''): BackgroundTasksState =>
+    this.partitions.get(apiBase) ?? EMPTY_BACKGROUND_TASKS_STATE;
+  private stateFor(apiBase: string): BackgroundTasksState {
+    return (
+      this.partitions.get(apiBase) ??
+      (this.openChatThreads === undefined
+        ? EMPTY_BACKGROUND_TASKS_STATE
+        : {
+            ...EMPTY_BACKGROUND_TASKS_STATE,
+            openChatThreads: this.openChatThreads,
+          })
+    );
+  }
+  retainPartition(apiBase: string): () => void {
+    this.retainedPartitions.set(
+      apiBase,
+      (this.retainedPartitions.get(apiBase) ?? 0) + 1,
+    );
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      const count = this.retainedPartitions.get(apiBase) ?? 0;
+      if (count <= 1) this.retainedPartitions.delete(apiBase);
+      else this.retainedPartitions.set(apiBase, count - 1);
+    };
+  }
+  private hasUnsettledProvider(apiBase: string, reporter?: string): boolean {
+    return Object.values(
+      childWorkGlobalStore.getPartition(apiBase).registry.items,
+    ).some(
+      (item) =>
+        (!reporter || item.reporterThreadId === reporter) &&
+        (item.status === 'running' ||
+          (this.retainedPartitions.has(apiBase) &&
+            (item.status === 'unresolved' ||
+              item.status === 'stopped-unconfirmed'))),
+    );
+  }
+  private commit(apiBase: string, next: BackgroundTasksState) {
+    if (next === this.partitions.get(apiBase)) return;
+    this.partitions.delete(apiBase);
+    this.partitions.set(apiBase, pruneClosedChatHistory(next));
+    const inactive = [...this.partitions].filter(
+      ([key, state]) =>
+        key !== '' &&
+        !this.retainedPartitions.has(key) &&
+        !this.hasUnsettledProvider(key) &&
+        !Object.values(state.entries).some(
+          (entry) => entry.state === 'running',
+        ),
+    );
+    for (const [key] of inactive.slice(0, Math.max(0, inactive.length - 4)))
+      this.partitions.delete(key);
     this.listeners.forEach((listener) => listener());
   }
-
-  ingest(event: OrchestrationEvent) {
-    this.commit(ingestBackgroundTaskEvent(this.state, event));
+  ingest(event: OrchestrationEvent, apiBase = '') {
+    const previous = this.stateFor(apiBase);
+    const next = ingestBackgroundTaskEvent(previous, event);
+    if (next !== previous) this.commit(apiBase, next);
   }
-
-  reconcileSnapshot(payload: OrchestrationSnapshotPayload) {
-    this.commit(reconcileBackgroundTasksSnapshot(this.state, payload));
+  reconcileSnapshot(payload: OrchestrationSnapshotPayload, apiBase = '') {
+    const previous = this.stateFor(apiBase);
+    const next = reconcileBackgroundTasksSnapshot(previous, payload);
+    if (next !== previous) this.commit(apiBase, next);
   }
-
-  /** Preserve live routing; completed history belongs only to open chats. */
-  forgetChat(chatThreadId: string) {
-    const openChatThreads = { ...this.state.openChatThreads };
-    delete openChatThreads[chatThreadId];
-    const entries = { ...this.state.entries };
-    const delegateParents = { ...this.state.delegateParents };
-    for (const entry of Object.values(entries)) {
-      if (
-        entry.chatThreadId === chatThreadId &&
-        entry.state !== 'running' &&
-        entry.state !== 'unresolved'
-      )
-        delete entries[entry.id];
-    }
-    for (const [id, parent] of Object.entries(delegateParents)) {
-      if (parent === chatThreadId && !entries[id]) delete delegateParents[id];
-    }
-    this.commit({ ...this.state, openChatThreads, entries, delegateParents });
-  }
-
-  retainChat(chatThreadId: string) {
-    if (this.state.openChatThreads?.[chatThreadId]) return;
-    this.commit({
-      ...this.state,
-      openChatThreads: { ...this.state.openChatThreads, [chatThreadId]: true },
+  bindProviderReporter(
+    apiBase: string,
+    reporterThreadId: string,
+    chatThreadId: string,
+  ) {
+    const previous = this.stateFor(apiBase);
+    if (previous.providerReporters?.[reporterThreadId] === chatThreadId) return;
+    this.commit(apiBase, {
+      ...previous,
+      providerReporters: {
+        ...previous.providerReporters,
+        [reporterThreadId]: chatThreadId,
+      },
     });
   }
-
+  reconcileProviderReporters(apiBase: string, threadIds: ReadonlySet<string>) {
+    const previous = this.stateFor(apiBase);
+    if (!previous.providerReporters) return;
+    const entries = Object.entries(previous.providerReporters).filter(
+      ([threadId]) => threadIds.has(threadId),
+    );
+    if (entries.length === Object.keys(previous.providerReporters).length)
+      return;
+    this.commit(apiBase, {
+      ...previous,
+      providerReporters: Object.fromEntries(entries),
+    });
+  }
+  /** Preserve live routing; completed history belongs only to open chats. */
+  forgetChat(chatThreadId: string) {
+    const open = { ...this.openChatThreads };
+    delete open[chatThreadId];
+    this.openChatThreads = open;
+    for (const apiBase of [...this.partitions.keys()]) {
+      const state = this.partitions.get(apiBase);
+      if (!state) continue;
+      const openChatThreads = { ...state.openChatThreads };
+      delete openChatThreads[chatThreadId];
+      const entries = { ...state.entries };
+      const delegateParents = { ...state.delegateParents };
+      for (const entry of Object.values(entries)) {
+        if (
+          entry.chatThreadId === chatThreadId &&
+          entry.state !== 'running' &&
+          entry.state !== 'unresolved'
+        )
+          delete entries[entry.id];
+      }
+      for (const [id, parent] of Object.entries(delegateParents)) {
+        if (parent === chatThreadId && !entries[id]) delete delegateParents[id];
+      }
+      const providerReporters = Object.fromEntries(
+        Object.entries(state.providerReporters ?? {}).filter(
+          ([reporter, parent]) =>
+            parent !== chatThreadId ||
+            this.hasUnsettledProvider(apiBase, reporter),
+        ),
+      );
+      this.commit(apiBase, {
+        ...state,
+        openChatThreads,
+        entries,
+        delegateParents,
+        providerReporters,
+      });
+    }
+  }
+  retainChat(chatThreadId: string) {
+    if (this.openChatThreads?.[chatThreadId]) return;
+    this.openChatThreads = { ...this.openChatThreads, [chatThreadId]: true };
+    for (const apiBase of [...this.partitions.keys()]) {
+      const state = this.partitions.get(apiBase);
+      if (!state) continue;
+      this.commit(apiBase, {
+        ...state,
+        openChatThreads: { ...state.openChatThreads, [chatThreadId]: true },
+      });
+    }
+  }
   /** Test-only: clears all tracked entries/bindings between test cases. */
   reset() {
-    this.state = createEmptyBackgroundTasksState();
+    this.partitions.clear();
+    this.retainedPartitions.clear();
+    this.openChatThreads = undefined;
   }
 }
 

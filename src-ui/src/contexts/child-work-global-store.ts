@@ -34,9 +34,8 @@ import type { OrchestrationEvent } from '../hooks/orchestration/types';
 export const GLOBAL_CHILD_WORK_FINISHED_LIMIT = 50;
 
 /**
- * Stations whose partitions this window keeps, least recently written first
- * out (R-C): a partition for a Station the window left is released once
- * this many others have been written since.
+ * Inactive Station partitions retained for recovery, least recently written first.
+ * A partition with running work or a current consumer is not in this cache.
  */
 export const GLOBAL_CHILD_WORK_PARTITION_LIMIT = 4;
 
@@ -84,6 +83,7 @@ let partitions: Record<string, GlobalChildWorkState> = {};
 let current = '';
 let state: GlobalChildWorkState = EMPTY_STATE;
 const listeners = new Set<() => void>();
+const retainedPartitions = new Map<string, number>();
 
 function within(apiBase: string, operation: () => void): void {
   current = apiBase;
@@ -102,10 +102,19 @@ function commit(next: GlobalChildWorkState): void {
   // Re-inserting moves this Station to the most-recently-written end.
   const rest = { ...partitions };
   delete rest[current];
-  const keys = Object.keys(rest);
-  for (const key of keys.slice(
+  const hasRunning = (value: GlobalChildWorkState) =>
+    Object.values(value.registry.items).some(
+      (item) => item.status === 'running',
+    );
+  const inactive = Object.keys(rest).filter(
+    (key) => !retainedPartitions.has(key) && !hasRunning(rest[key]),
+  );
+  const allowedInactive =
+    GLOBAL_CHILD_WORK_PARTITION_LIMIT -
+    (retainedPartitions.has(current) || hasRunning(next) ? 0 : 1);
+  for (const key of inactive.slice(
     0,
-    Math.max(0, keys.length - (GLOBAL_CHILD_WORK_PARTITION_LIMIT - 1)),
+    Math.max(0, inactive.length - allowedInactive),
   ))
     delete rest[key];
   partitions = { ...rest, [current]: next };
@@ -245,6 +254,17 @@ function deltaReporter(delta: ChildWorkDelta): string {
 }
 
 export const childWorkGlobalStore = {
+  retainPartition(apiBase: string): () => void {
+    retainedPartitions.set(apiBase, (retainedPartitions.get(apiBase) ?? 0) + 1);
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      const count = retainedPartitions.get(apiBase) ?? 0;
+      if (count <= 1) retainedPartitions.delete(apiBase);
+      else retainedPartitions.set(apiBase, count - 1);
+    };
+  },
   subscribe(listener: () => void): () => void {
     listeners.add(listener);
     return () => listeners.delete(listener);
@@ -282,6 +302,7 @@ export const childWorkGlobalStore = {
   /** Test-only. */
   reset(): void {
     partitions = {};
+    retainedPartitions.clear();
     state = EMPTY_STATE;
   },
 };

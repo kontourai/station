@@ -889,9 +889,14 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
 
   // station#1301 slice 1: the active session's running-background-task count,
   // for the tab bar's badge and the Background tasks rows' labels.
-  const backgroundTasksRunningCount =
-    useChatBackgroundTasksRunningCount(activeSessionId);
-  const backgroundTasksLimited = useChatBackgroundTasksLimited(activeSessionId);
+  const backgroundTasksRunningCount = useChatBackgroundTasksRunningCount(
+    activeSessionId,
+    apiBase,
+  );
+  const backgroundTasksLimited = useChatBackgroundTasksLimited(
+    activeSessionId,
+    apiBase,
+  );
 
   // #869 / #1298: a maximized dock is opaque and full-height, so navigating
   // to another part of the app changed the view *underneath* it and nothing
@@ -4087,6 +4092,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
           load={loadBackgroundTasksSheet}
           componentProps={{
             chatThreadId: activeSessionId,
+            apiBase,
             anchorRef: backgroundTasksTriggerRef,
             returnFocusTarget: backgroundTasksTriggerRef.current,
             onOpenTranscript: (threadId) => {

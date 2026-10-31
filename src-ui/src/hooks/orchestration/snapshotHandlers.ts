@@ -629,7 +629,8 @@ export function applyOrchestrationSnapshot(
   const replayId = options?.replayThreadId;
   if (replayId && !isReplayThread(replayId))
     throw new Error('Snapshot replay requires a registered replay thread');
-  if (!replayId) backgroundTasksStore.reconcileSnapshot(payload);
+  if (!replayId && options?.apiBase)
+    backgroundTasksStore.reconcileSnapshot(payload, options.apiBase);
 
   const snapshot = Object.fromEntries(
     Object.entries(activeChatsStore.getSnapshot()).filter(([id]) =>
@@ -732,6 +733,23 @@ export function applyOrchestrationSnapshot(
   // recorded reporter it no longer lists is gone (D2).
   if (!replayId) {
     reconcileChildWorkSnapshot(payload.sessions);
+    if (options?.apiBase) {
+      for (const session of payload.sessions) {
+        const chatKey = activeChatsStore.getChatKeyForExecutionSession(
+          session.threadId,
+        );
+        if (chatKey)
+          backgroundTasksStore.bindProviderReporter(
+            options.apiBase,
+            session.threadId,
+            chatKey,
+          );
+      }
+      backgroundTasksStore.reconcileProviderReporters(
+        options.apiBase,
+        new Set(payload.sessions.map((session) => session.threadId)),
+      );
+    }
     // A snapshot names its Station; one without (no caller today) folds into
     // no partition rather than a guessed one.
     if (options?.apiBase)

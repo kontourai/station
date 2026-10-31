@@ -171,12 +171,12 @@ describe('BackgroundTasksSheet', () => {
     expect(screen.getByText(/Tool · 1:07/)).not.toBeNull();
   });
 
-  test('Finished section is collapsed by default and shows an outcome chip once expanded', () => {
+  test('Recent activity section is collapsed by default and shows an outcome chip once expanded', () => {
     renderSheet({ running: [], finished: [finishedEntry()] });
-    expect(screen.getByText('Finished (1)')).not.toBeNull();
+    expect(screen.getByText('Recent activity (1)')).not.toBeNull();
     expect(screen.queryByText('Investigate flaky test')).toBeNull();
 
-    fireEvent.click(screen.getByText('Finished (1)'));
+    fireEvent.click(screen.getByText('Recent activity (1)'));
     expect(screen.getByText('Investigate flaky test')).not.toBeNull();
     expect(screen.getByText('Completed')).not.toBeNull();
   });
@@ -189,7 +189,7 @@ describe('BackgroundTasksSheet', () => {
       running: [],
       finished: [finishedEntry({ state: 'unresolved' })],
     });
-    fireEvent.click(screen.getByText('Finished (1)'));
+    fireEvent.click(screen.getByText('Recent activity (1)'));
     expect(screen.getByText('No result')).not.toBeNull();
     expect(screen.queryByText('Stopped')).toBeNull();
     expect(screen.queryByText('Failed')).toBeNull();
@@ -197,7 +197,7 @@ describe('BackgroundTasksSheet', () => {
 
   test('Finished section collapse state persists to localStorage and is honored on remount', () => {
     renderSheet({ running: [], finished: [finishedEntry()] });
-    fireEvent.click(screen.getByText('Finished (1)'));
+    fireEvent.click(screen.getByText('Recent activity (1)'));
     expect(screen.getByText('Investigate flaky test')).not.toBeNull();
 
     const stored = JSON.parse(
@@ -292,7 +292,7 @@ describe('BackgroundTasksSheet', () => {
         finished: state === 'completed' ? [entry] : [],
       });
       if (state === 'completed')
-        fireEvent.click(screen.getByText('Finished (1)'));
+        fireEvent.click(screen.getByText('Recent activity (1)'));
       expect(
         screen
           .getByRole('img', { name: 'Owl · Codex' })

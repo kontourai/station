@@ -116,16 +116,30 @@ describe('child-work global store', () => {
     ).toEqual(a.registry.items);
   });
 
-  test('partitions are bounded: the least recently written Station is released', () => {
-    const write = (apiBase: string) =>
+  test('idle partitions are bounded while active Stations remain present', () => {
+    const write = (apiBase: string) => {
+      const childId = `c-${++seq}`;
       childWorkGlobalStore.ingest(apiBase, {
         provider: 'codex',
         threadId: 'exec',
         createdAt: at(),
         method: 'child-work.updated',
-        // A new child each time: an identical upsert changes nothing.
-        delta: { kind: 'upsert', item: running('exec', `c-${++seq}`) },
+        delta: { kind: 'upsert', item: running('exec', childId) },
       });
+      childWorkGlobalStore.ingest(apiBase, {
+        provider: 'codex',
+        threadId: 'exec',
+        createdAt: at(),
+        method: 'child-work.updated',
+        delta: {
+          kind: 'settle',
+          producer: 'engine-subagent',
+          reporterThreadId: 'exec',
+          childId,
+          status: 'completed',
+        },
+      });
+    };
     const held = (apiBase: string) =>
       Object.keys(childWorkGlobalStore.getPartition(apiBase).registry.items)
         .length > 0;
@@ -140,6 +154,17 @@ describe('child-work global store', () => {
     expect(held(bases[0])).toBe(true);
     expect(held(bases[1])).toBe(false);
     for (const base of bases.slice(2)) expect(held(base)).toBe(true);
+    const live = 'http://live-station.test';
+    childWorkGlobalStore.ingest(live, {
+      provider: 'codex',
+      threadId: 'exec',
+      createdAt: at(),
+      method: 'child-work.updated',
+      delta: { kind: 'upsert', item: running('exec', 'live-child') },
+    });
+    for (let index = 0; index < GLOBAL_CHILD_WORK_PARTITION_LIMIT + 1; index++)
+      write(`http://later-${index}.test`);
+    expect(held(live)).toBe(true);
   });
 
   test('a delta naming another reporter is not recorded', () => {

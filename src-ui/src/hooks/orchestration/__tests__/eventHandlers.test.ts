@@ -94,7 +94,7 @@ describe('handleOrchestrationEvent — station#1301 slice 1 ingest seam', () => 
     // The store actually bound the delegate — proof this isn't just a
     // pass-through call that the guard immediately discarded downstream.
     expect(
-      backgroundTasksStore.getSnapshot().delegateParents[
+      backgroundTasksStore.getSnapshot('http://api').delegateParents[
         'task:delegate-untracked'
       ],
     ).toBe('chat-1');

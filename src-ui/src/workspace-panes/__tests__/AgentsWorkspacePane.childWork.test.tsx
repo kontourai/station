@@ -70,6 +70,7 @@ import { childWorkGlobalStore } from '../../contexts/child-work-global-store';
 /** The Station these events arrive from (the store is partitioned by it). */
 const API = 'http://station.test';
 
+import { handleOrchestrationEvent } from '../../hooks/orchestration/eventHandlers';
 import { AgentsWorkspacePane } from '../AgentsWorkspacePane';
 
 const CHAT = 'chat-2459';
@@ -282,27 +283,33 @@ test('per chat, delegates are the background-tasks store’s cards — live, as 
       },
     ],
   };
-  backgroundTasksStore.ingest({
-    provider: 'codex',
-    threadId: 'del-1',
-    createdAt: '2026-09-24T00:00:00.000Z',
-    method: 'session.started',
-    sessionId: 'del-1',
-    metadata: { taskId: 'del-1', parentTaskId: CHAT },
-  });
-  backgroundTasksStore.ingest({
-    provider: 'codex',
-    threadId: 'del-1',
-    createdAt: '2026-09-24T00:00:01.000Z',
-    method: 'turn.started',
-    turnId: 't-1',
-    prompt: 'Audit the dependencies',
-  });
+  backgroundTasksStore.ingest(
+    {
+      provider: 'codex',
+      threadId: 'del-1',
+      createdAt: '2026-09-24T00:00:00.000Z',
+      method: 'session.started',
+      sessionId: 'del-1',
+      metadata: { taskId: 'del-1', parentTaskId: CHAT },
+    },
+    API,
+  );
+  backgroundTasksStore.ingest(
+    {
+      provider: 'codex',
+      threadId: 'del-1',
+      createdAt: '2026-09-24T00:00:01.000Z',
+      method: 'turn.started',
+      turnId: 't-1',
+      prompt: 'Audit the dependencies',
+    },
+    API,
+  );
   render(<AgentsWorkspacePane />);
   // Main's selection for the same event sequence, read the way the sheet
   // reads it.
   const main = selectChatBackgroundTasks(
-    backgroundTasksStore.getSnapshot(),
+    backgroundTasksStore.getSnapshot(API),
     CHAT,
     undefined,
   );
@@ -315,17 +322,20 @@ test('per chat, delegates are the background-tasks store’s cards — live, as 
   expect(screen.queryByText('Last week’s audit')).toBeNull();
 
   cleanup();
-  backgroundTasksStore.ingest({
-    provider: 'codex',
-    threadId: 'del-1',
-    createdAt: '2026-09-24T00:00:05.000Z',
-    method: 'turn.completed',
-    turnId: 't-1',
-  });
+  backgroundTasksStore.ingest(
+    {
+      provider: 'codex',
+      threadId: 'del-1',
+      createdAt: '2026-09-24T00:00:05.000Z',
+      method: 'turn.completed',
+      turnId: 't-1',
+    },
+    API,
+  );
   render(<AgentsWorkspacePane />);
   expect(
     selectChatBackgroundTasks(
-      backgroundTasksStore.getSnapshot(),
+      backgroundTasksStore.getSnapshot(API),
       CHAT,
       undefined,
     ).finished.map((entry) => [entry.title, entry.state]),
@@ -643,4 +653,34 @@ test('a refusal from a conversation two open chats share is attributed to neithe
   } finally {
     activeChatsStore.removeChat('chat-other');
   }
+});
+
+test('the pane resolves a delegate child from its Station-scoped ingress binding', () => {
+  openChat('codex');
+  handleOrchestrationEvent(API, {
+    provider: 'codex',
+    threadId: 'delegate-parent',
+    sessionId: 'delegate-parent',
+    createdAt: '2026-09-24T00:00:00.000Z',
+    method: 'session.started',
+    metadata: { taskId: 'delegate-parent', parentTaskId: CHAT },
+  });
+  handleOrchestrationEvent(API, {
+    provider: 'codex',
+    threadId: 'delegate-parent',
+    createdAt: '2026-09-24T00:00:01.000Z',
+    method: 'child-work.updated',
+    delta: {
+      kind: 'upsert',
+      item: {
+        producer: 'engine-subagent',
+        reporterThreadId: 'delegate-parent',
+        childId: 'nested-child',
+        status: 'running',
+        title: 'Station-scoped nested work',
+      },
+    },
+  });
+  render(<AgentsWorkspacePane />);
+  expect(screen.getByText('Station-scoped nested work')).toBeTruthy();
 });

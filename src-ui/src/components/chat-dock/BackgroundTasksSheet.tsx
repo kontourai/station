@@ -50,6 +50,7 @@ function writeSectionState(state: SectionState) {
 
 export interface BackgroundTasksSheetProps {
   chatThreadId: string;
+  apiBase?: string;
   anchorRef: RefObject<HTMLElement | null>;
   returnFocusTarget?: HTMLElement | null;
   onOpenTranscript: (threadId: string) => void;
@@ -58,14 +59,17 @@ export interface BackgroundTasksSheetProps {
 
 export function BackgroundTasksSheet({
   chatThreadId,
+  apiBase,
   anchorRef,
   returnFocusTarget,
   onOpenTranscript,
   onClose,
 }: BackgroundTasksSheetProps) {
   const agents = useAgents();
-  const { running, finished, toolHistoryLimited } =
-    useChatBackgroundTasks(chatThreadId);
+  const { running, finished, toolHistoryLimited } = useChatBackgroundTasks(
+    chatThreadId,
+    apiBase,
+  );
   const [sections, setSections] = useState<SectionState>(readSectionState);
   // The shared elapsed clock for every Running row, only while this sheet is
   // mounted (it is only ever mounted while open; see the lazy Suspense gate in
@@ -138,7 +142,7 @@ export function BackgroundTasksSheet({
               <span aria-hidden="true">
                 {sections.finishedExpanded ? '−' : '+'}
               </span>
-              Finished ({finished.length})
+              Recent activity ({finished.length})
             </button>
             {sections.finishedExpanded && (
               <ul className="background-tasks-sheet__list">

@@ -68,6 +68,7 @@ import { BackgroundTasksSheet } from '../components/chat-dock/BackgroundTasksShe
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { childWorkGlobalStore } from '../contexts/child-work-global-store';
 import { handleOrchestrationEvent } from '../hooks/orchestration/eventHandlers';
+import { applyOrchestrationSnapshot } from '../hooks/orchestration/snapshotHandlers';
 import { AgentsWorkspacePane } from '../workspace-panes/AgentsWorkspacePane';
 
 const CHAT = 'exec-2459-stop';
@@ -94,6 +95,7 @@ function renderSheet() {
   return render(
     <BackgroundTasksSheet
       chatThreadId={CHAT}
+      apiBase="http://station.test"
       anchorRef={createRef<HTMLElement>()}
       onOpenTranscript={vi.fn()}
       onClose={vi.fn()}
@@ -208,4 +210,25 @@ test('a Codex child — which carries no seam — has no Stop in the sheet or th
   render(<AgentsWorkspacePane />);
   expect(screen.getAllByText('Survey the repo')).toHaveLength(1);
   expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull();
+});
+
+test('a missing delegate is retained as uncertain recent activity rather than a finished result', () => {
+  handleOrchestrationEvent('http://station.test', {
+    eventId: 'missing-session-start',
+    provider: 'claude',
+    threadId: 'missing-child',
+    sessionId: 'missing-child',
+    createdAt: '2026-10-30T00:00:00.000Z',
+    method: 'session.started',
+    metadata: { taskId: 'missing-child', parentTaskId: CHAT },
+  });
+  applyOrchestrationSnapshot(
+    { sessions: [] },
+    { apiBase: 'http://station.test' },
+  );
+  renderSheet();
+  expect(screen.queryByText(/^Running \(/)).toBeNull();
+  expect(screen.queryByRole('button', { name: /^Finished/ })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: /^Recent activity/ }));
+  expect(screen.getByText('No result')).toBeTruthy();
 });

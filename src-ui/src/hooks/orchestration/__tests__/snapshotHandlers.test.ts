@@ -35,6 +35,7 @@ vi.mock('../../../contexts/active-chats-store', () => ({
     // read post-write, which is exactly the distinction the reconnect
     // refetch loop below depends on (archive#3352).
     getSnapshot: () => ({ ...chats }),
+    getChatKeyForExecutionSession: (id: string) => (chats[id] ? id : undefined),
     updateChat: (...args: [string, any]) => updateChat(...args),
     // #2309: the carrier seam; these cases carry no activity record.
     applyConversationActivity: vi.fn(),

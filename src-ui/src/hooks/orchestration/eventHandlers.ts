@@ -155,7 +155,21 @@ export function handleOrchestrationEvent(
   // this costs nothing for chats that never touch background tasks.
   const replayThread = isReplayThread(event.threadId);
   if (!replayThread) {
-    backgroundTasksStore.ingest(event);
+    backgroundTasksStore.ingest(event, apiBase);
+    if (
+      event.method === 'child-work.updated' ||
+      event.method === 'extension.notification'
+    ) {
+      const chatKey = activeChatsStore.getChatKeyForExecutionSession(
+        event.threadId,
+      );
+      if (chatKey)
+        backgroundTasksStore.bindProviderReporter(
+          apiBase,
+          event.threadId,
+          chatKey,
+        );
+    }
     // #2456 D2: a session's end must reach the child-work registry even when
     // its chat was since rebound to a newer session (the guard below would
     // drop it), or the chat keeps the dead session's children.

@@ -132,10 +132,16 @@ function useChildWorkPartition(apiBase: string): GlobalChildWorkState {
 function useChildWorkInput(
   sessions: readonly OrchestrationSessionSummary[],
   global: GlobalChildWorkState,
+  apiBase: string,
 ): ChildWorkSelectorInput {
+  const readTasks = useCallback(
+    () => backgroundTasksStore.getSnapshot(apiBase),
+    [apiBase],
+  );
   const tasks = useSyncExternalStore(
     backgroundTasksStore.subscribe,
-    backgroundTasksStore.getSnapshot,
+    readTasks,
+    readTasks,
   );
   const chatSignature = useSyncExternalStore(
     activeChatsStore.subscribe,
@@ -180,13 +186,16 @@ export function AgentsWorkspacePane() {
   const [storedScope, setStoredScope] = useState(readScope);
   // No chat on screen: there is no "this conversation" to show.
   const scope: ChildWorkScope = chatKey ? (storedScope ?? 'chat') : 'all';
-  const tools = useChatBackgroundTasks(scope === 'chat' ? chatKey : null);
+  const { apiBase } = useApiBase();
+  const tools = useChatBackgroundTasks(
+    scope === 'chat' ? chatKey : null,
+    apiBase,
+  );
   const agents = useAgents();
   const sessionsQuery = useOrchestrationSessionsQuery();
   const sessions = sessionsQuery.data ?? EMPTY_SESSIONS;
-  const { apiBase } = useApiBase();
   const global = useChildWorkPartition(apiBase);
-  const input = useChildWorkInput(sessions, global);
+  const input = useChildWorkInput(sessions, global, apiBase);
   const showSurface = useShowSurface();
 
   // #2307, the mechanism ChatDock uses: register this authority's client

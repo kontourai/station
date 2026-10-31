@@ -11,16 +11,31 @@ import {
   backgroundTasksStore,
   type ChatBackgroundTasksView,
   selectChatBackgroundTasks,
+  selectStationProviderItems,
+  stationProviderTasks,
 } from '../contexts/background-tasks-store';
+import { childWorkGlobalStore } from '../contexts/child-work-global-store';
 
 const EMPTY_VIEW: ChatBackgroundTasksView = { running: [], finished: [] };
 
-function subscribeBoth(listener: () => void) {
+function subscribeBoth(listener: () => void, apiBase?: string) {
   const unsubscribeTasks = backgroundTasksStore.subscribe(listener);
   const unsubscribeChats = activeChatsStore.subscribe(listener);
+  const unsubscribeChildren = childWorkGlobalStore.subscribe(listener);
+  const releaseTasks =
+    apiBase === undefined
+      ? () => {}
+      : backgroundTasksStore.retainPartition(apiBase);
+  const releaseChildren =
+    apiBase === undefined
+      ? () => {}
+      : childWorkGlobalStore.retainPartition(apiBase);
   return () => {
     unsubscribeTasks();
     unsubscribeChats();
+    unsubscribeChildren();
+    releaseTasks();
+    releaseChildren();
   };
 }
 
@@ -31,10 +46,19 @@ function subscribeBoth(listener: () => void) {
  */
 export function useChatBackgroundTasks(
   chatThreadId: string | null,
+  apiBase?: string,
 ): ChatBackgroundTasksView {
   const cacheRef = useRef<{
     chatThreadId: string;
+    apiBase: string | undefined;
     tasksState: ReturnType<typeof backgroundTasksStore.getSnapshot>;
+    providerRegistry:
+      | ReturnType<typeof childWorkGlobalStore.getPartition>['registry']
+      | undefined;
+    providerReporters: ReturnType<
+      typeof backgroundTasksStore.getSnapshot
+    >['providerReporters'];
+    providerItems: ReturnType<typeof selectStationProviderItems> | undefined;
     entries: BackgroundTaskEntry[];
     providerTasks: ReturnType<
       typeof activeChatsStore.getSnapshot
@@ -44,13 +68,32 @@ export function useChatBackgroundTasks(
 
   const getSnapshot = useCallback((): ChatBackgroundTasksView => {
     if (!chatThreadId) return EMPTY_VIEW;
-    const tasksState = backgroundTasksStore.getSnapshot();
-    const providerTasks =
-      activeChatsStore.getSnapshot()[chatThreadId]?.backgroundTasks;
+    const tasksState = backgroundTasksStore.getSnapshot(apiBase);
+    const providerRegistry =
+      apiBase === undefined
+        ? undefined
+        : childWorkGlobalStore.getPartition(apiBase).registry;
     const cached = cacheRef.current;
+    const providerItems = providerRegistry
+      ? selectStationProviderItems(tasksState, providerRegistry, chatThreadId)
+      : undefined;
+    const sameProviderItems =
+      cached?.chatThreadId === chatThreadId &&
+      cached.apiBase === apiBase &&
+      cached.providerItems?.length === providerItems?.length &&
+      cached.providerItems?.every(
+        (item, index) => item === providerItems?.[index],
+      );
+    const providerTasks =
+      apiBase === undefined
+        ? activeChatsStore.getSnapshot()[chatThreadId]?.backgroundTasks
+        : sameProviderItems
+          ? cached?.providerTasks
+          : stationProviderTasks(providerItems ?? []);
     if (
       cached &&
       cached.chatThreadId === chatThreadId &&
+      cached.apiBase === apiBase &&
       cached.tasksState === tasksState &&
       cached.providerTasks === providerTasks
     ) {
@@ -68,13 +111,20 @@ export function useChatBackgroundTasks(
     if (
       cached &&
       cached.chatThreadId === chatThreadId &&
+      cached.apiBase === apiBase &&
       cached.providerTasks === providerTasks &&
       cached.view.toolHistoryLimited ===
         tasksState.limitedToolChats?.[chatThreadId] &&
       cached.entries.length === entries.length &&
       cached.entries.every((entry, index) => entry === entries[index])
     ) {
-      cacheRef.current = { ...cached, tasksState };
+      cacheRef.current = {
+        ...cached,
+        tasksState,
+        providerRegistry,
+        providerReporters: tasksState.providerReporters,
+        providerItems,
+      };
       return cached.view;
     }
     const view = selectChatBackgroundTasks(
@@ -84,15 +134,23 @@ export function useChatBackgroundTasks(
     );
     cacheRef.current = {
       chatThreadId,
+      apiBase,
       tasksState,
+      providerRegistry,
+      providerReporters: tasksState.providerReporters,
+      providerItems,
       entries,
       providerTasks,
       view,
     };
     return view;
-  }, [chatThreadId]);
+  }, [chatThreadId, apiBase]);
 
-  return useSyncExternalStore(subscribeBoth, getSnapshot, getSnapshot);
+  const subscribe = useCallback(
+    (listener: () => void) => subscribeBoth(listener, apiBase),
+    [apiBase],
+  );
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
 
 /**
@@ -131,31 +189,42 @@ export function useChatStoreKey(chatId: string | null): string | null {
 /** Running-count only, for the entry-point badge. */
 export function useChatBackgroundTasksRunningCount(
   chatThreadId: string | null,
+  apiBase?: string,
 ): number {
   const getSnapshot = useCallback(() => {
     if (!chatThreadId) return 0;
     return selectChatBackgroundTasks(
-      backgroundTasksStore.getSnapshot(),
+      backgroundTasksStore.getSnapshot(apiBase),
       chatThreadId,
-      activeChatsStore.getSnapshot()[chatThreadId]?.backgroundTasks,
+      apiBase === undefined
+        ? activeChatsStore.getSnapshot()[chatThreadId]?.backgroundTasks
+        : stationProviderTasks(
+            selectStationProviderItems(
+              backgroundTasksStore.getSnapshot(apiBase),
+              childWorkGlobalStore.getPartition(apiBase).registry,
+              chatThreadId,
+            ),
+          ),
     ).running.length;
-  }, [chatThreadId]);
+  }, [chatThreadId, apiBase]);
   return useSyncExternalStore(subscribeBoth, getSnapshot, getSnapshot);
 }
 
 export function useChatBackgroundTasksLimited(
   chatThreadId: string | null,
+  apiBase?: string,
 ): boolean {
   const getSnapshot = useCallback(
     () =>
       !!chatThreadId &&
-      backgroundTasksStore.getSnapshot().limitedToolChats?.[chatThreadId] ===
-        true,
-    [chatThreadId],
+      backgroundTasksStore.getSnapshot(apiBase).limitedToolChats?.[
+        chatThreadId
+      ] === true,
+    [chatThreadId, apiBase],
   );
-  return useSyncExternalStore(
-    backgroundTasksStore.subscribe,
-    getSnapshot,
-    getSnapshot,
+  const subscribe = useCallback(
+    (listener: () => void) => subscribeBoth(listener, apiBase),
+    [apiBase],
   );
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
