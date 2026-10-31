@@ -1,5 +1,11 @@
 import { hostname } from 'node:os';
 import { isDeepStrictEqual } from 'node:util';
+import {
+  APPLICATION_SESSION_HEADER,
+  APPLICATION_SESSION_NATIVE_HEADER,
+  APPLICATION_SESSION_NATIVE_PROOF_HEADER,
+  APPLICATION_SESSION_PROOF_HEADER,
+} from '@kontourai/station-contracts/application-session';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import { isPersonalTokenScope } from '@kontourai/station-contracts/personal-tokens';
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
@@ -918,6 +924,7 @@ import {
   accountBoundProjectRouteMayPass,
   installAccountBoundDeviceGate,
   isTaskRelationshipHttpLeaf,
+  isTaskRoomHttpLeaf,
 } from '../bootstrap/account-bound-device-gate.js';
 import {
   accountMemberCaller,
@@ -987,6 +994,11 @@ import {
   createRuntimeSystemRouteDeps,
 } from './runtime-route-support.js';
 import { createTaskBasisMcpInitialRead } from './task-basis-mcp-initial-read.js';
+import {
+  createTaskMemberAdmission,
+  type TaskRoomAdmissionCapability,
+  taskRoomMemberAction,
+} from './task-member-admission.js';
 import { createTaskRelationshipAuthority } from './task-relationship-authority.js';
 import {
   createRuntimeWorkspacePaneHostActions,
@@ -1988,7 +2000,11 @@ export function configureRuntimeRoutes(
       { kind: 'account' }
     >,
   ) =>
-    isTaskRelationshipHttpLeaf(request.method, new URL(request.url).pathname) &&
+    (isTaskRelationshipHttpLeaf(
+      request.method,
+      new URL(request.url).pathname,
+    ) ||
+      isTaskRoomHttpLeaf(request.method, new URL(request.url).pathname)) &&
     context.deploymentAuthentication?.service.current(request)?.kind ===
       'absent' &&
     context.localAccounts?.accountDirectory.issuer === binding.issuer &&
@@ -1999,6 +2015,17 @@ export function configureRuntimeRoutes(
   // Only the local provider can independently witness current session revocation.
   // WhoIs then describes ingress, while device bindings remain independent authority.
   const accountSessionOwnsPerson = (request: Request): boolean => {
+    // Only cookie sessions replace ingress identity. Continuations retain their
+    // independently admitted Device/grant authority, including bootstrap pairing.
+    if (
+      [
+        APPLICATION_SESSION_HEADER,
+        APPLICATION_SESSION_PROOF_HEADER,
+        APPLICATION_SESSION_NATIVE_HEADER,
+        APPLICATION_SESSION_NATIVE_PROOF_HEADER,
+      ].some((name) => request.headers.has(name))
+    )
+      return false;
     const path = new URL(request.url).pathname;
     const read = request.method === 'GET' || request.method === 'HEAD';
     const scoped =
@@ -5034,10 +5061,18 @@ export function configureRuntimeRoutes(
       context.logger,
     );
   const relationshipRequestWitnesses = new WeakMap<Request, () => boolean>();
-  const relationshipRequestShares = new WeakMap<
-    Request,
-    Map<string, string | undefined>
-  >();
+  const taskMemberAdmission = createTaskMemberAdmission({
+    task: (id) => context.taskGraphService.readTask(id),
+    share: (id) => context.projectSharedTasks?.admission(id),
+    projects: () => context.projectService.listProjects(),
+    portableId: (slug) => {
+      const manifest = contributionResolution.manifests.readRecord(slug);
+      return manifest ? parseProjectPortableIdentity(manifest).id : undefined;
+    },
+    admissions: (id) =>
+      context.projectMembership?.admissionsForResolvedPrincipal(id) ?? [],
+    principalId: (request) => roomRequestPrincipals.get(request)?.id,
+  });
   context.app.use('/api/tasks/*', primeRoomRequestPrincipal);
   context.app.route(
     '/api/tasks',
@@ -5168,47 +5203,7 @@ export function configureRuntimeRoutes(
             isOperatorInPersonNotAgent(request)
           )
             return true;
-          const task = context.taskGraphService.readTask(id);
-          const share = context.projectSharedTasks?.admission(id);
-          let shares = relationshipRequestShares.get(request);
-          if (!shares) {
-            shares = new Map();
-            relationshipRequestShares.set(request, shares);
-          }
-          if (!shares.has(id)) shares.set(id, share?.shareId);
-          if (!task || !share || share.taskCreatedAt !== task.createdAt)
-            return false;
-          if (shares.get(id) !== share.shareId) return false;
-          const projects = context.projectService
-            .listProjects()
-            .filter(
-              (p) => p.id === task.projectId || p.slug === task.projectId,
-            );
-          if (
-            projects.length !== 1 ||
-            projects[0]!.id !== share.scope.localProjectId ||
-            projects[0]!.slug !== share.scope.localProjectSlug
-          )
-            return false;
-          const manifest = contributionResolution.manifests.readRecord(
-            share.scope.localProjectSlug,
-          );
-          if (
-            !manifest ||
-            parseProjectPortableIdentity(manifest).id !==
-              share.scope.portableProjectId
-          )
-            return false;
-          return (
-            context.projectMembership
-              ?.admissionsForResolvedPrincipal(person.id)
-              .some(
-                ({ scope, member }) =>
-                  isDeepStrictEqual(scope, share.scope) &&
-                  member.status === 'active' &&
-                  member.actions.includes('view'),
-              ) === true
-          );
+          return !!taskMemberAdmission.admit(request, id, 'view');
         },
         mayEdit: (request, id) =>
           (!isDeploymentAccountPrincipalId(
@@ -5471,7 +5466,11 @@ export function configureRuntimeRoutes(
       },
       logger: context.logger,
     });
-    const resolveRoomPerson = (request: Request) => {
+    const resolveRoomPerson = (
+      request: Request,
+      taskId?: string,
+      capability?: TaskRoomAdmissionCapability | 'other',
+    ) => {
       const authenticated = getRuntimeAuthenticatedRequestPrincipal(request);
       if (!authenticated) return { kind: 'revoked' as const };
       const principal = roomRequestPrincipals.get(request);
@@ -5479,6 +5478,67 @@ export function configureRuntimeRoutes(
       const device = context.environmentSecurityService.identifyDevice(
         authenticated.credential,
       );
+      if (
+        device?.principalBinding &&
+        'kind' in device.principalBinding &&
+        device.principalBinding.kind === 'account'
+      ) {
+        const account =
+          context.deploymentAuthentication?.service.current(request);
+        const accountCurrent =
+          device.credentialKind === 'personal-token'
+            ? account?.kind === 'absent'
+            : account?.kind === 'authenticated'
+              ? account.principal.id === principal.id &&
+                context.deploymentAuthentication?.service.captureCurrentSession(
+                  request,
+                )() === true
+              : account?.kind === 'absent' &&
+                currentRelationshipAccountDevice(
+                  request,
+                  device.principalBinding,
+                );
+        if (
+          !taskId ||
+          !capability ||
+          capability === 'other' ||
+          !isRequestPrincipalCurrent(request) ||
+          !accountCurrent
+        )
+          return { kind: 'revoked' as const };
+        const writeLeaf =
+          capability === 'message-write'
+            ? 'messages'
+            : capability === 'edit-plan'
+              ? 'edit-plan'
+              : undefined;
+        if (
+          writeLeaf &&
+          !runtimeRequestPrincipalMayAccessHttpRoute(
+            request,
+            context.environmentSecurityService,
+            {
+              method: 'POST',
+              path: `/api/tasks/${encodeURIComponent(taskId)}/room/${writeLeaf}`,
+            },
+          )
+        )
+          return { kind: 'revoked' as const };
+        const admission = taskMemberAdmission.admit(
+          request,
+          taskId,
+          taskRoomMemberAction(capability),
+        );
+        if (!admission) return { kind: 'revoked' as const };
+        return {
+          kind: 'granted' as const,
+          member: true as const,
+          operatorId: principal.id,
+          displayName: principal.display,
+          deviceId: device.id,
+          policyRevision: `member:${admission.member.revision}`,
+        };
+      }
       if (device)
         return {
           kind: 'granted' as const,
@@ -5500,6 +5560,12 @@ export function configureRuntimeRoutes(
         : { kind: 'revoked' as const };
     };
     const roomRuntime = new ProjectTaskRoomRuntime({
+      ...(context.projectMembership
+        ? {
+            subscribeMembershipChanges: (listener) =>
+              context.projectMembership!.subscribe(listener),
+          }
+        : {}),
       attachments: new TaskRoomAttachments(
         join(context.configLoader.getProjectHomeDir(), 'task-room-attachments'),
       ),
@@ -5555,12 +5621,14 @@ export function configureRuntimeRoutes(
         // cached principal (resolution never ran, or threw
         // `PrincipalUnresolvedError`) revokes the grant rather than falling
         // back to any default identity.
-        resolve: async (request) => resolveRoomPerson(request),
-        isCurrent: (request, expected) => {
+        resolve: async (request, taskId, capability) =>
+          resolveRoomPerson(request, taskId, capability),
+        isCurrent: (request, expected, taskId, capability) => {
           if (!isRequestPrincipalCurrent(request)) return false;
-          const now = resolveRoomPerson(request);
+          const now = resolveRoomPerson(request, taskId, capability);
           return (
             now.kind === 'granted' &&
+            'member' in now === (expected.member === true) &&
             now.operatorId === expected.operatorId &&
             now.deviceId === expected.deviceId &&
             now.policyRevision === expected.policyRevision
@@ -5631,13 +5699,28 @@ export function configureRuntimeRoutes(
       // the lead's conversation through its durable inbox. `threadInbox` is
       // composed later in this function and read when a record is written.
       afterTaskRecord: (input) => taskQuestionWake.wake(input),
-      readDisplayName: async (id) =>
-        context.environmentSecurityService.devicePairing
-          .listKnownPrincipals()
-          .find((principal) => principal.id === id)?.display ??
-        (id === LOCAL_OPERATOR_PRINCIPAL_ID
-          ? getCachedUser().alias
-          : undefined),
+      readDisplayName: async (id, taskId) => {
+        const share = context.projectSharedTasks?.admission(taskId);
+        if (share && context.projectMembership) {
+          try {
+            const name = context.projectMembership.memberDisplayName(
+              share.scope,
+              id,
+            );
+            if (name) return name;
+          } catch {
+            // Attribution is optional; room authority is checked separately.
+          }
+        }
+        return (
+          context.environmentSecurityService.devicePairing
+            .listKnownPrincipals()
+            .find((principal) => principal.id === id)?.display ??
+          (id === LOCAL_OPERATOR_PRINCIPAL_ID
+            ? getCachedUser().alias
+            : undefined)
+        );
+      },
       readAgentLabel: async (agentId) => {
         try {
           return (await context.agentService.getAgent(agentId)).name;

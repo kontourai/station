@@ -23,7 +23,7 @@
 //   --authenticate-fail          refuse authenticate with an internal error
 import { appendFileSync, readFileSync } from 'node:fs';
 import { Readable, Writable } from 'node:stream';
-import * as acp from '@agentclientprotocol/sdk';
+import * as acp from '@agentclientprotocol/sdk/unstable';
 
 function flag(name) {
   const index = process.argv.indexOf(`--${name}`);
