@@ -20,6 +20,8 @@
 
     "src-server/services/orchestration/sqlite-revision-evidence-persistence.ts",
 
+    "src-server/domain/__fixtures__/shared-working-state-v1.json",
+
     "docs/decisions/revision-evidence-freeze-policy.md",
 
     "src-server/domain/migrations/024-project-task-room-revision-freeze.ts",

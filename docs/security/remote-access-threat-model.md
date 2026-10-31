@@ -240,11 +240,21 @@ current canonical Conversation lineage and reader access. Ordinary account membe
 does not authorize relationship mutations. Linking neither publishes a Task or private
 conversation nor grants execution.
 
+The personal Task-room leaves separately compose current Device scope and
+account standing with the exact shared Task incarnation and Project membership.
+`view` permits reads and presence, `discuss` permits messages, and `edit`
+permits edit planning. The account-bound allowlist excludes batch settlement,
+attachments, memory, review and agent requests. A changed membership revision
+invalidates the captured stream admission; an in-process notification prompts
+closure and the idle cadence rechecks within its 15-second interval. Per-delivery
+checks remain. Neither the member preview nor a Task share grants host execution
+or access to a private Session.
+
 Previously verified cookie sessions require the provider's synchronous live witness at
 relationship commit/delivery seams; missing support, revoked/expired sessions and
 pending enrollment fail closed. A historical authenticated result alone is insufficient.
 
-On the scoped surfaces below, a currently witnessed local-account session
+On the scoped surfaces below, a currently witnessed local-account cookie session
 supplies the acting person. A verified Serve WhoIs identity is ingress
 provenance and does not establish membership or link people. Device and account
 bindings must agree, and an account cannot borrow an operator or another Device

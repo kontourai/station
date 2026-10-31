@@ -46,11 +46,13 @@ export function TaskRoomHeader({
   task,
   projectSlug,
   projectId,
+  collaborationEnabled,
   onDetails,
 }: {
   task: TaskRecord;
   projectSlug: string;
   projectId: string;
+  collaborationEnabled?: boolean;
   onDetails(): void;
 }) {
   const scope = useHostRequestAuthorityScope();
@@ -177,7 +179,11 @@ export function TaskRoomHeader({
           }))}
         />
       </span>
-      <ProjectTaskRoomPresence taskId={task.id} compact />
+      <ProjectTaskRoomPresence
+        taskId={task.id}
+        compact
+        showMembers={collaborationEnabled}
+      />
       <ProjectTaskSharingControl
         slug={projectSlug}
         projectId={projectId}

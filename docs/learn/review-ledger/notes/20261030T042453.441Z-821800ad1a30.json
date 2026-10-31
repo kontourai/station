@@ -1,0 +1,7 @@
+{
+  "revision": "52f4c10c1cb50c87c0eba57b1f7605af8a4eccaa",
+
+  "notes": [
+    {"path":"docs/design/project-membership.md","note":"Reviewed combined room admission against the real contributor test: 12000-character edit-plan succeeds, viewer and revoked planning refused, batch settlement403. Runtime advertises documentWrite:false for members; editor respects it; design explicitly excludes batch settlement. No durable member-save claim. Both prior branch histories and independent source approvals retained; no production change in this acceptance extension.","inputs":["docs/design/project-membership.md","src-server/runtime/routes/__tests__/runtime-routes-task-room-members.test.ts"]}
+  ]
+}

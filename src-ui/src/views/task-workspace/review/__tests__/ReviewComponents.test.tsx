@@ -1244,6 +1244,14 @@ it.each<{ artifact: TaskReviewArtifactRef; label: string | null }>([
   },
   { artifact: { ...plan, revision: '2' }, label: '2' },
   { artifact: { ...plan, revision: 'draft-3' }, label: 'draft-3' },
+  {
+    artifact: { ...plan, revision: `swsr-v1:${'a'.repeat(64)}` },
+    label: 'swsr-v1:aaaaaaaa',
+  },
+  {
+    artifact: { ...plan, revision: `swsr-v2:${'b'.repeat(64)}` },
+    label: 'swsr-v2:bbbbbbbb',
+  },
   { artifact: { ...plan, revision: `sha256:${'a'.repeat(64)}` }, label: null },
   { artifact: { ...plan, revision: 'a'.repeat(40) }, label: null },
 ])(
@@ -1289,6 +1297,24 @@ it('formats numeric revision transitions', () => {
     />,
   );
   expect(screen.getByText('v2 → v3')).toBeTruthy();
+});
+
+it('shows the v1 to v2 working revision transition and keeps the full current revision in its title', () => {
+  const previous = { ...plan, revision: `swsr-v1:${'a'.repeat(64)}` };
+  const current = { ...plan, revision: `swsr-v2:${'b'.repeat(64)}` };
+  render(
+    <ReviewDocumentView
+      draftScope="revision-codec-transition"
+      artifact={current}
+      previousArtifact={previous}
+      title="Plan"
+      text="The same plan text."
+      threads={[]}
+      onCreateThread={vi.fn()}
+    />,
+  );
+  const chip = screen.getByText('swsr-v1:aaaaaaaa → swsr-v2:bbbbbbbb');
+  expect(chip.title).toBe(current.revision);
 });
 
 it('explains an unavailable Brief in visible navigation text', () => {

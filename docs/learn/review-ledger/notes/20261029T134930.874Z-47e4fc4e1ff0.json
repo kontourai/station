@@ -1,0 +1,13 @@
+{
+  "revision": "1812145e5d043d660af65c65db1ce2f23ca3c58a",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed against this PR's change to docs/ui/responsive-action-surfaces.txt: one exception entry for the new trust review panel (IntegrationTrustReview.tsx), whose action row uses the shared Button and so the global mobile 44px floor; its 390px render was checked manually and no committed 390px fixture opens it yet. This document's responsive, theming and pattern claims are unchanged by that entry.","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/guides/theming.md","note":"Reviewed against this PR's change to docs/ui/responsive-action-surfaces.txt: one exception entry for the new trust review panel (IntegrationTrustReview.tsx), whose action row uses the shared Button and so the global mobile 44px floor; its 390px render was checked manually and no committed 390px fixture opens it yet. This document's responsive, theming and pattern claims are unchanged by that entry.","inputs":["docs/guides/theming.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/backend.md","note":"Reviewed against this PR's change to docs/ui/responsive-action-surfaces.txt: one exception entry for the new trust review panel (IntegrationTrustReview.tsx), whose action row uses the shared Button and so the global mobile 44px floor; its 390px render was checked manually and no committed 390px fixture opens it yet. This document's responsive, theming and pattern claims are unchanged by that entry.","inputs":["docs/patterns/backend.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed against this PR's change to docs/ui/responsive-action-surfaces.txt: one exception entry for the new trust review panel (IntegrationTrustReview.tsx), whose action row uses the shared Button and so the global mobile 44px floor; its 390px render was checked manually and no committed 390px fixture opens it yet. This document's responsive, theming and pattern claims are unchanged by that entry.","inputs":["docs/patterns/frontend.md","docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

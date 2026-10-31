@@ -128,6 +128,218 @@ export interface ToolDef {
    * Metadata Document support, then registration.
    */
   oauthClient?: ToolOAuthClient;
+  /**
+   * #3483: `untrusted` means this server returns content written by others,
+   * such as email. A catalog sets the default; the person may set `trusted`.
+   * Absent means trusted.
+   */
+  contentTrust?: 'untrusted' | 'trusted';
+  /**
+   * #3483: what happens before one of THIS server's tools runs in a turn that
+   * has already read untrusted content. Applies only to tools the server does
+   * not declare read-only. Absent means `ask`.
+   */
+  untrustedContentPermissions?: UntrustedContentPermissions;
+  /**
+   * #3483: honor this server's read-only tool hints (MCP `readOnlyHint`) for
+   * the untrusted-content permission even though `contentTrust` is
+   * `untrusted`. Hints from an untrusted server are otherwise ignored, since
+   * the server controls them. A catalog or the person sets it.
+   */
+  trustReadOnlyHints?: boolean;
+  /** Server-written receipts for changes to the three fields above. */
+  untrustedContentChanges?: UntrustedContentChange[];
+  /** Storage-owned record of person-controlled fields, retained beyond receipt history. */
+  untrustedContentPersonOwned?: Array<
+    'contentTrust' | 'permissions' | 'trustReadOnlyHints'
+  >;
+}
+
+/**
+ * - `ask`: a person approves each call, even one an Agent auto-approves.
+ * - `allow`: untrusted content adds nothing; the tool's usual permission
+ *   decides, so an always-allow for the tool runs it without a question.
+ * - `deny`: the call is refused.
+ *
+ * A person's entry always wins, including over a server's read-only hint.
+ */
+export type UntrustedContentPermission = 'ask' | 'allow' | 'deny';
+
+export interface UntrustedContentPermissions {
+  /** For every tool of this server without its own entry. */
+  default?: UntrustedContentPermission;
+  /** Keyed by the server's own tool name. */
+  tools?: Record<string, UntrustedContentPermission>;
+}
+
+export interface UntrustedContentChange {
+  at: string;
+  /** Principal id of the person who made the change, when known. */
+  by?: string;
+  /** An import made through the local CLI, without a verified Station principal. */
+  source?: 'local-cli-operator';
+  contentTrust?: 'untrusted' | 'trusted';
+  permissions?: UntrustedContentPermissions;
+  trustReadOnlyHints?: boolean;
+}
+
+const UNTRUSTED_CONTENT_CHANGE_LIMIT = 50;
+const ownProperty = Object.prototype.hasOwnProperty;
+function owns(value: object, key: string): boolean {
+  return ownProperty.call(value, key);
+}
+export const DEFAULT_EXTERNAL_CONTENT_TRUST = 'trusted' as const;
+
+function lastImportedReceipt(
+  receipts: readonly UntrustedContentChange[],
+): number {
+  for (let i = receipts.length - 1; i >= 0; i--) {
+    if (receipts[i].source) return i;
+  }
+  return -1;
+}
+
+export function personOwnedUntrustedContentFields(stored: ToolDef | undefined) {
+  const receipts = stored?.untrustedContentChanges ?? [];
+  const lastImport = lastImportedReceipt(receipts);
+  // Old, unreleased import writers marked imported fields as person-owned.
+  // Their ownership flags cannot establish a person's choice; only later
+  // attributed person receipts can do so.
+  const owned = new Set(
+    lastImport >= 0 ? [] : (stored?.untrustedContentPersonOwned ?? []),
+  );
+  for (const receipt of receipts.slice(lastImport + 1)) {
+    if (!receipt.by || receipt.source) continue;
+    if (owns(receipt, 'contentTrust')) owned.add('contentTrust');
+    if (owns(receipt, 'permissions')) owned.add('permissions');
+    if (owns(receipt, 'trustReadOnlyHints')) owned.add('trustReadOnlyHints');
+  }
+  return owned;
+}
+
+/** Ignore external trust policy and apply only Station defaults and person choices. */
+export function withStationIntegrationTrustDefaults(
+  incoming: ToolDef,
+  stored?: ToolDef,
+  stationCuratedTrust?: 'trusted' | 'untrusted',
+): ToolDef {
+  const result = { ...incoming };
+  delete result.contentTrust;
+  delete result.untrustedContentPermissions;
+  delete result.trustReadOnlyHints;
+  delete result.untrustedContentChanges;
+  delete result.untrustedContentPersonOwned;
+  // The bundled catalog may supply Station's classification.
+  result.contentTrust = stationCuratedTrust ?? DEFAULT_EXTERNAL_CONTENT_TRUST;
+  if (!stored) return result;
+  const owned = personOwnedUntrustedContentFields(stored);
+  if (owned.has('contentTrust')) {
+    if (owns(stored, 'contentTrust')) result.contentTrust = stored.contentTrust;
+    else delete result.contentTrust;
+  }
+  if (owned.has('permissions')) {
+    if (owns(stored, 'untrustedContentPermissions'))
+      result.untrustedContentPermissions = stored.untrustedContentPermissions;
+    else delete result.untrustedContentPermissions;
+  }
+  if (owned.has('trustReadOnlyHints')) {
+    if (owns(stored, 'trustReadOnlyHints'))
+      result.trustReadOnlyHints = stored.trustReadOnlyHints;
+    else delete result.trustReadOnlyHints;
+  }
+  return result;
+}
+
+function sameValue(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+}
+
+/**
+ * #3483: the definition to store, with untrusted-content receipts taken from
+ * the stored copy (never from the incoming definition) and one appended when
+ * the classification, a permission or the hint setting changed. Receipts are
+ * bounded to the most recent 50. Every integration writer applies this
+ * against the stored copy it read under its write lock.
+ */
+export function withUntrustedContentChange(
+  stored: ToolDef | undefined,
+  next: ToolDef,
+  by: string | undefined,
+  now: Date,
+  options?: {
+    personChange?: boolean;
+    explicitFields?: readonly (
+      | 'contentTrust'
+      | 'permissions'
+      | 'trustReadOnlyHints'
+    )[];
+  },
+): ToolDef {
+  const result: ToolDef = { ...next };
+  delete result.untrustedContentChanges;
+  delete result.untrustedContentPersonOwned;
+  const owned = personOwnedUntrustedContentFields(stored);
+  if (stored?.untrustedContentChanges?.length) {
+    // Legacy imports could replace both values and ownership. Discard their
+    // contaminated history so later person edits without a principal still
+    // retain their independently recorded ownership.
+    const history = stored.untrustedContentChanges;
+    const retained = history.slice(lastImportedReceipt(history) + 1);
+    if (retained.length) result.untrustedContentChanges = retained;
+  }
+  const trustChanged =
+    (stored?.contentTrust ?? 'trusted') !== (next.contentTrust ?? 'trusted');
+  const permissionsChanged = !sameValue(
+    stored?.untrustedContentPermissions,
+    next.untrustedContentPermissions,
+  );
+  const hintsChanged =
+    (stored?.trustReadOnlyHints ?? false) !==
+    (next.trustReadOnlyHints ?? false);
+  const person = Boolean(by || options?.personChange);
+  const explicit = new Set(
+    person
+      ? (options?.explicitFields ?? [
+          'contentTrust',
+          'permissions',
+          'trustReadOnlyHints',
+        ])
+      : [],
+  );
+  if (person) {
+    if (trustChanged || explicit.has('contentTrust')) owned.add('contentTrust');
+    if (permissionsChanged || explicit.has('permissions'))
+      owned.add('permissions');
+    if (hintsChanged || explicit.has('trustReadOnlyHints'))
+      owned.add('trustReadOnlyHints');
+  }
+  if (owned.size) result.untrustedContentPersonOwned = [...owned];
+  if (
+    !trustChanged &&
+    !permissionsChanged &&
+    !hintsChanged &&
+    explicit.size === 0
+  )
+    return result;
+  const change: UntrustedContentChange = {
+    at: now.toISOString(),
+    ...(by ? { by } : {}),
+    // Absent classification means trusted, so a removal records `trusted`.
+    ...(trustChanged || explicit.has('contentTrust')
+      ? { contentTrust: next.contentTrust ?? 'trusted' }
+      : {}),
+    ...(permissionsChanged || explicit.has('permissions')
+      ? { permissions: next.untrustedContentPermissions ?? {} }
+      : {}),
+    ...(hintsChanged || explicit.has('trustReadOnlyHints')
+      ? { trustReadOnlyHints: next.trustReadOnlyHints ?? false }
+      : {}),
+  };
+  result.untrustedContentChanges = [
+    ...(result.untrustedContentChanges ?? []),
+    change,
+  ].slice(-UNTRUSTED_CONTENT_CHANGE_LIMIT);
+  return result;
 }
 
 /**
@@ -218,7 +430,44 @@ export interface ToolMetadata {
   enabled?: boolean;
   disabledTools?: string[];
   probe?: ToolServerProbeResult;
+  /** #3483: legacy trust settings that wait for a person; see `IntegrationTrustReview`. */
+  trustReview?: IntegrationTrustReview;
+  /** #3483: where each external engine's calls to this server go. */
+  engineCoverage?: IntegrationEngineCoverage[];
 }
+
+/**
+ * #3483: whether Station can apply the untrusted-content permission to an
+ * external engine's calls to one server, derived from its transport and how
+ * Station delivers it.
+ * - `station-gated`: every call passes a Station seam that applies it;
+ * - `engine-direct`: the engine connects to the server itself, so Station
+ *   cannot gate its calls or see what they return;
+ * - `not-delivered`: Station does not give this server to that engine.
+ */
+export interface IntegrationEngineCoverage {
+  engine: 'claude' | 'codex' | 'acp';
+  coverage: 'station-gated' | 'engine-direct' | 'not-delivered';
+}
+
+/**
+ * #3483: a stored trust setting that would widen what runs (a trusted
+ * classification, an `allow`, trusted read-only hints) whose ownership
+ * cannot be authenticated. It is not applied, and the integration does not
+ * load, until a person keeps it or resets it.
+ */
+export interface IntegrationTrustReviewField {
+  field: 'contentTrust' | 'permissions' | 'trustReadOnlyHints';
+  /** The stored value, shown for review; never applied before a decision. */
+  value: unknown;
+}
+
+export interface IntegrationTrustReview {
+  fields: IntegrationTrustReviewField[];
+}
+
+/** A person's answer to an integration's trust review. */
+export type IntegrationTrustReviewDecision = 'keep' | 'reset';
 
 /** Installation provenance, separate from an execution or trust grant. */
 export interface ToolOrigin {

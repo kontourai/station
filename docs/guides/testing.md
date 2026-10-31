@@ -1581,6 +1581,16 @@ to select the repo-local browser; the suite runner sets this itself. The reusabl
 `.github/workflows/full-regression.yml` provides the browser
 prerequisite for hosted completion; do not infer it from dependency installation.
 
+On Linux, the canonical process-exclusive corpus binds its preview fixtures
+to the installed Playwright revision when `PLAYWRIGHT_BROWSERS_PATH` is set.
+The corpus runner supplies `STATION_VITEST_CORPUS_GROUP=process-exclusive`;
+global setup then places a `google-chrome` link in the run-owned temporary
+directory ahead of ambient browsers. Ordinary affected-test shards and
+process-heavy installed-browser compatibility suites retain system-Chrome
+discovery, which otherwise takes precedence over a `chromium` link. Missing pinned files fail the prerequisite. Teardown removes
+the link with that run root and restores its PATH. This does not disable the
+Chromium sandbox or qualify an unconfigured system browser.
+
 `npm test` is the named focused pre-push test tier. Station's own
 `.githooks/pre-push` has its separate check list; it does not invoke this alias. Its checked-in manifest covers repository guardrails, public contracts,
 authentication/connection boundaries, orchestration state, and core
@@ -1855,6 +1865,18 @@ The HTML preview process suite also runs in the exclusive group so other Vitest
 files in that invocation do not compete with its disposable Chromium startup.
 It retains the 15-second render deadline and 3-second effective-policy check.
 
+The pinned Vitest runner 4.1.12 has a [managed timer patch](../../patches/vitest-runner-4.1.12.patch).
+Its task-event throttle could lose a pending update when a timer fired exactly
+at its 100 ms boundary, leaving a running body or hook reported as unknown
+until another update arrived. The patch clears the expired timer handle before
+retrying, so an early or boundary callback can schedule another attempt.
+The corpus-runner test exercises the installed package's public `updateTask`
+API with a controlled clock, including cancellation of a pending timer by an
+immediate flush. Real-child lifecycle controls still require observed events
+within their existing two-second test and hook limits; no worker count or
+product deadline changes. Remove the patch when an upstream release passes
+these controls through the managed dependency workflow.
+
 Pre-push and coverage remain one-worker evidence lanes. Coverage merging has a
 different correctness contract, and pre-push is already short while its
 host-wide coordinator weight allows independent worktrees to make progress.
@@ -1900,7 +1922,7 @@ This scheduling contract is rendered from `scripts/verification-lanes.mjs`; do n
 - `test-full-ordinary-7-of-8` — 80-unit host reservation; 20-minute execution deadline.
 - `test-full-ordinary-8-of-8` — 80-unit host reservation; 20-minute execution deadline.
 - `test-full-process-heavy` — 60-unit host reservation; 30-minute execution deadline.
-- `test-full-process-exclusive` — 60-unit host reservation; 4-minute execution deadline.
+- `test-full-process-exclusive` — 60-unit host reservation; 10-minute execution deadline.
 - `test-full-coordinator-exclusive` — 60-unit host reservation; 4-minute execution deadline.
 - `test-full-credential-ledger-exclusive` — 60-unit host reservation; 4-minute execution deadline.
 - `test-full-shared-output` — 60-unit host reservation; 4-minute execution deadline.

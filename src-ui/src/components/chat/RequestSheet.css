@@ -147,11 +147,11 @@
    sheet's panel sets a 14px body size and feature cards set `font: inherit`
    on their inputs, so the floor is restated here for every editable control. */
 .request-sheet.responsive-surface-panel
-:is(
-  input:not([type="checkbox"], [type="radio"], [type="range"]),
-  textarea,
-  select
-) {
+  :is(
+    input:not([type="checkbox"], [type="radio"], [type="range"]),
+    textarea,
+    select
+  ) {
   font-size: 16px;
 }
 

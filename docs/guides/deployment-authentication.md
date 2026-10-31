@@ -20,8 +20,13 @@ live witness for a previously verified session. It must re-read session existenc
 subject and timestamps, expiry and account policy, and reject pending enrollment. It
 does not authenticate a caller-supplied session ID and is not part of the public
 descriptor. The local-account provider implements it; adapters without it fail closed at
-synchronous authority seams. `captureCurrentSession` also pins the verified identity and
-cookie and refuses continuation-only authority.
+synchronous authority seams. `captureCurrentSession` pins the verified identity and
+transport. For a proof-admitted application or native continuation, the application-session
+owner also re-reads the exact stored grant, Device and alias or trusted native target.
+The provider witness receives the original provider session, before the continuation
+clips its projected expiry. Revoking either grant or provider session invalidates the
+witness; missing provider currentness or trusted native facts fail closed. Capturing or
+checking a witness does not consume another request proof.
 
 Task relationship routes compose current transport authority with a live local-account
 session or supported account-bound Device standing witness. Account members may read
@@ -30,6 +35,16 @@ parent does not reveal private children or their count. Work chats additionally 
 current canonical Conversation lineage and reader access. Ordinary account membership
 does not authorize relationship mutations. Linking neither publishes a Task or private
 conversation nor grants execution.
+
+Personal Task-room access is a separate, bounded account-bound Device surface.
+Current membership and the exact Task share admit room reads, presence and,
+with `discuss`, messages. `edit` admits planning, but the account-bound gate
+does not yet admit document batch settlement or agent requests. A membership
+change invalidates the captured room admission and wakes the stream to recheck;
+the idle recheck remains as a fallback. See the
+[Task room API](../reference/api.md#account-bound-task-room-access) for the
+exact leaves and independent Device-scope requirements. This does not change
+the read-only shared Task entry described below or qualify real two-person use.
 
 ## Enable local accounts without email
 
@@ -171,11 +186,15 @@ belongs to an explicit operation that can deliver its cookie response; ordinary
 verification must not consume the destination body or silently refresh cookies.
 Original device/person bindings and historical authorship are preserved. On
 the scoped surfaces below, a current, synchronously witnessed local-account
-session names the person even when Tailscale Serve supplies WhoIs. WhoIs is
+cookie session names the person even when Tailscale Serve supplies WhoIs. WhoIs is
 ingress provenance, not a linked account. A Device credential must still be
 bound to that account, and an account session cannot use operator authority.
 Other providers retain their existing ingress agreement checks. Without an
 account session, WhoIs attribution is unchanged.
+
+Application and native continuations do not use this cookie-only ingress override.
+They retain their independently admitted proof, stored grant, Device/alias or
+native target, and current provider session, including during SDK bootstrap pairing.
 
 The WhoIs exception applies to these exact surfaces:
 

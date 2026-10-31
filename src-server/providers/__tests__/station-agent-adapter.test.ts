@@ -8,6 +8,7 @@ import { describe, expect, test, vi } from 'vitest';
 import {
   INTERNAL_TURN_CORRELATION_HEADER,
   readAuthorizedTurnCorrelationHandoff,
+  readMcpPromptOriginRelay,
   readSkillExperienceRelayContext,
   runWithAuthorizedTurnCorrelation,
 } from '../../runtime/conversation/authorized-turn-correlation.js';
@@ -584,6 +585,7 @@ describe('StationAgentAdapter', () => {
         }),
       undefined,
       'PINNED_DEPENDENCY_SENTINEL',
+      { serverId: 'mail', name: 'summarize', untrusted: true },
     );
 
     const headers = fetchMock.mock.calls[0]?.[1]?.headers as Record<
@@ -591,6 +593,9 @@ describe('StationAgentAdapter', () => {
       string
     >;
     expect(result.turnId).toBe('fleet-turn');
+    expect(
+      readMcpPromptOriginRelay(headers[INTERNAL_TURN_CORRELATION_HEADER]),
+    ).toEqual({ serverId: 'mail', name: 'summarize', untrusted: true });
     expect(
       readSkillExperienceRelayContext(
         headers[INTERNAL_TURN_CORRELATION_HEADER],

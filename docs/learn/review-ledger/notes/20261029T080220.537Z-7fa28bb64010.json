@@ -1,0 +1,9 @@
+{
+  "revision": "c56a5e1f32c9b04d5708f25d0229b021a37cf2dd",
+
+  "notes": [
+    {"path":"docs/guides/feature-previews.md","note":"Checked the Settings device-capture guide link change: it now uses the public GitHub URL; preview behavior and claims are unchanged.","inputs":["docs/guides/feature-previews.md","docs/user/settings.md"]},
+
+    {"path":"docs/user/settings.md","note":"Checked the Settings device-capture guide link change: it now uses the public GitHub URL; preview behavior and claims are unchanged.","inputs":["docs/user/settings.md"]}
+  ]
+}

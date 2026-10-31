@@ -1,4 +1,4 @@
-import { RequestError } from '@agentclientprotocol/sdk';
+import { RequestError } from '@agentclientprotocol/sdk/unstable';
 import { describe, expect, test, vi } from 'vitest';
 import {
   AcpCredentialBridgingRefusedError,

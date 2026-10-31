@@ -94,13 +94,11 @@ export interface ProjectTaskRoomMemberPrincipal {
   principalId: string;
   deviceId: string;
 }
-/** Legacy runtime consumers switch to the v5 union with member admission. */
 export type ProjectTaskRoomPrincipal =
   | ProjectTaskRoomHumanPrincipal
-  | ProjectTaskRoomAgentPrincipal;
-export type ProjectTaskRoomV5Principal =
-  | ProjectTaskRoomPrincipal
+  | ProjectTaskRoomAgentPrincipal
   | ProjectTaskRoomMemberPrincipal;
+export type ProjectTaskRoomV5Principal = ProjectTaskRoomPrincipal;
 export interface ProjectTaskRoomPersonMention {
   kind: 'person';
   principalId: string;
@@ -400,7 +398,7 @@ export interface ProjectTaskRoomAppendIntent {
   body: ProjectTaskRoomAppendBody;
 }
 export interface ProjectTaskRoomRecord {
-  schemaVersion: ProjectTaskRoomLegacySchemaVersion;
+  schemaVersion: ProjectTaskRoomSchemaVersion;
   scope: ProjectTaskRoomScope;
   principal: ProjectTaskRoomPrincipal;
   correlationId?: string;
@@ -410,7 +408,7 @@ export interface ProjectTaskRoomRecord {
   bodyBytes: number;
   checkpointDigest: string;
 }
-/** v5 wire shape; legacy runtime producers remain on ProjectTaskRoomRecord until 2B. */
+/** The v5 wire shape admits member principals. */
 export interface ProjectTaskRoomV5Record
   extends Omit<ProjectTaskRoomRecord, 'schemaVersion' | 'principal'> {
   schemaVersion: typeof PROJECT_TASK_ROOM_SCHEMA_VERSION;

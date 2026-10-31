@@ -16,7 +16,10 @@
 
 import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
-import type { AuthMethod, AuthMethodTerminal } from '@agentclientprotocol/sdk';
+import type {
+  AuthMethod,
+  AuthMethodTerminal,
+} from '@agentclientprotocol/sdk/unstable';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import type {
   EngineSignInAttempt,

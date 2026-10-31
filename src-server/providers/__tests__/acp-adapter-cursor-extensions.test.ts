@@ -1,8 +1,7 @@
 import {
-  AgentSideConnection,
-  ClientSideConnection,
+  agent as agentApp,
   ndJsonStream,
-} from '@agentclientprotocol/sdk';
+} from '@agentclientprotocol/sdk/unstable';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import {
   inputRequestFromRequestEvent,
@@ -11,6 +10,7 @@ import {
 import { toolRequestSessionGrantFromPayload } from '@kontourai/station-shared/tool-request-preview';
 import { describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
+import { createACPClientApp } from '../../services/acp/acp-bridge-client.js';
 import type { ACPProcess } from '../../services/acp/acp-process.js';
 import type { CanonicalRuntimeEvent } from '../adapter-shape.js';
 import { AcpAdapter } from '../adapters/acp-adapter.js';
@@ -20,8 +20,8 @@ import { FakeAcpProcess } from './fake-acp-process.js';
 /**
  * Cursor's agent→client extensions (cursor.com/docs/cli/acp, fetched
  * 2026-10-21), driven through the real AcpAdapter: the adapter's own Client
- * (built for a FakeAcpProcess session) serves a real `ClientSideConnection`,
- * and a real `AgentSideConnection` sends the documented request and
+ * (built for a FakeAcpProcess session) serves a real client app,
+ * and a real agent app sends the documented request and
  * notification shapes over ndjson. So each test also proves the ACP SDK
  * routes Cursor's non-underscore method names to the adapter.
  *
@@ -134,14 +134,12 @@ async function startCursorSession(options: { unattended?: boolean } = {}) {
   const clientToAgent = new TransformStream<Uint8Array, Uint8Array>();
   const agentToClient = new TransformStream<Uint8Array, Uint8Array>();
   const client = proc.client;
-  new ClientSideConnection(
-    () => client,
+  createACPClientApp(client).connect(
     ndJsonStream(clientToAgent.writable, agentToClient.readable),
   );
-  const agent = new AgentSideConnection(
-    () => ({}) as never,
+  const agent = agentApp().connect(
     ndJsonStream(agentToClient.writable, clientToAgent.readable),
-  );
+  ).client;
 
   async function waitFor<T extends CanonicalRuntimeEvent>(
     predicate: (event: CanonicalRuntimeEvent) => event is T,
@@ -216,10 +214,7 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 50));
 describe('cursor/ask_question reaches the harness-question contract', () => {
   test("the person's answer goes back as the documented response", async () => {
     const session = await startCursorSession();
-    const response = session.agent.extMethod(
-      'cursor/ask_question',
-      ASK_QUESTION,
-    );
+    const response = session.agent.request('cursor/ask_question', ASK_QUESTION);
 
     const opened = await session.waitFor(isRequestOpened, 'request.opened');
     // The form every surface reads from a request event (#3390).
@@ -257,7 +252,7 @@ describe('cursor/ask_question reaches the harness-question contract', () => {
 
   test('a multi-select answer maps back to every chosen option id', async () => {
     const session = await startCursorSession();
-    const response = session.agent.extMethod('cursor/ask_question', {
+    const response = session.agent.request('cursor/ask_question', {
       ...ASK_QUESTION,
       questions: [{ ...ASK_QUESTION.questions[0], allowMultiple: true }],
     });
@@ -277,10 +272,7 @@ describe('cursor/ask_question reaches the harness-question contract', () => {
 
   test('a declined question answers skipped, not cancelled', async () => {
     const session = await startCursorSession();
-    const response = session.agent.extMethod(
-      'cursor/ask_question',
-      ASK_QUESTION,
-    );
+    const response = session.agent.request('cursor/ask_question', ASK_QUESTION);
     const opened = await session.waitFor(isRequestOpened, 'request.opened');
     await session.adapter.respondToRequest(
       session.threadId,
@@ -296,7 +288,7 @@ describe('cursor/ask_question reaches the harness-question contract', () => {
 
   test('an answer that names another request event is refused', async () => {
     const session = await startCursorSession();
-    void session.agent.extMethod('cursor/ask_question', ASK_QUESTION);
+    void session.agent.request('cursor/ask_question', ASK_QUESTION);
     const opened = await session.waitFor(isRequestOpened, 'request.opened');
     await expect(
       session.adapter.respondToRequest(
@@ -312,7 +304,7 @@ describe('cursor/ask_question reaches the harness-question contract', () => {
   test('an unattended session is answered skipped at once, not left to hang', async () => {
     const session = await startCursorSession({ unattended: true });
     await expect(
-      within(session.agent.extMethod('cursor/ask_question', ASK_QUESTION)),
+      within(session.agent.request('cursor/ask_question', ASK_QUESTION)),
     ).resolves.toEqual({
       outcome: {
         outcome: 'skipped',
@@ -341,7 +333,7 @@ describe('cursor/ask_question reaches the harness-question contract', () => {
       ],
     };
     await expect(
-      within(session.agent.extMethod('cursor/ask_question', oversized)),
+      within(session.agent.request('cursor/ask_question', oversized)),
     ).resolves.toEqual({
       outcome: {
         outcome: 'skipped',
@@ -375,7 +367,7 @@ describe('cursor/ask_question reaches the harness-question contract', () => {
       ],
     };
     await expect(
-      within(session.agent.extMethod('cursor/ask_question', tooMany)),
+      within(session.agent.request('cursor/ask_question', tooMany)),
     ).resolves.toMatchObject({ outcome: { outcome: 'skipped' } });
     expect(session.events.filter(isRequestOpened)).toHaveLength(0);
     await session.stop();
@@ -387,10 +379,7 @@ describe('cursor/ask_question reaches the harness-question contract', () => {
       threadId: session.threadId,
       input: 'Plan it',
     });
-    const response = session.agent.extMethod(
-      'cursor/ask_question',
-      ASK_QUESTION,
-    );
+    const response = session.agent.request('cursor/ask_question', ASK_QUESTION);
     await session.waitFor(isRequestOpened, 'request.opened');
     await session.adapter.interruptTurn(session.threadId);
     await expect(within(response)).resolves.toEqual({
@@ -401,11 +390,8 @@ describe('cursor/ask_question reaches the harness-question contract', () => {
 
   test('stopping the session answers an open question and plan cancelled', async () => {
     const session = await startCursorSession();
-    const question = session.agent.extMethod(
-      'cursor/ask_question',
-      ASK_QUESTION,
-    );
-    const plan = session.agent.extMethod('cursor/create_plan', CREATE_PLAN);
+    const question = session.agent.request('cursor/ask_question', ASK_QUESTION);
+    const plan = session.agent.request('cursor/create_plan', CREATE_PLAN);
     const deadline = Date.now() + 1000;
     while (
       session.events.filter(isRequestOpened).length < 2 &&
@@ -429,11 +415,8 @@ describe('cursor/ask_question reaches the harness-question contract', () => {
       threadId: session.threadId,
       input: 'Plan it',
     });
-    const question = session.agent.extMethod(
-      'cursor/ask_question',
-      ASK_QUESTION,
-    );
-    const plan = session.agent.extMethod('cursor/create_plan', CREATE_PLAN);
+    const question = session.agent.request('cursor/ask_question', ASK_QUESTION);
+    const plan = session.agent.request('cursor/create_plan', CREATE_PLAN);
     const deadline = Date.now() + 1000;
     while (
       session.events.filter(isRequestOpened).length < 2 &&
@@ -456,10 +439,10 @@ describe('cursor/ask_question reaches the harness-question contract', () => {
     await session.adapter.stopSession(session.threadId);
     const opened = session.events.filter(isRequestOpened).length;
     await expect(
-      within(session.agent.extMethod('cursor/ask_question', ASK_QUESTION)),
+      within(session.agent.request('cursor/ask_question', ASK_QUESTION)),
     ).resolves.toEqual({ outcome: { outcome: 'cancelled' } });
     await expect(
-      within(session.agent.extMethod('cursor/create_plan', CREATE_PLAN)),
+      within(session.agent.request('cursor/create_plan', CREATE_PLAN)),
     ).resolves.toEqual({ outcome: { outcome: 'cancelled' } });
     expect(session.events.filter(isRequestOpened)).toHaveLength(opened);
     await session.stop();
@@ -469,7 +452,7 @@ describe('cursor/ask_question reaches the harness-question contract', () => {
 describe('cursor/create_plan is a plan review', () => {
   test('the person reads the whole plan, and only an approved plan reaches the plan surface', async () => {
     const session = await startCursorSession();
-    const response = session.agent.extMethod('cursor/create_plan', CREATE_PLAN);
+    const response = session.agent.request('cursor/create_plan', CREATE_PLAN);
 
     const opened = await session.waitFor(isRequestOpened, 'request.opened');
     expect(opened.title).toBe(
@@ -519,10 +502,7 @@ describe('cursor/create_plan is a plan review', () => {
     '%s answers rejected and leaves the plan surface alone',
     async (_label, choice) => {
       const session = await startCursorSession();
-      const response = session.agent.extMethod(
-        'cursor/create_plan',
-        CREATE_PLAN,
-      );
+      const response = session.agent.request('cursor/create_plan', CREATE_PLAN);
       const opened = await session.waitFor(isRequestOpened, 'request.opened');
       if (choice) await answerForm(session, opened, { review: choice });
       else
@@ -554,7 +534,7 @@ describe('cursor/create_plan is a plan review', () => {
       status: 'pending',
     }));
     const plan = 'p'.repeat(6000);
-    const response = session.agent.extMethod('cursor/create_plan', {
+    const response = session.agent.request('cursor/create_plan', {
       ...CREATE_PLAN,
       plan,
       todos,
@@ -578,7 +558,7 @@ describe('cursor/create_plan is a plan review', () => {
   test('a plan too long to show whole is cut with a note, never refused', async () => {
     const session = await startCursorSession();
     const plan = `${'q'.repeat(7990)}TAIL`;
-    void session.agent.extMethod('cursor/create_plan', {
+    void session.agent.request('cursor/create_plan', {
       ...CREATE_PLAN,
       plan,
     });
@@ -594,7 +574,7 @@ describe('cursor/create_plan is a plan review', () => {
 
   test('an approval that lands as the session stops plans nothing', async () => {
     const session = await startCursorSession();
-    void session.agent.extMethod('cursor/create_plan', CREATE_PLAN);
+    void session.agent.request('cursor/create_plan', CREATE_PLAN);
     const opened = await session.waitFor(isRequestOpened, 'request.opened');
     const form = inputRequestFromRequestEvent(opened);
     if (!form) throw new Error('no form');
@@ -619,7 +599,7 @@ describe('cursor/create_plan is a plan review', () => {
 
   test("phases' todos are shown and planned under their phase name", async () => {
     const session = await startCursorSession();
-    const response = session.agent.extMethod('cursor/create_plan', {
+    const response = session.agent.request('cursor/create_plan', {
       ...CREATE_PLAN,
       todos: [CREATE_PLAN.todos[0]],
       phases: [
@@ -647,13 +627,13 @@ describe('cursor/create_plan is a plan review', () => {
 
   test('a later update_todos merges onto the approved plan', async () => {
     const session = await startCursorSession();
-    const response = session.agent.extMethod('cursor/create_plan', CREATE_PLAN);
+    const response = session.agent.request('cursor/create_plan', CREATE_PLAN);
     const opened = await session.waitFor(isRequestOpened, 'request.opened');
     await answerForm(session, opened, { review: 'approve' });
     await within(response);
     await session.waitFor(isPlanUpdated, 'plan.updated');
 
-    await session.agent.extNotification('cursor/update_todos', {
+    await session.agent.notify('cursor/update_todos', {
       toolCallId: 'call_125',
       todos: [
         {
@@ -683,7 +663,7 @@ describe('cursor/create_plan is a plan review', () => {
   test('an unattended session answers rejected at once, never accepted', async () => {
     const session = await startCursorSession({ unattended: true });
     await expect(
-      within(session.agent.extMethod('cursor/create_plan', CREATE_PLAN)),
+      within(session.agent.request('cursor/create_plan', CREATE_PLAN)),
     ).resolves.toEqual({
       outcome: {
         outcome: 'rejected',
@@ -704,7 +684,7 @@ describe('cursor/create_plan is a plan review', () => {
       plan: 'x'.repeat(CURSOR_PAYLOAD_MAX_JSON_CHARS),
     };
     await expect(
-      within(session.agent.extMethod('cursor/create_plan', oversized)),
+      within(session.agent.request('cursor/create_plan', oversized)),
     ).resolves.toEqual({
       outcome: {
         outcome: 'rejected',
@@ -726,7 +706,7 @@ describe('cursor/create_plan is a plan review', () => {
       })),
     };
     await expect(
-      within(session.agent.extMethod('cursor/create_plan', tooMany)),
+      within(session.agent.request('cursor/create_plan', tooMany)),
     ).resolves.toEqual({
       outcome: {
         outcome: 'rejected',
@@ -748,7 +728,7 @@ describe('a mid-turn Cursor plan belongs to the send that opened the turn', () =
       invocationId: 'invocation-plan',
     });
     const own = { turnId: turn.turnId, invocationId: 'invocation-plan' };
-    const response = session.agent.extMethod('cursor/create_plan', CREATE_PLAN);
+    const response = session.agent.request('cursor/create_plan', CREATE_PLAN);
     const opened = await session.waitFor(isRequestOpened, 'request.opened');
     await answerForm(session, opened, { review: 'approve' });
     await within(response);
@@ -756,7 +736,7 @@ describe('a mid-turn Cursor plan belongs to the send that opened the turn', () =
       own,
     );
 
-    await session.agent.extNotification('cursor/update_todos', UPDATE_TODOS);
+    await session.agent.notify('cursor/update_todos', UPDATE_TODOS);
     const deadline = Date.now() + 1000;
     while (
       session.events.filter(isPlanUpdated).length < 2 &&
@@ -794,10 +774,7 @@ describe('a Cursor question asked mid-turn belongs to the send that opened the t
       }
     };
 
-    const answered = session.agent.extMethod(
-      'cursor/ask_question',
-      ASK_QUESTION,
-    );
+    const answered = session.agent.request('cursor/ask_question', ASK_QUESTION);
     const first = await session.waitFor(isRequestOpened, 'request.opened');
     expect(first).toMatchObject(own);
     await answerForm(session, first, { q1: '1' });
@@ -807,10 +784,7 @@ describe('a Cursor question asked mid-turn belongs to the send that opened the t
       ...own,
     });
 
-    const orphaned = session.agent.extMethod(
-      'cursor/ask_question',
-      ASK_QUESTION,
-    );
+    const orphaned = session.agent.request('cursor/ask_question', ASK_QUESTION);
     const second = await session.waitFor(
       (event): event is RequestOpened =>
         isRequestOpened(event) && event.requestId !== first.requestId,
@@ -830,7 +804,7 @@ describe('a Cursor question asked mid-turn belongs to the send that opened the t
 describe('cursor/update_todos reaches the plan surface', () => {
   test('a merge folds into the plan by todo id', async () => {
     const session = await startCursorSession();
-    await session.agent.extNotification('cursor/update_todos', UPDATE_TODOS);
+    await session.agent.notify('cursor/update_todos', UPDATE_TODOS);
     const first = await session.waitFor(isPlanUpdated, 'plan.updated');
     expect(first.entries).toEqual([
       { content: 'Set up project structure', status: 'completed' },
@@ -838,7 +812,7 @@ describe('cursor/update_todos reaches the plan surface', () => {
       { content: 'Write unit tests', status: 'pending' },
     ]);
 
-    await session.agent.extNotification('cursor/update_todos', {
+    await session.agent.notify('cursor/update_todos', {
       toolCallId: 'call_126',
       todos: [
         { id: '2', content: 'Add authentication', status: 'completed' },
@@ -866,10 +840,10 @@ describe('every other cursor/* request is still refused', () => {
   test('an undocumented cursor/* request gets -32601', async () => {
     const session = await startCursorSession();
     await expect(
-      within(session.agent.extMethod('cursor/update_todos', UPDATE_TODOS)),
+      within(session.agent.request('cursor/update_todos', UPDATE_TODOS)),
     ).rejects.toMatchObject({ code: -32601 });
     await expect(
-      within(session.agent.extMethod('cursor/ask_questions', ASK_QUESTION)),
+      within(session.agent.request('cursor/ask_questions', ASK_QUESTION)),
     ).rejects.toMatchObject({ code: -32601 });
     await session.stop();
   });

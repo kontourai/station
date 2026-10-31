@@ -1,0 +1,7 @@
+{
+  "revision": "6895629f64e98a9f910f73e7a9584e47eac88968",
+
+  "notes": [
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"runtime-routes.ts changed only by adding resolveRequestPrincipalId to the integration tool routes' dependencies (attribution of untrusted-content permission receipts). The operator sign-in and step-up surfaces this capture shows are unaffected; recapture not needed.","inputs":["docs/learn/media/operator-s4-after-step-up.png","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

@@ -53,13 +53,17 @@ export function RoomAvatar({
 export function ProjectTaskRoomPresence({
   taskId,
   compact = false,
+  showMembers = false,
 }: {
   taskId: string;
   compact?: boolean;
+  showMembers?: boolean;
 }) {
   const room = useProjectTaskRoomContext(taskId);
   const published = room?.live?.participants.filter(
-    (participant) => participant.publication === 'published',
+    (participant) =>
+      participant.publication === 'published' &&
+      (!compact || showMembers || participant.actor.standing !== 'member'),
   );
   useLayoutEffect(() => {
     if (

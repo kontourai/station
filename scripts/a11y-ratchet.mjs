@@ -13,7 +13,7 @@
  * implicit `submit` default does nothing, so rewriting them would be ~296 inert
  * edits. Fix them as the surrounding components are touched instead.
  *
- * Self-activating: while `a11y.recommended` is not `true` in biome.json this
+ * Self-activating: while the a11y recommended/all preset is disabled this
  * reports inactive and exits 0, so wiring it into the gate can never fail for a
  * reason the reader cannot act on.
  */
@@ -64,7 +64,12 @@ export function lintCheckRoots(packageJsonText) {
 export function a11yEnabled(configText) {
   try {
     const config = JSON.parse(configText);
-    return config?.linter?.rules?.a11y?.recommended === true;
+    const family = config?.linter?.rules?.a11y;
+    return (
+      family?.preset === 'recommended' ||
+      family?.preset === 'all' ||
+      (family?.preset == null && family?.recommended === true)
+    );
   } catch {
     return false;
   }
@@ -169,8 +174,8 @@ function main() {
 
   if (!a11yEnabled(readFileSync(BIOME_CONFIG_PATH, 'utf8'))) {
     console.log(
-      'INACTIVE: biome.json does not set linter.rules.a11y.recommended = true, so no\n' +
-        'a11y diagnostics are produced and there is nothing to ratchet. Enable the family\n' +
+      'INACTIVE: biome.json does not enable the a11y recommended/all preset.\n' +
+        'Enable the family\n' +
         `(see ${BASELINE_PATH.replace(`${ROOT}/`, '')} for the recorded ceilings) to activate this gate.`,
     );
     return;

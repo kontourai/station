@@ -1,0 +1,7 @@
+{
+  "revision": "30473c42aa6f1907bb8c997804719a21276b3536",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Shipped docs topics derive from guides edited here (connections, plugins); regenerated with docs:mcp:generate in this change. No claim in this reference changes.","inputs":["docs/reference/station-docs.md","docs/architecture/module-map.md"]}
+  ]
+}

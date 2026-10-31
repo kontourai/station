@@ -1,0 +1,7 @@
+{
+  "revision": "30473c42aa6f1907bb8c997804719a21276b3536",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Checked PUT /integrations/:id against routes/agents/tools.ts (withUntrustedContentChange receipt, principal from resolveAccountPrincipalId, zod integrationSchema strips caller receipts) and GET /api/registry/integrations against routes/plugins/registry.ts (adds mcpSources; data items may carry mcpServer). Updated both sections; install route and tool-library claims unchanged.","inputs":["docs/reference/api.md","packages/contracts/src/catalog.ts","packages/contracts/src/tool.ts","src-server/routes/agents/tools.ts","src-server/routes/plugins/registry.ts","src-server/routes/schemas/schema-definitions/runtime.ts","src-server/services/plugins/tool-library-catalog.ts"]}
+  ]
+}

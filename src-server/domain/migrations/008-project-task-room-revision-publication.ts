@@ -1,3 +1,5 @@
+import { MAX_WORKING_STATE_SNAPSHOT_BYTES } from '../shared-working-state.js';
+
 /** Atomic sidecar for document-commit revision publication. */
 export const PROJECT_TASK_ROOM_REVISION_PUBLICATION_MIGRATION = `
 CREATE TABLE IF NOT EXISTS project_task_room_revision_publication_outbox (
@@ -8,7 +10,7 @@ CREATE TABLE IF NOT EXISTS project_task_room_revision_publication_outbox (
   base_working_revision TEXT NOT NULL,
   working_revision TEXT NOT NULL,
   snapshot_json TEXT NOT NULL,
-  snapshot_bytes INTEGER NOT NULL CHECK(snapshot_bytes > 0 AND snapshot_bytes <= 524288),
+  snapshot_bytes INTEGER NOT NULL CHECK(snapshot_bytes > 0 AND snapshot_bytes <= ${MAX_WORKING_STATE_SNAPSHOT_BYTES}),
   actor_id TEXT NOT NULL,
   actor_label TEXT,
   operator_id TEXT NOT NULL,

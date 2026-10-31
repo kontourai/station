@@ -2,6 +2,12 @@
 
 `tests/project-task-room-collaboration.spec.ts` is the retained real-browser acceptance fixture for the personal Station Task room. It starts an isolated production server/UI, creates a Project and Task through shipped HTTP/UI entry points, pairs a second browser as a distinct device, and targets the rendered Task workspace rather than injected pane props.
 
+The separate `renders Task collaboration member names and avatars` case in
+that file uses an explicit browser history and SSE fixture to render two member
+names and the header stack at 390 and 1440 pixels in both themes. It checks
+presentation only; those fixture actors are not a real two-account browser
+journey or a deployed/native acceptance receipt.
+
 The workspace opens on **Overview**. **Conversation**, **Work chats**, **Plan**
 and **Details** remain directly accessible. The selected view is retained in
 the URL through authority re-verification; protected pane state is recreated

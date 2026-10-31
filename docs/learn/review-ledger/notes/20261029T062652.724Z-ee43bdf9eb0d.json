@@ -1,0 +1,41 @@
+{
+  "revision": "6f2b525d6886d9a0cff381b7d8c1c22f1544ae08",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Scoped review of references and claims affected by the module-map room capacity and revision-evidence changes; routing remains accurate. No whole-document audit or browser/release claim.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT.md","note":"Scoped review of references and claims affected by the module-map room capacity and revision-evidence changes; routing remains accurate. No whole-document audit or browser/release claim.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"README.md","note":"Scoped review of references and claims affected by the module-map room capacity and revision-evidence changes; routing remains accurate. No whole-document audit or browser/release claim.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/README.md","note":"Scoped review of references and claims affected by the module-map room capacity and revision-evidence changes; routing remains accurate. No whole-document audit or browser/release claim.","inputs":["docs/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Scoped review of references and claims affected by the module-map room capacity and revision-evidence changes; routing remains accurate. No whole-document audit or browser/release claim.","inputs":["docs/architecture/abstraction-review.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Scoped review of references and claims affected by the module-map room capacity and revision-evidence changes; routing remains accurate. No whole-document audit or browser/release claim.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/glossary.md","note":"Scoped review of references and claims affected by the module-map room capacity and revision-evidence changes; routing remains accurate. No whole-document audit or browser/release claim.","inputs":["docs/glossary.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Scoped review of references and claims affected by the module-map room capacity and revision-evidence changes; routing remains accurate. No whole-document audit or browser/release claim.","inputs":["docs/guides/self-configuring-agent.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Scoped review of references and claims affected by the module-map room capacity and revision-evidence changes; routing remains accurate. No whole-document audit or browser/release claim.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Scoped review of references and claims affected by the module-map room capacity and revision-evidence changes; routing remains accurate. No whole-document audit or browser/release claim.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Scoped review of references and claims affected by the module-map room capacity and revision-evidence changes; routing remains accurate. No whole-document audit or browser/release claim.","inputs":["docs/reference/station-docs.md","docs/architecture/module-map.md","src-server/tools/station-docs-content.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Scoped review of references and claims affected by the module-map room capacity and revision-evidence changes; routing remains accurate. No whole-document audit or browser/release claim.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Scoped review of references and claims affected by the module-map room capacity and revision-evidence changes; routing remains accurate. No whole-document audit or browser/release claim.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Scoped review of references and claims affected by the module-map room capacity and revision-evidence changes; routing remains accurate. No whole-document audit or browser/release claim.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Scoped review of references and claims affected by the module-map room capacity and revision-evidence changes; routing remains accurate. No whole-document audit or browser/release claim.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed SharedWorkingState, RevisionEvidenceModule and Task Review capacity, coalesced candidate, freeze refusal and revision chip claims against the merged owners and focused tests; no corpus-wide audit.","inputs":["docs/architecture/module-map.md","src-server/domain/__tests__/revision-bound-evidence.test.ts","src-server/domain/revision-bound-evidence.ts","src-ui/src/views/task-workspace/review/ReviewDocumentView.tsx","src-server/services/orchestration/project-task-room-working-state-worker.ts","src-server/services/orchestration/project-task-room-working-state.ts","src-server/services/projects/__tests__/task-review-module.test.ts"]},
+
+    {"path":"docs/design/revision-bound-evidence.md","note":"Reviewed snapshot, text and record bounds, finite deletion reserve and coalesced candidate/freeze policy against worker, admission and bridge tests; browser and installed release not qualified.","inputs":["docs/design/revision-bound-evidence.md","src-server/domain/__tests__/revision-bound-evidence.test.ts","src-server/domain/revision-bound-evidence.ts","src-server/services/orchestration/project-task-room-working-state-worker.ts"]},
+
+    {"path":"docs/design/shared-working-state.md","note":"Reviewed v2 runs, reserve, refusal, downgrade and anchor claims against source, worker and focused tests; old-binary runtime and browser qualification remain unverified.","inputs":["docs/design/shared-working-state.md","src-server/services/orchestration/project-task-room-working-state.ts"]}
+  ]
+}

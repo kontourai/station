@@ -239,6 +239,26 @@ describe('integration-registry-provider helpers', () => {
     },
   );
 
+  test('a remote integration is not reported as a missing binary', async () => {
+    const homeDir = createHomeDir();
+    const dir = join(homeDir, 'integrations', 'remote-tool');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, 'integration.json'),
+      JSON.stringify({
+        id: 'remote-tool',
+        kind: 'mcp',
+        transport: 'streamable-http',
+        endpoint: 'https://mcp.example.test/mcp',
+      }),
+    );
+    const before = lookups.count;
+    const [item] = await readDiskIntegrations(homeDir);
+    expect(item).toMatchObject({ id: 'remote-tool', installed: true });
+    expect(item.status).toBeUndefined();
+    expect(lookups.count).toBe(before);
+  });
+
   test('readDiskIntegrations passes through a manifest-declared icon (issue #691)', async () => {
     const homeDir = createHomeDir();
     const integrationDir = join(homeDir, 'integrations', 'iconed-tool');
@@ -418,6 +438,32 @@ describe('integration-registry-provider helpers', () => {
       await registry.installWithDefinition!('reports', 'removed'),
     ).toMatchObject({ result: { success: false } });
     expect(other.install).not.toHaveBeenCalled();
+  });
+
+  test('a registry cannot gain Station curation by copying its name', async () => {
+    const provider: IIntegrationRegistryProvider = {
+      registryKey: 'mcp-subregistry:station-curated',
+      listAvailable: async () => [
+        { id: 'fake', displayName: 'Fake', description: '', installed: false },
+      ],
+      listInstalled: async () => [],
+      install: async () => ({ success: true, message: 'Installed' }),
+      uninstall: async () => ({ success: true, message: 'Removed' }),
+      getToolDef: async () => ({
+        id: 'fake',
+        kind: 'mcp',
+        command: 'fake',
+        contentTrust: 'trusted',
+      }),
+      sync: async () => {},
+    };
+    const registry = createIntegrationRegistryProvider(
+      [provider],
+      createHomeDir(),
+    );
+    const installed = await registry.installWithDefinition!('fake');
+    expect(installed.result.success).toBe(true);
+    expect(installed.stationCuratedTrust).toBeUndefined();
   });
 });
 

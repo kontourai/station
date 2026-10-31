@@ -1,0 +1,7 @@
+{
+  "revision": "30473c42aa6f1907bb8c997804719a21276b3536",
+
+  "notes": [
+    {"path":"docs/design/mcp-ui-host.md","note":"tools.ts changed only in PUT /:id (untrusted-content receipt); MCP UI resolve/call/initial-result routes it documents are untouched. No edit.","inputs":["docs/design/mcp-ui-host.md","src-server/routes/agents/__tests__/tools.routes.test.ts","src-server/routes/agents/tools.ts"]}
+  ]
+}

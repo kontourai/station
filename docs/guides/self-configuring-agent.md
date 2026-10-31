@@ -122,6 +122,10 @@ owns limits, theme variables, Chromium prerequisites and page deletion semantics
   producer's access and Project binding; hosted authority is refused. See the
   [producer contract](../reference/sdk.md) and
   [tool owner](../../src-server/tools/station-control-assessment-tools.ts).
+- `device_capture_to_task {deviceSessionId, label?}` to save a Screen from an
+  authorized device session to the bound lead Task. This mutating device tool
+  requires device Agent access and a clean Task workspace. See
+  [device capture](mobile-device-workspace.md#capture-a-device-screen-to-a-task).
 - config and navigation tools for steering the workspace
 - the full scheduler lifecycle: `list_jobs`, `list_scheduler_providers`,
   `get_scheduler_stats`, `get_scheduler_status`, `preview_schedule`,

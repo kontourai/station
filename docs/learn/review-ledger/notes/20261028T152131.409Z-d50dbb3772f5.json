@@ -1,0 +1,7 @@
+{
+  "revision": "30473c42aa6f1907bb8c997804719a21276b3536",
+
+  "notes": [
+    {"path":"docs/design/README.md","note":"Added the mcp-subregistry-curation.md index row; other rows unchanged.","inputs":["docs/design/README.md"]}
+  ]
+}

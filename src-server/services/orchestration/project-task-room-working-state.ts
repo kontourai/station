@@ -1,10 +1,11 @@
 /** Private worker-backed persistence for one SharedWorkingState document. */
 import { Worker } from 'node:worker_threads';
-import type {
-  TextDocumentOperation,
-  WorkingStateSnapshot,
+import {
+  DEFAULT_RETAINED_WORKING_STATE_OPERATIONS,
+  MAX_WORKING_STATE_SNAPSHOT_BYTES,
+  type TextDocumentOperation,
+  type WorkingStateSnapshot,
 } from '../../domain/shared-working-state.js';
-import { DEFAULT_RETAINED_WORKING_STATE_OPERATIONS } from '../../domain/shared-working-state.js';
 import { createLogger } from '../../utils/logger.js';
 
 const logger = createLogger({ name: 'project-task-room-working-state' });
@@ -235,10 +236,11 @@ export function createProjectTaskRoomWorkingState(
     options.maxRetainedOperations ?? DEFAULT_RETAINED_WORKING_STATE_OPERATIONS;
   if (!Number.isSafeInteger(maxRetainedOperations) || maxRetainedOperations < 1)
     throw new Error('room working-state retained-operation limit is malformed');
-  const maxWorkingSnapshotBytes = options.maxWorkingSnapshotBytes ?? 512 * 1024;
+  const maxWorkingSnapshotBytes =
+    options.maxWorkingSnapshotBytes ?? MAX_WORKING_STATE_SNAPSHOT_BYTES;
   if (
     !Number.isSafeInteger(maxWorkingSnapshotBytes) ||
-    maxWorkingSnapshotBytes < 512 * 1024 ||
+    maxWorkingSnapshotBytes < MAX_WORKING_STATE_SNAPSHOT_BYTES ||
     maxWorkingSnapshotBytes > 16 * 1024 * 1024
   )
     throw new Error('room working-state snapshot limit is malformed');

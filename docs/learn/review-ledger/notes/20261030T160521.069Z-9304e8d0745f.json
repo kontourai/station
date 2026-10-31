@@ -1,0 +1,7 @@
+{
+  "revision": "536507b73cf6b1a3ca0ef2d2882f0f77ace1d629",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the unresolved conversation recovery against ChatDockBody and its deferred composer: Start new chat remains available while the unresolved conversation stays disabled. The test now waits for the lazy composer to mount before checking refusal; 56 focused tests passed, and removing the resolving refusal made the changed assertion fail. No product behavior or design prose changed; this is component-level evidence, not live browser qualification.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/ChatDockBody.sessionFailureBanner.test.tsx"]}
+  ]
+}

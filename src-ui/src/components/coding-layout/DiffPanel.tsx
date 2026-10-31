@@ -16,6 +16,7 @@ import {
 } from '@pierre/diffs';
 import {
   CodeView,
+  type CodeViewAnnotationArgs,
   type CodeViewDiffItem,
   type CodeViewItem,
 } from '@pierre/diffs/react';
@@ -580,9 +581,9 @@ export function ObservedDiffPanel({
     item.type === 'diff' ? item.fileDiff.name : '';
 
   const renderAnnotation = (
-    annotation: DiffLineAnnotation<DiffCommentAnnotation>,
-    item: CodeViewItem<DiffCommentAnnotation>,
+    ...[annotation, , item]: CodeViewAnnotationArgs<DiffCommentAnnotation>
   ): ReactNode => {
+    if (!('side' in annotation)) return null;
     const filePath = fileOf(item);
     const meta = annotation.metadata;
     if (!meta) return null;

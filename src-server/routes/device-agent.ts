@@ -1,5 +1,7 @@
+import { randomUUID } from 'node:crypto';
 import { parseLiveSurfaceInputBatch } from '@kontourai/station-contracts/live-surface';
 import { isMobileDeviceHostId } from '@kontourai/station-contracts/mobile-device';
+import { parseTaskReviewCreateCaptureRequest } from '@kontourai/station-contracts/task-review';
 import { Hono } from 'hono';
 import { readBoundedRequestBody } from '../security/bounded-request-body.js';
 import {
@@ -10,6 +12,11 @@ import type { DeviceAutomation } from '../services/devices/device-automation.js'
 import { DeviceSessionError } from '../services/devices/device-session-service.js';
 import { DeviceHostBusyError } from '../services/devices/device-shares.js';
 import { isValidMobileDeviceId } from '../services/mobile-device/mobile-device-host.js';
+import type { ProjectTaskRoomRuntime } from '../services/orchestration/project-task-room-runtime.js';
+import {
+  type TaskBrowserCapture,
+  TaskBrowserCaptureError,
+} from '../services/projects/task-browser-capture.js';
 import type { StationControlCaller } from '../tools/station-control-shared.js';
 
 export interface DeviceAgentRoutesDeps
@@ -17,6 +24,13 @@ export interface DeviceAgentRoutesDeps
   isInternalRequest(request: Request): boolean;
   resolveCaller(request: Request): StationControlCaller | null;
   automation: DeviceAutomation;
+  taskCapture?():
+    | {
+        runtime: Pick<ProjectTaskRoomRuntime, 'sessionTaskReviewAccess'>;
+        captures: TaskBrowserCapture;
+        localProjectIdFor(identity: string): string | undefined;
+      }
+    | undefined;
 }
 
 export function createDeviceAgentRoutes(deps: DeviceAgentRoutesDeps) {
@@ -85,6 +99,56 @@ export function createDeviceAgentRoutes(deps: DeviceAgentRoutesDeps) {
     const id = body.deviceSessionId;
     if (typeof id !== 'string' || !id || id.length > 80)
       return c.json({ ok: false, code: 'invalid-request' });
+    if (operation === 'capture-to-task') {
+      if (
+        Object.keys(body).some(
+          (key) => key !== 'deviceSessionId' && key !== 'label',
+        )
+      )
+        return c.json({ ok: false, code: 'invalid-request' });
+      const input = parseTaskReviewCreateCaptureRequest({
+        sourceKind: 'device',
+        sourceSessionId: id,
+        label: body.label,
+        operationId: randomUUID(),
+      });
+      if (!input) return c.json({ ok: false, code: 'invalid-request' });
+      const capture = deps.taskCapture?.();
+      if (!capture) return c.json({ ok: false, code: 'capture-unavailable' });
+      const taskAccess = await capture.runtime.sessionTaskReviewAccess(
+        authority.sessionId,
+      );
+      if (
+        taskAccess.kind !== 'granted' ||
+        capture.localProjectIdFor(taskAccess.write.projectId) !==
+          authority.projectId
+      )
+        return c.json({ ok: false, code: 'no_task_binding' });
+      try {
+        const result = await deps.automation.captureToTask(
+          access,
+          authority,
+          id,
+          (source) => capture.captures.captureSource(taskAccess, input, source),
+        );
+        if (!result.ok) return c.json(result);
+        return c.json({
+          ok: true,
+          captureId: result.capture.captureId,
+          commit: result.capture.commit,
+          digest: result.capture.digest,
+          screenshot: result.screenshot,
+        });
+      } catch (error) {
+        if (error instanceof TaskBrowserCaptureError)
+          return c.json({
+            ok: false,
+            code: error.code,
+            message: error.response.error,
+          });
+        throw error;
+      }
+    }
     if (operation === 'input') {
       const batch = parseLiveSurfaceInputBatch({
         epoch: 0,

@@ -32,6 +32,22 @@ vi.mock('../views/task-workspace/review/TaskReviewTab', () => ({
     <section aria-label="Task review">Review content</section>
   ),
 }));
+vi.mock('../views/task-workspace/TaskOverviewTimeline', () => ({
+  TaskOverviewTimeline: ({
+    visible,
+    onOpenCapture,
+  }: {
+    visible: boolean;
+    onOpenCapture: (id: string) => void;
+  }) =>
+    visible ? (
+      <section aria-label="Timeline">
+        <button type="button" onClick={() => onOpenCapture('timeline-screen')}>
+          Review Timeline Screen
+        </button>
+      </section>
+    ) : null,
+}));
 let featurePreviews: Array<{ id: string; enabled: boolean }> = [];
 
 const makeDiffTempDir = trackTempDirs();
@@ -2039,12 +2055,27 @@ describe('TaskWorkspaceView', () => {
         .getByRole('tab', { name: 'Overview' })
         .getAttribute('aria-selected'),
     ).toBe('true');
+    expect(screen.queryByRole('region', { name: 'Timeline' })).toBeNull();
     featurePreviews = [{ id: 'task-review', enabled: true }];
     view.rerender(<TaskWorkspaceView taskId="task-alpha" />);
     expect(
       screen.getByRole('tab', { name: 'Review' }).getAttribute('aria-selected'),
     ).toBe('true');
     expect(screen.getByRole('tabpanel', { name: 'Review' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('tab', { name: 'Overview' }));
+    await screen.findByRole('region', { name: 'Timeline' });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Review Timeline Screen' }),
+    );
+    expect(new URLSearchParams(window.location.search).get('taskView')).toBe(
+      'review',
+    );
+    expect(new URLSearchParams(window.location.search).get('reviewKind')).toBe(
+      'capture',
+    );
+    expect(new URLSearchParams(window.location.search).get('reviewItem')).toBe(
+      'timeline-screen',
+    );
     taskOutputsResult.data = [taskOutput()];
     view.rerender(<TaskWorkspaceView taskId="task-alpha" />);
     fireEvent.click(screen.getByRole('tab', { name: 'Details' }));

@@ -46,6 +46,7 @@ function observePreviewPhases() {
     'Page.enable',
     'Page.navigate',
     'Runtime.evaluate',
+    'Runtime.callFunctionOn',
     'Target.closeTarget',
     'Page.captureScreenshot',
     'Browser.close',
@@ -111,7 +112,10 @@ function observePreviewPhases() {
               safe.loader = identity(answer.loaderId);
               safe.navigationError = typeof answer.errorText === 'string';
             }
-            if (method === 'Runtime.evaluate') {
+            if (
+              method === 'Runtime.evaluate' ||
+              method === 'Runtime.callFunctionOn'
+            ) {
               safe.exceptionPresent = object(answer.exceptionDetails);
               const value = object(answer.result)
                 ? answer.result.value

@@ -136,7 +136,7 @@ describe.sequential('native Volt stream finish flush', () => {
         status: 'PASS',
         format,
         mode,
-        versions: { core: '2.11.0', ai: '6.0.311' },
+        versions: { core: '2.11.0', ai: '6.0.317' },
         text: 'FLUSH_KEEPER',
         finishReason: 'stop',
         usage: { inputTokens: 1, outputTokens: 2, totalTokens: 3 },

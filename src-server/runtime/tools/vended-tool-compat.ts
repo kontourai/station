@@ -154,6 +154,31 @@ export function createBuiltinVendedToolDef(id: string): ToolDef | null {
   };
 }
 
+const builtinToolIdentity = Symbol('station.builtin-tool-identity');
+
+export function getBuiltinVendedToolIdentity(
+  tool: unknown,
+): string | undefined {
+  return tool && typeof tool === 'object'
+    ? ((tool as Record<PropertyKey, unknown>)[builtinToolIdentity] as
+        | string
+        | undefined)
+    : undefined;
+}
+
+export function copyBuiltinVendedToolIdentity<T extends object>(
+  source: unknown,
+  target: T,
+): T {
+  const id = getBuiltinVendedToolIdentity(source);
+  if (id)
+    Object.defineProperty(target, builtinToolIdentity, {
+      value: id,
+      enumerable: true,
+    });
+  return target;
+}
+
 export function createBuiltinVendedTool(
   agentSlug: string,
   toolDef: ToolDef,
@@ -163,20 +188,31 @@ export function createBuiltinVendedTool(
     return null;
   }
 
+  let result: ITool | null;
   switch (entry.policyName) {
     case 'station_bash':
-      return createBashTool(agentSlug, toolDef, entry);
+      result = createBashTool(agentSlug, toolDef, entry);
+      break;
     case 'station_file_editor':
-      return createFileEditorTool(toolDef, entry);
+      result = createFileEditorTool(toolDef, entry);
+      break;
     case 'station_http_request':
-      return createHttpRequestTool(toolDef, entry);
+      result = createHttpRequestTool(toolDef, entry);
+      break;
     case 'station_notebook':
-      return createNotebookTool(agentSlug, toolDef, entry);
+      result = createNotebookTool(agentSlug, toolDef, entry);
+      break;
     case 'station_render_component':
-      return createRenderComponentTool(toolDef, entry);
+      result = createRenderComponentTool(toolDef, entry);
+      break;
     default:
       return null;
   }
+  Object.defineProperty(result, builtinToolIdentity, {
+    value: toolDef.id,
+    enumerable: true,
+  });
+  return result;
 }
 
 const capturedBashSessions = new WeakMap<

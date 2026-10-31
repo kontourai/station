@@ -146,6 +146,9 @@ export function conformAgentHooks(
           );
         }
       : undefined,
+    endInvocation: hooks.endInvocation
+      ? (invocation) => hooks.endInvocation!(invocation)
+      : undefined,
     afterInvocation: hooks.afterInvocation
       ? async (context) => {
           await hooks.afterInvocation!(context);

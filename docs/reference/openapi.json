@@ -1477,6 +1477,36 @@
               }
             },
             "additionalProperties": false
+          },
+          "contentTrust": {
+            "type": "string",
+            "enum": [
+              "untrusted",
+              "trusted"
+            ]
+          },
+          "trustReadOnlyHints": {
+            "type": "boolean"
+          },
+          "untrustedContentPermissions": {
+            "type": "object",
+            "properties": {
+              "default": {
+                "type": "string",
+                "enum": [
+                  "ask",
+                  "allow",
+                  "deny"
+                ]
+              },
+              "tools": {
+                "type": "object",
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/Integration/properties/untrustedContentPermissions/properties/default"
+                }
+              }
+            },
+            "additionalProperties": false
           }
         },
         "required": ["id"],
@@ -1621,6 +1651,36 @@
                   "pattern": "^[\\x21\\x23-\\x5b\\x5d-\\x7e]{1,256}$"
                 },
                 "maxItems": 32
+              }
+            },
+            "additionalProperties": false
+          },
+          "contentTrust": {
+            "type": "string",
+            "enum": [
+              "untrusted",
+              "trusted"
+            ]
+          },
+          "trustReadOnlyHints": {
+            "type": "boolean"
+          },
+          "untrustedContentPermissions": {
+            "type": "object",
+            "properties": {
+              "default": {
+                "type": "string",
+                "enum": [
+                  "ask",
+                  "allow",
+                  "deny"
+                ]
+              },
+              "tools": {
+                "type": "object",
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/IntegrationUpdate/properties/untrustedContentPermissions/properties/default"
+                }
               }
             },
             "additionalProperties": false

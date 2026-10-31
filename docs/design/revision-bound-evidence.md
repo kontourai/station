@@ -33,6 +33,12 @@ caller actor/correlation fields are ignored. The attestation is retained and
 exported but deliberately does not enter the revision identity, so distinct
 valid authority tokens cannot change an otherwise identical receipt ID. Unknown fields—
 including local paths—are neither hashed nor exported. The
+The shared-state codec reads original per-character v1 snapshots without
+rewriting their canonical bytes or `swsr-v1` revision. New document mutations
+write canonical run snapshots and `swsr-v2` revisions; their receipts consequently
+have new identities. Existing receipts, attestations and parent links remain
+valid and are never rewritten. See [stored-document compatibility](shared-working-state.md#stored-documents-and-receipt-compatibility).
+
 `revision-evidence-v1:<sha256>` identity binds the canonical snapshot and
 Station attribution, while its embedded shared working-state revision is the content
 witness. The interface bounds identifiers, labels, text,
@@ -113,12 +119,20 @@ digest, settled-state, topology, scope, and compatible authority attestation.
 Corrupt/unavailable recovery is explicit (`revision_unavailable`), never an
 empty healthy ledger. Capacity is the retention policy: it rejects new receipts
 without pruning an active room/history reference. There is no time-based
-expiry. The Station-wide ledger still retains at most 256 receipts / 4 MiB,
-each carrying the full canonical snapshot. Ordinary saves no longer consume
-this capacity. The [freeze policy decision](../decisions/revision-evidence-freeze-policy.md)
+
+expiry. The Station-wide ledger retains at most 256 receipts / 4 MiB, each
+carrying the full canonical snapshot. Ordinary saves no longer consume this
+capacity. The [freeze policy decision](../decisions/revision-evidence-freeze-policy.md)
 for [#4055](https://github.com/kontourai/station/issues/4055) separates a durable,
-replaceable candidate from a requested immutable receipt. The document's own
-snapshot, text and record bounds still apply before every save. A lost post-commit response and a peer witness race each
+replaceable candidate from a requested immutable receipt. Run snapshots retain
+about 180 B of metadata per small save, giving roughly 2.5–3k lifetime saves
+before explicit `document-full`, depending on text and fragmentation. The worker
+checks the 256 KiB text and 768 KiB record limits alongside the shared 512 KiB
+snapshot limit. Inserts leave a finite 16 KiB deletion reserve in snapshot and
+record budgets; deletions can spend it even when splitting a run grows metadata.
+A full ledger refuses new immutable references, not ordinary saves.
+A lost post-commit response and a peer witness race each
+
 receive one bounded restore/retry; the retry's exact inserted count determines
 `duplicate` versus `imported`. A live peer miss refreshes from SQLite before
 returning.

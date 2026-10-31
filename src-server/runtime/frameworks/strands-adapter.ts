@@ -52,6 +52,7 @@ import type { NativeMemoryHistoryCompanion } from '../conversation/native-memory
 import { createNativeOutputDeclarationTool } from '../native-output-declaration.js';
 import { resolveManagedModelBinding } from '../plugins/runtime-provider-resolution.js';
 import { getLoadedMCPToolProvenance } from '../tools/mcp-tool-names.js';
+import { getBuiltinVendedToolIdentity } from '../tools/vended-tool-compat.js';
 import type {
   AgentBundle,
   AgentCreationConfig,
@@ -685,6 +686,12 @@ export class StrandsFramework {
         deniedToolCalls,
         invocationCtx,
         purposeEnabledToolNames,
+        findBuiltinToolIdentity: (name) => {
+          const candidates = viewTools.filter((tool) => tool.name === name);
+          return candidates.length === 1
+            ? getBuiltinVendedToolIdentity(candidates[0])
+            : undefined;
+        },
         memoryAdapter: opts.memoryAdapter as unknown as IMemory,
         logger: opts.logger,
         resolvedModel,
@@ -814,6 +821,12 @@ export class StrandsFramework {
         deniedToolCalls,
         invocationCtx,
         purposeEnabledToolNames,
+        findBuiltinToolIdentity: (name) => {
+          const candidates = viewTools.filter((tool) => tool.name === name);
+          return candidates.length === 1
+            ? getBuiltinVendedToolIdentity(candidates[0])
+            : undefined;
+        },
       });
       // archive#914: `createAgent` above passes the adapter into this slot "so
       // conversations persist"; passing null here gave temp agents no

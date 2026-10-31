@@ -1183,3 +1183,15 @@ test('failed input cancels held state without waiting for a parallel observation
     await capture;
   }
 });
+
+test('device_capture_to_task exposes Task-capture refusals as MCP errors', async () => {
+  const h = harness();
+  const id = await h.open();
+  const result = await h.run('device_capture_to_task', { deviceSessionId: id });
+  expect(result.isError).toBe(true);
+  expect(parsed(result)).toMatchObject({
+    ok: false,
+    code: 'capture-unavailable',
+  });
+  expect(h.host.capture).not.toHaveBeenCalled();
+});

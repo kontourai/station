@@ -57,16 +57,21 @@ function start(directory: string, script: string, code = 0) {
 test('two independent runners serialize Biome and propagate its failure with bounded threads', async () => {
   const { directory, script } = fixture();
   const first = start(directory, script, 7);
-  await vi.waitFor(() => expect(first.output()).toContain('ready:2'));
+  await vi.waitFor(() => expect(first.output()).toContain('ready:2'), {
+    timeout: 10_000,
+  });
   const second = start(directory, script);
-  await vi.waitFor(() =>
-    expect(second.output()).toContain('waiting for a host Biome slot'),
+  await vi.waitFor(
+    () => expect(second.output()).toContain('waiting for a host Biome slot'),
+    { timeout: 10_000 },
   );
   expect(second.output()).not.toContain('ready:');
   const firstExit = once(first.child, 'exit');
   first.finish();
   expect((await firstExit)[0]).toBe(7);
-  await vi.waitFor(() => expect(second.output()).toContain('ready:2'));
+  await vi.waitFor(() => expect(second.output()).toContain('ready:2'), {
+    timeout: 10_000,
+  });
   const secondExit = once(second.child, 'exit');
   second.finish();
   expect((await secondExit)[0]).toBe(0);

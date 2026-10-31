@@ -1,16 +1,16 @@
 import { resolve } from 'node:path';
 import {
-  type Client,
   type ProviderInfo,
   RequestError,
   type SetProviderRequest,
-} from '@agentclientprotocol/sdk';
+} from '@agentclientprotocol/sdk/unstable';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
 import { acpProbeCleanupRetention } from '../../telemetry/metrics.js';
 import { errorMessage } from '../../utils/error-message.js';
 import type { Logger } from '../../utils/logger.js';
 import { expandTilde } from '../../utils/paths.js';
+import type { ACPClientCallbacks } from './acp-bridge-types.js';
 import { registryLaunchEnvFor } from './acp-engine-descriptors.js';
 import {
   type AcpDeclaredHandshake,
@@ -454,14 +454,14 @@ function probeErrorMessage(
  * to be `async () => ({})` — the identical fabricated-empty-success defect,
  * on the identical credential channel, one file over.
  *
- * The probe also advertises no filesystem or terminal capability. The SDK's
- * Client shape still requires callbacks, so every such callback explicitly
- * refuses with JSON-RPC `-32601`; none can return a plausible empty/success
+ * The probe also advertises no filesystem or terminal capability. Station's
+ * bridge callbacks explicitly refuse these methods with JSON-RPC `-32601`;
+ * none can return a plausible empty/success
  * value if an agent sends an undeclared request during the handshake.
  */
 export function createProbeClient(
   onExtMethod: AcpInboundExtensionHandler,
-): Client {
+): ACPClientCallbacks {
   const unsupported = (method: string): never => {
     throw RequestError.methodNotFound(method);
   };

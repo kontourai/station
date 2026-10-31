@@ -34,6 +34,7 @@ import {
 } from '@kontourai/station-shared/input-request';
 import {
   currentAuthorizedTurnCorrelation,
+  currentMcpPromptOrigin,
   currentNativeMemoryHistory,
   currentSkillExperienceContext,
   INTERNAL_TURN_CORRELATION_HEADER,
@@ -1310,6 +1311,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
             currentNativeMemoryHistory(),
             nativeForeground,
             currentSkillExperienceContext(),
+            currentMcpPromptOrigin(),
           )
         : undefined;
       // #2377 slice A: the relay is Station's own server code (the built-in

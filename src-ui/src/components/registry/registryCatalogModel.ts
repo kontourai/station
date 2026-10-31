@@ -9,6 +9,7 @@ export interface RegistryItem
     | 'catalogFreshness'
     | 'installedPluginName'
     | 'toolOrigin'
+    | 'mcpServer'
   > {
   id: string;
   displayName?: string;
@@ -115,6 +116,9 @@ export function getRegistrySkillInstallRefusal(
 ): string | null {
   if (item.catalogFreshness === 'stale')
     return 'This marketplace is offline. Refresh its source and inspect the item again before installing.';
+  // The server decides and enforces these; the page only repeats them.
+  if (tab === 'integrations' && item.mcpServer?.unavailable.length)
+    return item.mcpServer.unavailable.join(' ');
   if (tab !== 'skills') return null;
   if (item.status === 'installed-name-conflict')
     return 'A skill with this name is already in your Library from another source. Manage that copy before adding this one.';
@@ -128,10 +132,37 @@ export function getRegistrySkillInstallRefusal(
 export function getRegistryActionLabel(
   tab: RegistryCatalogTab,
   installed: boolean,
+  item?: RegistryItem,
 ) {
+  // An MCP server is added turned off; nothing is installed or run.
+  if (tab === 'integrations' && item?.mcpServer)
+    return installed ? 'Remove' : 'Add';
   if (tab === 'layouts') return installed ? 'Use' : 'Install';
   if (tab === 'kits') return 'View';
   if (tab === 'skills')
     return installed ? 'Remove from workspace' : 'Install to workspace';
   return installed ? 'Remove' : 'Install';
 }
+
+type McpServerListing = NonNullable<RegistryItem['mcpServer']>;
+
+export const MCP_AUTH_MODE_LABELS: Record<
+  McpServerListing['authMode'],
+  string
+> = {
+  dcr: 'OAuth sign-in',
+  'pre-registered-required': 'OAuth with your own client',
+  token: 'Secret token header',
+  none: 'No sign-in',
+  unknown: 'Sign-in not stated',
+};
+
+export const MCP_QUALIFICATION_LABELS: Record<
+  McpServerListing['qualification']['state'],
+  string
+> = {
+  qualified: 'Station qualified',
+  'setup-required': 'Checked, needs your OAuth client',
+  blocked: 'Checked, not available yet',
+  unqualified: 'Unqualified',
+};

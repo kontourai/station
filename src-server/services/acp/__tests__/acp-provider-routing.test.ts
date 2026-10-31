@@ -8,47 +8,45 @@ import {
 
 describe('ACP unstable provider routing (#944)', () => {
   test('does not call providers/list when initialize omitted the capability', async () => {
-    const unstable_listProviders = vi
-      .fn()
-      .mockRejectedValue(new Error('must never execute'));
+    const request = vi.fn().mockRejectedValue(new Error('must never execute'));
 
     await expect(
-      observeACPProviderRouting({ unstable_listProviders } as never, {
+      observeACPProviderRouting({ request } as never, {
         protocolVersion: 1,
         agentCapabilities: {},
       }),
     ).resolves.toBeUndefined();
-    expect(unstable_listProviders).not.toHaveBeenCalled();
+    expect(request).not.toHaveBeenCalled();
   });
 
   test('calls providers/list for an advertised empty capability and preserves observed empty', async () => {
-    const unstable_listProviders = vi.fn().mockResolvedValue({ providers: [] });
+    const request = vi.fn().mockResolvedValue({ providers: [] });
 
     await expect(
-      observeACPProviderRouting({ unstable_listProviders } as never, {
+      observeACPProviderRouting({ request } as never, {
         protocolVersion: 1,
         agentCapabilities: { providers: {} },
       }),
     ).resolves.toEqual([]);
-    expect(unstable_listProviders).toHaveBeenCalledOnce();
+    expect(request).toHaveBeenCalledOnce();
   });
 
   test('executes and surfaces a providers/list rejection after advertisement', async () => {
-    const unstable_listProviders = vi
+    const request = vi
       .fn()
       .mockRejectedValue(new Error('provider catalogue refused'));
 
     await expect(
-      observeACPProviderRouting({ unstable_listProviders } as never, {
+      observeACPProviderRouting({ request } as never, {
         protocolVersion: 1,
         agentCapabilities: { providers: {} },
       }),
     ).rejects.toThrow('provider catalogue refused');
-    expect(unstable_listProviders).toHaveBeenCalledOnce();
+    expect(request).toHaveBeenCalledOnce();
   });
 
   test('refuses providers/set before transport when capability is absent', async () => {
-    const unstable_setProvider = vi.fn();
+    const request = vi.fn();
     const process = new ACPProcess({
       command: 'unused',
       cwd: '/tmp',
@@ -56,7 +54,7 @@ describe('ACP unstable provider routing (#944)', () => {
       logger: {},
     });
     Object.assign(process as unknown as Record<string, unknown>, {
-      connection: { unstable_setProvider },
+      connection: { request },
       _initResult: { protocolVersion: 1, agentCapabilities: {} },
     });
 
@@ -68,11 +66,11 @@ describe('ACP unstable provider routing (#944)', () => {
         headers: {},
       }),
     ).rejects.toBeInstanceOf(ACPProviderRoutingUnsupportedError);
-    expect(unstable_setProvider).not.toHaveBeenCalled();
+    expect(request).not.toHaveBeenCalled();
   });
 
   test('executes the required-provider disable refusal before transport', async () => {
-    const unstable_disableProvider = vi.fn();
+    const request = vi.fn();
     const process = new ACPProcess({
       command: 'unused',
       cwd: '/tmp',
@@ -80,7 +78,7 @@ describe('ACP unstable provider routing (#944)', () => {
       logger: {},
     });
     Object.assign(process as unknown as Record<string, unknown>, {
-      connection: { unstable_disableProvider },
+      connection: { request },
       _initResult: {
         protocolVersion: 1,
         agentCapabilities: { providers: {} },
@@ -93,11 +91,11 @@ describe('ACP unstable provider routing (#944)', () => {
     await expect(process.disableProvider('main')).rejects.toBeInstanceOf(
       ACPRequiredProviderDisableError,
     );
-    expect(unstable_disableProvider).not.toHaveBeenCalled();
+    expect(request).not.toHaveBeenCalled();
   });
 
   test('refuses an unadvertised protocol before providers/set transport', async () => {
-    const unstable_setProvider = vi.fn();
+    const request = vi.fn();
     const process = new ACPProcess({
       command: 'unused',
       cwd: '/tmp',
@@ -105,7 +103,7 @@ describe('ACP unstable provider routing (#944)', () => {
       logger: {},
     });
     Object.assign(process as unknown as Record<string, unknown>, {
-      connection: { unstable_setProvider },
+      connection: { request },
       _initResult: {
         protocolVersion: 1,
         agentCapabilities: { providers: {} },
@@ -124,11 +122,11 @@ describe('ACP unstable provider routing (#944)', () => {
     ).rejects.toMatchObject({
       code: 'protocol_unsupported',
     });
-    expect(unstable_setProvider).not.toHaveBeenCalled();
+    expect(request).not.toHaveBeenCalled();
   });
 
   test('forwards an observed unknown protocol identifier losslessly', async () => {
-    const unstable_setProvider = vi.fn().mockResolvedValue({});
+    const request = vi.fn().mockResolvedValue({});
     const process = new ACPProcess({
       command: 'unused',
       cwd: '/tmp',
@@ -136,7 +134,7 @@ describe('ACP unstable provider routing (#944)', () => {
       logger: {},
     });
     Object.assign(process as unknown as Record<string, unknown>, {
-      connection: { unstable_setProvider },
+      connection: { request },
       _initResult: {
         protocolVersion: 1,
         agentCapabilities: { providers: {} },
@@ -145,13 +143,13 @@ describe('ACP unstable provider routing (#944)', () => {
         ],
       },
     });
-    const request = {
+    const params = {
       providerId: 'main',
       apiType: '_ollama',
       baseUrl: 'https://ollama.example/v1',
     };
 
-    await expect(process.setProvider(request)).resolves.toEqual({});
-    expect(unstable_setProvider).toHaveBeenCalledWith(request);
+    await expect(process.setProvider(params)).resolves.toEqual({});
+    expect(request).toHaveBeenCalledWith('providers/set', params);
   });
 });

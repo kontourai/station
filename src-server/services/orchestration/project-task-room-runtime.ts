@@ -90,6 +90,7 @@ type RecoverableRoomHistory = Omit<ProjectTaskRoomAuthority, 'append'> &
   Pick<ProjectTaskRoomHistory, 'append'> &
   Partial<Pick<ProjectTaskRoomHistory, 'findByProposal' | 'readSourceSeal'>>;
 type BrowserCapability = 'discover' | 'history-read' | 'message-write';
+type RequestCapability = BrowserCapability | 'edit-plan' | 'other';
 type RoomCapability =
   | BrowserCapability
   | 'lifecycle-append'
@@ -141,15 +142,30 @@ interface RequestPrincipal {
   readonly deviceId: string;
   readonly policyRevision: string;
   readonly displayName?: string;
+  readonly member?: true;
 }
 export interface ProjectTaskRoomRequestAuthority {
   /** Synchronous grant recheck for SQLite transactions; absent support refuses writes. */
-  isCurrent?(request: Request, principal: RequestPrincipal): boolean;
+  isCurrent?(
+    request: Request,
+    principal: RequestPrincipal,
+    taskId: string,
+    capability: RequestCapability,
+  ): boolean;
   resolve(
     request: Request,
+    taskId: string,
+    capability: RequestCapability,
   ): Promise<RequestPrincipal | { readonly kind: 'revoked' | 'unavailable' }>;
 }
 interface ProjectTaskRoomRuntimeDeps {
+  readonly subscribeMembershipChanges?: (
+    listener: (change: {
+      projectId: string;
+      principalId: string;
+      revision: number;
+    }) => void,
+  ) => () => void;
   readonly attachments?: TaskRoomAttachments;
   readonly taskGraph: Pick<
     { readTaskView(taskId: string): TaskRecord | null },
@@ -209,7 +225,10 @@ interface ProjectTaskRoomRuntimeDeps {
     };
     readonly record: TaskMemoryRecord;
   }) => Promise<unknown> | unknown;
-  readonly readDisplayName?: (id: string) => Promise<string | undefined>;
+  readonly readDisplayName?: (
+    id: string,
+    taskId: string,
+  ) => Promise<string | undefined>;
   readonly readAgentLabel?: (agentId: string) => Promise<string | undefined>;
   readonly readAgentAnswers?: (input: {
     sessionId: string;
@@ -261,6 +280,8 @@ interface PersistedLiveRoomRecovery {
 interface RoomSubscriber {
   readonly request: Request;
   readonly emit: (event: unknown) => void;
+  readonly principal: RequestPrincipal;
+  unsubscribeMembership?: () => void;
   ready: boolean;
   pending: unknown[];
 }
@@ -445,15 +466,18 @@ export class ProjectTaskRoomRuntime {
     const agents = new Set<string>();
     const sessions = new Set<string>();
     for (const record of result.records) {
-      if (
-        record.principal.kind === 'operator' &&
-        !people.has(record.principal.operatorId)
-      ) {
-        people.add(record.principal.operatorId);
+      if (record.principal.kind !== 'agent') {
+        const personId =
+          record.principal.kind === 'member'
+            ? record.principal.principalId
+            : record.principal.operatorId;
+        if (people.has(personId)) continue;
+        people.add(personId);
         const name = await this.#deps.readDisplayName?.(
-          record.principal.operatorId,
+          personId,
+          record.scope.taskId,
         );
-        if (name) this.#displayNames.set(record.principal.operatorId, name);
+        if (name) this.#displayNames.set(personId, name);
       } else if (record.principal.kind === 'agent') {
         if (!agents.has(record.principal.agentId)) {
           agents.add(record.principal.agentId);
@@ -1151,6 +1175,7 @@ export class ProjectTaskRoomRuntime {
     const authorized = await this.#authorizedDocumentWithPrincipal(
       taskId,
       request,
+      'edit-plan',
     );
     const task = this.#deps.taskGraph.readTaskView(taskId);
     const scope = this.#scope(taskId);
@@ -1174,6 +1199,8 @@ export class ProjectTaskRoomRuntime {
               this.#deps.requestAuthority.isCurrent?.(
                 request,
                 authorized.principal,
+                taskId,
+                'edit-plan',
               ) === true &&
               now &&
               now.createdAt === task.createdAt &&
@@ -1512,10 +1539,38 @@ export class ProjectTaskRoomRuntime {
         scope: { ...scope, documentId: documentIdFor(scope) },
         historyOpened: true,
       });
+    const viewer = await this.#principal(
+      input.request,
+      input.taskId,
+      'discover',
+    );
+    const writer = await this.#principal(
+      input.request,
+      input.taskId,
+      'message-write',
+    );
+    const current = await this.#principal(
+      input.request,
+      input.taskId,
+      'discover',
+    );
+    if (!viewer || !current || !samePrincipal(viewer, current))
+      return { kind: 'not-found' };
     return {
       ...opened,
       revisionLinksAvailable: this.#deps.revisionEvidence?.available() === true,
-    } as typeof opened & { readonly revisionLinksAvailable: boolean };
+      roomCapabilities: {
+        messageWrite: !!writer && samePrincipal(viewer, writer),
+        // The account-bound allowlist does not admit the batch settlement leaf.
+        documentWrite: !viewer.member,
+      },
+    } as typeof opened & {
+      readonly revisionLinksAvailable: boolean;
+      readonly roomCapabilities: {
+        messageWrite: boolean;
+        documentWrite: boolean;
+      };
+    };
   }
 
   /**
@@ -1930,7 +1985,9 @@ export class ProjectTaskRoomRuntime {
     currentSharedRead?: () => Promise<boolean>;
   }) {
     const scope = await this.#authorizedDocument(input.taskId, input.request);
-    const principal = scope ? await this.#principal(input.request) : undefined;
+    const principal = scope
+      ? await this.#principal(input.request, input.taskId, 'history-read')
+      : undefined;
     if (
       !scope ||
       !principal ||
@@ -1948,7 +2005,11 @@ export class ProjectTaskRoomRuntime {
       input.taskId,
       input.request,
     );
-    const currentPrincipal = await this.#principal(input.request);
+    const currentPrincipal = await this.#principal(
+      input.request,
+      input.taskId,
+      'history-read',
+    );
     if (
       !currentScope ||
       !currentPrincipal ||
@@ -1975,8 +2036,14 @@ export class ProjectTaskRoomRuntime {
      */
     onDurableSettlementForDiagnostic?: () => void;
   }) {
-    const scope = await this.#authorizedDocument(input.taskId, input.request);
-    const principal = scope ? await this.#principal(input.request) : undefined;
+    const scope = await this.#authorizedDocument(
+      input.taskId,
+      input.request,
+      'edit-plan',
+    );
+    const principal = scope
+      ? await this.#principal(input.request, input.taskId, 'edit-plan')
+      : undefined;
     if (!scope || !principal) return { kind: 'not-found' } as const;
     const plan = this.#plans.get(input.intentId);
     if (!plan) {
@@ -1994,6 +2061,7 @@ export class ProjectTaskRoomRuntime {
           input.request,
           scope,
           principal,
+          'edit-plan',
         ))
       )
         return { kind: 'not-found' } as const;
@@ -2042,6 +2110,7 @@ export class ProjectTaskRoomRuntime {
             input.request,
             scope,
             principal,
+            'edit-plan',
           ))
         )
           return { kind: 'not-found' } as const;
@@ -2060,7 +2129,11 @@ export class ProjectTaskRoomRuntime {
       return { kind: 'rejected' as const };
     // The grant is checked immediately before the private atomic commit; a
     // revocation during planning therefore cannot settle a previously-issued plan.
-    const current = await this.#principal(input.request);
+    const current = await this.#principal(
+      input.request,
+      input.taskId,
+      'edit-plan',
+    );
     if (!current || !samePrincipal(current, plan.principal))
       return { kind: 'not-found' as const };
     const settlement = {
@@ -2084,6 +2157,7 @@ export class ProjectTaskRoomRuntime {
           input.request,
           scope,
           plan.principal,
+          'edit-plan',
         ),
     } as const;
     let result = await this.#deps.working.settle(settlement);
@@ -2097,6 +2171,7 @@ export class ProjectTaskRoomRuntime {
           input.request,
           scope,
           plan.principal,
+          'edit-plan',
         ))
       )
         return { kind: 'not-found' } as const;
@@ -2111,6 +2186,7 @@ export class ProjectTaskRoomRuntime {
           input.request,
           scope,
           plan.principal,
+          'edit-plan',
         ))
       )
         return { kind: 'not-found' } as const;
@@ -2124,6 +2200,7 @@ export class ProjectTaskRoomRuntime {
         input.request,
         scope,
         plan.principal,
+        'edit-plan',
       ))
     )
       return { kind: 'not-found' } as const;
@@ -2382,8 +2459,14 @@ export class ProjectTaskRoomRuntime {
     onlyIfEmpty?: boolean;
     selection: { anchor: number; focus: number };
   }) {
-    const scope = await this.#authorizedDocument(input.taskId, input.request);
-    const principal = scope ? await this.#principal(input.request) : undefined;
+    const scope = await this.#authorizedDocument(
+      input.taskId,
+      input.request,
+      'edit-plan',
+    );
+    const principal = scope
+      ? await this.#principal(input.request, input.taskId, 'edit-plan')
+      : undefined;
     if (!scope || !principal) return { kind: 'not-found' } as const;
     const snapshot = await this.#deps.working.privateSnapshot({ scope });
     if (!snapshot) return { kind: 'unavailable' } as const;
@@ -2439,7 +2522,9 @@ export class ProjectTaskRoomRuntime {
 
   async recovery(input: { taskId: string; request: Request }) {
     const scope = await this.#authorizedDocument(input.taskId, input.request);
-    const principal = scope ? await this.#principal(input.request) : undefined;
+    const principal = scope
+      ? await this.#principal(input.request, input.taskId, 'history-read')
+      : undefined;
     if (!scope || !principal) return { kind: 'not-found' } as const;
     const stored = await this.#deps.working.readRecovery({ scope });
     if (
@@ -2492,7 +2577,7 @@ export class ProjectTaskRoomRuntime {
       input.request,
     );
     const principal = document
-      ? await this.#principal(input.request)
+      ? await this.#principal(input.request, input.taskId, 'history-read')
       : undefined;
     if (!document || !principal) return { kind: 'not-found' } as const;
     if (!(await this.#recoverPending(document)))
@@ -2843,7 +2928,7 @@ export class ProjectTaskRoomRuntime {
       input.request,
     );
     const principal = document
-      ? await this.#principal(input.request)
+      ? await this.#principal(input.request, input.taskId, 'history-read')
       : undefined;
     if (!document || !principal) return { kind: 'not-found' } as const;
     const key = documentKey(document);
@@ -2851,64 +2936,92 @@ export class ProjectTaskRoomRuntime {
     const subscriber: RoomSubscriber = {
       request: input.request,
       emit: input.emit,
+      principal,
       ready: false,
       pending: [],
     };
     subscribers.add(subscriber);
     this.#subscribers.set(key, subscribers);
-    if (!this.#unwatchWorking)
-      this.#unwatchWorking = this.#deps.working.watch(() => {
-        void this.#publishWorkingChanges();
-      });
-    if (!(await this.#recoverPending(document))) {
-      this.#removeSubscriber(document, subscriber);
-      return { kind: 'not-found' } as const;
-    }
-    const now = Date.now();
-    const entry = this.#liveEntry(document, now);
-    const authorization: LiveWorkAuthorization = {
-      actorId: actorIdFor(principal),
-      scope: entry.room.scope,
-      capabilities: new Set(['read']),
-    };
-    const documentProjection = await this.#deps.working.read({
-      scope: document,
-      ...(input.after ? { after: input.after } : {}),
-    });
-    if (
-      !(await this.#sameAuthorizedDocument(
-        input.taskId,
-        input.request,
-        document,
-        principal,
-      ))
-    ) {
-      this.#removeSubscriber(document, subscriber);
-      return { kind: 'not-found' } as const;
-    }
-    return {
-      kind: 'subscribed' as const,
-      initial: {
-        type: 'snapshot',
-        generation: entry.generation,
-        viewerActorId: actorIdFor(principal),
-        live: this.#liveSnapshot(entry, authorization, now),
-        document: documentProjection,
-      },
-      unsubscribe: () => {
+    try {
+      subscriber.unsubscribeMembership =
+        this.#deps.subscribeMembershipChanges?.((change) => {
+          if (change.principalId !== principal.operatorId) return;
+          void this.#subscriberAuthorized(document, subscriber)
+            .catch(() => false)
+            .then((authorized) => {
+              if (!authorized && subscribers.has(subscriber)) {
+                this.#deliver(subscriber, { type: 'terminal' });
+                this.#removeSubscriber(document, subscriber);
+              }
+            });
+        });
+      if (!this.#unwatchWorking)
+        this.#unwatchWorking = this.#deps.working.watch(() => {
+          void this.#publishWorkingChanges();
+        });
+      if (!(await this.#recoverPending(document))) {
         this.#removeSubscriber(document, subscriber);
-      },
-      activate: () => {
-        subscriber.ready = true;
-        for (const event of subscriber.pending.splice(0))
-          subscriber.emit(event);
-      },
-    };
+        return { kind: 'not-found' } as const;
+      }
+      const now = Date.now();
+      const entry = this.#liveEntry(document, now);
+      const authorization: LiveWorkAuthorization = {
+        actorId: actorIdFor(principal),
+        scope: entry.room.scope,
+        capabilities: new Set(['read']),
+      };
+      const documentProjection = await this.#deps.working.read({
+        scope: document,
+        ...(input.after ? { after: input.after } : {}),
+      });
+      if (
+        !(await this.#sameAuthorizedDocument(
+          input.taskId,
+          input.request,
+          document,
+          principal,
+        ))
+      ) {
+        this.#removeSubscriber(document, subscriber);
+        return { kind: 'not-found' } as const;
+      }
+      return {
+        kind: 'subscribed' as const,
+        initial: {
+          type: 'snapshot',
+          generation: entry.generation,
+          viewerActorId: actorIdFor(principal),
+          live: this.#liveSnapshot(entry, authorization, now),
+          document: documentProjection,
+        },
+        unsubscribe: () => {
+          this.#removeSubscriber(document, subscriber);
+        },
+        activate: () => {
+          subscriber.ready = true;
+          for (const event of subscriber.pending.splice(0))
+            subscriber.emit(event);
+        },
+      };
+    } catch (error) {
+      this.#removeSubscriber(document, subscriber);
+      throw error;
+    }
   }
 
   /** SSE cadence rechecks the same request authority even when the document is idle. */
   async subscriptionAlive(input: { taskId: string; request: Request }) {
-    return Boolean(await this.#authorizedDocument(input.taskId, input.request));
+    const document = await this.#authorizedDocument(
+      input.taskId,
+      input.request,
+    );
+    if (!document) return false;
+    const subscriber = [
+      ...(this.#subscribers.get(documentKey(document)) ?? []),
+    ].find((item) => item.request === input.request);
+    return subscriber
+      ? this.#subscriberAuthorized(document, subscriber)
+      : false;
   }
 
   /**
@@ -2928,7 +3041,7 @@ export class ProjectTaskRoomRuntime {
       input.request,
     );
     const principal = document
-      ? await this.#principal(input.request)
+      ? await this.#principal(input.request, input.taskId, 'history-read')
       : undefined;
     if (!document || !principal) return false;
     const entry = this.#live.get(documentKey(document));
@@ -3016,7 +3129,11 @@ export class ProjectTaskRoomRuntime {
         input.request,
       );
       const principal = document
-        ? await this.#principal(input.request)
+        ? await this.#principal(
+            input.request,
+            entry.room.scope.taskId,
+            'history-read',
+          )
         : undefined;
       if (
         !taskScope ||
@@ -3140,6 +3257,9 @@ export class ProjectTaskRoomRuntime {
     this.#activeLiveRecovery.clear();
     this.#unwatchWorking?.();
     this.#unwatchWorking = undefined;
+    for (const subscribers of this.#subscribers.values())
+      for (const subscriber of subscribers)
+        subscriber.unsubscribeMembership?.();
     this.#subscribers.clear();
     this.#documentNotificationChains.clear();
     this.#notificationChains.clear();
@@ -3513,7 +3633,11 @@ export class ProjectTaskRoomRuntime {
     // every live effect mints its grant from a fresh canonical request check.
     const grant = await this.#issue(taskId, request, capability);
     if (!grant) return undefined;
-    const current = await this.#principal(request);
+    const current = await this.#principal(
+      request,
+      taskId,
+      roomRequestCapability(capability),
+    );
     return current && samePrincipal(authority.principal, current)
       ? grant
       : undefined;
@@ -3572,7 +3696,11 @@ export class ProjectTaskRoomRuntime {
     if (this.#closed || this.#deps.hosted?.()) return undefined;
     const scope = this.#scope(taskId);
     if (!scope) return undefined;
-    const principal = await this.#principal(request);
+    const principal = await this.#principal(
+      request,
+      taskId,
+      roomRequestCapability(capability),
+    );
     if (!principal) return undefined;
     const token = randomUUID();
     // Grants span only the one request → history-worker operation. Keep their
@@ -3701,7 +3829,18 @@ export class ProjectTaskRoomRuntime {
       ? entry.room.snapshotAfterMutation(authorization, now)
       : entry.room.snapshot(authorization, now);
     if (read.outcome !== 'available') return read;
-    const participants = [...read.snapshot.participants];
+    const participants = read.snapshot.participants.map((participant) => {
+      const token = entry.ttlAuthorities.get(participant.actor.actorId);
+      const principal = token
+        ? entry.authorities.get(token)?.principal
+        : undefined;
+      return principal?.member
+        ? {
+            ...participant,
+            actor: { ...participant.actor, standing: 'member' as const },
+          }
+        : participant;
+    });
     for (const participant of entry.agentParticipants.values())
       if (
         !participants.some(
@@ -3865,6 +4004,8 @@ export class ProjectTaskRoomRuntime {
     document: { projectId: string; taskId: string; documentId: string },
     subscriber: RoomSubscriber,
   ) {
+    subscriber.unsubscribeMembership?.();
+    subscriber.unsubscribeMembership = undefined;
     const key = documentKey(document);
     const subscribers = this.#subscribers.get(key);
     if (!subscribers) return;
@@ -3884,7 +4025,7 @@ export class ProjectTaskRoomRuntime {
     for (const subscriber of [...subscribers]) {
       const projected = await this.#subscriberEvent(
         document,
-        subscriber.request,
+        subscriber,
         event,
       );
       if (projected === undefined) {
@@ -3898,11 +4039,11 @@ export class ProjectTaskRoomRuntime {
   }
   #subscriberEvent(
     document: { projectId: string; taskId: string; documentId: string },
-    request: Request,
+    subscriber: RoomSubscriber,
     event: unknown,
   ) {
     const project = () =>
-      this.#projectSubscriberEvent(document, request, event);
+      this.#projectSubscriberEvent(document, subscriber, event);
     // Document delivery remains independent; only mutable live projections
     // must wait for a prepared/armed material transition to settle.
     return event &&
@@ -3914,14 +4055,19 @@ export class ProjectTaskRoomRuntime {
 
   async #projectSubscriberEvent(
     document: { projectId: string; taskId: string; documentId: string },
-    request: Request,
+    subscriber: RoomSubscriber,
     event: unknown,
   ): Promise<unknown | undefined> {
     const current = await this.#authorizedDocumentWithPrincipal(
       document.taskId,
-      request,
+      subscriber.request,
     );
-    if (!current || !sameDocument(current.document, document)) return undefined;
+    if (
+      !current ||
+      !sameDocument(current.document, document) ||
+      !samePrincipal(current.principal, subscriber.principal)
+    )
+      return undefined;
     if (
       !event ||
       typeof event !== 'object' ||
@@ -3955,10 +4101,17 @@ export class ProjectTaskRoomRuntime {
   }
   async #subscriberAuthorized(
     document: { projectId: string; taskId: string; documentId: string },
-    request: Request,
+    subscriber: RoomSubscriber,
   ) {
-    const current = await this.#authorizedDocument(document.taskId, request);
-    return Boolean(current && sameDocument(current, document));
+    const current = await this.#authorizedDocumentWithPrincipal(
+      document.taskId,
+      subscriber.request,
+    );
+    return Boolean(
+      current &&
+        sameDocument(current.document, document) &&
+        samePrincipal(current.principal, subscriber.principal),
+    );
   }
   async #publishHistory(document: {
     projectId: string;
@@ -3968,6 +4121,11 @@ export class ProjectTaskRoomRuntime {
     const subscribers = this.#subscribers.get(documentKey(document));
     if (!subscribers) return;
     for (const subscriber of [...subscribers]) {
+      if (!(await this.#subscriberAuthorized(document, subscriber))) {
+        this.#deliver(subscriber, { type: 'terminal' });
+        this.#removeSubscriber(document, subscriber);
+        continue;
+      }
       const result = await this.history({
         taskId: document.taskId,
         request: subscriber.request,
@@ -4360,9 +4518,9 @@ export class ProjectTaskRoomRuntime {
       const projection = await this.#deps.working.read({ scope });
       for (const subscriber of [...subscribers]) {
         // Every externally-observed update is reauthorized at delivery time.
-        if (!(await this.#subscriberAuthorized(scope, subscriber.request))) {
+        if (!(await this.#subscriberAuthorized(scope, subscriber))) {
           this.#deliver(subscriber, { type: 'terminal' });
-          subscribers.delete(subscriber);
+          this.#removeSubscriber(scope, subscriber);
           continue;
         }
         this.#deliver(subscriber, { type: 'document', ...projection });
@@ -4392,19 +4550,28 @@ export class ProjectTaskRoomRuntime {
   #roomPolicyRevision(scope: ProjectTaskRoomScope): string {
     return `${PROJECT_TASK_ROOM_POLICY_REVISION}:${scope.projectId}:${scope.taskId}`;
   }
-  async #authorizedDocument(taskId: string, request: Request) {
-    return (await this.#authorizedDocumentWithPrincipal(taskId, request))
-      ?.document;
+  async #authorizedDocument(
+    taskId: string,
+    request: Request,
+    capability: RequestCapability = 'history-read',
+  ) {
+    return (
+      await this.#authorizedDocumentWithPrincipal(taskId, request, capability)
+    )?.document;
   }
   /**
    * A content delivery needs both the exact current document scope and its
    * principal. Resolve them once: running the same paired-request authority
    * twice serially turns one required recheck into avoidable delivery latency.
    */
-  async #authorizedDocumentWithPrincipal(taskId: string, request: Request) {
+  async #authorizedDocumentWithPrincipal(
+    taskId: string,
+    request: Request,
+    capability: RequestCapability = 'history-read',
+  ) {
     if (this.#closed || this.#deps.hosted?.() || !this.#scope(taskId))
       return undefined;
-    const principal = await this.#principal(request);
+    const principal = await this.#principal(request, taskId, capability);
     if (!principal) return undefined;
     const scope = this.#scope(taskId)!;
     return {
@@ -4421,10 +4588,11 @@ export class ProjectTaskRoomRuntime {
     request: Request,
     expectedDocument: { projectId: string; taskId: string; documentId: string },
     expectedPrincipal: RequestPrincipal,
+    capability: RequestCapability = 'history-read',
   ) {
     const [document, principal] = await Promise.all([
-      this.#authorizedDocument(taskId, request),
-      this.#principal(request),
+      this.#authorizedDocument(taskId, request, capability),
+      this.#principal(request, taskId, capability),
     ]);
     return Boolean(
       document &&
@@ -4433,9 +4601,17 @@ export class ProjectTaskRoomRuntime {
         samePrincipal(principal, expectedPrincipal),
     );
   }
-  async #principal(request: Request): Promise<RequestPrincipal | undefined> {
+  async #principal(
+    request: Request,
+    taskId: string,
+    capability: RequestCapability,
+  ): Promise<RequestPrincipal | undefined> {
     try {
-      const result = await this.#deps.requestAuthority.resolve(request);
+      const result = await this.#deps.requestAuthority.resolve(
+        request,
+        taskId,
+        capability,
+      );
       if (result.kind !== 'granted') return undefined;
       if (result.displayName)
         this.#displayNames.set(result.operatorId, result.displayName);
@@ -4500,11 +4676,7 @@ export class ProjectTaskRoomRuntime {
           receiptId: issued.receiptId,
           capability: required,
           scope: currentScope,
-          principal: {
-            kind: 'operator',
-            operatorId: principal.operatorId,
-            deviceId: principal.deviceId,
-          },
+          principal: roomPersonPrincipal(principal),
           policyRevision: this.#roomPolicyRevision(currentScope),
         },
       };
@@ -4512,7 +4684,11 @@ export class ProjectTaskRoomRuntime {
     if (!issued.request) return { kind: 'revoked' };
     if (issued.currentSharedRead && !(await issued.currentSharedRead()))
       return { kind: 'revoked' };
-    const currentPrincipal = await this.#principal(issued.request);
+    const currentPrincipal = await this.#principal(
+      issued.request,
+      issued.scope.taskId,
+      roomRequestCapability(issued.capability),
+    );
     const settledScope = this.#scope(issued.scope.taskId);
     if (
       !settledScope ||
@@ -4530,11 +4706,7 @@ export class ProjectTaskRoomRuntime {
         receiptId: issued.receiptId,
         capability: required,
         scope: settledScope,
-        principal: {
-          kind: 'operator',
-          operatorId: currentPrincipal.operatorId,
-          deviceId: currentPrincipal.deviceId,
-        },
+        principal: roomPersonPrincipal(currentPrincipal),
         policyRevision: this.#roomPolicyRevision(settledScope),
       },
     };
@@ -4571,8 +4743,33 @@ function sameScope(a: ProjectTaskRoomScope, b: ProjectTaskRoomScope) {
     a.taskId === b.taskId
   );
 }
+function roomRequestCapability(capability: RoomCapability): RequestCapability {
+  if (capability === 'lifecycle-append') return 'history-read';
+  if (capability === 'revision-link') return 'edit-plan';
+  return capability === 'discover' ||
+    capability === 'history-read' ||
+    capability === 'message-write'
+    ? capability
+    : 'other';
+}
+function roomPersonPrincipal(
+  principal: RequestPrincipal,
+): ProjectTaskRoomPrincipal {
+  return principal.member
+    ? {
+        kind: 'member',
+        principalId: principal.operatorId,
+        deviceId: principal.deviceId,
+      }
+    : {
+        kind: 'operator',
+        operatorId: principal.operatorId,
+        deviceId: principal.deviceId,
+      };
+}
 function samePrincipal(a: RequestPrincipal, b: RequestPrincipal) {
   return (
+    a.member === b.member &&
     a.operatorId === b.operatorId &&
     a.deviceId === b.deviceId &&
     a.policyRevision === b.policyRevision
@@ -4589,9 +4786,15 @@ function sameDocument(
   );
 }
 /** A live actor is a paired-device identity, never the first room caller. */
-function actorIdFor(principal: RequestPrincipal) {
+function actorIdFor(
+  principal:
+    | RequestPrincipal
+    | Extract<ProjectTaskRoomPrincipal, { kind: 'operator' | 'member' }>,
+) {
+  const personId =
+    principal.kind === 'member' ? principal.principalId : principal.operatorId;
   return `human:${createHash('sha256')
-    .update(`${principal.operatorId}\u0000${principal.deviceId}`)
+    .update(`${personId}\u0000${principal.deviceId}`)
     .digest('hex')}`;
 }
 
@@ -4673,6 +4876,7 @@ function parsePersistedRecovery(value: unknown):
         ...(Object.hasOwn(item.principal, 'displayName')
           ? ['displayName']
           : []),
+        ...(Object.hasOwn(item.principal, 'member') ? ['member'] : []),
       ]) ||
       item.principal.kind !== 'granted' ||
       !boundedId(item.principal.operatorId) ||
@@ -4680,6 +4884,7 @@ function parsePersistedRecovery(value: unknown):
       !boundedId(item.principal.policyRevision) ||
       (item.principal.displayName !== undefined &&
         !boundedId(item.principal.displayName)) ||
+      (item.principal.member !== undefined && item.principal.member !== true) ||
       authorities.has(item.token)
     )
       return undefined;
@@ -4689,6 +4894,7 @@ function parsePersistedRecovery(value: unknown):
         operatorId: item.principal.operatorId,
         deviceId: item.principal.deviceId,
         policyRevision: item.principal.policyRevision,
+        ...(item.principal.member === true ? { member: true as const } : {}),
         ...(typeof item.principal.displayName === 'string'
           ? { displayName: item.principal.displayName }
           : {}),
@@ -4841,6 +5047,9 @@ function projectHistory(
         .map((record: any) => ({
           actor: {
             kind: record.principal.kind === 'agent' ? 'agent' : 'human',
+            ...(!guest && record.principal.kind === 'member'
+              ? { standing: 'member' }
+              : {}),
             id:
               record.principal.kind === 'agent'
                 ? agentActorId(
@@ -4856,8 +5065,17 @@ function projectHistory(
                   : (agentName(record.principal.agentId) ??
                     record.principal.agentId)
                 : guest
-                  ? `Participant ${createHash('sha256').update(`${record.principal.operatorId}\u0000${record.principal.deviceId}`).digest('hex').slice(-12)}`
-                  : (displayName(record.principal.operatorId) ?? 'Teammate'),
+                  ? `Participant ${createHash('sha256')
+                      .update(
+                        `${record.principal.kind === 'member' ? record.principal.principalId : record.principal.operatorId}\u0000${record.principal.deviceId}`,
+                      )
+                      .digest('hex')
+                      .slice(-12)}`
+                  : (displayName(
+                      record.principal.kind === 'member'
+                        ? record.principal.principalId
+                        : record.principal.operatorId,
+                    ) ?? 'Teammate'),
           },
           sequence: record.envelope.seq,
           occurredAt: record.envelope.proposal.happenedAt,
@@ -4940,6 +5158,7 @@ function projectBody(value: any): unknown {
       kind: value.kind,
       text: value.text,
       ...(value.attachments ? { attachments: value.attachments } : {}),
+      ...(value.mentions ? { mentions: value.mentions } : {}),
     };
   if (value?.kind === 'live-work-started')
     return {

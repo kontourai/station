@@ -47,6 +47,7 @@ export async function dispatchForeground(input: {
    */
   personalApprovalDefault?: import('@kontourai/station-contracts/provider').ApprovalMode;
   message: string;
+  mcpPromptOrigin?: import('@kontourai/station-contracts/mcp-prompts').AgentMcpPromptOrigin;
   attachments?: FileAttachment[];
   attachmentStages?: ComposerAttachmentStageSnapshot[];
   ambientContext?: string;
@@ -201,6 +202,9 @@ export async function dispatchForeground(input: {
           : {}),
       },
       message: input.message,
+      ...(input.mcpPromptOrigin
+        ? { mcpPromptOrigin: input.mcpPromptOrigin }
+        : {}),
       conversationId: input.conversationId ?? input.sessionId,
       ...attachmentDispatch,
       ambientContext: input.ambientContext,

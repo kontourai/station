@@ -423,6 +423,48 @@ describe('an approval pick as a server-ordered command (#2436)', () => {
     vi.clearAllMocks();
   });
 
+  test('the send hook carries a slash prompt origin with its resolved text', async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    const handler = vi.fn().mockResolvedValue({
+      text: 'prompt text',
+      mcpPromptOrigin: {
+        serverId: 'mail',
+        name: 'summarize',
+        receipt: 'opaque',
+      },
+    });
+    const sender = renderHook(
+      () =>
+        useSendMessage('http://station.test', undefined, undefined, handler),
+      { wrapper },
+    );
+    await act(async () => {
+      await sender.result.current(
+        SESSION_ID,
+        'codex',
+        'conv-1',
+        '/mail:summarize',
+      );
+    });
+    expect(sendExecutionMessage).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        message: 'prompt text',
+        mcpPromptOrigin: {
+          serverId: 'mail',
+          name: 'summarize',
+          receipt: 'opaque',
+        },
+      }),
+      expect.anything(),
+    );
+  });
+
   test('with a session, a pick is sent as a command at once and folded at its sequence', async () => {
     startedSession();
     const { pick } = renderComposer();

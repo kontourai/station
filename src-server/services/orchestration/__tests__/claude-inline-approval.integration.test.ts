@@ -19,6 +19,11 @@ import {
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  gateMediatedMcpCall,
+  resetPersonApprovedCalls,
+} from '../../plugins/mediated-untrusted-content-gate.js';
+import { sharedUntrustedContentLedger } from '../../plugins/untrusted-content-policy.js';
 
 const { mockQuery } = vi.hoisted(() => ({ mockQuery: vi.fn() }));
 
@@ -294,6 +299,67 @@ describe('#2316 inline approval card → Claude adapter', () => {
           ),
       ),
     ).resolves.toMatchObject({ status: 'approved' });
+  });
+
+  test("#3483: only a person's accept admits the approved MCP call at a Station seam, once", async () => {
+    resetPersonApprovedCalls();
+    sharedUntrustedContentLedger.markConversation(
+      'claude-inline',
+      Promise.resolve(true),
+    );
+    const gate = () =>
+      gateMediatedMcpCall({
+        conversationIds: ['claude-inline'],
+        serverId: 'mail',
+        toolNames: ['send_reply'],
+        definition: async () => ({ id: 'mail', kind: 'mcp' }),
+      });
+    // A station-control call answering for the session owner (no person).
+    const first = await openBashRequest('mcp__mail__send_reply', {});
+    await service.dispatchWithReceipt({
+      type: 'respondToRequest',
+      threadId: first.opened.threadId,
+      requestId: first.opened.requestId,
+      decision: 'accept',
+    });
+    await first.permission;
+    expect(await gate()).toMatchObject({ allowed: false });
+
+    // The same tool asked again in this session; a person answers.
+    const permission = (
+      sessionCanUseTool() as (...args: unknown[]) => Promise<unknown>
+    )(
+      'mcp__mail__send_reply',
+      {},
+      {
+        signal: new AbortController().signal,
+        toolUseID: 'toolu-inline-2',
+        suggestions: [],
+      },
+    );
+    const opened = await eventually(() =>
+      eventStore
+        .listEvents('claude-inline')
+        .map((persisted) => persisted.payload)
+        .find(
+          (event) =>
+            event.method === 'request.opened' &&
+            event.requestId !== first.opened.requestId,
+        ),
+    );
+    if (opened.method !== 'request.opened') throw new Error('unreachable');
+    await service.dispatchWithReceipt(
+      {
+        type: 'respondToRequest',
+        threadId: opened.threadId,
+        requestId: opened.requestId,
+        decision: 'accept',
+      },
+      { personAnswer: true },
+    );
+    await permission;
+    expect(await gate()).toEqual({ allowed: true });
+    expect(await gate()).toMatchObject({ allowed: false });
   });
 
   test('the card binds its answer to the exact prompt: the request event id is verified, a second answer finds it resolved', async () => {

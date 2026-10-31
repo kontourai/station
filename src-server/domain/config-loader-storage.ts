@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import {
+  cpSync,
   existsSync,
   lstatSync,
   readdirSync,
@@ -7,7 +8,15 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rename,
+  rm,
+  writeFile,
+} from 'node:fs/promises';
 import { dirname, join, sep } from 'node:path';
 import {
   type ACPConfig,
@@ -22,11 +31,27 @@ import type {
 } from '@kontourai/station-contracts/catalog';
 import {
   assertToolOAuthClientWritable,
+  DEFAULT_EXTERNAL_CONTENT_TRUST,
+  type IntegrationTrustReviewDecision,
+  type IntegrationTrustReviewField,
   isSafeToolServerId,
+  personOwnedUntrustedContentFields,
   type ToolDef,
   type ToolMetadata,
+  withStationIntegrationTrustDefaults,
+  withUntrustedContentChange,
 } from '@kontourai/station-contracts/tool';
+import {
+  applyIntegrationTrustOverlay,
+  deleteIntegrationTrustOverlay,
+  integrationTrustReview,
+  LegacyTrustReviewRequiredError,
+  migrateIntegrationTrustOverlay,
+  resolveIntegrationTrustReview,
+  writeIntegrationTrustOverlay,
+} from '@kontourai/station-shared/integration-trust-overlay';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
+import { stationCuratedContentTrust } from '@kontourai/station-shared/station-curation';
 import { normalizePersistedToolServerReason } from '../security/tool-server-reason.js';
 import { IntegrationIconAssets } from '../services/plugins/integration-icon-assets.js';
 import { readIntegrationOrigin } from '../services/plugins/integration-origin.js';
@@ -143,7 +168,23 @@ export async function loadIntegrationConfig(
     throw new Error(`Tool '${id}' not found at ${path}`);
   }
 
-  const def = JSON.parse(await readFile(path, 'utf-8')) as ToolDef;
+  const release = await acquireFileMutationLockAsync(
+    toolServerIntegrationMutationLockPath(projectHomeDir, id),
+  );
+  let def: ToolDef;
+  try {
+    const raw = JSON.parse(await readFile(path, 'utf-8')) as ToolDef;
+    def = applyIntegrationTrustOverlay(
+      {
+        ...raw,
+        contentTrust:
+          stationCuratedContentTrust(raw) ?? DEFAULT_EXTERNAL_CONTENT_TRUST,
+      },
+      migrateIntegrationTrustOverlay(projectHomeDir, id, raw),
+    );
+  } finally {
+    await release();
+  }
   if (Object.hasOwn(def, 'envCredentialRefs')) {
     throw new Error(
       `Retired tool-server credential format for ${JSON.stringify(id)}: this branch's pre-release envCredentialRefs format changed; clear this developer home and recreate the integration`,
@@ -167,6 +208,18 @@ export async function saveIntegrationConfig(
   projectHomeDir: string,
   id: string,
   def: ToolDef,
+  /** #3483: who an untrusted-content permission change is attributed to. */
+  options: {
+    changedBy?: string;
+    personChange?: boolean;
+    explicitFields?: readonly (
+      | 'contentTrust'
+      | 'permissions'
+      | 'trustReadOnlyHints'
+    )[];
+    externalDefaults?: boolean;
+    stationCuratedTrust?: 'trusted' | 'untrusted';
+  } = {},
 ): Promise<void> {
   assertSafeIntegrationId(id);
   await mkdir(join(projectHomeDir, 'integrations'), { recursive: true });
@@ -179,12 +232,26 @@ export async function saveIntegrationConfig(
     const current = existsSync(integrationPath)
       ? (JSON.parse(readFileSync(integrationPath, 'utf8')) as ToolDef)
       : undefined;
+    const overlay = migrateIntegrationTrustOverlay(projectHomeDir, id, current);
+    const effectiveCurrent =
+      current || overlay
+        ? applyIntegrationTrustOverlay(current ?? def, overlay)
+        : undefined;
     await writeIntegrationConfigLocked(
       projectHomeDir,
       id,
       integrationPath,
-      def,
+      options.externalDefaults
+        ? withStationIntegrationTrustDefaults(
+            def,
+            effectiveCurrent,
+            stationCuratedContentTrust(def) ?? options.stationCuratedTrust,
+          )
+        : def,
       current,
+      options.changedBy,
+      options.personChange,
+      options.explicitFields,
     );
   } finally {
     await release();
@@ -216,17 +283,363 @@ export async function updateIntegrationConfig(
       readFileSync(integrationPath, 'utf8'),
     ) as ToolDef;
     rejectRetiredIntegrationCredentialFormat(current, id);
-    const next = update(current);
-    await writeIntegrationConfigLocked(
+    const effective = applyIntegrationTrustOverlay(
+      current,
+      migrateIntegrationTrustOverlay(projectHomeDir, id, current),
+    );
+    return await writeIntegrationConfigLocked(
       projectHomeDir,
       id,
       integrationPath,
-      next,
+      update(effective),
       current,
+      undefined,
     );
-    return next;
   } finally {
     await release();
+  }
+}
+
+/**
+ * A rule a plugin's integration definition must satisfy before it is
+ * published, checked under the integration's mutation lock with the stored
+ * definition it replaces. Throwing refuses the whole publication and changes
+ * nothing. Other owners (for example tool-server OAuth client rules) add
+ * theirs here rather than checking before the copy.
+ */
+export type PluginIntegrationValidator = (input: {
+  id: string;
+  next: ToolDef;
+  current: ToolDef | undefined;
+  bundled: ToolDef;
+  directory: string;
+  restoring: boolean;
+}) => void;
+
+// Invariants owned by Station run on both plugin publication and restoration.
+// Add shared rules here, not at individual callers.
+const pluginIntegrationValidators: readonly PluginIntegrationValidator[] = [
+  ({ id, current, next, bundled, directory, restoring }) => {
+    if (!restoring) {
+      if (readdirSync(directory).some(isReservedIntegrationSidecarName))
+        throw new Error(
+          `Plugin integration '${id}' contains Station's instance identity file.`,
+        );
+      if (
+        Object.keys(bundled.secretEnvRefs ?? {}).length > 0 ||
+        bundled.oauthClient?.clientSecretRef !== undefined
+      )
+        throw new Error(
+          `Plugin integration '${id}' contains secret binding references; bind secrets through Station's operator binding flow.`,
+        );
+    }
+    assertToolOAuthClientWritable(
+      current ?? (restoring ? bundled : undefined),
+      next,
+    );
+  },
+  ({ id, current, next }) => {
+    rejectRetiredIntegrationCredentialFormat(current, id);
+    rejectRetiredIntegrationCredentialFormat(next, id);
+  },
+];
+
+/**
+ * The person-facing untrusted-content settings a stored definition holds win
+ * over a plugin's: a plugin update cannot downgrade a classification or
+ * reopen a tool the person closed.
+ */
+function storedIntegration(path: string): ToolDef | undefined {
+  try {
+    return JSON.parse(readFileSync(path, 'utf8')) as ToolDef;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    throw error;
+  }
+}
+
+/**
+ * Publish a plugin's integrations, and retire the ones it no longer ships,
+ * as one locked operation (#3483). The only path a plugin's install, update
+ * and rollback write integration definitions through.
+ *
+ * `stage` copies the plugin's integration trees into a private directory no
+ * reader looks at, with its own source checks. Then every affected
+ * integration's mutation lock is held, in a fixed order, from reading the
+ * stored definitions through publishing:
+ * - a target another owner holds is refused;
+ * - plugin-authored binding references and reserved sidecars are refused;
+ * - the person's untrusted-content settings and receipts come from the stored
+ *   copy, never from the plugin's bytes, and a new receipt is added only for
+ *   a setting the plugin introduces;
+ * - each `validators` rule runs against the result.
+ * Each tree then replaces its target by directory rename, so a reader sees
+ * the old definition, briefly none, or the sanitized one, never the plugin's
+ * raw bytes. A failure restores every replaced tree. Returns the published
+ * integration ids.
+ */
+type PluginPublicationOptions = {
+  projectHomeDir: string;
+  pluginName: string;
+  /** Copies the plugin's integration trees into `stagingDir`; absent retires only. */
+  stage?: (stagingDir: string) => string[];
+  validators?: readonly PluginIntegrationValidator[];
+  now?: () => Date;
+  /** Station's recovery backup, refreshed under the lock before retirement. */
+  backupRetiredTo?: string;
+};
+
+export async function publishPluginIntegrations(
+  options: PluginPublicationOptions,
+): Promise<string[]> {
+  return publishPluginIntegrationsLocked(options, false);
+}
+
+/** Restore a Station-owned backup, preserving newer person edits in storage. */
+export async function restorePluginIntegrations(options: {
+  projectHomeDir: string;
+  pluginName: string;
+  backupDir: string;
+}): Promise<string[]> {
+  return publishPluginIntegrationsLocked(
+    {
+      projectHomeDir: options.projectHomeDir,
+      pluginName: options.pluginName,
+      stage: (stagingDir) => {
+        if (!existsSync(options.backupDir)) return [];
+        const ids: string[] = [];
+        for (const entry of readdirSync(options.backupDir, {
+          withFileTypes: true,
+        })) {
+          if (!entry.isDirectory()) continue;
+          assertSafeIntegrationId(entry.name);
+          const source = join(options.backupDir, entry.name);
+          const def = storedIntegration(join(source, 'integration.json')) as
+            | (ToolDef & { plugin?: unknown })
+            | undefined;
+          if (!def || def.plugin !== options.pluginName)
+            throw new Error(`Invalid integration backup '${entry.name}'`);
+          cpSync(source, join(stagingDir, entry.name), { recursive: true });
+          ids.push(entry.name);
+        }
+        return ids;
+      },
+    },
+    true,
+  );
+}
+
+async function publishPluginIntegrationsLocked(
+  options: PluginPublicationOptions,
+  restoring: boolean,
+): Promise<string[]> {
+  const { projectHomeDir, pluginName } = options;
+  const integrationsDir = join(projectHomeDir, 'integrations');
+  // Nothing to publish and nothing stored: create nothing.
+  if (!options.stage && !existsSync(integrationsDir)) return [];
+  if (options.stage)
+    await mkdir(join(projectHomeDir, 'tmp'), { recursive: true });
+  // Under the Station home, so the renames below stay on one filesystem.
+  const stagingDir = options.stage
+    ? await mkdtemp(join(projectHomeDir, 'tmp', 'integration-publish-'))
+    : undefined;
+  let retainStaging = false;
+  try {
+    const staged = options.stage && stagingDir ? options.stage(stagingDir) : [];
+    for (const id of staged) assertSafeIntegrationId(id);
+    if (staged.length === 0 && !existsSync(integrationsDir)) return [];
+    await mkdir(integrationsDir, { recursive: true });
+    const owned: string[] = [];
+    for (const entry of await readdir(integrationsDir, {
+      withFileTypes: true,
+    })) {
+      if (!entry.isDirectory() || !isSafeToolServerId(entry.name)) continue;
+      const def = storedIntegration(
+        integrationConfigPath(projectHomeDir, entry.name),
+      ) as (ToolDef & { plugin?: unknown }) | undefined;
+      if (def?.plugin === pluginName) owned.push(entry.name);
+    }
+    const ids = [...new Set([...staged, ...owned])].sort();
+    const releases: (() => Promise<void>)[] = [];
+    try {
+      for (const id of ids)
+        releases.push(
+          await acquireFileMutationLockAsync(
+            toolServerIntegrationMutationLockPath(projectHomeDir, id),
+          ),
+        );
+      // Take integration locks first, then pin leases, in sorted id order.
+      // Claims and outbound OAuth requests take only the pin lease; hold it
+      // through snapshot, replacement and compensation so no claimed pin is lost.
+      for (const id of ids)
+        releases.push(await acquireIntegrationOAuthPinLock(projectHomeDir, id));
+      const now = (options.now ?? (() => new Date()))();
+      for (const id of ids) {
+        const currentRaw = storedIntegration(
+          integrationConfigPath(projectHomeDir, id),
+        ) as (ToolDef & { plugin?: unknown }) | undefined;
+        const overlay = migrateIntegrationTrustOverlay(
+          projectHomeDir,
+          id,
+          currentRaw,
+        );
+        const current = currentRaw
+          ? (applyIntegrationTrustOverlay(currentRaw, overlay) as ToolDef & {
+              plugin?: unknown;
+            })
+          : undefined;
+        if (current && current.plugin !== pluginName)
+          throw new Error(
+            `Integration '${id}' already exists and is not owned by this plugin`,
+          );
+        if (!staged.includes(id)) {
+          if (current && options.backupRetiredTo) {
+            const backupDir = options.backupRetiredTo;
+            await mkdir(backupDir, { recursive: true });
+            const temporary = await mkdtemp(join(backupDir, '.retired-'));
+            const destination = join(backupDir, id);
+            const previous = join(temporary, 'previous');
+            let movedPrevious = false;
+            let retainTemporary = false;
+            try {
+              cpSync(join(integrationsDir, id), join(temporary, 'next'), {
+                recursive: true,
+              });
+              if (existsSync(destination)) {
+                await rename(destination, previous);
+                movedPrevious = true;
+              }
+              try {
+                await rename(join(temporary, 'next'), destination);
+              } catch (error) {
+                if (movedPrevious) {
+                  try {
+                    await rename(previous, destination);
+                  } catch (restoreError) {
+                    retainTemporary = true;
+                    throw new AggregateError(
+                      [error, restoreError],
+                      `Integration backup recovery retained at ${temporary}`,
+                    );
+                  }
+                }
+                throw error;
+              }
+            } finally {
+              if (!retainTemporary)
+                await rm(temporary, { recursive: true, force: true });
+            }
+          }
+          continue;
+        }
+        // Staged ids exist only when a staging directory does.
+        const stagedPath = join(stagingDir!, id, 'integration.json');
+        const rawIncoming = JSON.parse(
+          readFileSync(stagedPath, 'utf8'),
+        ) as ToolDef;
+        // A plugin cannot author secret bindings.
+        const curatedTrust = stationCuratedContentTrust(rawIncoming);
+        const incoming = withStationIntegrationTrustDefaults(
+          rawIncoming,
+          current,
+          curatedTrust,
+        );
+        delete incoming.secretEnvRefs;
+        const bindingSource = current ?? (restoring ? rawIncoming : undefined);
+        if (restoring && bindingSource?.secretEnvRefs)
+          incoming.secretEnvRefs = bindingSource.secretEnvRefs;
+        if (bindingSource?.oauthClient?.clientSecretRef)
+          incoming.oauthClient = {
+            ...incoming.oauthClient,
+            clientSecretRef: bindingSource.oauthClient.clientSecretRef,
+          };
+        const next = applyIntegrationTrustOverlay(
+          withUntrustedContentChange(current, incoming, undefined, now),
+          overlay,
+        );
+        for (const validate of [
+          ...pluginIntegrationValidators,
+          ...(options.validators ?? []),
+        ])
+          validate({
+            id,
+            next,
+            current,
+            bundled: rawIncoming,
+            directory: join(stagingDir!, id),
+            restoring,
+          });
+        // A package cannot supply these, but replacing the tree must retain
+        // Station's live grant identity and issuer pin under the same lock.
+        if (current)
+          for (const name of [
+            INTEGRATION_INSTANCE_FILE,
+            INTEGRATION_OAUTH_ISSUER_FILE,
+          ]) {
+            const sidecar = join(integrationsDir, id, name);
+            if (sidecarPresentExactly(sidecar))
+              cpSync(sidecar, join(stagingDir!, id, name));
+          }
+        const published = {
+          ...next,
+          contentTrust: curatedTrust ?? DEFAULT_EXTERNAL_CONTENT_TRUST,
+        };
+        delete published.untrustedContentPermissions;
+        delete published.trustReadOnlyHints;
+        delete published.untrustedContentChanges;
+        delete published.untrustedContentPersonOwned;
+        await writeFile(stagedPath, JSON.stringify(published, null, 2));
+      }
+      const replaced: { id: string; backup?: string; published: boolean }[] =
+        [];
+      try {
+        for (const id of ids) {
+          const target = join(integrationsDir, id);
+          const step: (typeof replaced)[number] = { id, published: false };
+          replaced.push(step);
+          if (existsSync(target)) {
+            if (!stagingDir) {
+              // Retiring only: nothing is published, so nothing to restore.
+              await rm(target, { recursive: true, force: true });
+              continue;
+            }
+            step.backup = join(stagingDir, `.replaced-${id}`);
+            await rename(target, step.backup);
+          }
+          if (staged.includes(id)) {
+            await rename(join(stagingDir!, id), target);
+            step.published = true;
+          }
+        }
+      } catch (error) {
+        const failures: unknown[] = [];
+        for (const step of replaced.reverse()) {
+          const target = join(integrationsDir, step.id);
+          try {
+            if (step.published)
+              await rm(target, { recursive: true, force: true });
+            if (step.backup && existsSync(step.backup))
+              await rename(step.backup, target);
+          } catch (failure) {
+            failures.push(failure);
+          }
+        }
+        if (failures.length) {
+          retainStaging = true;
+          throw new AggregateError(
+            [error, ...failures],
+            `Integration publication recovery required; retained at ${stagingDir}`,
+          );
+        }
+        throw error;
+      }
+      return staged;
+    } finally {
+      for (const release of releases.reverse()) await release();
+    }
+  } finally {
+    if (stagingDir && !retainStaging)
+      await rm(stagingDir, { recursive: true, force: true });
   }
 }
 
@@ -245,16 +658,57 @@ function rejectRetiredIntegrationCredentialFormat(
   }
 }
 
+/**
+ * The one locked integration write. It owns the untrusted-content receipts
+ * (#3483): they come from the stored copy read under this lock, never from
+ * `def`, so concurrent writers and whole-definition replacements cannot
+ * drop or forge one. Returns the definition it wrote the receipts into.
+ */
 async function writeIntegrationConfigLocked(
   projectHomeDir: string,
   id: string,
   integrationPath: string,
-  def: ToolDef,
+  incoming: ToolDef,
   current: ToolDef | undefined,
-): Promise<void> {
+  changedBy: string | undefined,
+  personChange?: boolean,
+  explicitFields?: readonly (
+    | 'contentTrust'
+    | 'permissions'
+    | 'trustReadOnlyHints'
+  )[],
+): Promise<ToolDef> {
   rejectRetiredIntegrationCredentialFormat(current, id);
+  // The spread inside keeps the enumerable in-memory enabled marker read
+  // below.
+  const overlay = migrateIntegrationTrustOverlay(projectHomeDir, id, current);
+  const effectiveCurrent =
+    current || overlay
+      ? applyIntegrationTrustOverlay(current ?? incoming, overlay)
+      : undefined;
+  const def = withUntrustedContentChange(
+    effectiveCurrent,
+    incoming,
+    changedBy,
+    new Date(),
+    { personChange, explicitFields },
+  );
   assertToolOAuthClientWritable(current, def);
   const persisted = { ...def };
+  delete persisted.untrustedContentPermissions;
+  delete persisted.trustReadOnlyHints;
+  delete persisted.untrustedContentChanges;
+  delete persisted.untrustedContentPersonOwned;
+  if (changedBy || personChange) {
+    if (
+      current &&
+      !personOwnedUntrustedContentFields(current).has('contentTrust')
+    )
+      persisted.contentTrust = current.contentTrust;
+    else
+      persisted.contentTrust =
+        stationCuratedContentTrust(incoming) ?? DEFAULT_EXTERNAL_CONTENT_TRUST;
+  }
   delete persisted.secretEnv;
   delete persisted.removeSecretEnvKeys;
   const explicitlyEdited = Object.hasOwn(def, 'secretEnv');
@@ -301,12 +755,16 @@ async function writeIntegrationConfigLocked(
     def as ToolDef & { [integrationEnabledSynthesized]?: boolean }
   )[integrationEnabledSynthesized];
   if (synthesized && def.enabled === true) delete persisted.enabled;
+  // The overlay is the durable person choice. Publish it only after all
+  // preparatory credential writes, and before the replaceable definition.
+  writeIntegrationTrustOverlay(projectHomeDir, id, def);
   await publishJsonFileWithOwnedLock(integrationPath, persisted);
   ensureIntegrationInstanceIdLocked(projectHomeDir, id);
   // One credential-store publication retains the referenced set while
   // removing a migrated set. Splitting this into removeMany then reconcile
   // admitted a partial delete if the second write failed after the first.
   if (store) await store.reconcileServer(id, [...refs], [...removals]);
+  return def;
 }
 
 /**
@@ -471,11 +929,10 @@ const oauthPinQueues = new Map<string, Promise<void>>();
  * file lock covers other processes sharing the home. A request held under it
  * is bounded by its caller.
  */
-export async function withIntegrationOAuthPinLock<T>(
+async function acquireIntegrationOAuthPinLock(
   projectHomeDir: string,
   id: string,
-  action: () => Promise<T>,
-): Promise<T> {
+): Promise<() => Promise<void>> {
   assertSafeIntegrationId(id);
   const path = join(
     projectHomeDir,
@@ -489,20 +946,39 @@ export async function withIntegrationOAuthPinLock<T>(
   });
   const tail = previous.then(() => turn);
   oauthPinQueues.set(path, tail);
+  const finish = () => {
+    releaseQueue();
+    if (oauthPinQueues.get(path) === tail) oauthPinQueues.delete(path);
+  };
   await previous;
   try {
     await mkdir(join(projectHomeDir, 'integrations'), { recursive: true });
     const unlock = await acquireFileMutationLockAsync(path, {
       timeoutMs: 45_000,
     });
-    try {
-      return await action();
-    } finally {
-      await unlock();
-    }
+    return async () => {
+      try {
+        await unlock();
+      } finally {
+        finish();
+      }
+    };
+  } catch (error) {
+    finish();
+    throw error;
+  }
+}
+
+export async function withIntegrationOAuthPinLock<T>(
+  projectHomeDir: string,
+  id: string,
+  action: () => Promise<T>,
+): Promise<T> {
+  const release = await acquireIntegrationOAuthPinLock(projectHomeDir, id);
+  try {
+    return await action();
   } finally {
-    releaseQueue();
-    if (oauthPinQueues.get(path) === tail) oauthPinQueues.delete(path);
+    await release();
   }
 }
 
@@ -541,6 +1017,7 @@ export async function deleteIntegrationConfig(
     toolServerIntegrationMutationLockPath(projectHomeDir, id),
   );
   try {
+    deleteIntegrationTrustOverlay(projectHomeDir, id);
     if (existsSync(integrationDir)) {
       rmSync(integrationDir, { recursive: true, force: true });
     }
@@ -607,11 +1084,96 @@ export async function listIntegrationMetadata(
         ),
       });
     } catch (error) {
+      if (error instanceof LegacyTrustReviewRequiredError) {
+        // #3483: listed, not dropped, so a person can review it. It stays
+        // unloaded (and so unused) until then.
+        const raw = await readStoredIntegrationForReview(
+          projectHomeDir,
+          entry.name,
+        ).catch(() => undefined);
+        if (raw)
+          tools.push({
+            id: entry.name,
+            kind: raw.kind,
+            displayName: raw.displayName,
+            description: raw.description,
+            transport: raw.transport,
+            source: raw.command || raw.endpoint,
+            enabled: false,
+            trustReview: { fields: error.fields },
+          });
+        continue;
+      }
       logger.error('Failed to load tool', { tool: entry.name, error });
     }
   }
 
   return tools;
+}
+
+async function readStoredIntegrationForReview(
+  projectHomeDir: string,
+  id: string,
+): Promise<ToolDef> {
+  assertSafeIntegrationId(id);
+  const path = join(projectHomeDir, 'integrations', id, 'integration.json');
+  return JSON.parse(await readFile(path, 'utf-8')) as ToolDef;
+}
+
+/**
+ * #3483: an integration whose legacy trust settings wait for a person: its
+ * stored definition without them, and the fields to review. `undefined`
+ * when there is nothing to review.
+ */
+export async function loadIntegrationTrustReview(
+  projectHomeDir: string,
+  id: string,
+): Promise<
+  { definition: ToolDef; fields: IntegrationTrustReviewField[] } | undefined
+> {
+  assertSafeIntegrationId(id);
+  const release = await acquireFileMutationLockAsync(
+    toolServerIntegrationMutationLockPath(projectHomeDir, id),
+  );
+  try {
+    const stored = await readStoredIntegrationForReview(projectHomeDir, id);
+    const fields = integrationTrustReview(projectHomeDir, id, stored);
+    if (!fields) return undefined;
+    const definition = { ...stored };
+    delete definition.untrustedContentPermissions;
+    delete definition.trustReadOnlyHints;
+    delete definition.untrustedContentChanges;
+    delete definition.untrustedContentPersonOwned;
+    definition.contentTrust =
+      stationCuratedContentTrust(stored) ?? DEFAULT_EXTERNAL_CONTENT_TRUST;
+    return { definition, fields };
+  } finally {
+    await release();
+  }
+}
+
+/** #3483: a person keeps or resets an integration's legacy trust settings. */
+export async function decideIntegrationTrustReview(
+  projectHomeDir: string,
+  id: string,
+  decision: IntegrationTrustReviewDecision,
+  by: string,
+): Promise<void> {
+  assertSafeIntegrationId(id);
+  const release = await acquireFileMutationLockAsync(
+    toolServerIntegrationMutationLockPath(projectHomeDir, id),
+  );
+  try {
+    resolveIntegrationTrustReview(
+      projectHomeDir,
+      id,
+      await readStoredIntegrationForReview(projectHomeDir, id),
+      decision,
+      by,
+    );
+  } finally {
+    await release();
+  }
 }
 
 function sanitizeProbeProjection(probe: ToolDef['probe']): ToolDef['probe'] {
@@ -820,51 +1382,4 @@ export async function saveACPConfigFile(
   const path = join(projectHomeDir, 'config', 'acp.json');
   await mkdir(join(projectHomeDir, 'config'), { recursive: true });
   await writeFile(path, JSON.stringify(config, null, 2), 'utf-8');
-}
-
-/**
- * `copyPluginIntegrations` publishes a plugin's bundled integration
- * directories itself rather than through `writeIntegrationConfigLocked`. Its
- * callers run this first, so a bundled definition meets the same OAuth client
- * rules (`assertToolOAuthClientWritable`) against the definition it would
- * replace, and never carries a secret-binding reference. Symlinked or
- * unreadable entries are left to the copy, which refuses them.
- */
-export function assertPluginIntegrationsWritable(
-  pluginDir: string,
-  projectHomeDir: string,
-): void {
-  const bundled = join(pluginDir, 'integrations');
-  if (!existsSync(bundled) || lstatSync(bundled).isSymbolicLink()) return;
-  const readDefinition = (path: string): ToolDef | undefined =>
-    existsSync(path) && !lstatSync(path).isSymbolicLink()
-      ? (JSON.parse(readFileSync(path, 'utf8')) as ToolDef)
-      : undefined;
-  for (const entry of readdirSync(bundled, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
-    assertSafeIntegrationId(entry.name);
-    // A bundle cannot bring Station's own sidecars in any spelling the
-    // filesystem may resolve to them; the copy would carry them.
-    if (
-      readdirSync(join(bundled, entry.name)).some((name) =>
-        isReservedIntegrationSidecarName(String(name)),
-      )
-    )
-      throw new Error(
-        `Plugin integration '${entry.name}' contains Station's instance identity file.`,
-      );
-    const next = readDefinition(join(bundled, entry.name, 'integration.json'));
-    if (!next) continue;
-    if (
-      Object.keys(next.secretEnvRefs ?? {}).length > 0 ||
-      next.oauthClient?.clientSecretRef !== undefined
-    )
-      throw new Error(
-        `Plugin integration '${entry.name}' contains secret binding references; bind secrets through Station's operator binding flow.`,
-      );
-    assertToolOAuthClientWritable(
-      readDefinition(integrationConfigPath(projectHomeDir, entry.name)),
-      next,
-    );
-  }
 }

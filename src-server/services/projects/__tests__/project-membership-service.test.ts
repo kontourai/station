@@ -91,6 +91,91 @@ const post = (app: Hono, path: string, body: unknown) =>
   });
 
 describe('Project membership through revision and administration routes', () => {
+  test('notifies subscribers after committed membership changes and stops on unsubscribe', async () => {
+    const h = await harness();
+    const observed: Array<{
+      projectId: string;
+      principalId: string;
+      revision: number;
+      status: string;
+    }> = [];
+    const unsubscribe = h.service.subscribe((change) => {
+      const row = h.db
+        .prepare(
+          'SELECT record FROM project_members WHERE project_id=? AND principal_id=?',
+        )
+        .get(change.projectId, change.principalId) as { record: string };
+      const stored = JSON.parse(row.record) as {
+        revision: number;
+        status: string;
+      };
+      expect(stored.revision).toBe(change.revision);
+      observed.push({ ...change, status: stored.status });
+    });
+    const view = await h.service.enable('example', h.project.id, h.access);
+    const offer = await h.service.invite(view.scope, invitation(), h.access);
+    h.setActor(invitee);
+    await h.service.accept(offer.token, h.access);
+    h.setActor(owner, true);
+    await h.service.changeMember(
+      view.scope,
+      invitee.id,
+      1,
+      { role: 'contributor', status: 'active' },
+      h.access,
+    );
+    await expect(
+      h.service.changeMember(
+        view.scope,
+        invitee.id,
+        1,
+        { role: 'viewer', status: 'revoked' },
+        h.access,
+      ),
+    ).rejects.toMatchObject({ code: 'conflict' });
+    await h.service.changeMember(
+      view.scope,
+      invitee.id,
+      2,
+      { role: 'viewer', status: 'revoked' },
+      h.access,
+    );
+    expect(observed).toEqual([
+      {
+        projectId: h.project.id,
+        principalId: owner.id,
+        revision: 1,
+        status: 'active',
+      },
+      {
+        projectId: h.project.id,
+        principalId: invitee.id,
+        revision: 1,
+        status: 'active',
+      },
+      {
+        projectId: h.project.id,
+        principalId: invitee.id,
+        revision: 2,
+        status: 'active',
+      },
+      {
+        projectId: h.project.id,
+        principalId: invitee.id,
+        revision: 3,
+        status: 'revoked',
+      },
+    ]);
+    unsubscribe();
+    await h.service.changeMember(
+      view.scope,
+      invitee.id,
+      3,
+      { role: 'viewer', status: 'active' },
+      h.access,
+    );
+    expect(observed).toHaveLength(4);
+  });
   test('invitation preview discloses only its offered Project and fails after cancellation', async () => {
     const h = await harness();
     const access = await h.service.enable('example', h.project.id, h.access);
@@ -473,4 +558,118 @@ test('scoped domain actions distinguish view, discussion and execution and reche
     ),
   ).rejects.toMatchObject({ code: 'forbidden' });
   expect(effect).toBe(false);
+});
+
+test('enable notifies even when the post-commit administration read fails', async () => {
+  const h = await harness();
+  const changes: Array<{
+    projectId: string;
+    principalId: string;
+    revision: number;
+  }> = [];
+  h.service.subscribe((c) => changes.push(c));
+  vi.spyOn(h.store, 'administration').mockImplementationOnce(() => {
+    throw new Error('postcommit-read');
+  });
+  await expect(
+    h.service.enable('example', h.project.id, h.access),
+  ).rejects.toThrow('Project storage mutation is unavailable');
+  const row = h.db
+    .prepare('SELECT record FROM project_members WHERE principal_id=?')
+    .get(owner.id) as { record: string };
+  expect(JSON.parse(row.record)).toMatchObject({
+    role: 'owner',
+    revision: 1,
+    status: 'active',
+  });
+  expect(changes).toEqual([
+    { projectId: h.project.id, principalId: owner.id, revision: 1 },
+  ]);
+});
+test('accept notifies without a post-commit membership read', async () => {
+  const h = await harness();
+  const view = await h.service.enable('example', h.project.id, h.access);
+  const offer = await h.service.invite(view.scope, invitation(), h.access);
+  h.setActor(invitee);
+  const changes: Array<{
+    projectId: string;
+    principalId: string;
+    revision: number;
+  }> = [];
+  h.service.subscribe((c) => changes.push(c));
+  let committed = false;
+  const accept = h.store.accept.bind(h.store);
+  vi.spyOn(h.store, 'accept').mockImplementation((...args) => {
+    const result = accept(...args);
+    committed = true;
+    return result;
+  });
+  const require = h.store.require.bind(h.store);
+  vi.spyOn(h.store, 'require').mockImplementation((...args) => {
+    if (committed) throw new Error('postcommit-read');
+    return require(...args);
+  });
+  await h.service.accept(offer.token, h.access);
+  const row = h.db
+    .prepare('SELECT record FROM project_members WHERE principal_id=?')
+    .get(invitee.id) as { record: string };
+  expect(JSON.parse(row.record)).toMatchObject({
+    role: 'viewer',
+    revision: 1,
+    status: 'active',
+  });
+  expect(changes).toEqual([
+    { projectId: h.project.id, principalId: invitee.id, revision: 1 },
+  ]);
+});
+test('ownership transfer increments both revisions and notifies both principals', async () => {
+  const h = await harness();
+  const view = await h.service.enable('example', h.project.id, h.access);
+  const offer = await h.service.invite(view.scope, invitation(), h.access);
+  h.setActor(invitee);
+  await h.service.accept(offer.token, h.access);
+  h.setActor(owner, true);
+  const changes: Array<{
+    projectId: string;
+    principalId: string;
+    revision: number;
+  }> = [];
+  h.service.subscribe((c) => changes.push(c));
+  await h.service.transferOwnership(view.scope, invitee.id, h.access);
+  expect(changes.map((c) => [c.principalId, c.revision])).toEqual([
+    [owner.id, 2],
+    [invitee.id, 2],
+  ]);
+});
+test('ownership transfer notifies without post-commit admission reads', async () => {
+  const h = await harness();
+  const view = await h.service.enable('example', h.project.id, h.access);
+  const offer = await h.service.invite(view.scope, invitation(), h.access);
+  h.setActor(invitee);
+  await h.service.accept(offer.token, h.access);
+  h.setActor(owner, true);
+  const changes: Array<{
+    projectId: string;
+    principalId: string;
+    revision: number;
+  }> = [];
+  h.service.subscribe((c) => changes.push(c));
+  vi.spyOn(h.service, 'admissionsForResolvedPrincipal').mockImplementationOnce(
+    () => {
+      throw new Error('postcommit-read');
+    },
+  );
+  await h.service.transferOwnership(view.scope, invitee.id, h.access);
+  const rows = h.db
+    .prepare('SELECT record FROM project_members ORDER BY principal_id')
+    .all() as { record: string }[];
+  expect(rows.map((r) => JSON.parse(r.record).revision)).toEqual([2, 2]);
+  expect(rows.map((r) => JSON.parse(r.record).role).sort()).toEqual([
+    'admin',
+    'owner',
+  ]);
+  expect(changes.map((c) => [c.principalId, c.revision])).toEqual([
+    [owner.id, 2],
+    [invitee.id, 2],
+  ]);
 });

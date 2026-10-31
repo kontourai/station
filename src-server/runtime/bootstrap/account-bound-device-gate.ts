@@ -103,6 +103,18 @@ export function isTaskRelationshipHttpLeaf(
   return method === 'DELETE' && /^\/api\/tasks\/[^/]+\/work-chats$/.test(path);
 }
 
+/** Task room transport only; room membership still authorizes every effect. */
+export function isTaskRoomHttpLeaf(method: string, path: string): boolean {
+  if (method === 'GET' || method === 'HEAD')
+    return /^\/api\/tasks\/[^/]+\/room(?:\/(?:history|document|events))?$/.test(
+      path,
+    );
+  return (
+    method === 'POST' &&
+    /^\/api\/tasks\/[^/]+\/room\/(?:messages|live|edit-plan)$/.test(path)
+  );
+}
+
 /** Layout transport only; principal ownership and Project action checks remain in their routes. */
 function isAccountBoundLayoutLeaf(path: string, method: string): boolean {
   if (method === 'GET' || method === 'HEAD')
@@ -379,7 +391,8 @@ export function installAccountBoundDeviceGate(
       account?.kind !== 'authenticated' &&
       !(
         account?.kind === 'absent' &&
-        isTaskRelationshipHttpLeaf(c.req.method, c.req.path) &&
+        (isTaskRelationshipHttpLeaf(c.req.method, c.req.path) ||
+          isTaskRoomHttpLeaf(c.req.method, c.req.path)) &&
         deps.currentRelationshipAccountDevice?.(c.req.raw, accountBinding) ===
           true
       )
@@ -497,6 +510,7 @@ export function installAccountBoundDeviceGate(
         isAccountBoundRoomLeaf(path, method) ||
         isAccountBoundLayoutLeaf(path, method) ||
         isTaskRelationshipHttpLeaf(method, path) ||
+        isTaskRoomHttpLeaf(method, path) ||
         isAccountBoundOwnTokenLeaf(path, method) ||
         isAccountBoundPersonNotificationLeaf(path, method) ||
         (path === '/api/me/preferences' &&

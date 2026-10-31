@@ -315,6 +315,62 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     activeChatsStore.removeChat(sessionId);
   });
 
+  it('does not enqueue rendered MCP prompt text without its origin after an unanswered send', async () => {
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      new TypeError('Failed to fetch'),
+    );
+    const handler = vi.fn().mockResolvedValue({
+      text: 'mail content',
+      mcpPromptOrigin: {
+        serverId: 'mail',
+        name: 'summarize',
+        receipt: 'opaque',
+      },
+    });
+    const { result } = renderHook(() =>
+      useSendMessage('http://api.test', undefined, undefined, handler),
+    );
+    await act(async () => {
+      await result.current(sessionId, 'codex', undefined, '/mail:summarize');
+    });
+    expect(sendExecutionMessageMock).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        message: 'mail content',
+        mcpPromptOrigin: {
+          serverId: 'mail',
+          name: 'summarize',
+          receipt: 'opaque',
+        },
+      }),
+      expect.anything(),
+    );
+    expect(enqueueOutboundTurnMock).not.toHaveBeenCalled();
+    expect(activeChatsStore.getSnapshot()[sessionId]?.error).toContain(
+      'not confirmed',
+    );
+  });
+
+  it('keeps an MCP slash prompt in the composer while a turn is busy', async () => {
+    activeChatsStore.updateChat(sessionId, {
+      status: 'sending',
+      input: '/mail:summarize',
+    });
+    const handler = vi.fn();
+    const { result } = renderHook(() =>
+      useSendMessage('http://api.test', undefined, undefined, handler),
+    );
+    await act(async () => {
+      await result.current(sessionId, 'codex', undefined, '/mail:summarize');
+    });
+    expect(handler).not.toHaveBeenCalled();
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(activeChatsStore.getSnapshot()[sessionId]).toMatchObject({
+      input: '/mail:summarize',
+      queuedMessages: [],
+    });
+  });
+
   it('keeps shaping instructions across a clarification and reload, then stops when mode is removed', async () => {
     activeChatsStore.updateChat(sessionId, { taskShaping: true });
     const { result } = renderHook(() => useSendMessage('http://api.test'));

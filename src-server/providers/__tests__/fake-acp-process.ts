@@ -1,9 +1,9 @@
 import type {
-  Client,
   ContentBlock,
   PromptResponse,
   StopReason,
-} from '@agentclientprotocol/sdk';
+} from '@agentclientprotocol/sdk/unstable';
+import type { ACPClientCallbacks } from '../../services/acp/acp-bridge-types.js';
 import type { ACPProcessOptions } from '../../services/acp/acp-process.js';
 
 /**
@@ -11,11 +11,11 @@ import type { ACPProcessOptions } from '../../services/acp/acp-process.js';
  * the same constructor-level testing seam codex-adapter.test.ts uses). No
  * real process is spawned; `createClient` is invoked synchronously during
  * `start()` exactly as the real ACPProcess does, handing the test the live
- * `Client` object the adapter built (fs/terminal/ext handlers plus the
+ * callback object the adapter built (fs/terminal/ext handlers plus the
  * adapter's own canonical `requestPermission` override).
  */
 export class FakeAcpProcess {
-  client!: Client;
+  client!: ACPClientCallbacks;
   /**
    * archive#1684: OPTIONAL, and mutable. The adapter's station-control gate
    * distinguishes "the engine answered no" from "there was no initialize
@@ -62,7 +62,7 @@ export class FakeAcpProcess {
 
   async start() {
     if (this.startError) throw this.startError;
-    this.client = this.opts.createClient(undefined as any);
+    this.client = this.opts.createClient();
     return this.initResult;
   }
 
@@ -148,7 +148,7 @@ export class FakeAcpProcess {
     this.loadSessionReplay?.(this.client);
     await this.loadSessionPromise;
   }
-  loadSessionReplay?: (client: Client) => void;
+  loadSessionReplay?: (client: ACPClientCallbacks) => void;
 
   resumeSessionArgs?: {
     sessionId: string;

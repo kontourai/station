@@ -1,0 +1,7 @@
+{
+  "revision": "6895629f64e98a9f910f73e7a9584e47eac88968",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Review round: runtime-routes.ts gained resolveRequestPrincipalId for tool routes, ConfigLoader.saveIntegration/updateIntegration now keep and append untrusted-content receipts, MCPService.saveIntegration forwards attribution. Checked the integration-registry and MCP subregistry paragraphs still match; no module-map claim covers integration receipts, so no edit.","inputs":["docs/architecture/module-map.md","packages/contracts/src/catalog.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/plugins/mcp-service.ts"]}
+  ]
+}

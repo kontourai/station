@@ -396,7 +396,7 @@
    to nothing, and while it animates it contains the row's padding and the
    surface's gap to the composer, which collapse with it. */
 .queued-messages-presence:is([data-phase="entering"], [data-phase="exiting"])
-> *,
+  > *,
 .queued-message-presence:is([data-phase="entering"], [data-phase="exiting"])
   > * {
   overflow: hidden;

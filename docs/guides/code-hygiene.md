@@ -12,7 +12,7 @@ repository against a pinned list.
 
 ## Executable source and contract-test policies
 
-Station pins the registry-published Veritas 1.12.1 package and Oxlint 1.88.0.
+Station pins the registry-published Veritas 1.12.1 package and Oxlint 1.89.0.
 The public `@kontourai/veritas/hygiene/oxlint` plugin is configured by
 `config/code-hygiene.oxlint.json`; the `code-hygiene` Repo Standard selects its
 `npm run lint:hygiene` Evidence Check. That check is required in readiness,

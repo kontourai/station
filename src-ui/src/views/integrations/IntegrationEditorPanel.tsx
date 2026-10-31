@@ -4,6 +4,8 @@ import { LockGlyph } from '../../components/icons/Glyph';
 import { IntegrationGlyph } from '../../components/icons/IntegrationGlyph';
 import { LazyBoundary } from '../../components/LazyBoundary';
 import { IntegrationAccountSection } from './IntegrationAccountSection';
+import { IntegrationTrustReview } from './IntegrationTrustReview';
+import { IntegrationTrustSection } from './IntegrationTrustSection';
 import { OAuthClientSection } from './OAuthClientSection';
 
 const loadSecretBindingPicker = () =>
@@ -44,6 +46,7 @@ export function IntegrationEditorPanel({
   onRawJsonChange,
   onUpdate,
   onUnlock,
+  trustControlsEnabled = false,
 }: {
   editForm: IntegrationViewModel;
   isNew: boolean;
@@ -75,6 +78,7 @@ export function IntegrationEditorPanel({
     updater: (form: IntegrationViewModel) => IntegrationViewModel,
   ) => void;
   onUnlock: () => void;
+  trustControlsEnabled?: boolean;
 }) {
   const isBuiltin = editForm.kind === 'builtin';
   /**
@@ -245,6 +249,22 @@ export function IntegrationEditorPanel({
             integrationId={editForm.id}
             requireSave={secretBindingRequireSave}
             defaultScopes={editForm.oauthClient?.scopes}
+          />
+        )}
+      {/* A legacy setting waiting for a person is shown even without the
+          trust settings preview: until it is decided the server stays off. */}
+      {!isNew && editForm.trustReview && (
+        <IntegrationTrustReview form={editForm} />
+      )}
+      {/* Its settings are not loaded until reviewed, so they are not editable. */}
+      {!isNew &&
+        !editForm.trustReview &&
+        trustControlsEnabled &&
+        (isBuiltin || viewMode === 'form') && (
+          <IntegrationTrustSection
+            form={editForm}
+            locked={locked}
+            onUpdate={onUpdate}
           />
         )}
       {!isNew && !isRuntimeManaged && (

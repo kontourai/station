@@ -1,0 +1,7 @@
+{
+  "revision": "30473c42aa6f1907bb8c997804719a21276b3536",
+
+  "notes": [
+    {"path":"docs/reference/shared.md","note":"Its autoApprove/askBeforeUse mentions describe the shared AgentSpec tool fields, which this diff does not change; ToolDef additions live in contracts/tool.ts, not shared. No edit.","inputs":["docs/reference/shared.md","packages/contracts/src/catalog.ts","packages/contracts/src/tool.ts"]}
+  ]
+}

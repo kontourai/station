@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from 'node:util';
-import type { SetProviderRequest } from '@agentclientprotocol/sdk';
+import type { SetProviderRequest } from '@agentclientprotocol/sdk/unstable';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import {
   type AcpApprovalControl,

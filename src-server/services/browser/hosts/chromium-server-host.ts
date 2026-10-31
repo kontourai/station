@@ -67,6 +67,21 @@ import {
 } from '../station-listeners.js';
 import { ABOUT_BLANK, isAllowedBrowserUrl } from '../url-policy.js';
 
+const WEBRTC_PREFERENCE_READ = `async function(expectedUrl, preference) {
+  try {
+    if (document.readyState !== 'complete')
+      await new Promise(resolve => addEventListener('load', resolve, {once: true}));
+    if (location.href !== expectedUrl) return null;
+    const text = document.body.innerText;
+    if (preference === 'ip_handling_url' && text.trim() === 'Preference not found: webrtc.ip_handling_url')
+      return {urlOverrides: false};
+    const value = JSON.parse(text);
+    return preference === 'ip_handling_policy'
+      ? {policy: value}
+      : {urlOverrides: !Array.isArray(value) || value.length !== 0};
+  } catch { return null; }
+}`;
+
 /** Chromium's own network-error page. It cannot be navigated to directly. */
 const CHROME_ERROR_PAGE = 'chrome-error://chromewebdata/';
 
@@ -777,14 +792,32 @@ export class ChromiumServerHost implements BrowserHost {
     const transport = running.launch.transport;
     let targetId: string | undefined;
     let verified = false;
+    let checking = true;
     const unsubscribe: (() => void)[] = [];
+    const closeProbe = async () => {
+      if (!targetId) return;
+      const closing = targetId;
+      await withTimeout(
+        transport.send('Target.closeTarget', { targetId: closing }),
+        1000,
+        'Preview policy target cleanup',
+      );
+      running.created.delete(closing);
+      const timer = running.pendingUntracked.get(closing);
+      if (timer) clearTimeout(timer);
+      running.pendingUntracked.delete(closing);
+      targetId = undefined;
+    };
     try {
-      const check = async () => {
+      const readPreference = async (
+        preference: 'ip_handling_policy' | 'ip_handling_url',
+      ) => {
+        const url = `chrome://prefs-internals/webrtc.${preference}`;
         running.creating++;
         try {
           ({ targetId } = await transport.send<{ targetId: string }>(
             'Target.createTarget',
-            { url: 'chrome://prefs-internals/' },
+            { url },
           ));
           running.created.add(targetId);
         } finally {
@@ -835,7 +868,7 @@ export class ChromiumServerHost implements BrowserHost {
             return;
           }
           latestCommit = frame;
-          if (snapshotReceived && frame.url === 'chrome://prefs-internals/') {
+          if (snapshotReceived && frame.url === url) {
             document = frame;
             resolveCommit(frame);
           }
@@ -884,7 +917,7 @@ export class ChromiumServerHost implements BrowserHost {
           ),
         );
         await transport.send('Runtime.enable', {}, sessionId);
-        if (replaced) return false;
+        if (replaced) return undefined;
         worldRequested = true;
         const world = await transport.send<{ executionContextId: number }>(
           'Page.createIsolatedWorld',
@@ -898,26 +931,32 @@ export class ChromiumServerHost implements BrowserHost {
           contextId <= 0 ||
           destroyed.has(contextId)
         )
-          return false;
+          return undefined;
         const result = await transport.send<{
           result: { value?: { policy?: unknown; urlOverrides?: unknown } };
         }>(
-          'Runtime.evaluate',
+          'Runtime.callFunctionOn',
           {
             // This internal page reports resolved values, including managed policy.
             // Return only the network-policy fields, never the full preference dump.
-            expression: `(async()=>{try{if(document.readyState!=='complete')await new Promise(resolve=>addEventListener('load',resolve,{once:true}));if(location.href!=='chrome://prefs-internals/')return null;const p=JSON.parse(document.body.innerText).webrtc;return {policy:p?.ip_handling_policy?.value,urlOverrides:p?.ip_handling_url===undefined?false:!Array.isArray(p.ip_handling_url.value)||p.ip_handling_url.value.length!==0};}catch{return null}})()`,
+            functionDeclaration: WEBRTC_PREFERENCE_READ,
+            arguments: [{ value: url }, { value: preference }],
             returnByValue: true,
             awaitPromise: true,
-            contextId,
+            executionContextId: contextId,
           },
           sessionId,
         );
-        return (
-          !replaced &&
-          result.result.value?.policy === 'disable_non_proxied_udp' &&
-          result.result.value.urlOverrides === false
-        );
+        return replaced ? undefined : result.result.value;
+      };
+      const check = async () => {
+        const policy = await readPreference('ip_handling_policy');
+        if (!checking || policy?.policy !== 'disable_non_proxied_udp')
+          return false;
+        await closeProbe();
+        if (!checking) return false;
+        const overrides = await readPreference('ip_handling_url');
+        return overrides?.urlOverrides === false;
       };
       verified = await withTimeout(
         check(),
@@ -927,21 +966,19 @@ export class ChromiumServerHost implements BrowserHost {
     } catch {
       verified = false;
     } finally {
+      checking = false;
       for (const off of unsubscribe) off();
       if (targetId) {
+        const closing = targetId;
         try {
-          await withTimeout(
-            transport.send('Target.closeTarget', { targetId }),
-            1000,
-            'Preview policy target cleanup',
-          );
+          await closeProbe();
         } catch {
           verified = false;
         } finally {
-          running.created.delete(targetId);
-          const timer = running.pendingUntracked.get(targetId);
+          running.created.delete(closing);
+          const timer = running.pendingUntracked.get(closing);
           if (timer) clearTimeout(timer);
-          running.pendingUntracked.delete(targetId);
+          running.pendingUntracked.delete(closing);
         }
       }
     }

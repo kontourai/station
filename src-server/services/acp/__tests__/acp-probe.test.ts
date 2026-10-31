@@ -960,7 +960,7 @@ describe("ACPProbe's client does not fabricate extension answers", () => {
       '/tmp/project',
       (options) => {
         processOptions = options;
-        client = options.createClient(undefined as never);
+        client = options.createClient();
         return process as unknown as ACPProcess;
       },
     );
@@ -1009,7 +1009,7 @@ describe("ACPProbe's client does not fabricate extension answers", () => {
       { warn },
       '/tmp/project',
       (options) => {
-        client = options.createClient(undefined as never);
+        client = options.createClient();
         return process as unknown as ACPProcess;
       },
     );
@@ -1060,7 +1060,7 @@ describe("ACPProbe's client does not fabricate extension answers", () => {
       { warn },
       '/tmp/project',
       (options) => {
-        clients.push(options.createClient(undefined as never));
+        clients.push(options.createClient());
         return process as unknown as ACPProcess;
       },
     );

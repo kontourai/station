@@ -15,12 +15,12 @@
     "@kontourai/station-contracts": "workspace:*",
     "@kontourai/station-shared": "workspace:*",
     "@hono/node-server": "2.1.5",
-    "hono": "4.13.13",
+    "hono": "4.13.14",
     "pg": "8.23.1"
   },
   "devDependencies": {
     "@types/pg": "8.23.1",
-    "@electric-sql/pglite": "0.5.10"
+    "@electric-sql/pglite": "0.5.11"
   },
   "license": "Apache-2.0"
 }

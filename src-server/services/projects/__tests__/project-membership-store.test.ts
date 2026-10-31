@@ -66,7 +66,7 @@ describe('Project membership and invitation authority', () => {
     );
     expect(
       store.accept(offered.token, member, ['member@example.test']),
-    ).toEqual(scope);
+    ).toEqual({ scope, revision: 1 });
     expect(store.require(scope, member, 'view').role).toBe('viewer');
     for (const action of [
       'execute',

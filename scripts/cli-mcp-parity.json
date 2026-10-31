@@ -611,6 +611,10 @@
       "exempt": "person-only",
       "reason": "Preview yields the permission set/digest a person approves; agents must not echo it into an install."
     },
+    "plugin recovery-backups": {
+      "exempt": "person-only",
+      "reason": "Recovery inventory includes operator-local paths and is restricted to the operator."
+    },
     "plugin registry": {
       "missing": 4285,
       "want": "List_registry_plugins"
@@ -1186,6 +1190,10 @@
     },
     "delete_job": {
       "cli": ["schedule delete"]
+    },
+    "device_capture_to_task": {
+      "exempt": "agent-self",
+      "reason": "Captures a controlled device into the calling agent's bound Task; the route refuses non-internal requests."
     },
     "device_close": {
       "exempt": "agent-self",

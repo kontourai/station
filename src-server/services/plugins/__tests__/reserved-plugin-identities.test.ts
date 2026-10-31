@@ -107,6 +107,7 @@ describe('STATION_RESERVED_PLUGIN_IDENTITIES', () => {
       'host-approvals',
       'install',
       'preview',
+      'recovery-backups',
       'reload',
       // #2323 S1: `POST /api/plugins/validate` checks a local plugin folder.
       'validate',

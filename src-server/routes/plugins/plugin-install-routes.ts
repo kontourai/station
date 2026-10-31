@@ -7,6 +7,7 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import type { PluginProviderReadView } from '../../providers/registries/registry.js';
 import { getPluginRegistryProviders } from '../../providers/registries/registry.js';
 import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
+import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
 import { PrincipalUnresolvedError } from '../../services/identity/principal-resolver.js';
 import { isContextSafetyError } from '../../services/orchestration/context-safety.js';
 import {
@@ -55,6 +56,7 @@ import {
   readPluginGrantRecord,
   requiredPermissionsForManifest,
 } from '../../services/plugins/plugin-permissions.js';
+import { listRetainedPluginBackups } from '../../services/plugins/plugin-recovery-inventory.js';
 import { pluginInstallationGeneration } from '../../services/plugins/plugin-runtime-artifact.js';
 import {
   detectPluginConflicts,
@@ -96,6 +98,7 @@ import { personOnly } from './plugin-person-approval.js';
 import { recordProposalCompletion } from './plugin-proposal-routes.js';
 
 interface PluginInstallRouteDeps {
+  recoveryInventoryPreview?: import('../../services/feature-previews/feature-preview-registry.js').FeaturePreviewSelector;
   installationHost?: PluginInstallationHost;
   /** Install trust policy; absent in production, which uses the default. */
   installTrust?: PluginInstallTrustPolicy;
@@ -173,6 +176,52 @@ export function registerPluginInstallRoutes(
   // Sources once installed without their git metadata stay that way after
   // the proposal that named them resolves (#2719).
   const sourceStaging = new PluginSourceStaging(projectHomeDir);
+
+  app.get('/recovery-backups', (c) => {
+    if (
+      getRuntimeAuthenticatedRequestPrincipal(c.req.raw)?.authority !==
+      'operator-credential'
+    )
+      return c.json(
+        { success: false, error: 'Operator credential required' },
+        403,
+      );
+    if (
+      !deps.recoveryInventoryPreview?.select({
+        enabled: () => true,
+        disabled: () => false,
+      })
+    )
+      return c.json(
+        {
+          success: false,
+          code: 'feature_preview_disabled',
+          error:
+            'Enable Plugin recovery inventory in Settings → Advanced → Feature previews.',
+        },
+        403,
+      );
+    try {
+      return c.json({
+        success: true,
+        data: {
+          backups: listRetainedPluginBackups(projectHomeDir),
+          instructions: [
+            'Stop Station and make a separate copy of its home and the retained backup.',
+            'Compare the saved plugin and integrations with the current home, person trust overlays, and grant records; preserve newer person choices.',
+            'Restore only the reviewed components manually. Do not copy the whole registry-install file over the current one.',
+            'Restart Station and review plugin permissions and integrations before enabling the plugin.',
+            'Automated restore is unavailable until a cross-store atomic boundary exists.',
+          ],
+        },
+      });
+    } catch {
+      return c.json(
+        { success: false, error: 'Recovery inventory unavailable' },
+        503,
+      );
+    }
+  });
 
   app.get('/:name/retained-generations', (c) => {
     const history = deps.packageMcpJournal?.history(c.req.param('name'), {

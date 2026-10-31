@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { load } from 'js-yaml';
 import { describe, expect, test } from 'vitest';
+import { VERIFIED_PNPM_SETUP_ACTION } from '../actionlint-gate.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
 const source = readFileSync(
@@ -44,9 +45,7 @@ describe('internal iOS TestFlight cohort workflow', () => {
       (step) => step.run === 'npm run dependencies:ci',
     );
     expect(setup).toBeGreaterThanOrEqual(0);
-    expect(steps[setup].uses).toBe(
-      'kontourai/station/.github/actions/setup-verified-pnpm@4c7804d0d71f4e18d7a0da62fb6db43973481a20',
-    );
+    expect(steps[setup].uses).toBe(VERIFIED_PNPM_SETUP_ACTION);
     expect(steps[setup].with).toBeUndefined();
     expect(node).toBeGreaterThan(setup);
     expect(install).toBeGreaterThan(node);

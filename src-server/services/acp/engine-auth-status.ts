@@ -14,7 +14,7 @@
  * `session/new` and refuse only at the first prompt.
  */
 
-import { RequestError } from '@agentclientprotocol/sdk';
+import { RequestError } from '@agentclientprotocol/sdk/unstable';
 import type { ACPEngineAuthStatusRule } from '@kontourai/station-contracts/acp';
 import type {
   EngineSignInSource,

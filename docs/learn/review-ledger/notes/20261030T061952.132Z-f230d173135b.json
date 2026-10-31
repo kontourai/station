@@ -1,0 +1,13 @@
+{
+  "revision": "6c8b35b3eed8db1d74bed0696e2dbae86edce089",
+
+  "notes": [
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"Opened retained capture and reviewed the source delta c6500dd788f..6c8b35b3eed. Capture depicts operator Paired Devices sign-in/step-up; no application/native continuation headers or local-account ingress override participate. Changed helper excludes only those continuation headers and has no render, operator-session or consent change. Existing capture bytes/digest and historical visual evidence retained, no recapture or new visual/runtime qualification claimed.","inputs":["docs/learn/media/operator-s4-before-sign-in.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"Opened retained capture and reviewed the source delta c6500dd788f..6c8b35b3eed. Capture depicts operator Paired Devices sign-in/step-up; no application/native continuation headers or local-account ingress override participate. Changed helper excludes only those continuation headers and has no render, operator-session or consent change. Existing capture bytes/digest and historical visual evidence retained, no recapture or new visual/runtime qualification claimed.","inputs":["docs/learn/media/operator-s4-after-sign-in.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"Opened retained capture and reviewed the source delta c6500dd788f..6c8b35b3eed. Capture depicts operator Paired Devices sign-in/step-up; no application/native continuation headers or local-account ingress override participate. Changed helper excludes only those continuation headers and has no render, operator-session or consent change. Existing capture bytes/digest and historical visual evidence retained, no recapture or new visual/runtime qualification claimed.","inputs":["docs/learn/media/operator-s4-step-up-review.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"Opened retained capture and reviewed the source delta c6500dd788f..6c8b35b3eed. Capture depicts operator Paired Devices sign-in/step-up; no application/native continuation headers or local-account ingress override participate. Changed helper excludes only those continuation headers and has no render, operator-session or consent change. Existing capture bytes/digest and historical visual evidence retained, no recapture or new visual/runtime qualification claimed.","inputs":["docs/learn/media/operator-s4-after-step-up.png","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

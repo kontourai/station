@@ -31,6 +31,12 @@ Omit `defaultEnabled` (the registry defaults to off), or set it to `false`.
 Do not make binding conditional on the enabled choice: the operator must be
 able to discover an offered preview before enabling it.
 
+Built-in UI-only previews such as `task-collaboration` are registered as UI
+consumers in the registry and read through `useSurfaceVisibilityFlags`. That
+preview reveals member presentation in the Task workspace; room admission and
+its server routes remain governed by their independent authority checks. It does
+not turn membership or a Task share on or off.
+
 ```ts
 const preview = featurePreviews.bind({
   id: 'example-capability',

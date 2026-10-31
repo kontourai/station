@@ -28,7 +28,8 @@ type ToolDenialReason =
   | 'unattended_grant_denied'
   | 'no_approval_channel'
   | 'policy_evaluation_failed'
-  | 'project_tool_policy';
+  | 'project_tool_policy'
+  | 'untrusted_content_denied';
 
 /**
  * `defer` means "Station's policy is not deciding this call; the engine's own
@@ -106,6 +107,16 @@ interface StagedPreToolPolicyDeps {
    * both refuse the call before this is asked. Absent ⇒ no opt-in.
    */
   isUnattendedGranted?(tool: ToolCallContext): boolean;
+  /**
+   * #3483: the person's untrusted-content permission for this call, or
+   * `undefined` when the turn has read no untrusted content or the tool is
+   * declared read-only. `ask` is answered like an authored ask-before-use;
+   * `allow` leaves the decision to the stages below.
+   */
+  untrustedContentPermission?(
+    tool: ToolCallContext,
+    invocation: InvocationContext,
+  ): Promise<'ask' | 'allow' | 'deny' | undefined>;
   logger: {
     warn(message: string, meta?: Record<string, unknown>): void;
     info(message: string, meta?: Record<string, unknown>): void;
@@ -465,6 +476,39 @@ export function createStagedPreToolPolicyEvaluator(
       );
     }
 
+    // A required question. An enforce-mode guardian may still refuse it, but
+    // nothing below (a tool grant, a guardian allow, an unattended opt-in)
+    // can answer it instead of a person.
+    const requiredAsk = async (): Promise<PreToolPolicyDecision> => {
+      const review = await reviewWithGuardian(deps, tool, invocation);
+      if (review.kind === 'decided' && review.decision.behavior === 'deny')
+        return review.decision;
+      if (invocation.delegation?.denyApprovals)
+        return delegatedApprovalDenial(tool.toolName, options.interaction);
+      if (options.interaction === 'managed' && !options.hasInteractiveApproval)
+        return deny(
+          'no_approval_channel',
+          tool.toolName,
+          'requires a person to approve this call.',
+        );
+      return { behavior: 'ask', required: true };
+    };
+
+    const untrusted = await deps.untrustedContentPermission?.(tool, invocation);
+    if (untrusted === 'deny') {
+      deps.logger.warn('Untrusted-content permission refused tool execution', {
+        toolName: tool.toolName,
+        agentSlug: invocation.agentSlug,
+        conversationId: invocation.conversationId,
+      });
+      return deny(
+        'untrusted_content_denied',
+        tool.toolName,
+        "was refused: this turn read content written by others, and this tool is set to refuse after that. Change it in the tool's untrusted-content permission.",
+      );
+    }
+    if (untrusted === 'ask') return requiredAsk();
+
     const approvalName = options.identity?.delegationToolName ?? tool.toolName;
     const mapping = deps.toolNameMapping.get(approvalName);
     const external =
@@ -488,20 +532,7 @@ export function createStagedPreToolPolicyEvaluator(
         deps.spec.tools?.askBeforeUse,
         sourceKey,
       ) === 'ask';
-    if (explicitAsk) {
-      const review = await reviewWithGuardian(deps, tool, invocation);
-      if (review.kind === 'decided' && review.decision.behavior === 'deny')
-        return review.decision;
-      if (invocation.delegation?.denyApprovals)
-        return delegatedApprovalDenial(tool.toolName, options.interaction);
-      if (options.interaction === 'managed' && !options.hasInteractiveApproval)
-        return deny(
-          'no_approval_channel',
-          tool.toolName,
-          'requires a person to approve this call.',
-        );
-      return { behavior: 'ask', required: true };
-    }
+    if (explicitAsk) return requiredAsk();
 
     if (deps.isGranted(tool)) return { behavior: 'allow', toolGrant: true };
 

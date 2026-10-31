@@ -82,9 +82,9 @@ function oldFnv32(value: string): string {
 
 describe('SharedWorkingStateEditingCapability', () => {
   test('uses canonical SHA-256 batch identity rather than the known FNV32 collision', () => {
-    const left = insert('same-id', 'collision-4pvu');
-    const right = insert('same-id', 'collision-b3ea');
-    // These equal-length texts collide under the prior FNV32 JSON digest.
+    const left = { ...insert('same-id', 'collision-4pvu'), schemaVersion: 1 };
+    const right = { ...insert('same-id', 'collision-b3ea'), schemaVersion: 1 };
+    // The captured collision includes the original v1 operation envelope.
     expect(oldFnv32(JSON.stringify([left]))).toBe(
       oldFnv32(JSON.stringify([right])),
     );

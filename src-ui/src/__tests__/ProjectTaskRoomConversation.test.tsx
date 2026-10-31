@@ -13,6 +13,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   realGuard: false,
+  collaboration: false,
   records: [] as ProjectTaskRoomBrowserRecord[],
   historyFetching: false,
   historyHasNext: false,
@@ -49,6 +50,10 @@ vi.mock('../contexts/ApiBaseContext', () => ({
 }));
 vi.mock('../contexts/open-chats-store', () => ({
   openChatsStore: { openConversation: mocks.openConversation },
+}));
+vi.mock('../hooks/useSurfaceVisibilityFlags', () => ({
+  useSurfaceVisibilityFlags: () =>
+    new Set(mocks.collaboration ? ['task-collaboration'] : []),
 }));
 vi.mock('../components/chat/LazyMarkdown', () => ({
   LazyMarkdown: ({ children }: { children: string }) => <div>{children}</div>,
@@ -172,6 +177,7 @@ beforeEach(() => {
     },
   ]);
   mocks.realGuard = false;
+  mocks.collaboration = false;
   mocks.records = [];
   mocks.historyFetching = false;
   mocks.historyHasNext = false;
@@ -213,6 +219,26 @@ test('groups consecutive human messages and keeps names, avatars and times', () 
   expect(within(list).getAllByText('Alice')).toHaveLength(1);
   expect(list.querySelectorAll('time')).toHaveLength(2);
   expect(list.querySelector('.task-room-avatar')).toBeTruthy();
+});
+test('reveals a member author name when Task collaboration is enabled', () => {
+  const member = record(1);
+  mocks.records = [
+    { ...member, actor: { ...member.actor, standing: 'member' } },
+  ];
+  const view = mount();
+  expect(screen.getByText('Teammate')).toBeTruthy();
+  expect(screen.queryByText('Alice')).toBeNull();
+  mocks.collaboration = true;
+  view.rerender(
+    <QueryClientProvider client={new QueryClient()}>
+      <ProjectTaskRoomConversation
+        taskId="task-1"
+        projectSlug="project"
+        taskCreatedAt="2026-10-01T00:00:00.000Z"
+      />
+    </QueryClientProvider>,
+  );
+  expect(screen.getByText('Alice')).toBeTruthy();
 });
 test('agent answers open in the dock, can be kept, and replies continue the exact session in a thread', async () => {
   mocks.records = [record(1, true), record(2, true)];

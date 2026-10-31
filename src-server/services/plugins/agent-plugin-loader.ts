@@ -34,13 +34,18 @@ import type {
   SkillExperienceIdentityV1,
   SkillExperienceInventoryV1,
 } from '@kontourai/station-contracts/skill-experience';
-import type { ToolDef, ToolMetadata } from '@kontourai/station-contracts/tool';
+import {
+  DEFAULT_EXTERNAL_CONTENT_TRUST,
+  type ToolDef,
+  type ToolMetadata,
+} from '@kontourai/station-contracts/tool';
 import { parseAgentPluginManifest } from '@kontourai/station-shared/agent-plugin-manifest';
 import {
   bindMCPDefinitionAdmission,
   MCPLocalCustodyError,
 } from '@kontourai/station-shared/mcp';
 import { readValidatedSkillExperiences } from '@kontourai/station-shared/skill-experience-author';
+import { stationCuratedContentTrust } from '@kontourai/station-shared/station-curation';
 import {
   frontmatterToProperties,
   parseFrontmatter,
@@ -1398,6 +1403,9 @@ export class AgentPluginLoader {
           tools.push({
             id,
             kind: 'mcp',
+            contentTrust:
+              stationCuratedContentTrust({ endpoint: server.url }) ??
+              DEFAULT_EXTERNAL_CONTENT_TRUST,
             enabled: true,
             displayName: `${serverName} (${manifest.name})`,
             transport: 'streamable-http',
@@ -1489,6 +1497,7 @@ export class AgentPluginLoader {
         tools.push({
           id,
           kind: 'mcp',
+          contentTrust: DEFAULT_EXTERNAL_CONTENT_TRUST,
           enabled: true,
           displayName: `${serverName} (${manifest.name})`,
           transport: 'stdio',

@@ -106,6 +106,13 @@ const LazyTaskBasisWorkspacePane = lazy(() =>
     ({ BasisWorkspacePane }) => ({ default: BasisWorkspacePane }),
   ),
 );
+const LazyTaskOverviewTimeline = lazy(() =>
+  import('./task-workspace/TaskOverviewTimeline').then(
+    ({ TaskOverviewTimeline }) => ({
+      default: TaskOverviewTimeline,
+    }),
+  ),
+);
 const LazyTaskReviewTab = lazy(() =>
   import('./task-workspace/review/TaskReviewTab').then(({ TaskReviewTab }) => ({
     default: TaskReviewTab,
@@ -222,7 +229,8 @@ function isTaskNotFound(error: unknown): boolean {
 }
 
 export function TaskWorkspaceView({ taskId }: { taskId: string }) {
-  const reviewEnabled = useSurfaceVisibilityFlags().has('task-review');
+  const previews = useSurfaceVisibilityFlags();
+  const reviewEnabled = previews.has('task-review');
   const { apiBase } = useApiBase();
   const requestScope = useHostRequestAuthorityScope();
   // Navigation survives authority verification remounts; protected pane state does not.
@@ -299,6 +307,7 @@ export function TaskWorkspaceView({ taskId }: { taskId: string }) {
           projectSlug={taskProject.slug}
           projectId={taskProject.id}
           reviewEnabled={reviewEnabled}
+          collaborationEnabled={previews.has('task-collaboration')}
           tab={tab}
           setTab={setTab}
         />
@@ -433,6 +442,7 @@ function TaskWorkspaceContent({
   projectSlug,
   projectId,
   reviewEnabled,
+  collaborationEnabled,
   tab,
   setTab,
 }: {
@@ -441,9 +451,11 @@ function TaskWorkspaceContent({
   projectSlug: string;
   projectId: string;
   reviewEnabled: boolean;
+  collaborationEnabled: boolean;
   tab: string;
   setTab: (tab: string) => void;
 }) {
+  const { updateParams } = useNavigationActions();
   const references = useMemo(() => taskReferences(graph), [graph]);
   // AW-4: the list is derived from what this Station has actually
   // installed, not from a hardcoded filter. An optional experience appears
@@ -535,6 +547,7 @@ function TaskWorkspaceContent({
     <div className="page page--full task-workspace">
       <TaskRoomHeader
         task={graph.task}
+        collaborationEnabled={collaborationEnabled}
         projectSlug={projectSlug}
         projectId={projectId}
         onDetails={() => setTab('Details')}
@@ -642,6 +655,23 @@ function TaskWorkspaceContent({
         aria-labelledby="task-tab-Overview"
       >
         <TaskRoomRail task={graph.task} onBrief={() => setTab('Plan')} />
+        {reviewEnabled && (
+          <Suspense fallback={<SkeletonBlock label="Loading Timeline" />}>
+            <LazyTaskOverviewTimeline
+              taskId={graph.task.id}
+              taskCreatedAt={graph.task.createdAt}
+              visible={tab === 'Overview'}
+              onOpenCapture={(id) =>
+                updateParams({
+                  taskView: 'review',
+                  reviewKind: 'capture',
+                  reviewItem: id,
+                  reviewThread: null,
+                })
+              }
+            />
+          </Suspense>
+        )}
         <TaskRelationships task={graph.task} kind="children" />
         <div id="task-deliverables">
           <TaskRoomResults task={graph.task} />

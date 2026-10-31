@@ -23,8 +23,11 @@ may persist snapshots, send operations, resolve human/agent principals, and
 obtain the current Project/Task grant; none of those choices change the
 convergence Interface.
 
-The current schema is `1`. Peers explicitly offer versions and select v1, or
-receive `unsupported_version`; there is no implicit downleveling. Stable opaque
+New operations and run snapshots use schema `2`. Peers must explicitly offer
+v2 for resync; v1-only peers receive `unsupported_version`, with no implicit
+downleveling. Already admitted v1 operations remain readable for duplicate
+recognition and delayed delivery. Stored v1 snapshots and receipts retain their
+original schema and identity until an accepted document mutation writes v2. Stable opaque
 identities are `documentId`, `replicaId`, `actorId`, `operationId`, atom ID, and
 the content-addressed `RevisionId`. An actor's `displayLabel` is attribution
 only. Authorization keys on the server-resolved `actorId`, never a label.
@@ -90,9 +93,14 @@ write become current simply because it carries a valid historical operation.
 Concurrent inserts use a deterministic reference order: siblings after the
 same predecessor atom are ordered by stable atom ID (`operationId:index`) with
 an explicit UTF-16 code-unit comparator, never `localeCompare`; each
-operation's characters form a predecessor chain. Deletes mark atoms as
-tombstones. Text projection is iterative, so a deeply nested document does not
-depend on the JavaScript call-stack depth. The implementation is an RGA-style reference algorithm; that is an
+operation's characters form a predecessor chain. The v2 representation stores
+one run per insert, splitting only where deletions change visibility. A deleted
+range retains its insertion identity, scalar start, length and predecessor,
+with `text: null`; adjacent deleted ranges from the same insertion merge.
+Deleted text payloads are discarded, while every old scalar position remains
+addressable for delayed inserts, deletes and retries. Text projection splits
+runs at branch anchors and traverses iteratively, without expanding tombstone
+ranges or depending on JavaScript call-stack depth. The implementation is an RGA-style reference algorithm; that is an
 Implementation choice, not a third-party or Station public wire format. It was
 chosen over OT because the contract requires offline permutations and replay
 without a central transform sequence, and over importing a CRDT package because
@@ -104,34 +112,98 @@ implementation.
 ## Revision, resync, and compaction
 
 The revision is a SHA-256 digest of a recursively canonicalized projection of
-schema version, document ID, atom graph/tombstones, and known operation IDs
+schema version, document ID, canonical runs/tombstone ranges, and known operation IDs
 plus canonical operation digests and every deferred operation's ID, digest,
 and admission class. Thus two replicas with identical visible text but
 different admitted pending work have different revisions and cannot falsely
 claim an empty resync.
 It is therefore independent of arrival order and attribution labels. A snapshot
-contains that graph, its revision, scope, operation-ID digest tombstones, and
+contains those runs, its revision, scope, operation-ID digest tombstones, and
 deferred operations with their admission class. Its checkpoint is required to
 equal its revision. Restore validates scalar types, unique IDs, atom
 predecessor closure/acyclicity, atom-owner/known-operation consistency,
 deferred consistency/bounds, and the recomputed revision before it is accepted.
-Predecessor closure and cycle validation uses a linear color traversal, not a
-per-atom path walk.
+Run positions must cover each insertion from zero without gaps or overlaps.
+Restore checks predecessor closure and cycles over runs, so a deleted range
+does not require per-character allocation. The v1 reader retains its original
+atom-graph and revision validation.
 
 `resync(afterRevision, maxOperations, offeredVersions)` returns an ordered
 delta only when the exact predecessor remains in the configured bounded
 in-memory replay window and the count fits `maxOperations`. A request cannot
 widen the configured retention bound. Otherwise it returns a verified
 snapshot; it never invents continuity across a compacted or unknown revision.
-`compact()` removes only replay payload history. It retains the atom graph and
-operation identity/digest tombstones, and includes pending causal work in the
-returned snapshot, so the resulting revision remains provable and an old retry
-remains a duplicate rather than new work.
+`compact()` drops replay payload history and coalesces adjacent ranges.
+Canonical snapshots and revision hashes always use the same normalized runs,
+so compaction never changes revision identity or convergence. Operation
+identity/digest tombstones and pending causal work remain, so an old retry is
+still a duplicate. These identities still grow with edits: this is bounded
+document storage, not unlimited lifetime editing. The worker explicitly refuses
+`document-full` before committing a snapshot that exceeds the shared 512 KiB
+bound; the evidence step uses that same constant and admission measure.
+
+Each save retains operation identity/digest metadata, about 180 B for a small
+editor save. The per-document lifetime is therefore roughly 2.5–3k saves before
+an explicit `document-full` error, depending on text, operation IDs and run
+fragmentation. This is a storage estimate, not a measured editor throughput
+guarantee. With runs, the 256 KiB visible-text and 768 KiB evidence-record limits
+are reachable; the worker pre-check covers both as well as the 512 KiB snapshot
+limit before committing.
+
+Writes containing an insertion leave a 16 KiB deletion reserve in both snapshot
+and evidence-record budgets. The worker also preserves the snapshot reserve for
+diagnostic bulk seeds that skip evidence publication. A person can use that
+headroom to delete inside a live run after even a one-character insertion is
+refused: splitting the run and retaining the deletion's digest can increase
+stored bytes despite reducing visible text. Deletions may spend the reserve;
+it is finite, so arbitrarily fragmented bulk deletions or indefinitely repeated
+deletion saves can still reach `document-full`. Refusal rolls back the entire
+batch without leaving a publication pending. Ordinary saves coalesce an unclaimed candidate even when the Station-wide
+evidence ledger is full. A requested immutable reference can still be refused
+by that separate ledger cap (#4055).
 
 Both retained replay and deferred admission are bounded configuration: replay
 retention, deferred operation count, and deferred UTF-8 payload bytes have
 safe defaults and fail closed with `deferred_limit_exceeded`; a response limit
 cannot expand retained history.
+
+## Stored documents and receipt compatibility
+
+The v1 reader reconstructs the old writer's exact sorted atom snapshot and
+`swsr-v1` revision, including deleted character values. Read, evidence import,
+pending publication drain, and receipt verification do not upgrade it. On the
+next accepted mutation the document writes runs with an `swsr-v2` revision.
+Old operation IDs/digests and all atom positions survive that transition; the
+existing SQLite tables and 512 KiB CHECK remain unchanged. Rejected writes do
+not migrate stored bytes.
+
+Receipt identity still hashes the full canonical snapshot. A receipt made
+from v2 therefore has a new identity, while existing v1 receipts verify against
+their original snapshot and retain their identity. New receipts may name old
+receipts as parents. Neither old receipts nor their attestations are rewritten.
+The pre-v2 binary at `03728690b3e` already has an exact snapshot-schema fence,
+following the room v4/v5 pattern of rejecting an unsupported schema instead of
+downleveling it. Its `SharedWorkingState.#restore` rejects schema 2 with
+`shared working-state snapshot is malformed`. The working-state worker's
+`load` catches that exception and returns unavailable; both `read` and `settle`
+refuse, without constructing or persisting an empty replacement. The runtime
+preserves unavailable and the document route returns HTTP 503 `Room unavailable`.
+No additional room-history fence is needed for this format change. This
+downgrade path was traced in source; running an older binary on a v2 home is
+still a separate validation obligation. Rollback after a v2 write requires a
+compatible reader or restoring a pre-upgrade home backup. Never remove the
+snapshot row to make an older binary open it.
+The checked-in `shared-working-state-v1.json` fixture was captured from the
+actual v1 writer and evidence module on the pinned main base, rather than
+synthesized by the new codec.
+
+Task Review stores the original opaque revision and quote outside the document.
+After a v1 plan is saved as v2, quote relocation uses the current text, without
+interpreting the `swsr-v1` or `swsr-v2` prefix. A quote that still resolves stays
+Open; the persisted thread retains its original revision and the projection
+reports the current v2 revision. The Review document chip shows a compact
+working revision (schema prefix plus eight digest characters), with the full
+current revision in its title; the transition chip can span v1 and v2.
 
 ## Evidence and telemetry
 
@@ -150,3 +222,11 @@ The Module emits `station.shared_working_state.operations` with bounded
 `operation` (`apply|resync|compact`) and outcome attributes. It records protocol
 health without adding document contents, labels, identities, or correlation
 values to telemetry.
+
+The run-format regression uses a 12,000-character room seed through the real
+worker and evidence bridge. The worker churn test isolates 2,000 insert/delete
+operations from the unchanged Station-wide receipt cap, checks the persisted
+snapshot bound, and reopens SQLite halfway through. Seeded randomized tests
+compare compacted/restored delivery permutations with an independent
+per-character RGA oracle, including concurrent edits to deleted anchors and
+Unicode. These tests do not claim unlimited edit history or repair #4055.

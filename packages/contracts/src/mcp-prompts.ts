@@ -31,4 +31,21 @@ export interface AgentMcpPromptRun {
   serverId: string;
   name: string;
   text: string;
+  /** This Station can carry the origin into a supported foreground turn. */
+  turnOriginSupported?: true;
+  /** Opaque, short-lived proof binding origin and text to this prompt run. */
+  originReceipt?: string;
+}
+
+export interface AgentMcpPromptOrigin {
+  serverId: string;
+  name: string;
+  receipt: string;
+}
+
+/** Server-verified companion; never accepted from a public send. */
+export interface VerifiedMcpPromptOrigin {
+  serverId: string;
+  name: string;
+  untrusted: boolean;
 }

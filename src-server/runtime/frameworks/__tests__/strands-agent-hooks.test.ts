@@ -6,6 +6,11 @@ import {
 import { describe, expect, test, vi } from 'vitest';
 import { createMCPToolProvenanceGeneration } from '../../../services/orchestration/mcp-tool-provenance.js';
 import { createStagedPreToolPolicyEvaluator } from '../../agents/pre-tool-policy.js';
+import {
+  createBuiltinVendedTool,
+  createBuiltinVendedToolDef,
+  getBuiltinVendedToolIdentity,
+} from '../../tools/vended-tool-compat.js';
 import type { ToolCallDenial } from '../../types.js';
 import {
   bindStrandsInvocationContext,
@@ -26,6 +31,29 @@ function createHooksRegistry() {
 }
 
 describe('wireStrandsAgentHooks', () => {
+  test('the tool gate forwards the identity of the loaded built-in tool', async () => {
+    const registry = createHooksRegistry();
+    const beforeToolCall = vi.fn().mockResolvedValue(true);
+    const tool = createBuiltinVendedTool(
+      'agent-a',
+      createBuiltinVendedToolDef('file-editor')!,
+    )!;
+    wireStrandsToolGate({
+      strandsAgent: { addHook: registry.addHook } as any,
+      hooks: { beforeToolCall },
+      deniedToolCalls: new Map(),
+      invocationCtx: { agentSlug: 'agent-a' },
+      findBuiltinToolIdentity: (name) =>
+        name === tool.name ? getBuiltinVendedToolIdentity(tool) : undefined,
+    });
+    await registry.callbacks.get(BeforeToolCallEvent)({
+      toolUse: { name: tool.name, toolUseId: 'tool-1', input: {} },
+    });
+    expect(beforeToolCall).toHaveBeenCalledWith(
+      expect.objectContaining({ builtin: { integrationId: 'file-editor' } }),
+      expect.anything(),
+    );
+  });
   test('marks denied tool calls and forwards after-tool hooks', async () => {
     const registry = createHooksRegistry();
     const deniedToolCalls = new Map<string, ToolCallDenial>();

@@ -1,0 +1,7 @@
+{
+  "revision": "db92f39618007751d2b1e6a58908b27cd78d6cc5",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"Transitive dependent of connections.md; the only change there replaced a literal private address with a description of refused ranges in the MCP subregistry section. This guide makes no claim about catalog endpoints.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]}
+  ]
+}

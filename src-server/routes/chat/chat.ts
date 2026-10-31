@@ -24,6 +24,7 @@ import {
 import {
   INTERNAL_TURN_CORRELATION_HEADER,
   readAuthorizedTurnCorrelationHandoff,
+  readMcpPromptOriginRelay,
   readNativeForegroundRelayCompanion,
   readNativeMemoryRelayCompanion,
   readNativeOutputRelayCompanion,
@@ -163,6 +164,9 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
       : undefined;
     const skillExperienceContext = trustedRelay
       ? readSkillExperienceRelayContext(relayHandoff)
+      : undefined;
+    const mcpPromptOrigin = trustedRelay
+      ? readMcpPromptOriginRelay(relayHandoff)
       : undefined;
     const nativeMemory = trustedRelay
       ? readNativeMemoryRelayCompanion(relayHandoff)
@@ -363,6 +367,7 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
         // facade holds no state of its own — see chat-turn-dedup.ts.
         dedupStore: new ChatTurnDedupStore(ctx.orchestrationEventStore),
         turnCorrelation,
+        ...(mcpPromptOrigin ? { mcpPromptOrigin } : {}),
         // A relay thread that is not this request's own conversation is
         // ignored, never trusted for another conversation's approvals.
         ...(relayThread && relayThread === options.conversationId

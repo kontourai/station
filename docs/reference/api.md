@@ -612,6 +612,29 @@ Both routes are personal-runtime only (hosted requests get `404`), and no
 Station Control tool names them. See
 [Tracker-backed Tasks](../design/tracker-backed-tasks.md).
 
+## Account-bound Task room access
+
+On a personal Station, an account-bound Device may reach the exact Task room
+leaves `GET /api/tasks/:taskId/room`, `/room/history`, `/room/document` and
+`/room/events`, and `POST /room/messages`, `/room/live` and `/room/edit-plan`.
+Reads require `orchestration:read`; POSTs require `orchestration:operate`.
+The resolved account must have current Project membership and the Task must be
+explicitly shared to that exact Project and Task incarnation. `view` admits
+room reads and presence, `discuss` admits messages, and `edit` admits edit
+planning. An unshared Task or a membership action refused by the room returns
+404; transport and account gates can refuse earlier. The member
+revision and current transport/account authority are checked again before
+effects and delivery. Membership changes wake subscribed streams; an invalid
+captured admission closes the stream, and the 15-second idle recheck remains.
+
+Account-bound Devices cannot settle `/room/batches` or reach room attachments,
+memory, review or agent-request leaves in this slice; the discovery response
+does not advertise document writing for them. Member-started agent turns are
+not part of this delivery. The default-off `task-collaboration` preview changes
+member presentation, not authorization. These are personal runtime routes;
+local route and fixture-render evidence does not establish hosted or real
+two-person/device acceptance.
+
 ## Task room attachments
 
 Personal Task rooms expose these authenticated routes:
@@ -1404,7 +1427,11 @@ Engine OAuth MCP delivery uses the internal loopback transport
 session-and-server-scoped Station credential; a paired API credential cannot
 replace it. Station injects the remote bearer and owns refresh. See
 [OAuth MCP setup](../guides/connections.md#connect-an-oauth-mcp-server-to-an-agent)
-for lifetime and failure behavior.
+for lifetime and failure behavior. For a server a catalog added, the proxy
+connects only to addresses it checked, and in a session that read untrusted
+content a `tools/call` takes the tool's untrusted-content permission; a
+refusal is a JSON-RPC error with HTTP 403
+([coverage](../design/mcp-subregistry-curation.md#coverage-and-gaps)).
 
 These routes manage MCP integration definitions through the
 [MCP service](../../src-server/services/plugins/mcp-service.ts) and
@@ -1465,7 +1492,30 @@ values; clients use the returned metadata when editing. A failed lookup returns
 `{success: true}`. Environment updates are merged by key: omission preserves
 stored values, `{env: {}}` clears nothing, and removal uses
 `removeSecretEnvKeys`. Package-supplied definitions are read-only; the MCP
-service refuses changes that would create a shadow copy.
+service refuses changes that would create a shadow copy. An explicit person edit or reset of
+`contentTrust`, `untrustedContentPermissions` or `trustReadOnlyHints`, through
+this route or `POST /integrations`, appends a receipt to
+`untrustedContentChanges` (time, the authenticated request principal when
+known, the new value; last 50 kept), even when the value already equals the default.
+Receipts in the request are ignored and the stored history survives a replacement
+while the integration remains present
+([design](../design/mcp-subregistry-curation.md#untrusted-content-and-outbound-tools)).
+
+The list and read responses carry `engineCoverage`: for each external engine
+(`claude`, `codex`, `acp`), `station-gated`, `engine-direct` or
+`not-delivered`, derived from the transport and how Station delivers the
+server. An integration whose legacy trust settings could widen what runs and
+whose ownership cannot be verified is listed and read with `trustReview`
+(`fields`: the stored values, not applied) and stays unloaded.
+`POST /integrations/:id/trust-review` with `{"decision": "keep" | "reset"}`
+resolves it for the operator signed in as a person (403 otherwise; 409 when
+there is nothing to review) and records a receipt naming them.
+
+`GET /integrations/untrusted-content/conversations/:conversationId` returns
+whether a conversation is marked as having read untrusted content, and its
+clearance receipts. `POST .../:conversationId/clear` (`*` clears every
+mark) clears it for the operator signed in as a person and returns the
+receipt; agents' station-control calls cannot reach either route.
 
 ### Connected accounts (#3279)
 
@@ -5054,8 +5104,11 @@ same receipt.
 
 ### List Available Integrations (Registry)
 
-`GET /api/registry/integrations` returns `{success: true, data}` after the route's
-ID filtering, first-ID deduplication, and display-text cleanup.
+`GET /api/registry/integrations` returns `{success: true, data, mcpSources}` after the route's
+ID filtering, first-ID deduplication, and display-text cleanup. Entries from an
+MCP subregistry carry `mcpServer` (auth mode, derived qualification and the
+reasons Add is refused); `mcpSources` lists each subregistry source's freshness,
+last error and refused entries ([design](../design/mcp-subregistry-curation.md)).
 
 ### List Installed Integrations (Registry)
 
@@ -7144,7 +7197,11 @@ are redacted. Refusals include
 The bound-only `/api/browser-agent/capture-to-task` operation derives the Task
 from the Session execution binding and returns `{ok:true,captureId,commit,digest,
 screenshot:{mimeType,data}}`; missing Task binding returns `no_task_binding`.
-See [Browser capture](../guides/browser-workspace.md#capture-a-screen-for-task-review).
+A bound lead Session can also call station-control `device_capture_to_task`
+with an authorized device session. The Task is derived from the binding; the
+person capture endpoint above remains Browser-only. See
+[device capture](../guides/mobile-device-workspace.md#capture-a-device-screen-to-a-task)
+and [Browser capture](../guides/browser-workspace.md#capture-a-screen-for-task-review).
 
 Owners: [review routes](../../src-server/routes/orchestration/task-review.ts),
 [artifact resolution](../../src-server/services/projects/task-review-module.ts),

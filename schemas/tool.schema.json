@@ -9,6 +9,28 @@
     "credentialName": {
       "type": "string",
       "pattern": "^(?!(?:__proto__|constructor|prototype)$)[\\s\\S]+$"
+    },
+    "untrustedContentPermission": {
+      "type": "string",
+      "enum": ["ask", "allow", "deny"]
+    },
+    "untrustedContentPermissions": {
+      "type": "object",
+      "description": "What happens before this server's non-read-only tools run in a turn that has read untrusted content (#3483). Absent means ask.",
+      "properties": {
+        "default": { "$ref": "#/definitions/untrustedContentPermission" },
+        "tools": {
+          "type": "object",
+          "maxProperties": 500,
+          "propertyNames": {
+            "pattern": "^(?!(?:__proto__|constructor|prototype)$)[\\s\\S]{1,200}$"
+          },
+          "additionalProperties": {
+            "$ref": "#/definitions/untrustedContentPermission"
+          }
+        }
+      },
+      "additionalProperties": false
     }
   },
   "properties": {
@@ -317,6 +339,50 @@
       },
       "required": ["owner"],
       "additionalProperties": false
+    },
+    "contentTrust": {
+      "type": "string",
+      "enum": ["untrusted", "trusted"],
+      "description": "untrusted: the server returns content written by others, such as email (#3483). Absent means trusted."
+    },
+    "untrustedContentPermissions": {
+      "$ref": "#/definitions/untrustedContentPermissions"
+    },
+    "trustReadOnlyHints": {
+      "type": "boolean",
+      "description": "Honor this server's read-only tool hints for the untrusted-content permission even when contentTrust is untrusted (#3483)."
+    },
+    "untrustedContentPersonOwned": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": ["contentTrust", "permissions", "trustReadOnlyHints"]
+      },
+      "description": "Storage-owned fields controlled by a person; incoming values are ignored."
+    },
+    "untrustedContentChanges": {
+      "type": "array",
+      "maxItems": 50,
+      "description": "Server-written receipts for changes to contentTrust, untrustedContentPermissions and trustReadOnlyHints.",
+      "items": {
+        "type": "object",
+        "required": ["at"],
+        "properties": {
+          "at": { "type": "string" },
+          "by": { "type": "string" },
+          "source": { "const": "local-cli-operator" },
+          "contentTrust": {
+            "type": "string",
+            "enum": ["untrusted", "trusted"]
+          },
+          "permissions": {
+            "$ref": "#/definitions/untrustedContentPermissions"
+          },
+          "trustReadOnlyHints": { "type": "boolean" }
+        },
+        "additionalProperties": false
+      }
     },
     "oauthClient": {
       "type": "object",

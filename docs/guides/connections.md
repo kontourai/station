@@ -1524,6 +1524,105 @@ and account. Portable preparation and reproducible recipes remain owned by
 [#2875](https://github.com/kontourai/station/issues/2875) and
 [#3759](https://github.com/kontourai/station/issues/3759).
 
+## Integrations from MCP subregistries
+
+**Registry → Integrations** lists Station's curated MCP servers under
+**Station curated**. Each card shows what Station checked:
+
+- **Station qualified**: Station checked the endpoint and sign-in, and
+  **Add** works today.
+- **Checked, needs your OAuth client**: addable, but you enter an OAuth
+  client you registered with the provider before signing in. Shown only once
+  Station supports such clients.
+- **Checked, not available yet**: the card lists why, for example sign-in
+  that needs an OAuth client you register with the provider.
+- **Unqualified**: from a source Station has not checked.
+
+The detail shows the sign-in mode, any vendor launch stage, and under
+**Details** the server name, version, endpoint and check date. **Add** stores
+the server turned off. Turn it on and choose **Connect your account** under
+**Connections → Tools**; each person signs in with their own account. The
+[design note](../design/mcp-subregistry-curation.md) lists the curated
+servers, the bounds and the evidence.
+
+An operator can add one more subregistry with `STATION_MCP_SUBREGISTRY_URL`.
+Its entries are unqualified. When it cannot be reached, its last saved copy
+is shown as offline and cannot be added from until it is refreshed. A
+catalog entry pointing at this host or a private network (for example
+loopback, a private range or `localhost`) cannot be added unless the operator
+sets `STATION_MCP_SUBREGISTRY_ALLOW_PRIVATE_ADDRESSES=1`. The same check runs
+on every address the server's name resolves to when Station connects, so a
+name that later points at a private address is refused.
+
+### Tools after untrusted content
+
+Some servers return content written by others, such as email. In a
+Station-engine turn that has read such content, Station asks before running
+a tool, even one the Agent auto-approves, unless the tool's trusted server
+declares it read-only. For Claude Code, Codex and ACP, Station applies the
+same permission to the MCP calls it carries (station-control and servers
+signed in through Station); **Other engines** in a server's trust settings
+shows when an engine connects to the server directly, where Station can't
+gate its calls. A server classified untrusted cannot exempt its own
+tools that way unless you set `trustReadOnlyHints`.
+
+Station defaults external integrations outside its bundled curated catalog to
+`trusted`. The bundled catalog supplies Station's reviewed classification;
+for example, Gmail is untrusted. Plugins, external registries and CLI imports
+cannot supply trust settings. Existing integrations without a classification
+were already treated as trusted, so upgrading does not change that behavior.
+Your trust settings and receipts survive a plugin retiring and later
+reintroducing the same integration. Deleting an integration yourself removes
+its saved trust settings and receipts.
+
+Older saved trust settings that allow more than Station's defaults, and
+whose owner Station cannot confirm, are not applied. The server stays off and
+shows **Needs your review** in **Connections → Tools**. Choose **Keep these
+settings** or **Use Station defaults**; either records a receipt with your
+name.
+
+Enable **Content trust settings** under **Settings → Advanced → Feature previews**,
+then open a server in **Connections → Tools** to change its classification,
+default, individual tool permissions, and read-only hints. The panel shows
+the recorded change history. For a writable integration, you can also save
+`contentTrust: "untrusted"` through the operator-gated `PUT /api/integrations/:id`
+API. The API records a receipt for the person making the change. Integration
+JSON can also be edited locally, without a receipt.
+An unrecorded local edit is not protected from a later plugin publication;
+use the API for a persistent person choice.
+Live Agent Plugin contributions accept these trust fields through the same API;
+their command and endpoint remain package-owned. For example:
+
+```json
+{
+  "contentTrust": "untrusted",
+  "untrustedContentPermissions": {
+    "default": "ask",
+    "tools": { "create_issue": "allow", "send_message": "deny" }
+  }
+}
+```
+
+`allow` means untrusted content adds no question and the tool's usual
+permission applies; `deny` refuses. Set `contentTrust` to `trusted` for a
+server whose content you trust. API edits record the authenticated person.
+The same per-tool permissions apply to Station's installed built-ins: use the
+integration API for `bash`, `file-editor`, or `http-request`, with tool keys
+`bash`, `fileEditor`, or `http_request` respectively. If a tool's loaded
+identity cannot be verified, Station asks rather than applying its allow entry.
+Once a conversation has read such content, its later turns keep asking, even
+after a restart, until the operator clears the mark with
+`POST /api/integrations/untrusted-content/conversations/:id/clear`, which
+records who cleared it.
+Delegated children share the mark both ways. Station's own engine also marks
+turns sent from untrusted MCP prompts. Prompt steering and prompt sends to
+another Station or an external engine are refused until their origin can be
+carried safely; see the
+[coverage notes](../design/mcp-subregistry-curation.md#coverage-and-gaps).
+An unconfirmed MCP prompt send is not automatically replayed; inspect the
+conversation before running it again. Prompt receipts expire after ten minutes
+or a Station restart, so an expired prompt must be run again.
+
 ## Connect an OAuth MCP server to an Agent
 
 Obtain the outside-agent MCP endpoint from the remote workspace's connection
@@ -1713,7 +1812,8 @@ Two independent layers enforce this:
 - **The integration writers.** The shared integration writer applies these
   rules to the settings, the API, registry installs, a plugin's required
   tools and the binding operations. A plugin's bundled integrations are
-  checked against the same rules before they are copied, and the CLI import
+  checked against the same rules inside locked publication on install, update,
+  rollback and restore; bundled binding references are refused. The CLI import
   checks them before writing. Registry, plugin and imported definitions never
   carry a secret binding, and a source with a bound secret cannot be replaced
   from a registry; unbind first.

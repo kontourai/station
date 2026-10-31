@@ -8,6 +8,7 @@ import {
   createStationTempDirSync,
   listStationTempEntries,
   removeStationTempDirSync,
+  retainStationTempRecovery,
   stationTempRoot,
   sweepStationTempRoot,
 } from '../temp-dir.js';
@@ -90,6 +91,18 @@ describe('station temp directories', () => {
     process.env.STATION_TEMP_ROOT = join(sandbox, 'absent');
 
     await expect(sweepStationTempRoot()).resolves.toBe(0);
+  });
+
+  test('keeps marked recovery backups while sweeping ordinary stale directories', async () => {
+    const retained = createStationTempDirSync('plugin-install');
+    const stale = createStationTempDirSync('plugin-install');
+    retainStationTempRecovery(retained);
+    const old = new Date(Date.now() - 48 * 60 * 60 * 1000);
+    utimesSync(retained, old, old);
+    utimesSync(stale, old, old);
+    await expect(sweepStationTempRoot()).resolves.toBe(1);
+    expect(existsSync(retained)).toBe(true);
+    expect(existsSync(stale)).toBe(false);
   });
 
   test('falls back to the system temp dir when no override is set', () => {

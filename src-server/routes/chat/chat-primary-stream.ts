@@ -130,6 +130,7 @@ interface StreamPrimaryAgentChatArgs {
   dedupStore?: ChatTurnDedupStore;
   /** Exact authorized orchestration coordinate from Station's internal relay only. */
   turnCorrelation?: AuthorizedTurnCorrelation;
+  mcpPromptOrigin?: import('@kontourai/station-contracts/mcp-prompts').VerifiedMcpPromptOrigin;
   /**
    * #2589: the orchestration thread this turn relays for (the Station-agent
    * adapter's, validated in chat.ts). Stamped on this turn's tool approvals
@@ -196,6 +197,7 @@ export function streamPrimaryAgentChat({
   dedupStore,
   projectSlug,
   turnCorrelation,
+  mcpPromptOrigin,
   orchestrationThreadId,
   nativeOutputGrant,
   nativeForeground,
@@ -864,6 +866,8 @@ export function streamPrimaryAgentChat({
             turnCorrelation,
             withWorkspace,
             nativeMemory,
+            undefined,
+            mcpPromptOrigin,
           )
         : withWorkspace();
     return nativeOutputGrant

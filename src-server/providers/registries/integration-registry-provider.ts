@@ -11,6 +11,7 @@ import { toolOriginLocation } from '../../services/plugins/integration-origin.js
 import { createLogger } from '../../utils/logger.js';
 import { resolveHomeDir } from '../../utils/paths.js';
 import type { IIntegrationRegistryProvider } from '../provider-interfaces.js';
+import { mcpSubregistryIntegrationProviders } from './mcp-subregistry-provider.js';
 
 const logger = createLogger({ name: 'integration-registry-provider' });
 
@@ -237,7 +238,19 @@ export function createIntegrationRegistryProvider(
               message: 'The registry did not return an integration definition.',
             },
           };
-        return { result, definition, origin: originFor(provider, item) };
+        const curated = mcpSubregistryIntegrationProviders().find(
+          (candidate) =>
+            candidate.source.status().origin === 'station' &&
+            candidate === provider,
+        );
+        return {
+          result,
+          definition,
+          origin: originFor(provider, item),
+          ...(curated
+            ? { stationCuratedTrust: definition.contentTrust ?? 'trusted' }
+            : {}),
+        };
       }
       return {
         result: { success: false, message: `No provider could install ${id}` },

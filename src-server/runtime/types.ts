@@ -197,6 +197,8 @@ export interface ToolCallContext {
   toolDescription?: string;
   /** Untrusted model-stated intent; display-only, never approval evidence. */
   purpose?: string;
+  /** Station-owned built-in identity, supplied by the tool loader. */
+  builtin?: Readonly<{ integrationId: string }>;
   /** Server-only loader authority; never inferred from a model-visible name. */
   mcp?: Readonly<{
     provenance: MCPToolLoaderProvenance;
@@ -333,6 +335,14 @@ export interface IAgentHooks {
     result: ToolCallResult,
     invocation: InvocationContext,
   ): void;
+
+  /**
+   * Called exactly once when an invocation ends, however it ends: success,
+   * error or abort. Adapters call it from a `finally` path, unlike
+   * `afterInvocation`, which a failed invocation may skip. Used for:
+   * releasing per-turn state (#3483).
+   */
+  endInvocation?(invocation: InvocationContext): void;
 
   /**
    * Called after the full agent invocation completes.

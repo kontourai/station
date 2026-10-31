@@ -1765,7 +1765,9 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     expect(onNewChat).toHaveBeenCalled();
     // The composer stays refused — the way out is a NEW chat, not a write into
     // the one whose continuation is unproven.
-    expect(chatInputPropsMock.current?.disabled).toBe(true);
+    await waitFor(() =>
+      expect(chatInputPropsMock.current?.disabled).toBe(true),
+    );
   });
 
   // Delta-review L1. The two states are not exclusive: a reload whose

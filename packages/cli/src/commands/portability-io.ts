@@ -18,9 +18,19 @@ import {
   isSafeToolServerId,
   type ToolDef,
   withoutToolBindingReferences,
+  withStationIntegrationTrustDefaults,
+  withUntrustedContentChange,
 } from '@kontourai/station-contracts/tool';
+import {
+  applyIntegrationTrustOverlay,
+  migrateIntegrationTrustOverlay,
+} from '@kontourai/station-shared/integration-trust-overlay';
 import { publishJsonFileWithOwnedLock } from '@kontourai/station-shared/json-file-storage';
-import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
+import {
+  acquireFileMutationLock,
+  acquireFileMutationLockAsync,
+} from '@kontourai/station-shared/lifecycle-events';
+import { stationCuratedContentTrust } from '@kontourai/station-shared/station-curation';
 import {
   ToolServerCredentialStore,
   toolServerIntegrationMutationLockPath,
@@ -112,12 +122,27 @@ export function listIntegrations(
   return readdirSync(integrationsDir, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
     .map((entry) => {
-      const def = JSON.parse(
-        readFileSync(
-          join(integrationsDir, entry.name, 'integration.json'),
-          'utf-8',
-        ),
-      ) as ToolDef;
+      const release = acquireFileMutationLock(
+        toolServerIntegrationMutationLockPath(projectHome, entry.name),
+      );
+      let def: ToolDef;
+      try {
+        const raw = JSON.parse(
+          readFileSync(
+            join(integrationsDir, entry.name, 'integration.json'),
+            'utf-8',
+          ),
+        ) as ToolDef;
+        def = applyIntegrationTrustOverlay(
+          {
+            ...raw,
+            contentTrust: stationCuratedContentTrust(raw) ?? 'trusted',
+          },
+          migrateIntegrationTrustOverlay(projectHome, entry.name, raw),
+        );
+      } finally {
+        release();
+      }
       // Directory identity is authoritative. A manifest field cannot select
       // another server's credential namespace during export.
       def.id = entry.name;
@@ -200,10 +225,21 @@ export async function writeIntegration(
     const previous = existsSync(path)
       ? (JSON.parse(readFileSync(path, 'utf8')) as ToolDef)
       : undefined;
-    // Before any credential write: the same OAuth client rules every
-    // integration writer applies.
     assertToolOAuthClientWritable(previous, def);
-    const persisted = { ...def };
+    const overlay = migrateIntegrationTrustOverlay(projectHome, id, previous);
+    const effectivePrevious = previous
+      ? applyIntegrationTrustOverlay(previous, overlay)
+      : undefined;
+    const persisted = withUntrustedContentChange(
+      effectivePrevious,
+      withStationIntegrationTrustDefaults(
+        def,
+        effectivePrevious,
+        stationCuratedContentTrust(def),
+      ),
+      undefined,
+      new Date(),
+    );
     const previousNames = previous?.storedEnvNames ?? [];
     const refs = new Set(previousNames);
     for (const [name, secret] of Object.entries(secrets)) {
@@ -211,6 +247,11 @@ export async function writeIntegration(
       refs.add(name);
     }
     delete persisted.env;
+    delete persisted.untrustedContentPermissions;
+    delete persisted.trustReadOnlyHints;
+    delete persisted.untrustedContentChanges;
+    delete persisted.untrustedContentPersonOwned;
+    persisted.contentTrust = stationCuratedContentTrust(def) ?? 'trusted';
     delete persisted.secretEnv;
     delete persisted.storedEnvNames;
     delete persisted.requiredEnvNames;

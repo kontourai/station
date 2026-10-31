@@ -26,7 +26,11 @@
 
     "src-server/services/acp/opencode-approval-verify.ts",
 
-    "src-server/services/acp/acp-probe-session.ts"
+    "src-server/services/acp/acp-probe-session.ts",
+
+    "src-server/services/acp/acp-bridge-client.ts",
+
+    "src-server/services/acp/acp-process.ts"
   ],
 
   "checks": [

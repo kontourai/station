@@ -418,6 +418,50 @@ export class DeviceAutomation {
     return { ...result, ...(lease ? { lease } : {}) };
   }
 
+  async captureToTask<T extends object>(
+    access: DeviceAgentAccessDeps,
+    authority: DeviceAgentAuthority,
+    id: string,
+    publish: (source: {
+      screenshot(): Promise<{ data: Buffer; mimeType: 'image/png' }>;
+      isCurrent(): Promise<boolean>;
+      isFenceCurrent(): boolean;
+    }) => Promise<T>,
+  ) {
+    return this.withControl(access, authority, id, async (selected) => {
+      const isFenceCurrent = () => {
+        const current = this.sessionServices(id);
+        return (
+          current?.session.surfaceId === selected.session.surfaceId &&
+          current.services.sessions === selected.services.sessions &&
+          current.services.tools === selected.services.tools &&
+          selected.entry.lease.isCurrent(selected.lease.fence, selected.agent)
+            .ok
+        );
+      };
+      const isCurrent = async () =>
+        isFenceCurrent() &&
+        (await selected.entry.authorize(
+          authority.principalId,
+          'view',
+          selected.context,
+        )) &&
+        isFenceCurrent();
+      const result = await publish({
+        screenshot: async () => {
+          const shot = await selected.services.host.capture(selected.session);
+          return {
+            data: Buffer.from(shot.pngBase64, 'base64'),
+            mimeType: shot.mimeType,
+          };
+        },
+        isCurrent,
+        isFenceCurrent,
+      });
+      return { ok: true as const, ...result };
+    });
+  }
+
   async observe(
     access: DeviceAgentAccessDeps,
     authority: DeviceAgentAuthority,

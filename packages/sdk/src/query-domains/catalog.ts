@@ -4,7 +4,10 @@ import type {
 } from '@kontourai/station-contracts/catalog';
 import type { LayoutCatalogItem } from '@kontourai/station-contracts/distribution';
 import type { LayoutComponentRef } from '@kontourai/station-contracts/layout';
-import type { ToolDef } from '@kontourai/station-contracts/tool';
+import type {
+  IntegrationTrustReviewDecision,
+  ToolDef,
+} from '@kontourai/station-contracts/tool';
 import type { ApiRequestScope } from '../client/http';
 import {
   type MutationOptions,
@@ -100,6 +103,16 @@ export interface IntegrationViewModel extends ToolDef {
    * non-passthrough-eligible: secrets never cross the ACP trust boundary.
    */
   requiresEnvSecrets?: boolean;
+  /**
+   * #3483: legacy trust settings waiting for a person. Present only when the
+   * host computed it; the integration is not loaded until a person decides.
+   */
+  trustReview?: import('@kontourai/station-contracts/tool').IntegrationTrustReview;
+  /**
+   * #3483: whether Station can apply the untrusted-content permission to each
+   * external engine's calls to this server. Absent from older hosts.
+   */
+  engineCoverage?: import('@kontourai/station-contracts/tool').IntegrationEngineCoverage[];
 }
 
 export interface IntegrationLifecycleResult extends IntegrationViewModel {
@@ -480,6 +493,31 @@ export function useSetIntegrationEnabledMutation(
           body: JSON.stringify({ enabled }),
         },
       ),
+    {
+      invalidateKeys: [['integrations']],
+      onSuccess: options?.onSuccess,
+      onError: options?.onError,
+    },
+  );
+}
+
+/**
+ * #3483: keep or reset an integration's legacy trust settings. Offered only
+ * for an integration whose `trustReview` this host returned.
+ */
+export function useDecideIntegrationTrustReviewMutation(
+  options?: MutationOptions<
+    void,
+    { id: string; decision: IntegrationTrustReviewDecision }
+  >,
+) {
+  return useApiMutation(
+    async ({ id, decision }) =>
+      requestIntegration<void>(`/${encodeURIComponent(id)}/trust-review`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decision }),
+      }),
     {
       invalidateKeys: [['integrations']],
       onSuccess: options?.onSuccess,

@@ -577,7 +577,7 @@
    shipped because station#1168's search was scoped to the `--error-` prefix
    and stopped one rule short of its own mirror. */
 .workflow-plan-panel__runtime-state--complete
-.workflow-plan-panel__runtime-dot {
+  .workflow-plan-panel__runtime-dot {
   background: var(--success-text);
   color: var(--success-text);
 }

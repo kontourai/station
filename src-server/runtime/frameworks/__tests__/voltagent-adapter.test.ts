@@ -10,6 +10,10 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { FileMemoryAdapter } from '../../../adapters/file/memory-adapter.js';
 import { createAgentHooks } from '../../agents/agent-hooks.js';
 import { SC_AUTO_APPROVED_TOOLS } from '../../tools/runtime-control-tools.js';
+import {
+  createBuiltinVendedTool,
+  createBuiltinVendedToolDef,
+} from '../../tools/vended-tool-compat.js';
 import { GENERIC_TOOL_FAILURE_MESSAGE } from '../../types.js';
 import {
   appendObservedToolDenials,
@@ -17,8 +21,33 @@ import {
   createVoltAgentLifecycleHooks,
   normalizeVoltAgentToolErrors,
   type ObservedToolDenial,
+  toVoltAgentTool,
   VoltAgentFramework,
 } from '../voltagent-adapter.js';
+
+test('VoltAgent preserves loader-owned built-in identity into the policy hook', async () => {
+  const beforeToolCall = vi.fn().mockResolvedValue(true);
+  const hooks = createVoltAgentLifecycleHooks('test-agent', { beforeToolCall });
+  const source = createBuiltinVendedTool(
+    'test-agent',
+    createBuiltinVendedToolDef('bash')!,
+  );
+  expect(source).not.toBeNull();
+  const tool = toVoltAgentTool(source!);
+  await hooks.onToolStart!({
+    tool,
+    context: { context: new Map(), conversationId: 'c' },
+    args: {},
+    options: { toolContext: { callId: 'call' } },
+  } as any);
+  expect(beforeToolCall).toHaveBeenCalledWith(
+    expect.objectContaining({
+      toolName: 'bash',
+      builtin: { integrationId: 'bash' },
+    }),
+    expect.anything(),
+  );
+});
 
 type TestServer = {
   url: string;

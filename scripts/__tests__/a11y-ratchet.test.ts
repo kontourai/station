@@ -20,6 +20,18 @@ describe('a11yEnabled', () => {
     expect(a11yEnabled('{"linter":{"rules":{}}}')).toBe(false);
     expect(a11yEnabled('not json at all')).toBe(false);
   });
+
+  it.each([
+    [{ preset: 'recommended' }, true],
+    [{ preset: 'all' }, true],
+    [{ preset: 'none' }, false],
+    [{ preset: 'none', recommended: true }, false],
+    [{ preset: 'recommended', recommended: false }, true],
+  ])('honors the Biome preset and its precedence: %j', (a11y, enabled) => {
+    expect(a11yEnabled(JSON.stringify({ linter: { rules: { a11y } } }))).toBe(
+      enabled,
+    );
+  });
 });
 
 describe('countViolations', () => {

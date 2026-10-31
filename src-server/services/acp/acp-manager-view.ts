@@ -1,4 +1,7 @@
-import type { AgentCapabilities, ProviderInfo } from '@agentclientprotocol/sdk';
+import type {
+  AgentCapabilities,
+  ProviderInfo,
+} from '@agentclientprotocol/sdk/unstable';
 import {
   type ACPConnectionConfig,
   type ACPProviderInfo,

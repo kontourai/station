@@ -15,6 +15,7 @@ import {
   PREBUILT_ARCHIVE_MARKER_FILENAME,
 } from '../../packages/cli/src/commands/lifecycle.js';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
+import { VERIFIED_PNPM_SETUP_ACTION } from '../actionlint-gate.mjs';
 import { STATION_DOCS_INPUT_PATHS } from '../generate-station-docs.mjs';
 import {
   execFileSyncBounded,
@@ -358,9 +359,7 @@ describe('portable server archive workflow', () => {
     const steps = (workflow.jobs.archive as unknown as { steps: Step[] }).steps;
     const setup = steps.find((step) => step.name === 'Setup pinned pnpm');
     expect(setup?.if).toBe("runner.os != 'macOS' || runner.arch != 'X64'");
-    expect(setup?.uses).toBe(
-      'kontourai/station/.github/actions/setup-verified-pnpm@4c7804d0d71f4e18d7a0da62fb6db43973481a20',
-    );
+    expect(setup?.uses).toBe(VERIFIED_PNPM_SETUP_ACTION);
     expect(setup?.with).toBeUndefined();
     expect(
       steps.some(

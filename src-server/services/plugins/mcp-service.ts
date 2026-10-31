@@ -9,7 +9,12 @@ type Tool<_T = any> = any;
 
 import { type SpawnOptions, spawn } from 'node:child_process';
 import type { CredentialOwner } from '@kontourai/station-contracts/secret-binding';
-import type { ToolDef, ToolMetadata } from '@kontourai/station-contracts/tool';
+import type {
+  IntegrationEngineCoverage,
+  IntegrationTrustReviewDecision,
+  ToolDef,
+  ToolMetadata,
+} from '@kontourai/station-contracts/tool';
 import {
   type MCPConnection,
   type MCPLocalClaim,
@@ -28,7 +33,10 @@ import type {
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import { markIntegrationEnabledExplicit } from '../../domain/config-loader-storage.js';
-import { isBuiltinStationControl } from '../../runtime/bootstrap/station-control-runtime-env.js';
+import {
+  isBuiltinStationControl,
+  isRuntimeManagedIntegrationId,
+} from '../../runtime/bootstrap/station-control-runtime-env.js';
 import {
   extractMCPAppsResourceMetadata,
   extractMCPAppsToolMetadata,
@@ -51,7 +59,11 @@ import type {
   IntegrationSecretBindingGranter,
   IntegrationSecretResolver,
 } from '../secrets/secret-binding-administration.js';
-import { recordIntegrationOrigin } from './integration-origin.js';
+import {
+  isCatalogSuppliedIntegration,
+  recordIntegrationOrigin,
+} from './integration-origin.js';
+import { externalEngineCoverage } from './mediated-untrusted-content-gate.js';
 import {
   principalToolCatalogExists,
   writePrincipalToolCatalog,
@@ -422,6 +434,42 @@ export class MCPService {
     return this.configLoader.listIntegrations();
   }
 
+  /**
+   * #3483: where each external engine's calls to this server go (see
+   * `externalEngineCoverage`).
+   */
+  engineCoverage(
+    def: Pick<
+      ToolMetadata,
+      'id' | 'kind' | 'transport' | 'credentialOwnership' | 'probe'
+    >,
+    secrets: boolean,
+  ): IntegrationEngineCoverage[] | undefined {
+    return externalEngineCoverage(def, {
+      builtin: isRuntimeManagedIntegrationId(def.id),
+      catalogSupplied: isCatalogSuppliedIntegration(
+        this.configLoader.getProjectHomeDir(),
+        def.id,
+      ),
+      secrets,
+    });
+  }
+
+  /** #3483: legacy trust settings waiting for a person, if any. */
+  async integrationTrustReview(id: string) {
+    return this.configLoader.integrationTrustReview(id);
+  }
+
+  /** #3483: a person keeps or resets legacy trust settings, with a receipt. */
+  async decideIntegrationTrustReview(
+    id: string,
+    decision: IntegrationTrustReviewDecision,
+    by: string,
+  ): Promise<void> {
+    this.assertMutableIntegration(id);
+    await this.configLoader.decideIntegrationTrustReview(id, decision, by);
+  }
+
   async getToolAgentMap(): Promise<Record<string, string[]>> {
     return this.configLoader.getToolAgentMap();
   }
@@ -453,82 +501,107 @@ export class MCPService {
     }
   }
 
-  async saveIntegration(def: ToolDef): Promise<void> {
+  async saveIntegration(
+    def: ToolDef,
+    options?: {
+      changedBy?: string;
+      personChange?: boolean;
+      explicitFields?: readonly (
+        | 'contentTrust'
+        | 'permissions'
+        | 'trustReadOnlyHints'
+      )[];
+    },
+  ): Promise<void> {
     if (
       (def as OwnershipTaggedToolDef)[CONTRIBUTED_INTEGRATION_DEFINITION] ===
-      true
+        true ||
+      this.isLiveContributedIntegration(def.id)
     ) {
-      throw new Error(
-        'Package-supplied integration definitions are read-only; uninstall or update the owning package instead',
+      if (!options?.personChange && !options?.changedBy)
+        throw new Error(
+          'Package-supplied integration definitions are read-only',
+        );
+      await this.mcpCustody.mutate(def.id, () =>
+        this.configLoader.saveIntegration(def.id, def, {
+          ...options,
+          requireContributed: true,
+        }),
       );
+      return;
     }
     this.assertMutableIntegration(def.id);
-    let existing: ToolDef | undefined;
-    try {
-      existing = await this.configLoader.loadIntegration(def.id);
-    } catch (error) {
-      if (!isMissingIntegrationError(error)) throw error;
-    }
-    if (
-      Object.hasOwn(def, 'secretEnvRefs') &&
-      !sameSecretEnvRefs(def.secretEnvRefs, existing?.secretEnvRefs)
-    ) {
-      throw new Error(
-        'Secret bindings can be changed only through the operator binding API.',
+
+    const write = async () => {
+      let existing: ToolDef | undefined;
+      try {
+        existing = await this.configLoader.loadIntegration(def.id);
+      } catch (error) {
+        if (!isMissingIntegrationError(error)) throw error;
+      }
+      if (
+        Object.hasOwn(def, 'secretEnvRefs') &&
+        !sameSecretEnvRefs(def.secretEnvRefs, existing?.secretEnvRefs)
+      ) {
+        throw new Error(
+          'Secret bindings can be changed only through the operator binding API.',
+        );
+      }
+      if (
+        existing?.secretEnvRefs &&
+        Object.keys(existing.secretEnvRefs).length > 0 &&
+        changesBoundChildExecutionIdentity(existing, def)
+      ) {
+        throw new Error(
+          'Unbind secret bindings before changing an integration execution configuration.',
+        );
+      }
+      const existingSecretRef = existing?.oauthClient?.clientSecretRef;
+      if (
+        def.oauthClient &&
+        Object.hasOwn(def.oauthClient, 'clientSecretRef') &&
+        def.oauthClient.clientSecretRef !== existingSecretRef
+      ) {
+        throw new Error(
+          'Secret bindings can be changed only through the operator binding API.',
+        );
+      }
+      const identityChanged =
+        existing !== undefined &&
+        toolServerOAuthResourceIdentity(existing) !==
+          toolServerOAuthResourceIdentity(def);
+      // A bound secret pins the issuer and endpoint; the storage writer every
+      // path shares enforces that (assertToolOAuthClientWritable).
+      // Tokens and a registered client belong to the client that obtained them.
+      const clientChanged =
+        existing !== undefined &&
+        !identityChanged &&
+        (existing.oauthClient?.clientId !== def.oauthClient?.clientId ||
+          existing.oauthClient?.issuer !== def.oauthClient?.issuer ||
+          existing.oauthClient?.clientMetadataUrl !==
+            def.oauthClient?.clientMetadataUrl);
+      const withPreservedBindings = withPreservedOAuthClientSecret(
+        existing?.secretEnvRefs
+          ? { ...def, secretEnvRefs: { ...existing.secretEnvRefs } }
+          : def,
+        existingSecretRef,
       );
-    }
-    if (
-      existing?.secretEnvRefs &&
-      Object.keys(existing.secretEnvRefs).length > 0 &&
-      changesBoundChildExecutionIdentity(existing, def)
-    ) {
-      throw new Error(
-        'Unbind secret bindings before changing an integration execution configuration.',
-      );
-    }
-    const existingSecretRef = existing?.oauthClient?.clientSecretRef;
-    if (
-      def.oauthClient &&
-      Object.hasOwn(def.oauthClient, 'clientSecretRef') &&
-      def.oauthClient.clientSecretRef !== existingSecretRef
-    ) {
-      throw new Error(
-        'Secret bindings can be changed only through the operator binding API.',
-      );
-    }
-    const identityChanged =
-      existing !== undefined &&
-      toolServerOAuthResourceIdentity(existing) !==
-        toolServerOAuthResourceIdentity(def);
-    // A bound secret pins the issuer and endpoint; the storage writer every
-    // path shares enforces that (assertToolOAuthClientWritable).
-    // Tokens and a registered client belong to the client that obtained them.
-    const clientChanged =
-      existing !== undefined &&
-      !identityChanged &&
-      (existing.oauthClient?.clientId !== def.oauthClient?.clientId ||
-        existing.oauthClient?.issuer !== def.oauthClient?.issuer ||
-        existing.oauthClient?.clientMetadataUrl !==
-          def.oauthClient?.clientMetadataUrl);
-    const withPreservedBindings = withPreservedOAuthClientSecret(
-      existing?.secretEnvRefs
-        ? { ...def, secretEnvRefs: { ...existing.secretEnvRefs } }
-        : def,
-      existingSecretRef,
-    );
-    const persisted = identityChanged
-      ? withAuthorizationRequired(
-          withPreservedBindings,
-          'Tool server endpoint changed',
-        )
-      : clientChanged && toolServerOAuthResourceIdentity(def)
+      const persisted = identityChanged
         ? withAuthorizationRequired(
             withPreservedBindings,
-            OAUTH_CLIENT_CHANGED_REASON,
+            'Tool server endpoint changed',
           )
-        : withPreservedBindings;
-    const write = async () => {
-      await this.configLoader.saveIntegration(def.id, persisted);
+        : clientChanged && toolServerOAuthResourceIdentity(def)
+          ? withAuthorizationRequired(
+              withPreservedBindings,
+              OAUTH_CLIENT_CHANGED_REASON,
+            )
+          : withPreservedBindings;
+      await this.configLoader.saveIntegration(
+        def.id,
+        persisted,
+        ...(options ? [options] : []),
+      );
       if (!existing)
         recordIntegrationOrigin(
           this.configLoader.getProjectHomeDir(),

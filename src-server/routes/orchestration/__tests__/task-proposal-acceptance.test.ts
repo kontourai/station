@@ -359,11 +359,10 @@ test('rejects an assigned agent on proposal acceptance without creating a Task',
   expect(service.readSessionRelations('shaping-session').links).toEqual([]);
 });
 
-test('a proposal brief the Task document cannot hold is refused before any Task exists (#4007)', async () => {
-  // Proposals allow 12,000 characters; a Task document holds about 5,400.
-  const goal = 'Show progress. '.repeat(400).trim();
+test('accepts and durably seeds a long proposal brief (#4007)', async () => {
+  const goal = 'g'.repeat(11_700);
   const long = { ...proposal, goal };
-  const { read, accept, service, working } = await fixture();
+  const { read, accept, service, working, room } = await fixture();
   read.mockResolvedValue({
     status: 'found',
     sessionId: 'shaping-session',
@@ -387,12 +386,16 @@ test('a proposal brief the Task document cannot hold is refused before any Task 
     description: goal,
     proposalBrief: longBrief,
   });
-  expect(response.status).toBe(413);
-  expect(((await response.json()) as { error?: string }).error).toBe(
-    'This brief is too long for a Task document, which holds about 5,400 characters of plain text. Ask the agent for a shorter proposal.',
-  );
-  expect(service.listTasks()).toEqual([]);
-  expect(working.settle).not.toHaveBeenCalled();
+  expect(response.status, await response.clone().text()).toBe(201);
+  const tasks = service.listTasks();
+  expect(tasks).toHaveLength(1);
+  expect(working.settle).toHaveBeenCalled();
+  expect(
+    await room.document({
+      taskId: tasks[0].id,
+      request: new Request('http://station'),
+    }),
+  ).toMatchObject({ kind: 'snapshot', text: longBrief });
 });
 
 /**
@@ -409,7 +412,9 @@ async function fillRevisionLedger(
   const freezes = vi.spyOn(bridge, 'recordPublication');
   const request = new Request('http://station.test');
   const fillers: string[] = [];
-  for (const size of [4_000, 2_000, 1_000, 500, 200, 50, 1]) {
+  for (const size of [
+    120_000, 60_000, 30_000, 15_000, 7_500, 2_000, 500, 50, 1,
+  ]) {
     const filler = await service.createTask({
       projectId: 'alpha',
       title: `Ledger filler ${size}`,

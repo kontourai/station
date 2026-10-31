@@ -1,0 +1,7 @@
+{
+  "revision": "2941002b008737f9cc79062b8b6fe1848e6b8cba",
+
+  "notes": [
+    {"path":"docs/guides/plugins.md","note":"Round 2: plugin-install-transaction.ts now snapshots plugin-owned integration definitions before removal and passes copied ones through recordCopiedIntegrations (receipt rule only; copy checks, ownership and rollback unchanged). This guide's install-flow claims about copied integrations and owner-qualified ToolDefs remain accurate; no edit.","inputs":["docs/guides/plugins.md","src-server/domain/config-loader.ts","src-server/services/plugins/plugin-install-transaction.ts"]}
+  ]
+}

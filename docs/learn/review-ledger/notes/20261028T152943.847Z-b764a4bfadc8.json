@@ -1,0 +1,7 @@
+{
+  "revision": "30473c42aa6f1907bb8c997804719a21276b3536",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Added catalog (RegistryItem.mcpServer, RegistryMcpServerListing, RegistryMcpSourceStatus) and tool (contentTrust, untrustedContentPermissions, untrustedContentChanges) contract descriptions matching packages/contracts/src/catalog.ts and tool.ts.","inputs":["docs/reference/contracts.md"]}
+  ]
+}
