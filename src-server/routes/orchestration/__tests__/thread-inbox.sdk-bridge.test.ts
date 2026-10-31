@@ -16,8 +16,10 @@ describe('inbox SDK route bridge', () => {
     const world = station();
     await world.busy();
     // In-process HTTP transport: the SDK still builds and validates the request.
-    vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) =>
-      world.app.request(new Request(input, init)),
+    vi.stubGlobal(
+      'fetch',
+      (input: Parameters<typeof fetch>[0], init?: RequestInit) =>
+        world.app.request(new Request(input, init)),
     );
     try {
       const receipt = await queueExecutionMessage('http://inbox.station', {

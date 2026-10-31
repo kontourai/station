@@ -6208,6 +6208,10 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 }
 
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  .lazy-boundary__error > button {
+    min-width: 44px;
+    min-height: 44px;
+  }
   :root {
     /* Mobile toolbar controls are 44px tall with 4px block padding. Keep the
        shared geometry token honest for dock offsets and fixed overlays. */
