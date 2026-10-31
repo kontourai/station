@@ -36,7 +36,10 @@ const gitHash = (type: string, value: Buffer) =>
     .digest('hex');
 
 async function fixture(
-  options: { failure?: 'protected' | 'authority' | 'stopped' | 'case' } = {},
+  options: {
+    failure?: 'protected' | 'authority' | 'stopped' | 'case';
+    publishBranch?: boolean;
+  } = {},
 ) {
   const home = temporary('isolated-repair-caller-');
   const repo = join(home, 'repository');
@@ -322,7 +325,10 @@ async function fixture(
       {
         projectId: 'project',
         agentId: 'repairer',
-        actions: ['isolated-repair', 'publish-branch'],
+        actions:
+          options.publishBranch === false
+            ? ['isolated-repair']
+            : ['isolated-repair', 'publish-branch'],
       },
     ],
   };
@@ -442,7 +448,9 @@ async function fixture(
   };
 }
 
-async function approve(context: Awaited<ReturnType<typeof fixture>>) {
+async function reviewedPublicationInput(
+  context: Awaited<ReturnType<typeof fixture>>,
+) {
   const binding = {
     bindingDigest: context.artifact.bindingDigest,
     resultDigest: context.artifact.result!.digest,
@@ -457,11 +465,18 @@ async function approve(context: Awaited<ReturnType<typeof fixture>>) {
     ).status,
   ).toBe(200);
   const reviewed = context.controller.store.read(context.retained.runId)!;
-  const response = await context.request(`${context.retained.runId}/grant`, {
+  return {
     ...binding,
     reviewId: reviewed.review!.id,
     publisherId: context.publisher.id,
-  });
+  };
+}
+async function approve(context: Awaited<ReturnType<typeof fixture>>) {
+  const input = await reviewedPublicationInput(context);
+  const response = await context.request(
+    `${context.retained.runId}/grant`,
+    input,
+  );
   expect(response.status).toBe(200);
   const currentGrant = context.controller.store.read(context.retained.runId)!
     .grant!;
@@ -789,4 +804,23 @@ test('operator resolution releases global admission after stopped unknown repair
   expect(
     (await context.controller.artifact(context.retained.runId, operator)).phase,
   ).toBe('indeterminate');
+});
+
+test('a source that grants isolated execution only cannot grant publication after a valid exact-result review', async () => {
+  const context = await fixture({ publishBranch: false });
+  const input = await reviewedPublicationInput(context);
+  expect(context.tasks.readTaskView(context.retained.taskId)?.status).toBe(
+    'done',
+  );
+  expect(context.controller.store.read(context.retained.runId)?.phase).toBe(
+    'reviewed',
+  );
+  expect(
+    (await context.request(`${context.retained.runId}/grant`, input)).status,
+  ).toBe(409);
+  expect(
+    context.controller.store.read(context.retained.runId)?.grant,
+  ).toBeUndefined();
+  expect(context.calls).toHaveLength(0);
+  expect(context.worker).toHaveBeenCalledTimes(1);
 });
