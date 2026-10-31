@@ -698,7 +698,8 @@ export function AuthorityQueryProvider({
           <OfflineSessionIndex />
           <ClientBootstrapContext.Provider
             value={
-              bootCapability?.scope === boundScope &&
+              bootCapability !== null &&
+              bootCapability.scope === boundScope &&
               bootCapability.client === active.queryClient
                 ? {
                     status: 'settled',

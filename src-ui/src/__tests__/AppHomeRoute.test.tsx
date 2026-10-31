@@ -21,8 +21,14 @@ import {
 import { bannerStore } from '../contexts/banner-store';
 import { openChatsStore } from '../contexts/open-chats-store';
 import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut';
+import { useServerEventsListener } from '../hooks/useServerEventsListener';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import { DEFAULT_DEVICE_REGION_ARRANGEMENT } from '../regions/region-model';
+
+const serverEventsMount = vi.hoisted(() => vi.fn(() => null));
+vi.mock('../hooks/ServerEventsMount', () => ({
+  ServerEventsMount: serverEventsMount,
+}));
 
 vi.mock('../components/chat/TaskShapingComposer', () => ({
   TaskShapingHost: () => null,
@@ -493,7 +499,9 @@ vi.mock('../hooks/useFeatureSettings', async (importOriginal) => {
 vi.mock('../hooks/useKeyboardShortcut', () => ({
   useKeyboardShortcut: vi.fn(),
 }));
-vi.mock('../hooks/useServerEvents', () => ({ useServerEvents: vi.fn() }));
+vi.mock('../hooks/useServerEventsListener', () => ({
+  useServerEventsListener: vi.fn(),
+}));
 vi.mock('../hooks/useQueryCacheReconnectSync', () => ({
   useQueryCacheReconnectSync: vi.fn(),
 }));
@@ -537,6 +545,31 @@ describe('App home route resolution', () => {
     authenticatedFetch.mockReset();
     exercisePushLifecycle = false;
     unsubscribePushNotifications.mockClear();
+  });
+
+  test('starts the app-wide event subscription after its startup boundary loads', async () => {
+    vi.mocked(useServerEventsListener).mockClear();
+    serverEventsMount.mockClear();
+    render(<App />);
+    await waitFor(() => expect(serverEventsMount).toHaveBeenCalled());
+    expect(useServerEventsListener).toHaveBeenCalled();
+    expect(
+      vi.mocked(useServerEventsListener).mock.invocationCallOrder[0],
+    ).toBeLessThan(serverEventsMount.mock.invocationCallOrder[0]!);
+  });
+
+  test('retries a failed event transport load from the app boundary', async () => {
+    serverEventsMount.mockClear();
+    const load = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('chunk unavailable'))
+      .mockResolvedValue({ default: serverEventsMount });
+    render(<App loadServerEvents={load} />);
+    await screen.findByText('Unable to load this part of Station.');
+    expect(serverEventsMount).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect(serverEventsMount).toHaveBeenCalled());
+    expect(load).toHaveBeenCalledTimes(2);
   });
 
   test('resetting device defaults stops browser push while Home owns the route without prompting for permission', async () => {
