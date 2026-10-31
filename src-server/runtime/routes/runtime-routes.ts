@@ -13578,6 +13578,13 @@ export function configureDevicePairingHostRoutes(
     } catch {
       return c.json({ error: 'pairing_unavailable' }, 503);
     }
+    // Cleanup can yield; admission must still hold before publishing inventory.
+    if (
+      getRuntimeAuthenticatedRequestPrincipal(c.req.raw)?.authority ===
+        'operator-session' &&
+      !operatorSession(c.req.raw)
+    )
+      return c.json({ error: { code: 'operator_session_required' } }, 403);
     return c.json({ requests: pairing.listRequests() });
   });
   app.post('/api/pairing/requests/:requestId/confirm', async (c) => {

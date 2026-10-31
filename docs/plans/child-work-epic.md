@@ -2937,3 +2937,25 @@ remains held and marked claimed; the rebound namespace stays free and no second
 dispatch is associated. All90 selected cases and server-test types pass. The review
 FAIL is retained pending a fresh bounded recheck. Readiness still fails only the
 documentation-truth evidence check; no combined readiness claim follows.
+
+### Operator-session pending-inventory publication
+
+The bounded documentation caller review found a P2: pending-pairing inventory
+awaited relay cleanup, then returned without rechecking the initiating operator
+session. The real HTTP/passkey/session fixture reproduced HTTP200 after both
+expiry and passkey revocation during a held passthrough cleanup. A strengthened
+fixture creates a fresh pending request while held, so expiry does not remove the
+inventory witness. The handler now rechecks that operator session immediately
+after cleanup and returns403 without inventory if its authority ended. Ordinary
+Device admission remains separate; this does not newly fence every ordinary
+credential path or establish universal cross-process response custody.
+
+The first run also had a counter-case timeout (cause unknown) and two old
+token-mutation controls waiting for a token-file lock no longer used by the
+canonical home-writer implementation. Those controls now hold the actual home
+acquisition, compare canonical paths and retain their original currentness/effect
+assertions. An intermediate fixture comparison could throw before signaling entry;
+its two timeouts are preserved as fixture failures. The final two-file selection
+passes251 cases and server-test types pass, without changing test deadlines.
+Independent repair/documentation recheck and mutation proof for the relocated
+token controls are pending. The earlier failures remain historical evidence.
