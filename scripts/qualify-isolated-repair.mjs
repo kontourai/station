@@ -140,18 +140,18 @@ try {
   await writeFile(
     join(treatment, 'probe.py'),
     `import json, os
-  context = json.load(open('/context/request.json'))
-  assert all(not os.path.exists(p) for p in context['forbiddenPaths']), 'host-only path is visible'
-  assert not any(k in os.environ for k in ['GH_TOKEN', 'GITHUB_TOKEN', 'OPENAI_API_KEY', 'SSH_AUTH_SOCK']), 'ambient credential channel present'
-  for p in ['/qualification-root-write', '/treatment/qualification-write']:
-      try:
-          with open(p, 'w') as f: f.write('forbidden')
-      except OSError:
-          pass
-      else:
-          raise AssertionError('read-only scope was writable')
-  json.dump({'host_paths_absent': True, 'ambient_credential_channels_absent': True, 'root_and_treatment_read_only': True}, open('/workspace/isolation.json', 'w'))
-  `,
+context = json.load(open('/context/request.json'))
+assert all(not os.path.exists(p) for p in context['forbiddenPaths']), 'host-only path is visible'
+assert not any(k in os.environ for k in ['GH_TOKEN', 'GITHUB_TOKEN', 'OPENAI_API_KEY', 'SSH_AUTH_SOCK']), 'ambient credential channel present'
+for p in ['/qualification-root-write', '/treatment/qualification-write']:
+    try:
+        with open(p, 'w') as f: f.write('forbidden')
+    except OSError:
+        pass
+    else:
+        raise AssertionError('read-only scope was writable')
+json.dump({'host_paths_absent': True, 'ambient_credential_channels_absent': True, 'root_and_treatment_read_only': True}, open('/workspace/isolation.json', 'w'))
+`,
     { mode: 0o400 },
   );
   networkId = command('docker', [
