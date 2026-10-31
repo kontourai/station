@@ -1907,7 +1907,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
         code: 'reserved_station_turn_failed',
         retriable: false,
         retryable: false,
-      });
+      } satisfies ProviderRuntimeErrorEvent);
     }
     this.updateSession(record, 'error');
     this.publishState(record, 'running', 'errored');
