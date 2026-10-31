@@ -113,6 +113,7 @@ function core(
     env: {
       PATH: process.env.PATH ?? '',
       HOME: join(f.dir, 'home'),
+      USERPROFILE: f.dir,
       STATION_ROOT: f.stationRoot,
       STATION_BIN_DIR: f.binDir,
       STATION_CHANNEL: 'nightly',
@@ -213,16 +214,20 @@ describe('install.ps1 installer core: full install (#2675 W2)', () => {
     const root = real(f.stationRoot);
     const installRoot = real(f.installRoot);
     const home = real(f.home);
+    const launcherPath = (path: string) =>
+      process.platform === 'win32'
+        ? `%USERPROFILE%${path.slice(real(f.dir).length)}`
+        : path;
     expect(readFileSync(f.launcher, 'utf8')).toBe(
       [
         '@echo off',
         'rem station-owned-launcher-v2',
         'setlocal EnableExtensions DisableDelayedExpansion',
         'set "STATION_CHANNEL=nightly"',
-        `set "STATION_ROOT=${root}"`,
-        `set "STATION_HOME=${home}"`,
-        `set "STATION_INSTALL_ROOT=${installRoot}"`,
-        `"${join(installRoot, 'current', 'bin', 'station.cmd')}" %*`,
+        `set "STATION_ROOT=${launcherPath(root)}"`,
+        `set "STATION_HOME=${launcherPath(home)}"`,
+        `set "STATION_INSTALL_ROOT=${launcherPath(installRoot)}"`,
+        `"${launcherPath(join(installRoot, 'current', 'bin', 'station.cmd'))}" %*`,
         '',
       ].join('\r\n'),
     );
@@ -480,6 +485,7 @@ describe('install.ps1 installer core: full install (#2675 W2)', () => {
     const root = join(profile, '.station');
     const result = install(f, buildWindowsArchive(f.dir, '0.7.0-nightly.12'), {
       HOME: profile,
+      USERPROFILE: profile,
       STATION_ROOT: root,
       STATION_BIN_DIR: join(profile, '.local', 'bin'),
       STATION_INSTALL_NO_START: '1',
@@ -505,6 +511,7 @@ describe('install.ps1 installer core: full install (#2675 W2)', () => {
     // The same install again recognizes the launcher as its own.
     const again = install(f, buildWindowsArchive(f.dir, '0.7.0-nightly.13'), {
       HOME: profile,
+      USERPROFILE: profile,
       STATION_ROOT: root,
       STATION_BIN_DIR: join(profile, '.local', 'bin'),
       STATION_INSTALL_NO_START: '1',
@@ -754,6 +761,7 @@ describe('install.ps1 installer core: a launcher service in the update path (#26
       env: {
         PATH: process.env.PATH ?? '',
         HOME: join(f.dir, 'home'),
+        USERPROFILE: f.dir,
         STATION_ROOT: f.stationRoot,
         STATION_BIN_DIR: f.binDir,
         STATION_CHANNEL: 'nightly',
