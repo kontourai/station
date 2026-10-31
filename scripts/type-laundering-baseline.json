@@ -1467,18 +1467,6 @@
       "reason": "legacy-cast"
     },
     {
-      "file": "src-server/services/acp/acp-process.ts",
-      "rule": "as-any",
-      "fingerprint": "86f4028c01f4c13675dade22f43f679741956cbf83d177d1d6c489cf105df156",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-server/services/acp/acp-process.ts",
-      "rule": "as-any",
-      "fingerprint": "7536367aae4f8c64118cc2fe5bb34c13d972ff1f93c24810006a3809e2a01a1c",
-      "reason": "legacy-cast"
-    },
-    {
       "file": "src-server/services/agents/agent-service.ts",
       "rule": "as-unknown",
       "fingerprint": "24cd22aa84752ed4236ff50ebf29066f78864c653d3bc3316a7db1ae02dff10e",

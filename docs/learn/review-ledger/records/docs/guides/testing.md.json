@@ -250,7 +250,9 @@
 
     "scripts/lib/verification-coordinator.mjs",
 
-    "scripts/lib/verification-completion-phases.mjs"
+    "scripts/lib/verification-completion-phases.mjs",
+
+    "patches/vitest-runner-4.1.12.patch"
   ],
 
   "checks": [
