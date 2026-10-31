@@ -14,18 +14,10 @@ import {
 } from '@kontourai/station-contracts/delegation-group';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { inputRequestFromRequestEvent } from '@kontourai/station-shared/input-request';
+import type { RequestDelegationResolver } from '../../runtime/agents/request-delegation.js';
 import { createOrchestrationRequestPrincipalResolver } from '../../runtime/bootstrap/orchestration-request-principal.js';
-import {
-  captureEnvironmentLocalGrantObservationOwner,
-  captureEnvironmentLocalGrantReadOwner,
-} from '../../runtime/conversation/local-grant-observation-owner.js';
 import type { RuntimeFencedCredentialObservationOwners } from '../../runtime/conversation/runtime-fenced-credential-observation.js';
 import { createSealedProviderPreparation } from '../../runtime/conversation/sealed-provider-preparation.js';
-import { isOperatorInPersonNotAgent } from '../../security/coding-authority.js';
-import {
-  isBoundLocalGrantMintedOperator,
-  isRuntimeRequestPrincipalCurrent,
-} from '../../security/runtime-request-security.js';
 import { StationDelegationPersistence } from './delegation-group-persistence.js';
 import {
   LocalSourceAdmissionOwner,
@@ -77,6 +69,10 @@ export class DelegationGroupRuntime {
       runtime: RuntimeFencedCredentialObservationOwners;
       orchestration: OrchestrationService;
       rawFetch: typeof fetch;
+      resolveDelegation?: RequestDelegationResolver;
+      stationControl?: ConstructorParameters<
+        typeof LocalSourceAdmissionOwner
+      >[3];
     },
   ) {
     const home = realpathSync(owners.runtime.configLoader.getProjectHomeDir());
@@ -94,9 +90,11 @@ export class DelegationGroupRuntime {
         home,
         owners.runtime.environmentSecurityService,
         sources,
+        owners.stationControl,
       ),
       qualification: createSealedProviderPreparation,
       rawFetch: owners.rawFetch,
+      resolveDelegation: owners.resolveDelegation,
     });
     this.#admissions = new PortableGroupAdmissionStore(admissions);
     this.#persistence = new StationDelegationPersistence(root);
@@ -114,44 +112,12 @@ export class DelegationGroupRuntime {
   async authorizeResponse(
     context: RuntimeSourceRequestContext,
   ): Promise<() => undefined> {
-    const request = context.req.raw;
-    const check = () => {
-      request.signal.throwIfAborted();
-      if (
-        !isOperatorInPersonNotAgent(request) ||
-        !isBoundLocalGrantMintedOperator(request) ||
-        !isRuntimeRequestPrincipalCurrent(
-          request,
-          this.owners.runtime.requestSecurity,
-        )
-      )
-        refuse();
+    const authority = await this.#preparation.bindRequest(context);
+    authority.assertCurrent();
+    return (): undefined => {
+      authority.assertCurrent();
+      return undefined;
     };
-    check();
-    const lease =
-      request.method === 'GET'
-        ? await captureEnvironmentLocalGrantReadOwner(
-            request,
-            this.owners.runtime.environmentSecurityService,
-            this.owners.runtime.requestSecurity,
-          )
-        : (
-            await captureEnvironmentLocalGrantObservationOwner(
-              request,
-              this.owners.runtime.environmentSecurityService,
-              this.owners.runtime.requestSecurity,
-            )
-          ).requireCurrentLocalGrant(request);
-    const current = (): undefined =>
-      this.owners.runtime.environmentSecurityService.withCurrentAuthority(
-        () => {
-          lease.assertCurrent();
-          check();
-          return undefined;
-        },
-      );
-    current();
-    return current;
   }
   async #project(
     context: RuntimeSourceRequestContext,
@@ -176,6 +142,49 @@ export class DelegationGroupRuntime {
           : ('unproven' as const),
       };
     });
+    const accounting = await this.#persistence
+      .authorityStore(current)
+      .transact(projection.spec.groupId, async (ledger) => {
+        if (!ledger || !same(ledger.root, metadata.root)) refuse();
+        const knownTerminalUsage = {
+          inputTokens: 0,
+          outputTokens: 0,
+          costMicros: 0,
+        };
+        const unsettledAllocation = {
+          inputTokens: 0,
+          outputTokens: 0,
+          costMicros: 0,
+        };
+        for (const invocation of ledger.invocations) {
+          const seat = projection.spec.seats.find(
+            (value) => value.envelope.id === invocation.envelopeId,
+          );
+          const member = projection.members.find(
+            (value) => value.seatId === seat?.seatId,
+          );
+          if (!seat || member?.invocationId !== invocation.invocationId)
+            refuse();
+          const target =
+            invocation.terminal && invocation.usage !== null
+              ? knownTerminalUsage
+              : unsettledAllocation;
+          const amount =
+            invocation.terminal && invocation.usage !== null
+              ? invocation.usage
+              : invocation.allocation;
+          for (const field of [
+            'inputTokens',
+            'outputTokens',
+            'costMicros',
+          ] as const) {
+            target[field] += amount[field];
+            if (!Number.isSafeInteger(target[field])) refuse();
+          }
+        }
+        current();
+        return { ledger, result: { knownTerminalUsage, unsettledAllocation } };
+      });
     current();
     return {
       version: DELEGATION_GROUP_TRANSPORT_VERSION,
@@ -185,6 +194,7 @@ export class DelegationGroupRuntime {
       cancellation: projection.cancellation,
       terminal: projection.terminal,
       acceptance: projection.acceptance,
+      accounting,
       topology:
         projection.spec.topology.kind === 'flow'
           ? { kind: 'flow', runId: projection.spec.topology.runId }
@@ -271,9 +281,14 @@ export class DelegationGroupRuntime {
     for (const journal of journals) {
       const admission = this.#admissions.read(journal.groupId, current);
       if (!admission) refuse();
-      const metadata = this.#preparation.inspectAdmission(context, admission);
+      const classified = this.#preparation.classifyAdmission(
+        context,
+        admission,
+      );
+      const metadata = classified.payload;
       const projection = projectDelegationGroupV2(journal);
       if (!same(projection.spec, metadata.spec)) refuse();
+      if (!classified.owned) continue;
       if (!afterGroupId || projection.spec.groupId > afterGroupId)
         result.push(await this.#project(context, projection));
     }

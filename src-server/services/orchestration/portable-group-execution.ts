@@ -65,6 +65,7 @@ export class PortableGroupExecution {
     input: Parameters<PortableGroupPreparation['prepare']>[1],
   ) {
     const current = await this.owners.authorize(context);
+    await this.owners.preparation.bindRequest(context);
     const parsed = parseStationReportGroupInput(input);
     const { groupId } = await this.owners.preparation.operationIdentity(
       context,
@@ -193,6 +194,7 @@ export class PortableGroupExecution {
 
   async get(context: RuntimeSourceRequestContext, groupId: string) {
     const current = await this.owners.authorize(context);
+    await this.owners.preparation.bindRequest(context);
     const admission = this.owners.admissions.read(groupId, current);
     if (!admission) refuse();
     const metadata = this.owners.preparation.inspectAdmission(
@@ -223,6 +225,7 @@ export class PortableGroupExecution {
     )
       refuse();
     const current = await this.owners.authorize(context);
+    await this.owners.preparation.bindRequest(context);
     const admission = this.owners.admissions.read(groupId, current);
     if (!admission) refuse();
     const metadata = this.owners.preparation.inspectAdmission(
@@ -253,6 +256,7 @@ export class PortableGroupExecution {
     expectedRevision: number,
   ) {
     const current = await this.owners.authorize(context);
+    await this.owners.preparation.bindRequest(context);
     const admission = this.owners.admissions.read(groupId, current);
     if (!admission) refuse();
     const handle = await this.owners.preparation.readmit(context, admission);

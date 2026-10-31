@@ -19,10 +19,12 @@ import {
 } from '@kontourai/flow-agents/delegation-group-v2';
 import { canonicalJson } from '@kontourai/relay';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
+import type {
+  RequestDelegationResolver,
+  ResolvedRequestDelegation,
+} from '../../runtime/agents/request-delegation.js';
 import { createOrchestrationRequestPrincipalResolver } from '../../runtime/bootstrap/orchestration-request-principal.js';
-import { createPersonalRuntimeRequestGuard } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import type { BoundedApiProvider } from '../../runtime/conversation/bounded-api-provider-contract.js';
-import { captureEnvironmentLocalGrantObservationOwner } from '../../runtime/conversation/local-grant-observation-owner.js';
 import {
   type ObservedSdkProviderCredential,
   readObservedSdkProviderCredential,
@@ -41,16 +43,17 @@ import {
 } from '../../runtime/conversation/runtime-fenced-credential-observation.js';
 import type { SealedProviderPreparation } from '../../runtime/conversation/sealed-provider-preparation.js';
 import { createReportInputRuntime } from '../../runtime/mcp/report-input-runtime.js';
-import { isOperatorInPersonNotAgent } from '../../security/coding-authority.js';
-import {
-  resolveClientOriginForRequest,
-  runtimeRequestPrincipalMayAccessHttpRoute,
-} from '../../security/runtime-request-security.js';
+import { resolveClientOriginForRequest } from '../../security/runtime-request-security.js';
 import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
 import {
   type DelegatedTaskHandle,
   delegateTask,
 } from '../../tools/station-control-delegation.js';
+import {
+  STATION_CONTROL_CALLER_TOKEN_HEADER,
+  withStationControlCallerBinding,
+  withStationControlCallerContext,
+} from '../../tools/station-control-shared.js';
 import { HomeWriterOwner } from '../ssh/home-writer-owner.js';
 import { FinalFetchLaunchFence } from './delegation-group-launch-fence.js';
 import {
@@ -132,7 +135,12 @@ export class PortableGroupPreparation {
   readonly #failedInputCleanup = new Set<
     ReturnType<typeof createReportInputRuntime>
   >();
-  readonly #personal = createPersonalRuntimeRequestGuard();
+  readonly #requestAuthorities = new WeakMap<
+    Request,
+    Awaited<
+      ReturnType<LocalSourceAdmissionOwner['captureRequestAuthority']>
+    > & { delegation?: ResolvedRequestDelegation; lineageDigest?: string }
+  >();
   readonly #credentials: RuntimeFencedCredentialObservationOwner;
   readonly #operations = new Map<
     string,
@@ -153,6 +161,7 @@ export class PortableGroupPreparation {
             provider: BoundedApiProvider,
           ) => Promise<SealedProviderPreparation>);
       rawFetch: typeof fetch;
+      resolveDelegation?: RequestDelegationResolver;
     },
   ) {
     this.owners = Object.freeze({
@@ -170,25 +179,18 @@ export class PortableGroupPreparation {
   ) {
     const input = parseStationReportGroupInput(sent);
     assertSupportedInput(input);
-    this.#assertRequest(context.req.raw);
-    const authority = await captureEnvironmentLocalGrantObservationOwner(
-      context.req.raw,
-      this.owners.runtime.environmentSecurityService,
-      this.owners.runtime.requestSecurity,
-    );
-    const lease = authority.requireCurrentLocalGrant(context.req.raw);
-    lease.assertCurrent();
-    const principal = createOrchestrationRequestPrincipalResolver({
-      environmentSecurityService:
-        this.owners.runtime.environmentSecurityService,
-    })(context);
-    lease.assertCurrent();
+    const authority = await this.bindRequest(context);
     const groupId = `group:${createHash('sha256')
       .update(
-        canonicalJson([lease.hostContextId, principal.id, input.operationId]),
+        canonicalJson([
+          authority.hostContextId,
+          authority.ownerIdentity,
+          input.operationId,
+        ]),
       )
       .digest('hex')}`;
-    return { groupId, principalId: principal.id };
+    authority.assertCurrent();
+    return { groupId, principalId: authority.principalId };
   }
 
   async prepare(
@@ -197,7 +199,6 @@ export class PortableGroupPreparation {
   ): Promise<PreparedPortableGroup> {
     const input = parseStationReportGroupInput(sent);
     assertSupportedInput(input);
-    this.#assertRequest(context.req.raw);
     const { groupId, principalId } = await this.operationIdentity(
       context,
       input,
@@ -490,20 +491,34 @@ export class PortableGroupPreparation {
         max_attempts: input.members.length * attemptsPerMember,
         expires_at: new Date(input.deadlineAt).toISOString(),
       };
+      const requestAuthority = this.#requestAuthorities.get(context.req.raw);
+      if (!requestAuthority) refuse();
+      const parentConversationId =
+        requestAuthority.delegation?.context.parentConversationId;
       const root = validateRootAuthorityV2({
         schema_version: '2.0',
         authority_id: groupId,
         authority_epoch: 1,
         issuer_host_id: hostId,
         authenticated_principal_ref: reference(
-          'station.authenticated-local-operator.v1',
+          requestAuthority.delegation
+            ? 'station.authenticated-session-owner.v1'
+            : 'station.authenticated-local-operator.v1',
           principalId,
           [hostId, principalId],
         ),
         authenticated_subject_ref: reference(
-          'station.authenticated-report-request.v1',
-          principalId,
-          [principalId, input],
+          requestAuthority.delegation
+            ? 'station.authenticated-session-subject.v1'
+            : 'station.authenticated-report-request.v1',
+          parentConversationId ?? principalId,
+          requestAuthority.delegation
+            ? [
+                principalId,
+                parentConversationId,
+                requestAuthority.lineageDigest,
+              ]
+            : [principalId, input],
         ),
         source_origin: {
           repository_id: source.repository_id,
@@ -677,17 +692,43 @@ export class PortableGroupPreparation {
     }
   }
 
-  #assertRequest(request: Request): void {
-    if (
-      !this.#personal(request) ||
-      !isOperatorInPersonNotAgent(request) ||
-      !runtimeRequestPrincipalMayAccessHttpRoute(
-        request,
-        this.owners.runtime.environmentSecurityService,
-        { method: 'POST', path: '/api/orchestration/chat' },
+  async bindRequest(context: RuntimeSourceRequestContext) {
+    const request = context.req.raw;
+    const previous = this.#requestAuthorities.get(request);
+    if (previous) {
+      previous.assertCurrent();
+      return previous;
+    }
+    const authority =
+      await this.owners.sources.captureRequestAuthority(context);
+    authority.assertCurrent();
+    const caller = stationControlRequestAuthority(request);
+    let delegation: ResolvedRequestDelegation | undefined;
+    let lineageDigest: string | undefined;
+    if (caller?.kind === 'caller') {
+      if (!this.owners.resolveDelegation) refuse();
+      const resolved = await this.owners.resolveDelegation(request, {});
+      delegation = resolved ? structuredClone(resolved) : undefined;
+      authority.assertCurrent();
+      if (
+        delegation?.provenance !== 'caller-derived' ||
+        delegation.context.parentConversationId !==
+          (caller.caller.conversationId ?? caller.caller.sessionId)
       )
-    )
-      refuse();
+        refuse();
+      lineageDigest = `sha256:${createHash('sha256').update(canonicalJson(delegation.context)).digest('hex')}`;
+    }
+    const bound = Object.freeze({
+      ...authority,
+      ...(delegation ? { delegation, lineageDigest } : {}),
+    });
+    this.#requestAuthorities.set(request, bound);
+    return bound;
+  }
+  #assertRequest(request: Request): void {
+    const authority = this.#requestAuthorities.get(request);
+    if (!authority) refuse();
+    authority.assertCurrent();
   }
   #state(handle: PreparedPortableGroup, request: Request): State {
     return this.owners.runtime.environmentSecurityService.withCurrentAuthority(
@@ -800,6 +841,8 @@ export class PortableGroupPreparation {
     handle: PreparedPortableGroup,
     request: Request,
   ): Omit<RecordValue, 'members'> & {
+    ownerIdentity?: string;
+    lineageDigest?: string;
     members: Array<
       Pick<
         Member,
@@ -818,7 +861,13 @@ export class PortableGroupPreparation {
       handle,
       request,
     );
+    const requestAuthority = this.#requestAuthorities.get(request);
+    const ownerIdentity = requestAuthority?.ownerIdentity;
+    if (!ownerIdentity) refuse();
     return structuredClone({
+      ...(ownerIdentity !== root.authenticated_principal_ref.id
+        ? { ownerIdentity, lineageDigest: requestAuthority?.lineageDigest }
+        : {}),
       intent,
       root,
       envelopes,
@@ -856,7 +905,7 @@ export class PortableGroupPreparation {
     return { payload, signature };
   }
 
-  inspectAdmission(
+  classifyAdmission(
     context: RuntimeSourceRequestContext,
     admission: ReturnType<PortableGroupPreparation['admission']>,
   ) {
@@ -879,13 +928,27 @@ export class PortableGroupPreparation {
       environmentSecurityService: environment,
     })(context);
     if (
-      principal.id !== root.authenticated_principal_ref.id ||
       root.authority_id !== spec.groupId ||
       !samePortable(spec.rootAuthorityRef, rootAuthorityReferenceV2(root))
     )
       refuse();
+    const requestAuthority = this.#requestAuthorities.get(context.req.raw);
+    const owned =
+      principal.id === root.authenticated_principal_ref.id &&
+      captured.payload.lineageDigest === requestAuthority?.lineageDigest &&
+      (captured.payload.ownerIdentity ??
+        root.authenticated_principal_ref.id) ===
+        this.#requestAuthorities.get(context.req.raw)?.ownerIdentity;
     this.#assertRequest(context.req.raw);
-    return captured.payload;
+    return { owned, payload: captured.payload };
+  }
+  inspectAdmission(
+    context: RuntimeSourceRequestContext,
+    admission: ReturnType<PortableGroupPreparation['admission']>,
+  ) {
+    const result = this.classifyAdmission(context, admission);
+    if (!result.owned) refuse();
+    return result.payload;
   }
 
   async readmit(
@@ -894,6 +957,7 @@ export class PortableGroupPreparation {
   ): Promise<PreparedPortableGroup> {
     const { payload, signature } = structuredClone(admission);
     const environment = this.owners.runtime.environmentSecurityService;
+    await this.bindRequest(context);
     this.#assertRequest(context.req.raw);
     if (
       signature !==
@@ -918,7 +982,14 @@ export class PortableGroupPreparation {
     const principal = createOrchestrationRequestPrincipalResolver({
       environmentSecurityService: environment,
     })(context);
-    if (principal.id !== root.authenticated_principal_ref.id) refuse();
+    if (
+      principal.id !== root.authenticated_principal_ref.id ||
+      payload.lineageDigest !==
+        this.#requestAuthorities.get(context.req.raw)?.lineageDigest ||
+      (payload.ownerIdentity ?? root.authenticated_principal_ref.id) !==
+        this.#requestAuthorities.get(context.req.raw)?.ownerIdentity
+    )
+      refuse();
     const members: Member[] = [];
     let pendingSnapshot: object | undefined;
     try {
@@ -1225,25 +1296,61 @@ export class PortableGroupPreparation {
     const postDispatchWriter = await HomeWriterOwner.forHome(
       this.owners.runtime.environmentSecurityService.getProjectHomeDir(),
     );
-    const task = await delegateTask(
-      {
-        reservedStationTurn: port,
-        delegationGroupAdmission: { assertCurrent: finalizeCurrent, signal },
-        prompt: member.brief,
-        sessionId: member.taskId,
-        initialClientTurnId: member.clientTurnId,
-        userId: principal.id,
-        principal,
-        clientOrigin: resolveClientOriginForRequest(context.req.raw),
-        target: {
-          environment: { kind: 'current' },
-          agent: agentId(member.agentId),
-          expectedEngine: { kind: 'station' },
-          model: { override: member.modelId },
+    const requestDelegation = this.#requestAuthorities.get(
+      context.req.raw,
+    )?.delegation;
+    const launchTask = () =>
+      delegateTask(
+        {
+          reservedStationTurn: port,
+          ...(requestDelegation
+            ? {
+                ownerAttribution: 'verified-bound' as const,
+                delegation: requestDelegation.context,
+                delegationProvenance: requestDelegation.provenance,
+              }
+            : {}),
+          delegationGroupAdmission: { assertCurrent: finalizeCurrent, signal },
+          prompt: member.brief,
+          sessionId: member.taskId,
+          initialClientTurnId: member.clientTurnId,
+          userId: principal.id,
+          principal,
+          clientOrigin: resolveClientOriginForRequest(context.req.raw),
+          target: {
+            environment: { kind: 'current' },
+            agent: agentId(member.agentId),
+            expectedEngine: { kind: 'station' },
+            model: { override: member.modelId },
+          },
         },
-      },
-      orchestration,
-    );
+        orchestration,
+      );
+    const caller = stationControlRequestAuthority(context.req.raw);
+    let task: Awaited<ReturnType<typeof delegateTask>>;
+    if (caller?.kind === 'caller') {
+      const token = context.req.raw.headers.get(
+        STATION_CONTROL_CALLER_TOKEN_HEADER,
+      );
+      if (!token || !requestDelegation) refuse();
+      const stillCurrent = () => {
+        try {
+          finalizeCurrent();
+          return stationControlRequestAuthority(context.req.raw) === caller;
+        } catch {
+          return false;
+        }
+      };
+      task = await withStationControlCallerBinding(
+        createHash('sha256').update(token).digest('base64url'),
+        () =>
+          withStationControlCallerContext(
+            { token, resolve: () => (stillCurrent() ? caller.caller : null) },
+            launchTask,
+          ),
+        stillCurrent,
+      );
+    } else task = await launchTask();
     await postDispatchWriter.runRequest(signal, finalizeCurrent);
     if (
       task.taskId !== member.taskId ||
