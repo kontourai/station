@@ -2043,6 +2043,13 @@ test('declares exact inventory input inspection at the read tier', () => {
 });
 
 test('Task capture and review comments require operate scope; capture reads use read scope', () => {
+  for (const path of [
+    '/api/tasks/task-a/review/walkthroughs',
+    '/api/tasks/task-a/review/walkthroughs/clip-a',
+    '/api/tasks/task-a/review/walkthroughs/clip-a/video',
+    '/api/tasks/task-a/review/walkthroughs/clip-a/frames/frame-a',
+  ])
+    expect(requiredPairingScope('GET', path)).toBe('orchestration:read');
   expect(
     requiredPairingScope('POST', '/api/tasks/task-a/review/captures'),
   ).toBe('orchestration:operate');
