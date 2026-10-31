@@ -37,7 +37,7 @@ const sourcePath = z
             part.toLowerCase() === '.git',
         ),
   );
-export const projectWorkingDraftSchema = z
+const projectWorkingDraftSchema = z
   .object({
     rules: z
       .array(z.object({ sourcePath, text: z.string().max(6000) }).strict())

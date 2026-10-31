@@ -114,10 +114,16 @@ export function createProjectLearningReviewRoutes(deps: {
         },
         404,
       );
+    const slug = c.req.param('slug');
+    if (!slug)
+      return c.json({ success: false, error: 'Project not found' }, 404);
     const access = await deps.authorize(
       c.req.raw,
-      c.req.param('slug'),
-      operation === 'list' || operation === 'get' || (operation === 'inspect' || operation === 'prepare')
+      slug,
+      operation === 'list' ||
+        operation === 'get' ||
+        operation === 'inspect' ||
+        operation === 'prepare'
         ? 'read'
         : 'write',
     );
@@ -152,7 +158,7 @@ export function createProjectLearningReviewRoutes(deps: {
       );
     try {
       let data: unknown;
-      const learningId = c.req.param('id');
+      const learningId = c.req.param('id') ?? '';
       if (operation === 'list') data = await access.service.list(access.scope);
       else if (operation === 'get') {
         if (
@@ -181,8 +187,15 @@ export function createProjectLearningReviewRoutes(deps: {
           );
         const value: unknown = JSON.parse(body.body);
         if (operation === 'prepare') {
-          const parsed = z.object({ source: selection }).strict().safeParse(value);
-          if (!parsed.success) return c.json({ success: false, error: 'Invalid source selection' }, 400);
+          const parsed = z
+            .object({ source: selection })
+            .strict()
+            .safeParse(value);
+          if (!parsed.success)
+            return c.json(
+              { success: false, error: 'Invalid source selection' },
+              400,
+            );
           data = await access.service.prepare(access.scope, parsed.data.source);
         } else if (operation === 'inspect') {
           const parsed = z.object({ reference }).strict().safeParse(value);

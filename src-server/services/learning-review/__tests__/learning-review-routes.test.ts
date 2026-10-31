@@ -86,12 +86,16 @@ test('Project route forwards typed intent under trusted scope; an activation rec
     learningId: 'learning-one',
     scope,
   });
-  expect(result.data.receipt.ref.id).toBe('receipt-activation');
-  expect(result.data.detail.active).toBe(false);
-  expect(result.data.detail.projection.activation.value.status).toBe(
+  expect(result).toHaveProperty('data.receipt.ref.id', 'receipt-activation');
+  expect(result).toHaveProperty('data.detail.active', false);
+  expect(result).toHaveProperty(
+    'data.detail.projection.activation.value.status',
     'inactive',
   );
-  expect(result.data.detail.projection.effect.value.observations).toEqual([]);
+  expect(result).toHaveProperty(
+    'data.detail.projection.effect.value.observations',
+    [],
+  );
 });
 
 test('request actor, scope and decision capability are refused before the owner is called', async () => {
@@ -167,8 +171,10 @@ test('proposal sources are resolved at the host seam, and restricted comparisons
     { headers: { 'x-station-learning-project-id': scope.id } },
   );
   const body = await detail.json();
-  expect(body.data.projection.source).toEqual({ state: 'not-captured' });
-  expect(body.data.comparison).toEqual({ state: 'restricted' });
+  expect(body).toHaveProperty('data.projection.source', {
+    state: 'not-captured',
+  });
+  expect(body).toHaveProperty('data.comparison', { state: 'restricted' });
 });
 
 test('changed Project authority and corrupt activation proof cannot release source content', async () => {
@@ -197,14 +203,12 @@ test('unsupported owner versions and stale owner intents remain exact gaps/refus
   const { app, owner } = fixture();
   owner.version = 'knowledge.learning/v2';
   expect(
-    (
-      await (
-        await app.request('http://station.test/demo/learning', {
-          headers: { 'x-station-learning-project-id': scope.id },
-        })
-      ).json()
-    ).data,
-  ).toEqual({ state: 'unsupported-version' });
+    await (
+      await app.request('http://station.test/demo/learning', {
+        headers: { 'x-station-learning-project-id': scope.id },
+      })
+    ).json(),
+  ).toHaveProperty('data', { state: 'unsupported-version' });
   owner.version = 'knowledge.learning/v1';
   owner.apply = async () => {
     throw Object.assign(new Error('private owner detail'), { code: 'stale' });

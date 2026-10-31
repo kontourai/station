@@ -33,7 +33,9 @@ afterEach(async () => {
 test('the actual compaction route confirms only fresh launchable capacity for the exact provider model, connection and current configuration', async () => {
   const home = temp('context-runtime-'),
     store = new EventStore(join(home, 'events.sqlite'));
-  cleanups.push(() => store.close());
+  cleanups.push(() => {
+    store.close();
+  });
   const owner = 'human:local:owner',
     session = 'conversation',
     now = new Date().toISOString();
@@ -45,10 +47,14 @@ test('the actual compaction route confirms only fresh launchable capacity for th
     updatedAt: now,
   });
   for (const event of [
-    { method: 'session.started', metadata: { userId: owner } },
+    {
+      method: 'session.started',
+      sessionId: session,
+      metadata: { userId: owner },
+    },
     { method: 'turn.started', turnId: 'turn-1', prompt: 'Measured turn' },
     { method: 'turn.completed', turnId: 'turn-1' },
-  ])
+  ] as const)
     store.appendEvent({
       eventId: event.method,
       threadId: session,
@@ -106,7 +112,7 @@ test('the actual compaction route confirms only fresh launchable capacity for th
     currentRequest: () => true,
     questionWake: () => undefined,
     taskRequestMayRead: () => true,
-    taskBrief: async () => ({ kind: 'no-task' }),
+    taskBrief: async () => ({ kind: 'unbound' }),
     sessionTaskAccess: async () => ({ kind: 'no-task' }),
   })!;
   cleanups.push(() => runtime.close());
@@ -134,14 +140,18 @@ test('the actual compaction route confirms only fresh launchable capacity for th
     );
     const body = await response.json();
     expect(response.status, JSON.stringify(body)).toBe(200);
-    return body.data;
+    return body;
   };
-  expect((await read()).confirmedContext).toBeUndefined();
+  expect(await read()).not.toHaveProperty('data.confirmedContext');
   recordManagedModelContext(store, measured);
-  expect((await read()).confirmedContext).toMatchObject({
-    contextTokens: 900,
-    contextWindowTokens: 2000,
-    modelId: 'actual-model',
+  expect(await read()).toMatchObject({
+    data: {
+      confirmedContext: {
+        contextTokens: 900,
+        contextWindowTokens: 2000,
+        modelId: 'actual-model',
+      },
+    },
   });
   const valid = { ...inventoryEntry };
   for (const invalid of [
@@ -156,11 +166,11 @@ test('the actual compaction route confirms only fresh launchable capacity for th
     { effectiveContextTokens: 0 },
   ]) {
     inventoryEntry = { ...valid, ...invalid };
-    expect((await read()).confirmedContext).toBeUndefined();
+    expect(await read()).not.toHaveProperty('data.confirmedContext');
   }
   inventoryEntry = valid;
   connection.apiKey = 'changed-configuration';
-  expect((await read()).confirmedContext).toBeUndefined();
+  expect(await read()).not.toHaveProperty('data.confirmedContext');
   expect(listLaunchableModelInventory).toHaveBeenCalled();
 });
 
@@ -169,7 +179,9 @@ test.each([false, true])(
   async (revokeAtRelease) => {
     const home = temp('zero-turn-task-context-'),
       store = new EventStore(join(home, 'events.sqlite'));
-    cleanups.push(() => store.close());
+    cleanups.push(() => {
+      store.close();
+    });
     const session = 'fresh-task',
       principal = humanPrincipal('deployment', 'owner', 'Owner'),
       owner = principal.id,
@@ -220,6 +232,7 @@ test.each([false, true])(
     });
     store.appendEvent({
       eventId: 'task-start',
+      sessionId: session,
       threadId: session,
       provider: 'station-agent',
       createdAt: now,
@@ -362,14 +375,17 @@ test.each([false, true])(
       );
     } else {
       const body = await response.json();
-      expect(body.data).toMatchObject({
-        kind: 'record',
-        operation: {
-          state: 'reserved',
-          contextKind: 'task-state',
-          seed: {
-            kind: 'task-state',
-            length: 'Current bounded Task brief with repaired guidance.'.length,
+      expect(body).toMatchObject({
+        data: {
+          kind: 'record',
+          operation: {
+            state: 'reserved',
+            contextKind: 'task-state',
+            seed: {
+              kind: 'task-state',
+              length: 'Current bounded Task brief with repaired guidance.'
+                .length,
+            },
           },
         },
       });

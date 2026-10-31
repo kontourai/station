@@ -45,9 +45,10 @@ export function composeProjectWorkingRuntime(
     options.home,
     async (slug) => {
       const project = options.projects().find((entry) => entry.slug === slug);
-      if (!project) return undefined;
+      if (!project) throw new ProjectWorkingConfigurationRefusal('unavailable');
       const cwd = await options.resolveDirectory(slug);
-      return cwd ? { projectId: project.id, cwd } : undefined;
+      if (!cwd) throw new ProjectWorkingConfigurationRefusal('unavailable');
+      return { projectId: project.id, cwd };
     },
   );
   return {
@@ -59,13 +60,13 @@ export function composeProjectWorkingRuntime(
       if (!enabled()) return { state: 'disabled', text: '', omittedRules: 0 };
       const project = projectFor(task.projectId);
       if (!project || !viewerUserId)
-        throw new ProjectWorkingConfigurationRefusal('forbidden');
+        throw new ProjectWorkingConfigurationRefusal('unavailable');
       const current = async () =>
         enabled() &&
         projectFor(task.projectId)?.id === project.id &&
         (await options.canRead(project.id, viewerUserId));
       if (!(await current()))
-        throw new ProjectWorkingConfigurationRefusal('forbidden');
+        throw new ProjectWorkingConfigurationRefusal('unavailable');
       return service.forTask(project.slug, current);
     },
   };

@@ -460,12 +460,18 @@ export class SharedAutomationLedger {
   constructor(
     private readonly open: () => AutomationLedger = () =>
       createAutomationLedger(),
+    private readonly storageExists?: () => boolean,
   ) {}
 
   /** Throws {@link AutomationPolicyUnavailableError} when it cannot open. */
   get(): AutomationLedger {
     this.ledger ??= this.open();
     return this.ledger;
+  }
+
+  /** Restore an existing journal without allocating a disabled feature's storage. */
+  getExisting(): AutomationLedger | undefined {
+    return this.ledger ?? (this.storageExists?.() ? this.get() : undefined);
   }
 
   close(): void {
@@ -732,7 +738,7 @@ class SqliteAutomationLedger implements AutomationLedger {
       this.reconcileDeadClaims(Date.now());
       const rows = this.db
         .prepare(
-          "SELECT intent_id, state, body FROM automation_action_intents WHERE state NOT IN ('completed', 'failed', 'refused') ORDER BY created_ms, intent_id LIMIT 200",
+          "SELECT intent_id, state, body FROM automation_action_intents WHERE state NOT IN ('completed', 'failed', 'refused') ORDER BY CASE WHEN state='pending' THEN 1 ELSE 0 END, created_ms, intent_id LIMIT 200",
         )
         .all() as { intent_id: string; state: string; body: string }[];
       return rows.map((row) => {

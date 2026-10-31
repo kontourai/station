@@ -1,5 +1,6 @@
 import type { FeedbackRatingTarget } from '@kontourai/station-contracts/feedback';
 import { FeedbackEvidenceStoreError } from '../../services/feedback/feedback-evidence-store.js';
+import { errorMessage } from '../schemas/schemas.js';
 /**
  * Feedback Routes — message rating and insights REST API.
  */
@@ -66,6 +67,17 @@ export function createFeedbackRoutes(
         400,
       );
     }
+    const expectsTarget =
+      body.expectedSessionId !== undefined || body.expectedTurnId !== undefined;
+    if (expectsTarget && (!body.expectedSessionId || !body.expectedTurnId))
+      return c.json(
+        {
+          success: false,
+          code: 'feedback_target_changed',
+          error: 'Both response coordinates are required.',
+        },
+        400,
+      );
     const proof =
       body.expectedSessionId && body.expectedTurnId
         ? await resolveTarget?.(c.req.raw, {
@@ -75,6 +87,16 @@ export function createFeedbackRoutes(
             expectedTurnId: body.expectedTurnId,
           })
         : undefined;
+    if (expectsTarget && !proof)
+      return c.json(
+        {
+          success: false,
+          code: 'feedback_target_changed',
+          error:
+            'The response changed or is unavailable. Refresh it before rating.',
+        },
+        409,
+      );
     if (
       proof &&
       (proof.target.conversationId !== conversationId ||
@@ -99,7 +121,7 @@ export function createFeedbackRoutes(
     } catch (error) {
       if (error instanceof FeedbackEvidenceStoreError)
         return c.json(
-          { success: false, code: error.code, error: error.message },
+          { success: false, code: error.code, error: errorMessage(error) },
           error.code === 'feedback_capacity' ? 409 : 503,
         );
       throw error;

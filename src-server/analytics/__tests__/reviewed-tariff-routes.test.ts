@@ -41,7 +41,10 @@ test('operator review route updates the same private pricing owner used by inges
     }),
   });
   expect(response.status).toBe(200);
-  expect((await response.json()).data.reviewedBy).toBe('person:verified');
+  expect(await response.json()).toHaveProperty(
+    'data.reviewedBy',
+    'person:verified',
+  );
   const first = await ingestion.capture(captureInput);
   expect(first).toMatchObject({
     inputPerMillion: 2,

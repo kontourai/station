@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import {
   CLIENT_ORIGIN_VERSION,
+  type ClientOrigin,
   UNKNOWN_CLIENT_REPORTED_ORIGIN,
 } from '@kontourai/station-contracts/client-origin';
 import type {
@@ -255,7 +256,11 @@ export interface ProjectSupervisionPorts {
   submit(input: {
     conversationId: string;
     clientTurnId: string;
-    payload: { message: string; actor: { userId: string } };
+    payload: {
+      message: string;
+      actor: { userId: string };
+      clientOrigin: ClientOrigin;
+    };
   }): ThreadInboxSubmission;
 }
 export class ProjectSupervision {

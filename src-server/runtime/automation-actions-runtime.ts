@@ -42,13 +42,19 @@ interface AutomationActionsOptions {
   /** Exact current Project id; a same-named replacement never inherits a grant. */
   isProjectCurrent: (projectId: string) => boolean;
   ledger: () => AutomationLedger;
+  existingLedger: () => AutomationLedger | undefined;
   taskGraph: Pick<TaskGraphService, 'createTaskIdempotent' | 'readTaskView'>;
   taskDispatcher: TaskDispatcher;
   orchestration: Pick<
     OrchestrationService,
     'registerTurnAdmission' | 'interruptTurn'
   >;
-  eventStore: Pick<EventStore, 'listEvents' | 'conversationForSession'>;
+  eventStore: Pick<
+    EventStore,
+    | 'listEvents'
+    | 'conversationForSession'
+    | 'readProjectTaskRoomExecutionBinding'
+  >;
   eventBus: EventBus;
   inbox: () => Pick<ThreadInboxDelivery, 'submit' | 'entry'> | undefined;
   logger: Logger;
@@ -75,6 +81,8 @@ class AutomationActionsRuntime implements AutomationInboxPlacement {
   private readonly sessionIntents = new Map<string, string>();
   private busy = false;
   private closed = false;
+  private journalObserved = false;
+  private recoveryUnavailable = false;
 
   constructor(
     private readonly options: AutomationActionsOptions,
@@ -85,6 +93,20 @@ class AutomationActionsRuntime implements AutomationInboxPlacement {
       registerTurnAdmission: (admission) =>
         options.orchestration.registerTurnAdmission((input) => {
           const id = this.sessionIntents.get(input.threadId);
+          if (!id && (!this.journalObserved || this.recoveryUnavailable)) {
+            const binding =
+              options.eventStore.readProjectTaskRoomExecutionBinding(
+                input.threadId,
+              );
+            const task = binding
+              ? options.taskGraph.readTaskView(binding.taskId)
+              : undefined;
+            if (binding && (!task || task.createdBy === 'automation-rule'))
+              return {
+                allowed: false,
+                reason: 'Automation recovery authority is unavailable.',
+              };
+          }
           if (id) {
             try {
               const intent = options.ledger().readIntent(id);
@@ -111,6 +133,28 @@ class AutomationActionsRuntime implements AutomationInboxPlacement {
       listEvents: (sessionId) =>
         options.eventStore.listEvents(sessionId).map((event) => event.payload),
     });
+    if (!options.hosted) {
+      try {
+        const existing = options.existingLedger();
+        if (existing) {
+          this.journalObserved = true;
+          for (const intent of existing.listActionIntents()) {
+            if (
+              !intent.sessionId ||
+              !['queued', 'running', 'indeterminate'].includes(intent.state)
+            )
+              continue;
+            this.arm(intent);
+            void this.reconcile(intent, false).catch(() => {
+              this.recoveryUnavailable = true;
+            });
+          }
+        }
+      } catch {
+        this.recoveryUnavailable = true;
+        options.logger.warn('Automation journal recovery is unavailable');
+      }
+    }
   }
 
   private enabled(): boolean {
@@ -251,7 +295,10 @@ class AutomationActionsRuntime implements AutomationInboxPlacement {
     this.busy = true;
     try {
       const ledger = this.options.ledger();
-      for (const intent of ledger.listActionIntents()) {
+      const intents = ledger.listActionIntents();
+      this.journalObserved = true;
+      this.recoveryUnavailable = false;
+      for (const intent of intents) {
         if (
           intent.state === 'queued' ||
           intent.state === 'running' ||
@@ -284,6 +331,7 @@ class AutomationActionsRuntime implements AutomationInboxPlacement {
         await this.dispatch(intent, claim.receipt);
       }
     } catch (error) {
+      this.recoveryUnavailable = true;
       this.options.logger.warn('Automation actions are unavailable', {
         error: error instanceof Error ? error.message : 'unknown',
       });
@@ -536,7 +584,10 @@ class AutomationActionsRuntime implements AutomationInboxPlacement {
     });
   }
 
-  private async reconcile(intent: AutomationActionIntent): Promise<void> {
+  private async reconcile(
+    intent: AutomationActionIntent,
+    allowPlacement = true,
+  ): Promise<void> {
     const ledger = this.options.ledger();
     intent = ledger.readIntent(intent.intentId) ?? intent;
     const sessionId = intent.sessionId;
@@ -603,7 +654,7 @@ class AutomationActionsRuntime implements AutomationInboxPlacement {
       this.releaseKnown(intent.intentId);
       return;
     }
-    if (intent.state === 'queued') this.submit(intent);
+    if (allowPlacement && intent.state === 'queued') this.submit(intent);
   }
 
   close(): void {

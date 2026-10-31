@@ -11,6 +11,7 @@ import {
   type ProjectWorkingConfigurationService,
   projectWorkingApplySchema,
 } from '../../services/projects/project-working-configuration.js';
+import { errorMessage } from '../schemas/schemas.js';
 
 export interface ProjectWorkingConfigurationAdmission {
   projectId: string;
@@ -44,6 +45,8 @@ export function createProjectWorkingConfigurationRoutes(deps: {
         404,
       );
     const slug = c.req.param('slug');
+    if (!slug)
+      return c.json({ success: false, error: 'Project not found' }, 404);
     const admission = await deps.authorize(c.req.raw, slug, action);
     if (!admission)
       return c.json({ success: false, error: 'Project not found' }, 404);
@@ -97,7 +100,7 @@ export function createProjectWorkingConfigurationRoutes(deps: {
         );
       if (error instanceof ProjectWorkingConfigurationRefusal)
         return c.json(
-          { success: false, error: error.message, code: error.code },
+          { success: false, error: errorMessage(error), code: error.code },
           error.code === 'unavailable' ? 404 : 409,
         );
       return c.json(

@@ -132,12 +132,13 @@ test('real owner activation contributes the exact revision after restart; retire
   expect(
     (await f.runtime.forTask(f.task, 'person:operator'))?.text,
   ).not.toContain('Attach immutable');
+  if (!reference?.revision) throw new Error('Source revision missing');
   await access.service.apply(scope, 'learning-one', {
     intentId: 'evaluate-one',
     expectedRevision: 1,
     action: 'evaluate',
     status: 'supported',
-    evidence: [reference],
+    evidence: [{ ...reference, revision: reference.revision }],
   });
   await access.service.apply(scope, 'learning-one', {
     intentId: 'approve-one',

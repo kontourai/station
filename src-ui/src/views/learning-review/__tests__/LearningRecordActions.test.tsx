@@ -23,6 +23,7 @@ import {
 } from '../../../../../src-server/services/learning-review/learning-review-service.js';
 import { MessageRating } from '../../../components/chat/message-bubble/MessageRating';
 import { TaskLearningPanel } from '../../task-workspace/TaskLearningPanel';
+import { LearningReviewPanel } from '../LearningReviewPanel';
 
 const data = vi.hoisted(() => ({
   authority: {
@@ -304,4 +305,93 @@ test('a later canonical Task record can be selected as an effect source through 
       }),
     ),
   );
+});
+
+test.each(['proposal', 'effect'] as const)(
+  'an observed source refusal removes protected %s fields and prepared cache despite unchanged host authority',
+  async (mode) => {
+    const context = fixture(mode === 'effect');
+    render(
+      <QueryClientProvider client={context.client}>
+        <TaskLearningPanel
+          taskId="task-one"
+          projectId="project-id"
+          projectSlug="demo"
+          taskCreatedAt="2026-10-30T09:00:00.000Z"
+          authority={data.authority}
+        />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Review as learning' }),
+    );
+    await screen.findByRole('dialog', { name: 'Review as learning' });
+    if (mode === 'effect') {
+      fireEvent.change(screen.getByLabelText('Learning action'), {
+        target: { value: 'effect' },
+      });
+      fireEvent.change(await screen.findByLabelText('Active guidance'), {
+        target: { value: 'learning-one' },
+      });
+      expect(screen.getByText('Canonical source body')).toBeTruthy();
+    } else {
+      expect(screen.getByDisplayValue('Canonical source body')).toBeTruthy();
+      fireEvent.change(screen.getByLabelText('Expected effect'), {
+        target: { value: 'Preserve source evidence' },
+      });
+    }
+    context.revoke();
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: mode === 'effect' ? 'Record observed effect' : 'Propose to owner',
+      }),
+    );
+    await screen.findByText('Source access changed');
+    expect(data.authority.isCurrent()).toBe(true);
+    expect(screen.queryByText('Canonical source body')).toBeNull();
+    expect(screen.queryByDisplayValue('Canonical source body')).toBeNull();
+    expect(screen.queryByDisplayValue('Canonical source title')).toBeNull();
+    expect(context.apply).not.toHaveBeenCalled();
+    await waitFor(() => {
+      for (const query of context.client
+        .getQueryCache()
+        .getAll()
+        .filter((query) => query.queryKey[0] === 'learning-review'))
+        expect(JSON.stringify(query.state.data)).not.toContain(
+          'Canonical source body',
+        );
+    });
+  },
+);
+
+test('an observed decision refusal clears protected owner rows until an authoritative read restores access', async () => {
+  const context = fixture();
+  render(
+    <QueryClientProvider client={context.client}>
+      <LearningReviewPanel
+        slug="demo"
+        projectId="project-id"
+        authority={data.authority}
+      />
+    </QueryClientProvider>,
+  );
+  fireEvent.change(await screen.findByLabelText('Learning'), {
+    target: { value: 'learning-one' },
+  });
+  await screen.findByText('Proposed guidance');
+  fireEvent.change(screen.getByLabelText('Action'), {
+    target: { value: 'activate' },
+  });
+  context.revoke();
+  fireEvent.click(screen.getByRole('button', { name: 'Submit to owner' }));
+  await screen.findByText('Learning access changed');
+  expect(screen.queryByText('Proposed guidance')).toBeNull();
+  expect(screen.queryByLabelText('Learning')).toBeNull();
+  expect(context.apply).not.toHaveBeenCalled();
+  context.restoreAccess();
+  fireEvent.click(screen.getByRole('button', { name: 'Check access' }));
+  fireEvent.change(await screen.findByLabelText('Learning'), {
+    target: { value: 'learning-one' },
+  });
+  expect(await screen.findByText('Proposed guidance')).toBeTruthy();
 });

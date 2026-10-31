@@ -1855,7 +1855,7 @@ describe('bounded authority inspection', () => {
       leafBodies.push(await c.req.json());
       return c.json({ success: true });
     });
-    const request = (body: BodyInit) => {
+    const request = (body: RequestInit['body']) => {
       const options: RequestInit & { duplex: 'half' } = {
         method: 'POST',
         headers,
@@ -1881,7 +1881,8 @@ describe('bounded authority inspection', () => {
     });
     const response = await app.fetch(request(body));
     expect(response.status).toBe(413);
-    expect((await response.json()).code).toBe(
+    expect(await response.json()).toHaveProperty(
+      'code',
       'station_control_request_body_refused',
     );
     expect(leafBodies).toEqual([]);

@@ -7,6 +7,7 @@ import {
   type LearningReviewRevisionRef,
   type LearningReviewSourceSelection,
 } from '@kontourai/station-contracts/learning-review';
+import { isLearningAccessRefusal } from '@kontourai/station-sdk/client/learning-review';
 import {
   type LearningReviewRequestScope,
   useProjectLearningDetailQuery,
@@ -17,7 +18,13 @@ import {
 } from '@kontourai/station-sdk/learning-review-query';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { Badge } from '@kontourai/ui/react';
-import { type SelectHTMLAttributes, useId, useState } from 'react';
+import {
+  type SelectHTMLAttributes,
+  useCallback,
+  useEffect,
+  useId,
+  useState,
+} from 'react';
 import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
 import { DisclosureToggle } from '../../components/DisclosureToggle';
@@ -94,6 +101,8 @@ function ProjectLearningReview({
   const [localError, setLocalError] = useState('');
   const [showProposal, setShowProposal] = useState(false);
   const [showReceipts, setShowReceipts] = useState(false);
+  const [accessLost, setAccessLost] = useState(false);
+  const refused = isLearningAccessRefusal(mutate.error);
   const { guard, DiscardModal } = useUnsavedGuard(!!operation);
   const id = useId();
   const list =
@@ -140,15 +149,25 @@ function ProjectLearningReview({
         revision: current?.revision ?? details.revision,
       }));
   };
-  const reset = () => {
+  const resetMutation = mutate.reset;
+  const reset = useCallback(() => {
     setOperation(undefined);
     setText('');
     setEvidenceKey('');
     setReplacementId('');
     setLocalError('');
     setInspected(undefined);
-    mutate.reset();
-  };
+    resetMutation();
+  }, [resetMutation]);
+  useEffect(() => {
+    if (!refused) return;
+    setAccessLost(true);
+    setSelected('');
+    setCompareId(undefined);
+    setShowProposal(false);
+    setShowReceipts(false);
+    reset();
+  }, [refused, reset]);
   const submit = async () => {
     if (!details) return;
     const base = {
@@ -207,6 +226,26 @@ function ProjectLearningReview({
       /* The mutation error remains visible; refreshing reads owner truth. */
     }
   };
+  if (refused || accessLost)
+    return (
+      <ErrorState
+        variant="compact"
+        title="Learning access changed"
+        description="Read current owner state before continuing."
+        action={
+          <Button
+            onClick={() => {
+              void index.refetch().then((result) => {
+                if (!result.error && result.data?.state === 'available')
+                  setAccessLost(false);
+              });
+            }}
+          >
+            Check access
+          </Button>
+        }
+      />
+    );
   return (
     <section className="learning-review" aria-labelledby={`${id}-title`}>
       <div className="learning-review__heading">
@@ -230,6 +269,7 @@ function ProjectLearningReview({
           projectId={projectId}
           authority={authority}
           source={proposalSource}
+          onComplete={() => setShowProposal(false)}
         />
       )}
       {!proposalSource && (
@@ -805,7 +845,7 @@ export function LearningReviewProposalForm({
   authority: LearningReviewRequestScope;
   source: LearningReviewProposalContext;
   onDirty?(dirty: boolean): void;
-  onComplete?(): void;
+  onComplete(): void;
 }) {
   const [draft, setDraft] = useState(() => ({
     title: source.title,
@@ -821,6 +861,21 @@ export function LearningReviewProposalForm({
     authority,
   );
   const { DiscardModal } = useUnsavedGuard(!onDirty && dirty);
+  const [accessLost, setAccessLost] = useState(false);
+  const refused = isLearningAccessRefusal(mutation.error);
+  useEffect(() => {
+    if (!refused) return;
+    setAccessLost(true);
+    setDraft((current) => ({
+      ...current,
+      title: '',
+      body: '',
+      expectedEffect: '',
+    }));
+    setDirty(false);
+    onDirty?.(false);
+    mutation.reset();
+  }, [refused, mutation.reset, onDirty]);
   const change = (key: 'title' | 'body' | 'expectedEffect', value: string) => {
     setDirty(true);
     onDirty?.(true);
@@ -830,6 +885,15 @@ export function LearningReviewProposalForm({
       intentId: randomCorrelationId(),
     }));
   };
+  if (refused || accessLost)
+    return (
+      <ErrorState
+        variant="compact"
+        title="Source access changed"
+        description="Check owner state before proposing again."
+        action={<Button onClick={onComplete}>Close</Button>}
+      />
+    );
   return (
     <form
       className="learning-review learning-review__proposal"
@@ -938,6 +1002,15 @@ function LearningSourceEffectForm({
     'supported' | 'countered' | 'unresolved'
   >('unresolved');
   const [intentId, setIntentId] = useState(randomCorrelationId);
+  const [accessLost, setAccessLost] = useState(false);
+  const refused = isLearningAccessRefusal(mutation.error);
+  useEffect(() => {
+    if (!refused) return;
+    setAccessLost(true);
+    setTarget(undefined);
+    onDirty(false);
+    mutation.reset();
+  }, [refused, mutation.reset, onDirty]);
   const id = useId();
   const records =
     read.data?.state === 'available'
@@ -948,6 +1021,15 @@ function LearningSourceEffectForm({
             item.projection.scope.id === projectId,
         )
       : [];
+  if (refused || accessLost)
+    return (
+      <ErrorState
+        variant="compact"
+        title="Source access changed"
+        description="Check owner state before recording another effect."
+        action={<Button onClick={onComplete}>Close</Button>}
+      />
+    );
   return (
     <form
       className="learning-review"

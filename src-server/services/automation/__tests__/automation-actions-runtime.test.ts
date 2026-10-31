@@ -217,23 +217,28 @@ async function world(
   const projectIds = new Set(['project']);
   const warnings = vi.fn();
   const ledgerReads = vi.fn(() => ledger);
-  const runtime = createAutomationActionsRuntime({
-    hosted: false,
-    isProjectCurrent: (id) => projectIds.has(id),
-    featurePreviews: previews,
-    store,
-    ledger: ledgerReads,
-    taskGraph: graph,
-    taskDispatcher: dispatcher,
-    orchestration: service,
-    eventStore,
-    eventBus: bus,
-    inbox: () => inbox,
-    logger: { warn: warnings } as never,
-  });
+  const makeRuntime = () =>
+    createAutomationActionsRuntime({
+      hosted: false,
+      isProjectCurrent: (id) => projectIds.has(id),
+      featurePreviews: previews,
+      store,
+      ledger: ledgerReads,
+      existingLedger: () => ledger,
+      taskGraph: graph,
+      taskDispatcher: dispatcher,
+      orchestration: service,
+      eventStore,
+      eventBus: bus,
+      inbox: () => inbox,
+      logger: { warn: warnings } as never,
+    });
+  let runtime = makeRuntime();
   inbox = new ThreadInboxDelivery({
     store: eventStore.threadInboxStore(),
-    automation: runtime,
+    get automation() {
+      return runtime;
+    },
     foldEvents: (threadId) =>
       eventStore
         .listEventsByMethods(threadId, ACTIVE_TURN_FOLD_METHODS)
@@ -259,15 +264,17 @@ async function world(
         INTERNAL_SESSION_READ_SCOPE,
       ),
     start: async ({ threadId, conversationId, payload, clientTurnId }) => {
-      const result = (await service.dispatch({
-        type: 'sendTurn',
-        input: {
-          threadId,
-          input: payload.message,
-          clientTurnId,
-          clientOrigin: payload.clientOrigin,
+      const result = (await service.dispatch(
+        {
+          type: 'sendTurn',
+          input: {
+            threadId,
+            input: payload.message,
+            clientTurnId,
+          },
         },
-      })) as ProviderTurnStartResult;
+        { clientOrigin: payload.clientOrigin },
+      )) as ProviderTurnStartResult;
       return {
         outcome: 'started',
         conversationId,
@@ -277,7 +284,10 @@ async function world(
     },
     subscribe: (listener) =>
       bus.subscribe((message) => {
-        if (message.event === SERVER_EVENTS.ORCHESTRATION_EVENT) {
+        if (
+          message.event === SERVER_EVENTS.ORCHESTRATION_EVENT &&
+          message.data
+        ) {
           const event = message.data.event as CanonicalRuntimeEvent;
           listener({ threadId: event.threadId, method: event.method });
         }
@@ -299,7 +309,13 @@ async function world(
     ledgerReads,
     dispatcher,
     ledger,
-    runtime,
+    get runtime() {
+      return runtime;
+    },
+    rebootController() {
+      runtime.close();
+      runtime = makeRuntime();
+    },
     store,
     previews,
     adapter,
@@ -479,6 +495,47 @@ test('source withdrawal during awaited turn preparation refuses the physical sen
     }),
     { mode: 0o600 },
   );
+  release();
+  await vi.waitFor(() =>
+    expect(
+      w.inbox.entry(intent.conversationId!, `automation:${intent.intentId}`)
+        ?.state,
+    ).toBe('refused'),
+  );
+  expect(w.adapter.sends).toEqual([]);
+});
+
+test('controller recovery enforces retained Automation authority before polling or tick even with the preview disabled', async () => {
+  let reached = false;
+  let release: () => void = () => {};
+  const wait = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const w = await world({
+    turnPreparation: {
+      entered: () => {
+        reached = true;
+      },
+      wait,
+    },
+  });
+  await w.previews.setEnabled('github-automation-actions', true);
+  await w.runtime.tick();
+  await vi.waitFor(() => expect(reached).toBe(true));
+  const intent = w.ledger.listActionIntents()[0]!;
+  await w.previews.setEnabled('github-automation-actions', false);
+  w.rebootController();
+  await expect(
+    w.service.dispatch({
+      type: 'sendTurn',
+      input: {
+        threadId: intent.sessionId!,
+        input: 'Another continuation',
+        clientTurnId: 'different-original-key',
+      },
+    }),
+  ).rejects.toThrow('Automation authority changed before turn dispatch');
+  expect(w.adapter.sends).toEqual([]);
   release();
   await vi.waitFor(() =>
     expect(

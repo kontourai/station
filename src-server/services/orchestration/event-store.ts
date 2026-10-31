@@ -1,5 +1,3 @@
-import { parseLearningContextContributions } from '@kontourai/station-contracts/learning-review';
-import { TASK_LEARNING_CONTRIBUTIONS_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import {
   createHash,
   createHmac,
@@ -44,6 +42,7 @@ import type {
 } from '@kontourai/station-contracts/connection-recovery';
 import { isLowContentPrompt } from '@kontourai/station-contracts/conversation-title';
 import { parseMcpToolRef } from '@kontourai/station-contracts/layout';
+import { parseLearningContextContributions } from '@kontourai/station-contracts/learning-review';
 import type {
   ConversationHandoffProjection,
   OrchestrationCommandReceipt,
@@ -56,6 +55,7 @@ import {
   SESSION_AGENT_DISPLAY_NAME_MAX_LENGTH,
   SESSION_AGENT_DISPLAY_NAME_METADATA_KEY,
   SESSION_AGENT_ICON_METADATA_KEY,
+  TASK_LEARNING_CONTRIBUTIONS_METADATA_KEY,
 } from '@kontourai/station-contracts/provider';
 import type { RunSummary } from '@kontourai/station-contracts/runs';
 import {
@@ -3726,18 +3726,35 @@ export class EventStore {
 
   /** Canonical first-turn composition receipts, bounded to the latest 100 Task turns. */
   readRecentTaskLearningContributions(projectIds: readonly string[]) {
-    if (projectIds.length < 1 || projectIds.length > 2) throw new Error('Invalid Project identity set');
+    if (projectIds.length < 1 || projectIds.length > 2)
+      throw new Error('Invalid Project identity set');
     const placeholders = projectIds.map(() => '?').join(',');
-    const rows = this.db.prepare(`SELECT id, thread_id, turn_id,
+    const rows = this.db
+      .prepare(`SELECT id, thread_id, turn_id,
       json_extract(payload, '$.metadata.${TASK_LEARNING_CONTRIBUTIONS_METADATA_KEY}') AS contributions
       FROM orchestration_events WHERE method='turn.started' AND turn_id IS NOT NULL AND json_valid(payload)
       AND thread_id IN (SELECT session_id FROM project_task_room_execution_bindings WHERE project_id IN (${placeholders}))
-      ORDER BY global_sequence DESC LIMIT 100`).all(...projectIds) as Array<{ id: string; thread_id: string; turn_id: string; contributions: string | null }>;
-    return rows.flatMap(row => {
+      ORDER BY global_sequence DESC LIMIT 100`)
+      .all(...projectIds) as Array<{
+      id: string;
+      thread_id: string;
+      turn_id: string;
+      contributions: string | null;
+    }>;
+    return rows.flatMap((row) => {
       if (!row.contributions) return [];
-      const refs = parseLearningContextContributions(JSON.parse(row.contributions));
+      const refs = parseLearningContextContributions(
+        JSON.parse(row.contributions),
+      );
       if (!refs) return [];
-      return [{ eventId: row.id, sessionId: row.thread_id, turnId: row.turn_id, contributions: refs }];
+      return [
+        {
+          eventId: row.id,
+          sessionId: row.thread_id,
+          turnId: row.turn_id,
+          contributions: refs,
+        },
+      ];
     });
   }
 
@@ -3753,10 +3770,22 @@ export class EventStore {
     return row ? { ...row } : undefined;
   }
   /** Immutable original event for replaying a server-projected input receipt. */
-  readPersistedTurnStartMetadata(threadId:string,eventId:string,invocationId:string):Record<string,unknown>|undefined{
-    const row=this.db.prepare("SELECT json_extract(payload,'$.metadata') AS metadata FROM orchestration_events WHERE thread_id=? AND id=? AND method='turn.started' AND json_extract(payload,'$.invocationId')=?").get(threadId,eventId,invocationId) as {metadata:string|null}|undefined;
-    const value=row?.metadata?JSON.parse(row.metadata):undefined;
-    return value&&typeof value==='object'&&!Array.isArray(value)?value:undefined;
+  readPersistedTurnStartMetadata(
+    threadId: string,
+    eventId: string,
+    invocationId: string,
+  ): Record<string, unknown> | undefined {
+    const row = this.db
+      .prepare(
+        "SELECT json_extract(payload,'$.metadata') AS metadata FROM orchestration_events WHERE thread_id=? AND id=? AND method='turn.started' AND json_extract(payload,'$.invocationId')=?",
+      )
+      .get(threadId, eventId, invocationId) as
+      | { metadata: string | null }
+      | undefined;
+    const value = row?.metadata ? JSON.parse(row.metadata) : undefined;
+    return value && typeof value === 'object' && !Array.isArray(value)
+      ? value
+      : undefined;
   }
 
   async bindProjectTaskRoomExecution(input: {

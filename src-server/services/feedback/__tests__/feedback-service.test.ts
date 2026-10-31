@@ -1,13 +1,10 @@
-import {
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+
+const temp = trackTempDirs();
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   feedbackOps: { add: vi.fn() },
@@ -41,7 +38,7 @@ describe('FeedbackService', () => {
   let svc: InstanceType<typeof FeedbackService>;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'feedback-test-'));
+    dir = temp('feedback-test-');
     svc = new FeedbackService(dir);
   });
 
@@ -492,7 +489,7 @@ describe('FeedbackService', () => {
 });
 
 test('raw rating revisions remain inspectable across edits, exclude analysis/position, and explicit deletion withdraws all versions without revival', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'feedback-history-'));
+  const root = temp('feedback-history-');
   const service = new FeedbackService(root);
   const { feedbackRatingEvidenceDigest } = await import(
     '../feedback-target.js'
@@ -530,7 +527,7 @@ test('raw rating revisions remain inspectable across edits, exclude analysis/pos
 });
 
 test('history capacity refuses without eviction, corruption never resets, and missing primary never recovers deleted evidence', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'feedback-capacity-'));
+  const root = temp('feedback-capacity-');
   const service = new FeedbackService(root);
   const { feedbackRatingEvidenceDigest } = await import(
     '../feedback-target.js'
@@ -563,7 +560,7 @@ test('history capacity refuses without eviction, corruption never resets, and mi
 });
 
 test('unchanged raw facts neither add history nor rewrite, and safe legacy0644 is read before private explicit write', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'feedback-legacy-'));
+  const root = temp('feedback-legacy-');
   const service = new FeedbackService(root);
   const first = service.rateMessage(ratingInput);
   const file = join(root, 'feedback', 'feedback.json');
@@ -581,7 +578,7 @@ test('unchanged raw facts neither add history nor rewrite, and safe legacy0644 i
 });
 
 test('the retained-history byte budget refuses a new revision before writing even below the record limit', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'feedback-byte-limit-'));
+  const root = temp('feedback-byte-limit-');
   const service = new FeedbackService(root);
   const { feedbackRatingEvidenceDigest } = await import(
     '../feedback-target.js'
@@ -605,7 +602,7 @@ test('the retained-history byte budget refuses a new revision before writing eve
 });
 
 test('request-local evidence capture parses once and refuses changed, deleted, or newly appearing primary evidence', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'feedback-capture-'));
+  const root = temp('feedback-capture-');
   const service = new FeedbackService(root);
   const absent = service.captureRatingEvidence();
   absent.assertCurrent();

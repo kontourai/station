@@ -75,7 +75,6 @@ import {
 } from './task-experiences';
 import { TaskLearningPanel } from './task-workspace/TaskLearningPanel';
 import { TaskMemoryPanel } from './task-workspace/TaskMemoryPanel';
-import { TaskSupervisionPanel } from './task-workspace/TaskSupervisionPanel';
 import {
   type TaskOutputPromotion,
   TaskOutputsSection,
@@ -86,6 +85,7 @@ import {
   TaskRoomRail,
   TaskRoomResults,
 } from './task-workspace/TaskRoomPage';
+import { TaskSupervisionPanel } from './task-workspace/TaskSupervisionPanel';
 import { TaskTurnReferenceView } from './task-workspace/TaskTurnReferenceView';
 import { TaskUserInputReferences } from './task-workspace/TaskUserInputReferences';
 import './page-layout.css';
@@ -456,7 +456,7 @@ function TaskWorkspaceContent({
   tab: string;
   setTab: (tab: string) => void;
 }) {
-  const supervisionAuthority=useHostRequestAuthorityScope();
+  const supervisionAuthority = useHostRequestAuthorityScope();
   const { updateParams } = useNavigationActions();
   const references = useMemo(() => taskReferences(graph), [graph]);
   // AW-4: the list is derived from what this Station has actually
@@ -646,7 +646,13 @@ function TaskWorkspaceContent({
         <TaskRoomEditorPane taskId={taskId} startInPreview />
         <TaskMemoryPanel taskId={graph.task.id} />
         {graph.task.status === 'done' ? (
-          <TaskLearningPanel taskId={graph.task.id} projectId={projectId} projectSlug={projectSlug} taskCreatedAt={graph.task.createdAt} authority={supervisionAuthority ?? undefined} />
+          <TaskLearningPanel
+            taskId={graph.task.id}
+            projectId={projectId}
+            projectSlug={projectSlug}
+            taskCreatedAt={graph.task.createdAt}
+            authority={supervisionAuthority ?? undefined}
+          />
         ) : null}
       </div>
       <div
@@ -657,7 +663,14 @@ function TaskWorkspaceContent({
         aria-labelledby="task-tab-Overview"
       >
         <TaskRoomRail task={graph.task} onBrief={() => setTab('Plan')} />
-        {supervisionAuthority&&<TaskSupervisionPanel taskId={graph.task.id} taskCreatedAt={graph.task.createdAt} projectId={graph.task.projectId} authority={supervisionAuthority}/>}
+        {supervisionAuthority && (
+          <TaskSupervisionPanel
+            taskId={graph.task.id}
+            taskCreatedAt={graph.task.createdAt}
+            projectId={graph.task.projectId}
+            authority={supervisionAuthority}
+          />
+        )}
         {reviewEnabled && (
           <Suspense fallback={<SkeletonBlock label="Loading Timeline" />}>
             <LazyTaskOverviewTimeline

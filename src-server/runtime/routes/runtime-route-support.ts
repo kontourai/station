@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { networkInterfaces } from 'node:os';
 import { join } from 'node:path';
 import { ACPStatus } from '@kontourai/station-contracts/acp';
@@ -505,8 +506,10 @@ export function configureRuntimeSupportServices(
   // ride the scheduler's tick through the external monitor's transport. One
   // lazily opened ledger serves the poller and the read route.
   const automationHome = context.configLoader.getProjectHomeDir();
-  const automationLedger = new SharedAutomationLedger(() =>
-    createAutomationLedger({ directory: join(automationHome, 'automation') }),
+  const automationLedger = new SharedAutomationLedger(
+    () =>
+      createAutomationLedger({ directory: join(automationHome, 'automation') }),
+    () => existsSync(join(automationHome, 'automation', 'automation.sqlite')),
   );
   const automationStore = new AutomationStore(automationHome);
   const automationObservation = composeGitHubAutomationObservation(
@@ -530,6 +533,7 @@ export function configureRuntimeSupportServices(
               .listProjects()
               .some((project) => project.id === id),
           ledger: () => automationLedger.get(),
+          existingLedger: () => automationLedger.getExisting(),
           taskGraph: context.taskGraphService,
           taskDispatcher: context.taskDispatcher,
           orchestration: context.orchestrationService,

@@ -91,7 +91,7 @@ async function killedOwner(
     | 'non-enumerable'
     | 'dense-array',
   cwd?: string,
-  mandatoryContextDigest?:string,
+  mandatoryContextDigest?: string,
 ) {
   const expected =
     phase === 'sparse-array' ||
@@ -131,7 +131,9 @@ async function killedOwner(
         XDG_CONFIG_HOME: join(home, 'config'),
         XDG_CACHE_HOME: join(home, 'cache'),
         STATION_HOME: join(home, 'station'),
-        ...(mandatoryContextDigest?{STATION_PREPARED_TASK_CONTEXT_DIGEST:mandatoryContextDigest}:{}),
+        ...(mandatoryContextDigest
+          ? { STATION_PREPARED_TASK_CONTEXT_DIGEST: mandatoryContextDigest }
+          : {}),
       },
     },
   );
@@ -503,20 +505,47 @@ test.each(['accepted', 'refused', 'unknown', 'ack-lost'] as const)(
   90_000,
 );
 
-test('a revoked trusted Task context digest survives owner crash and blocks the actual prepared provider call',async()=>{
-  const path=join(makeTempDir('prepared-task-context-'),'events.sqlite'),digest='c'.repeat(64);
-  await killedOwner(path,'prepared',undefined,digest);
-  const {row,envelope}=storedIntent(path);
-  expect(envelope.input.text).toContain('Reviewed Task context before durable preparation.');
-  const store=new EventStore(path);stores.push(store);
-  const adapter=new LiveResumeAdapter();
-  const service=new OrchestrationService({adapterRegistry:createGateTestRegistry(adapter),eventBus:new EventBus(),eventStore:store,logger:{debug(){},warn(){}}});services.push(service);
-  const verifier=vi.fn(async(sessionId:string,expected:string)=>{expect(sessionId).toBe(THREAD);expect(expected).toBe(digest);throw new Error('Required source context was withdrawn.');});
+test('a revoked trusted Task context digest survives owner crash and blocks the actual prepared provider call', async () => {
+  const path = join(makeTempDir('prepared-task-context-'), 'events.sqlite'),
+    digest = 'c'.repeat(64);
+  await killedOwner(path, 'prepared', undefined, digest);
+  const { row, envelope } = storedIntent(path);
+  expect(envelope.input.text).toContain(
+    'Reviewed Task context before durable preparation.',
+  );
+  const store = new EventStore(path);
+  stores.push(store);
+  const adapter = new LiveResumeAdapter();
+  const service = new OrchestrationService({
+    adapterRegistry: createGateTestRegistry(adapter),
+    eventBus: new EventBus(),
+    eventStore: store,
+    logger: { debug() {}, warn() {} },
+  });
+  services.push(service);
+  const verifier = vi.fn(async (sessionId: string, expected: string) => {
+    expect(sessionId).toBe(THREAD);
+    expect(expected).toBe(digest);
+    throw new Error('Required source context was withdrawn.');
+  });
   service.bindMandatoryTaskContextVerifier(verifier);
-  const owner=sessionReadAuthorityFromRequest('prepared-owner',undefined,undefined);
-  await expect(service.resumePreparedTurnIntent(THREAD,String(row.invocation_id),owner)).rejects.toThrow('Required Task context changed');
-  expect(verifier).toHaveBeenCalledTimes(1);expect(adapter.sent).toEqual([]);
-  expect(await service.readPreparedTurnIntent(THREAD,String(row.invocation_id),owner)).toMatchObject({state:'prepared'});
+  const owner = sessionReadAuthorityFromRequest(
+    'prepared-owner',
+    undefined,
+    undefined,
+  );
+  await expect(
+    service.resumePreparedTurnIntent(THREAD, String(row.invocation_id), owner),
+  ).rejects.toThrow('Required Task context changed');
+  expect(verifier).toHaveBeenCalledTimes(1);
+  expect(adapter.sent).toEqual([]);
+  expect(
+    await service.readPreparedTurnIntent(
+      THREAD,
+      String(row.invocation_id),
+      owner,
+    ),
+  ).toMatchObject({ state: 'prepared' });
 });
 
 test('resume refuses posture tightened after validation while its real coordinator is waiting', async () => {

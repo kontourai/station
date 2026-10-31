@@ -24,7 +24,12 @@ export async function readContextCompaction(
     throw new Error(
       'Context compaction is unavailable. Enable its Feature Preview or update this Station.',
     );
-  return readEnvelopeOrThrow<ConversationCompactionView>(response);
+  const view = await readEnvelopeOrThrow<ConversationCompactionView>(response);
+  if (!view)
+    throw new Error(
+      'Context compaction state is unavailable. Reload and try again.',
+    );
+  return view;
 }
 /** Both composer control and slash command request the same server-owned operation. */
 export async function compactConversation(

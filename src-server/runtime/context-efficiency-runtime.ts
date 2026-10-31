@@ -21,6 +21,7 @@ import {
   isSessionSummaryFailure,
 } from '../routes/chat/session-summary-generation.js';
 import type { AgentSchedulePerson } from '../routes/orchestration/agent-schedule.js';
+import { errorMessage } from '../routes/schemas/schemas.js';
 import { MODEL_INVENTORY_STALE_MAX_AGE_MS } from '../services/connections/connection-service.js';
 import { isDeploymentAccountPrincipalId } from '../services/identity/deployment-authentication-service.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../services/identity/principal-resolver.js';
@@ -824,6 +825,7 @@ export function composeContextEfficiencyRuntime(
       conversationId = c.req.param('conversationId');
     if (
       !person ||
+      !conversationId ||
       !options.currentRequest(c.req.raw) ||
       !(kind === 'read'
         ? person.mayRead(conversationId)
@@ -954,10 +956,7 @@ export function composeContextEfficiencyRuntime(
       return c.json(
         {
           success: false,
-          error:
-            error instanceof Error
-              ? error.message
-              : 'Context operation unavailable',
+          error: errorMessage(error),
         },
         409,
       );
@@ -988,7 +987,8 @@ export function composeContextEfficiencyRuntime(
     if (!supervisionEnabled())
       return c.json(disabled('project-supervision'), 404);
     const person = options.person(c),
-      task = context.taskGraphService.readTaskView(c.req.param('taskId'));
+      taskId = c.req.param('taskId'),
+      task = taskId ? context.taskGraphService.readTaskView(taskId) : undefined;
     if (
       !person ||
       !task ||
@@ -1055,8 +1055,7 @@ export function composeContextEfficiencyRuntime(
       return c.json(
         {
           success: false,
-          error:
-            error instanceof Error ? error.message : 'Supervision unavailable',
+          error: errorMessage(error),
         },
         409,
       );

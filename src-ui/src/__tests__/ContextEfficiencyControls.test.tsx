@@ -139,7 +139,6 @@ test('supervision pause and stop use the displayed generation and retain visible
       authority={{
         apiBase: 'http://host',
         authorityKey: 'current',
-        isCurrent: () => true,
       }}
     />,
   );

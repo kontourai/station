@@ -176,7 +176,7 @@ test('the real analytics request seam consumes local canonical Task outcomes und
   expect(response.status).toBe(200);
   expect(requestSource).toHaveBeenCalledTimes(1);
   const body = await response.json();
-  expect(body.data.taskOutcomes).toEqual([
+  expect(body).toHaveProperty('data.taskOutcomes', [
     {
       stationId: 'local',
       taskId: 'one',

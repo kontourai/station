@@ -136,7 +136,6 @@ test('disabled preview mounts no configuration requests or editor', () => {
         authority={{
           apiBase: 'http://working.test',
           authorityKey: 'test',
-          isCurrent: () => true,
         }}
       />
     </QueryClientProvider>,

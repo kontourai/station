@@ -173,11 +173,11 @@ export class StationControlToolRegistry {
 
   private disclose(name: string, tool: RegisteredTool): RegisteredTool {
     if (!this.disclosure) return tool;
-    const callback = tool.handler;
+    const execute = tool.executor;
     tool.update({
       callback: (args, context) =>
         this.disclosure?.current()
-          ? callback(args, context)
+          ? execute(args, context)
           : jsonToolResult(
               stationControlRefusalBody(
                 stationControlRefusal('station_control_caller_required'),

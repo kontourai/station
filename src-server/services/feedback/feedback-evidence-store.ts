@@ -15,7 +15,7 @@ import { parseFeedbackSummary } from './feedback-analysis.js';
 import type { FeedbackStore, MessageRating } from './feedback-service.js';
 import { feedbackRatingEvidenceDigest } from './feedback-target.js';
 
-export const FEEDBACK_HISTORY_LIMITS = {
+const FEEDBACK_HISTORY_LIMITS = {
   records: 1024,
   bytes: 2 * 1024 * 1024,
   fileBytes: 8 * 1024 * 1024,

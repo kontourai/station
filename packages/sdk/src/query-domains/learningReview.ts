@@ -5,6 +5,7 @@ import type {
   LearningReviewRevisionRef,
   LearningReviewSourceSelection,
 } from '@kontourai/station-contracts/learning-review';
+import { useQueryClient } from '@tanstack/react-query';
 import type { ApiRequestScope } from '../client/http';
 import { StationHttpError } from '../client/http';
 import {
@@ -12,6 +13,7 @@ import {
   fetchProjectLearning,
   fetchProjectLearningDetail,
   fetchProjectLearningEvidence,
+  isLearningAccessRefusal,
   prepareProjectLearningSource,
   proposeProjectLearning,
 } from '../client/learning-review';
@@ -95,6 +97,7 @@ export function useProjectLearningIntentMutation(
   projectId: string,
   authority: LearningReviewRequestScope,
 ) {
+  const onError = useLearningMutationRefusal(slug, projectId, authority);
   return useApiMutation(
     (input: { id: string; intent: LearningReviewIntentInput }) =>
       applyProjectLearningIntent(
@@ -104,7 +107,11 @@ export function useProjectLearningIntentMutation(
         input.intent,
         { requestScope: authority, projectId },
       ),
-    { invalidateKeys: [key(slug, projectId, authority)] },
+    {
+      invalidateKeys: [key(slug, projectId, authority)],
+      onError,
+      evictSettledVariables: true,
+    },
   );
 }
 export function useProposeProjectLearningMutation(
@@ -112,14 +119,35 @@ export function useProposeProjectLearningMutation(
   projectId: string,
   authority: LearningReviewRequestScope,
 ) {
+  const onError = useLearningMutationRefusal(slug, projectId, authority);
   return useApiMutation(
     (input: LearningReviewProposalInput) =>
       proposeProjectLearning(authority.apiBase, slug, input, {
         requestScope: authority,
         projectId,
       }),
-    { invalidateKeys: [key(slug, projectId, authority)] },
+    {
+      invalidateKeys: [key(slug, projectId, authority)],
+      onError,
+      evictSettledVariables: true,
+    },
   );
+}
+
+function useLearningMutationRefusal(
+  slug: string,
+  projectId: string,
+  authority: LearningReviewRequestScope,
+) {
+  const client = useQueryClient();
+  return (error: Error) => {
+    if (!isLearningAccessRefusal(error)) return;
+    const queryKey = key(slug, projectId, authority);
+    void client.cancelQueries({ queryKey }).finally(() => {
+      client.setQueriesData({ queryKey }, { state: 'restricted' });
+      void client.invalidateQueries({ queryKey, refetchType: 'none' });
+    });
+  };
 }
 
 export function useProjectLearningEvidenceQuery(

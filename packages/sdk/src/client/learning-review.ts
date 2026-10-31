@@ -24,6 +24,14 @@ type Options = ClientRequestOptions & {
   requestScope: ApiRequestScope;
   projectId: string;
 };
+
+export function isLearningAccessRefusal(error: unknown): boolean {
+  return (
+    error instanceof StationHttpError &&
+    ([401, 403, 404].includes(error.status) ||
+      error.code === 'learning_review_project_changed')
+  );
+}
 const ref = z.object({
   authority: z.string(),
   kind: z.string(),

@@ -68,7 +68,7 @@ class InterruptedAdapter extends GateTestAdapter {
 }
 
 const store = new EventStore(databasePath);
-const mandatoryContextDigest=process.env.STATION_PREPARED_TASK_CONTEXT_DIGEST;
+const mandatoryContextDigest = process.env.STATION_PREPARED_TASK_CONTEXT_DIGEST;
 const service = new OrchestrationService({
   adapterRegistry: createGateTestRegistry(new InterruptedAdapter()),
   eventBus: new EventBus(),
@@ -76,7 +76,11 @@ const service = new OrchestrationService({
   logger: { debug() {}, warn() {} },
 });
 service.initialize();
-if(mandatoryContextDigest)service.bindMandatoryTaskContextVerifier(async(_session,digest)=>{if(digest!==mandatoryContextDigest)throw new Error('Fixture context digest changed.');});
+if (mandatoryContextDigest)
+  service.bindMandatoryTaskContextVerifier(async (_session, digest) => {
+    if (digest !== mandatoryContextDigest)
+      throw new Error('Fixture context digest changed.');
+  });
 await service.dispatch(
   {
     type: 'startSession',
@@ -88,7 +92,15 @@ await service.dispatch(
     },
   },
   { userId: 'prepared-owner' },
-  mandatoryContextDigest?{taskBrief:{digest:'d'.repeat(64),text:'Reviewed Task context before durable preparation.',mandatoryContextDigest}}:undefined,
+  mandatoryContextDigest
+    ? {
+        taskBrief: {
+          digest: 'd'.repeat(64),
+          text: 'Reviewed Task context before durable preparation.',
+          mandatoryContextDigest,
+        },
+      }
+    : undefined,
 );
 const ownerDeadline = Date.now() + 20_000;
 while (!store.readSessionByThread(threadId)) {
