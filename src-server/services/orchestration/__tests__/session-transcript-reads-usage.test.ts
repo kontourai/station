@@ -4,6 +4,7 @@ import {
   tenantId,
 } from '@kontourai/station-contracts/tenancy';
 import { describe, expect, test } from 'vitest';
+import type { UsageReceiptEventRow } from '../event-store.js';
 import { SessionTranscriptReads } from '../session-transcript-reads.js';
 
 const authority = sessionReadAuthorityFromRequest(
@@ -35,7 +36,10 @@ function event(input: {
   } as any;
 }
 
-function reads(coverageEvents: any[]) {
+function reads(
+  coverageEvents: any[],
+  receiptRows: UsageReceiptEventRow[] = [],
+) {
   return new SessionTranscriptReads({
     canReadSession: () => true,
     isEphemeralSession: () => false,
@@ -44,7 +48,7 @@ function reads(coverageEvents: any[]) {
     listResolvedEventPayloads: () => [],
     readUsageRevision: () => 'fixture',
     listUsageEventPayloads: () => [],
-    listUsageReceiptEvents: () => [],
+    listUsageReceiptEvents: () => receiptRows,
     listUsageCoverageEvents: () => coverageEvents,
     searchConversationMessages: () => [],
     readSessionThreadIds: () => [],
@@ -288,5 +292,61 @@ describe('SessionTranscriptReads usage owner set (#2568)', () => {
     expect(receiptQueries[0]).toMatchObject({
       ownerUserIds: ['usage-reader'],
     });
+  });
+});
+
+test('the authenticated receipt read retains contemporaneous route provenance and separate reasoning without changing reported zero', () => {
+  const route = {
+    id: 'provider-direct',
+    modelRevision: 'r1',
+    tariffId: 't1',
+    provenance: {
+      authority: 'provider-reported' as const,
+      sourceRef: 'usage-event:one',
+    },
+  };
+  const source = reads(
+    [],
+    [
+      {
+        conversationId: 'conversation',
+        taskId: 'task',
+        model: 'model',
+        event: {
+          id: 'usage-event',
+          provider: 'acp',
+          threadId: 'thread',
+          createdAt: '2026-08-07T10:00:00.000Z',
+          observedAt: '2026-08-07T12:00:00.000Z',
+          sequence: 1,
+          globalSequence: 1,
+          method: 'token-usage.updated',
+          payload: {
+            eventId: 'usage-event',
+            provider: 'acp',
+            threadId: 'thread',
+            createdAt: '2026-08-07T10:00:00.000Z',
+            method: 'token-usage.updated',
+            promptTokens: 10,
+            completionTokens: 5,
+            reasoningTokens: 3,
+            servingRoute: route,
+            reportedCostUsd: 0,
+          },
+        },
+      },
+    ],
+  );
+  const result = source.listUsageReceipts(authority, 'local', request);
+  expect(result.receipts).toHaveLength(2);
+  expect(result.receipts[0]).toMatchObject({
+    route,
+    reasoningTokens: 3,
+    inputTokens: 10,
+    outputTokens: 5,
+  });
+  expect(result.receipts[1]?.reportedCost).toEqual({
+    amount: 0,
+    currency: 'USD',
   });
 });

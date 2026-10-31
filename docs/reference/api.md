@@ -6751,3 +6751,62 @@ or missing/expired, with refresh/request-again/update recovery.
 
 See [the user journey](../guides/monitoring.md#connect-a-personal-source-in-insights).
 This source contract has not established installed/native/release acceptance.
+
+
+## Reviewed Project context and learning previews
+
+These personal-host routes are off by default. They require the operator in
+person; Station Control cannot create its own working rules or learning grants.
+Older hosts or disabled previews return unavailable/preview guidance.
+
+| Method | Path | Operation |
+| --- | --- | --- |
+| GET | `/api/projects/:slug/working-configuration` | Discover bounded repository guidance and read the current reviewed defaults. |
+| PUT | `/api/projects/:slug/working-configuration` | Apply an exact Project/revision/source-digest draft with a stable operation id. Runs no command. |
+| GET | `/api/projects/:slug/learning` | Read the owner queue with complete or partial coverage. |
+| GET | `/api/projects/:slug/learning/:id` | Inspect one owner projection; optional `compareId` selects a comparison. |
+| POST | `/api/projects/:slug/learning/proposals` | Propose wording from an exact canonical Task-standing or rated-response source. |
+| POST | `/api/projects/:slug/learning/:id/evidence` | Inspect only exact evidence references already admitted by the current owner record. |
+| POST | `/api/projects/:slug/learning/:id/intents` | Evaluate, decide, activate, observe effect, retire or supersede at an expected owner revision. |
+| GET | `/api/analytics/reviewed-tariffs` | Read the private reviewed tariff configuration and revision. |
+| PUT | `/api/analytics/reviewed-tariffs` | Review bounded Bearing catalog bytes and exact tariff bindings under a stable operation id/revision. |
+
+Learning requests include `x-station-learning-project-id` with the immutable
+Project incarnation. It grants no authority; a reused slug refuses before owner
+access. Intent JSON cannot supply actor, Project scope or decision capability.
+Source withdrawal and changed authority withhold protected content at release.
+Knowledge Kit retains the lifecycle, while tariff configuration retains approved
+source bytes rather than a Station-maintained price table. See
+[bounded agent work](../guides/agent-efficiency.md) for evidence limits.
+
+
+## Isolated GitHub repair preview
+
+`/api/isolated-repairs` is a personal-host operator API behind
+`isolated-github-repairs`. Its transport tier is `access:manage`; it additionally
+requires the current operator in person and rejects agent/MCP and hosted calls.
+An operator read may inspect retained audit state after disabling the preview.
+Disabling, revoking, canceling, resolving and archiving remain maintenance;
+creation, enabling, review, grants and publication require the preview again
+inside their mutation authority. Responses are private/no-store.
+
+| Method | Suffix under `/api/isolated-repairs` | Behavior |
+| --- | --- | --- |
+| GET | `/`, `/configuration`, `/profiles` | Read runs, redacted source/rule configuration and fingerprint, or profile revisions. |
+| POST | `/sources`, `/rules` | Create disabled poll sources and isolated-repair rules with server-issued identities. |
+| POST | `/configuration/enable` | Enable/disable an exact source/rule at expected configuration fingerprint. |
+| POST | `/profiles`, `/profiles/:id/enable` | Configure a disabled profile or enable/disable its expected revision. Secret references are never returned. |
+| GET | `/:run/artifact` | Inspect the Task-bound source/result, review, grant, worker evidence and publication checkpoints. |
+| POST | `/:run/review` | Review exact binding/result digests with a verdict and rationale; approval completes the Task. |
+| POST | `/:run/grant` | Separately grant the exact review/result to an enabled publisher for fifteen minutes. Requires source `publish-branch` permission. |
+| POST | `/:run/publish` | Consume one grantId and open a draft PR through GitHub REST APIs. Never merges or arms auto-merge. |
+| POST | `/:run/revoke`, `/:run/cancel` | Revoke future authority/request cancellation; unknown remote effects remain indeterminate. |
+| POST | `/:run/followup` | Record operator followup without claiming that effects are known or admission is free. |
+| POST | `/:run/resolve` | With `acknowledgeUnknownEffects:true` and rationale, release admission after exact ownership/worker stop are settled. No replay. |
+| POST | `/:run/archive` | Retain terminal or explicitly resolved unknown records outside the unarchived-run ceiling. |
+
+Setup/review/grant JSON fields and failure limits are described in
+[bounded agent work](../guides/agent-efficiency.md#run-an-isolated-github-repair).
+A refused/ambiguous operation is not a successful external effect. After review,
+read the artifact again for `review.id`; after an uncertain response, inspect
+retained state instead of creating another publication attempt.

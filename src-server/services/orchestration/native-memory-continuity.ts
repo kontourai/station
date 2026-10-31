@@ -1,4 +1,9 @@
+import {
+  type ConversationContextBoundarySeed,
+  isSummaryContextBoundary,
+} from '@kontourai/station-contracts/conversation-context-boundary';
 import type { ConversationContextBoundaryMarker } from './conversation-context-boundary-module.js';
+import { assertConversationContextBoundarySeed } from './conversation-context-boundary-module.js';
 import type { ConversationSessionLineage } from './conversation-session-lineage.js';
 
 /** Identity observed by the existing authorized Session owner, never from a cursor. */
@@ -56,7 +61,10 @@ export interface NativeMemoryContinuityBinding {
     | 'start'
     | 'empty-context'
     | 'identity-change'
-    | 'native-history-unavailable';
+    | 'native-history-unavailable'
+    | 'summary-context';
+  /** A compact seed deliberately replaces earlier transcript/native memory. */
+  readonly seed?: Readonly<ConversationContextBoundarySeed>;
   isCurrent(): Promise<boolean>;
   /** Re-authorize one certified segment without rescanning every other segment. */
   isSessionCurrent(sessionId: string): Promise<boolean>;
@@ -153,11 +161,15 @@ function boundarySnapshot(
     boundary.predecessorSessionId !== row.predecessorSessionId ||
     !identifier(boundary.boundaryId) ||
     !['reserved', 'claimed', 'consumed', 'failed'].includes(boundary.status) ||
-    !['continue-from-history', 'empty-next-cold-start'].includes(
-      boundary.policy,
-    )
+    ![
+      'continue-from-history',
+      'empty-next-cold-start',
+      'summary-next-cold-start',
+      'task-state-next-cold-start',
+    ].includes(boundary.policy)
   )
     fail();
+  assertConversationContextBoundarySeed(boundary);
   // Claim completion does not change the history decision. Immutable identity,
   // cancellation, indeterminate outcome and policy replacement do change it.
   return {
@@ -169,6 +181,7 @@ function boundarySnapshot(
     actorId: boundary.actorId,
     idempotencyKey: boundary.idempotencyKey,
     createdAt: boundary.createdAt,
+    ...(boundary.seed ? { seed: structuredClone(boundary.seed) } : {}),
   };
 }
 function identitySnapshot(
@@ -238,13 +251,19 @@ export async function captureNativeMemoryContinuity(
     // An empty boundary applies across harnesses, not just within the native leg.
     let start = 0;
     let reset = false;
+    let seed: ConversationContextBoundarySeed | undefined;
     const boundaries: ReturnType<typeof boundarySnapshot>[] = [];
     for (let index = lineage.length - 1; index >= 0; index--) {
       const boundary = boundarySnapshot(owner, lineage[index]);
       boundaries.unshift(boundary);
-      if (boundary?.policy === 'empty-next-cold-start') {
+      if (
+        boundary &&
+        (boundary.policy === 'empty-next-cold-start' ||
+          isSummaryContextBoundary(boundary.policy))
+      ) {
         start = index;
         reset = true;
+        seed = boundary.seed;
         break;
       }
     }
@@ -253,6 +272,19 @@ export async function captureNativeMemoryContinuity(
     if (!observedCurrent) fail();
     const currentIdentity = identitySnapshot(observedCurrent, currentSessionId);
     if (!sameScope(currentIdentity, scope)) fail();
+    const seedSourceIdentity = [];
+    for (const sessionId of new Set(
+      seed
+        ? [
+            seed.sourceSessionId,
+            ...(seed.sourceCutoffs ?? []).map((source) => source.sessionId),
+          ]
+        : [],
+    )) {
+      const source = await owner.readSession(sessionId);
+      if (!source) fail();
+      seedSourceIdentity.push(identitySnapshot(source, sessionId));
+    }
     const previous = await Promise.all(
       relevant.slice(0, -1).map(async (row) => {
         const observed = await owner.readSession(row.sessionId);
@@ -264,7 +296,9 @@ export async function captureNativeMemoryContinuity(
     if (!(await owner.isAuthorityCurrent())) fail();
     let nativeStart = identities.length - 1;
     let cutReason: NativeMemoryContinuityBinding['cutReason'] = reset
-      ? 'empty-context'
+      ? seed
+        ? 'summary-context'
+        : 'empty-context'
       : 'start';
     for (let index = identities.length - 2; index >= 0; index--) {
       const identity = identities[index];
@@ -299,12 +333,14 @@ export async function captureNativeMemoryContinuity(
         .slice(0, nativeStart)
         .map((row) => row.sessionId),
       cutReason,
+      seed,
       identities,
       fingerprint: JSON.stringify({
         lineage,
         identities,
         boundaries,
         cutReason,
+        seedSourceIdentity,
       }),
     };
   };
@@ -326,6 +362,7 @@ export async function captureNativeMemoryContinuity(
         snapshot.canonicalPrefixSessionIds,
       ),
       cutReason: snapshot.cutReason,
+      ...(snapshot.seed ? { seed: Object.freeze(snapshot.seed) } : {}),
       async isSessionCurrent(sessionId: string) {
         try {
           const expected = identityBySession.get(sessionId);

@@ -8,9 +8,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const useProviderCommandsQueryMock = vi.fn();
 let skills: any[] = [];
 let agents: any[] = [];
+let compactionPreview = false;
+beforeEach(() => {
+  compactionPreview = false;
+  useProviderCommandsQueryMock.mockReturnValue({ data: [] });
+});
 
 vi.mock('@kontourai/station-sdk', () => ({
   useSkillsQuery: () => ({ data: skills }),
+  useFeaturePreviewsQuery: () => ({
+    data: [{ id: 'context-compaction', enabled: compactionPreview }],
+  }),
   useProviderCommandsQuery: (...args: unknown[]) =>
     useProviderCommandsQueryMock(...args),
   useAgentMcpPromptsQuery: () => ({ data: undefined }),
@@ -21,6 +29,31 @@ vi.mock('../contexts/AgentsContext', () => ({
 }));
 
 import { useSlashCommands } from '../hooks/useSlashCommands';
+
+it('offers Station compact only with its enabled preview and Station-owned context matrix', () => {
+  agents = [{ slug: 'station', name: 'Station', engineId: 'station' }];
+  const view = renderHook(() => useSlashCommands('station'));
+  expect(
+    view.result.current.commands.some((command) => command.cmd === '/compact'),
+  ).toBe(false);
+  compactionPreview = true;
+  view.rerender();
+  expect(
+    view.result.current.commands.some((command) => command.cmd === '/compact'),
+  ).toBe(true);
+  agents = [
+    {
+      slug: 'station',
+      name: 'External',
+      engineId: 'claude',
+      engineConnectionType: 'claude',
+    },
+  ];
+  view.rerender();
+  expect(
+    view.result.current.commands.some((command) => command.cmd === '/compact'),
+  ).toBe(false);
+});
 
 describe('useSlashCommands — ACP command source (#149 orchestration cutover)', () => {
   beforeEach(() => {

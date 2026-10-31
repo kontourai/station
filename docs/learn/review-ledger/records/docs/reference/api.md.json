@@ -626,7 +626,11 @@
 
     "src-server/services/orchestration/session-goal-module.ts",
 
-    "src-server/routes/operations/automations.ts"
+    "src-server/routes/operations/automations.ts",
+
+    "src-server/routes/operations/repairs.ts",
+
+    "src-server/services/automation/repair-controller.ts"
   ],
 
   "checks": [

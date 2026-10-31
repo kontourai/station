@@ -1,8 +1,10 @@
 import type { Skill } from '@kontourai/station-contracts/catalog';
+import { resolveEngineCapabilityMatrix } from '@kontourai/station-contracts/engine-capability-matrix';
 import type { AgentMcpPrompt } from '@kontourai/station-contracts/mcp-prompts';
 import { resolveSkillCommandName } from '@kontourai/station-contracts/skill-command';
 import {
   useAgentMcpPromptsQuery,
+  useFeaturePreviewsQuery,
   useProviderCommandsQuery,
   useSkillsQuery,
 } from '@kontourai/station-sdk';
@@ -97,6 +99,11 @@ export function useSlashCommands(
 ) {
   const agents = useAgents();
   const { data: skills } = useSkillsQuery();
+  const { data: previews } = useFeaturePreviewsQuery();
+  const compactionPreview =
+    previews?.some(
+      (preview) => preview.id === 'context-compaction' && preview.enabled,
+    ) === true;
 
   const currentAgent = agentSlug
     ? agents.find((a) => a.slug === agentSlug)
@@ -150,6 +157,23 @@ export function useSlashCommands(
     };
 
     const builtinCore: SlashCommand[] = [
+      ...(compactionPreview &&
+      currentAgent &&
+      resolveEngineCapabilityMatrix(
+        currentAgent.execution?.agentConnectionId ??
+          (currentAgent.engineConnectionType ? 'external' : undefined),
+        {
+          engineId: currentAgent.engineId,
+          type: currentAgent.engineConnectionType,
+        },
+      ).durability.compaction.owner === 'station'
+        ? [
+            {
+              cmd: '/compact',
+              description: 'Retain a bounded model-generated context summary',
+            },
+          ]
+        : []),
       {
         cmd: '/commands',
         aliases: ['/prompts'],
@@ -307,6 +331,7 @@ export function useSlashCommands(
     return mergeSlashCommandSources(groups, true);
   }, [
     agentSlug,
+    compactionPreview,
     acpCommands,
     availableModels,
     currentAgent,
