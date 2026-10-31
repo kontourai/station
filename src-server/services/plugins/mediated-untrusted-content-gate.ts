@@ -38,7 +38,7 @@ interface ApprovedRequest {
   readonly requestEventId: string;
 }
 // A consumed or expired token cannot make an unresolved handoff approvable again.
-const approvedRequests = new Set<ApprovedRequest>();
+// Claims belong to the live store, so retiring one cannot exhaust other stores.
 let requestScopes = new WeakMap<object, Map<string, ApprovedRequest>>();
 const approvalKey = (conversationId: string, serverId: string, tool: string) =>
   JSON.stringify([conversationId, serverId, tool]);
@@ -102,7 +102,6 @@ export function recordPersonApprovedExternalTool(
       try {
         if (request.isClosed(reference)) {
           scope.delete(key);
-          approvedRequests.delete(reference);
         }
       } catch {
         // An unavailable request lookup cannot retire an uncertain handoff.
@@ -113,7 +112,7 @@ export function recordPersonApprovedExternalTool(
       request.requestId,
       request.requestEventId,
     ]);
-    if (scope.has(key) || approvedRequests.size >= APPROVAL_LIMIT) return false;
+    if (scope.has(key) || scope.size >= APPROVAL_LIMIT) return false;
     request.assertCurrent();
     const reference = Object.freeze({
       conversationId,
@@ -121,7 +120,6 @@ export function recordPersonApprovedExternalTool(
       requestEventId: request.requestEventId,
     });
     scope.set(key, reference);
-    approvedRequests.add(reference);
   }
   recordPersonApprovedCall(conversationId, parsed.serverId, parsed.toolName);
   return true;
@@ -139,7 +137,6 @@ function consumeApproval(key: string, now: number): boolean {
 /** For tests: forget every recorded approval. */
 export function resetPersonApprovedCalls(): void {
   approvals.clear();
-  approvedRequests.clear();
   requestScopes = new WeakMap();
 }
 

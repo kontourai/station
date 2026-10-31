@@ -211,6 +211,45 @@ test('another request owner cannot retire a consumed approval handoff', async ()
   expect((await call('tools/call', 'send_reply')).status).toBe(403);
 });
 
+test('an exhausted request owner cannot block approval in another owner', async () => {
+  const call = await proxy();
+  await call('tools/call', 'read_message');
+  const exhausted = {};
+  const request = {
+    scope: exhausted,
+    requestId: '',
+    requestEventId: '',
+    isClosed: () => false,
+    assertCurrent: () => {},
+  };
+  for (let i = 0; i < 1000; i++) {
+    expect(
+      recordPersonApprovedExternalTool('other-session', 'mcp__mail__archive', {
+        ...request,
+        requestId: `approval-${i}`,
+        requestEventId: `opened-${i}`,
+      }),
+    ).toBe(true);
+  }
+  expect(
+    recordPersonApprovedExternalTool('other-session', 'mcp__mail__archive', {
+      ...request,
+      requestId: 'over-capacity',
+      requestEventId: 'opened-over-capacity',
+    }),
+  ).toBe(false);
+  expect(
+    recordPersonApprovedExternalTool(sessionId, 'mcp__mail__send_reply', {
+      ...request,
+      scope: {},
+      requestId: 'fresh-owner',
+      requestEventId: 'opened-fresh-owner',
+    }),
+  ).toBe(true);
+  expect((await call('tools/call', 'send_reply')).status).toBe(200);
+  expect((await call('tools/call', 'send_reply')).status).toBe(403);
+});
+
 test("the person's allow and deny apply; a trusted server's results do not mark", async () => {
   const call = await proxy();
   await call('tools/call', 'read_message');
