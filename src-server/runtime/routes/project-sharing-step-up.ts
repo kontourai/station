@@ -1,5 +1,9 @@
 import type { ProjectSharingEnablement } from '@kontourai/station-contracts/project-membership';
 import type { Context } from 'hono';
+import {
+  FileStorageConflictError,
+  FileStorageNotFoundError,
+} from '../../domain/project-file-transactions.js';
 import { requestMayBeAnAgent } from '../../security/coding-authority.js';
 import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
 import type { ConsentChannelService } from '../../services/consent/consent-channel.js';
@@ -255,6 +259,18 @@ export function createProjectSharingStepUp(deps: ProjectSharingStepUpDeps) {
             if (error instanceof ProjectSharingConsentRefusal)
               throw error.refusal;
             if (error instanceof ConsentCommitRefusedError) throw error;
+            if (
+              (error instanceof ProjectMembershipRefusal &&
+                error.code === 'conflict') ||
+              error instanceof FileStorageConflictError ||
+              (error instanceof FileStorageNotFoundError &&
+                error.code === 'file_storage_not_found')
+            )
+              throw new ConsentCommitRefusedError(
+                CHANGED,
+                false,
+                'target_changed',
+              );
             if (error instanceof ProjectMembershipRefusal)
               throw new ConsentCommitRefusedError(
                 'Project sharing could not be turned on. Nothing was applied.',

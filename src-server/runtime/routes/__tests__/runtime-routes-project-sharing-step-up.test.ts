@@ -20,6 +20,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { SoftwareAuthenticator } from '../../../__test-utils__/software-authenticator.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
+import { FileStorageUnavailableError } from '../../../domain/project-file-transactions.js';
 import { ConsentChannelService } from '../../../services/consent/consent-channel.js';
 import { ConsentTransactionStore } from '../../../services/consent/consent-transactions.js';
 import { DeploymentAuthenticationService } from '../../../services/identity/deployment-authentication-service.js';
@@ -737,6 +738,89 @@ describe('remote Project sharing enable with operator passkey step-up (#4306)', 
     expect(await status.json()).toEqual({ status: 'target_changed' });
     expect(h.shared()).toBe(false);
     expect(changed).not.toHaveBeenCalled();
+    expect(h.warn).not.toHaveBeenCalledWith(
+      'Project sharing enabled',
+      expect.anything(),
+    );
+  });
+
+  test.each([
+    'replace-before-decision',
+    'replace-before-enable',
+    'remove',
+  ] as const)(
+    '%s closes the reviewed Project incarnation without sharing anything',
+    async (change) => {
+      const h = await setup();
+      const signed = await h.signIn();
+      const transaction = await h.requestStepUp(signed);
+      const rendered = await h.review(signed, transaction.id);
+      const changed = vi.fn();
+      const unsubscribe = h.membership.service.subscribe(changed);
+      const replace = async () => {
+        await h.projectService.deleteProject(h.project.slug);
+        if (change !== 'remove') {
+          const replacement = await h.projectService.createProject({
+            name: h.project.name,
+            slug: h.project.slug,
+          });
+          expect(replacement.id).not.toBe(h.project.id);
+        }
+      };
+      if (change === 'replace-before-enable') {
+        const enable = h.membership.service.enable.bind(h.membership.service);
+        vi.spyOn(h.membership.service, 'enable').mockImplementationOnce(
+          async (...args) => {
+            await replace();
+            return enable(...args);
+          },
+        );
+      } else {
+        await replace();
+      }
+      const result = await h.decide(signed, transaction.id, rendered);
+      unsubscribe();
+      expect(result.status, await result.clone().text()).toBe(409);
+      expect(await result.json()).toEqual({ error: 'target_changed' });
+      expect(
+        h.channel.store.get(h.channel.tenantId, transaction.id)?.status,
+      ).toBe('target_changed');
+      const status = await h.call(
+        `/api/pairing/device-access-transactions/${transaction.id}`,
+        signed.cookie,
+      );
+      expect(status.status).toBe(200);
+      expect(await status.json()).toEqual({ status: 'target_changed' });
+      expect(h.shared()).toBe(false);
+      expect(changed).not.toHaveBeenCalled();
+      expect(h.warn).not.toHaveBeenCalledWith(
+        'Project sharing enabled',
+        expect.anything(),
+      );
+    },
+  );
+
+  test('unexpected storage unavailability keeps the sharing review pending', async () => {
+    const h = await setup();
+    const signed = await h.signIn();
+    const transaction = await h.requestStepUp(signed);
+    const rendered = await h.review(signed, transaction.id);
+    vi.spyOn(h.membership.service, 'enable').mockRejectedValueOnce(
+      new FileStorageUnavailableError('fixture storage failure'),
+    );
+    const result = await h.decide(signed, transaction.id, rendered);
+    expect(result.status).toBe(409);
+    expect(await result.json()).toMatchObject({ error: 'commit_refused' });
+    expect(
+      h.channel.store.get(h.channel.tenantId, transaction.id)?.status,
+    ).toBe('pending');
+    const status = await h.call(
+      `/api/pairing/device-access-transactions/${transaction.id}`,
+      signed.cookie,
+    );
+    expect(status.status).toBe(200);
+    expect(await status.json()).toEqual({ status: 'pending' });
+    expect(h.shared()).toBe(false);
     expect(h.warn).not.toHaveBeenCalledWith(
       'Project sharing enabled',
       expect.anything(),
