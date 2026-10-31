@@ -38,7 +38,6 @@ import type { OrchestrationEvent, OrchestrationSnapshotPayload } from './types';
 interface OwnedStream {
   connection: FetchSseConnection;
   legacyGeneral?: FetchSseConnection;
-  multiplexGeneral: boolean;
   /** Waiting out a terminal (401/403) stop — see `onTerminal` below. */
   parked: boolean;
   /**
@@ -122,6 +121,7 @@ const ORCHESTRATION_STREAM_STALL_TIMEOUT_MS = 75_000;
  */
 const requestedBases = new Set<string>();
 const owners = new Map<string, number>();
+const generalOwners = new Map<string, number>();
 const streamAuthorities = new Map<string, string | undefined>();
 let recoveryListenersInstalled = false;
 let hiddenSince: number | undefined;
@@ -425,19 +425,33 @@ export function ensureOrchestrationEventStream(
   apiBase: string,
   queryClient?: QueryClient,
   authorityKey?: string,
+  general = false,
 ): () => void {
   const releaseClient = queryClient
     ? registerOrchestrationStreamQueryClient(apiBase, queryClient, authorityKey)
     : () => {};
   owners.set(apiBase, (owners.get(apiBase) ?? 0) + 1);
+  if (general)
+    generalOwners.set(apiBase, (generalOwners.get(apiBase) ?? 0) + 1);
   requestedBases.add(apiBase);
   installRecoveryListeners();
   connectOrchestrationEventStream(apiBase, authorityKey);
+  if (general) startLegacyGeneral(apiBase);
   let released = false;
   return () => {
     if (released) return;
     released = true;
     releaseClient();
+    if (general) {
+      const count = (generalOwners.get(apiBase) ?? 1) - 1;
+      if (count > 0) generalOwners.set(apiBase, count);
+      else {
+        generalOwners.delete(apiBase);
+        const owned = activeSources.get(apiBase);
+        owned?.legacyGeneral?.close();
+        if (owned) owned.legacyGeneral = undefined;
+      }
+    }
     const remaining = (owners.get(apiBase) ?? 1) - 1;
     if (remaining > 0) {
       owners.set(apiBase, remaining);
@@ -558,35 +572,6 @@ function connectOrchestrationEventStream(
           owned.connection.signal.aborted
         )
           return;
-        owned.multiplexGeneral =
-          response.headers.get('X-Station-General-Stream') === '1';
-        if (owned.multiplexGeneral) {
-          owned.legacyGeneral?.close();
-          owned.legacyGeneral = undefined;
-        } else if (!owned.legacyGeneral) {
-          const legacy = fetchSSE(`${apiBase}/events`, {
-            authentication: 'required',
-            headers: { 'X-Station-Client-Session': CLIENT_DOCUMENT_SESSION_ID },
-            retryDelayMs: 3000,
-            maxRetryDelayMs: 30_000,
-            onMessage: (message) => {
-              if (
-                activeSources.get(apiBase) !== owned ||
-                owned.legacyGeneral !== legacy ||
-                legacy.signal.aborted
-              )
-                return;
-              sharedOrchestrationStreamMessage(apiBase, {
-                event: 'station:general',
-                data: JSON.stringify({
-                  event: message.event,
-                  data: message.data,
-                }),
-              });
-            },
-          });
-          owned.legacyGeneral = legacy;
-        }
         sharedOrchestrationStreamOpened(apiBase, response);
       },
       onMessage: (raw) => {
@@ -595,7 +580,7 @@ function connectOrchestrationEventStream(
           owned.connection.signal.aborted
         )
           return;
-        if (raw.event !== 'station:general' || owned.multiplexGeneral)
+        if (raw.event !== 'station:general')
           sharedOrchestrationStreamMessage(apiBase, raw);
         if (raw.event === 'station:general') return;
         if (!receiving) {
@@ -759,9 +744,6 @@ function connectOrchestrationEventStream(
           owned.connection.signal.aborted
         )
           return;
-        owned.multiplexGeneral = false;
-        owned.legacyGeneral?.close();
-        owned.legacyGeneral = undefined;
         sharedOrchestrationStreamFailed(apiBase, error);
         // Do not leave the last partial answer invisible during retry/backoff.
         settleSemanticDeliveryBuffer(apiBase, false);
@@ -815,13 +797,13 @@ function connectOrchestrationEventStream(
 
   const owned: OwnedStream = {
     connection: authenticatedStream,
-    multiplexGeneral: false,
     parked: false,
     lastParkedRetryAt: 0,
     deferredParkedRetry: undefined,
     ended: false,
   };
   activeSources.set(apiBase, owned);
+  if (generalOwners.has(apiBase)) startLegacyGeneral(apiBase);
   // station#2301 review (L1): the abort signal covers every abort, but the
   // loop can also end by REJECTING — a callback above throwing inside the
   // SDK's catch — without aborting. Either way the connection is gone.
@@ -855,4 +837,29 @@ function connectOrchestrationEventStream(
       );
     },
   );
+}
+
+function startLegacyGeneral(apiBase: string): void {
+  const owned = activeSources.get(apiBase);
+  if (!owned || owned.legacyGeneral) return;
+  // General events have no replay cursor, so do not wait for orchestration.
+  const legacy = fetchSSE(`${apiBase}/events`, {
+    authentication: 'required',
+    headers: { 'X-Station-Client-Session': CLIENT_DOCUMENT_SESSION_ID },
+    retryDelayMs: 3000,
+    maxRetryDelayMs: 30_000,
+    onMessage: (message) => {
+      if (
+        activeSources.get(apiBase) !== owned ||
+        owned.legacyGeneral !== legacy ||
+        legacy.signal.aborted
+      )
+        return;
+      sharedOrchestrationStreamMessage(apiBase, {
+        event: 'station:general',
+        data: JSON.stringify({ event: message.event, data: message.data }),
+      });
+    },
+  });
+  owned.legacyGeneral = legacy;
 }

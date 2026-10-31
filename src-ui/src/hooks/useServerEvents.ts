@@ -423,6 +423,7 @@ export function useServerEvents(handlers?: Record<string, EventHandler>) {
       apiBase,
       undefined,
       authorityKey,
+      true,
     );
     return () => {
       subscription.close();
