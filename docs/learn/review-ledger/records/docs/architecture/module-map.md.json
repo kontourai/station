@@ -1476,7 +1476,11 @@
 
     "src-server/services/automation/automation-intake.ts",
 
-    "src-server/services/automation/github-workflow-run.ts"
+    "src-server/services/automation/github-workflow-run.ts",
+
+    "src-server/runtime/routes/project-sharing-step-up.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-project-sharing-step-up.test.ts"
   ],
 
   "checks": [
