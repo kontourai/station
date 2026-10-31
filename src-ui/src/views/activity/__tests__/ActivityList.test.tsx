@@ -1087,7 +1087,7 @@ describe('Home, the dock and Activity agree on one item', () => {
           workFacts={workFacts}
         />
       </QueryClientProvider>,
-    ).baseElement.querySelector('.mobile-task-switcher__panel') as HTMLElement;
+    ).baseElement.querySelector('.mobile-inbox') as HTMLElement;
     return { activity, home, dock, sheet };
   }
 

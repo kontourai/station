@@ -568,7 +568,7 @@ test('phone first run recovers from no provider to a real streamed reply', async
       await waitForLazySurface(
         page,
         {
-          surfaceName: `The Chats and tasks sheet (${occasion})`,
+          surfaceName: `The Inbox (${occasion})`,
           surface: taskDialog,
           baselineUnavailableCount: boundaryErrorsBefore,
         },

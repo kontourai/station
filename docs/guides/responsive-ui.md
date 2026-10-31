@@ -450,7 +450,7 @@ Android device.
 ### Inbox swipe actions
 
 The Sheet gestures device preview also enables a left swipe on touch inbox rows
-in the dock panel and mobile switcher. The shared row reveals the existing clock
+in the dock panel and embedded mobile Inbox. The shared row reveals the existing clock
 and × with labels and 72px-wide targets. A swipe only reveals the controls; the
 clock opens Snooze choices and × dismisses with Undo. A right swipe closes the
 rail. Vertical movement stays available to the scroll container, and the swipe’s
