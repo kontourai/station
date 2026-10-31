@@ -122,6 +122,7 @@ import {
 } from '@kontourai/station-shared/station-home-lifecycle';
 import { Agent, AgentRegistry, type Tool, VoltAgent } from '@voltagent/core';
 import type { HonoServerConfig } from '@voltagent/server-hono';
+import type { WebSocketServer } from 'ws';
 import packageJson from '../../../package.json' with { type: 'json' };
 import { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
 import type { UsageAggregator } from '../../analytics/usage-aggregator.js';
@@ -538,6 +539,7 @@ import {
   stationKnowledgeRuntimeIdentity,
 } from './station-control-runtime-env.js';
 import { startStoreIntegrityVerification } from './store-integrity-verification.js';
+import { closeOwnedWebSocketListener } from './websocket-listener.js';
 
 interface PersistedAgentActivationTransaction {
   preparationState: RuntimeAgentPreparationState;
@@ -1159,7 +1161,8 @@ export class StationRuntime {
   private terminalWsServer!: TerminalWebSocketServer;
   private terminalWsStarted = false;
   private voiceService!: VoiceSessionService;
-  private voiceWsAttached = false;
+  private voiceWsListener: WebSocketServer | null = null;
+  private voiceWsClosing: Promise<void> | null = null;
   private acpBridge: ACPManager;
   private feedbackService: FeedbackService;
   private environmentSecurityService: EnvironmentSecurityService;
@@ -3778,6 +3781,8 @@ export class StationRuntime {
           cleanupErrors.push(cause);
         }
       };
+      await retire(() => this.closeVoiceListener());
+      await retire(() => this.voiceService?.stop());
       await retire(async () => {
         await this.nativeRelayEnrollment?.close();
         this.nativeRelayEnrollment = undefined;
@@ -4293,6 +4298,9 @@ export class StationRuntime {
           onVoltAgentCreated: (voltAgent) => {
             this.voltAgent = voltAgent;
           },
+          onVoiceWebSocketAttached: (listener) => {
+            if (listener) this.voiceWsListener = listener;
+          },
         }),
       );
       await this.kitLifecycleReady;
@@ -4311,7 +4319,6 @@ export class StationRuntime {
     this.modelCatalog = initialized.modelCatalog;
     this.usageAggregator = initialized.usageAggregator;
     this.voltAgent = initialized.voltAgent;
-    this.voiceWsAttached = initialized.voiceWsAttached;
     this.rebuildGlobalToolRegistry();
 
     const pluginEventSubscriptions =
@@ -4397,6 +4404,8 @@ export class StationRuntime {
       }
     };
 
+    await attempt(() => this.closeVoiceListener());
+    await attempt(() => this.voiceService?.stop());
     await attempt(() => this.retireFailedSearch());
     await attempt(() => this.sshEnvironmentService.shutdown());
     await attempt(() => this.discordGatewayService.stop());
@@ -5363,6 +5372,35 @@ export class StationRuntime {
     return this.shutdownPromise;
   }
 
+  private async closeVoiceListener(): Promise<void> {
+    const listener = this.voiceWsListener;
+    if (!listener) return;
+    if (!this.voiceWsClosing) {
+      const closing = closeOwnedWebSocketListener(listener);
+      this.voiceWsClosing = closing;
+      void closing.catch(() => {
+        if (this.voiceWsClosing === closing) this.voiceWsClosing = null;
+      });
+    }
+    const closing = this.voiceWsClosing;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        closing,
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(
+            () => reject(new Error('Voice listener shutdown timed out')),
+            5_000,
+          );
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+    if (this.voiceWsListener === listener) this.voiceWsListener = null;
+    if (this.voiceWsClosing === closing) this.voiceWsClosing = null;
+  }
+
   private async shutdownAfterPublicationDrain(): Promise<void> {
     if (this.runtimePublicationParticipant)
       await this.runtimePublicationParticipant.drain(5_000);
@@ -5426,6 +5464,11 @@ export class StationRuntime {
     const mcpUiFrameServer = this.mcpUiFrameServer;
     const consentListener = this.consentListener;
     const failures: unknown[] = [];
+    try {
+      await this.closeVoiceListener();
+    } catch (error) {
+      failures.push(error);
+    }
     try {
       await this.nativeRelayEnrollment?.close();
       this.nativeRelayEnrollment = undefined;

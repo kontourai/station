@@ -324,6 +324,9 @@ export interface InitializeRuntimeDeps {
     usageAggregator?: UsageAggregator;
   }) => void | Promise<void>;
   onVoltAgentCreated: (voltAgent: VoltAgent) => void;
+  onVoiceWebSocketAttached?: (
+    listener: ReturnType<typeof attachVoiceWebSocket>,
+  ) => void;
 }
 
 interface InitializeRuntimeResult {
@@ -338,7 +341,6 @@ interface InitializeRuntimeResult {
   modelCatalog: BedrockModelCatalog;
   usageAggregator?: UsageAggregator;
   voltAgent: VoltAgent;
-  voiceWsAttached: boolean;
 }
 
 /**
@@ -1263,7 +1265,7 @@ export async function initializeRuntime(
 
   // Bind the dedicated listener only after every awaited initialization step
   // succeeds, so a rejected startup cannot strand the global voice-port guard.
-  attachVoiceWebSocket(port + 2, voiceService, host, {
+  const voiceListener = attachVoiceWebSocket(port + 2, voiceService, host, {
     // Scoped pairing (archive#1098): a valid credential must ALSO carry
     // orchestration:operate. Shared with terminal's identical gate
     // (`runtime-service-bootstrap.ts`) via `credentialAuthorizedForScope`.
@@ -1277,6 +1279,7 @@ export async function initializeRuntime(
     allowedBrowserOrigins: resolveStationBrowserOrigins({ port, host }),
     audit: (record) => logger.warn('Voice authentication denied', record),
   });
+  deps.onVoiceWebSocketAttached?.(voiceListener);
   // Defer Claude-transcript follow so the first event-loop turns can answer
   // identity/readiness probes. Immediate start() + bulk INSERT OR IGNORE of
   // large attached histories was wedging launchd health checks (port bound,
@@ -1300,7 +1303,6 @@ export async function initializeRuntime(
     modelCatalog,
     usageAggregator: nextUsageAggregator,
     voltAgent,
-    voiceWsAttached: true,
   };
 }
 

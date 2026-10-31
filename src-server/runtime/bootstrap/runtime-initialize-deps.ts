@@ -175,6 +175,7 @@ interface RuntimeInitializationContext {
     usageAggregator?: UsageAggregator;
   }) => void | Promise<void>;
   onVoltAgentCreated: (voltAgent: import('@voltagent/core').VoltAgent) => void;
+  onVoiceWebSocketAttached?: InitializeRuntimeDeps['onVoiceWebSocketAttached'];
 }
 
 export function createRuntimeInitializationDeps(
@@ -245,5 +246,6 @@ export function createRuntimeInitializationDeps(
     onCoreConfigReady: context.onCoreConfigReady,
     onRouteServicesReady: context.onRouteServicesReady,
     onVoltAgentCreated: context.onVoltAgentCreated,
+    onVoiceWebSocketAttached: context.onVoiceWebSocketAttached,
   };
 }
