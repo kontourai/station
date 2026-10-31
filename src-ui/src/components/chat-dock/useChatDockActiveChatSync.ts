@@ -50,6 +50,7 @@ export function useChatDockActiveChatSync({
   const attemptRef = useRef<{
     activeChat: string;
     attemptKeys: string[];
+    readerCurrent?: () => boolean;
   } | null>(null);
   const requestGenerationRef = useRef(0);
   const openConversationRef = useRef(openConversation);
@@ -75,7 +76,10 @@ export function useChatDockActiveChatSync({
   }, [activeChat, sessions, setActiveSessionId]);
 
   useEffect(() => {
-    if (!activeChat) return;
+    if (!activeChat) {
+      attemptRef.current = null;
+      return;
+    }
     if (
       sessionsRef.current.some(
         (session) =>
@@ -87,6 +91,8 @@ export function useChatDockActiveChatSync({
       attemptRef.current = { activeChat, attemptKeys: [] };
     }
     const attempt = attemptRef.current;
+    // A retry may renew transport work, never a superseded reader selection.
+    if (attempt.readerCurrent?.() === false) return;
     // Loading and confirmed-empty catalogs share a key; include successful
     // load state so the latter gets its own attempt (#945).
     const attemptKey = `${agentsLoaded}:${agentCatalogKey}:${lookupRetryGeneration}`;
@@ -103,6 +109,7 @@ export function useChatDockActiveChatSync({
     const requestGeneration = ++requestGenerationRef.current;
     let cancelled = false;
     const request = beginOpenRef.current?.();
+    attempt.readerCurrent = request?.current;
     const isCurrent = () =>
       !cancelled &&
       requestGeneration === requestGenerationRef.current &&
@@ -205,7 +212,7 @@ export function useChatDockActiveChatSync({
         // user just opened, while a persistent 404 still gives up on it.
         if (attempt.attemptKeys.length < 2) {
           retryTimer = setTimeout(() => {
-            if (!cancelled)
+            if (isCurrent())
               setLookupRetryGeneration((generation) => generation + 1);
           }, 250);
           return;

@@ -94,6 +94,7 @@ const {
   autoStarts: [] as (string | undefined)[],
   dockProbe: {
     mobile: false,
+    agentsLoaded: true,
     sessions: [] as Record<string, any>[],
     agents: [{ slug: 'assistant', name: 'Assistant' }],
   },
@@ -245,7 +246,7 @@ vi.mock('../../../contexts/ProjectsContext', async (importOriginal) => ({
 vi.mock('../../../contexts/AgentsContext', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   useAgents: () => dockProbe.agents,
-  useAgentsLoaded: () => true,
+  useAgentsLoaded: () => dockProbe.agentsLoaded,
 }));
 
 // The active chat's transcript and composer are stood in for: the file-drop
@@ -329,6 +330,7 @@ afterEach(async () => {
   sendMessage.mockClear();
   updateChat.mockClear();
   dockProbe.mobile = false;
+  dockProbe.agentsLoaded = true;
   dockProbe.sessions = [];
   dockProbe.agents = [{ slug: 'assistant', name: 'Assistant' }];
   acknowledgeCalls.length = 0;
@@ -1676,6 +1678,80 @@ test.each(['external-history', 'url-lookup', 'url-history'] as const)(
       expect(navigationStore.getSnapshot().pathname).toBe('/');
       if (entry === 'url-lookup')
         expect(openConversationAction).not.toHaveBeenCalled();
+    } finally {
+      vi.stubGlobal('fetch', fetchBefore);
+    }
+  },
+);
+
+test.each(['timer', 'catalog'] as const)(
+  'a cold URL %s retry cannot renew selection after New chat',
+  async (retry) => {
+    dockProbe.mobile = true;
+    dockProbe.agentsLoaded = retry !== 'catalog';
+    openChatA();
+    let releaseLookup: (() => void) | undefined;
+    let lookupCount = 0;
+    const fetchBefore = globalThis.fetch;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url =
+          typeof input === 'string'
+            ? input
+            : input instanceof URL
+              ? input.href
+              : input.url;
+        if (url.endsWith('/api/conversations/cold-conversation')) {
+          lookupCount += 1;
+          if (lookupCount === 1) {
+            await new Promise<void>((resolve) => {
+              releaseLookup = resolve;
+            });
+            if (retry === 'timer')
+              return Response.json(
+                { success: false, error: 'Temporary failure' },
+                { status: 503 },
+              );
+          }
+          return Response.json({
+            success: true,
+            data: {
+              id: 'cold-conversation',
+              agentSlug: 'assistant',
+              projectSlug: 'other',
+            },
+          });
+        }
+        return fetchBefore(input, init);
+      }),
+    );
+    try {
+      navigationStore.navigate('/', {
+        dock: 'open',
+        chat: 'cold-conversation',
+      });
+      renderDockedPane();
+      await waitFor(() => expect(releaseLookup).toBeDefined());
+      await act(async () => releaseLookup!());
+      act(() => {
+        dispatchNewChatIntent({});
+        dockProbe.agentsLoaded = true;
+      });
+      await screen.findByRole('region', { name: 'New chat picker' });
+      if (retry === 'timer')
+        await act(
+          async () => new Promise((resolve) => setTimeout(resolve, 350)),
+        );
+      await act(async () => {});
+      expect(lookupCount).toBe(1);
+      expect(openConversationAction).not.toHaveBeenCalled();
+      expect(navigationStore.getSnapshot().activeChat).toBe(
+        'cold-conversation',
+      );
+      expect(
+        screen.getByRole('region', { name: 'New chat picker' }),
+      ).toBeTruthy();
     } finally {
       vi.stubGlobal('fetch', fetchBefore);
     }
