@@ -142,7 +142,9 @@
 
     "src-server/services/plugin-telemetry-transport.ts",
 
-    "src-server/security/plugin-pane-context.ts"
+    "src-server/security/plugin-pane-context.ts",
+
+    "src-server/providers/adapters/station-agent-adapter.ts"
   ],
 
   "checks": [
