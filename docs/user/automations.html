@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Automations | Station Docs</title>
+    <link rel="stylesheet" href="../../styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="../../index.html">Station</a>
+      <nav aria-label="Primary">
+        <a href="../../index.html#platform">Platform</a>
+        <a href="../../docs/index.html">Docs</a>
+        <a href="https://github.com/kontourai/station">GitHub</a>
+      </nav>
+    </header>
+    <main>
+        <div class="docs-layout">
+          <aside class="docs-nav">
+            <a href="../../index.html">Home</a>
+            <a href="../../docs/index.html">Docs index</a>
+            <a href="https://github.com/kontourai/station/blob/main/docs/user/automations.md">Edit on GitHub</a>
+          </aside>
+          <article class="docs-content">
+            <h1 id="automations">Automations</h1>
+<p>An automation is work Station runs for you on a schedule: every weekday at 9:00, every hour, or once at a set time. Open <strong>Automations</strong> in the sidebar (it was called Schedule; old <code>/schedule</code> links still work).</p>
+<h2 id="where-an-automation-runs">Where an automation runs</h2>
+<p>Choose <strong>Run in</strong> when you create one:</p>
+<ul>
+<li><strong>Its own chat</strong> (the default). The first run starts a conversation with the Agent you pick, on that Agent's engine: Station's own, Claude Code, Codex, or another connected engine. Every later run continues that chat.
+</li>
+<li><strong>This chat.</strong> Offered when you start an automation from a chat (<strong>New automation</strong> in the chat's Automations section). Each run is a new message in that chat, on whatever engine it already uses.
+</li>
+<li><strong>Station engine, output file.</strong> The older behaviour, kept for existing jobs and for Stations that do not support running in a chat. It runs on Station's own engine only and saves the output to a file.
+</li>
+</ul>
+<p>Each run in a chat is a message from Station, not from you. It says which automation is running and when its last successful run was, so recurring work can cover only what changed since. The run uses the chat's normal approval mode: if the agent needs your approval, the chat shows it under needs-you, and the run waits for you.</p>
+<p>The engines offered depend on your Station. A Station that does not advertise chat automations offers only the output-file run, which cannot use an external engine.</p>
+<h2 id="what-a-chat-shows">What a chat shows</h2>
+<p>A chat's <strong>Automations</strong> section lists everything that will act on it later:</p>
+<ul>
+<li>automations that run in the chat,
+</li>
+<li>check-backs the agent scheduled (<code>schedule_wake_up</code>): one follow-up at most a day ahead, at most 3 waiting and 20 per hour per chat,
+</li>
+<li>automations the agent proposed (<code>propose_job</code>), waiting for your approval.
+</li>
+</ul>
+<p>An approved proposal runs in the chat that proposed it.</p>
+<h2 id="failures-missed-runs-and-turning-off">Failures, missed runs and turning off</h2>
+<ul>
+<li>A run that fails is listed as failed and notifies you. The notice is generic; open Automations to see the jobs and runs you can access.
+</li>
+<li>After <strong>5 failed runs in a row</strong>, Station turns the automation off and notifies you once. A run that retried counts once. A successful run resets the count, and so does turning the automation back on.
+</li>
+<li>If Station was not running when a chat automation was due and it is more than <strong>6 hours</strong> late, that run is recorded as missed instead of running late.
+</li>
+<li>Station never repeats a run that may already have reached the engine. If a run's outcome is unknown (Station restarted, or the turn ran longer than 30 minutes), the run says so; open the chat to see what happened.
+</li>
+</ul>
+<h2 id="templates">Templates</h2>
+<p>New automations can start from a template: <strong>Daily repo digest</strong>, <strong>Check back on open work</strong>, <strong>Weekly dependency check</strong> and <strong>Stale pull requests</strong>. Templates only ask for work an agent can do with its workspace and tools.</p>
+<h2 id="limits">Limits</h2>
+<ul>
+<li>An automation that runs in a chat cannot retry and cannot have a GitHub pull request monitor.
+</li>
+<li>An agent can create, change, run or delete an automation only in its own chat. A dedicated chat is your choice. To change or run an automation that runs in a chat, you must be able to send to that chat.
+</li>
+<li>An automation that runs in a chat acts as the person who created it; editing it does not change that.
+</li>
+<li>Start notifications are not sent; the old <code>notifyStart</code> setting is ignored.
+</li>
+<li>GitHub event triggers are not part of Automations yet (<a href="https://github.com/kontourai/station/issues/3439">#3439</a>).
+</li>
+</ul>
+<p>See <a href="https://github.com/kontourai/station/blob/main/docs/decisions/automations-unify-schedules.md">the decision record</a> for the rules behind this behaviour.</p>
+          </article>
+        </div>
+      </main>
+    <footer>
+      <span>Station</span>
+      <a href="https://github.com/kontourai/station">GitHub</a>
+    </footer>
+  </body>
+</html>
