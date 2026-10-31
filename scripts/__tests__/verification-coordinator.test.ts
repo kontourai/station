@@ -14,10 +14,13 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { delimiter, join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
-import { lookupProcessBirthFingerprint } from '../../packages/shared/src/process-identity.mjs';
+import {
+  lookupProcessBirthFingerprint,
+  resolveOwnProcessIdentity,
+} from '../../packages/shared/src/process-identity.mjs';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   latestE2EEvidenceBinding,
@@ -3428,7 +3431,15 @@ setInterval(() => {
       const nextWorktree = join(temp.root, 'after-orphan');
       mkdirSync(worktree);
       mkdirSync(nextWorktree);
-      let childLease: { child?: { pgid?: number | null } } = {};
+      const descendantPath = join(temp.root, 'orphan-pid');
+      let childLease: {
+        child?: {
+          pid?: number | null;
+          pgid?: number | null;
+          jobBound?: boolean;
+          guard?: { pid: number; processStart: string };
+        };
+      } = {};
       const orphanRunner = ({ signal }: { signal: AbortSignal }) =>
         createOwnedRunner({
           lane: { id: 'orphan-fixture' },
@@ -3447,7 +3458,7 @@ setInterval(() => {
             [
               '--input-type=module',
               '--eval',
-              "import { spawn } from 'node:child_process'; const child = spawn(process.execPath, ['--eval', \"process.on('SIGTERM', () => {}); setInterval(() => {}, 1_000)\"], { stdio: 'ignore' }); child.unref(); process.exit(0);",
+              `import { spawn } from 'node:child_process'; import { writeFileSync } from 'node:fs'; const child = spawn(process.execPath, ['--eval', "process.on('SIGTERM', () => {}); setInterval(() => {}, 1_000)"], { stdio: 'ignore', windowsHide: true }); writeFileSync(${JSON.stringify(descendantPath)}, String(child.pid)); child.unref(); process.exit(0);`,
             ],
           ],
           processIdentity: () => null,
@@ -3467,12 +3478,27 @@ setInterval(() => {
           hostCpuSampler: healthySampler(),
           runner: orphanRunner,
         });
-        expect(childLease.child?.pgid).toEqual(expect.any(Number));
+        const descendantPid = Number(readFileSync(descendantPath, 'utf8'));
+        expect(descendantPid).toBeGreaterThan(0);
+        if (process.platform === 'win32') {
+          expect(childLease.child).toMatchObject({
+            pid: expect.any(Number),
+            pgid: null,
+            jobBound: true,
+            guard: {
+              pid: expect.any(Number),
+              processStart: expect.any(String),
+            },
+          });
+        } else {
+          expect(childLease.child?.pgid).toEqual(expect.any(Number));
+        }
         expect(orphaned.receipt.cleanup).toEqual({
           status: 'passed',
           survivingOwnedChildren: 0,
         });
         expect(processGroupIsLive(childLease.child?.pgid)).toBe(false);
+        expect(processIsLive(descendantPid)).toBe(false);
 
         const next = await coordinateVerification({
           laneId: 'test-changed',
@@ -4110,16 +4136,24 @@ setInterval(() => {
           heartbeatAt: Date.now(),
         }),
       ).toBe(true);
-      expect(
+      let quarantine: string | undefined;
+      let movedLease: unknown;
+      const outcome =
         __verificationCoordinatorInternals.createOwnedDirectoryRemover({
           removeDirectory: (target: string, options: object) => {
-            expect(target).toMatch(/scheduler\.lock\.remove-[0-9a-f-]+$/);
-            expect(target.startsWith(`${temp.root}/`)).toBe(true);
-            expect(target.startsWith(`${outside}/`)).toBe(false);
+            quarantine = target;
+            movedLease = JSON.parse(
+              readFileSync(join(target, 'lease.json'), 'utf8'),
+            );
             rmSync(target, { recursive: true, force: true, ...options });
           },
-        })(directory, owner),
-      ).toMatchObject({ kind: 'released' });
+        })(directory, owner);
+      expect(outcome).toMatchObject({ kind: 'released' });
+      expect(quarantine).toMatch(/scheduler\.lock\.remove-[0-9a-f-]+$/);
+      expect(dirname(quarantine!)).toBe(temp.root);
+      expect(movedLease).toMatchObject({ owner });
+      expect(existsSync(quarantine!)).toBe(false);
+      expect(existsSync(directory)).toBe(false);
       expect(readdirSync(outside)).toEqual([]);
     } finally {
       temp.remove();
@@ -4272,6 +4306,11 @@ setInterval(() => {
         processStart: nativeProcessStart(process.pid),
         nonce: randomUUID(),
       };
+      const identity = resolveOwnProcessIdentity(process.pid);
+      expect(identity.state).toBe('exact');
+      if (identity.state !== 'exact')
+        throw new Error('fixture identity unavailable');
+      owner.processStart = identity.identity.start;
       const writer = { ...owner, nonce: randomUUID() };
       try {
         expect(
