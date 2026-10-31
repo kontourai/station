@@ -2257,6 +2257,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
               isCurrent() && execution?.beforeFocus?.() !== false,
           },
         );
+        // Project routing can commit synchronously; bind focus to that destination.
         expectedNavigation = navigationStore.getSnapshot();
         const opened = await opening;
         if (!ownsRequest() || (!opened && !isCurrent())) return 'cancelled';
