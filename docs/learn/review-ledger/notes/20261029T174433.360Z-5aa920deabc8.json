@@ -1,0 +1,15 @@
+{
+  "revision": "60801086645265ae4c284d884ba62080dc62aa57",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"Reviewed the threat-model link and the Funnel/ingress rationale against the added Project sharing consent-strength qualification. It does not change the automation design or authorize public ingress. No automation runtime or deployment was requalified.","inputs":["docs/design/automations.md","docs/security/remote-access-threat-model.md"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Reviewed the Settings consent description and armed boot protocol against account-sharing routes, the consent listener, storage owner, merged runtime and their focused suites. Clarified that credential-holding local automation can decide without passkey or human-presence proof. Prior live verification applies to head 209b81d6, not this merge.","inputs":["docs/guides/deployment-authentication.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked the deployment-authentication navigation entry and its provider/refusal prerequisites against the added local consent-strength qualification. The integration guide remains a routing and evidence boundary; no external provider or deployment was run.","inputs":["docs/guides/integrating-station.md","docs/guides/deployment-authentication.md"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed the changed cold-start test dependency: it types the existing Project membership spy and removes never casts; telemetry behavior and assertions are unchanged. The merged runtime focused suite passed; this is not deployed telemetry qualification.","inputs":["docs/reference/usage-telemetry.md","src-server/runtime/__tests__/runtime-cold-start-custom-agent.test.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed requester-session consent, nonce/origin and raw HTTP behavior against the consent listener, transaction store and sharing route. Clarified that credential or exact transaction-cookie possession can automate the decision and is not S4 passkey or human-presence proof. The independent executed probe is pinned to 209b81d6; merged focused suites do not add live security qualification.","inputs":["docs/security/remote-access-threat-model.md"]}
+  ]
+}
