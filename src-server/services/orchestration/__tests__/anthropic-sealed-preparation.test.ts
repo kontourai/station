@@ -16,7 +16,7 @@ import {
   subject,
 } from './delegation-source-fixtures/source.js';
 
-const NOW = Date.parse('2026-10-31T00:03:00Z');
+const NOW = Date.parse('2026-10-31T02:16:00Z');
 afterEach(() => vi.restoreAllMocks());
 const remaining = {
   inputTokens: 1048576,
@@ -26,9 +26,7 @@ const remaining = {
 };
 
 async function prepare(observed = { starts: 0 }, inputTool?: true) {
-  vi.spyOn(Date, 'now').mockReturnValue(
-    inputTool ? NOW + 1000 : NOW,
-  );
+  vi.spyOn(Date, 'now').mockReturnValue(inputTool ? NOW + 1000 : NOW);
   const f = await fixture();
   const credentials = await sdkCredentialFixture(f, 'anthropic');
   const preparation = await AnthropicSealedPreparation.create();
@@ -186,14 +184,14 @@ test('real preparation derives public profile from actual request/source/credent
 
 test('snapshot-anchored profile expiry refuses without extending validity at startup', async () => {
   const p = await prepare();
-  vi.mocked(Date.now).mockReturnValue(Date.parse('2026-10-31T00:02:00Z') - 1);
+  vi.mocked(Date.now).mockReturnValue(Date.parse('2026-10-31T02:15:00Z') - 1);
   assert.throws(() => p.preparation.assertCurrent(), {
     code: 'stale_contract',
   });
   await assert.rejects(() => AnthropicSealedPreparation.create(), {
     code: 'stale_contract',
   });
-  vi.mocked(Date.now).mockReturnValue(Date.parse('2026-10-31T00:02:00Z'));
+  vi.mocked(Date.now).mockReturnValue(Date.parse('2026-10-31T02:15:00Z'));
   p.preparation.assertCurrent();
   vi.mocked(Date.now).mockReturnValue(
     Date.parse('2026-10-31T21:57:45.679Z') - 1,
@@ -328,7 +326,7 @@ test('input-tool issuance uses a distinct fixed-freshness profile with no new ef
   );
   assert.equal(
     contract.evidence.validFromMs,
-    Date.parse('2026-10-31T00:02:00Z'),
+    Date.parse('2026-10-31T02:15:00Z'),
   );
   assert.equal(
     contract.evidence.expiresAtMs,

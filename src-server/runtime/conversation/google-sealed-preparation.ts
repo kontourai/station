@@ -19,18 +19,18 @@ import {
 
 const MODEL = 'gemini-2.5-flash-lite';
 const VERSION = 'v1beta';
-const VALID_FROM = Date.parse('2026-10-31T00:02:00Z');
+const VALID_FROM = Date.parse('2026-10-31T02:15:00Z');
 // The earliest retained pricing/cap snapshot bounds freshness; startup cannot extend it.
 const EXPIRES = Date.parse('2026-10-31T21:57:47.087Z');
 const INPUT_RESERVATION = 1_048_576;
 const SDK = [
   [
     'dist/index.mjs',
-    'da133374ba6af9adc1c8bdc6527b02bf0bafad4b6c1a59f613c59542256c452f',
+    'd1260d801747f70387ce95708039b27bc3cab2d3b9eb1ab29860563ada937bae',
   ],
   [
     'package.json',
-    '406721631ca6b9b90092d30d70fe917ff10acf5a3bd9788885f0763cd9383513',
+    '179de7080b24fbb218b36cdc061a850510aa3ccff233812191f8d5890c33a525',
   ],
 ] as const;
 const SOURCES = [
@@ -189,13 +189,13 @@ export class GoogleSealedPreparation {
       sourceRevision: source.source.source_admission_receipt.digest,
       optionsSha256: boundedApiWireOptionsSha256('google', wire),
       sdkPackage: '@ai-sdk/google',
-      sdkVersion: '3.0.136',
+      sdkVersion: '3.0.139',
     };
     const id = `google-text:${sha(canonicalJson(binding))}`;
     const evidence = {
       authorityKind: 'provider-public-contract' as const,
       authorityRef: 'https://ai.google.dev/gemini-api/docs/pricing',
-      revision: 'flash-lite25-text-20261030',
+      revision: 'flash-lite25-text-20261031-sdk30139',
       sourceSha256s: SOURCES,
       validFromMs: VALID_FROM,
       expiresAtMs: EXPIRES,

@@ -5,6 +5,36 @@ master consolidation in #3991. It starts at published
 `d96f54887837be058c5e5119b8028daab0befea1`. Merge subsequent master/main
 normally before publication. Open one PR when the combined work is ready.
 
+## Current delivery state
+
+Main is integrated through `ae37b325503` by normal merge `75176b4355a`.
+This branch has not been pushed or opened as a PR and is not ready to land.
+
+The bounded portable surface is restored: real caller and Project custody,
+personal-host route composition, eight CLI/MCP counterparts, public Flow
+frontier/claim callbacks, authenticated member selection, output pages and a
+named preflight budget refusal. Controlled pre-main qualification includes the
+real bootstrap output journey (`956aaf2f147`), bounded outcome manifests
+(`24062b8e9fc`), local and guarded HTTP Flow journeys (`61b0423bc23`,
+`245e3c7385f`), and the budget HTTP/SDK refusal (`3986bf5cfb4`). These are
+controlled-source receipts, not live provider, native, hosted or epic acceptance.
+The public `delegationGroups` capability remains false.
+
+Main upgraded the direct inference SDKs to Anthropic 3.0.135 and Google 3.0.139.
+Independent source review found the narrow profiles compatible. Their refreshed
+witnesses and fixed fixture clocks passed 183 post-merge wire, profile, raw-price,
+stream and canonical input-consumer cases. The retained public-term expiry
+ceilings have not been extended. These controlled results do not qualify live
+provider/account access or complete the remaining group journeys.
+
+Report publication remains incomplete. The existing Flow report case has a
+known currentness failure, and the funded three-seat mixed-family elicitation
+journey is unqualified. The needed public transaction-owner API is being
+qualified in [Flow Agents #1566](https://github.com/kontourai/flow-agents/pull/1566).
+It is not published or adopted here. The metadata finalizer remains unavailable.
+Final combined review, documentation qualification, remaining acceptance and the
+single protected PR landing are still required.
+
 ## Published Flow 9.9.1 pin (#91)
 
 Station selects the registry Flow Agents 9.9.1 and Flow 5.4.0 packages. The
@@ -16,7 +46,8 @@ source execution. A metadata-only adapter now joins that locator with the
 bootstrap participant, home writer and retained receipt owner, but its route is
 disabled even when its preview is enabled (`e802467d519`). The published patch
 repairs 9.9.0's exact-finalizer replay authentication defect; that historical
-failure is retained, but publication is no longer the blocker. Station's other
+failure is retained. That replay patch is published; the new transaction-owner
+prerequisite described above is separate. Station's other
 rounds writers do not yet hold the home writer through journal publication.
 The home-first transaction composition, cross-participant exclusion proof and
 positive full runtime-factory HTTP/SDK finalization remain open. Controlled
@@ -65,18 +96,19 @@ does not qualify Station's composition.
 
 ## Portable delegation-group source split (#91)
 
-The unfinished portable delegation-group CLI, SDK transport, contract shapes,
-route, runtime and exclusive binding owners are retained at
+At the source-split checkpoint, the unfinished portable delegation-group CLI,
+SDK transport, contract shapes, route, runtime and exclusive binding owners were
+retained at
 `archive/portable-groups-unsplit-15d0352a40b` (commit
-`15d0352a40bced0c7826efb316b17c39fbc82190`). They are NOT DELIVERED on
-this branch. The public `delegationGroups` capability remains false.
-Production preparation, current V2 grant binding, Flow host callbacks and
-qualified physical execution remain open under #91. Shared report and CLI
-session-group owners remain in use; this split does not complete the epic.
+`15d0352a40bced0c7826efb316b17c39fbc82190`). The later bounded restoration is
+recorded in the current delivery state above; #91 remains NOT DELIVERED.
+The public `delegationGroups` capability remains false. Shared report and CLI
+session-group owners remain in use; neither the split nor its restoration
+completes the epic.
 
 ### Portable source-owner recovery increment
 
-The new, unwired portable preparation and execution owners use the installed
+The initial, then-unwired portable preparation and execution owners used the installed
 public V2 controller and signed host admissions (`f33b6940b67`). A later request
 can authenticate the retained intent and reuse the persisted group; recovery
 also finishes creation from a retained admission with no group journal, using
@@ -87,11 +119,11 @@ the replay and preparation-cache findings. The overlapping-create test does not
 establish that the second request reached the held phase before release;
 concurrent retry remains unverified at that boundary.
 
-These owners are not mounted in production. Bound Session source and credential
-authority, the complete runtime/HTTP/MCP/CLI surface, Flow callbacks, cancellation
-and member transport qualification remain unfinished. The operator fixture's
-controlled SDK responses do not establish provider or physical-runtime acceptance.
-The capability remains false and #91 remains undelivered.
+At those recovery checkpoints the owners were not mounted in production. The
+later caller binding, factory wiring and controlled transport evidence are
+recorded above. The original operator fixture's controlled SDK responses do not
+establish provider or physical-runtime acceptance. The capability remains false
+and #91 remains undelivered.
 
 ## Earlier source checkpoints
 

@@ -20,11 +20,11 @@ import { reportInputToolDefinition } from './report-input-profile.js';
 
 const MODEL = 'claude-sonnet-4-6';
 const VERSION = '2026-10-21';
-const VALID_FROM = Date.parse('2026-10-31T00:02:00Z');
+const VALID_FROM = Date.parse('2026-10-31T02:15:00Z');
 // The earliest retained pricing/cap snapshot bounds freshness; startup cannot extend it.
 const EXPIRES = Date.parse('2026-10-31T21:57:45.679Z');
 const INPUT_RESERVATION = 1_048_576;
-const INPUT_VALID_FROM = Date.parse('2026-10-31T00:02:00Z');
+const INPUT_VALID_FROM = Date.parse('2026-10-31T02:15:00Z');
 const INPUT_SOURCES = [
   '9cfd74b9085448d42da7b6632fb908b764159f37e77dd644d2503369239023ff',
   '85f3a48d1aa56da63c28d0adcde5d85bce55c5616de70fcfd7c86e6dd5e48bb6',
@@ -33,11 +33,11 @@ const INPUT_SOURCES = [
 const SDK = [
   [
     'dist/index.mjs',
-    '30dbd47f2a8e9cbc34b6c200e4c2d193afc8cac69311d47bd3e2c8de9864602c',
+    '1c9d2bb8011ceb9cc65fb84e5af6cdad7462644133841300230e481c43859931',
   ],
   [
     'package.json',
-    '04ed5716d3a8c78254b2938cc266f6966ab0deb081f65941789bbeb3fb8f8581',
+    '1c585b96ce1b665f67d01ab21d042e17437bda395e0fde36290a48f0bbb09d4c',
   ],
 ] as const;
 const SOURCES = [
@@ -208,15 +208,15 @@ export class AnthropicSealedPreparation {
       sourceRevision: source.source.source_admission_receipt.digest,
       optionsSha256: boundedApiWireOptionsSha256('anthropic', wire),
       sdkPackage: '@ai-sdk/anthropic',
-      sdkVersion: '3.0.134',
+      sdkVersion: '3.0.135',
     };
     const id = `anthropic-${inputTool ? 'input' : 'text'}:${sha(canonicalJson(binding))}`;
     const evidence = {
       authorityKind: 'provider-public-contract' as const,
       authorityRef: 'https://platform.claude.com/docs/en/about-claude/pricing',
       revision: inputTool
-        ? 'sonnet46-input-20261030'
-        : 'sonnet46-text-20261030',
+        ? 'sonnet46-input-20261031-sdk30135'
+        : 'sonnet46-text-20261031-sdk30135',
       sourceSha256s: inputTool ? [...SOURCES, ...INPUT_SOURCES] : SOURCES,
       validFromMs: inputTool ? INPUT_VALID_FROM : VALID_FROM,
       expiresAtMs: EXPIRES,

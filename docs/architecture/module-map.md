@@ -52,6 +52,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [NativeApplicationSignaling](#nativeapplicationsignaling) | Own a native peer transcript and one bounded Device request proof for the opt-in application transport. | `src-desktop/src/native_application_peer.rs` |
 | [PendingPairingCompletion](#pendingpairingcompletion) | Complete one accepted device-pairing request once, with shared subscribers and bounded retry. | `packages/connect/src/core/pendingPairingCompletion.ts` |
 | [ChildWork](#childwork) | Fold bounded child observations and result provenance without granting execution or transcript authority. | `packages/contracts/src/child-work.ts` |
+| [DelegationGroupRuntime](#delegationgroupruntime) | Project caller-owned bounded groups while published Flow owns frontier and join semantics. | `src-server/services/orchestration/portable-group-runtime.ts` |
 | [StationReportGroupRuntime](#stationreportgroupruntime) | Compose personal-host advisory reports with retained accounting and explicit cancellation observations. | `src-server/services/orchestration/station-report-group-runtime.ts` |
 | [SessionQueryModule](#sessionquerymodule) | Authorize and project one conversation from one ordered event stream. | `src-server/services/orchestration/session-query-module.ts` |
 | [SessionGoalModule](#sessiongoalmodule) | Inspect and control an exact live Session's advertised Goal capability. | `src-server/services/orchestration/session-goal-module.ts` |
@@ -2281,6 +2282,52 @@ The bounded [Claude transcript reader](../../src-server/providers/adapters/claud
 uses that identity, not a caller-supplied file path. Neither a child reference,
 recovery handle nor read access grants execution or authority to answer a request.
 
+## DelegationGroupRuntime
+
+[DelegationGroupRuntime](../../src-server/services/orchestration/portable-group-runtime.ts)
+owns the bounded portable group projection. The
+[runtime route factory](../../src-server/runtime/routes/runtime-routes.ts) mounts
+its [HTTP routes](../../src-server/routes/orchestration/delegation-groups.ts) on
+personal hosts with the actual orchestration, EventStore and Project membership
+owners; unavailable owners refuse. The public `delegationGroups` capability
+remains false while combined qualification is unfinished.
+
+[Preparation](../../src-server/services/orchestration/portable-group-preparation.ts)
+captures the actual request authority, Project incarnation, selected Agent,
+source snapshot and credential observation. Bound Station Control callers retain
+their verified Session and recorded owner, and caller-derived delegation lineage
+is signed into admission. A later request revalidates that custody. A caller
+cannot supply an execution lease through the transport input.
+
+[Execution](../../src-server/services/orchestration/portable-group-execution.ts)
+uses the installed public V2 controller. Flow-backed seats carry the actual
+source-owned claim through admission and final wire launch; Flow owns ready
+frontiers and joins. Station retains schedule and member observations without
+turning completion or a vote into semantic acceptance. Unknown usage keeps its
+allocation held. Aggregate quote feasibility is checked before invocation;
+insufficient declared budget is an explicit refused admission.
+
+The public member selection comes from authenticated retained metadata, including
+the runtime protocol in the admitted envelope. Raw text stays in its dedicated
+retained-result owner; bounded outcome manifests reference it rather than
+duplicating it. Output pages use UTF-16 cursors, preserve surrogate pairs and
+repeat whole-invocation usage. Page usage must not be added together. The
+[SDK](../../packages/sdk/src/client/delegation-groups.ts),
+[CLI](../../packages/cli/src/commands/group.ts) and
+[Station Control tools](../../src-server/tools/station-control-delegation-group-tools.ts)
+share the owned routes and cursor semantics.
+
+The [bootstrap fixture](../../src-server/runtime/routes/__tests__/runtime-routes-portable-group-serving.test.ts)
+exercises the real runtime/configuration owner and HTTP ingress with controlled
+provider responses. The
+[bound Flow fixture](../../src-server/services/orchestration/__tests__/portable-group-bound-flow-http.test.ts)
+and [budget fixture](../../src-server/services/orchestration/__tests__/portable-group-budget.test.ts)
+exercise narrower owner/transport boundaries. Their presence is not a claim of
+current execution, provider entitlement, native or hosted acceptance. Installed
+SDK witnesses, narrow wire restrictions and fixed public-term freshness remain
+required. The separate report continuation/publication composition below is
+still unqualified.
+
 ## StationReportGroupRuntime
 
 The personal-host continuation-finalizer route currently refuses, and its
@@ -2544,7 +2591,7 @@ The installed SDK entry and manifest must match reviewed hashes. Facts expire
 at a fixed snapshot-derived deadline; startup cannot extend it. A changed SDK
 or expired profile requires new evidence and review, not a configuration flag. The
 issuer's current fixed validity window admits preparation
-from `2026-10-31T00:02:00Z` until (excluding)
+from `2026-10-31T02:15:00Z` until (excluding)
 `2026-10-31T21:57:45.679Z`. Refreshing those facts does not renew an
 existing group's authority or establish provider entitlement.
 
@@ -2590,7 +2637,7 @@ The retained official [model](https://ai.google.dev/gemini-api/docs/models/gemin
 [pricing](https://ai.google.dev/gemini-api/docs/pricing),
 [billing](https://ai.google.dev/gemini-api/docs/billing), and
 [Generate Content caching](https://ai.google.dev/gemini-api/docs/generate-content/caching)
-snapshots anchor its validity from `2026-10-31T00:02:00Z` until (excluding)
+snapshots anchor its validity from `2026-10-31T02:15:00Z` until (excluding)
 `2026-10-31T21:57:47.087Z`. Startup cannot extend that window. The stable model label
 is not an assertion of immutable weights or current-account access; Google
 restricts 2.5 access to prior active users. The installed SDK can request an

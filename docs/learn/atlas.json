@@ -43,6 +43,7 @@
       ],
       "modules": [
         "ChildWork",
+        "DelegationGroupRuntime",
         "SessionQueryModule",
         "SessionGoalModule",
         "ConversationSessionLineage",
