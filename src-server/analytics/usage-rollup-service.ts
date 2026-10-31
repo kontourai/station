@@ -12,6 +12,7 @@ import type {
   UsageCoverage,
   UsageReceipt,
   UsageRollup,
+  UsageTaskOutcome,
 } from '@kontourai/station-contracts/usage-rollup';
 import {
   foldUsageReceipts,
@@ -54,6 +55,28 @@ export interface UsageReceiptSource {
   }>;
 }
 
+/** Resolve only exact Task identities through the same authenticated read authority. */
+export interface UsageTaskOutcomeSource {
+  read(
+    tasks: readonly { stationId: string; taskId: string }[],
+    authority: UsageRollupReadAuthority,
+    signal: AbortSignal,
+  ): Promise<
+    ReadonlyMap<
+      string,
+      | {
+          state: 'available';
+          status: Extract<UsageTaskOutcome, { state: 'available' }>['status'];
+        }
+      | { state: 'restricted' | 'unavailable' }
+    >
+  >;
+}
+
+export function usageTaskOutcomeKey(stationId: string, taskId: string): string {
+  return JSON.stringify([stationId, taskId]);
+}
+
 function sourceFailure(
   source: UsageReceiptSource,
   request: UsageRollupRequest,
@@ -76,6 +99,7 @@ export class UsageRollupService {
   constructor(
     private readonly sources: readonly UsageReceiptSource[],
     private readonly unqueriedCoverage: readonly UsageCoverage[] = [],
+    private readonly taskOutcomes?: UsageTaskOutcomeSource,
   ) {
     if (sources.length === 0 || sources.length > USAGE_ROLLUP_MAX_SOURCES) {
       throw new Error(
@@ -189,6 +213,64 @@ export class UsageRollupService {
           ...this.unqueriedCoverage,
         ],
       });
+    const tasks = new Map<string, { stationId: string; taskId: string }>();
+    for (const receipt of canonicalAggregateReceipts ?? []) {
+      if (receipt.taskId)
+        tasks.set(usageTaskOutcomeKey(receipt.stationId, receipt.taskId), {
+          stationId: receipt.stationId,
+          taskId: receipt.taskId,
+        });
+    }
+    let outcomes: Awaited<ReturnType<UsageTaskOutcomeSource['read']>> =
+      new Map();
+    if (this.taskOutcomes && tasks.size > 0) {
+      const controller = new AbortController();
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        outcomes = await Promise.race([
+          this.taskOutcomes.read(
+            [...tasks.values()],
+            authority,
+            controller.signal,
+          ),
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(() => {
+              controller.abort();
+              reject(new Error('deadline'));
+            }, USAGE_ROLLUP_SOURCE_DEADLINE_MS);
+          }),
+        ]);
+      } catch {
+        // Outcome unavailability must not erase independently observed usage.
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+    }
+    const taskOutcomes: UsageTaskOutcome[] = [...tasks].map(([key, task]) => {
+      const receipts = (canonicalAggregateReceipts ?? []).filter(
+        (receipt) =>
+          receipt.stationId === task.stationId &&
+          receipt.taskId === task.taskId,
+      );
+      const money = new Map<string, number>();
+      for (const receipt of receipts) {
+        if (receipt.reportedCost)
+          money.set(
+            receipt.reportedCost.currency,
+            (money.get(receipt.reportedCost.currency) ?? 0) +
+              receipt.reportedCost.amount,
+          );
+      }
+      return {
+        ...task,
+        receiptCount: receipts.length,
+        reportedCostBuckets: [...money].map(([currency, amount]) => ({
+          currency,
+          amount,
+        })),
+        ...(outcomes.get(key) ?? { state: 'unavailable' as const }),
+      };
+    });
     const next = Object.fromEntries(
       results.map((result, index) => {
         const stationId = this.sources[index]!.stationId;
@@ -204,6 +286,7 @@ export class UsageRollupService {
     const hasRemaining = Object.values(next).some((value) => !value.exhausted);
     return {
       ...result,
+      taskOutcomes,
       ...(request.includeAggregate
         ? {
             aggregateReceipts: canonicalAggregateReceipts,
@@ -473,6 +556,7 @@ function parseReceipt(value: unknown, stationId: string): UsageReceipt {
     'outputTokens',
     'cacheReadTokens',
     'cacheWriteTokens',
+    'reasoningTokens',
   ])
     if (
       receipt[key] !== undefined &&
@@ -565,6 +649,8 @@ function parseReceipt(value: unknown, stationId: string): UsageReceipt {
       throw new Error('invalid usage receipt field');
   return {
     ...(receipt as unknown as Omit<UsageReceipt, 'pricing'>),
+    // A peer's opaque retail extension is not locally reviewed tariff evidence.
+    retailEquivalent: undefined,
     pricing: parsedPricing,
   };
 }

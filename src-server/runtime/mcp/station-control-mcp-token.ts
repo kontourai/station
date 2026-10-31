@@ -57,6 +57,7 @@ import {
 } from '@kontourai/station-contracts/station-control-external-client';
 import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import { stationControlMcpTokenMinted } from '../../telemetry/metrics.js';
+import { StationControlDisclosure } from '../../tools/station-control-disclosure.js';
 
 export const STATION_CONTROL_MCP_PATH = '/mcp/station-control';
 export const STATION_KNOWLEDGE_MCP_PATH = '/mcp/station-knowledge';
@@ -157,6 +158,8 @@ interface StationControlMcpTokenEntry {
   externalClientLeaseId?: string;
   callerRecordBinding?: string;
   isIssuerCurrent?: () => boolean;
+  dynamicTools?: boolean;
+  disclosure?: StationControlDisclosure;
 }
 
 const tokensByDigest = new Map<string, StationControlMcpTokenEntry>();
@@ -214,6 +217,7 @@ export function mintStationControlMcpToken(
   serverId: StationMcpCredentialPurpose = 'station-control',
   onRevoke?: () => void,
   isIssuerCurrent?: () => boolean,
+  dynamicTools = false,
 ): MintedStationControlMcpToken {
   if (
     (serverId === 'coordinator-control' ||
@@ -231,6 +235,7 @@ export function mintStationControlMcpToken(
   const tokenDigest = digest(token);
   tokensByDigest.set(tokenDigest, {
     onRevoke,
+    dynamicTools,
     ...(isIssuerCurrent ? { isIssuerCurrent } : {}),
     sessionId,
     serverId,
@@ -377,6 +382,32 @@ export function verifyStationControlMcpTokenEntry(
     }
   }
   return undefined;
+}
+
+/** One disclosure object belongs to the token's private record and dies with it. */
+export function stationControlDisclosureForToken(
+  candidate: string,
+  enabled: () => boolean,
+): StationControlDisclosure | undefined {
+  if (!verifyStationControlMcpTokenEntry(candidate)) return undefined;
+  const tokenDigest = digest(candidate),
+    entry = tokensByDigest.get(tokenDigest);
+  if (
+    !entry ||
+    !entry.dynamicTools ||
+    entry.externalClientLeaseId ||
+    (entry.serverId !== 'station-control' &&
+      entry.serverId !== 'coordinator-control')
+  )
+    return undefined;
+  entry.disclosure ??= new StationControlDisclosure(
+    () =>
+      tokensByDigest.get(tokenDigest) === entry &&
+      entry.expiresAt > Date.now() &&
+      (!entry.isIssuerCurrent || entry.isIssuerCurrent()) &&
+      enabled(),
+  );
+  return entry.disclosure;
 }
 
 function removeTokenEntry(

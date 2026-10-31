@@ -84,7 +84,10 @@
     "./client/task-relationships": "./src/client/task-relationships.ts",
     "./engine-sign-in": "./src/engine-sign-in.ts",
     "./action-control": "./src/components/ActionControl.tsx",
-    "./action-control.css": "./src/components/ActionControl.css"
+    "./action-control.css": "./src/components/ActionControl.css",
+    "./client/project-working-configuration": "./src/client/project-working-configuration.ts",
+    "./client/learning-review": "./src/client/learning-review.ts",
+    "./learning-review-query": "./src/query-domains/learningReview.ts"
   },
   "scripts": {
     "build": "tsc && npm run copy-assets",

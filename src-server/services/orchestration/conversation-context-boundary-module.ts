@@ -1,11 +1,13 @@
 import type {
   ConversationContextBoundaryPolicy,
   ConversationContextBoundaryProjection,
+  ConversationContextBoundarySeed,
   ConversationContextBoundaryStatus,
 } from '@kontourai/station-contracts/conversation-context-boundary';
 import {
   CONTEXT_BOUNDARY_OMITTED,
   CONTEXT_BOUNDARY_PRESERVED,
+  isSummaryContextBoundary,
 } from '@kontourai/station-contracts/conversation-context-boundary';
 
 export interface ConversationContextBoundaryMarker {
@@ -23,6 +25,7 @@ export interface ConversationContextBoundaryMarker {
   startCommandId?: string;
   claimedAt?: string;
   consumedAt?: string;
+  seed?: ConversationContextBoundarySeed;
 }
 
 export class ConversationContextBoundaryConflictError extends Error {
@@ -68,8 +71,59 @@ interface ConversationContextBoundaryPersistence {
   reconcile(): void;
 }
 
-const snapshot = (marker: ConversationContextBoundaryMarker) =>
-  Object.freeze({ ...marker });
+export function assertConversationContextBoundarySeed(
+  marker: Pick<
+    ConversationContextBoundaryMarker,
+    'policy' | 'seed' | 'predecessorSessionId'
+  >,
+): void {
+  const seed = marker.seed;
+  if (!isSummaryContextBoundary(marker.policy)) {
+    if (seed)
+      throw new Error('Legacy context boundary cannot carry a summary seed');
+    return;
+  }
+  if (
+    !seed ||
+    typeof seed.text !== 'string' ||
+    !seed.text.trim() ||
+    seed.text.length > 16000 ||
+    createHash('sha256').update(seed.text).digest('hex') !== seed.digest ||
+    seed.sourceSessionId !== marker.predecessorSessionId ||
+    !seed.sourceEventId ||
+    !seed.sourceRevision ||
+    (marker.policy === 'task-state-next-cold-start'
+      ? seed.kind !== 'task-state' ||
+        !seed.task?.taskId ||
+        !seed.task.taskCreatedAt
+      : seed.kind !== 'semantic-summary') ||
+    (seed.kind === 'semantic-summary' && !seed.model) ||
+    !['unknown', 'observed'].includes(seed.generationUsage?.state) ||
+    (seed.generationUsage.state === 'observed' &&
+      (!Number.isSafeInteger(seed.generationUsage.inputTokens) ||
+        seed.generationUsage.inputTokens < 0 ||
+        !Number.isSafeInteger(seed.generationUsage.outputTokens) ||
+        seed.generationUsage.outputTokens < 0))
+  )
+    throw new Error('Context summary seed is missing, changed or unbound');
+}
+const snapshot = (marker: ConversationContextBoundaryMarker) => {
+  assertConversationContextBoundarySeed(marker);
+  return Object.freeze({
+    ...marker,
+    ...(marker.seed
+      ? {
+          seed: Object.freeze({
+            ...marker.seed,
+            generationUsage: Object.freeze({ ...marker.seed.generationUsage }),
+            ...(marker.seed.task
+              ? { task: Object.freeze({ ...marker.seed.task }) }
+              : {}),
+          }),
+        }
+      : {}),
+  });
+};
 export function projectConversationContextBoundary(
   marker: ConversationContextBoundaryMarker,
 ): ConversationContextBoundaryProjection {
@@ -88,9 +142,12 @@ export function projectConversationContextBoundary(
     ...(marker.consumedAt ? { consumedAt: marker.consumedAt } : {}),
     priorTranscriptInjected,
     omitted:
-      marker.policy === 'empty-next-cold-start' ? CONTEXT_BOUNDARY_OMITTED : [],
+      marker.policy !== 'continue-from-history' ? CONTEXT_BOUNDARY_OMITTED : [],
     preserved: CONTEXT_BOUNDARY_PRESERVED,
     retryable: marker.status === 'reserved' || marker.status === 'failed',
+    ...(marker.seed
+      ? { seed: (({ text: _text, ...metadata }) => metadata)(marker.seed) }
+      : {}),
   });
 }
 
@@ -157,7 +214,7 @@ export function createConversationContextBoundaryModule(input: {
   };
   return {
     reserve(marker) {
-      const result = input.persistence.reserve(marker);
+      const result = input.persistence.reserve(snapshot(marker));
       return { marker: snapshot(result.marker), outcome: result.outcome };
     },
     forSuccessor: (id) => {
@@ -189,3 +246,5 @@ export function createConversationContextBoundaryModule(input: {
     reconcileAtBoot: () => input.persistence.reconcile(),
   };
 }
+
+import { createHash } from 'node:crypto';

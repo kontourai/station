@@ -160,6 +160,9 @@ import {
 } from '../../domain/migrations/024-event-content.js';
 import { ensureProjectTaskRoomRevisionFreezeColumn } from '../../domain/migrations/024-project-task-room-revision-freeze.js';
 import { ensureConversationHistoryTitleSourceColumn } from '../../domain/migrations/025-conversation-history-title-source.js';
+import { migrateContextSummaryBoundaries } from '../../domain/migrations/026-context-summary-boundaries.js';
+import { createSqliteContextCompactionStore } from './context-compaction.js';
+import { createSqliteProjectSupervisionStore } from './project-supervision.js';
 import {
   type CanonicalProposedChangeLookup,
   type RevisionAttributionAuthority,
@@ -2882,6 +2885,7 @@ export class EventStore {
       ensureConversationHandoffContextSeedColumn(this.db);
       this.db.exec(CONVERSATION_CONTEXT_BOUNDARY_MIGRATION);
       ensureConversationContextBoundaryColumns(this.db);
+      migrateContextSummaryBoundaries(this.db);
       this.db.exec(SESSION_WORK_ITEM_ASSOCIATIONS_MIGRATION);
       // #3413 B: the claims agents declare on their work.
       this.db.exec(WORK_CLAIMS_SCHEMA);
@@ -13554,6 +13558,9 @@ export class EventStore {
     return this.conversationContextBoundaries.reserve(input);
   }
 
+  contextCompactionStore() { return createSqliteContextCompactionStore(this.db); }
+  projectSupervisionStore() { return createSqliteProjectSupervisionStore(this.db); }
+
   conversationContextBoundaryForSuccessor(sessionId: string) {
     return this.conversationContextBoundaries.forSuccessor(sessionId);
   }
@@ -14268,9 +14275,10 @@ export class EventStore {
       ...(row.claimed_at ? { claimedAt: row.claimed_at } : {}),
       ...(row.start_command_id ? { startCommandId: row.start_command_id } : {}),
       ...(row.consumed_at ? { consumedAt: row.consumed_at } : {}),
+      ...(row.seed_json ? {seed:JSON.parse(row.seed_json)} : {}),
     });
     const columns =
-      'boundary_id, conversation_id, predecessor_session_id, successor_session_id, idempotency_key, policy, status, actor_id, client_origin, created_at, claimed_at, start_command_id, consumed_at';
+      'boundary_id, conversation_id, predecessor_session_id, successor_session_id, idempotency_key, policy, status, actor_id, client_origin, created_at, claimed_at, start_command_id, consumed_at, seed_json';
     const byKey = this.db.prepare(
       `SELECT ${columns} FROM orchestration_conversation_context_boundaries WHERE conversation_id = ? AND idempotency_key = ?`,
     );
@@ -14290,7 +14298,7 @@ export class EventStore {
       'INSERT INTO orchestration_conversation_sessions (conversation_id, session_id, ordinal, predecessor_session_id, created_at) VALUES (?, ?, ?, ?, ?)',
     );
     const insert = this.db.prepare(
-      `INSERT INTO orchestration_conversation_context_boundaries (${columns}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO orchestration_conversation_context_boundaries (${columns}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     return createConversationContextBoundaryModule({
       persistence: {
@@ -14304,6 +14312,7 @@ export class EventStore {
                 existing.policy !== input.policy ||
                 existing.predecessorSessionId !== input.predecessorSessionId ||
                 existing.actorId !== input.actorId
+                || JSON.stringify(existing.seed ?? null) !== JSON.stringify(input.seed ?? null)
               )
                 throw new ConversationContextBoundaryConflictError(
                   'idempotency_mismatch',
@@ -14354,6 +14363,7 @@ export class EventStore {
               null,
               null,
               null,
+              input.seed ? JSON.stringify(input.seed) : null,
             );
             this.db.exec('COMMIT');
             return { marker: input, outcome: 'created' as const };

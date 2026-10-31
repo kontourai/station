@@ -7,6 +7,7 @@ import { ClaudeTranscriptSessionSource } from '../../providers/sessions/claude-t
 import { CodexRolloutSessionSource } from '../../providers/sessions/codex-rollout-session-source.js';
 import { GrokSessionSource } from '../../providers/sessions/grok-session-source.js';
 import { OpenCodeSessionSource } from '../../providers/sessions/opencode-session-source.js';
+import { createConversationMessageReader } from '../../routes/chat/conversation-message-reader.js';
 import { engineSignIn } from '../../services/acp/engine-sign-in.js';
 import { lanDiscoveryFor } from '../../services/connections/lan-discovery.js';
 import { NativeSurfaceRegistry } from '../../services/connections/native-surface-registry.js';
@@ -69,6 +70,10 @@ import {
 import { awaitSettlementWithin } from '../../utils/bounded-async.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { currentNativeForegroundRelay } from '../conversation/native-foreground-invocation.js';
+import {
+  composeLearningReviewRuntime,
+  type LearningReviewRuntime,
+} from '../learning-review-runtime.js';
 import {
   createNativeDeviceProofRuntime,
   type NativeApplicationConnectorConfiguration,
@@ -276,6 +281,10 @@ import {
   startMcpUiFrameServer,
 } from '../mcp/mcp-ui-frame-server.js';
 import { createNativeOutputDeclarationTool } from '../native-output-declaration.js';
+import {
+  composeProjectWorkingRuntime,
+  type ProjectWorkingRuntime,
+} from '../project-working-configuration-runtime.js';
 import { isAutoApprovedExternalTool } from '../tools/tool-executor.js';
 import { composeLocalMedia } from './local-media-runtime.js';
 
@@ -480,7 +489,7 @@ import {
 } from '../mcp/station-control-caller.js';
 import { claudeInProcessStationControlOptions } from '../mcp/station-control-in-process.js';
 import {
-  buildStationControlMcpUrl,
+  buildStationControlMcpHeaderUrl,
   coordinatorGeneration,
   mintStationControlMcpToken,
   revokeStationControlMcpToken,
@@ -1026,7 +1035,7 @@ export class StationRuntime {
           ?.conversationId ?? threadId;
       const { token } = mintStationControlMcpToken(
         threadId,
-        'url-token',
+        'http-header-token',
         undefined,
         tenantExecutionContext,
         allowedTools,
@@ -1035,8 +1044,9 @@ export class StationRuntime {
         generation === undefined
           ? undefined
           : () => coordinatorGeneration(conversationId) === generation,
+        true,
       );
-      return buildStationControlMcpUrl(this.port, token);
+      return { url: buildStationControlMcpHeaderUrl(this.port), token };
     },
     mintStationKnowledgeMcpAuth: (
       threadId,
@@ -1049,7 +1059,7 @@ export class StationRuntime {
           ?.conversationId ?? threadId;
       const { token } = mintStationControlMcpToken(
         threadId,
-        'url-token',
+        'http-header-token',
         undefined,
         tenantExecutionContext,
         allowedTools,
@@ -1060,8 +1070,12 @@ export class StationRuntime {
         generation === undefined
           ? undefined
           : () => coordinatorGeneration(conversationId) === generation,
+        true,
       );
-      return buildStationControlMcpUrl(this.port, token, 'station-knowledge');
+      return {
+        url: buildStationControlMcpHeaderUrl(this.port, 'station-knowledge'),
+        token,
+      };
     },
     revokeStationControlMcpAuth: (threadId: string) =>
       revokeStationControlMcpToken(threadId),
@@ -1171,9 +1185,12 @@ export class StationRuntime {
   /** archive#1398 — see {@link StationRuntime.fleetProbes}. */
   private fleetProbeService: FleetProbeService | undefined;
   private readonly featurePreviews: FeaturePreviewRegistry;
+  private projectWorkingConfiguration: ProjectWorkingRuntime | undefined;
+  private learningReview: LearningReviewRuntime | undefined;
   /** Bound during composition, then selected at the fleet-routing branch. */
   private fleetConsumerProbesPreview!: FeaturePreviewSelector;
   private chatHostImagesPreview!: FeaturePreviewSelector;
+  private progressiveToolsPreview!: FeaturePreviewSelector;
   private sshEnvironmentService: SshEnvironmentService;
   private timers: NodeJS.Timeout[] = [];
   private analyticsMaintenance?: (
@@ -1536,6 +1553,12 @@ export class StationRuntime {
       );
       this.bindFleetConsumerProbesPreview();
       this.bindChatHostImagesPreview();
+      this.progressiveToolsPreview = this.featurePreviews.bind({
+        id: 'progressive-station-tools',
+        label: 'Progressive Station tools',
+        description:
+          'Load authorized Station tool families on demand for compatible Codex sessions. Other engines retain their existing tool loading.',
+      });
       // Journal consumers wire after the quarantine notice: the runtime must
       // report a recorded corruption before anything asks the store for more
       // than its publisher.
@@ -1626,6 +1649,27 @@ export class StationRuntime {
         });
         return resolveProjectWorkspacePath(projectId, { resolver });
       };
+      this.projectWorkingConfiguration = composeProjectWorkingRuntime(
+        this.featurePreviews,
+        {
+          home: projectHomeDir,
+          hosted: isHostedTenantExecutionRequired(),
+          projects: () => this.projectService.listProjects(),
+          resolveDirectory: this.resolveTaskDispatchWorkspace,
+          canRead: (projectId, principalId) =>
+            principalId === LOCAL_OPERATOR_PRINCIPAL_ID ||
+            Boolean(
+              this.projectMembership?.service
+                .admissionsForResolvedPrincipal(principalId)
+                .some(
+                  (entry) =>
+                    entry.scope.localProjectId === projectId &&
+                    entry.member.status === 'active' &&
+                    entry.member.actions.includes('view'),
+                ),
+            ),
+        },
+      );
       this.approvalRegistry = new ApprovalRegistry(this.logger, {
         eventBus: this.eventBus,
       });
@@ -4192,6 +4236,74 @@ export class StationRuntime {
             // route or capability can read runtime context.
             const briefTenantRegistry =
               loadHostedTenantRegistryFromEnvironment();
+            if (!isHostedTenantExecutionRequired()) {
+              this.learningReview = composeLearningReviewRuntime(
+                this.featurePreviews,
+                {
+                  home: this.configLoader.getProjectHomeDir(),
+                  authority: `station:${this.environmentSecurityService.devicePairing.environmentId()}`,
+                  projects: () => this.projectService.listProjects(),
+                  readTask: (id) => this.taskGraphService.readTaskView(id),
+                  memory: () => this.orchestrationEventStore?.taskMemoryStore(),
+                  mayReadProject: (projectId, actorId) =>
+                    actorId === LOCAL_OPERATOR_PRINCIPAL_ID ||
+                    Boolean(
+                      this.projectMembership?.service
+                        .admissionsForResolvedPrincipal(actorId)
+                        .some(
+                          (entry) =>
+                            entry.scope.localProjectId === projectId &&
+                            entry.member.status === 'active' &&
+                            entry.member.actions.includes('view'),
+                        ),
+                    ),
+                  ratings: () => this.feedbackService.getRatings(),
+                  projectForSession: (id) =>
+                    this.orchestrationEventStore?.readProjectTaskRoomExecutionBinding(
+                      id,
+                    )?.projectId,
+                  messages: async (conversationId, agentSlug, actorId) => {
+                    const authority = sessionReadAuthorityFromRequest(
+                      actorId,
+                      undefined,
+                      undefined,
+                    );
+                    const sessions =
+                      this.orchestrationService.conversationSessionIds(
+                        conversationId,
+                      );
+                    if (
+                      sessions.length > 64 ||
+                      sessions.some(
+                        (id) =>
+                          !this.orchestrationService.canUserReadSession(
+                            id,
+                            authority,
+                          ),
+                      )
+                    )
+                      return [];
+                    const reader = createConversationMessageReader({
+                      getAdapter: (slug) =>
+                        this.memoryAdapters.get(slug) ?? null,
+                      authorityFor: () => authority,
+                      sessionMessageReader: this.orchestrationService,
+                      logger: this.logger,
+                    });
+                    return (
+                      await reader.readConversationMessages(
+                        new Request(
+                          'http://station.internal/learning-evidence',
+                        ),
+                        agentSlug,
+                        conversationId,
+                        authority,
+                      )
+                    ).messages;
+                  },
+                },
+              );
+            }
             this.taskDispatcher = composeTaskDispatcher(
               this.taskGraphService,
               {
@@ -4201,6 +4313,11 @@ export class StationRuntime {
                 // Epic #4003: the brief a dispatched Session's first turn
                 // carries. The room runtime is composed later; read lazily.
                 taskBrief: composeTaskBriefSource({
+                  workingConfiguration:
+                    this.projectWorkingConfiguration?.forTask,
+                  learningContext: (task, owner) =>
+                    this.learningReview?.forTask(task, owner) ??
+                    Promise.resolve(undefined),
                   taskGraph: this.taskGraphService,
                   eventStore: this.orchestrationEventStore,
                   sessionReadModel: this.orchestrationService,
@@ -4848,6 +4965,13 @@ export class StationRuntime {
       getMcpUiFrameOrigin: () => this.mcpUiFrameServer?.origin,
       getPluginFrameOrigin: () => this.mcpUiFrameServer?.origin,
       featurePreviews: this.featurePreviews,
+      progressiveToolsEnabled: () =>
+        this.progressiveToolsPreview.select({
+          enabled: () => true,
+          disabled: () => false,
+        }),
+      projectWorkingConfiguration: this.projectWorkingConfiguration,
+      learningReview: this.learningReview,
       mediaTools: localMedia.mediaTools,
       walkthroughImportDependencies: {
         resolver: localMedia.mediaTools,

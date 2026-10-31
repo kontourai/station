@@ -101,3 +101,19 @@
     min-height: 100%;
   }
 }
+
+.usage-rollup__cost-boundaries {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-4);
+  margin: 0;
+}
+.usage-rollup__cost-boundaries div {
+  flex: 1 1 12rem;
+}
+.usage-rollup__cost-boundaries dt {
+  color: var(--k-text-muted);
+}
+.usage-rollup__cost-boundaries dd {
+  margin: 0;
+}

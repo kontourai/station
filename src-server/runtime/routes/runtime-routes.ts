@@ -499,6 +499,7 @@ import { createFocusPresenceRoutes } from '../../routes/presence/focus-presence-
 import { createCodingRoutes } from '../../routes/projects/coding.js';
 import { createFsRoutes } from '../../routes/projects/fs.js';
 import { createWorkflowRoutes } from '../../routes/projects/layouts.js';
+import { createProjectLearningReviewRoutes } from '../../routes/projects/learning-review-routes.js';
 import { createPluginPublishRoutes } from '../../routes/projects/plugin-publish-routes.js';
 import { createPluginScaffoldRoutes } from '../../routes/projects/plugin-scaffold-routes.js';
 import {
@@ -506,6 +507,7 @@ import {
   delegationContributionQueryAuthorized,
 } from '../../routes/projects/project-contribution-routes.js';
 import { createProjectS3SourceRoutes } from '../../routes/projects/project-s3-source-routes.js';
+import { createProjectWorkingConfigurationRoutes } from '../../routes/projects/project-working-configuration-routes.js';
 import {
   createProjectCatalogueReader,
   createProjectRoutes,
@@ -1203,6 +1205,9 @@ export interface ConfigureRuntimeRoutesContext {
   // Origin of the isolated plugin-frame document, if the shared listener runs.
   getPluginFrameOrigin?: () => string | undefined;
   featurePreviews: FeaturePreviewRegistry;
+  progressiveToolsEnabled?: () => boolean;
+  projectWorkingConfiguration?: import('../project-working-configuration-runtime.js').ProjectWorkingRuntime;
+  learningReview?: import('../learning-review-runtime.js').LearningReviewRuntime;
   // station#1194 (epic #1191, slice B): re-applies the built-in default
   // agent's engine binding immediately after `PUT /config/app` touches
   // `builtinAgentEngineConnectionId` — Voice is deliberately NOT rebound
@@ -3130,6 +3135,7 @@ export function configureRuntimeRoutes(
       hostedTenantRegistry,
       resolveCallerRecord: resolveStationControlCallerRecord,
       resolveExternalClientProjectId: currentLocalProjectId,
+      progressiveToolsEnabled: context.progressiveToolsEnabled,
     }),
   );
   context.app.route(
@@ -3175,6 +3181,10 @@ export function configureRuntimeRoutes(
   // Epic #4003 `get_task_brief`'s REST side: the verified caller's own
   // session, the Task its immutable room execution binding names.
   const taskBriefSource = composeTaskBriefSource({
+    workingConfiguration: context.projectWorkingConfiguration?.forTask,
+    learningContext: (task, owner) =>
+      context.learningReview?.forTask(task, owner) ??
+      Promise.resolve(undefined),
     taskGraph: context.taskGraphService,
     eventStore: context.orchestrationEventStore,
     sessionReadModel: context.orchestrationService,
@@ -7796,6 +7806,131 @@ export function configureRuntimeRoutes(
       throw new ProjectMembershipRefusal('forbidden');
     return projectMembershipAuthority(request);
   };
+  if (context.learningReview) {
+    const learning = context.learningReview;
+    const primeLearningPrincipal = async (
+      c: Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
+      next: () => Promise<void>,
+    ) => {
+      roomRequestPrincipals.set(
+        c.req.raw,
+        resolveOrchestrationRequestPrincipal(c),
+      );
+      await next();
+    };
+    context.app.use('/api/projects/:slug/learning', primeLearningPrincipal);
+    context.app.use('/api/projects/:slug/learning/*', primeLearningPrincipal);
+    context.app.route(
+      '/api/projects',
+      createProjectLearningReviewRoutes({
+        enabled: learning.enabled,
+        authorize: async (request, slug) => {
+          if (isStationInternalRequest(request)) return undefined;
+          const project = context.projectService
+            .listProjects()
+            .find((project) => project.slug === slug);
+          if (!project) return undefined;
+          const authority = projectMembershipAuthority(request);
+          try {
+            await authority.operator();
+            const actor = (await authority.current()).principal.id;
+            const access = learning.forProject(
+              project.id,
+              actor,
+              () => {
+                if (
+                  request.signal.aborted ||
+                  !isRequestPrincipalCurrent(request) ||
+                  context.projectService
+                    .listProjects()
+                    .find((entry) => entry.slug === slug)?.id !== project.id
+                )
+                  throw new ProjectMembershipRefusal('forbidden');
+              },
+              true,
+            );
+            return {
+              scope: { kind: 'project' as const, id: project.id },
+              service: access.service,
+              isCurrent: async () => {
+                try {
+                  await authority.operator();
+                  access.assertCurrent();
+                  return (await authority.current()).principal.id === actor;
+                } catch {
+                  return false;
+                }
+              },
+            };
+          } catch (error) {
+            if (error instanceof ProjectMembershipRefusal) return undefined;
+            throw error;
+          }
+        },
+      }),
+    );
+  }
+  if (context.projectWorkingConfiguration) {
+    const working = context.projectWorkingConfiguration;
+    context.app.use(
+      '/api/projects/:slug/working-configuration',
+      async (c, next) => {
+        roomRequestPrincipals.set(
+          c.req.raw,
+          resolveOrchestrationRequestPrincipal(c),
+        );
+        await next();
+      },
+    );
+    context.app.route(
+      '/api/projects',
+      createProjectWorkingConfigurationRoutes({
+        service: working.service,
+        enabled: () =>
+          working.preview.select({
+            enabled: () => true,
+            disabled: () => false,
+          }),
+        authorize: async (request, slug) => {
+          if (isStationInternalRequest(request)) return undefined;
+          const project = context.projectService
+            .listProjects()
+            .find((entry) => entry.slug === slug);
+          if (!project) return undefined;
+          const authority = projectMembershipAuthority(request);
+          try {
+            await authority.operator();
+            const actor = await authority.current();
+            return {
+              projectId: project.id,
+              actorId: actor.principal.id,
+              isCurrent: async () => {
+                if (
+                  context.projectService
+                    .listProjects()
+                    .find((entry) => entry.slug === slug)?.id !== project.id
+                )
+                  return false;
+                try {
+                  await authority.operator();
+                  return (
+                    (await authority.current()).principal.id ===
+                    actor.principal.id
+                  );
+                } catch {
+                  return false;
+                }
+              },
+            };
+          } catch (error) {
+            if (error instanceof ProjectMembershipRefusal) return undefined;
+            throw error;
+          }
+        },
+      }),
+    );
+  }
+
   /**
    * #2377 slice B: whether a station-control agent request may take
    * `action` in the Project named by `projectRef` (its id or slug), for a

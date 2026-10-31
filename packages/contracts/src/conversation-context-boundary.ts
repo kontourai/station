@@ -1,7 +1,47 @@
 /** Durable, Station-owned intent to replace a Conversation's next engine context. */
 export type ConversationContextBoundaryPolicy =
   | 'continue-from-history'
-  | 'empty-next-cold-start';
+  | 'empty-next-cold-start'
+  | 'summary-next-cold-start'
+  | 'task-state-next-cold-start';
+
+export interface ConversationContextBoundarySeed {
+  kind: 'semantic-summary' | 'task-state';
+  text: string;
+  digest: string;
+  sourceSessionId: string;
+  sourceEventId: string;
+  sourceRevision: string;
+  task?: { taskId: string; taskCreatedAt: string };
+  model?: string;
+  generationUsage:
+    | { state: 'unknown' }
+    | { state: 'observed'; inputTokens: number; outputTokens: number };
+  contextTokensBefore?: number;
+  contextWindowTokens?: number;
+}
+export function isSummaryContextBoundary(
+  policy: ConversationContextBoundaryPolicy,
+): boolean {
+  return (
+    policy === 'summary-next-cold-start' ||
+    policy === 'task-state-next-cold-start'
+  );
+}
+export interface ConversationCompactionView {
+  currentSessionId: string;
+  state: 'ready' | 'busy' | 'engine-owned' | 'unsupported' | 'unknown';
+  threshold: number;
+  policyRevision: number;
+  autoEnabled: boolean;
+  reason?: string;
+  operation?: {
+    operationId: string;
+    state: string;
+    reason?: string;
+    nextEligibleAt: number;
+  };
+}
 
 export type ConversationContextBoundaryStatus =
   | 'reserved'
@@ -16,6 +56,8 @@ export interface ConversationContextBoundaryRequest {
   idempotencyKey: string;
   /** Prevent a stale tab from resetting a newer execution Session. */
   expectedCurrentSessionId: string;
+  /** Server-produced only; route callers must never supply a generated summary. */
+  seed?: ConversationContextBoundarySeed;
 }
 
 /** Browser-safe durable provenance; no provider cursor or transcript is exposed. */
@@ -37,12 +79,14 @@ export interface ConversationContextBoundaryProjection {
   omitted: readonly string[];
   preserved: readonly string[];
   retryable: boolean;
+  seed?: Omit<ConversationContextBoundarySeed, 'text'>;
 }
 
 export interface ConversationContextBoundaryProvenance {
   boundaryId: string;
   policy: ConversationContextBoundaryPolicy;
   priorTranscriptInjected: boolean;
+  seed?: Omit<ConversationContextBoundarySeed, 'text'>;
 }
 
 /**
@@ -60,6 +104,7 @@ export const CONTEXT_BOUNDARY_OMITTED = Object.freeze([
   'provider-native history',
   'tool state',
   'session approvals',
+  'attachments and raw tool results from earlier context',
 ] as const);
 export const CONTEXT_BOUNDARY_PRESERVED = Object.freeze([
   'canonical transcript',

@@ -88,6 +88,7 @@ import {
   resolveProjectWorkspaceOutcome,
   type WorkspacePathResolver,
 } from './project-workspace-path.js';
+import { TaskContextAdmissionError } from './task-brief.js';
 import type { TaskBriefSource } from './task-brief-source.js';
 import type {
   TaskDispatchAgentStart,
@@ -3905,6 +3906,10 @@ export class TaskGraphService {
               brief = { digest: built.brief.digest, text: built.brief.text };
               workItemObservedAt = built.workItemObservedAt;
             } catch (error) {
+              if (error instanceof TaskContextAdmissionError)
+                throw new TaskDispatchStartRefusedError(
+                  'Required Task context could not be verified. Review the Project working configuration.',
+                );
               this.logger?.warn('Task brief could not be built for dispatch', {
                 taskId: reservation.task.id,
                 error: error instanceof Error ? error.message : String(error),

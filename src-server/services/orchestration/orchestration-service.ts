@@ -12204,6 +12204,7 @@ export class OrchestrationService {
         provider: event.provider,
         model,
         observedAt: new Date().toISOString(),
+        route: event.servingRoute,
       });
       return snapshot ? { ...event, pricingSnapshot: snapshot } : event;
     } catch (error) {

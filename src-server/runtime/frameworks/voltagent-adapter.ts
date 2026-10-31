@@ -813,6 +813,7 @@ type PendingVoltAgentToolCall = {
   tool: ToolCallContext;
   invocation: InvocationContext;
 };
+const managedModelContextBindings = new WeakMap<object,{connectionId:string;modelId:string}>();
 
 function voltAgentInvocationContext(
   slug: string,
@@ -856,6 +857,7 @@ function voltAgentInvocationContext(
 export function createVoltAgentLifecycleHooks(
   slug: string,
   sharedHooks?: IAgentHooks,
+  modelBinding?:{connectionId:string;modelId:string},
 ): AgentHooks {
   const pendingToolCalls = new WeakMap<
     object,
@@ -863,6 +865,34 @@ export function createVoltAgentLifecycleHooks(
   >();
 
   return createHooks({
+    onStepFinish: async ({ context, step }) => {
+      const usage = step?.usage;
+      const inputTokens = usage?.inputTokens ?? usage?.promptTokens;
+      const outputTokens = usage?.outputTokens ?? usage?.completionTokens;
+      const modelId = step?.response?.modelId;
+      if (
+        typeof modelId !== 'string' ||
+        !modelId ||
+        !Number.isSafeInteger(inputTokens) ||
+        inputTokens < 0 ||
+        !Number.isSafeInteger(outputTokens) ||
+        outputTokens < 0
+      )
+        return;
+      await sharedHooks?.afterModelGeneration?.({
+        ...(modelBinding?.modelId===modelId?{connectionId:modelBinding.connectionId}:{}),
+        invocation: voltAgentInvocationContext(
+          slug,
+          context as typeof context & { traceId?: string },
+        ),
+        modelId,
+        modelIdentitySource: 'provider-response',
+        source: 'voltagent-step',
+        inputTokenAccounting: 'total',
+        inputTokens,
+        outputTokens,
+      });
+    },
     onToolStart: async ({ tool, context, args, options }) => {
       const currentCount =
         (context.context.get('toolCallCount') as number) || 0;
@@ -1134,7 +1164,7 @@ export class VoltAgentFramework {
     // the shared hooks passed via config.hooks.
     const sharedHooks = conformAgentHooks('voltagent', config.hooks);
     const _autoApprove = spec.tools?.autoApprove || [];
-    const hooks = createVoltAgentLifecycleHooks(slug, sharedHooks);
+    const hooks = createVoltAgentLifecycleHooks(slug, sharedHooks, typeof model==='object'&&model!==null?managedModelContextBindings.get(model):undefined);
 
     // Build agent
     const createToolView = (viewTools: ITool[]): IAgent => {
@@ -1262,12 +1292,14 @@ export class VoltAgentFramework {
       binding,
     );
     if (dispatchModel) return dispatchModel;
-    return createVoltAgentManagedModel({
+    const model=await createVoltAgentManagedModel({
       providerConnection: binding.providerConnection,
       modelId: binding.modelId,
       spec,
       appConfig: config.appConfig,
     });
+    if(typeof model==='object'&&model!==null)managedModelContextBindings.set(model,{connectionId:binding.providerConnection.id,modelId:binding.modelId});
+    return model;
   }
 
   async createTempAgent(opts: {

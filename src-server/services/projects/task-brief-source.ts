@@ -25,6 +25,7 @@
  */
 
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
+import type { ProjectWorkingContext } from '@kontourai/station-contracts/project-working-configuration';
 import { sessionLadderWord } from '@kontourai/station-contracts/session-attention';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import type {
@@ -57,6 +58,7 @@ import {
   type TaskBriefObservation,
   type TaskBriefSessionFacts,
   type TaskBriefSnapshot,
+  TaskContextAdmissionError,
 } from './task-brief.js';
 
 /**
@@ -84,6 +86,15 @@ export interface TaskBriefMemoryReader {
 }
 
 export interface TaskBriefSourceDeps {
+  learningContext?(
+    task: TaskRecord,
+    viewerUserId: string | undefined,
+  ): Promise<string | undefined>;
+  /** Reviewed, current Project rules under the dispatched owner's authority. A refusal must stop dispatch. */
+  workingConfiguration?(
+    task: TaskRecord,
+    viewerUserId: string | undefined,
+  ): Promise<ProjectWorkingContext>;
   readTask(taskId: string): TaskRecord | null;
   /** Every Session dispatched for the Task, oldest first. */
   listTaskSessions(
@@ -376,12 +387,28 @@ export function createTaskBriefSource(
     return { kind: 'task', task, projectId: binding.projectId };
   };
 
+  const requiredWorkingContext = async (
+    task: TaskRecord,
+    owner: string | undefined,
+  ) => {
+    try {
+      const [working, learning] = await Promise.all([
+        deps.workingConfiguration?.(task, owner),
+        deps.learningContext?.(task, owner),
+      ]);
+      return { working, learning };
+    } catch (error) {
+      throw new TaskContextAdmissionError(error);
+    }
+  };
+
   return {
     async forDispatch(task, sessionId, ownerUserId) {
-      const [document, observation, lines] = await Promise.all([
+      const [document, observation, lines, workingContext] = await Promise.all([
         readDocument(task.id),
         observe(task),
         sessions(task, sessionId, ownerUserId),
+        requiredWorkingContext(task, ownerUserId),
       ]);
       const brief = buildTaskBrief({
         task,
@@ -389,6 +416,12 @@ export function createTaskBriefSource(
         memory: readMemory(task),
         sessions: lines,
         ...(observation ? { observation } : {}),
+        ...(workingContext.working
+          ? { workingContext: workingContext.working }
+          : {}),
+        ...(workingContext.learning
+          ? { learningContext: workingContext.learning }
+          : {}),
       });
       return {
         brief,
@@ -402,10 +435,11 @@ export function createTaskBriefSource(
       const bound = boundTask(sessionId);
       if (bound.kind !== 'task') return bound;
       const { task } = bound;
-      const [document, observation, lines] = await Promise.all([
+      const [document, observation, lines, workingContext] = await Promise.all([
         readDocument(task.id),
         observe(task),
         sessions(task, sessionId, deps.ownerOf?.(sessionId)),
+        requiredWorkingContext(task, deps.ownerOf?.(sessionId)),
       ]);
       // The binding is immutable, but the Task can be replaced while the
       // document read crosses its worker boundary.
@@ -427,6 +461,12 @@ export function createTaskBriefSource(
           memory: readMemory(current),
           sessions: lines,
           ...(observation ? { observation } : {}),
+          ...(workingContext.working
+            ? { workingContext: workingContext.working }
+            : {}),
+          ...(workingContext.learning
+            ? { learningContext: workingContext.learning }
+            : {}),
         }),
       };
     },
@@ -466,6 +506,8 @@ export function createTaskBriefSource(
  * consumer's wiring can drift from the other's.
  */
 export function composeTaskBriefSource(input: {
+  learningContext?: TaskBriefSourceDeps['learningContext'];
+  workingConfiguration?: TaskBriefSourceDeps['workingConfiguration'];
   taskGraph: {
     readTaskView(taskId: string): TaskRecord | null;
     listTaskDispatchSessions(
@@ -526,6 +568,12 @@ export function composeTaskBriefSource(input: {
 }): TaskBriefSource {
   const store = input.eventStore;
   return createTaskBriefSource({
+    ...(input.learningContext
+      ? { learningContext: input.learningContext }
+      : {}),
+    ...(input.workingConfiguration
+      ? { workingConfiguration: input.workingConfiguration }
+      : {}),
     readTask: (taskId) => input.taskGraph.readTaskView(taskId),
     listTaskSessions: (taskId) =>
       input.taskGraph.listTaskDispatchSessions(taskId),

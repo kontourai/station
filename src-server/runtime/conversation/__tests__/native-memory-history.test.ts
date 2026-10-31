@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -18,6 +19,72 @@ import {
 import { createNativeMemoryHistoryCompanion } from '../native-memory-history.js';
 
 const roots: string[] = [];
+test.each(['summary-next-cold-start', 'task-state-next-cold-start'] as const)(
+  '%s retains only the pinned seed and post-boundary native messages, without rewriting original storage',
+  async (policy) => {
+    const f = await fixture();
+    const summary = 'Keep the agreed Task decision and its evidence pointer.';
+    const digest = createHash('sha256').update(summary).digest('hex');
+    f.boundaries.set('b', {
+      boundaryId: 'summary-b',
+      conversationId: 'conversation',
+      predecessorSessionId: 'a',
+      successorSessionId: 'b',
+      idempotencyKey: 'compact-1',
+      policy,
+      status: 'consumed',
+      actorId: 'owner',
+      createdAt: '2026-09-06T00:00:01Z',
+      seed: {
+        kind:
+          policy === 'summary-next-cold-start'
+            ? 'semantic-summary'
+            : 'task-state',
+        text: summary,
+        digest,
+        sourceSessionId: 'a',
+        sourceEventId: 'source-cutoff',
+        sourceRevision: 'revision-a',
+        model: 'fixture-summary-model',
+        generationUsage: {
+          state: 'observed',
+          inputTokens: 100,
+          outputTokens: 20,
+        },
+        ...(policy === 'task-state-next-cold-start'
+          ? {
+              task: { taskId: 'task-1', taskCreatedAt: '2026-09-06T00:00:00Z' },
+            }
+          : {}),
+      },
+    });
+    const companion = await f.companion();
+    const result = await companion.read(f.adapter, 'owner', 'c');
+    expect(result.map((message) => message.id)).toEqual([
+      `context-boundary:${digest}`,
+      'second-user',
+      'second-answer',
+    ]);
+    expect(JSON.stringify(result)).toContain(summary);
+    expect(JSON.stringify(result)).not.toContain('GRAPHITE-77');
+    expect(JSON.stringify(result)).not.toContain(
+      'Earlier authorized harness context',
+    );
+    expect(JSON.stringify(result)).not.toContain('dynamic-tool');
+    expect((await f.adapter.getMessages('owner', 'a'))[1].parts).toEqual(
+      f.structured.parts,
+    );
+    expect(
+      (await companion.read(f.adapter, 'owner', 'c', { limit: 1 })).map(
+        (message) => message.id,
+      ),
+    ).toEqual([`context-boundary:${digest}`]);
+    f.boundaries.get('b')!.seed!.text = 'Tampered summary';
+    await expect(companion.read(f.adapter, 'owner', 'c')).rejects.toThrow(
+      'unavailable or changed',
+    );
+  },
+);
 afterEach(async () => {
   await Promise.all(
     roots.splice(0).map((path) => rm(path, { recursive: true, force: true })),

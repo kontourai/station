@@ -10,9 +10,11 @@
  * Codex and Station adapters do. What is asserted is the input the engine
  * adapter is actually handed for the first turn.
  */
-import { mkdirSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
+import type { ProjectWorkingContext } from '@kontourai/station-contracts/project-working-configuration';
 import { TASK_BRIEF_COMPOSED_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
@@ -32,6 +34,7 @@ import { EventBus } from '../../orchestration/event-bus.js';
 import { EventStore } from '../../orchestration/event-store.js';
 import { OrchestrationService } from '../../orchestration/orchestration-service.js';
 import type { WorkItemObserver } from '../../work-item-providers/github-work-item-observer.js';
+import { ProjectWorkingConfigurationService } from '../project-working-configuration.js';
 import { TASK_BRIEF_QUOTE_RULE } from '../task-brief.js';
 import {
   composeTaskBriefSource,
@@ -228,6 +231,10 @@ describe('Task dispatch delivers the Task brief with the first turn', () => {
       taskId?: string;
       /** Who dispatches; the Station operator by default. */
       ownerUserId?: string;
+      workingConfiguration?: (
+        task: TaskRecord,
+        userId: string | undefined,
+      ) => Promise<ProjectWorkingContext>;
     } = {},
   ) {
     const task = options.taskId
@@ -283,6 +290,9 @@ describe('Task dispatch delivers the Task brief with the first turn', () => {
         status: vi.fn(),
       } as never,
       taskBrief: composeTaskBriefSource({
+        ...(options.workingConfiguration
+          ? { workingConfiguration: options.workingConfiguration }
+          : {}),
         taskGraph: graph,
         eventStore,
         sessionReadModel: service,
@@ -382,6 +392,70 @@ describe('Task dispatch delivers the Task brief with the first turn', () => {
       ).toBeUndefined();
     },
   );
+
+  test('a fresh Task execution delivers reviewed Project rules, acceptance and lazy evidence with the existing memory brief at the actual engine boundary', async () => {
+    writeFileSync(join(tmp, 'AGENTS.md'), 'Keep intentional edits.');
+    const configuration = new ProjectWorkingConfigurationService(
+      tmp,
+      async () => ({ projectId: BRIEF_PROJECT_LOCAL_ID, cwd: tmp }),
+    );
+    const discovered = await configuration.discover(
+      'brief-project',
+      () => true,
+    );
+    await configuration.apply(
+      'brief-project',
+      {
+        expectedProjectId: BRIEF_PROJECT_LOCAL_ID,
+        expectedRevision: 0,
+        sourceDigest: discovered.sourceDigest,
+        operationId: randomUUID(),
+        draft: {
+          ...discovered.suggested,
+          completionCriteria: 'Independent review.',
+          evidencePointers: ['docs/work.md'],
+        },
+      },
+      'human:local:operator',
+      () => true,
+    );
+    const workingConfiguration = vi.fn(
+      async (
+        _task: TaskRecord,
+        userId: string | undefined,
+      ): Promise<ProjectWorkingContext> => {
+        expect(userId).toBe('human:local:operator');
+        return configuration.forTask(
+          'brief-project',
+          () => userId === 'human:local:operator',
+        );
+      },
+    );
+    const { task, sessionId } = await dispatch('station-agent', {
+      workingConfiguration,
+    });
+    await service.dispatch({
+      type: 'sendTurn',
+      input: {
+        threadId: sessionId,
+        input: 'Resume the Task from its current state.',
+      },
+    });
+    const first = adapters.find(
+      (adapter) => adapter.provider === 'station-agent',
+    )!.sendTurn.mock.calls[0]![0];
+    expect(workingConfiguration).toHaveBeenCalledWith(
+      expect.objectContaining({ id: task.id }),
+      'human:local:operator',
+    );
+    expect(first.ambientContext).toContain('> Keep intentional edits.');
+    expect(first.ambientContext).toContain('> Independent review.');
+    expect(first.ambientContext).toContain('> docs/work.md');
+    expect(first.ambientContext).toContain('Omitted rules: 0');
+    expect(first.ambientContext).toContain(`> ${SUMMARY}`);
+    expect(first.ambientContext).toContain('`tracker-reread`');
+    expect(first.ambientContext!.length).toBeLessThanOrEqual(16000);
+  });
 
   test('a tracker read that does not observe the item is one line, and never fails the dispatch', async () => {
     const observe = vi.fn<WorkItemObserver['observeWorkItem']>(async () => ({

@@ -249,7 +249,8 @@
     "./mcp-prompts": "./src/mcp-prompts.ts",
     "./account-preferences": "./src/account-preferences.ts",
     "./html-reply": "./src/html-reply.ts",
-    "./runtime-event-content": "./src/runtime-event-content.ts"
+    "./runtime-event-content": "./src/runtime-event-content.ts",
+    "./project-working-configuration": "./src/project-working-configuration.ts"
   },
   "dependencies": {
     "@kontourai/datum": "0.8.1",

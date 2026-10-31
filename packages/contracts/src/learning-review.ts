@@ -207,3 +207,53 @@ export type LearningSourceObservation =
         | 'invalid-input'
         | 'over-budget';
     };
+
+export const LEARNING_REVIEW_PROJECT_HEADER = 'x-station-learning-project-id' as const;
+export const LEARNING_REVIEW_PREVIEW = 'learning-lifecycle-review' as const;
+export type LearningReviewAction = 'evaluate' | 'approve' | 'reject' | 'activate' | 'observe-effect' | 'retire' | 'supersede';
+export interface LearningReviewReceiptView {
+  ref: LearningReviewRevisionRef;
+  action: string;
+  actorId: string;
+  at: string;
+}
+export type LearningReviewDetail = {
+  state: 'available';
+  id: string;
+  revision: number;
+  active: boolean;
+  body: string;
+  projection: LearningReviewProjection;
+  receipts: LearningReviewReceiptView[];
+  supersededBy?: LearningReviewRevisionRef;
+  comparison?: { state: 'available'; ref: LearningReviewRevisionRef; title: string; body: string; active: boolean } | { state: 'not-captured' | 'restricted' | 'unavailable' | 'unsupported-version' | 'corrupt' };
+} | { state: 'not-captured' | 'restricted' | 'unavailable' | 'unsupported-version' | 'corrupt' };
+export type LearningReviewIndex = {
+  state: 'available';
+  items: LearningReviewDetail[];
+  coverage: 'complete' | 'partial';
+} | { state: 'restricted' | 'unavailable' | 'unsupported-version' | 'corrupt' };
+export type LearningReviewSourceSelection =
+  | { kind: 'task-standing'; taskId: string; recordKind: 'decision' | 'dead-end'; key: string; version: number }
+  | { kind: 'rated-feedback'; conversationId: string; turnId: string; ratingId: string };
+export interface LearningReviewProposalInput {
+  intentId: string;
+  learningId: string;
+  source: LearningReviewSourceSelection;
+  kind: LearningReviewCandidate['kind'];
+  title: string;
+  body: string;
+  expectedEffect: string;
+}
+export type LearningReviewIntentInput = { intentId: string; expectedRevision: number } & (
+  | { action: 'evaluate'; status: Exclude<LearningReviewEvaluation['status'], 'pending'>; evidence: LearningReviewRevisionRef[] }
+  | { action: 'approve' | 'reject'; rationale: string }
+  | { action: 'activate' }
+  | { action: 'observe-effect'; assessment: LearningReviewEffectObservation['assessment']; evidence: LearningReviewRevisionRef }
+  | { action: 'retire'; reason: string }
+  | { action: 'supersede'; replacementId: string; replacementRevision: string }
+);
+export interface LearningReviewMutationResult {
+  receipt: LearningReviewReceiptView;
+  detail: LearningReviewDetail;
+}

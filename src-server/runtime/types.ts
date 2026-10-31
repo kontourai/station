@@ -314,6 +314,10 @@ export interface ToolCallDenial {
 }
 
 export interface IAgentHooks {
+  /** One completed model generation, separate from invocation billing totals. */
+  afterModelGeneration?(
+    observation: ModelGenerationObservation,
+  ): void | Promise<void>;
   /**
    * Called before a tool executes. Return `true` to allow; ANY other value
    * denies execution (adapters must compare against `true`, never rely on
@@ -358,6 +362,20 @@ export interface IAgentHooks {
     toolCallCount: number;
     error?: Error;
   }): Promise<void>;
+}
+
+export interface ModelGenerationObservation {
+  /** Captured from the actual direct model instance; absent for unresolved Dispatch/fallback routes. */
+  connectionId?:string;
+  invocation: InvocationContext;
+  modelId: string;
+  modelIdentitySource: 'provider-response' | 'runtime-model';
+  source: 'voltagent-step' | 'strands-metadata';
+  inputTokenAccounting: 'total' | 'provider-specific';
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadInputTokens?: number;
+  cacheWriteInputTokens?: number;
 }
 
 // ── Framework Adapter ──────────────────────────────────
