@@ -97,7 +97,7 @@ The two thresholds are in **Settings → General → Agent runs**.
 repair API. Configured rules may spend provider credits in Docker; exact review
 and a separate single-use grant are required to publish a draft PR. It starts
 off and enables no source by itself. Disabling it stops new work; operator audit
-and cleanup remain available. See [setup and recovery](../guides/agent-efficiency.md#run-an-isolated-github-repair).
+and cleanup remain available. See [setup and recovery](https://github.com/kontourai/station/blob/main/docs/guides/agent-efficiency.md#run-an-isolated-github-repair).
 
 Turning a preview on affects everyone who uses this Station.
 
