@@ -123,6 +123,8 @@ export interface MemberPasskeyRuntime {
   challengeCookie: string;
   /** Station's own session verdict, including disabled and revoked accounts. */
   currentAccount(request: Request): Promise<MemberPasskeyAccount | undefined>;
+  /** Retire under adapter ownership, never inside another request's rollback. */
+  retireCredentialGuard(retire: () => void): Promise<void>;
   /** Reads a verification row without consuming it. */
   findVerification(
     identifier: string,
@@ -628,7 +630,7 @@ export function createMemberPasskeys(host: MemberPasskeyHost): MemberPasskeys {
           input.data,
         );
       } finally {
-        release?.();
+        if (release) await runtime.retireCredentialGuard(release);
       }
     }
 

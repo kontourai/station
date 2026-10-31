@@ -672,6 +672,129 @@ describe('member passkeys over the production account routes', () => {
     expect((await target.verified(fresh)).kind).toBe('authenticated');
   });
 
+  test('add completion retires its guard after an unrelated registration rolls back', async () => {
+    let armed = false;
+    let checks = 0;
+    let entered!: () => void;
+    let releaseRegistration!: () => void;
+    const registrationEntered = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const registrationBarrier = new Promise<void>((resolve) => {
+      releaseRegistration = resolve;
+    });
+    const target = await station({
+      mayRegister: async () => {
+        if (armed && ++checks === 3) {
+          entered();
+          await registrationBarrier;
+        }
+        return true;
+      },
+    });
+    const second = new Browser(ORIGIN);
+    const invitation = { 'x-station-invitation': INVITATION };
+    const pendingOptions = await target.call(
+      second,
+      '/passkey/sign-up',
+      { step: 'options', username: 'COLLISION' },
+      invitation,
+    );
+    expect(pendingOptions.status).toBe(200);
+    const browser = new Browser(ORIGIN);
+    expect(
+      (await signUp(target, browser, new Device(), 'collision')).status,
+    ).toBe(200);
+    const addOptions = await target.call(browser, '/passkey/add', {
+      step: 'options',
+    });
+    expect(addOptions.status).toBe(200);
+    const response = new Device().register(
+      addOptions.data!.options as Record<string, unknown>,
+      ORIGIN,
+    );
+    let database: DatabaseSync | undefined;
+    const prepare = DatabaseSync.prototype.prepare;
+    const prepareSpy = vi
+      .spyOn(DatabaseSync.prototype, 'prepare')
+      .mockImplementation(function (this: DatabaseSync, sql: string) {
+        if (/^insert into ["`]?passkey["`]?\s/i.test(sql)) database = this;
+        return prepare.call(this, sql);
+      });
+    let inserted!: () => void;
+    let finishResponse!: () => void;
+    const insertReturned = new Promise<void>((resolve) => {
+      inserted = resolve;
+    });
+    const responseBarrier = new Promise<void>((resolve) => {
+      finishResponse = resolve;
+    });
+    const json = Response.prototype.json;
+    const jsonSpy = vi
+      .spyOn(Response.prototype, 'json')
+      .mockImplementation(async function (this: Response) {
+        const value: unknown = await json.call(this);
+        if (
+          value &&
+          typeof value === 'object' &&
+          'credentialID' in value &&
+          value.credentialID === response.id
+        ) {
+          inserted();
+          await responseBarrier;
+        }
+        return value;
+      });
+    const adding = target.call(browser, '/passkey/add', {
+      step: 'verify',
+      response,
+    });
+    let registering: ReturnType<Station['call']> | undefined;
+    try {
+      await insertReturned;
+      armed = true;
+      registering = target.call(
+        second,
+        '/passkey/sign-up',
+        {
+          step: 'verify',
+          response: new Device().register(
+            pendingOptions.data!.options as Record<string, unknown>,
+            ORIGIN,
+          ),
+        },
+        invitation,
+      );
+      await registrationEntered;
+      if (!database)
+        throw new Error('The real passkey INSERT was not observed.');
+      expect(database.isTransaction).toBe(true);
+      finishResponse();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      releaseRegistration();
+      const [added, refused] = await Promise.all([adding, registering]);
+      expect(added.status, JSON.stringify(added)).toBe(200);
+      expect(refused.status).not.toBe(200);
+      expect(database.isTransaction).toBe(false);
+      expect(
+        database
+          .prepare(
+            "SELECT count(*) AS count FROM sqlite_temp_schema WHERE type = 'trigger' AND name GLOB 'station_passkey_add_*'",
+          )
+          .get()?.count,
+      ).toBe(0);
+      expect(
+        (await target.call(browser, '/passkey/list', {})).data!.passkeys,
+      ).toHaveLength(2);
+    } finally {
+      finishResponse();
+      releaseRegistration();
+      await Promise.allSettled([adding, ...(registering ? [registering] : [])]);
+      jsonSpy.mockRestore();
+      prepareSpy.mockRestore();
+    }
+  });
+
   test.each(['revoke-sessions', 'sign-out'] as const)(
     '%s during add verification prevents a new login credential',
     async (action) => {

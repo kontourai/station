@@ -791,6 +791,11 @@ export async function createLocalAccountProvider(
               }
             : undefined;
         },
+        async retireCredentialGuard(retire) {
+          await context.adapter.transaction(async () => {
+            retire();
+          });
+        },
         async findVerification(identifier) {
           const row =
             await context.internalAdapter.findVerificationValue(identifier);
