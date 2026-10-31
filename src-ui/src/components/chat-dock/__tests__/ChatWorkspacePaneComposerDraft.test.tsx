@@ -661,7 +661,7 @@ function clickDockedNewChat() {
   fireEvent.click(
     within(
       screen.getByRole('complementary', { name: 'Inbox chats' }),
-    ).getByRole('button', { name: 'New chat', exact: true }),
+    ).getByRole('button', { name: 'New chat' }),
   );
 }
 
@@ -1809,7 +1809,7 @@ test('the header shows no project destination while a draft is open', async () =
   expect(
     within(
       screen.getByRole('complementary', { name: 'Inbox chats' }),
-    ).getByRole('button', { name: 'New chat', exact: true }),
+    ).getByRole('button', { name: 'New chat' }),
   ).toBeTruthy();
   act(() => {
     dispatchNewChatIntent({});
