@@ -616,6 +616,14 @@ base64 image data fits. Adjacent Task mutations retain the standard body limit.
 Room upload, reference resolution and byte reads also enforce their current
 Task capability and incarnation; a paired route-family grant alone is insufficient.
 
+Task Review Walkthrough list, manifest, frame and video reads inherit the Task
+family's `orchestration:read` tier and independently recheck person-review
+authority, the Task incarnation and the live Walkthroughs preview. They refuse
+Station-internal requests and use `no-store`; video reads verify the retained
+length and digest. The sensitive Browser recording tool requires a bound lead
+Session and publishes only after authority and clean-workspace rechecks. A clip
+can expose page contents and is served through that Task's authorized reads.
+
 The exact `POST /api/projects/:projectSlug/walkthroughs/import` and
 `POST /api/transcription` uploads also retain the standard principal rate
 bucket. Their body ceilings derive from their owning upload limits: 512 MiB
