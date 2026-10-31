@@ -84,7 +84,10 @@ describe('visual skill HTTP boundary', () => {
       );
     vi.stubGlobal('fetch', fetchMock);
     await expect(
-      sendExecutionMessage('http://station.test', input),
+      sendExecutionMessage('http://station.test', {
+        ...input,
+        clientTurnId: 'visual-key',
+      }),
     ).resolves.toMatchObject({ providerTurnId: 'turn-1' });
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       'http://station.test/api/skills/experiences',
@@ -94,6 +97,21 @@ describe('visual skill HTTP boundary', () => {
       JSON.parse(String(fetchMock.mock.calls[1][1]?.body)).skillExperience,
     ).toEqual(start);
   });
+  test.each(['', '   ', 'x'.repeat(201), 42, null])(
+    'rejects invalid visual-start key %j before the valid selection reads inventory',
+    async (clientTurnId) => {
+      const fetchMock = vi.fn<typeof fetch>();
+      vi.stubGlobal('fetch', fetchMock);
+      await expect(
+        Reflect.apply(sendExecutionMessage, undefined, [
+          'http://station.test',
+          { ...input, clientTurnId },
+        ]),
+      ).rejects.toThrow(TypeError);
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
+
   test.each([
     [
       'inventory-only host',

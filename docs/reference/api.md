@@ -233,6 +233,62 @@ not read today.
 
 See [project chat defaults](contracts.md).
 
+## Project checkout freshness
+
+`GET /api/projects/:slug/checkout-freshness` says how far the Project's
+working directory checkout is behind its upstream branch, behind the
+`stale-project-checkout` Feature Preview. While the preview is off it answers
+404 with `code: 'feature_preview_disabled'`, `previewId` and `settingsPath`, and
+reads nothing. A shared member, like an unknown Project, gets 404
+`Project not found`: the answer names a host path.
+
+The [reader](../../src-server/services/projects/project-checkout-freshness.ts)
+uses local refs only and never fetches, so `behind` counts what the last fetch
+brought in. Every git call goes through `readProjectRepository`, the same
+confined read the coding routes use. The answer (`ProjectCheckoutFreshness`,
+[contracts](contracts.md)) is one of:
+
+- `unknown` with a `reason`: `no-working-directory`, `missing-directory`,
+  `not-a-repository`, `detached-head`, `no-upstream` (none configured, its
+  remote does not exist, its ref is not present locally, or the configured
+  value is not a ref name), `config-refused`
+  (the repository's own config sets options Station does not run git with,
+  such as a credential helper or an ssh command) or `unreadable` (refused,
+  timed out or changing). None of these is an error response.
+- `stale` or `not-stale`, with `branch`, `upstream` (`origin/main`),
+  `behind`, `ahead`, `behindSince`, `upstreamFetchedAt`, `thresholds`,
+  `staleBecause` and `updateCommand` (`git -C <directory> pull --ff-only`,
+  naming the working directory's absolute path, shell-quoted for a POSIX
+  shell). Station never runs that command; it refuses when both `ahead` and
+  `behind` are above 0.
+
+`behindSince` is the later of the committer date of the oldest missing commit
+on the upstream's first-parent line and the time the upstream ref's reflog
+first moved past HEAD (the newest 32 entries are examined). A committer date
+alone can be much older than when a commit arrived; the reflog time is never
+earlier. Without a reflog only the committer date is available.
+`upstreamFetchedAt` is the newest of the worktree's and the repository's
+`FETCH_HEAD` when it lists the upstream's current commit (a heuristic: a
+fetch of a fork at that same commit, or `git fetch --append`, also counts),
+the upstream ref's reflog and the configured remote's `HEAD` reflog (which
+`git clone` writes; `git remote set-head` and `git gc` also touch it), for an
+upstream from a remote only; it is absent when none exists. A record reached
+through a link anywhere below the git directory is ignored, and one whose path
+or file identity changes while it is read is discarded. A swap made and
+undone between those checks is not detected.
+
+`staleBecause` lists `commits` when `behind` reaches `checkoutStaleAfterCommits`
+(default 50), `age` when `behindSince` is at least `checkoutStaleAfterDays`
+(default 3) old, and `fetch-age` when `upstreamFetchedAt` is that old, even with
+nothing behind, because the local refs cannot show what a fetch would
+([config](config.md)). The whole read, file system included, is bounded at 15
+seconds; past that it answers `unreadable`. Facts are remembered per
+directory for ten seconds and concurrent reads join one read; a read that could not complete is not
+remembered, and thresholds apply on every request. The
+station-control `get_project` tool adds this answer as `checkoutFreshness`
+when the route returns one; it leaves the field out otherwise and never fails
+the Project read for it.
+
 ## Durable Project creation
 
 `POST /api/projects` optionally accepts a UUID `creationRequestId` alongside an
@@ -560,6 +616,37 @@ Environment's dispatch that names no Project
 is sent with the verified project folder; if that Station answers
 `working-directory-not-granted`, the caller gets a fixed message naming a Project
 or the grant.
+
+## Integration capability status and Task write-back
+
+`GET /api/integrations/status` is an operator-in-person read, not available to
+Agents or members. It requires `orchestration:read` for paired Devices and
+rechecks the current principal after probing. A refusal is 403; responses use
+`Cache-Control: no-store`. Success is `{success: true, data: {connections}}`.
+Each connection has `connectionId`, `provider`, and action records with
+`action`, `computedBy`, `state`, and `reason`. GitHub observes `gh auth status`
+on the host; its success does not establish repository permissions. Discord
+reports gateway state, and webhooks report configuration and active start
+grants; neither proves delivery. Slack is not implemented, and Linear and Jira
+are waiting on tracker support. Probe diagnostics do not expose credentials.
+
+`GET /api/tasks/:taskId/write-back` requires the personal Task room's current
+person and Task scope and paired `orchestration:read` where applicable. It is
+mounted with the personal Task room runtime, not hosted Task execution.
+The route rechecks Task incarnation and authority before returning; a refused
+or missing Task is 404 and an unavailable store is 503. Success is
+`{success: true, data: {entries}}` with `Cache-Control: no-store`.
+Entries are ordered attempts with target, initiator, attempt time, state,
+failure reason and `retryOf` identifying the first attempt. Terminal outcomes
+are separate append-only records. The store refuses new attempts beyond 256
+per Task incarnation. This read is not proof of every external write: the
+Task-bound outbound seam has no chat or tracker producer on main yet, and the
+existing PR routes are not Task-bound. See the
+[contracts](contracts.md#integration-status-and-task-write-back) and
+[SDK](sdk.md#integration-capability-status-and-task-write-back).
+
+The **Chat apps** Feature Preview gates the UI surfaces; it does not replace
+the routes' own authority checks or gate these reads.
 
 ## Create a Task from a chat proposal
 
@@ -3703,6 +3790,12 @@ the server event bus, sends the current ACP status, then drains events queued
 during that initial read. It sends a named `ping` every 30 seconds.
 This is a live connection-state/cache-invalidation stream, not durable Session
 history replay with a resume cursor.
+The browser can instead receive these events on its orchestration stream when
+its current authority’s boot payload advertises `sharedRealtime: true` and the
+stream acknowledges that request. Older hosts and missing acknowledgements use
+this legacy route alongside orchestration. General frames have no replay ID;
+authorization and presence lifecycle still apply independently. See the
+[Session API](session-api.md#live-sse-feed-get-events) for negotiation and recovery.
 
 Only events admitted by the broadcast-safety policy or the relevant scoped
 notification, approval, plugin, draft, navigation, and answer-evidence gate are
@@ -3979,8 +4072,10 @@ the installed declaration (`navigate` with a destination id, or
 - **Requirements.** `active-chat` and `session` are satisfied only by a session
   the caller can read (the same predicate every session read uses); one it
   cannot read is `requirement-not-satisfied`, exactly like one that does not
-  exist. `project` and `task` are checked against existence, the same authority
-  Station's project and task routes answer any caller with.
+  exist. `project` requires the caller's Project read authority. `task` must
+  belong to a readable Project and, when supplied, match `projectSlug`.
+  An unreadable or missing Project or Task is `requirement-not-satisfied`;
+  an unavailable authority check returns `unavailable`.
 - **Refusals.** `409` with a `reason`: `request-expired`,
   `generation-changed`, `command-not-declared`, `command-not-executable`,
   `target-mismatch`, `requirement-not-satisfied`, `permission-unavailable`,

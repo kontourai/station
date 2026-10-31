@@ -580,7 +580,7 @@ as you left it in the dock, the same way as a draft from setup (below). If no
 chat dock is open to take it, Home keeps the message and says so.
 
 In the chat dock, the **New chat** button (the conversation-plus icon on the collapsed bar),
-**⌘T**, and **New chat** in **Chats and tasks** open the same composer.
+**⌘T**, and the phone header's compose icon open the same composer.
 **Explore agents** remains available for deliberate customization.
 
 Setup from Home continues in the chat dock. When you choose **Connect**,
@@ -636,9 +636,12 @@ the dock’s chat list.
 At the end of first-run setup, **Take the tour** and **Connect another device**
 are optional alternatives to **Start your first chat**. Both save the same selected answers before opening their next step.
 
-On a phone, use the compose button at the right of the chat bar, or tap the
-current chat title to open **Chats and tasks** and choose **New chat** at the
-lower right. The three-dot menu holds chat actions, including **This chat**:
+On a phone, the dock starts at **Inbox** unless you open a specific
+conversation. Its Inbox icon returns to the work list; the chat title stays
+as context. Search opens from the magnifier. Your search, list position and
+unsent message stay in place when switching back to a conversation. Collapse
+and reopen restore the last view. Use the compose icon at the right of the
+chat bar for **New chat**. The three-dot menu holds chat actions, including **This chat**:
 the chat's workspace, branch and changed files, status, background tasks and
 linked pull requests, each opening its own view. On a computer, a wide dock
 shows the same panel beside the transcript, and a narrower one puts it behind
@@ -646,7 +649,7 @@ a chip in the dock header. Connection health remains in the app header. In fulls
 management remains in the chat actions menu. **Projects** has the same add control
 for creating a project, including a short first-project prompt when empty.
 
-In **Chats and tasks**, delegated work folds under its recorded parent.
+In **Inbox**, delegated work folds under its recorded parent.
 Expand the subtask count to read the children; children that need you stay
 visible. Task-owned chats appear under their Task as sessions. **Show work**
 filters by project or Station and stays selected on this device. If work needs
@@ -812,17 +815,22 @@ Keep typing during a turn. **Send** defaults to **Queue**, which delivers after
 the turn finishes; its dropdown offers **Steer**. Claude Code and Codex can take
 native steering. Other engines hold steering until a safe boundary can be proven;
 currently they wait until the turn finishes. Each pending row shows its mode.
-**Send now** deliberately stops the active turn immediately and sends the
-selected message after Station confirms the stop. **Stop** remains separate.
+For a locally queued message, **Send now** stops the active turn and sends the
+selected message after Station confirms the stop. Messages held by Station can
+be removed when permitted, but cannot be edited or sent now from the list. **Stop** remains separate.
 Steer and Queue carry text only. You can still attach files or dictate during a
 turn: files wait in the draft, which says why, until you send it after the turn
 ends.
 
-A text message is saved on this device before it is sent. If the app closes or
+The app attempts to save a text message on this device before sending it. If
+the write fails or times out, it sends without that saved row and keeps the
+saved draft. If the app closes or
 the connection drops before Station answers, the app asks Station what happened
 at its next launch or reconnect: a message Station never received is sent once,
 with the same identity, and one Station may have started is kept and marked,
-never sent twice. A message with attachments or a visual skill keeps its draft
+never sent twice. If Station accepts the reconnect send into its inbox, the local outbox
+settles that row. If a later delivery lookup finds it queued, the local row
+remains for inspection. A message with attachments or a visual skill keeps its draft
 until Station answers instead.
 
 Once Station confirms a turn started, a late network error does not queue that

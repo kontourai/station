@@ -3,6 +3,7 @@
  */
 
 import { DEFAULT_NOTIFICATION_SOUND_PREFERENCES } from '@kontourai/station-contracts/device-settings';
+import type { FetchSseConnection, fetchSSE } from '@kontourai/station-sdk';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook } from '@testing-library/react';
 import { createElement, type ReactNode } from 'react';
@@ -10,16 +11,32 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 
 const host = vi.hoisted(() => ({ current: true }));
+type StreamOptions = Parameters<typeof fetchSSE>[1];
 const streams = vi.hoisted(
   () =>
     [] as Array<{
-      onMessage: (message: { event: string; data: string }) => void;
+      url: string;
+      options: StreamOptions;
+      connection: FetchSseConnection;
     }>,
 );
 vi.mock('@kontourai/station-sdk', () => ({
-  fetchSSE: vi.fn((_url: string, options: (typeof streams)[number]) => {
-    streams.push(options);
-    return { close: vi.fn() };
+  fetchSSE: vi.fn((url: string, options: StreamOptions): FetchSseConnection => {
+    const controller = new AbortController();
+    const completed = new Promise<void>((resolve) => {
+      controller.signal.addEventListener('abort', () => resolve(), {
+        once: true,
+      });
+    });
+    const connection: FetchSseConnection = {
+      signal: controller.signal,
+      completed,
+      close: () => controller.abort(),
+      retry: vi.fn(),
+      restart: vi.fn(),
+    };
+    streams.push({ url, options, connection });
+    return connection;
   }),
 }));
 vi.mock('../contexts/ApiBaseContext', () => ({
@@ -219,17 +236,29 @@ test('a deferred envelope success cannot show an A delivery after the SSE author
       createElement(QueryClientProvider, { client }, children),
   });
   const deliver = (index: number, title: string) =>
-    streams[index]!.onMessage({
+    streams[index]!.options.onMessage({
       event: 'notification:delivered',
       data: JSON.stringify({ title, metadata: { envelope: { v: 1 } } }),
     });
   try {
+    expect(streams.map(({ url }) => new URL(url).pathname)).toEqual([
+      '/api/orchestration/events',
+      '/events',
+    ]);
     act(() => {
-      deliver(0, 'Private A result');
+      deliver(1, 'Private A result');
       host.current = false;
     });
     hook.rerender();
-    await act(async () => deliver(1, 'Current B result'));
+    expect(streams[0]!.connection.signal.aborted).toBe(true);
+    expect(streams[1]!.connection.signal.aborted).toBe(true);
+    expect(streams.map(({ url }) => new URL(url).pathname)).toEqual([
+      '/api/orchestration/events',
+      '/events',
+      '/api/orchestration/events',
+      '/events',
+    ]);
+    await act(async () => deliver(3, 'Current B result'));
     await vi.waitFor(() =>
       expect(show).toHaveBeenCalledWith(
         'Current B result',

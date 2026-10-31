@@ -90,6 +90,7 @@ import {
   DelegationFileRefusal,
 } from '@kontourai/station-shared/delegation-files';
 import { type Context, Hono } from 'hono';
+import type { SSEStreamingApi } from 'hono/streaming';
 import { z } from 'zod/v3';
 import { CHAT_INPUT_MAX_CHARS } from '../../../src-shared/chat-input-limits.js';
 import { servesSessionInventoryInputRead } from '../../capabilities/station-capability-flags.js';
@@ -1886,6 +1887,12 @@ function recordDelegationResultRead(
 export function createOrchestrationRoutes(
   orchestrationService: OrchestrationService,
   deps: {
+    generalEventProducer?: (
+      c: Context,
+      stream: SSEStreamingApi,
+      write: (frame: { event: string; data: string }) => Promise<void>,
+      authority: ReturnType<typeof sessionReadAuthorityFromRequest>,
+    ) => Promise<void>;
     eventBus: {
       subscribe(
         listener: (event: {
@@ -6825,6 +6832,9 @@ export function createOrchestrationRoutes(
     // clients or a first-ever connect produce) always takes the snapshot
     // path below, byte-identical to the prior behavior (AC4).
     const cursor = parseResumeCursor(c.req.header('Last-Event-ID'));
+    if (c.req.query('includeGeneral') === '1' && deps.generalEventProducer) {
+      c.header('X-Station-General-Stream', '1');
+    }
     return streamSSE(c, async (stream) => {
       sseOps.add(1, {
         op: threadId ? 'orchestration_connect_thread' : 'orchestration_connect',
@@ -6882,7 +6892,28 @@ export function createOrchestrationRoutes(
       let stopKeepAlive: (() => void) | undefined;
       let stopActivityFlush: (() => void) | undefined;
       let clearPending: (() => void) | undefined;
+      // General frames use a separate event name and no id, so Last-Event-ID
+      // remains exclusively the durable orchestration cursor.
+      const shared =
+        c.req.query('includeGeneral') === '1' && deps.generalEventProducer;
+      const abortShared = () => stream.abort();
       try {
+        if (shared) {
+          c.req.raw.signal.addEventListener('abort', abortShared, {
+            once: true,
+          });
+          if (c.req.raw.signal.aborted) abortShared();
+          void shared(
+            c,
+            stream,
+            (frame) =>
+              stream.writeSSE({
+                event: 'station:general',
+                data: JSON.stringify(frame),
+              }),
+            authority,
+          ).then(abortShared, abortShared);
+        }
         // station#2301 review (M2): register for the client going away
         // BEFORE anything below can await. Hono notifies only subscribers
         // registered before `abort()` runs, so a client that left during a
@@ -7394,6 +7425,10 @@ export function createOrchestrationRoutes(
         // or `stopKeepAlive` being `undefined` (a throw before the keepalive
         // was started) are both handled explicitly rather than relying on
         // `clearInterval(undefined)`/calling an unset function.
+        if (shared) {
+          c.req.raw.signal.removeEventListener('abort', abortShared);
+          stream.abort();
+        }
         stopKeepAlive?.();
         stopActivityFlush?.();
         clearPending?.();

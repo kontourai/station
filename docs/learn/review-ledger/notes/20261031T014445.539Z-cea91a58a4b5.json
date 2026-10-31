@@ -1,0 +1,27 @@
+{
+  "revision": "eeaa587d6df5f9d7453d254d1aaf6d384a66fd61",
+
+  "notes": [
+    {"path":"docs/design/notification-delivery.md","note":"Reviewed the foreground SSE notification and non-replay background limitation against useServerEvents and the general producer. General frames remain ephemeral without durable cursor replay when carried by the shared stream. No notification or native journey ran.","inputs":["docs/design/notification-delivery.md","src-ui/src/hooks/useServerEvents.ts"]},
+
+    {"path":"docs/design/offline-outbound-queue.md","note":"Reviewed offline reader versus outbound intent and the offline shell exclusion of APIs/SSE against AuthorityQueryContext bootstrap readiness. The new readiness capability is scoped to current authority and client; it does not make the offline index an authority credential. No offline journey ran.","inputs":["docs/design/offline-outbound-queue.md","src-ui/src/contexts/AuthorityQueryContext.tsx"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"Reviewed pane relationship outcomes including offline and denied states against ChatDock stream ownership: the changed effect waits for authority bootstrap and does not alter those relationship outcomes. No UI journey ran.","inputs":["docs/design/pane-relationships.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Reviewed the chat dock placement and composer claims against the ChatDock and AgentsWorkspacePane diffs. Their effects now wait for bootstrap and pass stream authority/capability; the diff does not change placement. No layout journey ran.","inputs":["docs/design/placement.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/workspace-panes/AgentsWorkspacePane.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the connection-recovery and composer claims against ChatDock and orchestration route changes. The dock waits for bootstrap and the shared route still carries orchestration events; no composer or reconnect journey was executed.","inputs":["docs/design/chat-composer.md","src-server/routes/orchestration/orchestration.ts","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed chat composer and responsive layout guidance against the ChatDock effect and runtime HTTP header exposure changes; neither changes layout. No viewport or accessibility journey was executed.","inputs":["docs/guides/responsive-ui.md","src-server/runtime/bootstrap/runtime-http.ts","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the chat composer and offline reading descriptions against ChatDock: the changed effect waits for bootstrap and changes stream acquisition, not composer controls. No user journey was executed.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/personal-boards.md","note":"Reviewed live session-list invalidation and safety-poll wording against ChatDock stream acquisition. The dock waits for bootstrap before acquiring the shared stream; this source review did not execute the board or measure polling.","inputs":["docs/user/personal-boards.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed stream ownership guidance against runtime HTTP CORS exposure and useServerEvents subscription: the hook consumes the shared orchestration owner and releases its subscription. No frontend test was run.","inputs":["docs/patterns/frontend.md","src-server/runtime/bootstrap/runtime-http.ts","src-ui/src/hooks/useServerEvents.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Reviewed the separation of browser SSE/toast, notification service delivery and Web Push against useServerEvents and runtime CORS/route changes. General events now use the shared stream where negotiated; this does not itself demonstrate push delivery. No push journey ran.","inputs":["docs/guides/web-push-notifications.md","src-server/runtime/bootstrap/runtime-http.ts","src-server/runtime/routes/runtime-routes.ts","src-ui/src/hooks/useServerEvents.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed connection and notification authority descriptions against the runtime HTTP, orchestration and useServerEvents diffs. General notifications now travel through the shared owner when negotiated; connection grants and broker claims are outside this change. No connection journey ran.","inputs":["docs/guides/connections.md","src-server/routes/orchestration/orchestration.ts","src-server/runtime/bootstrap/runtime-http.ts","src-ui/src/hooks/useServerEvents.ts"]}
+  ]
+}

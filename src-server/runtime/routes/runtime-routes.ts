@@ -9,6 +9,7 @@ import {
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import { isPersonalTokenScope } from '@kontourai/station-contracts/personal-tokens';
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
+import { resolveProjectCheckoutStaleThresholds } from '@kontourai/station-contracts/project-checkout-freshness';
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
 import {
   parseTaskGateEvaluationReference,
@@ -170,6 +171,7 @@ import type { MediaToolsAcquisition } from '../../services/media-tools/media-too
 import { LocalMobileDeviceHost } from '../../services/mobile-device/mobile-device-host.js';
 import { sessionOwnerStampFor } from '../../services/orchestration/session-owner-attribution.js';
 import { createProjectChatDefaultsService } from '../../services/projects/project-chat-defaults.js';
+import { createProjectCheckoutFreshnessReader } from '../../services/projects/project-checkout-freshness.js';
 import type {
   ProjectMembershipAuthority,
   ProjectMembershipService,
@@ -414,6 +416,7 @@ import { createTrustBundleRoutes } from '../../routes/evidence/trust-bundles.js'
 import { createVeritasReadinessRoutes } from '../../routes/evidence/veritas-readiness.js';
 import { createWorkflowSidecarRoutes } from '../../routes/evidence/workflow-sidecars.js';
 import { createFleetInferenceRoutes } from '../../routes/inference/fleet-inference.js';
+import { createIntegrationStatusRoutes } from '../../routes/integrations/integration-status-routes.js';
 import {
   createCrossProjectKnowledgeRoutes,
   createKnowledgeRoutes,
@@ -464,7 +467,10 @@ import { createAttachmentRoutes } from '../../routes/orchestration/attachments.j
 import { createAttentionRoutes } from '../../routes/orchestration/attention.js';
 import { createCoordinatorRoutes } from '../../routes/orchestration/coordinator.js';
 import { createDeclarePullRequestRoutes } from '../../routes/orchestration/declare-pull-request.js';
-import { createEventRoutes } from '../../routes/orchestration/events.js';
+import {
+  createEventRoutes,
+  createEventStreamProducer,
+} from '../../routes/orchestration/events.js';
 import { createLiveActivityRoutes } from '../../routes/orchestration/live-activity.js';
 import { createOperatingStateRoutes } from '../../routes/orchestration/operating-state.js';
 import {
@@ -494,6 +500,7 @@ import { createTaskOutputRoutes } from '../../routes/orchestration/task-outputs.
 import { createTaskRelationshipRoutes } from '../../routes/orchestration/task-relationships.js';
 import { createTaskReviewRoutes } from '../../routes/orchestration/task-review.js';
 import { createTaskReviewStationControlRoutes } from '../../routes/orchestration/task-review-station-control.js';
+import { createTaskWriteBackRoutes } from '../../routes/orchestration/task-write-back.js';
 import {
   createTaskRoutes,
   keptRowsForTaskSession,
@@ -635,6 +642,7 @@ import { appHomeActive } from '../../services/connections/connection-env.js';
 import type { ConnectionService } from '../../services/connections/connection-service.js';
 import type { ProviderService } from '../../services/connections/provider-service.js';
 import type { ConsentChannelService } from '../../services/consent/consent-channel.js';
+import type { DiscordGatewayService } from '../../services/discord/discord-gateway-service.js';
 import {
   ANSWER_ASSESSMENT_UPDATED_EVENT,
   AnswerAssessmentModule,
@@ -689,6 +697,10 @@ import { FleetServeReceiptLog } from '../../services/inference/fleet-serve-recei
 import { DiagnosticsService } from '../../services/infra/diagnostics-service.js';
 import { OperatingStateService } from '../../services/infra/operating-state-service.js';
 import { createServerLogReader } from '../../services/infra/server-log-reader.js';
+import {
+  createIntegrationStatusProbes,
+  createIntegrationStatusReader,
+} from '../../services/integrations/integration-status-service.js';
 import { StationKitObservabilityHost } from '../../services/kits/kit-observability-host.js';
 import { StationKitObservabilityRegistry } from '../../services/kits/kit-observability-registry.js';
 import {
@@ -877,6 +889,7 @@ import {
   TerminalSessions,
 } from '../../services/terminal/terminal-sessions.js';
 import type { UsageTelemetryService } from '../../services/usage-telemetry-service.js';
+import { InboundWebhookConfigurationStore } from '../../services/webhooks/inbound-webhook-store.js';
 import { FlowAgentsWorkItemProvider } from '../../services/work-item-providers/flow-agents-work-item-provider.js';
 import {
   GitHubWorkItemObserver,
@@ -1057,6 +1070,7 @@ export async function pullRequestSessionForReader<
 }
 
 export interface ConfigureRuntimeRoutesContext {
+  discordGateway?: Pick<DiscordGatewayService, 'getGatewayStatus'>;
   retainProjectRoomRuntime?: (runtime: { close(): Promise<void> }) => void;
   relayInvitationOwner?: RelayInvitationOwner;
   projectMembership?: ProjectMembershipService;
@@ -2293,6 +2307,35 @@ export function configureRuntimeRoutes(
   // indistinguishable to the reader below, and both fail closed to
   // `{ kind: 'revoked' }`, never a default identity.
   const roomRequestPrincipals = new WeakMap<Request, PrincipalRef>();
+  const canReadPluginCommandProject = async (
+    slug: string,
+    request: Request,
+    principal: PrincipalRef,
+  ): Promise<boolean> => {
+    roomRequestPrincipals.set(request, principal);
+    try {
+      const member = await memberCallerForRequest(request);
+      if (member) {
+        if (member.kind === 'none' || !context.projectMembership) return false;
+        await context.projectMembership.requireProjectRead(
+          slug,
+          projectMembershipAuthority(request),
+        );
+        return true;
+      }
+      await projectMembershipAuthority(request).operator();
+      return context.projectService
+        .listProjects()
+        .some((project) => project.slug === slug);
+    } catch (error) {
+      if (
+        error instanceof ProjectMembershipRefusal &&
+        error.code !== 'unavailable'
+      )
+        return false;
+      throw error;
+    }
+  };
   const primeRoomRequestPrincipal = async (
     c: Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
     next: () => Promise<void>,
@@ -4046,17 +4089,24 @@ export function configureRuntimeRoutes(
                 sessionId,
                 readAuthorityForRequest(authority),
               ),
-            projectExists: (slug) => {
-              try {
-                return Boolean(context.projectService.getProject(slug));
-              } catch {
-                return false;
-              }
-            },
-            taskInProject: (taskId, projectSlug) => {
+            canReadProject: (slug, request, principal) =>
+              canReadPluginCommandProject(slug, request, principal),
+            canReadTask: async (taskId, projectSlug, request, principal) => {
               const task = context.taskGraphService.readTask(taskId);
-              return Boolean(
-                task && (!projectSlug || task.projectId === projectSlug),
+              if (!task) return false;
+              const project = context.projectService
+                .listProjects()
+                .find(
+                  (candidate) =>
+                    candidate.id === task.projectId ||
+                    candidate.slug === task.projectId,
+                );
+              if (!project || (projectSlug && projectSlug !== project.slug))
+                return false;
+              return canReadPluginCommandProject(
+                project.slug,
+                request,
+                principal,
               );
             },
           }),
@@ -4437,6 +4487,28 @@ export function configureRuntimeRoutes(
       context.environmentSecurityService,
     );
   };
+  const integrationStatus = createIntegrationStatusReader(
+    createIntegrationStatusProbes({
+      readDiscord: () =>
+        context.discordGateway?.getGatewayStatus() ?? {
+          state: 'unavailable',
+          reason: 'Discord gateway state is unavailable in this runtime.',
+        },
+      readWebhook: () =>
+        new InboundWebhookConfigurationStore(
+          context.configLoader.getProjectHomeDir(),
+        ).read(),
+    }),
+  );
+  context.app.route(
+    '/api/integrations/status',
+    createIntegrationStatusRoutes({
+      readStatus: integrationStatus,
+      mayRead: (request) =>
+        isOperatorInPersonNotAgent(request) &&
+        isRequestPrincipalCurrent(request),
+    }),
+  );
   // Mobile helpers and the Browser pane belong to the personal operator host,
   // never a shared tenant: neither is mounted on a hosted deployment.
   const isPersonalHost =
@@ -6002,6 +6074,14 @@ export function configureRuntimeRoutes(
     });
     context.app.route(
       '/api/tasks',
+      createTaskWriteBackRoutes({
+        runtime: roomRuntime,
+        store: roomEventStore.taskWriteBackStore(),
+        logger: context.logger,
+      }),
+    );
+    context.app.route(
+      '/api/tasks',
       createTaskReviewRoutes({
         send: taskReviewSend,
         runtime: roomRuntime,
@@ -6779,10 +6859,13 @@ export function configureRuntimeRoutes(
         : {}),
     }),
   );
+  let generalEventProducer: ReturnType<typeof createEventStreamProducer>;
   context.app.route(
     '/api/orchestration',
     createOrchestrationRoutes(context.orchestrationService, {
       eventBus: context.eventBus,
+      generalEventProducer: (c, stream, write, authority) =>
+        generalEventProducer(c, stream, write, authority),
       ...(delegationResults ? { delegationResults } : {}),
       ...(threadInbox ? { threadInbox } : {}),
       ...(memoryContinuation && threadInbox ? { memoryContinuation } : {}),
@@ -8718,6 +8801,15 @@ export function configureRuntimeRoutes(
     context.configLoader.getProjectHomeDir(),
     context.storageAdapter,
   );
+  // Bound at composition so the preview is offered before it is enabled; the
+  // route selects on every read.
+  const checkoutFreshnessPreview = context.featurePreviews.bind({
+    id: 'stale-project-checkout',
+    label: 'Stale checkout warning',
+    description:
+      "Warn when a Project's checkout is far behind its upstream branch, from local git refs. Station never fetches or updates it.",
+  });
+  const checkoutFreshnessReader = createProjectCheckoutFreshnessReader();
   context.app.route(
     '/api/projects',
     createProjectRoutes(
@@ -8725,6 +8817,18 @@ export function configureRuntimeRoutes(
       context.storageAdapter,
       context.configLoader.getProjectHomeDir(),
       {
+        checkoutFreshness: {
+          preview: checkoutFreshnessPreview,
+          read: async (project) =>
+            checkoutFreshnessReader.read(
+              project.workingDirectory?.trim()
+                ? resolve(expandTilde(project.workingDirectory.trim()))
+                : undefined,
+              resolveProjectCheckoutStaleThresholds(
+                await context.configLoader.loadAppConfig(),
+              ),
+            ),
+        },
         // The caller's id is the one a chat start records under
         // (`resolveActorPrincipal` reads this same resolver).
         chatDefaults: (c, project, options) =>
@@ -10531,148 +10635,146 @@ export function configureRuntimeRoutes(
       ),
     );
   }
-  context.app.route(
-    '/events',
-    createEventRoutes({
-      eventBus: context.eventBus,
-      getACPStatus: () => {
-        const status = context.acpBridge.getStatus();
-        return {
-          connected: status.connections.some(
-            (connection: any) => connection.status === ACPStatus.AVAILABLE,
-          ),
-          connections: status.connections,
-        };
-      },
+  const eventRouteDeps: Parameters<typeof createEventRoutes>[0] = {
+    eventBus: context.eventBus,
+    getACPStatus: () => {
+      const status = context.acpBridge.getStatus();
+      return {
+        connected: status.connections.some(
+          (connection: any) => connection.status === ACPStatus.AVAILABLE,
+        ),
+        connections: status.connections,
+      };
+    },
+    logger: context.logger,
+    readAuthorityForRequest: conversationReadAuthorityForRequest,
+    /**
+     * #2067. The plugin lifecycle channels, gated by the same projection
+     * `GET /api/plugins` applies and the same memoized caller resolver.
+     *
+     * `plugins:updates-available` is the exception and the operator's own
+     * signal: its payload is a LIST of pending updates rather than one
+     * named plugin, and the route that produces it
+     * (`GET /api/plugins/check-updates`) is operator-only for the same
+     * reason. Filtering the list per subscriber would mean rewriting the
+     * frame body, and a half-filtered maintenance signal is a worse answer
+     * than not relaying it to somebody who cannot act on it.
+     *
+     * Every failure path denies: an unattributable caller, a payload that
+     * names no plugin, a grant record that cannot be read.
+     */
+    canReadPluginEvent: createPluginEventRelayGate({
+      resolvePrincipal: resolveSubscriberPrincipal,
+      canSee: (principal, pluginName) =>
+        pluginVisibility.canSee(principal, pluginName),
       logger: context.logger,
-      readAuthorityForRequest: conversationReadAuthorityForRequest,
-      /**
-       * #2067. The plugin lifecycle channels, gated by the same projection
-       * `GET /api/plugins` applies and the same memoized caller resolver.
-       *
-       * `plugins:updates-available` is the exception and the operator's own
-       * signal: its payload is a LIST of pending updates rather than one
-       * named plugin, and the route that produces it
-       * (`GET /api/plugins/check-updates`) is operator-only for the same
-       * reason. Filtering the list per subscriber would mean rewriting the
-       * frame body, and a half-filtered maintenance signal is a worse answer
-       * than not relaying it to somebody who cannot act on it.
-       *
-       * Every failure path denies: an unattributable caller, a payload that
-       * names no plugin, a grant record that cannot be read.
-       */
-      canReadPluginEvent: createPluginEventRelayGate({
-        resolvePrincipal: resolveSubscriberPrincipal,
-        canSee: (principal, pluginName) =>
-          pluginVisibility.canSee(principal, pluginName),
-        logger: context.logger,
-      }),
-      // Epic #2323 S3: a draft revision event names a Project, so it reaches
-      // only subscribers who may read that Project — the same membership
-      // check the Project read guard applies to the draft routes themselves.
-      // A caller with no deployment account is the operator or a paired
-      // device, which that guard also admits for every Project.
-      canReadPluginDraftEvent: async (data, c) => {
-        const projectSlug = (data as { projectSlug?: unknown } | undefined)
-          ?.projectSlug;
-        if (typeof projectSlug !== 'string' || !projectSlug) return false;
-        try {
-          const request = c.req.raw;
-          // The membership authority compares the account against this
-          // request's resolved principal, which the /api/projects/* guards
-          // record before they run. /events has no such guard, so record
-          // it here; without it every member was refused (S3 verifier G4).
-          roomRequestPrincipals.set(
-            request,
-            resolveOrchestrationRequestPrincipal(c),
-          );
-          const authority = await authenticatedProjectMember(request);
-          if (!authority) return true;
-          await context.projectMembership!.requireProjectRead(
-            projectSlug,
-            authority,
-          );
-          return true;
-        } catch {
-          return false;
-        }
-      },
-      canReadNotificationEvent: (_event, data, authority) => {
-        const record = data as Record<string, unknown> | undefined;
-        const sessionId = notificationSessionIdentity(record);
-        return (
-          sessionId !== undefined &&
-          context.orchestrationService.canUserReadSession(sessionId, authority)
-        );
-      },
-      // Registry resolution removes the pending entry before it emits its
-      // terminal event. The registry therefore authorizes every lifecycle
-      // frame from its immutable, session-bound metadata rather than a
-      // settled-entry cache or any serialized tenant context.
-      canReadApprovalEvent: (_event, data, authority) =>
-        context.approvalRegistry.canReadEvent(data, authority),
-      canReadAnswerAssessmentEvent: (data, authority) => {
-        const sessionId = (data as { sessionId?: unknown } | undefined)
-          ?.sessionId;
-        return (
-          typeof sessionId === 'string' &&
-          context.orchestrationService.canUserReadSession(sessionId, authority)
-        );
-      },
-      canReadAnswerNarrativeEvent: (data, authority) => {
-        const sessionId = (data as { sessionId?: unknown } | undefined)
-          ?.sessionId;
-        return (
-          typeof sessionId === 'string' &&
-          context.orchestrationService.canUserReadSession(sessionId, authority)
-        );
-      },
-      connectClientSession: (request) => {
-        // #3851: a client newer than this server means a newer Station
-        // exists; its build travels on the stream it opens.
-        serverUpdate.noteClientBuild(
-          parseClientReportedOrigin(
-            request.headers.get(CLIENT_ORIGIN_HEADER) ?? undefined,
-          ).build,
-        );
-        const lease = clientStreamPresence.connect(request);
-        const principal = getRuntimeAuthenticatedRequestPrincipal(request);
-        const native = getRuntimeNativeDeviceProofPrincipal(request);
-        // The header is reported metadata, accepted only on an authenticated connection.
-        // The existing mobile origin does not distinguish iOS from Android.
-        const reported =
-          resolveClientOriginForRequest(request).reported.surface;
-        if (
-          (principal || native) &&
-          (reported === 'desktop' || reported === 'web' || reported === 'cli')
-        ) {
-          void context
-            .getUsageTelemetry?.()
-            ?.track('client_connected', {
-              surface: reported,
-              device_class: reported === 'desktop' ? 'desktop' : 'other',
-              version: packageJson.version,
-            })
-            .catch((error) =>
-              context.logger.warn('Connection telemetry observation failed', {
-                error: errorMessage(error),
-              }),
-            );
-        }
-        return lease;
-      },
-      isPairedDeviceConnectionCurrent: (request) => {
-        const principal = getRuntimeAuthenticatedRequestPrincipal(request);
-        if (principal?.authority === 'operator-session') return false;
-        return (
-          principal?.authority !== 'device-credential' ||
-          context.environmentSecurityService.identifyDevice(
-            principal.credential,
-          ) !== null
-        );
-      },
     }),
-  );
+    // Epic #2323 S3: a draft revision event names a Project, so it reaches
+    // only subscribers who may read that Project — the same membership
+    // check the Project read guard applies to the draft routes themselves.
+    // A caller with no deployment account is the operator or a paired
+    // device, which that guard also admits for every Project.
+    canReadPluginDraftEvent: async (data, c) => {
+      const projectSlug = (data as { projectSlug?: unknown } | undefined)
+        ?.projectSlug;
+      if (typeof projectSlug !== 'string' || !projectSlug) return false;
+      try {
+        const request = c.req.raw;
+        // The membership authority compares the account against this
+        // request's resolved principal, which the /api/projects/* guards
+        // record before they run. /events has no such guard, so record
+        // it here; without it every member was refused (S3 verifier G4).
+        roomRequestPrincipals.set(
+          request,
+          resolveOrchestrationRequestPrincipal(c),
+        );
+        const authority = await authenticatedProjectMember(request);
+        if (!authority) return true;
+        await context.projectMembership!.requireProjectRead(
+          projectSlug,
+          authority,
+        );
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    canReadNotificationEvent: (_event, data, authority) => {
+      const record = data as Record<string, unknown> | undefined;
+      const sessionId = notificationSessionIdentity(record);
+      return (
+        sessionId !== undefined &&
+        context.orchestrationService.canUserReadSession(sessionId, authority)
+      );
+    },
+    // Registry resolution removes the pending entry before it emits its
+    // terminal event. The registry therefore authorizes every lifecycle
+    // frame from its immutable, session-bound metadata rather than a
+    // settled-entry cache or any serialized tenant context.
+    canReadApprovalEvent: (_event, data, authority) =>
+      context.approvalRegistry.canReadEvent(data, authority),
+    canReadAnswerAssessmentEvent: (data, authority) => {
+      const sessionId = (data as { sessionId?: unknown } | undefined)
+        ?.sessionId;
+      return (
+        typeof sessionId === 'string' &&
+        context.orchestrationService.canUserReadSession(sessionId, authority)
+      );
+    },
+    canReadAnswerNarrativeEvent: (data, authority) => {
+      const sessionId = (data as { sessionId?: unknown } | undefined)
+        ?.sessionId;
+      return (
+        typeof sessionId === 'string' &&
+        context.orchestrationService.canUserReadSession(sessionId, authority)
+      );
+    },
+    connectClientSession: (request) => {
+      // #3851: a client newer than this server means a newer Station
+      // exists; its build travels on the stream it opens.
+      serverUpdate.noteClientBuild(
+        parseClientReportedOrigin(
+          request.headers.get(CLIENT_ORIGIN_HEADER) ?? undefined,
+        ).build,
+      );
+      const lease = clientStreamPresence.connect(request);
+      const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+      const native = getRuntimeNativeDeviceProofPrincipal(request);
+      // The header is reported metadata, accepted only on an authenticated connection.
+      // The existing mobile origin does not distinguish iOS from Android.
+      const reported = resolveClientOriginForRequest(request).reported.surface;
+      if (
+        (principal || native) &&
+        (reported === 'desktop' || reported === 'web' || reported === 'cli')
+      ) {
+        void context
+          .getUsageTelemetry?.()
+          ?.track('client_connected', {
+            surface: reported,
+            device_class: reported === 'desktop' ? 'desktop' : 'other',
+            version: packageJson.version,
+          })
+          .catch((error) =>
+            context.logger.warn('Connection telemetry observation failed', {
+              error: errorMessage(error),
+            }),
+          );
+      }
+      return lease;
+    },
+    isPairedDeviceConnectionCurrent: (request) => {
+      const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+      if (principal?.authority === 'operator-session') return false;
+      return (
+        principal?.authority !== 'device-credential' ||
+        context.environmentSecurityService.identifyDevice(
+          principal.credential,
+        ) !== null
+      );
+    },
+  };
+  generalEventProducer = createEventStreamProducer(eventRouteDeps);
+  context.app.route('/events', createEventRoutes(eventRouteDeps));
   context.app.route(
     '/api/presence',
     createFocusPresenceRoutes({

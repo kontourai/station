@@ -25,6 +25,24 @@ const host = vi.hoisted(() => ({
   }>,
 }));
 
+function createStreamHandle(): ReturnType<
+  typeof import('@kontourai/station-sdk').fetchSSE
+> {
+  const controller = new AbortController();
+  const completed = new Promise<void>((resolve) => {
+    controller.signal.addEventListener('abort', () => resolve(), {
+      once: true,
+    });
+  });
+  return {
+    signal: controller.signal,
+    completed,
+    close: vi.fn(() => controller.abort()),
+    retry: vi.fn(),
+    restart: vi.fn(),
+  };
+}
+
 vi.mock('../../../packages/sdk/src/api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../packages/sdk/src/api')>()),
   _getApiBase: () => host.base ?? Promise.resolve(host.apiBase),
@@ -32,11 +50,12 @@ vi.mock('../../../packages/sdk/src/api', async (importOriginal) => ({
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
   fetchSSE: (
-    _url: string,
+    url: string,
     options: { onMessage: (message: { event: string; data: string }) => void },
   ) => {
-    host.streams.push(options);
-    return { close: vi.fn() };
+    if (url.endsWith('/events') && !url.includes('/api/orchestration/'))
+      host.streams.push(options);
+    return createStreamHandle();
   },
 }));
 vi.mock('../contexts/ApiBaseContext', () => ({

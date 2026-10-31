@@ -12,11 +12,11 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
  * outcome is called.
  *
  * A terminal reads as what was OBSERVED: "No result" and "Stop requested —
- * not confirmed" are not "Completed" and not "Stopped".
+ * not confirmed" are not "Run finished" and not "Stopped".
  */
 export const CHILD_WORK_STATUS_LABEL: Record<ChildWorkDisplayStatus, string> = {
   running: 'Running',
-  completed: 'Completed',
+  completed: 'Run finished',
   failed: 'Failed',
   cancelled: 'Stopped',
   // Decision F: a stop nobody confirmed is not a stop that happened.
