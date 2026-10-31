@@ -74,10 +74,15 @@ class CodedOrchestrationError extends Error {
 }
 
 const sendExecutionMessageMock = vi.fn();
+const queueExecutionMessageMock = vi
+  .fn()
+  .mockResolvedValue({ outcome: 'queued', entry: {} });
 vi.mock('@kontourai/station-sdk/client', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk/client')>()),
   sendExecutionMessage: (...args: unknown[]) =>
     sendExecutionMessageMock(...args),
+  queueExecutionMessage: (...args: unknown[]) =>
+    queueExecutionMessageMock(...args),
 }));
 
 const updateChatMock = vi.fn((sessionId: string, updates: unknown) => {
@@ -1424,7 +1429,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     expect(onAdmission.mock.calls).toEqual([['not-invoked'], ['accepted']]);
   });
 
-  it('reports busy form follow-up queue admission even though the legacy return value is undefined', async () => {
+  it('reports busy form follow-up inbox admission', async () => {
     activeChatsStore.updateChat(sessionId, { status: 'sending' });
     const onAdmission = vi.fn();
     const { result } = renderHook(() => useSendMessage('http://api.test'));
@@ -1440,11 +1445,11 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
           undefined,
           { queueOnBusy: true, onAdmission },
         ),
-      ).toBeUndefined();
+      ).toBe(true);
     });
-    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
-    expect(activeChatsStore.getSnapshot()[sessionId]?.queuedMessages).toContain(
-      'Submitted form',
+    expect(queueExecutionMessageMock).toHaveBeenCalledOnce();
+    expect(activeChatsStore.getSnapshot()[sessionId]?.queuedMessages).toEqual(
+      [],
     );
     expect(onAdmission.mock.calls).toEqual([['accepted']]);
   });
@@ -2799,9 +2804,10 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
 
     expect(sendExecutionMessageMock).not.toHaveBeenCalled();
     expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
-    expect(activeChatsStore.getSnapshot()[sessionId].queuedMessages).toEqual([
-      'next',
-    ]);
+    expect(queueExecutionMessageMock).toHaveBeenCalledOnce();
+    expect(activeChatsStore.getSnapshot()[sessionId].queuedMessages).toEqual(
+      [],
+    );
   });
 
   // A refused steer is a send that did not go, so the composer repeats it.
@@ -2838,12 +2844,10 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     });
     expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
     expect(sendExecutionMessageMock).not.toHaveBeenCalled();
-    expect(activeChatsStore.getSnapshot()[sessionId].queuedMessages).toEqual([
-      'course correct',
-    ]);
-    expect(
-      activeChatsStore.getSnapshot()[sessionId].queuedMessageMetadata,
-    ).toEqual([expect.objectContaining({ mode: 'steer' })]);
+    expect(queueExecutionMessageMock).toHaveBeenCalledOnce();
+    expect(activeChatsStore.getSnapshot()[sessionId].queuedMessages).toEqual(
+      [],
+    );
   });
 
   it('steers a mid-turn message on Claude instead of queueing a new turn', async () => {
@@ -2926,9 +2930,10 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
 
     expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
     expect(sendExecutionMessageMock).not.toHaveBeenCalled();
-    expect(activeChatsStore.getSnapshot()[sessionId].queuedMessages).toEqual([
-      'after it',
-    ]);
+    expect(queueExecutionMessageMock).toHaveBeenCalledOnce();
+    expect(activeChatsStore.getSnapshot()[sessionId].queuedMessages).toEqual(
+      [],
+    );
   });
 
   it('a send refused because its session is still starting moves into the queue instead of failing', async () => {
@@ -3121,14 +3126,18 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     }
   });
 
-  it('queues on a steering engine when queueOnBusy is requested', async () => {
+  it('sends an explicit busy follow-up to the conversation inbox', async () => {
     activeChatsStore.updateChat(sessionId, {
       status: 'sending',
       orchestrationProvider: 'claude',
       openTurnId: 'turn-open',
+      conversationId: sessionId,
+    });
+    queueExecutionMessageMock.mockResolvedValueOnce({
+      outcome: 'queued',
+      entry: {},
     });
     const { result } = renderHook(() => useSendMessage('http://api.test'));
-
     await act(async () => {
       await result.current(
         sessionId,
@@ -3141,12 +3150,74 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
         { queueOnBusy: true },
       );
     });
-
+    expect(queueExecutionMessageMock).toHaveBeenCalledWith(
+      'http://api.test',
+      expect.objectContaining({
+        conversationId: sessionId,
+        message: 'wait for this turn',
+        clientTurnId: expect.any(String),
+      }),
+      expect.any(Object),
+    );
+    expect(activeChatsStore.getSnapshot()[sessionId].queuedMessages).toEqual(
+      [],
+    );
     expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps an unanswered busy follow-up in the outbox, not the local chat queue', async () => {
+    activeChatsStore.updateChat(sessionId, {
+      status: 'sending',
+      conversationId: sessionId,
+    });
+    queueExecutionMessageMock.mockRejectedValueOnce(new TypeError('offline'));
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await result.current(
+        sessionId,
+        'claude',
+        sessionId,
+        'offline follow-up',
+        undefined,
+        undefined,
+        'offline-key',
+        { queueOnBusy: true },
+      );
+    });
+    expect(activeChatsStore.getSnapshot()[sessionId].queuedMessages).toEqual(
+      [],
+    );
+    expect(activeChatsStore.getSnapshot()[sessionId].status).toBe('queued');
     expect(sendExecutionMessageMock).not.toHaveBeenCalled();
-    expect(activeChatsStore.getSnapshot()[sessionId].queuedMessages).toEqual([
-      'wait for this turn',
-    ]);
+  });
+
+  it('uses the started receipt when the busy turn ends before the request', async () => {
+    activeChatsStore.updateChat(sessionId, {
+      status: 'sending',
+      conversationId: sessionId,
+    });
+    queueExecutionMessageMock.mockResolvedValueOnce({
+      outcome: 'started',
+      receipt: successReceipt(),
+    });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await result.current(
+        sessionId,
+        'claude',
+        sessionId,
+        'start now',
+        undefined,
+        undefined,
+        undefined,
+        { queueOnBusy: true },
+      );
+    });
+    expect(queueExecutionMessageMock).toHaveBeenCalledOnce();
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(activeChatsStore.getSnapshot()[sessionId].queuedMessages).toEqual(
+      [],
+    );
   });
 
   it('steers a mid-turn message on Codex instead of queueing a new turn', async () => {
@@ -3631,8 +3702,9 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       });
       expect(sendExecutionMessageMock).not.toHaveBeenCalled();
       expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
+      expect(queueExecutionMessageMock).toHaveBeenCalledOnce();
       expect(activeChatsStore.getSnapshot()[sessionId]?.queuedMessages).toEqual(
-        ['after that turn'],
+        [],
       );
     });
 
