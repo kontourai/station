@@ -1,7 +1,6 @@
 import type { Skill } from '@kontourai/station-contracts/catalog';
 import { resolveSkillCommandName } from '@kontourai/station-contracts/skill-command';
 import { agentQueries } from '@kontourai/station-sdk';
-import { compactConversation } from '../hooks/useContextCompaction';
 import { runtimeCatalogSourceLabel } from '../utils/execution';
 import { agentCommandSkills } from '../utils/skill-command-catalog';
 import { registerCommand } from './registry';
@@ -17,6 +16,9 @@ registerCommand(
       return;
     }
     try {
+      const { compactConversation } = await import(
+        '../hooks/useContextCompaction'
+      );
       await compactConversation(apiBase, chatState.conversationId);
       addEphemeralMessage(sessionId, {
         role: 'system',
