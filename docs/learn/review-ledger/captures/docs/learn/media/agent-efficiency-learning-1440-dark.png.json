@@ -1,0 +1,10 @@
+{
+  "path": "docs/learn/media/agent-efficiency-learning-1440-dark.png",
+  "sources": [
+    "src-ui/src/views/learning-review/LearningReviewPanel.tsx",
+    "src-ui/src/views/learning-review/LearningRecordActions.tsx",
+    "packages/sdk/src/query-domains/learningReview.ts",
+    "src-ui/src/index.css"
+  ],
+  "reviewNotes": []
+}

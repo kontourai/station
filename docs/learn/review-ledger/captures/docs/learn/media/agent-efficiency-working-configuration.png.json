@@ -1,0 +1,8 @@
+{
+  "path": "docs/learn/media/agent-efficiency-working-configuration.png",
+  "sources": [
+    "src-ui/src/views/project-settings/ProjectWorkingConfiguration.tsx",
+    "src-ui/src/index.css"
+  ],
+  "reviewNotes": []
+}
