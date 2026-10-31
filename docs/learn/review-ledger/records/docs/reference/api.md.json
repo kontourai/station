@@ -646,7 +646,19 @@
 
     "src-server/services/orchestration/session-goal-module.ts",
 
-    "src-server/routes/operations/automations.ts"
+    "src-server/routes/operations/automations.ts",
+
+    "src-server/services/orchestration/conversation-history-read-service.ts",
+
+    "src-server/services/orchestration/session-authorization.ts",
+
+    "src-server/services/integrations/integration-status-service.ts",
+
+    "src-server/services/orchestration/task-write-back-store.ts",
+
+    "src-server/services/scheduling/scheduled-conversation-runs.ts",
+
+    "src-server/runtime/routes/agent-schedule-composition.ts"
   ],
 
   "checks": [

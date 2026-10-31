@@ -814,7 +814,19 @@
 
     "src-ui/src/components/chat/SessionGoalControl.tsx",
 
-    "packages/sdk/src/client/automations.ts"
+    "packages/sdk/src/client/automations.ts",
+
+    "src-server/services/orchestration/conversation-history-read-service.ts",
+
+    "src-server/services/orchestration/session-authorization.ts",
+
+    "packages/sdk/src/query-domains/integrationStatus.ts",
+
+    "packages/sdk/src/query-domains/taskWriteBack.ts",
+
+    "packages/sdk/src/query-domains/scheduler.ts",
+
+    "src-server/runtime/routes/agent-schedule-composition.ts"
   ],
 
   "checks": [
