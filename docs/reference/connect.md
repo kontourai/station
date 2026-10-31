@@ -528,14 +528,17 @@ approval prompts**, `approval:full-access`). Anything else, and any `scope` besi
 delegation, is refused with `invalid_request`. The device-pairing panel asks
 for all of it (full device access: Standard, `coding:exec` and
 `approval:full-access`), never the default grant's `access:manage`; an
-account-bound request asks for Standard.
+account-bound access request asks for Read-only; the server caps older or
+overbroad account-bound access requests to Read-only as well.
 
 Every approval surface (the **Paired devices** inbox, **Needs attention**, and
 `station environment access approve --scope=<scope,…>`) lists what the request
 asks for, summarized ("asks for full device access"), and approves it as asked
 unless the approver narrows it under **Limit access** (or with `--scope`). In
 **Needs attention** the request is a one-line card whose **Review** opens a
-dialog with that summary and Approve/Deny. The confirm
+dialog with that summary and Approve/Deny for ordinary requests. An
+account-binding-required request instead opens pairing management; its attention
+item does not disclose the account identity. The confirm
 route takes the kept scope as `scope`, which must be a non-empty subset of the
 request; omitted, the device gets what it asked for. Requested extras are the
 operator's to grant: an approval that keeps one needs the operator credential or
@@ -544,9 +547,10 @@ unauthenticated at-the-machine approval, which may still approve the rest with
 the extras left out. The same rule covers an operator-created offer whose scope
 carries one. A delegation, relay or account-bound grant cannot be trimmed, and
 its **Needs attention** item carries no `requestedScope`; an account binding
-(operator only) approves the request as asked. The Station app never asks for
-an elevated grant on an account-bound request, so that matters only for an
-operator-created offer that carries one. Pairing with a Station
+review shows the read-only grant. The pairing panel requests a fresh operator
+passkey confirmation on the consent origin; the host CLI retains its direct
+operator-credential path. An operator can separately promote a Device after
+pairing when its role and use require more. Pairing with a Station
 that predates `scope` ignores it, and that Station's own approval surface shows
 the default grant it would issue. A request that names no scope still receives the historical
 default grant, which Station peers (`station environment access request`) and

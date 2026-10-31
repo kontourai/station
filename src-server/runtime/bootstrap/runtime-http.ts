@@ -90,6 +90,7 @@ import {
 } from '../../services/connections/virtual-application.js';
 import { guardAccountResponse } from '../../services/identity/account-response-guard.js';
 import {
+  isAccountBindingConsentLeaf,
   isOperatorSessionLeaf,
   isOperatorSessionRead,
   OPERATOR_SESSION_COOKIE,
@@ -1257,7 +1258,8 @@ function configureRuntimeSecurity(
           c.req.path,
         )) ||
       (c.req.method === 'POST' &&
-        /^\/api\/pairing\/requests\/[^/]+\/confirm$/.test(c.req.path))
+        /^\/api\/pairing\/requests\/[^/]+\/confirm$/.test(c.req.path)) ||
+      isAccountBindingConsentLeaf(c.req.method, c.req.path)
         ? security.operatorSessions?.signInUrl
         : null;
     const hasQueryCredential = hasCredentialQuery(c.req.url);
@@ -1458,6 +1460,19 @@ function configureRuntimeSecurity(
           {
             error: { code: 'insufficient_scope' },
             ...(inventorySignIn ? { signInUrl: inventorySignIn } : {}),
+          },
+          403,
+        );
+      }
+      if (isAccountBindingConsentLeaf(c.req.method, c.req.path)) {
+        const sessionResponse = await admitOperatorSession(
+          authority === 'device-credential',
+        );
+        if (sessionResponse) return sessionResponse;
+        return c.json(
+          {
+            error: { code: 'operator_session_required' },
+            signInUrl: security.operatorSessions?.signInUrl ?? null,
           },
           403,
         );

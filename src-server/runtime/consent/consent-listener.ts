@@ -213,6 +213,9 @@ function reviewPage(
   const warning = description.warning
     ? `<div class="warning">${escapeHtml(description.warning)}</div>`
     : '';
+  const details = description.details?.length
+    ? `<details><summary>Account details</summary><ul>${description.details.map((item) => `<li><strong>${escapeHtml(item.label)}</strong><span>${escapeHtml(item.detail)}</span></li>`).join('')}</ul></details>`
+    : '';
   const warnings = (description.warnings ?? [])
     .map((text) => `<div class="warning">${escapeHtml(text)}</div>`)
     .join('');
@@ -226,7 +229,7 @@ function reviewPage(
 <h1>${escapeHtml(description.title)}</h1>
 ${comparison}${warnings}
 <p>${escapeHtml(description.summary)}</p>
-<ul>${items}</ul>${warning}
+<ul>${items}</ul>${details}${warning}
 <form method="post" action="./${encodeURIComponent(transaction.id)}/decide${partition ? `?scope=${encodeURIComponent(partition)}` : ''}" class="actions" ${passkey ? `data-success="${escapeHtml(transaction.target.kind === 'outside-agent-approval' ? 'Approval recorded. Access activates only when the requesting client completes sign-in.' : 'Applied. Return to Station.')}" data-options="${escapeHtml(JSON.stringify(passkey.options))}"` : ''}>
 <input type="hidden" name="nonce" value="${escapeHtml(nonce)}">
 <button class="deny" type="submit" name="decision" value="deny">${escapeHtml(description.denyLabel)}</button>

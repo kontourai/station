@@ -58,14 +58,19 @@ import {
   GateTestAdapter,
 } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { readJson } from '../../../__test-utils__/read-json.js';
+import { SoftwareAuthenticator } from '../../../__test-utils__/software-authenticator.js';
 import { readStreamUntil } from '../../../__test-utils__/sse-helpers.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { KnowledgeStoreProvider } from '../../../knowledge-store/knowledge-store-provider.js';
 import { resolveStationBrowserOrigins } from '../../../security/station-browser-origins.js';
+import { ConsentChannelService } from '../../../services/consent/consent-channel.js';
 import { createApplicationSessionRuntime } from '../../../services/identity/application-session-runtime.js';
 import { loadDeploymentAuthentication } from '../../../services/identity/deployment-authentication-loader.js';
 import { deploymentAccountPrincipal } from '../../../services/identity/deployment-authentication-service.js';
 import { loadLocalAccounts } from '../../../services/identity/local-account-runtime.js';
+import { OperatorPasskeyEnrollmentService } from '../../../services/identity/operator-passkey-enrollment.js';
+import { LazyOperatorPasskeyRegistry } from '../../../services/identity/operator-passkey-registry.js';
+import { OperatorSessionService } from '../../../services/identity/operator-sessions.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
@@ -81,6 +86,7 @@ import {
   INTERNAL_API_TOKEN_HEADER,
   INTERNAL_INGRESS_IDENTITY_HEADER,
 } from '../../../utils/internal-api-token.js';
+import { createConsentApp } from '../../consent/consent-listener.js';
 import {
   configureRuntimeRoutes as configureRuntimeRoutesProduction,
   isProjectMemberDraftLease,
@@ -266,12 +272,45 @@ describe('project guest administration over the production composition', () => {
       rmSync(directory, { recursive: true, force: true });
   });
 
-  async function setup(withAgent = false, useLocalAccounts = false) {
+  async function setup(
+    withAgent = false,
+    useLocalAccounts = false,
+    withPasskey = false,
+  ) {
     const owned = directories[directories.length - 1];
     const homeDir = join(owned, 'data');
     mkdirSync(join(homeDir, 'security'), { mode: 0o700, recursive: true });
     const security = new EnvironmentSecurityService({ homeDir });
     const { credential: operatorCredential } = await security.initialize();
+    const consentOrigin = 'https://station.example.test:8443';
+    const registry = withPasskey
+      ? new LazyOperatorPasskeyRegistry(homeDir)
+      : undefined;
+    if (registry)
+      roomClosers.push(async () => {
+        registry.close();
+      });
+    const operatorSessions = registry
+      ? new OperatorSessionService({
+          registry,
+          origin: consentOrigin,
+          identifyDevice: (credential) => security.identifyDevice(credential),
+          epoch: () =>
+            security.pseudonymizePairingAuditSource(
+              'operator-session-epoch.v1',
+            ),
+        })
+      : undefined;
+    const operatorPasskeys = registry
+      ? new OperatorPasskeyEnrollmentService({
+          registry,
+          origin: consentOrigin,
+        })
+      : undefined;
+    const consentChannel = new ConsentChannelService({
+      trustedOrigin: consentOrigin,
+    });
+    if (withPasskey) consentChannel.markListening(4324);
     const modulePath = writeProviderModule(homeDir);
     const authentication = await loadDeploymentAuthentication(
       { modulePath, publicOrigin: ORIGIN },
@@ -454,6 +493,9 @@ describe('project guest administration over the production composition', () => {
         },
       ),
       environmentSecurityService: security,
+      consentChannel,
+      operatorSessions,
+      operatorPasskeys,
       eventBus,
       taskGraphService: graph,
     });
@@ -612,6 +654,9 @@ describe('project guest administration over the production composition', () => {
       request,
       security,
       authentication,
+      consentChannel,
+      operatorSessions,
+      operatorPasskeys,
       operatorCredential,
       projectService,
       knowledgeStoreProvider,
@@ -972,6 +1017,34 @@ describe('project guest administration over the production composition', () => {
         serveEnv,
       );
     const room = `/api/projects/${project.slug}/room`;
+    const initialScope = h.security.devicePairing.effectiveScope(
+      people[0]!.paired.credential,
+    );
+    expect(initialScope).toBe('orchestration:read');
+    const beforePromotion = await h.request(
+      `${room}/init`,
+      h.guestHeaders(
+        people[0]!.paired.credential,
+        people[0]!.cookie,
+      )({
+        method: 'POST',
+        headers: { Origin: ORIGIN, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ expectedProjectId: project.id }),
+      }),
+    );
+    expect(beforePromotion.status).toBe(403);
+    expect(await beforePromotion.json()).toMatchObject({
+      error: { code: 'insufficient_scope' },
+    });
+    const promoted = await h.request(
+      `/api/pairing/devices/${people[0]!.paired.device.id}/scope`,
+      h.operatorHeaders({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scope: GUEST_GRANT.split(' ') }),
+      }),
+    );
+    expect(promoted.status, await promoted.clone().text()).toBe(200);
     const initialized = await h.request(
       `${room}/init`,
       h.guestHeaders(
@@ -1849,6 +1922,259 @@ describe('project guest administration over the production composition', () => {
     expect(
       await slugs(await h.request('/api/projects', h.operatorHeaders())),
     ).toEqual(['demo', 'private']);
+  });
+
+  test('passkey consent approves a member browser that can read its shared Project', async () => {
+    const h = await setup(false, false, true);
+    const shared = await h.shareWithGuestAdmin(
+      'consent-project',
+      'Consent Project',
+    );
+    const pairing = h.security.devicePairing;
+    const operatorOffer = pairing.createOffer({
+      endpoint: ORIGIN,
+      scope: 'orchestration:read',
+    });
+    const operatorRequest = pairing.requestPairing({
+      offerId: operatorOffer.offerId,
+      proof: operatorOffer.challenge,
+      deviceName: 'Owner browser',
+      requesterPosition: 'unproven',
+    });
+    pairing.confirmRequest(operatorRequest.requestId, {
+      kind: 'presented-credential',
+    });
+    const owner = pairing.exchange({
+      offerId: operatorOffer.offerId,
+      proof: operatorOffer.challenge,
+      requestId: operatorRequest.requestId,
+    });
+    const authenticator = new SoftwareAuthenticator();
+    const enrollment = h.operatorPasskeys!;
+    const opened = enrollment.createRequest({
+      credential: owner.credential,
+      deviceLabel: 'Owner browser',
+      requester: {
+        kind: 'paired-device',
+        deviceId: owner.device.id,
+        pairedAt: Date.now(),
+        scope: owner.device.scope,
+      },
+    });
+    enrollment.confirm(opened.code, owner.device.id);
+    const registration = await enrollment.beginRegistration(
+      opened.requestId,
+      owner.credential,
+    );
+    await enrollment.finishRegistration(
+      opened.requestId,
+      owner.credential,
+      authenticator.register(registration, {
+        origin: 'https://station.example.test:8443',
+      }),
+      'Owner',
+    );
+    const sessions = h.operatorSessions!;
+    const signIn = await sessions.options(
+      sessions.renderNonce(owner.credential),
+      owner.credential,
+    );
+    const signed = await sessions.complete(
+      signIn.ceremonyId,
+      owner.credential,
+      authenticator.authenticate(signIn.options, {
+        origin: 'https://station.example.test:8443',
+      }),
+    );
+    const cookie = `__Host-station-device=${owner.credential}; __Host-station-operator=${signed.secret}`;
+    const access = await h.request(
+      '/.well-known/station/v1/pairing/access-request',
+      {
+        method: 'POST',
+        headers: {
+          cookie: 'fixture_account=guest',
+          origin: ORIGIN,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          deviceName: 'Member browser',
+          scope: 'orchestration:read orchestration:operate terminal:operate',
+          requireAccountBinding: true,
+        }),
+      },
+    );
+    expect(access.status, await access.clone().text()).toBe(202);
+    const pending = await readJson<{
+      requestId: string;
+      offerId: string;
+      proof: string;
+    }>(access);
+    const requested = await h.request(
+      `/api/pairing/requests/${pending.requestId}/account-consent`,
+      {
+        method: 'POST',
+        headers: { cookie, origin: ORIGIN, 'content-type': 'application/json' },
+        body: '{}',
+      },
+    );
+    expect(requested.status, await requested.clone().text()).toBe(202);
+    const { transaction } = await readJson<{ transaction: { id: string } }>(
+      requested,
+    );
+    const consent = createConsentApp({
+      channel: h.consentChannel,
+      credentials: h.security,
+      passkeys: h.operatorPasskeys,
+      sessions,
+    });
+    const headers = {
+      host: 'station.example.test:8443',
+      origin: 'https://station.example.test:8443',
+      cookie,
+      'sec-fetch-site': 'same-origin',
+      'content-type': 'application/json',
+    };
+    const page = await consent.request(`/consent/${transaction.id}`, {
+      headers: {
+        ...headers,
+        'sec-fetch-mode': 'navigate',
+        'sec-fetch-dest': 'document',
+      },
+    });
+    expect(page.status).toBe(200);
+    const html = await page.text();
+    expect(html).toContain('Read');
+    expect(html).not.toContain('Terminal');
+    expect(html).toContain('Station account');
+    expect(html).toContain('<summary>Account details</summary>');
+    expect(html).toContain('Account provider');
+    expect(html).toContain('Account ID');
+    const nonce = html.match(/name="nonce" value="([^"]+)"/)![1];
+    const options = JSON.parse(
+      html
+        .match(/data-options="([^"]+)"/)![1]
+        .replaceAll('&quot;', '"')
+        .replaceAll('&amp;', '&'),
+    );
+    const decision = await consent.request(
+      `/consent/${transaction.id}/decide`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          nonce,
+          response: authenticator.authenticate(options, {
+            origin: 'https://station.example.test:8443',
+            counter: 2,
+          }),
+        }),
+      },
+    );
+    expect(decision.status, await decision.clone().text()).toBe(200);
+    const exchange = await h.request(
+      '/.well-known/station/v1/pairing/exchange',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          offerId: pending.offerId,
+          proof: pending.proof,
+          requestId: pending.requestId,
+        }),
+      },
+    );
+    expect(exchange.status, await exchange.clone().text()).toBe(200);
+    const { credential } = await readJson<{ credential: string }>(exchange);
+    const read = await h.request(
+      '/api/projects/consent-project',
+      h.guestHeaders(credential)(),
+    );
+    expect(read.status, await read.clone().text()).toBe(200);
+    expect(pairing.identifyDevice(credential)?.scope).toBe(
+      'orchestration:read',
+    );
+    expect(pairing.effectiveScope(credential)).toBe('orchestration:read');
+    const guest = h.guestHeaders(credential);
+    const invite = await h.request(
+      '/api/projects/consent-project/access/invitations',
+      guest({
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          scope: shared.scope,
+          email: null,
+          role: 'viewer',
+          expiresAt: new Date(Date.now() + 3600000).toISOString(),
+        }),
+      }),
+    );
+    expect(invite.status).toBe(403);
+    expect(await invite.json()).toMatchObject({
+      error: { code: 'insufficient_scope' },
+    });
+    const terminal = await h.request(
+      '/api/projects/consent-project/terminals/terminal-nope',
+      guest({ method: 'DELETE' }),
+    );
+    expect(terminal.status).toBe(403);
+    const execute = await h.request(
+      '/api/orchestration/chat',
+      guest({
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{}',
+      }),
+    );
+    expect(execute.status).toBe(403);
+  });
+
+  test('browser-cookie exchange narrows an older account-bound offer independently', async () => {
+    const h = await setup();
+    const pairing = h.security.devicePairing;
+    const offer = pairing.createOffer({
+      endpoint: ORIGIN,
+      scope: 'orchestration:read orchestration:operate terminal:operate',
+    });
+    const pending = pairing.requestPairing({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'Legacy member browser',
+      requesterPosition: 'unproven',
+      accountCandidate: {
+        issuer: PROVIDER_ISSUER,
+        subject: GUEST_SUBJECT,
+        displayName: 'Guest Person',
+      },
+      accountCandidateSessionId: `session-${GUEST_SUBJECT}`,
+      requireAccountBinding: true,
+    });
+    const approved = await h.request(
+      `/api/pairing/requests/${pending.requestId}/confirm`,
+      h.operatorHeaders({
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ bindAccountIdentity: true }),
+      }),
+    );
+    expect(approved.status, await approved.clone().text()).toBe(200);
+    const exchange = await h.request(
+      '/.well-known/station/v1/pairing/exchange',
+      {
+        method: 'POST',
+        headers: { origin: ORIGIN, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          offerId: offer.offerId,
+          proof: offer.challenge,
+          requestId: pending.requestId,
+          delivery: 'browser-cookie',
+        }),
+      },
+    );
+    expect(exchange.status, await exchange.clone().text()).toBe(200);
+    expect(await exchange.json()).toMatchObject({
+      device: { scope: 'orchestration:read' },
+      delivery: 'browser-cookie',
+    });
   });
 
   test('account-bound pairing exchange refuses a provider session revoked after approval', async () => {

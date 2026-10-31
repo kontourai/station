@@ -85,12 +85,14 @@ export function RequestedScopeChecklist({
   kept,
   onChange,
   disabled = false,
+  allowLimit = true,
 }: {
   deviceName: string;
   requestedScope: string;
   kept: ReadonlySet<PairingScope>;
   onChange: (next: Set<PairingScope>) => void;
   disabled?: boolean;
+  allowLimit?: boolean;
 }) {
   const tokens = requestedScopeTokens(requestedScope);
   const limited = kept.size < tokens.length;
@@ -109,46 +111,48 @@ export function RequestedScopeChecklist({
           </>
         )}
       </p>
-      <details
-        className="requested-access__limit"
-        open={open}
-        onToggle={(event) => setOpen(event.currentTarget.open)}
-      >
-        <summary>Limit access</summary>
-        <fieldset
-          className="requested-access__list"
-          disabled={disabled}
-          aria-label={`What ${deviceName} may do`}
+      {allowLimit && (
+        <details
+          className="requested-access__limit"
+          open={open}
+          onToggle={(event) => setOpen(event.currentTarget.open)}
         >
-          {tokens.map((token) => {
-            const isOnlyKept = kept.has(token) && kept.size === 1;
-            return (
-              <label key={token} className="requested-access__option">
-                <input
-                  type="checkbox"
-                  checked={kept.has(token)}
-                  disabled={isOnlyKept}
-                  onChange={(event) => {
-                    const next = new Set(kept);
-                    if (event.target.checked) next.add(token);
-                    else next.delete(token);
-                    onChange(next);
-                  }}
-                />
-                <span>
-                  {PAIRING_SCOPE_DESCRIPTIONS[token].label}
-                  {REQUESTABLE_EXTRAS.includes(token) && (
-                    <span className="requested-access__tag">Elevated</span>
-                  )}
-                  <span className="requested-access__detail">
-                    {PAIRING_SCOPE_DESCRIPTIONS[token].summary}
+          <summary>Limit access</summary>
+          <fieldset
+            className="requested-access__list"
+            disabled={disabled}
+            aria-label={`What ${deviceName} may do`}
+          >
+            {tokens.map((token) => {
+              const isOnlyKept = kept.has(token) && kept.size === 1;
+              return (
+                <label key={token} className="requested-access__option">
+                  <input
+                    type="checkbox"
+                    checked={kept.has(token)}
+                    disabled={isOnlyKept}
+                    onChange={(event) => {
+                      const next = new Set(kept);
+                      if (event.target.checked) next.add(token);
+                      else next.delete(token);
+                      onChange(next);
+                    }}
+                  />
+                  <span>
+                    {PAIRING_SCOPE_DESCRIPTIONS[token].label}
+                    {REQUESTABLE_EXTRAS.includes(token) && (
+                      <span className="requested-access__tag">Elevated</span>
+                    )}
+                    <span className="requested-access__detail">
+                      {PAIRING_SCOPE_DESCRIPTIONS[token].summary}
+                    </span>
                   </span>
-                </span>
-              </label>
-            );
-          })}
-        </fieldset>
-      </details>
+                </label>
+              );
+            })}
+          </fieldset>
+        </details>
+      )}
     </div>
   );
 }

@@ -298,6 +298,8 @@ interface PairingOfferState extends DevicePairingOffer {
   requesterPosition?: PairingRequesterPosition;
   /** PRIVATE provider session used to revalidate an account candidate at approval. */
   accountCandidateSessionId?: string;
+  /** Server-owned access-request policy; never supplied by a client. */
+  accountBrowserReadOnly?: true;
   /** PRIVATE marker: these requests can be approved/exchanged only by relay enrollment. */
   relayEnrollmentId?: string;
 }
@@ -1460,10 +1462,14 @@ export class DevicePairingService {
   ): DevicePairingAccessRequestResponse {
     const offer = this.createOffer({
       endpoint: input.endpoint,
-      scope: input.scope,
+      scope: input.requireAccountBinding
+        ? PAIRING_SCOPE_ORCHESTRATION_READ
+        : input.scope,
       kind: input.kind,
     });
     try {
+      if (input.requireAccountBinding)
+        this.#offers.get(offer.offerId)!.accountBrowserReadOnly = true;
       const provenance = pairingProvenance({
         ...input,
         source: input.source ?? 'same-origin',
@@ -1701,6 +1707,13 @@ export class DevicePairingService {
       throw new DevicePairingError('invalid_request');
     }
     const finalScope = grantedScope ?? offer.scope;
+    if (
+      offer.accountBrowserReadOnly &&
+      (offer.scope !== PAIRING_SCOPE_ORCHESTRATION_READ ||
+        offer.request.scope !== PAIRING_SCOPE_ORCHESTRATION_READ ||
+        finalScope !== PAIRING_SCOPE_ORCHESTRATION_READ)
+    )
+      throw new DevicePairingError('invalid_request');
     // Full access or running commands, asked for at pairing, is kept only by
     // a credentialed approval, never by the unauthenticated floor.
     if (
@@ -1897,6 +1910,14 @@ export class DevicePairingService {
     // exchange decisions.
     const request = offer.request;
     if (!request) throw new DevicePairingError('request_not_confirmed');
+    if (
+      offer.accountBrowserReadOnly &&
+      (offer.scope !== PAIRING_SCOPE_ORCHESTRATION_READ ||
+        request.scope !== PAIRING_SCOPE_ORCHESTRATION_READ ||
+        (input.sessionScope !== undefined &&
+          input.sessionScope !== PAIRING_SCOPE_ORCHESTRATION_READ))
+    )
+      throw new DevicePairingError('invalid_request');
     if (
       request.requireAccountBinding &&
       (!offer.principalBinding ||
