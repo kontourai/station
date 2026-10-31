@@ -230,9 +230,9 @@ function isTaskNotFound(error: unknown): boolean {
 }
 
 export function TaskWorkspaceView({ taskId }: { taskId: string }) {
-  const visibilityFlags = useSurfaceVisibilityFlags();
-  const reviewEnabled = visibilityFlags.has('task-review');
-  const chatAppsEnabled = visibilityFlags.has('chat-apps');
+  const previews = useSurfaceVisibilityFlags();
+  const reviewEnabled = previews.has('task-review');
+  const chatAppsEnabled = previews.has('chat-apps');
   const { apiBase } = useApiBase();
   const requestScope = useHostRequestAuthorityScope();
   // Navigation survives authority verification remounts; protected pane state does not.
@@ -309,6 +309,7 @@ export function TaskWorkspaceView({ taskId }: { taskId: string }) {
           projectSlug={taskProject.slug}
           projectId={taskProject.id}
           reviewEnabled={reviewEnabled}
+          collaborationEnabled={previews.has('task-collaboration')}
           chatAppsEnabled={chatAppsEnabled}
           tab={tab}
           setTab={setTab}
@@ -444,6 +445,7 @@ function TaskWorkspaceContent({
   projectSlug,
   projectId,
   reviewEnabled,
+  collaborationEnabled,
   chatAppsEnabled,
   tab,
   setTab,
@@ -453,6 +455,7 @@ function TaskWorkspaceContent({
   projectSlug: string;
   projectId: string;
   reviewEnabled: boolean;
+  collaborationEnabled: boolean;
   chatAppsEnabled: boolean;
   tab: string;
   setTab: (tab: string) => void;
@@ -549,6 +552,7 @@ function TaskWorkspaceContent({
     <div className="page page--full task-workspace">
       <TaskRoomHeader
         task={graph.task}
+        collaborationEnabled={collaborationEnabled}
         projectSlug={projectSlug}
         projectId={projectId}
         onDetails={() => setTab('Details')}

@@ -74,6 +74,7 @@ describe('FeaturePreviewRegistry', () => {
 
     expect(registry.list()).toEqual([
       expect.objectContaining({ id: 'task-review', enabled: false }),
+      expect.objectContaining({ id: 'task-collaboration', enabled: false }),
       expect.objectContaining({ id: 'chat-apps', enabled: false }),
       expect.objectContaining({ id: 'visual-skills', enabled: false }),
       expect.objectContaining({
@@ -84,6 +85,7 @@ describe('FeaturePreviewRegistry', () => {
     const probe = bindProbe(registry);
     expect(registry.list()).toEqual([
       expect.objectContaining({ id: 'task-review', enabled: false }),
+      expect.objectContaining({ id: 'task-collaboration', enabled: false }),
       expect.objectContaining({ id: 'chat-apps', enabled: false }),
       expect.objectContaining({ id: 'visual-skills', enabled: false }),
       expect.objectContaining({
@@ -121,6 +123,7 @@ describe('FeaturePreviewRegistry', () => {
 
     expect(registry.list()).toEqual([
       expect.objectContaining({ id: 'task-review', enabled: false }),
+      expect.objectContaining({ id: 'task-collaboration', enabled: false }),
       expect.objectContaining({ id: 'chat-apps', enabled: false }),
       expect.objectContaining({ id: 'visual-skills', enabled: false }),
       expect.objectContaining({

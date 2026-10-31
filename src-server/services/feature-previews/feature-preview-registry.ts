@@ -86,6 +86,11 @@ export class FeaturePreviewRegistry {
         'Review Task plans, outputs and Screens with anchored comments and send them to the lead agent.',
     });
     this.rememberConsumer({
+      id: 'task-collaboration',
+      label: 'Task collaboration',
+      description: 'Show member names and presence in shared Task rooms.',
+    });
+    this.rememberConsumer({
       id: 'chat-apps',
       label: 'Chat apps',
       description:

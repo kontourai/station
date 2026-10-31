@@ -496,6 +496,7 @@ export async function runVitestGroup(
   try {
     execution = execute(process.execPath, args, spawnProcess, label, {
       cwd: root,
+      env: { ...process.env, STATION_VITEST_CORPUS_GROUP: group.name },
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
     });
