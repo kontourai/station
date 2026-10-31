@@ -232,11 +232,14 @@ password.
 #### The origin decides which passkeys work
 
 WebAuthn binds every passkey to a relying-party ID. Station uses the hostname
-of `STATION_AUTHENTICATION_ORIGIN` as that ID and accepts passkey responses only
-from that exact origin.
+of its configured sign-in origin as that ID and accepts passkey responses only
+from that exact origin. For sharing enabled in Settings, this is the saved
+public origin. Deployment-owned local accounts use
+`STATION_AUTHENTICATION_ORIGIN` with `STATION_LOCAL_ACCOUNTS=1`; deployment
+configuration takes precedence over the saved Settings choice.
 
 - **Use the sign-in address.** Passkeys work only on pages served from
-  `STATION_AUTHENTICATION_ORIGIN`. Another address in `ALLOWED_ORIGINS` can use
+  the configured sign-in origin. Another address in `ALLOWED_ORIGINS` can use
   passwords but is refused with `passkey_origin_unsupported`. Browsers also
   refuse a bare IP address as a passkey origin; use a DNS name or `localhost`.
 - **A new hostname orphans every member passkey.** Browsers and authenticators

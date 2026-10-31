@@ -5640,7 +5640,7 @@ export class StationRuntime {
       id: 'member-passkeys',
       label: 'Member passkeys',
       description:
-        'Let invited people using Station accounts create an account, sign in and recover with a passkey. Passkeys work only at the address in STATION_AUTHENTICATION_ORIGIN.',
+        'Let invited people using Station accounts create an account, sign in and recover with passkeys at the configured sign-in address.',
     });
   }
 
