@@ -7579,6 +7579,14 @@ export function createOrchestrationRoutes(
       const shared =
         c.req.query('includeGeneral') === '1' && deps.generalEventProducer;
       const abortShared = () => stream.abort();
+      const assertStreamCurrent = () => {
+        if (stream.aborted) throw new Error('stream_closed');
+        if (deps.isRequestPrincipalCurrent?.(c.req.raw) === false) {
+          closeReason ??= 'authorization-expired';
+          stream.abort();
+          throw new Error('Orchestration stream authorization expired');
+        }
+      };
       try {
         if (shared) {
           c.req.raw.signal.addEventListener('abort', abortShared, {
@@ -7588,11 +7596,13 @@ export function createOrchestrationRoutes(
           void shared(
             c,
             stream,
-            (frame) =>
-              stream.writeSSE({
+            (frame) => {
+              assertStreamCurrent();
+              return stream.writeSSE({
                 event: 'station:general',
                 data: JSON.stringify(frame),
-              }),
+              });
+            },
             authority,
           ).then(abortShared, abortShared);
         }
@@ -7633,12 +7643,7 @@ export function createOrchestrationRoutes(
         // are flushed, so a live event can never overtake buffered history.
         let deliveredSequence = 0;
         const writeAuthorized = async (frame: StreamFrame) => {
-          if (stream.aborted) throw new Error('stream_closed');
-          if (deps.isRequestPrincipalCurrent?.(c.req.raw) === false) {
-            closeReason ??= 'authorization-expired';
-            stream.abort();
-            throw new Error('Orchestration stream authorization expired');
-          }
+          assertStreamCurrent();
           // Queued frames cannot carry yesterday's authorization into a later write.
           if (
             frame.isAuthorized
