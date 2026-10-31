@@ -272,8 +272,10 @@ describe('header background tasks button (from #1064 AC3)', () => {
     // The label says why, rather than leaving a dead row to guess at. The host
     // never registers here: this suite's `useHostRequestAuthorityScope` stub
     // returns undefined, which is also the real "no authority yet" case.
-    const row = screen.getByRole('button', { name: 'Chat inventory' });
-    expect(row.textContent).toBe('Inventory');
+    const row = screen.getByRole('menuitem', {
+      name: 'Chat inventory — loading',
+    });
+    expect(row.textContent).toContain('loading');
     expect(row.hasAttribute('disabled')).toBe(true);
   });
 
@@ -295,10 +297,10 @@ describe('header background tasks button (from #1064 AC3)', () => {
 
 describe('one-bar rule (#3309)', () => {
   test('New is the bar’s one labelled action; Open is the ⋯ menu’s first row (B1)', async () => {
-    const controls = workspaceControls();
+    const controls = workspaceControls({ isInboxOpen: false });
     renderHeader({ workspaceControls: controls });
 
-    fireEvent.click(await screen.findByTitle('New chat'));
+    fireEvent.click(await screen.findByRole('button', { name: 'New chat' }));
     expect(controls.onNewChat).toHaveBeenCalledTimes(1);
     expect(screen.queryByTitle('Open Conversation')).toBeNull();
 
@@ -312,14 +314,18 @@ describe('one-bar rule (#3309)', () => {
   test('keeps left workspace controls before identity and New in right actions', async () => {
     renderHeader({
       chatIdentity: <span data-testid="chat-identity">Identity</span>,
-      workspaceControls: workspaceControls(),
+      workspaceControls: workspaceControls({ isInboxOpen: false }),
     });
     const header = document.querySelector('.chat-dock__header')!;
     const left = header.querySelector('.chat-dock__title')!;
     const right = header.querySelector('.chat-dock__header-actions')!;
-    expect(left.contains(await screen.findByTitle('New chat'))).toBe(false);
+    expect(
+      left.contains(await screen.findByRole('button', { name: 'New chat' })),
+    ).toBe(false);
     expect(left.contains(screen.getByTestId('chat-identity'))).toBe(true);
-    expect(right.contains(screen.getByTitle('New chat'))).toBe(true);
+    expect(
+      right.contains(screen.getByRole('button', { name: 'New chat' })),
+    ).toBe(true);
     // #1536 F: the folded commands' one control belongs to the actions cluster
     // too, not to the identity's side of the bar.
     expect(right.contains(screen.getByLabelText('More dock actions'))).toBe(
@@ -329,7 +335,7 @@ describe('one-bar rule (#3309)', () => {
 
   test('a collapsed pane offers none of the workspace controls', async () => {
     const { props, rerender } = renderHeader({
-      workspaceControls: workspaceControls(),
+      workspaceControls: workspaceControls({ isInboxOpen: false }),
     });
     expect(
       await screen.findByRole('button', { name: 'New chat' }),
@@ -433,7 +439,7 @@ describe('one-bar rule (#3309)', () => {
    */
   test('an open pane offers exactly these controls, by accessible name', async () => {
     renderHeader({ workspaceControls: workspaceControls() });
-    await screen.findByTitle('New chat');
+    await screen.findByRole('button', { name: /^More dock actions/ });
 
     expect(
       screen
@@ -448,9 +454,6 @@ describe('one-bar rule (#3309)', () => {
       // bracket these are the REGION's since #2046 2b and render in the
       // region bar (`RegionChromeBar.test.tsx` pins them there).
       'Hide inbox',
-      // The shared NewChatAction names itself "New chat"; its visible text
-      // in this bar is the short "New".
-      'New chat',
       'More dock actions',
     ]);
     expect(screen.queryByLabelText('Hide Chat')).toBeNull();
@@ -465,23 +468,23 @@ describe('one-bar rule (#3309)', () => {
   });
 });
 
-describe('New and its destination are one split control', () => {
-  test('the project destination sits beside New in the actions cluster, not beside the title', async () => {
-    renderHeader({
-      chatIdentity: <span data-testid="chat-identity">Identity</span>,
-      projectContext: (
-        <button type="button" data-testid="destination">
-          demo-project
-        </button>
-      ),
+describe('New chat belongs to the visible inbox toolbar', () => {
+  test('omits a duplicate header action while the inbox is open', async () => {
+    const { props, rerender } = renderHeader({
       workspaceControls: workspaceControls(),
     });
-    const newChat = await screen.findByTitle('New chat');
-    const split = newChat.closest('.chat-dock__new-split');
-    expect(split).not.toBeNull();
-    expect(split!.contains(screen.getByTestId('destination'))).toBe(true);
-    const left = document.querySelector('.chat-dock__title')!;
-    expect(left.contains(screen.getByTestId('destination'))).toBe(false);
+    await screen.findByRole('button', { name: /^More dock actions/ });
+    expect(screen.queryByRole('button', { name: 'New chat' })).toBeNull();
+    expect(document.querySelector('.chat-dock__project-context')).toBeNull();
+    rerender(
+      <ChatDockHeader
+        {...props}
+        workspaceControls={workspaceControls({ isInboxOpen: false })}
+      />,
+    );
+    expect(
+      await screen.findByRole('button', { name: 'New chat' }),
+    ).toBeTruthy();
   });
 });
 
@@ -532,7 +535,7 @@ describe('working chats ride the inbox toggle and the one More menu', () => {
 
   test('the working chats are the More menu’s first rows, and choosing one focuses it', async () => {
     const { focusSession } = renderWorking();
-    await screen.findByTitle('New chat');
+    await screen.findByRole('button', { name: /^More dock actions/ });
     const menu = openMoreMenu();
     const rows = within(menu)
       .getAllByRole('menuitem')
@@ -572,7 +575,7 @@ describe('working chats ride the inbox toggle and the one More menu', () => {
 
   test('without an inbox toggle the More trigger carries the counts', async () => {
     renderWorking({ showInboxToggle: false }, 1);
-    await screen.findByTitle('New chat');
+    await screen.findByRole('button', { name: /^More dock actions/ });
     const trigger = screen.getByRole('button', {
       name: 'More dock actions — 2 chats working, 1 unread',
     });
@@ -622,7 +625,7 @@ describe('the region’s commands fold into the More menu', () => {
       </RegionChromeSlotsContext.Provider>,
     );
     expect(absorb).toHaveBeenCalledTimes(1);
-    await within(trailing).findByTitle('New chat');
+    await within(trailing).findByRole('button', { name: /^More dock actions/ });
     fireEvent.click(
       within(trailing).getByRole('button', { name: /^More dock actions/ }),
     );

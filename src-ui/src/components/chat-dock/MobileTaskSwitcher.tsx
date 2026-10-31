@@ -11,6 +11,10 @@ import {
   useRef,
 } from 'react';
 import { createPortal } from 'react-dom';
+import {
+  useDeviceSettings,
+  useDeviceSettingsActions,
+} from '../../contexts/DeviceSettingsContext';
 import { navigationStore } from '../../contexts/navigation-store';
 import { useCoarseNow } from '../../hooks/useCoarseNow';
 import { useRowFocusPreservation } from '../../hooks/useRowFocusPreservation';
@@ -118,6 +122,8 @@ export function MobileTaskSwitcher({
   onRetryLoad?: () => void;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const { inboxSections } = useDeviceSettings();
+  const { setDeviceSetting } = useDeviceSettingsActions();
   const swipeActions = useSheetGesturesPreview();
   // One coarse tick for the open sheet's relative times; none while closed.
   const now = useCoarseNow(suppliedNow, { enabled: open });
@@ -157,10 +163,8 @@ export function MobileTaskSwitcher({
 
   const scope = useInboxScope(collectionTasks, now, workFacts);
   const groups = useInboxGroups(scope.items, now, workFacts);
-  const visibleGroups = useMemo(
-    () => groups.filter((group) => group.items.length > 0),
-    [groups],
-  );
+  const visibleGroups = groups;
+  const hasVisibleItems = groups.some((group) => group.items.length > 0);
 
   useLayoutEffect(() => {
     if (!open) return;
@@ -252,7 +256,7 @@ export function MobileTaskSwitcher({
         </header>
         <InboxScopeFilter scope={scope} />
         <div className="mobile-task-switcher__list">
-          {loadError && visibleGroups.length === 0 ? (
+          {loadError && !hasVisibleItems ? (
             <ErrorState
               variant="compact"
               title="Unable to load chats and tasks"
@@ -272,7 +276,7 @@ export function MobileTaskSwitcher({
             >
               <SkeletonList count={3} />
             </div>
-          ) : visibleGroups.length === 0 ? (
+          ) : !hasVisibleItems ? (
             <Empty
               variant="compact"
               label={
@@ -287,7 +291,7 @@ export function MobileTaskSwitcher({
               }
             />
           ) : null}
-          {loadError && visibleGroups.length > 0 && (
+          {loadError && hasVisibleItems && (
             <p role="status">
               Some chats may be out of date.{' '}
               {onRetryLoad && (
@@ -301,6 +305,14 @@ export function MobileTaskSwitcher({
               anatomy (`ChatDockInboxRows.tsx`) — same richness as the
               desktop panel, with `--touch` chrome for ≥44px targets. */}
           <InboxGroupList
+            collapsible={{
+              sections: inboxSections,
+              onToggle: (id) =>
+                setDeviceSetting('inboxSections', {
+                  ...inboxSections,
+                  [id]: inboxSections[id] === false,
+                }),
+            }}
             swipeActions={swipeActions}
             groups={visibleGroups}
             idPrefix="mobile-task-switcher"

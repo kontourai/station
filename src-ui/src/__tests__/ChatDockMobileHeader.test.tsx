@@ -218,7 +218,7 @@ async function openActions() {
 }
 
 describe('mobile conversation focus', () => {
-  test('keeps project and conversation switching directly reachable with readable context', () => {
+  test('keeps conversation switching direct and leaves future-project choice out of the active chat', () => {
     const onOpenTaskSwitcher = vi.fn();
     renderHeader({
       onOpenTaskSwitcher,
@@ -236,14 +236,9 @@ describe('mobile conversation focus', () => {
     fireEvent.click(identity);
     expect(onOpenTaskSwitcher).toHaveBeenCalledOnce();
     expect(
-      screen.getByRole('button', {
-        name: 'Switch project — New chats, Kontour AI',
-      }).textContent,
-    ).toContain('Kontour AI');
+      screen.queryByRole('button', { name: /^Switch project/ }),
+    ).toBeNull();
     expect(screen.getByRole('button', { name: 'Chat actions' })).toBeTruthy();
-    expect(
-      screen.getByRole('button', { name: /^Switch project/ }),
-    ).toBeTruthy();
     expect(
       screen.getByRole('button', { name: /^Chats and tasks/ }),
     ).toBeTruthy();
@@ -277,6 +272,7 @@ describe('mobile conversation focus', () => {
     'opens the canonical project creation route from the picker',
     async ({ projects }) => {
       renderHeader({
+        agentIdentity: null,
         projectSwitcher: {
           projectSlug: '',
           projectName: 'Choose a project',
@@ -337,6 +333,7 @@ describe('mobile conversation focus', () => {
     const onOpenProject = vi.fn();
     const onSwitchProject = vi.fn();
     renderHeader({
+      agentIdentity: null,
       projectSwitcher: {
         projectSlug: 'kontour-ai',
         projectName: 'Kontour AI',
@@ -408,7 +405,10 @@ describe('mobile switcher names include their visible text', () => {
     ['the project switcher', /^Switch project/],
     ['the chats and tasks switcher', /^Chats and tasks/],
   ])('%s', (_label, name) => {
-    renderHeader({ sessionProjectMismatchLabel: 'This chat: Alpha' });
+    renderHeader({
+      agentIdentity: null,
+      sessionProjectMismatchLabel: 'This chat: Alpha',
+    });
     const button = screen.getByRole('button', { name });
     const visible = words(button.textContent ?? '');
     expect(visible.length).toBeGreaterThan(0);
@@ -422,7 +422,6 @@ describe('the mobile dock bar control set (#928 C2b)', () => {
     renderHeader();
     for (const name of [
       'Collapse chat',
-      'Switch project — New chats, Kontour AI',
       'Chats and tasks — New chat, Codex',
       'Chat actions',
     ]) {

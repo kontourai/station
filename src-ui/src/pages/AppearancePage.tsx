@@ -155,7 +155,7 @@ function ModeControl({
     useShortcutRegistry()
       .getAllShortcuts()
       .find((candidate) => candidate.id === 'theme.toggle')?.disabled === true;
-  // A phone or a touch screen has no ⌘H to press; the hint would be noise.
+  // A phone or a touch screen has no âŒ˜H to press; the hint would be noise.
   const touch = useCoarsePointer();
   const mobile = useIsMobile();
   return (
@@ -297,7 +297,7 @@ export function AppearancePage() {
     [setDeviceSetting],
   );
   // The same shortcut, id and handler shape as the Settings ThemeToggle, so
-  // ⌘H works on this page as it does there.
+  // âŒ˜H works on this page as it does there.
   useKeyboardShortcut('theme.toggle', 'h', ['cmd'], 'Toggle theme', () =>
     setMode(mode === 'dark' ? 'light' : 'dark'),
   );
@@ -333,6 +333,34 @@ export function AppearancePage() {
         {formatSettingsMessage('scopeAccount', locale)}
       </p>
 
+      <PageSection className="appearance__section" title="Conversation">
+        <PageRow
+          title="Answer width"
+          description="Space available to assistant answers."
+        >
+          <div
+            className="appearance-choice__row"
+            role="radiogroup"
+            aria-label="Answer width"
+          >
+            {(['comfortable', 'wide', 'full'] as const).map((width) => (
+              <Button
+                key={width}
+                variant="ghost"
+                role="radio"
+                aria-checked={settings.chatAnswerWidth === width}
+                onClick={() => setDeviceSetting('chatAnswerWidth', width)}
+              >
+                {width === 'comfortable'
+                  ? 'Comfortable'
+                  : width === 'wide'
+                    ? 'Wide'
+                    : 'Full width'}
+              </Button>
+            ))}
+          </div>
+        </PageRow>
+      </PageSection>
       <PageSection className="appearance__section">
         <PageRow
           title="Mode"
@@ -379,7 +407,7 @@ export function AppearancePage() {
                 <span className="appearance-theme__name">{option.label}</span>
                 <span className="appearance-theme__detail">
                   {settling
-                    ? 'Loading…'
+                    ? 'Loadingâ€¦'
                     : broken
                       ? 'Not loaded'
                       : (preview.flavorLabel ?? 'Default')}

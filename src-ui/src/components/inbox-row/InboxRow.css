@@ -616,3 +616,13 @@
   color: var(--k-text-muted);
   font-size: var(--k-text-sm);
 }
+
+.inbox-row.is-current .inbox-row__open {
+  background: color-mix(in srgb, var(--k-action) 14%, var(--k-panel));
+  border-color: color-mix(in srgb, var(--k-action) 60%, var(--k-line));
+  box-shadow: inset 3px 0 0 var(--k-action);
+}
+.inbox-row__meta,
+.inbox-row__time {
+  color: var(--k-text-muted);
+}

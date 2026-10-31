@@ -315,3 +315,74 @@ export async function acknowledgeConversation(
     throw envelopeError(response, result, 'Failed to acknowledge conversation');
   }
 }
+
+/** Personal explicit resolution. A 404 means this host does not offer the preview. */
+export async function getConversationWorkState(
+  apiBase: string,
+  opts?: ClientRequestOptions,
+): Promise<{ settled: Record<string, string> } | null> {
+  const response = await getJson(
+    `${apiBase}/api/conversations/work-state`,
+    opts,
+  );
+  if (response.status === 404) return null;
+  const result = await readConversationEnvelope<{
+    settled: Record<string, string>;
+  }>(response);
+  if (!response.ok || !result.success || !result.data)
+    throw envelopeError(response, result, 'Could not read inbox resolution');
+  return result.data;
+}
+export async function setConversationWorkState(
+  apiBase: string,
+  conversationId: string,
+  settled: boolean,
+  opts?: ClientRequestOptions,
+): Promise<void> {
+  const response = await mutateJson(
+    `${apiBase}/api/conversations/${encodeURIComponent(conversationId)}/work-state`,
+    'PUT',
+    opts,
+    { settled },
+  );
+  const result = await readConversationEnvelope<unknown>(response);
+  if (!response.ok || !result.success)
+    throw envelopeError(
+      response,
+      result,
+      response.status === 404
+        ? 'This host does not support conversation resolution. Enable its preview or update Station.'
+        : 'Could not update conversation resolution',
+    );
+}
+
+/** Metadata-only turn directory, backed by the host's indexed Session digest. */
+export interface ConversationTurnDirectory {
+  session: { conversationId: string; turnCount: number };
+  turns: {
+    turnId: string;
+    startedAt: string;
+    request?: string;
+    outcome: 'completed' | 'failed' | 'interrupted' | 'open';
+  }[];
+  nextCursor: string | null;
+}
+export async function getConversationTurnDirectory(
+  apiBase: string,
+  conversationId: string,
+  cursor?: string,
+  opts?: ClientRequestOptions,
+): Promise<ConversationTurnDirectory | null> {
+  const params = new URLSearchParams({ turnLimit: '25' });
+  if (cursor) params.set('cursor', cursor);
+  const response = await getJson(
+    `${apiBase}/api/orchestration/session-reads/${encodeURIComponent(conversationId)}/digest?${params}`,
+    opts,
+  );
+  if (response.status === 404) return null;
+  const result =
+    await readConversationEnvelope<ConversationTurnDirectory>(response);
+  if (!response.ok || !result.success || !result.data)
+    throw envelopeError(response, result, 'Could not read the turn directory');
+  return result.data;
+}

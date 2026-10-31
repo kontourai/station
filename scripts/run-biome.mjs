@@ -60,7 +60,12 @@ if (process.platform !== 'win32') {
   execution.child.stdout?.pipe(process.stdout, { end: false });
   execution.child.stderr?.pipe(process.stderr, { end: false });
   const stop = () =>
-    terminateSuiteExecution(execution, { processLabel: 'Biome' });
+    terminateSuiteExecution(execution, {
+      processLabel: 'Biome',
+      terminationGraceMs: 10_000,
+      terminationForceMs: 5_000,
+      waitForSuiteSettlement,
+    });
   const onSignal = () => {
     void stop();
   };

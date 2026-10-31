@@ -152,8 +152,8 @@ function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
       rung: 'external',
       lane: 'external',
       tone: 'neutral',
-      word: SESSION_STATUS_WORDS.elsewhere,
-      reason: `Started in ${item.agentLabel}`,
+      word: 'Read only',
+      reason: `${item.agentLabel} · Replies unavailable here`,
     };
   }
   switch (item.lifecycleLabel) {
@@ -191,7 +191,7 @@ function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
         rung: 'unanswerable',
         lane: 'idle',
         tone: 'neutral',
-        word: SESSION_STATUS_WORDS.elsewhere,
+        word: 'Read only',
         reason: item.unanswerableNotice,
       };
     case 'Running': {

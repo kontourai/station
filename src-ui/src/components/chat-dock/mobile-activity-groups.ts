@@ -18,6 +18,7 @@ import type { WorkFactsById } from '../../views/home/work-facts';
 export { clearSnooze, readSnoozes, type SnoozeMap, writeSnooze };
 
 export type MobileActivityGroupId =
+  | 'open'
   | 'external'
   | LiveLaneId
   | 'drafts'
@@ -127,6 +128,7 @@ export function groupMobileActivity(
   now: number,
   snoozed: SnoozeMap = {},
   workFacts?: WorkFactsById,
+  resolution?: ReadonlySet<string>,
 ): MobileActivityGroup[] {
   // `snoozeKeyFor` (below) and the partition's own snooze lookup are both
   // `item.id` — the partition reads the same key this module's writers use.
@@ -134,9 +136,35 @@ export function groupMobileActivity(
     items,
     now,
     workFacts,
+    resolution,
     snoozedUntil: new Map(Object.entries(snoozed)),
   });
 
+  if (resolution) {
+    const openIds = new Set(
+      [...partition.running, ...partition.idle].map((item) => item.id),
+    );
+    return [
+      {
+        id: 'needsYou' as const,
+        label: 'Needs attention',
+        items: partition.needsYou,
+      },
+      {
+        id: 'open' as const,
+        label: 'Open',
+        items: items.filter((item) => openIds.has(item.id)),
+      },
+      { id: 'settled' as const, label: 'Settled', items: partition.settled },
+      { id: 'snoozed' as const, label: 'Snoozed', items: partition.snoozed },
+      { id: 'drafts' as const, label: 'Drafts', items: partition.drafts ?? [] },
+      {
+        id: 'external' as const,
+        label: 'Read only',
+        items: partition.external ?? [],
+      },
+    ].map((group) => ({ ...group, childrenById: partition.childrenById }));
+  }
   // Live groups are emitted only when non-empty, like Drafts and "From
   // other apps": three always-present headers would print empty "Needs you"
   // and "Running" sections above most inboxes. The historic groups below
@@ -163,7 +191,7 @@ export function groupMobileActivity(
       ? [
           {
             id: 'external' as const,
-            label: 'From other apps',
+            label: 'Read only',
             items: partition.external,
           },
         ]

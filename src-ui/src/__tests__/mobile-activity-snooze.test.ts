@@ -243,3 +243,82 @@ describe('groupMobileActivity answerability (station#1783, re-adjudicated by #32
     expect(wake.getDate()).toBe(8);
   });
 });
+
+describe('Open and Settled conversation responsibility', () => {
+  const now = 1_000_000;
+  it('keeps completed and failed turns Open until explicitly settled, preserving Needs attention', () => {
+    const entries = [
+      item({
+        id: 'done',
+        conversationId: 'conv-done',
+        lifecycleLabel: 'Completed',
+      }),
+      item({ id: 'failed', lifecycleLabel: 'Failed' }),
+      item({ id: 'approval', lifecycleLabel: 'Needs attention' }),
+    ];
+    const groups = groupMobileActivity(entries, now, {}, undefined, new Set());
+    expect(membersOf(groups, 'open').map((entry) => entry.id)).toEqual([
+      'done',
+      'failed',
+    ]);
+    expect(membersOf(groups, 'needsYou').map((entry) => entry.id)).toEqual([
+      'approval',
+    ]);
+    expect(membersOf(groups, 'settled')).toEqual([]);
+  });
+  it('settles by durable conversation identity and reopens without deleting or dismissing', () => {
+    const entry = item({
+      id: 'tab-new',
+      conversationId: 'durable',
+      lifecycleLabel: 'Completed',
+    });
+    expect(
+      membersOf(
+        groupMobileActivity([entry], now, {}, undefined, new Set(['durable'])),
+        'settled',
+      ),
+    ).toEqual([entry]);
+    expect(
+      membersOf(
+        groupMobileActivity([entry], now, {}, undefined, new Set()),
+        'open',
+      ),
+    ).toEqual([entry]);
+  });
+  it('uses closed Task state for settlement, while active work and snoozes stay actionable', () => {
+    const entries = [
+      item({
+        id: 'task',
+        kind: 'task',
+        kindLabel: 'Durable Task',
+        lifecycleLabel: 'Completed',
+      }),
+      item({ id: 'running', lifecycleLabel: 'Running' }),
+      item({ id: 'snoozed', lifecycleLabel: 'Completed' }),
+    ];
+    const groups = groupMobileActivity(
+      entries,
+      now,
+      { snoozed: now + 1000 },
+      undefined,
+      new Set(['running', 'snoozed']),
+    );
+    expect(membersOf(groups, 'settled').map((entry) => entry.id)).toEqual([
+      'task',
+    ]);
+    expect(membersOf(groups, 'open').map((entry) => entry.id)).toEqual([
+      'running',
+    ]);
+    expect(membersOf(groups, 'snoozed').map((entry) => entry.id)).toEqual([
+      'snoozed',
+    ]);
+    expect(groups.map((group) => group.label)).toEqual([
+      'Needs attention',
+      'Open',
+      'Settled',
+      'Snoozed',
+      'Drafts',
+      'Read only',
+    ]);
+  });
+});

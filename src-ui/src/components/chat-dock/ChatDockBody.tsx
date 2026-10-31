@@ -1852,6 +1852,7 @@ export function ChatDockBody({
               turnProgressSilence && isTurnInFlight(activeSession),
             ),
             onLoadOlder: transcript.loadOlder,
+            onLoadTurn: transcript.loadTurn,
             onOpenBackgroundTasks,
             liveStatusUnavailable: activeSession.replay
               ? observationUnavailable

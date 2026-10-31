@@ -14,6 +14,7 @@ export type TranscriptTurnMarker = 'failed' | 'subagent';
 export interface TranscriptTurnLandmark {
   /** The user row's transcript key, which the virtualizer can reveal. */
   readonly rowId: string;
+  readonly turnId?: string;
   /** The user row's position among all transcript rows, mounted or not. */
   readonly rowIndex: number;
   /** One past the last row this turn owns. */
@@ -53,6 +54,7 @@ export function transcriptTurnLandmarks(
   let open:
     | {
         rowId: string;
+        turnId?: string;
         rowIndex: number;
         prompt: string;
         reply?: string;
@@ -64,6 +66,7 @@ export function transcriptTurnLandmarks(
     if (!open) return;
     landmarks.push({
       rowId: open.rowId,
+      ...(open.turnId ? { turnId: open.turnId } : {}),
       rowIndex: open.rowIndex,
       endRowIndex,
       prompt: open.prompt,
@@ -80,6 +83,7 @@ export function transcriptTurnLandmarks(
       close(index);
       open = {
         rowId: row.id,
+        turnId: row.message.turnId,
         rowIndex: index,
         prompt:
           compactTurnText(textOf(row.message), PROMPT_EXCERPT) ??

@@ -578,25 +578,14 @@ message row starts a turn.
   the turn as ended with an error; otherwise a standalone sub-agent row marks
   it as having started a sub-agent. Sub-agents shown inside a reply's tool
   call, and interrupted turns, are not marked.
-- **Previous turn / Next turn.** Two steps sit beside Scroll to bottom
-  whenever that control shows, at every width; on a phone they are the turn
-  navigation. At the latest message, where Scroll to bottom is absent, a
-  column too narrow for the rail keeps Previous turn alone in the same
-  composer slot (#3862). It needs no row of its own: in a narrow composer it
-  ends the settings row, which scrolls sideways and gives up the step's
-  width; while the status pill holds the activity row, it sits beside the
-  pill. The phone header is not used: its edge reserve holds only its two
-  44px controls. A transcript host with no composer slot (the floating
-  variant) shows no step at the latest message. Pressing it scrolls away from
-  the end, so the group grows to Previous, Next and Scroll to bottom around
-  the same Previous button, which keeps focus. Previous goes to the start of
-  the turn in view when its prompt is above the screen, otherwise to the turn
-  before. The steps stay focusable at either end, and announce the turn they
-  reached (its position and prompt) in a polite status region. Only a step
-  announces; the region empties before each announcement, so a repeat step
-  is said again. It is cleared on a chat switch, when older history finishes
-  loading, and when the number of loaded turns changes (another page of
-  older history, or a new turn).
+- **Previous turn / Next turn.** Desktop keeps steps beside return-to-latest.
+  Mobile uses **Browse turns** in the conversation overflow instead of arrows
+  beside the composer. The browser pages indexed turn summaries independently
+  of transcript bodies; selecting a turn loads older bounded history pages until
+  its complete prompt/body window is available, then reveals it. Each request
+  is bounded to 64 pages; a retry continues from the retained cursor. Switching
+  conversations or closing the browser cancels further page requests.
+
 - **Positions.** A turn is named "Turn N of M". While older history is not
   loaded, the map covers only the loaded window, so it is named "Loaded turn
   N of M" instead, and the numbers change as earlier history loads.
@@ -1019,12 +1008,12 @@ screenshots.
 
 ## Mobile conversation focus (2026-09-05)
 
-Project and conversation switching remain direct phone-header actions with
-readable current context and 44px targets at 320px, 390px and 412px. The
-October audit proposed moving the future-project choice into Chat actions;
-that remains a proposal because the product contract requires direct access.
-The current implementation keeps the project control and simplifies title
-wrapping and assistant context without removing either primary action.
+Conversation switching stays a direct phone-header action with a 44px target.
+Project selection belongs to the New chat composer's Project chip; it does not
+change an existing conversation's binding. The future-project switcher is absent
+from an active conversation's header. This reflects the October 30 product
+decision to remove a competing project hierarchy, while retaining project
+context in the conversation's session details.
 The **Chats and tasks** picker keeps the shared **New chat** action at the lower
 right, outside the scrolling list. Its accessible name and hover label are
 **New chat**; the mobile header uses its icon-only chat-bubble-plus form.
@@ -1053,13 +1042,9 @@ binding, and its separate Open action shows the workspace.
 Selecting a workspace through the sidebar also sets the default project for
 new chats after navigation guards admit the route. It preserves the active
 chat and its original project. Opening an existing conversation also preserves
-this default. Choosing a different project in the chat bar
-overrides that default until the next explicit workspace selection. On a phone the
-Project control captions this value **New chats**; on desktop it is the second
-half of the dock's New split button, named "New chats: <project>", and the
-current chat's own project is its session context card's Workspace row. On a phone, when a long chat title leaves the control too
-narrow for words, it shows only a folder glyph; its accessible name still
-names the project. This revises the earlier independent-sidebar/default behavior.
+this default. Project choice belongs to the start composer. Active conversation
+headers omit the future-chat Project control; the conversation's own project
+remains in its session context card's Workspace row.
 
 **New Task** opens the shared start composer inside the chat dock, focused, with a compact, removable **Shaping a Task** chip and **Describe the idea…** placeholder. The existing Project and Agent chips retain their normal defaults; the global entry uses the same Project chip. The chat retains shaping mode across clarification turns and reloads, sending the instructions as model context on each turn until acceptance or mode removal. The dock is titled **New Task** with a **Shape a Task** heading; on phones it covers the page composer.
 
@@ -1106,12 +1091,36 @@ surfaces. Imported conversations retain their origin. Phone Coding leaves the co
 title in the chat header and uses its breadcrumb for Inbox and pane navigation.
 Working chats are the first rows of the dock's
 keyboard-operable More menu; their count rides the inbox toggle, and is the
-number of inbox rows that say Running. On mobile, the title is one line with assistant context beneath it. The direct
-Project control retains its New chats caption: it sets future chat context,
-not the current conversation’s binding. Moving that control into Chat actions
-remains an unimplemented proposal requiring a product-contract decision.
+number of inbox rows that say Running. On mobile, the title is one line with assistant context beneath it. The
+Project control is available before a conversation starts. The active
+conversation header leaves Project selection to the start composer.
 
 Earlier Project before/after illustrations on this page are historical
 comparisons. Their duplicate callout and older dock chrome are not current
 acceptance evidence. See the [current improvement round](../plans/onboarding-improvement-rounds.md)
 for actual captures and remaining Terminal and pairing work.
+
+## Open and Settled inbox preview (2026-10-30)
+
+The `conversation-resolution` Feature Preview groups actionable work under
+Needs attention and Open. A completed or failed agent turn leaves a standalone
+conversation Open. Settle and Reopen record the person's explicit decision on
+the host, shared across their owner devices, separately from last-viewed state,
+snoozing, dismissal and deletion. A closed Task is Settled; automatic Task closure
+continues to follow its existing close-on-merge setting. Linked pull requests
+alone do not automatically settle standalone conversations.
+
+Every inbox group can be collapsed. Find and New chat live in its header;
+Browse all conversations retains paginated history, rename and delete, and
+Refresh lives in overflow with a direct retry on failure. Dismissal offers a
+transient Undo toast and the configurable inbox Undo shortcut. Native editor
+and terminal undo retain their keys.
+
+Customize → Appearance offers Comfortable, Wide and Full answer widths.
+The compact context ring places its percentage inside the ring beside Send;
+Agent, model, Mode and Approval retain their separate controls. Basis stays
+answer-scoped. Chat inventory and Browse turns are conversation overflow actions.
+
+The dev UI proxy uses the production unavailable envelope during API restarts.
+The access screen retries temporary unavailability while visible, preserving
+the existing session; an authentication refusal still requires sign-in.
