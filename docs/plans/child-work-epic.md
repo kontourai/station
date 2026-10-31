@@ -107,6 +107,19 @@ pass. Read-only GitHub inspection still reports Flow Agents #1566 open and
 unmerged at `9925be29fbbd`, with auto-merge enabled. No unpublished API is adopted.
 Independent review of the residual repairs and integration remains pending.
 
+The accumulated caller audit's direct credential-replay context gap was then
+reproduced with the real fork/Session/EventStore fixture and its controlled
+native-identity adapter. Rebinding the fork identity after replacement-process
+start still allowed an added replay turn before the repair, followed by a failed
+context-witness update. `c48895c17ab` now calls the existing fork/handoff/seed
+currentness check immediately before direct adapter replay, after preparation.
+The regression requires that the process did start, no stale replay turn ran,
+and restoring the original identity admits a new explicit attempt. The
+fork/handoff/posture/recovery selection passes 121 cases; server-test types and
+scoped Biome pass. This is controlled caller-boundary evidence, not a fresh
+installed-native, live-provider or all-recovery qualification. Other caller and
+recovery-ledger gaps from the accumulated audit remain open.
+
 The background-work source at `9c51c75f5cda` passed 254 cases across 14 files
 and the UI type lane. Independent review accepted the bounded Station scoping,
 cold continuation association and reporter-alias ordering corrections. The
