@@ -640,6 +640,14 @@ base64 image data fits. Adjacent Task mutations retain the standard body limit.
 Room upload, reference resolution and byte reads also enforce their current
 Task capability and incarnation; a paired route-family grant alone is insufficient.
 
+Task Review Walkthrough list, manifest, frame and video reads inherit the Task
+family's `orchestration:read` tier and independently recheck person-review
+authority, the Task incarnation and the live Walkthroughs preview. They refuse
+Station-internal requests and use `no-store`; video reads verify the retained
+length and digest. The sensitive Browser recording tool requires a bound lead
+Session and publishes only after authority and clean-workspace rechecks. A clip
+can expose page contents and is served through that Task's authorized reads.
+
 The exact `POST /api/projects/:projectSlug/walkthroughs/import` and
 `POST /api/transcription` uploads also retain the standard principal rate
 bucket. Their body ceilings derive from their owning upload limits: 512 MiB
@@ -1931,7 +1939,9 @@ machine", and the difference is the residue, stated without softening:
   existing trust boundary — the same user can already read the local-grant
   secret and operator credential files. API redaction defends paired
   principals **without** terminal/agent authority (a phone using Developer →
-  Logs, `read_logs` over pairing, a scoped grant that cannot spawn a shell).
+  Logs or a scoped grant that cannot spawn a shell). Agent `read_logs` calls
+  are denied unless an operator grants their verified bound session; the grant
+  is not available to caller-less or weaker-assurance channels.
   Scrubbing the token from PTY/engine env closes the cheaper path that used
   to turn `printenv` into an ephemeral `home-possession` principal.
 

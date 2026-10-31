@@ -1,0 +1,23 @@
+{
+  "revision": "19ec48d4f20a356848434e1d8930e68cf747a6be",
+
+  "notes": [
+    {"path":"deployment/telemetry/README.md","note":"Reviewed scheduler metric attributes and the private dashboard queries: built-in execution exports opaque job_id, the manual wrapper has no per-job attribute, and the panels group by job_id. The OTel SDK exporter fixture ran; no deployed collector or Grafana qualification.","inputs":["deployment/telemetry/README.md","deployment/telemetry/dashboards/station.json"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed linked scheduler, diagnostics and monitoring claims against the round-5 log and metric projection. Existing claims remain accurate; the config and monitoring guides own the revised identifiers. Focused fixtures do not establish hosted or live-provider behavior.","inputs":["docs/architecture/abstraction-review.md","docs/guides/monitoring.md","docs/reference/config.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed linked scheduler, diagnostics and monitoring claims against the round-5 log and metric projection. Existing claims remain accurate; the config and monitoring guides own the revised identifiers. Focused fixtures do not establish hosted or live-provider behavior.","inputs":["docs/architecture/module-map.md","src-server/services/__tests__/scheduler.test.ts","src-server/services/scheduling/builtin-scheduler.ts"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Reviewed linked scheduler, diagnostics and monitoring claims against the round-5 log and metric projection. Existing claims remain accurate; the config and monitoring guides own the revised identifiers. Focused fixtures do not establish hosted or live-provider behavior.","inputs":["docs/design/settings-architecture.md","docs/reference/config.md"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Reviewed scheduler metric attributes and the private dashboard queries: built-in execution exports opaque job_id, the manual wrapper has no per-job attribute, and the panels group by job_id. The OTel SDK exporter fixture ran; no deployed collector or Grafana qualification.","inputs":["docs/guides/monitoring.md","deployment/telemetry/dashboards/station.json"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Reviewed linked scheduler, diagnostics and monitoring claims against the round-5 log and metric projection. Existing claims remain accurate; the config and monitoring guides own the revised identifiers. Focused fixtures do not establish hosted or live-provider behavior.","inputs":["docs/guides/starter-work.md","src-server/services/scheduling/builtin-scheduler.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed linked scheduler, diagnostics and monitoring claims against the round-5 log and metric projection. Existing claims remain accurate; the config and monitoring guides own the revised identifiers. Focused fixtures do not establish hosted or live-provider behavior.","inputs":["docs/reference/api.md","src-server/services/scheduling/builtin-scheduler.ts","src-server/services/scheduling/scheduler-service.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed scheduler correlation against the opaque job/run/target bindings and the diagnostics route. Updated the reference; historical logs and unrelated producers remain outside this repair.","inputs":["docs/reference/config.md","src-server/services/scheduling/builtin-scheduler-execution.ts","src-server/services/scheduling/builtin-scheduler.ts","src-server/utils/logger-correlation.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed linked scheduler, diagnostics and monitoring claims against the round-5 log and metric projection. Existing claims remain accurate; the config and monitoring guides own the revised identifiers. Focused fixtures do not establish hosted or live-provider behavior.","inputs":["docs/reference/station-docs.md","src-server/services/scheduling/builtin-scheduler-execution.ts"]}
+  ]
+}

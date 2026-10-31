@@ -27,9 +27,11 @@ export function ReviewItemList({
   selectedKind,
   onSelectItem,
   captureAction,
+  clips,
 }: {
   items: readonly TaskReviewItem[];
   captureAction?: ReactNode;
+  clips?: ReactNode;
   selectedItemId?: string;
   selectedKind?: TaskReviewArtifactKind;
   onSelectItem: (item: TaskReviewItem) => void;
@@ -138,6 +140,7 @@ export function ReviewItemList({
             )}
           </Button>
         ))}
+      {clips}
     </nav>
   );
 }

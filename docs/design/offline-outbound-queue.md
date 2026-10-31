@@ -52,10 +52,11 @@ settled, even if that window then closed). A message that could not be sent for
 another reason, such as a turn still running, is not retried on every notice. That
 send only sends: it asks Station about nothing and never re-holds the window's
 queued follow-ups (which would take back a follow-up a duplicated tab also holds,
-and that tab would do the same in turn). A queued message is not sent while a turn is
-running in its chat; it goes when the turn ends. If one is tried anyway, it waits
-without using up an attempt and is not tried again for a moment and a half,
-whatever asks; it is retried once that wait ends. A send another window has claimed reads "Sending", with no Check,
+and that tab would do the same in turn). An offline outbox message can be handed to the durable inbox while its known
+conversation is busy. A queued receipt retires its browser row; Station delivers
+it after the running turn. A busy chat without a conversation identity waits
+without spending an attempt. Other temporary deferrals wait a moment and a half
+before retry, whatever asks. A send another window has claimed reads "Sending", with no Check,
 only while that window is proven running (it holds its renderer lock); a claim
 left by a window that closed or crashed reads "No answer yet" like its bubble,
 with Check and Discard…, and the discard checks again that the window is gone.
@@ -75,21 +76,30 @@ Successful settlement stops the schedule, and a late lookup cannot rearm a
 paused schedule.
 The timer only checks delivery: a resend still requires Station's answer that
 it never received the message.
-The lookup settles released rows, and rows whose app was closed, at the next
+The lookup examines released rows, and rows whose app was closed, at the next
 launch or reconnect: never received → sent again with the same key; started →
-done; received → asked again later; possibly started, or the conversation runs
+done; received → asked again later; queued in Station’s inbox → retained for
+inspection (the outbox does not yet settle that answer); possibly started, or the conversation runs
 on another Station → kept as unconfirmed, with a Check that asks Station again
 and never resends, and a Discard… that removes it only after the user confirms
 "I checked, discard it" with the risk stated (its key is retired, so it is never
-sent again). Each row records the Station it was written for and is
-only ever sent to, or settled by, that Station; for another it waits, listed.
+sent again). Rows written with Station identity are sent to or settled by that Station;
+for another they wait, listed. A verified environment ID takes precedence over
+the address; rows that never learned an ID use the normalized address. Older
+rows without a Station identity retain their legacy any-Station behavior.
 
 Station can also hold a follow-up itself, in the conversation's durable inbox
 ([#3568](https://github.com/kontourai/station/issues/3568), `whenBusy: 'queue'`
 in the [Session API](../reference/session-api.md#let-station-hold-a-follow-up)).
-The app does not use it yet; until it does, the rules below apply.
+A busy composer requests inbox admission for a Queue submission. Station holds
+it only if it meets the Session API eligibility and authority checks; otherwise
+the request takes the live path, which can start or refuse it. A queued receipt
+settles the browser’s in-flight row; a started receipt follows ordinary turn
+settlement. A lost answer leaves the original key for inspection. Apply a pending
+approval change before queuing. Existing browser-local follow-ups and offline
+outbox entries remain subject to the rules below.
 
-Follow-ups held behind a running turn stay in the tab's session storage, and
+Browser-local follow-ups held behind a running turn stay in the tab's session storage, and
 each keeps a durable copy in the queue under the key the queue will send it
 with. Nothing sends that copy automatically: the window's own queue sends it
 when the turn ends, a reload's restored queue takes the copies back (so an
@@ -102,8 +112,8 @@ follow-ups, puts it in that queue under its own key (the queue's durable copy
 takes it over); otherwise it is released to send now. A discarded or delivered message is never sent
 again from any window. A
 message whose row is already on its way or possibly started is never sent
-again from the composer or the queue. A send refused because the engine is
-busy joins that queue with its own key and copy, and the queue's drain writes
+again from the composer or the queue. A non-inbox send refused because the engine is
+busy can join that queue with its own key and copy, and the queue's drain writes
 the same before-the-request row as a composer send. Sends with attachments or
 a visual skill are not written to the queue (their draft is kept until
 Station answers, as before).

@@ -2042,7 +2042,23 @@ test('declares exact inventory input inspection at the read tier', () => {
   expect(requiredPairingScope('GET', path)).toBe('orchestration:read');
 });
 
+test('Task write-back log is a declared Task read', () => {
+  expect(isLeafScopeDeclared('GET', '/api/tasks/:taskId/write-back')).toBe(
+    true,
+  );
+  expect(requiredPairingScope('GET', '/api/tasks/task-a/write-back')).toBe(
+    'orchestration:read',
+  );
+});
+
 test('Task capture and review comments require operate scope; capture reads use read scope', () => {
+  for (const path of [
+    '/api/tasks/task-a/review/walkthroughs',
+    '/api/tasks/task-a/review/walkthroughs/clip-a',
+    '/api/tasks/task-a/review/walkthroughs/clip-a/video',
+    '/api/tasks/task-a/review/walkthroughs/clip-a/frames/frame-a',
+  ])
+    expect(requiredPairingScope('GET', path)).toBe('orchestration:read');
   expect(
     requiredPairingScope('POST', '/api/tasks/task-a/review/captures'),
   ).toBe('orchestration:operate');
@@ -2061,4 +2077,18 @@ test('Task capture and review comments require operate scope; capture reads use 
   expect(
     requiredPairingScope('POST', '/api/tasks/task-a/review/captures/extra'),
   ).toBe('orchestration:operate');
+});
+test('integration status has only the Connections read scope', () => {
+  expect(requiredPairingScope('GET', '/api/integrations/status')).toBe(
+    'orchestration:read',
+  );
+  expect(requiredPairingScope('HEAD', '/api/integrations/status')).toBe(
+    'orchestration:read',
+  );
+  expect(
+    requiredPairingScope('POST', '/api/integrations/status'),
+  ).toBeUndefined();
+  expect(
+    requiredPairingScope('GET', '/api/integrations/status/other'),
+  ).toBeUndefined();
 });

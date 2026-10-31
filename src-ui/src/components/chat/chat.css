@@ -2634,6 +2634,7 @@
 .message-meta__time {
   /* The timestamp keeps its one line; the Basis chip beside it shrinks. */
   flex: none;
+  margin-left: auto;
   white-space: nowrap;
   color: var(--k-text-muted);
   font-size: var(--k-text-xs);
@@ -3266,141 +3267,6 @@
     justify-content: center;
   }
 
-  .mobile-task-switcher__overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 70;
-    display: flex;
-    align-items: flex-end;
-    justify-content: center;
-    padding: var(--space-2);
-    background: rgba(0, 0, 0, 0.55);
-  }
-  .mobile-task-switcher__panel {
-    display: flex;
-    flex-direction: column;
-    width: min(100%, 520px);
-    max-height: calc(var(--responsive-visual-viewport-height) - var(--space-4));
-    overflow: auto;
-    border: 1px solid var(--border-primary);
-    border-radius: var(--radius-lg) var(--radius-lg) var(--radius-md)
-      var(--radius-md);
-    background: var(--bg-primary);
-    box-shadow: var(--shadow-lg);
-  }
-  .mobile-task-switcher__header {
-    /* The panel is the scroll container; keep the dismiss affordance pinned
-       while the list scrolls (#1051). */
-    position: sticky;
-    top: 0;
-    z-index: 1;
-    background: var(--bg-primary);
-    border-bottom: 1px solid var(--k-line);
-  }
-  .mobile-task-switcher__header .responsive-dialog-header {
-    border-bottom: 0;
-  }
-  .mobile-task-switcher__list {
-    min-height: 0;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    display: grid;
-    gap: var(--k-space-2);
-    padding: var(--k-space-3);
-  }
-  .mobile-task-switcher__list .inbox-row {
-    --inbox-row-title-size: var(--k-text-lg);
-    --inbox-row-text-size: var(--k-text-md);
-    --inbox-row-line: var(--k-space-5);
-    --inbox-row-pad-block: var(--k-space-3);
-    --inbox-row-pad-inline: var(--k-space-3);
-  }
-  .mobile-task-switcher__list .inbox-row--touch {
-    display: block;
-  }
-  .mobile-task-switcher__list .inbox-row--touch .inbox-row__open {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    width: 100%;
-    gap: var(--k-space-2);
-  }
-  .mobile-task-switcher__list .inbox-row__meta {
-    grid-column: 1;
-    grid-row: 1;
-  }
-  .mobile-task-switcher__list .inbox-row__time {
-    display: none;
-  }
-  .mobile-task-switcher__list
-    .inbox-row__status:not(.inbox-row__status--reason) {
-    grid-column: 2;
-    grid-row: 1;
-    justify-content: flex-end;
-    gap: var(--k-space-1);
-  }
-  .mobile-task-switcher__list
-    .inbox-row__status:not(.inbox-row__status--reason)
-    .inbox-row__detail {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-  }
-  .mobile-task-switcher__list
-    .inbox-row__status:not(.inbox-row__status--reason)
-    > .inbox-row__sep {
-    display: none;
-  }
-  .mobile-task-switcher__list .inbox-row__status--reason,
-  .mobile-task-switcher__list .inbox-row__chips {
-    grid-column: 1 / -1;
-    padding-right: 44px;
-  }
-  .mobile-task-switcher__list .inbox-row__project-context {
-    display: flex;
-    grid-column: 1 / -1;
-    align-items: center;
-    gap: var(--k-space-2);
-    min-width: 0;
-    padding-right: 44px;
-    color: var(--text-secondary);
-    font-size: var(--k-text-md);
-  }
-  .mobile-task-switcher__list .inbox-row__project-context svg {
-    width: 16px;
-    height: 16px;
-    flex-shrink: 0;
-  }
-  .mobile-task-switcher__list .inbox-row__project-context .inbox-row__project {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .mobile-task-switcher__list .inbox-row--touch .inbox-row__actions {
-    position: absolute;
-    right: var(--k-space-2);
-    bottom: var(--k-space-2);
-    top: auto;
-  }
-  .mobile-task-switcher__list .inbox-row__title {
-    grid-column: 1 / -1;
-    grid-row: 2;
-    min-height: 44px;
-    padding-right: 44px;
-    display: -webkit-box;
-    white-space: normal;
-    overflow-wrap: anywhere;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
-  }
-  .mobile-task-switcher__list .inbox-row--slim .inbox-row__open {
-    min-height: 52px;
-  }
-  .mobile-task-switcher__list .chat-dock-inbox__group-label,
-  .mobile-task-switcher__list .chat-dock-inbox__section-toggle {
-    --work-group-label-size: var(--k-text-md);
-  }
   /* Composer two-row stack: at phone width the desktop layout (textarea +
      a right-hand controls column) squeezes the textarea and pushes the
      model/approval/context chips off the right edge of the viewport.
@@ -3759,4 +3625,11 @@
 }
 .message-details__menu > .turn-footer__overflow-item--danger {
   color: var(--error-text, var(--k-negative));
+}
+
+.chat-dock__reader {
+  display: contents;
+}
+.chat-dock__reader[hidden] {
+  display: none;
 }

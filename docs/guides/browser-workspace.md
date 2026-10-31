@@ -89,7 +89,8 @@ The proxy checks current target registrations on new connection decisions.
 ## Agent authority and human input
 
 The built-in [station-browser tools](../../src-server/tools/station-browser-mcp-server.ts)
-provide status, open, close, navigate, resize, snapshot, click, hover, drag,
+provide status, open, close, navigate, resize, snapshot, Task Screen capture and
+Task clip recording, click, hover, drag,
 select, type, press, scroll, color-scheme emulation, wait and evaluation operations through
 [browser-agent routes](../../src-server/routes/browser-agent.ts). They require
 a verified, bound calling Session, its recorded owner and Project, and current
@@ -267,6 +268,25 @@ Refusals include `caller-not-bound`, `no_task_binding`, `workspace-changed`,
 `capture-home-limit`, `capture-unavailable` and `capture-corrupt`. Screenshots
 use the registry's 16 MiB limit and PNG/JPEG fallback. Capture records are kept
 for this increment; there is no reclaim/delete API.
+
+## Record a Task walkthrough
+
+`browser_record_to_task {durationMs, browserSessionId?, label?, maxBytes?}`
+is a sensitive `station-browser` tool for the bound lead Session. It records
+the selected Browser viewport into that Session's Task, with a clean workspace
+commit. The duration is 1–30,000 ms and the encoded-video limit is at most
+16 MiB. FFmpeg and the **Walkthroughs** preview are required. The caller,
+Browser, Task and workspace are rechecked before publication. The returned
+Walkthrough ID and commit identify the retained clip, not proof that the page
+was built from the commit.
+
+Cancelling the tool call, closing its Browser or stopping Station cancels an
+in-progress recording and removes its staged files. No clip is published.
+
+With **Task review** and **Walkthroughs** enabled, a person can open the clip
+from **Review → Screens**. Video bytes are requested only when the player opens;
+Task-scoped reads repeat authorization. See [Task clips](walkthroughs.md#record-a-task-clip)
+for storage, bounds and verification limits.
 
 ## Page dialogs, console, screenshots and new windows
 

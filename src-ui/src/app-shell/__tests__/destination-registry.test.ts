@@ -372,7 +372,7 @@ describe('DestinationRegistry', () => {
   });
 
   test('owns exact root routing and semantic management grouping', () => {
-    expect(APP_DESTINATION_REGISTRY.resolveExactRoute('/schedule')).toEqual({
+    expect(APP_DESTINATION_REGISTRY.resolveExactRoute('/automations')).toEqual({
       type: 'schedule',
     });
     expect(

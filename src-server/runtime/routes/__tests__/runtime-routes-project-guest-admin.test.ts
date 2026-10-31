@@ -70,6 +70,11 @@ import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import { createSessionAgentResolver } from '../../../services/orchestration/session-agent-resolution.js';
+import {
+  capturePluginRuntimeArtifact,
+  pluginInstallationGeneration,
+} from '../../../services/plugins/plugin-runtime-artifact.js';
+import { PluginVisibilityService } from '../../../services/plugins/plugin-visibility-service.js';
 import { ProjectManifestStore } from '../../../services/projects/project-manifest-store.js';
 import { createProjectMembershipRuntime } from '../../../services/projects/project-membership-runtime.js';
 import { ProjectService } from '../../../services/projects/project-service.js';
@@ -252,9 +257,11 @@ describe('project guest administration over the production composition', () => {
   });
   const roomClosers: (() => Promise<void>)[] = [];
   const agentClosers: (() => Promise<void>)[] = [];
+  const fixtureClosers: (() => void | Promise<void>)[] = [];
   afterEach(async () => {
     for (const close of roomClosers.splice(0)) await close();
     for (const close of agentClosers.splice(0)) await close();
+    for (const close of fixtureClosers.splice(0).reverse()) await close();
     if (ambientHome === undefined) delete process.env.STATION_HOME;
     else process.env.STATION_HOME = ambientHome;
     if (ambientRoot === undefined) delete process.env.STATION_ROOT;
@@ -288,18 +295,23 @@ describe('project guest administration over the production composition', () => {
       STATION_ID,
       storage,
     );
+    fixtureClosers.push(() => membership.close());
     const localAccounts = await loadLocalAccounts(
       { publicOrigin: useLocalAccounts ? ORIGIN : 'http://localhost:4321' },
       { stationId: STATION_ID, homeDirectory: homeDir },
       membership.service,
       resolveStationBrowserOrigins({ port: 4321, host: '127.0.0.1' }),
     );
+    fixtureClosers.push(() => localAccounts.service.close());
     const applicationSessions = createApplicationSessionRuntime(
       homeDir,
       STATION_ID,
       localAccounts,
       (value: string) => security.devicePairing.identifyDevice(value),
     );
+    fixtureClosers.push(() => applicationSessions?.close());
+
+    fixtureClosers.push(() => applicationSessions?.close());
 
     let appConfig: Record<string, unknown> = {};
     const app = new Hono();
@@ -309,11 +321,13 @@ describe('project guest administration over the production composition', () => {
     const start = vi.spyOn(adapter, 'startSession');
     const send = vi.spyOn(adapter, 'sendTurn');
     let sessions: OrchestrationService | undefined;
+    let agentEvents: EventStore | undefined;
     let beforeSessionResolve: (() => Promise<void>) | undefined;
     if (withAgent) {
       const events = new EventStore(
         join(homeDir, 'room-provider-events.sqlite'),
       );
+      agentEvents = events;
       const live = new Set<string>();
       vi.spyOn(adapter, 'hasSession').mockImplementation(
         async (id?: string) => id !== undefined && live.has(id),
@@ -442,6 +456,7 @@ describe('project guest administration over the production composition', () => {
       monitoringEvents: [],
       orchestrationEventStore: new Proxy(
         {
+          createPackageMcpAdmissionJournal: () => undefined,
           sessionTurnBoundaryAuthority: () => ({
             reconcile: () => ({ kind: 'available', interrupted: [] }),
           }),
@@ -455,6 +470,7 @@ describe('project guest administration over the production composition', () => {
       ),
       environmentSecurityService: security,
       eventBus,
+      operationalEventPublisher: { append: () => ({ kind: 'appended' }) },
       taskGraphService: graph,
     });
     const result = configureRuntimeRoutesProduction(
@@ -462,8 +478,12 @@ describe('project guest administration over the production composition', () => {
         typeof configureRuntimeRoutesProduction
       >[0],
     );
+    roomClosers.push(async () => {
+      await result.kitLifecycleReady.catch(() => undefined);
+      await result.projectTaskRoomRuntime?.close();
+      await result.projectRoomRuntime.close();
+    });
     await result.kitLifecycleReady;
-    roomClosers.push(() => result.projectRoomRuntime.close());
 
     const request = (path: string, init: RequestInit = {}, env?: never) =>
       app.request(`${ORIGIN}${path}`, init, env);
@@ -609,6 +629,7 @@ describe('project guest administration over the production composition', () => {
       start,
       send,
       sessions,
+      agentEvents,
       request,
       security,
       authentication,
@@ -1851,6 +1872,103 @@ describe('project guest administration over the production composition', () => {
     ).toEqual(['demo', 'private']);
   });
 
+  test('plugin command admission hides unreadable Projects and Tasks from authenticated people', async () => {
+    const h = await setup();
+    const { project } = await h.shareWithGuestAdmin('demo', 'Demo');
+    const task = await h.graph.createTask({
+      projectId: project.id,
+      title: 'Private task',
+    });
+    // The account session supplies the person while the operator credential
+    // supplies transport authority; account-bound Devices intentionally cannot
+    // reach this plugin route.
+    const account = (subject: 'guest' | 'peer') => (extra?: RequestInit) =>
+      h.operatorHeaders({
+        ...extra,
+        headers: {
+          ...extra?.headers,
+          Cookie: `fixture_account=${subject}`,
+          Origin: ORIGIN,
+        },
+      });
+    const guest = account('guest');
+    const peer = account('peer');
+    const pluginDir = join(h.homeDir, 'plugins', 'demo');
+    mkdirSync(pluginDir, { recursive: true });
+    writeFileSync(
+      join(pluginDir, 'plugin.json'),
+      JSON.stringify({
+        name: 'demo',
+        version: '1.0.0',
+        commands: ['project', 'task'].map((requirement) => ({
+          version: '1.0',
+          id: `demo.${requirement}`,
+          title: requirement,
+          intent: { kind: 'navigate', surfaceId: 'plugins' },
+          requires: [requirement],
+        })),
+      }),
+    );
+    const visibility = new PluginVisibilityService(h.homeDir);
+    for (const subject of [GUEST_SUBJECT, PEER_SUBJECT]) {
+      await visibility.grant(
+        deploymentAccountPrincipal(PROVIDER_ISSUER, subject, 'Person').id,
+        'demo',
+      );
+    }
+    const artifact = capturePluginRuntimeArtifact(
+      join(h.homeDir, 'plugins'),
+      'demo',
+    );
+    if (!artifact) throw new Error('plugin artifact missing');
+    let sequence = 0;
+    const admit = async (
+      caller: typeof guest,
+      requirement: 'project' | 'task',
+      context: Record<string, string>,
+    ) => {
+      const response = await h.request(
+        '/api/plugins/demo/command-effects',
+        caller({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            documentId: 'document-0001',
+            documentKey: 'k'.repeat(43),
+            requestId: `request-${String(++sequence).padStart(4, '0')}`,
+            issuedAt: Date.now(),
+            installationGeneration: pluginInstallationGeneration(artifact),
+            commandId: `demo.${requirement}`,
+            target: { kind: 'destination', destinationId: 'plugins' },
+            context,
+          }),
+        }),
+      );
+      return { status: response.status, body: await response.json() };
+    };
+    for (const [requirement, context, absent] of [
+      ['project', { projectSlug: 'demo' }, { projectSlug: 'unknown' }],
+      [
+        'task',
+        { taskId: task.id, projectSlug: 'demo' },
+        { taskId: 'unknown', projectSlug: 'demo' },
+      ],
+      ['task', { taskId: task.id }, { taskId: 'unknown' }],
+    ] as const) {
+      const denied = await admit(peer, requirement, context);
+      expect(denied.status, JSON.stringify(denied.body)).toBe(409);
+      expect(denied.body).toEqual(
+        (await admit(peer, requirement, absent)).body,
+      );
+      const allowed = await admit(guest, requirement, context);
+      expect(allowed.status, JSON.stringify(allowed.body)).toBe(200);
+    }
+    const operator = await admit(h.operatorHeaders, 'task', {
+      taskId: task.id,
+    });
+    expect(operator.status, JSON.stringify(operator.body)).toBe(200);
+  });
+
   test('account-bound pairing exchange refuses a provider session revoked after approval', async () => {
     const h = await setup();
     const pairing = h.security.devicePairing;
@@ -2787,6 +2905,133 @@ describe('project guest administration over the production composition', () => {
   // A subscriber that cannot read the Project never receives its revision
   // events; a member does. Malformed payloads and a membership read that
   // throws are denied, never relayed.
+  test('combined stream applies Project membership to general events', async () => {
+    const h = await setup(true);
+    await h.shareWithGuestAdmin('combined-a', 'Combined A');
+    const projectB = await h.projectService.createProject({
+      name: 'Combined B',
+      slug: 'combined-b',
+    });
+    const enabledB = await h.request(
+      '/api/projects/combined-b/access/enable',
+      h.ownerHeaders({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ localProjectId: projectB.id }),
+      }),
+    );
+    expect(enabledB.status, await enabledB.clone().text()).toBe(200);
+    const guestId = deploymentAccountPrincipal(
+      PROVIDER_ISSUER,
+      GUEST_SUBJECT,
+      'Guest Person',
+    ).id;
+    const ownerId = deploymentAccountPrincipal(
+      PROVIDER_ISSUER,
+      'owner-person',
+      'Owner Person',
+    ).id;
+    for (const [threadId, userId] of [
+      ['guest-thread', guestId],
+      ['owner-thread', ownerId],
+    ]) {
+      h.agentEvents!.appendEvent({
+        eventId: `${threadId}-start`,
+        provider: 'claude',
+        threadId,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        method: 'session.started',
+        sessionId: threadId,
+        metadata: { userId },
+      });
+    }
+    const member = await h.request(
+      '/api/orchestration/events?includeGeneral=1',
+      {
+        headers: {
+          Authorization: `Bearer ${h.operatorCredential}`,
+          Cookie: 'fixture_account=guest',
+          Origin: ORIGIN,
+        },
+      },
+    );
+    const owner = await h.request(
+      '/api/orchestration/events?includeGeneral=1',
+      h.ownerHeaders(),
+    );
+    expect(member.status).toBe(200);
+    expect(owner.status).toBe(200);
+    expect(member.headers.get('X-Station-General-Stream')).toBe('1');
+    const open = (response: Response) => {
+      const reader = response.body!.getReader();
+      const decoder = new TextDecoder();
+      let output = '';
+      return {
+        async until(marker: string) {
+          while (!output.includes(marker)) {
+            const part = await reader.read();
+            if (part.done) throw new Error(`stream ended before ${marker}`);
+            output += decoder.decode(part.value, { stream: true });
+          }
+          return output;
+        },
+        cancel: () => reader.cancel(),
+      };
+    };
+    const a = open(member);
+    const b = open(owner);
+    try {
+      await Promise.all([
+        a.until('orchestration:caughtUp'),
+        b.until('orchestration:caughtUp'),
+      ]);
+      for (const threadId of ['owner-thread', 'guest-thread']) {
+        h.eventBus.emit(SERVER_EVENTS.ORCHESTRATION_EVENT, {
+          event: {
+            eventId: `${threadId}-frame`,
+            provider: 'claude',
+            threadId,
+            createdAt: '2026-01-01T00:00:01.000Z',
+            method: 'content.text-delta',
+            itemId: 'item',
+            delta: `${threadId}-frame`,
+          },
+        });
+      }
+      h.eventBus.emit(SERVER_EVENTS.PLUGIN_DRAFTS_REBUILT, {
+        projectSlug: 'combined-a',
+        draftId: 'allowed-a',
+        generation: 1,
+      });
+      h.eventBus.emit(SERVER_EVENTS.PLUGIN_DRAFTS_REBUILT, {
+        projectSlug: 'combined-b',
+        draftId: 'denied-b',
+        generation: 1,
+      });
+      h.eventBus.emit(SERVER_EVENTS.INTERNAL_STOP_REDISPATCH_FAILED, {
+        marker: 'denied-family',
+      } as never);
+      h.eventBus.emit(SERVER_EVENTS.CONFIG_CHANGED, {
+        marker: 'combined-fence',
+      });
+      const [memberText, ownerText] = await Promise.all([
+        a.until('combined-fence'),
+        b.until('combined-fence'),
+      ]);
+      expect(memberText).toContain('allowed-a');
+      expect(memberText).not.toContain('denied-b');
+      expect(memberText).not.toContain('denied-family');
+      expect(ownerText).toContain('allowed-a');
+      expect(ownerText).toContain('denied-b');
+      expect(ownerText).not.toContain('denied-family');
+      expect(memberText).toContain('guest-thread-frame');
+      expect(memberText).not.toContain('owner-thread-frame');
+      expect(ownerText).toContain('owner-thread-frame');
+    } finally {
+      await Promise.all([a.cancel(), b.cancel()]);
+    }
+  });
+
   test('plugin draft revision events reach Project members only', async () => {
     const h = await setup();
     await h.shareWithGuestAdmin('drafts', 'Drafts');

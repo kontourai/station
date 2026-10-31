@@ -1,4 +1,10 @@
 export { sentTurnKey } from './client/sent-turn-key';
+export {
+  fetchTaskWriteBack,
+  type TaskWriteBackEntry,
+  type TaskWriteBackLog,
+  useTaskWriteBackQuery,
+} from './query-domains/taskWriteBack';
 
 // Re-export all types
 
@@ -230,6 +236,7 @@ export {
   bindProjectResource,
   closeProjectTerminal,
   getProjectChatDefaults,
+  getProjectCheckoutFreshness,
   getProjectResolution,
   getProjectView,
   listProjectRunLocations,
@@ -598,6 +605,7 @@ export {
   fetchFleetServeReceiptsForStation,
   fetchIndependentReviewReceipts,
   fetchInsights,
+  fetchIntegrationStatus,
   fetchLoadedOrchestrationSessions,
   fetchMessageSearch,
   fetchMonitoringEvents,
@@ -659,6 +667,8 @@ export {
   type ImportCredentialProfileSnapshotResult,
   type InsightsFilters,
   type IntegrationLifecycleResult,
+  type IntegrationStatus,
+  IntegrationStatusUnsupportedError,
   type IntegrationViewModel,
   type InterruptOrchestrationDelegatedTaskInput,
   inspectOrchestrationSteerInput,
@@ -731,6 +741,7 @@ export {
   type PluginSettingsData,
   PluginVisibilityForbiddenError,
   PROJECT_CHAT_DEFAULTS_QUERY_KEY_PREFIX,
+  PROJECT_CHECKOUT_FRESHNESS_QUERY_KEY_PREFIX,
   PROJECT_RUN_LOCATIONS_QUERY_KEY_PREFIX,
   ProjectIdentityIncarnationMismatchError,
   type ProjectIdentityReadFailure,
@@ -1046,6 +1057,7 @@ export {
   useInstallSkillMutation,
   useIntegrationAccountQuery,
   useIntegrationQuery,
+  useIntegrationStatusQuery,
   useIntegrationsQuery,
   useInterruptDelegatedTaskMutation,
   useInvalidateNotifications,
@@ -1123,6 +1135,7 @@ export {
   usePreviewSchedule,
   useProbeSshEnvironmentMutation,
   useProjectChatDefaultsQuery,
+  useProjectCheckoutFreshnessQuery,
   useProjectConversationsQuery,
   useProjectIconCandidatesQuery,
   useProjectIdentityQuery,
@@ -1182,6 +1195,7 @@ export {
   useSaveFeedbackRatingMutation,
   useSaveIntegrationMutation,
   useSaveModelConnectionMutation,
+  useScheduledConversationTargetCapability,
   useSchedulerJobs,
   useSchedulerProviders,
   useSchedulerStats,
@@ -1469,6 +1483,7 @@ export {
   fetchTaskReview,
   fetchTaskReviewItem,
   fetchTaskReviewThread,
+  fetchTaskWalkthroughPage,
   TASK_REVIEW_OPENING_PREVIEW_CHARS,
   type TaskCapture,
   type TaskCaptureBrowserSession,
@@ -1495,6 +1510,8 @@ export {
   useTaskReviewItemQuery,
   useTaskReviewQuery,
   useTaskReviewThreadQuery,
+  useTaskWalkthroughsQuery,
+  useTaskWalkthroughVideoQuery,
 } from './query-domains/taskReview';
 export type { TelemetryIncidentLinkMutation } from './query-domains/telemetryCompanion';
 export {

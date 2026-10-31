@@ -198,7 +198,9 @@
 
     "packages/contracts/src/orchestration.ts",
 
-    "packages/sdk/src/query-domains/chatRuntimeOrchestration.ts"
+    "packages/sdk/src/query-domains/chatRuntimeOrchestration.ts",
+
+    "src-ui/src/components/chat-dock/MobileInboxPanel.tsx"
   ],
 
   "checks": [

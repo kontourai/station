@@ -262,6 +262,31 @@ describe('evidence-check execution gate', () => {
     );
   });
 
+  test('recognizes the readiness wrapper only when it invokes Veritas readiness', () => {
+    const root = createFixture(({ packageJson }) => {
+      packageJson.scripts['veritas:readiness'] =
+        'node scripts/run-veritas-readiness.mjs --working-tree';
+    });
+    const wrapper = join(root, 'scripts/run-veritas-readiness.mjs');
+    const source = readFileSync(
+      join(repoRoot, 'scripts/run-veritas-readiness.mjs'),
+      'utf8',
+    );
+    writeFileSync(wrapper, source);
+    expect(runGate(root).status).toBe(0);
+    writeFileSync(
+      wrapper,
+      source.replace(
+        "[entry, 'readiness', ...process.argv.slice(2)]",
+        '[entry]',
+      ),
+    );
+    const broken = runGate(root);
+    expect(broken.status).toBe(1);
+    expect(broken.output).toContain(
+      'Veritas readiness is not wired to ci:fast',
+    );
+  });
   test('a candidate check reachable from a lane root fails', () => {
     const root = createFixture(({ packageJson }) => {
       packageJson.scripts['verify:static:raw'] +=
