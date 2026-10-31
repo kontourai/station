@@ -98,6 +98,8 @@ type Scope =
       complete?: (
         ceremony: Ceremony,
         ctx: GenericEndpointContext,
+        /** The plugin's verified authenticator data, not the client-supplied ID. */
+        verifiedCredentialId: string,
       ) => Promise<string>;
     };
 
@@ -176,6 +178,12 @@ export function createMemberPasskeys(host: MemberPasskeyHost): MemberPasskeys {
     account: MemberPasskeyAccount,
     credentialId: string,
   ) {
+    if (host.database.isTransaction)
+      throw APIError.from('SERVICE_UNAVAILABLE', {
+        code: 'PASSKEY_UNAVAILABLE',
+        message:
+          'Another authentication transaction is active; retry afterward.',
+      });
     const literal = (value: string) => {
       const quoted = host.database
         .prepare('SELECT quote(?) AS value')
@@ -241,7 +249,11 @@ export function createMemberPasskeys(host: MemberPasskeyHost): MemberPasskeys {
         )
           throw rejected();
         return {
-          userId: await current.complete(ceremony, ctx),
+          userId: await current.complete(
+            ceremony,
+            ctx,
+            verification.registrationInfo.credential.id,
+          ),
         };
       },
     },
@@ -592,16 +604,13 @@ export function createMemberPasskeys(host: MemberPasskeyHost): MemberPasskeys {
         .strict()
         .safeParse(body);
       if (!input.success) return refuse(400, 'invalid_request');
-      const credentialId = input.data.response.id;
-      if (typeof credentialId !== 'string')
-        return refuse(400, 'invalid_request');
-      const release = guardAddedCredential(account, credentialId);
+      let release: (() => void) | undefined;
       try {
         return await registrationVerify(
           'add',
           {
             kind: 'add',
-            complete: async (ceremony) => {
+            complete: async (ceremony, _ctx, credentialId) => {
               const current = await runtime.currentAccount(request);
               if (
                 ceremony.userId !== account.userId ||
@@ -612,13 +621,14 @@ export function createMemberPasskeys(host: MemberPasskeyHost): MemberPasskeys {
                   PASSKEY_ADD_FRESHNESS_MS
               )
                 throw rejected();
+              release = guardAddedCredential(account, credentialId);
               return account.userId;
             },
           },
           input.data,
         );
       } finally {
-        release();
+        release?.();
       }
     }
 

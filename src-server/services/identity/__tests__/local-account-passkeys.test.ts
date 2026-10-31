@@ -760,52 +760,56 @@ describe('member passkeys over the production account routes', () => {
     },
   );
 
-  test('revocation after the final session check still prevents credential insertion', async () => {
-    const target = await station();
-    const browser = new Browser(ORIGIN);
-    const first = new Device();
-    await signUp(target, browser, first, 'last-check');
-    const id = accountId(target, 'last-check');
-    const options = await target.call(browser, '/passkey/add', {
-      step: 'options',
-    });
-    expect(options.status).toBe(200);
-    const proposed = new Device();
-    const response = proposed.register(
-      options.data!.options as Record<string, unknown>,
-      ORIGIN,
-    );
-    const prepare = DatabaseSync.prototype.prepare;
-    let revoked = false;
-    const spy = vi
-      .spyOn(DatabaseSync.prototype, 'prepare')
-      .mockImplementation(function (this: DatabaseSync, sql: string) {
-        if (!revoked && /^insert into ["`]?passkey["`]?\s/i.test(sql)) {
-          revoked = true;
-          target.accounts.administration.revokeSessions(id);
-        }
-        return prepare.call(this, sql);
+  test.each([false, true])(
+    'revocation after the final session check prevents insertion (changed client ID: %s)',
+    async (changedClientId) => {
+      const target = await station();
+      const browser = new Browser(ORIGIN);
+      const first = new Device();
+      await signUp(target, browser, first, 'last-check');
+      const id = accountId(target, 'last-check');
+      const options = await target.call(browser, '/passkey/add', {
+        step: 'options',
       });
-    const added = await target
-      .call(browser, '/passkey/add', {
-        step: 'verify',
-        response,
-      })
-      .finally(() => {
-        spy.mockRestore();
-      });
-    expect(revoked).toBe(true);
-    expect(added.status, JSON.stringify(added)).toBe(503);
-    expect((await target.verified(browser)).kind).toBe('invalid');
-    expect((await signIn(target, new Browser(ORIGIN), proposed)).status).toBe(
-      401,
-    );
-    const fresh = new Browser(ORIGIN);
-    expect((await signIn(target, fresh, first)).status).toBe(200);
-    expect(
-      (await target.call(fresh, '/passkey/list', {})).data!.passkeys,
-    ).toHaveLength(1);
-  });
+      expect(options.status).toBe(200);
+      const proposed = new Device();
+      const response = proposed.register(
+        options.data!.options as Record<string, unknown>,
+        ORIGIN,
+      );
+      if (changedClientId) response.id = response.rawId = 'Y2xpZW50LWRlY295';
+      const prepare = DatabaseSync.prototype.prepare;
+      let revoked = false;
+      const spy = vi
+        .spyOn(DatabaseSync.prototype, 'prepare')
+        .mockImplementation(function (this: DatabaseSync, sql: string) {
+          if (!revoked && /^insert into ["`]?passkey["`]?\s/i.test(sql)) {
+            revoked = true;
+            target.accounts.administration.revokeSessions(id);
+          }
+          return prepare.call(this, sql);
+        });
+      const added = await target
+        .call(browser, '/passkey/add', {
+          step: 'verify',
+          response,
+        })
+        .finally(() => {
+          spy.mockRestore();
+        });
+      expect(revoked).toBe(true);
+      expect(added.status, JSON.stringify(added)).toBe(503);
+      expect((await target.verified(browser)).kind).toBe('invalid');
+      expect((await signIn(target, new Browser(ORIGIN), proposed)).status).toBe(
+        401,
+      );
+      const fresh = new Browser(ORIGIN);
+      expect((await signIn(target, fresh, first)).status).toBe(200);
+      expect(
+        (await target.call(fresh, '/passkey/list', {})).data!.passkeys,
+      ).toHaveLength(1);
+    },
+  );
 
   test('members add, list and remove passkeys; a removed passkey no longer signs in; the last sign-in method stays', async () => {
     const target = await station();
