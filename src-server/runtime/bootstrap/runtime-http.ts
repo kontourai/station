@@ -436,7 +436,7 @@ export function configureRuntimeHttp({
     const ordinaryCors = cors({
       origin: resolveRuntimeCorsOrigin,
       credentials: true,
-      exposeHeaders: [STATION_ENVELOPE_HEADER],
+      exposeHeaders: [STATION_ENVELOPE_HEADER, 'X-Station-General-Stream'],
     });
     app.use('*', (c, next) =>
       outsideProtocolOwnsAdmission(c) ? next() : ordinaryCors(c, next),
@@ -922,7 +922,7 @@ function configureRuntimeSecurity(
       c.header('Access-Control-Allow-Origin', origin);
       c.header(
         'Access-Control-Expose-Headers',
-        `${ACCOUNT_AUTHENTICATION_FAILURE_HEADER}, Retry-After, ${STATION_ENVELOPE_HEADER}`,
+        `${ACCOUNT_AUTHENTICATION_FAILURE_HEADER}, Retry-After, ${STATION_ENVELOPE_HEADER}, X-Station-General-Stream`,
       );
       c.header('Vary', 'Origin');
       c.header('Access-Control-Allow-Credentials', 'true');

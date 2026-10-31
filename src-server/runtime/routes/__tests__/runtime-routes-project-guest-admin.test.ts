@@ -252,9 +252,11 @@ describe('project guest administration over the production composition', () => {
   });
   const roomClosers: (() => Promise<void>)[] = [];
   const agentClosers: (() => Promise<void>)[] = [];
+  const fixtureClosers: (() => void | Promise<void>)[] = [];
   afterEach(async () => {
     for (const close of roomClosers.splice(0)) await close();
     for (const close of agentClosers.splice(0)) await close();
+    for (const close of fixtureClosers.splice(0).reverse()) await close();
     if (ambientHome === undefined) delete process.env.STATION_HOME;
     else process.env.STATION_HOME = ambientHome;
     if (ambientRoot === undefined) delete process.env.STATION_ROOT;
@@ -288,18 +290,21 @@ describe('project guest administration over the production composition', () => {
       STATION_ID,
       storage,
     );
+    fixtureClosers.push(() => membership.close());
     const localAccounts = await loadLocalAccounts(
       { publicOrigin: useLocalAccounts ? ORIGIN : 'http://localhost:4321' },
       { stationId: STATION_ID, homeDirectory: homeDir },
       membership.service,
       resolveStationBrowserOrigins({ port: 4321, host: '127.0.0.1' }),
     );
+    fixtureClosers.push(() => localAccounts.service.close());
     const applicationSessions = createApplicationSessionRuntime(
       homeDir,
       STATION_ID,
       localAccounts,
       (value: string) => security.devicePairing.identifyDevice(value),
     );
+    fixtureClosers.push(() => applicationSessions?.close());
 
     let appConfig: Record<string, unknown> = {};
     const app = new Hono();
@@ -309,11 +314,13 @@ describe('project guest administration over the production composition', () => {
     const start = vi.spyOn(adapter, 'startSession');
     const send = vi.spyOn(adapter, 'sendTurn');
     let sessions: OrchestrationService | undefined;
+    let agentEvents: EventStore | undefined;
     let beforeSessionResolve: (() => Promise<void>) | undefined;
     if (withAgent) {
       const events = new EventStore(
         join(homeDir, 'room-provider-events.sqlite'),
       );
+      agentEvents = events;
       const live = new Set<string>();
       vi.spyOn(adapter, 'hasSession').mockImplementation(
         async (id?: string) => id !== undefined && live.has(id),
@@ -462,8 +469,12 @@ describe('project guest administration over the production composition', () => {
         typeof configureRuntimeRoutesProduction
       >[0],
     );
+    roomClosers.push(async () => {
+      await result.kitLifecycleReady.catch(() => undefined);
+      await result.projectTaskRoomRuntime?.close();
+      await result.projectRoomRuntime.close();
+    });
     await result.kitLifecycleReady;
-    roomClosers.push(() => result.projectRoomRuntime.close());
 
     const request = (path: string, init: RequestInit = {}, env?: never) =>
       app.request(`${ORIGIN}${path}`, init, env);
@@ -609,6 +620,7 @@ describe('project guest administration over the production composition', () => {
       start,
       send,
       sessions,
+      agentEvents,
       request,
       security,
       authentication,
@@ -2787,6 +2799,133 @@ describe('project guest administration over the production composition', () => {
   // A subscriber that cannot read the Project never receives its revision
   // events; a member does. Malformed payloads and a membership read that
   // throws are denied, never relayed.
+  test('combined stream applies Project membership to general events', async () => {
+    const h = await setup(true);
+    await h.shareWithGuestAdmin('combined-a', 'Combined A');
+    const projectB = await h.projectService.createProject({
+      name: 'Combined B',
+      slug: 'combined-b',
+    });
+    const enabledB = await h.request(
+      '/api/projects/combined-b/access/enable',
+      h.ownerHeaders({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ localProjectId: projectB.id }),
+      }),
+    );
+    expect(enabledB.status, await enabledB.clone().text()).toBe(200);
+    const guestId = deploymentAccountPrincipal(
+      PROVIDER_ISSUER,
+      GUEST_SUBJECT,
+      'Guest Person',
+    ).id;
+    const ownerId = deploymentAccountPrincipal(
+      PROVIDER_ISSUER,
+      'owner-person',
+      'Owner Person',
+    ).id;
+    for (const [threadId, userId] of [
+      ['guest-thread', guestId],
+      ['owner-thread', ownerId],
+    ]) {
+      h.agentEvents!.appendEvent({
+        eventId: `${threadId}-start`,
+        provider: 'claude',
+        threadId,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        method: 'session.started',
+        sessionId: threadId,
+        metadata: { userId },
+      });
+    }
+    const member = await h.request(
+      '/api/orchestration/events?includeGeneral=1',
+      {
+        headers: {
+          Authorization: `Bearer ${h.operatorCredential}`,
+          Cookie: 'fixture_account=guest',
+          Origin: ORIGIN,
+        },
+      },
+    );
+    const owner = await h.request(
+      '/api/orchestration/events?includeGeneral=1',
+      h.ownerHeaders(),
+    );
+    expect(member.status).toBe(200);
+    expect(owner.status).toBe(200);
+    expect(member.headers.get('X-Station-General-Stream')).toBe('1');
+    const open = (response: Response) => {
+      const reader = response.body!.getReader();
+      const decoder = new TextDecoder();
+      let output = '';
+      return {
+        async until(marker: string) {
+          while (!output.includes(marker)) {
+            const part = await reader.read();
+            if (part.done) throw new Error(`stream ended before ${marker}`);
+            output += decoder.decode(part.value, { stream: true });
+          }
+          return output;
+        },
+        cancel: () => reader.cancel(),
+      };
+    };
+    const a = open(member);
+    const b = open(owner);
+    try {
+      await Promise.all([
+        a.until('orchestration:caughtUp'),
+        b.until('orchestration:caughtUp'),
+      ]);
+      for (const threadId of ['owner-thread', 'guest-thread']) {
+        h.eventBus.emit(SERVER_EVENTS.ORCHESTRATION_EVENT, {
+          event: {
+            eventId: `${threadId}-frame`,
+            provider: 'claude',
+            threadId,
+            createdAt: '2026-01-01T00:00:01.000Z',
+            method: 'content.text-delta',
+            itemId: 'item',
+            delta: `${threadId}-frame`,
+          },
+        });
+      }
+      h.eventBus.emit(SERVER_EVENTS.PLUGIN_DRAFTS_REBUILT, {
+        projectSlug: 'combined-a',
+        draftId: 'allowed-a',
+        generation: 1,
+      });
+      h.eventBus.emit(SERVER_EVENTS.PLUGIN_DRAFTS_REBUILT, {
+        projectSlug: 'combined-b',
+        draftId: 'denied-b',
+        generation: 1,
+      });
+      h.eventBus.emit(SERVER_EVENTS.INTERNAL_STOP_REDISPATCH_FAILED, {
+        marker: 'denied-family',
+      } as never);
+      h.eventBus.emit(SERVER_EVENTS.CONFIG_CHANGED, {
+        marker: 'combined-fence',
+      });
+      const [memberText, ownerText] = await Promise.all([
+        a.until('combined-fence'),
+        b.until('combined-fence'),
+      ]);
+      expect(memberText).toContain('allowed-a');
+      expect(memberText).not.toContain('denied-b');
+      expect(memberText).not.toContain('denied-family');
+      expect(ownerText).toContain('allowed-a');
+      expect(ownerText).toContain('denied-b');
+      expect(ownerText).not.toContain('denied-family');
+      expect(memberText).toContain('guest-thread-frame');
+      expect(memberText).not.toContain('owner-thread-frame');
+      expect(ownerText).toContain('owner-thread-frame');
+    } finally {
+      await Promise.all([a.cancel(), b.cancel()]);
+    }
+  });
+
   test('plugin draft revision events reach Project members only', async () => {
     const h = await setup();
     await h.shareWithGuestAdmin('drafts', 'Drafts');

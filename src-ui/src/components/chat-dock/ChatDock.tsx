@@ -1,3 +1,4 @@
+import { useClientBootstrapReadiness } from '../../contexts/AuthorityPersistenceContext';
 import { RequiredSlotHost } from '../../workspace-panes/RequiredSlotHost';
 import '../chat/TaskShaping.css';
 import { resolveEngineCapabilityMatrix } from '@kontourai/station-contracts/engine-capability-matrix';
@@ -2826,10 +2827,24 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // reconnect refetch write into the right cache — see
   // `ensureOrchestrationEventStream`'s `streamQueryClients`.
   const queryClient = useQueryClient();
-  useEffect(
-    () => ensureOrchestrationEventStream(apiBase, queryClient),
-    [apiBase, queryClient],
-  );
+  const bootstrap = useClientBootstrapReadiness();
+  const streamAuthorityKey = bootstrap.authorityKey;
+  useEffect(() => {
+    if (bootstrap.status !== 'settled') return;
+    return ensureOrchestrationEventStream(
+      apiBase,
+      queryClient,
+      streamAuthorityKey,
+      false,
+      bootstrap.sharedRealtime,
+    );
+  }, [
+    apiBase,
+    queryClient,
+    streamAuthorityKey,
+    bootstrap.status,
+    bootstrap.sharedRealtime,
+  ]);
 
   // station#1048: whether the app toolbar is genuinely gone (not merely
   // collapsed/half-open) — the one state `ChatDockMobileHeader`'s drawer
