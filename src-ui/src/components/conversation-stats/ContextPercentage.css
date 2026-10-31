@@ -7,7 +7,7 @@
   block-size: 44px;
   padding: 0;
   border: 0;
-  border-radius: var(--k-radius-pill);
+  border-radius: 50%;
   background: transparent;
   color: var(--k-text-muted);
   font-size: var(--k-text-xs);

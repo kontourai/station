@@ -75,6 +75,7 @@ export const STATION_HOME_ROOTS: Readonly<
   'conversation-acknowledgements.json': 'state',
   'conversation-intent-summaries': 'state',
   'conversation-pull-request-links.json': 'state',
+  'conversation-work-state.json': 'state',
   coordination: 'state',
   data: 'state',
   'delegation-attempt-claims.json': 'state',
