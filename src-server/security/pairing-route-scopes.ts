@@ -4573,6 +4573,11 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // root/content-currentness checks still fence both family-tier leaves.
     { method: 'GET', path: '/api/projects/:slug/working-configuration' },
     { method: 'PUT', path: '/api/projects/:slug/working-configuration' },
+    // How far the Project's checkout is behind its upstream, from local git
+    // refs: its branch, upstream name, commit counts and an update command
+    // naming the working directory `GET /:slug` already returns. A read that
+    // never fetches or writes, behind the `stale-project-checkout` preview.
+    { method: 'GET', path: '/api/projects/:slug/checkout-freshness' },
     // archive#1502 — the resolution surface. BOTH of its leaves take
     // the `/api/projects` family tier (read for `resolution`, operate for
     // `bind`) as a RECORDED decision, not by omission.
