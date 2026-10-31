@@ -3020,3 +3020,16 @@ callback annotations; explicit published types repair them and server-test types
 pass. The final guarded selection passes 27 cases across the caller, home owner
 and runtime participant. Cleanup-join mutation and independent review remain pending. Other five controller constructions, public continuation-parent borrowing,
 outside writers, funded groups and final feature enablement remain open.
+
+The cancellation cleanup-join mutation now fails exactly the physical-fault case:
+shutdown remains pending on retry when the parent does not join retired children.
+The other two cases pass. Byte-exact restoration passes all three keeper cases.
+Independent review is READY only for the scoped-transaction/cleanup increment.
+It explicitly retains the published controller's constructor-captured
+`service.cancel` call after begin, preparatory inspection, descendant-interrupt
+writers, active attempts and actual finalizeCancel execution as unqualified.
+The runtime parent keeps dependencies alive but does not itself supply home
+exclusion to those outside operations. Five other controller constructions and
+all-writer/funded qualification remain open. Readiness still fails the required
+documentation-truth check; the other selected checks pass. No feature flag or PR
+has been enabled.
