@@ -165,6 +165,10 @@ the Project-sharing enable route, with one passkey confirmation per Project
    once the confirmation is committed. **Cancel**, an expired review, a
    revoked passkey or Device, or an ended session applies nothing.
 
+If the Project is removed or replaced, the review closes as `target_changed`.
+It cannot turn on sharing for a new Project that happens to use the same slug;
+open a new request for that Project.
+
 After that, the owner manages invitations and members through ordinary Project
 roles. Those actions need no operator session. A Project admin or owner never
 gains operator authority from that role.
