@@ -1,0 +1,7 @@
+{
+  "revision": "73a016ac13ea433f6e5eba3ca16e6c70bd1084d9",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed only the real corpus-child lifecycle fixture repair: body observation now uses a filesystem event for the actual reporter marker and the existing two-second test timeout; no production or corpus deadline changed. Child failure output is included in the assertion, preserving diagnosis instead of hiding it behind exit status. All 47 corpus-runner tests and script typechecking pass; prior hosted failure remains retained. The guide still distinguishes observed lifecycle metadata from complete exact-source qualification.","inputs":["docs/guides/testing.md","scripts/__tests__/run-vitest-corpus.test.ts"]}
+  ]
+}

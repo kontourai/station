@@ -1,0 +1,9 @@
+{
+  "revision": "9224d124b56f441b4cef770ac2631c54d6ad2c18",
+
+  "notes": [
+    {"path":"docs/design/pnpm-workspace-installation.md","note":"Reviewed the native-header regression cleanup-only delta: fixture allocation now uses the existing trackTempDirs after-hook owner while the finally block restores environment. Real compile/load assertions, unreachable download endpoint and empty-cache checks are unchanged. Both lifecycle/workflow files still pass all215 tests. This resolves the raw-temp-directory ratchet without increasing its baseline; native prebuild admission, managed-install design and publication claims remain unchanged.","inputs":["docs/design/pnpm-workspace-installation.md","scripts/__tests__/dependency-lifecycle.test.ts"]},
+
+    {"path":"packaging/node-pty-prebuilds/README.md","note":"Reviewed the native-header regression cleanup-only delta: fixture allocation now uses the existing trackTempDirs after-hook owner while the finally block restores environment. Real compile/load assertions, unreachable download endpoint and empty-cache checks are unchanged. Both lifecycle/workflow files still pass all215 tests. This resolves the raw-temp-directory ratchet without increasing its baseline; native prebuild admission, managed-install design and publication claims remain unchanged.","inputs":["packaging/node-pty-prebuilds/README.md","scripts/__tests__/dependency-lifecycle.test.ts"]}
+  ]
+}

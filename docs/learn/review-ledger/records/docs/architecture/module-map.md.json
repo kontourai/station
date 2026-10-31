@@ -1204,8 +1204,6 @@
 
     "packages/shared/src/child-workload.ts",
 
-    "patches/modelcontextprotocol-client-2.3.1.patch",
-
     "src-server/index.ts",
 
     "src-server/knowledge-store/knowledge-write-authority.ts",
@@ -1465,6 +1463,8 @@
     "src-ui/src/views/task-workspace/review/TaskReviewClips.tsx",
 
     "src-ui/src/views/task-workspace/review/ReviewItemList.tsx",
+
+    "patches/modelcontextprotocol-client-2.4.0.patch",
 
     "src-server/services/orchestration/session-goal-module.ts",
 
