@@ -163,6 +163,7 @@ describe('server-ordered approval posture (#2436)', () => {
   let agentDefaults: Record<string, ApprovalMode | undefined>;
   let acpControls: Record<string, AcpApprovalControl>;
   let service: OrchestrationService;
+  let beforeAgentResolution: (() => Promise<void>) | undefined;
 
   function createService(): OrchestrationService {
     return new OrchestrationService({
@@ -175,10 +176,13 @@ describe('server-ordered approval posture (#2436)', () => {
       confinementProviders: confinementProvidersForTests(),
       // The authored-Agent start gate (resolveSessionAgent) is satisfied the
       // way production resolves a defined Agent.
-      resolveSessionAgent: async (input) => ({
-        ...input,
-        agent: { slug: String(input.metadata?.agentSlug ?? 'claude') },
-      }),
+      resolveSessionAgent: async (input) => {
+        await beforeAgentResolution?.();
+        return {
+          ...input,
+          agent: { slug: String(input.metadata?.agentSlug ?? 'claude') },
+        };
+      },
       loadAgentExecutionConfig: async (slug) =>
         agentDefaults[slug] ? { approvalMode: agentDefaults[slug] } : undefined,
       logger: { debug: vi.fn(), warn: vi.fn() },
@@ -195,6 +199,7 @@ describe('server-ordered approval posture (#2436)', () => {
     stationDefault = undefined;
     agentDefaults = {};
     acpControls = {};
+    beforeAgentResolution = undefined;
     service = createService();
   });
 
@@ -561,6 +566,85 @@ describe('server-ordered approval posture (#2436)', () => {
     expect(claude.starts.at(-1)?.threadId).toBe('t-dormant');
     expect(claude.starts.at(-1)?.modelOptions?.approvalMode).toBe('never');
   });
+
+  test.each(['fresh', 'dormant', 'credential'] as const)(
+    '%s provider start refuses posture overtaken during Agent preparation',
+    async (path) => {
+      const threadId = `t-posture-race-${path}`;
+      if (path === 'credential') {
+        await start(threadId, 'claude', 'never');
+      } else {
+        if (path === 'dormant') {
+          store.upsertSession({
+            provider: 'claude',
+            threadId,
+            status: 'ready',
+            resumeCursor: { cursor: `resume-${threadId}` },
+            createdAt: '2026-09-01T00:00:00.000Z',
+            updatedAt: '2026-09-01T00:00:05.000Z',
+          });
+        }
+        expect(
+          await service.recordApprovalModeDecision({
+            threadId,
+            provider: 'claude',
+            approvalMode: 'never',
+            basedOnSequence: null,
+          }),
+        ).toMatchObject({ recorded: true });
+        if (path === 'dormant') {
+          service.initialize();
+          await awaitSessionRecoveryCompleted(service);
+        }
+      }
+      const startsBefore = claude.starts.length;
+      const entered = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+      beforeAgentResolution = async () => {
+        entered.resolve();
+        await release.promise;
+      };
+      const invoke = () =>
+        path === 'fresh'
+          ? service.dispatch({
+              type: 'startSession',
+              input: { provider: 'claude', threadId },
+            })
+          : path === 'dormant'
+            ? turn(threadId)
+            : credentialRecoveryOwner(service).restartRecoverySession({
+                threadId,
+                input: 'retry after credential replacement',
+                recoveryCorrelationId: `posture-race-${path}`,
+                signal: new AbortController().signal,
+                credentialProfileRef: 'backup',
+              });
+      const pending = invoke();
+      void pending.catch(() => {});
+      try {
+        await entered.promise;
+        expect(
+          await service.recordApprovalModeDecision({
+            threadId,
+            provider: 'claude',
+            approvalMode: 'ask',
+            basedOnSequence: latestDecisionSequence(threadId),
+          }),
+        ).toMatchObject({ recorded: true });
+        release.resolve();
+        await expect(pending).rejects.toThrow(/Approval settings changed/);
+        expect(claude.starts).toHaveLength(startsBefore);
+        beforeAgentResolution = undefined;
+        await invoke();
+        expect(claude.starts).toHaveLength(startsBefore + 1);
+        expect(claude.starts.at(-1)?.modelOptions?.approvalMode).toBe('ask');
+      } finally {
+        release.resolve();
+        await pending.catch(() => undefined);
+        beforeAgentResolution = undefined;
+      }
+    },
+  );
 
   test('Codex takes the recorded posture on every turn start', async () => {
     await start('t-codex', 'codex');
