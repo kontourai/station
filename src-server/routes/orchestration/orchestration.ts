@@ -90,6 +90,7 @@ import {
   DelegationFileRefusal,
 } from '@kontourai/station-shared/delegation-files';
 import { type Context, Hono } from 'hono';
+import type { SSEStreamingApi } from 'hono/streaming';
 import { z } from 'zod/v3';
 import { CHAT_INPUT_MAX_CHARS } from '../../../src-shared/chat-input-limits.js';
 import { servesSessionInventoryInputRead } from '../../capabilities/station-capability-flags.js';
@@ -111,7 +112,17 @@ import {
   type FullAccessGrant,
   requestMayBeAnAgent,
 } from '../../security/coding-authority.js';
-import { resolveClientOriginForRequest } from '../../security/runtime-request-security.js';
+import {
+  getRuntimeAuthenticatedRequestPrincipal,
+  resolveClientOriginForRequest,
+} from '../../security/runtime-request-security.js';
+
+/** #3483: an authenticated request that is not a station-control (internal) call. */
+function isPersonRequest(request: Request): boolean {
+  const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+  return principal !== undefined && principal.kind !== 'internal';
+}
+
 import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
 import {
   AnswerAssessmentConflictError,
@@ -177,6 +188,7 @@ import {
 } from '../../services/orchestration/thread-inbox.js';
 import { MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES } from '../../services/orchestration/thread-tool-result-adapter.js';
 import { foregroundTurnSubmissionDigest } from '../../services/orchestration/turn-submission-digest.js';
+import { verifyMcpPromptOrigin } from '../../services/plugins/mcp-prompt-origin-receipt.js';
 import { isPersonChatRequest } from '../../services/projects/project-chat-defaults.js';
 import type { ReceiverExecutionAdmission } from '../../services/projects/project-contribution-service.js';
 import {
@@ -900,6 +912,14 @@ export const foregroundMessageObjectSchema = z.object({
   // text bound, but let the object-level check below require either text or an
   // attachment rather than silently rejecting a caption-less pasted image.
   message: z.string().max(CHAT_INPUT_MAX_CHARS),
+  mcpPromptOrigin: z
+    .object({
+      serverId: z.string().min(1).max(256),
+      name: z.string().min(1).max(256),
+      receipt: z.string().min(1).max(4096),
+    })
+    .strict()
+    .optional(),
   conversationId: z.string().min(1).max(512).optional(),
   ambientContext: z.string().max(4000).optional(),
   attachments: z
@@ -969,6 +989,7 @@ function inboxFollowUpOf(
     body.attachments?.length ||
     body.attachmentRefs?.length ||
     body.skillExperience ||
+    body.mcpPromptOrigin ||
     body.expectedInputRequest ||
     body.setApprovalMode !== undefined ||
     requestedApprovalMode(body.target.model?.options) !== undefined
@@ -1081,6 +1102,7 @@ export const continueForegroundMessageSchema = foregroundMessageObjectSchema
     // A continuation is remote-capable. Never silently strip a current-host
     // reference: that would hide a cross-host byte dispatch from the caller.
     attachmentRefs: z.never().optional(),
+    mcpPromptOrigin: z.never().optional(),
     environment: environmentRefSchema.optional(),
     // The persisted binding, not this continuation request, owns execution
     // identity. Preserve legacy clients that sent a scalar `model` field by
@@ -1100,6 +1122,7 @@ export const conversationHandoffSchema = foregroundMessageObjectSchema
     // A handoff may target another Station; current-host staged references
     // have no portable byte authority and must be refused at validation.
     attachmentRefs: z.never().optional(),
+    mcpPromptOrigin: z.never().optional(),
     idempotencyKey: z.string().min(1).max(200),
   })
   .superRefine(requireApprovalPickBasis);
@@ -1278,6 +1301,7 @@ interface ForegroundMessageRequest {
   expectedInputRequest?: AttentionRequestReference;
   target: ExecutionTarget;
   message: string;
+  mcpPromptOrigin?: import('@kontourai/station-contracts/mcp-prompts').VerifiedMcpPromptOrigin;
   conversationId?: string;
   attachments?: ChatAttachmentInput[];
   resolveAttachments?: (binding: {
@@ -1863,6 +1887,12 @@ function recordDelegationResultRead(
 export function createOrchestrationRoutes(
   orchestrationService: OrchestrationService,
   deps: {
+    generalEventProducer?: (
+      c: Context,
+      stream: SSEStreamingApi,
+      write: (frame: { event: string; data: string }) => Promise<void>,
+      authority: ReturnType<typeof sessionReadAuthorityFromRequest>,
+    ) => Promise<void>;
     eventBus: {
       subscribe(
         listener: (event: {
@@ -2655,6 +2685,26 @@ export function createOrchestrationRoutes(
         automaticBackground?: true;
         whenBusy?: 'queue';
       };
+      let verifiedMcpPromptOrigin:
+        | import('@kontourai/station-contracts/mcp-prompts').VerifiedMcpPromptOrigin
+        | undefined;
+      if (body.mcpPromptOrigin) {
+        try {
+          verifiedMcpPromptOrigin = verifyMcpPromptOrigin(
+            body.mcpPromptOrigin,
+            body.message,
+          );
+        } catch {
+          return c.json(
+            {
+              success: false,
+              error:
+                'MCP prompt origin is invalid or expired; run the prompt again.',
+            },
+            400,
+          );
+        }
+      }
       // #2377 slice C3b: an agent sends without an approval posture.
       const postureRefused = refuseCarriedPosture(c, [
         { path: 'setApprovalMode', value: body.setApprovalMode, kind: 'pick' },
@@ -2840,6 +2890,9 @@ export function createOrchestrationRoutes(
       let stagedBinding: { threadId: string; clientTurnId: string } | undefined;
       const foregroundRequest = {
         ...body,
+        ...(verifiedMcpPromptOrigin
+          ? { mcpPromptOrigin: verifiedMcpPromptOrigin }
+          : {}),
         ...(delegation ? { delegation } : {}),
         // #3323: how the route came by `delegation`, stamped beside it by the
         // start. Set here only, after the body spread, so a body can never
@@ -6599,6 +6652,12 @@ export function createOrchestrationRoutes(
           ...(command.type === 'respondToRequest'
             ? { approvalModeAuthority: true as const }
             : {}),
+          // #3483: a person answering, not a station-control tool call that
+          // acts for its session's owner. Only a person's approval admits a
+          // call the untrusted-content permission asks about.
+          ...(command.type === 'respondToRequest' && isPersonRequest(c.req.raw)
+            ? { personAnswer: true as const }
+            : {}),
           ...(command.type === 'respondToRequest' &&
           command.expectedRequestEventId !== undefined
             ? {
@@ -6773,6 +6832,9 @@ export function createOrchestrationRoutes(
     // clients or a first-ever connect produce) always takes the snapshot
     // path below, byte-identical to the prior behavior (AC4).
     const cursor = parseResumeCursor(c.req.header('Last-Event-ID'));
+    if (c.req.query('includeGeneral') === '1' && deps.generalEventProducer) {
+      c.header('X-Station-General-Stream', '1');
+    }
     return streamSSE(c, async (stream) => {
       sseOps.add(1, {
         op: threadId ? 'orchestration_connect_thread' : 'orchestration_connect',
@@ -6830,7 +6892,28 @@ export function createOrchestrationRoutes(
       let stopKeepAlive: (() => void) | undefined;
       let stopActivityFlush: (() => void) | undefined;
       let clearPending: (() => void) | undefined;
+      // General frames use a separate event name and no id, so Last-Event-ID
+      // remains exclusively the durable orchestration cursor.
+      const shared =
+        c.req.query('includeGeneral') === '1' && deps.generalEventProducer;
+      const abortShared = () => stream.abort();
       try {
+        if (shared) {
+          c.req.raw.signal.addEventListener('abort', abortShared, {
+            once: true,
+          });
+          if (c.req.raw.signal.aborted) abortShared();
+          void shared(
+            c,
+            stream,
+            (frame) =>
+              stream.writeSSE({
+                event: 'station:general',
+                data: JSON.stringify(frame),
+              }),
+            authority,
+          ).then(abortShared, abortShared);
+        }
         // station#2301 review (M2): register for the client going away
         // BEFORE anything below can await. Hono notifies only subscribers
         // registered before `abort()` runs, so a client that left during a
@@ -7342,6 +7425,10 @@ export function createOrchestrationRoutes(
         // or `stopKeepAlive` being `undefined` (a throw before the keepalive
         // was started) are both handled explicitly rather than relying on
         // `clearInterval(undefined)`/calling an unset function.
+        if (shared) {
+          c.req.raw.signal.removeEventListener('abort', abortShared);
+          stream.abort();
+        }
         stopKeepAlive?.();
         stopActivityFlush?.();
         clearPending?.();

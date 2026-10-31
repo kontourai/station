@@ -34,6 +34,7 @@ import {
   currentEngineMcpAccountOwner,
 } from '../../services/plugins/engine-mcp-oauth.js';
 import { scanInstalledPluginInventory } from '../../services/plugins/installed-plugin-inventory.js';
+import { externalUntrustedContentPermission } from '../../services/plugins/mediated-untrusted-content-gate.js';
 import {
   closePluginActivationSession,
   completePluginActivationComposition,
@@ -48,8 +49,12 @@ import {
   createLocalRegistryTrustPolicyAuthority,
   type RegistryTrustPolicyAuthority,
 } from '../../services/plugins/registry-trust-policy.js';
+import { installCatalogServerAddressPolicy } from '../../services/plugins/remote-mcp-address-policy.js';
 import { ToolLibraryService } from '../../services/plugins/tool-library-service.js';
 import { deploymentClientMetadataUrl } from '../../services/plugins/tool-server-oauth.js';
+import { registerToolServerOAuthCapability } from '../../services/plugins/tool-server-oauth-capabilities.js';
+import { sharedUntrustedContentLedger } from '../../services/plugins/untrusted-content-policy.js';
+import { UntrustedConversationMarks } from '../../services/plugins/untrusted-conversation-marks.js';
 import { deriveWorkspaceHomeRoleStatus } from '../../services/plugins/workspace-home-role-service.js';
 import { createProjectMembershipRuntime } from '../../services/projects/project-membership-runtime.js';
 import { createProjectNativeToolLoader } from '../../services/projects/project-native-tools.js';
@@ -451,6 +456,7 @@ import {
   type MCPToolProvenanceGeneration,
 } from '../../services/orchestration/mcp-tool-provenance.js';
 import { disposeAllPluginPublicServerModules } from '../../services/plugins/plugin-public-server.js';
+import type { TaskBrowserRecording } from '../../services/projects/task-browser-recording.js';
 import {
   createRuntimeSearch,
   type RuntimeSearch,
@@ -779,6 +785,8 @@ export class StationRuntime {
   private projectTaskRoomRuntime?: ProjectTaskRoomRuntime;
   /** #90 Browser pane (personal hosts only); its Chromium processes stop with us. */
   private browserService?: BrowserService;
+  private taskRecordings?: TaskBrowserRecording;
+  private taskRecordingsShutdown?: Promise<void>;
   private deviceToolchainService?: DeviceToolchainService;
   /** #1970 device sessions (personal hosts only); their decoders stop with us. */
   private deviceSessions?: DeviceSessionService;
@@ -1219,6 +1227,8 @@ export class StationRuntime {
   /** #485: durable receiver request-claim owner for opt-in attempts. */
   private delegationAttemptClaims!: FileDelegationAttemptClaimStore;
 
+  private uninstallCatalogAddressPolicy?: () => void;
+
   private readonly engineMcpOAuth = createEngineMcpOAuthResolver({
     homeDir: () => this.configLoader.getProjectHomeDir(),
     port: () => this.port,
@@ -1312,11 +1322,17 @@ export class StationRuntime {
           input.agent?.toolServers,
           toolNameProvenance,
         ),
+      // #3483: after the conversation read untrusted content (seen at a
+      // Station seam), an engine that asks Station asks the person too.
+      untrustedContentPermission: externalUntrustedContentPermission({
+        loadIntegration: (id) => this.configLoader.loadIntegration(id),
+      }),
       logger: this.logger,
     });
   }
 
   constructor(options: StationRuntimeOptions = {}) {
+    registerToolServerOAuthCapability('pre-registered-clients');
     this.virtualApplicationConfiguration = options.virtualApplication
       ? { ...options.virtualApplication }
       : undefined;
@@ -1416,6 +1432,17 @@ export class StationRuntime {
         report: (report) =>
           this.logger?.warn('Agent Plugin component was not loaded', report),
       });
+      // #3483: Station connects to catalog-supplied servers only at
+      // addresses it checked.
+      this.uninstallCatalogAddressPolicy = installCatalogServerAddressPolicy(
+        () => projectHomeDir,
+      );
+      // #3483: a conversation that read untrusted content stays marked
+      // across turns and restarts until a person clears it.
+      sharedUntrustedContentLedger.attachDurableMarks(
+        new UntrustedConversationMarks(projectHomeDir),
+        (message, meta) => this.logger?.warn(message, meta),
+      );
       this.configLoader = openedConfigLoader = new ConfigLoader({
         projectHomeDir,
         watchFiles: true,
@@ -4255,6 +4282,11 @@ export class StationRuntime {
               fileStores: this.memoryAdapters,
               // Legacy file-memory conversations are keyed by the OS alias.
               fileMemoryUserId: () => getCachedUser().alias,
+              canReadFileOwner: (requester, owner) =>
+                this.environmentSecurityService.canSharePersonalConversation(
+                  requester,
+                  owner,
+                ),
               projectHomeDir: this.configLoader.getProjectHomeDir(),
               knowledgeStoresEnabled: this.appConfig?.knowledgeStores,
             });
@@ -4373,9 +4405,14 @@ export class StationRuntime {
     this.pluginDraftService = undefined;
     await attempt(() => engineSignIn()?.dispose());
     // #2443: route composition may have built these before the failure. The
-    // same order as shutdown(): browsers, then device sessions (their
+    // same order as shutdown(): recordings, browsers, then device sessions (their
     // producers read the hub the toolchain stops), SSH device hosts, the
     // toolchain, and the live-surface registry once every producer stopped.
+    const recordingsClosed = await attempt(
+      () => this.taskRecordingsShutdown ?? this.taskRecordings?.dispose(),
+    );
+    this.taskRecordingsShutdown = undefined;
+    if (recordingsClosed) this.taskRecordings = undefined;
     if (await attempt(() => this.browserService?.shutdown()))
       this.browserService = undefined;
     if (await attempt(() => this.deviceSessions?.dispose()))
@@ -4697,6 +4734,7 @@ export class StationRuntime {
       projectTaskRoomRuntime,
       projectRoomRuntime,
       browserService,
+      taskRecordings,
       deviceToolchainService,
       deviceSessions,
       liveSurfaceRegistry,
@@ -4707,6 +4745,7 @@ export class StationRuntime {
       serverUpdate,
       analyticsMaintenance,
     } = configureRuntimeRoutes({
+      discordGateway: this.discordGatewayService,
       retainProjectRoomRuntime: (runtime) => {
         this.projectRoomRuntime = runtime;
       },
@@ -4837,6 +4876,7 @@ export class StationRuntime {
     this.projectTaskRoomRuntime = projectTaskRoomRuntime;
     this.projectRoomRuntime = projectRoomRuntime;
     this.browserService = browserService;
+    this.taskRecordings = taskRecordings;
     this.deviceToolchainService = deviceToolchainService;
     this.deviceSessions = deviceSessions;
     this.agentActivityPublisher = agentActivityPublisher;
@@ -5321,6 +5361,13 @@ export class StationRuntime {
    * Shutdown the runtime
    */
   async shutdown(): Promise<void> {
+    if (this.taskRecordings && !this.taskRecordingsShutdown) {
+      this.taskRecordingsShutdown = this.taskRecordings.dispose();
+      void this.taskRecordingsShutdown.catch(() => {});
+    }
+    this.uninstallCatalogAddressPolicy?.();
+    this.uninstallCatalogAddressPolicy = undefined;
+    sharedUntrustedContentLedger.attachDurableMarks(undefined);
     // Begin broker retirement without delaying ordinary teardown on its I/O.
     // The aggregate cleanup joins it before this home can be released.
     void this.retireSelfHostedBroker();
@@ -5385,6 +5432,14 @@ export class StationRuntime {
     const mcpUiFrameServer = this.mcpUiFrameServer;
     const consentListener = this.consentListener;
     const failures: unknown[] = [];
+    try {
+      await (this.taskRecordingsShutdown ?? this.taskRecordings?.dispose());
+      this.taskRecordings = undefined;
+    } catch (error) {
+      failures.push(error);
+    } finally {
+      this.taskRecordingsShutdown = undefined;
+    }
     try {
       await this.nativeRelayEnrollment?.close();
       this.nativeRelayEnrollment = undefined;

@@ -42,6 +42,7 @@ import {
   activeChatsStore,
   type ChatUIState,
 } from '../contexts/active-chats-store';
+import { conversationOpenPhase } from '../contexts/conversation-open-policy';
 import {
   type ObservedAgentCatalog,
   observedEngine,
@@ -343,7 +344,15 @@ export function useSendMessage(
   handleSlashCommand?: (
     sessionId: string,
     content: string,
-  ) => Promise<boolean | string | 'CLEAR'>,
+  ) => Promise<
+    | boolean
+    | string
+    | 'CLEAR'
+    | {
+        text: string;
+        mcpPromptOrigin: import('@kontourai/station-contracts/mcp-prompts').AgentMcpPromptOrigin;
+      }
+  >,
 ) {
   const {
     updateChat,
@@ -547,12 +556,25 @@ export function useSendMessage(
       // Durable outbound replay stays durable either way — it must not
       // collapse into either the in-memory queue or a live steer.
       let steerOpenTurn = false;
+      let queueBusyFollowUp = false;
       // #2309: "is a turn busy" is the server's open turn (on any device, in
       // any lineage child) or this composer's own unacknowledged send. A
       // server that sends no activity record keeps the legacy local status.
-      const turnBusy = isTurnInFlight(currentState);
+      const turnBusy =
+        isTurnInFlight(currentState) ||
+        (!!options?.dispatch &&
+          !!currentState &&
+          conversationOpenPhase(currentState) === 'busy');
 
       if (turnBusy && currentState) {
+        if (/^\/[^\s:]+:[^\s]+/.test(content)) {
+          addEphemeralMessage(sessionId, {
+            role: 'system',
+            content:
+              'MCP prompts cannot be queued or steered during a turn. Send this prompt after the current turn finishes.',
+          });
+          return false;
+        }
         if (attachments?.length) {
           addEphemeralMessage(sessionId, {
             role: 'system',
@@ -561,21 +583,15 @@ export function useSendMessage(
           });
           return false;
         }
-        if (options?.skipInMemoryQueueOnBusy) {
-          // A turn still running is a temporary gate, not a refusal: the
-          // message waits without spending one of its attempts, so a queue
-          // replayed during a long turn never wears out to failed.
-          return options?.dispatch
-            ? ({
-                kind: 'deferred',
-                reason: 'A turn is still running in this conversation.',
-              } satisfies OutboundDispatchTransportResult)
-            : undefined;
+        if (options?.skipInMemoryQueueOnBusy && !options.dispatch) {
+          // This caller forbids adding a duplicate legacy local queue entry.
+          return undefined;
         }
         // #2324 (D4): a turn the engine opened on its own is not a turn the
         // user is steering. Their message waits for it to finish, queued,
         // rather than being folded into a reply they did not ask for.
         const steeringCapable =
+          !options?.dispatch &&
           !options?.queueOnBusy &&
           !currentState.queueSendNowPending &&
           !currentState.queueDrainSettling &&
@@ -587,27 +603,15 @@ export function useSendMessage(
           ) &&
           !(attachments && attachments.length > 0);
         if (!steeringCapable) {
-          clearInput(sessionId);
-          updateChat(sessionId, {
-            queuedMessages: [...(currentState.queuedMessages || []), content],
-            queuedMessageMetadata: [
-              ...(currentState.queuedMessageMetadata ??
-                currentState.queuedMessages.map(() => ({
-                  id: randomCorrelationId(),
-                  mode: 'queue' as const,
-                }))),
-              {
-                id: randomCorrelationId(),
-                mode: options?.queueOnBusy ? 'queue' : 'steer',
-              },
-            ],
-          });
-          options?.onAdmission?.('accepted');
-          return;
+          queueBusyFollowUp = true;
+        } else {
+          steerOpenTurn = true;
         }
-        steerOpenTurn = true;
       }
 
+      let mcpPromptOrigin:
+        | import('@kontourai/station-contracts/mcp-prompts').AgentMcpPromptOrigin
+        | undefined;
       if (!sourceStart && content.startsWith('/') && handleSlashCommand) {
         const result = await handleSlashCommand(sessionId, content);
         if (result === true || result === 'CLEAR') {
@@ -623,6 +627,23 @@ export function useSendMessage(
             content: `Slash command **${content}** was sent as user message`,
           });
           content = result;
+        }
+        if (
+          typeof result === 'object' &&
+          result !== null &&
+          'mcpPromptOrigin' in result
+        ) {
+          if (steerOpenTurn) {
+            updateChat(sessionId, { input: submittedDraft });
+            addEphemeralMessage(sessionId, {
+              role: 'system',
+              content:
+                'MCP prompts cannot be sent as steering. Send this prompt after the current turn finishes.',
+            });
+            return false;
+          }
+          content = result.text;
+          mcpPromptOrigin = result.mcpPromptOrigin;
         }
       }
 
@@ -862,6 +883,7 @@ export function useSendMessage(
       if (
         !options?.dispatch &&
         !sourceStart &&
+        !mcpPromptOrigin &&
         !attachments?.length &&
         !currentState?.attachmentStages?.length
       ) {
@@ -1002,7 +1024,7 @@ export function useSendMessage(
           );
 
       try {
-        const { dispatchForeground } = await import(
+        const { dispatchForeground, dispatchQueuedForeground } = await import(
           '../lib/foregroundMessageDispatch'
         );
         // #2436: the server applies the conversation's recorded posture to
@@ -1033,7 +1055,7 @@ export function useSendMessage(
               ),
             ) === null
           );
-        const receipt = await dispatchForeground({
+        const dispatchInput = {
           apiBase,
           sessionId,
           agentSlug,
@@ -1077,6 +1099,7 @@ export function useSendMessage(
             ? options.executionSnapshot.providerOptions
             : currentState?.providerOptions,
           message: content,
+          ...(mcpPromptOrigin ? { mcpPromptOrigin } : {}),
           conversationId: sentConversationId,
           attachments,
           attachmentStages: currentState?.attachmentStages,
@@ -1096,7 +1119,49 @@ export function useSendMessage(
           ...(carriedAsHint
             ? { personalApprovalDefault: carriedApprovalPick }
             : {}),
-        });
+        };
+        if (
+          queueBusyFollowUp &&
+          accountPreferences.requestScope &&
+          !accountPreferences.requestScope.isCurrent()
+        )
+          throw new Error('The Station connection changed.');
+        const queuedResult = queueBusyFollowUp
+          ? await dispatchQueuedForeground(dispatchInput)
+          : undefined;
+        if (queuedResult?.outcome === 'queued') {
+          stopDeliveryWatch?.();
+          await live?.accepted();
+          if (
+            accountPreferences.requestScope &&
+            !accountPreferences.requestScope.isCurrent()
+          )
+            return true;
+          const latest = activeChatsStore.getSnapshot()[sessionId];
+          const { input: _input, ...rollback } = rejectedSendRollback(
+            transaction,
+            latest,
+          );
+          updateChat(sessionId, {
+            ...rollback,
+            ...(latest?.pendingClientTurnId === resolvedTurnId
+              ? {
+                  status: currentState?.status ?? 'idle',
+                  abortController: currentState?.abortController,
+                  pendingClientTurnId: currentState?.pendingClientTurnId,
+                  sendAwaitingTurnStart: currentState?.sendAwaitingTurnStart,
+                }
+              : {}),
+          });
+          invalidate(['conversation-inbox']);
+          options?.onAdmission?.('accepted');
+          return options?.dispatch
+            ? ({ kind: 'queued' } satisfies OutboundDispatchTransportResult)
+            : true;
+        }
+        const receipt = queueBusyFollowUp
+          ? queuedResult!.receipt
+          : await dispatchForeground(dispatchInput);
 
         stopDeliveryWatch?.();
         // Station answered with the turn: the transcript holds it now.
@@ -1266,7 +1331,7 @@ export function useSendMessage(
                 'indeterminate',
               ),
             );
-          } else if (providerBusy) {
+          } else if (providerBusy && !queueBusyFollowUp) {
             // Moved into the local queue below, under the same key; its row
             // becomes the held copy only once the queue holds it (below), so
             // a held-copy sync in between cannot drop it.
@@ -1434,6 +1499,18 @@ export function useSendMessage(
         );
         const undeliverableCause =
           queueModule?.classifyUndeliverableSend(err) ?? null;
+        if (undeliverableCause && mcpPromptOrigin && !options?.dispatch) {
+          updateChat(sessionId, {
+            status: 'error',
+            error:
+              'The prompt send was not confirmed. Inspect the conversation before running it again.',
+            abortController: undefined,
+            pendingClientTurnId: undefined,
+            sendAwaitingTurnStart: undefined,
+          });
+          options?.onAdmission?.('indeterminate');
+          return false;
+        }
         if (undeliverableCause && !options?.dispatch) {
           try {
             const { outboundDispatch } = await import('../lib/outboundQueue');
@@ -1591,7 +1668,9 @@ export function useSendMessage(
         // (an ACP reattach) is queued the same way.
         if (
           isQueuedOnRefusalCode(err.code) &&
+          !queueBusyFollowUp &&
           !options?.dispatch &&
+          !mcpPromptOrigin &&
           !(attachments && attachments.length > 0)
         ) {
           const { input: _restoredDraft, ...rollback } = rejectedSendRollback(

@@ -20,7 +20,8 @@ For runtime helpers, use explicit subpaths:
 - `@kontourai/station-shared/visual-viewport` — browser-safe visual viewport geometry (height, page offset and the inset above the keyboard or Android system bars, intersected with the Android shell's reported visible height) as one subscription per window; the app's surfaces and the SDK and Connect modals read the same snapshot through `useSyncExternalStore`
 - `@kontourai/station-shared/strict-indexeddb` — one transaction against a single-store IndexedDB database that refuses a `readwrite` the browser would not commit with strict durability, closes on a version change and rejects with the caller's own errors; the browser relay authority and TURN credential custody and Connect's broker routing grants use it
 - `@kontourai/station-shared/git`
-- `@kontourai/station-shared/mcp`
+- `@kontourai/station-shared/mcp` — also `setRemoteTransportFetchPolicy`, through which the server pins catalog-supplied remote servers to checked addresses
+- `@kontourai/station-shared/remote-address-guard` — Node-only private and loopback address rules and `createAddressPinnedFetch`, which resolves each hostname once per connection, refuses any private answer unless allowed, and connects only to the checked addresses
 - `@kontourai/station-shared/mcp-tool-selection` — browser-safe original/qualified/runtime MCP identities and selection matching
 - `@kontourai/station-shared/thread-usage-tree` — the conversation usage tree fold and the per-engine rules for how a subagent's usage relates to its parent's
 - `@kontourai/station-shared/display-text` — browser-safe display form for untrusted text on a one-line surface: bidi controls removed, control characters as spaces, the line split approval surfaces share, and code-point truncation
@@ -880,6 +881,10 @@ interface SchedulerJob {
   cron?: string;
   schedule?: SchedulerSchedule;
   agent?: string;
+  target?: SchedulerAutomationTarget; // runs in a conversation, any engine
+  createdBy?: { userId: string };      // read-only
+  consecutiveFailures?: number;        // read-only, derived from runs
+  lastSuccessAt?: string;              // read-only
   enabled: boolean;
   retryCount?: number;
   retryDelaySecs?: number;
@@ -890,6 +895,7 @@ interface SchedulerJob {
 interface SchedulerLogEntry {
   id: string;
   job: string;
+  runTarget?: SchedulerAutomationTarget | null; // claim target; absent on older runs
   startedAt: string;
   completedAt?: string;
   success: boolean;
@@ -897,6 +903,7 @@ interface SchedulerLogEntry {
   output?: string;
   error?: string;
   state?: 'running' | 'completed' | 'failed' | 'indeterminate';
+  skipped?: 'late'; // a targeted occurrence recorded missed, not a failure
 }
 
 interface SchedulerEvent {
@@ -1231,7 +1238,15 @@ at the integration root are skipped.
 An existing plugin-owned target is replaced using staged rollback handling;
 it is not silently skipped. The returned IDs describe copied files, not live
 MCP connections or permission grants. Use the host installation path for live
-plugin lifecycle and consent.
+plugin lifecycle and consent. This function writes the plugin's bytes as they
+are, including any `untrustedContentChanges`. Station's host paths (install,
+update and rollback) call it only to stage into a private directory, then
+publish through `publishPluginIntegrations`, which applies the integration
+invariants and receipts under each integration's lock. The same publisher
+also checks OAuth client issuer/endpoint rules and refuses bundled secret-binding
+references and Station identity sidecars; recovery validates restored definitions
+through that boundary too
+([design](../design/mcp-subregistry-curation.md#untrusted-content-and-outbound-tools)).
 
 ```ts
 const copied = copyPluginIntegrations('/path/to/plugin', '/project/.station/integrations');

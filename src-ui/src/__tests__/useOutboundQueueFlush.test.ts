@@ -1436,8 +1436,9 @@ describe('useOutboundQueueFlush: a message deferred because a turn is running', 
     });
     // X (chat 1) was deferred first, Y (chat 2) 150ms later.
     stored = [row('x', 'session-1', now - 150), row('y', 'session-2', now)];
-    // X's chat now has a turn running, so X's retry finds it blocked.
+    // X's conversation is still resolving, so its retry finds it blocked.
     activeChatsStore.updateChat('session-1', {
+      conversationOpenPending: true,
       conversationId: 'session-1',
       conversationActivity: {
         conversationId: 'session-1',
@@ -1488,11 +1489,8 @@ describe('useOutboundQueueFlush: a message deferred because a turn is running', 
     reads.mockRestore();
   }, 10_000);
 
-  it('a chat with a turn running is not sent to, and its message goes as soon as the turn ends', async () => {
-    sendMessage.mockResolvedValue({
-      kind: 'accepted',
-      providerTurnId: 'provider-after',
-    });
+  it('hands a busy conversation to the inbox once', async () => {
+    sendMessage.mockResolvedValue({ kind: 'queued' });
     // The server's record: a turn is open in this conversation.
     activeChatsStore.updateChat('session-1', {
       conversationId: 'session-1',
@@ -1508,18 +1506,9 @@ describe('useOutboundQueueFlush: a message deferred because a turn is running', 
       },
     } as never);
     renderHook(() => useOutboundQueueFlush('http://api.test'));
-    await waitFor(() =>
-      expect(
-        activeChatsStore.getSnapshot()['session-1']?.outboundQueuedTurns,
-      ).toHaveLength(1),
-    );
-    await settle(500);
-    expect(sendMessage).not.toHaveBeenCalled();
-    // The turn ends: the record no longer has an open turn.
-    activeChatsStore.updateChat('session-1', {
-      conversationActivity: { conversationId: 'session-1', asOfSequence: 2 },
-    } as never);
     await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
+    await settle(500);
+    expect(sendMessage).toHaveBeenCalledTimes(1);
     expect(sendMessage.mock.calls[0]?.[6]).toBe('busy');
   });
 });

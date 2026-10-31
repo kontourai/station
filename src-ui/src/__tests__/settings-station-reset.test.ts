@@ -174,6 +174,8 @@ describe('buildStationResetPlan', () => {
       'defaultMaxOutputTokens',
       'defaultWorkspaceIsolation',
       'workspaceCheckpoints',
+      'checkoutStaleAfterCommits',
+      'checkoutStaleAfterDays',
       // #3188: resume a usage-limit stop at the provider's reset.
       'usageLimitAutoResume',
       'claudeArtifactsEnabled',

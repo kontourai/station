@@ -295,7 +295,7 @@ or a Start) comes back as edited there: into an empty field directly,
 otherwise behind Restore your earlier draft (a swap) and Discard it, with a
 polite announcement. Waiting drafts are kept in the tab's session storage, so
 they survive a reload but not closing the tab.
-The inbox, mobile switcher, and start surface share their row anatomy. Touch
+The desktop Inbox, embedded mobile Inbox, and start surface share their row anatomy. Touch
 cards allow two title lines while status and metadata keep predictable positions.
 Inbox dismissal is independent of an open tab: desktop keeps its hover-revealed
 clock and ×, while × hides any conversation without stopping work or deleting
@@ -303,7 +303,7 @@ history. Undo and the collapsed Dismissed section restore it on this device.
 With Sheet gestures preview enabled, mobile rows reveal the same clock and ×
 on a left swipe, with larger targets and short labels. Swiping only reveals;
 Snooze still opens its duration picker, and Details retains the same actions.
-The implementation is shared by the dock panel and mobile switcher; Home and
+The implementation is shared by both Inbox presentations; Home and
 sidebar hosts retain their own actions.
 When Continue holds Home's only item of work, Recent work is not shown and
 View Activity sits beside the Continue heading.
@@ -313,8 +313,13 @@ name is the Project's chosen icon, or, without one, a dot in its sidebar colour
 since its slug names that Station's Project. The hover card's Project row
 repeats that mark, and its Git section reads the row's local session folder, as
 in the dock.
-The shared New chat action remains directly reachable in mobile chrome and at
-the lower right of the inbox; footer space keeps it from covering rows.
+The shared New chat action remains directly reachable in mobile chrome and
+the desktop Inbox footer. The phone Inbox is the dock's initial reader, not
+a modal reached through the title. Its explicit icon returns to the retained
+Inbox without unmounting the conversation. Completed answers expose an
+icon-only Branch action beside Copy, using the recorded turn's existing fork
+eligibility and execution identity. The timestamp stays on that action row. Child-work status says **Run finished**
+when its execution ends; its result remains separate and can report unfinished work.
 
 Choosing on a chip does not start an engine; a choice is remembered (Agent per
 context, Model per binding, project as the dock's binding). A Project set to
@@ -386,9 +391,11 @@ an epoch change before resolution settles discards the result, without opening,
 patching the chat, or publishing activity. Within the same epoch, inventory
 pruning may retire the observation token but cannot discard an imperative open
 or its chat update. Only a current observation token publishes read success or
-failure; mounting the opened chat re-establishes observation. Picker validity
-also gates focus and the final patch after awaited hydration. Hydration checks
-command currency before publishing to the message cache or tab. Focusing or
+failure; mounting the opened chat re-establishes observation. Picker selection and cold URL reader intent are captured before asynchronous
+resolution. External conversation focus uses the same selection fence. Closing the picker,
+choosing another chat, or opening New chat retires that selection's focus and
+visible completion. History publication instead checks caller authority and the
+stream epoch; changing the visible reader does not cancel healthy history data. Focusing or
 reopening a hydrating tab adopts its cleanup ownership without cancelling a
 healthy same-epoch response; a superseded command cannot remove that adopted
 tab. These commands add no deadline or abort signal to resolution or transcript
@@ -828,15 +835,19 @@ A failed read after held rows were shown replaces them with a
 **Remove** or **Dismiss** uses the original message key and the server's
 authorization and placement checks; rows without a permitted key are
 read-only. Held rows offer no local edit, reorder, send-now or steer action.
-This view does not transfer ordinary busy-composer submissions from
-browser-local storage into the server inbox. This browser's durable outbox for
+A busy-composer Queue submission requests inbox admission. Eligible submissions
+may be held; Station may instead return a started-turn receipt if the turn has
+ended or the request takes the live path. Apply a pending approval choice before
+queuing. The browser retires its in-flight outbox row on either accepted receipt.
+If the answer is lost, it retains the original key for delivery inspection.
+This browser's durable outbox for
 the chat (a send that failed or got no answer, and copies queued in another
 window or one that closed) leads the same list, not a second list, and its rows
 keep their own Send, Retry, Check and Discard actions. Order numbers follow the
 order messages send, 1 at the bottom: what Station holds goes as the turn ends,
 then this window's queued follow-ups, one per turn. Outbox rows carry no
-number: they go when the turn ends too, and which lands first is not known
-ahead. Needs review marks a row only the person can settle: a send that failed
+number: reconnect may hand one to Station while the turn is busy, and the
+relative delivery order is not known ahead. Needs review marks a row only the person can settle: a send that failed
 or may have reached the agent, unconfirmed delivery, or a copy from a window
 proven closed (its Web Lock is gone; liveness that cannot be read is not
 closed). A failed send marks it **Not sent** instead. A copy another open
@@ -858,7 +869,7 @@ collapsed rows announces it when it appears. The region mounts empty and takes
 its text after mount, so a list that first appears already failed is announced
 too, once. Its disclosure
 reveals message content, mode, status and actions; it does not auto-expand during
-a turn. Pending rows retain their selected mode. **Send now** is an explicit immediate
+a turn. Local queued rows retain their selected mode. Their **Send now** is an explicit
 stop override: Station waits for a settled interruption receipt before sending
 the selected row, keeps other rows in order, and retains the message if stopping
 cannot be confirmed. Queued follow-ups currently accept text and quoted context;

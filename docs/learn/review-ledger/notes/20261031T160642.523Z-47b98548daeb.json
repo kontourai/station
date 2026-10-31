@@ -1,0 +1,33 @@
+{
+  "revision": "49d627dee14710b4bfb81d23c0abc31377e9833d",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Reviewed this document’s module-map references and any inbox/composer claims against the changed OutboundDispatchModule paragraph and its flush/settlement callers. The scoped busy-conversation handoff correction does not change this document’s routing or stated claims. This is a source review, not live provider or authentication evidence.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT.md","note":"Reviewed this document’s module-map references and any inbox/composer claims against the changed OutboundDispatchModule paragraph and its flush/settlement callers. The scoped busy-conversation handoff correction does not change this document’s routing or stated claims. This is a source review, not live provider or authentication evidence.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"README.md","note":"Reviewed this document’s module-map references and any inbox/composer claims against the changed OutboundDispatchModule paragraph and its flush/settlement callers. The scoped busy-conversation handoff correction does not change this document’s routing or stated claims. This is a source review, not live provider or authentication evidence.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/README.md","note":"Reviewed this document’s module-map references and any inbox/composer claims against the changed OutboundDispatchModule paragraph and its flush/settlement callers. The scoped busy-conversation handoff correction does not change this document’s routing or stated claims. This is a source review, not live provider or authentication evidence.","inputs":["docs/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed this document’s module-map references and any inbox/composer claims against the changed OutboundDispatchModule paragraph and its flush/settlement callers. The scoped busy-conversation handoff correction does not change this document’s routing or stated claims. This is a source review, not live provider or authentication evidence.","inputs":["docs/architecture/abstraction-review.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Reviewed this document’s module-map references and any inbox/composer claims against the changed OutboundDispatchModule paragraph and its flush/settlement callers. The scoped busy-conversation handoff correction does not change this document’s routing or stated claims. This is a source review, not live provider or authentication evidence.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed this document’s module-map references and any inbox/composer claims against the changed OutboundDispatchModule paragraph and its flush/settlement callers. The scoped busy-conversation handoff correction does not change this document’s routing or stated claims. This is a source review, not live provider or authentication evidence.","inputs":["docs/glossary.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed this document’s module-map references and any inbox/composer claims against the changed OutboundDispatchModule paragraph and its flush/settlement callers. The scoped busy-conversation handoff correction does not change this document’s routing or stated claims. This is a source review, not live provider or authentication evidence.","inputs":["docs/guides/self-configuring-agent.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Reviewed this document’s module-map references and any inbox/composer claims against the changed OutboundDispatchModule paragraph and its flush/settlement callers. The scoped busy-conversation handoff correction does not change this document’s routing or stated claims. This is a source review, not live provider or authentication evidence.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Reviewed this document’s module-map references and any inbox/composer claims against the changed OutboundDispatchModule paragraph and its flush/settlement callers. The scoped busy-conversation handoff correction does not change this document’s routing or stated claims. This is a source review, not live provider or authentication evidence.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/user/concepts.md","note":"Reviewed this document’s module-map references and any inbox/composer claims against the changed OutboundDispatchModule paragraph and its flush/settlement callers. The scoped busy-conversation handoff correction does not change this document’s routing or stated claims. This is a source review, not live provider or authentication evidence.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Reviewed this document’s module-map references and any inbox/composer claims against the changed OutboundDispatchModule paragraph and its flush/settlement callers. The scoped busy-conversation handoff correction does not change this document’s routing or stated claims. This is a source review, not live provider or authentication evidence.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed this document’s module-map references and any inbox/composer claims against the changed OutboundDispatchModule paragraph and its flush/settlement callers. The scoped busy-conversation handoff correction does not change this document’s routing or stated claims. This is a source review, not live provider or authentication evidence.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed this document’s module-map references and any inbox/composer claims against the changed OutboundDispatchModule paragraph and its flush/settlement callers. The scoped busy-conversation handoff correction does not change this document’s routing or stated claims. This is a source review, not live provider or authentication evidence.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]}
+  ]
+}

@@ -51,6 +51,7 @@ export interface IIntegrationRegistryProvider {
     result: InstallResult;
     definition?: ToolDef;
     origin?: import('@kontourai/station-contracts/tool').ToolOrigin;
+    stationCuratedTrust?: 'trusted' | 'untrusted';
   }>;
   listAvailable(): Promise<RegistryItem[]>;
   listInstalled(): Promise<RegistryItem[]>;

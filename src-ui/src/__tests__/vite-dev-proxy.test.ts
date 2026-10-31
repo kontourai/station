@@ -316,8 +316,11 @@ describe('station dev server file access (#3254 review)', () => {
   test('a page on another localhost port cannot read repo files', async () => {
     // package.json sits at the repo root, outside every allowed root.
     const target = join(repo, 'package.json');
-    const fsPath = target.replaceAll('\\', '/').replace(/^\//u, '');
-    const response = await fetch(`${origin}/@fs/${fsPath}`, {
+    const normalizedTarget = target.replaceAll('\\', '/');
+    const fsPath = normalizedTarget.startsWith('/')
+      ? normalizedTarget
+      : `/${normalizedTarget}`;
+    const response = await fetch(`${origin}/@fs${fsPath}`, {
       headers: { Origin: 'http://localhost:9999' },
     });
     const body = await response.text();

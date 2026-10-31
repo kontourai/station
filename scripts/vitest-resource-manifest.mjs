@@ -47,6 +47,8 @@ export const SHARED_OUTPUT_VITEST_FILES = Object.freeze([
 // changes the system under test or turns their correctness bound into a
 // scheduler-contention measurement.
 export const PROCESS_EXCLUSIVE_VITEST_FILES = Object.freeze([
+  // Checks prompt closure and the room's real 15-second idle recheck bound.
+  'src-server/runtime/routes/__tests__/runtime-routes-task-room-members.test.ts',
   // #4204 measures main-thread approval latency while a real room worker
   // holds SQLite's write lock; overlapping suites would distort that bound.
   'src-server/services/orchestration/__tests__/project-task-room-revision-evidence-bridge.test.ts',
@@ -228,6 +230,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/ios-web-build-version.test.ts',
   // Executes cancellation against a loopback Actions API; owns one short Node child.
   'scripts/__tests__/pr-ci-supersession.test.ts',
+  // Runs the signer diagnostic CLI against a loopback Actions API.
+  'scripts/__tests__/pr-conflict-signer-diagnostic.test.ts',
   // Executes repair publication against real temporary checkouts and a loopback API.
   'scripts/__tests__/qualification-repair.test.ts',
   // #3101: runs the dequeue report as a child against temporary Git remotes
@@ -1266,6 +1270,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/projects/__tests__/workspace-diff-service.test.ts',
   // Capture primitives exercise real Git repositories, including storage exclusion.
   'src-server/routes/__tests__/browser-agent-capture.test.ts',
+  'src-server/routes/__tests__/device-agent-capture.test.ts',
   // Capture pinning uses real Git, including an index with >16 MiB of staged output.
   'src-server/services/projects/__tests__/workspace-commit-pin.test.ts',
   // Six independent tsx publishers race against one real home's five-blob cap.

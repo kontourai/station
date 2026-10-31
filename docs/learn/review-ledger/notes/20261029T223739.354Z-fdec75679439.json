@@ -1,0 +1,11 @@
+{
+  "revision": "28e656ece4c2397847b250f8b77121b7a8984a72",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Reviewed Station/Device/route-grant and person/Project terminology against the corrected contracts currentness paragraph. The witness stays server-private, grants no Device/Project authority and does not change vocabulary. No glossary prose change or whole-document recertification is needed.","inputs":["docs/glossary.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed public-contract routing and authentication-adapter evidence requirements against the corrected guide/contracts witness description. Current provider verification, refusal and revocation evidence remain distinct from Project membership, hosting and production qualification. Server-private currentness adds no public integration API or deployment claim; the existing routes and limits remain accurate.","inputs":["docs/guides/integrating-station.md","docs/guides/deployment-authentication.md","docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Read the contracts scope instructions against the corrected reference paragraph. The change adds only server-private currentness composition, with no public pure helper, wire type or compatibility change. The owning-subpath and environment-free contract guidance remains accurate.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}

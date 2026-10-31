@@ -103,7 +103,7 @@ function renderHeader(
     onTurnIntoTask?: () => void;
     onNewChat?: ReturnType<typeof vi.fn<() => void>>;
     onOpenInventory?: (trigger: HTMLElement) => void;
-    onOpenTaskSwitcher?: ReturnType<typeof vi.fn<() => void>>;
+    onToggleInbox?: ReturnType<typeof vi.fn<() => void>>;
     sessionProjectMismatchLabel?: string | null;
     projectSwitcher?: ChatDockMobileProjectSwitcher | null;
     dockToggle?: ChatDockMobileDockToggle | null;
@@ -164,8 +164,8 @@ function renderHeader(
       }
       activeCount={overrides.activeCount ?? 0}
       unreadCount={overrides.unreadCount ?? 0}
-      taskSwitcherTriggerRef={createRef<HTMLButtonElement>()}
-      onOpenTaskSwitcher={overrides.onOpenTaskSwitcher ?? vi.fn()}
+      inboxTriggerRef={createRef<HTMLButtonElement>()}
+      onToggleInbox={overrides.onToggleInbox ?? vi.fn()}
       onToggleSidebar={vi.fn()}
       onDragPointerDown={vi.fn()}
       onDragClickCapture={vi.fn()}
@@ -219,11 +219,12 @@ async function openActions() {
 
 describe('mobile conversation focus', () => {
   test('keeps conversation switching direct and leaves future-project choice out of the active chat', () => {
-    const onOpenTaskSwitcher = vi.fn();
+    const onToggleInbox = vi.fn();
     renderHeader({
-      onOpenTaskSwitcher,
+      onToggleInbox,
     });
-    const identity = screen.getByRole('button', { name: /^Chats and tasks/ });
+    const inbox = screen.getByRole('button', { name: 'Inbox' });
+    const identity = inbox.closest('.chat-dock__mobile-identity')!;
     expect(identity.textContent).toContain('New chat');
     expect(identity.textContent).toContain('Codex');
     // The visible title ellipsizes on narrow widths; the full text rides
@@ -233,14 +234,14 @@ describe('mobile conversation focus', () => {
         .querySelector('.chat-dock__mobile-title-text')
         ?.getAttribute('title'),
     ).toBe('New chat');
-    fireEvent.click(identity);
-    expect(onOpenTaskSwitcher).toHaveBeenCalledOnce();
+    fireEvent.click(inbox);
+    expect(onToggleInbox).toHaveBeenCalledOnce();
     expect(
       screen.queryByRole('button', { name: /^Switch project/ }),
     ).toBeNull();
     expect(screen.getByRole('button', { name: 'Chat actions' })).toBeTruthy();
     expect(
-      screen.getByRole('button', { name: /^Chats and tasks/ }),
+      screen.getByRole('button', { name: 'Inbox' }),
     ).toBeTruthy();
   });
   test('the activity dot on chat actions says what it means', () => {
@@ -387,8 +388,9 @@ describe('mobile conversation focus', () => {
       projectSwitcher: null,
     });
     expect(
-      screen.getByRole('button', { name: 'Chats and tasks — New chat' })
-        .textContent,
+      screen.getByText('New chat', {
+        selector: '.chat-dock__mobile-title-text',
+      }).textContent,
     ).toBe('New chat');
     expect(screen.queryByRole('button', { name: 'Collapse chat' })).toBeNull();
   });
@@ -401,14 +403,8 @@ describe('mobile switcher names include their visible text', () => {
       .toLowerCase()
       .replace(/[^\p{L}\p{N}]+/gu, ' ')
       .trim();
-  test.each([
-    ['the project switcher', /^Switch project/],
-    ['the chats and tasks switcher', /^Chats and tasks/],
-  ])('%s', (_label, name) => {
-    renderHeader({
-      agentIdentity: null,
-      sessionProjectMismatchLabel: 'This chat: Alpha',
-    });
+  test.each([['the project switcher', /^Switch project/]])('%s', (_label, name) => {
+    renderHeader({ agentIdentity: null, sessionProjectMismatchLabel: 'This chat: Alpha' });
     const button = screen.getByRole('button', { name });
     const visible = words(button.textContent ?? '');
     expect(visible.length).toBeGreaterThan(0);
@@ -422,7 +418,7 @@ describe('the mobile dock bar control set (#928 C2b)', () => {
     renderHeader();
     for (const name of [
       'Collapse chat',
-      'Chats and tasks — New chat, Codex',
+      'Inbox',
       'Chat actions',
     ]) {
       expect(screen.getByRole('button', { name })).toBeTruthy();

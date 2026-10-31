@@ -1,0 +1,37 @@
+{
+  "revision": "dcfa0c747ac4e4998cdf064dece8a6f3b8f6de61",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked surfaces_today against connectClientSession in runtime-routes and the shared producer path; corrected the legacy-only /events description. Reported metadata and mobile limitations remain. No telemetry delivery was exercised.","inputs":["docs/reference/usage-telemetry.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Reviewed the protected and public share-route authority discussion against the runtime-routes diff: event-producer extraction does not change share route admission. Historical share evidence was not rerun.","inputs":["docs/design/answer-share-permalinks.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"Reviewed the historical preview host decision and platform qualification against the runtime-routes event wiring change; no preview host behavior was changed by that wiring. No native host was exercised.","inputs":["docs/design/browser-preview-host-spike.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"Reviewed the MVP browser pane hosting and iframe boundaries against the runtime-routes event wiring diff; the change is in general event composition, not browser hosting. No browser journey was run.","inputs":["docs/design/browser-preview-pane-mvp.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Reviewed the home authority identity and transfer admission claims against the runtime-routes event producer change; the home authority routes were not altered. No cross-device transfer was executed.","inputs":["docs/design/channel-home-authority.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/connection-broker.md","note":"Reviewed broker enrollment and separation of routing from Device authority against the runtime-http diff: it adds an exposed general-stream header to CORS. No broker or device journey was executed.","inputs":["docs/design/connection-broker.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/design/local-bootstrap-token.md","note":"Reviewed the mint/exchange and bootstrap authority claims against runtime-http and runtime-routes diffs; the changes expose the shared-stream header and rewire general events, not the token routes. No bootstrap ceremony was rerun.","inputs":["docs/design/local-bootstrap-token.md","src-server/runtime/bootstrap/runtime-http.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Reviewed the historical route/gate discussion and current status caveat against the CORS exposure and event-producer wiring diffs. The edits do not alter the device-access routes; line-number citations remain historical. No passkey journey was rerun.","inputs":["docs/design/operator-device-access.md","src-server/runtime/bootstrap/runtime-http.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/outside-agent-mcp-r4a-evidence.md","note":"Reviewed the outside-MCP CORS isolation and historical executed evidence against the runtime-http diff: ordinary CORS exposes an additional general-stream header, while the outside admission bypass remains. No MCP tests were rerun.","inputs":["docs/design/outside-agent-mcp-r4a-evidence.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"Reviewed the person/device principal and membership limitations against runtime-routes: only the event producer composition moved, not membership resolution. No multi-person journey was executed.","inputs":["docs/design/project-membership.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Reviewed the current personal-operator gateway and proposed remote admission distinction against runtime-routes and the updated API reference. General event wiring does not change the terminal gateway; no terminal session was exercised.","inputs":["docs/design/terminal.md","docs/reference/api.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Reviewed browser route scope and the binary live-surface stream distinction against the runtime-routes event wiring diff. The browser surface is not the general-event producer. No device or browser stream was exercised.","inputs":["docs/guides/browser-workspace.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Reviewed the HTTP/SSE proxy and buffering guidance against runtime-routes: the shared stream remains an HTTP SSE route and /events stays mounted. No deployed proxy was exercised.","inputs":["docs/guides/deployment.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"Reviewed the personal versus hosted device route boundary and live surface description against runtime-routes general-event rewiring. Device routes are not changed by that diff; no device host was exercised.","inputs":["docs/guides/mobile-device-workspace.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Reviewed the Starter route composition and its durable Task/Session ownership against the runtime-routes event producer diff; Starter mounting is unchanged. No Starter workflow was executed.","inputs":["docs/guides/starter-work.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/pull-request-guides.md","note":"Reviewed the shared pull-request guide user journey against the runtime-routes diff; general event producer composition does not change guide publication or access routes. No guide journey was executed.","inputs":["docs/user/pull-request-guides.md","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

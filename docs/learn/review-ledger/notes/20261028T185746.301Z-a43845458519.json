@@ -1,0 +1,7 @@
+{
+  "revision": "6895629f64e98a9f910f73e7a9584e47eac88968",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Review round: PUT /integrations/:id paragraph updated: receipts owned by the config writer for PUT and POST, attribution from the authenticated request principal (resolveOrchestrationRequestPrincipal), history survives replacement, trustReadOnlyHints included; checked against tools.ts, runtime-routes.ts and config-loader.ts.","inputs":["docs/reference/api.md","packages/contracts/src/catalog.ts","packages/contracts/src/tool.ts","src-server/domain/config-loader.ts","src-server/routes/agents/tools.ts","src-server/routes/schemas/schema-definitions/runtime.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/plugins/mcp-service.ts"]}
+  ]
+}

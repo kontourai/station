@@ -24,16 +24,35 @@ const host = vi.hoisted(() => ({
     | undefined,
 }));
 
+function createStreamHandle(): ReturnType<
+  typeof import('@kontourai/station-sdk').fetchSSE
+> {
+  const controller = new AbortController();
+  const completed = new Promise<void>((resolve) => {
+    controller.signal.addEventListener('abort', () => resolve(), {
+      once: true,
+    });
+  });
+  return {
+    signal: controller.signal,
+    completed,
+    close: vi.fn(() => controller.abort()),
+    retry: vi.fn(),
+    restart: vi.fn(),
+  };
+}
+
 vi.mock('@kontourai/station-sdk', () => ({
   fetchSSE: vi.fn(
     (
-      _url: string,
+      url: string,
       options: {
         onMessage: (message: { event: string; data: string }) => void;
       },
     ) => {
-      streams.push(options);
-      return { close: vi.fn() };
+      if (url.endsWith('/events') && !url.includes('/api/orchestration/'))
+        streams.push(options);
+      return createStreamHandle();
     },
   ),
 }));

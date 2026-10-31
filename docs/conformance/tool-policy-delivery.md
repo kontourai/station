@@ -3,13 +3,13 @@
 This page combines current source contracts with historical provider probes.
 The recorded Claude 2.1.224 / Agent SDK 0.3.224 experiments below were not rerun.
 The earlier dependency review inspected Agent SDK 0.3.302. The current lockfile
-selects 0.3.304; source inspection of its installed `sdk.d.ts` still finds that
+selects 0.3.312; source inspection of its installed `sdk.d.ts` still finds that
 omitted `settingSources` loads all filesystem settings. That type declaration
 is not a fresh live test of permission-rule precedence, workspace trust, or
 memory/MCP discovery.
 
 Version-specific observations below retain the SDK and CLI versions actually
-inspected or executed. They are not new provider results for SDK 0.3.304.
+inspected or executed. They are not new provider results for SDK 0.3.312.
 
 `EngineCapabilityMatrix.toolPolicy` declares only whether Station can make a
 pre-tool blocking or grant decision on the actual tool-call path. It does not
@@ -194,6 +194,27 @@ after generation, delegation and config-protection refusals and retains guardian
 denies; guardian allows, session grants and unattended grants cannot bypass it.
 Managed calls without an approval channel are denied.
 
+## Outbound tools after untrusted content
+
+On the Station engine, a turn that has read a tool result from an
+integration with `contentTrust: "untrusted"` (or whose conversation was
+marked by an earlier turn) runs one more stage after the
+Project tool policy and before authored Ask rules: the called tool's
+`untrustedContentPermissions` entry, then its integration default, then
+`ask`. A read-only hint exempts a tool only when no entry is set and the
+server's hints are trusted (not an `untrusted` server, or
+`trustReadOnlyHints`). Delegation shares the mark between parent and child
+conversations. `ask` is answered exactly like an effective
+authored Ask above, `deny` refuses with `untrusted_content_denied`, and
+`allow` leaves the decision to the later stages. External engines' staged
+evaluator runs the same stage for `mcp__<server>__<tool>` calls in a session
+marked at a Station seam, so Claude Code and ACP ask for them. Enforcement for
+Claude Code, Codex and ACP is at the Station seams that carry their MCP calls
+(the station-control authority guard and the OAuth proxy), where `ask`
+passes only on a person's recorded approval of that tool. Calls an engine
+makes to a server it connects to itself are not enforced
+([design](../design/mcp-subregistry-curation.md#coverage-and-gaps)).
+
 Claude's staged evaluator returns a required Ask as a `PreToolUse` permission
 ask; `canUseTool` also excludes it from automatic, guardian and session grants.
 Adapter tests exercise both callbacks, including repeated calls after a session
@@ -308,7 +329,7 @@ do not already allow, rather than claiming a floor Station does not impose.
 The standing grant covers calls to the tool, never an escalation beyond the
 call (#2915; #2911 set the same rule for Codex). The recorded escalation
 inspection used Agent SDK 0.3.278, which bundled Claude Code 2.1.278.
-This checkout now resolves SDK 0.3.304 as noted above; the historical
+This checkout now resolves SDK 0.3.312 as noted above; the historical
 2.1.261 and 2.1.278 observations below were not freshly rerun against it.
 That inspected engine signals escalations in several shapes. Read, Glob, Grep and LSP ask for a path outside
 the session's working directories without a `blockedPath`. They carry a session
@@ -443,7 +464,7 @@ Claude Code writes why it asks on each `can_use_tool` control request:
 `workingDir`, `safetyCheck`, `classifier`, `other`), `classifier_approvable`,
 `decision_reason_code` and `requires_user_interaction`. The installed Agent
 SDK 0.3.289 was observed forwarding reason type, reason code and interaction
-fields, but not `classifier_approvable`. The current 0.3.304 type contract exposes
+fields, but not `classifier_approvable`. The current 0.3.312 type contract exposes
 `requestId`, `decisionReason` and `matchedAskRule`; Station obtains the structured
 reason fields from its frame tap below. A test runs the real installed SDK against a stand-in
 CLI and verifies the reason values, request identities and classifier facts

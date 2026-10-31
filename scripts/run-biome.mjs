@@ -62,7 +62,7 @@ if (process.platform !== 'win32') {
   const stop = () =>
     terminateSuiteExecution(execution, {
       processLabel: 'Biome',
-      terminationGraceMs: 10_000,
+      terminationGraceMs: 5_000,
       terminationForceMs: 5_000,
       waitForSuiteSettlement,
     });

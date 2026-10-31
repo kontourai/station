@@ -223,7 +223,10 @@ export function getLegacyPathRedirect(path: string): string | null {
   const exactRedirects: Readonly<Record<string, string>> = {
     '/monitoring': '/developer/telemetry',
     '/sys/monitoring': '/developer/telemetry',
-    '/sys/schedule': '/schedule',
+    '/sys/schedule': '/automations',
+    // Scheduled jobs became Automations: an old link (stored notifications
+    // carry `/schedule?job=`) lands on the same page with its selection.
+    '/schedule': '/automations',
     '/manage': '/agents',
     '/tools': '/connections/tools',
     // #765 D2: there is no task-collection view — a Task is only ever opened
@@ -608,7 +611,7 @@ export function getPathForView(view: NavigationView): string | null {
     case 'developer':
       return view.tab ? `/developer/${view.tab}` : '/developer';
     case 'schedule':
-      return '/schedule';
+      return '/automations';
     case 'agent-new':
       return '/agents/new';
     case 'agent-edit':

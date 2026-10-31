@@ -28,7 +28,6 @@ import {
   rebuildKnowledgeIndex,
   runIndependentReview,
   runJob,
-  searchKnowledgeIndex,
   updateJob,
 } from '@kontourai/station-sdk/client';
 import {
@@ -57,6 +56,7 @@ import {
 } from './station-control-delegation.js';
 import type { StationControlToolRegistry } from './station-control-mcp-server.js';
 import { registerProjectReadTools } from './station-control-project-read-tools.js';
+import { knowledgeSearchToolResult } from './station-knowledge-tools.js';
 
 export const MONITORING_ENGINE_FILTER_VALUES = [
   'station',
@@ -131,6 +131,19 @@ const schedulerScheduleSchema = z.discriminatedUnion('kind', [
   }),
 ]);
 
+/**
+ * Where an automation's runs land. An agent may name only its own
+ * conversation (`automation-target-stays-in-own-conversation`).
+ */
+const automationTargetSchema = z
+  .object({
+    kind: z.literal('conversation'),
+    conversationId: z.string().min(1),
+  })
+  .describe(
+    'Run each time as a turn in this conversation (your own), on its engine, instead of as a Station-engine file run',
+  );
+
 const schedulerJobUpdateSchema = {
   cron: z.string().min(1).optional(),
   schedule: schedulerScheduleSchema.optional(),
@@ -141,6 +154,7 @@ const schedulerJobUpdateSchema = {
   trustAllTools: z.boolean().optional(),
   retryCount: z.number().int().min(0).max(10).optional(),
   retryDelaySecs: z.number().int().min(0).max(3600).optional(),
+  target: automationTargetSchema.optional(),
 };
 
 const delegationContextSchema = z.object({
@@ -371,6 +385,7 @@ export function registerOperationsTools(
       trustAllTools: z.boolean().optional(),
       retryCount: z.number().int().min(0).max(10).optional(),
       retryDelaySecs: z.number().int().min(0).max(3600).optional(),
+      target: automationTargetSchema.optional(),
     },
     async (params) => {
       if (params.cron !== undefined && params.schedule !== undefined) {
@@ -536,7 +551,7 @@ export function registerOperationsTools(
 
   server.tool(
     'read_logs',
-    "Read Station's own server logs to debug runtime behavior; filter by minimum level/time/substring. Returns the most recent matches (tail semantics). Lines come back unredacted only for the operator in person on this machine (a same-origin UI-bootstrap or local-grant session) and for an agent acting for the operator from an engine Station hosts in-process; every other caller, including this tool from any other engine, receives the redacted rendering.",
+    "Read Station's server logs to debug runtime behavior; filter by level, time or substring. Agent calls require an explicit operator grant for this verified bound session. Logs can contain private conversation content; rendering follows the caller's locality.",
     {
       level: z
         .enum(LOG_LEVEL_ORDER as [string, ...string[]])
@@ -1228,7 +1243,7 @@ export function registerOperationsTools(
 
   server.tool(
     'search_knowledge',
-    'Semantic search over the knowledge index, optionally scoped to specific store roots — results are re-resolved records (title/excerpt/category), never raw index hits; fails with the NO_EMBEDDER error when no embedding connection is configured',
+    'Search re-resolved Knowledge records and report index health. Stale roots or excerpts need reindexing; index:null means unreported health. Fails when no embedding connection is configured.',
     {
       query: z.string().min(1).describe('Natural-language search query'),
       rootIds: z
@@ -1244,16 +1259,8 @@ export function registerOperationsTools(
         .optional()
         .describe('Maximum number of results (server default when omitted)'),
     },
-    async ({ query, rootIds, topK }) =>
-      jsonToolResult(
-        await toOperationsEnvelope(
-          searchKnowledgeIndex(
-            controlApiBase(),
-            { query, rootIds, topK },
-            controlRequestOptions(),
-          ),
-        ),
-      ),
+    ({ query, rootIds, topK }) =>
+      knowledgeSearchToolResult(controlApiBase(), { query, rootIds, topK }),
   );
 
   server.tool(

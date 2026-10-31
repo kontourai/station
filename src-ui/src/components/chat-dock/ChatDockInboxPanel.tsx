@@ -9,6 +9,7 @@ import { useCoarsePointer } from '../../hooks/useCoarsePointer';
 import { useRowFocusPreservation } from '../../hooks/useRowFocusPreservation';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 import {
+  type ConversationOpenResult,
   openWorkItem,
   workItemOpenFailureMessage,
 } from '../../views/home/work-item-open-policy';
@@ -47,7 +48,7 @@ export interface ChatDockInboxPanelProps {
     projectName?: string,
     model?: string,
     conversationUpdatedAt?: string,
-  ) => Promise<boolean> | boolean | undefined;
+  ) => Promise<ConversationOpenResult> | ConversationOpenResult;
   onOpenSession: (threadId: string) => void;
   /** See WorkItemOpenHandlers.agentsLoaded (station#3687). */
   agentsLoaded?: boolean;
@@ -105,7 +106,7 @@ export interface ChatDockInboxPanelProps {
  * Desktop chrome for the shared inbox rows (kontourai/station#3312): the
  * dock's side panel — scroll container, persisted collapsible sections, and
  * the history footer. Row/group anatomy lives in `ChatDockInboxRows.tsx`,
- * shared with `MobileTaskSwitcher`'s sheet chrome.
+ * shared with the embedded `MobileInboxPanel`.
  */
 function ChatDockInboxPanelImpl({
   items,
@@ -253,6 +254,7 @@ function ChatDockInboxPanelImpl({
                 agentsLoaded,
               })
                 .then((outcome) => {
+                  if (outcome === 'cancelled') return;
                   if (outcome === 'opened' || outcome === 'fallback') {
                     onAcknowledgeConversation?.(item);
                     return;

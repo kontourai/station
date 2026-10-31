@@ -1,3 +1,9 @@
+export {
+  fetchIntegrationStatus,
+  type IntegrationStatus,
+  IntegrationStatusUnsupportedError,
+  useIntegrationStatusQuery,
+} from './query-domains/integrationStatus';
 export { runAgentMcpPrompt } from './query-domains/mcpPromptRun';
 export {
   peerEnrollmentQueries,
@@ -15,6 +21,12 @@ export {
   useProjectS3ProfilesQuery,
   useProjectS3SourcesQuery,
 } from './query-domains/projectS3Sources';
+export {
+  fetchTaskWriteBack,
+  type TaskWriteBackEntry,
+  type TaskWriteBackLog,
+  useTaskWriteBackQuery,
+} from './query-domains/taskWriteBack';
 /**
  * SDK Query Hooks - Wraps React Query for API calls
  * Plugins use these instead of raw useQuery
@@ -158,6 +170,7 @@ export {
   materializeKitProjectLayout,
   type RegistryCatalogTab,
   useApplyIntegrationToolsMutation,
+  useDecideIntegrationTrustReviewMutation,
   useDeleteIntegrationMutation,
   useDisconnectIntegrationAccountMutation,
   useFinishIntegrationOAuthMutation,
@@ -610,6 +623,7 @@ export {
   useRunJob,
   useRunQuery,
   useRunsQuery,
+  useScheduledConversationTargetCapability,
   useSchedulerJobs,
   useSchedulerProviders,
   useSchedulerStats,
@@ -848,6 +862,7 @@ export {
   fetchTaskReview,
   fetchTaskReviewItem,
   fetchTaskReviewThread,
+  fetchTaskWalkthroughPage,
   TASK_REVIEW_OPENING_PREVIEW_CHARS,
   type TaskCapture,
   type TaskCaptureBrowserSession,
@@ -874,6 +889,8 @@ export {
   useTaskReviewItemQuery,
   useTaskReviewQuery,
   useTaskReviewThreadQuery,
+  useTaskWalkthroughsQuery,
+  useTaskWalkthroughVideoQuery,
 } from './query-domains/taskReview';
 export {
   checkTelemetryConnection,
@@ -972,6 +989,7 @@ export {
   type ModelConnectionMutationInput,
   type ModelConnectionSmokeInput,
   PROJECT_CHAT_DEFAULTS_QUERY_KEY_PREFIX,
+  PROJECT_CHECKOUT_FRESHNESS_QUERY_KEY_PREFIX,
   PROJECT_RUN_LOCATIONS_QUERY_KEY_PREFIX,
   ProjectIdentityIncarnationMismatchError,
   type ProjectIdentityReadFailure,
@@ -1016,6 +1034,7 @@ export {
   useModelConnectionsQuery,
   useModelPickerCatalogQuery,
   useProjectChatDefaultsQuery,
+  useProjectCheckoutFreshnessQuery,
   useProjectIconCandidatesQuery,
   useProjectIdentityQuery,
   useProjectLayoutQuery,

@@ -1,0 +1,7 @@
+{
+  "revision": "65cb0062bf40afee47fb9669b299f49ba1e0bbed",
+
+  "notes": [
+    {"path":"docs/patterns/frontend.md","note":"Reviewed app startup listener registration, lazy transport mounting and retry against the new source owners; invalidation and authority fencing stay in the listener.","inputs":["docs/patterns/frontend.md","src-ui/src/hooks/useServerEventsListener.ts","src-ui/src/hooks/ServerEventsMount.tsx"]}
+  ]
+}

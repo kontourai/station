@@ -83,6 +83,7 @@ import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { awaitSessionAttachmentSettled } from '../../../__test-utils__/session-runtime-barriers.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { FileMemoryAdapter } from '../../../adapters/file/memory-adapter.js';
 import { UsageAggregator } from '../../../analytics/usage-aggregator.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { FakeNeo4jDriver } from '../../../knowledge-store/__tests__/fake-neo4j-driver.js';
@@ -416,6 +417,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
        * orchestration service, behind `/api/knowledge`.
        */
       knowledge?: boolean;
+      fileMemoryKnowledge?: boolean;
       /**
        * M1: the real session read model and Flow-run read behind the spatial
        * board and MCP-UI evidence attach; each Flow-run read records whether
@@ -630,9 +632,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       metricsLog: [],
       monitoringEvents: [],
       orchestrationEventStore: store,
-      ...(orchestrationExtras.eventBus
-        ? { eventBus: orchestrationExtras.eventBus }
-        : {}),
+      eventBus: orchestrationExtras.eventBus ?? new EventBus(),
       ...(orchestrationExtras.actionOperations
         ? { actionOperations: orchestrationExtras.actionOperations }
         : {}),
@@ -679,12 +679,28 @@ describe('device-session chat principal resolution over the REAL auth path (stat
               knowledgeProvider = provider;
               // The Station runtime's own registration (station-runtime.ts),
               // so these routes read through production's authority wiring.
+              const fileStores = new Map();
+              if (orchestrationExtras.fileMemoryKnowledge) {
+                const memory = new FileMemoryAdapter({
+                  projectHomeDir: roomHomeDir,
+                });
+                await memory.createConversation({
+                  id: 'file-note',
+                  resourceId: 'claude',
+                  userId: getCachedUser().alias,
+                  title: 'File note',
+                  metadata: {},
+                });
+                fileStores.set('claude', memory);
+              }
               await registerRuntimeConversationKnowledgeRoot({
                 provider,
                 persistence,
                 sessions: orchestration!,
-                fileStores: new Map(),
+                fileStores,
                 fileMemoryUserId: () => getCachedUser().alias,
+                canReadFileOwner: (requester, owner) =>
+                  pairing.canSharePersonalConversation(requester, owner),
                 projectHomeDir: roomHomeDir,
                 knowledgeStoresEnabled: true,
               });
@@ -767,6 +783,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         typeof configureRuntimeRoutesProduction
       >[0],
     );
+    searchCleanup.unshift(() => result.projectRoomRuntime.close());
     return {
       app,
       store,
@@ -1479,9 +1496,17 @@ describe('device-session chat principal resolution over the REAL auth path (stat
           )
         ).status,
       ).toBe(404);
-      expect(
-        (await projectRead(`/api/tasks/${sharedTaskId}/room/history`)).status,
-      ).toBe(403);
+      const memberHistory = await projectRead(
+        `/api/tasks/${sharedTaskId}/room/history`,
+      );
+      expect(memberHistory.status).toBe(200);
+      expect(await memberHistory.json()).toMatchObject({
+        success: true,
+        data: {
+          kind: 'available',
+          records: [{ body: { kind: 'human-message', text: messageMarker } }],
+        },
+      });
       // #3193: the bound guest reads the publication MemberProjectPage gates
       // history and document on, and sees exactly the shared-work list's
       // summary. An unshared Task and an unknown id are one uniform 404.
@@ -3933,6 +3958,37 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         REMOTE_TAILNET_ENV,
       );
       expect(direct.status).toBe(404);
+    });
+
+    test('file-memory knowledge reads follow the personal account at the real route', async () => {
+      const { app, pairing, paired } = await principalSetup({
+        knowledge: true,
+        fileMemoryKnowledge: true,
+      });
+      const peer = pairDelegationPeer(pairing);
+      for (const [credential, allowed] of [
+        [OPERATOR_SECRET, true],
+        [paired.credential, true],
+        [peer.credential, false],
+      ] as const) {
+        const headers = { Authorization: `Bearer ${credential}` };
+        const list = await app.request(
+          '/api/knowledge/roots/root:conversations/records?type=raw',
+          { headers },
+          REMOTE_TAILNET_ENV,
+        );
+        expect(list.status).toBe(200);
+        const body = (await list.json()) as { data: Array<{ id: string }> };
+        expect(body.data.some((record) => record.id === 'file-note')).toBe(
+          allowed,
+        );
+        const direct = await app.request(
+          '/api/knowledge/roots/root:conversations/records/file-note',
+          { headers },
+          REMOTE_TAILNET_ENV,
+        );
+        expect(direct.status).toBe(allowed ? 200 : 404);
+      }
     });
 
     test('run inventory lists the personal account’s sessions for the operator and the paired device, never a stranger’s', async () => {

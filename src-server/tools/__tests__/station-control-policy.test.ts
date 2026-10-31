@@ -63,7 +63,7 @@ const DECISION_1_BOUND_OPERATOR = [
 // Decision 2 (slice B): operator-wide reads — Station-wide data no single
 // person's view contains — need a bound caller acting for the operator.
 const DECISION_2_OPERATOR_READS = [
-  'get_job_logs',
+  // get_job_logs is now scoped per recorded run target at the route.
   'get_achievements',
   'get_ssh_environment',
   // Slice B review: Station-wide usage totals (H1), the operator-only
@@ -972,6 +972,18 @@ describe('station-control authority table: work claims (#3413 B)', () => {
       ).toBe('station_control_caller_required');
     }
   });
+  test('no tool reaches the UI read of claims', () => {
+    const route = '/api/orchestration/work-claims';
+    expect(matchStationControlRoute('GET', route)).toBeUndefined();
+    for (const [name, caller] of Object.entries(CALLERS))
+      expect([
+        name,
+        authorizeStationControlRequest('GET', route, {
+          caller,
+          isOperatorPrincipal,
+        })?.code,
+      ]).toEqual([name, 'station_control_route_unmapped']);
+  });
 });
 
 // `fork_conversation`: written out here, independently of the table. It
@@ -1026,17 +1038,62 @@ describe('station-control authority table: fork_conversation', () => {
       })?.code,
     ).toBe('station_control_caller_required');
   });
+});
 
-  test('no tool reaches the UI read of claims', () => {
-    const route = '/api/orchestration/work-claims';
-    expect(matchStationControlRoute('GET', route)).toBeUndefined();
-    for (const [name, caller] of Object.entries(CALLERS))
-      expect([
-        name,
-        authorizeStationControlRequest('GET', route, {
-          caller,
-          isOperatorPrincipal,
-        })?.code,
-      ]).toEqual([name, 'station_control_route_unmapped']);
+/**
+ * `automation-target-stays-in-own-conversation`: an automation's runs send a
+ * turn into its target conversation, so an agent's job may name only its own
+ * one, on create and on update, whoever asks.
+ */
+describe('automation targets stay in the caller’s own conversation', () => {
+  const caller: StationControlPolicyCaller = {
+    assurance: 'bound',
+    principal: { id: OPERATOR, elevationEligible: true },
+    sessionId: 'session-a',
+    conversationId: 'conversation-a',
+  };
+  const decide = (
+    method: 'POST' | 'PUT',
+    automationTargetConversationId: string | null | undefined,
+  ) =>
+    authorizeStationControlRequest(
+      method,
+      method === 'POST' ? '/scheduler/jobs' : '/scheduler/jobs/digest',
+      {
+        caller,
+        isOperatorPrincipal: (id) => id === OPERATOR,
+        // The edit changes no granted job's work: only the target rule decides.
+        retargetsGrantedJob: false,
+        automationTargetConversationId,
+      },
+    );
+
+  test.each(['POST', 'PUT'] as const)(
+    '%s: its own conversation, or none, is admitted',
+    (method) => {
+      expect(decide(method, 'conversation-a')).toBeUndefined();
+      expect(decide(method, undefined)).toBeUndefined();
+    },
+  );
+
+  test.each(['POST', 'PUT'] as const)(
+    '%s: another conversation, or a dedicated one, is out of scope',
+    (method) => {
+      for (const named of ['conversation-b', null])
+        expect(decide(method, named)).toMatchObject({
+          code: 'station_control_out_of_scope',
+          reason: 'other-conversation',
+        });
+    },
+  );
+});
+
+test('device_capture_to_task keeps the bound Project edit DEVICE_AGENT policy', () => {
+  expect(STATION_CONTROL_TOOL_POLICY.device_capture_to_task).toMatchObject({
+    assurance: 'bound',
+    role: 'project',
+    projectAction: 'edit',
+    toolClass: 'mutating',
+    enforcedBy: 'route',
   });
 });

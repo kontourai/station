@@ -1,0 +1,7 @@
+{
+  "revision": "6a0091138b4120acc5b103f95708a031c0b0fa4e",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"Reviewed ChatDock and overlay changes: retained Inbox uses existing browser device settings and inboxSections, with no new server config, environment variable, default approval policy or migration. Imported and New-chat context still flow through existing owners. Scope is this UI delta only.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}
