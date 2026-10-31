@@ -155,7 +155,7 @@ function ModeControl({
     useShortcutRegistry()
       .getAllShortcuts()
       .find((candidate) => candidate.id === 'theme.toggle')?.disabled === true;
-  // A phone or a touch screen has no âŒ˜H to press; the hint would be noise.
+  // A phone or a touch screen has no ⌘H to press; the hint would be noise.
   const touch = useCoarsePointer();
   const mobile = useIsMobile();
   return (
@@ -297,7 +297,7 @@ export function AppearancePage() {
     [setDeviceSetting],
   );
   // The same shortcut, id and handler shape as the Settings ThemeToggle, so
-  // âŒ˜H works on this page as it does there.
+  // ⌘H works on this page as it does there.
   useKeyboardShortcut('theme.toggle', 'h', ['cmd'], 'Toggle theme', () =>
     setMode(mode === 'dark' ? 'light' : 'dark'),
   );
@@ -407,7 +407,7 @@ export function AppearancePage() {
                 <span className="appearance-theme__name">{option.label}</span>
                 <span className="appearance-theme__detail">
                   {settling
-                    ? 'Loadingâ€¦'
+                    ? 'Loading…'
                     : broken
                       ? 'Not loaded'
                       : (preview.flavorLabel ?? 'Default')}

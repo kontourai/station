@@ -13,8 +13,8 @@
  * `ChatPaneFileDropBoundary`.
  *
  * Docked inside the real `DockShell`, it also owns the project-binding wiring
- * (archive#4525/#4524): which Project the header badge names, what the
- * switcher does, and which Project the New Chat picker defaults to. The pure
+ * (archive#4525/#4524): which Project the start composer defaults to and
+ * how a changed future-Project binding reaches it without changing a chat. The pure
  * resolvers are table-tested in `chat-dock-utils.test.ts`; these tests pin
  * that the pane hands their results to the right surfaces.
  */
@@ -33,6 +33,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeAll, expect, test, vi } from 'vitest';
@@ -643,10 +644,9 @@ test('file drops follow the pane’s attachment owner: none without an active ch
 });
 
 /**
- * The dock is bound to Pulse while the chat on screen belongs to Other: the
- * badge keeps naming the binding, and the chat's own Project and directory
- * are reported beside it rather than dropped (archive#4525 review HIGH-2,
- * MED-1).
+ * The dock is bound to Pulse while the active chat belongs to Other.
+ * Starting a draft must use Pulse without changing the active chat's context
+ * (archive#4525 review HIGH-2, MED-1).
  */
 function openForeignChatInPulseBoundDock() {
   deviceSettingsStore.set('chatDockProjectSlug', 'pulse');
@@ -657,35 +657,27 @@ function openForeignChatInPulseBoundDock() {
   renderDockedPane();
 }
 
-test('the docked destination names the bound Project, never the foreign chat on screen', async () => {
+function clickDockedNewChat() {
+  fireEvent.click(
+    within(
+      screen.getByRole('complementary', { name: 'Inbox chats' }),
+    ).getByRole('button', { name: 'New chat', exact: true }),
+  );
+}
+
+test('the docked start composer defaults to the bound Project, never the foreign chat on screen', async () => {
   openForeignChatInPulseBoundDock();
   await act(async () => {});
-
-  // New's destination: the bound Project. Its tooltip is where a NEW chat
-  // runs, not the foreign chat's directory, and the bar prints no "This
-  // chat" contrast beside it (the chat's own project is its context card).
-  const badge = screen.getByRole('button', { name: 'New chats: Pulse' });
-  expect(badge.getAttribute('title')).not.toContain('/work/other');
-  expect(document.querySelector('.chat-dock__project-session-name')).toBeNull();
-
-  // The switcher marks the bound Project as current.
-  fireEvent.click(badge);
-  await screen.findByRole('dialog', { name: 'Projects' });
-  expect(
-    screen
-      .getByRole('button', { name: 'Switch to Pulse' })
-      .closest('li')
-      ?.getAttribute('aria-current'),
-  ).toBe('true');
-  expect(
-    screen
-      .getByRole('button', { name: 'Switch to Other' })
-      .closest('li')
-      ?.getAttribute('aria-current'),
-  ).toBeNull();
+  expect(screen.queryByRole('button', { name: /^New chats:/ })).toBeNull();
+  expect(screen.getByTestId('active-chat-body')).toBeTruthy();
+  clickDockedNewChat();
+  await screen.findByRole('region', { name: 'New chat picker' });
+  expect(pickerProps.at(-1)!.activeProjectSlug).toBe('pulse');
+  expect(pickerProps.at(-1)!.projectBindable).toBe(true);
+  expect(createChatSession).not.toHaveBeenCalled();
 });
 
-test('a foreign chat’s code layout is its own Project’s, not the badge’s (archive#4525 review HIGH-2)', async () => {
+test('a foreign chat’s code layout is its own Project’s, not the future default’s (archive#4525 review HIGH-2)', async () => {
   openForeignChatInPulseBoundDock();
   await act(async () => {});
 
@@ -704,7 +696,7 @@ test('a foreign chat’s code layout is its own Project’s, not the badge’s (
   );
 });
 
-test('the mobile header names the same bound Project as the desktop badge', async () => {
+test('the mobile header receives the dock’s future Project binding', async () => {
   dockProbe.mobile = true;
   openForeignChatInPulseBoundDock();
   expect(
@@ -712,20 +704,19 @@ test('the mobile header names the same bound Project as the desktop badge', asyn
   ).toBe('Pulse');
 });
 
-test('switching Project rebinds the dock and opens no New Chat picker (archive#4524)', async () => {
+test('a changed future Project binding preserves the active chat and supplies the next draft', async () => {
   openForeignChatInPulseBoundDock();
   await act(async () => {});
-
-  fireEvent.click(screen.getByRole('button', { name: 'New chats: Pulse' }));
-  fireEvent.click(
-    await screen.findByRole('button', { name: 'Switch to Other' }),
-  );
+  // The picker’s UI owns selection; this parent seam observes its persisted binding.
+  act(() => deviceSettingsStore.set('chatDockProjectSlug', 'other'));
   await act(async () => {});
-
-  expect(deviceSettingsStore.get('chatDockProjectSlug')).toBe('other');
-  expect(screen.getByRole('button', { name: 'New chats: Other' })).toBeTruthy();
   expect(screen.queryByRole('region', { name: 'New chat picker' })).toBeNull();
   expect(pickerProps).toHaveLength(0);
+  expect(screen.getByTestId('active-chat-body')).toBeTruthy();
+  expect(createChatSession).not.toHaveBeenCalled();
+  clickDockedNewChat();
+  await screen.findByRole('region', { name: 'New chat picker' });
+  expect(pickerProps.at(-1)!.activeProjectSlug).toBe('other');
   expect(createChatSession).not.toHaveBeenCalled();
 });
 
@@ -735,7 +726,7 @@ test('the docked New chat button opens a draft in the bound Project with one rea
   renderDockedPane();
   await act(async () => {});
 
-  fireEvent.click(screen.getByTitle('New chat (Ctrl+T)'));
+  clickDockedNewChat();
   await screen.findByRole('region', { name: 'New chat picker' });
   expect(pickerProps.at(-1)!.activeProjectSlug).toBe('pulse');
   expect(pickerProps.at(-1)!.startSurface).toBe(true);
@@ -750,7 +741,7 @@ test('the dock reads run locations only while the start composer is open, and ha
   // Nothing reads run locations while the dock shows no start composer.
   expect(runLocationReads).toEqual([]);
 
-  fireEvent.click(screen.getByTitle('New chat (Ctrl+T)'));
+  clickDockedNewChat();
   await screen.findByRole('region', { name: 'New chat picker' });
 
   expect(runLocationReads.length).toBeGreaterThan(0);
@@ -763,7 +754,7 @@ test('the dock hands the start composer the sidebar’s project icons', async ()
   renderDockedPane();
   await act(async () => {});
 
-  fireEvent.click(screen.getByTitle('New chat (Ctrl+T)'));
+  clickDockedNewChat();
   await screen.findByRole('region', { name: 'New chat picker' });
   const icons = pickerProps.at(-1)!.projectIconBySlug as ReadonlyMap<
     string,
@@ -785,7 +776,7 @@ test('the docked New Chat picker defaults to the dock’s bound Project', async 
   await act(async () => {});
 
   // New chat retains the bound Project with multiple Agents too.
-  fireEvent.click(screen.getByTitle('New chat (Ctrl+T)'));
+  clickDockedNewChat();
   await screen.findByRole('region', { name: 'New chat picker' });
   expect(pickerProps.at(-1)!.activeProjectSlug).toBe('pulse');
   expect(createChatSession).not.toHaveBeenCalled();
@@ -1814,14 +1805,25 @@ test('the header shows no project destination while a draft is open', async () =
   navigationStore.navigate('/', { dock: 'open' });
   renderDockedPane();
   await act(async () => {});
-  expect(screen.getByRole('button', { name: 'New chats: Pulse' })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: /^New chats:/ })).toBeNull();
+  expect(
+    within(
+      screen.getByRole('complementary', { name: 'Inbox chats' }),
+    ).getByRole('button', { name: 'New chat', exact: true }),
+  ).toBeTruthy();
   act(() => {
     dispatchNewChatIntent({});
   });
   await screen.findByRole('region', { name: 'New chat picker' });
   expect(screen.queryByRole('button', { name: /^New chats:/ })).toBeNull();
   act(() => pickerProps.at(-1)!.onClose());
-  await screen.findByRole('button', { name: 'New chats: Pulse' });
+  await waitFor(() =>
+    expect(
+      screen.queryByRole('region', { name: 'New chat picker' }),
+    ).toBeNull(),
+  );
+  expect(screen.queryByRole('button', { name: /^New chats:/ })).toBeNull();
+  expect(deviceSettingsStore.get('chatDockProjectSlug')).toBe('pulse');
   cleanup();
 
   dockProbe.mobile = true;
