@@ -301,7 +301,9 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
         now={NOW}
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Earlier' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: /^Earlier(?: · \d+)?$/ }),
+    );
     expect(screen.getByText(child.title)).toBeTruthy();
     expect(screen.getByText(parent.title)).toBeTruthy();
   });
@@ -425,9 +427,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
         now={NOW}
       />,
     );
-    const lane = screen
-      .getByRole('heading', { name: 'Needs you' })
-      .closest('section')!;
+    const lane = screen.getByRole('region', { name: /^Needs you/ });
     expect(within(lane).getByText('Ship release')).toBeTruthy();
     fireEvent.click(
       within(lane).getByRole('button', {
@@ -505,9 +505,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
           />,
         );
       }
-      const needsYou = screen
-        .getByRole('heading', { name: /^Needs you/ })
-        .closest('section')!;
+      const needsYou = screen.getByRole('region', { name: /^Needs you/ });
       expect(within(needsYou).getByText('Release review')).toBeTruthy();
       expect(
         within(needsYou).getByText('1 subtask · 1 needs you'),
@@ -547,7 +545,9 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
         expect(document.querySelectorAll('.chat-dock-inbox__row')).toHaveLength(
           0,
         );
-        fireEvent.click(screen.getByRole('button', { name: 'Earlier' }));
+        fireEvent.click(
+          screen.getByRole('button', { name: /^Earlier(?: · \d+)?$/ }),
+        );
       } else {
         render(
           <MobileInboxPanel
@@ -560,7 +560,9 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
         );
       }
       if (host === 'mobile')
-        fireEvent.click(screen.getByRole('button', { name: 'Earlier' }));
+        fireEvent.click(
+          screen.getByRole('button', { name: /^Earlier(?: · \d+)?$/ }),
+        );
       expect(document.querySelectorAll('.chat-dock-inbox__row')).toHaveLength(
         20,
       );
@@ -617,7 +619,9 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
             onOpenHistory={vi.fn()}
           />,
         );
-        fireEvent.click(screen.getByRole('button', { name: 'Earlier' }));
+        fireEvent.click(
+          screen.getByRole('button', { name: /^Earlier(?: · \d+)?$/ }),
+        );
       } else {
         render(
           <MobileInboxPanel
@@ -630,7 +634,9 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
         );
       }
       if (host === 'mobile')
-        fireEvent.click(screen.getByRole('button', { name: 'Earlier' }));
+        fireEvent.click(
+          screen.getByRole('button', { name: /^Earlier(?: · \d+)?$/ }),
+        );
       const current = screen.getByRole('button', {
         name: 'Historical work 40, Shared project',
       });

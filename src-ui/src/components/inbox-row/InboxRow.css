@@ -181,7 +181,11 @@
  * caution amber, in-motion is the positive green, broken is the error red.
  * Everything else stays neutral. Attention and caution used to share the
  * amber, so "needs you" and "might be stuck" read as one. */
-.inbox-row__status[data-tone="attention"] .inbox-row__word,
+/* Action fills do not guarantee text contrast on the selected row. */
+.inbox-row__status[data-tone="attention"] .inbox-row__word {
+  color: var(--k-text);
+}
+
 .inbox-row__status[data-tone="attention"] .inbox-row__status-glyph,
 .inbox-row__slim-status[data-tone="attention"] {
   color: var(--accent-primary);

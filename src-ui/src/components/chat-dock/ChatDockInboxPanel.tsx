@@ -105,7 +105,7 @@ export interface ChatDockInboxPanelProps {
 /**
  * Desktop chrome for the shared inbox rows (kontourai/station#3312): the
  * dock's side panel — scroll container, persisted collapsible sections, and
- * the history footer. Row/group anatomy lives in `ChatDockInboxRows.tsx`,
+ * the inbox toolbar. Row/group anatomy lives in `ChatDockInboxRows.tsx`,
  * shared with the embedded `MobileInboxPanel`.
  */
 function ChatDockInboxPanelImpl({
@@ -211,6 +211,18 @@ function ChatDockInboxPanelImpl({
       </div>
       <InboxScopeFilter scope={scope} />
       <div className="chat-dock-inbox__scroll">
+        {sync?.failed && (
+          <ErrorState
+            variant="compact"
+            title="Couldn’t refresh the inbox."
+            description="Showing the last known list."
+            action={
+              <Button variant="secondary" onClick={sync.onRefresh}>
+                Retry
+              </Button>
+            }
+          />
+        )}
         {!hasAnyItems && (
           <Empty
             variant="compact"
@@ -299,18 +311,6 @@ function ChatDockInboxPanelImpl({
         )}
       </div>
       {dismissals.notice}
-      {sync?.failed && (
-        <ErrorState
-          variant="compact"
-          title="Couldn’t refresh the inbox."
-          description="Showing the last known list."
-          action={
-            <Button variant="secondary" onClick={sync.onRefresh}>
-              Retry
-            </Button>
-          }
-        />
-      )}
     </aside>
   );
 }
