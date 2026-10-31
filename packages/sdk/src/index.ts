@@ -1,4 +1,10 @@
 export { sentTurnKey } from './client/sent-turn-key';
+export {
+  fetchTaskWriteBack,
+  type TaskWriteBackEntry,
+  type TaskWriteBackLog,
+  useTaskWriteBackQuery,
+} from './query-domains/taskWriteBack';
 
 // Re-export all types
 
@@ -598,6 +604,7 @@ export {
   fetchFleetServeReceiptsForStation,
   fetchIndependentReviewReceipts,
   fetchInsights,
+  fetchIntegrationStatus,
   fetchLoadedOrchestrationSessions,
   fetchMessageSearch,
   fetchMonitoringEvents,
@@ -659,6 +666,8 @@ export {
   type ImportCredentialProfileSnapshotResult,
   type InsightsFilters,
   type IntegrationLifecycleResult,
+  type IntegrationStatus,
+  IntegrationStatusUnsupportedError,
   type IntegrationViewModel,
   type InterruptOrchestrationDelegatedTaskInput,
   inspectOrchestrationSteerInput,
@@ -1046,6 +1055,7 @@ export {
   useInstallSkillMutation,
   useIntegrationAccountQuery,
   useIntegrationQuery,
+  useIntegrationStatusQuery,
   useIntegrationsQuery,
   useInterruptDelegatedTaskMutation,
   useInvalidateNotifications,

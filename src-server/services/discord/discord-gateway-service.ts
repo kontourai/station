@@ -80,6 +80,11 @@ type GatewayEnvelope = {
   t?: unknown;
 };
 
+export type DiscordGatewayStatus = {
+  state: 'connected' | 'not-configured' | 'unavailable' | 'failed';
+  reason: string;
+};
+
 function recordGatewayEvent(outcome: string): void {
   try {
     discordGatewayEvents.add(1, { outcome });
@@ -123,6 +128,8 @@ export class DiscordGatewayService {
   private resumeGatewayUrl: string | undefined;
   private sequence: number | undefined;
   private token: string | undefined;
+  private gatewayState: 'stopped' | 'connecting' | 'connected' | 'failed' =
+    'stopped';
 
   constructor(private readonly options: DiscordGatewayServiceOptions) {
     this.configurationStore = new DiscordGatewayConfigurationStore(
@@ -146,6 +153,7 @@ export class DiscordGatewayService {
       configuration = this.configurationStore.read();
     } catch (error) {
       if (error instanceof DiscordGatewayConfigurationError) {
+        this.gatewayState = 'failed';
         this.options.logger.warn(
           'Discord gateway configuration is unavailable',
         );
@@ -155,6 +163,7 @@ export class DiscordGatewayService {
       throw error;
     }
     if (configuration.enabled !== true || !configuration.token) {
+      this.gatewayState = 'stopped';
       recordGatewayEvent('disabled');
       return;
     }
@@ -186,6 +195,7 @@ export class DiscordGatewayService {
 
   async stop(): Promise<void> {
     this.stopped = true;
+    this.gatewayState = 'stopped';
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
     this.reconnectTimer = undefined;
@@ -198,14 +208,64 @@ export class DiscordGatewayService {
     if (socket) socket.close();
   }
 
+  getGatewayStatus(): DiscordGatewayStatus {
+    try {
+      const configuration = this.configurationStore.read();
+      if (configuration.enabled !== true || !configuration.token)
+        return {
+          state: 'not-configured',
+          reason: 'Discord is not configured or enabled.',
+        };
+      if (this.token && configuration.token !== this.token)
+        return {
+          state: 'unavailable',
+          reason: 'Discord gateway must restart to apply its configuration.',
+        };
+    } catch {
+      return {
+        state: 'failed',
+        reason: 'Discord gateway configuration is unavailable.',
+      };
+    }
+    if (this.gatewayState === 'connected')
+      return {
+        state: 'connected',
+        reason:
+          'Discord gateway is connected; channel and identity authorization still apply.',
+      };
+    if (this.gatewayState === 'failed')
+      return { state: 'failed', reason: 'Discord gateway connection failed.' };
+    return { state: 'failed', reason: 'Discord gateway is not connected.' };
+  }
+
   private connect(url: string): void {
     // The URL is deliberately constant or server-provided resume state and is
     // never logged: operational logs must not become a second secret store.
     const socket = this.socketFactory(url);
     this.socket = socket;
+    this.gatewayState = 'connecting';
     socket.on('open', () => recordGatewayEvent('connected'));
-    socket.on('message', (raw) => this.handleMessage(raw));
+    socket.on('message', (raw) => {
+      if (this.socket === socket) {
+        try {
+          const envelope = JSON.parse(String(raw)) as GatewayEnvelope;
+          if (
+            envelope.op === 0 &&
+            ((envelope.t === 'READY' &&
+              isRecord(envelope.d) &&
+              typeof envelope.d.session_id === 'string' &&
+              envelope.d.session_id.length > 0) ||
+              (envelope.t === 'RESUMED' && !!this.sessionId))
+          )
+            this.gatewayState = 'connected';
+        } catch {
+          // The message handler owns invalid-envelope diagnostics.
+        }
+      }
+      this.handleMessage(raw);
+    });
     socket.on('error', () => {
+      if (this.socket === socket) this.gatewayState = 'failed';
       this.options.logger.warn('Discord gateway connection error');
       recordGatewayEvent('connection_error');
     });
@@ -215,6 +275,7 @@ export class DiscordGatewayService {
   private handleClose(socket: GatewaySocket): void {
     if (this.socket !== socket) return;
     this.socket = undefined;
+    this.gatewayState = this.stopped ? 'stopped' : 'connecting';
     if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
     this.heartbeatTimer = undefined;
     if (this.stopped) return;
