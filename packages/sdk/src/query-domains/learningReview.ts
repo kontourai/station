@@ -6,6 +6,7 @@ import type {
   LearningReviewSourceSelection,
 } from '@kontourai/station-contracts/learning-review';
 import { useQueryClient } from '@tanstack/react-query';
+import { useCallback, useEffect } from 'react';
 import type { ApiRequestScope } from '../client/http';
 import { StationHttpError } from '../client/http';
 import {
@@ -55,7 +56,7 @@ export function useProjectLearningQuery(
   projectId: string,
   authority: LearningReviewRequestScope,
 ) {
-  return useApiQuery(
+  const query = useApiQuery(
     key(slug, projectId, authority),
     (signal) =>
       fetchProjectLearning(authority.apiBase, slug, {
@@ -69,6 +70,8 @@ export function useProjectLearningQuery(
       }),
     { enabled: authority.isCurrent(), retry: false },
   );
+  useLearningReadRefusal(query, slug, projectId, authority);
+  return query;
 }
 export function useProjectLearningDetailQuery(
   slug: string,
@@ -77,7 +80,7 @@ export function useProjectLearningDetailQuery(
   compareId: string | undefined,
   authority: LearningReviewRequestScope,
 ) {
-  return useApiQuery(
+  const query = useApiQuery(
     [...key(slug, projectId, authority), id, compareId ?? ''],
     (signal) =>
       fetchProjectLearningDetail(authority.apiBase, slug, id, compareId, {
@@ -90,6 +93,8 @@ export function useProjectLearningDetailQuery(
       retry: false,
     },
   );
+  useLearningReadRefusal(query, slug, projectId, authority);
+  return query;
 }
 export function useProjectLearningIntentMutation(
   slug: string,
@@ -133,20 +138,63 @@ export function useProposeProjectLearningMutation(
   );
 }
 
-function useLearningMutationRefusal(
+function useClearLearningScope(
   slug: string,
   projectId: string,
   authority: LearningReviewRequestScope,
 ) {
   const client = useQueryClient();
-  return (error: Error) => {
-    if (!isLearningAccessRefusal(error)) return;
+  return useCallback(() => {
     const queryKey = key(slug, projectId, authority);
     void client.cancelQueries({ queryKey }).finally(() => {
       client.setQueriesData({ queryKey }, { state: 'restricted' });
       void client.invalidateQueries({ queryKey, refetchType: 'none' });
     });
-  };
+  }, [client, slug, projectId, authority]);
+}
+
+function useLearningMutationRefusal(
+  slug: string,
+  projectId: string,
+  authority: LearningReviewRequestScope,
+) {
+  const clear = useClearLearningScope(slug, projectId, authority);
+  return useCallback(
+    (error: Error) => {
+      if (isLearningAccessRefusal(error)) clear();
+    },
+    [clear],
+  );
+}
+
+function useLearningReadRefusal(
+  query: { error: Error | null; data: unknown; isFetching: boolean },
+  slug: string,
+  projectId: string,
+  authority: LearningReviewRequestScope,
+) {
+  const client = useQueryClient();
+  const clear = useClearLearningScope(slug, projectId, authority);
+  const restricted =
+    isLearningAccessRefusal(query.error) ||
+    (!query.isFetching &&
+      query.data !== null &&
+      typeof query.data === 'object' &&
+      'state' in query.data &&
+      query.data.state === 'restricted');
+  useEffect(() => {
+    if (!restricted) return;
+    const protectedData = client
+      .getQueriesData({ queryKey: key(slug, projectId, authority) })
+      .some(
+        ([, data]) =>
+          data !== null &&
+          typeof data === 'object' &&
+          'state' in data &&
+          data.state === 'available',
+      );
+    if (protectedData) clear();
+  }, [restricted, client, slug, projectId, authority, clear]);
 }
 
 export function useProjectLearningEvidenceQuery(
@@ -156,7 +204,7 @@ export function useProjectLearningEvidenceQuery(
   reference: LearningReviewRevisionRef,
   authority: LearningReviewRequestScope,
 ) {
-  return useApiQuery(
+  const query = useApiQuery(
     [
       ...key(slug, projectId, authority),
       id,
@@ -174,6 +222,8 @@ export function useProjectLearningEvidenceQuery(
       }),
     { enabled: authority.isCurrent(), retry: false },
   );
+  useLearningReadRefusal(query, slug, projectId, authority);
+  return query;
 }
 
 export function usePrepareLearningSourceQuery(
@@ -183,7 +233,7 @@ export function usePrepareLearningSourceQuery(
   authority: LearningReviewRequestScope,
   enabled = true,
 ) {
-  return useApiQuery(
+  const query = useApiQuery(
     [...key(slug, projectId, authority), 'source', JSON.stringify(source)],
     (signal) =>
       prepareProjectLearningSource(authority.apiBase, slug, source, {
@@ -196,4 +246,6 @@ export function usePrepareLearningSourceQuery(
       retry: false,
     },
   );
+  useLearningReadRefusal(query, slug, projectId, authority);
+  return query;
 }

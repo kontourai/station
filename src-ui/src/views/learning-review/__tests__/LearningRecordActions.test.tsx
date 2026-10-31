@@ -2,6 +2,7 @@
 import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -365,34 +366,79 @@ test.each(['proposal', 'effect'] as const)(
   },
 );
 
-test('an observed decision refusal clears protected owner rows until an authoritative read restores access', async () => {
-  const context = fixture();
-  render(
-    <QueryClientProvider client={context.client}>
-      <LearningReviewPanel
-        slug="demo"
-        projectId="project-id"
-        authority={data.authority}
-      />
-    </QueryClientProvider>,
-  );
-  fireEvent.change(await screen.findByLabelText('Learning'), {
-    target: { value: 'learning-one' },
-  });
-  await screen.findByText('Proposed guidance');
-  fireEvent.change(screen.getByLabelText('Action'), {
-    target: { value: 'activate' },
-  });
-  context.revoke();
-  fireEvent.click(screen.getByRole('button', { name: 'Submit to owner' }));
-  await screen.findByText('Learning access changed');
-  expect(screen.queryByText('Proposed guidance')).toBeNull();
-  expect(screen.queryByLabelText('Learning')).toBeNull();
-  expect(context.apply).not.toHaveBeenCalled();
-  context.restoreAccess();
-  fireEvent.click(screen.getByRole('button', { name: 'Check access' }));
-  fireEvent.change(await screen.findByLabelText('Learning'), {
-    target: { value: 'learning-one' },
-  });
-  expect(await screen.findByText('Proposed guidance')).toBeTruthy();
-});
+test.each(['decision', 'index', 'detail'] as const)(
+  'an observed %s refusal clears protected owner rows and an open inspector until an authoritative read restores access',
+  async (operation) => {
+    const context = fixture();
+    render(
+      <QueryClientProvider client={context.client}>
+        <LearningReviewPanel
+          slug="demo"
+          projectId="project-id"
+          authority={data.authority}
+        />
+      </QueryClientProvider>,
+    );
+    fireEvent.change(await screen.findByLabelText('Learning'), {
+      target: { value: 'learning-one' },
+    });
+    await screen.findByText('Proposed guidance');
+    fireEvent.change(screen.getByLabelText('Action'), {
+      target: { value: 'activate' },
+    });
+    if (operation !== 'decision') {
+      fireEvent.click(
+        screen.getAllByRole('button', { name: 'Inspect source' })[0]!,
+      );
+      await screen.findByRole('dialog', { name: 'Learning source' });
+      await screen.findByText('Canonical source body');
+    }
+    context.revoke();
+    if (operation === 'decision') {
+      fireEvent.click(screen.getByRole('button', { name: 'Submit to owner' }));
+    } else {
+      await act(async () => {
+        await expect(
+          context.client.refetchQueries(
+            {
+              predicate(query) {
+                const value = query.state.data;
+                return (
+                  value !== null &&
+                  typeof value === 'object' &&
+                  (operation === 'index'
+                    ? 'items' in value
+                    : 'id' in value && value.id === 'learning-one')
+                );
+              },
+            },
+            { throwOnError: true },
+          ),
+        ).rejects.toMatchObject({ status: 403 });
+      });
+    }
+    await screen.findByText('Learning access changed');
+    expect(
+      screen.queryByRole('dialog', { name: 'Learning source' }),
+    ).toBeNull();
+    expect(screen.queryByText('Canonical source body')).toBeNull();
+    await waitFor(() => {
+      for (const query of context.client
+        .getQueryCache()
+        .getAll()
+        .filter((query) => query.queryKey[0] === 'learning-review'))
+        expect(JSON.stringify(query.state.data)).not.toContain(
+          'Canonical source body',
+        );
+    });
+    expect(screen.queryByText('Proposed guidance')).toBeNull();
+    expect(screen.queryByLabelText('Learning')).toBeNull();
+    expect(context.apply).not.toHaveBeenCalled();
+    context.restoreAccess();
+    fireEvent.click(screen.getByRole('button', { name: 'Check access' }));
+    fireEvent.change(await screen.findByLabelText('Learning'), {
+      target: { value: 'learning-one' },
+    });
+    expect(await screen.findByText('Proposed guidance')).toBeTruthy();
+  },
+);

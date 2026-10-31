@@ -102,7 +102,15 @@ function ProjectLearningReview({
   const [showProposal, setShowProposal] = useState(false);
   const [showReceipts, setShowReceipts] = useState(false);
   const [accessLost, setAccessLost] = useState(false);
-  const refused = isLearningAccessRefusal(mutate.error);
+  const cachedOwner =
+    index.data?.state === 'available' || read.data?.state === 'available';
+  const refused =
+    isLearningAccessRefusal(mutate.error) ||
+    (cachedOwner &&
+      (isLearningAccessRefusal(index.error) ||
+        (!!selected && isLearningAccessRefusal(read.error)))) ||
+    (!index.isFetching && index.data?.state === 'restricted') ||
+    (!!selected && !read.isFetching && read.data?.state === 'restricted');
   const { guard, DiscardModal } = useUnsavedGuard(!!operation);
   const id = useId();
   const list =
@@ -111,6 +119,7 @@ function ProjectLearningReview({
       : undefined;
   const details =
     authority.isCurrent() &&
+    !read.error &&
     read.data?.state === 'available' &&
     read.data.projection.scope.id === projectId
       ? read.data
