@@ -241,7 +241,7 @@ route's answer as it was sent:
 | `unreadable-caller` | Station cannot confirm the calling Session's own Project. |
 | `host` | The target, or a Session of its conversation, runs unconfined (`host`). |
 | `remote` | The target is on another Station; only a bound operator reaches one. |
-| `other-conversation` | A check-back names, or belongs to, a conversation that is not the caller's own. |
+| `other-conversation` | A check-back or an automation's `target` names, or belongs to, a conversation that is not the caller's own. |
 
 The copy names no Project. `target-unavailable` also refuses a bound caller
 that is not acting for the operator. `remote` is given only to a caller acting
@@ -801,7 +801,7 @@ A caller that is not bound, in a Session that runs unconfined (`host`), is
 not refused: the check-back is recorded `needs_approval` and the result says
 so. The person sees a card above the composer ("Check back at 4:12 PM?", with
 the agent's whole note) and approves or declines it with one click; the
-chat's Scheduled section lists it as "Needs your approval". Only a person may
+chat's Automations section lists it as "Needs your approval". Only a person may
 answer it, under the same gate as a job proposal: a request that may be an
 agent's is refused, and one from a person who may not send to the
 conversation reads as not found. One not approved before it is due is never
@@ -818,7 +818,7 @@ any that came due while Station was down, unless it is more than a day late.
 `list_wake_ups` lists the conversation's waiting check-backs and
 `cancel_wake_up` cancels one by id. The person sees each one above the
 composer ("Checking back at 4:12 PM", with Cancel) and in the chat's
-Scheduled section.
+Automations section, beside the automations that run in the chat.
 
 Check-backs need the conversation inbox, so a hosted Station answers
 `wake_up_unavailable`.
@@ -841,6 +841,9 @@ propose the job instead:
 `propose_job` takes the scheduler's own create fields for an ordinary job:
 `name`, `schedule` (cron, every, or at), `prompt` and an optional `agent`. A
 job that trusts every tool is never proposable (`station_control_person_only`).
+Station records the proposing chat as the job's `target`: once approved, each
+run is a turn in this chat, on its own engine, so a Claude Code or Codex chat
+can propose work for itself.
 The agent learns only the proposal's id and `open`. A conversation holds at
 most 3 open proposals (`job_proposal_limit_reached`).
 
@@ -867,7 +870,14 @@ The refusal an agent gets from `add_job` names both tools.
 ### Scheduled jobs
 
 An agent acting for the operator on a bound credential can create a job
-directly with `add_job`. Use a cron schedule for calendar recurrence, `every`
+directly with `add_job`. Its `target` may name only the agent's own
+conversation (`{"kind": "conversation", "conversationId": "<own>"}`), so each
+run is a turn in this chat; any other conversation is refused
+`other-conversation`, and a targeted job takes no `retryCount`. `update_job`,
+`run_job`, `enable_job`, `disable_job` and `delete_job` on a job that already
+runs in a conversation are likewise refused unless that conversation is this
+agent's own (`automation_target_out_of_scope`), whatever the request body
+names, and no edit changes the creator a job runs as. Use a cron schedule for calendar recurrence, `every`
 for a fixed interval, or `at` for one future instant:
 
 ```json
@@ -883,13 +893,18 @@ for a fixed interval, or `at` for one future instant:
 }
 ```
 
-The scheduled execution is a new attributable Agent run using the stored
-prompt; it does not resume the conversation that created it. Creating
-the job also does not grant unattended tool authority. A per-job standing grant
+A proposed job targets the proposing conversation, where each scheduled run
+is a new framed turn using the stored prompt. A job without a conversation
+target uses the Station engine and writes an output file. Creating the job
+does not grant unattended tool authority. A per-job standing grant
 must target the server-issued scheduled-job principal, and a delete/recreate
 gets a new identity. An agent-wide opt-in is the agent's
 `tools.unattendedAutoApprove` list ([Unattended runs](agent-configuration.md#unattended-runs));
-`tools.autoApprove` patterns such as `station-control_*` cover attended chat. Use `get_job_logs` or the Runs surface to observe the result.
+`tools.autoApprove` patterns such as `station-control_*` cover attended chat.
+Use `get_job_logs` or the Runs surface to observe runs in your conversation.
+Runs recorded before target provenance was added are available to the creator
+who can read the current target, or to the local operator for a creatorless,
+untargeted job. Agents cannot read those older runs.
 
 ### After a usage limit
 

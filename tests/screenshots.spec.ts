@@ -1162,11 +1162,6 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
     };
   });
   try {
-    const removeHandshake = await withRoute(
-      page,
-      '**/.well-known/station/v1',
-      (route) => fulfillGalleryStationHandshake(route, true),
-    );
     let historyFailed = true;
     let historyReads = 0;
     let releaseHistory!: () => void;
@@ -1315,7 +1310,6 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
       releaseHistory();
       await removeOpen();
       await removeHistory();
-      await removeHandshake();
     }
     if (width > 600) {
       let releaseInventory!: () => void;
@@ -1513,6 +1507,11 @@ function overlayDockProjectMismatchHooks(
       ];
       if (resyncOnly) {
         cleanups.push(
+          // The history and scheduler readers share the host capability cache.
+          // Advertise the fixture's history support before either can read it.
+          await withRoute(page, '**/.well-known/station/v1', (route) =>
+            fulfillGalleryStationHandshake(route, true),
+          ),
           await withRoute(page, '**/api/conversations**', async (route) => {
             if (
               new URL(route.request().url()).pathname !== '/api/conversations'
@@ -2770,7 +2769,7 @@ const SCREENS: Screen[] = [
     return {
       name: 'schedule',
       title: 'Schedule',
-      path: '/schedule',
+      path: '/automations',
       viewport: DESKTOP,
       // archive#4464: without this, ScheduleView hits the live (unmocked)
       // scheduler/system endpoints on a freshly booted temp-home server —
@@ -3161,7 +3160,7 @@ const SCREENS: Screen[] = [
     return {
       name: 'motion-reduced-schedule-loading',
       title: 'Reduced motion — Schedule loading',
-      path: '/schedule',
+      path: '/automations',
       viewport: DESKTOP,
       reducedMotion: true,
       // This screen's whole point is capturing the skeleton itself (with the
@@ -3199,7 +3198,7 @@ const SCREENS: Screen[] = [
     return {
       name: 'motion-reduced-schedule-modal',
       title: 'Reduced motion — Schedule modal',
-      path: '/schedule',
+      path: '/automations',
       viewport: DESKTOP,
       reducedMotion: true,
       beforeGoto: async (page) => {
@@ -3208,7 +3207,7 @@ const SCREENS: Screen[] = [
       afterGoto: async (page) => {
         try {
           await page
-            .getByRole('button', { name: 'Add job', exact: true })
+            .getByRole('button', { name: 'New automation', exact: true })
             .click();
           // archive#4461: NOT `.schedule__modal-overlay` — Add Job migrated onto
           // the shared `Dialog` chrome (components/Dialog.tsx), which renders its
@@ -3556,7 +3555,7 @@ const SCREENS: Screen[] = [
     return {
       name: 'overlay-add-job-modal',
       title: 'Overlay — Add Job modal',
-      path: '/schedule',
+      path: '/automations',
       viewport: DESKTOP,
       beforeGoto: async (page) => {
         cleanup = await seedScheduleScreenshotApi(page);
@@ -3564,14 +3563,17 @@ const SCREENS: Screen[] = [
       afterGoto: async (page) => {
         try {
           await page
-            .getByRole('button', { name: 'Add job', exact: true })
+            .getByRole('button', { name: 'New automation', exact: true })
             .click();
           await expect(page.locator('.station-dialog__overlay')).toBeVisible({
             timeout: 10_000,
           });
           await expect(page.locator('.schedule__modal')).toBeVisible();
           await expect(
-            page.getByRole('button', { name: 'Add Job', exact: true }),
+            page.getByRole('button', {
+              name: 'Create automation',
+              exact: true,
+            }),
           ).toBeDisabled();
         } finally {
           await cleanup();
@@ -3584,7 +3586,7 @@ const SCREENS: Screen[] = [
     return {
       name: 'overlay-confirm-dialog',
       title: 'Overlay — Destructive confirm (Delete Job)',
-      path: '/schedule',
+      path: '/automations',
       viewport: DESKTOP,
       beforeGoto: async (page) => {
         cleanups = [
@@ -4086,6 +4088,15 @@ ${tiles}
 }
 
 test('build gallery — capture key screens', async ({ page }) => {
+  const browserErrors: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error' && browserErrors.length < 10)
+      browserErrors.push(message.text().slice(0, 1000));
+  });
+  page.on('pageerror', (error) => {
+    if (browserErrors.length < 10)
+      browserErrors.push((error.stack ?? error.message).slice(0, 1000));
+  });
   const requestedScreens = parseRequestedScreens(
     process.env.STATION_E2E_SCREENS,
   );
@@ -4278,6 +4289,7 @@ test('build gallery — capture key screens', async ({ page }) => {
 
   try {
     for (const screen of selectedScreens) {
+      browserErrors.length = 0;
       const file = `${screen.name}.png`;
       let layout: Shot['layout'];
       let rasterDiagnostic: Shot['rasterDiagnostic'];
@@ -4480,6 +4492,15 @@ test('build gallery — capture key screens', async ({ page }) => {
           uiAudit = {
             error: error instanceof Error ? error.message : String(error),
           };
+        }
+        if (screen.name === 'telemetry-feedback-mobile') {
+          const extensionFailure = page
+            .getByTestId('toast-card')
+            .filter({ hasText: 'Extensions unavailable' });
+          if (await extensionFailure.count())
+            throw new Error(
+              `Extension registry failed during capture. Browser errors: ${JSON.stringify(browserErrors)}`,
+            );
         }
         if (
           screen.name === 'desktop-conversation-resync' ||

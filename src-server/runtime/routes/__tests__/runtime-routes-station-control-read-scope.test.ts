@@ -1138,7 +1138,7 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
     expect(projects.filter((project) => 'runsAt' in project)).toEqual([]);
   });
 
-  test('read_logs: redacted for every caller but a bound operator', async () => {
+  test('read_logs: agent callers need a grant; the operator UI remains redacted', async () => {
     const { base } = await setup();
     const apiKeys = (body: any) =>
       ((body?.entries ?? []) as { config?: { apiKey?: string } }[]).map(
@@ -1147,16 +1147,16 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
     for (const [label, caller] of Object.entries({
       ...B_CALLERS,
       'delegated-custody operator': DELEGATED_OPERATOR,
+      'bound operator agent': BOUND_OPERATOR,
       'raw token': 'raw-token' as const,
     })) {
-      expect([
+      expect([label, await asTool(caller, '/api/diagnostics/logs')]).toEqual([
         label,
-        apiKeys(await asTool(caller, '/api/diagnostics/logs')),
-      ]).toEqual([label, ['[REDACTED]']]);
+        expect.objectContaining({
+          error: 'Diagnostics log access is not granted',
+        }),
+      ]);
     }
-    expect(
-      apiKeys(await asTool(BOUND_OPERATOR, '/api/diagnostics/logs')),
-    ).toEqual([LOG_SECRET]);
     // The operator credential carries no home-possession: redacted, as before.
     expect(apiKeys(await asOperatorUi(base, '/api/diagnostics/logs'))).toEqual([
       '[REDACTED]',
@@ -1238,10 +1238,9 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
     ]);
   });
 
-  test('operator-wide reads (job logs, achievements, SSH environments) need a bound operator caller', async () => {
+  test('operator-wide reads (achievements, SSH environments) need a bound operator caller', async () => {
     await setup();
     for (const path of [
-      '/scheduler/jobs/nightly/logs',
       '/api/analytics/achievements',
       '/api/environments/ssh/env-1',
     ]) {

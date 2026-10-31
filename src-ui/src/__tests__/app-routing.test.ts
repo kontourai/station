@@ -42,7 +42,10 @@ const LEGACY_PATH_CASES = [
   ['/integrations/example', '/connections/tools/example'],
   ['/monitoring', '/developer/telemetry'],
   ['/sys/monitoring', '/developer/telemetry'],
-  ['/sys/schedule', '/schedule'],
+  ['/sys/schedule', '/automations'],
+  // Schedule became Automations; an old link keeps its job selection.
+  ['/schedule', '/automations'],
+  ['/schedule?job=nightly', '/automations?job=nightly'],
   ['/manage', '/agents'],
   // #765 D2: bare /tasks has no collection view; tasks surface on Home.
   ['/tasks', '/'],

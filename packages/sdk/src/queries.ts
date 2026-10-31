@@ -623,6 +623,7 @@ export {
   useRunJob,
   useRunQuery,
   useRunsQuery,
+  useScheduledConversationTargetCapability,
   useSchedulerJobs,
   useSchedulerProviders,
   useSchedulerStats,
