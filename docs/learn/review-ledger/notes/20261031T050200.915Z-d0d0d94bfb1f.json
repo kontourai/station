@@ -1,0 +1,7 @@
+{
+  "revision": "18f11865bd189b9350cd8c8b8ad472ebc524f91f",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Reviewed the checkout freshness endpoint and reader claims against the timestamp conversion and exact file-identity walk. The reader still reports the newest admitted local fetch record and performs no fetch; conversion now matches ordinary stat millisecond rounding. The focused Linux suite passed 36 tests, the Windows service and route suites passed 44, and the fixed Linux timestamp case failed with the old conversion and passed after restoration. This is not a broader endpoint or platform audit.","inputs":["docs/reference/api.md","src-server/services/projects/project-checkout-freshness.ts"]}
+  ]
+}

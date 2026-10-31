@@ -1072,6 +1072,13 @@ export interface ReadRepository {
   top: string;
   /** `--git-dir=… --work-tree=…`, to prefix every git call with. */
   repoArgs: string[];
+  /**
+   * The repository's own git directory and common directory,
+   * symlink-resolved. Never run git with them: they are for a read that
+   * stats a file the snapshot does not carry (`FETCH_HEAD`, a reflog).
+   */
+  gitDir: string;
+  commonDir: string;
 }
 
 /** Attempts before a repository that keeps changing is answered `busy`. */
@@ -1140,7 +1147,12 @@ export async function readProjectRepository<T>(
           : { ok: false, state: 'config-unreadable' };
       }
       outcome = {
-        value: await read({ top: repository.top, repoArgs: snapshot.repoArgs }),
+        value: await read({
+          top: repository.top,
+          repoArgs: snapshot.repoArgs,
+          gitDir: repository.gitDir,
+          commonDir: repository.commonDir,
+        }),
       };
     } catch (error) {
       outcome = { error };

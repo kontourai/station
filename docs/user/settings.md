@@ -31,6 +31,7 @@ only when this Station's build can run it; if none is, the section says
 | `walkthroughs` | Walkthroughs | Imports narrated recordings and enables Task-bound Browser clips. | One-time consented media/speech tool download; CPU use; recordings may contain private information. |
 | `local-speech` | Local speech | Offers Station (local) in Voice → Speech-to-text: record a message, then transcribe it on this Station. | One-time consented tool/model download; English batch dictation only; microphone permission; shares one recognizer and a bounded wait queue with Walkthroughs. |
 | `chat-host-images` | Chat images from the host | Shows images an agent saves on this Station and names by absolute path in its reply, on any device, and tells agents where to save them. | Station copies each admitted image (up to 5 per reply, 512 KiB each) into the chat's attachment storage; engines started while it is on get a per-session temporary folder. |
+| `stale-project-checkout` | Stale checkout warning | Warns in a Project's Workspace settings, and in `get_project` for agents, when the Project's checkout is far behind its upstream branch. | Reads local git refs (cached for ten seconds); never fetches or updates the checkout. |
 | `github-automation-observations` | GitHub automation observations | Observes configured GitHub workflow runs without starting agents. | Uses GitHub API requests and bounded private delivery storage. Off by default; management configuration is separate. Turning it off stops new observation effects and discards in-flight results; existing history remains. |
 | `task-review` | Task review | Adds a Review tab and Overview Timeline to Tasks for Screens and anchored comments that can be sent to the lead agent. | Sending starts or queues a lead-agent turn; Screen capture needs a committed workspace. |
 | `task-collaboration` | Task collaboration | Shows member names and presence in shared Task rooms. | Project membership and an explicit Task share are still required. |
@@ -68,6 +69,21 @@ chat's own temporary folder, and shows them in the reply on every device. See
 [visual replies](html-replies.md#images-saved-on-the-host) for what is admitted
 and what each "not available" message means. Turning it off stops new copies;
 copies already made stay with their chat.
+
+**Stale checkout warning** (`stale-project-checkout`): an agent started in a
+Project reads that checkout's instructions, so a checkout far behind its
+upstream can give it rules the upstream has since dropped. With the preview on,
+Project settings → **Workspace** warns when the current branch is at least
+**Stale checkout after commits** (default 50) behind its upstream, has lacked
+an upstream commit for **Stale checkout after days** (default 3), or was last
+fetched at least that many days ago, and shows `git -C <directory> pull
+--ff-only` to copy. Station never runs it. The counts come from the last
+fetch, whose time the warning shows; Station does not fetch. A checkout whose
+git config sets options Station does not run git with (for example a
+credential helper) shows a line saying it was not compared, and one Station
+could not read says it could not compare it. A folder that is not a git
+checkout, a detached HEAD, or a branch without a local upstream shows nothing.
+The two thresholds are in **Settings → General → Agent runs**.
 
 Turning a preview on affects everyone who uses this Station.
 

@@ -233,6 +233,62 @@ not read today.
 
 See [project chat defaults](contracts.md).
 
+## Project checkout freshness
+
+`GET /api/projects/:slug/checkout-freshness` says how far the Project's
+working directory checkout is behind its upstream branch, behind the
+`stale-project-checkout` Feature Preview. While the preview is off it answers
+404 with `code: 'feature_preview_disabled'`, `previewId` and `settingsPath`, and
+reads nothing. A shared member, like an unknown Project, gets 404
+`Project not found`: the answer names a host path.
+
+The [reader](../../src-server/services/projects/project-checkout-freshness.ts)
+uses local refs only and never fetches, so `behind` counts what the last fetch
+brought in. Every git call goes through `readProjectRepository`, the same
+confined read the coding routes use. The answer (`ProjectCheckoutFreshness`,
+[contracts](contracts.md)) is one of:
+
+- `unknown` with a `reason`: `no-working-directory`, `missing-directory`,
+  `not-a-repository`, `detached-head`, `no-upstream` (none configured, its
+  remote does not exist, its ref is not present locally, or the configured
+  value is not a ref name), `config-refused`
+  (the repository's own config sets options Station does not run git with,
+  such as a credential helper or an ssh command) or `unreadable` (refused,
+  timed out or changing). None of these is an error response.
+- `stale` or `not-stale`, with `branch`, `upstream` (`origin/main`),
+  `behind`, `ahead`, `behindSince`, `upstreamFetchedAt`, `thresholds`,
+  `staleBecause` and `updateCommand` (`git -C <directory> pull --ff-only`,
+  naming the working directory's absolute path, shell-quoted for a POSIX
+  shell). Station never runs that command; it refuses when both `ahead` and
+  `behind` are above 0.
+
+`behindSince` is the later of the committer date of the oldest missing commit
+on the upstream's first-parent line and the time the upstream ref's reflog
+first moved past HEAD (the newest 32 entries are examined). A committer date
+alone can be much older than when a commit arrived; the reflog time is never
+earlier. Without a reflog only the committer date is available.
+`upstreamFetchedAt` is the newest of the worktree's and the repository's
+`FETCH_HEAD` when it lists the upstream's current commit (a heuristic: a
+fetch of a fork at that same commit, or `git fetch --append`, also counts),
+the upstream ref's reflog and the configured remote's `HEAD` reflog (which
+`git clone` writes; `git remote set-head` and `git gc` also touch it), for an
+upstream from a remote only; it is absent when none exists. A record reached
+through a link anywhere below the git directory is ignored, and one whose path
+or file identity changes while it is read is discarded. A swap made and
+undone between those checks is not detected.
+
+`staleBecause` lists `commits` when `behind` reaches `checkoutStaleAfterCommits`
+(default 50), `age` when `behindSince` is at least `checkoutStaleAfterDays`
+(default 3) old, and `fetch-age` when `upstreamFetchedAt` is that old, even with
+nothing behind, because the local refs cannot show what a fetch would
+([config](config.md)). The whole read, file system included, is bounded at 15
+seconds; past that it answers `unreadable`. Facts are remembered per
+directory for ten seconds and concurrent reads join one read; a read that could not complete is not
+remembered, and thresholds apply on every request. The
+station-control `get_project` tool adds this answer as `checkoutFreshness`
+when the route returns one; it leaves the field out otherwise and never fails
+the Project read for it.
+
 ## Durable Project creation
 
 `POST /api/projects` optionally accepts a UUID `creationRequestId` alongside an
