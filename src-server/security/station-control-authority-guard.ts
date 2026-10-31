@@ -194,6 +194,7 @@ async function requestBody(
       text += decoder.decode(chunk.value, { stream: true });
     }
     text += decoder.decode();
+    if (bytes === 0) return { status: 'ok', body: undefined };
     try {
       return { status: 'ok', body: JSON.parse(text) };
     } catch {

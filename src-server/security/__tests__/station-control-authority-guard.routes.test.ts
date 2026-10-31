@@ -1834,7 +1834,7 @@ describe('after untrusted content, station-control applies the permission (#3483
 });
 
 describe('bounded authority inspection', () => {
-  test('refuses an oversized unread tee at the guard seam and preserves valid leaf bodies', async () => {
+  test('refuses oversized and malformed bodies and preserves valid leaf bodies', async () => {
     const headers = internalHeaders({
       [STATION_CONTROL_CALLER_TOKEN_HEADER]: forwardedCaller(
         'bound',
@@ -1885,6 +1885,15 @@ describe('bounded authority inspection', () => {
       'code',
       'station_control_request_body_refused',
     );
+    expect(leafBodies).toEqual([]);
+    for (const malformed of [' ', '{', new Uint8Array([0xff])]) {
+      const rejected = await app.fetch(request(malformed));
+      expect(rejected.status).toBe(400);
+      expect(await rejected.json()).toHaveProperty(
+        'code',
+        'station_control_request_body_refused',
+      );
+    }
     expect(leafBodies).toEqual([]);
     const control = {
       name: 'bounded-control',
