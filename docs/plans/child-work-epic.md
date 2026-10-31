@@ -35,6 +35,37 @@ It is not published or adopted here. The metadata finalizer remains unavailable.
 Final combined review, documentation qualification, remaining acceptance and the
 single protected PR landing are still required.
 
+### Subsequent local qualification checkpoint
+
+The background-work source at `9c51c75f5cda` passed 254 cases across 14 files
+and the UI type lane. Independent review accepted the bounded Station scoping,
+cold continuation association and reporter-alias ordering corrections. The
+late-bound resumed reporter has retained pre-fix failure evidence; the earlier
+simple event-ordering fixture did not fail. These results do not replace the
+remaining browser and physical-device journeys or master #3991's ownership.
+
+The installed Claude 2.1.312 and Agent SDK 0.3.312 controlled native journey
+at `9c51c75f5cda` passed foreground return, stopped background work and separate
+fresh-process cold readers. It used synthetic loopback responses and retained
+SQLite recovery evidence, not a live provider, Tauri shell or physical device.
+Its selected filesystem and Mach sandbox controls are not universal Keychain
+or packet-isolation evidence. Earlier failed harness receipts remain retained.
+
+The normal UI build initially failed its unchanged 390,000-byte entry JavaScript
+cap at 394,755 normalized gzip bytes. The exact integrated-main baseline built
+in the same worktree at `ae37b325503` measured 385,942 bytes. Selecting pinned
+Terser 5.51.2 in `75c44dd9871` reduced the feature build to 383,053 bytes; CSS
+remained 54,055 of 56,000 bytes. Managed dependency setup and verification passed.
+This changes compression, not the cap or the startup subscriptions.
+
+The new source-CLI/SDK controlled journey reached Running and then completed
+Task/ready Session with retained directory and reported CLI origin. Its browser
+reload failed because the source-import harness omitted the normal build SHA
+and boot identity, producing `identity_unavailable`; cleanup also failed natural
+process exit. The revised harness is unexecuted and must verify the actual
+identity endpoint, deferred watcher cleanup, browser reload and natural process
+exit. No current #2868 acceptance follows from these partial observations.
+
 ## Published Flow 9.9.1 pin (#91)
 
 Station selects the registry Flow Agents 9.9.1 and Flow 5.4.0 packages. The
