@@ -236,7 +236,10 @@ describe('project checkout freshness', () => {
         'origin',
         name,
       );
-      if (existsSync(reflog)) utimesSync(reflog, timestamp, timestamp);
+      if (existsSync(reflog)) {
+        const older = new Date(timestamp.getTime() - DAY_MS);
+        utimesSync(reflog, older, older);
+      }
     }
     const result = await createProjectCheckoutFreshnessReader().read(
       checkout,
