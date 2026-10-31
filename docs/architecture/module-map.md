@@ -5108,6 +5108,12 @@ page dialog waits for its person), which reaches the viewer as that code
 rather than `dispatch-failed`. It cannot cancel an arbitrary producer effect
 already in flight.
 
+Task Browser recordings are owned by the runtime and bound to the selected
+Browser generation. Runtime shutdown disposes the recorder before stopping the
+Browser; unregistering the generation also cancels and joins its recordings.
+The recorder stops its encoder and removes staging before cleanup settles, and
+reports cleanup failure instead of treating a timed-out wait as success.
+
 **Real adapters and callers.** `browser-live-surfaces.ts` binds each live
 browser generation to `ChromiumScreencastProducer` and its profile authorizer.
 `DeviceSessionService` binds `DeviceLiveSurfaceProducer` to host-qualified
@@ -5867,7 +5873,8 @@ transcription deadline; other terminal failures remain terminal.
 [CLI](../../packages/cli/src/commands/walkthrough.ts), and
 [MCP reads](../../src-server/tools/station-control-walkthrough-tools.ts) share
 HTTP fetchers. MCP reads images in bounded pages. The Activity operation row
-shows import progress and reopens the Project; no recording/review UI is added.
+shows import progress and reopens the Project. Task Browser clips use the
+separate Task-scoped store and Review player described below.
 See the [guide](../guides/walkthroughs.md#verification-limits) for evidence owners
 and explicit recognition, hosted and publication limits.
 
@@ -6067,6 +6074,18 @@ a capture, and Task authority to
 read digest-verified content with explicit image headers. The sensitive
 `browser_capture_to_task` operation uses the bound Session's execution binding.
 Screens are immutable Review items; region anchors pass the contract parser.
+
+[TaskBrowserRecording](../../src-server/services/projects/task-browser-recording.ts)
+records the bound lead Session's Browser screencast, pins and rechecks a clean
+workspace, encodes a silent bounded WebM, and publishes a validated Walkthrough
+through [TaskWalkthroughStore](../../src-server/services/walkthroughs/task-walkthrough-store.ts).
+The private scope includes Project, Task and Task creation time. The person
+routes recheck the Walkthroughs preview and Task authority on each list,
+manifest, frame and digest-verified video read. These clips do not join the
+Project import list. The [Review clip list and player](../../src-ui/src/views/task-workspace/review/TaskReviewClips.tsx)
+page metadata in fives and request a video only for an open player; unmount
+cancels the read, drops cached media and revokes its object URL. Review itself
+is behind `task-review`, and clip access also requires `walkthroughs`.
 
 The [SDK hooks](../../packages/sdk/src/query-domains/taskReview.ts) invalidate
 review reads after person mutations and support opt-in polling every three
