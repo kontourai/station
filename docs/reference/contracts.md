@@ -9,6 +9,15 @@ scope and conversation. `LAYOUT_PANELS_LAYOUT_BOUND` and
 `LAYOUT_PANELS_SESSION_BOUND` bound retention. The v3 device envelope retires the
 pre-release Coding-only panel preference; it does not preserve those old sizes.
 
+`@kontourai/station-contracts/isolated-repair` owns request/wall budget and bounded
+repair-run projection shapes. A projection is observational; it cannot grant
+execution or publication. `automation` adds the `isolated-repair` rule action and
+source `publish-branch` capability; an isolated repair requires an episode policy.
+`qualification-repair-policy` is a dependency-free `.mjs` protected-path validator
+shared by pre-install CI intake and the trusted Station publisher. Its `.d.mts`
+entry supplies types without duplicating the implementation. See
+[isolated repairs](../guides/agent-efficiency.md#run-an-isolated-github-repair).
+
 ## Ownership rules
 
 - This package owns stable cross-package types and constants. Existing domain

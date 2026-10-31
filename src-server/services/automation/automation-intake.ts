@@ -128,7 +128,7 @@ export function recordAutomationEvent(input: {
     openings: matched.flatMap((rule) => {
       const episodeKey =
         automationEpisodeKey(rule, event) ??
-        (input.source && rule.action.kind === 'dispatch-task'
+        (input.source && rule.action.kind !== 'notify'
           ? JSON.stringify([rule.id, event.semanticKey])
           : undefined);
       return episodeKey
@@ -146,7 +146,7 @@ export function recordAutomationEvent(input: {
     }),
     intents: input.source
       ? matched.flatMap((rule) => {
-          if (rule.action.kind !== 'dispatch-task') return [];
+          if (rule.action.kind === 'notify') return [];
           const episodeKey =
             automationEpisodeKey(rule, event) ??
             JSON.stringify([rule.id, event.semanticKey]);

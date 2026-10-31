@@ -1014,7 +1014,10 @@ function LearningSourceEffectForm({
   >('unresolved');
   const [intentId, setIntentId] = useState(randomCorrelationId);
   const [accessLost, setAccessLost] = useState(false);
-  const refused = isLearningAccessRefusal(mutation.error);
+  const refused =
+    isLearningAccessRefusal(mutation.error) ||
+    isLearningAccessRefusal(read.error) ||
+    (!read.isFetching && read.data?.state === 'restricted');
   useEffect(() => {
     if (!refused) return;
     setAccessLost(true);

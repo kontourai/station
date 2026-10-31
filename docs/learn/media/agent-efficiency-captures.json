@@ -1,0 +1,80 @@
+{
+  "kind": "controlled-component-captures",
+  "meaning": "Before and after access refusal in the same current component, not a comparison of code revisions. Actual route/SDK cache behavior is established by the caller tests separately. Other images illustrate current working configuration, compaction, supervision, and usage fixtures.",
+  "limits": [
+    "No live account, provider, billing, installed/native or Windows acceptance",
+    "Synthetic owner DTOs; no production user content"
+  ],
+  "matrix": {
+    "widths": [
+      390,
+      1440
+    ],
+    "themes": [
+      "light",
+      "dark"
+    ],
+    "horizontalOverflow": false,
+    "pageErrors": []
+  },
+  "sourceFiles": [
+    {
+      "path": "src-ui/src/views/learning-review/LearningReviewPanel.tsx",
+      "sha256": "6cc21edf125a509d3406efee395aa3d124f4057944ce8502f1a592f9d4785dee"
+    },
+    {
+      "path": "src-ui/src/views/learning-review/LearningRecordActions.tsx",
+      "sha256": "fa85d9b4140d0c1872efda8bc1dc535955252dac15f55bc4e053f9280d73c33b"
+    },
+    {
+      "path": "packages/sdk/src/query-domains/learningReview.ts",
+      "sha256": "f69adff052ff0f8f44d5c34cd46a6c49f82d266d261f5964a4104c086b561519"
+    },
+    {
+      "path": "src-ui/src/views/project-settings/ProjectWorkingConfiguration.tsx",
+      "sha256": "10737d2858f4935fe798d16ac39a5de682b0cc6a99d58ecbddfb0f69d1a95112"
+    },
+    {
+      "path": "src-ui/src/index.css",
+      "sha256": "ea0c24a4d07996de5f7407f6aaed9245695520d932e93c09b2af1654fcdb708b"
+    },
+    {
+      "path": "src-ui/src/views/learning-review/LearningReviewPanel.css",
+      "sha256": "f23cbc37cbaf7b678f01fde77a191fb485bf58095680230e77e1138c2f35f7fc"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "agent-efficiency-learning-390-light.png",
+      "sha256": "3669d9ea4f4569f917fad426bc5dbbd6aac4a131e9d182b16175f2e568202410"
+    },
+    {
+      "path": "agent-efficiency-learning-390-dark.png",
+      "sha256": "4a9e2c5bebdcfa6befb44f25db5fca80ae366296535d2c39b1ae7082cafff6c3"
+    },
+    {
+      "path": "agent-efficiency-learning-1440-light.png",
+      "sha256": "67ee0c9b9c8f5c0fc071e8675c380718e455c5ad5bd63cbe29838f5e1b434d5f"
+    },
+    {
+      "path": "agent-efficiency-learning-1440-dark.png",
+      "sha256": "c953aa47dff4dce4f52cec25e34e68c123c67bd917b507e4f3a224e4ebe576cf"
+    },
+    {
+      "path": "agent-efficiency-working-configuration.png",
+      "sha256": "5dbf31011a7d8245e8dcf2d01851cc3ccd5fce106f2fa0f265c986049022e546"
+    },
+    {
+      "path": "agent-efficiency-compaction.png",
+      "sha256": "7c40856e7d18963af7903033cde691a6cb39fe541d87f48e139d9f0d42b4c76a"
+    },
+    {
+      "path": "agent-efficiency-supervision.png",
+      "sha256": "4be6369b8cfd3dbf78605783ca2b11ac59b838d410500375287de1dc912bcdfc"
+    },
+    {
+      "path": "agent-efficiency-usage.png",
+      "sha256": "0bb86aa091669a95f24137fc10ae4acd658901ebe32c27212d1a3d1c5f7364a9"
+    }
+  ]
+}

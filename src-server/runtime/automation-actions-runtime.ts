@@ -80,6 +80,15 @@ export function createAutomationActionsRuntime(
   return new AutomationActionsRuntime(options, preview);
 }
 
+type NativeAutomationIntent = AutomationActionIntent & {
+  action: Extract<AutomationActionIntent['action'], { kind: 'dispatch-task' }>;
+};
+function nativeIntent(
+  intent: AutomationActionIntent | undefined,
+): intent is NativeAutomationIntent {
+  return intent?.action.kind === 'dispatch-task';
+}
+
 class AutomationActionsRuntime implements AutomationActions {
   private readonly supervisor: MonitorTaskTurnSupervisor;
   private readonly active = new Map<string, AbortController>();
@@ -173,6 +182,7 @@ class AutomationActionsRuntime implements AutomationActions {
   private currentRule(
     intent: AutomationActionIntent,
   ): AutomationRule | undefined {
+    if (!nativeIntent(intent)) return undefined;
     const occurredAt = Date.parse(intent.event.occurredAt);
     const now = Date.now();
     if (
@@ -267,7 +277,7 @@ class AutomationActionsRuntime implements AutomationActions {
     const intentId = input.payload.serverAutomationIntentId;
     if (!intentId) throw new Error('Automation intent is missing.');
     const intent = this.options.ledger().readIntent(intentId);
-    if (!intent || intent.sessionId !== input.threadId)
+    if (!nativeIntent(intent) || intent.sessionId !== input.threadId)
       throw new Error('Automation execution binding changed.');
     this.arm(intent);
     const result = await runWithUnattendedPrincipal(
@@ -304,6 +314,7 @@ class AutomationActionsRuntime implements AutomationActions {
       this.journalObserved = true;
       this.recoveryUnavailable = false;
       for (const intent of intents) {
+        if (!nativeIntent(intent)) continue;
         if (
           intent.state === 'queued' ||
           intent.state === 'running' ||
@@ -346,7 +357,7 @@ class AutomationActionsRuntime implements AutomationActions {
   }
 
   private async dispatch(
-    intent: AutomationActionIntent,
+    intent: NativeAutomationIntent,
     claim: import('../services/automation/automation-ledger.js').AutomationActionReceipt,
   ): Promise<void> {
     const ledger = this.options.ledger();
@@ -563,6 +574,7 @@ class AutomationActionsRuntime implements AutomationActions {
   }
 
   private arm(intent: AutomationActionIntent): void {
+    if (!nativeIntent(intent)) return;
     if (!intent.sessionId || !intent.taskId || intent.deadlineAt === undefined)
       return;
     let controller = this.active.get(intent.intentId);
@@ -595,6 +607,7 @@ class AutomationActionsRuntime implements AutomationActions {
   ): Promise<void> {
     const ledger = this.options.ledger();
     intent = ledger.readIntent(intent.intentId) ?? intent;
+    if (!nativeIntent(intent)) return;
     const sessionId = intent.sessionId;
     if (!sessionId) return;
     const entry = intent.conversationId

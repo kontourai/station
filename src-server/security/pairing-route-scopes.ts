@@ -776,6 +776,13 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
   // triggers that start agent work, so every mutating method stays unmapped
   // (refused) until a later slice classifies it on purpose.
   {
+    id: '/api/isolated-repairs:operator',
+    method: '*',
+    prefix: '/api/isolated-repairs',
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  {
     id: '/automations:read',
     method: 'GET',
     prefix: '/automations',

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import type {
   AutomationActionIntent,
+  AutomationConfiguration,
   AutomationRule,
   AutomationSource,
 } from '@kontourai/station-contracts/automation';
@@ -18,6 +19,12 @@ function canonical(value: unknown): string {
       .join(',')}}`;
   }
   return JSON.stringify(value);
+}
+
+export function automationConfigurationFingerprint(
+  configuration: AutomationConfiguration,
+): string {
+  return createHash('sha256').update(canonical(configuration)).digest('hex');
 }
 
 export function automationPolicyFingerprint(
@@ -82,7 +89,8 @@ export function decodeAutomationActionIntent(
       'refused',
     ].includes(String(value.state)) ||
     !isAutomationAction(value.action) ||
-    value.action.kind !== 'dispatch-task' ||
+    (value.action.kind !== 'dispatch-task' &&
+      value.action.kind !== 'isolated-repair') ||
     !record(value.event)
   )
     throw new Error('Invalid retained Automation intent');

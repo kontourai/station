@@ -453,6 +453,7 @@ import {
 } from '../../routes/operations/notification-preferences.js';
 import { createNotificationRoutes } from '../../routes/operations/notifications.js';
 import { createPushRoutes } from '../../routes/operations/push-routes.js';
+import { createIsolatedRepairRoutes } from '../../routes/operations/repairs.js';
 import {
   createSchedulerReadProjection,
   createSchedulerRoutes,
@@ -10747,6 +10748,7 @@ export function configureRuntimeRoutes(
     automationLedger,
     automationPreview,
     automationActions: runtimeAutomationActions,
+    isolatedRepairs,
     notificationService,
     approvalInboxProvider,
     attentionProjection,
@@ -11131,6 +11133,28 @@ export function configureRuntimeRoutes(
       },
       context.logger,
     ),
+  );
+  context.app.route(
+    '/api/isolated-repairs',
+    createIsolatedRepairRoutes({
+      controller: isolatedRepairs,
+      operator: async (request) => {
+        const assertCurrent = async () => {
+          if (
+            isHostedTenantExecutionRequired() ||
+            !isOperatorInPersonNotAgent(request) ||
+            !isRuntimeRequestPrincipalCurrent(
+              request,
+              context.environmentSecurityService,
+            )
+          )
+            throw new Error('Operator access required');
+          await projectMembershipAuthority(request).operator();
+        };
+        await assertCurrent();
+        return { id: getCachedUser().alias, assertCurrent };
+      },
+    }),
   );
   context.app.route(
     '/api/runs',

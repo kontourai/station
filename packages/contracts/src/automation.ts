@@ -32,7 +32,12 @@ export const AUTOMATION_SOURCE_KINDS = [
 export type AutomationSourceKind = (typeof AUTOMATION_SOURCE_KINDS)[number];
 
 /** Actions a rule may take. A grant names the subset a source permits. */
-export const AUTOMATION_ACTION_KINDS = ['dispatch-task', 'notify'] as const;
+export const AUTOMATION_ACTION_KINDS = [
+  'dispatch-task',
+  'isolated-repair',
+  'publish-branch',
+  'notify',
+] as const;
 
 export type AutomationActionKind = (typeof AUTOMATION_ACTION_KINDS)[number];
 
@@ -190,6 +195,18 @@ export type AutomationAction =
       budget: AutomationBudget;
     }>
   | Readonly<{
+      kind: 'isolated-repair';
+      projectId: string;
+      agentId: string;
+      profileId: string;
+      instructions: string;
+      /** Provider requests and wall time; this is not a token or turn limit. */
+      budget: Readonly<{
+        maxProviderRequests: number;
+        maxWallRuntimeMs: number;
+      }>;
+    }>
+  | Readonly<{
       kind: 'notify';
       priority: 'low' | 'normal' | 'high' | 'urgent';
     }>;
@@ -204,7 +221,10 @@ export interface AutomationActionIntent {
   deliveryKey: string;
   policyFingerprint: string;
   event: AutomationEvent;
-  action: Extract<AutomationAction, { kind: 'dispatch-task' }>;
+  action: Extract<
+    AutomationAction,
+    { kind: 'dispatch-task' | 'isolated-repair' }
+  >;
   state:
     | 'pending'
     | 'invoking'

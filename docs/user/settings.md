@@ -29,6 +29,7 @@ only when this Station's build can run it; if none is, the section says
 | `context-compaction` | Context compaction | Offers a bounded summary cold start and opt-in threshold compaction where supported. | Summary generation can spend model tokens. Old messages stay retained; native tool and approval state is omitted, not transferred. Unknown capacity prevents automatic compaction. |
 | `project-supervision` | Project supervision | Retains opted-in Task supervision and reconciles missed next actions through the conversation inbox. | May queue model turns; current access, Task incarnation, waits, capacity and original delivery keys still govern placement. |
 | `github-automation-actions` | GitHub automation actions | Dispatches explicitly granted, matching rules into durable Tasks and their first inbox turn. | Can spend model tokens under retained budgets. Off by default; observation alone grants no execution authority. Repair publication requires credential separation. |
+| `isolated-github-repairs` | Isolated GitHub repairs | Runs explicitly granted GitHub repairs in Docker, retaining a Task and exact proposal for operator review. | Can spend provider credits. Separate single-use publication grants open drafts only; audit and cleanup remain available when disabled. |
 | `session-goals` | Session goals | Adds engine Goal inspection and paused-objective editing to Chat settings. | The current Codex adapter supports read, save paused, pause and clear. Activation and Station-managed goal loops are unavailable; reads do not start an engine. |
 | `coordinator-picture` | Coordinator working picture | Lets the designated coordinator keep short notes about readable work, shown on Home. | Notes can contain work details; access to each source is rechecked. Finished notes expire after seven days. |
 | `attention-snooze` | Attention snooze | Lets the attention API temporarily hide any inbox item until a chosen time, up to 30 days. A newer source version resurfaces immediately. | Local per-user state only; no provider cost or background jobs. Off by default; disabling keeps saved snoozes but omits their effect while off. |
@@ -91,6 +92,12 @@ credential helper) shows a line saying it was not compared, and one Station
 could not read says it could not compare it. A folder that is not a git
 checkout, a detached HEAD, or a branch without a local upstream shows nothing.
 The two thresholds are in **Settings → General → Agent runs**.
+
+**Isolated GitHub repairs** (`isolated-github-repairs`) adds the personal operator
+repair API. Configured rules may spend provider credits in Docker; exact review
+and a separate single-use grant are required to publish a draft PR. It starts
+off and enables no source by itself. Disabling it stops new work; operator audit
+and cleanup remain available. See [setup and recovery](../guides/agent-efficiency.md#run-an-isolated-github-repair).
 
 Turning a preview on affects everyone who uses this Station.
 

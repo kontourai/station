@@ -24,6 +24,7 @@ import {
 } from '../../services/automation/automation-ledger.js';
 import { AutomationStore } from '../../services/automation/automation-store.js';
 import { composeGitHubAutomationObservation } from '../../services/automation/github-poll.js';
+import { IsolatedRepairController } from '../../services/automation/repair-controller.js';
 import { lanDiscoveryFor } from '../../services/connections/lan-discovery.js';
 import { createStationRoutesResolver } from '../../services/connections/station-routes.js';
 import type { FlowRunService } from '../../services/flow/flow-run-service.js';
@@ -61,6 +62,7 @@ import {
   type PausedGateReviewAggregate,
 } from '../../services/projects/attention-projection.js';
 import { FileAttentionSnoozeStore } from '../../services/projects/attention-snooze-store.js';
+import { defaultedProjectWorkingDirectory } from '../../services/projects/project-service.js';
 import type { ScheduledTurnAdapter } from '../../services/scheduling/builtin-scheduler.js';
 import { MonitorTaskTurnSupervisor } from '../../services/scheduling/monitor-task-supervisor.js';
 import type { ScheduledConversationRunner } from '../../services/scheduling/scheduled-conversation-runs.js';
@@ -68,6 +70,7 @@ import { SchedulerService } from '../../services/scheduling/scheduler-service.js
 import { DevicePairingNotificationProvider } from '../../services/ssh/device-pairing-notifications.js';
 import { publicIngressOriginResolver } from '../../services/tailscale/public-ingress-origin.js';
 import { errorMessage } from '../../utils/error-message.js';
+import { expandTilde } from '../../utils/paths.js';
 import { isExternalEngineBoundAgent } from '../agents/agent-engine-classification.js';
 import { runWithUnattendedPrincipal } from '../agents/unattended-principal-context.js';
 import { createAutomationActionsRuntime } from '../automation-actions-runtime.js';
@@ -543,6 +546,42 @@ export function configureRuntimeSupportServices(
           logger: context.logger,
         })
       : undefined;
+  const repairPreview = isHostedTenantExecutionRequired()
+    ? undefined
+    : context.featurePreviews.bind({
+        id: 'isolated-github-repairs',
+        label: 'Isolated GitHub repairs',
+        description:
+          'Run bounded repairs in Docker, then review and separately grant draft PR publication. Can spend provider credits.',
+      });
+  const isolatedRepairs = isHostedTenantExecutionRequired()
+    ? undefined
+    : new IsolatedRepairController({
+        home: automationHome,
+        enabled: () =>
+          repairPreview?.select({
+            enabled: () => true,
+            disabled: () => false,
+          }) === true,
+        policy: automationStore,
+        ledger: () => automationLedger.get(),
+        tasks: context.taskGraphService,
+        projectRoot: (id) => {
+          const project = context.projectService
+            .listProjects()
+            .find((p) => p.id === id);
+          if (!project) return undefined;
+          const config = context.projectService.getProject(project.slug);
+          return config.workingDirectory
+            ? expandTilde(config.workingDirectory)
+            : defaultedProjectWorkingDirectory(project.slug, automationHome);
+        },
+        isAgentCurrent: async (id) =>
+          (await context.agentService.listAgents()).some(
+            (agent) => agent.slug === id,
+          ),
+        logger: context.logger,
+      });
   const schedulerService = new SchedulerService({
     logger: context.logger,
     builtin: {
@@ -556,8 +595,10 @@ export function configureRuntimeSupportServices(
         async poll(input) {
           await automationObservation.poller?.poll(input);
           if (!input.signal.aborted) await automationActions?.tick();
+          if (!input.signal.aborted) await isolatedRepairs?.tick();
         },
-        close() {
+        async close() {
+          await isolatedRepairs?.close();
           automationActions?.close();
           automationObservation.poller?.close();
           automationLedger.close();
@@ -860,6 +901,7 @@ export function configureRuntimeSupportServices(
     automationLedger,
     automationPreview: automationObservation.preview,
     automationActions,
+    isolatedRepairs,
     notificationService,
     approvalInboxProvider,
     attentionProjection,

@@ -70,7 +70,10 @@ receipts preserve prior history.
 
 No effect observations means no effect was observed. Source timestamps that the
 owner did not capture remain unknown. A replaced Project slug or revoked source
-cannot expose a cached candidate's identity or body. This preview uses the
+cannot expose a cached candidate's identity or body. A refused index, detail,
+evidence or prepared-source read clears the protected query namespace and closes
+an open inspector or copied proposal. A fresh authoritative read is required to
+reopen it. An initial unsupported-host read retains update guidance. This preview uses the
 owner's private POSIX file adapter; hosted and Windows hosts do not offer it.
 
 ## Compact without rewriting history
@@ -138,6 +141,101 @@ Source and fixture evidence for these mechanisms does not establish provider
 compatibility, installed/native behavior, live account billing, human usability
 or causal cost savings. Those remain separate acceptance observations.
 
+[Controlled visual captures](../learn/media/agent-efficiency-captures.json) retain
+390/1440 light/dark examples. The learning comparisons show access granted →
+read refused in the same current component, with synthetic owner data. They do
+not establish a live account, installed app or causal savings result.
+
+## Run an isolated GitHub repair
+
+Enable **GitHub automation observations** and **Isolated GitHub repairs**
+(`isolated-github-repairs`) in Settings → Advanced → Feature previews. Both start
+off. This is a personal-host operator API preview: it has no agent/MCP grant
+surface or hosted-tenant execution. Running the model can spend provider credits.
+Docker, Python 3 and an immutable image containing the pinned Codex CLI must be
+available. The command below prepares and separately qualifies that image.
+
+Use the authenticated operator API at `/api/isolated-repairs`. Requests use the
+same current operator credential/session as other host administration; a paired
+device's management scope alone cannot act as the operator in person. An older
+host returns 404/not supported. The Project must name an admitted local Git
+repository whose origin matches `owner/repo` exactly and whose local
+`refs/remotes/origin/main` contains the selected base. Station does not fetch or
+run the Project's setup commands while preparing it.
+
+1. `POST /profiles` creates a disabled execution profile. Supply
+   `{ "expectedRevision": 0, "profile": { "kind": "execution", "projectId": "…",
+   "agentId": "…", "repository": "owner/repo", "repositoryId": 123,
+   "image": "sha256:<immutable-image-id>", "model": "<explicit-model>",
+   "reasoningEffort": "medium", "providerAuth": { "env": "REPAIR_PROVIDER_KEY" } } }`.
+   Credential references may use Datum's `env`, `keychain` or `op` shapes;
+   API responses omit those references and never carry the key. External secret
+   tools have a ten-second deadline and bounded output.
+2. Create a separate disabled `publisher` profile with repository/repositoryId,
+   `appId`, `installationId` and `privateKeyAuth`. It can be configured after the
+   repair without another model run. Its credential reference must differ from
+   provider references. No App key is materialized while the repair worker runs.
+3. Read `GET /profiles` for current revisions. Enable a profile with `POST /profiles/<id>/enable`, sending its current
+   `expectedRevision` and `enabled:true`. Reconfiguration increments its revision
+   and disables it; profile changes invalidate old execution/publication bindings.
+4. `POST /sources` creates a disabled `github-poll` source: name, repository,
+   optional existing `credentialSecretBinding`/poll interval, and grants naming
+   the exact Project/Agent pair and `isolated-repair`. Also grant `publish-branch`
+   if this source may later request publication. The poll credential is the
+   existing integration-secret binding, separate from model and App references.
+5. `POST /rules` creates a disabled rule with name, sourceId, exact matcher,
+   episode policy, rateLimit, and this action:
+   `{ "kind":"isolated-repair", "projectId":"…", "agentId":"…",
+   "profileId":"<execution-profile-id>", "instructions":"<operator instructions>",
+   "budget":{"maxProviderRequests":4,"maxWallRuntimeMs":300000} }`.
+   Match the intended workflow path, same head repository, main branch,
+   schedule/workflow_dispatch/push event and failure/timed_out conclusion. The
+   episode needs keyFields and a green closeOn matcher. This budget limits
+   requests and wall time; it is not a token or billing reservation.
+6. Read `GET /configuration`, then enable the exact source and rule through
+   `POST /configuration/enable` with `{kind:"source"|"rule",id,enabled:true,
+   expectedFingerprint}`. Read a new fingerprint between writes. A stale one
+   refuses the change. Source, rule, profile and preview checks remain separate.
+
+A matching failure creates one canonical Task and one durable repair run. The
+worker receives source files and a short-lived, model-bound provider capability;
+it receives no host home, App key or GitHub publishing token. The selected base,
+failing run attempt, Task incarnation, policy/profile and source digest are bound
+before execution. A regular-file census after verified worker removal produces
+the patch and published blobs from the same bytes. Changes are limited to forty
+paths with UTF-8 text content changes, 128 KiB per changed old/new file and 1 MiB of new content. Symlinks,
+submodules, unsafe/colliding paths and protected controls refuse the proposal.
+
+Use `GET /` to find the run by Task id, then `GET /<run>/artifact` to inspect its
+source manifest, patch, worker evidence and digests. A candidate Task enters
+Review. `POST /<run>/review` takes bindingDigest, resultDigest, verdict
+(`approve`/`reject`) and rationale. Approval completes the Task. Read the artifact again to obtain `review.id`. It still cannot
+publish: `POST /<run>/grant` separately pins bindingDigest, resultDigest, reviewId
+and publisherId for fifteen minutes. `POST /<run>/publish` consumes that grantId
+once. The trusted publisher opens a draft PR; ordinary checks, human review and
+the normal landing policy still apply. Main moving requires new reviewable
+source; publication never silently rebases or overwrites a different branch.
+
+`revoke` and `cancel` accept an empty JSON object. Cancellation cannot undo an
+unknown remote effect. A crash or ambiguous result stays **indeterminate** and
+cannot replay or consume its grant again. `POST /<run>/followup` records a
+rationale. Once the exact worker is stopped and the owning operation is settled,
+`POST /<run>/resolve` requires `acknowledgeUnknownEffects:true` and rationale to
+release global admission while retaining indeterminate evidence and its episode
+fence. A failed durable release is retryable and cannot be archived as released.
+`POST /<run>/archive` retains terminal records; an indeterminate record additionally
+requires explicit resolution. Sixteen unarchived run records and 128 archived records
+bound retention; export retained state through normal operator home-management
+procedures before exceeding the archive ceiling. Repair-run history is not automatically
+pruned to make room.
+
+Preview/source revocation stops future execution and publication. Current
+operators can still inspect retained evidence and disable, revoke, cancel,
+resolve or archive it. Every route is private/no-store. Windows execution,
+desktop host UID mapping, live model/account billing and causal savings need
+separate qualification. The fixture suite and container command do not establish
+those claims or authorize enabling a source on the operator's behalf.
+
 ## Qualify the container boundary
 
 With Docker running, build the public generic worker using an explicit Codex CLI
@@ -166,6 +264,6 @@ leave no receipt. Missing completion or failed cleanup cannot produce a `PASS`.
 
 The named bridge is pinned by its observed Docker network ID. It permits outbound
 network access; this is credential-mount qualification, not an egress firewall.
-Desktop UID mapping remains unverified. The authenticated Station Task/source,
-patch, independent review, artifact and publication-grant bridge remains separate
-work, so this command does not enable `QUALIFICATION_REPAIR_AGENT=station`.
+Desktop UID mapping remains unverified. The authenticated repair API above is
+a separate consumer with its own Task/source/review/grant checks. This command
+does not configure that consumer, enable sources or change the CI selector.

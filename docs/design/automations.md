@@ -1,20 +1,19 @@
 # Station Automations
 
-> **Reading status: retained proposal with implemented foundations; tracked by
-> [#3439](https://github.com/kontourai/station/issues/3439).** The
-> [Automation contract](../../packages/contracts/src/automation.ts),
+> **Reading status: retained proposal with default-off implemented previews;
+> tracked by [#3439](https://github.com/kontourai/station/issues/3439).**
+> Current owners are the [Automation contract](../../packages/contracts/src/automation.ts),
 > [configuration store](../../src-server/services/automation/automation-store.ts),
-> [SQLite ledger](../../src-server/services/automation/automation-ledger.ts), and
-> [unattended principal context](../../src-server/runtime/agents/unattended-principal-context.ts)
-> now exist. The default-off `github-automation-observations` Feature Preview
-> composes observe-only GitHub polling and operator delivery history through
-> those stores. Configuration remains `security/automations.json`; there is no
-> public configuration mutation or Task dispatch from this intake yet.
-> The design below retains the original proposal checked at `14c83da3cd`,
-> including its proposed broader source kinds and file layout; current
-> foundation shapes belong to the linked sources. This status review inspected
-> source only and reran no tests or GitHub delivery. Section 9 records the owner
-> decisions; the foundations do not prove the complete automation journey.
+> [SQLite ledger](../../src-server/services/automation/automation-ledger.ts),
+> [Task action runtime](../../src-server/runtime/automation-actions-runtime.ts), and
+> [isolated repair controller](../../src-server/services/automation/repair-controller.ts).
+> The operator repair API can create disabled poll sources/rules and enable an
+> exact configuration. The original broader proposal below remains a design;
+> it does not describe every currently implemented source, file or UI.
+> See [bounded agent work](../guides/agent-efficiency.md#run-an-isolated-github-repair)
+> for the implemented setup, review, publication and recovery path. Fixtures
+> establish caller behavior; container qualification, live model/account use,
+> release qualification and broader S5/S6 delivery remain separate evidence.
 
 > **Automation is the umbrella.** Since
 > [the automations decision](../decisions/automations-unify-schedules.md),
@@ -22,7 +21,7 @@
 > an optional target runs each time as a turn in a conversation, on any engine,
 > and agent check-backs are listed with it. That part ships. The GitHub event
 > sources now have the default-off observation and bounded Task-action previews
-> described below. Publication and broader sources remain proposed. They extend
+> described below. An isolated repair/publication API preview is also available; broader sources and full management UI remain proposed. They extend
 > the same Automations surface.
 
 Status: **proposal.** It extends the existing
@@ -101,35 +100,50 @@ source evidence, not proof that the execution workspace is that exact checkout.
 The current Task dispatcher resolves the Project workspace; source-bound repair
 preparation still belongs to the workspace/preparation owner.
 
-### Repair publication prerequisite
+### Isolated repair and draft publication
 
-S4 is not enabled by Task dispatch. Existing CI uses separate repair and publish
-jobs: checkout does not persist credentials, and the publish job resolves the
-App token only after repair finishes. Its deterministic
-[patch publisher](../../scripts/qualification-repair.mjs) checks base identity,
-protected paths, patch and file modes before a branch push. Human merge policy
-remains in force.
+The **Isolated GitHub repairs** preview (`isolated-github-repairs`) is independent
+of ordinary Task dispatch. A source must grant `isolated-repair` to the same
+Project/Agent pair as its rule. The rule names an enabled execution profile,
+immutable Docker image, explicit model, and provider-request/wall budget. It
+creates a canonical Task with a separate durable execution; it does not invent
+a native ProviderSession or reuse the native Task dispatcher's token limits.
 
-Station does not yet have the authenticated bridge from a proven credential-free
-repair runner to that publisher: source/run/episode/base identity, patch digest,
-artifact custody and a separate App publication grant must travel together.
-The sealed runner explicitly does not provide secrecy from its invoking UID,
-and its structured safe-result API is not a patch custody API. Public Flow Agents
-9.9.1 also exports `docker-worker` and `provider-broker`; the Docker worker can
-record observed image, mount, network and forbidden-root constraints. That is a
-candidate execution primitive, not the missing Station Task/source/patch/review
-and publication-grant binding. Its Linux host mapping is qualified separately
-from its platform-default path. The manual
-[`qualify:isolated-repair`](../guides/agent-efficiency.md#qualify-the-container-boundary)
-command exercises the public worker with a real pinned CLI, a controlled
-Responses fixture, an actual forbidden-mount refusal and a file change. A clean
-source receipt covers that container boundary and cleanup, not a live provider,
-Station Task, review or publication. The named bridge permits outbound network
-access; platform-default desktop UID mapping remains unverified.
-Neither a prompt nor environment scrubbing can make a local engine unable to
-reach ambient GitHub, SSH or Keychain credentials. Keep
-`QUALIFICATION_REPAIR_AGENT` unchanged until that physical execution and artifact
-boundary is available and qualified. No automation is enabled by installation.
+[Source preparation](../../src-server/services/automation/repair-source.ts) reads
+admitted immutable Git objects from the Project's local `origin/main`. It binds
+the observed failing SHA separately from that selected repair base. After the
+exact owned worker is removed, regular-file bytes and modes produce both the
+review patch and the expected published tree. The host never runs Git in the
+model-mutated workspace. Protected policy, authority, automation and publisher
+paths require owner work outside this repair path.
+
+An operator reviews the exact binding/result digests through the private
+[repair API](../../src-server/routes/operations/repairs.ts). Approval completes
+the Task but grants no publication. A separate, expiring, single-use grant pins
+the review and an enabled App publisher profile; the source must additionally
+grant `publish-branch`. The [publisher](../../src-server/services/automation/repair-publisher.ts)
+uses GitHub Git Data APIs, rechecks main/base/repository/App identity, and opens
+a draft with no autoland label. It never merges or arms auto-merge. App secrets
+are materialized only after admission and worker-stop verification. Provider
+and App references are separate, and external secret-tool reads are bounded
+asynchronous process groups.
+
+Unknown worker or publication effects remain indeterminate. Recovery inspects
+only the planned container name and exact owner/run labels and never relaunches
+an unknown attempt. Explicit operator resolution can release global admission
+after ownership and worker stop are settled; it retains unknown-effect evidence,
+consumed grants and the no-replay fence. Disabling the preview stops new work;
+operator audit, disable, revoke, cancellation, resolution and archival remain
+available for cleanup. Setup writes recheck the preview inside their file lock.
+
+The container [qualification command](../guides/agent-efficiency.md#qualify-the-container-boundary)
+uses a real pinned CLI and synthetic Responses. The caller fixture uses a real
+Task graph and Git source/patch application, with fixture worker and GitHub
+transports. Neither establishes live inference/billing or hosted operation.
+The ordinary Docker bridge permits outbound traffic; desktop UID mapping and
+Windows execution remain unverified. No source or action is enabled by
+installation. CI's `QUALIFICATION_REPAIR_AGENT` selector is unchanged; Station's
+poller is configured independently and requires no AI key in GitHub CI.
 
 ## 1. Problem and constraints
 

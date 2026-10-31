@@ -309,9 +309,14 @@ test('a later canonical Task record can be selected as an effect source through 
   );
 });
 
-test.each(['proposal', 'effect'] as const)(
-  'an observed source refusal removes protected %s fields and prepared cache despite unchanged host authority',
-  async (mode) => {
+test.each([
+  ['proposal', 'mutation'],
+  ['effect', 'mutation'],
+  ['effect', 'index'],
+  ['proposal', 'source'],
+] as const)(
+  'an observed %s %s refusal removes protected fields and prepared cache despite unchanged host authority',
+  async (mode, operation) => {
     const context = fixture(mode === 'effect');
     render(
       <QueryClientProvider client={context.client}>
@@ -343,11 +348,48 @@ test.each(['proposal', 'effect'] as const)(
       });
     }
     context.revoke();
-    fireEvent.click(
-      screen.getByRole('button', {
-        name: mode === 'effect' ? 'Record observed effect' : 'Propose to owner',
-      }),
-    );
+    if (operation === 'mutation') {
+      fireEvent.click(
+        screen.getByRole('button', {
+          name:
+            mode === 'effect' ? 'Record observed effect' : 'Propose to owner',
+        }),
+      );
+    } else {
+      await act(async () => {
+        if (operation === 'source') {
+          const sources = context.client
+            .getQueryCache()
+            .getAll()
+            .filter((query) => {
+              const value = query.state.data;
+              return (
+                value !== null && typeof value === 'object' && 'body' in value
+              );
+            });
+          expect(sources).toHaveLength(1);
+          await expect(sources[0]!.fetch()).rejects.toMatchObject({
+            status: 403,
+          });
+        } else {
+          await expect(
+            context.client.refetchQueries(
+              {
+                predicate(query) {
+                  const value = query.state.data;
+                  return (
+                    value !== null &&
+                    typeof value === 'object' &&
+                    'items' in value
+                  );
+                },
+              },
+              { throwOnError: true },
+            ),
+          ).rejects.toMatchObject({ status: 403 });
+        }
+      });
+    }
     await screen.findByText('Source access changed');
     expect(data.authority.isCurrent()).toBe(true);
     expect(screen.queryByText('Canonical source body')).toBeNull();
@@ -442,3 +484,32 @@ test.each(['decision', 'index', 'detail'] as const)(
     expect(await screen.findByText('Proposed guidance')).toBeTruthy();
   },
 );
+
+test('an initial unsupported-host source read retains update guidance without claiming that previously read access changed', async () => {
+  const context = fixture();
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => Response.json({ error: 'Not Found' }, { status: 404 })),
+  );
+  render(
+    <QueryClientProvider client={context.client}>
+      <TaskLearningPanel
+        taskId="task-one"
+        projectId="project-id"
+        projectSlug="demo"
+        taskCreatedAt="2026-10-30T09:00:00.000Z"
+        authority={data.authority}
+      />
+    </QueryClientProvider>,
+  );
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Review as learning' }),
+  );
+  expect(
+    await screen.findByText(/Learning review is unsupported on this host/),
+  ).toBeTruthy();
+  expect(screen.queryByText('Source access changed')).toBeNull();
+  expect(
+    screen.queryByRole('dialog', { name: 'Review as learning' }),
+  ).toBeNull();
+});

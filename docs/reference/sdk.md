@@ -6302,7 +6302,10 @@ keeps stage gaps distinct and requires exact receipt references.
 Project index, detail, proposal and intent hooks. Query identity includes host
 base, authority key, immutable Project, slug, learning id and comparison id.
 Changed authority or a reused slug cannot display or mutate an older Project's
-cached learning. Mutations route to the Knowledge Kit owner and retain its
+cached learning. Classified parent/evidence/source read refusal clears protected
+scope queries, closes an open inspector or copied proposal, and requires a fresh
+authoritative read before reopening. An initial unsupported-host read preserves
+its update guidance. Mutations route to the Knowledge Kit owner and retain its
 revision conflict/unsupported/unavailable result. A transport success does not
 establish activation or an observed effect.
 

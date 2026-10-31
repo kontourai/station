@@ -103,6 +103,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [RuntimeResourcePostureController](#runtimeresourceposturecontroller) | Report host CPU diagnostics without influencing product work. | `src-server/services/infra/resource-posture.ts` |
 | [OutboundDispatchModule](#outbounddispatchmodule) | Queue and dispatch one offline message without replaying a possible provider effect. | `src-ui/src/lib/outboundQueue.ts` |
 | [SchedulerLedger and BuiltinScheduler](#schedulerledger-and-builtinscheduler) | Own scheduled-job state, occurrence receipts, and safe unattended execution. | `src-server/services/scheduling/scheduler-ledger.ts` |
+| [IsolatedRepairController](#isolatedrepaircontroller) | Bind a canonical Task to immutable source, an isolated execution, exact operator review and one draft-publication grant. | `src-server/services/automation/repair-controller.ts` |
 | [TaskDispatcher and TaskGraph](#taskdispatcher-and-taskgraph) | Dispatch a task while keeping graph state and orchestration detail local. | `src-server/services/projects/task-dispatcher.ts` |
 | [StationInstanceReconciler](#stationinstancereconciler) | Observe and converge one installed Station instance safely. | `packages/cli/src/commands/station-instance-reconciler.ts` |
 
@@ -114,7 +115,7 @@ and where to start reading; it is a pointer, not a reviewed interface contract.
 | Directory | What it owns | Read next |
 | --- | --- | --- |
 | `src-server/services/access/` | Station groups, personal access tokens, and the principal a paired device is tied to (#3557) | [Principals](../design/principals.md) |
-| `src-server/services/automation/` | Default-off observe-only GitHub intake, atomic delivery/episode storage and management-scoped delivery history; action dispatch remains pending (#3439) | [Automations proposal](../design/automations.md) |
+| `src-server/services/automation/` | Default-off GitHub intake, bounded native Tasks, isolated repair execution and separately granted draft publication (#3439) | [Automations proposal](../design/automations.md) |
 | `src-server/services/board/` | The Board store for one Task or Session (tabs and ordinal widgets; contract in `packages/contracts/src/board.ts`), behind `src-server/routes/board.ts`, which authorizes the owning reference before any store read | Source |
 | `src-server/services/chat-apps/` | Messaging bindings, identity links, kill switches and delivery receipts in the orchestration database; Discord imports its legacy authority once. Live Discord validation remains outstanding. | [Messaging core](../../src-server/services/chat-apps/chat-app-core.ts) |
 | `src-server/services/config/` | The idempotent log-level edit with retained terminal receipts | [Logging configuration](../reference/config.md#logging) |
@@ -4536,8 +4537,10 @@ poll state, lists completed workflow runs through the external monitor's REST
 transport and secret-binding credential path, and records each run through the
 [normalizer](../../src-server/services/automation/github-workflow-run.ts) and
 [intake](../../src-server/services/automation/automation-intake.ts) as matched,
-no-match, refused or duplicate, opening and closing episodes. It starts
-nothing yet: no Task, turn or action claim.
+no-match, refused or duplicate, opening and closing episodes. Observation alone starts nothing. Separately enabled native Task actions and
+isolated repairs consume retained intents after source/rule/grant checks; the
+scheduler invokes both consumers and awaits their shutdown before closing the
+shared ledger.
 
 [Ledger tests](../../src-server/services/scheduling/__tests__/scheduler-ledger.test.ts),
 [execution tests](../../src-server/services/scheduling/__tests__/builtin-scheduler-execution.test.ts),
@@ -4548,6 +4551,50 @@ unsafe database/log paths and output symlinks are refused. Keep occurrence,
 principal and retry identity in the ledger, and never replay an indeterminate
 provider effect just to obtain a clean log.
 
+
+## IsolatedRepairController
+
+[IsolatedRepairController](../../src-server/services/automation/repair-controller.ts)
+consumes only `isolated-repair` intents. The native
+[Automation action runtime](../../src-server/runtime/automation-actions-runtime.ts)
+continues to own `dispatch-task`; Docker execution never fabricates its native
+Session/inbox contracts. Runtime support binds one default-off preview and
+scheduler consumer. [Operator routes](../../src-server/routes/operations/repairs.ts)
+are unavailable when hosted and require current in-person operator authority;
+MCP/unattended and paired-device authority cannot grant publication.
+
+The [source owner](../../src-server/services/automation/repair-source.ts) reads
+admitted immutable Git objects, materializes bounded regular files outside the
+Station home, and captures bytes/modes only after the exact owned worker is
+removed. It derives the review patch and expected Git tree together. No host
+Git runs in the model-owned workspace. The [worker adapter](../../src-server/services/automation/repair-worker.mjs)
+uses published Flow Agents Docker/broker APIs, a bounded front relay, durable
+request reservations and request-time authority checks. The
+[credential owner](../../src-server/services/automation/repair-credentials.mjs)
+parses public Datum references and bounds asynchronous process-group lookups.
+Ordinary bridge networking is not outbound confinement.
+
+[RepairStore](../../src-server/services/automation/repair-store.ts) persists private
+profile revisions, run/source/result custody, reviews, grants and publication
+checkpoints with file-lock CAS. The [publisher](../../src-server/services/automation/repair-publisher.ts)
+uses GitHub REST APIs, including Git Data APIs for blobs/trees/commits/refs, after
+separate reviewed-grant consumption and
+worker-stop checks; App keys never enter the worker. Only draft PR publication
+is authorized. Operation ids/process identities fence concurrent and late
+callbacks. Unknown effects never replay. Explicit operator resolution releases
+ledger admission before recording its release receipt, preserving the unknown
+run/episode and consumed grant. Archive checks that durable release separately.
+
+The [caller fixture](../../src-server/services/automation/__tests__/repair-controller.test.ts)
+crosses normalized event, actual ledger/Task/Git source, proposal, operator API,
+review, grant, publication and recovery controls. Worker and GitHub transports
+there are controlled fixtures. The
+[broker test](../../src-server/services/automation/__tests__/repair-worker.test.ts)
+uses the real published broker with synthetic transport and a started/canceled
+secret-tool child. [Container qualification](../guides/agent-efficiency.md#qualify-the-container-boundary)
+is independent actual Docker/CLI evidence. None proves live inference/billing,
+Windows execution, hosted support or successful release. See
+[operator setup and recovery](../guides/agent-efficiency.md#run-an-isolated-github-repair).
 
 ## Whole Task Basis collection
 

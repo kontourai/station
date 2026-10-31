@@ -1,9 +1,10 @@
 import type { LearningReviewSourceSelection } from '@kontourai/station-contracts/learning-review';
+import { isLearningAccessRefusal } from '@kontourai/station-sdk/client/learning-review';
 import {
   type LearningReviewRequestScope,
   usePrepareLearningSourceQuery,
 } from '@kontourai/station-sdk/learning-review-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '../../components/Button';
 import { ErrorState } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
@@ -37,6 +38,14 @@ export function LearningRecordReviewButton({
   );
   const [source, setSource] = useState<LearningReviewProposalContext>();
   const [notice, setNotice] = useState('');
+  const refused =
+    (source !== undefined && isLearningAccessRefusal(prepared.error)) ||
+    (!prepared.isFetching && prepared.data?.state === 'restricted');
+  useEffect(() => {
+    if (!refused) return;
+    setSource(undefined);
+    setNotice('Source access changed');
+  }, [refused]);
   const open = async () => {
     setNotice('');
     const selected = structuredClone(selection);
@@ -69,8 +78,16 @@ export function LearningRecordReviewButton({
       {notice && (
         <ErrorState
           variant="compact"
-          title="Learning source unavailable"
-          description={notice}
+          title={
+            refused || notice === 'Source access changed'
+              ? 'Source access changed'
+              : 'Learning source unavailable'
+          }
+          description={
+            notice === 'Source access changed'
+              ? 'Prepare the source again to check access.'
+              : notice
+          }
           action={
             <Button
               size="sm"
@@ -82,7 +99,7 @@ export function LearningRecordReviewButton({
           }
         />
       )}
-      {source && (
+      {source && !refused && (
         <LearningReviewProposalDialog
           slug={slug}
           projectId={projectId}
