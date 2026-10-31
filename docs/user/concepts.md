@@ -96,8 +96,10 @@ it lists, including one whose delivery outcome is unknown, and the chat's
 context card shows the same count. If the list can't be read after showing held messages,
 it says so and offers **Retry**; that does not mean nothing is held.
 **Remove** withdraws a waiting held message when your identity is allowed to do
-so; a message already being sent cannot be removed. The composer's ordinary
-Queue action still keeps its follow-ups in this browser.
+so; a message already being sent cannot be removed. The composer's Queue action
+requests inbox admission for an eligible busy conversation; Station can hold the
+follow-up or return a started-turn receipt. Other local queued follow-ups remain
+in this browser.
 
 ## Gates, Evidence, And Receipts
 
