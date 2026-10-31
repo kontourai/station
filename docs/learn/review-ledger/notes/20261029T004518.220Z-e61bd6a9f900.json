@@ -1,0 +1,7 @@
+{
+  "revision": "8e3744438e2bd9facb3fedb48d7e5009d01cdf01",
+
+  "notes": [
+    {"path":"packages/sdk/AGENTS.md","note":"sdk.md only gained a refetch-on-mount-and-focus clause for the checkout freshness hook; the routing this file gives to the SDK reference is unchanged.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

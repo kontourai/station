@@ -1,0 +1,9 @@
+{
+  "revision": "3e28a321a5d8e7dde49c91f5aa9f3ee6664ff24d",
+
+  "notes": [
+    {"path":"docs/user/settings.md","note":"Re-reviewed after merging main: the preview table now holds both visual-skills (from main) and stale-project-checkout; the stale checkout row now says the read is cached for ten seconds, matching FRESHNESS_TTL_MS. The Stale checkout warning paragraph still matches the notice component.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"settings.md only gained the visual-skills row from main and a corrected cache duration on the stale-project-checkout row; this guide's process claims and its pointer to the user settings list are unaffected.","inputs":["docs/guides/feature-previews.md","docs/user/settings.md"]}
+  ]
+}

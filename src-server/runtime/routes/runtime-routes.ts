@@ -9,6 +9,7 @@ import {
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import { isPersonalTokenScope } from '@kontourai/station-contracts/personal-tokens';
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
+import { resolveProjectCheckoutStaleThresholds } from '@kontourai/station-contracts/project-checkout-freshness';
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
 import {
   parseTaskGateEvaluationReference,
@@ -183,6 +184,7 @@ import { DelegationGroupRuntime } from '../../services/orchestration/portable-gr
 import { sessionOwnerStampFor } from '../../services/orchestration/session-owner-attribution.js';
 import { StationReportGroupRuntime } from '../../services/orchestration/station-report-group-runtime.js';
 import { createProjectChatDefaultsService } from '../../services/projects/project-chat-defaults.js';
+import { createProjectCheckoutFreshnessReader } from '../../services/projects/project-checkout-freshness.js';
 import type {
   ProjectMembershipAuthority,
   ProjectMembershipService,
@@ -8959,6 +8961,15 @@ export function configureRuntimeRoutes(
     context.configLoader.getProjectHomeDir(),
     context.storageAdapter,
   );
+  // Bound at composition so the preview is offered before it is enabled; the
+  // route selects on every read.
+  const checkoutFreshnessPreview = context.featurePreviews.bind({
+    id: 'stale-project-checkout',
+    label: 'Stale checkout warning',
+    description:
+      "Warn when a Project's checkout is far behind its upstream branch, from local git refs. Station never fetches or updates it.",
+  });
+  const checkoutFreshnessReader = createProjectCheckoutFreshnessReader();
   context.app.route(
     '/api/projects',
     createProjectRoutes(
@@ -8966,6 +8977,18 @@ export function configureRuntimeRoutes(
       context.storageAdapter,
       context.configLoader.getProjectHomeDir(),
       {
+        checkoutFreshness: {
+          preview: checkoutFreshnessPreview,
+          read: async (project) =>
+            checkoutFreshnessReader.read(
+              project.workingDirectory?.trim()
+                ? resolve(expandTilde(project.workingDirectory.trim()))
+                : undefined,
+              resolveProjectCheckoutStaleThresholds(
+                await context.configLoader.loadAppConfig(),
+              ),
+            ),
+        },
         // The caller's id is the one a chat start records under
         // (`resolveActorPrincipal` reads this same resolver).
         chatDefaults: (c, project, options) =>

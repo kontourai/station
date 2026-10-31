@@ -1,0 +1,27 @@
+{
+  "revision": "69631e40e3613a50d498674f871251580dc63af6",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"Reviewed settings catalog ordering against StationConfigSection and reset expectations. The existing navigation and stale-checkout descriptions remain accurate; the dated triage remains historical. Focused catalog and reset tests passed on Windows. This review does not certify other settings or platforms.","inputs":["docs/design/settings-architecture.md","src-ui/src/views/settings/settings-catalog.ts"]},
+
+    {"path":"docs/design/settings-launch-triage.md","note":"Reviewed settings catalog ordering against StationConfigSection and reset expectations. The existing navigation and stale-checkout descriptions remain accurate; the dated triage remains historical. Focused catalog and reset tests passed on Windows. This review does not certify other settings or platforms.","inputs":["docs/design/settings-launch-triage.md","src-ui/src/views/settings/settings-catalog.ts"]},
+
+    {"path":"docs/user/settings.md","note":"Reviewed settings catalog ordering against StationConfigSection and reset expectations. The existing navigation and stale-checkout descriptions remain accurate; the dated triage remains historical. Focused catalog and reset tests passed on Windows. This review does not certify other settings or platforms.","inputs":["docs/user/settings.md","src-ui/src/views/settings/settings-catalog.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the get_project checkout-freshness route addition against its project view policy and MCP route caller. The existing Station Control and authorization descriptions remain accurate; other tools and platform behavior were not re-audited. The focused policy route tests passed on Windows.","inputs":["docs/architecture/module-map.md","src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed the get_project checkout-freshness route addition against its project view policy and MCP route caller. The existing Station Control and authorization descriptions remain accurate; other tools and platform behavior were not re-audited. The focused policy route tests passed on Windows.","inputs":["docs/guides/agent-configuration.md","src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the get_project checkout-freshness route addition against its project view policy and MCP route caller. The existing Station Control and authorization descriptions remain accurate; other tools and platform behavior were not re-audited. The focused policy route tests passed on Windows.","inputs":["docs/guides/connections.md","src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed the get_project checkout-freshness route addition against its project view policy and MCP route caller. The existing Station Control and authorization descriptions remain accurate; other tools and platform behavior were not re-audited. The focused policy route tests passed on Windows.","inputs":["docs/guides/self-configuring-agent.md","src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Reviewed the get_project checkout-freshness route addition against its project view policy and MCP route caller. The existing Station Control and authorization descriptions remain accurate; other tools and platform behavior were not re-audited. The focused policy route tests passed on Windows.","inputs":["docs/reference/cli.md","src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed the get_project checkout-freshness route addition against its project view policy and MCP route caller. The existing Station Control and authorization descriptions remain accurate; other tools and platform behavior were not re-audited. The focused policy route tests passed on Windows.","inputs":["docs/reference/session-api.md","src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/user/personal-boards.md","note":"Reviewed the get_project checkout-freshness route addition against its project view policy and MCP route caller. The existing Station Control and authorization descriptions remain accurate; other tools and platform behavior were not re-audited. The focused policy route tests passed on Windows.","inputs":["docs/user/personal-boards.md","src-server/tools/station-control-policy.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed the get_project checkout-freshness route addition against its project view policy and MCP route caller. The existing Station Control and authorization descriptions remain accurate; other tools and platform behavior were not re-audited. The focused policy route tests passed on Windows.","inputs":["examples/self-configuring-agent/README.md","src-server/tools/station-control-policy.ts"]}
+  ]
+}

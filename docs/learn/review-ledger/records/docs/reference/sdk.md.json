@@ -782,6 +782,10 @@
 
     "src-server/routes/chat/__tests__/chat-sdk-turn-key.integration.test.ts",
 
+    "packages/sdk/src/client/send-execution-message.ts",
+
+    "src-server/routes/orchestration/__tests__/turn-delivery.routes.test.ts",
+
     "packages/sdk/src/query-domains/taskReview.ts",
 
     "packages/sdk/src/__tests__/task-review-hooks.test.tsx",

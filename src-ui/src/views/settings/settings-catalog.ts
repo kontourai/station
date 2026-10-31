@@ -537,6 +537,20 @@ const SETTINGS_CATALOG_SOURCE = [
     configKeys: ['workspaceCheckpoints'],
   },
   {
+    id: 'checkout-stale-after-commits',
+    title: 'Stale checkout after commits',
+    section: 'agent-runs',
+    keywords: ['git', 'behind', 'upstream', 'pull'],
+    configKeys: ['checkoutStaleAfterCommits'],
+  },
+  {
+    id: 'checkout-stale-after-days',
+    title: 'Stale checkout after days',
+    section: 'agent-runs',
+    keywords: ['git', 'behind', 'upstream', 'pull'],
+    configKeys: ['checkoutStaleAfterDays'],
+  },
+  {
     id: 'usage-limit-auto-resume',
     title: 'Resume after usage limits',
     section: 'agent-runs',

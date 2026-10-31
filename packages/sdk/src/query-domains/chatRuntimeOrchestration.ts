@@ -58,7 +58,11 @@ import {
   steerTurn as steerTurnClient,
 } from '../client/orchestration';
 import { StationRequestTimeoutError } from '../client/request-deadline';
-import { hasRecordedTurnFailure } from '../client/sent-turn-key';
+import {
+  chooseSentTurnKey,
+  hasRecordedTurnFailure,
+  rememberSentTurnKey,
+} from '../client/sent-turn-key';
 import { isStationAnswer } from '../client/station-envelope';
 import { OrchestrationSessionsContext } from '../orchestrationSessionsContext';
 import {
@@ -685,7 +689,7 @@ export async function dispatchOrchestrationCommand<T = unknown>(
 
 /** Create a Station-owned continuation from a read-only attached session. */
 /**
- * Errors recorded by keyed direct chat stay uncertain, even if reused for
+ * Errors recorded by keyed sends stay uncertain, even if reused for
  * another call. Outside that set, only the explicit read-only refusal and
  * named connection refusals prove no send. SyntaxError can come from parsing
  * a response, and browsers use TypeError for post-send failures too.
@@ -1189,23 +1193,29 @@ export async function sendOrchestrationTurn(input: {
   clientTurnId?: string;
   apiBase?: string;
 }) {
-  const apiBase = await resolveApiBase(input.apiBase);
-  return continueExecutionMessage(apiBase, input.threadId, {
-    message: input.text,
-    ...(input.attachments?.length ? { attachments: input.attachments } : {}),
-    ...(input.ambientContext ? { ambientContext: input.ambientContext } : {}),
-    ...(input.clientTurnId ? { clientTurnId: input.clientTurnId } : {}),
-    ...(input.modelId || Object.keys(input.modelOptions ?? {}).length > 0
-      ? {
-          model: {
-            ...(input.modelId ? { override: input.modelId } : {}),
-            ...(Object.keys(input.modelOptions ?? {}).length > 0
-              ? { options: input.modelOptions }
-              : {}),
-          },
-        }
-      : {}),
-  });
+  const clientTurnId = chooseSentTurnKey(input.clientTurnId);
+  try {
+    const apiBase = await resolveApiBase(input.apiBase);
+    return await continueExecutionMessage(apiBase, input.threadId, {
+      message: input.text,
+      ...(input.attachments?.length ? { attachments: input.attachments } : {}),
+      ...(input.ambientContext ? { ambientContext: input.ambientContext } : {}),
+      clientTurnId,
+      ...(input.modelId || Object.keys(input.modelOptions ?? {}).length > 0
+        ? {
+            model: {
+              ...(input.modelId ? { override: input.modelId } : {}),
+              ...(Object.keys(input.modelOptions ?? {}).length > 0
+                ? { options: input.modelOptions }
+                : {}),
+            },
+          }
+        : {}),
+    });
+  } catch (error) {
+    rememberSentTurnKey(error, clientTurnId);
+    throw error;
+  }
 }
 
 /**

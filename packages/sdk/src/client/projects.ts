@@ -20,6 +20,10 @@ import {
 } from '@kontourai/station-contracts/project';
 import type { ProjectChatDefaultsView } from '@kontourai/station-contracts/project-chat-defaults';
 import {
+  PROJECT_CHECKOUT_FRESHNESS_VERSION,
+  type ProjectCheckoutFreshness,
+} from '@kontourai/station-contracts/project-checkout-freshness';
+import {
   isWellFormedProjectResolutionView,
   isWellFormedProjectResourceBindOutcome,
   type ProjectResolutionView,
@@ -210,6 +214,36 @@ export async function getProjectChatDefaults(
   )
     throw new Error('Invalid Project chat defaults.');
   return value as ProjectChatDefaultsView;
+}
+
+/**
+ * `GET /api/projects/:slug/checkout-freshness`: how far the Project's
+ * checkout is behind its upstream, from local refs. `null` when the host
+ * does not answer it: the Stale checkout warning preview is off, the host
+ * predates the route, or the caller is a shared member.
+ */
+export async function getProjectCheckoutFreshness(
+  apiBase: string,
+  slug: string,
+  opts?: ClientRequestOptions,
+): Promise<ProjectCheckoutFreshness | null> {
+  const response = await getJson(
+    `${apiBase}/api/projects/${encodeURIComponent(slug)}/checkout-freshness`,
+    opts,
+  );
+  if (response.status === 404 || response.status === 501) {
+    await response.body?.cancel();
+    return null;
+  }
+  const value = await unwrapOrThrow<unknown>(response);
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    (value as { version?: unknown }).version !==
+      PROJECT_CHECKOUT_FRESHNESS_VERSION
+  )
+    throw new Error('Invalid Project checkout freshness.');
+  return value as ProjectCheckoutFreshness;
 }
 
 /** `GET /api/projects/:slug` — get a project. */

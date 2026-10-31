@@ -1857,10 +1857,13 @@ Nothing was sent at another approval mode.`);
       },
     });
     expect(continued.data).not.toHaveProperty('taskId');
+    expect(continued.data.clientTurnId).toEqual(expect.any(String));
+    expect(continued.data.clientTurnId.trim()).not.toBe('');
     expect(requestBodies).toEqual([
       expect.objectContaining({
         pathname: '/api/orchestration/chat/conversation%3Aordinary/continue',
         body: {
+          clientTurnId: continued.data.clientTurnId,
           message: 'Keep going',
           environment: { kind: 'current' },
           model: {

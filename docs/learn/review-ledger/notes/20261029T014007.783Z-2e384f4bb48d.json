@@ -1,0 +1,113 @@
+{
+  "revision": "c84fc7d2ff064eb562072dcb7153ee35ab34a7c0",
+
+  "notes": [
+    {"path":"deploy/public-ingress/README.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["deploy/public-ingress/README.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/README.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["docs/README.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["docs/adr/0017-browser-preview-host.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["docs/architecture.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["docs/architecture/module-map.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["docs/contexts/evidence-governance/CONTEXT.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["docs/contexts/operations/CONTEXT.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["docs/design/answer-share-permalinks.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["docs/design/browser-preview-host-spike.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["docs/design/browser-preview-pane-mvp.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["docs/design/channel-home-authority.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/local-bootstrap-token.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["docs/design/local-bootstrap-token.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["docs/design/operator-device-access.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["docs/design/project-membership.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["docs/design/task-room-agent-requests.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["docs/design/terminal.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/glossary.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["docs/glossary.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["docs/guides/browser-workspace.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["docs/guides/delegation-attempt-claims.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["docs/guides/deployment-authentication.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["docs/guides/deployment.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["docs/guides/home-transfer-controller.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["docs/guides/local-collaboration-lab.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["docs/guides/machine-relationships.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["docs/guides/mobile-device-workspace.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["docs/guides/operator-passkeys.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["docs/guides/private-runner-partition.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["docs/guides/product-law-authoring.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["docs/guides/repository-layout.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["docs/guides/starter-work.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/walkthroughs.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["docs/guides/walkthroughs.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["docs/guides/web-push-notifications.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["docs/guides/work-board-security.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["docs/guides/workspace-packages.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["docs/reference/api.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["docs/reference/config.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["docs/reference/connect.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["docs/reference/contracts.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["docs/reference/env-vars.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["docs/reference/sdk.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["docs/reference/session-api.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["docs/reference/usage-telemetry.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["docs/security/remote-access-threat-model.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/pull-request-guides.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["docs/user/pull-request-guides.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["docs/user/workspace-checkpoints.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["examples/mcp-ui-demo/README.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/station-sessions-mcp/README.md","note":"Checked against the change: runtime-routes.ts only now expands the stored Project working directory (resolve(expandTilde(...))) before passing it to the checkout freshness reader. Nothing this document states about runtime-routes.ts changed.","inputs":["examples/station-sessions-mcp/README.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"Capture unaffected: runtime-routes.ts only now expands the stored Project working directory before passing it to the checkout freshness reader; the captured sign-in screens do not render or call it.","inputs":["docs/learn/media/operator-s4-before-sign-in.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"Capture unaffected: runtime-routes.ts only now expands the stored Project working directory before passing it to the checkout freshness reader; the captured sign-in screens do not render or call it.","inputs":["docs/learn/media/operator-s4-after-sign-in.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"Capture unaffected: runtime-routes.ts only now expands the stored Project working directory before passing it to the checkout freshness reader; the captured sign-in screens do not render or call it.","inputs":["docs/learn/media/operator-s4-step-up-review.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"Capture unaffected: runtime-routes.ts only now expands the stored Project working directory before passing it to the checkout freshness reader; the captured sign-in screens do not render or call it.","inputs":["docs/learn/media/operator-s4-after-step-up.png","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

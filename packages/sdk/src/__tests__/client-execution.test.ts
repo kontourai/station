@@ -1,6 +1,6 @@
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { ChatHttpError as ClientChatHttpError } from '../client';
+import { ChatHttpError as ClientChatHttpError, sentTurnKey } from '../client';
 import {
   continueExecutionMessage,
   ForegroundMessageIndeterminateError,
@@ -80,6 +80,7 @@ describe('client execution', () => {
         agent: agentId('station'),
       },
       automaticBackground: true,
+      clientTurnId: 'background-key',
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
@@ -88,6 +89,7 @@ describe('client execution', () => {
         body: JSON.stringify({
           message: 'Replay later',
           target: { environment: { kind: 'current' }, agent: 'station' },
+          clientTurnId: 'background-key',
         }),
       }),
     );
@@ -132,13 +134,88 @@ describe('client execution', () => {
               clientTurnId: 'queued-key',
               message: 'waiting',
             });
-      await expect(pending).rejects.toMatchObject({
+      const caught = await pending.catch((error: unknown) => error);
+      expect(caught).toMatchObject({
         name: 'ForegroundMessageQueuedError',
         status: 202,
         outcome: 'queued',
         receipt,
       });
+      expect(sentTurnKey(caught)).toBe('queued-key');
       expect(fetchMock).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  test.each(['send', 'continue'] as const)(
+    '%s returns its generated wire key and chooses a fresh key for another call',
+    async (kind) => {
+      const fetchMock = vi.fn<typeof fetch>().mockImplementation(
+        async () =>
+          new Response(
+            JSON.stringify({
+              success: true,
+              data: {
+                conversationId: 'conv-keys',
+                sessionId: 'session-keys',
+                providerTurnId: 'turn-keys',
+              },
+            }),
+            { status: 200 },
+          ),
+      );
+      vi.stubGlobal('fetch', fetchMock);
+      const send = () =>
+        kind === 'send'
+          ? sendExecutionMessage('http://station.test', {
+              message: 'hello',
+              target: { agent: agentId('station') },
+            })
+          : continueExecutionMessage('http://station.test', 'conv-keys', {
+              message: 'hello',
+            });
+      const first = await send();
+      const second = await send();
+      const keys = fetchMock.mock.calls.map(
+        ([, init]) => JSON.parse(String(init?.body)).clientTurnId,
+      );
+      expect(keys[0]).toEqual(expect.any(String));
+      expect(keys[0]).not.toBe(keys[1]);
+      expect(first).toMatchObject({ clientTurnId: keys[0] });
+      expect(second).toMatchObject({ clientTurnId: keys[1] });
+    },
+  );
+
+  test('continuation preserves a frozen transport error and its supplied key', async () => {
+    const failure = Object.freeze(new TypeError('The answer was lost.'));
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockRejectedValue(failure));
+    const caught = await continueExecutionMessage(
+      'http://station.test',
+      'conv-keys',
+      {
+        message: 'hello',
+        clientTurnId: 'continue-key',
+      },
+    ).catch((error: unknown) => error);
+    expect(caught).toBe(failure);
+    expect(sentTurnKey(caught)).toBe('continue-key');
+  });
+
+  test.each(['', '   ', 'x'.repeat(201), 42, null])(
+    'rejects invalid continuation key %j before any request',
+    async (clientTurnId) => {
+      const fetchMock = vi.fn<typeof fetch>();
+      vi.stubGlobal('fetch', fetchMock);
+      await expect(
+        Reflect.apply(continueExecutionMessage, undefined, [
+          'http://station.test',
+          'conv-keys',
+          {
+            message: 'hello',
+            clientTurnId,
+          },
+        ]),
+      ).rejects.toThrow(TypeError);
+      expect(fetchMock).not.toHaveBeenCalled();
     },
   );
 

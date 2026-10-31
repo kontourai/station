@@ -1,3 +1,5 @@
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
+
 const turnKeys = new WeakMap<object, string | null>();
 
 function isObject(value: unknown): value is object {
@@ -20,4 +22,15 @@ export function rememberSentTurnKey(error: unknown, key: string): void {
     const previous = turnKeys.get(error);
     turnKeys.set(error, turnKeys.has(error) && previous !== key ? null : key);
   }
+}
+
+export function chooseSentTurnKey(supplied: unknown): string {
+  if (
+    supplied !== undefined &&
+    (typeof supplied !== 'string' || !supplied.trim() || supplied.length > 200)
+  )
+    throw new TypeError(
+      'clientTurnId must be a non-empty string of at most 200 characters',
+    );
+  return typeof supplied === 'string' ? supplied : randomCorrelationId();
 }

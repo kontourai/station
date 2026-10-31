@@ -5,9 +5,11 @@ vi.mock('../api', () => ({
 }));
 
 import { COOPERATIVE_STOP_BUDGET_MS } from '@kontourai/station-contracts/orchestration';
+import { _getApiBase } from '../api';
 import { ChatHttpError } from '../client/chatHttpError';
 import { StationRequestTimeoutError } from '../client/http';
 import { inspectSteerInput, steerTurn } from '../client/orchestration';
+import { sentTurnKey } from '../client/sent-turn-key';
 import {
   cleanupTerminalProcess,
   dispatchOrchestrationCommand,
@@ -240,6 +242,7 @@ describe('chatRuntimeOrchestration', () => {
       sendOrchestrationTurn({
         threadId: 'thread-6',
         text: 'what time is it?',
+        clientTurnId: 'ambient-key',
         ambientContext: '[Timezone: America/Denver]',
       }),
     ).resolves.toMatchObject({ providerTurnId: 'provider-turn-ambient' });
@@ -250,6 +253,7 @@ describe('chatRuntimeOrchestration', () => {
         body: JSON.stringify({
           message: 'what time is it?',
           ambientContext: '[Timezone: America/Denver]',
+          clientTurnId: 'ambient-key',
         }),
       }),
     );
@@ -263,12 +267,16 @@ describe('chatRuntimeOrchestration', () => {
       },
     });
     await expect(
-      sendOrchestrationTurn({ threadId: 'thread-6', text: 'hello' }),
+      sendOrchestrationTurn({
+        threadId: 'thread-6',
+        text: 'hello',
+        clientTurnId: 'plain-key',
+      }),
     ).resolves.toMatchObject({ providerTurnId: 'provider-turn-plain' });
     expect(fetch).toHaveBeenLastCalledWith(
       'http://example.test/api/orchestration/chat/thread-6/continue',
       expect.objectContaining({
-        body: JSON.stringify({ message: 'hello' }),
+        body: JSON.stringify({ message: 'hello', clientTurnId: 'plain-key' }),
       }),
     );
   });
@@ -287,6 +295,7 @@ describe('chatRuntimeOrchestration', () => {
       sendOrchestrationTurn({
         threadId: 'thread-attachment',
         text: 'Review this',
+        clientTurnId: 'attachment-key',
         attachments: [
           {
             kind: 'image',
@@ -314,9 +323,52 @@ describe('chatRuntimeOrchestration', () => {
               dataUrl: 'data:image/png;base64,YWJj',
             },
           ],
+          clientTurnId: 'attachment-key',
         }),
       }),
     );
+  });
+
+  it('returns the generated wrapper key that reaches the continuation request', async () => {
+    mockJsonResponse({
+      success: true,
+      data: {
+        conversationId: 'thread-key',
+        sessionId: 'thread-key',
+        providerTurnId: 'turn-key',
+      },
+    });
+    const receipt = await sendOrchestrationTurn({
+      threadId: 'thread-key',
+      text: 'hello',
+    });
+    const body = JSON.parse(String(vi.mocked(fetch).mock.calls[0][1]?.body));
+    expect(body.clientTurnId).toEqual(expect.any(String));
+    expect(receipt.clientTurnId).toBe(body.clientTurnId);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('retains its chosen key when API-base resolution rejects before a request', async () => {
+    const failure = Object.freeze(new Error('The API base is unavailable.'));
+    vi.mocked(_getApiBase).mockRejectedValueOnce(failure);
+    const caught = await sendOrchestrationTurn({
+      threadId: 'thread-key',
+      text: 'hello',
+    }).catch((error: unknown) => error);
+    expect(caught).toBe(failure);
+    expect(sentTurnKey(caught)).toEqual(expect.any(String));
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('does not replace an explicitly blank turn key with a generated key', async () => {
+    await expect(
+      sendOrchestrationTurn({
+        threadId: 'thread-key',
+        text: 'hello',
+        clientTurnId: '',
+      }),
+    ).rejects.toThrow(TypeError);
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it('interrupts a running task without stopping its resumable session', async () => {

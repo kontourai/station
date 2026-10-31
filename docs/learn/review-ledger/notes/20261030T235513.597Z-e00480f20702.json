@@ -1,0 +1,9 @@
+{
+  "revision": "41d276411d2c5ece8408ddc80d9e9ab736e6b386",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"Reviewed generated settings registry against the reordered catalog and the navigation and deep-link claims. Only the two checkout threshold entries move; ids, routes, labels, scopes and behavior are unchanged. Registry generation check and 11 focused generator tests passed on Windows; platform-specific reveal was not retested in this review.","inputs":["docs/design/settings-architecture.md"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Reviewed generated settings registry against the reordered catalog and the navigation and deep-link claims. Only the two checkout threshold entries move; ids, routes, labels, scopes and behavior are unchanged. Registry generation check and 11 focused generator tests passed on Windows; platform-specific reveal was not retested in this review.","inputs":["docs/reference/settings-deep-links.md","src-server/generated/settings-registry.json"]}
+  ]
+}

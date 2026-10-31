@@ -84,6 +84,7 @@ export {
   type ForegroundMessageReceipt,
   getConversationHandoffStatus,
   handoffExecutionMessage,
+  type KeyedForegroundMessageReceipt,
 } from '../client/execution';
 export {
   type ApiRequestScope,

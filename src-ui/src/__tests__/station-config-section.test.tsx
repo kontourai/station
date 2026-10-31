@@ -72,6 +72,9 @@ const KEYS_THE_DISSOLVED_CARD_RENDERED = [
   'reviewGuidesEnabled',
   'reviewGuideModel',
   'reviewGuideInstructions',
+  // When the stale checkout warning reads a Project's checkout as stale.
+  'checkoutStaleAfterCommits',
+  'checkoutStaleAfterDays',
   // #4266: the model that names a chat after its first reply.
   'titleModel',
 ] as const;
