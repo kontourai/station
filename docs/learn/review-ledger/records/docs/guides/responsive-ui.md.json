@@ -136,7 +136,9 @@
 
     "pnpm-lock.yaml#/snapshots",
 
-    "src-ui/src/components/chat-dock/MobileInboxPanel.tsx"
+    "src-ui/src/components/chat-dock/MobileInboxPanel.tsx",
+
+    "src-ui/src/components/chat-dock/MobileSheetPending.tsx"
   ],
 
   "checks": [
