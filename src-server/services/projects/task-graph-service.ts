@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { existsSync, realpathSync } from 'node:fs';
 import os from 'node:os';
-import { join, resolve } from 'node:path';
+import { isAbsolute, join, resolve } from 'node:path';
 import {
   canTransitionTaskStatus,
   createTaskSessionId,
@@ -124,6 +124,8 @@ interface TaskGraphStoreData {
   relationshipReceipts: TaskRelationshipReceipt[];
   links: RelationGraphLink[];
   dispatches: TaskDispatchRecord[];
+  /** Private original namespace, committed with its proving dispatch. */
+  dispatchClaimRoots: { dispatchId: string; artifactRoot: string }[];
   /** Private, non-projected exact narrative revision retained by a Task Keep. */
   answerNarrativePins: PersistedTaskAnswerNarrativePin[];
   /** Private mutation receipts for identity-only declared PR curation. */
@@ -621,6 +623,7 @@ const TASK_GRAPH_ROOT_KEYS = ['tasks', 'links', 'dispatches'] as const;
 const TASK_GRAPH_ROOT_ALLOWED_KEYS = [
   ...TASK_GRAPH_ROOT_KEYS,
   'workChats',
+  'dispatchClaimRoots',
   'relationshipReceipts',
   'answerNarrativePins',
   'declaredPullRequestKeeps',
@@ -1332,6 +1335,43 @@ function validateTaskGraphStoreData(
     }
   }
 
+  const dispatchClaimRoots =
+    value.dispatchClaimRoots === undefined ? [] : value.dispatchClaimRoots;
+  if (!Array.isArray(dispatchClaimRoots)) {
+    problems.push('dispatchClaimRoots: must be an array');
+  } else {
+    const seen = new Set<string>();
+    for (const [index, entry] of dispatchClaimRoots.entries()) {
+      const at = `dispatchClaimRoots[${index}]`;
+      if (
+        !validateExactObject(
+          entry,
+          ['dispatchId', 'artifactRoot'],
+          ['dispatchId', 'artifactRoot'],
+          at,
+          problems,
+        )
+      )
+        continue;
+      if (
+        validateNonBlankString(entry.dispatchId, `${at}.dispatchId`, problems)
+      ) {
+        if (!dispatchIds.has(entry.dispatchId) || seen.has(entry.dispatchId))
+          problems.push(`${at}.dispatchId: missing or duplicate dispatch`);
+        seen.add(entry.dispatchId);
+      }
+      if (
+        validateNonBlankString(
+          entry.artifactRoot,
+          `${at}.artifactRoot`,
+          problems,
+        ) &&
+        !isAbsolute(entry.artifactRoot)
+      )
+        problems.push(`${at}.artifactRoot: must be absolute`);
+    }
+  }
+
   for (const sessionId of reservationSessionIds) {
     if (sessions.has(sessionId)) {
       problems.push(
@@ -1543,10 +1583,13 @@ function validateTaskGraphStoreData(
   return {
     ...(value as unknown as Omit<
       TaskGraphStoreData,
+      | 'dispatchClaimRoots'
       | 'answerNarrativePins'
       | 'declaredPullRequestKeeps'
       | 'declaredPullRequestKeepTombstones'
     >),
+    dispatchClaimRoots:
+      dispatchClaimRoots as TaskGraphStoreData['dispatchClaimRoots'],
     workChats: (value.workChats ?? []) as TaskWorkChatRecord[],
     relationshipReceipts: (value.relationshipReceipts ??
       []) as TaskRelationshipReceipt[],
@@ -1633,6 +1676,7 @@ function createTaskGraphStore(storePath: string, maxReadBytes?: number) {
       relationshipReceipts: [],
       links: [],
       dispatches: [],
+      dispatchClaimRoots: [],
       answerNarrativePins: [],
       declaredPullRequestKeeps: [],
       declaredPullRequestKeepTombstones: [],
@@ -3734,6 +3778,10 @@ export class TaskGraphService {
     const taskBrief = deps.taskBrief;
     const resolveAgentStart = deps.resolveAgentStart;
     const assertAgentExists = deps.assertAgentExists;
+    const claimContexts = new WeakMap<
+      DispatcherReservation,
+      DispatchAssignmentClaimContext
+    >();
     const graph: TaskDispatchGraphState = {
       reserve: async (taskId, input, agentStart) => {
         try {
@@ -3761,6 +3809,7 @@ export class TaskGraphService {
           reservation as TaskDispatchReservation,
           input,
           association,
+          claimContexts.get(reservation),
         ),
       markIndeterminate: (reservation) =>
         this.markDispatchReservationIndeterminate(
@@ -3771,10 +3820,6 @@ export class TaskGraphService {
           reservation as TaskDispatchReservation,
         ),
     };
-    const claimContexts = new WeakMap<
-      DispatcherReservation,
-      DispatchAssignmentClaimContext
-    >();
     const claims = {
       claim: (
         reservation: DispatcherReservation,
@@ -4180,8 +4225,11 @@ export class TaskGraphService {
     reservation: TaskDispatchReservation,
     input: TaskDispatchInput,
     association: TaskDispatchAssociation,
+    claimContext: DispatchAssignmentClaimContext | undefined,
   ): Promise<TaskDispatchResult> {
     const { task, sessionId, provider, sourceSurface } = reservation;
+    if (association.claim?.outcome === 'claimed' && !claimContext)
+      throw new Error('Original assignment claim namespace unavailable');
     return await this.mutateStore((data) => {
       const currentTask = data.tasks.find((item) => item.id === task.id);
       if (
@@ -4242,6 +4290,16 @@ export class TaskGraphService {
             item.id === task.id ? updatedTask : item,
           ),
           dispatches: [...data.dispatches, dispatch],
+          dispatchClaimRoots:
+            association.claim?.outcome === 'claimed' && claimContext
+              ? [
+                  ...data.dispatchClaimRoots,
+                  {
+                    dispatchId: dispatch.id,
+                    artifactRoot: claimContext.artifactRoot,
+                  },
+                ]
+              : data.dispatchClaimRoots,
           links: uniqueLinks([...data.links, ...links]),
         },
         result: {
@@ -4650,17 +4708,16 @@ export class TaskGraphService {
     if (!this.assignmentClaimService) return 'unavailable';
     const claim = dispatch.claim;
     if (!claim?.actor || claim.outcome !== 'claimed') return 'not-claimed';
-    const task = this.readTask(taskId);
-    if (!task) return 'not-claimed';
-    const workspace = await this.resolveProjectWorkspace?.(task.projectId);
-    if (!workspace) {
+    const artifactRoot = this.readStore().dispatchClaimRoots.find(
+      (entry) => entry.dispatchId === dispatch.id,
+    )?.artifactRoot;
+    if (!artifactRoot) {
       this.logger?.warn(
-        'Cannot release assignment claim: project workspace not resolvable',
+        'Cannot release assignment claim: original namespace unavailable',
         { taskId, sessionId: dispatch.sessionId },
       );
       return 'unavailable';
     }
-    const artifactRoot = this.assignmentArtifactRoot(workspace);
     const result = await this.assignmentClaimService.release({
       artifactRoot,
       subjectId: claim.subjectId,
@@ -4854,65 +4911,61 @@ export class TaskGraphService {
         for (const subjectId of new Set(
           tasksForSubject.map((task) => task.workItemRef!),
         )) {
-          let artifactRoot: string | undefined;
-          for (const task of tasksForSubject) {
-            const workspace = await this.resolveProjectWorkspace?.(
-              task.projectId,
-            );
-            if (workspace) {
-              artifactRoot = this.assignmentArtifactRoot(workspace);
-              break;
-            }
-          }
-          if (!artifactRoot) continue;
-
-          const status = await this.assignmentClaimService.status({
-            artifactRoot,
-            subjectId,
-          });
-          if (status.outcome !== 'claimed') continue;
-          if (status.actor.runtime !== 'station') continue;
-
-          // Ownership proof: a dispatch record THIS instance persisted for a
-          // task sharing this subject, whose session_id matches the CLI's
-          // reported holder EXACTLY. `runtime === 'station'` alone proves
-          // nothing about WHICH Station instance/task made the claim.
-          const provingDispatch = data.dispatches.find(
+          const candidates = data.dispatches.filter(
             (dispatch) =>
               dispatch.claim?.outcome === 'claimed' &&
               dispatch.claim.subjectId === subjectId &&
-              dispatch.sessionId === status.actor.session_id &&
               tasksForSubject.some((task) => task.id === dispatch.taskId),
           );
-          if (!provingDispatch) continue; // ambiguous — never guess
-
-          // Narrow the race against a new task being created and dispatched
-          // onto this subject while the sweep is still running.
-          const stillAllTerminal = this.readStore()
-            .tasks.filter(
-              (task) =>
-                task.workItemRef !== undefined &&
-                workItemRefKey(task.workItemRef) === subjectKey,
+          for (const provingDispatch of candidates) {
+            const artifactRoot = data.dispatchClaimRoots.find(
+              (entry) => entry.dispatchId === provingDispatch.id,
+            )?.artifactRoot;
+            if (!artifactRoot) continue; // Legacy custody is unresolved; never guess.
+            const status = await this.assignmentClaimService.status({
+              artifactRoot,
+              subjectId,
+            });
+            const actor = provingDispatch.claim?.actor;
+            if (
+              status.outcome !== 'claimed' ||
+              status.actor.runtime !== 'station' ||
+              !actor ||
+              status.actor.runtime !== actor.runtime ||
+              status.actor.session_id !== actor.sessionId ||
+              status.actor.host !== actor.host ||
+              (status.actor.human ?? null) !== (actor.human ?? null)
             )
-            .every(isTerminal);
-          if (!stillAllTerminal) continue;
+              continue;
 
-          const result = await this.releaseDispatchClaim(
-            provingDispatch,
-            provingDispatch.taskId,
-            'startup reconciliation: task reached a terminal status without a claim release',
-          );
-          taskAssignmentClaimTotal.add(1, {
-            operation: 'reconcile',
-            outcome: result,
-          });
-          if (result === 'released' || result === 'skipped') {
-            released.push(subjectId);
-          } else if (result === 'failed' || result === 'unavailable') {
-            this.logger?.warn(
-              'Startup reconciliation failed to release a stale assignment claim',
-              { taskId: provingDispatch.taskId, subjectId, outcome: result },
+            // Narrow the race against a new task being created and dispatched
+            // onto this subject while the sweep is still running.
+            const stillAllTerminal = this.readStore()
+              .tasks.filter(
+                (task) =>
+                  task.workItemRef !== undefined &&
+                  workItemRefKey(task.workItemRef) === subjectKey,
+              )
+              .every(isTerminal);
+            if (!stillAllTerminal) continue;
+
+            const result = await this.releaseDispatchClaim(
+              provingDispatch,
+              provingDispatch.taskId,
+              'startup reconciliation: task reached a terminal status without a claim release',
             );
+            taskAssignmentClaimTotal.add(1, {
+              operation: 'reconcile',
+              outcome: result,
+            });
+            if (result === 'released' || result === 'skipped') {
+              released.push(subjectId);
+            } else if (result === 'failed' || result === 'unavailable') {
+              this.logger?.warn(
+                'Startup reconciliation failed to release a stale assignment claim',
+                { taskId: provingDispatch.taskId, subjectId, outcome: result },
+              );
+            }
           }
         }
       }

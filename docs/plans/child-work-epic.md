@@ -2909,3 +2909,20 @@ reselection restores the task facts. Warm pairing intake was exercised; cold-lin
 intake is unqualified. This is simulator evidence, not physical-phone, live-provider,
 packet-isolation, store-signing, hosted, release or whole-epic acceptance. The private
 review and indexed receipts remain outside tracked public content.
+
+### Persisted assignment namespace custody
+
+After normal integration of main at `045da91c2b9`, two real installed-package CLI
+regressions demonstrated the retained lifecycle namespace defect: Session-exit
+cleanup and fresh-service startup reconciliation both left the original claim
+held after Project workspace drift. The thirty existing cases passed.
+
+Dispatch association now atomically persists a private dispatch-ID-to-artifact-root
+record alongside the public dispatch. Lifecycle release uses that original root;
+startup status and release use the same root and exact persisted Station actor.
+The root is not added to public dispatch contracts or response projections. Legacy
+records without custody are retained as claimed, never guessed from the current
+workspace. Controls preserve another actor's real claim in the rebound workspace.
+The three-file owner selection passes89 cases, the final actor-fence keeper passes34,
+and server-test types pass. Independent source review is pending. Claims lost before
+association and broader source/epic qualification remain open.

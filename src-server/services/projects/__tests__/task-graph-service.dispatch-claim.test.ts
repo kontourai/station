@@ -382,6 +382,74 @@ describe('TaskGraphService dispatch-as-claim (#584)', () => {
     ).resolves.toBeUndefined();
   });
 
+  test.each([
+    { trigger: 'session-exit', legacy: false },
+    { trigger: 'restart-reconciliation', legacy: false },
+    { trigger: 'session-exit', legacy: true },
+    { trigger: 'restart-reconciliation', legacy: true },
+  ])(
+    '$trigger retains exact namespace custody after Project drift (legacy=$legacy)',
+    async ({ trigger, legacy }) => {
+      const firstWorkspace = makeTempDir('station-claim-original-');
+      const nextWorkspace = makeTempDir('station-claim-rebound-');
+      let workspace = firstWorkspace;
+      const home = makeTempDir('station-claim-durable-');
+      const assignmentClaimService = new AssignmentClaimService();
+      const createGraph = () =>
+        new TaskGraphService(home, {
+          assignmentClaimService,
+          resolveProjectWorkspace: () => workspace,
+        });
+      const service = createGraph();
+      const subjectId = 'github:example/project#namespace-drift';
+      const task = await service.createTask({
+        projectId: 'project-alpha',
+        title: 'Retain original claim custody',
+        workItemRef: subjectId,
+      });
+      const result = await dispatchTaskForTest(service, task.id, {});
+      expect(result.dispatch.claim?.outcome).toBe('claimed');
+      const originalRoot = join(firstWorkspace, '.kontourai', 'flow-agents');
+      const reboundRoot = join(nextWorkspace, '.kontourai', 'flow-agents');
+      expect(readAssignmentStatus(originalRoot, subjectId).claimed).toBe(true);
+      seedOtherActorClaim(reboundRoot, subjectId, nextWorkspace);
+      const otherActor = readAssignmentStatus(reboundRoot, subjectId);
+      expect(otherActor.claimed).toBe(true);
+      workspace = nextWorkspace;
+      if (legacy) {
+        const graphPath = join(home, 'task-graph.json');
+        const persisted = JSON.parse(readFileSync(graphPath, 'utf8'));
+        delete persisted.dispatchClaimRoots;
+        writeFileSync(graphPath, JSON.stringify(persisted));
+      }
+
+      if (trigger === 'session-exit') {
+        await service.releaseClaimForSession(
+          result.dispatch.sessionId,
+          trigger,
+        );
+      } else {
+        // Crash boundary: terminal task persisted before claim cleanup ran.
+        const graphPath = join(home, 'task-graph.json');
+        const persisted = JSON.parse(readFileSync(graphPath, 'utf8'));
+        persisted.tasks = persisted.tasks.map((item: { id: string }) =>
+          item.id === task.id ? { ...item, status: 'done' } : item,
+        );
+        writeFileSync(graphPath, JSON.stringify(persisted));
+        await createGraph().reconcileStaleAssignmentClaims();
+      }
+
+      expect(readAssignmentStatus(originalRoot, subjectId).claimed).toBe(
+        legacy,
+      );
+      expect(readAssignmentStatus(reboundRoot, subjectId)).toEqual(otherActor);
+      expect(
+        readPersistedDispatch(join(home, 'task-graph.json'), task.id).claim
+          .outcome,
+      ).toBe(legacy ? 'claimed' : 'released');
+    },
+  );
+
   test('dispatch of a local task (no workItemRef) never calls the claim service', async () => {
     const workspace = makeTempDir('station-workspace-');
     let claimCalls = 0;
