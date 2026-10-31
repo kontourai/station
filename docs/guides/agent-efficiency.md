@@ -159,7 +159,7 @@ network. It does not call a live model or publish anything.
 The generated private receipt and patch are under
 `.kontourai/repair-worker-qualification/<invocation>/`; `--output-root` selects
 another parent. A clean source snapshot is required for a `PASS` receipt. A dirty
-snapshot is labelled `DIAGNOSTIC_ONLY`. The source revision, Git status and script
+snapshot is labelled `DIAGNOSTIC_ONLY` and exits 3. The source revision, Git status and script
 digest are checked again before writing the result. A completed worker invocation
 retains its captured stdout, stderr and public receipt; admission failures can
 leave no receipt. Missing completion or failed cleanup cannot produce a `PASS`.

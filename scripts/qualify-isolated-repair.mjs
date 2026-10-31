@@ -396,3 +396,4 @@ process.stdout.write(
     limits: result.limits,
   })}\n`,
 );
+process.exitCode = result.state === 'PASS' ? 0 : 3;
