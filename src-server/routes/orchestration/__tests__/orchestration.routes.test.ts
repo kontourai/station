@@ -6509,6 +6509,73 @@ describe('Orchestration Routes', () => {
       await reader.cancel();
     });
 
+    test('shared general publication rechecks the route grant after asynchronous audience admission', async () => {
+      const bus = new EventBus();
+      const presence = new OrchestrationStreamPresence();
+      const release = vi.fn();
+      let current = true;
+      let admit!: (allowed: boolean) => void;
+      const admission = new Promise<boolean>((resolve) => {
+        admit = resolve;
+      });
+      const authorizeAudience = vi.fn(() => admission);
+      const generalEventProducer = createEventStreamProducer({
+        eventBus: bus,
+        getACPStatus: () => ({ connected: false, connections: [] }),
+        logger: { debug: vi.fn() },
+        connectClientSession: () => ({ touch: vi.fn(), release }),
+        isPairedDeviceConnectionCurrent: () => true,
+        canReadPluginDraftEvent: authorizeAudience,
+      });
+      const service = new OrchestrationService({
+        adapterRegistry: createGateTestRegistry(new GateTestAdapter()),
+        eventBus: bus,
+        eventStore,
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      });
+      const app = createOrchestrationRoutes(service, {
+        getUserId: () => ROUTE_TEST_USER_ID,
+        eventBus: bus,
+        logger: { debug: vi.fn() },
+        presence,
+        generalEventProducer,
+        isRequestPrincipalCurrent: () => current,
+      });
+      const response = await app.request('/events?includeGeneral=1');
+      const reader = response.body!.getReader();
+      const decoder = new TextDecoder();
+      try {
+        let initial = '';
+        while (!initial.includes('orchestration:caughtUp')) {
+          const chunk = await reader.read();
+          expect(chunk.done).toBe(false);
+          initial += decoder.decode(chunk.value, { stream: true });
+        }
+        bus.emit(SERVER_EVENTS.PLUGIN_DRAFTS_REBUILT, {
+          project: 'allowed',
+          marker: 'must-not-publish-after-route-grant-loss',
+        });
+        await vi.waitFor(() =>
+          expect(authorizeAudience).toHaveBeenCalledOnce(),
+        );
+        current = false;
+        admit(true);
+        const next = await reader.read();
+        expect(decoder.decode(next.value)).not.toContain(
+          'must-not-publish-after-route-grant-loss',
+        );
+        expect(next.done).toBe(true);
+        await vi.waitFor(() => {
+          expect(release).toHaveBeenCalledOnce();
+          expect(presence.isConnected(ROUTE_TEST_USER_ID)).toBe(false);
+        });
+      } finally {
+        admit(false);
+        await reader.cancel();
+        await service.shutdown();
+      }
+    });
+
     test('a below-threshold oversized replay switches to a bounded snapshot frame', async () => {
       for (let index = 1; index <= 401; index += 1) {
         eventStore.appendEvent({
