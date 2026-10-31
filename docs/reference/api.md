@@ -2969,6 +2969,17 @@ partial page or disclose which group was unreadable.
 - `POST /api/orchestration/session-groups/:groupId/cancel`: close admission and request member interruption.
 - `POST /api/orchestration/session-groups/:groupId/sync`: send a folded result into the retained member conversations.
 
+**CLI session-group observation:** a group event subscription uses a separate,
+bounded-lifetime fetch-SSE connection with its own group/revision cursor and
+explicit journal-gap disclosure. It does not use the canonical orchestration
+stream's global sequence or snapshot protocol. The
+[group event route](../../src-server/routes/orchestration/cli-session-group-events.ts)
+reuses the shared SSE and group-stream lifetime owners and rechecks current read
+authority before publication. Observation does not reserve or start an engine.
+An explicit observer adds a connection for its subscription lifetime; the
+historical connection counts below are not a current all-surface census or a
+connection-capacity guarantee.
+
 This path is under development on the child-work branch. Controlled-adapter
 checks exercise the actual delegation, session and event-store path. A live
 three-seat OpenCode/GLM Flash group completed on source `fe998248b601`, including

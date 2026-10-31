@@ -17,17 +17,6 @@ multiplexed stream per client or of a saturated-pool input-latency guarantee.
 The original decision, alternatives, and connection-budget constraints remain
 below; no live connection-budget or browser/native qualification was rerun here.
 
-**CLI session-group observation:** a group event subscription uses a separate,
-bounded-lifetime fetch-SSE connection with its own group/revision cursor and
-explicit journal-gap disclosure. It does not use the canonical orchestration
-stream's global sequence or snapshot protocol. The
-[group event route](../../src-server/routes/orchestration/cli-session-group-events.ts)
-reuses the shared SSE and group-stream lifetime owners and rechecks current read
-authority before publication. Observation does not reserve or start an engine.
-An explicit observer adds a connection for its subscription lifetime; the
-historical connection counts below are not a current all-surface census or a
-connection-capacity guarantee.
-
 ## Context
 
 Station streams agent and chat output to its clients over Server-Sent Events.
