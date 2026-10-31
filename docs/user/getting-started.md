@@ -675,7 +675,7 @@ The dashboard icon below projects opens your Personal Boards and their add
 button. Escape closes either popup and returns focus to its icon.
 The footer puts live work beside your initials, which open a summary of your
 access with **My access**, **Profile**, **Ask Station for help** and **Open
-settings**; Schedule, Customize and Settings sit on the row below. The collapsed rail stacks live work and your initials above
+settings**; Automations, Customize and Settings sit on the row below. The collapsed rail stacks live work and your initials above
 Sidebar utilities. Conversations and composer drafts stay in the chat dock and
 its inbox (⌘D).
 
@@ -1156,10 +1156,12 @@ configured Projects.
 
 ## Run A Scheduled Readiness Check
 
-To create an ordinary scheduled job, use an agent with a model connection
-(Station's engine). AI app agents cannot run scheduled jobs. If none is ready,
-the job form offers **Set up a scheduled-job agent** to open agent creation;
-choose **Use a model connection** there.
+An automation that runs in a chat can use any agent, including AI app agents
+such as Claude Code or Codex, when your Station supports it (see
+[Automations](https://github.com/kontourai/station/blob/main/docs/user/automations.md)). The older output-file run needs an agent with
+a model connection (Station's engine); if none is ready, the form offers **Set
+up a scheduled-job agent** to open agent creation; choose **Use a model
+connection** there.
 
 Home can create **station-starter-check** and run it once. Its daily schedule
 stays disabled until you enable it. Open the receipt to read the findings;

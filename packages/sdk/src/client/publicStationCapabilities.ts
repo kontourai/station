@@ -15,25 +15,29 @@ const capabilityEvictionTimers = new Map<
   ReturnType<typeof setTimeout>
 >();
 
+/** Read the current descriptor without changing the shared capability cache. */
+export async function readPublicStationCapabilities(
+  apiBase: string,
+): Promise<PublicStationHandshake | undefined> {
+  try {
+    const response = await getJson(
+      `${apiBase}${PUBLIC_STATION_HANDSHAKE_PATH}`,
+      { authentication: 'omit', timeoutMs: 5000 },
+    );
+    if (!response.ok) return undefined;
+    return parsePublicStationHandshake(await response.json()) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** One anonymous descriptor read per host, shared by capability consumers. */
 export function fetchPublicStationCapabilities(
   apiBase: string,
 ): Promise<PublicStationHandshake | undefined> {
   const cached = capabilityCache.get(apiBase);
   if (cached) return cached;
-  const promise = (async () => {
-    try {
-      const response = await getJson(
-        `${apiBase}${PUBLIC_STATION_HANDSHAKE_PATH}`,
-        { authentication: 'omit', timeoutMs: 5000 },
-      );
-      if (!response.ok) return undefined;
-      const handshake = parsePublicStationHandshake(await response.json());
-      return handshake ?? undefined;
-    } catch {
-      return undefined;
-    }
-  })();
+  const promise = readPublicStationCapabilities(apiBase);
   capabilityCache.set(apiBase, promise);
   void promise.then((result) => {
     if (result && hasCapability(result, 'sessionEventWindow')) return;

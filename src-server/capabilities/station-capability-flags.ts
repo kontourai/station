@@ -20,6 +20,11 @@ import type { StationCapabilityFlags } from '@kontourai/station-contracts';
 
 export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   privateOperationalOutcomes: true,
+  // Automation targets: src-server/routes/operations/scheduler.ts accepts a
+  // job `target` and the built-in scheduler runs it through the conversation
+  // inbox (any engine). Hosted deployments withdraw it: see
+  // servesScheduledConversationTarget.
+  scheduledConversationTarget: true,
   // SSH environment management: src-server/services/ssh/, /api/ssh-environments
   // routes, packages/sdk/src/query-domains/sshEnvironments.ts.
   sshEnvironments: true,
@@ -160,11 +165,14 @@ export function servesConnectionRoutes(
   return !deployment.hosted;
 }
 
-/**
- * Whether the coordinator routes serve in this deployment. A hosted Station
- * has no conversation inbox to wake a coordinator through, so the runtime
- * mounts the routes without a store (every call answers unavailable).
- */
+/** Scheduler storage is not tenant-bound, so hosted routes refuse these targets. */
+function servesScheduledConversationTarget(
+  deployment: StationCapabilityDeployment,
+): boolean {
+  return !deployment.hosted;
+}
+
+/** Hosted Stations have no conversation inbox through which to wake a coordinator. */
 export function servesCoordinatorSession(
   deployment: StationCapabilityDeployment,
 ): boolean {
@@ -183,6 +191,7 @@ const DEPLOYMENT_SERVED_FLAGS: Readonly<
   sessionInventoryInputRead: servesSessionInventoryInputRead,
   webPushNotifications: servesWebPushNotifications,
   connectionRoutes: servesConnectionRoutes,
+  scheduledConversationTarget: servesScheduledConversationTarget,
   coordinatorSession: servesCoordinatorSession,
 };
 

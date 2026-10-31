@@ -1366,7 +1366,7 @@ describe('App home route resolution', () => {
   // the registration on Schedule must be disabled, while Settings — which
   // really is a full-page overlay of Home — keeps it.
   test.each([
-    ['/schedule', false],
+    ['/automations', false],
     ['/agents', false],
     ['/settings', true],
   ])(
@@ -1658,7 +1658,7 @@ describe('App navigation is urgent, so a slow route reveals its placeholder', ()
 
     // The real path: App listens for popstate and calls setCurrentView itself.
     await act(async () => {
-      window.history.pushState({}, '', '/schedule');
+      window.history.pushState({}, '', '/automations');
       window.dispatchEvent(new PopStateEvent('popstate'));
     });
 
