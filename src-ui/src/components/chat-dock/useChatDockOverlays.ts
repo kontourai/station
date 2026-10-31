@@ -38,13 +38,15 @@ export function useChatDockOverlays({
   composerMenuTriggerRef,
   setDeviceSetting,
   setShowNewChatModalState,
-  hasConversationIntent = false,
+  hasConversationIntent,
+  onReaderIntent,
 }: {
   isMobile: boolean;
   composerMenuTriggerRef: RefObject<HTMLButtonElement | null>;
   setDeviceSetting: DeviceSettingsActions['setDeviceSetting'];
   setShowNewChatModalState: (open: boolean) => void;
-  hasConversationIntent?: boolean;
+  hasConversationIntent: boolean;
+  onReaderIntent: () => void;
 }) {
   const [mobileInboxOpen, setMobileInboxOpen] = useState(
     isMobile && !hasConversationIntent,
@@ -57,15 +59,20 @@ export function useChatDockOverlays({
   const consumeIntent = regionModel?.consumeSurfaceIntent;
   useEffect(() => {
     if (!incoming?.session) return;
+    onReaderIntent();
     setMobileInboxOpen(false);
     setImportedSessionId(incoming.session);
     consumeIntent?.('chat', incoming.token);
-  }, [incoming, consumeIntent]);
+  }, [incoming, consumeIntent, onReaderIntent]);
   // An imported conversation occupies the same reading surface as an owned chat.
-  const onOpenInboxSession = useCallback((threadId: string) => {
-    setMobileInboxOpen(false);
-    setImportedSessionId(threadId);
-  }, []);
+  const onOpenInboxSession = useCallback(
+    (threadId: string) => {
+      onReaderIntent();
+      setMobileInboxOpen(false);
+      setImportedSessionId(threadId);
+    },
+    [onReaderIntent],
+  );
   const [newChatTaskShaping, setNewChatTaskShaping] = useState(false);
   const [newChatInitialPrompt, setNewChatInitialPrompt] = useState<
     string | undefined
@@ -107,13 +114,14 @@ export function useChatDockOverlays({
       setNewChatHandoff(open ? options?.handoff : undefined);
       setNewChatSelectionInvalid(open && options?.selectionInvalid === true);
       if (open) {
+        onReaderIntent();
         setMobileInboxOpen(false);
         setImportedSessionId(null);
         setNewChatRequestEpoch((epoch) => epoch + 1);
       }
       setShowNewChatModalState(open);
     },
-    [setShowNewChatModalState],
+    [setShowNewChatModalState, onReaderIntent],
   );
 
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);

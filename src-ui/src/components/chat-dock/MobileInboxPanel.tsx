@@ -22,6 +22,7 @@ import {
   type HomeWorkItem,
 } from '../../views/home/home-view-model';
 import {
+  type ConversationOpenResult,
   openWorkItem,
   workItemOpenFailureMessage,
 } from '../../views/home/work-item-open-policy';
@@ -84,7 +85,7 @@ export function MobileInboxPanel({
     projectName?: string,
     model?: string,
     conversationUpdatedAt?: string,
-  ) => Promise<boolean> | boolean | undefined;
+  ) => Promise<ConversationOpenResult> | ConversationOpenResult;
   onOpenSession: (threadId: string) => void;
   /** See WorkItemOpenHandlers.agentsLoaded (station#3687). */
   agentsLoaded?: boolean;
@@ -114,6 +115,7 @@ export function MobileInboxPanel({
   onRetryLoad?: () => void;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const activation = useRef(0);
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
@@ -307,6 +309,7 @@ export function MobileInboxPanel({
           chrome="touch"
           actionsInDetails
           onActivate={(task) => {
+            const request = ++activation.current;
             // station#3687: acknowledge only after the click did something,
             // and say so when it could not (same contract as the desktop
             // panel — see ChatDockInboxPanel's onActivate).
@@ -322,6 +325,8 @@ export function MobileInboxPanel({
               agentsLoaded,
             })
               .then((outcome) => {
+                if (request !== activation.current || outcome === 'cancelled')
+                  return;
                 if (outcome === 'opened' || outcome === 'fallback') {
                   onAcknowledgeConversation?.(task);
                   closeAndRestoreFocus();
@@ -330,6 +335,7 @@ export function MobileInboxPanel({
                 onOpenFailed?.(workItemOpenFailureMessage(task, outcome));
               })
               .catch(() => {
+                if (request !== activation.current) return;
                 onOpenFailed?.(
                   'Could not open this item. Try again, or open it from Activity.',
                 );

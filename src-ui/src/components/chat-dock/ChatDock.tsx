@@ -53,7 +53,10 @@ import {
   useKeyboardShortcuts,
 } from '../../contexts/KeyboardShortcutsContext';
 import { useModelsCatalog } from '../../contexts/ModelsContext';
-import { useNavigation } from '../../contexts/NavigationContext';
+import {
+  navigationStore,
+  useNavigation,
+} from '../../contexts/NavigationContext';
 import {
   type ChatFocusTarget,
   openChatsStore,
@@ -66,7 +69,7 @@ import { useDismissPhoneLayer } from '../../contexts/useDismissPhoneLayer';
 import { useShowSurface } from '../../contexts/useShowSurface';
 import { useWorkObservation } from '../../contexts/work-observation';
 import {
-  registerChatDraftCover,
+  registerChatReaderCover,
   registerFullscreenChatSurface,
 } from '../../hooks/orchestration/chatForeground';
 import {
@@ -137,6 +140,7 @@ import {
 } from '../../views/home/useInboxWorkItems';
 import { useOptionalObservedWorkStatus } from '../../views/home/useObservedWorkStatus';
 import { useWorkFacts } from '../../views/home/useWorkFacts';
+import type { ConversationOpenResult } from '../../views/home/work-item-open-policy';
 import { workStatusText } from '../../views/home/work-status';
 import { durableMentionAuthority } from '../chat/composer-mentions';
 import { publishReferenceableConversations } from '../chat/conversationReferenceDrag';
@@ -905,6 +909,14 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   }, [isDockMaximized, isFullscreenPlacement, restoreDockToDocked]);
   const notifyTaskStarted = useTaskStartedNotice(collapseDockForNavigation);
 
+  const readerIntent = useRef(0);
+  const pendingReaderOpen = useRef<AbortController | null>(null);
+  const cancelReaderOpen = useCallback(() => {
+    readerIntent.current += 1;
+    pendingReaderOpen.current?.abort();
+    pendingReaderOpen.current = null;
+  }, []);
+  useEffect(() => cancelReaderOpen, [cancelReaderOpen]);
   const { setDeviceSetting } = useDeviceSettingsActions();
   const {
     importedSessionId,
@@ -944,26 +956,39 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   } = useChatDockOverlays({
     isMobile,
     hasConversationIntent: Boolean(activeChat),
+    onReaderIntent: cancelReaderOpen,
     composerMenuTriggerRef,
     setDeviceSetting,
     setShowNewChatModalState,
   });
   const mobileInboxShown = isMobile && mobileInboxOpen;
+  const readerCovered = mobileInboxShown || showNewChatModal;
   useEffect(() => {
     if (isMobile) setMobileInboxOpen(!activeChat);
   }, [activeChat, isMobile, setMobileInboxOpen]);
+  const closeMobileInbox = useCallback(() => {
+    cancelReaderOpen();
+    setMobileInboxOpen(false);
+  }, [cancelReaderOpen, setMobileInboxOpen]);
   const toggleMobileInbox = useCallback(() => {
+    cancelReaderOpen();
     if (!isPaneOpen) {
       setMobileInboxOpen(true);
       if (!isFullscreenPlacement) applyDockSnap('half');
     } else setMobileInboxOpen((open) => !open);
-  }, [isPaneOpen, isFullscreenPlacement, applyDockSnap, setMobileInboxOpen]);
+  }, [
+    isPaneOpen,
+    isFullscreenPlacement,
+    applyDockSnap,
+    setMobileInboxOpen,
+    cancelReaderOpen,
+  ]);
   useEffect(
     () =>
-      fullscreenOnScreen && !mobileInboxShown
+      fullscreenOnScreen && !readerCovered
         ? registerFullscreenChatSurface()
         : undefined,
-    [fullscreenOnScreen, mobileInboxShown],
+    [fullscreenOnScreen, readerCovered],
   );
 
   // #3042/#3043: the inbox rows' status facts, derived beside `taskItems`
@@ -1184,6 +1209,8 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // files, choices, a hand-off, a Task) still replaces it.
   const requestNewChat = useCallback(
     (intent?: NewChatIntent) => {
+      cancelReaderOpen();
+      setMobileInboxOpen(false);
       if (newChatDraftOpen.current && !newChatIntentCarriesPayload(intent)) {
         revealDockForDraft();
         requestAnimationFrame(() =>
@@ -1195,7 +1222,12 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
       }
       setShowNewChatModal(true, intent);
     },
-    [revealDockForDraft, setShowNewChatModal],
+    [
+      revealDockForDraft,
+      setShowNewChatModal,
+      cancelReaderOpen,
+      setMobileInboxOpen,
+    ],
   );
   // Leaving the draft is also derived from state: when anything moves the
   // dock to another chat (the `?chat=` sync, a toast's Open, browser
@@ -1275,12 +1307,9 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     chatIdentityIds,
     closeNewChatDraft,
   ]);
-  // While the draft covers the chat, that chat is not on screen: its
-  // end-of-turn toasts and attention come back (`chatForeground`). A text
-  // selection left in the covered transcript would keep its Quote toolbar
-  // (portalled outside the hidden, inert chat) floating over the draft.
+  // Covered selections can keep body-portaled quote controls alive.
   useEffect(() => {
-    if (!showNewChatModal) return;
+    if (!readerCovered) return;
     const selection = window.getSelection();
     if (
       selection &&
@@ -1288,8 +1317,9 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
       conversationSurfaceRef.current?.contains(selection.anchorNode)
     )
       selection.removeAllRanges();
-    return registerChatDraftCover();
-  }, [showNewChatModal]);
+    if (isPaneOpen && (!isFullscreenPlacement || fullscreenOnScreen))
+      return registerChatReaderCover();
+  }, [readerCovered, isPaneOpen, isFullscreenPlacement, fullscreenOnScreen]);
   // station#4525: the dock header's project binding is DockShell-owned state
   // (`chrome.activeProjectSlug`), not a derivation of the active session's
   // own `projectSlug` — that derivation was the actual reset mechanism (see
@@ -1410,7 +1440,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     // station#1294 review (SHOULD-FIX-4): a send failing while the dock is
     // collapsed has nowhere visible to render the transcript notice — the
     // generic toast must not be suppressed in that case.
-    isChatVisible: isPaneOpen && !mobileInboxShown,
+    isChatVisible: isPaneOpen && !readerCovered,
   });
   useEffect(() => {
     if (!pendingGoalSend) return;
@@ -1901,6 +1931,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     });
   const focusSessionInPane = useCallback(
     (sessionId: string) => {
+      cancelReaderOpen();
       setMobileInboxOpen(false);
       leaveNewChatDraft();
       setImportedSessionId(null);
@@ -1908,6 +1939,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     },
     [
       focusSession,
+      cancelReaderOpen,
       isFullscreenPlacement,
       leaveNewChatDraft,
       setImportedSessionId,
@@ -1994,7 +2026,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     ? conversationOpenPhase(activeSession)
     : null;
   const composerCanTakeFocus =
-    !!executionProfile && isPaneOpen && !importedSessionId && !mobileInboxShown;
+    !!executionProfile && isPaneOpen && !importedSessionId && !readerCovered;
   const { requestComposerFocus, onComposerEnabledChange } = useWorkingChatFocus(
     {
       activeSessionId,
@@ -2145,6 +2177,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
         | 'hydrateMessages'
         | 'signal'
         | 'beforeFocus'
+        | 'isCurrent'
         | 'revealDock'
       >,
     ) => {
@@ -2183,22 +2216,81 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
       routeToScopedChatProject,
     ],
   );
-  const openUserSelectedConversationInScopedPane = useCallback(
-    async (...args: Parameters<typeof openConversationInScopedPane>) => {
-      const opened = await openConversationInScopedPane(...args);
-      if (opened) {
+  const openSelectedConversationInScopedPane = useCallback(
+    async (
+      ...args: Parameters<typeof openConversationInScopedPane>
+    ): Promise<ConversationOpenResult> => {
+      cancelReaderOpen();
+      const request = readerIntent.current;
+      const controller = new AbortController();
+      pendingReaderOpen.current = controller;
+      const execution = args[7];
+      let expectedNavigation = navigationStore.getSnapshot();
+      const ownsRequest = () =>
+        readerIntent.current === request &&
+        !controller.signal.aborted &&
+        requestAuthority?.isCurrent() !== false;
+      const isCurrent = () => {
+        const current = navigationStore.getSnapshot();
+        return (
+          ownsRequest() &&
+          !execution?.signal?.aborted &&
+          execution?.isCurrent?.() !== false &&
+          current.activeChat === expectedNavigation.activeChat &&
+          current.pathname === expectedNavigation.pathname
+        );
+      };
+      try {
+        const opening = openConversationInScopedPane(
+          args[0],
+          args[1],
+          args[2],
+          args[3],
+          args[4],
+          args[5],
+          args[6],
+          {
+            ...execution,
+            signal: controller.signal,
+            isCurrent,
+            beforeFocus: () =>
+              isCurrent() && execution?.beforeFocus?.() !== false,
+          },
+        );
+        expectedNavigation = navigationStore.getSnapshot();
+        const opened = await opening;
+        if (!ownsRequest() || (!opened && !isCurrent())) return 'cancelled';
+        if (!opened)
+          return agentsLoaded && agents.some((agent) => agent.slug === args[1])
+            ? 'unavailable'
+            : false;
         setMobileInboxOpen(false);
         leaveNewChatDraft();
         setImportedSessionId(null);
+        return true;
+      } catch (error) {
+        if (!isCurrent()) return 'cancelled';
+        throw error;
+      } finally {
+        if (pendingReaderOpen.current === controller)
+          pendingReaderOpen.current = null;
       }
-      return opened;
     },
     [
+      agents,
+      agentsLoaded,
+      requestAuthority,
+      cancelReaderOpen,
       leaveNewChatDraft,
       openConversationInScopedPane,
       setImportedSessionId,
       setMobileInboxOpen,
     ],
+  );
+  const openUserSelectedConversationInScopedPane = useCallback(
+    async (...args: Parameters<typeof openConversationInScopedPane>) =>
+      (await openSelectedConversationInScopedPane(...args)) === true,
+    [openSelectedConversationInScopedPane],
   );
   const openConversationForDock = useCallback(
     async (
@@ -2335,6 +2427,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     // through to `openConversation` (rehydrate) and finally Activity
     // (a session Station cannot rehydrate) instead of no-oping.
     const focusChat = (detail: ChatFocusTarget) => {
+      cancelReaderOpen();
       const {
         sessionId,
         conversationId,
@@ -2460,6 +2553,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     };
   }, [
     hasImmutableProjectScope,
+    cancelReaderOpen,
     applyDockSnap,
     collapseDockForNavigation,
     focusSessionInPane,
@@ -2984,7 +3078,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
           // the chat it covers must not stage a file dropped on the draft.
           hasAttachmentOwner:
             !importedSessionId &&
-            !showNewChatModal &&
+            !readerCovered &&
             activeSessionForHook !== null,
           isPaneOpen,
           isCollapsedDragPreview,
@@ -3005,6 +3099,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
           isPaneMaximized ? 'pane-maximized' : 'pane-restored',
           isDockMaximized ? 'dock-maximized' : 'dock-restored',
           dockSnap,
+          readerCovered ? 'covered-reader' : 'chat-reader',
           isPaneOpen ? 'open' : 'collapsed',
           isCollapsedDragPreview ? 'drag-preview' : 'stable',
         ].join('|')}
@@ -3398,10 +3493,9 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       openChatSessionIds: openInboxChatSessionIds,
                       activeChatSessionId: importedSessionId ?? activeSessionId,
                       triggerRef: inboxTriggerRef,
-                      onClose: () => setMobileInboxOpen(false),
+                      onClose: closeMobileInbox,
                       onFocusChat: focusSessionInPane,
-                      onOpenConversation:
-                        openUserSelectedConversationInScopedPane,
+                      onOpenConversation: openSelectedConversationInScopedPane,
                       onCloseChat: removeSession,
                       onAcknowledgeConversation: acknowledgeTaskConversation,
                       agentsLoaded,
@@ -3445,7 +3539,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                         openChatSessionIds: openInboxChatSessionIds,
                         onFocusChat: focusSessionInPane,
                         onOpenConversation:
-                          openUserSelectedConversationInScopedPane,
+                          openSelectedConversationInScopedPane,
                         onOpenSession: openImportedSessionInPane,
                         onCloseChat: removeSession,
                         onAcknowledgeConversation: acknowledgeTaskConversation,

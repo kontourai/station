@@ -2911,9 +2911,9 @@ for (const viewport of [
       );
     }, viewport.width === 390);
     const textarea = await openComposer(page);
-    await expect(
-      page.getByRole('button', { name: /^(Inbox|Back to chat)$/ }),
-    ).toContainText('New chat');
+    await expect(page.locator('.chat-dock__mobile-title-text')).toHaveText(
+      'New chat',
+    );
     await expect(page.locator('.chat-dock__counter')).toBeHidden();
     await expect(
       page.locator('.chat-dock__header').getByTitle('Chat settings'),
