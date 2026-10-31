@@ -1,0 +1,15 @@
+{
+  "revision": "9b959a44a9a6d88d0968048a0d3e49ee481ba9d5",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed DeploymentAuthentication composition and member/operator separation against raw-write transaction refusal and retry. Existing architecture claims remain accurate; detailed 503 behavior is in deployment authentication. No live qualification inferred.","inputs":["docs/architecture/module-map.md","src-server/services/identity/local-account-provider.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed authentication adapter and revocation routing against policy write refusal and the linked deployment guide. The guide routes to the detailed retry contract; no prose change required.","inputs":["docs/guides/integrating-station.md","docs/guides/deployment-authentication.md"]},
+
+    {"path":"docs/privacy-policy.md","note":"Reviewed local account and member passkey storage inventory against write admission; no fields or destinations change. Existing classification and publication limits remain.","inputs":["docs/privacy-policy.md","src-server/services/identity/local-account-provider.ts"]},
+
+    {"path":"docs/reference/play-data-safety.md","note":"Reviewed generated inventory scope against account write admission: no collection, data fields or destination changes. Existing declaration and store review limits remain.","inputs":["docs/reference/play-data-safety.md","src-server/services/identity/local-account-provider.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed account token standing, current-session witness and separate Device and Project authorization against refusal and retry guards. Claims apply after successful revocation; unavailable requests do not acknowledge a change. No physical or live qualification inferred.","inputs":["docs/security/remote-access-threat-model.md","src-server/services/identity/local-account-provider.ts"]}
+  ]
+}

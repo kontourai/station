@@ -154,6 +154,12 @@ const descriptorSchema = z
               'refresh-session',
               'logout',
               'revoke-session',
+              'passkey-sign-in',
+              'passkey-register',
+              'passkey-add',
+              'passkey-recover',
+              'passkey-list',
+              'passkey-remove',
             ]),
           })
           .strict(),

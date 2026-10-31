@@ -1914,6 +1914,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/member-passkeys-live.spec.ts',
+    bucket: 'smoke-live',
+    surface: 'Member passkey acceptance',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real isolated Station on a localhost authentication origin and a Chromium CDP virtual authenticator prove invited passkey-only registration and acceptance, passkey sign-in with no password sent, refusal after the operator disables the account, and single-use operator recovery onto a replacement authenticator. A virtual authenticator is not a platform authenticator, synced passkey, or native app.',
+    exceptions: [],
+  },
+  {
     path: 'tests/interactive-workspace-performance-bridge.spec.ts',
     bucket: 'smoke-live',
     surface: 'Interactive workspace performance reference bridge',

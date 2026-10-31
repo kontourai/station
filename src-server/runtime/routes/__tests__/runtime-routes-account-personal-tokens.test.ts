@@ -16,11 +16,14 @@ import { join } from 'node:path';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson } from '../../../__test-utils__/read-json.js';
+import { SoftwareAuthenticator } from '../../../__test-utils__/software-authenticator.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { usageExportOwnerIds } from '../../../analytics/usage-export-reader.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
+import { FeaturePreviewRegistry } from '../../../services/feature-previews/feature-preview-registry.js';
 import { createApplicationSessionRuntime } from '../../../services/identity/application-session-runtime.js';
 import { deploymentAccountPrincipal } from '../../../services/identity/deployment-authentication-service.js';
+import { MEMBER_PASSKEYS_PREVIEW_ID } from '../../../services/identity/local-account-passkeys.js';
 import {
   type LoadedLocalAccounts,
   loadLocalAccounts,
@@ -122,6 +125,19 @@ describe('account-tied personal access tokens over the production composition', 
       STATION_ID,
       storage,
     );
+    // #4303: member passkeys are a Feature Preview; this Station opts in.
+    const previews = new FeaturePreviewRegistry(homeDir, {
+      debug() {},
+      info() {},
+      warn() {},
+      error() {},
+    } as never);
+    const memberPasskeys = previews.bind({
+      id: MEMBER_PASSKEYS_PREVIEW_ID,
+      label: 'Member passkeys',
+      description: 'Member passkeys under test.',
+    });
+    await previews.setEnabled(MEMBER_PASSKEYS_PREVIEW_ID, true);
     const eventBus = new EventBus();
     const notifications = new NotificationService(eventBus, homeDir, 999_999, {
       projectMembership: membership.service,
@@ -131,6 +147,8 @@ describe('account-tied personal access tokens over the production composition', 
       { publicOrigin: ORIGIN },
       { stationId: STATION_ID, homeDirectory: homeDir },
       { mayRegister: async () => true },
+      [],
+      { memberPasskeys },
     );
     loaded.push(localAccounts);
     // What station-runtime.ts does once local accounts load.
@@ -246,6 +264,71 @@ describe('account-tied personal access tokens over the production composition', 
         .getSetCookie()
         .map((value) => value.split(';')[0])
         .join('; ');
+      const account = localAccounts.administration
+        .list()
+        .find((entry) => entry.username === username);
+      if (!account) throw new Error(`account ${username} was not created`);
+      return {
+        accountId: account.accountId,
+        cookie,
+        principalId: deploymentAccountPrincipal(
+          issuer,
+          account.accountId,
+          username,
+        ).id,
+      };
+    };
+
+    /**
+     * #4303: a real account created with a passkey (no password), then
+     * signed in afresh with that passkey: its id and passkey session cookie.
+     */
+    const createPasskeyAccount = async (username: string) => {
+      const authenticator = new SoftwareAuthenticator();
+      const ceremony = async (
+        path: string,
+        options: Record<string, unknown>,
+        respond: (options: never) => unknown,
+      ) => {
+        const begun = await accountAuth(path, { step: 'options', ...options });
+        expect(begun.status, await begun.clone().text()).toBe(200);
+        const challenge = begun.headers
+          .getSetCookie()
+          .map((value) => value.split(';')[0])
+          .join('; ');
+        const published = (await readJson<{ data: { options: never } }>(begun))
+          .data.options;
+        const finished = await localAccounts.service.handle(
+          new Request(`${ORIGIN}/api/account-auth${path}`, {
+            method: 'POST',
+            headers: {
+              Origin: ORIGIN,
+              'Content-Type': 'application/json',
+              'x-station-invitation': 'fixture-enrollment',
+              Cookie: challenge,
+            },
+            body: JSON.stringify({
+              step: 'verify',
+              response: respond(published),
+            }),
+          }),
+          path,
+        );
+        expect(finished.status, await finished.clone().text()).toBe(200);
+        return finished;
+      };
+      await ceremony('/passkey/sign-up', { username }, (options) =>
+        authenticator.register(options, { origin: ORIGIN }),
+      );
+      const signedIn = await ceremony('/passkey/sign-in', {}, (options) =>
+        authenticator.authenticate(options, { origin: ORIGIN, counter: 1 }),
+      );
+      const cookie = signedIn.headers
+        .getSetCookie()
+        .filter((value) => value.includes('session_token='))
+        .map((value) => value.split(';')[0])
+        .join('; ');
+      expect(cookie).not.toBe('');
       const account = localAccounts.administration
         .list()
         .find((entry) => entry.username === username);
@@ -405,6 +488,9 @@ describe('account-tied personal access tokens over the production composition', 
       request,
       operator,
       person,
+      createPasskeyAccount,
+      withHeaders,
+      operatorCredential,
       pairAccountDevice,
       mintToken,
       bearer,
@@ -778,6 +864,69 @@ describe('account-tied personal access tokens over the production composition', 
     h.localAccounts.administration.revokeSessions(member.accountId);
     const refused = await h.request('/api/projects', token());
     expect(refused.status, await refused.clone().text()).toBe(401);
+  });
+
+  test('a passkey-only account signed in with its passkey: its token stops on disable and on sign-out everywhere (#4303)', async () => {
+    const h = await setup();
+    const account = await h.createPasskeyAccount('passkey-member');
+    const credential = h.pairAccountDevice(account, 'passkey-laptop');
+    const device = h.withHeaders({
+      Authorization: `Bearer ${credential}`,
+      Cookie: account.cookie,
+      Origin: ORIGIN,
+    });
+    const minted = await h.mintToken(device);
+    expect(minted.status, await minted.clone().text()).toBe(201);
+    const token = h.bearer((await readJson<{ secret: string }>(minted)).secret);
+    const observed = await h.request('/api/auth/authority', token());
+    expect(
+      (await readJson<{ principal: { id: string } }>(observed)).principal.id,
+    ).toBe(account.principalId);
+    expect((await h.request('/api/projects', token())).status).toBe(200);
+    // The revocation is stamped in milliseconds; make it strictly later.
+    await new Promise((settle) => setTimeout(settle, 5));
+    h.localAccounts.administration.revokeSessions(account.accountId);
+    expect((await h.request('/api/projects', token())).status).toBe(401);
+    expect((await h.request('/api/projects', device())).status).toBe(401);
+
+    const second = await h.createPasskeyAccount('passkey-other');
+    const secondDevice = h.pairAccountDevice(second, 'other-laptop');
+    const secondMinted = await h.mintToken(
+      h.withHeaders({
+        Authorization: `Bearer ${secondDevice}`,
+        Cookie: second.cookie,
+        Origin: ORIGIN,
+      }),
+    );
+    const secondToken = h.bearer(
+      (await readJson<{ secret: string }>(secondMinted)).secret,
+    );
+    expect((await h.request('/api/projects', secondToken())).status).toBe(200);
+    h.localAccounts.administration.setDisabled(second.accountId, true);
+    expect((await h.request('/api/projects', secondToken())).status).toBe(401);
+  });
+
+  test('a member passkey session and its device never carry operator authority (#4303)', async () => {
+    const h = await setup();
+    const account = await h.createPasskeyAccount('passkey-guest');
+    const credential = h.pairAccountDevice(account, 'guest-laptop');
+    for (const init of [
+      { headers: { Cookie: account.cookie, Origin: ORIGIN } },
+      {
+        headers: {
+          Cookie: account.cookie,
+          Authorization: `Bearer ${credential}`,
+          Origin: ORIGIN,
+        },
+      },
+    ]) {
+      const refused = await h.request('/api/operator/accounts', init);
+      expect(refused.status, await refused.clone().text()).not.toBe(200);
+      expect([401, 403]).toContain(refused.status);
+    }
+    // Control: the same route answers the operator credential.
+    const allowed = await h.request('/api/operator/accounts', h.operator());
+    expect(allowed.status, await allowed.clone().text()).toBe(200);
   });
 
   test('re-enabling a disabled account does not revive tokens made before it was disabled', async () => {
