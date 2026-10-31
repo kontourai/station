@@ -1,5 +1,6 @@
 import { SESSION_RECOVERY_FAILED_CODE } from '@kontourai/station-contracts/provider-failure';
 import type { ProviderRuntimeErrorEvent } from '@kontourai/station-contracts/runtime-events';
+import { SessionStartRefusedError } from '../../providers/adapter-shape.js';
 import { providerFailure } from '../../providers/provider-failure.js';
 
 export { SESSION_RECOVERY_FAILED_CODE } from '@kontourai/station-contracts/provider-failure';
@@ -1881,12 +1882,13 @@ export async function startRecoveredOrchestrationSession(options: {
       threadId: session.threadId,
       error: message,
     });
-    // archive#1090's contract, preserved byte-for-byte now that the failure
-    // happens at first use instead of at boot: a `runtime.error` on the
-    // thread so the transcript says why, and `status: 'error'` (never
+    // archive#1090: first-use recovery records the reason in the transcript
+    // and keeps `status: 'error'` (never
     // `closed`, which NULLs `resume_cursor`) so the conversation stays
     // reopenable once the user undoes whatever broke it.
     const failedAt = new Date().toISOString();
+    const refused =
+      error instanceof SessionStartRefusedError ? error : undefined;
     // archive#1399 fix round 2, B3: this literal always constructs
     // `method: 'runtime.error'`, never `tool.completed` — routed through
     // the safe sanitizer anyway (a true no-op here) so the writer-inventory
@@ -1900,19 +1902,25 @@ export async function startRecoveredOrchestrationSession(options: {
           createdAt: failedAt,
           method: 'runtime.error',
           ...providerFailure(
-            error instanceof SessionStartIndeterminateError
-              ? 'indeterminate'
-              : 'unavailable',
-            error instanceof SessionStartIndeterminateError
-              ? 'indeterminate'
-              : 'failed',
+            refused?.kind ??
+              (error instanceof SessionStartIndeterminateError
+                ? 'indeterminate'
+                : 'unavailable'),
+            refused
+              ? 'refused'
+              : error instanceof SessionStartIndeterminateError
+                ? 'indeterminate'
+                : 'failed',
           ),
           severity: 'error',
           code:
-            error instanceof SessionStartIndeterminateError
+            refused?.code ??
+            (error instanceof SessionStartIndeterminateError
               ? SESSION_START_INDETERMINATE_CODE
-              : SESSION_RECOVERY_FAILED_CODE,
-          retriable: !(error instanceof SessionStartIndeterminateError),
+              : SESSION_RECOVERY_FAILED_CODE),
+          retriable:
+            refused?.retryable ??
+            !(error instanceof SessionStartIndeterminateError),
           message: `This conversation could not be reopened: ${message}`,
         } satisfies ProviderRuntimeErrorEvent,
         (warnMessage, meta) => deps.logger.warn(warnMessage, meta),

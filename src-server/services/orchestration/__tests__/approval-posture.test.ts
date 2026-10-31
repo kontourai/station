@@ -648,6 +648,21 @@ describe('server-ordered approval posture (#2436)', () => {
         release.resolve();
         await expect(pending).rejects.toThrow(/Approval settings changed/);
         expect(claude.starts).toHaveLength(startsBefore);
+        if (path === 'dormant') {
+          expect(
+            store
+              .listEvents(threadId)
+              .filter((row) => row.payload.method === 'runtime.error')
+              .at(-1)?.payload,
+          ).toMatchObject({
+            method: 'runtime.error',
+            code: 'approval-posture-changed',
+            kind: 'permission_denied',
+            retryable: false,
+            retriable: false,
+            failurePhase: 'refused',
+          });
+        }
         beforeAgentResolution = undefined;
         await invoke();
         expect(claude.starts).toHaveLength(startsBefore + 1);
