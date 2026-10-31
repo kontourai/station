@@ -3,6 +3,13 @@
   "purpose": "A local-first workspace where agent work keeps execution history, review evidence, and receipts beside it.",
   "builtOn": [
     {
+      "product": "bearing",
+      "via": [
+        "@kontourai/bearing"
+      ],
+      "for": "Validate reviewed pricing catalogs and retain immutable usage-price snapshots."
+    },
+    {
       "product": "conduit",
       "via": [
         "@kontourai/conduit"
