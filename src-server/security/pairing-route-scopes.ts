@@ -579,6 +579,24 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ACCESS_MANAGE,
     origin: 'explicit',
   },
+  // #4305: the route itself also requires the Station operator; the scope
+  // only decides which paired devices may reach that check.
+  {
+    id: '/api/operator/account-sharing:operator-read',
+    method: 'GET',
+    prefix: '/api/operator/account-sharing',
+    exact: true,
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/operator/account-sharing:operator-apply',
+    method: 'PUT',
+    prefix: '/api/operator/account-sharing',
+    exact: true,
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
   {
     id: '/api/operator/telemetry-companion:prerequisites',
     method: 'GET',
