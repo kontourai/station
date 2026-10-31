@@ -196,7 +196,11 @@
 
     "src-ui/src/components/chat-dock/MobileInboxPanel.tsx",
 
-    "src-ui/src/components/chat-dock/useChatDockActiveChatSync.ts"
+    "src-ui/src/components/chat-dock/useChatDockActiveChatSync.ts",
+
+    "src-ui/src/__tests__/MessageBubble.basisChipFit.test.tsx",
+
+    "src-ui/src/__tests__/SubagentTranscriptCard.interrupted.test.tsx"
   ],
 
   "checks": [
