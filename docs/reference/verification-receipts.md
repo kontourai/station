@@ -297,6 +297,11 @@ key. Its regression corpus covers nested and encoded objects, assignment
 boundaries, offsets and output caps. That corpus is bounded evidence, not an
 exhaustive proof for every possible input.
 
+Complete JSON output is redacted as structured data and serialized when a
+value changes, preserving valid JSON in phase attachments. Unchanged JSON keeps
+its original bytes. The canonical credential-ledger phase command is retained
+as a command rather than interpreted as a credential assignment.
+
 Redacting before the bound can pull later input bytes inside the retained limit
 when replacements shorten text. An earlier comparison measured a nested-key
 leak in that order before the #1835 fix; those measurements describe the old
