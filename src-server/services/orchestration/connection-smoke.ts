@@ -348,20 +348,20 @@ export class ConnectionSmoke {
           sessionStarted = false;
           return;
         }
-        if (!controller.signal.aborted || !adapter) return;
+        if (!adapter) return;
         let adapterOwnsSession = false;
         await this.deps.runOperationWithinDeadline(
           adapter.hasSession(threadId).then((ownsSession) => {
             adapterOwnsSession = ownsSession;
           }),
-          `${adapter.provider} timed-out smoke ownership check`,
+          `${adapter.provider} unbound smoke ownership check`,
           cleanupDeadline,
         );
         if (adapterOwnsSession) {
           this.deps.armInternalStop(threadId);
           await this.deps.runCleanupWithinDeadline(
             () => adapter.stopSession(threadId),
-            `${adapter.provider} timed-out smoke cleanup`,
+            `${adapter.provider} unbound smoke cleanup`,
             cleanupDeadline,
           );
         }
