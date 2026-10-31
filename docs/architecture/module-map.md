@@ -449,10 +449,10 @@ existing cadence-based credential-activity touch and its failure behavior.
 **Borrowing and recovery.** Only an explicit live lease can start a borrowed
 span. Thenables refuse; the span invalidates before return, so a late async
 descendant cannot borrow it. Runtime-admitted report cancellation builds
-transaction-local group, authority and host facades against an exact lease.
+controller-transaction group, authority and host facades against an exact lease.
 The runtime parent spans the operation; each child releases home after the full
-store return and before descendant-interrupt work. Other report writers still
-need coordination qualification. Cleanup retains exact handles; explicit pending
+store return and before descendant-interrupt work. Constructor-service cancellation,
+preparatory reads and outside writers still need their own exclusion qualification. Cleanup retains exact handles; explicit pending
 cleanup retires only failed/inactive holders, preserving active siblings.
 A runtime parent joins its retired children before release, without replaying
 an operation callback. The HTTP boundary
@@ -2347,13 +2347,15 @@ This recovery-only composition does not establish exclusion for every rounds
 writer or enable the continuation finalizer.
 
 [Report rounds publication](../../src-server/services/orchestration/report-rounds-publication.ts)
-now owns runtime-admitted cancellation and cancellation finalization. One runtime
-admission spans the operation. Each published transaction acquires home before
-group/authority, builds all three lexical facades, and holds home through the
+supplies runtime-operation admission and scoped group transactions for cancellation
+and cancellation finalization. Each controller-owned group transaction acquires home
+before group/authority, builds all three lexical facades, and holds home through the
 actual durable store return. Descendant interruption runs outside that home hold.
 Failed guard retirement retains the runtime admission for shutdown retry; parent
 cleanup joins retired child cleanup before releasing the runtime home. Actual
-runtime/store holds and an owned guard-removal fault exercise these boundaries.
+runtime/store holds and an owned guard-removal fault exercise the zero-attempt cancel
+path. The constructor service's separate `cancel` call, preparatory inspection,
+active interruption writers and actual finalizeCancel execution remain unqualified.
 Continuation-parent borrowing and the other controller constructions remain open;
 group/finalizer flags stay disabled. Legacy compositions without the runtime
 participant do not establish these ownership guarantees.
