@@ -441,9 +441,9 @@ export const CHECKOUT_ACTION =
 export const SETUP_NODE_ACTION =
   'actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1';
 export const CODEQL_INIT_ACTION =
-  'github/codeql-action/init@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee';
+  'github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370';
 export const CODEQL_ANALYZE_ACTION =
-  'github/codeql-action/analyze@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee';
+  'github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370';
 export const DEPENDENCY_REVIEW_ACTION =
   'actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294';
 export const WINDOWS_PR_EVIDENCE_UPLOAD_ACTION =
@@ -470,10 +470,10 @@ const WINDOWS_PR_EVIDENCE_PATHS =
  * written down is not. Landing a bump is now one deliberate edit here.
  */
 export const PNPM_SETUP_ACTION =
-  'pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4';
+  'pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e';
 // Reviewed fixed source: npm signature plus pinned SHA512, no dependency install or cache.
 export const VERIFIED_PNPM_SETUP_ACTION =
-  'kontourai/station/.github/actions/setup-verified-pnpm@4c7804d0d71f4e18d7a0da62fb6db43973481a20';
+  'kontourai/station/.github/actions/setup-verified-pnpm@382b4af65e5f8bc5e3d62bd64ef1eba8653af50f';
 /**
  * #2675: pnpm/setup installs only pnpm's native single-executable build, and
  * for pnpm v11 it refuses Intel macOS ("does not provide a working binary for
