@@ -7,6 +7,8 @@ export const DELEGATION_GROUP_LIMITS = {
   requestBytes: 262_144,
   responseBytes: 262_144,
   pageSize: 64,
+  // Each code unit can require six JSON bytes; leave room for response metadata.
+  outputPageCodeUnits: 32_768,
 } as const;
 
 /** Intent is inert; the host must resolve current source, inventory and authority. */
@@ -29,6 +31,12 @@ export type DelegationGroupView = {
   members: {
     seatId: string;
     taskId: string;
+    selection: {
+      agentId: string;
+      runtimeProtocol: string;
+      provider: string;
+      modelId: string;
+    };
     invocationId: string | null;
     outcome: string | null;
     terminalProof: 'unproven' | 'proven';
@@ -83,7 +91,12 @@ export type DelegationGroupRawOutputResult = {
   seatId: string;
   invocationId: string;
   text: string;
+  /** UTF-16 offsets; a page never splits a surrogate pair. */
+  afterCodeUnit: number;
+  nextCodeUnit: number;
+  hasMore: boolean;
   modelId: string;
+  /** Whole invocation usage, repeated on every page; never sum pages. */
   usage: ReportGroupAmounts;
 };
 

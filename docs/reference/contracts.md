@@ -2,6 +2,15 @@
 
 Canonical cross-package contract ownership for Station.
 
+The `delegation-group` module separates caller-owned portable group observations
+from Station Session groups. `DelegationGroupView` includes the authenticated
+Agent/runtime protocol/provider/model selection for each member.
+`DelegationGroupRawOutputResult` is a bounded page with UTF-16
+`afterCodeUnit`/`nextCodeUnit` cursors and `hasMore`;
+pages never split surrogate pairs. Its usage belongs to the whole invocation,
+not the page. These shapes do not supply execution authority or establish
+current host capability.
+
 Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shared across `src-server`, `packages/sdk`, `packages/cli`, plugins, or tests. New code should import these modules directly instead of reaching through `@kontourai/station-shared`.
 
 `LayoutPanelsRecord` holds device-local side/lower-panel state by layout host

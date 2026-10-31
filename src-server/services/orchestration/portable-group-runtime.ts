@@ -2,6 +2,7 @@ import { lstatSync, mkdirSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { FileAuthorizationLedger } from '@kontourai/dispatch';
 import { createDelegationAuthorityService } from '@kontourai/flow-agents/delegation-authority-service';
+import { delegationEnvelopeDigestV2 } from '@kontourai/flow-agents/delegation-envelope-v2';
 import {
   createDelegationGroupControllerAccountingV1,
   type DelegationGroupAccountingHostV1,
@@ -9,6 +10,7 @@ import {
 } from '@kontourai/flow-agents/delegation-group-v2';
 import { canonicalJson } from '@kontourai/relay';
 import {
+  DELEGATION_GROUP_LIMITS,
   DELEGATION_GROUP_TRANSPORT_VERSION,
   type DelegationGroupView,
 } from '@kontourai/station-contracts/delegation-group';
@@ -129,12 +131,32 @@ export class DelegationGroupRuntime {
     const metadata = this.#preparation.inspectAdmission(context, admission);
     if (!same(metadata.spec, projection.spec)) refuse();
     const members = metadata.members.map((member) => {
+      const seat = projection.spec.seats.find(
+        (value) => value.seatId === member.seatId,
+      );
+      if (!seat) refuse();
+      const envelope = metadata.envelopes.find(
+        (value) => value.envelope_id === seat.envelope.id,
+      );
+      if (
+        !envelope ||
+        envelope.generation !== seat.envelope.generation ||
+        delegationEnvelopeDigestV2(envelope) !== seat.envelope.digest
+      )
+        refuse();
       const state = projection.members.find(
         (value) => value.seatId === member.seatId,
       );
       return {
         seatId: member.seatId,
         taskId: member.taskId,
+        selection: {
+          agentId: member.agentId,
+          runtimeProtocol:
+            envelope.execution_binding.runtime.runtime_receipt_ref.domain,
+          provider: member.provider,
+          modelId: member.modelId,
+        },
         invocationId: state?.invocationId ?? null,
         outcome: state?.observation?.outcome ?? null,
         terminalProof: state?.terminalReference
@@ -308,6 +330,7 @@ export class DelegationGroupRuntime {
     context: RuntimeSourceRequestContext,
     groupId: string,
     seatId: string,
+    afterCodeUnit = 0,
   ) {
     const owned = await this.#owned(context, groupId);
     const member = owned.projection.members.find(
@@ -326,12 +349,35 @@ export class DelegationGroupRuntime {
       result.observation.kind !== 'result'
     )
       refuse();
+    const text = result.observation.text;
+    if (
+      !Number.isSafeInteger(afterCodeUnit) ||
+      afterCodeUnit < 0 ||
+      afterCodeUnit > text.length ||
+      (afterCodeUnit > 0 &&
+        /[\uD800-\uDBFF]/.test(text[afterCodeUnit - 1] ?? '') &&
+        /[\uDC00-\uDFFF]/.test(text[afterCodeUnit] ?? ''))
+    )
+      throw new SyntaxError('Invalid output cursor.');
+    let nextCodeUnit = Math.min(
+      text.length,
+      afterCodeUnit + DELEGATION_GROUP_LIMITS.outputPageCodeUnits,
+    );
+    if (
+      nextCodeUnit < text.length &&
+      /[\uD800-\uDBFF]/.test(text[nextCodeUnit - 1] ?? '') &&
+      /[\uDC00-\uDFFF]/.test(text[nextCodeUnit] ?? '')
+    )
+      nextCodeUnit--;
     owned.current();
     return {
       groupId,
       seatId,
       invocationId: member.invocationId,
-      text: result.observation.text,
+      text: text.slice(afterCodeUnit, nextCodeUnit),
+      afterCodeUnit,
+      nextCodeUnit,
+      hasMore: nextCodeUnit < text.length,
       modelId: result.observation.modelId,
       usage: {
         inputTokens: result.observation.inputTokens,

@@ -12,6 +12,28 @@ entry point. Exports select TypeScript/TSX source and host components may also
 need CSS, React and a Query Client. See the [package README](../../packages/sdk/README.md)
 for source distribution and a checked authoring example.
 
+## Delegation group observations
+
+The group client functions under `@kontourai/station-sdk/client` use the host's
+caller-owned group routes. An older host's 404 becomes
+`DelegationGroupUnsupportedError`; route presence alone does not establish
+support for a selected source, model or topology. Group capability advertising
+remains off while combined qualification is unfinished.
+
+Each member's `selection` records the Agent, runtime protocol, provider and model
+authenticated by the retained admission. It is an observation of that selection, not a fresh
+inventory or execution grant. Execution returning and cancellation being requested
+do not prove terminal completion or semantic acceptance.
+
+`readDelegationGroupMemberOutput(base, groupId, seatId, options)` returns one
+authenticated output page. Pass its `nextCodeUnit` as `options.afterCodeUnit`
+while `hasMore` is true. Offsets count UTF-16 code units; pages preserve surrogate
+pairs and refuse a cursor inside a pair. Concatenate `text` in cursor order and
+keep the same invocation identity. Each page repeats the **whole invocation's**
+usage; do not sum usage across pages. `station group member-output` exposes the
+same cursor as `--after-code-unit`, and the Station Control tool accepts
+`afterCodeUnit`.
+
 ## Terminal output sessions
 
 `TerminalOutputSession` from `@kontourai/station-sdk/client` observes an existing

@@ -121,11 +121,15 @@ export function createDelegationGroupRoutes(
   );
   app.get('/:groupId/members/:seatId/output', (context) =>
     respond(context, (owner) => {
-      noQuery(context);
+      const query = z
+        .object({ afterCodeUnit: cursor.optional() })
+        .strict()
+        .parse(context.req.query());
       return owner.memberOutput(
         context,
         id.parse(context.req.param('groupId')),
         id.parse(context.req.param('seatId')),
+        query.afterCodeUnit ?? 0,
       );
     }),
   );

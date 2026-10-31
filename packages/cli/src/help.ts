@@ -83,7 +83,7 @@ const VERBS: Record<string, VerbSpec> = {
       'station group events <group> [--after-revision=<n>] [--json]',
       'station group run|cancel <group> --operation=<id> --revision=<n> [--json]',
       'station group member-events <group> <seat> [--after-sequence=<n>] [--json]',
-      'station group member-output <group> <seat> [--json]',
+      'station group member-output <group> <seat> [--after-code-unit=<cursor>] [--json]',
       'station group session-create --file=<local-group.json> [--json]',
       'station group session-from-ensemble --file=<ensemble-group.json> [--json]',
       'station group session-list [--after-group=<id>] [--json]',

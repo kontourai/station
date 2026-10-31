@@ -90,6 +90,7 @@ async function runPortableGroupCommand(
     ...(mutation ? ['operation', 'revision'] : []),
     ...(action === 'events' ? ['after-revision'] : []),
     ...(action === 'member-events' ? ['after-sequence'] : []),
+    ...(action === 'member-output' ? ['after-code-unit'] : []),
   ]);
   for (const flag of Object.keys(parsed.flags))
     if (!allowed.has(flag) || (parsed.repeatedFlags[flag]?.length ?? 0) > 1)
@@ -123,7 +124,9 @@ async function runPortableGroupCommand(
       cursor(parsed, 'after-sequence') ?? 0,
     );
   else if (action === 'member-output')
-    result = await readDelegationGroupMemberOutput(apiBase, groupId!, seatId!);
+    result = await readDelegationGroupMemberOutput(apiBase, groupId!, seatId!, {
+      afterCodeUnit: cursor(parsed, 'after-code-unit') ?? 0,
+    });
   else {
     const expectedRevision = cursor(parsed, 'revision');
     if (expectedRevision === undefined)

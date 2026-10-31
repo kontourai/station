@@ -40,6 +40,7 @@ import { createRecipientCandidateRoutes } from '../../routes/operations/recipien
 import { createSourceEnrollmentRoutes } from '../../routes/operations/source-enrollments.js';
 import { createSourceGrantApprovalRoutes } from '../../routes/operations/source-grant-approvals.js';
 import { createSourceGrantExportRoutes } from '../../routes/operations/source-grant-export.js';
+import { createDelegationGroupRoutes } from '../../routes/orchestration/delegation-groups.js';
 import { createEnsembleInspectionRoutes } from '../../routes/orchestration/ensemble-inspection.js';
 import { createEnsemblePreparationRoutes } from '../../routes/orchestration/ensemble-preparation.js';
 import { createHtmlReplyRoutes } from '../../routes/orchestration/html-replies.js';
@@ -172,6 +173,7 @@ import {
 } from '../../services/orchestration/ensemble-execution-context.js';
 import { EnsembleInspectionService } from '../../services/orchestration/ensemble-inspection.js';
 import { authenticateEnsembleSessionGroup } from '../../services/orchestration/ensemble-session-group-authentication.js';
+import { DelegationGroupRuntime } from '../../services/orchestration/portable-group-runtime.js';
 import { sessionOwnerStampFor } from '../../services/orchestration/session-owner-attribution.js';
 import { StationReportGroupRuntime } from '../../services/orchestration/station-report-group-runtime.js';
 import { createProjectChatDefaultsService } from '../../services/projects/project-chat-defaults.js';
@@ -7061,26 +7063,57 @@ export function configureRuntimeRoutes(
   }
 
   const runtimeContext = context.buildRuntimeContext();
+  const groupRuntimeOwners: ConstructorParameters<
+    typeof StationReportGroupRuntime
+  >[0]['runtime'] = {
+    configLoader: context.configLoader,
+    agentService: context.agentService,
+    storageAdapter: context.storageAdapter,
+    environmentSecurityService: context.environmentSecurityService,
+    requestSecurity: context.environmentSecurityService,
+    runtime: {
+      getAgentConfigurationRevision: context.getAgentConfigurationRevision,
+      commitAgentConfigurationRead: (revision, work) =>
+        context
+          .buildRuntimeContext()
+          .commitAgentConfigurationRead(revision, work),
+    },
+  };
+  let delegationGroups: DelegationGroupRuntime | null = null;
+  if (
+    isPersonalHost &&
+    context.orchestrationEventStore &&
+    context.projectMembership
+  ) {
+    try {
+      delegationGroups = new DelegationGroupRuntime({
+        runtime: groupRuntimeOwners,
+        orchestration: context.orchestrationService,
+        rawFetch: fetch,
+        resolveDelegation: createRequestDelegationResolver(
+          requestDelegationSources,
+        ),
+        stationControl: {
+          orchestration: context.orchestrationService,
+          eventStore: context.orchestrationEventStore,
+          projects: context.projectService,
+          membership: context.projectMembership,
+        },
+      });
+    } catch {
+      context.logger.warn('Delegation group private owners are unavailable.');
+    }
+  }
+  context.app.route(
+    '/api/orchestration/groups',
+    createDelegationGroupRoutes(delegationGroups),
+  );
   let reportGroups: StationReportGroupRuntime | null = null;
   if (isPersonalHost) {
     try {
       reportGroups = new StationReportGroupRuntime({
         publicationParticipant: context.runtimePublicationParticipant,
-        runtime: {
-          configLoader: context.configLoader,
-          agentService: context.agentService,
-          storageAdapter: context.storageAdapter,
-          environmentSecurityService: context.environmentSecurityService,
-          requestSecurity: context.environmentSecurityService,
-          runtime: {
-            getAgentConfigurationRevision:
-              context.getAgentConfigurationRevision,
-            commitAgentConfigurationRead: (revision, work) =>
-              context
-                .buildRuntimeContext()
-                .commitAgentConfigurationRead(revision, work),
-          },
-        },
+        runtime: groupRuntimeOwners,
         orchestration: context.orchestrationService,
         rawFetch: fetch,
       });

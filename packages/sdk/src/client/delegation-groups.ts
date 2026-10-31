@@ -46,6 +46,14 @@ const group = z
           .object({
             seatId: id,
             taskId: id,
+            selection: z
+              .object({
+                agentId: id,
+                runtimeProtocol: z.string().min(1).max(128),
+                provider: z.string().min(1).max(128),
+                modelId: z.string().min(1).max(512),
+              })
+              .strict(),
             invocationId: id.nullable(),
             outcome: z.string().min(1).max(128).nullable(),
             terminalProof: terminal,
@@ -330,26 +338,37 @@ export async function readDelegationGroupMemberOutput(
   base: string,
   groupId: string,
   seatId: string,
-  options?: ClientRequestOptions,
+  options?: ClientRequestOptions & { afterCodeUnit?: number },
 ): Promise<DelegationGroupRawOutputResult> {
+  const { afterCodeUnit = 0, ...requestOptions } = options ?? {};
+  integer.parse(afterCodeUnit);
   const result = z
     .object({
       groupId: id,
       seatId: id,
       invocationId: id,
-      text: z.string(),
+      text: z.string().max(DELEGATION_GROUP_LIMITS.outputPageCodeUnits),
+      afterCodeUnit: integer,
+      nextCodeUnit: integer,
+      hasMore: z.boolean(),
       modelId: z.string().min(1).max(512),
       usage: amounts,
     })
     .strict()
     .parse(
       await request(
-        `${path(base, groupId)}/members/${encodeURIComponent(id.parse(seatId))}/output`,
+        `${path(base, groupId)}/members/${encodeURIComponent(id.parse(seatId))}/output?afterCodeUnit=${afterCodeUnit}`,
         undefined,
-        options,
+        requestOptions,
       ),
     );
-  if (result.groupId !== groupId || result.seatId !== seatId)
+  if (
+    result.groupId !== groupId ||
+    result.seatId !== seatId ||
+    result.afterCodeUnit !== afterCodeUnit ||
+    result.nextCodeUnit !== afterCodeUnit + result.text.length ||
+    (result.hasMore && result.nextCodeUnit <= afterCodeUnit)
+  )
     throw new DelegationGroupProtocolError('Unexpected member output.');
   return result;
 }

@@ -5,6 +5,7 @@ export function controlledTextStream(
   text: string,
   usage: Record<string, unknown>,
 ): Response {
+  const chunks = text.match(/.{1,1024}/gsu) ?? [''];
   const frames =
     provider === 'anthropic'
       ? [
@@ -26,11 +27,11 @@ export function controlledTextStream(
             index: 0,
             content_block: { type: 'text', text: '' },
           },
-          {
+          ...chunks.map((chunk) => ({
             type: 'content_block_delta',
             index: 0,
-            delta: { type: 'text_delta', text },
-          },
+            delta: { type: 'text_delta', text: chunk },
+          })),
           { type: 'content_block_stop', index: 0 },
           {
             type: 'message_delta',
@@ -40,12 +41,15 @@ export function controlledTextStream(
           { type: 'message_stop' },
         ]
       : [
-          {
+          ...chunks.map((chunk) => ({
             modelVersion: model,
             candidates: [
-              { index: 0, content: { role: 'model', parts: [{ text }] } },
+              {
+                index: 0,
+                content: { role: 'model', parts: [{ text: chunk }] },
+              },
             ],
-          },
+          })),
           {
             modelVersion: model,
             candidates: [{ index: 0, finishReason: 'STOP' }],

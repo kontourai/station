@@ -107,8 +107,11 @@ export function registerDelegationGroupTools(
   );
   server.tool(
     'get_delegation_group_member_output',
-    'Read the authenticated retained output and known usage for one owned member. Missing or uncertain output is unavailable.',
-    { groupId: id, seatId: id },
-    async ({ groupId, seatId }) => get(`${memberPath(groupId, seatId)}/output`),
+    'Read one bounded retained-output page. Continue with nextCodeUnit as afterCodeUnit. Usage describes the whole invocation; do not sum it across pages. Missing or uncertain output is unavailable.',
+    { groupId: id, seatId: id, afterCodeUnit: integer.optional() },
+    async ({ groupId, seatId, afterCodeUnit }) =>
+      get(
+        `${memberPath(groupId, seatId)}/output?afterCodeUnit=${afterCodeUnit ?? 0}`,
+      ),
   );
 }
