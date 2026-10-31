@@ -641,6 +641,59 @@ describe('approval posture probe table under server order (#2436)', () => {
     }
   });
 
+  test('a synchronous admission posture change refuses without stranding the thread', async () => {
+    const h = await harness();
+    await h.firstSend('never');
+    const threadId = h.currentThread()!;
+    h.adapter.waiting.add(threadId);
+    const before = h.adapter.turns.length;
+    let changed = false;
+    const pending = h.service.dispatchWithReceipt(
+      {
+        type: 'sendTurn',
+        input: {
+          threadId,
+          input: 'post-accounting refusal',
+          clientTurnId: 'post-accounting-refused',
+        },
+      },
+      { userId: OWNER },
+      {
+        delegationGroupAdmission: {
+          signal: new AbortController().signal,
+          assertCurrent: () => {
+            if (changed) return;
+            changed = true;
+            expect(
+              h.service.recordApprovalModeDecision({
+                threadId,
+                provider: h.adapter.provider,
+                approvalMode: 'ask',
+                basedOnSequence: null,
+              }),
+            ).toMatchObject({ recorded: true });
+          },
+        },
+      },
+    );
+    await expect(pending).rejects.toThrow(/Approval settings changed/);
+    expect(changed).toBe(true);
+    expect(h.adapter.turns).toHaveLength(before);
+    await h.service.dispatchWithReceipt(
+      {
+        type: 'sendTurn',
+        input: {
+          threadId,
+          input: 'new explicit attempt',
+          clientTurnId: 'post-accounting-new-attempt',
+        },
+      },
+      { userId: OWNER },
+    );
+    expect(h.adapter.turns).toHaveLength(before + 1);
+    expect(h.adapter.turns.at(-1)?.modelOptions?.approvalMode).toBe('ask');
+  });
+
   describe('person answers and one-use mediated approvals', () => {
     const allowance = (threadId: string) => {
       const ledger = new UntrustedContentLedger();
