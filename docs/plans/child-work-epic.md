@@ -2959,3 +2959,24 @@ its two timeouts are preserved as fixture failures. The final two-file selection
 passes251 cases and server-test types pass, without changing test deadlines.
 Independent repair/documentation recheck and mutation proof for the relocated
 token controls are pending. The earlier failures remain historical evidence.
+
+The relocated token controls now have executed mutation proof: removing only the
+two final token currentness callbacks causes exactly the named mint/revoke tests
+to fail (HTTP200 instead of409), with122 other cases passing. Byte-exact restoration
+passes124 cases. Independent bounded repair review is READY and the checked
+operator-device design impact requires no prose change. Ordinary-caller deferred
+currentness and whole-module/epic qualification remain outside that verdict.
+
+### Published transaction-owner prerequisite available
+
+Flow Agents9.11.0 is now published from
+`dca0f02dbd01becaa3368249db16c1837b2ce7bd`, containing the transaction-owner
+feature. The upstream owner supplied normal release/publisher success. Station's
+independent exact registry read and downloaded tarball verify the source gitHead,
+SRI/SHA1/SHA256, public rounds export, and matching JavaScript/declaration hashes.
+The public owner/scope and typed parent/uncertain errors are present. An initial
+checker expected an incorrect error-class name; that failure is retained, and the
+corrected check reused the same tarball. This is artifact/declaration evidence,
+not installed-consumer behavior or Station adoption. The upstream advisory renewal
+observer failure retains an unknown cause. Groups/finalizer remain disabled until
+the real Station composition and qualification are complete.
