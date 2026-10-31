@@ -388,7 +388,11 @@ acceptance deadlines do not bound module import, provider startup or provider cl
 do not undo an external effect already invoked.
 
 `local-account-runtime.ts` composes the built-in username/password provider, private
-persistent signing authority and real Project enrollment eligibility.
+persistent signing authority and real Project enrollment eligibility. With the
+Member passkeys Feature Preview on, `local-account-passkeys.ts` adds member
+passkeys through Better Auth's passkey plugin, with Station deciding the account
+for each ceremony; while it is off, `DeploymentAuthenticationService.describe()`
+withholds the passkey operations and the provider refuses them.
 `local-account-administration-routes.ts` exposes operator-only account disabling,
 session revocation and recovery links. `ProjectMembershipService` holds the current
 local Project revision while `ProjectMembershipStore` atomically manages scoped members,

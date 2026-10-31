@@ -1232,6 +1232,7 @@ export class StationRuntime {
   /** Bound during composition, then selected at the fleet-routing branch. */
   private fleetConsumerProbesPreview!: FeaturePreviewSelector;
   private chatHostImagesPreview!: FeaturePreviewSelector;
+  private memberPasskeysPreview!: FeaturePreviewSelector;
   /** #4305: gates the Settings control, not deployment configuration. */
   private accountSharingSettingPreview!: FeaturePreviewSelector;
   private progressiveToolsPreview!: FeaturePreviewSelector;
@@ -1633,6 +1634,7 @@ export class StationRuntime {
       }
       this.bindFleetConsumerProbesPreview();
       this.bindChatHostImagesPreview();
+      this.bindMemberPasskeysPreview();
       this.bindAccountSharingSettingPreview();
       this.progressiveToolsPreview = this.featurePreviews.bind({
         id: 'progressive-station-tools',
@@ -3978,6 +3980,7 @@ export class StationRuntime {
       },
       this.projectMembership.service,
       resolveStationBrowserOrigins({ port: this.port, host: this.host }),
+      { memberPasskeys: this.memberPasskeysPreview },
     );
     this.deploymentAuthentication = this.localAccounts;
     // #3586: account-tied personal access tokens are checked against
@@ -5624,6 +5627,21 @@ export class StationRuntime {
     installSessionTmpDirPolicy(() =>
       preview.select({ enabled: () => true, disabled: () => false }),
     );
+  }
+
+  /**
+   * #4303: member passkeys for local accounts. One selector, read by the
+   * local-account provider on every passkey request and by its descriptor on
+   * every sign-in page load. Bound whether or not local accounts are on, so
+   * the operator can discover it before enabling either.
+   */
+  private bindMemberPasskeysPreview(): void {
+    this.memberPasskeysPreview = this.featurePreviews.bind({
+      id: 'member-passkeys',
+      label: 'Member passkeys',
+      description:
+        'Let invited people using Station accounts create an account, sign in and recover with passkeys at the configured sign-in address.',
+    });
   }
 
   /**

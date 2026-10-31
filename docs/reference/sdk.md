@@ -2873,6 +2873,18 @@ Station chooses provider/callback/return parameters from operator configuration;
 clients cannot supply arbitrary OAuth parameters. See the [deployment guide](../guides/deployment-authentication.md#optional-oidc-choices-with-local-accounts)
 for configuration, callback verification and the independent Device continuation.
 
+A descriptor may also declare `passkey-*` operations (see
+[member passkeys](../guides/deployment-authentication.md#member-passkeys-feature-preview)).
+The `passkey-sign-in`, `passkey-register`, `passkey-add` and `passkey-recover`
+ceremonies use two `runAccountOperation` calls to the same endpoint:
+`{ step: 'options' }` returns `{ options }` for the browser's WebAuthn call,
+then `{ step: 'verify', response }` sends its result. Registration also needs
+`username` in the options body and the invitation as the fourth argument on
+both calls; recovery includes `token` in both bodies. Keep the cookies the
+first call sets; they bind the second call to its challenge. The management
+operations are single calls: `passkey-list` accepts `{}`, and `passkey-remove`
+accepts `{ id }`.
+
 The same account-authentication entry exports `getProjectInvitationPreview(apiBase,
 token)`. It uses a POST body, validates the minimal Project/inviter/role projection,
 and rejects incompatible role/action combinations. Keep the proof out of query

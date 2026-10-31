@@ -440,6 +440,8 @@
     "ws": "^8.22.0",
     "zod": "^4.6.6",
     "zod-to-json-schema": "^3.25.2",
+    "@better-auth/passkey": "1.7.13",
+    "@simplewebauthn/browser": "13.3.0",
     "@kontourai/bearing": "0.2.0"
   },
   "devDependencies": {
