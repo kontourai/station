@@ -7,6 +7,7 @@
  * markdown or auth are mocked.
  */
 
+import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
@@ -146,6 +147,51 @@ function expectCopyBesideTrigger(triggerName: string, copyName: string) {
 }
 
 describe('MessageBubble phone copy and details actions', () => {
+  it('branches a completed answer directly from its icon, without duplicating the action in details', async () => {
+    mobile.current = true;
+    const onForkFromTurn = vi.fn();
+    renderRow(
+      {
+        role: 'assistant',
+        content: 'The repair is ready.',
+        turnId: 'turn-7',
+        sessionId: 'thread-1',
+        agentSlug: agentId('agent'),
+        answerEligible: true,
+        provenance: envelope,
+      },
+      { onForkFromTurn },
+    );
+    const branch = screen.getByRole('button', {
+      name: 'Branch from this answer',
+    });
+    expectIconOnly(branch, 'Branch from this answer');
+    fireEvent.click(branch);
+    expect(onForkFromTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: 'thread-1',
+        turnId: 'turn-7',
+        agentSlug: 'agent',
+      }),
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Answer details and actions' }),
+    );
+    expect(
+      screen.queryByRole('button', { name: 'Fork from here…' }),
+    ).toBeNull();
+  });
+
+  it('offers no inline branch for a live or unsupported answer', () => {
+    mobile.current = true;
+    renderRow(
+      { role: 'assistant', content: 'Still working…', turnId: 'live' },
+      { onForkFromTurn: vi.fn() },
+    );
+    expect(
+      screen.queryByRole('button', { name: 'Branch from this answer' }),
+    ).toBeNull();
+  });
   it('puts Copy beside the ⋯ of a user message, and the sheet does not repeat it', () => {
     mobile.current = true;
     const { onCopy } = renderRow(

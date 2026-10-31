@@ -437,9 +437,9 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
   },
   {
     id: 'schedule',
-    route: '/schedule',
-    label: () => 'Schedule',
-    keywords: ['schedule', 'cron', 'jobs', 'boo'],
+    route: '/automations',
+    label: () => 'Automations',
+    keywords: ['automations', 'schedule', 'cron', 'jobs', 'check-backs', 'boo'],
     icon: 'schedule',
     managementGroup: 'schedule',
     palette: { order: 70 },

@@ -167,6 +167,14 @@ describe('cli-mcp parity entry point', () => {
     expect(status).toBe(1);
   });
 
+  it('fails an unclassified station-browser tool', () => {
+    const manifest = realManifest();
+    delete manifest.tools.browser_record_to_task;
+    const { status, output } = runGate(manifest, ['--base=HEAD']);
+    expect(output).toContain('tools "browser_record_to_task" is unclassified');
+    expect(status).toBe(1);
+  });
+
   it('fails an unclassified CLI action', () => {
     const manifest = realManifest();
     delete manifest.cli['agents list'];

@@ -1,0 +1,15 @@
+{
+  "revision": "23c4ecb25c6518b1bc7ccb8a25ffc2044346836b",
+
+  "notes": [
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Reviewed responsive inventory delta: embedded mobile Inbox is now enumerated as a covered action surface and the loading-sheet evidence states its limits. Rebinding existing loading chrome to shared composer popover CSS changes no shell kernel, distribution, install trust, required slot or plugin contract. Scope is this inventory delta only.","inputs":["docs/design/shell-plugins-distributions.md"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed MobileSheetPending caller in ChatDockMobileHeader and its existing ResponsiveDialogSurface. Removed switcher CSS had orphaned pending Chat actions; it now uses the loaded popover overlay/panel and existing notes CSS. Close, focus/history and viewport ownership remain shared. Responsive inventory names the embedded Inbox and actual tests; no exception or ratchet ceiling changed. Both actual stylesheet guards pass and 64 header/shared-surface tests pass; delayed network-chunk rendering not independently qualified.","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-action-surfaces.txt","docs/ui/responsive-surfaces.json","src-ui/src/components/chat-dock/MobileSheetPending.tsx"]},
+
+    {"path":"docs/guides/theming.md","note":"Reviewed inventory and pending CSS binding delta: existing composer popover skin supplies opaque background, border, color and positioning; no product-theme class, token, light/dark mapping, channel alias or startup theme selection changed. 390/1440 dark/light Inbox fixtures were inspected; no new broad native/theme claim.","inputs":["docs/guides/theming.md","docs/ui/responsive-action-surfaces.txt","docs/ui/responsive-surfaces.json"]},
+
+    {"path":"docs/patterns/backend.md","note":"Reviewed the responsive-surface and action inventory edits against this branch range. They enumerate UI coverage and correct a loading-sheet CSS dependency; no route, fetch/authorization, server effect, scheduler, adapter or error contract changed. Backend patterns remain accurate for this narrow delta.","inputs":["docs/patterns/backend.md","docs/ui/responsive-action-surfaces.txt","docs/ui/responsive-surfaces.json"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed loading-sheet class binding against consumer-owned ResponsiveDialogSurface styles and responsive inventory requirements. Existing fixed composer popover overlay and opaque panel styles are reused, not copied; the embedded Inbox is enumerated with concrete fixture/evidence limits. Shared state, query, navigation, and component-style contracts are unchanged.","inputs":["docs/patterns/frontend.md","docs/ui/responsive-action-surfaces.txt","docs/ui/responsive-surfaces.json"]}
+  ]
+}

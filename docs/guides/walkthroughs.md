@@ -1,6 +1,6 @@
 # Import a Walkthrough
 
-A Walkthrough combines a recording's transcript and selected JPEG frames in
+An imported Walkthrough combines a recording's transcript and selected JPEG frames in
 one [manifest](../reference/contracts.md#walkthrough). An agent reads that
 manifest and the images; it does not need the recorder's API. Visible pointer
 dots or ink stay in the images. The importer does not detect marks or identify
@@ -32,6 +32,44 @@ restart recovery reconciles an interrupted import on its next enabled status rea
 Preview state that cannot be read fails closed. Normal Project permissions still
 apply while enabled. Promotion needs human narration, platform, resource,
 authorization/recovery and usability evidence beyond fixture and synthesized-speech runs.
+
+## Record a Task clip
+
+With Walkthroughs enabled, a bound lead Session can call the sensitive
+`station-browser` tool `browser_record_to_task` with `durationMs` (1–30,000),
+and optional `browserSessionId`, `label`, and `maxBytes` (at most 16 MiB). The
+Task comes from the verified Session binding, not the arguments. Omitting the
+Browser selector requires exactly one eligible live session in the caller's
+Project profile. FFmpeg must be available through the media-tools resolver.
+
+The recorder pins a clean Task workspace and its commit, consumes Browser
+screencast frames, and encodes a silent WebM. It checks the workspace, Browser
+generation, caller, Task and preview again before publication. Dirty workspaces,
+unobservable submodules, changed authority, unavailable media tools, excess
+bytes or exhausted recording capacity refuse the operation. A commit pin does
+not prove the displayed page was built from that commit. The manifest retains
+the commit, recording digest and byte length, and up to ten selected frames;
+audio and transcript coverage are absent.
+
+Cancelling the recording request, closing its Browser surface, or stopping
+Station cancels an in-progress capture or encoding. The recorder releases its
+viewer, stops and waits for FFmpeg, and removes staging before cancellation
+finishes. A cancelled recording is not published. Station bounds its cleanup
+waits and reports a shutdown failure if cleanup cannot finish.
+
+Task clips live under the Project's private `walkthroughs/.task-clips/` tree,
+scoped to Project, Task and Task creation time. They do not appear in the
+Project import list. Task Review authorization and the live Walkthroughs preview
+are checked on list, manifest, frame and video reads; another Task's clip is not
+found. There is no Task clip deletion route in this increment.
+
+Enable **Task review** as well to open **Task → Review → Screens**. Each clip
+shows its label, commit and duration. **Show more clips** loads another page;
+opening a clip reads its video, and closing it releases the video and object URL.
+The Review tab does not add comments to clips. The
+[Task Review API](../reference/api.md#task-review-threads) describes the read
+routes; [Browser workspace](browser-workspace.md#record-a-task-walkthrough)
+describes the Agent tool's authority.
 
 ## Import and read
 
@@ -213,3 +251,9 @@ explicit test binaries to run the real FFmpeg pipeline with a timestamped fake
 transcriber. Its fake transcript does not qualify recognition quality. A real narrated
 Station recording and the shared recognizer are exercised separately during integration;
 unsynthesized human accuracy and released-package behavior remain unverified.
+
+The [Task capture route tests](../../src-server/routes/__tests__/browser-agent-capture.test.ts)
+exercise real Git, SQLite and FFmpeg with a controlled screencast producer,
+including Task isolation and encoded-byte refusal. The Review render journey
+uses a seeded clip and real local read routes. Neither proves a live Browser
+recording, a provider session, a real device or a released package.

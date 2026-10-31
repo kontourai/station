@@ -81,6 +81,14 @@ Project. **Details** contains identity, local workspace metadata, Basis,
 references and inspection.
 Subtask completion does not automatically complete its parent.
 
+With the **Chat apps** Feature Preview enabled, open **Details → Written to
+the issue** to load the Task's recorded outbound attempts. Each entry names its
+target, time, outcome and any failure; retry links connect it to the original
+attempt. An empty history means no writes were recorded by this seam, not that
+no external writes happened. Task-bound chat delivery and tracker status
+producers are still pending; external `gh` commands and existing unbound PR
+actions do not populate this history.
+
 If the workspace is not ready, Station keeps the relevant Connections action
 visible. Run `station doctor` for a local diagnosis.
 

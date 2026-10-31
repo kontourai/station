@@ -1,11 +1,12 @@
 import type {
   AgentJobProposal,
   AgentWakeUp,
-  ConversationScheduledJob,
 } from '@kontourai/station-contracts/agent-schedule';
 import type { SchedulerJob } from '@kontourai/station-contracts/scheduler';
 import type { ReactNode } from 'react';
+import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useNavigation } from '../../contexts/NavigationContext';
+import { schedulerJobDialogStore } from '../../contexts/scheduler-job-dialog-store';
 import { useAgentSchedule } from '../../hooks/useAgentSchedule';
 import {
   PRESENCE_FALLBACK_MS,
@@ -13,6 +14,7 @@ import {
 } from '../../hooks/usePresenceList';
 import {
   useRunJob,
+  useScheduledConversationTargetCapability,
   useSchedulerJobs,
   useToggleJob,
 } from '../../hooks/useScheduler';
@@ -27,17 +29,19 @@ type ScheduledRow =
   | { kind: 'wake-up'; key: string; wakeUp: AgentWakeUp }
   | { kind: 'resume'; key: string; threadId: string; dueAt: string }
   | { kind: 'proposal'; key: string; proposal: AgentJobProposal }
-  | { kind: 'job'; key: string; job: ConversationScheduledJob };
+  | { kind: 'job'; key: string; name: string };
 
 const rowKey = (row: ScheduledRow) => row.key;
 
 /**
- * The "This chat" card's Scheduled section: everything that will act on this
- * conversation later, or that it set up. Check-backs the agent scheduled, a
- * usage-limit resume waiting for its reset, job proposals waiting for the
- * person, and the jobs the person approved from here. Each row offers what
- * its own route allows: Cancel, or Run now / on-off / Edit for a job. Hidden
- * when there is nothing to list.
+ * The "This chat" card's Automations section: everything that will act on
+ * this conversation later, or that it set up. Check-backs the agent
+ * scheduled, a usage-limit resume waiting for its reset, job proposals
+ * waiting for the person, automations whose runs land in this chat, and
+ * older jobs the person approved from here. Each row offers what its own
+ * route allows: Cancel, or Run now / on-off / Edit for an automation. When
+ * the host runs automations in a chat, it offers a new one for this chat even
+ * with nothing listed; otherwise it is hidden when there is nothing to list.
  */
 export function SessionScheduledSection({
   conversationId,
@@ -50,6 +54,9 @@ export function SessionScheduledSection({
   const { schedule, loaded, cancelWakeUp, holdResume } =
     useAgentSchedule(conversationId);
   const { navigate } = useNavigation();
+  const authority = useHostRequestAuthorityScope();
+  const targetsSupported =
+    useScheduledConversationTargetCapability().data === true;
   const rows: ScheduledRow[] = [
     ...schedule.wakeUps.map((wakeUp) => ({
       kind: 'wake-up' as const,
@@ -71,14 +78,17 @@ export function SessionScheduledSection({
       key: `proposal:${proposal.id}`,
       proposal,
     })),
-    ...schedule.jobs.map((job) => ({
-      kind: 'job' as const,
-      key: `job:${job.name}`,
-      job,
-    })),
+    // An automation targeting this chat and a job approved here before
+    // targets existed are the same kind of row; a name is listed once.
+    ...[
+      ...new Set([
+        ...(schedule.automations ?? []).map((automation) => automation.name),
+        ...schedule.jobs.map((job) => job.name),
+      ]),
+    ].map((name) => ({ kind: 'job' as const, key: `job:${name}`, name })),
   ];
   const shown = usePresenceList(rows, rowKey, PRESENCE_FALLBACK_MS, loaded);
-  if (shown.list.length === 0) return null;
+  if (shown.list.length === 0 && !targetsSupported) return null;
   const now = Date.now();
   return (
     <section
@@ -87,92 +97,112 @@ export function SessionScheduledSection({
     >
       <div className="session-scheduled__header">
         <h3 id="session-scheduled-title" className="session-scheduled__title">
-          Scheduled
+          Automations
         </h3>
+        {targetsSupported && authority ? (
+          <button
+            type="button"
+            className="session-context-card__link session-scheduled__all"
+            onClick={() =>
+              wrap(() =>
+                schedulerJobDialogStore.open({
+                  authority,
+                  prefill: { conversationId },
+                }),
+              )
+            }
+          >
+            New automation
+          </button>
+        ) : null}
         <button
           type="button"
           className="session-context-card__link session-scheduled__all"
-          onClick={() => wrap(() => navigate('/schedule'))}
+          onClick={() => wrap(() => navigate('/automations'))}
         >
-          All jobs
+          All automations
         </button>
       </div>
-      <ul className="session-scheduled__rows">
-        {shown.list.map(({ item, key, phase }) => (
-          <li
-            key={key}
-            className="session-scheduled__item"
-            data-phase={phase}
-            inert={phase === 'exiting' || undefined}
-            onAnimationEnd={(event) => {
-              if (event.target === event.currentTarget) shown.settle(key);
-            }}
-            onTransitionEnd={(event) => {
-              if (
-                event.target === event.currentTarget &&
-                event.propertyName === 'opacity'
-              )
-                shown.settle(key);
-            }}
-          >
-            <div className="session-scheduled__clip">
-              {item.kind === 'wake-up' ? (
-                <Row
-                  glyph={<TimeGlyph className="session-scheduled__glyph" />}
-                  name={item.wakeUp.note}
-                  when={
-                    item.wakeUp.state === 'needs_approval'
-                      ? 'Needs your approval'
-                      : `Check-back at ${clockTime(Date.parse(item.wakeUp.dueAt), now)}`
-                  }
-                  actions={
-                    item.wakeUp.state === 'needs_approval' ? undefined : (
+      {shown.list.length === 0 ? null : (
+        <ul className="session-scheduled__rows">
+          {shown.list.map(({ item, key, phase }) => (
+            <li
+              key={key}
+              className="session-scheduled__item"
+              data-phase={phase}
+              inert={phase === 'exiting' || undefined}
+              onAnimationEnd={(event) => {
+                if (event.target === event.currentTarget) shown.settle(key);
+              }}
+              onTransitionEnd={(event) => {
+                if (
+                  event.target === event.currentTarget &&
+                  event.propertyName === 'opacity'
+                )
+                  shown.settle(key);
+              }}
+            >
+              <div className="session-scheduled__clip">
+                {item.kind === 'wake-up' ? (
+                  <Row
+                    glyph={<TimeGlyph className="session-scheduled__glyph" />}
+                    name={item.wakeUp.note}
+                    when={
+                      item.wakeUp.state === 'needs_approval'
+                        ? 'Needs your approval'
+                        : `Check-back at ${clockTime(Date.parse(item.wakeUp.dueAt), now)}`
+                    }
+                    actions={
+                      item.wakeUp.state === 'needs_approval' ? undefined : (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={cancelWakeUp.isPending}
+                          onClick={() => cancelWakeUp.mutate(item.wakeUp.id)}
+                        >
+                          Cancel
+                        </Button>
+                      )
+                    }
+                  />
+                ) : item.kind === 'resume' ? (
+                  <Row
+                    glyph={<TimeGlyph className="session-scheduled__glyph" />}
+                    name="Resume after usage limit"
+                    when={`At ${clockTime(Date.parse(item.dueAt), now)}`}
+                    actions={
                       <Button
                         size="sm"
                         variant="ghost"
-                        disabled={cancelWakeUp.isPending}
-                        onClick={() => cancelWakeUp.mutate(item.wakeUp.id)}
+                        disabled={holdResume.isPending}
+                        onClick={() => holdResume.mutate(item.threadId)}
                       >
                         Cancel
                       </Button>
-                    )
-                  }
-                />
-              ) : item.kind === 'resume' ? (
-                <Row
-                  glyph={<TimeGlyph className="session-scheduled__glyph" />}
-                  name="Resume after usage limit"
-                  when={`At ${clockTime(Date.parse(item.dueAt), now)}`}
-                  actions={
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      disabled={holdResume.isPending}
-                      onClick={() => holdResume.mutate(item.threadId)}
-                    >
-                      Cancel
-                    </Button>
-                  }
-                />
-              ) : item.kind === 'proposal' ? (
-                <Row
-                  glyph={<CalendarGlyph className="session-scheduled__glyph" />}
-                  name={item.proposal.job.name}
-                  when="Needs your approval"
-                />
-              ) : (
-                <JobRow
-                  name={item.job.name}
-                  now={now}
-                  onEdit={() =>
-                    wrap(() => navigate('/schedule', { job: item.job.name }))
-                  }
-                />
-              )}
-            </div>
-          </li>
-        ))}
-      </ul>
+                    }
+                  />
+                ) : item.kind === 'proposal' ? (
+                  <Row
+                    glyph={
+                      <CalendarGlyph className="session-scheduled__glyph" />
+                    }
+                    name={item.proposal.job.name}
+                    when="Needs your approval"
+                  />
+                ) : (
+                  <JobRow
+                    name={item.name}
+                    now={now}
+                    onEdit={() =>
+                      wrap(() => navigate('/automations', { job: item.name }))
+                    }
+                  />
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   );
 }
@@ -218,10 +248,13 @@ function jobWhen(job: SchedulerJob, now: number): string {
         : Number.isFinite(next)
           ? `Next at ${clockTime(next, now)}`
           : 'Scheduled';
-  return job.enabled ? cadence : `${cadence} · paused`;
+  const failing = job.consecutiveFailures
+    ? ` · ${job.consecutiveFailures} failed`
+    : '';
+  return job.enabled ? `${cadence}${failing}` : `${cadence} · paused${failing}`;
 }
 
-/** A job approved from this chat, read from the scheduler's own list. */
+/** An automation for this chat, read from the scheduler's own list. */
 function JobRow({
   name,
   now,

@@ -1,0 +1,7 @@
+{
+  "revision": "6a0091138b4120acc5b103f95708a031c0b0fa4e",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed screenshot fixture selector changes; no telemetry publisher, consent/save flow, disclosure, classification or payload changes. The server-side telemetry/privacy claims remain unaffected by replacing the chat title sheet. No new live telemetry verification claimed.","inputs":["docs/reference/usage-telemetry.md","tests/screenshots.spec.ts"]}
+  ]
+}

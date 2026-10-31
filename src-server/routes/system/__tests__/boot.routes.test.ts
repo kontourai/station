@@ -25,6 +25,7 @@ describe('boot routes', () => {
     // deliberate edit here too.
     expect(await json(response)).toEqual({
       version: 1,
+      sharedRealtime: true,
       sections: {
         auth: { data: { authenticated: true } },
         config: { data: { success: true, data: {} } },

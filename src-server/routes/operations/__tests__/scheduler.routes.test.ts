@@ -22,8 +22,9 @@ vi.mock('../../../telemetry/metrics.js', () => ({
 const { createSchedulerRoutes } = await import('../scheduler.js');
 
 // Realistic shapes matching what the UI reads
+// The built-in scheduler's job shape: `target` is an automation target
+// object when present, never the route's `:target` name.
 const mockJob = {
-  target: 'daily-report',
   name: 'daily-report',
   cron: '0 9 * * *',
   prompt: 'Generate daily report',
@@ -36,7 +37,17 @@ const mockJob = {
 
 const mockStats = {
   providers: {
-    builtin: { totalJobs: 2, totalRuns: 10, successRate: 0.9 },
+    builtin: {
+      jobs: [
+        {
+          name: 'daily-report',
+          total: 10,
+          successes: 9,
+          failures: 1,
+          success_rate: 90,
+        },
+      ],
+    },
   },
   summary: { totalJobs: 2, totalRuns: 10, successRate: 0.9 },
 };
@@ -63,6 +74,7 @@ function createMockService() {
     listProviders: vi.fn().mockReturnValue([mockProvider]),
     listJobs: vi.fn().mockResolvedValue([mockJob]),
     getStats: vi.fn().mockResolvedValue(mockStats),
+    listRunSummaries: vi.fn().mockResolvedValue([]),
     getStatus: vi.fn().mockResolvedValue(mockStatus),
     previewSchedule: vi
       .fn()
@@ -222,7 +234,6 @@ describe('Scheduler Routes', () => {
     const body = await json(await app.request('/jobs'));
     expect(body.success).toBe(true);
     expect(body.data[0]).toMatchObject({
-      target: 'daily-report',
       name: 'daily-report',
       cron: '0 9 * * *',
       enabled: true,

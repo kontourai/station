@@ -3,6 +3,18 @@
  * lazy chunk, not the entry stylesheet: nothing else draws these.
  */
 
+.chat-dock__mobile-identity {
+  cursor: default;
+}
+
+.chat-dock__mobile-identity > .chat-dock__mobile-header-icon {
+  flex: none;
+}
+
+.chat-dock__mobile-identity:hover {
+  background: transparent;
+}
+
 /* New and its destination project, one split control: New starts a chat,
    the caret half shows and changes where. Both halves keep the bar's quiet
    chrome; one shared frame says they belong together. */

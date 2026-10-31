@@ -21,8 +21,11 @@ export function AgentPicker({
   value,
   onChange,
   catalogErrorId,
+  anyEngine = false,
 }: {
   value: string;
+  /** Offer every engine: the automation runs in a chat, not on Station's engine. */
+  anyEngine?: boolean;
   onChange: (slug: string) => void;
   /**
    * #1536 S1: the id of the host's catalog-failure message, when the host is
@@ -37,12 +40,17 @@ export function AgentPicker({
   const agents = useAgents();
   const { loaded: agentsLoaded, settled: agentsSettled } =
     useAgentCatalogRead();
-  const { eligible } = useMemo(() => schedulerAgentOptions(agents), [agents]);
+  const { eligible } = useMemo(
+    () => schedulerAgentOptions(agents, { anyEngine }),
+    [agents, anyEngine],
+  );
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState('');
   const triggerRef = useRef<HTMLButtonElement>(null);
   const selected = agents.find((a) => a.slug === value);
-  const selectedRunnability = schedulerAgentRunnability(agents, value);
+  const selectedRunnability = schedulerAgentRunnability(agents, value, {
+    anyEngine,
+  });
 
   const filtered = useMemo(() => {
     if (!filter) return eligible;

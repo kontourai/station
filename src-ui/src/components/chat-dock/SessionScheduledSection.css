@@ -140,6 +140,9 @@
    wins over the card's full-width link whichever sheet loads last). */
 .session-scheduled__header .session-scheduled__all {
   width: auto;
+}
+
+.session-scheduled__header .session-scheduled__all:first-of-type {
   margin-inline-start: auto;
 }
 

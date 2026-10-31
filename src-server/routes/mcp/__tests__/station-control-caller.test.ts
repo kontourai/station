@@ -1518,6 +1518,7 @@ describe('station-control verified caller (in-process Claude delivery)', () => {
       'browser_navigate',
       'browser_open',
       'browser_press',
+      'browser_record_to_task',
       'browser_resize',
       'browser_scroll',
       'browser_select',

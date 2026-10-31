@@ -89,9 +89,9 @@ describe('primary page-action label grammar (station#4463 slice 5)', () => {
     );
   });
 
-  test('Schedule: "Add job"', () => {
+  test('Automations: "New automation"', () => {
     expect(extractScheduleAddLabel('src-ui/src/views/ScheduleView.tsx')).toBe(
-      'Add job',
+      'New automation',
     );
   });
 

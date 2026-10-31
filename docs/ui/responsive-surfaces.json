@@ -81,7 +81,7 @@
       "path": "src-ui/src/components/chat-dock/MobileSheetPending.tsx",
       "strategy": "covered",
       "contract": "ResponsiveDialogSurface",
-      "evidence": "src-ui/src/__tests__/MobileTaskSwitcherAnswerability.test.tsx and tests/mobile-chat-composer.spec.ts cover the lazy phone-sheet loading acknowledgement, close action, and shared responsive surface containment"
+      "evidence": "ChatDockMobileHeader.test.tsx covers the owning Chat actions trigger and ResponsiveDialogSurface.test.tsx covers shared close/focus behavior. The pending shell uses the same composer popover classes as the loaded sheet; dialog-surface-class-guard.mjs enforces their stylesheet definitions. Delayed-chunk rendering is not independently qualified."
     },
     {
       "path": "src-ui/src/components/chat-dock/SessionContextSheet.tsx",

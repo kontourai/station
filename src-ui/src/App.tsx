@@ -111,6 +111,13 @@ const loadOutboundQueueFlushMount = () =>
     default: module.OutboundQueueFlushMount,
   }));
 
+// The shared stream pulls in chat event projections. Start it with the shell,
+// but keep those projections out of the first-paint bundle.
+const loadServerEventsMount = () =>
+  import('./hooks/ServerEventsMount').then((module) => ({
+    default: module.ServerEventsMount,
+  }));
+
 import { useFeatureSettings } from './hooks/useFeatureSettings';
 import { useFocusReporter } from './hooks/useFocusReporter';
 import { useIsMobile } from './hooks/useIsMobile';
@@ -118,7 +125,7 @@ import { useKeyboardShortcut } from './hooks/useKeyboardShortcut';
 import { useNotificationOsAlerts } from './hooks/useNotificationOsAlerts';
 import { usePushNotifications } from './hooks/usePushNotifications';
 import { useQueryCacheReconnectSync } from './hooks/useQueryCacheReconnectSync';
-import { useServerEvents } from './hooks/useServerEvents';
+import { useServerEventsListener } from './hooks/useServerEventsListener';
 import { useTurnNotificationReads } from './hooks/useTurnNotificationReads';
 import { checkServerHealth, probeServerConnection } from './lib/serverHealth';
 import type { NavigationView } from './types';
@@ -158,7 +165,11 @@ function stripProjectSelectParam(): void {
   window.history.replaceState(window.history.state, '', cleanUrl);
 }
 
-function App() {
+function App({
+  loadServerEvents = loadServerEventsMount,
+}: {
+  loadServerEvents?: typeof loadServerEventsMount;
+} = {}) {
   const { apiBase: API_BASE } = useApiBase();
   // The saved connection's display identity for unavailable-state copy —
   // `connectionFailureCopy`'s contract wants the short name the user saved,
@@ -182,8 +193,8 @@ function App() {
   // recent input) is read: its failure must not escalate to their other
   // devices minutes later.
   useTurnNotificationReads();
-  // SSE event stream — replaces all polling for ACP status, agent changes, etc.
-  useServerEvents();
+  // Register the listener before the lazy transport can start.
+  useServerEventsListener();
   // #2585: tell Station whether this document is being looked at, so
   // notification delivery can avoid interrupting a surface already in use.
   useFocusReporter();
@@ -682,6 +693,11 @@ function App() {
               load={loadOutboundQueueFlushMount}
               pending={null}
               componentProps={{ apiBase: API_BASE }}
+            />
+            <LazyBoundary
+              load={loadServerEvents}
+              pending={null}
+              componentProps={{}}
             />
             <div className="app app--with-sidebar">
               {/* SHELL-14: the shell chrome is already first in DOM order

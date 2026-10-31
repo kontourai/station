@@ -423,7 +423,7 @@ export function JobDetail({
         // restoration — a dialog in appearance only. On the shared `Dialog` it
         // gets all three, plus the one dialog chrome (SHELL-02).
         <Dialog
-          eyebrow="Schedule"
+          eyebrow="Automations"
           title={`${name} — Run Output`}
           closeLabel="Close run output"
           onClose={() => setViewIdx(null)}

@@ -11,6 +11,21 @@ For the precise vocabulary used below, see [docs/glossary.md](../glossary.md).
 
 See the [application walkthrough](../learn/walkthroughs.md#connections) for a captured example and its evidence limits.
 
+## Integration capability status
+
+Turn on **Chat apps** in **Settings → Advanced → Feature previews**, then open
+**Connections → Integration status**. This section is visible only to the
+Station operator. Expand it to see each integration's actions, and hover over
+or choose a chip for its probe reason. **Refresh** checks again.
+
+**Works** requires a computed probe; **Unverified** means the observation did
+not establish that the action will succeed. **Failed** includes the failure;
+**Not configured** and **Not available yet** identify different next steps.
+The GitHub check observes the host's `gh` sign-in, not repository permissions.
+Discord gateway state and webhook configuration do not prove delivery. Slack,
+Linear and Jira actions are not available yet. Status is not an authorization
+grant. See the [API reference](../reference/api.md#integration-capability-status-and-task-write-back).
+
 ## S3 source profiles
 
 Experimental Project S3 sources use an explicitly selected named AWS profile on

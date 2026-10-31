@@ -89,7 +89,7 @@ export function resolveNotificationOpenHref(
   // Final fallback (archive#1100 review fix MEDIUM): a notification with no
   // resolvable session (e.g. a scheduled job failure — no session at all)
   // can still carry its OWN deep link in `metadata.link`
-  // (builtin-scheduler-execution.ts sets `/schedule?job=<name>`). Only a
+  // (builtin-scheduler-execution.ts sets `/automations?job=<name>`). Only a
   // same-origin relative path is trusted here — a notification's metadata
   // is not an authenticated navigation target, so an absolute/external or
   // protocol-relative ("//host/...") value is rejected rather than handed

@@ -18,7 +18,10 @@
  * offline detector — this is an additional subscriber to the same shared
  * per-connection coordinator, not a second poller.
  */
-import { useConnectionStatus } from '@kontourai/station-connect';
+import {
+  useConnectionStatus,
+  useConnections,
+} from '@kontourai/station-connect';
 import { useIsRestoring, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
 import { useAuthorityPersistence } from '../contexts/AuthorityPersistenceContext';
@@ -32,6 +35,7 @@ export function useQueryCacheReconnectSync(): void {
     pollInterval: 10_000,
   });
   const queryClient = useQueryClient();
+  const { activeConnection } = useConnections();
   const isRestoring = useIsRestoring();
   const { reobserve } = useAuthorityPersistence();
   // #2319: `null` until the first observation, NOT the status at mount. App
@@ -43,6 +47,10 @@ export function useQueryCacheReconnectSync(): void {
   // invalidated. `useOutboundQueueFlush` handles the same shape with its own
   // on-mount pass.
   const previousStatusRef = useRef<typeof status | null>(null);
+  const previousBootRef = useRef({
+    connectionId: activeConnection?.id,
+    bootId: activeConnection?.lastBootId,
+  });
 
   useEffect(() => {
     // Invalidating during the persisted-cache restore reaches an empty cache,
@@ -52,6 +60,25 @@ export function useQueryCacheReconnectSync(): void {
     if (isRestoring) return;
     const previousStatus = previousStatusRef.current;
     previousStatusRef.current = status;
+    const previousBoot = previousBootRef.current;
+    const currentBoot = {
+      connectionId: activeConnection?.id,
+      bootId: activeConnection?.lastBootId,
+    };
+    previousBootRef.current = currentBoot;
+    const bootChanged =
+      previousBoot.connectionId === currentBoot.connectionId &&
+      !!previousBoot.bootId &&
+      !!currentBoot.bootId &&
+      previousBoot.bootId !== currentBoot.bootId;
+    if (
+      status === 'connected' &&
+      (previousStatus !== 'connected' || bootChanged)
+    ) {
+      void queryClient.invalidateQueries({
+        queryKey: ['scheduler', 'conversation-target-capability'],
+      });
+    }
     if (previousStatus !== 'connected' && status === 'connected') {
       void invalidatePersistedQueries(queryClient);
       // archive#3069 — recover queries that FAILED during the outage, whatever
@@ -90,5 +117,12 @@ export function useQueryCacheReconnectSync(): void {
       // remounts it connected and re-reads again, without end.
       if (previousStatus !== null) reobserve?.();
     }
-  }, [status, isRestoring, queryClient, reobserve]);
+  }, [
+    status,
+    isRestoring,
+    queryClient,
+    reobserve,
+    activeConnection?.id,
+    activeConnection?.lastBootId,
+  ]);
 }

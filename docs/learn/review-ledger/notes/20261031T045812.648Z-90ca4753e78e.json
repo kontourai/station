@@ -1,0 +1,7 @@
+{
+  "revision": "6a0091138b4120acc5b103f95708a031c0b0fa4e",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed this branch delta in useChatDockOverlays and the ChatDock caller: mobile Inbox state and imported/New-chat reader intent remain UI-owned; required Inbox/Chat slot hosting and server ownership are unchanged. Scope is the changed UI-entry claims, not a new module-map-wide semantic audit.","inputs":["docs/architecture/module-map.md","src-ui/src/components/chat-dock/useChatDockOverlays.ts"]}
+  ]
+}

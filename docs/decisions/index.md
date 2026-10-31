@@ -11,6 +11,7 @@ Numbered ADRs under `docs/adr/` are frozen history and are not listed here.
 | Topic | Status | Decision |
 | --- | --- | --- |
 | [agent-authored-tracker-updates](./agent-authored-tracker-updates.md) | current | Agents keep tracker items current through comments and PR links, not status sync |
+| [automations-unify-schedules](./automations-unify-schedules.md) | current | Automations are scheduled work that runs in a conversation, on any engine |
 | [browser-agent-actions-and-bound-channel](./browser-agent-actions-and-bound-channel.md) | current | Browser Agent actions and cross-engine binding |
 | [device-agent-control](./device-agent-control.md) | current | Bound agents control host-qualified device live surfaces through the shared lease |
 | [html-replies](./html-replies.md) | current | Contain agent-authored HTML in a page-only sandbox |

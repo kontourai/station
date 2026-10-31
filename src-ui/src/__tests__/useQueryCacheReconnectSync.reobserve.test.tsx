@@ -15,6 +15,7 @@ const connection = vi.hoisted(() => ({
 
 vi.mock('@kontourai/station-connect', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-connect')>()),
+  useConnections: () => ({ activeConnection: null }),
   useConnectionStatus: () => ({
     status: connection.status,
     checking: false,

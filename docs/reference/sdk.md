@@ -260,6 +260,25 @@ Station does not deliver it (`not-delivered`); older hosts omit it.
 only for an integration whose `trustReview` this host returned. It
 invalidates the integrations queries.
 
+## Integration capability status and Task write-back
+
+The SDK root exports `fetchIntegrationStatus(apiBase, options?)` and
+`useIntegrationStatusQuery(apiBase, config?)`, plus
+`fetchTaskWriteBack(apiBase, taskId, options?)` and
+`useTaskWriteBackQuery(apiBase, taskId, config?)`. Pass the captured
+`requestScope`; queries partition by Station and authority, discard unused
+cache data, refresh on mount, do not retain previous results, and do not retry
+automatically. The Task query also partitions by Task ID and may be disabled
+until the history is opened.
+
+Both readers validate the bounded response and reject malformed data. The
+status reader throws `IntegrationStatusUnsupportedError` on 404; the Task
+reader's 404 can mean a refused or absent Task, or an older host. Neither
+reader substitutes an empty or working result for a failure. These exports
+require an SDK version and Station host containing them. See the
+[API](api.md#integration-capability-status-and-task-write-back) for authority,
+probe limits and the current lack of outbound producers.
+
 ## Project tool library
 
 `@kontourai/station-sdk/tool-library` exposes `ToolLibraryClient` with explicit
@@ -4693,6 +4712,20 @@ Some family subclasses are `StationHttpError`s too. The scheduler's
 `SchedulerRunFailedError`, `SchedulerRunRefusedError`) are built from the
 error the envelope helper made of the response, so they keep its status,
 `details` and `Retry-After`; a run error's `code` stays its own fixed value.
+`useScheduledConversationTargetCapability()` reads the host's public
+handshake: `true` when it advertises `scheduledConversationTarget`, so a job
+may carry a `target` that runs in a conversation on any engine, `false` when
+it does not, and `null` when the handshake could not be read. Offer other
+engines only on `true`.
+While observed in a foreground client, the hook reads a fresh descriptor every
+10 seconds; Station also invalidates it after reconnect and a recorded host
+boot change. A failed read returns `null` rather than assuming support.
+Scheduler list, statistics and status results are scoped to the caller.
+Job logs and scheduled run output use each run's recorded target; a retargeted
+job does not transfer its earlier conversation's history to the new target.
+Older runs without a recorded target require the creator and current-target
+read access, except creatorless, untargeted jobs remain readable by the local
+operator. An agent can read only its own conversation's runs.
 `PluginCollectionHttpError` is built the same way: it keeps the envelope's
 `code` on the error and on its `envelope`, and keeps the refusal's `details`
 and `Retry-After`.
@@ -6472,6 +6505,16 @@ must revoke it. Content stays Task-scoped, uses authenticated fetch and throws
 `StationHttpError` on refusals. These functions and `TaskCapture`,
 `TaskReviewCreateCaptureRequest` and `TaskCaptureBrowserSession` are exported
 from both the root and query barrels.
+
+For Task-bound Browser clips, `fetchTaskWalkthroughPage(taskId, requestScope,
+cursor?, signal?)` reads at most five validated manifests. `useTaskWalkthroughsQuery`
+accepts `{requestScope, taskCreatedAt}` and exposes additional pages on request.
+`useTaskWalkthroughVideoQuery(taskId, clip, scope)` reads one bounded video;
+mount it only for an open player. The hooks partition by Station, authority and
+Task incarnation, and remove the video's cached bytes after the player unmounts.
+Pass the captured `ApiRequestScope`; the SDK checks it against the active
+credential on request and body reads. Callers own and must revoke object URLs.
+These are Task Review reads, separate from the Project import fetchers above.
 
 `useSendReviewThreadsMutation(taskId)` takes the shared `TaskReviewSendRequest`
 `{threadIds, operationId, mode}`, where `mode` is `send` or `send-and-resolve`. It returns `{deliveryKey, status,

@@ -7,6 +7,11 @@ import {
   actorOwnsSessionProfile,
   redactBrowserUrl,
 } from '../../services/browser/browser-session-registry.js';
+import {
+  FeaturePreviewDisabledError,
+  requireFeaturePreview,
+} from '../../services/feature-previews/feature-preview-refusal.js';
+import type { FeaturePreviewSelector } from '../../services/feature-previews/feature-preview-registry.js';
 import type {
   ProjectTaskRoomRuntime,
   TaskReviewAccess,
@@ -16,11 +21,16 @@ import {
   TaskBrowserCaptureError,
   type TaskCaptureBrowserRegistry,
 } from '../../services/projects/task-browser-capture.js';
+import type { TaskWalkthroughStore } from '../../services/walkthroughs/task-walkthrough-store.js';
 
 export function createTaskReviewCaptureRoutes(deps: {
   logger: { warn(message: string, meta?: Record<string, unknown>): void };
   runtime: Pick<ProjectTaskRoomRuntime, 'personTaskReviewAccess'>;
   captures: TaskBrowserCapture;
+  walkthroughs?: {
+    store: TaskWalkthroughStore;
+    preview: FeaturePreviewSelector;
+  };
   registry: TaskCaptureBrowserRegistry;
   localProjectIdFor(identity: string): string | undefined;
   authorizeProject: BrowserProjectAuthorizer;
@@ -40,7 +50,11 @@ export function createTaskReviewCaptureRoutes(deps: {
   app.use('/:taskId/review/capture-sessions', captureBoundary);
   app.use('/:taskId/review/captures', captureBoundary);
   app.use('/:taskId/review/captures/*', captureBoundary);
+  app.use('/:taskId/review/walkthroughs', captureBoundary);
+  app.use('/:taskId/review/walkthroughs/*', captureBoundary);
   app.onError((error, c) => {
+    if (error instanceof FeaturePreviewDisabledError)
+      return c.json(error.refusal, 404);
     if (
       !(error instanceof TaskBrowserCaptureError) ||
       error.cause !== undefined
@@ -168,5 +182,84 @@ export function createTaskReviewCaptureRoutes(deps: {
       'Content-Type': capture.mediaType,
     });
   });
+  const walkthroughs = () => {
+    if (!deps.walkthroughs)
+      throw new TaskBrowserCaptureError(
+        'not-found',
+        'Task Walkthroughs unavailable.',
+      );
+    requireFeaturePreview(
+      deps.walkthroughs.preview,
+      'walkthroughs',
+      'Walkthroughs',
+    );
+    return deps.walkthroughs.store;
+  };
+  app.get('/:taskId/review/walkthroughs', async (c) => {
+    const store = walkthroughs();
+    const access = await accessFor(c);
+    const rawLimit = c.req.query('limit');
+    const cursor = c.req.query('cursor');
+    const page = await store.list(
+      access,
+      rawLimit === undefined
+        ? undefined
+        : /^\d+$/.test(rawLimit)
+          ? Number(rawLimit)
+          : NaN,
+      cursor,
+    );
+    walkthroughs();
+    if (!deps.isRequestPrincipalCurrent(c.req.raw))
+      throw new TaskBrowserCaptureError('not-found', 'Task not found.');
+    return c.json({ success: true, data: page });
+  });
+  app.get('/:taskId/review/walkthroughs/:walkthroughId', async (c) => {
+    const store = walkthroughs();
+    const access = await accessFor(c);
+    const item = await store.get(access, c.req.param('walkthroughId'));
+    walkthroughs();
+    if (!item || !deps.isRequestPrincipalCurrent(c.req.raw))
+      throw new TaskBrowserCaptureError(
+        'not-found',
+        'Task Walkthrough not found.',
+      );
+    return c.json({ success: true, data: { walkthrough: item } });
+  });
+  app.get('/:taskId/review/walkthroughs/:walkthroughId/video', async (c) => {
+    const store = walkthroughs();
+    const access = await accessFor(c);
+    const bytes = await store.video(access, c.req.param('walkthroughId'));
+    walkthroughs();
+    if (!bytes || !deps.isRequestPrincipalCurrent(c.req.raw))
+      throw new TaskBrowserCaptureError(
+        'not-found',
+        'Task Walkthrough not found.',
+      );
+    c.header('X-Content-Type-Options', 'nosniff');
+    return c.body(new Uint8Array(bytes), 200, { 'Content-Type': 'video/webm' });
+  });
+  app.get(
+    '/:taskId/review/walkthroughs/:walkthroughId/frames/:frameId',
+    async (c) => {
+      const store = walkthroughs();
+      const access = await accessFor(c);
+      const bytes = await store.frame(
+        access,
+        c.req.param('walkthroughId'),
+        c.req.param('frameId'),
+      );
+      walkthroughs();
+      if (!bytes || !deps.isRequestPrincipalCurrent(c.req.raw))
+        throw new TaskBrowserCaptureError(
+          'not-found',
+          'Task Walkthrough frame not found.',
+        );
+      c.header('X-Content-Type-Options', 'nosniff');
+      return c.body(new Uint8Array(bytes), 200, {
+        'Content-Type': 'image/jpeg',
+      });
+    },
+  );
   return app;
 }

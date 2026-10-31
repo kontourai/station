@@ -1,0 +1,21 @@
+{
+  "revision": "cfa1ae124da3754c1f6f53826f18d49750a43ba0",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed the linked claims against scheduler diagnostic binding and notification-popover action changes. This document remains accurate within its stated scope; the config reference owns the revised log fields. Focused and fixture-based visual evidence does not establish deployed or live-provider behavior.","inputs":["docs/architecture/abstraction-review.md","docs/reference/config.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the linked claims against scheduler diagnostic binding and notification-popover action changes. This document remains accurate within its stated scope; the config reference owns the revised log fields. Focused and fixture-based visual evidence does not establish deployed or live-provider behavior.","inputs":["docs/architecture/module-map.md","src-server/services/scheduling/__tests__/builtin-scheduler-execution.test.ts","src-server/services/scheduling/builtin-scheduler.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed the linked claims against scheduler diagnostic binding and notification-popover action changes. This document remains accurate within its stated scope; the config reference owns the revised log fields. Focused and fixture-based visual evidence does not establish deployed or live-provider behavior.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/components/notifications/NotificationHistory.tsx"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Reviewed the linked claims against scheduler diagnostic binding and notification-popover action changes. This document remains accurate within its stated scope; the config reference owns the revised log fields. Focused and fixture-based visual evidence does not establish deployed or live-provider behavior.","inputs":["docs/design/settings-architecture.md","docs/reference/config.md"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Reviewed the linked claims against scheduler diagnostic binding and notification-popover action changes. This document remains accurate within its stated scope; the config reference owns the revised log fields. Focused and fixture-based visual evidence does not establish deployed or live-provider behavior.","inputs":["docs/guides/starter-work.md","src-server/services/scheduling/builtin-scheduler.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the linked claims against scheduler diagnostic binding and notification-popover action changes. This document remains accurate within its stated scope; the config reference owns the revised log fields. Focused and fixture-based visual evidence does not establish deployed or live-provider behavior.","inputs":["docs/reference/api.md","src-server/services/scheduling/builtin-scheduler.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed scheduler correlation fields against targeted and untargeted execution, fatigue logging and diagnostic reads. Updated the reference to distinguish opaque targeted identifiers from legacy job names; the focused log fixture covers failures and fatigue, not general diagnostic privacy.","inputs":["docs/reference/config.md","src-server/services/scheduling/builtin-scheduler-execution.ts","src-server/services/scheduling/builtin-scheduler.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the linked claims against scheduler diagnostic binding and notification-popover action changes. This document remains accurate within its stated scope; the config reference owns the revised log fields. Focused and fixture-based visual evidence does not establish deployed or live-provider behavior.","inputs":["docs/reference/station-docs.md","src-server/services/scheduling/builtin-scheduler-execution.ts"]}
+  ]
+}

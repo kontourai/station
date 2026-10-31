@@ -1890,7 +1890,8 @@ Hosted Stations have no inbox and so no check-backs, and refuse proposals.
 builds the person gate, the delivery and the routes' ports; the
 [authority test](../../src-server/security/__tests__/agent-schedule-authority.routes.test.ts)
 drives that composition through the real boundary, guard and routes per
-credential channel, with a real thread inbox.
+credential channel, with a real thread inbox. A person reads a conversation
+schedule with conversation read access; an agent may read its own.
 
 ## SessionDigest
 
@@ -5259,14 +5260,23 @@ its occurrence and firing time. Terminal outcomes consume that occurrence;
 manual runs do not advance the recurring cursor. Claim and `beginInvocation`
 persist before their respective effects. A dead initial pre-invocation owner
 can release its claim, while an advanced safe retry retains its run/attempt and
-budget. A dead invoked owner becomes indeterminate and is never automatically
+budget and is returned to the tick executor even for a manual run. A dead invoked owner becomes indeterminate and is never automatically
 replayed. A foreign owner's pid is probed before its recorded birth is read, so
 a dead pid releases its claim even when no birth was recorded; a live pid
 without one keeps the fence. One unreadable job record is quarantined in place:
 `claimDue` skips it and reports it once per record revision (BuiltinScheduler
 logs an error), and every other due job still claims. Settling a dead claim on
 such a record advances `last_run_ms` without rewriting the unreadable bytes. Exact revision checks let a concurrent job edit/delete win over old
-completion. Post-commit uncertainty requires exact readback; unavailable storage
+completion. Each claim snapshots its target; a dedicated target reserves its
+conversation identity before starting and records the observed conversation
+against that run, even if the job is retargeted. An unconfirmed start retains
+the reservation without claiming that the conversation exists. A later run adopts an already-started conversation
+through the inbox; a changed target gets a new reservation.
+Run reads use that target. Pre-change records require the creator and current
+conversation read access, except the local operator can read a creatorless,
+untargeted legacy job. Scheduler failure and monitor notices use generic public
+text because their notification audience is not conversation-bound. Fatigue excludes a claim still
+waiting for retry. Post-commit uncertainty requires exact readback; unavailable storage
 is a typed error, not an empty schedule or invented successful run.
 
 Automatic invocations use the published
@@ -5304,6 +5314,35 @@ principal through private async context. Omitted/legacy `default` selects the
 public `station` Agent; the adapter alone maps it to the private runtime key.
 The operator projection exposes the principal for standing-grant management,
 but creation/update does not accept caller-declared execution authority.
+
+**Conversation targets (Automations).** A job with a `target` never uses the
+scheduled-turn adapter. [ScheduledConversationRuns](../../src-server/services/scheduling/scheduled-conversation-runs.ts)
+queues each run on the target conversation's thread inbox as a framed Station
+turn under `scheduler:<runId>`, through the same hand-off check-backs use
+([`submitStationFramedTurn`](../../src-server/services/orchestration/station-turn-handoff.ts)),
+and settles from that turn's terminal event (a completion, an abort, or a
+non-retried `runtime.error`) within a 30-minute deadline. It holds a permit
+from its own pool (`maxConcurrentConversationHandoffs`) only until the turn is
+queued, never while it waits. A dedicated target's first run starts its
+conversation through the foreground execution seam; the ledger records the id
+once, and only if the target is still the one the run started from
+(`bindDedicatedConversation`). The run acts as the job's recorded
+`createdBy`, which no edit changes, with no full-access grant. The scheduler
+route admits a new target only for a person who may send to the conversation
+or an agent naming its own (the `automation-target-stays-in-own-conversation`
+guard rule), and admits every edit, run, enable, disable or delete of a
+targeted job against its stored target the same way. A target refuses
+monitors and retries. The ledger records a targeted occurrence more than six
+hours late as missed (`skipped: 'late'`, with every passed-over occurrence in
+`missedCount`, stamped so the failure outbox skips it). Fatigue disables a
+job after five consecutive failed occurrences (retries of one occurrence count
+once; a re-enable resets the count) through `applyFatigue`, one transaction
+that disables the job and records its owed notification
+(`scheduler_fatigue_announcements`), reconciled at startup, each tick and
+after every failed run. Without an inbox (hosted) no runner is composed and a
+targeted run fails before invocation. See the
+[dispatch test](../../src-server/services/scheduling/__tests__/scheduled-conversation-run-dispatch.test.ts)
+and [automation rule tests](../../src-server/services/scheduling/__tests__/automation-targets.test.ts).
 
 External monitor jobs follow a separate path in the same owner: the
 [monitor evaluator](../../src-server/services/scheduling/external-monitor.ts)
@@ -5917,6 +5956,12 @@ A producer may refuse an event for a reason the viewer can act on
 page dialog waits for its person), which reaches the viewer as that code
 rather than `dispatch-failed`. It cannot cancel an arbitrary producer effect
 already in flight.
+
+Task Browser recordings are owned by the runtime and bound to the selected
+Browser generation. Runtime shutdown disposes the recorder before stopping the
+Browser; unregistering the generation also cancels and joins its recordings.
+The recorder stops its encoder and removes staging before cleanup settles, and
+reports cleanup failure instead of treating a timed-out wait as success.
 
 **Real adapters and callers.** `browser-live-surfaces.ts` binds each live
 browser generation to `ChromiumScreencastProducer` and its profile authorizer.
@@ -6677,7 +6722,8 @@ transcription deadline; other terminal failures remain terminal.
 [CLI](../../packages/cli/src/commands/walkthrough.ts), and
 [MCP reads](../../src-server/tools/station-control-walkthrough-tools.ts) share
 HTTP fetchers. MCP reads images in bounded pages. The Activity operation row
-shows import progress and reopens the Project; no recording/review UI is added.
+shows import progress and reopens the Project. Task Browser clips use the
+separate Task-scoped store and Review player described below.
 See the [guide](../guides/walkthroughs.md#verification-limits) for evidence owners
 and explicit recognition, hosted and publication limits.
 
@@ -6877,6 +6923,18 @@ a capture, and Task authority to
 read digest-verified content with explicit image headers. The sensitive
 `browser_capture_to_task` operation uses the bound Session's execution binding.
 Screens are immutable Review items; region anchors pass the contract parser.
+
+[TaskBrowserRecording](../../src-server/services/projects/task-browser-recording.ts)
+records the bound lead Session's Browser screencast, pins and rechecks a clean
+workspace, encodes a silent bounded WebM, and publishes a validated Walkthrough
+through [TaskWalkthroughStore](../../src-server/services/walkthroughs/task-walkthrough-store.ts).
+The private scope includes Project, Task and Task creation time. The person
+routes recheck the Walkthroughs preview and Task authority on each list,
+manifest, frame and digest-verified video read. These clips do not join the
+Project import list. The [Review clip list and player](../../src-ui/src/views/task-workspace/review/TaskReviewClips.tsx)
+page metadata in fives and request a video only for an open player; unmount
+cancels the read, drops cached media and revokes its object URL. Review itself
+is behind `task-review`, and clip access also requires `walkthroughs`.
 
 The [SDK hooks](../../packages/sdk/src/query-domains/taskReview.ts) invalidate
 review reads after person mutations and support opt-in polling every three

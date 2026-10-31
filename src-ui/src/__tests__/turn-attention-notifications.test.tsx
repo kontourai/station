@@ -22,7 +22,7 @@ import { activeChatsStore } from '../contexts/active-chats-store';
 import { navigationStore } from '../contexts/NavigationContext';
 import { ToastProvider, toastStore } from '../contexts/ToastContext';
 import {
-  registerChatDraftCover,
+  registerChatReaderCover,
   registerFullscreenChatSurface,
 } from '../hooks/orchestration/chatForeground';
 import { handleOrchestrationEvent } from '../hooks/orchestration/eventHandlers';
@@ -213,7 +213,7 @@ describe('end-of-turn toasts', () => {
   // being read while it is covered.
   test('a chat covered by a New chat draft counts as background', () => {
     navigationStore.setActiveChat(BG);
-    const release = registerChatDraftCover();
+    const release = registerChatReaderCover();
     startTurn('turn-1');
     emit({ method: 'turn.completed', turnId: 'turn-1', outputText: 'Done.' });
     expect(toastCards()).toHaveLength(1);

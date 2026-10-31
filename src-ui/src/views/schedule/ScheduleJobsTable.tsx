@@ -127,12 +127,12 @@ export function ScheduleJobsTable({
         <TableFilter
           value={filterText}
           onChange={onFilterChange}
-          placeholder="Filter jobs…"
+          placeholder="Filter automations…"
         />
       </div>
       <div className="schedule__table-scroll">
         <span className="schedule__mobile-hint">Swipe for more →</span>
-        <table className="schedule__table" aria-label="Scheduled jobs">
+        <table className="schedule__table" aria-label="Automations">
           <thead>
             <tr>
               <SortHeader
@@ -198,6 +198,21 @@ export function ScheduleJobsTable({
                         <IconChevron />
                       </span>
                       {job.name}
+                      {job.target && (
+                        <span className="schedule__td--muted">
+                          {job.target.kind === 'dedicated'
+                            ? ' · own chat'
+                            : ' · in a chat'}
+                        </span>
+                      )}
+                      {(job.consecutiveFailures ?? 0) > 0 && (
+                        <span
+                          className="schedule__missed-badge"
+                          title="Failed runs since the last success"
+                        >
+                          <WarningGlyph /> {job.consecutiveFailures} failed
+                        </span>
+                      )}
                       {job.monitor?.kind === 'github-pull-request' && (
                         <span
                           className="schedule__td--muted"

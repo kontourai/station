@@ -111,7 +111,9 @@ async function expectNoHammeringAfter401(
   // conflated with the live-stream attempt count this asserts on.
   const matchingAttempts = () =>
     fetchMock.mock.calls.filter(([input, init]) => {
-      if (!String(input).includes(streamPathSubstring)) return false;
+      const url = new URL(String(input));
+      if (!`${url.pathname}${url.search}`.startsWith(streamPathSubstring))
+        return false;
       return new Headers(init?.headers).get('Accept') === 'text/event-stream';
     });
 
@@ -230,7 +232,9 @@ async function expectBoundedRetriesWhileFailing(
 
   const matchingAttempts = () =>
     fetchMock.mock.calls.filter(([input, init]) => {
-      if (!String(input).includes(streamPathSubstring)) return false;
+      const url = new URL(String(input));
+      if (!`${url.pathname}${url.search}`.startsWith(streamPathSubstring))
+        return false;
       return new Headers(init?.headers).get('Accept') === 'text/event-stream';
     });
 

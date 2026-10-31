@@ -1,0 +1,7 @@
+{
+  "revision": "65cb0062bf40afee47fb9669b299f49ba1e0bbed",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Checked App chat placement and region-shell callers against the committed event startup split; placement and dock lifecycle remain unchanged.","inputs":["docs/design/placement.md","src-ui/src/App.tsx"]}
+  ]
+}

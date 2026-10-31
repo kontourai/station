@@ -570,6 +570,37 @@ is sent with the verified project folder; if that Station answers
 `working-directory-not-granted`, the caller gets a fixed message naming a Project
 or the grant.
 
+## Integration capability status and Task write-back
+
+`GET /api/integrations/status` is an operator-in-person read, not available to
+Agents or members. It requires `orchestration:read` for paired Devices and
+rechecks the current principal after probing. A refusal is 403; responses use
+`Cache-Control: no-store`. Success is `{success: true, data: {connections}}`.
+Each connection has `connectionId`, `provider`, and action records with
+`action`, `computedBy`, `state`, and `reason`. GitHub observes `gh auth status`
+on the host; its success does not establish repository permissions. Discord
+reports gateway state, and webhooks report configuration and active start
+grants; neither proves delivery. Slack is not implemented, and Linear and Jira
+are waiting on tracker support. Probe diagnostics do not expose credentials.
+
+`GET /api/tasks/:taskId/write-back` requires the personal Task room's current
+person and Task scope and paired `orchestration:read` where applicable. It is
+mounted with the personal Task room runtime, not hosted Task execution.
+The route rechecks Task incarnation and authority before returning; a refused
+or missing Task is 404 and an unavailable store is 503. Success is
+`{success: true, data: {entries}}` with `Cache-Control: no-store`.
+Entries are ordered attempts with target, initiator, attempt time, state,
+failure reason and `retryOf` identifying the first attempt. Terminal outcomes
+are separate append-only records. The store refuses new attempts beyond 256
+per Task incarnation. This read is not proof of every external write: the
+Task-bound outbound seam has no chat or tracker producer on main yet, and the
+existing PR routes are not Task-bound. See the
+[contracts](contracts.md#integration-status-and-task-write-back) and
+[SDK](sdk.md#integration-capability-status-and-task-write-back).
+
+The **Chat apps** Feature Preview gates the UI surfaces; it does not replace
+the routes' own authority checks or gate these reads.
+
 ## Create a Task from a chat proposal
 
 `POST /api/tasks` accepts an optional `shapingSource: { sessionId, turnId }`
@@ -4396,6 +4427,12 @@ the server event bus, sends the current ACP status, then drains events queued
 during that initial read. It sends a named `ping` every 30 seconds.
 This is a live connection-state/cache-invalidation stream, not durable Session
 history replay with a resume cursor.
+The browser can instead receive these events on its orchestration stream when
+its current authority’s boot payload advertises `sharedRealtime: true` and the
+stream acknowledges that request. Older hosts and missing acknowledgements use
+this legacy route alongside orchestration. General frames have no replay ID;
+authorization and presence lifecycle still apply independently. See the
+[Session API](session-api.md#live-sse-feed-get-events) for negotiation and recovery.
 
 Only events admitted by the broadcast-safety policy or the relevant scoped
 notification, approval, plugin, draft, navigation, and answer-evidence gate are
@@ -5308,7 +5345,8 @@ provider-name strings.
 
 `GET /scheduler/events` relays serialized scheduler events and sends named
 `ping` keepalives every 30 seconds. The provider/event owner determines the event
-payload; a live frame is not a durable completed-run receipt.
+payload; a live frame is not a durable completed-run receipt. Job events are
+limited to jobs the caller can read, and run events to the recorded run target.
 
 ### Scheduler Webhook Receiver
 
@@ -5321,14 +5359,19 @@ instruction to execute a job.
 
 `GET /scheduler/jobs` returns `{success: true, data: jobs}`. Rows use the
 [SchedulerJob contract](../../packages/contracts/src/scheduler.ts), including
-job `name` and provider-neutral schedule information. Provider read failures
+job `name`, provider-neutral schedule information, an automation's `target`
+and `createdBy.userId`, and the derived `consecutiveFailures` and
+`lastSuccessAt`. An agent sees jobs targeting its own conversation; a person
+sees jobs for conversations they can read, plus untargeted jobs. Run-derived
+fields are withheld if the job has unreadable runs. Provider read failures
 propagate rather than becoming a fabricated empty schedule.
 
 ### Get Scheduler Stats
 
 `GET /scheduler/stats` returns `{success: true, data: {providers, summary}}`.
 Summary includes total jobs, total recorded runs, and a rounded success-rate
-percentage derived from provider job statistics (zero when no runs exist).
+percentage derived from the caller’s readable run records (zero when no runs
+exist). Provider status job counts are scoped to readable jobs.
 
 ### Get Scheduler Status
 
@@ -5353,7 +5396,12 @@ when previewing it.
 `GET /scheduler/jobs/:target/logs?count=20` returns `{success: true, data}` from
 the owning provider. `providerId` can select the provider explicitly; count
 defaults to 20. These are provider run-log records, not arbitrary server log
-files.
+files. Run logs and output use the target recorded when each run was claimed,
+not a job's later target. For old runs without a recorded target, only the
+creator who can read the current target can read them; agents cannot. The local
+operator retains access to older runs of creatorless, untargeted jobs. A
+nonexistent or inaccessible job returns 404. See the
+[automation decision](../decisions/automations-unify-schedules.md#rules).
 
 ### Read Run Output
 
@@ -5396,14 +5444,32 @@ apply prompt limits and schedule validation. The response is
 `{success: true, data: {output}}`, where output is the provider's result text;
 it is not proof that a future run completed.
 
+An optional `target` (`SchedulerAutomationTarget`) makes the job an
+automation that runs in a conversation: `{kind: "conversation",
+conversationId}` or `{kind: "dedicated", agent, workspace?}`. Each run is
+then a framed Station turn on that conversation's inbox, on its engine, and
+settles from the turn's terminal (see
+[the decision](../decisions/automations-unify-schedules.md)). The route records
+the admitted creator as `createdBy`; a body cannot set it. A person must be
+able to send to the conversation (404 `automation_target_not_found`); an
+agent's request may name only its own conversation and no dedicated one (403,
+`other-conversation` from the guard, or `automation_target_out_of_scope`).
+A target with a `monitor` or a `retryCount` above 0 is refused (400). A
+Station that cannot run a turn in a conversation answers 503
+`automation_target_unavailable`; hosted Stations answer 404 like every
+scheduler route. Clients gate offering it on the `scheduledConversationTarget`
+capability flag. `notifyStart` is accepted and ignored.
+
 A person approves an agent's job proposal (`propose_job`) by sending this
 route the proposed job with its `proposalId`. The route then creates the job
 only when the request is a person's own (a request that may be an agent's
 answers 403 `person-approval-required`), the person may send to the
 proposal's conversation (404 `job_proposal_not_found` otherwise), the
 proposal is still open (409 `job_proposal_settled`), and the body is exactly
-the proposed `name`, `schedule`, `prompt` and `agent` with nothing more (409
-`job_proposal_mismatch`). Admission claims the proposal (a Decline after it
+the proposed `name`, `schedule`, `prompt`, `agent` and `target` with nothing
+more (409 `job_proposal_mismatch`). A proposal recorded since automations
+could target a conversation carries the proposing chat as its `target`, so
+the approved job runs there, acting as the approving person. Admission claims the proposal (a Decline after it
 changes nothing); the route then creates the job and records the proposal
 approved, or gives it back to `open` if creating it failed. The
 `proposalId` is never passed to the scheduler. A hosted Station approves no
@@ -5414,9 +5480,10 @@ proposal (404).
 `GET /api/orchestration/agent-schedule/:conversationId` answers a
 `ConversationAgentSchedule`: the conversation's waiting check-backs
 (`wakeUps`), its open job proposals, up to 20 jobs approved from it (`jobs`,
-by name), and a usage-limit stop waiting for a known reset
-(`usageLimitResume`). It needs a person who may read every Session of the
-conversation.
+by name), the automations whose runs land in it (`automations`, absent when
+the scheduler could not be read), and a usage-limit stop waiting for a known
+reset (`usageLimitResume`). A person must be able to read every Session of
+the conversation; an agent may read only its own conversation.
 `POST .../wake-ups/:wakeUpId/cancel` (or `/decline`, the same act) cancels a
 check-back, `POST .../wake-ups/:wakeUpId/approve` approves one waiting for a
 person (`needs_approval`; 409 `wake_up_settled` once it is decided or due,
@@ -5424,7 +5491,7 @@ person (`needs_approval`; 409 `wake_up_settled` once it is decided or due,
 shutdown; it stays `needs_approval`),
 and `POST .../job-proposals/:proposalId/decline` declines a proposal; each
 needs a person who may send to the conversation, and answers 404 to anyone
-else. An agent's request reaches none of them. The agent's own side is the station-control tools in
+else. An agent cannot take those person-only actions. The agent's own side is the station-control tools in
 [the self-configuring agent guide](../guides/self-configuring-agent.md#wake-an-agent-later).
 
 ### A person's coordinator Session
@@ -5466,7 +5533,18 @@ are the coordinator's account, not live work status.
 ### Update Job
 
 `PUT /scheduler/jobs/:target` accepts supported partial job options, including
-that schedule union, and returns `{success: true, data: {output}}`.
+that schedule union and `target` (`null` removes it, under the same admission
+as create), and returns `{success: true, data: {output}}`. An edit never
+changes `createdBy`. Re-enabling a disabled job resets its
+`consecutiveFailures`.
+
+For a job that already has a `target`, every edit (any field), `run`,
+`enable`, `disable` and `DELETE` is admitted against the **stored** target
+first, whatever the body names: a person must be able to send to its
+conversation (for a dedicated target not started yet, only its creator), and
+an agent's request may only act on a job targeting its own conversation.
+Refusals are 404 `automation_not_found` for a person and 403
+`automation_target_out_of_scope` for an agent.
 
 ### Run Job Now
 
@@ -7036,6 +7114,24 @@ Personal runtimes mount review routes under `/api/tasks/:taskId/review`, using
 Task room request authority. Reads require `orchestration:read`; comment
 mutations and persisting Browser captures require `orchestration:operate`.
 Comment mutations require a stable `operationId`.
+
+The Task clip read leaves also require the **Walkthroughs** preview. They use
+the Task's current person-review authority and `orchestration:read`; internal
+Station requests are refused. The responses are `Cache-Control: no-store`.
+Clips are scoped to Project, Task and creation time:
+
+- `GET /api/tasks/:taskId/review/walkthroughs?limit=25&cursor=...` returns
+  `{items, nextCursor?}` with full `station.walkthrough/v1` manifests. Limit is
+  1–50 and defaults to 25; the cursor is the preceding page's last ID.
+- `GET /api/tasks/:taskId/review/walkthroughs/:walkthroughId` returns
+  `{walkthrough}`; `/video` returns digest-verified `video/webm`, and
+  `/frames/:frameId` returns a bounded JPEG. Both binary leaves set
+  `X-Content-Type-Options: nosniff`.
+
+Missing or other-Task clips return 404. Preview state and request authority
+are rechecked after reading. `browser_record_to_task` creates clips through a
+bound lead Session; see [Task clips](../guides/walkthroughs.md#record-a-task-clip)
+for input limits, storage and failure behavior.
 
 - `GET /api/tasks/:taskId/review?state=open|outdated|resolved` returns
   `station.task-review/v1`, item metadata, thread summaries and unfiltered counts.

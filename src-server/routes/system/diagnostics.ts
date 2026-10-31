@@ -1,5 +1,7 @@
 import { Hono } from 'hono';
+import { requestMayBeAnAgent } from '../../security/coding-authority.js';
 import { isBoundRuntimeLocalOperator } from '../../security/runtime-request-security.js';
+import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
 import type { DiagnosticsService } from '../../services/infra/diagnostics-service.js';
 import {
   MAX_SERVER_LOG_QUERY_LIMIT,
@@ -15,8 +17,16 @@ export function createDiagnosticsRoutes(
   diagnosticsService: DiagnosticsService,
   logger: Logger,
   logReader: ServerLogReader,
+  access?: { agentGrant?: (sessionId: string) => boolean },
 ) {
   const app = new Hono();
+  const hasAgentGrant = (sessionId: string) => {
+    try {
+      return access?.agentGrant?.(sessionId) === true;
+    } catch {
+      return false;
+    }
+  };
 
   app.get('/bundle', async (c) => {
     try {
@@ -33,6 +43,23 @@ export function createDiagnosticsRoutes(
   // own docblock for the tail-query and redaction-on-egress contract.
   app.get('/logs', async (c) => {
     try {
+      let agentSessionId: string | undefined;
+      if (requestMayBeAnAgent(c.req.raw)) {
+        const authority = stationControlRequestAuthority(c.req.raw);
+        if (authority?.kind !== 'server') {
+          if (
+            authority?.kind !== 'caller' ||
+            authority.caller.assurance !== 'bound' ||
+            !authority.caller.principal?.elevationEligible ||
+            !hasAgentGrant(authority.caller.sessionId)
+          )
+            return c.json(
+              { error: 'Diagnostics log access is not granted' },
+              403,
+            );
+          agentSessionId = authority.caller.sessionId;
+        }
+      }
       const rawLevel = c.req.query('level');
       if (rawLevel !== undefined && !isLogLevel(rawLevel)) {
         return c.json(
@@ -92,6 +119,8 @@ export function createDiagnosticsRoutes(
       };
 
       const result = await logReader.query(options);
+      if (agentSessionId && !hasAgentGrant(agentSessionId))
+        return c.json({ error: 'Diagnostics log access is not granted' }, 403);
       serverLogsRead.add(1, { surface: 'route' });
       return c.json(result);
     } catch (error) {

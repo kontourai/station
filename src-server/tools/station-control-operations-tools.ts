@@ -131,6 +131,19 @@ const schedulerScheduleSchema = z.discriminatedUnion('kind', [
   }),
 ]);
 
+/**
+ * Where an automation's runs land. An agent may name only its own
+ * conversation (`automation-target-stays-in-own-conversation`).
+ */
+const automationTargetSchema = z
+  .object({
+    kind: z.literal('conversation'),
+    conversationId: z.string().min(1),
+  })
+  .describe(
+    'Run each time as a turn in this conversation (your own), on its engine, instead of as a Station-engine file run',
+  );
+
 const schedulerJobUpdateSchema = {
   cron: z.string().min(1).optional(),
   schedule: schedulerScheduleSchema.optional(),
@@ -141,6 +154,7 @@ const schedulerJobUpdateSchema = {
   trustAllTools: z.boolean().optional(),
   retryCount: z.number().int().min(0).max(10).optional(),
   retryDelaySecs: z.number().int().min(0).max(3600).optional(),
+  target: automationTargetSchema.optional(),
 };
 
 const delegationContextSchema = z.object({
@@ -371,6 +385,7 @@ export function registerOperationsTools(
       trustAllTools: z.boolean().optional(),
       retryCount: z.number().int().min(0).max(10).optional(),
       retryDelaySecs: z.number().int().min(0).max(3600).optional(),
+      target: automationTargetSchema.optional(),
     },
     async (params) => {
       if (params.cron !== undefined && params.schedule !== undefined) {
@@ -536,7 +551,7 @@ export function registerOperationsTools(
 
   server.tool(
     'read_logs',
-    "Read Station's own server logs to debug runtime behavior; filter by minimum level/time/substring. Returns the most recent matches (tail semantics). Lines come back unredacted only for the operator in person on this machine (a same-origin UI-bootstrap or local-grant session) and for an agent acting for the operator from an engine Station hosts in-process; every other caller, including this tool from any other engine, receives the redacted rendering.",
+    "Read Station's server logs to debug runtime behavior; filter by level, time or substring. Agent calls require an explicit operator grant for this verified bound session. Logs can contain private conversation content; rendering follows the caller's locality.",
     {
       level: z
         .enum(LOG_LEVEL_ORDER as [string, ...string[]])

@@ -113,7 +113,7 @@ export function ProjectSidebarFooter({
             aria-label="Sidebar utilities"
             aria-haspopup="dialog"
             aria-expanded={moreOpen}
-            title="Schedule and Customize"
+            title="Automations and Customize"
             onPointerDown={(event) => {
               if (moreOpen) event.preventDefault();
             }}

@@ -1,0 +1,11 @@
+{
+  "revision": "c903a2424dc71b9eaf5d9c431dbb6d840246f764",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Reviewed the resync fixture delta: it advertises bounded history before navigation; motion settings, reduced-motion screens and their historical capture claims do not change. Local recovery captures are not a motion qualification.","inputs":["docs/design/motion.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the recovery fixture and shared host-capability cache against the targeted screenshot runner. The handshake is now consistent before navigation; the failed history and retry assertions remain. Desktop and mobile selected captures passed locally; this is not a full gallery or hosted pixel comparison.","inputs":["docs/guides/testing.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed the gallery fixture delta against the telemetry gallery section. Only conversation recovery handshake timing changes; telemetry screens, consent choices and telemetry claims are unchanged.","inputs":["docs/reference/usage-telemetry.md","tests/screenshots.spec.ts"]}
+  ]
+}

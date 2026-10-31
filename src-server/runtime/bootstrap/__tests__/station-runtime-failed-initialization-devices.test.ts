@@ -33,6 +33,11 @@ vi.mock('../runtime-initialize-deps.js', () => ({
 vi.mock('../../routes/runtime-routes.js', () => ({
   configureRuntimeRoutes: () => ({
     kitLifecycleReady: Promise.resolve(),
+    taskRecordings: {
+      dispose: async () => {
+        order.push('task recordings');
+      },
+    },
     browserService: {
       shutdown: async () => {
         order.push('browsers');
@@ -131,10 +136,11 @@ describe('StationRuntime failed initialization (#2443)', () => {
   test('disposes the device services composed before the failure, in shutdown order', async () => {
     const runtime = failingRuntime();
     await expect(runtime.initialize()).rejects.toBe(STARTUP_FAILURE);
-    // Browsers, then sessions (their producers read the hub), then the SSH
+    // Recordings, then browsers and sessions (their producers read the hub), then the SSH
     // hosts and the toolchain; the live-surface registry once every
     // producer has stopped.
     expect(order.filter((step) => step !== 'plugin drafts')).toEqual([
+      'task recordings',
       'browsers',
       'device sessions',
       'device hosts',
@@ -143,6 +149,7 @@ describe('StationRuntime failed initialization (#2443)', () => {
     ]);
     for (const field of [
       'browserService',
+      'taskRecordings',
       'deviceSessions',
       'deviceHosts',
       'deviceToolchainService',
@@ -159,6 +166,7 @@ describe('StationRuntime failed initialization (#2443)', () => {
       errors: [STARTUP_FAILURE, HOSTS_FAILURE],
     });
     expect(order.filter((step) => step !== 'plugin drafts')).toEqual([
+      'task recordings',
       'browsers',
       'device sessions',
       'device hosts',

@@ -1,0 +1,7 @@
+{
+  "revision": "65cb0062bf40afee47fb9669b299f49ba1e0bbed",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Checked authority bootstrap readiness, scoped query clients and event listener callers; the null guard leaves an absent capability pending and SDK contracts are unchanged.","inputs":["docs/reference/sdk.md","src-ui/src/contexts/AuthorityQueryContext.tsx","src-ui/src/hooks/useServerEvents.ts"]}
+  ]
+}

@@ -1813,7 +1813,7 @@ test.describe('chat-dock project switcher (kontourai/station#793)', () => {
       );
       // Distinct from the task switcher — never the buried eyebrow.
       await expect(
-        page.getByRole('button', { name: /^Chats and tasks/ }),
+        page.getByRole('button', { name: /^(Inbox|Back to chat)$/ }),
       ).toBeVisible();
 
       await expect(
@@ -1823,7 +1823,7 @@ test.describe('chat-dock project switcher (kontourai/station#793)', () => {
       ).toBeVisible();
       await trigger.click({ trial: true });
       await page
-        .getByRole('button', { name: /^Chats and tasks/ })
+        .getByRole('button', { name: /^(Inbox|Back to chat)$/ })
         .click({ trial: true });
       await page.screenshot({
         path: testInfo.outputPath('mobile-primary-context.png'),
@@ -1832,16 +1832,20 @@ test.describe('chat-dock project switcher (kontourai/station#793)', () => {
         path: testInfo.outputPath('mobile-primary-context.png'),
         contentType: 'image/png',
       });
-      await page.getByRole('button', { name: /^Chats and tasks/ }).click();
-      const chats = page.getByRole('dialog', { name: 'Chats and tasks' });
-      const newChat = chats.getByRole('button', {
-        name: 'New chat',
-        exact: true,
-      });
+      await page
+        .getByRole('button', { name: /^(Inbox|Back to chat)$/ })
+        .click();
+      const chats = page.getByRole('region', { name: 'Inbox', exact: true });
+      const newChat = page
+        .getByTestId('chat-dock-mobile-header')
+        .getByRole('button', {
+          name: 'New chat',
+          exact: true,
+        });
       await expect(newChat).toBeVisible();
       await expect(chats.locator('.inbox-row__title').first()).toHaveCSS(
         'font-size',
-        '18px',
+        '14px',
       );
       await newChat.click();
       await expect(chats).not.toBeVisible();

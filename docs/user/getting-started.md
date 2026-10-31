@@ -580,7 +580,7 @@ as you left it in the dock, the same way as a draft from setup (below). If no
 chat dock is open to take it, Home keeps the message and says so.
 
 In the chat dock, the **New chat** button (the conversation-plus icon on the collapsed bar),
-**⌘T**, and **New chat** in **Chats and tasks** open the same composer.
+**⌘T**, and the phone header's compose icon open the same composer.
 **Explore agents** remains available for deliberate customization.
 
 Setup from Home continues in the chat dock. When you choose **Connect**,
@@ -636,9 +636,12 @@ the dock’s chat list.
 At the end of first-run setup, **Take the tour** and **Connect another device**
 are optional alternatives to **Start your first chat**. Both save the same selected answers before opening their next step.
 
-On a phone, use the compose button at the right of the chat bar, or tap the
-current chat title to open **Chats and tasks** and choose **New chat** at the
-lower right. The three-dot menu holds chat actions, including **This chat**:
+On a phone, the dock starts at **Inbox** unless you open a specific
+conversation. Its Inbox icon returns to the work list; the chat title stays
+as context. Search opens from the magnifier. Your search, list position and
+unsent message stay in place when switching back to a conversation. Collapse
+and reopen restore the last view. Use the compose icon at the right of the
+chat bar for **New chat**. The three-dot menu holds chat actions, including **This chat**:
 the chat's workspace, branch and changed files, status, background tasks and
 linked pull requests, each opening its own view. On a computer, a wide dock
 shows the same panel beside the transcript, and a narrower one puts it behind
@@ -646,7 +649,7 @@ a chip in the dock header. Connection health remains in the app header. In fulls
 management remains in the chat actions menu. **Projects** has the same add control
 for creating a project, including a short first-project prompt when empty.
 
-In **Chats and tasks**, delegated work folds under its recorded parent.
+In **Inbox**, delegated work folds under its recorded parent.
 Expand the subtask count to read the children; children that need you stay
 visible. Task-owned chats appear under their Task as sessions. **Show work**
 filters by project or Station and stays selected on this device. If work needs
@@ -672,7 +675,7 @@ The dashboard icon below projects opens your Personal Boards and their add
 button. Escape closes either popup and returns focus to its icon.
 The footer puts live work beside your initials, which open a summary of your
 access with **My access**, **Profile**, **Ask Station for help** and **Open
-settings**; Schedule, Customize and Settings sit on the row below. The collapsed rail stacks live work and your initials above
+settings**; Automations, Customize and Settings sit on the row below. The collapsed rail stacks live work and your initials above
 Sidebar utilities. Conversations and composer drafts stay in the chat dock and
 its inbox (⌘D).
 
@@ -1167,10 +1170,12 @@ configured Projects.
 
 ## Run A Scheduled Readiness Check
 
-To create an ordinary scheduled job, use an agent with a model connection
-(Station's engine). AI app agents cannot run scheduled jobs. If none is ready,
-the job form offers **Set up a scheduled-job agent** to open agent creation;
-choose **Use a model connection** there.
+An automation that runs in a chat can use any agent, including AI app agents
+such as Claude Code or Codex, when your Station supports it (see
+[Automations](https://github.com/kontourai/station/blob/main/docs/user/automations.md)). The older output-file run needs an agent with
+a model connection (Station's engine); if none is ready, the form offers **Set
+up a scheduled-job agent** to open agent creation; choose **Use a model
+connection** there.
 
 Home can create **station-starter-check** and run it once. Its daily schedule
 stays disabled until you enable it. Open the receipt to read the findings;

@@ -279,10 +279,8 @@ describe('BuiltinScheduler', () => {
       expect(logger.error).toHaveBeenCalledWith(
         'Scheduler job record is unreadable; it will not run until it is repaired or removed',
         {
-          job: 'damaged',
           jobId: 'damaged-job-id',
           revision: 1,
-          reason: 'malformed-record',
         },
       );
       expect(logger.error).toHaveBeenCalledTimes(1);
@@ -900,7 +898,11 @@ describe('BuiltinScheduler', () => {
       });
       expect(logger.warn).toHaveBeenCalledWith(
         'Scheduler occurrence deferred by concurrency limit',
-        expect.objectContaining({ job: names.at(-1) }),
+        expect.objectContaining({
+          jobId: expect.any(String),
+          targetKind: 'untargeted',
+          errorClass: 'SchedulerCapacityDeferred',
+        }),
       );
       expect(metric).toHaveBeenCalledWith(1, {
         reason: SCHEDULER_EXECUTION_LIMITS.concurrencyDeferralReason,
@@ -1158,13 +1160,16 @@ describe('BuiltinScheduler', () => {
       expect(logger.warn).toHaveBeenCalledWith(
         'Scheduler retry waiting for invocation capacity',
         expect.objectContaining({
-          id: `${advanced.receipt.id}-2`,
-          reason: SCHEDULER_EXECUTION_LIMITS.concurrencyDeferralReason,
+          runId: `${advanced.receipt.id}-2`,
+          targetKind: 'untargeted',
         }),
       );
       expect(logger.info).toHaveBeenCalledWith(
         'Scheduler retry invocation capacity wait ended',
-        expect.objectContaining({ disposition: 'admitted' }),
+        expect.objectContaining({
+          runId: `${advanced.receipt.id}-2`,
+          targetKind: 'untargeted',
+        }),
       );
       expect(metric).toHaveBeenCalledWith(1, {
         reason: SCHEDULER_EXECUTION_LIMITS.concurrencyDeferralReason,
@@ -1302,7 +1307,11 @@ describe('BuiltinScheduler', () => {
       );
       expect(logger.warn).toHaveBeenCalledWith(
         'Scheduler concurrency deferral receipt was indeterminate',
-        expect.objectContaining({ receiptKind: 'stale' }),
+        expect.objectContaining({
+          runId: expect.any(String),
+          targetKind: 'untargeted',
+          errorClass: 'SchedulerDeferralIndeterminate',
+        }),
       );
       expect(metric).toHaveBeenCalledWith(1, {
         reason: SCHEDULER_EXECUTION_LIMITS.concurrencyDeferralReason,
@@ -2064,7 +2073,7 @@ describe('BuiltinScheduler — job-run logger correlation', () => {
     rmSync(logDir, { recursive: true, force: true });
   });
 
-  test('a successful job run is retrievable via ServerLogReader keyed on its own jobRunId, with jobName/jobRunId bindings intact', async () => {
+  test('a successful job run is retrievable via ServerLogReader keyed on its own jobRunId, with opaque job and run bindings intact', async () => {
     chatFnBehavior = { ok: true, text: 'ok' };
     const events: any[] = [];
     loggedScheduler.subscribe((d) => events.push(JSON.parse(d)));
@@ -2082,7 +2091,11 @@ describe('BuiltinScheduler — job-run logger correlation', () => {
     const result = await reader.query({ q: jobRunId });
     expect(result.entries.length).toBeGreaterThanOrEqual(2); // started + completed
     for (const entry of result.entries) {
-      expect(entry[SCHEDULER_LOG_BINDING_KEYS.JOB_NAME]).toBe('corr-success');
+      expect(entry[SCHEDULER_LOG_BINDING_KEYS.JOB_ID]).toEqual(
+        expect.any(String),
+      );
+      expect(entry[SCHEDULER_LOG_BINDING_KEYS.TARGET_KIND]).toBe('untargeted');
+      expect(entry).not.toHaveProperty('station.scheduler.job_name');
       expect(entry[SCHEDULER_LOG_BINDING_KEYS.JOB_RUN_ID]).toBe(jobRunId);
     }
     expect(result.entries.some((e) => e.msg === 'Scheduler job started')).toBe(

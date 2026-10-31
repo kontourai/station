@@ -129,8 +129,8 @@ export function StarterScheduledCheckCard() {
             Retry scheduled check status
           </Button>
         ) : blockedLaunch?.retrySafe === false ? (
-          <Button variant="primary" onClick={() => navigate('/schedule')}>
-            Open Schedule
+          <Button variant="primary" onClick={() => navigate('/automations')}>
+            Open Automations
           </Button>
         ) : (
           <Button

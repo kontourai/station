@@ -1,0 +1,7 @@
+{
+  "revision": "6a0091138b4120acc5b103f95708a031c0b0fa4e",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Traced mobile initial Inbox, retained reader/draft, hidden-reader selection/drop/foreground fences, immutable answer Branch, and child Run finished label. Reviewed selection captured before async resolution, caller/epoch history authority independent of focus, adopted hydration, and accepted cross-project routing. Real-pane/controller owner checks pass; browser geometry fixtures establish source rendering only, not installed Nightly or provider delivery.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","src-ui/src/components/chat-dock/MobileInboxPanel.tsx"]}
+  ]
+}

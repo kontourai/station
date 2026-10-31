@@ -854,6 +854,22 @@
   color: var(--k-text-muted);
   font-size: var(--k-text-xs);
 }
+.review-clip__item small,
+.review-clip__title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.review-clip__item small {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+}
+.review-clip__video {
+  display: block;
+  width: 100%;
+  max-height: 60vh;
+  background: var(--k-bg);
+}
 .task-review[data-mobile] .review-items__screens {
   flex: 0 0 auto;
 }

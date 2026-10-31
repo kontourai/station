@@ -30,7 +30,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
 }));
 
 import { ChatDockInboxPanel } from '../components/chat-dock/ChatDockInboxPanel';
-import { MobileTaskSwitcher } from '../components/chat-dock/MobileTaskSwitcher';
+import { MobileInboxPanel } from '../components/chat-dock/MobileInboxPanel';
 import { DISCARD_DRAFT_FAILED } from '../components/drafts/DiscardDraftButton';
 import type { ChatUIState } from '../contexts/active-chats-state';
 import { activeChatsStore } from '../contexts/active-chats-store';
@@ -348,11 +348,10 @@ describe('#2312 discarding Drafts from the inbox', () => {
     dispatch.mockResolvedValue(accepted(STALE.threadId));
     const rows = items([FRESH, STALE]);
     render(
-      <MobileTaskSwitcher
+      <MobileInboxPanel
         open
         tasks={rows}
         activeChatSessionId={null}
-        visualViewportStyle={{}}
         triggerRef={createRef<HTMLButtonElement>()}
         onClose={vi.fn()}
         onFocusChat={vi.fn()}
@@ -403,11 +402,10 @@ describe('#2312 discarding Drafts from the inbox', () => {
     const rows = items([parent]);
     expect(rows[0]?.lifecycleLabel).toBe('Running');
     render(
-      <MobileTaskSwitcher
+      <MobileInboxPanel
         open
         tasks={rows}
         activeChatSessionId={null}
-        visualViewportStyle={{}}
         triggerRef={createRef<HTMLButtonElement>()}
         onClose={vi.fn()}
         onFocusChat={vi.fn()}

@@ -40,6 +40,18 @@ const mutationState = vi.hoisted(() => ({
   editError: null as unknown,
 }));
 
+/** The host's `scheduledConversationTarget` answer; `undefined` is unanswered. */
+const hostCapability = vi.hoisted(() => ({
+  conversationTarget: false as boolean | null | undefined,
+}));
+
+vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
+  useScheduledConversationTargetCapability: () => ({
+    data: hostCapability.conversationTarget,
+  }),
+}));
+
 vi.mock('../hooks/useScheduler', () => ({
   useAddJob: () => ({
     isPending: false,
@@ -95,6 +107,7 @@ describe('JobFormModal schedule compatibility', () => {
     };
     agentCatalog.retry = () => {};
     agentCatalog.useRealPicker = false;
+    hostCapability.conversationTarget = false;
   });
 
   test.each(['missing', 'external'])(
@@ -334,7 +347,7 @@ describe('JobFormModal schedule compatibility', () => {
     expect(screen.getByRole('alert').textContent).toBe(
       "Job 'daily-report' already exists",
     );
-    expect(screen.getByRole('dialog', { name: 'Add Job' })).toBeTruthy();
+    expect(screen.getByRole('dialog', { name: 'New automation' })).toBeTruthy();
   });
 
   // #2708: the scheduler fetcher's refusal carries `details`; the form shows
@@ -382,7 +395,7 @@ describe('JobFormModal schedule compatibility', () => {
     fireEvent.change(screen.getByLabelText('Instructions'), {
       target: { value: 'Summarize my day' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Add Job' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create automation' }));
 
     const submitted = addMutate.mock.calls[0]?.[0];
     // #1536 L1: sent as a SCHEDULE, because a bare `cron` string cannot carry
@@ -409,7 +422,7 @@ describe('JobFormModal schedule compatibility', () => {
     render(<JobFormModal onClose={vi.fn()} />);
     expect(
       screen.queryByText(
-        "Scheduled jobs run on Station's own engine, so Agents bound to an external engine are not listed.",
+        "File-output runs use Station's own engine, so Agents bound to an external engine are not listed.",
       ),
     ).toBeNull();
     fireEvent.change(screen.getByLabelText('Name'), {
@@ -419,7 +432,7 @@ describe('JobFormModal schedule compatibility', () => {
       target: { value: 'Never runs' },
     });
 
-    const submit = screen.getByRole('button', { name: 'Add Job' });
+    const submit = screen.getByRole('button', { name: 'Create automation' });
     expect((submit as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(submit);
     expect(addMutate).not.toHaveBeenCalled();
@@ -432,8 +445,11 @@ describe('JobFormModal schedule compatibility', () => {
     });
 
     expect(
-      (screen.getByRole('button', { name: 'Add Job' }) as HTMLButtonElement)
-        .disabled,
+      (
+        screen.getByRole('button', {
+          name: 'Create automation',
+        }) as HTMLButtonElement
+      ).disabled,
     ).toBe(true);
   });
 
@@ -445,7 +461,7 @@ describe('JobFormModal schedule compatibility', () => {
     fireEvent.change(screen.getByLabelText('Instructions'), {
       target: { value: 'Summarize my day' },
     });
-    const submit = screen.getByRole('button', { name: 'Add Job' });
+    const submit = screen.getByRole('button', { name: 'Create automation' });
     expect(submit).toHaveProperty('disabled', true);
     fireEvent.click(submit);
     expect(addMutate).not.toHaveBeenCalled();
@@ -467,7 +483,7 @@ describe('JobFormModal schedule compatibility', () => {
     ]) {
       fireEvent.click(screen.getByRole('button', { name: day }));
     }
-    const submit = screen.getByRole('button', { name: 'Add Job' });
+    const submit = screen.getByRole('button', { name: 'Create automation' });
     expect(submit).toHaveProperty('disabled', true);
     fireEvent.click(submit);
     expect(addMutate).not.toHaveBeenCalled();
@@ -553,8 +569,11 @@ describe('JobFormModal schedule compatibility', () => {
       });
 
       expect(
-        (screen.getByRole('button', { name: 'Add Job' }) as HTMLButtonElement)
-          .disabled,
+        (
+          screen.getByRole('button', {
+            name: 'Create automation',
+          }) as HTMLButtonElement
+        ).disabled,
       ).toBe(false);
     });
 
@@ -626,8 +645,11 @@ describe('JobFormModal schedule compatibility', () => {
       });
 
       expect(
-        (screen.getByRole('button', { name: 'Add Job' }) as HTMLButtonElement)
-          .disabled,
+        (
+          screen.getByRole('button', {
+            name: 'Create automation',
+          }) as HTMLButtonElement
+        ).disabled,
       ).toBe(true);
     });
   });
@@ -839,5 +861,93 @@ describe('a failed Agent catalog is reported once, for whichever field is shown'
         '[aria-describedby="schedule-agent-catalog-error"]',
       ),
     ).toBeNull();
+  });
+});
+
+/**
+ * An automation that runs in a chat reaches any engine through the chat's
+ * inbox, but only on a host that advertises `scheduledConversationTarget`.
+ * Without it the form stays the Station-engine file run, which refuses an
+ * external-engine Agent.
+ */
+describe('Run in: external engines only where the host runs chat automations', () => {
+  const external = {
+    slug: 'claude',
+    name: 'Claude Code',
+    available: true,
+    execution: { agentConnectionId: 'claude' },
+  } as EnrichedAgentProjection;
+
+  beforeEach(() => {
+    addMutate.mockReset();
+    agentCatalog.agents = [external];
+    agentCatalog.read = {
+      loaded: true,
+      settled: true,
+      failed: false,
+      retrying: false,
+    };
+    agentCatalog.useRealPicker = false;
+  });
+
+  const fill = () => {
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'repo-digest' },
+    });
+    fireEvent.change(screen.getByLabelText('Instructions'), {
+      target: { value: 'Summarize the repo' },
+    });
+  };
+
+  test.each([false, null, undefined])(
+    'a host answering %s keeps the file run and refuses the external Agent',
+    (answer) => {
+      hostCapability.conversationTarget = answer;
+      render(<JobFormModal onClose={vi.fn()} />);
+      expect(screen.queryByLabelText('Run in')).toBeNull();
+      fill();
+      const submit = screen.getByRole('button', { name: 'Create automation' });
+      expect((submit as HTMLButtonElement).disabled).toBe(true);
+    },
+  );
+
+  test('a capable host defaults to its own chat and runs the external Agent there', () => {
+    hostCapability.conversationTarget = true;
+    render(<JobFormModal onClose={vi.fn()} />);
+    expect(screen.getByLabelText('Run in')).toHaveProperty(
+      'value',
+      'dedicated',
+    );
+    fill();
+    const submit = screen.getByRole('button', { name: 'Create automation' });
+    expect((submit as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(submit);
+    const [body] = addMutate.mock.calls[0]!;
+    expect(body).toMatchObject({
+      name: 'repo-digest',
+      target: { kind: 'dedicated', agent: 'claude' },
+    });
+    // A run in a chat never replays, so it carries no retries or monitor.
+    expect(body).not.toHaveProperty('retryCount');
+    expect(body).not.toHaveProperty('monitor');
+    expect(body).not.toHaveProperty('agent');
+    expect(screen.queryByLabelText('Retries')).toBeNull();
+  });
+
+  test('opened from a chat, it runs in that chat', () => {
+    hostCapability.conversationTarget = true;
+    render(
+      <JobFormModal
+        onClose={vi.fn()}
+        prefill={{ conversationId: 'conversation-1' }}
+      />,
+    );
+    expect(screen.getByLabelText('Run in')).toHaveProperty('value', 'chat');
+    expect(screen.queryByLabelText('Agent')).toBeNull();
+    fill();
+    fireEvent.click(screen.getByRole('button', { name: 'Create automation' }));
+    expect(addMutate.mock.calls[0]![0]).toMatchObject({
+      target: { kind: 'conversation', conversationId: 'conversation-1' },
+    });
   });
 });

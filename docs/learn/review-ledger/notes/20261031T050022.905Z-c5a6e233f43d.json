@@ -1,0 +1,7 @@
+{
+  "revision": "6a0091138b4120acc5b103f95708a031c0b0fa4e",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed screenshot-owner role/selector migration against gallery lifecycle, scoped-screen selection, deterministic fixture and screenshot-upload requirements. Test lane ownership and completion criteria did not change; focused checks remain distinct from full hosted/native qualification.","inputs":["docs/guides/testing.md","tests/screenshots.spec.ts"]}
+  ]
+}

@@ -844,7 +844,7 @@ describe('CommandPalette', () => {
     // Filter down to a single nav command so the highlight is deterministic.
     fireEvent.change(input, { target: { value: 'schedule' } });
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Enter' });
-    expect(navigateMock).toHaveBeenCalledWith('/schedule');
+    expect(navigateMock).toHaveBeenCalledWith('/automations');
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
@@ -886,7 +886,7 @@ describe('CommandPalette', () => {
     ).toBeTruthy();
 
     fireEvent.keyDown(input, { key: 'Enter' });
-    expect(navigateMock).toHaveBeenCalledWith('/schedule');
+    expect(navigateMock).toHaveBeenCalledWith('/automations');
   });
 
   test('records keyboard and pointer selections exactly once each', async () => {
@@ -1453,7 +1453,7 @@ describe('CommandPalette return focus (station#1245)', () => {
       frame.callback?.(0);
     });
 
-    expect(navigateMock).toHaveBeenCalledWith('/schedule');
+    expect(navigateMock).toHaveBeenCalledWith('/automations');
     expect(document.activeElement).toBe(list);
     expect(document.activeElement).not.toBe(document.body);
     expect(trigger.isConnected).toBe(false);

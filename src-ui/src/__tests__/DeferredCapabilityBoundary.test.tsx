@@ -1,6 +1,11 @@
 /** @vitest-environment jsdom */
 
 import {
+  _setApiBase,
+  useScheduledConversationTargetCapability,
+} from '@kontourai/station-sdk';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
   act,
   cleanup,
   fireEvent,
@@ -57,6 +62,72 @@ describe('DeferredCapabilityBoundary', () => {
     bannerStore.reset();
     toastStore.clear();
     vi.restoreAllMocks();
+  });
+
+  test('a host capability change refreshes without an extension reload notice', async () => {
+    let supported = false;
+    _setApiBase('http://station.test');
+    vi.stubGlobal(
+      'fetch',
+      async () =>
+        new Response(
+          JSON.stringify({
+            schemaVersion: 1,
+            environmentId: '00000000-0000-4000-8000-000000000000',
+            authentication: { scheme: 'bearer', protocolVersion: 1 },
+            transports: { http: 1, sse: 1, websocket: 1 },
+            compatibility: {
+              serverVersion: '0.1.11',
+              protocolVersion: 3,
+              minClientProtocol: 1,
+              capabilities: {
+                remoteAuth: 1,
+                devicePairing: 1,
+                environmentProof: 1,
+              },
+            },
+            capabilities: {
+              sessionEventWindow: true,
+              scheduledConversationTarget: supported,
+            },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+    );
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    function Capability() {
+      const query = useScheduledConversationTargetCapability();
+      return <span>{String(query.data)}</span>;
+    }
+    try {
+      render(
+        <QueryClientProvider client={client}>
+          <DeferredCapabilityBoundary
+            id="capability-change"
+            copy={copy}
+            failurePresentation="notification"
+          >
+            <Capability />
+          </DeferredCapabilityBoundary>
+        </QueryClientProvider>,
+      );
+      await waitFor(() => expect(screen.getByText('false')).toBeTruthy());
+      supported = true;
+      await act(async () => {
+        await client.invalidateQueries({
+          queryKey: ['scheduler', 'conversation-target-capability'],
+        });
+      });
+      await waitFor(() => expect(screen.getByText('true')).toBeTruthy());
+      expect(toastStore.getSnapshot()).toEqual([]);
+    } finally {
+      cleanup();
+      client.clear();
+      vi.unstubAllGlobals();
+      _setApiBase('');
+    }
   });
 
   test('keeps loading silent while the shell stays mounted', () => {

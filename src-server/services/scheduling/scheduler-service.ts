@@ -67,7 +67,7 @@ export class SchedulerService {
    * a couple of pre-existing `console.debug` calls elsewhere in this class
    * (left untouched; console-call conversion is a separate, sibling-owned
    * slice). Threaded through to `BuiltinScheduler` so each job run can bind
-   * a `logger.child()` with its own `jobName`/`jobRunId`.
+   * a `logger.child()` with its own opaque job and run identifiers.
    */
   constructor({ logger, builtin }: SchedulerServiceOptions) {
     this.builtin = new BuiltinScheduler({ logger, ...builtin });
@@ -192,7 +192,6 @@ export class SchedulerService {
     try {
       const result = await p.runJob(target);
       this.recordRunMetrics(
-        target,
         result.outcome === 'completed' ? 'success' : 'error',
         start,
       );
@@ -200,7 +199,7 @@ export class SchedulerService {
     } catch (e) {
       // Telemetry is not an execution authority. A provider error remains the
       // provider error even when the observer is unavailable.
-      this.recordRunMetrics(target, 'error', start);
+      this.recordRunMetrics('error', start);
       throw e;
     }
   }
@@ -209,14 +208,10 @@ export class SchedulerService {
     return this.builtin.prepareStarterManualIntent(operationId);
   }
 
-  private recordRunMetrics(
-    target: string,
-    status: 'success' | 'error',
-    start: number,
-  ) {
+  private recordRunMetrics(status: 'success' | 'error', start: number) {
     try {
-      schedulerJobRuns.add(1, { job: target, status });
-      schedulerJobDuration.record(Date.now() - start, { job: target });
+      schedulerJobRuns.add(1, { status });
+      schedulerJobDuration.record(Date.now() - start);
     } catch {
       // Best-effort observer only; the durable provider result above wins.
     }

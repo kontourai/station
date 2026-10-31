@@ -11,14 +11,24 @@ const host = vi.hoisted(() => ({ current: true }));
 const streams = vi.hoisted(
   () =>
     [] as Array<{
+      url: string;
       onMessage: (message: { event: string; data: string }) => void;
     }>,
 );
 vi.mock('@kontourai/station-sdk', () => ({
-  fetchSSE: vi.fn((_url: string, options: (typeof streams)[number]) => {
-    streams.push(options);
-    return { close: vi.fn() };
-  }),
+  fetchSSE: vi.fn(
+    (url: string, options: Omit<(typeof streams)[number], 'url'>) => {
+      const controller = new AbortController();
+      streams.push({ ...options, url });
+      return {
+        close: vi.fn(() => controller.abort()),
+        signal: controller.signal,
+        completed: new Promise<void>(() => {}),
+        retry: vi.fn(),
+        restart: vi.fn(),
+      };
+    },
+  ),
 }));
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'https://station.test' }),
@@ -76,10 +86,12 @@ test('a failed deferred envelope chunk cannot show an A delivery after the SSE a
       createElement(QueryClientProvider, { client }, children),
   });
   const deliver = (index: number, title: string) =>
-    streams[index]!.onMessage({
-      event: 'notification:delivered',
-      data: JSON.stringify({ title, metadata: { envelope: { v: 1 } } }),
-    });
+    streams
+      .filter((stream) => stream.url === 'https://station.test/events')
+      [index]!.onMessage({
+        event: 'notification:delivered',
+        data: JSON.stringify({ title, metadata: { envelope: { v: 1 } } }),
+      });
   try {
     act(() => {
       deliver(0, 'Private A result');

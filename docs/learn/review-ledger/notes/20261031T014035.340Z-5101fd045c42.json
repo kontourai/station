@@ -1,0 +1,21 @@
+{
+  "revision": "56f5485562f9cca45014e9027bcbb91eb7effb1a",
+
+  "notes": [
+    {"path":"docs/learn/media/operator-s3-paired-before-sign-in.png","note":"Visually inspected the sign-in link and hidden inventory; compared the changed runtime HTTP CORS header and runtime route event-producer wiring with the capture's operator-session scenario. The existing historical fixture evidence remains bounded; no passkey journey was rerun in this review.","inputs":["docs/learn/media/operator-s3-paired-before-sign-in.png","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/learn/media/operator-s3-consent-sign-in.png","note":"Visually inspected the separate passkey sign-in prompt; compared the changed runtime HTTP CORS header and runtime route event-producer wiring with the capture's operator-session scenario. The existing historical fixture evidence remains bounded; no passkey journey was rerun in this review.","inputs":["docs/learn/media/operator-s3-consent-sign-in.png","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/learn/media/operator-s3-paired-after-sign-in.png","note":"Visually inspected the two-device list and disabled change controls; compared the changed runtime HTTP CORS header and runtime route event-producer wiring with the capture's operator-session scenario. The existing historical fixture evidence remains bounded; no passkey journey was rerun in this review.","inputs":["docs/learn/media/operator-s3-paired-after-sign-in.png","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/learn/media/operator-s3-other-browser-refused.png","note":"Visually inspected the sign-in guidance without inventory; compared the changed runtime HTTP CORS header and runtime route event-producer wiring with the capture's operator-session scenario. The existing historical fixture evidence remains bounded; no passkey journey was rerun in this review.","inputs":["docs/learn/media/operator-s3-other-browser-refused.png","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"Visually inspected the sign-in guidance without inventory; compared the changed runtime HTTP CORS header and runtime route event-producer wiring with the capture's operator-session scenario. The existing historical fixture evidence remains bounded; no passkey journey was rerun in this review.","inputs":["docs/learn/media/operator-s4-before-sign-in.png","src-server/runtime/bootstrap/runtime-http.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"Visually inspected the two-device list and enabled change controls; compared the changed runtime HTTP CORS header and runtime route event-producer wiring with the capture's operator-session scenario. The existing historical fixture evidence remains bounded; no passkey journey was rerun in this review.","inputs":["docs/learn/media/operator-s4-after-sign-in.png","src-server/runtime/bootstrap/runtime-http.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"Visually inspected the device identity, before/after scopes, warning and confirmation; compared the changed runtime HTTP CORS header and runtime route event-producer wiring with the capture's operator-session scenario. The existing historical fixture evidence remains bounded; no passkey journey was rerun in this review.","inputs":["docs/learn/media/operator-s4-step-up-review.png","src-server/runtime/bootstrap/runtime-http.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"Visually inspected the second device showing custom access; compared the changed runtime HTTP CORS header and runtime route event-producer wiring with the capture's operator-session scenario. The existing historical fixture evidence remains bounded; no passkey journey was rerun in this review.","inputs":["docs/learn/media/operator-s4-after-step-up.png","src-server/runtime/bootstrap/runtime-http.ts","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

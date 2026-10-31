@@ -2,6 +2,9 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { NotificationService } from '../../notifications/notification-service.js';
+import { EventBus } from '../../orchestration/event-bus.js';
 import { BuiltinScheduler } from '../builtin-scheduler.js';
 import { createSchedulerLedger } from '../scheduler-ledger.js';
 
@@ -86,7 +89,7 @@ test('a refused terminal bell stays owed, retries once, and encodes its Schedule
       dedupeTag: expect.stringMatching(/^external-monitor:terminal:/),
       metadata: {
         jobName: name,
-        link: '/schedule?job=monitor%3Fnext%3D%2Foutside%26mode%3Dunsafe',
+        link: '/automations?job=monitor%3Fnext%3D%2Foutside%26mode%3Dunsafe',
       },
     }),
   );
@@ -103,4 +106,36 @@ test('a refused terminal bell stays owed, retries once, and encodes its Schedule
   (confirmed as any).sweepOwedMonitorProbeTerminalAnnouncements();
   await confirmed.stop();
   expect(schedule).toHaveBeenCalledOnce();
+});
+
+const makeTempDir = trackTempDirs();
+
+test('a replayed monitor notification exposes only generic content', async () => {
+  const root = makeTempDir('station-monitor-private-');
+  const bus = new EventBus();
+  const frames: unknown[] = [];
+  bus.subscribe((frame) => frames.push(frame));
+  const notifications = new NotificationService(bus, root, 999_999);
+  const scheduler = new BuiltinScheduler({
+    ledger: seedProbeTerminal(root, 'private-monitor-name'),
+    turnAdapter: { invoke: vi.fn() },
+    notificationService: notifications,
+  });
+  try {
+    scheduler.start();
+    await vi.waitFor(async () =>
+      expect(await notifications.list()).toHaveLength(1),
+    );
+    const notices = await notifications.list();
+    expect(notices[0]!.title).toBe('An automation monitor needs attention');
+    expect(JSON.stringify([notices, frames])).not.toContain(
+      'private-monitor-name',
+    );
+    expect(JSON.stringify([notices, frames])).not.toContain(
+      'The pull request is closed or merged',
+    );
+  } finally {
+    await scheduler.stop();
+    await notifications.shutdown();
+  }
 });

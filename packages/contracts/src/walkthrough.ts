@@ -118,6 +118,14 @@ export interface Walkthrough {
     adapterVersion: string;
     originalName?: string;
     durationMs: number;
+    /** Commit observed for a Task-bound Browser recording. */
+    commit?: string;
+    recording?: {
+      file: string;
+      mediaType: 'video/webm';
+      byteLength: number;
+      digest: `sha256:${string}`;
+    };
   };
   capture: {
     platform: 'desktop' | 'web' | 'ios' | 'android' | 'unknown';
@@ -260,8 +268,37 @@ export function parseWalkthrough(value: unknown): Walkthrough {
   )
     refuse('Invalid createdAt');
   const s = record(r.source);
-  fields(s, ['adapter', 'adapterVersion', 'originalName', 'durationMs']);
+  fields(s, [
+    'adapter',
+    'adapterVersion',
+    'originalName',
+    'durationMs',
+    'commit',
+    'recording',
+  ]);
   const durationMs = number(s.durationMs, WALKTHROUGH_LIMITS.durationMs, 1);
+  if (
+    s.commit !== undefined &&
+    (typeof s.commit !== 'string' ||
+      !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(s.commit))
+  )
+    refuse('Invalid commit');
+  let recording: Walkthrough['source']['recording'];
+  if (s.recording !== undefined) {
+    const video = record(s.recording);
+    fields(video, ['file', 'mediaType', 'byteLength', 'digest']);
+    if (
+      typeof video.digest !== 'string' ||
+      !/^sha256:[a-f0-9]{64}$/.test(video.digest)
+    )
+      refuse('Invalid recording digest');
+    recording = {
+      file: filename(video.file),
+      mediaType: choice(video.mediaType, ['video/webm']),
+      byteLength: integer(video.byteLength, WALKTHROUGH_LIMITS.uploadBytes, 1),
+      digest: video.digest as `sha256:${string}`,
+    };
+  }
   const c = record(r.capture);
   fields(c, ['platform', 'width', 'height']);
   const coverageRecord = record(r.coverage);
@@ -434,6 +471,8 @@ export function parseWalkthrough(value: unknown): Walkthrough {
       adapter: text(s.adapter, 128),
       adapterVersion: text(s.adapterVersion, 128),
       durationMs,
+      ...(s.commit === undefined ? {} : { commit: s.commit as string }),
+      ...(recording === undefined ? {} : { recording }),
       ...(s.originalName === undefined
         ? {}
         : { originalName: filename(s.originalName) }),

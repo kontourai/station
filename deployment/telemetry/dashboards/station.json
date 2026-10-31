@@ -593,8 +593,8 @@
       },
       "targets": [
         {
-          "expr": "sum by (job, status) (station_scheduler_job_runs_total)",
-          "legendFormat": "{{job}} ({{status}})"
+          "expr": "sum by (status) (station_scheduler_job_runs_total)",
+          "legendFormat": "{{status}}"
         }
       ]
     },
@@ -625,8 +625,8 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, sum by (job, le) (rate(station_scheduler_job_duration_milliseconds_bucket[5m])))",
-          "legendFormat": "{{job}} p95"
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(station_scheduler_job_duration_milliseconds_bucket[5m])))",
+          "legendFormat": "p95"
         }
       ]
     },

@@ -1,0 +1,11 @@
+{
+  "revision": "ad4c7365eda1ee1333a3ae50c649e79f021d043b",
+
+  "notes": [
+    {"path":"docs/README.md","note":"public-docs.json now admits user/automations.md under Use Station. The map already lists that guide among user-facing docs; its claims about the Pages set and audiences are unchanged.","inputs":["docs/README.md","docs/pages/public-docs.json"]},
+
+    {"path":"docs/guides/documentation.md","note":"Added user/automations.md to both corpus.json and public-docs.json, in the same section and order, as this guide requires; docs-kit-manifest.test.ts and corpus check (reachability) pass. The guide's rules are unchanged.","inputs":["docs/guides/documentation.md","corpus.json"]},
+
+    {"path":"docs/pages/README.md","note":"corpus.json still mirrors public-docs.json after admitting user/automations.md to both (docs-kit-manifest.test.ts passes). The README's Pages and bundle claims are unchanged.","inputs":["docs/pages/README.md","corpus.json","docs/pages/public-docs.json"]}
+  ]
+}

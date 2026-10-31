@@ -1,0 +1,7 @@
+{
+  "revision": "65cb0062bf40afee47fb9669b299f49ba1e0bbed",
+
+  "notes": [
+    {"path":"docs/design/developer-surface.md","note":"Checked App shortcut registrations and Developer routing against the committed event startup split; shortcut behavior is unchanged.","inputs":["docs/design/developer-surface.md","src-ui/src/App.tsx"]}
+  ]
+}

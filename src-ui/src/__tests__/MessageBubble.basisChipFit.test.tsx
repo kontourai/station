@@ -218,6 +218,7 @@ function measure() {
       height: time.getBoundingClientRect().height,
       fontSize: Number.parseFloat(getComputedStyle(time).fontSize),
       whole: time.scrollWidth <= time.clientWidth + 0.5,
+      left: time.getBoundingClientRect().left,
       right: time.getBoundingClientRect().right,
     },
     rowOverflow: row ? row.scrollWidth > row.clientWidth : null,
@@ -264,7 +265,7 @@ describe.skipIf(!chromiumAvailable)(
     );
 
     it.each([320, 375])(
-      'in a %ipx phone row the timestamp keeps one line and the chip stays on screen',
+      'in a %ipx phone row the trailing timestamp keeps one line and the chip stays on screen',
       async (width) => {
         const markup = await answerMarkup(true);
         const page = await browser.newPage({
@@ -281,7 +282,8 @@ describe.skipIf(!chromiumAvailable)(
           // One line: a second would at least double a ~1.2em line box.
           expect(fit.time!.height).toBeLessThan(1.8 * fit.time!.fontSize);
           expect(fit.time!.whole).toBe(true);
-          expect(fit.time!.right).toBeLessThanOrEqual(fit.chip.left);
+          expect(fit.chip.right).toBeLessThanOrEqual(fit.time!.left);
+          expect(fit.time!.right).toBeLessThanOrEqual(width);
           expect(fit.chip.left).toBeGreaterThanOrEqual(0);
           expect(fit.chip.right).toBeLessThanOrEqual(width);
           expect(fit.rowOverflow).toBe(false);

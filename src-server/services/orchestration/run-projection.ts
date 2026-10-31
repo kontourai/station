@@ -136,6 +136,7 @@ export function projectSchedulerLogToRun(
     metadata: {
       job: log.job,
       jobId: log.jobId,
+      ...(log.runTarget !== undefined ? { runTarget: log.runTarget } : {}),
       scheduledFor: log.scheduledFor,
       firedAt: log.firedAt,
       manual: log.manual ?? false,

@@ -903,24 +903,6 @@
       "reason": "legacy-cast"
     },
     {
-      "file": "src-server/routes/orchestration/events.ts",
-      "rule": "as-unknown",
-      "fingerprint": "b0cfe2765de8069849a5c8719ad3512f3f1c67e91b74212d67a790d5a623e9d7",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-server/routes/orchestration/events.ts",
-      "rule": "as-unknown",
-      "fingerprint": "07f44d20e98b93584bc7fcf6b5fa81642db228edc49263c4e4284d6c291f4952",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-server/routes/orchestration/events.ts",
-      "rule": "as-unknown",
-      "fingerprint": "07f44d20e98b93584bc7fcf6b5fa81642db228edc49263c4e4284d6c291f4952",
-      "reason": "legacy-cast"
-    },
-    {
       "file": "src-server/routes/orchestration/operating-state.ts",
       "rule": "as-unknown",
       "fingerprint": "3caadcf595890b2aa48675901cef2e3ab5ac9f6a41b2614481162d47d9573635",

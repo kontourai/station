@@ -33,6 +33,7 @@ export {
   useRestartJobMonitor,
   useRunJob,
   useRunsQuery,
+  useScheduledConversationTargetCapability,
   useSchedulerJobs,
   useSchedulerProviders,
   useSchedulerStats,
@@ -142,7 +143,7 @@ export function useSchedulerEvents(enabled = true) {
               {
                 label: 'View Output',
                 onClick: () =>
-                  navigate('/schedule', {
+                  navigate('/automations', {
                     job: evt.job,
                     run: evt.id || null,
                   }),
@@ -163,7 +164,7 @@ export function useSchedulerEvents(enabled = true) {
                   {
                     label: 'View Output',
                     onClick: () =>
-                      navigate('/schedule', {
+                      navigate('/automations', {
                         job: evt.job,
                         run: evt.id || null,
                       }),

@@ -353,12 +353,12 @@ The project selector appears only alongside model/workspace defaults and
 permissions. Device settings still save immediately; Station and Project drafts
 keep their existing Save and discard guard.
 
-The sidebar footer places **Schedule** and **Customize** on the left, with
+The sidebar footer places **Automations** and **Customize** on the left, with
 an icon-only **Updates** control immediately before the profile button on the
 right. Updates keeps its status in its accessible name and tooltip and shows
 an indicator when update details need attention. Live work and the separate
 Settings gear no longer appear in the footer. A collapsed workspace map puts
-Schedule and Customize in its Sidebar utilities popup, while Updates and the
+Automations and Customize in its Sidebar utilities popup, while Updates and the
 profile button remain on the rail. The obsolete Open chats/Drafts section
 toggles no longer appear in Appearance; existing device values remain compatible.
 Customize opens Agents, Skills, Connections, Plugins, Appearance and Settings

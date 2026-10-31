@@ -359,7 +359,13 @@ describe('SessionTranscript source', () => {
   test('starts the app-wide live stream itself, so the detail streams with no chat dock mounted', () => {
     ensureStream.mockClear();
     const view = renderTranscript();
-    expect(ensureStream).toHaveBeenCalledWith(API, expect.anything());
+    expect(ensureStream).toHaveBeenCalledWith(
+      API,
+      expect.anything(),
+      undefined,
+      false,
+      false,
+    );
     live([
       ev({ method: 'turn.started', turnId: 'solo', prompt: 'Alone' }),
       ev({

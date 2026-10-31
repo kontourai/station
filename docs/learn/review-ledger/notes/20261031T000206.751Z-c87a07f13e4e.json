@@ -1,0 +1,7 @@
+{
+  "revision": "7082bdceba1a9ddb7b786f00cbb08ffa2aeae790",
+
+  "notes": [
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Reviewed the current-reading note against the shared browser owner and both event routes. The old per-client connection counts remain historical. The three-tab HTTP/1.1 probe observed three shared streams and frame delivery; proxy, native and older-host compatibility are not established.","inputs":["docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","src-server/routes/orchestration/orchestration.ts","src-server/runtime/routes/runtime-routes.ts","src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts"]}
+  ]
+}

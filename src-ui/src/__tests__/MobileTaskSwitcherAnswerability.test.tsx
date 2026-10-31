@@ -18,7 +18,7 @@ import {
 } from '@testing-library/react';
 import { createRef } from 'react';
 import { describe, expect, test, vi } from 'vitest';
-import { MobileTaskSwitcher } from '../components/chat-dock/MobileTaskSwitcher';
+import { MobileInboxPanel } from '../components/chat-dock/MobileInboxPanel';
 import { LIFECYCLE_HOLD_MS } from '../components/chat-dock/useHeldLifecycles';
 import type { HomeWorkItem } from '../views/home/home-view-model';
 import { buildOrchestrationItems } from '../views/home/home-view-model';
@@ -50,7 +50,7 @@ function renderSheet(
   attention?: 'answer' | 'approval',
 ) {
   return render(
-    <MobileTaskSwitcher
+    <MobileInboxPanel
       open
       tasks={tasks}
       workFacts={
@@ -60,7 +60,6 @@ function renderSheet(
       }
       pending={pending}
       activeChatSessionId={null}
-      visualViewportStyle={{}}
       triggerRef={createRef<HTMLButtonElement>()}
       onClose={vi.fn()}
       onFocusChat={vi.fn()}
@@ -71,34 +70,7 @@ function renderSheet(
   );
 }
 
-describe('MobileTaskSwitcher answerability basis', () => {
-  test.each([
-    { items: [] },
-    {
-      items: [
-        task({ lifecycleLabel: 'Running', unanswerableNotice: undefined }),
-      ],
-    },
-  ])('can start a new chat from the empty or populated picker', ({ items }) => {
-    const calls: string[] = [];
-    render(
-      <MobileTaskSwitcher
-        open
-        tasks={items}
-        activeChatSessionId={null}
-        visualViewportStyle={{}}
-        triggerRef={createRef<HTMLButtonElement>()}
-        onClose={() => calls.push('close')}
-        onNewChat={() => calls.push('new')}
-        onFocusChat={vi.fn()}
-        onOpenConversation={vi.fn()}
-        onOpenSession={vi.fn()}
-      />,
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'New chat' }));
-    expect(calls).toEqual(['close', 'new']);
-  });
-
+describe('MobileInboxPanel answerability basis', () => {
   // The ladder's own words, unshortened: the picker row says what the dock
   // row says for the same chat (one vocabulary, design round 2026-10).
   test.each([
@@ -141,13 +113,12 @@ describe('MobileTaskSwitcher answerability basis', () => {
   test('a failed read offers retry instead of claiming the list is empty', () => {
     const retry = vi.fn();
     render(
-      <MobileTaskSwitcher
+      <MobileInboxPanel
         open
         tasks={[]}
         loadError
         onRetryLoad={retry}
         activeChatSessionId={null}
-        visualViewportStyle={{}}
         triggerRef={createRef<HTMLButtonElement>()}
         onClose={vi.fn()}
         onFocusChat={vi.fn()}
@@ -197,7 +168,7 @@ describe('MobileTaskSwitcher answerability basis', () => {
   });
 });
 
-describe('MobileTaskSwitcher lane-move focus', () => {
+describe('MobileInboxPanel lane-move focus', () => {
   test('a focused row that moves Running -> Idle keeps focus in the sheet', () => {
     // The move out of Running is held (useHeldLifecycles); it lands, with
     // the focus hand-off, once the hold elapses.
@@ -229,14 +200,14 @@ describe('MobileTaskSwitcher lane-move focus', () => {
         unanswerableNotice: undefined,
       });
       const view = render(
-        <MobileTaskSwitcher {...props} tasks={[running, other]} />,
+        <MobileInboxPanel {...props} tasks={[running, other]} />,
       );
       const name = 'Moving row, Station';
       screen.getByRole('button', { name }).focus();
       expect(document.activeElement).toBe(screen.getByRole('button', { name }));
 
       view.rerender(
-        <MobileTaskSwitcher
+        <MobileInboxPanel
           {...props}
           tasks={[{ ...running, lifecycleLabel: 'Ready' }, other]}
         />,
@@ -258,7 +229,7 @@ describe('MobileTaskSwitcher lane-move focus', () => {
  * peer's agent slug and conversation id, so activating it in the switcher
  * must open its Activity detail and never rehydrate a local chat.
  */
-describe('MobileTaskSwitcher on a paired-Station record', () => {
+describe('MobileInboxPanel on a paired-Station record', () => {
   test('activating it opens Activity, not a chat on the peer conversation', async () => {
     const [peerItem] = buildOrchestrationItems(
       [peerRecordSummary({ displayTitle: 'Verify on the peer' })] as never,
@@ -267,11 +238,10 @@ describe('MobileTaskSwitcher on a paired-Station record', () => {
     const onOpenConversation = vi.fn().mockResolvedValue(true);
     const onOpenSession = vi.fn();
     render(
-      <MobileTaskSwitcher
+      <MobileInboxPanel
         open
         tasks={[peerItem]}
         activeChatSessionId={null}
-        visualViewportStyle={{}}
         triggerRef={createRef<HTMLButtonElement>()}
         onClose={vi.fn()}
         onFocusChat={vi.fn()}

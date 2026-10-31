@@ -19,7 +19,7 @@ export function ScheduleEmptyState({
     return (
       <FilteredEmpty
         query={filterText}
-        noun="scheduled jobs"
+        noun="automations"
         variant="prominent"
         onClear={onClearFilter}
       />
@@ -29,7 +29,7 @@ export function ScheduleEmptyState({
   return (
     <Empty
       variant="prominent"
-      label="No scheduled jobs yet. Pick a template to get started:"
+      label="No automations yet. Pick a template to get started:"
       action={
         <>
           <div className="schedule__starters">
@@ -52,7 +52,7 @@ export function ScheduleEmptyState({
             ))}
           </div>
           <p className="schedule__starter-hint">
-            Templates pre-fill the form — you choose the agent and schedule.
+            Templates pre-fill the form — you choose where it runs and when.
           </p>
         </>
       }

@@ -69,38 +69,40 @@ export function getScheduleStarterTemplates(): Array<{
   prompt: string;
   meta: string;
 }> {
+  // Only work an agent can do with a workspace and its tools. No template
+  // assumes an email, calendar or other connector Station does not back.
   return [
     {
-      name: 'good-morning',
-      label: 'Morning Briefing',
+      name: 'daily-repo-digest',
+      label: 'Daily repo digest',
       schedule: weekdayMorningSchedule(),
       prompt:
-        'Review my calendar and email for today. Summarize priorities, prep for meetings, and flag anything urgent.',
+        'Summarize what changed in this repository since the last run: merged commits, open pull requests and failing checks. Keep it short.',
       meta: 'Weekdays · 8:00 AM',
     },
     {
-      name: 'catch-up-emails',
-      label: 'Email Catch-up',
-      schedule: localCronSchedule('0 12 * * 1-5'),
+      name: 'open-work-check-back',
+      label: 'Check back on open work',
+      schedule: localCronSchedule('0 16 * * 1-5'),
       prompt:
-        'Check my recent emails and summarize anything I need to respond to or follow up on.',
-      meta: 'Weekdays · 12:00 PM',
+        'Look back over the open work in this conversation. What is still unfinished, and what should happen next?',
+      meta: 'Weekdays · 4:00 PM',
     },
     {
-      name: 'wrap-up-day',
-      label: 'End of Day Wrap',
-      schedule: localCronSchedule('0 17 * * 1-5'),
+      name: 'weekly-dependency-check',
+      label: 'Weekly dependency check',
+      schedule: localCronSchedule('0 9 * * 1'),
       prompt:
-        'Summarize what I accomplished today. Check for any customer meetings that need activity logging. Preview tomorrow.',
-      meta: 'Weekdays · 5:00 PM',
+        "Check this project's dependencies for available updates and known security advisories. List what needs action, most urgent first.",
+      meta: 'Mondays · 9:00 AM',
     },
     {
-      name: 'prep-week',
-      label: 'Weekly Prep',
-      schedule: localCronSchedule('0 8 * * 1'),
+      name: 'stale-pull-requests',
+      label: 'Stale pull requests',
+      schedule: localCronSchedule('0 14 * * 5'),
       prompt:
-        'Prepare my weekly overview: key meetings, customer engagements, deadlines, and priorities for the week ahead.',
-      meta: 'Mondays · 8:00 AM',
+        'List open pull requests in this repository with no activity for a week, with a suggested next step for each.',
+      meta: 'Fridays · 2:00 PM',
     },
   ];
 }

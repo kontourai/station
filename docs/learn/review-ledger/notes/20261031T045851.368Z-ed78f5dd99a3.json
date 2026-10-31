@@ -1,0 +1,7 @@
+{
+  "revision": "6a0091138b4120acc5b103f95708a031c0b0fa4e",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Reviewed screenshot-owner selector changes and removed modal chrome. New Inbox CSS uses existing tokens; no motion grammar, reduced-motion authority or duration baseline changed. Existing fixture captures are browser evidence, not native acceptance.","inputs":["docs/design/motion.md","tests/screenshots.spec.ts"]}
+  ]
+}

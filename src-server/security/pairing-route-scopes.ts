@@ -479,6 +479,16 @@ export const PAIRING_SCOPE_CATCH_ALL_MOUNT_EXCEPTIONS: readonly string[] = [
 ];
 
 export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
+  ...(['GET', 'HEAD'] as const).map(
+    (method): PairingScopeRouteRule => ({
+      id: `/api/integrations/status:${method}`,
+      method,
+      prefix: '/api/integrations/status',
+      exact: true,
+      scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+      origin: 'explicit',
+    }),
+  ),
   ...(['GET', 'POST'] as const).map(
     (method): PairingScopeRouteRule => ({
       id: `/api/operator/telemetry-companion/private-usage-preparations:${method}`,
@@ -3685,8 +3695,22 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // exact room/Project authority. Reads use read standing; append-only person
     // comments and transitions use operate standing. Send starts an agent turn
     // through the lead conversation inbox.
+    { method: 'GET', path: '/api/tasks/:taskId/write-back' },
     { method: 'GET', path: '/api/tasks/:taskId/review' },
     { method: 'GET', path: '/api/tasks/:taskId/review/capture-sessions' },
+    { method: 'GET', path: '/api/tasks/:taskId/review/walkthroughs' },
+    {
+      method: 'GET',
+      path: '/api/tasks/:taskId/review/walkthroughs/:walkthroughId',
+    },
+    {
+      method: 'GET',
+      path: '/api/tasks/:taskId/review/walkthroughs/:walkthroughId/video',
+    },
+    {
+      method: 'GET',
+      path: '/api/tasks/:taskId/review/walkthroughs/:walkthroughId/frames/:frameId',
+    },
     { method: 'POST', path: '/api/tasks/:taskId/review/captures' },
     {
       method: 'GET',

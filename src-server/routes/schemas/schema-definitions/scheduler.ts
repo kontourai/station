@@ -63,6 +63,57 @@ const monitorSchema = z
   })
   .strict();
 
+/**
+ * Where an automation's runs land (`SchedulerAutomationTarget`). A dedicated
+ * target's `conversationId` is server-written, so a body cannot carry it.
+ */
+const automationTargetSchema = z.discriminatedUnion('kind', [
+  z
+    .object({
+      kind: z.literal('conversation'),
+      conversationId: z.string().min(1).max(256),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('dedicated'),
+      agent: z.string().min(1).max(256),
+      workspace: z
+        .object({
+          kind: z.literal('project'),
+          projectSlug: z.string().min(1).max(256),
+        })
+        .strict()
+        .optional(),
+    })
+    .strict(),
+]);
+
+/**
+ * A targeted run may have started when its outcome is unknown, and such a
+ * run is never repeated: no generic retries, and no monitor (a monitor
+ * dispatches a Task, not a conversation turn).
+ */
+function rejectTargetConflicts(
+  value: { target?: unknown; monitor?: unknown; retryCount?: number },
+  context: z.RefinementCtx,
+) {
+  if (!value.target) return;
+  if (value.monitor)
+    context.addIssue({
+      code: 'custom',
+      path: ['monitor'],
+      message:
+        'An automation that runs in a conversation cannot have a monitor',
+    });
+  if ((value.retryCount ?? 0) !== 0)
+    context.addIssue({
+      code: 'custom',
+      path: ['retryCount'],
+      message: 'An automation that runs in a conversation cannot retry',
+    });
+}
+
 function rejectAmbiguousSchedule(
   value: { cron?: string; schedule?: unknown },
   context: z.RefinementCtx,
@@ -91,6 +142,7 @@ export const addJobSchema = z
     retryCount: z.number().int().min(0).max(10).optional(),
     retryDelaySecs: z.number().int().min(0).max(3600).optional(),
     monitor: monitorSchema.optional(),
+    target: automationTargetSchema.optional(),
     /**
      * A person approving an agent's job proposal (`propose_job`): the route
      * creates the job only when the body is exactly the proposed job, and
@@ -99,6 +151,7 @@ export const addJobSchema = z
     proposalId: z.string().min(1).max(100).optional(),
   })
   .superRefine(rejectAmbiguousSchedule)
+  .superRefine(rejectTargetConflicts)
   .superRefine((value, context) => {
     if (!value.monitor) return;
     if (value.provider && value.provider !== 'built-in') {
@@ -154,8 +207,11 @@ export const editJobSchema = z
     // Unlike creation, an edit has a meaningful explicit absence: `null`
     // removes the monitor. Omitting the key leaves it unchanged.
     monitor: monitorSchema.nullable().optional(),
+    // `null` returns the job to a legacy Station-engine file run.
+    target: automationTargetSchema.nullable().optional(),
   })
-  .superRefine(rejectAmbiguousSchedule);
+  .superRefine(rejectAmbiguousSchedule)
+  .superRefine(rejectTargetConflicts);
 
 // fallow-ignore-next-line unused-export
 export const schedulerOpenSchema = z.object({

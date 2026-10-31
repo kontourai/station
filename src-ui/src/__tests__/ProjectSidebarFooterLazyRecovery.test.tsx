@@ -93,7 +93,7 @@ test('a rejected Customize chunk has dialog recovery on a collapsed rail, closes
   );
   expect(within(recovery).getByRole('button', { name: 'Reload' })).toBeTruthy();
   expect(window.history.length).toBe(beforeFailureHistoryLength);
-  expect(screen.getByRole('button', { name: 'Schedule' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Automations' })).toBeTruthy();
 
   fireEvent.click(
     within(recovery).getByRole('button', { name: 'Close Customize' }),

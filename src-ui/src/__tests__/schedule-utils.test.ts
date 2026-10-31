@@ -55,10 +55,19 @@ describe('schedule utils', () => {
     expect(templates).toHaveLength(4);
     expect(templates[0]).toEqual(
       expect.objectContaining({
-        name: 'good-morning',
-        label: 'Morning Briefing',
+        name: 'daily-repo-digest',
+        label: 'Daily repo digest',
       }),
     );
+  });
+
+  // Templates promised email and calendar work no connector backs. A
+  // template may only ask for what an agent with a workspace can do.
+  test('no starter template asks for email or calendar work', () => {
+    for (const template of getScheduleStarterTemplates()) {
+      const text = `${template.label} ${template.prompt}`.toLowerCase();
+      expect(text, template.name).not.toMatch(/e-?mail|calendar|inbox|meeting/);
+    }
   });
 });
 /**

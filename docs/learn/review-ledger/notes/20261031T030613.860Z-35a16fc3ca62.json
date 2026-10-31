@@ -1,0 +1,7 @@
+{
+  "revision": "a6c7a264953e0fdfe3cdeeab7fc27ec7daa221b2",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed mobile Inbox typography, project and engine marks, scope/search, shared section preferences, 44px targets and header-owned creation against the current rendered owners and focused geometry tests. The embedded list replaces the old modal and retains its local reader state. Other responsive dialog and native contracts are unchanged.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx","src-ui/src/components/chat/chat.css","tests/cross-runtime-chat-switching.spec.ts","src-ui/src/components/chat-dock/MobileInboxPanel.tsx"]}
+  ]
+}
