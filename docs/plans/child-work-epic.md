@@ -118,6 +118,44 @@ now starts SSE before holding its output and allows early failure cleanup. No
 production timeout, retry policy, journey deadline or success assertion changed.
 The revised independent browser journey still needs qualification.
 
+The framed independent recheck at `5d7ac3b3d0c` remained failed: it observed
+the actual assistant answer, retained Directory, Home Done and an enabled
+composer, but intermittent history/reload failures prevented complete acceptance.
+The later root network diagnostic received event-window HTTP 200 responses with
+delayed headers; proxy errors after its fixed deadline are excluded. That
+diagnostic also failed natural-exit grace and is not a shutdown pass.
+
+At `472e72e12a6`, multi-candidate HTTP cookie selection uses one fresh synchronous
+pairing-registry scope while retaining every candidate check and later independent
+verification. The intended pre-fix admission assertion failed at 59 versus a bound
+of 6 after the behavioral controls. The repaired focused selection passed 302
+cases, a strengthened canonical-freshness selection passed 127, and server-test
+types passed. Independent source review found no blocking issue in the four-file
+delta. A separate security-service instance exercised later-request revocation;
+this is not cross-process revocation proof. Token metadata is still checked per
+candidate. The controlled 27-foreign-cookie profile improved from about 587–643 ms
+to 12–14 ms, without establishing sole causality for the browser failures.
+
+The fresh independent browser recheck at that commit still failed. It verified
+Done in Home and Activity, the actual `CLI_CONTEXT_OK` assistant reply, Directory,
+an enabled composer and four Home viewport/theme combinations. Reload lost the
+selected task/session and History showed zero conversations; Live/No progress and
+the full Activity/Session layout matrix remained unverified. The owned backend
+journey passed all 16 checks, exited naturally and retained stable input hashes.
+Those backend results do not override the browser failure.
+
+A root diagnostic at `e2cb9dea357` reproduced History HTTP 200 with zero items
+under the browser credential while the fixture's CLI credential returned the
+task. Reload preserved the exact chat URL, and the browser cold-open endpoint
+returned HTTP 200, resolved and `canContinue: true`, while the dock showed No chat
+open. Authority/visibility and client restoration need separate diagnosis;
+neither observation authorizes broadening access. The diagnostic exited naturally
+after its designated stop. The same commit classifies the owned rounds contender
+in the process-heavy pool and gives the new cookie fixture tracked temp cleanup;
+127 pairing cases, 66 manifest/policy cases and the verification-policy command
+passed. Browser/device, published Flow adoption and final combined qualification
+remain open.
+
 The live request-capability clone control now has executed mutation evidence
 at clean `b0ea8c39508`: its baseline passed; removing only the exact Request
 object comparison produced the intended Missing expected exception at the
