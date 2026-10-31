@@ -1097,14 +1097,24 @@ describe('ChromiumServerHost with a fake browser', () => {
 });
 
 describe('effective preview WebRTC policy at browser startup', () => {
-  const committedDocument = (call: SentCall) => {
+  const preferenceUrl = (calls: readonly SentCall[]) => {
+    const params = [...calls]
+      .reverse()
+      .find((call) => call.method === 'Target.createTarget')?.params;
+    if (!params || !('url' in params) || typeof params.url !== 'string')
+      throw new Error(
+        'The probe target must exist before its document is read',
+      );
+    return params.url;
+  };
+  const committedDocument = (call: SentCall, calls: readonly SentCall[]) => {
     if (call.method === 'Page.getFrameTree')
       return {
         frameTree: {
           frame: {
             id: 'main',
             loaderId: 'prefs-loader',
-            url: 'chrome://prefs-internals/',
+            url: preferenceUrl(calls),
           },
         },
       };
@@ -1118,6 +1128,7 @@ describe('effective preview WebRTC policy at browser startup', () => {
     let h: ReturnType<typeof harness>;
     h = harness(
       async (call) => {
+        committedDocument(call, h.calls);
         if (call.sessionId === 'S-T1' && call.method === 'Page.enable') {
           committed = true;
           h.emit(
@@ -1126,7 +1137,7 @@ describe('effective preview WebRTC policy at browser startup', () => {
               frame: {
                 id: 'main',
                 loaderId: 'prefs-loader',
-                url: 'chrome://prefs-internals/',
+                url: preferenceUrl(h.calls),
               },
             },
             call.sessionId,
@@ -1138,41 +1149,43 @@ describe('effective preview WebRTC policy at browser startup', () => {
               frame: {
                 id: 'main',
                 loaderId: 'blank-loader',
-                url: 'about:blank',
+                url:
+                  call.sessionId === 'S-T1'
+                    ? 'about:blank'
+                    : preferenceUrl(h.calls),
               },
             },
           };
         if (call.method === 'Page.createIsolatedWorld')
           return { executionContextId: 41 };
-        if (call.method === 'Runtime.evaluate') {
+        if (call.method === 'Runtime.callFunctionOn') {
           const params = call.params as {
-            expression: string;
-            contextId?: number;
+            functionDeclaration: string;
+            executionContextId?: number;
+            arguments: { value: string }[];
             awaitPromise?: boolean;
           };
-          const prefs = committed && params.contextId === 41;
+          const prefs = committed && params.executionContextId === 41;
           const evaluation: Promise<unknown> = runInNewContext(
-            params.expression,
+            `(${params.functionDeclaration})`,
             {
               location: {
-                href: prefs ? 'chrome://prefs-internals/' : 'about:blank',
+                href: prefs ? preferenceUrl(h.calls) : 'about:blank',
               },
               document: {
                 readyState: 'complete',
                 body: {
                   innerText: prefs
-                    ? JSON.stringify({
-                        webrtc: {
-                          ip_handling_policy: {
-                            value: 'disable_non_proxied_udp',
-                          },
-                        },
-                      })
+                    ? JSON.stringify(
+                        preferenceUrl(h.calls).endsWith('ip_handling_policy')
+                          ? 'disable_non_proxied_udp'
+                          : [],
+                      )
                     : '',
                 },
               },
             },
-          );
+          )(...params.arguments.map((argument) => argument.value));
           const value = params.awaitPromise ? await evaluation : undefined;
           return { result: { value } };
         }
@@ -1183,7 +1196,7 @@ describe('effective preview WebRTC policy at browser startup', () => {
     );
     await expect(
       h.host.openTarget({ profileDir: h.profileDir, viewport: VIEWPORT }),
-    ).resolves.toEqual({ targetId: 'T2', cdpSessionId: 'S-T2' });
+    ).resolves.toEqual({ targetId: 'T3', cdpSessionId: 'S-T3' });
   });
 
   test.each(['another session', 'subframe'])(
@@ -1193,6 +1206,7 @@ describe('effective preview WebRTC policy at browser startup', () => {
       let h: ReturnType<typeof harness>;
       h = harness(
         (call) => {
+          committedDocument(call, h.calls);
           if (call.sessionId === 'S-T1' && call.method === 'Page.enable')
             h.emit(
               'Page.frameNavigated',
@@ -1200,7 +1214,7 @@ describe('effective preview WebRTC policy at browser startup', () => {
                 frame: {
                   id: origin === 'subframe' ? 'child' : 'main',
                   loaderId: 'prefs-loader',
-                  url: 'chrome://prefs-internals/',
+                  url: preferenceUrl(h.calls),
                   ...(origin === 'subframe' ? { parentId: 'main' } : {}),
                 },
               },
@@ -1251,19 +1265,20 @@ describe('effective preview WebRTC policy at browser startup', () => {
       let h: ReturnType<typeof harness>;
       h = harness(
         (call) => {
+          committedDocument(call, h.calls);
           if (call.method === 'Page.getFrameTree')
             return {
               frameTree: {
                 frame: {
                   id: 'main',
                   loaderId: 'prefs-loader',
-                  url: 'chrome://prefs-internals/',
+                  url: preferenceUrl(h.calls),
                 },
               },
             };
           if (call.method === 'Page.createIsolatedWorld')
             return { executionContextId: 41 };
-          if (call.method === 'Runtime.evaluate') {
+          if (call.method === 'Runtime.callFunctionOn') {
             if (change === 'loader replacement')
               h.emit(
                 'Page.frameNavigated',
@@ -1271,7 +1286,7 @@ describe('effective preview WebRTC policy at browser startup', () => {
                   frame: {
                     id: 'main',
                     loaderId: 'replacement-loader',
-                    url: 'chrome://prefs-internals/',
+                    url: preferenceUrl(h.calls),
                   },
                 },
                 call.sessionId,
@@ -1313,7 +1328,7 @@ describe('effective preview WebRTC policy at browser startup', () => {
     let h: ReturnType<typeof harness>;
     h = harness(
       async (call) => {
-        const document = committedDocument(call);
+        const document = committedDocument(call, h.calls);
         if (document) return document;
         if (call.sessionId === 'S-T1' && call.method === 'Page.enable')
           await new Promise((resolve) => setTimeout(resolve, 700));
@@ -1322,7 +1337,7 @@ describe('effective preview WebRTC policy at browser startup', () => {
             () => h.emit('Page.loadEventFired', {}, call.sessionId),
             800,
           );
-        if (call.method === 'Runtime.evaluate') {
+        if (call.method === 'Runtime.callFunctionOn') {
           await new Promise((resolve) => setTimeout(resolve, 100));
           return {
             result: {
@@ -1355,7 +1370,7 @@ describe('effective preview WebRTC policy at browser startup', () => {
       await new Promise(setImmediate);
       await vi.advanceTimersByTimeAsync(3001);
       expect(await settled).toEqual({
-        target: { targetId: 'T2', cdpSessionId: 'S-T2' },
+        target: { targetId: 'T3', cdpSessionId: 'S-T3' },
       });
     } finally {
       await h.host.shutdown();
@@ -1369,11 +1384,11 @@ describe('effective preview WebRTC policy at browser startup', () => {
     let h: ReturnType<typeof harness>;
     h = harness(
       (call) => {
-        const document = committedDocument(call);
+        const document = committedDocument(call, h.calls);
         if (document) return document;
         if (call.method === 'Page.navigate')
           h.emit('Page.loadEventFired', {}, call.sessionId);
-        if (call.method === 'Runtime.evaluate') {
+        if (call.method === 'Runtime.callFunctionOn') {
           policyRead = true;
           return new Promise((resolve) =>
             setTimeout(
@@ -1439,17 +1454,48 @@ describe('effective preview WebRTC policy at browser startup', () => {
       false,
     ],
     ['unreadable diagnostic', undefined, false],
+    [
+      'optional URL preference unregistered',
+      { policy: 'disable_non_proxied_udp', urlOverrides: 'unregistered' },
+      true,
+    ],
+    [
+      'malformed URL preference',
+      { policy: 'disable_non_proxied_udp', urlOverrides: 'malformed' },
+      false,
+    ],
   ] as const)(
     '%s permits authored targets only when the effective policy is verified',
     async (_label, value, allowed) => {
       let h: ReturnType<typeof harness>;
       h = harness(
-        (call) => {
-          const document = committedDocument(call);
+        async (call) => {
+          const document = committedDocument(call, h.calls);
           if (document) return document;
           if (call.method === 'Page.navigate')
             h.emit('Page.loadEventFired', {}, call.sessionId);
-          if (call.method === 'Runtime.evaluate') return { result: { value } };
+          if (call.method === 'Runtime.callFunctionOn') {
+            const url = preferenceUrl(h.calls);
+            const body = url.endsWith('ip_handling_policy')
+              ? (JSON.stringify(value?.policy) ?? 'not JSON')
+              : value?.urlOverrides === 'unregistered'
+                ? 'Preference not found: webrtc.ip_handling_url'
+                : value?.urlOverrides === 'malformed'
+                  ? 'not JSON'
+                  : JSON.stringify(value?.urlOverrides ? [{}] : []);
+            const params = call.params as {
+              functionDeclaration: string;
+              arguments: { value: string }[];
+            };
+            const evaluated = await runInNewContext(
+              `(${params.functionDeclaration})`,
+              {
+                location: { href: url },
+                document: { readyState: 'complete', body: { innerText: body } },
+              },
+            )(...params.arguments.map((argument) => argument.value));
+            return { result: { value: evaluated } };
+          }
           return {};
         },
         undefined,
@@ -1461,8 +1507,8 @@ describe('effective preview WebRTC policy at browser startup', () => {
       });
       if (allowed) {
         await expect(opening).resolves.toEqual({
-          targetId: 'T2',
-          cdpSessionId: 'S-T2',
+          targetId: 'T3',
+          cdpSessionId: 'S-T3',
         });
         const close = h.calls.findIndex(
           (call) =>
@@ -1480,7 +1526,12 @@ describe('effective preview WebRTC policy at browser startup', () => {
         });
         expect(
           h.calls.filter((call) => call.method === 'Target.createTarget'),
-        ).toHaveLength(1);
+        ).toHaveLength(
+          _label === 'URL-specific overrides' ||
+            _label === 'malformed URL preference'
+            ? 2
+            : 1,
+        );
         expect(h.terminate).toHaveBeenCalledOnce();
       }
     },

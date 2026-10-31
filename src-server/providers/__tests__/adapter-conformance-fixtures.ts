@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { crc32 } from 'node:zlib';
-import type { ContentBlock } from '@agentclientprotocol/sdk';
+import type { ContentBlock } from '@agentclientprotocol/sdk/unstable';
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
 import { vi } from 'vitest';
 import type { ProviderAdapterShape } from '../adapter-shape.js';
