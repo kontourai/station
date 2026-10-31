@@ -238,6 +238,26 @@ unpublished; its retained owner identified shared CI concurrency admission,
 rather than an executed feature-test failure, as the outstanding hosted blocker.
 Station has not adopted candidate aliases or enabled the finalizer.
 
+The installed-native controlled proof was rerun at clean `6ee45090b87` using
+Claude 2.1.312 and Agent SDK 0.3.312. Selected non-provider isolation controls
+passed before native execution. All ten full-run stages exited zero: foreground
+return and separate cold reader, background stop, consistent SQLite backup and
+separate zero-adapter recovery. The receipts passed 13 foreground, six background
+and nine cold-recovery assertions. Source, CLI and harness inputs remained
+unchanged; services/listeners/stores closed and adapter sessions returned to zero.
+An independent receipt audit recomputed the indexed/input/source hashes and
+corroborated native child identity, originating tool call and returned-result
+provenance. Background recovery retains stopped state and provider-summary
+labeling, not a returned result. Streamed partial text was not recovered; the
+retained transcript contained authored child input. Neither provider-summary
+metadata nor an advertised output-file handle proves a returned result or that
+every such file exists. The ignored `native-qualification-6ee45090b87.json` binds
+these artifacts and limits. This remains synthetic loopback execution through
+the installed CLI and real orchestration/EventStore, not live provider/account,
+Tauri-shell, physical-device, hosted or group/finalizer qualification. Selected
+filesystem and Mach controls do not establish universal Keychain or packet-level
+isolation. Earlier failures remain retained.
+
 The live request-capability clone control now has executed mutation evidence
 at clean `b0ea8c39508`: its baseline passed; removing only the exact Request
 object comparison produced the intended Missing expected exception at the
