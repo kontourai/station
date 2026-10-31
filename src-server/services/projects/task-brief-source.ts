@@ -1,3 +1,4 @@
+import type { LearningReviewTaskContext } from '@kontourai/station-contracts/learning-review';
 /**
  * Gathers what a Task brief is built from (epic #4003): the Task record, the
  * Task document (the person-authored brief it was seeded with), Task memory
@@ -59,6 +60,7 @@ import {
   type TaskBriefSessionFacts,
   type TaskBriefSnapshot,
   TaskContextAdmissionError,
+  taskMandatoryContextDigest,
 } from './task-brief.js';
 
 /**
@@ -89,7 +91,7 @@ export interface TaskBriefSourceDeps {
   learningContext?(
     task: TaskRecord,
     viewerUserId: string | undefined,
-  ): Promise<string | undefined>;
+  ): Promise<LearningReviewTaskContext | undefined>;
   /** Reviewed, current Project rules under the dispatched owner's authority. A refusal must stop dispatch. */
   workingConfiguration?(
     task: TaskRecord,
@@ -159,6 +161,10 @@ export interface TaskBriefForDispatch {
 }
 
 export interface TaskBriefSource {
+  assertMandatoryContextCurrent(
+    sessionId: string,
+    expectedDigest: string,
+  ): Promise<void>;
   /** The brief a Session dispatched for `task` receives with its first turn. */
   forDispatch(
     task: TaskRecord,
@@ -403,13 +409,38 @@ export function createTaskBriefSource(
   };
 
   return {
+    async assertMandatoryContextCurrent(sessionId, expectedDigest) {
+      const bound = boundTask(sessionId);
+      if (bound.kind !== 'task')
+        throw new TaskContextAdmissionError(
+          new Error('Task binding is unavailable'),
+        );
+      const context = await requiredWorkingContext(
+        bound.task,
+        deps.ownerOf?.(sessionId),
+      );
+      const task = deps.readTask(bound.task.id);
+      if (
+        !task ||
+        task.createdAt !== bound.task.createdAt ||
+        task.projectId !== bound.task.projectId ||
+        taskMandatoryContextDigest({
+          task,
+          workingContext: context.working,
+          learningContext: context.learning,
+        }) !== expectedDigest
+      )
+        throw new TaskContextAdmissionError(
+          new Error('Mandatory Task context changed before provider placement'),
+        );
+    },
     async forDispatch(task, sessionId, ownerUserId) {
-      const [document, observation, lines, workingContext] = await Promise.all([
+      const [document, observation, lines] = await Promise.all([
         readDocument(task.id),
         observe(task),
         sessions(task, sessionId, ownerUserId),
-        requiredWorkingContext(task, ownerUserId),
       ]);
+      const workingContext = await requiredWorkingContext(task, ownerUserId);
       const brief = buildTaskBrief({
         task,
         document,
@@ -435,12 +466,15 @@ export function createTaskBriefSource(
       const bound = boundTask(sessionId);
       if (bound.kind !== 'task') return bound;
       const { task } = bound;
-      const [document, observation, lines, workingContext] = await Promise.all([
+      const [document, observation, lines] = await Promise.all([
         readDocument(task.id),
         observe(task),
         sessions(task, sessionId, deps.ownerOf?.(sessionId)),
-        requiredWorkingContext(task, deps.ownerOf?.(sessionId)),
       ]);
+      const workingContext = await requiredWorkingContext(
+        task,
+        deps.ownerOf?.(sessionId),
+      );
       // The binding is immutable, but the Task can be replaced while the
       // document read crosses its worker boundary.
       const current = deps.readTask(task.id);

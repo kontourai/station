@@ -272,14 +272,10 @@ export async function captureNativeMemoryContinuity(
     if (!observedCurrent) fail();
     const currentIdentity = identitySnapshot(observedCurrent, currentSessionId);
     if (!sameScope(currentIdentity, scope)) fail();
-    const seedSource = seed
-      ? await owner.readSession(seed.sourceSessionId)
-      : undefined;
-    if (seed && !seedSource) fail();
-    const seedSourceIdentity =
-      seed && seedSource
-        ? identitySnapshot(seedSource, seed.sourceSessionId)
-        : undefined;
+    const seedSourceIdentity=[];
+    for(const sessionId of new Set(seed?[seed.sourceSessionId,...(seed.sourceCutoffs??[]).map(source=>source.sessionId)]:[])){
+      const source=await owner.readSession(sessionId);if(!source)fail();seedSourceIdentity.push(identitySnapshot(source,sessionId));
+    }
     const previous = await Promise.all(
       relevant.slice(0, -1).map(async (row) => {
         const observed = await owner.readSession(row.sessionId);

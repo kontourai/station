@@ -81,6 +81,11 @@ import {
 import { conformAgentHooks } from './conduit-framework-adapter.js';
 import { createVoltAgentManagedModel } from './framework-model-factory.js';
 import {
+  modelConnectionConfigurationDigest,
+  modelGenerationIdentity,
+  observeDirectModelIdentity,
+} from './model-generation-identity.js';
+import {
   extractToolPurpose,
   rememberToolPurpose,
   toolSchemaWithPurpose,
@@ -813,7 +818,6 @@ type PendingVoltAgentToolCall = {
   tool: ToolCallContext;
   invocation: InvocationContext;
 };
-const managedModelContextBindings = new WeakMap<object,{connectionId:string;modelId:string}>();
 
 function voltAgentInvocationContext(
   slug: string,
@@ -857,7 +861,6 @@ function voltAgentInvocationContext(
 export function createVoltAgentLifecycleHooks(
   slug: string,
   sharedHooks?: IAgentHooks,
-  modelBinding?:{connectionId:string;modelId:string},
 ): AgentHooks {
   const pendingToolCalls = new WeakMap<
     object,
@@ -865,7 +868,8 @@ export function createVoltAgentLifecycleHooks(
   >();
 
   return createHooks({
-    onStepFinish: async ({ context, step }) => {
+    onStepFinish: async ({ context, step, agent }) => {
+      const actualModel = agent.model;
       const usage = step?.usage;
       const inputTokens = usage?.inputTokens ?? usage?.promptTokens;
       const outputTokens = usage?.outputTokens ?? usage?.completionTokens;
@@ -879,14 +883,14 @@ export function createVoltAgentLifecycleHooks(
         outputTokens < 0
       )
         return;
+      const invocation = voltAgentInvocationContext(
+        slug,
+        context as typeof context & { traceId?: string },
+      );
       await sharedHooks?.afterModelGeneration?.({
-        ...(modelBinding?.modelId===modelId?{connectionId:modelBinding.connectionId}:{}),
-        invocation: voltAgentInvocationContext(
-          slug,
-          context as typeof context & { traceId?: string },
-        ),
+        ...modelGenerationIdentity(actualModel, invocation, step?.response),
+        invocation,
         modelId,
-        modelIdentitySource: 'provider-response',
         source: 'voltagent-step',
         inputTokenAccounting: 'total',
         inputTokens,
@@ -1164,7 +1168,7 @@ export class VoltAgentFramework {
     // the shared hooks passed via config.hooks.
     const sharedHooks = conformAgentHooks('voltagent', config.hooks);
     const _autoApprove = spec.tools?.autoApprove || [];
-    const hooks = createVoltAgentLifecycleHooks(slug, sharedHooks, typeof model==='object'&&model!==null?managedModelContextBindings.get(model):undefined);
+    const hooks = createVoltAgentLifecycleHooks(slug, sharedHooks);
 
     // Build agent
     const createToolView = (viewTools: ITool[]): IAgent => {
@@ -1292,13 +1296,21 @@ export class VoltAgentFramework {
       binding,
     );
     if (dispatchModel) return dispatchModel;
-    const model=await createVoltAgentManagedModel({
+    const model = await createVoltAgentManagedModel({
       providerConnection: binding.providerConnection,
       modelId: binding.modelId,
       spec,
       appConfig: config.appConfig,
     });
-    if(typeof model==='object'&&model!==null)managedModelContextBindings.set(model,{connectionId:binding.providerConnection.id,modelId:binding.modelId});
+    if (typeof model === 'object' && model !== null)
+      return observeDirectModelIdentity(model, {
+        connectionId: binding.providerConnection.id,
+        modelId: binding.modelId,
+        providerType: binding.providerConnection.type,
+        configurationDigest: modelConnectionConfigurationDigest(
+          binding.providerConnection,
+        ),
+      });
     return model;
   }
 

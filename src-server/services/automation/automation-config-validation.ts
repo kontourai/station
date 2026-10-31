@@ -1,6 +1,4 @@
 /**
- * UNWIRED(#3439): only the unwired Automation store calls this; intake will.
- *
  * Strict structural validation for the Automation configuration file.
  *
  * Every object is checked against an exact key set, so an unknown field is a
@@ -18,6 +16,7 @@ import {
   AUTOMATION_EVENT_FIELDS,
   AUTOMATION_EXECUTION_LIMITS,
   AUTOMATION_SCHEMA_VERSION,
+  type AutomationAction,
   type AutomationEventType,
   type AutomationRule,
   type AutomationSource,
@@ -308,6 +307,12 @@ function validateEpisode(
   if (!boundedInteger(value.maxAttempts, 1, LIMITS.maxEpisodeAttempts)) {
     problems.push(`${where}: maxAttempts out of range`);
   }
+}
+
+export function isAutomationAction(value: unknown): value is AutomationAction {
+  const problems: string[] = [];
+  validateAction(value, 'action', problems);
+  return problems.length === 0;
 }
 
 function validateAction(

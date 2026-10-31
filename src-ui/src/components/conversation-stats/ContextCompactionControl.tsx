@@ -4,6 +4,7 @@ import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import { errorText } from '../../utils/errorText';
 import { Button } from '../Button';
 import { ErrorState, SkeletonBlock } from '../state';
+import './ContextCompactionControl.css';
 
 /** Mounted within the existing conversation stats/context surface, not new composer chrome. */
 export function ContextCompactionControl({
@@ -31,13 +32,18 @@ export function ContextCompactionControl({
       draft.autoEnabled !== query.data?.autoEnabled);
   const { DiscardModal } = useUnsavedGuard(dirty);
   const id = useId();
+  const taskState = query.data?.contextKind === 'task-state';
   if (!enabled) return null;
   return (
-    <section aria-label="Context compaction">
+    <section
+      aria-label="Context compaction"
+      className="context-compaction-control"
+    >
       <h3>Context compaction</h3>
       <p>
-        Retain a model-generated summary for the next cold start. Generating it
-        can spend model credits.
+        {taskState
+          ? 'Refresh the next cold start from the current Task brief. No summary model is called.'
+          : 'Retain a model-generated summary for the next cold start. Generating it can spend model credits.'}
       </p>
       {query.isLoading && <SkeletonBlock />}
       {query.isError && (
@@ -53,6 +59,18 @@ export function ContextCompactionControl({
       )}
       {query.data && (
         <>
+          {query.data.confirmedContext ? (
+            <p>
+              Last confirmed model context:{' '}
+              {query.data.confirmedContext.contextTokens} of{' '}
+              {query.data.confirmedContext.contextWindowTokens} tokens.
+            </p>
+          ) : (
+            <p>
+              Current model context is unconfirmed; automatic compaction stays
+              idle.
+            </p>
+          )}
           <p role="status">
             {query.data.state}
             {query.data.reason ? `: ${query.data.reason}` : ''}
@@ -104,7 +122,7 @@ export function ContextCompactionControl({
             disabled={compact.isPending || query.data.state !== 'ready'}
             onClick={() => compact.mutate()}
           >
-            Compact context
+            {taskState ? 'Refresh Task context' : 'Compact context'}
           </Button>
           {query.data.operation && (
             <p>
@@ -114,6 +132,37 @@ export function ContextCompactionControl({
                 : ''}
             </p>
           )}
+          {query.data.operation &&
+            query.data.operation.contextKind !== 'task-state' && (
+              <details>
+                <summary>Summary generation measurements</summary>
+                <p>Model: {query.data.operation.model ?? 'unknown'}</p>
+                {query.data.operation.generationAttempts?.length ? (
+                  query.data.operation.generationAttempts.map((attempt) => (
+                    <p key={attempt.attempt}>
+                      Attempt {attempt.attempt}: {attempt.outcome} ·{' '}
+                      {attempt.model ?? 'unknown model'} ·{' '}
+                      {attempt.usage.state === 'observed'
+                        ? `${attempt.usage.inputTokens} input / ${attempt.usage.outputTokens} output tokens`
+                        : 'tokens unknown'}
+                    </p>
+                  ))
+                ) : query.data.operation.generationUsage?.state ===
+                  'observed' ? (
+                  <p>
+                    Input: {query.data.operation.generationUsage.inputTokens}{' '}
+                    tokens · Output:{' '}
+                    {query.data.operation.generationUsage.outputTokens} tokens
+                  </p>
+                ) : (
+                  <p>Generation tokens are unknown.</p>
+                )}
+                <p>
+                  Outside canonical provider-receipt totals. Cost, account and
+                  quota are unknown.
+                </p>
+              </details>
+            )}
           <details>
             <summary>What the next context keeps</summary>
             <p>

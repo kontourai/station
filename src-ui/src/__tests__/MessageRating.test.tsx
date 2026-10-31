@@ -69,3 +69,27 @@ describe('MessageRating accessibility', () => {
     );
   });
 });
+
+test('failed reason writes keep the entered feedback visible and do not pretend it was saved', async () => {
+  saveRating
+    .mockResolvedValueOnce(undefined)
+    .mockRejectedValueOnce(
+      new Error('Feedback history is full. Delete feedback to continue.'),
+    );
+  render(
+    <MessageRating
+      conversationId="conversation-1"
+      messageIndex={4}
+      messagePreview="Response"
+      agentSlug="agent"
+    />,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Bad response' }));
+  const input = await screen.findByPlaceholderText('Why? (optional)');
+  fireEvent.change(input, { target: { value: 'Keep this reason' } });
+  fireEvent.keyDown(input, { key: 'Enter' });
+  expect(await screen.findByText('Rating not saved')).toBeTruthy();
+  expect(
+    (screen.getByPlaceholderText('Why? (optional)') as HTMLInputElement).value,
+  ).toBe('Keep this reason');
+});

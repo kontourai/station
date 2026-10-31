@@ -196,6 +196,8 @@ interface ProjectTaskRoomRuntimeDeps {
   readonly readExecutionBinding?: (
     sessionId: string,
   ) => { readonly projectId: string; readonly taskId: string } | undefined;
+  readonly conversationOfSession?: (sessionId: string) => string;
+  readonly currentConversationSessionId?: (conversationId: string) => string;
   /** #4003 Task memory; absent, memory reads and writes are unavailable. */
   readonly memory?: TaskMemoryStore;
   /**
@@ -1008,6 +1010,11 @@ export class ProjectTaskRoomRuntime {
     return this.#personTaskAccess(input.taskId, input.request);
   }
 
+  /** Context placement uses the current lead or immutable independent request, without granting review rights. */
+  sessionTaskContextAccess(sessionId: string) {
+    return this.#sessionTaskAccess(sessionId);
+  }
+
   async sessionTaskReviewAccess(sessionId: string) {
     const access = await this.#sessionTaskAccess(sessionId);
     if (access.kind !== 'granted') return access;
@@ -1016,9 +1023,10 @@ export class ProjectTaskRoomRuntime {
     );
     const isLead = () => {
       const task = this.#deps.taskGraph.readTaskView(access.write.taskId);
-      return (
-        task?.sessionId === sessionId &&
-        JSON.stringify(task.workspaceBinding) === workspace
+      return Boolean(
+        task?.sessionId &&
+          this.#currentSessionMatches(task.sessionId, sessionId) &&
+          JSON.stringify(task.workspaceBinding) === workspace,
       );
     };
     if (!isLead()) return { kind: 'no-task' as const };
@@ -1111,7 +1119,9 @@ export class ProjectTaskRoomRuntime {
     )
       return { kind: 'no-task' };
     const { task, scope } = association;
-    const lead = task.sessionId === sessionId;
+    const lead = Boolean(
+      task.sessionId && this.#currentSessionMatches(task.sessionId, sessionId),
+    );
     return {
       kind: 'granted',
       staleOutcome: { kind: 'no-task' },
@@ -1121,7 +1131,11 @@ export class ProjectTaskRoomRuntime {
         taskCreatedAt: task.createdAt,
         author: { kind: 'session', sessionId },
         beforeCommit: () => {
-          if (this.#closed) return false;
+          if (
+            this.#closed ||
+            !this.#currentSessionMatches(sessionId, sessionId)
+          )
+            return false;
           const nowBinding = this.#readExecutionBinding(sessionId);
           const now = this.#deps.taskGraph.readTaskView(task.id);
           const nowScope = this.#scope(task.id);
@@ -1132,7 +1146,11 @@ export class ProjectTaskRoomRuntime {
               nowBinding.projectId === binding.projectId &&
               now &&
               now.createdAt === task.createdAt &&
-              (!lead || now.sessionId === sessionId) &&
+              (!lead ||
+                Boolean(
+                  now.sessionId &&
+                    this.#currentSessionMatches(now.sessionId, sessionId),
+                )) &&
               nowScope &&
               sameScope(nowScope, scope),
           );
@@ -3284,7 +3302,11 @@ export class ProjectTaskRoomRuntime {
     const before = this.#deps.taskGraph.readTaskView(taskId);
     const scope = this.#scope(taskId);
     if (!before || !scope) return undefined;
-    if (before.agentId && before.sessionId === sessionId)
+    if (
+      before.agentId &&
+      before.sessionId &&
+      this.#currentSessionMatches(before.sessionId, sessionId)
+    )
       return {
         task: before,
         scope,
@@ -3293,7 +3315,7 @@ export class ProjectTaskRoomRuntime {
       };
     const request = (await this.#deps.readAgentRequests?.(taskId))?.find(
       (candidate) =>
-        candidate.sessionId === sessionId &&
+        this.#currentSessionMatches(candidate.sessionId, sessionId) &&
         candidate.taskCreatedAt === before.createdAt,
     );
     const task = this.#deps.taskGraph.readTaskView(taskId);
@@ -3337,7 +3359,8 @@ export class ProjectTaskRoomRuntime {
       !scope ||
       task.id !== input.taskId ||
       task.agentId !== input.agentId ||
-      task.sessionId !== input.sessionId ||
+      !task.sessionId ||
+      !this.#currentSessionMatches(task.sessionId, input.sessionId) ||
       task.projectId !== scope.projectId
     )
       return undefined;
@@ -3346,6 +3369,19 @@ export class ProjectTaskRoomRuntime {
       scope,
       document: { ...scope, documentId: documentIdFor(scope) },
     };
+  }
+
+  #currentSessionMatches(reference: string, candidate: string): boolean {
+    if (
+      !this.#deps.conversationOfSession ||
+      !this.#deps.currentConversationSessionId
+    )
+      return reference === candidate;
+    const conversation = this.#deps.conversationOfSession(reference);
+    return (
+      this.#deps.conversationOfSession(candidate) === conversation &&
+      this.#deps.currentConversationSessionId(conversation) === candidate
+    );
   }
 
   #publishAgentPresence(input: {

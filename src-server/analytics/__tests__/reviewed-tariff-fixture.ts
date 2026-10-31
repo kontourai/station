@@ -73,4 +73,3 @@ export const binding: ReviewedTariffBinding = {
   },
   measurements: { input: 'provider.input', output: 'provider.output' },
 };
-

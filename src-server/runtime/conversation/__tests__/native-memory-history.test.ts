@@ -3,9 +3,10 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { UIMessage } from 'ai';
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import { FileMemoryAdapter } from '../../../adapters/file/memory-adapter.js';
 import { createPromptOnlyMemoryView } from '../../../adapters/file/memory-adapter-prompt-view.js';
+import { prepareChatRequest } from '../../../routes/chat/chat-request-preparation.js';
 import type { ConversationContextBoundaryMarker } from '../../../services/orchestration/conversation-context-boundary-module.js';
 import type { ConversationSessionLineage } from '../../../services/orchestration/conversation-session-lineage.js';
 import { captureNativeMemoryContinuity } from '../../../services/orchestration/native-memory-continuity.js';
@@ -431,4 +432,56 @@ test('only owner-certified first use allows an absent current-child record', asy
     'second-answer',
   ]);
   expect(await f.adapter.getConversation('c')).toBeNull();
+});
+
+test('trusted Task-brief context suppresses namespace injection and automatic RAG only for its matching Session', async () => {
+  const f = await fixture();
+  const history = createNativeMemoryHistoryCompanion({
+    binding: await f.capture(),
+    taskBriefBounded: true,
+    readCanonicalSession: async () => [],
+  });
+  const getInjectContext = vi.fn(async () => 'Legacy whole namespace'),
+    getRAGContextDetailed = vi.fn(async () => ({
+      context: 'Legacy RAG',
+      chunkCount: 1,
+      sources: [],
+    }));
+  const ctx = {
+    providerService: {},
+    knowledgeService: { getInjectContext, getRAGContextDetailed },
+    feedbackService: { getBehaviorGuidelinesDetailed: () => null },
+    storageAdapter: { getProject: () => undefined },
+    activeAgents: new Map(),
+    logger: { warn: vi.fn(), debug: vi.fn() },
+  } as never;
+  const correlation = createAuthorizedTurnCorrelation({
+    accountId: 'owner',
+    sessionId: 'c',
+    clientTurnId: 'bounded-preparation',
+  });
+  const prepare = (conversationId: string) =>
+    prepareChatRequest({
+      ctx,
+      slug: 'assistant',
+      input: 'Task question',
+      projectSlug: 'project',
+      options: { conversationId },
+    });
+  const bounded = await runWithAuthorizedTurnCorrelation(
+    correlation,
+    () => prepare('c'),
+    history,
+  );
+  expect(bounded.injectContext).toBeNull();
+  expect(bounded.ragContext).toBeNull();
+  expect(getInjectContext).not.toHaveBeenCalled();
+  expect(getRAGContextDetailed).not.toHaveBeenCalled();
+  const interactive = await runWithAuthorizedTurnCorrelation(
+    correlation,
+    () => prepare('another-session'),
+    history,
+  );
+  expect(interactive.injectContext).toBe('Legacy whole namespace');
+  expect(interactive.ragContext).toBe('Legacy RAG');
 });

@@ -1,3 +1,5 @@
+import { parseLearningContextContributions } from '@kontourai/station-contracts/learning-review';
+import { TASK_LEARNING_CONTRIBUTIONS_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import {
   createHash,
   createHmac,
@@ -161,8 +163,6 @@ import {
 import { ensureProjectTaskRoomRevisionFreezeColumn } from '../../domain/migrations/024-project-task-room-revision-freeze.js';
 import { ensureConversationHistoryTitleSourceColumn } from '../../domain/migrations/025-conversation-history-title-source.js';
 import { migrateContextSummaryBoundaries } from '../../domain/migrations/026-context-summary-boundaries.js';
-import { createSqliteContextCompactionStore } from './context-compaction.js';
-import { createSqliteProjectSupervisionStore } from './project-supervision.js';
 import {
   type CanonicalProposedChangeLookup,
   type RevisionAttributionAuthority,
@@ -247,6 +247,7 @@ import {
   canonicalTerminalOutcome,
   terminalEngineFamily,
 } from './canonical-terminal-outcome.js';
+import { createSqliteContextCompactionStore } from './context-compaction.js';
 import {
   ConversationContextBoundaryConflictError,
   type ConversationContextBoundaryMarker,
@@ -331,6 +332,7 @@ import {
   projectionFactKeysForEvent,
 } from './orchestration-session-state.js';
 import { decodeTurnIntent } from './prepared-turn-intent.js';
+import { createSqliteProjectSupervisionStore } from './project-supervision.js';
 import {
   PROJECT_TASK_ROOM_APPEND_RECEIPT_COLUMNS,
   type ProjectTaskRoomAppendReceiptReadResult,
@@ -3722,6 +3724,23 @@ export class EventStore {
     }
   }
 
+  /** Canonical first-turn composition receipts, bounded to the latest 100 Task turns. */
+  readRecentTaskLearningContributions(projectIds: readonly string[]) {
+    if (projectIds.length < 1 || projectIds.length > 2) throw new Error('Invalid Project identity set');
+    const placeholders = projectIds.map(() => '?').join(',');
+    const rows = this.db.prepare(`SELECT id, thread_id, turn_id,
+      json_extract(payload, '$.metadata.${TASK_LEARNING_CONTRIBUTIONS_METADATA_KEY}') AS contributions
+      FROM orchestration_events WHERE method='turn.started' AND turn_id IS NOT NULL AND json_valid(payload)
+      AND thread_id IN (SELECT session_id FROM project_task_room_execution_bindings WHERE project_id IN (${placeholders}))
+      ORDER BY global_sequence DESC LIMIT 100`).all(...projectIds) as Array<{ id: string; thread_id: string; turn_id: string; contributions: string | null }>;
+    return rows.flatMap(row => {
+      if (!row.contributions) return [];
+      const refs = parseLearningContextContributions(JSON.parse(row.contributions));
+      if (!refs) return [];
+      return [{ eventId: row.id, sessionId: row.thread_id, turnId: row.turn_id, contributions: refs }];
+    });
+  }
+
   /** Immutable server-owned scope for provider admission; never inferred from metadata. */
   readProjectTaskRoomExecutionBinding(
     sessionId: string,
@@ -3732,6 +3751,12 @@ export class EventStore {
       )
       .get(sessionId) as { projectId: string; taskId: string } | undefined;
     return row ? { ...row } : undefined;
+  }
+  /** Immutable original event for replaying a server-projected input receipt. */
+  readPersistedTurnStartMetadata(threadId:string,eventId:string,invocationId:string):Record<string,unknown>|undefined{
+    const row=this.db.prepare("SELECT json_extract(payload,'$.metadata') AS metadata FROM orchestration_events WHERE thread_id=? AND id=? AND method='turn.started' AND json_extract(payload,'$.invocationId')=?").get(threadId,eventId,invocationId) as {metadata:string|null}|undefined;
+    const value=row?.metadata?JSON.parse(row.metadata):undefined;
+    return value&&typeof value==='object'&&!Array.isArray(value)?value:undefined;
   }
 
   async bindProjectTaskRoomExecution(input: {
@@ -13558,8 +13583,12 @@ export class EventStore {
     return this.conversationContextBoundaries.reserve(input);
   }
 
-  contextCompactionStore() { return createSqliteContextCompactionStore(this.db); }
-  projectSupervisionStore() { return createSqliteProjectSupervisionStore(this.db); }
+  contextCompactionStore() {
+    return createSqliteContextCompactionStore(this.db);
+  }
+  projectSupervisionStore() {
+    return createSqliteProjectSupervisionStore(this.db);
+  }
 
   conversationContextBoundaryForSuccessor(sessionId: string) {
     return this.conversationContextBoundaries.forSuccessor(sessionId);
@@ -14275,7 +14304,7 @@ export class EventStore {
       ...(row.claimed_at ? { claimedAt: row.claimed_at } : {}),
       ...(row.start_command_id ? { startCommandId: row.start_command_id } : {}),
       ...(row.consumed_at ? { consumedAt: row.consumed_at } : {}),
-      ...(row.seed_json ? {seed:JSON.parse(row.seed_json)} : {}),
+      ...(row.seed_json ? { seed: JSON.parse(row.seed_json) } : {}),
     });
     const columns =
       'boundary_id, conversation_id, predecessor_session_id, successor_session_id, idempotency_key, policy, status, actor_id, client_origin, created_at, claimed_at, start_command_id, consumed_at, seed_json';
@@ -14311,8 +14340,9 @@ export class EventStore {
               if (
                 existing.policy !== input.policy ||
                 existing.predecessorSessionId !== input.predecessorSessionId ||
-                existing.actorId !== input.actorId
-                || JSON.stringify(existing.seed ?? null) !== JSON.stringify(input.seed ?? null)
+                existing.actorId !== input.actorId ||
+                JSON.stringify(existing.seed ?? null) !==
+                  JSON.stringify(input.seed ?? null)
               )
                 throw new ConversationContextBoundaryConflictError(
                   'idempotency_mismatch',

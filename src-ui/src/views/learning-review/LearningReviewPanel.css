@@ -50,3 +50,34 @@
   border: 1px solid var(--k-line);
   border-radius: var(--k-radius-md);
 }
+.learning-review input,
+.learning-review textarea,
+.learning-review select {
+  color: var(--k-text);
+  background: var(--k-panel);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  padding: var(--k-space-2);
+  font: inherit;
+}
+.learning-review :is(input, textarea, select):focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 2px;
+}
+.learning-review__select {
+  position: relative;
+  display: grid;
+  min-width: 0;
+}
+.learning-review__select select {
+  width: 100%;
+  appearance: none;
+  padding-right: calc(var(--k-space-4) * 2);
+}
+.learning-review__select .choice-caret {
+  position: absolute;
+  right: var(--k-space-3);
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}

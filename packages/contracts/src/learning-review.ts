@@ -110,6 +110,11 @@ export type LearningReviewDecision =
     };
 
 export interface LearningReviewContributionDisclosure {
+  readonly coordinate?: {
+    conversationId: string;
+    sessionId: string;
+    turnId: string;
+  };
   readonly turnRef: LearningReviewOwnerRef;
   readonly activeRevisionRef: LearningReviewRevisionRef;
 }
@@ -121,7 +126,7 @@ export type LearningReviewActivation =
       readonly contributionDisclosures: readonly [];
     }
   | {
-      readonly status: 'active' | 'superseded';
+      readonly status: 'active' | 'superseded' | 'retired';
       readonly activeRevisionRef: LearningReviewRevisionRef;
       readonly activatedAt: string;
       readonly deploymentTargets: readonly LearningReviewOwnerRef[];
@@ -208,35 +213,83 @@ export type LearningSourceObservation =
         | 'over-budget';
     };
 
-export const LEARNING_REVIEW_PROJECT_HEADER = 'x-station-learning-project-id' as const;
+export const LEARNING_REVIEW_PROJECT_HEADER =
+  'x-station-learning-project-id' as const;
 export const LEARNING_REVIEW_PREVIEW = 'learning-lifecycle-review' as const;
-export type LearningReviewAction = 'evaluate' | 'approve' | 'reject' | 'activate' | 'observe-effect' | 'retire' | 'supersede';
+export type LearningReviewAction =
+  | 'evaluate'
+  | 'approve'
+  | 'reject'
+  | 'activate'
+  | 'observe-effect'
+  | 'retire'
+  | 'supersede';
 export interface LearningReviewReceiptView {
   ref: LearningReviewRevisionRef;
   action: string;
   actorId: string;
   at: string;
 }
-export type LearningReviewDetail = {
-  state: 'available';
-  id: string;
-  revision: number;
-  active: boolean;
-  body: string;
-  projection: LearningReviewProjection;
-  receipts: LearningReviewReceiptView[];
-  supersededBy?: LearningReviewRevisionRef;
-  comparison?: { state: 'available'; ref: LearningReviewRevisionRef; title: string; body: string; active: boolean } | { state: 'not-captured' | 'restricted' | 'unavailable' | 'unsupported-version' | 'corrupt' };
-} | { state: 'not-captured' | 'restricted' | 'unavailable' | 'unsupported-version' | 'corrupt' };
-export type LearningReviewIndex = {
-  state: 'available';
-  items: LearningReviewDetail[];
-  coverage: 'complete' | 'partial';
-} | { state: 'restricted' | 'unavailable' | 'unsupported-version' | 'corrupt' };
+export type LearningReviewDetail =
+  | {
+      state: 'available';
+      id: string;
+      revision: number;
+      active: boolean;
+      body: string;
+      projection: LearningReviewProjection;
+      receipts: LearningReviewReceiptView[];
+      contributionCoverage?: 'up-to-100-recent-task-turns' | 'unavailable';
+      supersededBy?: LearningReviewRevisionRef;
+      comparison?:
+        | {
+            state: 'available';
+            ref: LearningReviewRevisionRef;
+            title: string;
+            body: string;
+            active: boolean;
+          }
+        | {
+            state:
+              | 'not-captured'
+              | 'restricted'
+              | 'unavailable'
+              | 'unsupported-version'
+              | 'corrupt';
+          };
+    }
+  | {
+      state:
+        | 'not-captured'
+        | 'restricted'
+        | 'unavailable'
+        | 'unsupported-version'
+        | 'corrupt';
+    };
+export type LearningReviewIndex =
+  | {
+      state: 'available';
+      items: LearningReviewDetail[];
+      coverage: 'complete' | 'partial';
+    }
+  | { state: 'restricted' | 'unavailable' | 'unsupported-version' | 'corrupt' };
 export type LearningReviewSourceSelection =
-  | { kind: 'task-standing'; taskId: string; recordKind: 'decision' | 'dead-end'; key: string; version: number }
-  | { kind: 'rated-feedback'; conversationId: string; turnId: string; ratingId: string };
+  | {
+      kind: 'task-standing';
+      taskId: string;
+      taskCreatedAt: string;
+      recordKind: 'decision' | 'dead-end';
+      key: string;
+      version: number;
+    }
+  | {
+      kind: 'rated-feedback';
+      conversationId: string;
+      turnId: string;
+      ratingId: string;
+    };
 export interface LearningReviewProposalInput {
+  expectedSourceRef?: LearningReviewRevisionRef;
   intentId: string;
   learningId: string;
   source: LearningReviewSourceSelection;
@@ -245,11 +298,28 @@ export interface LearningReviewProposalInput {
   body: string;
   expectedEffect: string;
 }
-export type LearningReviewIntentInput = { intentId: string; expectedRevision: number } & (
-  | { action: 'evaluate'; status: Exclude<LearningReviewEvaluation['status'], 'pending'>; evidence: LearningReviewRevisionRef[] }
+export type LearningReviewIntentInput = {
+  intentId: string;
+  expectedRevision: number;
+} & (
+  | {
+      action: 'evaluate';
+      status: Exclude<LearningReviewEvaluation['status'], 'pending'>;
+      evidence: LearningReviewRevisionRef[];
+    }
   | { action: 'approve' | 'reject'; rationale: string }
   | { action: 'activate' }
-  | { action: 'observe-effect'; assessment: LearningReviewEffectObservation['assessment']; evidence: LearningReviewRevisionRef }
+  | {
+      action: 'observe-effect';
+      assessment: LearningReviewEffectObservation['assessment'];
+      evidence: LearningReviewRevisionRef;
+    }
+  | {
+      action: 'observe-effect';
+      assessment: LearningReviewEffectObservation['assessment'];
+      source: LearningReviewSourceSelection;
+      expectedSourceRef?: LearningReviewRevisionRef;
+    }
   | { action: 'retire'; reason: string }
   | { action: 'supersede'; replacementId: string; replacementRevision: string }
 );
@@ -257,3 +327,68 @@ export interface LearningReviewMutationResult {
   receipt: LearningReviewReceiptView;
   detail: LearningReviewDetail;
 }
+
+export type LearningReviewEvidenceView =
+  | {
+      state: 'available';
+      ref: LearningReviewRevisionRef;
+      title: string;
+      text: string;
+      capturedAt?: string;
+      truncated?: boolean;
+    }
+  | {
+      state:
+        | 'not-captured'
+        | 'restricted'
+        | 'unavailable'
+        | 'unsupported-version'
+        | 'corrupt';
+    };
+
+/** Exact approved guidance retained in a Task's bounded first-turn context. */
+export interface LearningReviewTaskContext {
+  readonly text: string;
+  readonly contributions: readonly LearningReviewRevisionRef[];
+}
+
+/** Validate persisted contribution references before attributing a model input. */
+export function parseLearningContextContributions(
+  value: unknown,
+): readonly LearningReviewRevisionRef[] | undefined {
+  if (!Array.isArray(value) || value.length > 64) return undefined;
+  const refs: LearningReviewRevisionRef[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== 'object' || Array.isArray(item))
+      return undefined;
+    const fields = item as Record<string, unknown>;
+    if (
+      Object.keys(fields).length !== 4 ||
+      ['authority', 'kind', 'id', 'revision'].some(
+        (key) =>
+          typeof fields[key] !== 'string' ||
+          fields[key].length === 0 ||
+          fields[key].length > 512,
+      )
+    )
+      return undefined;
+    refs.push({
+      authority: fields.authority as string,
+      kind: fields.kind as string,
+      id: fields.id as string,
+      revision: fields.revision as string,
+    });
+  }
+  return refs;
+}
+
+export type LearningReviewPreparedSource =
+  | {
+      state: 'available';
+      projectId: string;
+      ref: LearningReviewRevisionRef;
+      title: string;
+      body: string;
+      truncated?: boolean;
+    }
+  | { state: 'restricted' | 'unavailable' | 'unsupported-version' | 'corrupt' };

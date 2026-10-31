@@ -14,6 +14,7 @@ import { Button } from '../../components/Button';
 import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
 import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
 import { errorText } from '../../utils/errorText';
+import './TaskSupervisionPanel.css';
 
 export function TaskSupervisionPanel(props: {
   taskId: string;
@@ -101,7 +102,10 @@ function SupervisionControls({
   });
   const intent = query.data?.intent;
   return (
-    <section aria-label="Project supervision" className="project-sources__form">
+    <section
+      aria-label="Project supervision"
+      className="task-supervision-panel"
+    >
       <h3>Project supervision</h3>
       <p>Wake the coordinator when an actionable Task checkpoint changes.</p>
       {query.isLoading && <SkeletonBlock />}
@@ -194,7 +198,7 @@ function SupervisionControls({
             </Button>
           )}
           <details>
-            <summary>Wake limits and pending outcomes</summary>
+            <summary>Wake limits and recent outcomes (up to 20)</summary>
             <p>
               {intent.policy.maxWakes} wakes; stop at{' '}
               {new Date(intent.policy.stopAt).toISOString()}.

@@ -1,8 +1,13 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { JsonFileStore } from '../../infra/json-store.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   feedbackOps: { add: vi.fn() },
@@ -301,11 +306,14 @@ describe('FeedbackService', () => {
     const analyze = vi.fn(async (prompt: string) => modelReply(prompt));
     svc.setAnalyzeCallback(analyze);
     await svc.runAnalysisPipeline();
-    const write = vi.spyOn(JsonFileStore.prototype, 'write');
+    const file = join(dir, 'feedback', 'feedback.json');
+    const before = statSync(file).ino;
+    const bytes = readFileSync(file, 'utf8');
     analyze.mockClear();
     await svc.runAnalysisPipeline();
     expect(analyze).not.toHaveBeenCalled();
-    expect(write).not.toHaveBeenCalled();
+    expect(statSync(file).ino).toBe(before);
+    expect(readFileSync(file, 'utf8')).toBe(bytes);
     expect(svc.getSummary()?.reinforce).toEqual(['useful']);
   });
 
@@ -481,4 +489,139 @@ describe('FeedbackService', () => {
     expect(entry?.analysis).toBeUndefined();
     expect(entry?.analyzedAt).toBeUndefined();
   });
+});
+
+test('raw rating revisions remain inspectable across edits, exclude analysis/position, and explicit deletion withdraws all versions without revival', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'feedback-history-'));
+  const service = new FeedbackService(root);
+  const { feedbackRatingEvidenceDigest } = await import(
+    '../feedback-target.js'
+  );
+  const input = {
+    ...ratingInput,
+    conversationId: 'history',
+    reason: 'Original reason',
+  };
+  const first = service.rateMessage(input);
+  const revision = feedbackRatingEvidenceDigest(first);
+  service.rateMessage({ ...input, reason: 'Changed reason' });
+  expect(service.getRatingEvidence(first.id, revision)?.reason).toBe(
+    'Original reason',
+  );
+  expect(
+    feedbackRatingEvidenceDigest({
+      ...first,
+      analysis: 'derived',
+      analyzedAt: 'later',
+      messageIndex: 999,
+    }),
+  ).toBe(revision);
+  service.clearAnalysis();
+  expect(service.getRatingEvidence(first.id, revision)?.reason).toBe(
+    'Original reason',
+  );
+  service.removeRating(input.conversationId, input.messageIndex);
+  expect(service.getRatingEvidence(first.id, revision)).toBeUndefined();
+  const next = service.rateMessage(input);
+  expect(next.id).not.toBe(first.id);
+  expect(service.getRatingEvidence(first.id, revision)).toBeUndefined();
+  service.stop();
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('history capacity refuses without eviction, corruption never resets, and missing primary never recovers deleted evidence', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'feedback-capacity-'));
+  const service = new FeedbackService(root);
+  const { feedbackRatingEvidenceDigest } = await import(
+    '../feedback-target.js'
+  );
+  const first = service.rateMessage(ratingInput);
+  const file = join(root, 'feedback', 'feedback.json');
+  const data = JSON.parse(readFileSync(file, 'utf8'));
+  data.ratingEvidence = Array.from({ length: 1024 }, (_, index) => {
+    const record = { ...first, reason: `Revision ${index}` };
+    return { revision: feedbackRatingEvidenceDigest(record), record };
+  });
+  writeFileSync(file, JSON.stringify(data));
+  const before = readFileSync(file, 'utf8');
+  expect(() =>
+    service.rateMessage({ ...ratingInput, reason: 'Overflow' }),
+  ).toThrow('Feedback history is full');
+  expect(readFileSync(file, 'utf8')).toBe(before);
+  service.removeRating(first.conversationId, first.messageIndex);
+  expect(service.getRatingEvidence(first.id)).toBeUndefined();
+  writeFileSync(`${file}.previous`, before);
+  rmSync(file);
+  expect(service.getRatingEvidence(first.id)).toBeUndefined();
+  writeFileSync(file, '{broken');
+  expect(() => service.rateMessage(ratingInput)).toThrow(
+    'Feedback evidence is unavailable',
+  );
+  expect(readFileSync(file, 'utf8')).toBe('{broken');
+  service.stop();
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('unchanged raw facts neither add history nor rewrite, and safe legacy0644 is read before private explicit write', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'feedback-legacy-'));
+  const service = new FeedbackService(root);
+  const first = service.rateMessage(ratingInput);
+  const file = join(root, 'feedback', 'feedback.json');
+  const before = statSync(file).ino;
+  service.rateMessage(ratingInput);
+  expect(statSync(file).ino).toBe(before);
+  const { chmodSync } = await import('node:fs');
+  chmodSync(file, 0o644);
+  expect(service.getRatings()[0]?.id).toBe(first.id);
+  expect(statSync(file).mode & 0o777).toBe(0o644);
+  service.rateMessage({ ...ratingInput, reason: 'Explicit edit' });
+  expect(statSync(file).mode & 0o777).toBe(0o600);
+  service.stop();
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('the retained-history byte budget refuses a new revision before writing even below the record limit', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'feedback-byte-limit-'));
+  const service = new FeedbackService(root);
+  const { feedbackRatingEvidenceDigest } = await import(
+    '../feedback-target.js'
+  );
+  const wide = { ...ratingInput, conversationId: 'c'.repeat(32768) };
+  const first = service.rateMessage(wide);
+  const file = join(root, 'feedback', 'feedback.json');
+  const data = JSON.parse(readFileSync(file, 'utf8'));
+  data.ratingEvidence = Array.from({ length: 63 }, (_, index) => {
+    const record = { ...first, reason: `Old ${index}` };
+    return { revision: feedbackRatingEvidenceDigest(record), record };
+  });
+  writeFileSync(file, JSON.stringify(data));
+  const before = readFileSync(file, 'utf8');
+  expect(() =>
+    service.rateMessage({ ...wide, reason: 'One more revision' }),
+  ).toThrow('Feedback history is full');
+  expect(readFileSync(file, 'utf8')).toBe(before);
+  service.stop();
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('request-local evidence capture parses once and refuses changed, deleted, or newly appearing primary evidence', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'feedback-capture-'));
+  const service = new FeedbackService(root);
+  const absent = service.captureRatingEvidence();
+  absent.assertCurrent();
+  const first = service.rateMessage(ratingInput);
+  expect(() => absent.assertCurrent()).toThrow();
+  const captured = service.captureRatingEvidence();
+  expect(captured.get(first.id)?.id).toBe(first.id);
+  const read = captured.get(first.id)!;
+  read.reason = 'Caller mutation';
+  expect(captured.get(first.id)?.reason).toBe(ratingInput.reason);
+  service.rateMessage({ ...ratingInput, reason: 'Changed' });
+  expect(() => captured.assertCurrent()).toThrow();
+  const beforeDelete = service.captureRatingEvidence();
+  service.removeRating(first.conversationId, first.messageIndex);
+  expect(() => beforeDelete.assertCurrent()).toThrow();
+  expect(service.captureRatingEvidence().get(first.id)).toBeUndefined();
+  service.stop();
+  rmSync(root, { recursive: true, force: true });
 });

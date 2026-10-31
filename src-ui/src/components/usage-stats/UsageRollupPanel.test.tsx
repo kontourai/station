@@ -59,6 +59,7 @@ const result = vi.hoisted(() => ({
         taskId: 'task one',
         receiptCount: 1,
         state: 'available',
+        taskCreatedAt: '2026-08-01T00:00:00.000Z',
         status: 'done',
         reportedCostBuckets: [{ amount: 0, currency: 'USD' }],
       },

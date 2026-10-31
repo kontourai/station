@@ -17,9 +17,10 @@
  *   (a redelivery with a fresh GUID) is recorded as `duplicate`.
  * - episode: one open episode per episode key; one action claim per episode.
  *
- * Rows hold a bounded projection only: hashed transport keys, closed outcome
- * and reason codes, and identifiers. No payload, secret or delivery GUID is
- * stored in clear.
+ * Delivery rows hold bounded projections: hashed transport keys, outcome and
+ * reason codes, and identifiers. Private action intents additionally retain
+ * validated normalized fields and operator instructions. Raw GitHub bodies,
+ * webhook secrets and transport delivery GUIDs are not retained.
  *
  * A rule without an episode policy is expected to use a per-delivery episode
  * (its semantic key, one attempt), so every action goes through a claim.
@@ -58,6 +59,7 @@ import { join } from 'node:path';
 import {
   AUTOMATION_EXECUTION_LIMITS,
   AUTOMATION_SEMANTIC_DEDUPE_OUTCOMES,
+  type AutomationActionIntent,
   type AutomationDeliveryOutcome,
   type AutomationDeliveryRecord,
   type AutomationEpisodeState,
@@ -73,6 +75,7 @@ import {
 import { checkSqliteIntegrity } from '@kontourai/station-shared/sqlite-integrity';
 import { resolveHomeDir } from '../../utils/paths.js';
 import { applyWalJournalMode } from '../../utils/sqlite-wal.js';
+import { decodeAutomationActionIntent } from './automation-intent.js';
 import { AutomationPolicyUnavailableError } from './automation-store.js';
 
 const require = createRequire(import.meta.url);
@@ -143,6 +146,21 @@ CREATE TABLE IF NOT EXISTS automation_action_claims (
   owner_birth TEXT,
   claimed_ms INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS automation_action_intents (
+  intent_id TEXT PRIMARY KEY,
+  episode_key TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  rule_id TEXT NOT NULL,
+  episode_id TEXT NOT NULL,
+  delivery_key TEXT NOT NULL,
+  state TEXT NOT NULL,
+  created_ms INTEGER NOT NULL,
+  updated_ms INTEGER NOT NULL,
+  invoked_ms INTEGER,
+  body TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS automation_action_intents_rule ON automation_action_intents(rule_id, invoked_ms);
+CREATE UNIQUE INDEX IF NOT EXISTS automation_action_intents_episode ON automation_action_intents(rule_id, episode_id);
 CREATE TABLE IF NOT EXISTS automation_poll_state (
   source_id TEXT PRIMARY KEY,
   last_polled_ms INTEGER NOT NULL,
@@ -248,12 +266,35 @@ export interface AutomationLedger {
     delivery: RecordDeliveryInput;
     openings: readonly OpenEpisodeInput[];
     closings: readonly { ruleId: string; episodeKey: string }[];
+    intents?: readonly Omit<
+      AutomationActionIntent,
+      'deliveryKey' | 'state' | 'createdAt' | 'updatedAt'
+    >[];
     now: number;
   }): {
     recorded: RecordDeliveryOutcome;
     openedEpisodeIds: string[];
     closedEpisodeIds: string[];
   };
+  readIntent(intentId: string): AutomationActionIntent | undefined;
+  listActionIntents(): AutomationActionIntent[];
+  updateIntent(
+    intentId: string,
+    update: Partial<
+      Pick<
+        AutomationActionIntent,
+        | 'state'
+        | 'taskId'
+        | 'taskCreatedAt'
+        | 'sessionId'
+        | 'conversationId'
+        | 'turnId'
+        | 'deadlineAt'
+        | 'reason'
+      >
+    >,
+    now: number,
+  ): void;
   recordDelivery(input: RecordDeliveryInput): RecordDeliveryOutcome;
   updateDelivery(deliveryKey: string, update: DeliveryUpdate): boolean;
   listDeliveries(limit?: number): AutomationDeliveryRecord[];
@@ -270,6 +311,9 @@ export interface AutomationLedger {
     episodeKey: string;
     deliveryKey: string;
     now: number;
+    maxStartsPerHour?: number;
+    maxConcurrentActions?: number;
+    expectedEpisodeId?: string;
   }): ClaimActionOutcome;
   listPolls(): AutomationPollRecord[];
   pollState(sourceId: string): AutomationPollState | undefined;
@@ -575,6 +619,10 @@ class SqliteAutomationLedger implements AutomationLedger {
     delivery: RecordDeliveryInput;
     openings: readonly OpenEpisodeInput[];
     closings: readonly { ruleId: string; episodeKey: string }[];
+    intents?: readonly Omit<
+      AutomationActionIntent,
+      'deliveryKey' | 'state' | 'createdAt' | 'updatedAt'
+    >[];
     now: number;
   }) {
     return this.transaction(() => {
@@ -613,7 +661,143 @@ class SqliteAutomationLedger implements AutomationLedger {
           outcome: input.delivery.outcome,
           ...(firstEpisodeId ? { episodeId: firstEpisodeId } : closedForRow),
         });
+      for (const candidate of input.intents ?? []) {
+        const episode = this.unclosedEpisode(candidate.episodeKey);
+        if (
+          !episode ||
+          episode.rule_id !== candidate.ruleId ||
+          episode.episode_id !== candidate.episodeId
+        )
+          continue;
+        const existing = this.db
+          .prepare(
+            'SELECT 1 FROM automation_action_intents WHERE rule_id = ? AND episode_id = ?',
+          )
+          .get(candidate.ruleId, candidate.episodeId);
+        if (existing) continue;
+        const size = this.db
+          .prepare('SELECT COUNT(*) AS count FROM automation_action_intents')
+          .get() as { count: number };
+        if (size.count >= AUTOMATION_EXECUTION_LIMITS.maxRetainedDeliveries)
+          throw new AutomationPolicyUnavailableError(
+            'Automation intent capacity reached',
+          );
+        const intent = decodeAutomationActionIntent(
+          JSON.stringify({
+            ...candidate,
+            deliveryKey: recorded.deliveryKey,
+            state: 'pending',
+            createdAt: input.now,
+            updatedAt: input.now,
+          }),
+        );
+        this.db
+          .prepare(
+            'INSERT INTO automation_action_intents (intent_id, episode_key, source_id, rule_id, episode_id, delivery_key, state, created_ms, updated_ms, body) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          )
+          .run(
+            intent.intentId,
+            intent.episodeKey,
+            intent.sourceId,
+            intent.ruleId,
+            intent.episodeId,
+            intent.deliveryKey,
+            intent.state,
+            input.now,
+            input.now,
+            JSON.stringify(intent),
+          );
+      }
       return { recorded, openedEpisodeIds, closedEpisodeIds };
+    });
+  }
+
+  readIntent(intentId: string): AutomationActionIntent | undefined {
+    return this.read(() => {
+      const row = this.db
+        .prepare(
+          'SELECT state, body FROM automation_action_intents WHERE intent_id = ?',
+        )
+        .get(intentId) as { state: string; body: string } | undefined;
+      if (!row) return undefined;
+      const decoded = decodeAutomationActionIntent(row.body);
+      if (decoded.intentId !== intentId || decoded.state !== row.state)
+        throw new Error('Retained Automation intent binding mismatch');
+      return decoded;
+    });
+  }
+
+  listActionIntents(): AutomationActionIntent[] {
+    return this.transaction(() => {
+      this.reconcileDeadClaims(Date.now());
+      const rows = this.db
+        .prepare(
+          "SELECT intent_id, state, body FROM automation_action_intents WHERE state NOT IN ('completed', 'failed', 'refused') ORDER BY created_ms, intent_id LIMIT 200",
+        )
+        .all() as { intent_id: string; state: string; body: string }[];
+      return rows.map((row) => {
+        const decoded = decodeAutomationActionIntent(row.body);
+        if (decoded.intentId !== row.intent_id || decoded.state !== row.state)
+          throw new Error('Retained Automation intent binding mismatch');
+        return decoded;
+      });
+    });
+  }
+
+  updateIntent(
+    intentId: string,
+    update: Partial<
+      Pick<
+        AutomationActionIntent,
+        | 'state'
+        | 'taskId'
+        | 'taskCreatedAt'
+        | 'sessionId'
+        | 'conversationId'
+        | 'turnId'
+        | 'deadlineAt'
+        | 'reason'
+      >
+    >,
+    now: number,
+  ): void {
+    this.transaction(() => {
+      const current = this.readIntent(intentId);
+      if (!current)
+        throw new AutomationPolicyUnavailableError(
+          'Automation intent not found',
+        );
+      const next = { ...current, ...update, updatedAt: now };
+      if (!Number.isSafeInteger(now) || now < current.updatedAt)
+        throw new AutomationPolicyUnavailableError(
+          'Automation intent clock moved backwards',
+        );
+      if (
+        update.state === 'refused' ||
+        update.state === 'failed' ||
+        update.state === 'indeterminate'
+      )
+        this.db
+          .prepare(
+            'UPDATE automation_deliveries SET outcome = ?, reason = ?, updated_ms = ? WHERE dedupe_key = ?',
+          )
+          .run(
+            update.state,
+            update.state === 'refused' ? 'policy_unavailable' : null,
+            now,
+            current.deliveryKey,
+          );
+
+      this.db
+        .prepare(
+          'UPDATE automation_action_intents SET state = ?, updated_ms = ?, body = ? WHERE intent_id = ?',
+        )
+        .run(next.state, now, JSON.stringify(next), intentId);
+      if (['completed', 'failed', 'refused'].includes(next.state))
+        this.db
+          .prepare(`UPDATE automation_episodes SET state='closed', updated_ms=?
+          WHERE rule_id=? AND episode_id=? AND closes_on_settle=1`)
+          .run(now, next.ruleId, next.episodeId);
     });
   }
 
@@ -833,11 +1017,54 @@ class SqliteAutomationLedger implements AutomationLedger {
     episodeKey: string;
     deliveryKey: string;
     now: number;
+    maxStartsPerHour?: number;
+    maxConcurrentActions?: number;
+    expectedEpisodeId?: string;
   }): ClaimActionOutcome {
     return this.transaction(() => {
       this.reconcileDeadClaims(input.now);
+      if (input.maxConcurrentActions !== undefined) {
+        const claims = this.db
+          .prepare('SELECT COUNT(*) AS count FROM automation_action_claims')
+          .get() as { count: number };
+        const active = this.db
+          .prepare(
+            "SELECT COUNT(*) AS count FROM automation_action_intents WHERE state IN ('queued', 'running', 'indeterminate')",
+          )
+          .get() as { count: number };
+        if (claims.count + active.count >= input.maxConcurrentActions)
+          return { kind: 'busy' };
+        const perRule = this.db
+          .prepare(
+            "SELECT COUNT(*) AS count FROM automation_action_intents WHERE rule_id = (SELECT rule_id FROM automation_episodes WHERE episode_key = ? AND state <> 'closed') AND state IN ('queued', 'running', 'indeterminate')",
+          )
+          .get(input.episodeKey) as { count: number };
+        const reserved = this.db
+          .prepare(
+            "SELECT COUNT(*) AS count FROM automation_action_claims WHERE rule_id = (SELECT rule_id FROM automation_episodes WHERE episode_key = ? AND state <> 'closed')",
+          )
+          .get(input.episodeKey) as { count: number };
+        if (
+          perRule.count + reserved.count >=
+          AUTOMATION_EXECUTION_LIMITS.maxActivePerRule
+        )
+          return { kind: 'busy' };
+      }
+      if (input.maxStartsPerHour !== undefined) {
+        const starts = this.db
+          .prepare(
+            "SELECT COUNT(*) AS count FROM automation_action_intents WHERE rule_id = (SELECT rule_id FROM automation_episodes WHERE episode_key = ? AND state <> 'closed') AND invoked_ms >= ?",
+          )
+          .get(input.episodeKey, input.now - 3600000) as { count: number };
+        if (starts.count >= input.maxStartsPerHour) return { kind: 'busy' };
+      }
       const episode = this.unclosedEpisode(input.episodeKey);
       if (!episode) return { kind: 'not-found' };
+      if (
+        input.expectedEpisodeId !== undefined &&
+        input.expectedEpisodeId !== episode.episode_id
+      )
+        return { kind: 'not-found' };
       if (episode.state === 'indeterminate') return { kind: 'indeterminate' };
       if (
         episode.state === 'exhausted' ||
@@ -917,11 +1144,31 @@ class SqliteAutomationLedger implements AutomationLedger {
       beginInvocation: (now) =>
         this.transaction(() => {
           if (!ownedClaim(0)) return 'stale';
+          if (
+            this.unclosedEpisode(claim.episode_key)?.episode_id !==
+            claim.episode_id
+          )
+            return 'stale';
           this.db
             .prepare(
               'UPDATE automation_action_claims SET invocation_started = 1 WHERE claim_id = ?',
             )
             .run(claim.claim_id);
+          const row = this.db
+            .prepare(
+              'SELECT intent_id FROM automation_action_intents WHERE rule_id = ? AND episode_id = ?',
+            )
+            .get(claim.rule_id, claim.episode_id) as
+            | { intent_id: string }
+            | undefined;
+          if (row) {
+            this.updateIntent(row.intent_id, { state: 'invoking' }, now);
+            this.db
+              .prepare(
+                'UPDATE automation_action_intents SET invoked_ms = ? WHERE intent_id = ?',
+              )
+              .run(now, row.intent_id);
+          }
           // The attempt is consumed the moment an effect may happen, so a
           // crash after this point can never earn a free retry.
           this.db
@@ -976,7 +1223,11 @@ class SqliteAutomationLedger implements AutomationLedger {
         `UPDATE automation_episodes
             SET state = CASE
                   WHEN state = 'closed' THEN 'closed'
-                  WHEN closes_on_settle = 1 THEN 'closed'
+                  WHEN closes_on_settle = 1 AND NOT EXISTS (
+                    SELECT 1 FROM automation_action_intents
+                    WHERE rule_id=automation_episodes.rule_id AND episode_id=automation_episodes.episode_id
+                      AND state IN ('invoking','queued','running','indeterminate')
+                  ) THEN 'closed'
                   WHEN ? = 'indeterminate' THEN 'indeterminate'
                   WHEN state = 'indeterminate' THEN 'indeterminate'
                   WHEN attempt_count >= max_attempts THEN 'exhausted'
@@ -1023,6 +1274,19 @@ class SqliteAutomationLedger implements AutomationLedger {
         continue;
       }
       this.finishInvokedClaim(claim, 'indeterminate', now);
+      const intent = this.db
+        .prepare(
+          'SELECT intent_id FROM automation_action_intents WHERE rule_id = ? AND episode_id = ?',
+        )
+        .get(claim.rule_id, claim.episode_id) as
+        | { intent_id: string }
+        | undefined;
+      if (intent)
+        this.updateIntent(
+          intent.intent_id,
+          { state: 'indeterminate', reason: 'owner_lost_after_invocation' },
+          now,
+        );
     }
   }
 

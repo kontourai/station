@@ -52,3 +52,34 @@ test('rejects a model revision, source artifact or measurement not vouched by th
       () => new BearingUsagePricingSnapshotCapture(catalog, [changed]),
     ).toThrow();
 });
+
+test('immutable tariff snapshot identity includes reviewed route, category and measurement mapping', async () => {
+  const input = {
+    provider: 'acp',
+    model: 'model',
+    route,
+    observedAt: '2026-08-10T00:00:00.000Z',
+  };
+  const original = await new BearingUsagePricingSnapshotCapture(catalog, [
+    binding,
+  ]).capture(input);
+  const changedCategory = await new BearingUsagePricingSnapshotCapture(
+    catalog,
+    [{ ...binding, basis: { ...binding.basis, cacheInput: 'included' } }],
+  ).capture(input);
+  const changedMapping = await new BearingUsagePricingSnapshotCapture(catalog, [
+    {
+      ...binding,
+      measurements: { input: 'provider.output', output: 'provider.input' },
+    },
+  ]).capture(input);
+  expect(changedCategory?.id).not.toBe(original?.id);
+  expect(changedMapping?.id).not.toBe(original?.id);
+  expect(
+    (
+      await new BearingUsagePricingSnapshotCapture(catalog, [
+        structuredClone(binding),
+      ]).capture(input)
+    )?.id,
+  ).toBe(original?.id);
+});

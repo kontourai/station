@@ -4,6 +4,25 @@ import type {
   ConversationContextBoundarySeed,
   ConversationContextBoundaryStatus,
 } from '@kontourai/station-contracts/conversation-context-boundary';
+import type { EventStore } from './event-store.js';
+
+/** A ready Task may repair its first context only while durable placement is definitely inactive. */
+export function isReadyUnstartedTaskStateSession(
+  store: EventStore,
+  sessionId: string,
+): boolean {
+  if (
+    !store.readProjectTaskRoomExecutionBinding(sessionId) ||
+    store.readSessionByThread(sessionId)?.status !== 'ready' ||
+    store.latestEventByMethod(sessionId, 'turn.started')
+  )
+    return false;
+  const effect = store
+    .sessionTurnBoundaryAuthority()
+    .hasPossibleEffect(sessionId);
+  return effect.kind === 'available' && !effect.active;
+}
+
 import {
   CONTEXT_BOUNDARY_OMITTED,
   CONTEXT_BOUNDARY_PRESERVED,
@@ -92,6 +111,19 @@ export function assertConversationContextBoundarySeed(
     seed.sourceSessionId !== marker.predecessorSessionId ||
     !seed.sourceEventId ||
     !seed.sourceRevision ||
+    (seed.sourceCutoffs !== undefined &&
+      (!Array.isArray(seed.sourceCutoffs) ||
+        seed.sourceCutoffs.length > 128 ||
+        seed.sourceCutoffs.some(
+          (cutoff) =>
+            !cutoff ||
+            typeof cutoff.sessionId !== 'string' ||
+            !cutoff.sessionId ||
+            !Number.isSafeInteger(cutoff.throughSequence) ||
+            cutoff.throughSequence < 0,
+        ) ||
+        new Set(seed.sourceCutoffs.map((cutoff) => cutoff.sessionId)).size !==
+          seed.sourceCutoffs.length)) ||
     (marker.policy === 'task-state-next-cold-start'
       ? seed.kind !== 'task-state' ||
         !seed.task?.taskId ||

@@ -250,7 +250,9 @@
     "./account-preferences": "./src/account-preferences.ts",
     "./html-reply": "./src/html-reply.ts",
     "./runtime-event-content": "./src/runtime-event-content.ts",
-    "./project-working-configuration": "./src/project-working-configuration.ts"
+    "./project-working-configuration": "./src/project-working-configuration.ts",
+    "./project-supervision": "./src/project-supervision.ts",
+    "./feedback": "./src/feedback.ts"
   },
   "dependencies": {
     "@kontourai/datum": "0.8.1",

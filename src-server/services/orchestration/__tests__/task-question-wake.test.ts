@@ -239,6 +239,10 @@ function boot(
     logger: { warn },
   });
   const runtime = new ProjectTaskRoomRuntime({
+    conversationOfSession: (id) =>
+      store.conversationForSession(id)?.conversationId ?? id,
+    currentConversationSessionId: (id) =>
+      service.currentConversationSessionId(id),
     taskGraph: {
       readTaskView: (id) => (id === task.current.id ? task.current : null),
     },
@@ -391,15 +395,13 @@ describe('Task question lead wake (#4003)', () => {
     await bindAll(first);
     await startLead(first);
     expect(
-      first.store
-        .taskMemoryStore()
-        .writeRecord({
-          projectId: 'project-1',
-          taskId: TASK_ID,
-          taskCreatedAt: CREATED_AT,
-          author: { kind: 'session', sessionId: HELPER },
-          write: { kind: 'question', key: 'commit-gap', text: QUESTION },
-        }),
+      first.store.taskMemoryStore().writeRecord({
+        projectId: 'project-1',
+        taskId: TASK_ID,
+        taskCreatedAt: CREATED_AT,
+        author: { kind: 'session', sessionId: HELPER },
+        write: { kind: 'question', key: 'commit-gap', text: QUESTION },
+      }),
     ).toMatchObject({ kind: 'recorded' });
     expect(first.store.taskMemoryStore().pendingQuestionWakes()).toHaveLength(
       1,
@@ -618,6 +620,64 @@ describe('Task question lead wake (#4003)', () => {
     expect(store.pending()).toEqual([]);
     expect(store.read(intent.key)?.attention).toContain('Uncertain');
   });
+
+  test.each([LEAD, HELPER])(
+    'current Task successor of %s retains record access while predecessor writes are fenced',
+    async (predecessor) => {
+      const world = boot(path());
+      await bindAll(world);
+      await startLead(world);
+      if (predecessor === HELPER)
+        await world.service.dispatch({
+          type: 'startSession',
+          input: { threadId: HELPER, provider: 'claude' },
+        });
+      const predecessorAccess =
+        await world.runtime.sessionTaskContextAccess(predecessor);
+      expect(predecessorAccess.kind).toBe('granted');
+      const successor = world.store.reserveNextConversationSession({
+        conversationId: predecessor,
+        predecessorSessionId: predecessor,
+        proposedSessionId: `${predecessor}-successor`,
+        createdAt: new Date().toISOString(),
+      }).lineage.sessionId;
+      expect(
+        await world.store.bindProjectTaskRoomExecution({
+          projectId: 'project-1',
+          taskId: TASK_ID,
+          sessionId: successor,
+        }),
+      ).toEqual({ kind: 'bound' });
+      expect(
+        await world.runtime.writeTaskRecordForSession({
+          sessionId: successor,
+          write: {
+            kind: 'decision',
+            key: 'continued',
+            text: 'A current successor decision.',
+          },
+        }),
+      ).toMatchObject({ kind: 'recorded' });
+      expect(
+        (await world.runtime.sessionTaskReviewAccess(successor)).kind,
+      ).toBe(predecessor === LEAD ? 'granted' : 'no-task');
+      expect(
+        await world.runtime.writeTaskRecordForSession({
+          sessionId: predecessor,
+          write: {
+            kind: 'decision',
+            key: 'old-parent',
+            text: 'Must not commit.',
+          },
+        }),
+      ).not.toMatchObject({ kind: 'recorded' });
+      expect(
+        predecessorAccess.kind === 'granted' &&
+          predecessorAccess.write.beforeCommit(),
+      ).toBe(false);
+      expect(records(world).map((record) => record.key)).toEqual(['continued']);
+    },
+  );
 
   test("a helper Session's question reaches the idle lead once, as a turn naming the key, the asker and how to answer", async () => {
     const world = boot(path());

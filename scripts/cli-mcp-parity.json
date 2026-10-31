@@ -1354,12 +1354,20 @@
       "cli": ["skills list"],
       "note": "Different route: MCP GET /api/system/skills, CLI GET /api/skills (SDK keeps both fetchers deliberately; installed vs system catalogue)."
     },
+    "list_tool_families": {
+      "exempt": "agent-self",
+      "reason": "MCP transport discovery for the verified runtime credential; loading schemas grants no tool authority and has no person-facing CLI state."
+    },
     "list_wake_ups": {
       "exempt": "agent-self",
       "reason": "Lists the caller's own wake-ups."
     },
     "list_walkthroughs": {
       "cli": ["walkthrough list"]
+    },
+    "load_tool_family": {
+      "exempt": "agent-self",
+      "reason": "MCP transport discovery for the verified runtime credential; loading schemas grants no tool authority and has no person-facing CLI state."
     },
     "migrate_knowledge": {
       "cli": ["knowledge migrate"]

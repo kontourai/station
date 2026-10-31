@@ -1,3 +1,8 @@
+export const STATION_CONTROL_DISCOVERY_TOOL_NAMES = {
+  listFamilies: 'list_tool_families',
+  loadFamily: 'load_tool_family',
+} as const;
+
 /** A transport owns one instance per verified credential incarnation and drops it on revoke. */
 export class StationControlDisclosure {
   private readonly loaded = new Set<string>();

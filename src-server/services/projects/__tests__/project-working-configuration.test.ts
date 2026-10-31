@@ -1,5 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -19,10 +25,18 @@ function fixture() {
   );
   writeFileSync(join(cwd, 'src/AGENTS.md'), 'Scoped source rule.');
   writeFileSync(join(cwd, 'docs/work.md'), 'Canonical completion guidance.');
+  const executionMarker = join(cwd, 'execution-marker');
+  writeFileSync(
+    join(cwd, 'test-sentinel.cjs'),
+    "require('node:fs').writeFileSync(require('node:path').join(__dirname,'execution-marker'),'executed');",
+  );
   writeFileSync(
     join(cwd, 'package.json'),
     JSON.stringify({
-      scripts: { 'test:focused': 'do-not-run-this', build: 'also-do-not-run' },
+      scripts: {
+        'test:focused': 'node test-sentinel.cjs',
+        build: 'node test-sentinel.cjs',
+      },
     }),
   );
   writeFileSync(
@@ -38,6 +52,7 @@ function fixture() {
   return {
     home,
     cwd,
+    executionMarker,
     service,
     authority,
     revoke: () => {
@@ -114,8 +129,9 @@ test('repository discovery and reviewed apply preserve editable defaults, source
   expect(unfocused.omittedRules).toBe(1);
   expect(unfocused.text).not.toContain('Scoped source rule.');
   expect(readFileSync(join(f.cwd, 'package.json'), 'utf8')).toContain(
-    'do-not-run-this',
+    'node test-sentinel.cjs',
   );
+  expect(existsSync(f.executionMarker)).toBe(false);
 });
 
 test('stale sources refuse apply and execution, while rediscovery retains reviewed edits and exact operation keys cannot name changed intent', async () => {

@@ -13,6 +13,7 @@ import { knowledgeRootIncarnationKey } from '@kontourai/station-shared/knowledge
 import { zodSchema } from 'ai';
 import packageJson from '../../../package.json' with { type: 'json' };
 import { captureAnalyticsHomeActivation } from '../../analytics/analytics-activation.js';
+import { LocalTaskOutcomeSource } from '../../analytics/local-task-outcome-source.js';
 import { RecipientStore } from '../../analytics/recipient-store.js';
 import { AnalyticsSavedViews } from '../../analytics/saved-views.js';
 import { SourceEnrollmentStore } from '../../analytics/source-enrollment-store.js';
@@ -37,6 +38,7 @@ import { createMediaToolsRoutes } from '../../routes/media-tools.js';
 import { createMobileDeviceRoutes } from '../../routes/mobile-device.js';
 import { createAnalyticsSavedViewRoutes } from '../../routes/operations/analytics-saved-views.js';
 import { createRecipientCandidateRoutes } from '../../routes/operations/recipient-candidates.js';
+import { createReviewedTariffRoutes } from '../../routes/operations/reviewed-tariff-routes.js';
 import { createSourceEnrollmentRoutes } from '../../routes/operations/source-enrollments.js';
 import { createSourceGrantApprovalRoutes } from '../../routes/operations/source-grant-approvals.js';
 import { createSourceGrantExportRoutes } from '../../routes/operations/source-grant-export.js';
@@ -372,6 +374,7 @@ import { createUntrustedContentRoutes } from '../../routes/agents/untrusted-cont
 import { createBoardRoutes } from '../../routes/board.js';
 import { createAgentConversationTitleRoutes } from '../../routes/chat/agent-conversation-title.js';
 import { createChatRoutes } from '../../routes/chat/chat.js';
+import { createConversationMessageReader } from '../../routes/chat/conversation-message-reader.js';
 import {
   conversationReferenceReadDeps,
   createConversationReferenceReadRoutes,
@@ -659,6 +662,7 @@ import { VeritasReadinessService } from '../../services/evidence/veritas-readine
 import { WorkflowSidecarService } from '../../services/evidence/workflow-sidecar-service.js';
 import type { FeaturePreviewRegistry } from '../../services/feature-previews/feature-preview-registry.js';
 import type { FeedbackService } from '../../services/feedback/feedback-service.js';
+import { createFeedbackRatingTarget } from '../../services/feedback/feedback-target.js';
 import { FlowMcpUiEvidenceBridge } from '../../services/flow/flow-mcp-ui-evidence-bridge.js';
 import { FlowReadinessBridge } from '../../services/flow/flow-readiness-bridge.js';
 import { FlowRunService } from '../../services/flow/flow-run-service.js';
@@ -915,6 +919,7 @@ import {
   createRequestDelegationResolver,
   type RequestDelegationSources,
 } from '../agents/request-delegation.js';
+import type { createAutomationActionsRuntime } from '../automation-actions-runtime.js';
 import {
   accountBoundProjectRouteMayPass,
   installAccountBoundDeviceGate,
@@ -951,6 +956,10 @@ import {
   loadHostedTenantRegistryFromEnvironment,
   tenantExecutionContextForRequest,
 } from '../bootstrap/runtime-tenant-context.js';
+import {
+  canUseTaskSource,
+  composeContextEfficiencyRuntime,
+} from '../context-efficiency-runtime.js';
 import { nativeRuntimeSpecMatches } from '../conversation/native-foreground-invocation.js';
 import {
   createAgentDispatchActorResolver,
@@ -964,6 +973,7 @@ import {
   createStationEngineAvailabilityReader,
   resolveBedrockConnectionAuth,
 } from '../plugins/runtime-provider-resolution.js';
+import { createCanonicalTaskSourceReader } from '../task-source-read-authority.js';
 import type {
   AgentConfigurationMutationRunner,
   RuntimeContext,
@@ -1088,6 +1098,10 @@ export interface ConfigureRuntimeRoutesContext {
   port: number;
   host?: string;
   buildProvenanceSnapshot?: BuildProvenanceSnapshot;
+  getReviewedTariffConfiguration?: () =>
+    | import('../../analytics/reviewed-tariff-config.js').ReviewedTariffConfigurationService
+    | undefined;
+  reviewedTariffsEnabled?: () => boolean;
   usageAggregator?: any;
   usageTelemetry?: UsageTelemetryService;
   /** Late-bound: the service is constructed after routes are registered. */
@@ -1522,6 +1536,8 @@ export async function jobEditRetargetsGrantedWork(
 export function configureRuntimeRoutes(
   context: ConfigureRuntimeRoutesContext,
 ): ConfigureRuntimeRoutesResult {
+  let contextEfficiency: ReturnType<typeof composeContextEfficiencyRuntime>;
+  let durableTaskQuestionWake: TaskQuestionWake | undefined;
   const connectedClientPresence = new ClientConnectionPresence({
     record: (op) => connectedClientPresenceOps.add(1, { op }),
   });
@@ -3209,6 +3225,10 @@ export function configureRuntimeRoutes(
     workItemObserver,
     logger: context.logger,
   });
+  context.orchestrationService.bindMandatoryTaskContextVerifier(
+    (sessionId, digest) =>
+      taskBriefSource.assertMandatoryContextCurrent(sessionId, digest),
+  );
   context.app.route(
     '/api/orchestration',
     createTaskBriefRoutes({
@@ -3845,7 +3865,55 @@ export function configureRuntimeRoutes(
           },
         };
       },
+      (requestContext) => {
+        const request = requestContext.req.raw;
+        const principal = resolveOrchestrationRequestPrincipal(requestContext);
+        roomRequestPrincipals.set(request, principal);
+        const localStationId =
+          context.environmentSecurityService.devicePairing.environmentId();
+        return new LocalTaskOutcomeSource(
+          localStationId,
+          () => context.taskGraphService.listTasks(),
+          async (task, readAuthority) =>
+            readAuthority.mode === 'personal' &&
+            readAuthority.userId === principal.id &&
+            isRequestPrincipalCurrent(request) &&
+            canonicalTaskSourceMayRead(request, task.id),
+          () => isRequestPrincipalCurrent(request),
+        );
+      },
     ),
+  );
+  context.app.route(
+    '/api/analytics',
+    createReviewedTariffRoutes({
+      service: () => context.getReviewedTariffConfiguration?.(),
+      enabled: () => context.reviewedTariffsEnabled?.() ?? false,
+      authorize: async (requestContext) => {
+        const request = requestContext.req.raw;
+        if (
+          hostedTenantRegistry ||
+          isHostedTenantExecutionRequired() ||
+          isStationInternalRequest(request) ||
+          !isBoundRuntimeLocalOperator(request)
+        )
+          return undefined;
+        const actorId = resolveOrchestrationRequestPrincipal(requestContext).id;
+        if (actorId !== LOCAL_OPERATOR_PRINCIPAL_ID) return undefined;
+        return {
+          actorId,
+          assertCurrent() {
+            if (
+              !isRequestPrincipalCurrent(request) ||
+              !isBoundRuntimeLocalOperator(request) ||
+              resolveOrchestrationRequestPrincipal(requestContext).id !==
+                actorId
+            )
+              throw new Error('Tariff review authority changed');
+          },
+        };
+      },
+    }),
   );
   context.app.route(
     '/api/telemetry',
@@ -5161,64 +5229,7 @@ export function configureRuntimeRoutes(
           }
           return witness();
         },
-        mayRead: (request, id) => {
-          if (
-            !runtimeRequestPrincipalMayAccessHttpRoute(
-              request,
-              context.environmentSecurityService,
-              { method: 'GET', path: `/api/tasks/${encodeURIComponent(id)}` },
-            )
-          )
-            return false;
-          const person = roomRequestPrincipals.get(request);
-          if (!person) return false;
-          if (
-            !isDeploymentAccountPrincipalId(person.id) ||
-            isOperatorInPersonNotAgent(request)
-          )
-            return true;
-          const task = context.taskGraphService.readTask(id);
-          const share = context.projectSharedTasks?.admission(id);
-          let shares = relationshipRequestShares.get(request);
-          if (!shares) {
-            shares = new Map();
-            relationshipRequestShares.set(request, shares);
-          }
-          if (!shares.has(id)) shares.set(id, share?.shareId);
-          if (!task || !share || share.taskCreatedAt !== task.createdAt)
-            return false;
-          if (shares.get(id) !== share.shareId) return false;
-          const projects = context.projectService
-            .listProjects()
-            .filter(
-              (p) => p.id === task.projectId || p.slug === task.projectId,
-            );
-          if (
-            projects.length !== 1 ||
-            projects[0]!.id !== share.scope.localProjectId ||
-            projects[0]!.slug !== share.scope.localProjectSlug
-          )
-            return false;
-          const manifest = contributionResolution.manifests.readRecord(
-            share.scope.localProjectSlug,
-          );
-          if (
-            !manifest ||
-            parseProjectPortableIdentity(manifest).id !==
-              share.scope.portableProjectId
-          )
-            return false;
-          return (
-            context.projectMembership
-              ?.admissionsForResolvedPrincipal(person.id)
-              .some(
-                ({ scope, member }) =>
-                  isDeepStrictEqual(scope, share.scope) &&
-                  member.status === 'active' &&
-                  member.actions.includes('view'),
-              ) === true
-          );
-        },
+        mayRead: canonicalTaskSourceMayRead,
         mayEdit: (request, id) =>
           (!isDeploymentAccountPrincipalId(
             roomRequestPrincipals.get(request)?.id ?? '',
@@ -5451,6 +5462,16 @@ export function configureRuntimeRoutes(
     }
     const roomEventStore = context.orchestrationEventStore;
     const taskQuestionWake = new TaskQuestionWake({
+      outbox: roomEventStore.taskMemoryStore(),
+      mayReadTask: (task, owner) =>
+        canUseTaskSource(context, task, owner, true),
+      placementCurrent: (task, owner, conversationId) =>
+        canUseTaskSource(context, task, owner, true) &&
+        task.status !== 'done' &&
+        task.status !== 'canceled' &&
+        Boolean(task.sessionId) &&
+        (roomEventStore.conversationForSession(task.sessionId!)
+          ?.conversationId ?? task.sessionId) === conversationId,
       readTask: (taskId) => context.taskGraphService.readTaskView(taskId),
       conversationOf: (sessionId) =>
         roomEventStore.conversationForSession(sessionId)?.conversationId ??
@@ -5465,6 +5486,7 @@ export function configureRuntimeRoutes(
       },
       logger: context.logger,
     });
+    durableTaskQuestionWake = taskQuestionWake;
     const taskReviewSend = new TaskReviewSend({
       store: roomEventStore.taskReviewStore(),
       readTask: (taskId) => context.taskGraphService.readTaskView(taskId),
@@ -5509,6 +5531,10 @@ export function configureRuntimeRoutes(
         : { kind: 'revoked' as const };
     };
     const roomRuntime = new ProjectTaskRoomRuntime({
+      conversationOfSession: (id) =>
+        roomEventStore.conversationForSession(id)?.conversationId ?? id,
+      currentConversationSessionId: (id) =>
+        context.orchestrationService.currentConversationSessionId(id),
       attachments: new TaskRoomAttachments(
         join(context.configLoader.getProjectHomeDir(), 'task-room-attachments'),
       ),
@@ -6246,19 +6272,31 @@ export function configureRuntimeRoutes(
    * delivery exists (it is composed after the inbox it hands wakes to).
    */
   let coordinatorPlacement: CoordinatorWakeDelivery | undefined;
+  let automationActions:
+    | ReturnType<typeof createAutomationActionsRuntime>
+    | undefined;
   function createThreadInboxDelivery(
     eventStore: EventStore,
   ): ThreadInboxDelivery {
     const service = context.orchestrationService;
     return new ThreadInboxDelivery({
       ...conversationDeliveryPorts(eventStore),
+      get automation() {
+        return automationActions;
+      },
       store: eventStore.threadInboxStore(),
-      placementRefusal: ({ conversationId, clientTurnId, payload, queuedAt }) =>
+      placementRefusal: (input) =>
         coordinatorPlacement?.placementRefusal({
-          conversationId,
-          clientTurnId,
-          userId: payload.actor.userId,
-          queuedAt,
+          conversationId: input.conversationId,
+          clientTurnId: input.clientTurnId,
+          userId: input.payload.actor.userId,
+          queuedAt: input.queuedAt,
+        }) ??
+        contextEfficiency?.placementRefusal(input) ??
+        durableTaskQuestionWake?.placementRefusal({
+          conversationId: input.conversationId,
+          clientTurnId: input.clientTurnId,
+          userId: input.payload.actor.userId,
         }),
       hasPossibleEffect: (threadId) =>
         eventStore.sessionTurnBoundaryAuthority().hasPossibleEffect(threadId),
@@ -6419,7 +6457,7 @@ export function configureRuntimeRoutes(
       const delivery = createThreadInboxDelivery(
         context.orchestrationEventStore,
       );
-      delivery.start();
+      // Start after all durable placement owners have been bound below.
       return delivery;
     } catch (error) {
       context.logger.warn('thread inbox delivery is unavailable', {
@@ -6538,6 +6576,19 @@ export function configureRuntimeRoutes(
         })
       : undefined;
   coordinatorPlacement = coordinatorWakes;
+  contextEfficiency = composeContextEfficiencyRuntime(context, {
+    hosted: hostedTenantRegistry !== undefined,
+    inbox: threadInbox,
+    person: agentSchedule.person,
+    authority: readAuthorityForExecution,
+    currentRequest: isRequestPrincipalCurrent,
+    questionWake: () => durableTaskQuestionWake,
+    taskRequestMayRead: canonicalTaskSourceMayRead,
+    taskBrief: (sessionId) => taskBriefSource.forSession(sessionId),
+    sessionTaskAccess: (sessionId) =>
+      projectTaskRoomRuntime?.sessionTaskContextAccess(sessionId) ??
+      Promise.resolve(undefined),
+  });
   const coordinatorEvents = context.orchestrationEventStore;
   context.app.route(
     '/api/orchestration',
@@ -7720,6 +7771,41 @@ export function configureRuntimeRoutes(
     );
   }
   const contributionResolution = buildProjectResolutionRouteDeps(context);
+  const readCanonicalTaskSource = createCanonicalTaskSourceReader({
+    readTask: (id) => context.taskGraphService.readTaskView(id),
+    projects: () => context.projectService.listProjects(),
+    shares: context.projectSharedTasks,
+    membership: context.projectMembership,
+    portableProjectId: (slug) => {
+      const manifest = contributionResolution.manifests.readRecord(slug);
+      return manifest ? parseProjectPortableIdentity(manifest).id : undefined;
+    },
+  });
+  function canonicalTaskSourceMayRead(request: Request, id: string): boolean {
+    if (
+      !isRequestPrincipalCurrent(request) ||
+      !runtimeRequestPrincipalMayAccessHttpRoute(
+        request,
+        context.environmentSecurityService,
+        { method: 'GET', path: `/api/tasks/${encodeURIComponent(id)}` },
+      )
+    )
+      return false;
+    const personId =
+      roomRequestPrincipals.get(request)?.id ??
+      conversationReadAuthorityForRequest(request).userId;
+    if (!personId) return false;
+    let shares = relationshipRequestShares.get(request);
+    if (!shares) {
+      shares = new Map();
+      relationshipRequestShares.set(request, shares);
+    }
+    return readCanonicalTaskSource(id, personId, {
+      operatorInPerson: isOperatorInPersonNotAgent(request),
+      shares,
+    });
+  }
+
   context.app.route(
     '/api/project-contributions',
     createProjectContributionRoutes(
@@ -7857,6 +7943,11 @@ export function configureRuntimeRoutes(
                   throw new ProjectMembershipRefusal('forbidden');
               },
               true,
+              async () => {
+                await authority.operator();
+                if ((await authority.current()).principal.id !== actor)
+                  throw new ProjectMembershipRefusal('forbidden');
+              },
             );
             return {
               scope: { kind: 'project' as const, id: project.id },
@@ -7864,8 +7955,10 @@ export function configureRuntimeRoutes(
               isCurrent: async () => {
                 try {
                   await authority.operator();
+                  if ((await authority.current()).principal.id !== actor)
+                    return false;
                   access.assertCurrent();
-                  return (await authority.current()).principal.id === actor;
+                  return true;
                 } catch {
                   return false;
                 }
@@ -7924,7 +8017,10 @@ export function configureRuntimeRoutes(
                   await authority.operator();
                   return (
                     (await authority.current()).principal.id ===
-                    actor.principal.id
+                      actor.principal.id &&
+                    context.projectService
+                      .listProjects()
+                      .find((entry) => entry.slug === slug)?.id === project.id
                   );
                 } catch {
                   return false;
@@ -8144,6 +8240,7 @@ export function configureRuntimeRoutes(
   let roomClose: Promise<void> | undefined;
   const projectRoomRuntime = {
     close(): Promise<void> {
+      contextEfficiency?.close();
       if (roomClose) return roomClose;
       roomClosed = true;
       projectRoomService.close();
@@ -10278,6 +10375,7 @@ export function configureRuntimeRoutes(
     schedulerService,
     automationLedger,
     automationPreview,
+    automationActions: runtimeAutomationActions,
     notificationService,
     approvalInboxProvider,
     attentionProjection,
@@ -10291,6 +10389,7 @@ export function configureRuntimeRoutes(
     pushGatewayAvailable,
     agentActivityPublisher,
   } = configureRuntimeSupportServices(context, flowRunService, {
+    threadInbox: () => threadInbox,
     focus: focusPresence,
     inAppLiveness: clientStreamPresence.inAppLiveness,
     // #2064 (D4): the same aggregate `/api/survey-flow-reviews` serves, over
@@ -10304,6 +10403,9 @@ export function configureRuntimeRoutes(
         context.projectService.listProjects().map((project) => project.slug),
       ),
   });
+  automationActions = runtimeAutomationActions;
+  threadInbox?.start();
+  contextEfficiency?.start();
   const nativeInvocationRunReader =
     runtimeContext.orchestrationEventStore.nativeInvocationRunReader();
   const voiceTurnRunReader =
@@ -10747,9 +10849,87 @@ export function configureRuntimeRoutes(
       },
     }),
   );
+  context.app.use('/api/feedback/rate', bindConversationReadAuthority);
+  context.app.use('/api/feedback/ratings', bindConversationReadAuthority);
   context.app.route(
     '/api/feedback',
-    createFeedbackRoutes(context.feedbackService),
+    createFeedbackRoutes(
+      context.feedbackService,
+      async (request, input) => {
+        const sessionId = input.expectedSessionId;
+        const turnId = input.expectedTurnId;
+        if (
+          !sessionId ||
+          !turnId ||
+          isStationInternalRequest(request) ||
+          !isRequestPrincipalCurrent(request)
+        )
+          return undefined;
+        const authority = conversationReadAuthorityForRequest(request);
+        const service = context.orchestrationService;
+        if (
+          !service.canUserReadConversation(input.conversationId, authority) ||
+          !service
+            .conversationSessionIds(input.conversationId)
+            .includes(sessionId)
+        )
+          return undefined;
+        const detail = await service.readSession(sessionId, authority, {
+          eventMethods: [],
+        });
+        const agentSlug = detail?.session.assignedAgentSlug;
+        if (!agentSlug) return undefined;
+        const reader = createConversationMessageReader({
+          getAdapter: (slug) => context.memoryAdapters.get(slug) ?? null,
+          authorityFor: () => authority,
+          sessionMessageReader: service,
+          logger: context.logger,
+        });
+        const messages = await reader.readConversationMessages(
+          request,
+          agentSlug,
+          input.conversationId,
+          authority,
+        );
+        const message = messages.messages[input.messageIndex];
+        if (
+          message?.metadata?.sessionId !== sessionId ||
+          message.metadata.turnId !== turnId
+        )
+          return undefined;
+        const target = createFeedbackRatingTarget(
+          input.conversationId,
+          message,
+        );
+        if (!target) return undefined;
+        const assertCurrent = () => {
+          if (
+            !isRequestPrincipalCurrent(request) ||
+            request.signal.aborted ||
+            !service.canUserReadSession(sessionId, authority) ||
+            !service.canUserReadConversation(input.conversationId, authority)
+          )
+            throw new Error('Feedback source authority changed');
+        };
+        assertCurrent();
+        return { target, assertCurrent };
+      },
+      (request, target) => {
+        if (!isRequestPrincipalCurrent(request) || request.signal.aborted)
+          return false;
+        const authority = conversationReadAuthorityForRequest(request);
+        return (
+          context.orchestrationService.canUserReadSession(
+            target.sessionId,
+            authority,
+          ) &&
+          context.orchestrationService.canUserReadConversation(
+            target.conversationId,
+            authority,
+          )
+        );
+      },
+    ),
   );
   context.app.route(
     '/api/insights',

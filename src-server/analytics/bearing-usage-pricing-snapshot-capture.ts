@@ -1,4 +1,4 @@
-import { validateCatalogSnapshot } from '@kontourai/bearing';
+import { sha256, validateCatalogSnapshot } from '@kontourai/bearing';
 import {
   isPublishedTariffBasis,
   type PricingSnapshot,
@@ -81,7 +81,7 @@ export class BearingUsagePricingSnapshotCapture
       };
       const reasoningPerMillion = rate(binding.measurements.reasoning);
       return {
-        id: `bearing:${validated.digest}:${observation.id}:${binding.basis.tariffId}`,
+        id: `bearing:${sha256({ catalogDigest: validated.digest, observationId: observation.id, binding })}`,
         capturedAt: observation.freshness.observedAt,
         source: binding.basis.sourceUrl,
         currency: 'USD',

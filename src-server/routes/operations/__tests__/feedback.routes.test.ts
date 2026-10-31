@@ -203,3 +203,125 @@ describe('Feedback Routes', () => {
     expect(svc.getRatings()[0]?.analysis).toBeUndefined();
   });
 });
+
+test('rating target is stamped only by current canonical proof and is cleared by an unverified edit', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'feedback-target-'));
+  const service = new FeedbackService(root);
+  const { createFeedbackRatingTarget } = await import(
+    '../../../services/feedback/feedback-target.js'
+  );
+  const target = createFeedbackRatingTarget('conversation', {
+    role: 'assistant',
+    parts: [{ type: 'text', text: 'Canonical response' }],
+    metadata: { sessionId: 'session', turnId: 'turn' },
+  });
+  if (!target) throw new Error('Target fixture missing');
+  const resolve = vi.fn(async () => ({ target, assertCurrent() {} }));
+  const app = createFeedbackRoutes(service, resolve, () => true);
+  const input = {
+    agentSlug: 'agent',
+    conversationId: 'conversation',
+    messageIndex: 0,
+    messagePreview: 'Canonical response',
+    rating: 'thumbs_up',
+    expectedSessionId: 'session',
+    expectedTurnId: 'turn',
+  };
+  try {
+    const response = await app.request('/rate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    expect(response.status).toBe(200);
+    expect((await response.json()).data.target).toEqual(target);
+    expect(service.getRatings()[0]?.target).toEqual(target);
+    const forged = await app.request('/rate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...input, target }),
+    });
+    expect(forged.status).toBe(400);
+    const legacy = await createFeedbackRoutes(service).request('/rate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...input, reason: 'Edited without target proof' }),
+    });
+    expect(legacy.status).toBe(200);
+    expect(service.getRatings()[0]?.target).toBeUndefined();
+  } finally {
+    service.stop();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('canonical feedback target excludes projection position and changes with content or execution', async () => {
+  const { createFeedbackRatingTarget } = await import(
+    '../../../services/feedback/feedback-target.js'
+  );
+  const message = {
+    id: 'position-one',
+    role: 'assistant' as const,
+    parts: [{ type: 'text', text: 'Response' }],
+    metadata: { sessionId: 'session', turnId: 'turn' },
+  };
+  const target = createFeedbackRatingTarget('conversation', message);
+  expect(
+    createFeedbackRatingTarget('conversation', {
+      ...message,
+      id: 'position-two',
+    }),
+  ).toEqual(target);
+  expect(
+    createFeedbackRatingTarget('conversation', {
+      ...message,
+      parts: [{ type: 'text', text: 'Changed' }],
+    })?.contentDigest,
+  ).not.toBe(target?.contentDigest);
+  expect(
+    createFeedbackRatingTarget('conversation', {
+      ...message,
+      metadata: { sessionId: 'other-session', turnId: 'turn' },
+    })?.contentDigest,
+  ).not.toBe(target?.contentDigest);
+  expect(
+    createFeedbackRatingTarget('conversation', { ...message, metadata: {} }),
+  ).toBeUndefined();
+});
+
+test('target egress requires current canonical read permission without deleting retained proof', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'feedback-egress-'));
+  const service = new FeedbackService(root);
+  const target = {
+    conversationId: 'conversation',
+    sessionId: 'protected-session',
+    turnId: 'protected-turn',
+    contentDigest: 'd'.repeat(64),
+  };
+  service.rateMessage(
+    {
+      agentSlug: 'a',
+      conversationId: 'conversation',
+      messageIndex: 0,
+      messagePreview: 'Response',
+      rating: 'thumbs_up',
+    },
+    target,
+  );
+  try {
+    const hidden = await createFeedbackRoutes(service).request('/ratings');
+    expect(JSON.stringify(await hidden.json())).not.toContain(
+      'protected-session',
+    );
+    const visible = await createFeedbackRoutes(
+      service,
+      undefined,
+      () => true,
+    ).request('/ratings');
+    expect((await visible.json()).data[0].target).toEqual(target);
+    expect(service.getRatings()[0]?.target).toEqual(target);
+  } finally {
+    service.stop();
+    rmSync(root, { recursive: true, force: true });
+  }
+});

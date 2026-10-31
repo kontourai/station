@@ -34,6 +34,10 @@
  * word, are quoted, since agents and people wrote them.
  */
 import { createHash } from 'node:crypto';
+import type {
+  LearningReviewRevisionRef,
+  LearningReviewTaskContext,
+} from '@kontourai/station-contracts/learning-review';
 import type { ProjectWorkingContext } from '@kontourai/station-contracts/project-working-configuration';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import {
@@ -195,7 +199,7 @@ export interface TaskBriefInput {
   /** Required when the Task has a `workItemRef`; ignored otherwise. */
   observation?: TaskBriefObservation;
   workingContext?: ProjectWorkingContext;
-  learningContext?: string;
+  learningContext?: LearningReviewTaskContext;
 }
 
 /** What the brief counted instead of showing. */
@@ -210,9 +214,27 @@ export interface TaskBriefOmissions {
   sessions: number;
 }
 
+export function taskMandatoryContextDigest(
+  input: Pick<TaskBriefInput, 'task' | 'workingContext' | 'learningContext'>,
+): string {
+  return createHash('sha256')
+    .update(
+      JSON.stringify([
+        input.task.id,
+        input.task.projectId,
+        input.task.createdAt,
+        input.workingContext ?? null,
+        input.learningContext ?? null,
+      ]),
+    )
+    .digest('hex');
+}
+
 export interface TaskBriefSnapshot {
   version: typeof TASK_BRIEF_VERSION;
   digest: string;
+  mandatoryContextDigest: string;
+  learningContributions: readonly LearningReviewRevisionRef[];
   taskId: string;
   projectId: string;
   title: string;
@@ -634,11 +656,12 @@ export function buildTaskBrief(input: TaskBriefInput): TaskBriefSnapshot {
       : []),
   ];
   const workItem = renderWorkItem(task, observation);
-  const workingContext = input.workingContext
-    ? ['## Project working configuration', input.workingContext.text]
-    : [];
+  const workingContext =
+    input.workingContext && input.workingContext.state !== 'disabled'
+      ? ['## Project working configuration', input.workingContext.text]
+      : [];
   const learningContext = input.learningContext
-    ? ['## Reviewed Project guidance', cut(input.learningContext, 2400)]
+    ? ['## Reviewed Project guidance', cut(input.learningContext.text, 2400)]
     : [];
   const documentText =
     input.document.kind === 'available' ? input.document.text.trim() : '';
@@ -827,6 +850,8 @@ export function buildTaskBrief(input: TaskBriefInput): TaskBriefSnapshot {
   return Object.freeze({
     version: TASK_BRIEF_VERSION,
     digest,
+    mandatoryContextDigest: taskMandatoryContextDigest(input),
+    learningContributions: input.learningContext?.contributions ?? [],
     taskId: task.id,
     projectId: task.projectId,
     title,

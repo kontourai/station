@@ -18,6 +18,8 @@ export interface ProjectSupervisionIntent {
   ownerUserId: string;
   coordinatorConversationId: string;
   generation: number;
+  sourceBinding?: string;
+  sourceGrant?: string;
   state: 'active' | 'paused' | 'cancelled';
   policy: {
     maxWakes: number;

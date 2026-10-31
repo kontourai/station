@@ -57,6 +57,7 @@ export interface UsageReceiptSource {
 
 /** Resolve only exact Task identities through the same authenticated read authority. */
 export interface UsageTaskOutcomeSource {
+  isCurrent?(): Promise<boolean>;
   read(
     tasks: readonly { stationId: string; taskId: string }[],
     authority: UsageRollupReadAuthority,
@@ -66,6 +67,7 @@ export interface UsageTaskOutcomeSource {
       string,
       | {
           state: 'available';
+          taskCreatedAt: string;
           status: Extract<UsageTaskOutcome, { state: 'available' }>['status'];
         }
       | { state: 'restricted' | 'unavailable' }

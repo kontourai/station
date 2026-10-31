@@ -191,3 +191,6 @@ text cannot change without falsifying them. All three run
 inside `docs:truth:gate`. `npm run
 examples:conformance -- --build` validates every example manifest and README
 command contract, then builds every example that declares a build script.
+
+For focused Task context, reviewed learning and model-use limits, see
+[Bounded agent work](guides/agent-efficiency.md).

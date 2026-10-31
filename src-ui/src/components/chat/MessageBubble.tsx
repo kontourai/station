@@ -702,6 +702,9 @@ function MessageBubbleComponent({
             messageIndex={idx}
             messagePreview={textContent.slice(0, 200)}
             agentSlug={rowAgentSlug}
+            turnId={msg.turnId}
+            sessionId={msg.sessionId}
+            projectSlug={activeSession.projectSlug}
           />
         )}
     </>
@@ -880,6 +883,9 @@ function MessageBubbleComponent({
           messageIndex={idx}
           messagePreview={textContent.slice(0, 200)}
           agentSlug={rowAgentSlug}
+          turnId={msg.turnId}
+          sessionId={msg.sessionId}
+          projectSlug={activeSession.projectSlug}
         />
       )}
     </>

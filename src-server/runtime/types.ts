@@ -366,7 +366,8 @@ export interface IAgentHooks {
 
 export interface ModelGenerationObservation {
   /** Captured from the actual direct model instance; absent for unresolved Dispatch/fallback routes. */
-  connectionId?:string;
+  connectionId?: string;
+  connectionConfigurationDigest?: string;
   invocation: InvocationContext;
   modelId: string;
   modelIdentitySource: 'provider-response' | 'runtime-model';

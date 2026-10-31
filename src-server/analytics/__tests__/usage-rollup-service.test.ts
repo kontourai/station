@@ -568,7 +568,11 @@ test('Task outcome joins use full-window canonical receipts and exact Station id
       return new Map([
         [
           '["local","same-id"]',
-          { state: 'available' as const, status: 'done' as const },
+          {
+            state: 'available' as const,
+            taskCreatedAt: '2026-08-01T00:00:00.000Z',
+            status: 'done' as const,
+          },
         ],
       ]);
     },
@@ -597,6 +601,7 @@ test('Task outcome joins use full-window canonical receipts and exact Station id
       receiptCount: 1,
       reportedCostBuckets: [{ amount: 0, currency: 'USD' }],
       state: 'available',
+      taskCreatedAt: '2026-08-01T00:00:00.000Z',
       status: 'done',
     },
     {

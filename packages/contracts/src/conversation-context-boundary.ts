@@ -12,7 +12,13 @@ export interface ConversationContextBoundarySeed {
   sourceSessionId: string;
   sourceEventId: string;
   sourceRevision: string;
-  task?: { taskId: string; taskCreatedAt: string };
+  sourceCutoffs?: { sessionId: string; throughSequence: number }[];
+  sourceMessageCount?: number;
+  task?: { taskId: string; taskCreatedAt: string; projectId?: string };
+  taskStateRevision?: string;
+  taskBriefDigest?: string;
+  mandatoryContextDigest?: string;
+  learningContributions?: readonly import('./learning-review.js').LearningReviewRevisionRef[];
   model?: string;
   generationUsage:
     | { state: 'unknown' }
@@ -34,13 +40,45 @@ export interface ConversationCompactionView {
   threshold: number;
   policyRevision: number;
   autoEnabled: boolean;
-  reason?: string;
-  operation?: {
-    operationId: string;
-    state: string;
-    reason?: string;
-    nextEligibleAt: number;
+  contextKind?: 'semantic-summary' | 'task-state';
+  confirmedContext?: {
+    sessionId: string;
+    turnId: string;
+    contextTokens: number;
+    contextWindowTokens: number;
+    modelId?: string;
   };
+  reason?: string;
+  operation?: ConversationCompactionOperationView;
+}
+/** Public operation provenance; retained model context and internal Task briefs stay server-side. */
+export interface ConversationCompactionOperationView {
+  operationId: string;
+  state: string;
+  reason?: string;
+  nextEligibleAt: number;
+  model?: string;
+  generationUsage?: ConversationContextBoundarySeed['generationUsage'];
+  contextKind?: 'semantic-summary' | 'task-state';
+  generationAttempts?: readonly ContextSummaryGenerationAttempt[];
+  boundaryId?: string;
+  seed?: {
+    kind: ConversationContextBoundarySeed['kind'];
+    digest: string;
+    length: number;
+    sourceSessionId: string;
+    sourceEventId: string;
+    sourceRevision: string;
+    task?: ConversationContextBoundarySeed['task'];
+    taskStateRevision?: string;
+  };
+}
+/** Separate observations of summary work, never canonical provider billing receipts. */
+export interface ContextSummaryGenerationAttempt {
+  attempt: number;
+  model?: string;
+  usage: ConversationContextBoundarySeed['generationUsage'];
+  outcome: 'generated' | 'refused' | 'unknown';
 }
 
 export type ConversationContextBoundaryStatus =

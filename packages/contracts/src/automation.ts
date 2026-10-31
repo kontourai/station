@@ -194,6 +194,37 @@ export type AutomationAction =
       priority: 'low' | 'normal' | 'high' | 'urgent';
     }>;
 
+/** Private durable dispatch record; it is never accepted as request authority. */
+export interface AutomationActionIntent {
+  intentId: string;
+  sourceId: string;
+  ruleId: string;
+  episodeKey: string;
+  episodeId: string;
+  deliveryKey: string;
+  policyFingerprint: string;
+  event: AutomationEvent;
+  action: Extract<AutomationAction, { kind: 'dispatch-task' }>;
+  state:
+    | 'pending'
+    | 'invoking'
+    | 'queued'
+    | 'running'
+    | 'completed'
+    | 'failed'
+    | 'indeterminate'
+    | 'refused';
+  createdAt: number;
+  updatedAt: number;
+  deadlineAt?: number;
+  taskId?: string;
+  taskCreatedAt?: string;
+  sessionId?: string;
+  conversationId?: string;
+  turnId?: string;
+  reason?: string;
+}
+
 /**
  * Groups related events into one episode so a failure that keeps recurring
  * starts at most `maxAttempts` actions until `closeOn` resolves it.

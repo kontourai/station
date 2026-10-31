@@ -157,13 +157,52 @@ export interface StationControlAuthorityGuardOptions {
   ): void;
 }
 
-async function requestBody(request: Request): Promise<unknown> {
+const AUTHORITY_BODY_MAX_BYTES = 1_048_576;
+
+async function requestBody(
+  request: Request,
+): Promise<
+  { status: 'ok'; body: unknown } | { status: 'too-large' | 'invalid' }
+> {
+  if (!request.body) return { status: 'ok', body: undefined };
+  const declared = request.headers.get('content-length');
+  if (
+    declared !== null &&
+    (!/^\d+$/.test(declared) || Number(declared) > AUTHORITY_BODY_MAX_BYTES)
+  ) {
+    await request.body.cancel().catch(() => {});
+    return { status: 'too-large' };
+  }
+  const reader = request.clone().body!.getReader();
+  const decoder = new TextDecoder('utf-8', { fatal: true });
+  let bytes = 0;
+  let text = '';
+  async function refuse(status: 'too-large' | 'invalid') {
+    // A clone is a tee: either cancellation alone can wait for the other
+    // branch. Cancel both before awaiting either, and never reach the leaf.
+    const cloneCancellation = reader.cancel().catch(() => {});
+    const originalCancellation = request.body!.cancel().catch(() => {});
+    await Promise.all([cloneCancellation, originalCancellation]);
+    return { status };
+  }
   try {
-    return await request.clone().json();
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      bytes += chunk.value.byteLength;
+      if (bytes > AUTHORITY_BODY_MAX_BYTES) return await refuse('too-large');
+      text += decoder.decode(chunk.value, { stream: true });
+    }
+    text += decoder.decode();
+    try {
+      return { status: 'ok', body: JSON.parse(text) };
+    } catch {
+      return await refuse('invalid');
+    }
   } catch {
-    // An unreadable body cannot ask for anything; the route's own validation
-    // answers it.
-    return undefined;
+    return await refuse('invalid');
+  } finally {
+    reader.releaseLock();
   }
 }
 
@@ -353,9 +392,22 @@ export function createStationControlAuthorityGuard(
         : { kind: 'caller-less' },
     );
     if (!boundOperator) withdrawInternalHomePossession(request);
-    const body = needsBody(method, path)
+    const bodyRead = needsBody(method, path)
       ? await requestBody(request)
-      : undefined;
+      : { status: 'ok' as const, body: undefined };
+    if (bodyRead.status !== 'ok')
+      return c.json(
+        {
+          success: false,
+          code: 'station_control_request_body_refused',
+          error:
+            bodyRead.status === 'too-large'
+              ? 'Request body exceeds the authority inspection limit.'
+              : 'Request body is invalid.',
+        },
+        bodyRead.status === 'too-large' ? 413 : 400,
+      );
+    const body = bodyRead.body;
     const refusal = authorizeStationControlRequest(method, path, {
       caller,
       isOperatorPrincipal: options.isOperatorPrincipal,

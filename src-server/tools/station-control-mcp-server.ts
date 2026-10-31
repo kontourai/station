@@ -16,7 +16,10 @@ import { registerBoardTools } from './station-control-board-tools.js';
 import { registerCatalogTools } from './station-control-catalog-tools.js';
 import { registerDeclarePullRequestTools } from './station-control-declare-pull-request-tools.js';
 import { registerDeviceTools } from './station-control-device-tools.js';
-import { StationControlDisclosure } from './station-control-disclosure.js';
+import {
+  STATION_CONTROL_DISCOVERY_TOOL_NAMES,
+  StationControlDisclosure,
+} from './station-control-disclosure.js';
 import { registerHtmlReplyTools } from './station-control-html-reply-tools.js';
 import { registerNotifyTools } from './station-control-notify-tools.js';
 import { registerOperationsTools } from './station-control-operations-tools.js';
@@ -196,7 +199,7 @@ export class StationControlToolRegistry {
     const callerCurrent = async () =>
       disclosure.current() && (await getStationControlCaller()) !== null;
     this.server.registerTool(
-      'list_tool_families',
+      STATION_CONTROL_DISCOVERY_TOOL_NAMES.listFamilies,
       {
         description:
           'List available Station tool families. Load a family to discover its tools.',
@@ -220,7 +223,7 @@ export class StationControlToolRegistry {
       },
     );
     this.server.registerTool(
-      'load_tool_family',
+      STATION_CONTROL_DISCOVERY_TOOL_NAMES.loadFamily,
       {
         description:
           'Load one Station tool family. Visibility never grants permission to call its tools.',

@@ -1,16 +1,22 @@
 import { createHash } from 'node:crypto';
 import type {
+  ContextSummaryGenerationAttempt,
+  ConversationCompactionOperationView,
   ConversationContextBoundaryProjection,
   ConversationContextBoundarySeed,
 } from '@kontourai/station-contracts/conversation-context-boundary';
 import type { SqliteDatabase } from './sqlite-database.js';
 
 export interface ContextCompactionObservation {
+  contextKind?: 'semantic-summary' | 'task-state';
+  taskStateRevision?: string;
   conversationId: string;
   sessionId: string;
   turnId: string;
   sourceEventId: string;
   sourceRevision: string;
+  sourceCutoffs?: { sessionId: string; throughSequence: number }[];
+  sourceMessageCount?: number;
   atRest: boolean;
   approvalPending: boolean;
   compactionOwner: 'station' | 'engine' | 'unknown';
@@ -20,6 +26,7 @@ export interface ContextCompactionObservation {
     turnId: string;
     contextTokens: number;
     contextWindowTokens: number;
+    modelId?: string;
   };
 }
 export interface ContextCompactionRequest {
@@ -31,6 +38,7 @@ export interface ContextCompactionRequest {
   threshold?: number;
 }
 export interface ContextCompactionRecord {
+  activationOperationId?: string;
   mode: 'manual' | 'auto';
   policyRevision?: number;
   operationId: string;
@@ -38,10 +46,17 @@ export interface ContextCompactionRecord {
   requestDigest: string;
   actorId: string;
   observation: ContextCompactionObservation;
-  state: 'generating' | 'prepared' | 'reserved' | 'failed' | 'indeterminate';
+  state:
+    | 'generating'
+    | 'prepared'
+    | 'reserved'
+    | 'consumed'
+    | 'failed'
+    | 'indeterminate';
   seed?: ConversationContextBoundarySeed;
   boundary?: ConversationContextBoundaryProjection;
   attempts: number;
+  generationAttempts?: ContextSummaryGenerationAttempt[];
   nextEligibleAt: number;
   reason?: string;
 }
@@ -66,7 +81,40 @@ export interface ContextCompactionStore {
     from: readonly ContextCompactionRecord['state'][],
     next: ContextCompactionRecord,
   ): boolean;
-  unfinished(): ContextCompactionRecord[];
+  unfinished(afterOperationId?: string): ContextCompactionRecord[];
+}
+/** One projection for every public operation response; seed text never crosses this boundary. */
+export function projectContextCompactionOperation(
+  record: ContextCompactionRecord,
+): ConversationCompactionOperationView {
+  const seed = record.seed;
+  return {
+    operationId: record.operationId,
+    state: record.state,
+    reason: record.reason,
+    nextEligibleAt: record.nextEligibleAt,
+    model: seed?.model,
+    generationUsage: seed?.generationUsage,
+    generationAttempts: record.generationAttempts,
+    contextKind: seed?.kind ?? record.observation.contextKind,
+    boundaryId: record.boundary?.boundaryId,
+    ...(seed
+      ? {
+          seed: {
+            kind: seed.kind,
+            digest: seed.digest,
+            length: seed.text.length,
+            sourceSessionId: seed.sourceSessionId,
+            sourceEventId: seed.sourceEventId,
+            sourceRevision: seed.sourceRevision,
+            ...(seed.task ? { task: { ...seed.task } } : {}),
+            ...(seed.taskStateRevision
+              ? { taskStateRevision: seed.taskStateRevision }
+              : {}),
+          },
+        }
+      : {}),
+  };
 }
 export interface ContextCompactionPolicy {
   conversationId: string;
@@ -199,18 +247,22 @@ export function createSqliteContextCompactionStore(
         ).changes === 1
       );
     },
-    unfinished() {
+    unfinished(afterOperationId = '') {
       return (
         db
           .prepare(
-            "SELECT record_json FROM context_compaction_intents WHERE state IN ('generating','prepared','indeterminate') ORDER BY operation_id LIMIT 64",
+            "SELECT record_json FROM context_compaction_intents WHERE state IN ('generating','prepared','reserved','indeterminate') AND operation_id>? ORDER BY operation_id LIMIT 64",
           )
-          .all() as { record_json: string }[]
+          .all(afterOperationId) as { record_json: string }[]
       ).map((row) => JSON.parse(row.record_json));
     },
   };
 }
 export interface ContextCompactionPorts {
+  isPolicyCurrent?(
+    observation: ContextCompactionObservation,
+    actorId: string,
+  ): Promise<boolean>;
   store: ContextCompactionStore;
   now(): number;
   enabled(): boolean;
@@ -234,14 +286,29 @@ export interface ContextCompactionPorts {
         model: string;
         usage: ConversationContextBoundarySeed['generationUsage'];
       }
-    | { kind: 'failed'; definite: boolean; reason: string }
+    | {
+        kind: 'task-state';
+        text: string;
+        task: { taskId: string; taskCreatedAt: string; projectId: string };
+        taskStateRevision: string;
+        taskBriefDigest: string;
+        mandatoryContextDigest: string;
+        learningContributions: ConversationContextBoundarySeed['learningContributions'];
+      }
+    | {
+        kind: 'failed';
+        definite: boolean;
+        reason: string;
+        model?: string;
+        usage?: ConversationContextBoundarySeed['generationUsage'];
+      }
   >;
   reserveBoundary(input: {
     conversationId: string;
     expectedCurrentSessionId: string;
     idempotencyKey: string;
     actorId: string;
-    policy: 'summary-next-cold-start';
+    policy: 'summary-next-cold-start' | 'task-state-next-cold-start';
     seed: ConversationContextBoundarySeed;
   }): Promise<ConversationContextBoundaryProjection>;
   readBoundary(
@@ -269,6 +336,7 @@ const hash = (value: unknown) =>
     .update(typeof value === 'string' ? value : JSON.stringify(value))
     .digest('hex');
 export class ContextCompactionService {
+  private reconcileCursor = '';
   constructor(private readonly ports: ContextCompactionPorts) {}
   policy(conversationId: string): ContextCompactionPolicy | undefined {
     return this.ports.store.policy(conversationId);
@@ -279,14 +347,17 @@ export class ContextCompactionService {
   ): ContextCompactionRecord | undefined {
     return this.ports.store.latest(conversationId, actorId);
   }
-  async updatePolicy(input: {
-    conversationId: string;
-    actorId: string;
-    expectedCurrentSessionId: string;
-    expectedRevision: number;
-    threshold: number;
-    autoEnabled: boolean;
-  }): Promise<ContextCompactionPolicy> {
+  async updatePolicy(
+    input: {
+      conversationId: string;
+      actorId: string;
+      expectedCurrentSessionId: string;
+      expectedRevision: number;
+      threshold: number;
+      autoEnabled: boolean;
+    },
+    current?: () => boolean,
+  ): Promise<ContextCompactionPolicy> {
     if (!this.ports.enabled())
       throw new Error('Context compaction preview is disabled.');
     if (
@@ -305,7 +376,10 @@ export class ContextCompactionService {
     if (
       !observed ||
       observed.sessionId !== input.expectedCurrentSessionId ||
-      !(await this.ports.isCurrent(observed, input.actorId))
+      !(await (this.ports.isPolicyCurrent ?? this.ports.isCurrent)(
+        observed,
+        input.actorId,
+      ))
     )
       throw new Error('Compaction policy Session or authority changed.');
     const policy = {
@@ -316,6 +390,8 @@ export class ContextCompactionService {
       autoEnabled: input.autoEnabled,
       updatedForSessionId: observed.sessionId,
     };
+    if (current && !current())
+      throw new Error('Compaction policy request authority ended.');
     if (!this.ports.store.updatePolicy(policy, input.expectedRevision))
       throw new Error(
         'Compaction policy revision changed. Reload before applying.',
@@ -366,9 +442,9 @@ export class ContextCompactionService {
       usage?.confirmed === true &&
       usage.sessionId === observed.sessionId &&
       usage.turnId === observed.turnId &&
-      Number.isFinite(usage.contextTokens) &&
+      Number.isSafeInteger(usage.contextTokens) &&
       usage.contextTokens >= 0 &&
-      Number.isFinite(usage.contextWindowTokens) &&
+      Number.isSafeInteger(usage.contextWindowTokens) &&
       usage.contextWindowTokens > 0;
     if (request.mode === 'auto' && !confirmed)
       return { kind: 'held', reason: 'unconfirmed-usage' };
@@ -403,6 +479,22 @@ export class ContextCompactionService {
     if (record.actorId !== request.actorId)
       return { kind: 'held', reason: 'stale' };
     if (!reserved.created) {
+      if (
+        request.mode === 'manual' &&
+        record.state === 'failed' &&
+        record.seed
+      ) {
+        const next = {
+          ...record,
+          state: 'prepared' as const,
+          mode: 'manual' as const,
+          activationOperationId: request.operationId,
+          reason: undefined,
+        };
+        if (!ports.store.transition(record.operationId, ['failed'], next))
+          return { kind: 'held', reason: 'backoff' };
+        return this.publish(next);
+      }
       if (record.state === 'prepared') return this.publish(record);
       if (record.state !== 'failed') return { kind: 'record', record };
       if (record.nextEligibleAt > ports.now() || record.attempts >= 3)
@@ -410,6 +502,12 @@ export class ContextCompactionService {
       const next = {
         ...record,
         state: 'generating' as const,
+        ...(request.mode === 'manual'
+          ? {
+              mode: 'manual' as const,
+              activationOperationId: request.operationId,
+            }
+          : {}),
         attempts: record.attempts + 1,
         reason: undefined,
       };
@@ -423,6 +521,28 @@ export class ContextCompactionService {
         operationId: record.operationId,
         actorId: record.actorId,
       });
+      if (
+        generated.kind !== 'task-state' &&
+        record.observation.contextKind !== 'task-state'
+      ) {
+        record = {
+          ...record,
+          generationAttempts: [
+            ...(record.generationAttempts ?? []),
+            {
+              attempt: record.attempts,
+              model: generated.model,
+              usage: generated.usage ?? { state: 'unknown' },
+              outcome:
+                generated.kind === 'generated'
+                  ? 'generated'
+                  : generated.definite
+                    ? 'refused'
+                    : 'unknown',
+            },
+          ],
+        };
+      }
       if (generated.kind === 'failed') {
         const next = {
           ...record,
@@ -438,20 +558,38 @@ export class ContextCompactionService {
       if (
         !generated.text.trim() ||
         generated.text.length > 16000 ||
-        !generated.model
+        (generated.kind === 'generated' && !generated.model)
       )
         throw new Error(
           'Generator returned an unbounded or missing semantic summary.',
         );
       const seed: ConversationContextBoundarySeed = {
-        kind: 'semantic-summary',
+        kind:
+          generated.kind === 'task-state' ? 'task-state' : 'semantic-summary',
         text: generated.text,
         digest: hash(generated.text),
         sourceSessionId: record.observation.sessionId,
         sourceEventId: record.observation.sourceEventId,
         sourceRevision: record.observation.sourceRevision,
-        model: generated.model,
-        generationUsage: generated.usage,
+        ...(record.observation.sourceCutoffs
+          ? { sourceCutoffs: record.observation.sourceCutoffs }
+          : {}),
+        ...(record.observation.sourceMessageCount !== undefined
+          ? { sourceMessageCount: record.observation.sourceMessageCount }
+          : {}),
+        ...(generated.kind === 'task-state'
+          ? {
+              task: generated.task,
+              taskStateRevision: generated.taskStateRevision,
+              taskBriefDigest: generated.taskBriefDigest,
+              mandatoryContextDigest: generated.mandatoryContextDigest,
+              learningContributions: generated.learningContributions,
+            }
+          : { model: generated.model }),
+        generationUsage:
+          generated.kind === 'task-state'
+            ? { state: 'unknown' }
+            : generated.usage,
         ...(confirmed && usage
           ? {
               contextTokensBefore: usage.contextTokens,
@@ -469,9 +607,29 @@ export class ContextCompactionService {
     } catch {
       const next = {
         ...record,
-        state: 'indeterminate' as const,
+        ...(record.observation.contextKind !== 'task-state' &&
+        !record.generationAttempts?.some(
+          (attempt) => attempt.attempt === record.attempts,
+        )
+          ? {
+              generationAttempts: [
+                ...(record.generationAttempts ?? []),
+                {
+                  attempt: record.attempts,
+                  usage: { state: 'unknown' as const },
+                  outcome: 'unknown' as const,
+                },
+              ],
+            }
+          : {}),
+        state:
+          record.observation.contextKind === 'task-state'
+            ? ('failed' as const)
+            : ('indeterminate' as const),
         reason:
-          'Summary generation outcome is unknown. Reconcile this operation; do not regenerate under a new identity.',
+          record.observation.contextKind === 'task-state'
+            ? 'Task context read failed; no model generation was attempted.'
+            : 'Summary generation outcome is unknown. Reconcile this operation; do not regenerate under a new identity.',
       };
       ports.store.transition(record.operationId, ['generating'], next);
       return { kind: 'record', record: next };
@@ -482,16 +640,7 @@ export class ContextCompactionService {
   ): Promise<ContextCompactionResult> {
     if (!record.seed) throw new Error('Compaction has no pinned summary.');
     if (!this.ports.enabled()) return { kind: 'held', reason: 'disabled' };
-    if (record.mode === 'auto') {
-      const policy = this.ports.store.policy(record.observation.conversationId);
-      if (
-        !policy?.autoEnabled ||
-        policy.actorId !== record.actorId ||
-        policy.revision !== record.policyRevision
-      )
-        return { kind: 'held', reason: 'stale' };
-    }
-    const key = `compact:${record.operationId}`;
+    const key = `compact:${record.activationOperationId ?? record.operationId}`;
     try {
       let boundary = await this.ports.readBoundary(
         record.observation.conversationId,
@@ -500,22 +649,84 @@ export class ContextCompactionService {
       );
       if (boundary && boundary.seed?.digest !== record.seed.digest)
         throw new Error('Compaction boundary seed differs.');
+      if (boundary?.status === 'cancelled') {
+        const next = {
+          ...record,
+          state: 'failed' as const,
+          boundary,
+          nextEligibleAt: Number.MAX_SAFE_INTEGER,
+          reason:
+            'The unstarted summary boundary was cancelled; the generated summary remains retained.',
+        };
+        this.ports.store.transition(
+          record.operationId,
+          ['prepared', 'reserved', 'indeterminate'],
+          next,
+        );
+        return { kind: 'record', record: next };
+      }
       if (!boundary) {
-        if (!(await this.ports.isCurrent(record.observation, record.actorId)))
-          return { kind: 'held', reason: 'stale' };
+        const policy = this.ports.store.policy(
+          record.observation.conversationId,
+        );
+        if (
+          record.mode === 'auto' &&
+          (!policy?.autoEnabled ||
+            policy.actorId !== record.actorId ||
+            policy.revision !== record.policyRevision)
+        ) {
+          const next = {
+            ...record,
+            state: 'failed' as const,
+            nextEligibleAt: Number.MAX_SAFE_INTEGER,
+            reason:
+              'Context policy changed after generation; no boundary was reserved.',
+          };
+          this.ports.store.transition(
+            record.operationId,
+            ['prepared', 'indeterminate'],
+            next,
+          );
+          return { kind: 'record', record: next };
+        }
+        if (!(await this.ports.isCurrent(record.observation, record.actorId))) {
+          const next = {
+            ...record,
+            state: 'failed' as const,
+            nextEligibleAt: Number.MAX_SAFE_INTEGER,
+            reason:
+              'The context source changed after generation; no boundary was reserved.',
+          };
+          this.ports.store.transition(
+            record.operationId,
+            ['prepared', 'indeterminate'],
+            next,
+          );
+          return { kind: 'record', record: next };
+        }
         boundary = await this.ports.reserveBoundary({
           conversationId: record.observation.conversationId,
           expectedCurrentSessionId: record.observation.sessionId,
           idempotencyKey: key,
           actorId: record.actorId,
-          policy: 'summary-next-cold-start',
+          policy:
+            record.seed.kind === 'task-state'
+              ? 'task-state-next-cold-start'
+              : 'summary-next-cold-start',
           seed: record.seed,
         });
       }
-      const next = { ...record, state: 'reserved' as const, boundary };
+      const next = {
+        ...record,
+        state:
+          boundary.status === 'consumed'
+            ? ('consumed' as const)
+            : ('reserved' as const),
+        boundary,
+      };
       this.ports.store.transition(
         record.operationId,
-        ['prepared', 'indeterminate'],
+        ['prepared', 'reserved', 'indeterminate'],
         next,
       );
       return { kind: 'record', record: next };
@@ -532,12 +743,28 @@ export class ContextCompactionService {
   }
   /** No generator is replayed after restart. Only persisted seeds may reconcile. */
   async reconcile(): Promise<void> {
-    for (const record of this.ports.store.unfinished()) {
+    let records = this.ports.store.unfinished(this.reconcileCursor);
+    if (!records.length) {
+      this.reconcileCursor = '';
+      records = this.ports.store.unfinished();
+    }
+    for (const record of records) {
+      this.reconcileCursor = record.operationId;
       if (record.state === 'generating')
         this.ports.store.transition(record.operationId, ['generating'], {
           ...record,
-          state: 'indeterminate',
-          reason: 'Summary generator was interrupted; its effect is unknown.',
+          state:
+            record.observation.contextKind === 'task-state'
+              ? 'failed'
+              : 'indeterminate',
+          nextEligibleAt:
+            record.observation.contextKind === 'task-state'
+              ? this.ports.now()
+              : record.nextEligibleAt,
+          reason:
+            record.observation.contextKind === 'task-state'
+              ? 'Read-only Task context preparation was interrupted; the original identity is retryable.'
+              : 'Summary generator was interrupted; its effect is unknown.',
         });
       else if (record.seed) await this.publish(record);
     }

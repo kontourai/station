@@ -212,6 +212,7 @@ export type UsageTaskOutcome =
       receiptCount: number;
       reportedCostBuckets: Array<{ amount: number; currency: string }>;
       state: 'available';
+      taskCreatedAt: string;
       status: TaskStatus;
     }
   | {

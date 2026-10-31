@@ -381,7 +381,7 @@ async function refuseDefiniteStartRejection<T>(start: Promise<T>): Promise<T> {
       error.receipt.status === 'rejected' &&
       error.outcome !== 'indeterminate'
     )
-      throw new TaskDispatchStartRefusedError(error.message);
+      throw new TaskDispatchStartRefusedError(error.message, error.code);
     throw error;
   }
 }
@@ -2475,9 +2475,8 @@ export class TaskGraphService {
       .createHash('sha256')
       .update(`${namespace}:${operationId}`)
       .digest();
-    // RFC 4122 variant + v5-shaped deterministic UUID; it remains a normal
-    // Task id while being reproducible by the owning Task graph only.
-    digest[6] = (digest[6] & 0x0f) | 0x50;
+    // Deterministic owner identity in the canonical UUIDv4 shape the Task store accepts.
+    digest[6] = (digest[6] & 0x0f) | 0x40;
     digest[8] = (digest[8] & 0x3f) | 0x80;
     const hex = digest.subarray(0, 16).toString('hex');
     const taskId = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
@@ -3891,10 +3890,16 @@ export class TaskGraphService {
           );
           // Epic #4003: the Task brief, built before the provider start so
           // the start records exactly what the first turn will carry. A
-          // brief that cannot be built never fails the dispatch: its parts
-          // already degrade to a stated gap, so a throw here is a defect,
-          // logged, and the Session starts without one.
-          let brief: { digest: string; text: string } | undefined;
+          // Optional brief reads degrade to explicit gaps. Mandatory reviewed
+          // context refusal stops dispatch before any provider start.
+          let brief:
+            | {
+                digest: string;
+                text: string;
+                mandatoryContextDigest: string;
+                learningContributions: import('@kontourai/station-contracts/learning-review').LearningReviewTaskContext['contributions'];
+              }
+            | undefined;
           let workItemObservedAt: string | undefined;
           if (taskBrief) {
             try {
@@ -3903,7 +3908,12 @@ export class TaskGraphService {
                 reservation.sessionId,
                 input.ownerUserId,
               );
-              brief = { digest: built.brief.digest, text: built.brief.text };
+              brief = {
+                digest: built.brief.digest,
+                text: built.brief.text,
+                mandatoryContextDigest: built.brief.mandatoryContextDigest,
+                learningContributions: built.brief.learningContributions,
+              };
               workItemObservedAt = built.workItemObservedAt;
             } catch (error) {
               if (error instanceof TaskContextAdmissionError)
@@ -3977,6 +3987,9 @@ export class TaskGraphService {
                   taskId: reservation.task.id,
                 },
                 ...(brief ? { taskBrief: brief } : {}),
+                ...(input.monitor?.beforeProviderStart
+                  ? { beforeProviderStart: input.monitor.beforeProviderStart }
+                  : {}),
                 // The dispatched Session is the root of its own conversation.
                 conversationIdentity: {
                   conversationId: reservation.sessionId,

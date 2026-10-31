@@ -96,6 +96,10 @@ export function UsageRollupPanel() {
             Provider-reported usage and estimates remain separate. Missing data
             is not zero.
           </p>
+          <p>
+            Summary-generation tokens appear in compaction details, outside
+            these totals.
+          </p>
         </div>
         <button
           type="button"
@@ -255,7 +259,18 @@ export function UsageRollupPanel() {
                         ])}
                       >
                         <td>{outcome.stationId}</td>
-                        <th scope="row">{outcome.taskId}</th>
+                        <th scope="row">
+                          {outcome.taskId}
+                          {outcome.state === 'available' && (
+                            <small>
+                              {' '}
+                              ·{' '}
+                              <time dateTime={outcome.taskCreatedAt}>
+                                {outcome.taskCreatedAt}
+                              </time>
+                            </small>
+                          )}
+                        </th>
                         <td>
                           {outcome.state === 'available' ? (
                             <Badge value={taskStatusLabel(outcome.status)} />
