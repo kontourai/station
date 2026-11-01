@@ -1,6 +1,14 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
-import { waitForTcpOk } from '../commands/lifecycle.js';
+import {
+  describeSocketError,
+  lastFatalServerLogLine,
+  serverStartFailureContext,
+  waitForTcpOk,
+} from '../commands/lifecycle.js';
 
 const servers: Server[] = [];
 
@@ -86,5 +94,86 @@ describe('waitForTcpOk slow-boot extension (#2964)', () => {
       `Managed server exited before TCP listener 127.0.0.1:${port} was ready`,
     );
     expect(Date.now() - started).toBeLessThan(2_000);
+  });
+});
+
+describe('start failure names its cause (#4382)', () => {
+  test('a refused localhost connect is not an empty ()', async () => {
+    // `localhost` resolves to ::1 and 127.0.0.1 on Windows; when both refuse,
+    // Node raises an AggregateError whose own message is empty.
+    const port = await freePort();
+    const failure = await waitForTcpOk('localhost', port, 5_000, {
+      childAlive: () => false,
+    }).catch((error: Error) => error);
+    expect(failure).toBeInstanceOf(Error);
+    const { message } = failure as Error;
+    expect(message).toContain(
+      `Managed server exited before TCP listener localhost:${port} was ready (`,
+    );
+    expect(message).not.toMatch(/\(\)$/);
+  });
+
+  test('an AggregateError reads as its inner failures, or its code', () => {
+    const refused = (address: string) =>
+      Object.assign(new Error(`connect ECONNREFUSED ${address}`), {
+        code: 'ECONNREFUSED',
+      });
+    expect(
+      describeSocketError(
+        new AggregateError([refused('::1:4'), refused('127.0.0.1:4')], ''),
+      ),
+    ).toBe('connect ECONNREFUSED ::1:4; connect ECONNREFUSED 127.0.0.1:4');
+    expect(
+      describeSocketError(
+        Object.assign(new AggregateError([], ''), { code: 'ECONNREFUSED' }),
+      ),
+    ).toBe('ECONNREFUSED');
+    expect(describeSocketError(new Error('timeout'))).toBe('timeout');
+  });
+
+  test("names the server log's last fatal line since this start, and the log", () => {
+    const dir = mkdtempSync(join(tmpdir(), 'station-start-failure-'));
+    try {
+      const log = join(dir, 'station-x.log');
+      const fatal =
+        "Error: STATION_HOME_RESET_REQUIRED: Station home '/h' uses an incompatible schema.";
+      writeFileSync(
+        log,
+        [
+          '--- 2026-10-31T19:00:00.000Z station lifecycle start instance=x build=a pid=1 ---',
+          'Error: listen EADDRINUSE: address already in use 127.0.0.1:1',
+          '',
+          '--- 2026-10-31T19:16:29.000Z station lifecycle start instance=x build=a pid=2 supervised ---',
+          '[station-supervisor] 2026-10-31T19:16:29.260Z generation 1 started (pid 3)',
+          `\u001b[31m${fatal}\u001b[39m`,
+          '    at reset (file:///x/command-station.js:1:1)',
+          '    at main (file:///x/command-station.js:2:2)',
+          '[station-supervisor] 2026-10-31T19:16:54.262Z generation 1 exited code=1 signal=null',
+          '',
+        ].join('\n'),
+      );
+      expect(lastFatalServerLogLine(log)).toBe(fatal);
+      expect(serverStartFailureContext(log)).toEqual([
+        `Last server error: ${fatal}`,
+        `Server log: ${log}`,
+      ]);
+
+      // No error since this start's header: an earlier boot's is not named.
+      writeFileSync(
+        log,
+        [
+          'Error: an earlier boot',
+          '--- 2026-10-31T19:20:00.000Z station lifecycle start instance=x build=a pid=4 ---',
+          'starting',
+        ].join('\n'),
+      );
+      expect(lastFatalServerLogLine(log)).toBeNull();
+      const missing = join(dir, 'missing.log');
+      expect(serverStartFailureContext(missing)).toEqual([
+        `Server log: ${missing}`,
+      ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
