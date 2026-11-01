@@ -10,7 +10,7 @@
   gap: var(--k-space-1);
   min-width: 0;
   padding: var(--k-space-2);
-  border: 1px solid var(--k-border);
+  border: 1px solid var(--k-line);
   border-radius: var(--k-radius-control);
   background: var(--k-panel);
   color: var(--k-text);
