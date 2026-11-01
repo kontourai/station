@@ -303,7 +303,7 @@ vi.mock('../../../providers/connection-factories.js', () => ({
 
 import { mkdtempSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, relative } from 'node:path';
+import { isAbsolute, join, relative } from 'node:path';
 import {
   captureLoggerLines,
   stopLoggerCaptures,
@@ -3207,13 +3207,21 @@ describe('ConnectionService', () => {
     // sandbox would litter with `.git`/`.agents` placeholders. It runs in a
     // private probe workspace under the Station home.
     const smokeCwd = runner.mock.calls[0][0].cwd as string;
-    expect(smokeCwd).not.toBe(process.cwd());
-    expect(
-      relative(
-        realpathSync(join(process.env.STATION_HOME!, 'runtime')),
-        smokeCwd,
-      ).split(/[\\/]/),
-    ).toEqual([
+    // Compare resolved paths by their tail: on Windows the runner's temp
+    // root can surface as an 8.3 short name on one side and the long name on
+    // the other, so a `relative()` between them climbs out with `..`.
+    const resolvedSmokeCwd = realpathSync.native(smokeCwd);
+    expect(resolvedSmokeCwd).not.toBe(realpathSync.native(process.cwd()));
+    const fromServerCwd = relative(
+      realpathSync.native(process.cwd()),
+      resolvedSmokeCwd,
+    );
+    // Not inside the server's directory (a cross-drive path is absolute).
+    expect(!fromServerCwd.startsWith('..') && !isAbsolute(fromServerCwd)).toBe(
+      false,
+    );
+    expect(resolvedSmokeCwd.split(/[\\/]/).slice(-4)).toEqual([
+      'runtime',
       'acp-workspaces',
       'probe',
       expect.stringMatching(/^[0-9a-f]{64}$/),
