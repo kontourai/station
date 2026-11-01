@@ -34,6 +34,8 @@ Station ownership of its native loop or every tool it executes.
 | Change Session lifecycle | [SessionLifecycleModule](../../../src-server/services/orchestration/session-lifecycle-module.ts) | Transition ownership and concurrency with a new turn |
 | Attach an optional Flow run | [Flow policy owner](../../../src-server/services/orchestration/flow-policy-sidecar.ts) | Explicit `metadata.flowDefinition`, eligible definition, evidence, and completion verdict |
 
+Automatic credential recovery waits for startup reconciliation before staging. An unreadable scan or unresolved obligation blocks staging across connections until a later reconciliation succeeds. Due-claim scans also retry while the coordinator runs. See the [recovery module](../../architecture/module-map.md#credentialrecoverymodule).
+
 A Session can contain several turns. `idle` means a finished turn between
 messages; `completed` closes the Session. Stopped, terminal, and resumable have
 different meanings. The [lifecycle contract](../../../packages/contracts/src/session-lifecycle.ts)
