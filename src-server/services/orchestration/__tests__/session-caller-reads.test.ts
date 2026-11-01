@@ -232,7 +232,11 @@ test.each(['{', 'null'])(
   },
 );
 
-test('hot global sequence reads compile once and retain fresh bindings', () => {
+test('hot global sequence reads compile once and retain fresh bindings', ({
+  skip,
+}) => {
+  // Cache-reuse performance assertion; uncached correctness is covered separately.
+  if (process.env.STATION_DISABLE_EVENT_STORE_CACHES === '1') skip();
   const { store, append } = fixture();
   const prepare = vi.spyOn(store['db'], 'prepare');
   expect(store.readGlobalSequence('event-1')).toBe(1);
@@ -283,7 +287,11 @@ test('existence reads discover provider sessions before authorizing them', async
   ).toBe(false);
 });
 
-test('hot statement survives cold dynamic query churn while the oldest cold query is evicted', () => {
+test('hot statement survives cold dynamic query churn while the oldest cold query is evicted', ({
+  skip,
+}) => {
+  // Cache-reuse performance assertion; uncached correctness is covered separately.
+  if (process.env.STATION_DISABLE_EVENT_STORE_CACHES === '1') skip();
   const { store } = fixture();
   const prepare = vi.spyOn(store['db'], 'prepare');
   store.readGlobalSequence('event-1');
