@@ -57,7 +57,7 @@ export interface KernelLimits {
    * hold. A submission past it is refused, never truncated.
    */
   readonly inboxMaxUnsettled: number;
-  /** A settled non-display inbox entry older than this is forgotten on the inbox's next submit. */
+  /** A settled follow-up without an uncertain claim older than this is forgotten on the inbox's next submit. */
   readonly inboxSettledRetentionMs: number;
 }
 
@@ -259,8 +259,8 @@ export interface KernelTransaction {
     /** Insert, or replace the entry with the same inbox and key. */
     put(record: InboxEntryRecord): void;
     /**
-     * Delete non-display `placed`, `refused` and `cancelled` entries last
-     * updated before `cutoff`. Display notes live until inbox deletion.
+     * Delete settled follow-ups before `cutoff`, preserving dismissed claims.
+     * Steer keys and display notes live until inbox deletion.
      */
     deleteSettledBefore(inboxId: string, cutoff: number): void;
     /** Delete every entry of the inbox; return how many there were. */

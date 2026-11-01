@@ -2629,6 +2629,12 @@ const inbox: KernelConformanceCase[] = [
           const command = { ...submit(kind), kind };
           assert.equal((await session.run(command)).kind, 'accepted');
         }
+        await session.run(claimNext());
+        await session.run(settle('steer', 'placed'));
+        await session.run({
+          ...submit('retention-trigger', { now: 30 * 24 * 60 * 60 * 1000 }),
+          kind: 'display',
+        });
         await session.store.reopen();
         for (const kind of ['steer', 'display'] as const) {
           const command = { ...submit(kind), kind };
@@ -2640,7 +2646,7 @@ const inbox: KernelConformanceCase[] = [
         );
         assert.deepEqual(
           (await inboxEntries(session)).map((entry) => entry.kind),
-          ['steer', 'display'],
+          ['steer', 'display', 'display'],
         );
       }),
   },
@@ -2810,28 +2816,39 @@ const inbox: KernelConformanceCase[] = [
         assert.deepEqual(await session.run(claimNext()), { kind: 'empty' });
       }),
   },
-  {
-    name: 'inbox: dismissing an unknown effect does not make its key sendable again',
-    areas: ['inbox'],
-    run: (harness) =>
-      withSession(harness, async (session) => {
-        await session.run(submit('uncertain'));
-        await session.run(claimNext());
-        await session.run(settle('uncertain', 'unconfirmed'));
-        await session.run({
-          type: 'inbox.cancel',
-          inboxId: 'conversation',
-          key: 'uncertain',
-          now: 4,
-        });
-        await session.store.reopen();
-        assert.equal(
-          claimedKey(await session.run(submit('uncertain', { now: 5 }))),
-          'existing:uncertain:cancelled',
-        );
-        assert.deepEqual(await session.run(claimNext()), { kind: 'empty' });
-      }),
-  },
+  ...(['follow-up', 'steer'] as const).map(
+    (kind): KernelConformanceCase => ({
+      name: `inbox: dismissing an unknown ${kind} preserves its claim past retention`,
+      areas: ['inbox'],
+      run: (harness) =>
+        withSession(harness, async (session) => {
+          await session.run({ ...submit('uncertain'), kind });
+          await session.run(claimNext());
+          await session.run(settle('uncertain', 'unconfirmed'));
+          await session.run({
+            type: 'inbox.cancel',
+            inboxId: 'conversation',
+            key: 'uncertain',
+            now: 4,
+          });
+          await session.run({
+            ...submit('retention-trigger', { now: 30 * 24 * 60 * 60 * 1000 }),
+            kind: 'display',
+          });
+          await session.store.reopen();
+          assert.equal(
+            claimedKey(
+              await session.run({
+                ...submit('uncertain', { now: 30 * 24 * 60 * 60 * 1000 + 1 }),
+                kind,
+              }),
+            ),
+            'existing:uncertain:cancelled',
+          );
+          assert.deepEqual(await session.run(claimNext()), { kind: 'empty' });
+        }),
+    }),
+  ),
   {
     name: 'inbox: a refused or cancelled key submitted again is queued again at the tail',
     areas: ['inbox'],

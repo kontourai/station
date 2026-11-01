@@ -162,6 +162,8 @@ export interface ThreadInboxPayload {
   readonly serverAutomationIntentId?: string;
   /** Original server-captured identity; older queued entries have unknown proof. */
   readonly inputDigest?: string;
+  /** Retains the fixed replay route's resource admission class at placement. */
+  readonly automaticBackground?: true;
   readonly ambientContext?: string;
   readonly model?: ExecutionModelRequest;
   readonly actor: ThreadInboxActor;
@@ -228,6 +230,9 @@ function decodePayload(raw: string): ThreadInboxPayload | undefined {
   const attribution = actor.ownerAttribution;
   return {
     message: value.message,
+    ...(value.automaticBackground === true
+      ? { automaticBackground: true }
+      : {}),
     ...(typeof value.expectedHead === 'string'
       ? { expectedHead: value.expectedHead }
       : {}),

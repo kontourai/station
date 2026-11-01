@@ -974,7 +974,7 @@ export const foregroundMessageObjectSchema = z.object({
  * Only a plain continuation can: the inbox replays it through the
  * conversation's persisted binding later, without this request. Attachments,
  * a visual skill start, an input reply, an approval pick, a delegated or
- * background send and another Station's target all need this request's own
+ * another Station's target all need this request's own
  * authority or bytes, so they are refused when busy, as before.
  */
 function inboxFollowUpOf(
@@ -990,6 +990,7 @@ function inboxFollowUpOf(
       message: string;
       ambientContext?: string;
       model?: ExecutionModelRequest;
+      automaticBackground?: true;
     }
   | undefined {
   if (
@@ -998,7 +999,6 @@ function inboxFollowUpOf(
     !body.clientTurnId ||
     options.delegated ||
     options.remote ||
-    body.automaticBackground ||
     body.attachments?.length ||
     body.attachmentRefs?.length ||
     body.skillExperience ||
@@ -1012,6 +1012,7 @@ function inboxFollowUpOf(
     conversationId: body.conversationId,
     clientTurnId: body.clientTurnId,
     message: body.message,
+    ...(body.automaticBackground ? { automaticBackground: true } : {}),
     ...(body.ambientContext ? { ambientContext: body.ambientContext } : {}),
     ...(body.target.model
       ? { model: body.target.model as ExecutionModelRequest }
@@ -3035,6 +3036,9 @@ export function createOrchestrationRoutes(
               clientTurnId: followUp.clientTurnId,
               payload: {
                 message: followUp.message,
+                ...(followUp.automaticBackground
+                  ? { automaticBackground: true as const }
+                  : {}),
                 inputDigest,
                 ...(followUp.ambientContext
                   ? { ambientContext: followUp.ambientContext }

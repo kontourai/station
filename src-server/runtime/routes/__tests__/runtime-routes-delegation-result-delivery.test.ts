@@ -620,21 +620,38 @@ describe('configureRuntimeRoutes: conversation inbox wiring (#3568)', () => {
     return { store, ...(await composeOver(homeDir, store, closers)) };
   }
 
-  test('startup places a held follow-up through the production start port, as its sender', async () => {
-    support.inspect = () => ({ outcome: 'not-received' });
-    const { store } = await compose((store) => held(store, 'k1'));
-    await vi.waitFor(() => expect(support.continued).toHaveLength(1));
-    expect(support.continued[0]).toMatchObject({
-      conversationId: PARENT,
-      message: 'held k1',
-      clientTurnId: 'k1',
-      userId: LOCAL_OPERATOR_PRINCIPAL_ID,
-      fullAccessGrant: null,
-    });
-    await vi.waitFor(() =>
-      expect(store.threadInboxStore().list(PARENT)[0]?.state).toBe('placed'),
-    );
-  });
+  test.each([false, true])(
+    'startup places a held follow-up through the production port (background=%s)',
+    async (background) => {
+      support.inspect = () => ({ outcome: 'not-received' });
+      const { store } = await compose((store) =>
+        store.threadInboxStore().submit({
+          conversationId: PARENT,
+          clientTurnId: 'k1',
+          now: Date.now(),
+          payload: {
+            message: 'held k1',
+            actor: { userId: LOCAL_OPERATOR_PRINCIPAL_ID },
+            ...(background ? { automaticBackground: true } : {}),
+          },
+        }),
+      );
+      await vi.waitFor(() => expect(support.continued).toHaveLength(1));
+      expect(support.continued[0]).toMatchObject({
+        conversationId: PARENT,
+        message: 'held k1',
+        clientTurnId: 'k1',
+        userId: LOCAL_OPERATOR_PRINCIPAL_ID,
+        fullAccessGrant: null,
+      });
+      await vi.waitFor(() =>
+        expect(store.threadInboxStore().list(PARENT)[0]?.state).toBe('placed'),
+      );
+      expect(support.continued[0].automaticBackground).toBe(
+        background ? true : undefined,
+      );
+    },
+  );
 
   test('startup hands a steer to the production dispatch binding with its recorded actor', async () => {
     support.inboxNativeSteer = true;

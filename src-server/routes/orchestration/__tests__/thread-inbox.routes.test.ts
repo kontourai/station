@@ -96,6 +96,34 @@ describe('POST /chat whenBusy queue (#3568)', () => {
     },
   );
 
+  test('a plain automatic replay can be held with its background admission class durable', async () => {
+    const world = station();
+    await world.busy();
+    const response = await world.app.request(
+      '/api/orchestration/chat/background',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          message: 'background held text',
+          conversationId: CONVERSATION,
+          clientTurnId: 'background-key',
+          whenBusy: 'queue',
+          target: { environment: { kind: 'current' }, agent: AGENT },
+        }),
+      },
+    );
+    expect(response.status).toBe(202);
+    const entry = world.store
+      .threadInboxStore()
+      .read(CONVERSATION, 'background-key');
+    expect(JSON.parse(entry!.payload)).toMatchObject({
+      message: 'background held text',
+      automaticBackground: true,
+    });
+    expect(world.prompts()).toEqual(['read the file']);
+  });
+
   test('a display entry is visible immediately to another reader without starting a turn', async () => {
     const world = station();
     await world.busy();

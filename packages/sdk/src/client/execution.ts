@@ -412,9 +412,9 @@ export async function queueExecutionMessage(
   },
   opts?: ClientRequestOptions,
 ): Promise<QueuedFollowUpResult> {
-  const { automaticBackground: _background, ...body } = input;
+  const { automaticBackground, ...body } = input;
   const response = await mutateJson(
-    `${apiBase}/api/orchestration/chat`,
+    `${apiBase}/api/orchestration/chat${automaticBackground ? '/background' : ''}`,
     'POST',
     opts,
     { ...body, whenBusy: 'queue' },

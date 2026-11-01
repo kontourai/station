@@ -6436,6 +6436,7 @@ export function configureRuntimeRoutes(
       model?: ExecutionModelRequest;
       inputDigest?: string;
       inboxPlacement?: true;
+      automaticBackground?: true;
     },
     threadId: string,
   ): Promise<SessionStartResult> {
@@ -6673,6 +6674,7 @@ export function configureRuntimeRoutes(
             {
               conversationId,
               message: payload.message,
+              automaticBackground: payload.automaticBackground,
               inputDigest: payload.inputDigest,
               inboxPlacement: true,
               clientTurnId,

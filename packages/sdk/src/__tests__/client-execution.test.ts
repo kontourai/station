@@ -8,12 +8,48 @@ import {
   getConversationHandoffStatus,
   getTurnDelivery,
   handoffExecutionMessage,
+  queueExecutionMessage,
   submitConversationSteer,
 } from '../client/execution';
 import { sendExecutionMessage } from '../client/send-execution-message';
 import { ChatHttpError } from '../query-domains/chatRuntimeStream';
 
 describe('client execution', () => {
+  test.each([false, true])(
+    'queued input retains automatic background admission=%s on the wire',
+    async (automaticBackground) => {
+      const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            success: true,
+            data: {
+              outcome: 'queued',
+              conversationId: 'conv',
+              clientTurnId: 'queued-key',
+              entry: { state: 'queued' },
+            },
+          }),
+          { status: 202 },
+        ),
+      );
+      vi.stubGlobal('fetch', fetcher);
+      await queueExecutionMessage('http://station.test', {
+        target: { agent: agentId('station') },
+        conversationId: 'conv',
+        clientTurnId: 'queued-key',
+        message: 'go later',
+        automaticBackground,
+      });
+      expect(fetcher.mock.calls[0][0]).toBe(
+        `http://station.test/api/orchestration/chat${automaticBackground ? '/background' : ''}`,
+      );
+      expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toMatchObject({
+        whenBusy: 'queue',
+        clientTurnId: 'queued-key',
+      });
+    },
+  );
+
   afterEach(() => vi.unstubAllGlobals());
 
   test('steering submits the observed session head and refuses an older Station without one', async () => {
