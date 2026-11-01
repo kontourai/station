@@ -1864,7 +1864,7 @@ function sqliteTransaction(
       deleteSettledBefore: (inboxId, cutoff) => {
         run(
           `DELETE FROM monument_inbox_entries
-            WHERE inbox_id = ? AND updated_at < ?
+            WHERE inbox_id = ? AND updated_at < ? AND kind != 'display'
               AND state IN ('placed', 'refused', 'cancelled')`,
           inboxId,
           cutoff,

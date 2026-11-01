@@ -42,7 +42,9 @@
  *   (`start_deadline`); the next drive reads the ledger again and settles it
  *   `placed` if it started, or queues it again if no Session took it.
  *
- * Steer and display-only entries, and a stale-head check, are not here yet.
+ * Steers retain their text and expected head before claiming a handoff. A
+ * recovered claim is settled from its receipt or surfaced as unknown; it is
+ * never automatically replayed. Display entries are visible immediately.
  */
 import { createHash } from 'node:crypto';
 import {
@@ -1314,6 +1316,30 @@ export class ThreadInboxDelivery {
     conversationId: string,
     head: InboxEntryRecord,
   ): boolean {
+    if (head.kind === 'steer' && head.placement?.startsWith('{')) {
+      const placement = JSON.parse(head.placement) as {
+        threadId: string;
+        turnId: string;
+      };
+      const payload = decodePayload(head.payload);
+      if (!payload) throw new Error('Station could not read this steer.');
+      const receipt = this.ports.inspectSteer?.({
+        ...placement,
+        clientInputId: head.key,
+        input: payload.message,
+      });
+      if (receipt?.outcome !== 'steered') return false;
+      this.ports.store.resolveUnconfirmed(
+        head,
+        'placed',
+        {
+          sessionId: placement.threadId,
+          turnId: receipt.turnId,
+        },
+        this.now(),
+      );
+      return true;
+    }
     if (decodeOutcome(head.outcome).reasonCode !== 'start_deadline')
       return false;
     const payload = decodePayload(head.payload);
@@ -1347,6 +1373,7 @@ export class ThreadInboxDelivery {
     entry: InboxEntryRecord,
     threadId: string,
     turnId: string,
+    recovering = false,
   ): Promise<void> {
     const store = this.ports.store;
     const payload = decodePayload(entry.payload);
@@ -1375,7 +1402,7 @@ export class ThreadInboxDelivery {
       );
       return;
     }
-    if (receipt?.outcome === 'indeterminate') {
+    if (receipt?.outcome === 'indeterminate' || recovering) {
       store.settle(
         entry,
         'unconfirmed',
@@ -1427,6 +1454,7 @@ export class ThreadInboxDelivery {
             : { outcome: 'indeterminate' };
         },
       );
+      if (this.stopped) return;
       if (result !== DEADLINE && result.outcome === 'started') {
         store.settle(
           entry,
@@ -1450,6 +1478,7 @@ export class ThreadInboxDelivery {
         );
       }
     } catch {
+      if (this.stopped) return;
       store.settle(
         entry,
         'unconfirmed',
@@ -1525,6 +1554,7 @@ export class ThreadInboxDelivery {
             head,
             pinned.threadId,
             pinned.turnId,
+            true,
           );
           continue;
         }

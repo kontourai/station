@@ -57,7 +57,7 @@ export interface KernelLimits {
    * hold. A submission past it is refused, never truncated.
    */
   readonly inboxMaxUnsettled: number;
-  /** A settled inbox entry older than this is forgotten on the inbox's next submit. */
+  /** A settled non-display inbox entry older than this is forgotten on the inbox's next submit. */
   readonly inboxSettledRetentionMs: number;
 }
 

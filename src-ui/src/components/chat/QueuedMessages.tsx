@@ -8,6 +8,7 @@ import {
 } from '../../hooks/usePresenceList';
 import { useQueuedMessages } from '../../hooks/useQueuedMessages';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
+import { Button } from '../Button';
 import { ArrowDownGlyph, EditGlyph } from '../icons/Glyph';
 import { heldSendsInOrder, pendingMessageCount } from './pendingMessages';
 import './QueuedMessages.css';
@@ -75,6 +76,7 @@ export interface HeldMessages {
   removalError: boolean;
   onRemove: (clientTurnId: string) => void;
   onRetry: () => void;
+  onResend?: (entry: ConversationInboxEntry) => void;
 }
 
 const HELD_STATE_LABEL: Record<ConversationInboxEntry['state'], string> = {
@@ -426,6 +428,18 @@ export function QueuedMessages({
         </span>
         {removable && (
           <div className="queued-message__utilities">
+            {entry.kind === 'steer' &&
+              entry.state === 'unconfirmed' &&
+              held?.onResend && (
+                <Button
+                  variant="ghost"
+                  disabled={held.removing}
+                  title="This may duplicate the original steer. Review the text before sending."
+                  onClick={() => held.onResend?.(entry)}
+                >
+                  Review and resend
+                </Button>
+              )}
             <button
               type="button"
               disabled={held?.removing}

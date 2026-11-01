@@ -2098,6 +2098,12 @@ export function ChatDockBody({
               ? undefined
               : activeSession.conversationId,
             conversationActive: isExecutionActive,
+            onResend: (message: string) => {
+              const latest = activeChatsStore.getSnapshot()[activeSession.id];
+              if (!latest || latest.input.trim()) return false;
+              updateChat(activeSession.id, { input: message });
+              return true;
+            },
             sessionId: activeSession.id,
             messages: activeSession.queuedMessages,
             metadata: activeSession.queuedMessageMetadata,

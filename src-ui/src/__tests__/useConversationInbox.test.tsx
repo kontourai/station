@@ -112,7 +112,10 @@ function response(entries: ConversationInboxEntry[], currentHead?: string) {
 
 type Local = { messages: string[]; metadata?: PendingMessageMetadata[] };
 
-function mount(local: Local = { messages: [] }) {
+function mount(
+  local: Local = { messages: [] },
+  onResend?: (message: string) => boolean,
+) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -128,6 +131,7 @@ function mount(local: Local = { messages: [] }) {
         sessionId="session"
         messages={local.messages}
         metadata={local.metadata}
+        onResend={onResend}
       />
     </QueryClientProvider>
   );
@@ -206,6 +210,45 @@ test('shows display-only entries without counting them as pending sends', async 
   expect(await screen.findByText('visible note')).toBeTruthy();
   expect(screen.getByText('Display only')).toBeTruthy();
   expect(screen.queryByText(/pending/)).toBeNull();
+});
+
+test('an unknown steer offers explicit review and resend without automatically sending it', async () => {
+  let dismissed = false;
+  const fetcher = vi.fn(async (_url: unknown, options?: RequestInit) => {
+    if (options?.method === 'DELETE') {
+      dismissed = true;
+      return new Response(
+        JSON.stringify({
+          success: true,
+          data: { ...entry('cancelled', 'uncertain'), kind: 'steer' },
+        }),
+      );
+    }
+    return response(
+      dismissed
+        ? []
+        : [
+            {
+              ...entry('unconfirmed', 'uncertain'),
+              kind: 'steer',
+              message: 'change direction',
+            },
+          ],
+    );
+  });
+  vi.stubGlobal('fetch', fetcher);
+  const review = vi.fn(() => true);
+  mount({ messages: [] }, review);
+  await screen.findByText('1 pending');
+  expand();
+  expect(screen.getByText('May have been sent')).toBeTruthy();
+  expect(review).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Review and resend' }));
+  await waitFor(() => expect(dismissed).toBe(true));
+  expect(review).toHaveBeenCalledExactlyOnceWith('change direction');
+  expect(
+    fetcher.mock.calls.some(([, options]) => options?.method === 'POST'),
+  ).toBe(false);
 });
 
 test('a failed refresh makes a previously available count unavailable, never zero', async () => {

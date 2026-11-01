@@ -2608,6 +2608,7 @@ const inbox: KernelConformanceCase[] = [
           kind: 'display',
         });
         assert.equal(claimedKey(display), 'accepted:note:placed');
+        await session.run(submit('later', { now: 30 * 24 * 60 * 60 * 1000 }));
         await session.store.reopen();
         assert.equal(
           claimedKey(await session.run({ ...submit('note'), kind: 'display' })),

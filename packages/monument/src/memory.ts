@@ -335,6 +335,7 @@ function transactionOver(image: MemoryImage): KernelTransaction {
         for (const [id, record] of [...image.inbox])
           if (
             record.inboxId === inboxId &&
+            record.kind !== 'display' &&
             SETTLED_INBOX_STATES.has(record.state) &&
             record.updatedAt < cutoff
           )

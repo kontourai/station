@@ -516,6 +516,71 @@ describe('thread inbox (#3568)', () => {
     expect(world.inbox.list(THREAD)).toHaveLength(1);
   });
 
+  test.each(['before-claim', 'after-claim'] as const)(
+    'native steer restart at %s preserves text and head without replaying a claim',
+    async (point) => {
+      const file = path();
+      let world: World;
+      let handoffs = 0;
+      const ports: Partial<ThreadInboxDeliveryPorts> = {
+        steerFidelity: () => 'native',
+        inspectSteer: (input) => world.store.readSteerInput(input),
+        steer: async ({ threadId, clientInputId, payload, turnId }) => {
+          const input = {
+            threadId,
+            clientInputId,
+            input: payload.message,
+            turnId,
+          };
+          if (!world.store.claimSteerInput(input))
+            return world.store.readSteerInput(input)!;
+          handoffs += 1;
+          world.store.confirmSteerInput(input, turnId);
+          return { outcome: 'steered', turnId };
+        },
+      };
+      world = boot(file, ports, (store) => ({
+        ...store,
+        claimNext: (...args) => {
+          if (point === 'after-claim') store.claimNext(...args);
+          throw new Error('power lost at handoff claim');
+        },
+      }));
+      await runningFirstTurn(world);
+      const expectedHead = world.inbox.currentHead(THREAD);
+      world.inbox.submitSteer({
+        conversationId: THREAD,
+        clientTurnId: 'crash-point',
+        payload,
+        expectedHead,
+      });
+      await world.inbox.idle();
+      expect(handoffs).toBe(0);
+      expect(world.inbox.list(THREAD)).toMatchObject([
+        {
+          message: FOLLOW_UP,
+          expectedHead,
+          state: point === 'before-claim' ? 'queued' : 'sending',
+        },
+      ]);
+      await crash(world);
+      world = boot(file, ports);
+      await world.inbox.reconcile();
+      expect(handoffs).toBe(point === 'before-claim' ? 1 : 0);
+      expect(world.inbox.list(THREAD)).toMatchObject([
+        {
+          message: FOLLOW_UP,
+          expectedHead,
+          state: point === 'before-claim' ? 'sent' : 'unconfirmed',
+        },
+      ]);
+      await crash(world);
+      world = boot(file, ports);
+      await world.inbox.reconcile();
+      expect(handoffs).toBe(point === 'before-claim' ? 1 : 0);
+    },
+  );
+
   test('a native steer is handed off once and survives a restart', async () => {
     const file = path();
     let world: World;
@@ -628,49 +693,68 @@ describe('thread inbox (#3568)', () => {
     expect(handoffs).toBe(1);
   });
 
-  test('a confirmed steer receipt settles a placement interrupted before its inbox acknowledgement', async () => {
-    const file = path();
-    const first = boot(file, { steerFidelity: () => 'emulated' });
-    await runningFirstTurn(first);
-    const expectedHead = first.inbox.currentHead(THREAD);
-    first.inbox.submitSteer({
-      conversationId: THREAD,
-      clientTurnId: 'confirmed-steer',
-      payload,
-      expectedHead,
-    });
-    await first.inbox.idle();
-    const receipt = {
-      threadId: THREAD,
-      clientInputId: 'confirmed-steer',
-      input: payload.message,
-      turnId: 'turn-1',
-    };
-    expect(
-      first.store
-        .threadInboxStore()
-        .claimNext(
-          THREAD,
-          JSON.stringify({ threadId: THREAD, turnId: 'turn-1' }),
-          Date.now(),
-        ).kind,
-    ).toBe('claimed');
-    expect(first.store.claimSteerInput(receipt)).toBe(true);
-    first.store.confirmSteerInput(receipt, 'turn-1');
-    await crash(first);
-    let second: World;
-    const steer = vi.fn(async () => ({ outcome: 'steered', turnId: 'turn-1' }));
-    second = boot(file, {
-      steerFidelity: () => 'native',
-      inspectSteer: (input) => second.store.readSteerInput(input),
-      steer,
-    });
-    await second.inbox.reconcile();
-    expect(steer).not.toHaveBeenCalled();
-    expect(second.inbox.list(THREAD)).toMatchObject([
-      { state: 'sent', turnId: 'turn-1' },
-    ]);
-  });
+  test.each([false, true])(
+    'a confirmed steer receipt settles interrupted placement (already surfaced=%s)',
+    async (surfaced) => {
+      const file = path();
+      const first = boot(file, { steerFidelity: () => 'emulated' });
+      await runningFirstTurn(first);
+      const expectedHead = first.inbox.currentHead(THREAD);
+      first.inbox.submitSteer({
+        conversationId: THREAD,
+        clientTurnId: 'confirmed-steer',
+        payload,
+        expectedHead,
+      });
+      await first.inbox.idle();
+      const receipt = {
+        threadId: THREAD,
+        clientInputId: 'confirmed-steer',
+        input: payload.message,
+        turnId: 'turn-1',
+      };
+      expect(
+        first.store
+          .threadInboxStore()
+          .claimNext(
+            THREAD,
+            JSON.stringify({ threadId: THREAD, turnId: 'turn-1' }),
+            Date.now(),
+          ).kind,
+      ).toBe('claimed');
+      expect(first.store.claimSteerInput(receipt)).toBe(true);
+      first.store.confirmSteerInput(receipt, 'turn-1');
+      if (surfaced) {
+        const entry = first.store
+          .threadInboxStore()
+          .read(THREAD, 'confirmed-steer')!;
+        first.store
+          .threadInboxStore()
+          .settle(
+            entry,
+            'unconfirmed',
+            { reasonCode: 'may_have_been_sent' },
+            Date.now(),
+          );
+      }
+      await crash(first);
+      let second: World;
+      const steer = vi.fn(async () => ({
+        outcome: 'steered',
+        turnId: 'turn-1',
+      }));
+      second = boot(file, {
+        steerFidelity: () => 'native',
+        inspectSteer: (input) => second.store.readSteerInput(input),
+        steer,
+      });
+      await second.inbox.reconcile();
+      expect(steer).not.toHaveBeenCalled();
+      expect(second.inbox.list(THREAD)).toMatchObject([
+        { state: 'sent', turnId: 'turn-1' },
+      ]);
+    },
+  );
 
   test('a follow-up queued during a turn, then a restart before its terminal, is sent exactly once', async () => {
     const file = path();

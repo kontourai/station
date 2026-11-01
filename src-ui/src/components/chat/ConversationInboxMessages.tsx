@@ -17,12 +17,15 @@ type QueuedMessagesProps = Parameters<typeof QueuedMessages>[0];
 export function ConversationInboxMessages({
   conversationId,
   conversationActive,
+  onResend,
   ...queue
 }: Omit<QueuedMessagesProps, 'held'> & {
   /** Absent for a replay or a conversation Station has not named yet. */
   conversationId?: string;
   /** The conversation is working, so Station may start holding follow-ups. */
   conversationActive?: boolean;
+  /** Restore an unknown message for explicit review; false preserves a busy composer. */
+  onResend?: (message: string) => boolean;
 }) {
   const inbox = useConversationInbox(conversationId ?? '', {
     active: conversationActive,
@@ -46,6 +49,14 @@ export function ConversationInboxMessages({
       void remove(key).catch(() => undefined);
     },
     onRetry: refresh,
+    ...(onResend
+      ? {
+          onResend: (entry) => {
+            if (entry.clientTurnId && onResend(entry.message))
+              void remove(entry.clientTurnId).catch(() => undefined);
+          },
+        }
+      : {}),
   };
   return (
     <>
