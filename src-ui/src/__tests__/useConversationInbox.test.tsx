@@ -160,6 +160,19 @@ test('shows actual server states and keeps keyless entries read-only without per
   expect(shouldPersistQuery(query)).toBe(false);
 });
 
+test('shows display-only entries without counting them as pending sends', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () =>
+      response([{ ...entry('sent', 'visible note'), kind: 'display' }]),
+    ),
+  );
+  mount();
+  expect(await screen.findByText('visible note')).toBeTruthy();
+  expect(screen.getByText('Display only')).toBeTruthy();
+  expect(screen.queryByText(/pending/)).toBeNull();
+});
+
 test('a failed refresh makes a previously available count unavailable, never zero', async () => {
   let failed = false;
   vi.stubGlobal(

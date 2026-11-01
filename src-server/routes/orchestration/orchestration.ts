@@ -2176,6 +2176,7 @@ export function createOrchestrationRoutes(
       | 'mustQueue'
       | 'submit'
       | 'submitSteer'
+      | 'submitDisplay'
       | 'list'
       | 'entry'
       | 'cancel'
@@ -3540,12 +3541,20 @@ export function createOrchestrationRoutes(
   app.post(
     '/conversations/:conversationId/inbox',
     validate(
-      z.object({
-        kind: z.literal('steer'),
-        key: z.string().min(1).max(128),
-        message: z.string().min(1).max(CHAT_INPUT_MAX_CHARS),
-        expectedHead: z.number().int().nonnegative().safe(),
-      }),
+      z.discriminatedUnion('kind', [
+        z.object({
+          kind: z.literal('steer'),
+          key: z.string().min(1).max(128),
+          message: z.string().min(1).max(CHAT_INPUT_MAX_CHARS),
+          expectedHead: z.number().int().nonnegative().safe(),
+        }),
+        z.object({
+          kind: z.literal('display'),
+          key: z.string().min(1).max(128),
+          message: z.string().min(1).max(CHAT_INPUT_MAX_CHARS),
+          expectedHead: z.number().int().nonnegative().safe().optional(),
+        }),
+      ]),
     ),
     async (c) => {
       const conversationId = param(c, 'conversationId');
@@ -3562,7 +3571,7 @@ export function createOrchestrationRoutes(
         return c.json({ success: false, error: 'Conversation not found' }, 404);
       const body = getBody(c);
       const actor = resolveDispatchActor(deps, c);
-      const result = inbox.submitSteer({
+      const input = {
         conversationId,
         clientTurnId: body.key,
         expectedHead: body.expectedHead,
@@ -3577,7 +3586,11 @@ export function createOrchestrationRoutes(
           },
           clientOrigin: resolveClientOriginForRequest(c.req.raw),
         },
-      });
+      };
+      const result =
+        body.kind === 'steer'
+          ? inbox.submitSteer({ ...input, expectedHead: body.expectedHead })
+          : inbox.submitDisplay(input);
       if (result.outcome === 'stale-head')
         return c.json(
           {

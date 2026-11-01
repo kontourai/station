@@ -81,6 +81,32 @@ describe('POST /chat whenBusy queue (#3568)', () => {
     expect(world.adapter.turns).toHaveLength(1);
   });
 
+  test('a display entry is visible immediately to another reader without starting a turn', async () => {
+    const world = station();
+    await world.busy();
+    const url = `/api/orchestration/conversations/${encodeURIComponent(CONVERSATION)}/inbox`;
+    const request = () =>
+      world.app.request(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          kind: 'display',
+          key: 'display-one',
+          message: 'visible note',
+        }),
+      });
+    expect((await request()).status).toBe(202);
+    expect((await request()).status).toBe(202);
+    const read = await world.listInbox(READER);
+    expect(read.status).toBe(200);
+    expect(await read.json()).toMatchObject({
+      data: {
+        entries: [{ kind: 'display', state: 'sent', message: 'visible note' }],
+      },
+    });
+    expect(world.adapter.turns).toHaveLength(1);
+  });
+
   test.each([
     [false, false],
     [false, true],

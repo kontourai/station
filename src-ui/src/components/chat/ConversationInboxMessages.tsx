@@ -29,6 +29,13 @@ export function ConversationInboxMessages({
   });
   const entries = inbox.entries;
   const visible = useMemo(() => visibleInboxEntries(entries), [entries]);
+  const displayEntries = useMemo(
+    () =>
+      (entries ?? []).filter(
+        (entry) => entry.kind === 'display' && entry.state === 'sent',
+      ),
+    [entries],
+  );
   const { remove, refresh, removing, removalError, lostSightOfEntries } = inbox;
   const held: HeldMessages = {
     entries: visible,
@@ -40,5 +47,24 @@ export function ConversationInboxMessages({
     },
     onRetry: refresh,
   };
-  return <QueuedMessages {...queue} held={held} />;
+  return (
+    <>
+      {displayEntries.length > 0 && (
+        <section aria-label="Display-only entries">
+          {displayEntries.map((entry) => (
+            <div
+              className="queued-message"
+              key={entry.clientTurnId ?? `${entry.createdAt}:${entry.message}`}
+            >
+              <span className="queued-message__text">
+                <span className="queued-message__body">{entry.message}</span>
+                <span className="queued-message__status">Display only</span>
+              </span>
+            </div>
+          ))}
+        </section>
+      )}
+      <QueuedMessages {...queue} held={held} />
+    </>
+  );
 }

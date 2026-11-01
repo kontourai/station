@@ -411,7 +411,7 @@ export function createSqliteThreadInboxStore(
       clientTurnId: string;
       payload: ThreadInboxPayload;
       now: number;
-      kind?: 'follow-up' | 'steer';
+      kind?: 'follow-up' | 'steer' | 'display';
       expectedHead?: number;
       readHead?: () => number;
     }): InboxSubmitResult | { kind: 'stale-head'; currentHead: number } {
@@ -914,9 +914,15 @@ export class ThreadInboxDelivery {
     return this.submitEntry(input, 'steer');
   }
 
+  submitDisplay(
+    input: ThreadInboxInput & { expectedHead?: number },
+  ): ThreadInboxHeadSubmission {
+    return this.submitEntry(input, 'display');
+  }
+
   private submitEntry(
     input: ThreadInboxInput & { expectedHead?: number },
-    kind: 'follow-up' | 'steer',
+    kind: 'follow-up' | 'steer' | 'display',
   ): ThreadInboxHeadSubmission {
     // Only Station's own continuation may use its reserved key prefix: an
     // ordinary sender could otherwise pre-claim that key and turn Station's

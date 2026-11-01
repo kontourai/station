@@ -2598,6 +2598,28 @@ function claimedKey(result: KernelResult<KernelCommand>): string {
 
 const inbox: KernelConformanceCase[] = [
   {
+    name: 'inbox: a display entry is placed immediately without taking the queue head',
+    areas: ['inbox'],
+    run: (harness) =>
+      withSession(harness, async (session) => {
+        await session.run(submit('waiting'));
+        const display = await session.run({
+          ...submit('note'),
+          kind: 'display',
+        });
+        assert.equal(claimedKey(display), 'accepted:note:placed');
+        await session.store.reopen();
+        assert.equal(
+          claimedKey(await session.run({ ...submit('note'), kind: 'display' })),
+          'existing:note:placed',
+        );
+        assert.equal(
+          claimedKey(await session.run(claimNext())),
+          'claimed:waiting:placing',
+        );
+      }),
+  },
+  {
     name: 'inbox: steer and display entries survive reopening without duplication',
     areas: ['inbox'],
     run: (harness) =>

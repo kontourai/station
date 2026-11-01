@@ -79,7 +79,7 @@ export function decideInboxSubmit(
   if (existing && !requeue)
     return { result: { kind: 'existing', entry: existing } };
   const unsettled = inputs.entries.filter(inboxEntryIsUnsettled).length;
-  if (unsettled >= inputs.maxUnsettled)
+  if (command.kind !== 'display' && unsettled >= inputs.maxUnsettled)
     return { result: { kind: 'capacity', limit: inputs.maxUnsettled } };
   const sequence =
     inputs.entries.reduce((max, entry) => Math.max(max, entry.sequence), 0) + 1;
@@ -90,7 +90,7 @@ export function decideInboxSubmit(
     kind: command.kind,
     digest: command.digest,
     payload: command.payload,
-    state: 'queued',
+    state: command.kind === 'display' ? 'placed' : 'queued',
     placement: null,
     outcome: null,
     createdAt: existing?.createdAt ?? command.now,
