@@ -56,6 +56,89 @@ export function removeEmptyRender(source) {
 }
 export const MUTATIONS = [
   {
+    id: 'cascade-parent-first',
+    test: 'src-server/services/orchestration/__tests__/ownership-cascade.test.ts',
+    failure:
+      'Stop traverses verified descendants bottom-up and excludes claimed and background boundaries',
+    files: [
+      {
+        path: 'src-server/services/orchestration/event-store.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "WHERE state = 'pending' ORDER BY rowid\",",
+            "WHERE state = 'pending' ORDER BY rowid DESC\",",
+          ),
+      },
+      {
+        path: 'src-server/services/orchestration/orchestration-service.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'if (\n            store.hasPendingCascadeDescendant(intent.childId, intent.terminalId)\n          )',
+            'if (false)',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'cascade-adapter-repeat-stop',
+    test: 'src-server/providers/__tests__/adapter-conformance.test.ts',
+    failure: 'lifecycle — adapter-shape.ts hasSession:',
+    files: [
+      'claude',
+      'codex',
+      'acp',
+      'muse',
+      'station-agent',
+      'bedrock',
+      'ollama',
+    ].map((name) => ({
+      path: `src-server/providers/adapters/${name}-adapter.ts`,
+      change: (source) =>
+        exactReplace(
+          source,
+          'async stopSession(threadId: string): Promise<void> {',
+          `async stopSession(threadId: string): Promise<void> {
+    if (!(await this.hasSession(threadId))) throw new Error('Injected repeated stop rejection');`,
+        ),
+    })),
+  },
+  {
+    id: 'cascade-owned-activity',
+    test: 'src-server/services/orchestration/__tests__/ownership-cascade.test.ts',
+    failure:
+      'parent summaries remain running until the owned child stop settles',
+    files: [
+      {
+        path: 'src-server/services/orchestration/event-store.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'AND EXISTS (SELECT 1 FROM active WHERE thread_id = owned.child_id)',
+            'AND 0',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'cascade-pending-activity',
+    test: 'src-server/services/orchestration/__tests__/ownership-cascade.test.ts',
+    failure:
+      'parent summaries remain running until the owned child stop settles',
+    files: [
+      {
+        path: 'src-server/services/orchestration/event-store.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "SUM((SELECT COUNT(*) FROM orchestration_cascade_stop_intents i\n              WHERE i.child_session_id = owned.child_id AND i.state = 'pending')) AS pending_stop_count",
+            '0 AS pending_stop_count',
+          ),
+      },
+    ],
+  },
+  {
     id: 'attention-snooze-pending',
     test: 'src-server/services/projects/__tests__/attention-projection.test.ts',
     failure:
