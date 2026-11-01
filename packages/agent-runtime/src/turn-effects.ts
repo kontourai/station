@@ -5,7 +5,7 @@ import { agentWire, readAgentWire } from './turn-wire.js';
 import type { Fence, RunKey } from './types.js';
 
 const payload = z.string().max(32 * 1024 * 1024);
-export const effectIntentSchema = z
+const effectIntentSchema = z
   .object({
     id: text,
     kind: z.enum(['model', 'provider', 'tool', 'entry']),
@@ -15,7 +15,7 @@ export const effectIntentSchema = z
   })
   .strict();
 export type EffectIntent = z.infer<typeof effectIntentSchema>;
-export const effectSchema = z
+const effectSchema = z
   .object({
     version: z.literal(1),
     intent: effectIntentSchema,

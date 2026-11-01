@@ -65,7 +65,7 @@ export function durableAgentHooks(
       ),
   };
 }
-export function durableToolIntent(
+function durableToolIntent(
   tool: ToolCallContext,
   replay: 'safe' | 'unsafe',
 ): AgentToolIntent {
@@ -75,7 +75,7 @@ export function durableToolIntent(
     replay,
   };
 }
-export async function durableToolGate(
+async function durableToolGate(
   tool: ToolCallContext,
   replay: 'safe' | 'unsafe',
   gate: () => ReturnType<NonNullable<IAgentHooks['beforeToolCall']>>,

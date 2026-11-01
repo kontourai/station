@@ -1614,6 +1614,17 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     if (turnId && turnId !== activeTurnId) {
       return { outcome: 'target-mismatch', activeTurnId } as const;
     }
+    if (this.options.durable?.snapshot(threadId, activeTurnId)) {
+      await this.options.durable.cancel(threadId, activeTurnId);
+      this.cancelPendingApprovals(record);
+      activeController.abort('interrupted');
+      this.reconcileDurableTerminal(
+        threadId,
+        activeTurnId,
+        origin?.invocationId,
+      );
+      return { outcome: 'cancelled', turnId: activeTurnId } as const;
+    }
     this.cancelPendingApprovals(record);
     activeController.abort('interrupted');
     if (!record.abortPublished) {

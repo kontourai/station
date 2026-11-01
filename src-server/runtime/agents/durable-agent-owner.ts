@@ -124,7 +124,7 @@ type RuntimeOwner = ReturnType<typeof createAgentRuntime>;
 type Resume = (lease: AgentTurnLease) => Promise<void>;
 
 /** Claims the journal fence before scheduling any recovered foreground work. */
-export function createDurableRecoveryHandoff(options: {
+function createDurableRecoveryHandoff(options: {
   readonly runtime: RuntimeOwner;
   readonly ready: () => boolean;
   readonly resume: Resume;
