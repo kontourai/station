@@ -1,0 +1,7 @@
+{
+  "revision": "1389a2d72d36b16dbd1ad6ae74299fc6521b2338",
+
+  "notes": [
+    {"path":"deploy/public-ingress/README.md","note":"Rechecked against the cleanup commit: station-dogfood-health.mjs reattaches the assertListenerOwnership JSDoc to its function; listener ownership logic unchanged. This document's claims do not depend on the changed lines and remain accurate.","inputs":["deploy/public-ingress/README.md","scripts/station-dogfood-health.mjs"]}
+  ]
+}
