@@ -835,3 +835,106 @@ describe('a page open at / shows the page past a full-screen phone dock (#4399)'
     }
   });
 });
+
+/**
+ * #4392: a dock opened in a short desktop-classified window (a phone held
+ * sideways under a fine pointer) carries the desktop clamp
+ * (`innerHeight - 150`); turning the device to portrait crosses into the
+ * phone breakpoint, and the open dock must re-derive its height from its
+ * snap against the NEW viewport instead of keeping the landscape pixels.
+ */
+describe('an open dock re-derives its snap height when the viewport turns (#4392)', () => {
+  test.each(['bottom', 'right'] as const)(
+    'a Chat dock in %s: the landscape desktop clamp becomes Half of the portrait phone viewport',
+    async (region) => {
+      const saved = {
+        innerWidth: Object.getOwnPropertyDescriptor(window, 'innerWidth'),
+        innerHeight: Object.getOwnPropertyDescriptor(window, 'innerHeight'),
+      };
+      const listeners = new Set<(event: MediaQueryListEvent) => void>();
+      let phone = false;
+      const resize = (width: number, height: number) => {
+        Object.defineProperty(window, 'innerWidth', {
+          configurable: true,
+          value: width,
+        });
+        Object.defineProperty(window, 'innerHeight', {
+          configurable: true,
+          value: height,
+        });
+      };
+      resize(915, 412);
+      vi.stubGlobal('matchMedia', (query: string) => ({
+        get matches() {
+          return phone;
+        },
+        media: query,
+        onchange: null,
+        addListener: () => {},
+        removeListener: () => {},
+        addEventListener: (
+          _type: string,
+          listener: (event: MediaQueryListEvent) => void,
+        ) => listeners.add(listener),
+        removeEventListener: (
+          _type: string,
+          listener: (event: MediaQueryListEvent) => void,
+        ) => listeners.delete(listener),
+        dispatchEvent: () => false,
+      }));
+      try {
+        const client = new QueryClient({
+          defaultOptions: { queries: { retry: false } },
+        });
+        const wrapper = ({ children }: { children: ReactNode }) => (
+          <QueryClientProvider client={client}>
+            <RegionModelProvider>{children}</RegionModelProvider>
+          </QueryClientProvider>
+        );
+        const { result } = renderHook(
+          () => ({
+            chrome: useDockShellChrome({
+              publishesDockSlotClearance: true,
+              registersDockShortcuts: false,
+              regionId: region,
+            }),
+            model: useRegionModel(),
+          }),
+          { wrapper },
+        );
+        if (region !== 'bottom')
+          act(() => result.current.model.placeSurface('chat', region));
+        expect(result.current.model.regions[region].occupant).toBe('chat');
+        expect(result.current.chrome.isMobile).toBe(false);
+        expect(result.current.chrome.isDockOpen).toBe(true);
+        expect(result.current.chrome.dockHeight).toBe(412 - 150);
+
+        await act(async () => {
+          resize(430, 932);
+          phone = true;
+          window.dispatchEvent(new Event('resize'));
+          for (const listener of [...listeners])
+            listener({ matches: true } as MediaQueryListEvent);
+          await new Promise((resolve) => requestAnimationFrame(resolve));
+        });
+
+        expect(result.current.chrome.isMobile).toBe(true);
+        expect(result.current.chrome.visualViewport.height).toBe(932);
+        expect(result.current.chrome.dockHeight).toBe(
+          dockSnapPixels(result.current.chrome.dockSnap, {
+            viewportHeight: 932,
+            toolbarHeight: result.current.chrome.toolbarHeight,
+            collapsedHeight: result.current.chrome.collapsedHeight,
+          }),
+        );
+        expect(result.current.chrome.dockHeight).toBeGreaterThan(262);
+      } finally {
+        vi.unstubAllGlobals();
+        if (saved.innerWidth)
+          Object.defineProperty(window, 'innerWidth', saved.innerWidth);
+        if (saved.innerHeight)
+          Object.defineProperty(window, 'innerHeight', saved.innerHeight);
+      }
+    },
+  );
+});
