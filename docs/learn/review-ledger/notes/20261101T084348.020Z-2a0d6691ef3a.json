@@ -1,0 +1,27 @@
+{
+  "revision": "0f6f688c9f5e5fa3a45311a211c9ce6a41a28d66",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Checked: the module-map change rewrites only its TerminalSessions section (operator-device admission, ticket gateway, re-pointed sign-in/close/process consumers, SDK store client). This page links the module map for other modules or as a general index; none of its statements depend on the TerminalSessions text, and no anchor it uses changed.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT.md","note":"Checked: the module-map change rewrites only its TerminalSessions section (operator-device admission, ticket gateway, re-pointed sign-in/close/process consumers, SDK store client). This page links the module map for other modules or as a general index; none of its statements depend on the TerminalSessions text, and no anchor it uses changed.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"README.md","note":"Checked: the module-map change rewrites only its TerminalSessions section (operator-device admission, ticket gateway, re-pointed sign-in/close/process consumers, SDK store client). This page links the module map for other modules or as a general index; none of its statements depend on the TerminalSessions text, and no anchor it uses changed.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Checked: the module-map change rewrites only its TerminalSessions section (operator-device admission, ticket gateway, re-pointed sign-in/close/process consumers, SDK store client). This page links the module map for other modules or as a general index; none of its statements depend on the TerminalSessions text, and no anchor it uses changed.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"Checked: the module-map change rewrites only its TerminalSessions section (operator-device admission, ticket gateway, re-pointed sign-in/close/process consumers, SDK store client). This page links the module map for other modules or as a general index; none of its statements depend on the TerminalSessions text, and no anchor it uses changed.","inputs":["docs/guides/agent-efficiency.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Checked: the module-map change rewrites only its TerminalSessions section (operator-device admission, ticket gateway, re-pointed sign-in/close/process consumers, SDK store client). This page links the module map for other modules or as a general index; none of its statements depend on the TerminalSessions text, and no anchor it uses changed.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Checked: the module-map change rewrites only its TerminalSessions section (operator-device admission, ticket gateway, re-pointed sign-in/close/process consumers, SDK store client). This page links the module map for other modules or as a general index; none of its statements depend on the TerminalSessions text, and no anchor it uses changed.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Checked: the module-map change rewrites only its TerminalSessions section (operator-device admission, ticket gateway, re-pointed sign-in/close/process consumers, SDK store client). This page links the module map for other modules or as a general index; none of its statements depend on the TerminalSessions text, and no anchor it uses changed.","inputs":["docs/reference/station-docs.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Checked: the module-map change rewrites only its TerminalSessions section (operator-device admission, ticket gateway, re-pointed sign-in/close/process consumers, SDK store client). This page links the module map for other modules or as a general index; none of its statements depend on the TerminalSessions text, and no anchor it uses changed.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Checked: the module-map change rewrites only its TerminalSessions section (operator-device admission, ticket gateway, re-pointed sign-in/close/process consumers, SDK store client). This page links the module map for other modules or as a general index; none of its statements depend on the TerminalSessions text, and no anchor it uses changed.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Checked: the module-map change rewrites only its TerminalSessions section (operator-device admission, ticket gateway, re-pointed sign-in/close/process consumers, SDK store client). This page links the module map for other modules or as a general index; none of its statements depend on the TerminalSessions text, and no anchor it uses changed.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]}
+  ]
+}

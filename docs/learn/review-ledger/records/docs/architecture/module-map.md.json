@@ -1504,7 +1504,11 @@
 
     "src-server/services/automation/__tests__/repair-worker.test.ts",
 
-    "src-server/services/automation/__tests__/repair-publisher.test.ts"
+    "src-server/services/automation/__tests__/repair-publisher.test.ts",
+
+    "src-server/services/terminal/terminal-tickets.ts",
+
+    "packages/sdk/src/client/terminal-session-store.ts"
   ],
 
   "checks": [
