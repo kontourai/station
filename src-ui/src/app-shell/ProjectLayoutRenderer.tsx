@@ -464,7 +464,7 @@ export function LayoutStackHost({
   // Past the wide fold a pane opens beside the centre's Chat (#3040) — only
   // where the centre HAS Chat; a bottom-only device keeps the drill-in.
   const wide = useCodingWide() && centerChat;
-  const dockedTerminal = useDockedCodingTerminal(projectId ?? null);
+  const dockedTerminal = useDockedCodingTerminal(projectSlug);
   /**
    * The host's panes render once the reader has drilled in during this mount,
    * and stay mounted (hidden) after, so a pane keeps its state across the
