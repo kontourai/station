@@ -3601,7 +3601,7 @@ The follow-up diagnostic on the `3e14b5eddfe` production bytes keeps recent Home
 acquisitions, rejection reasons and periodic live samples. It distinguishes input
 runtime construction from actual invocation. Both callers still fail before a
 canonical question. The measured cases requested 71 and 100 Home acquisitions,
-completed 70 and 100, and recorded zero rejections. Neither invoked input; the
+acquired 70 and 100, and recorded zero rejections. Neither invoked input; the
 HTTP case started no member, while the direct case started two without raw fetch.
 This is progress through changing scopes, not evidence for the earlier static
 deadlock claim or a cascade of recorded `busy` failures.
