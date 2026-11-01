@@ -834,7 +834,9 @@
 
     "src-server/services/identity/local-account-passkeys.ts",
 
-    "packages/sdk/src/client/terminal-session-store.ts"
+    "packages/sdk/src/client/terminal-session-store.ts",
+
+    "src-server/services/orchestration/delegation-create-claims.ts"
   ],
 
   "checks": [
