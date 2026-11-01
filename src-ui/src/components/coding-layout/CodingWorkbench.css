@@ -625,7 +625,9 @@
 }
 
 .coding-workbench__head-slot--leading {
-  flex: 1 1 auto;
+  /* Free space only: a long strip scrolls inside it rather than squeezing
+     the title or running under the close. */
+  flex: 1 1 0;
   justify-content: flex-start;
 }
 
@@ -667,6 +669,8 @@
 /* A pane's controls in the head row: the terminal's strip loses its own dark
    bar and takes the head's colours; the Files "+" is a 32px target. */
 .coding-workbench__panel-head .coding-layout__terminal-bar--head {
+  flex: 1 1 auto;
+  min-width: 0;
   height: auto;
   padding: 0;
   border-bottom: 0;
