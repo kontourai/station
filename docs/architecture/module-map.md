@@ -1630,7 +1630,7 @@ input answers the steer as `session_busy`, never as a start.
 **Composition and evidence.** The
 [route](../../src-server/routes/orchestration/session-agent-control.ts) checks
 the caller's scope and keys each request in the durable
-[request-key table](../../src-server/services/orchestration/session-control-request-keys.ts)
+[request-key table](../../src-server/services/orchestration/sqlite-session-control-request-keys.ts)
 (owned by `EventStore`, with the claim, quota and retention rules in
 [`@kontourai/monument`](../../packages/monument/CONTEXT.md)'s request-key commands)
 before it reaches this module. `wait_session` observes

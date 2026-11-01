@@ -12,6 +12,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./sqlite": "./src/sqlite.ts",
+    "./session-control": "./src/session-control.ts",
     "./adapter": "./src/adapter.ts",
     "./testing": "./src/testing/index.ts"
   },
@@ -51,6 +52,10 @@
       "./sqlite": {
         "types": "./dist/sqlite.d.ts",
         "default": "./dist/sqlite.js"
+      },
+      "./session-control": {
+        "types": "./dist/session-control.d.ts",
+        "default": "./dist/session-control.js"
       },
       "./adapter": {
         "types": "./dist/adapter.d.ts",

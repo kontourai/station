@@ -8,7 +8,7 @@ import { ORCHESTRATION_EVENT_STORE_MIGRATION } from '../../../domain/migrations/
 import {
   SESSION_CONTROL_REQUEST_KEY_KERNEL_TABLES,
   SESSION_CONTROL_REQUEST_KEY_SCHEMA,
-} from '../session-control-request-keys.js';
+} from '../sqlite-session-control-request-keys.js';
 import { STATION_TURN_DEDUP_KERNEL_TABLES } from '../sqlite-turn-dedup-persistence.js';
 
 /**

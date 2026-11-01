@@ -9,6 +9,7 @@ import { mkdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import type { SQLOutputValue } from 'node:sqlite';
+import type { SessionControlRequestKeys } from '@kontourai/monument/session-control';
 import {
   openSqliteKernelStorage,
   type SqliteKernelStorage,
@@ -368,11 +369,6 @@ import {
   releaseRecoveryLedgerOwner,
 } from './recovery-ledger.js';
 import {
-  createSqliteSessionControlRequestKeys,
-  SESSION_CONTROL_REQUEST_KEY_SCHEMA,
-  type SessionControlRequestKeys,
-} from './session-control-request-keys.js';
-import {
   SESSION_OWNER_ATTRIBUTION_METADATA_KEY,
   UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION,
 } from './session-owner-attribution.js';
@@ -401,6 +397,10 @@ import {
 } from './skill-experience-snapshots.js';
 import { createSqliteAdoptionCoordinator } from './sqlite-adoption-persistence.js';
 import { createSqliteRevisionEvidencePersistence } from './sqlite-revision-evidence-persistence.js';
+import {
+  createSqliteSessionControlRequestKeys,
+  SESSION_CONTROL_REQUEST_KEY_SCHEMA,
+} from './sqlite-session-control-request-keys.js';
 import { createSqliteSessionTurnBoundaryCoordinator } from './sqlite-session-turn-boundary.js';
 import {
   chatTurnDedupKey,
