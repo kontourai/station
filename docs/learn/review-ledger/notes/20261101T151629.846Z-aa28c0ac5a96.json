@@ -1,0 +1,71 @@
+{
+  "revision": "7a653bf0eb7750d6fb3a41c8ce392964a70f1196",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Checked the Agent Runtime and Operations context links and relationships against the recovery admission delta; their ownership remains unchanged.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md","docs/contexts/agent-runtime/CONTEXT.md"]},
+
+    {"path":"CONTEXT.md","note":"Checked its module-map and Session responsibility routing against the recovery relocation; the overview does not promise recovery admission behavior.","inputs":["CONTEXT.md","docs/architecture/module-map.md","docs/contexts/agent-runtime/CONTEXT.md"]},
+
+    {"path":"README.md","note":"Checked the architecture reading-path link to the module map after its recovery source change; the entry point remains valid.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/README.md","note":"Checked the contributor route to the module map and guides after the recovery source move; the reading path remains valid.","inputs":["docs/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Checked the lifecycle authority and module-map references against the import-only boundary change; no lifecycle transition changed.","inputs":["docs/architecture/abstraction-review.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Checked the module-map evidence route and receipt claims against the EventStore recovery composition delta; evidence ownership is unchanged.","inputs":["docs/contexts/evidence-governance/CONTEXT.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Checked the conversation-inbox and operations ownership claims against the EventStore recovery binding delta; inbox behavior is unchanged.","inputs":["docs/contexts/operations/CONTEXT.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Checked Task-dispatch and credential-recovery admission claims against the boundary import change; the authority implementation remains Station-owned and behavior is unchanged.","inputs":["docs/design/channel-home-authority.md","src-server/services/orchestration/session-turn-boundary.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked inbox and connection-recovery presentation claims against EventStore recovery composition; no UI projection was changed or exercised.","inputs":["docs/design/chat-composer.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Reviewed automatic profile staging, exact settlement and startup refusal against CredentialRecoveryModule and ConnectionService; focused SQLite tests do not prove a live provider journey.","inputs":["docs/design/connections-onboarding.md","src-server/services/orchestration/credential-recovery-module.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Checked EventStore package-MCP admission and event stamping claims against the recovery-only composition change; those methods are unchanged.","inputs":["docs/design/mcp-ui-host.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Checked inbox placement and recovery-display references against the EventStore recovery binding delta; no layout or UI behavior changed.","inputs":["docs/design/placement.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/project-task-room-history.md","note":"Checked the synchronous recovery-writer and room-worker boundary against the EventStore binding; SQLite recovery operations remain synchronous in Station.","inputs":["docs/design/project-task-room-history.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/revision-bound-evidence.md","note":"Checked revision receipt composition and EventStore close ownership against the recovery-only binding change; revision receipt methods are unchanged.","inputs":["docs/design/revision-bound-evidence.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/shared-working-state.md","note":"Checked shared working state recovery and its EventStore boundary against the recovery-ledger composition change; those runtime paths are unchanged.","inputs":["docs/design/shared-working-state.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/glossary.md","note":"Checked the module-map links and Session/inbox vocabulary against the recovery documentation change; no defined product term changed.","inputs":["docs/glossary.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"Checked durable inbox and recorded request-key references against the moved request-key protocol; the claim and replay behavior remains covered by focused SQLite tests.","inputs":["docs/guides/agent-efficiency.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the startup pause and retry statement against CredentialRecoveryModule and SessionRecoveryCoordinator; no live provider recovery was exercised.","inputs":["docs/guides/connections.md"]},
+
+    {"path":"docs/guides/development.md","note":"Checked the Monument workspace row against its public exports and host bindings; the package remains private and the recovery SQL transitions remain Station-owned.","inputs":["docs/guides/development.md","packages/monument/src/index.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Checked the remote execution and event-store ownership claims against the connection guide admission addition; no remote transport behavior changed.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Checked EventStore receipt and monitoring ownership references against the recovery-only composition change; monitoring storage methods are unchanged.","inputs":["docs/guides/monitoring.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked Session Control request-key retention and pinned-branch claims against the Monument protocol, Station SQLite binding, route import and focused tests; no live engine was exercised.","inputs":["docs/guides/self-configuring-agent.md","docs/architecture/module-map.md","src-server/routes/orchestration/session-agent-control.ts","src-server/runtime/routes/__tests__/runtime-routes-station-control-session-control.test.ts"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Checked the module-map references against the recovery owner relocation; the identity inventory and its evidence status are unchanged.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/config.md","note":"Checked the EventStore attachment and configuration references against the recovery binding diff; attachment storage and config schemas are unchanged.","inputs":["docs/reference/config.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked held-message admission and turn-key descriptions against the type-only inbox import change; the focused inbox suite passed without changing its runtime behavior.","inputs":["docs/reference/session-api.md","src-server/services/orchestration/thread-inbox.ts"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Checked settings deep-link references against the module-map recovery source change; link routing and settings behavior are unchanged.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Checked the manual and generated MCP topic inputs against the revised module map and regenerated content; no provider or device behavior was exercised.","inputs":["docs/reference/station-docs.md","docs/architecture/module-map.md","src-server/tools/station-docs-content.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Checked the inbox and failed-read concepts against the module-map recovery change; UI state and copy were not changed or visually verified.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Checked the module-map and review-ledger export description against the updated source links; no external ingestion was run.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Reviewed the six public entry points, request-key and recovery protocol descriptions against source, package smoke and focused Station tests; recovery SQL command conformance remains unverified.","inputs":["packages/monument/CONTEXT.md","packages/monument/src/index.ts","src-server/routes/orchestration/session-agent-control.ts","src-server/runtime/routes/__tests__/runtime-routes-station-control-session-control.test.ts","src-server/services/orchestration/event-store.ts","src-server/services/orchestration/session-turn-boundary.ts","packages/monument/src/recovery-ledger.ts","packages/monument/src/session-control.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Reviewed the six entry points, host bindings and recovery limitation against source, packed consumer smoke and focused tests; publication and recovery storage conformance are not claimed.","inputs":["packages/monument/README.md","packages/monument/src/index.ts","scripts/__tests__/monument-pack-smoke.test.ts","scripts/monument-pack-smoke.mjs","src-server/services/orchestration/event-store.ts","src-server/services/orchestration/session-turn-boundary.ts","packages/monument/src/recovery-ledger.ts","packages/monument/src/session-control.ts"]},
+
+    {"path":"src-server/AGENTS.md","note":"Checked the server routing to module map and focused tests against the recovery source move; the server instructions remain applicable.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Checked the UI routing to the module map against the recovery-only source move; no UI behavior or instruction changed.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]}
+  ]
+}

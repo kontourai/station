@@ -82,7 +82,11 @@
 
     "packages/monument/src/memory.ts",
 
-    "packages/monument/src/__tests__/sqlite-bound-tables.test.ts"
+    "packages/monument/src/__tests__/sqlite-bound-tables.test.ts",
+
+    "packages/monument/src/recovery-ledger.ts",
+
+    "packages/monument/src/session-control.ts"
   ],
 
   "checks": []
