@@ -15085,30 +15085,64 @@ export class EventStore {
     runningChildCount: number;
     pendingStopCount: number;
   } {
+    return this.ownedSessionActivities([parentId]).get(parentId)!;
+  }
+
+  ownedSessionActivities(
+    parentIds: readonly string[],
+  ): Map<string, { runningChildCount: number; pendingStopCount: number }> {
     return this.readOwnershipSnapshot(() => {
-      const children = ownedDescendantsBottomUp(this.db, parentId);
-      const owned = new Set([parentId, ...children]);
-      const pendingStopCount = this.pendingCascadeStops().filter((intent) =>
-        owned.has(intent.childId),
-      ).length;
-      let runningChildCount = 0;
-      for (const childId of children) {
-        const stoppedAndFenced = this.db
-          .prepare(`SELECT 1 FROM orchestration_cascade_stop_intents i
-        JOIN orchestration_cancellation_fences f ON f.thread_id = i.child_session_id AND f.terminal_event_id = i.terminal_event_id
-        WHERE i.child_session_id = ? AND i.state = 'completed' LIMIT 1`)
-          .get(childId);
-        if (stoppedAndFenced) continue;
-        if (
-          this.db
-            .prepare(`SELECT 1 FROM provider_session_state WHERE thread_id = ? AND status = 'running'
-        UNION ALL SELECT 1 FROM orchestration_turn_boundaries WHERE thread_id = ? AND state IN ('prepared', 'invoking', 'accepted', 'indeterminate')
-        UNION ALL SELECT 1 FROM orchestration_ownership_starts WHERE child_session_id = ? LIMIT 1`)
-            .get(childId, childId, childId)
-        )
-          runningChildCount++;
+      const result = new Map<
+        string,
+        { runningChildCount: number; pendingStopCount: number }
+      >();
+      const unique = [...new Set(parentIds)];
+      for (
+        let offset = 0;
+        offset < unique.length;
+        offset += EVENT_STORE_BATCH_CHUNK_SIZE
+      ) {
+        const chunk = unique.slice(
+          offset,
+          offset + EVENT_STORE_BATCH_CHUNK_SIZE,
+        );
+        // UNION deduplicates each root/descendant pair, including cycles and
+        // children whose provisional enrollment is also confirmed.
+        const rows = this.db
+          .prepare(`WITH RECURSIVE
+          requested(root_id) AS (VALUES ${chunk.map(() => '(?)').join(', ')}),
+          edges(parent_id, child_id) AS (
+            SELECT parent_session_id, child_session_id FROM orchestration_session_ownership
+              WHERE binding = 'verified' AND background_boundary = 0
+            UNION SELECT parent_session_id, child_session_id FROM orchestration_ownership_starts
+          ),
+          owned(root_id, child_id) AS (
+            SELECT root_id, root_id FROM requested
+            UNION SELECT owned.root_id, edges.child_id FROM owned JOIN edges ON edges.parent_id = owned.child_id
+          ),
+          active(thread_id) AS (
+            SELECT thread_id FROM provider_session_state WHERE status = 'running'
+            UNION SELECT thread_id FROM orchestration_turn_boundaries WHERE state IN ('prepared', 'invoking', 'accepted', 'indeterminate')
+            UNION SELECT child_session_id FROM orchestration_ownership_starts
+          )
+          SELECT root_id,
+            SUM(CASE WHEN child_id <> root_id
+              AND EXISTS (SELECT 1 FROM active WHERE thread_id = owned.child_id)
+              AND NOT EXISTS (SELECT 1 FROM orchestration_cascade_stop_intents i
+                JOIN orchestration_cancellation_fences f ON f.thread_id = i.child_session_id AND f.terminal_event_id = i.terminal_event_id
+                WHERE i.child_session_id = owned.child_id AND i.state = 'completed')
+              THEN 1 ELSE 0 END) AS running_child_count,
+            SUM((SELECT COUNT(*) FROM orchestration_cascade_stop_intents i
+              WHERE i.child_session_id = owned.child_id AND i.state = 'pending')) AS pending_stop_count
+          FROM owned GROUP BY root_id`)
+          .all(...chunk);
+        for (const row of rows)
+          result.set(String(row.root_id), {
+            runningChildCount: Number(row.running_child_count),
+            pendingStopCount: Number(row.pending_stop_count),
+          });
       }
-      return { runningChildCount, pendingStopCount };
+      return result;
     });
   }
 

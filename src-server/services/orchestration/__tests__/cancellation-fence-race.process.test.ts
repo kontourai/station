@@ -1,6 +1,4 @@
 import { spawn } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { expect, test } from 'vitest';
@@ -9,10 +7,12 @@ import {
   terminateSuiteExecution,
   waitForSuiteSettlement,
 } from '../../../../scripts/lib/owned-process.mjs';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { open } from './fixtures/monument-boundary.js';
 
 const moduleUrl = new URL('../sqlite-session-turn-boundary.ts', import.meta.url)
   .href;
+const makeTempDir = trackTempDirs();
 const contenderSource = `
 import { DatabaseSync } from 'node:sqlite';
 import { createSqliteSessionTurnBoundaryCoordinator } from ${JSON.stringify(moduleUrl)};
@@ -45,7 +45,7 @@ process.send({ kind: 'result', result }, () => process.disconnect());
 test('a fence committed while another process enters admission prevents the boundary', {
   timeout: 15000,
 }, async () => {
-  const root = mkdtempSync(join(tmpdir(), 'station-cancellation-race-'));
+  const root = makeTempDir('station-cancellation-race-');
   const path = join(root, 'events.sqlite');
   const store = open(path);
   store.close();
@@ -105,6 +105,5 @@ test('a fence committed while another process enters admission prevents the boun
       terminationForceMs: 1000,
     });
     db.close();
-    rmSync(root, { recursive: true, force: true });
   }
 });

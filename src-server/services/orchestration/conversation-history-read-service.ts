@@ -124,6 +124,9 @@ export class ConversationHistoryReadService {
   }): ConversationHistoryPage {
     const page = this.readPage(input);
     const observedAt = new Date().toISOString();
+    const ownedWorkByThread = this.options.eventStore.ownedSessionActivities(
+      page.records.map((record) => record.threadId),
+    );
     // One read for the page, not one per row.
     const executionProviders =
       this.options.eventStore.readConversationExecutionProviders(
@@ -139,8 +142,7 @@ export class ConversationHistoryReadService {
           1_000,
         );
         const summary = buildOrchestrationSessionSummary({
-          readOwnedWork: (threadId) =>
-            this.options.eventStore.ownedSessionActivity(threadId),
+          readOwnedWork: (threadId) => ownedWorkByThread.get(threadId),
           persisted,
           loaded,
           events: events.map((event) => event.payload),

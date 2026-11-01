@@ -4329,6 +4329,10 @@ export class OrchestrationService {
     this.nativeOutputGrants.dispose();
     this.stationControlPullRequests?.dispose();
     this.nativeTurnGenerations.clear();
+    // Capture retirement custody before cascade delivery can yield and let a
+    // successful retirement disappear from the live map.
+    const retiringAdapters = this.adapterRetirement.retiringAdapters();
+    const retirementTasks = this.adapterRetirement.shutdownRetirementTasks();
     const cascadeReconciliation = this.cascadeStopReconciliation;
     const cascadeResults = await Promise.allSettled(
       cascadeReconciliation
@@ -4384,10 +4388,6 @@ export class OrchestrationService {
     for (const adapter of this.adapterEventControllers.keys()) {
       this.stopAdapterEventConsumer(adapter);
     }
-    // Both reads happen at THIS synchronous tick with no await between
-    // them: inserting one changes which adapters the second arm
-    // double-stops. Pinned by a source invariant.
-    const retiringAdapters = this.adapterRetirement.retiringAdapters();
     const cleanupResults = await Promise.allSettled([
       ...(transcriptRetirement
         ? [
@@ -4399,7 +4399,7 @@ export class OrchestrationService {
             }),
           ]
         : []),
-      ...this.adapterRetirement.shutdownRetirementTasks(),
+      ...retirementTasks,
       ...currentAdapters
         .filter((adapter) => !retiringAdapters.has(adapter))
         .map((adapter) =>
@@ -4859,6 +4859,8 @@ export class OrchestrationService {
     // before this change.
     const eventStore = this.options.eventStore;
     this.hydrateHistoricalChildWork(readableThreadIds);
+    const ownedWorkByThread =
+      eventStore?.ownedSessionActivities(readableThreadIds);
     const eventsByThread =
       eventStore?.listSessionProjectionEventsForThreads(readableThreadIds) ??
       new Map<string, PersistedRuntimeEvent[]>();
@@ -4931,7 +4933,7 @@ export class OrchestrationService {
         const conversationDraftFacts =
           conversationDraftFactsByThread?.get(threadId);
         const summary = buildOrchestrationSessionSummary({
-          readOwnedWork: this.readOwnedWork,
+          readOwnedWork: (threadId) => ownedWorkByThread?.get(threadId),
           persisted,
           loaded,
           events: events.map((event) => event.payload),
