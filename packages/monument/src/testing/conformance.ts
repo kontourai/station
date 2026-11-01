@@ -4147,7 +4147,7 @@ const steerReceipts: readonly KernelConformanceCase[] = [
             ...key,
             inputDigest: 'digest-b',
           }),
-          { kind: 'indeterminate' },
+          { kind: 'conflict' },
         );
         assert.deepEqual(
           await session.run({

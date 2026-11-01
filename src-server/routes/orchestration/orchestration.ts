@@ -120,6 +120,11 @@ import {
   stationControlRequestAuthority,
   stationControlRequestCurrent,
 } from '../../security/station-control-request-authority.js';
+import {
+  DelegationCreateConflictError,
+  DelegationCreateIndeterminateError,
+  runForegroundCreateClaim,
+} from '../../services/orchestration/delegation-create-claims.js';
 
 /** #3483: an authenticated request that is not a station-control (internal) call. */
 function isPersonRequest(request: Request): boolean {
@@ -478,7 +483,7 @@ const steerTurnCommandSchema = z.object({
   // generic zod message, exactly the divergence archive#2807 unified away.
   input: z.string().trim().min(1).max(CHAT_INPUT_MAX_CHARS),
   turnId: z.string().optional(),
-  clientInputId: z.string().min(1).max(128).optional(),
+  clientInputId: z.string().min(1).max(128),
 });
 
 const steerTurnOnceCommandSchema = steerTurnCommandSchema.extend({
@@ -836,6 +841,7 @@ const stagedAttachmentReferencesSchema = z
   .optional();
 
 export const delegateTaskSchema = z.object({
+  clientTurnId: z.string().min(1).max(128),
   attachmentRefs: stagedAttachmentReferencesSchema,
   // Inline bytes are not a delegation transport; never silently discard them.
   attachments: z.never().optional(),
@@ -1172,6 +1178,7 @@ const delegatedTaskEventsQuerySchema = z.object({
 });
 
 export const continueDelegatedTaskBodySchema = z.object({
+  clientTurnId: z.string().min(1).max(128),
   taskRoomReply: z
     .object({
       taskId: z.string().min(1).max(256),
@@ -1299,6 +1306,8 @@ interface DelegateTaskRequest {
    * caller grant composes below and this Station is the executing
    * receiver. Never an authorization by itself.
    */
+  clientTurnId?: string;
+  createRequestIntent?: unknown;
   delegationAttemptId?: string;
   /**
    * #485: the verified delegation-kind device grant behind the CURRENT
@@ -3081,7 +3090,14 @@ export function createOrchestrationRoutes(
           clientTurnId: body.clientTurnId,
           forwarded: resolvedTarget.environment.kind !== 'current',
         });
-      const data = await deps.executeForegroundMessage(foregroundRequest);
+      const data = await runForegroundCreateClaim(
+        deps.delegationAttemptClaimStore?.createRequests,
+        foregroundRequest,
+        readAuthorityFor(c),
+        body,
+        (request) =>
+          deps.executeForegroundMessage!(request as ForegroundMessageRequest),
+      );
       if (!isForegroundDispatchHandle(data)) {
         // The foreground Interface cannot honestly call this accepted without
         // the exact provider turn identity needed for terminal settlement.
@@ -3124,6 +3140,28 @@ export function createOrchestrationRoutes(
       }
       return c.json({ success: true, data });
     } catch (error) {
+      if (error instanceof DelegationCreateConflictError)
+        return c.json(
+          {
+            success: false,
+            error: error.message,
+            code: 'client_turn_input_conflict',
+          },
+          409,
+        );
+      if (error instanceof DelegationCreateIndeterminateError)
+        return c.json(
+          {
+            success: false,
+            error: error.message,
+            code: FOREGROUND_MESSAGE_INDETERMINATE_CODE,
+            outcome: 'indeterminate',
+            conversationId: error.sessionId,
+            sessionId: error.sessionId,
+            clientTurnId: error.clientTurnId,
+          },
+          409,
+        );
       if (error instanceof ConversationTurnQueuedError)
         return queuedFollowUpResponse(
           c,
@@ -4149,6 +4187,7 @@ export function createOrchestrationRoutes(
         }
         return delegate({
           ...request,
+          createRequestIntent: body,
           ...(stagedFiles ? { stagedFiles } : {}),
           ...(roomAttachments ? { taskRoomAttachments: roomAttachments } : {}),
           ...(contextSnapshot
@@ -4393,6 +4432,25 @@ export function createOrchestrationRoutes(
       const refused =
         delegationRefusal(c, error) ?? dispatchCwdRefusalFor(c, error);
       if (refused) return refused;
+      if (
+        error instanceof DelegationCreateConflictError ||
+        error instanceof DelegationCreateIndeterminateError
+      )
+        return c.json(
+          {
+            success: false,
+            error: error.message,
+            code: error.code,
+            ...(error instanceof DelegationCreateIndeterminateError
+              ? {
+                  outcome: error.outcome,
+                  sessionId: error.sessionId,
+                  clientTurnId: error.clientTurnId,
+                }
+              : {}),
+          },
+          409,
+        );
       // #485: the receiver's typed duplicate outcomes — an explicit
       // pending/unknown or exists reference with the attempt id, NEVER a
       // manufactured completed handle and never a resend authorization.
@@ -6919,7 +6977,8 @@ export function createOrchestrationRoutes(
           error instanceof AdoptionContinuationInProgressError ||
             indeterminate ||
             (error instanceof OrchestrationCommandDispatchError &&
-              (error.code === 'request_event_changed' ||
+              (error.code === 'client_turn_input_conflict' ||
+                error.code === 'request_event_changed' ||
                 error.code === 'request_verification_unavailable' ||
                 error.code === 'request_content_not_loaded'))
             ? 409

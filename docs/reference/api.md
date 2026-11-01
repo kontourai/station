@@ -2663,10 +2663,24 @@ unavailable-history behavior.
 Existing keyed foreground, background, continue and explicit handoff sends reject a different
 submission under the same key with HTTP `409` and
 `code: client_turn_input_conflict`, before any additional engine send. This
-bounded contract retains legacy unknown-input rows and optional-key behavior;
-it does not cover the private Station-engine stream ledger. See
+contract requires `clientTurnId` on orchestration sends, delegation creates and
+delegation continuations; legacy `/commands` steer requires `clientInputId`.
+A steer key with different input also returns `client_turn_input_conflict`.
+Legacy rows without input proof remain indeterminate. See
 [keyed send identity](session-api.md#find-out-what-became-of-a-send) and the
 [submission digest contract](../architecture/module-map.md#turndeduplicator).
+
+When a foreground send omits `conversationId`, or a delegation creates a new
+Session, Station reserves a durable create claim before starting it. Claims are
+scoped by request kind, authenticated user, tenant and principal, plus the
+request key. An identical retry returns the original handle; changed input
+returns HTTP `409` (`client_turn_input_conflict` for foreground,
+`delegation_create_conflict` for delegation). An unfinished claim returns the
+reserved reference as indeterminate and never starts again automatically.
+This includes a crash before a Session record exists: missing evidence cannot
+prove the engine saw no effect. Create claims never expire or evict; their
+1,024-record and 4 MiB limits refuse new creates at capacity. This separate
+create ledger does not shorten the turn ledger's seven-day retry window.
 
 An authorized delivery lookup for an explicitly settled prepared turn returns
 HTTP `409` with `code: client_turn_settled` and `disposition: cancelled` or

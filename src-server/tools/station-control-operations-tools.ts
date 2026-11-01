@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import { environmentId as toEnvironmentId } from '@kontourai/station-contracts/execution-target';
@@ -732,6 +733,7 @@ export function registerOperationsTools(
         ),
       model: z.string().min(1).optional().describe('Optional model override'),
       message: z.string().describe('Message content'),
+      clientTurnId: z.string().min(1).max(128),
       conversationId: z
         .string()
         .optional()
@@ -751,6 +753,7 @@ export function registerOperationsTools(
       projectPath,
       model,
       message,
+      clientTurnId,
       conversationId,
       navigate: shouldNavigate,
       _delegation,
@@ -781,6 +784,7 @@ export function registerOperationsTools(
         const result = await executeExecutionTargetMessage({
           target,
           message,
+          clientTurnId: clientTurnId ?? randomUUID(),
           ...(conversationId ? { conversationId } : {}),
           // #2601: a claim only. Station's route derives the child context
           // from the verified caller, or keeps this one only when Station's own
@@ -935,6 +939,7 @@ export function registerOperationsTools(
     'Delegate a resumable task to an Agent in the current or a verified SSH environment. A task that names no projectSlug or projectPath on this Station starts in your own Project, when it has a working folder; an agent may start Sessions only in its own Project (or, from the global space, only there).',
     {
       prompt: z.string().min(1).describe('Work to delegate'),
+      clientTurnId: z.string().min(1).max(128),
       environmentId: z
         .string()
         .min(1)
@@ -1007,6 +1012,7 @@ export function registerOperationsTools(
         };
         const task = await delegateTask({
           prompt: input.prompt,
+          clientTurnId: input.clientTurnId ?? randomUUID(),
           target,
           ...(input.sessionId ? { sessionId: input.sessionId } : {}),
           ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
@@ -1077,6 +1083,7 @@ export function registerOperationsTools(
     {
       taskId: z.string().min(1).describe('Delegated task ID'),
       message: z.string().trim().min(1).describe('Follow-up instruction'),
+      clientTurnId: z.string().min(1).max(128),
       environmentId: z
         .string()
         .min(1)

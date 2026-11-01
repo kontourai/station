@@ -4827,12 +4827,13 @@ Server digest enforcement and replay retention remain separate contracts; key
 custody alone does not establish a minimum retry window. The fixed automatic
 background route uses the same key custody.
 
-For a new foreground conversation, choose `conversationId` before the first send
-and retain it with the key. When it is omitted, the current server allocates a
-fresh conversation per attempt; the same turn key alone cannot recover or
-replay that allocation after a lost response. Inspect the conversation list
-before another attempt. This server admission gap remains separate from SDK
-key custody; never automatically retry that start.
+For a new foreground conversation, retain the original input and key. Current
+Station hosts durably reserve an implicit conversation allocation under the
+caller scope and key, replay its completed handle, and refuse changed input.
+An unfinished create claim is indeterminate even if no Session is visible;
+inspect its reserved reference instead of starting under a new key. Older
+hosts may allocate a fresh conversation per attempt, so choose and retain an
+explicit `conversationId` when their create-claim behavior is unknown.
 
 When the input is a Station-fetched MCP prompt, `sendExecutionMessage` accepts
 `mcpPromptOrigin: { serverId, name, receipt }` alongside the unchanged rendered

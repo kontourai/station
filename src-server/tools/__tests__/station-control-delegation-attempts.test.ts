@@ -1,3 +1,5 @@
+import { humanPrincipal } from '@kontourai/station-contracts/principal';
+import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 /**
  * #485 receiver request-claim slice — receiver-local effect proof.
  *
@@ -29,7 +31,7 @@
  *   before).
  */
 
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
@@ -638,12 +640,19 @@ describe('refusals before any claim — unsupported, unwired, legacy', () => {
         prompt: 'Ship the portable thing',
         target: portableTarget(),
         receiverAdmission: admissionStub(resourcePath),
+        principal: humanPrincipal('test', 'operator', 'Operator'),
+        readAuthority: sessionReadAuthorityFromRequest(
+          'operator',
+          undefined,
+          undefined,
+        ),
+        delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(dir),
       },
       service as never,
     );
     expect(result.taskId).toMatch(/^task:/);
     expect(service.startSessionInternal).toHaveBeenCalledTimes(1);
-    // No claim owner was composed, so no claim file was even created.
+    // The portable attempt ledger is independent of ordinary create claims.
     const store = new FileDelegationAttemptClaimStore(dir);
     expect(await store.read(CLAIM_KEY)).toBeUndefined();
   });
@@ -802,5 +811,92 @@ describe('controller forwarding — capability gate + duplicate relay', () => {
     expect((error as PeerDelegationAttemptDuplicateError).taskId).toBe(
       'task:receiver-real-1',
     );
+  });
+});
+
+describe('ordinary local create request claims', () => {
+  function localInput() {
+    return {
+      prompt: 'first input',
+      target: {
+        environment: { kind: 'current' as const },
+        agent: agentId('reviewer'),
+      },
+      clientTurnId: 'local-create-key',
+      principal: humanPrincipal('test', 'operator', 'Operator'),
+      readAuthority: sessionReadAuthorityFromRequest(
+        'operator',
+        undefined,
+        undefined,
+      ),
+      delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(dir),
+    };
+  }
+
+  test('a restarted claim owner replays the original session and rejects changed input without another effect', async () => {
+    const { delegateTask } = await import('../station-control-delegation.js');
+    const service = localService();
+    const first = await delegateTask(localInput(), service as never);
+    const replay = await delegateTask(localInput(), service as never);
+    expect(replay).toEqual(first);
+    await expect(
+      delegateTask(
+        { ...localInput(), prompt: 'different input' },
+        service as never,
+      ),
+    ).rejects.toMatchObject({ code: 'delegation_create_conflict' });
+    expect(service.startSessionInternal).toHaveBeenCalledTimes(1);
+    expect(service.dispatchWithReceipt).toHaveBeenCalledTimes(1);
+  });
+
+  test('a failed owner before session creation leaves a stable indeterminate reference and never creates on retry', async () => {
+    const { delegateTask } = await import('../station-control-delegation.js');
+    const service = localService();
+    service.readSession.mockRejectedValueOnce(new Error('crash before start'));
+    await expect(delegateTask(localInput(), service as never)).rejects.toThrow(
+      'crash before start',
+    );
+    const retry = await delegateTask(localInput(), service as never).catch(
+      (error) => error,
+    );
+    expect(retry).toMatchObject({
+      code: 'delegation_create_indeterminate',
+      sessionId: expect.stringMatching(/^task:/),
+    });
+    expect(service.startSessionInternal).not.toHaveBeenCalled();
+    expect(service.dispatchWithReceipt).not.toHaveBeenCalled();
+    const again = await delegateTask(localInput(), service as never).catch(
+      (error) => error,
+    );
+    expect(again.sessionId).toBe(retry.sessionId);
+  });
+
+  test.each(['null', '{"version":1,"claims":[]}'])(
+    'a malformed durable create ledger refuses without creating a session: %s',
+    async (bytes) => {
+      const { delegateTask } = await import('../station-control-delegation.js');
+      writeFileSync(join(dir, 'delegation-create-claims.json'), bytes);
+      const service = localService();
+      await expect(
+        delegateTask(localInput(), service as never),
+      ).rejects.toThrow('Malformed delegation create claims');
+      expect(service.startSessionInternal).not.toHaveBeenCalled();
+      expect(service.dispatchWithReceipt).not.toHaveBeenCalled();
+    },
+  );
+
+  test('another authenticated caller has an independent claim namespace', async () => {
+    const { delegateTask } = await import('../station-control-delegation.js');
+    const service = localService();
+    const first = await delegateTask(localInput(), service as never);
+    const second = await delegateTask(
+      {
+        ...localInput(),
+        principal: humanPrincipal('test', 'another', 'Another'),
+      },
+      service as never,
+    );
+    expect(second.sessionId).not.toBe(first.sessionId);
+    expect(service.startSessionInternal).toHaveBeenCalledTimes(2);
   });
 });

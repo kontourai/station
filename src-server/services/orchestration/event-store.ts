@@ -177,6 +177,7 @@ import {
   type RevisionAttributionAuthority,
   RevisionEvidenceModule,
 } from '../../domain/revision-bound-evidence.js';
+import { ClientTurnInputConflictError } from '../../providers/adapter-shape.js';
 import { NATIVE_TURN_IDENTITY_METADATA_KEY } from '../../providers/adapters/native-resume-binding.js';
 import { PROVIDER_PROVEN_FINISH_REASONS } from '../../providers/finish-reason-authority.js';
 import { appendToolOutputNote } from '../../providers/tool-output-projection.js';
@@ -16090,6 +16091,7 @@ export class EventStore {
       { withinHostTransaction: true },
     );
     if (result.kind === 'absent') return undefined;
+    if (result.kind === 'conflict') throw new ClientTurnInputConflictError();
     if (result.kind === 'confirmed')
       return {
         outcome: 'steered',

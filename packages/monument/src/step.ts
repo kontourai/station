@@ -172,8 +172,8 @@ function dispatch(
     case 'steerReceipts.read': {
       const row = tx.steerReceipts.get(command.threadId, command.clientInputId);
       if (!row) return { kind: 'absent' };
-      return row.inputDigest === command.inputDigest &&
-        row.confirmedTurnId !== null
+      if (row.inputDigest !== command.inputDigest) return { kind: 'conflict' };
+      return row.confirmedTurnId !== null
         ? { kind: 'confirmed', turnId: row.confirmedTurnId }
         : { kind: 'indeterminate' };
     }

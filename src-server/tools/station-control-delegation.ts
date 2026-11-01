@@ -123,6 +123,7 @@ import {
   delegationAttemptClaimKey,
   delegationAttemptIntentDigest,
 } from '../services/orchestration/delegation-attempt-claim-store.js';
+import { runDelegationCreate } from '../services/orchestration/delegation-create-claims.js';
 import {
   type DelegationStagedFiles,
   materializeDelegationFiles,
@@ -405,6 +406,8 @@ export interface DelegateTaskInput {
   /** Server-only current-host staging authority, composed by the authenticated route. */
   stagedFiles?: DelegationStagedFiles;
   prompt: string;
+  clientTurnId?: string;
+  createRequestIntent?: unknown;
   /** Route-owned human message, before appending the Task brief. */
   title?: string;
   target: ExecutionTarget;
@@ -585,6 +588,8 @@ interface ResolvedDelegationProject {
 }
 
 export interface DelegatedTaskHandle {
+  turnId?: string;
+  clientTurnId?: string;
   /** Durable conversation identity; `taskId` is the legacy compatibility alias. */
   conversationId: string;
   taskId: string;
@@ -730,6 +735,7 @@ export interface ContinueDelegatedTaskInput
   /** Runtime-resolved Task assets; never accepted as public inline bytes. */
   taskRoomAttachments?: ChatAttachmentInput[];
   message: string;
+  clientTurnId?: string;
   /**
    * `delegatedInputAnswers`: deliver `message` only as the answer to this
    * exact open input request on the task's current Session. Forwarded to
@@ -4937,6 +4943,7 @@ export async function continueDelegatedTask(
   orchestrationService?: OrchestrationService,
   remote?: RemoteStationForwarder,
 ): Promise<DelegatedTaskFollowUpHandle> {
+  input = { ...input, clientTurnId: input.clientTurnId ?? randomUUID() };
   // Follow-up turns never inherit the create-time admission — a marked
   // portable session continues only under a freshly minted admission for
   // its own persisted marker (see `mintPortableFollowUpAdmission`).
@@ -5009,6 +5016,7 @@ export async function continueDelegatedTask(
         `/api/orchestration/delegations/${encodeURIComponent(input.taskId)}/continue`,
         {
           message: input.message,
+          clientTurnId: input.clientTurnId,
           ...(input.expectedInputRequest
             ? { expectedInputRequest: input.expectedInputRequest }
             : {}),
@@ -5058,9 +5066,10 @@ export async function continueDelegatedTask(
         : {}),
       ...(input.clientOrigin ? { clientOrigin: input.clientOrigin } : {}),
       ...(input.principal ? { principal: input.principal } : {}),
-      ...(input.taskRoomInvocationAdmission?.clientTurnId
-        ? { clientTurnId: input.taskRoomInvocationAdmission.clientTurnId }
-        : {}),
+      clientTurnId:
+        input.taskRoomInvocationAdmission?.clientTurnId ??
+        input.clientTurnId ??
+        randomUUID(),
       ...(input.taskRoomInvocationAdmission
         ? { taskRoomInvocationAdmission: input.taskRoomInvocationAdmission }
         : {}),
@@ -5461,6 +5470,7 @@ export async function delegateTask(
   orchestrationService?: OrchestrationService,
   remote?: RemoteStationForwarder,
 ): Promise<DelegatedTaskHandle> {
+  input = { ...input, clientTurnId: input.clientTurnId ?? randomUUID() };
   if (input.taskRoomAttachments?.length && !input.taskRoomInvocationAdmission)
     throw new Error('Task attachments require Task room invocation admission.');
   if (
@@ -5636,6 +5646,7 @@ export async function delegateTask(
           '/api/orchestration/delegations',
           {
             prompt: input.prompt,
+            clientTurnId: input.clientTurnId,
             target: {
               ...pinnedTarget,
               environment: relayEnvironment(selectedTarget),
@@ -5656,6 +5667,7 @@ export async function delegateTask(
           '/api/orchestration/delegations',
           {
             prompt: input.prompt,
+            clientTurnId: input.clientTurnId,
             target: {
               ...pinnedTarget,
               environment: relayEnvironment(selectedTarget),
@@ -6006,481 +6018,500 @@ export async function delegateTask(
           path: resolved.workspace.cwd,
         }
       : undefined;
-    const sessionId = attemptClaim
-      ? attemptClaim.taskId
-      : input.sessionId || `task:${randomUUID()}`;
-    const resolvedCwd = resolved.workspace?.cwd;
-    // #484 phase A: the server-minted admitted coordinate for the provider
-    // effect path — the EXACT admitted cwd (execution root when it selects
-    // the resource, else the resource's bound path), normalized exactly as
-    // the resolver normalized it. Composition integrity: the resolved
-    // workspace MUST be that directory; anything else refuses here, before
-    // any session exists, rather than executing a re-targeted workspace.
-    // A foreign-shaped admission without an exact path (only reachable from
-    // hand-made server-internal stubs — the factory always mints the exact
-    // path) cannot name a workspace and refuses below, never executes.
-    const admittedExactRaw =
-      receiverAdmission?.admittedProject.executionRoot ??
-      receiverAdmission?.admittedProject.resourcePath;
-    const portableAdmittedCwd =
-      receiverAdmission && admittedExactRaw !== undefined
-        ? resolveFilesystemPath(admittedExactRaw)
-        : undefined;
-    if (portableIntent && receiverAdmission) {
-      if (
-        portableAdmittedCwd === undefined ||
-        resolvedCwd !== portableAdmittedCwd
-      )
-        throw new ReceiverExecutionRefusal(
-          'receiver_execution_unavailable',
-          'The offered Project resource is unavailable.',
-        );
-    }
-    const receiverEffectAdmission =
-      receiverAdmission && portableAdmittedCwd !== undefined
-        ? {
-            recheck: receiverAdmission.recheck,
-            admitted: {
-              threadId: sessionId,
-              projectSlug: receiverAdmission.admittedProject.slug,
-              cwd: portableAdmittedCwd,
-              portableProjectId: receiverAdmission.portableProjectId,
-              resourceId: receiverAdmission.resourceId,
-              localProjectId: receiverAdmission.admittedProject.localProjectId,
-            },
-          }
-        : undefined;
-    // #2875: check the admitted checkout against the requested version.
-    // Paths and the adapter's resource kind come from the receiver-owned
-    // admission, never the request. Refusals here are pre-effect.
-    const checkPreparedCheckout = async () =>
-      verifyPreparedCheckout({
-        requirement: preparedWorkspace!.preparation,
-        resourceId: receiverAdmission!.resourceId,
-        resourceKind: receiverAdmission!.admittedProject.resourceKind,
-        checkoutRoot: resolveFilesystemPath(
-          receiverAdmission!.admittedProject.resourcePath,
-        ),
-        cwd: portableAdmittedCwd!,
-      });
-    if (preparedWorkspace) {
-      if (!receiverAdmission || portableAdmittedCwd === undefined)
-        throw new ReceiverExecutionRefusal(
-          'receiver_execution_unavailable',
-          'The offered Project resource is unavailable.',
-        );
-      preparationReceipt = await checkPreparedCheckout();
-    }
-    const bindingTarget = {
-      kind: 'agent' as const,
-      id: resolved.agentId,
-    };
-    // #485: bind the server-derived ADMITTED facts under the SAME claim —
-    // after resolution and every placement/refusal check above, before any
-    // provider effect. The #484 admission rechecks below and inside the
-    // service are unchanged and still gate the effect itself; this record
-    // is the durable pre-effect audit of exactly what was admitted.
-    if (attemptClaim) {
-      const bound = await input.delegationAttemptClaimStore!.bindAdmitted(
-        attemptClaim.key,
-        attemptClaim.ownerToken,
-        {
-          provider: resolved.provider,
-          ...(resolved.modelId ? { modelId: resolved.modelId } : {}),
-          ...(project?.slug ? { projectSlug: project.slug } : {}),
-          portableProjectId: receiverAdmission!.portableProjectId,
-          resourceId: receiverAdmission!.resourceId,
-          localProjectId: receiverAdmission!.admittedProject.localProjectId,
-          ...(preparationReceipt ? { preparation: preparationReceipt } : {}),
-        },
-      );
-      if (bound.kind !== 'applied') {
-        throw new Error(
-          'Delegation attempt claim could not be bound; no session was started.',
-        );
-      }
-    }
-    fileBinding = { threadId: sessionId, clientTurnId: randomUUID() };
-    let delegatePrompt = input.prompt;
-    if (input.stagedFiles) {
-      if (!resolvedCwd)
-        throw new DelegationFileRefusal('delegation_files_unsupported');
-      if (
-        resolved.workspace?.kind === 'project' &&
-        resolved.workspace.workspaceIsolation.mode !== 'shared'
-      )
-        throw new DelegationFileRefusal('delegation_files_unsupported');
-      const attachments = input.stagedFiles.resolve(fileBinding);
-      input.dispatchCwdAdmission?.recheck(resolvedCwd, 'session');
-      workspaceFiles = await materializeDelegationFiles(
-        resolvedCwd,
-        attachments,
-      );
-      delegatePrompt += `\n\nAttached files in your workspace (read their bytes; do not transcribe exact values):\n${workspaceFiles.paths.map((path) => JSON.stringify(path)).join('\n')}`;
-    }
-    const session = await orchestrationService.readSession(
-      sessionId,
-      readAuthority,
-      SESSION_BINDING_EVENTS,
-    );
-    if (session) {
-      assertSessionBinding(
-        session,
-        target,
-        bindingTarget,
-        readAuthority.userId,
-      );
-      // #2875: the reattach path starts no session, so its version check
-      // runs here instead, before the claim advances and before the turn.
-      if (preparedWorkspace) preparationReceipt = await checkPreparedCheckout();
-      // #485: reattach path — the read just proved the reserved session
-      // exists. Record `session-started` (NOT accepted: the requested
-      // initial turn is still unproven) before the turn dispatch below.
-      if (attemptClaim) {
-        const startedMark =
-          await input.delegationAttemptClaimStore!.markSessionStarted(
-            attemptClaim.key,
-            attemptClaim.ownerToken,
+    const create = async (sessionId: string): Promise<DelegatedTaskHandle> => {
+      const resolvedCwd = resolved.workspace?.cwd;
+      // #484 phase A: the server-minted admitted coordinate for the provider
+      // effect path — the EXACT admitted cwd (execution root when it selects
+      // the resource, else the resource's bound path), normalized exactly as
+      // the resolver normalized it. Composition integrity: the resolved
+      // workspace MUST be that directory; anything else refuses here, before
+      // any session exists, rather than executing a re-targeted workspace.
+      // A foreign-shaped admission without an exact path (only reachable from
+      // hand-made server-internal stubs — the factory always mints the exact
+      // path) cannot name a workspace and refuses below, never executes.
+      const admittedExactRaw =
+        receiverAdmission?.admittedProject.executionRoot ??
+        receiverAdmission?.admittedProject.resourcePath;
+      const portableAdmittedCwd =
+        receiverAdmission && admittedExactRaw !== undefined
+          ? resolveFilesystemPath(admittedExactRaw)
+          : undefined;
+      if (portableIntent && receiverAdmission) {
+        if (
+          portableAdmittedCwd === undefined ||
+          resolvedCwd !== portableAdmittedCwd
+        )
+          throw new ReceiverExecutionRefusal(
+            'receiver_execution_unavailable',
+            'The offered Project resource is unavailable.',
           );
-        if (startedMark.kind !== 'applied') {
+      }
+      const receiverEffectAdmission =
+        receiverAdmission && portableAdmittedCwd !== undefined
+          ? {
+              recheck: receiverAdmission.recheck,
+              admitted: {
+                threadId: sessionId,
+                projectSlug: receiverAdmission.admittedProject.slug,
+                cwd: portableAdmittedCwd,
+                portableProjectId: receiverAdmission.portableProjectId,
+                resourceId: receiverAdmission.resourceId,
+                localProjectId:
+                  receiverAdmission.admittedProject.localProjectId,
+              },
+            }
+          : undefined;
+      // #2875: check the admitted checkout against the requested version.
+      // Paths and the adapter's resource kind come from the receiver-owned
+      // admission, never the request. Refusals here are pre-effect.
+      const checkPreparedCheckout = async () =>
+        verifyPreparedCheckout({
+          requirement: preparedWorkspace!.preparation,
+          resourceId: receiverAdmission!.resourceId,
+          resourceKind: receiverAdmission!.admittedProject.resourceKind,
+          checkoutRoot: resolveFilesystemPath(
+            receiverAdmission!.admittedProject.resourcePath,
+          ),
+          cwd: portableAdmittedCwd!,
+        });
+      if (preparedWorkspace) {
+        if (!receiverAdmission || portableAdmittedCwd === undefined)
+          throw new ReceiverExecutionRefusal(
+            'receiver_execution_unavailable',
+            'The offered Project resource is unavailable.',
+          );
+        preparationReceipt = await checkPreparedCheckout();
+      }
+      const bindingTarget = {
+        kind: 'agent' as const,
+        id: resolved.agentId,
+      };
+      // #485: bind the server-derived ADMITTED facts under the SAME claim —
+      // after resolution and every placement/refusal check above, before any
+      // provider effect. The #484 admission rechecks below and inside the
+      // service are unchanged and still gate the effect itself; this record
+      // is the durable pre-effect audit of exactly what was admitted.
+      if (attemptClaim) {
+        const bound = await input.delegationAttemptClaimStore!.bindAdmitted(
+          attemptClaim.key,
+          attemptClaim.ownerToken,
+          {
+            provider: resolved.provider,
+            ...(resolved.modelId ? { modelId: resolved.modelId } : {}),
+            ...(project?.slug ? { projectSlug: project.slug } : {}),
+            portableProjectId: receiverAdmission!.portableProjectId,
+            resourceId: receiverAdmission!.resourceId,
+            localProjectId: receiverAdmission!.admittedProject.localProjectId,
+            ...(preparationReceipt ? { preparation: preparationReceipt } : {}),
+          },
+        );
+        if (bound.kind !== 'applied') {
           throw new Error(
-            'Delegation attempt claim could not advance; no turn was dispatched.',
+            'Delegation attempt claim could not be bound; no session was started.',
           );
         }
       }
-    } else {
-      // archive#4543 fix: `environmentId` (like `conversationId`) is a
-      // RESERVED_ORCHESTRATION_METADATA_KEYS entry — `prepareStart` strips it
-      // from every public `sessionCommands.execute` caller unconditionally,
-      // trusted or not (see provider.ts's docblock). Writing it in the plain
-      // `metadata` bag below is silently discarded before it ever reaches the
-      // adapter or the persisted `session.started`/`session.configured`
-      // event, which is exactly the metadata `sessionBinding()` (this file,
-      // above) requires to recognize a delegated-task binding at all — so
-      // every `station delegate status`/`events` lookup for a task this
-      // function just created failed closed with "does not match a
-      // delegated-task binding", regardless of target/provider kind.
-      // `executeExecutionTargetMessage`'s own `startSession` closure (below,
-      // reached indirectly by `continueDelegatedTask` via
-      // `continueExecutionTargetMessage`'s tail call into it) already routes
-      // through this exact internal-only escape hatch for the same reason
-      // (`conversationIdentity` re-stamps `environmentId`/`conversationId`
-      // AFTER the strip runs) — commit a8a2dcb01 introduced BOTH the strip
-      // and that escape-hatch fix together, migrating the foreground/continue
-      // path in the same change that regressed this one. This create path is
-      // now migrated to match it.
-      // #484 phase A: the offer/binding admission is rechecked immediately
-      // before the irreversible session start, after every preceding await —
-      // AND threaded into the service internal options, where the
-      // provider-effect path rechecks it again adjacent to the actual adapter
-      // invocation (a door check alone cannot cover what races the awaits
-      // inside the service).
-      await receiverAdmission?.recheck();
-      // #2875: check the version again immediately before the start, after
-      // every preceding await. The receipt then says what was true at this
-      // check — and only "when checked": nothing fences later writers.
-      if (preparedWorkspace) preparationReceipt = await checkPreparedCheckout();
-      // #485: from this point the invocation may happen — classification
-      // below (and in the outer catch) flips to `unresolved`.
-      attemptStartInvoked = true;
-      // A thrown/indeterminate start may have spawned an engine that can read files.
-      retainFiles = true;
-      const started = await orchestrationService.startSessionInternal(
-        {
-          type: 'start-session',
-          input: {
-            threadId: sessionId,
-            provider: resolved.provider,
-            ...(resolvedCwd ? { cwd: resolvedCwd } : {}),
-            ...(resolved.workspace?.kind === 'project'
-              ? { workspaceIsolation: resolved.workspace.workspaceIsolation }
-              : {}),
-            ...(resolved.modelId ? { modelId: resolved.modelId } : {}),
-            ...(resolved.modelOptions
-              ? { modelOptions: { ...resolved.modelOptions } }
-              : {}),
-            metadata: {
-              agentId: resolved.agentId,
-              agentSlug: resolved.agentId,
-              ...(input.title ? { delegationTitle: input.title } : {}),
-              ...(resolved.expectedDefinitionFingerprint
-                ? {
-                    expectedDefinitionFingerprint:
-                      resolved.expectedDefinitionFingerprint,
-                  }
-                : {}),
-              ...(resolved.executionAgentId
-                ? { executionAgentId: resolved.executionAgentId }
-                : {}),
-              ...(resolved.engine.kind === 'connection'
-                ? { connectionId: resolved.engine.connectionId }
-                : {}),
-              targetKind: bindingTarget.kind,
-              targetId: bindingTarget.id,
-              environmentId: target.environmentId,
-              environmentName: target.environmentName,
-              taskId: sessionId,
-              ...(project?.slug ? { projectSlug: project.slug } : {}),
-              // Preserve the resolved creation policy for continuation. The
-              // current Project default cannot certify an earlier launch.
+      fileBinding = { threadId: sessionId, clientTurnId: randomUUID() };
+      let delegatePrompt = input.prompt;
+      if (input.stagedFiles) {
+        if (!resolvedCwd)
+          throw new DelegationFileRefusal('delegation_files_unsupported');
+        if (
+          resolved.workspace?.kind === 'project' &&
+          resolved.workspace.workspaceIsolation.mode !== 'shared'
+        )
+          throw new DelegationFileRefusal('delegation_files_unsupported');
+        const attachments = input.stagedFiles.resolve(fileBinding);
+        input.dispatchCwdAdmission?.recheck(resolvedCwd, 'session');
+        workspaceFiles = await materializeDelegationFiles(
+          resolvedCwd,
+          attachments,
+        );
+        delegatePrompt += `\n\nAttached files in your workspace (read their bytes; do not transcribe exact values):\n${workspaceFiles.paths.map((path) => JSON.stringify(path)).join('\n')}`;
+      }
+      const session = await orchestrationService.readSession(
+        sessionId,
+        readAuthority,
+        SESSION_BINDING_EVENTS,
+      );
+      if (session) {
+        assertSessionBinding(
+          session,
+          target,
+          bindingTarget,
+          readAuthority.userId,
+        );
+        // #2875: the reattach path starts no session, so its version check
+        // runs here instead, before the claim advances and before the turn.
+        if (preparedWorkspace)
+          preparationReceipt = await checkPreparedCheckout();
+        // #485: reattach path — the read just proved the reserved session
+        // exists. Record `session-started` (NOT accepted: the requested
+        // initial turn is still unproven) before the turn dispatch below.
+        if (attemptClaim) {
+          const startedMark =
+            await input.delegationAttemptClaimStore!.markSessionStarted(
+              attemptClaim.key,
+              attemptClaim.ownerToken,
+            );
+          if (startedMark.kind !== 'applied') {
+            throw new Error(
+              'Delegation attempt claim could not advance; no turn was dispatched.',
+            );
+          }
+        }
+      } else {
+        // archive#4543 fix: `environmentId` (like `conversationId`) is a
+        // RESERVED_ORCHESTRATION_METADATA_KEYS entry — `prepareStart` strips it
+        // from every public `sessionCommands.execute` caller unconditionally,
+        // trusted or not (see provider.ts's docblock). Writing it in the plain
+        // `metadata` bag below is silently discarded before it ever reaches the
+        // adapter or the persisted `session.started`/`session.configured`
+        // event, which is exactly the metadata `sessionBinding()` (this file,
+        // above) requires to recognize a delegated-task binding at all — so
+        // every `station delegate status`/`events` lookup for a task this
+        // function just created failed closed with "does not match a
+        // delegated-task binding", regardless of target/provider kind.
+        // `executeExecutionTargetMessage`'s own `startSession` closure (below,
+        // reached indirectly by `continueDelegatedTask` via
+        // `continueExecutionTargetMessage`'s tail call into it) already routes
+        // through this exact internal-only escape hatch for the same reason
+        // (`conversationIdentity` re-stamps `environmentId`/`conversationId`
+        // AFTER the strip runs) — commit a8a2dcb01 introduced BOTH the strip
+        // and that escape-hatch fix together, migrating the foreground/continue
+        // path in the same change that regressed this one. This create path is
+        // now migrated to match it.
+        // #484 phase A: the offer/binding admission is rechecked immediately
+        // before the irreversible session start, after every preceding await —
+        // AND threaded into the service internal options, where the
+        // provider-effect path rechecks it again adjacent to the actual adapter
+        // invocation (a door check alone cannot cover what races the awaits
+        // inside the service).
+        await receiverAdmission?.recheck();
+        // #2875: check the version again immediately before the start, after
+        // every preceding await. The receipt then says what was true at this
+        // check — and only "when checked": nothing fences later writers.
+        if (preparedWorkspace)
+          preparationReceipt = await checkPreparedCheckout();
+        // #485: from this point the invocation may happen — classification
+        // below (and in the outer catch) flips to `unresolved`.
+        attemptStartInvoked = true;
+        // A thrown/indeterminate start may have spawned an engine that can read files.
+        retainFiles = true;
+        const started = await orchestrationService.startSessionInternal(
+          {
+            type: 'start-session',
+            input: {
+              threadId: sessionId,
+              provider: resolved.provider,
+              ...(resolvedCwd ? { cwd: resolvedCwd } : {}),
               ...(resolved.workspace?.kind === 'project'
                 ? { workspaceIsolation: resolved.workspace.workspaceIsolation }
                 : {}),
-              // archive#1463: record the resolved project join on every Agent.
-              ...(project?.slugJoin
-                ? { projectSlugJoin: project.slugJoin }
+              ...(resolved.modelId ? { modelId: resolved.modelId } : {}),
+              ...(resolved.modelOptions
+                ? { modelOptions: { ...resolved.modelOptions } }
                 : {}),
-              ...(input.parentTaskId
-                ? { parentTaskId: input.parentTaskId }
+              metadata: {
+                agentId: resolved.agentId,
+                agentSlug: resolved.agentId,
+                ...(input.title ? { delegationTitle: input.title } : {}),
+                ...(resolved.expectedDefinitionFingerprint
+                  ? {
+                      expectedDefinitionFingerprint:
+                        resolved.expectedDefinitionFingerprint,
+                    }
+                  : {}),
+                ...(resolved.executionAgentId
+                  ? { executionAgentId: resolved.executionAgentId }
+                  : {}),
+                ...(resolved.engine.kind === 'connection'
+                  ? { connectionId: resolved.engine.connectionId }
+                  : {}),
+                targetKind: bindingTarget.kind,
+                targetId: bindingTarget.id,
+                environmentId: target.environmentId,
+                environmentName: target.environmentName,
+                taskId: sessionId,
+                ...(project?.slug ? { projectSlug: project.slug } : {}),
+                // Preserve the resolved creation policy for continuation. The
+                // current Project default cannot certify an earlier launch.
+                ...(resolved.workspace?.kind === 'project'
+                  ? {
+                      workspaceIsolation: resolved.workspace.workspaceIsolation,
+                    }
+                  : {}),
+                // archive#1463: record the resolved project join on every Agent.
+                ...(project?.slugJoin
+                  ? { projectSlugJoin: project.slugJoin }
+                  : {}),
+                ...(input.parentTaskId
+                  ? { parentTaskId: input.parentTaskId }
+                  : {}),
+                ...(input.delegation ? { delegation: input.delegation } : {}),
+                ...(readAuthority.userId
+                  ? { userId: readAuthority.userId }
+                  : {}),
+                // #484 phase A: server-minted portable consent marker. The
+                // service re-stamps this same identity after the reserved-key
+                // strip, so the persisted session binding carries the exact
+                // consent continuation paths enforce. Never caller-supplied.
+                ...(receiverAdmission
+                  ? {
+                      [PORTABLE_EXECUTION_CONSENT_METADATA_KEY]: {
+                        portableProjectId: receiverAdmission.portableProjectId,
+                        resourceId: receiverAdmission.resourceId,
+                        localProjectId:
+                          receiverAdmission.admittedProject.localProjectId,
+                      },
+                    }
+                  : {}),
+              },
+            },
+          },
+          dispatchContextForAuthority(
+            readAuthority,
+            input.clientOrigin,
+            input.principal,
+            input.ownerAttribution,
+            input.fullAccessGrant,
+            input.dispatchCwdAdmission,
+          ),
+          {
+            conversationIdentity: {
+              conversationId: sessionId,
+              environmentId: target.environmentId,
+            },
+            resourceAdmissionIntent: 'delegated_background',
+            // #3323: stamped beside `delegation` after the reserved-key strip.
+            ...(input.delegation && input.delegationProvenance
+              ? {
+                  delegationProvenance: {
+                    context: input.delegation,
+                    provenance: input.delegationProvenance,
+                  },
+                }
+              : {}),
+            ...(input.taskRoomInvocationAdmission
+              ? {
+                  receiverExecutionAdmission: input.taskRoomInvocationAdmission,
+                  roomExecutionBinding:
+                    input.taskRoomInvocationAdmission.roomBinding,
+                }
+              : {}),
+            // #484 phase A: the service rechecks this inside the start-effect
+            // path, adjacent to the adapter invocation, AND verifies the
+            // prepared input against the admitted coordinate.
+            ...(receiverEffectAdmission
+              ? {
+                  receiverExecutionAdmission: receiverEffectAdmission,
+                  portableExecutionConsent: {
+                    portableProjectId:
+                      receiverEffectAdmission.admitted.portableProjectId,
+                    resourceId: receiverEffectAdmission.admitted.resourceId,
+                    localProjectId:
+                      receiverEffectAdmission.admitted.localProjectId,
+                  },
+                }
+              : {}),
+          },
+        );
+        if (started.status === 'indeterminate') {
+          if (input.stagedFiles)
+            throw new DelegationFileRefusal('delegation_files_outcome_unknown');
+          throw new Error(
+            `${started.message} Session ${started.session?.threadId ?? sessionId} may already be running; do not retry automatically.`,
+          );
+        }
+        retainFiles = false;
+        if (started.status !== 'accepted') {
+          if (input.stagedFiles)
+            throw new DelegationFileRefusal('delegation_files_start_refused');
+          const startupGuidance = engineStartupFailureGuidance(started.code);
+          if (startupGuidance && started.code)
+            throw new Error(startupGuidance, {
+              cause: new LocalStationRefusal(started.code, startupGuidance),
+            });
+          const error = new Error(started.message) as Error & { code?: string };
+          error.code = started.code;
+          throw error;
+        }
+        // #485: the reserved session start is durably accepted (the existing
+        // SessionStartBoundary / session.started evidence path owns that
+        // fact). Mark the claim `session-started` BEFORE the first turn
+        // dispatch so a crash in the turn path still leaves the truthful,
+        // evidence-backed state — a started session alone is NOT an accepted
+        // work request. The reserved taskId IS the started session id, so
+        // the claim is permanently linked to the one real task.
+        if (attemptClaim) {
+          const marked =
+            await input.delegationAttemptClaimStore!.markSessionStarted(
+              attemptClaim.key,
+              attemptClaim.ownerToken,
+            );
+          if (marked.kind !== 'applied') {
+            throw new Error(
+              'Delegation attempt claim could not advance; no turn was dispatched.',
+            );
+          }
+        }
+      }
+      // #484 phase A: recheck again at the turn boundary — this covers the
+      // resume path (existing session, no start) and everything that raced the
+      // start above — AND thread the admission into the service internal
+      // options so the turn-effect path rechecks it adjacent to the adapter
+      // sendTurn invocation. Refusal fails the turn BEFORE the provider effect.
+      await receiverAdmission?.recheck();
+      // #485: the one initial-turn dispatch carries the claim's stable
+      // `initialClientTurnId`, linking it to existing durable turn evidence
+      // (turn.started events, the turn-dedup mapping) for reconciliation.
+      // Only the dispatch RETURNING its real provider turn id advances the
+      // claim to `accepted` with that turn recorded — never invented, never
+      // a second dispatch for the same claim.
+      retainFiles = true;
+      const attemptTurnDispatch =
+        await orchestrationService.dispatchWithReceipt(
+          {
+            type: 'sendTurn',
+            input: {
+              threadId: sessionId,
+              input: delegatePrompt,
+              ...(input.taskRoomAttachments?.length
+                ? { attachments: input.taskRoomAttachments }
                 : {}),
-              ...(input.delegation ? { delegation: input.delegation } : {}),
-              ...(readAuthority.userId ? { userId: readAuthority.userId } : {}),
-              // #484 phase A: server-minted portable consent marker. The
-              // service re-stamps this same identity after the reserved-key
-              // strip, so the persisted session binding carries the exact
-              // consent continuation paths enforce. Never caller-supplied.
-              ...(receiverAdmission
-                ? {
-                    [PORTABLE_EXECUTION_CONSENT_METADATA_KEY]: {
-                      portableProjectId: receiverAdmission.portableProjectId,
-                      resourceId: receiverAdmission.resourceId,
-                      localProjectId:
-                        receiverAdmission.admittedProject.localProjectId,
-                    },
-                  }
+              // See the foreground sendTurn: the Agent's declared model is a
+              // start-time selection, not a per-turn override.
+              ...(input.target.model?.override
+                ? { modelId: input.target.model.override }
+                : {}),
+              ...(resolved.modelOptions
+                ? { modelOptions: { ...resolved.modelOptions } }
+                : {}),
+              clientTurnId: input.clientTurnId ?? randomUUID(),
+              ...(input.stagedFiles
+                ? { clientTurnId: fileBinding.clientTurnId }
+                : {}),
+              ...(attemptClaim
+                ? { clientTurnId: attemptClaim.initialClientTurnId }
                 : {}),
             },
           },
-        },
-        dispatchContextForAuthority(
-          readAuthority,
-          input.clientOrigin,
-          input.principal,
-          input.ownerAttribution,
-          input.fullAccessGrant,
-          input.dispatchCwdAdmission,
-        ),
-        {
-          conversationIdentity: {
-            conversationId: sessionId,
-            environmentId: target.environmentId,
+          dispatchContextForAuthority(
+            readAuthority,
+            input.clientOrigin,
+            input.principal,
+          ),
+          {
+            conversationIdentity: {
+              conversationId: sessionId,
+              environmentId: target.environmentId,
+            },
+            resourceAdmissionIntent: 'delegated_background',
+            ...(input.taskRoomInvocationAdmission
+              ? {
+                  receiverExecutionAdmission: input.taskRoomInvocationAdmission,
+                }
+              : {}),
+            // #484 phase A: the service rechecks this inside the start-effect
+            // path, adjacent to the adapter invocation, AND verifies the
+            // prepared input against the admitted coordinate.
+            ...(receiverEffectAdmission
+              ? {
+                  receiverExecutionAdmission: receiverEffectAdmission,
+                  portableExecutionConsent: {
+                    portableProjectId:
+                      receiverEffectAdmission.admitted.portableProjectId,
+                    resourceId: receiverEffectAdmission.admitted.resourceId,
+                    localProjectId:
+                      receiverEffectAdmission.admitted.localProjectId,
+                  },
+                }
+              : {}),
           },
-          resourceAdmissionIntent: 'delegated_background',
-          // #3323: stamped beside `delegation` after the reserved-key strip.
-          ...(input.delegation && input.delegationProvenance
-            ? {
-                delegationProvenance: {
-                  context: input.delegation,
-                  provenance: input.delegationProvenance,
-                },
-              }
-            : {}),
-          ...(input.taskRoomInvocationAdmission
-            ? {
-                receiverExecutionAdmission: input.taskRoomInvocationAdmission,
-                roomExecutionBinding:
-                  input.taskRoomInvocationAdmission.roomBinding,
-              }
-            : {}),
-          // #484 phase A: the service rechecks this inside the start-effect
-          // path, adjacent to the adapter invocation, AND verifies the
-          // prepared input against the admitted coordinate.
-          ...(receiverEffectAdmission
-            ? {
-                receiverExecutionAdmission: receiverEffectAdmission,
-                portableExecutionConsent: {
-                  portableProjectId:
-                    receiverEffectAdmission.admitted.portableProjectId,
-                  resourceId: receiverEffectAdmission.admitted.resourceId,
-                  localProjectId:
-                    receiverEffectAdmission.admitted.localProjectId,
-                },
-              }
-            : {}),
-        },
-      );
-      if (started.status === 'indeterminate') {
-        if (input.stagedFiles)
-          throw new DelegationFileRefusal('delegation_files_outcome_unknown');
-        throw new Error(
-          `${started.message} Session ${started.session?.threadId ?? sessionId} may already be running; do not retry automatically.`,
         );
-      }
-      retainFiles = false;
-      if (started.status !== 'accepted') {
-        if (input.stagedFiles)
-          throw new DelegationFileRefusal('delegation_files_start_refused');
-        const startupGuidance = engineStartupFailureGuidance(started.code);
-        if (startupGuidance && started.code)
-          throw new Error(startupGuidance, {
-            cause: new LocalStationRefusal(started.code, startupGuidance),
-          });
-        const error = new Error(started.message) as Error & { code?: string };
-        error.code = started.code;
-        throw error;
-      }
-      // #485: the reserved session start is durably accepted (the existing
-      // SessionStartBoundary / session.started evidence path owns that
-      // fact). Mark the claim `session-started` BEFORE the first turn
-      // dispatch so a crash in the turn path still leaves the truthful,
-      // evidence-backed state — a started session alone is NOT an accepted
-      // work request. The reserved taskId IS the started session id, so
-      // the claim is permanently linked to the one real task.
+      input.stagedFiles?.accept(fileBinding);
+      // The dispatch returning means the turn was durably accepted by the
+      // adapter (the dedup-hit path returns the SAME already-accepted turn
+      // rather than executing again). Record that flag before the claim
+      // write so a later failure cannot misclassify the claim as
+      // never-dispatched.
+      const attemptInitialTurnId =
+        attemptTurnDispatch.result &&
+        typeof attemptTurnDispatch.result === 'object' &&
+        'turnId' in attemptTurnDispatch.result &&
+        typeof attemptTurnDispatch.result.turnId === 'string' &&
+        attemptTurnDispatch.result.turnId.length > 0
+          ? attemptTurnDispatch.result.turnId
+          : undefined;
       if (attemptClaim) {
-        const marked =
-          await input.delegationAttemptClaimStore!.markSessionStarted(
-            attemptClaim.key,
-            attemptClaim.ownerToken,
-          );
-        if (marked.kind !== 'applied') {
+        if (!attemptInitialTurnId) {
           throw new Error(
-            'Delegation attempt claim could not advance; no turn was dispatched.',
+            'Delegation attempt turn acceptance did not include a provider turn id; no turn was proven accepted.',
           );
         }
-      }
-    }
-    // #484 phase A: recheck again at the turn boundary — this covers the
-    // resume path (existing session, no start) and everything that raced the
-    // start above — AND thread the admission into the service internal
-    // options so the turn-effect path rechecks it adjacent to the adapter
-    // sendTurn invocation. Refusal fails the turn BEFORE the provider effect.
-    await receiverAdmission?.recheck();
-    // #485: the one initial-turn dispatch carries the claim's stable
-    // `initialClientTurnId`, linking it to existing durable turn evidence
-    // (turn.started events, the turn-dedup mapping) for reconciliation.
-    // Only the dispatch RETURNING its real provider turn id advances the
-    // claim to `accepted` with that turn recorded — never invented, never
-    // a second dispatch for the same claim.
-    retainFiles = true;
-    const attemptTurnDispatch = await orchestrationService.dispatchWithReceipt(
-      {
-        type: 'sendTurn',
-        input: {
-          threadId: sessionId,
-          input: delegatePrompt,
-          ...(input.taskRoomAttachments?.length
-            ? { attachments: input.taskRoomAttachments }
-            : {}),
-          // See the foreground sendTurn: the Agent's declared model is a
-          // start-time selection, not a per-turn override.
-          ...(input.target.model?.override
-            ? { modelId: input.target.model.override }
-            : {}),
-          ...(resolved.modelOptions
-            ? { modelOptions: { ...resolved.modelOptions } }
-            : {}),
-          ...(input.stagedFiles
-            ? { clientTurnId: fileBinding.clientTurnId }
-            : {}),
-          ...(attemptClaim
-            ? { clientTurnId: attemptClaim.initialClientTurnId }
-            : {}),
-        },
-      },
-      dispatchContextForAuthority(
-        readAuthority,
-        input.clientOrigin,
-        input.principal,
-      ),
-      {
-        conversationIdentity: {
-          conversationId: sessionId,
-          environmentId: target.environmentId,
-        },
-        resourceAdmissionIntent: 'delegated_background',
-        ...(input.taskRoomInvocationAdmission
-          ? { receiverExecutionAdmission: input.taskRoomInvocationAdmission }
-          : {}),
-        // #484 phase A: the service rechecks this inside the start-effect
-        // path, adjacent to the adapter invocation, AND verifies the
-        // prepared input against the admitted coordinate.
-        ...(receiverEffectAdmission
-          ? {
-              receiverExecutionAdmission: receiverEffectAdmission,
-              portableExecutionConsent: {
-                portableProjectId:
-                  receiverEffectAdmission.admitted.portableProjectId,
-                resourceId: receiverEffectAdmission.admitted.resourceId,
-                localProjectId: receiverEffectAdmission.admitted.localProjectId,
-              },
-            }
-          : {}),
-      },
-    );
-    input.stagedFiles?.accept(fileBinding);
-    // The dispatch returning means the turn was durably accepted by the
-    // adapter (the dedup-hit path returns the SAME already-accepted turn
-    // rather than executing again). Record that flag before the claim
-    // write so a later failure cannot misclassify the claim as
-    // never-dispatched.
-    const attemptInitialTurnId =
-      attemptTurnDispatch.result &&
-      typeof attemptTurnDispatch.result === 'object' &&
-      'turnId' in attemptTurnDispatch.result &&
-      typeof attemptTurnDispatch.result.turnId === 'string' &&
-      attemptTurnDispatch.result.turnId.length > 0
-        ? attemptTurnDispatch.result.turnId
-        : undefined;
-    if (attemptClaim) {
-      if (!attemptInitialTurnId) {
-        throw new Error(
-          'Delegation attempt turn acceptance did not include a provider turn id; no turn was proven accepted.',
+        attemptInitialTurnReturned = true;
+        const marked = await input.delegationAttemptClaimStore!.markAccepted(
+          attemptClaim.key,
+          attemptClaim.ownerToken,
+          attemptInitialTurnId,
         );
+        if (marked.kind !== 'applied') {
+          throw new Error(
+            'Delegation attempt claim could not record its accepted turn; the turn stands as dispatched.',
+          );
+        }
+        attemptInitialTurnAccepted = true;
       }
-      attemptInitialTurnReturned = true;
-      const marked = await input.delegationAttemptClaimStore!.markAccepted(
-        attemptClaim.key,
-        attemptClaim.ownerToken,
-        attemptInitialTurnId,
-      );
-      if (marked.kind !== 'applied') {
-        throw new Error(
-          'Delegation attempt claim could not record its accepted turn; the turn stands as dispatched.',
+      delegatedTasks.add(1, {
+        target: bindingTarget.kind,
+        environment: target.kind,
+      });
+      // Delivery disclosure at dispatch: read the just-started session's
+      // capability receipts back off its event log. The resolution-stage drops
+      // (engine-unsupported, not-found, secret-boundary-env) were stamped into
+      // `session.started` metadata before the adapter ran, so they are already
+      // durable here. Best-effort by design — a read failure must never fail an
+      // otherwise-successful dispatch, and `delegate status` re-derives the same
+      // view from the same events on every read.
+      let capabilityDelivery: DelegatedCapabilityDelivery | undefined;
+      // #2494: the receipt is resolved before the session exists, so the
+      // confinement the started process was observed under is read back from
+      // the session's own start record here, beside the delivery disclosure.
+      let confinement: ExecutionConfinementRecord | undefined;
+      try {
+        const detail = await orchestrationService.readSession(
+          sessionId,
+          readAuthority,
+          DELEGATION_STATUS_EVENTS,
         );
+        capabilityDelivery = delegatedCapabilityDelivery(
+          (detail?.events ?? []) as unknown as Array<Record<string, unknown>>,
+        );
+        confinement = startedSessionConfinement(detail?.events ?? []);
+      } catch {
+        capabilityDelivery = undefined;
+        confinement = undefined;
       }
-      attemptInitialTurnAccepted = true;
-    }
-    delegatedTasks.add(1, {
-      target: bindingTarget.kind,
-      environment: target.kind,
-    });
-    // Delivery disclosure at dispatch: read the just-started session's
-    // capability receipts back off its event log. The resolution-stage drops
-    // (engine-unsupported, not-found, secret-boundary-env) were stamped into
-    // `session.started` metadata before the adapter ran, so they are already
-    // durable here. Best-effort by design — a read failure must never fail an
-    // otherwise-successful dispatch, and `delegate status` re-derives the same
-    // view from the same events on every read.
-    let capabilityDelivery: DelegatedCapabilityDelivery | undefined;
-    // #2494: the receipt is resolved before the session exists, so the
-    // confinement the started process was observed under is read back from
-    // the session's own start record here, beside the delivery disclosure.
-    let confinement: ExecutionConfinementRecord | undefined;
-    try {
-      const detail = await orchestrationService.readSession(
-        sessionId,
-        readAuthority,
-        DELEGATION_STATUS_EVENTS,
-      );
-      capabilityDelivery = delegatedCapabilityDelivery(
-        (detail?.events ?? []) as unknown as Array<Record<string, unknown>>,
-      );
-      confinement = startedSessionConfinement(detail?.events ?? []);
-    } catch {
-      capabilityDelivery = undefined;
-      confinement = undefined;
-    }
-    return {
-      ...handleFor(input, target, project, sessionId),
-      target: { kind: 'agent', id: resolved.agentId },
-      resolution: {
-        ...resolved.receipt,
-        ...(preparationReceipt ? { preparation: preparationReceipt } : {}),
-        ...(confinement ? { confinement } : {}),
-      },
-      provider: resolved.provider,
-      ...(capabilityDelivery ? { capabilityDelivery } : {}),
+      return {
+        ...handleFor(input, target, project, sessionId),
+        ...(attemptInitialTurnId ? { turnId: attemptInitialTurnId } : {}),
+        ...(input.clientTurnId ? { clientTurnId: input.clientTurnId } : {}),
+        target: { kind: 'agent', id: resolved.agentId },
+        resolution: {
+          ...resolved.receipt,
+          ...(preparationReceipt ? { preparation: preparationReceipt } : {}),
+          ...(confinement ? { confinement } : {}),
+        },
+        provider: resolved.provider,
+        ...(capabilityDelivery ? { capabilityDelivery } : {}),
+      };
     };
+    return await runDelegationCreate(
+      input,
+      readAuthority,
+      attemptClaim?.taskId,
+      create,
+    );
   } catch (attemptError) {
     // This local service's rejection must identify this exact command/thread;
     // unknown outcomes and another command's receipt cannot release these files.

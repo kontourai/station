@@ -11,6 +11,7 @@ import {
   publishJsonFileWithOwnedLock,
   readJsonFile,
 } from '../../domain/file-storage-helpers.js';
+import { DelegationCreateClaims } from './delegation-create-claims.js';
 
 /**
  * #485 receiver request-claim slice — the small durable execution-domain
@@ -470,6 +471,7 @@ export type OwnerTransitionOutcome =
   | { readonly kind: 'stale' };
 
 export interface DelegationAttemptClaimStore {
+  readonly createRequests?: DelegationCreateClaims;
   read(key: string): Promise<DelegationAttemptClaimRecord | undefined>;
   reserve(input: {
     readonly key: string;
@@ -541,6 +543,7 @@ export class FileDelegationAttemptClaimStore
   implements DelegationAttemptClaimStore
 {
   readonly #file: string;
+  readonly createRequests: DelegationCreateClaims;
   readonly #acquireLock: typeof acquireFileMutationLockAsync;
   readonly #beforeCommit?: () => void | Promise<void>;
   readonly #capacity: number;
@@ -550,6 +553,7 @@ export class FileDelegationAttemptClaimStore
     options: FileDelegationAttemptClaimStoreOptions = {},
   ) {
     this.#file = join(dataDir, 'delegation-attempt-claims.json');
+    this.createRequests = new DelegationCreateClaims(dataDir);
     this.#acquireLock = options.acquireLock ?? acquireFileMutationLockAsync;
     this.#beforeCommit = options.beforeCommit;
     this.#capacity = options.capacity ?? DELEGATION_ATTEMPT_CLAIM_CAPACITY;
