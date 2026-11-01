@@ -222,10 +222,7 @@ export async function shutdownRuntimeServices({
     'consentListener.close',
     consentListener ? () => consentListener.close() : undefined,
   );
-  await attempt(
-    'terminalSessions.dispose',
-    terminalSessions ? () => terminalSessions.dispose() : undefined,
-  );
+  await attempt('terminalSessions.dispose', () => terminalSessions?.dispose());
   await attempt('sshEnvironmentService.shutdown', () =>
     sshEnvironmentService?.shutdown(),
   );
