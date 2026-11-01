@@ -604,9 +604,7 @@ describe('Home and the dock start the same way', () => {
     fireEvent.click(
       within(formOf(home)).getByRole('button', { name: /^Permissions: Ask/ }),
     );
-    fireEvent.click(
-      await screen.findByRole('radio', { name: /^Default/ }),
-    );
+    fireEvent.click(await screen.findByRole('radio', { name: /^Default/ }));
     const engineDefault = await within(formOf(home)).findByRole('button', {
       name: /^Permissions: Default/,
     });
