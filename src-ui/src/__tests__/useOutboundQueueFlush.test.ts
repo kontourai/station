@@ -5,8 +5,8 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { createElement, StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { activeChatsStore } from '../contexts/active-chats-store';
 import { AuthorityPersistenceContext } from '../contexts/AuthorityPersistenceContext';
+import { activeChatsStore } from '../contexts/active-chats-store';
 import {
   _resetOutboundQueueChangeChannel,
   _resetOutboundQueueStorage,
