@@ -1,8 +1,8 @@
 # Model runtime context
 
-This experimental model-only package owns pinned framework entry/request bytes,
+This experimental package owns pinned framework entry/request bytes,
 one-shot dispatch grants, completed normalized tapes, aborted partial audit,
-and output projection readiness. Station remains a future consumer. It imports
+and output projection readiness. Station consumes the agent-turn protocol behind an off-by-default preview. It imports
 only public Monument contracts and pinned optional framework APIs.
 
 `types.ts` owns the model protocol. `decisions.ts` owns transitions, revision
