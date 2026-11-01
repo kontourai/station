@@ -34,6 +34,8 @@ export type OutboundDispatchStatus =
 
 export interface QueuedOutboundTurn {
   clientTurnId: string;
+  /** An inbox steer is retried only with the head captured before its first handoff. */
+  inboxSteerHead?: string;
   sessionId: string;
   agentSlug: string;
   executionAgentId?: string;
@@ -192,6 +194,10 @@ export type OutboundDispatchTransportResult =
   | { kind: 'accepted'; providerTurnId: string }
   /** Station durably accepted the key into its conversation inbox. */
   | { kind: 'queued' }
+  /** The request may have reached Station and must be looked up before retry. */
+  | { kind: 'unanswered' }
+  /** Station definitively refused the input before any effect. */
+  | { kind: 'refused'; reason: string }
   /** A temporary pre-provider gate. Releasing it must not consume an attempt. */
   | { kind: 'deferred'; reason?: string }
   | { kind: 'not-invoked'; reason?: string };
@@ -322,6 +328,8 @@ export interface OutboundStationIdentity {
   apiBase: string;
   /** The Station's public environment id, once this renderer verified it. */
   environmentId?: string;
+  /** Verified person or authority partition for entries that require it. */
+  authorityNamespace?: string;
 }
 
 function normalizedBase(apiBase: string): string {
@@ -334,11 +342,17 @@ function normalizedBase(apiBase: string): string {
  * Station recorded keeps the old any-Station behaviour.
  */
 export function rowBelongsToStation(
-  row: { station?: OutboundStationIdentity },
+  row: { station?: OutboundStationIdentity; inboxSteerHead?: string },
   current: OutboundStationIdentity | undefined,
 ): boolean {
+  if (row.inboxSteerHead && !row.station?.authorityNamespace) return false;
   if (!row.station) return true;
   if (!current) return false;
+  if (
+    row.station.authorityNamespace !== undefined &&
+    row.station.authorityNamespace !== current.authorityNamespace
+  )
+    return false;
   // A verified Station identity decides, whatever address reaches it now (a
   // tunnel port or host can change); an address alone decides only when the
   // row never learned which Station it was.
@@ -368,7 +382,14 @@ export type HeldOutboundIntent = Omit<OutboundDispatchIntent, 'createdAt'>;
 /** Station's delivery lookup for one row (`getTurnDelivery`). */
 export type OutboundDeliveryLookup = (
   turn: Readonly<OutboundDispatchTurn>,
-) => Promise<TurnDeliveryInspection>;
+) => Promise<
+  | TurnDeliveryInspection
+  | {
+      outcome: 'inbox-accepted';
+      conversationId: string;
+      clientTurnId: string;
+    }
+>;
 
 /** The live send's hold on its own row; see `beginLive`. */
 export interface LiveOutboundDispatch {
@@ -865,6 +886,14 @@ function isStoredTurn(value: unknown): value is QueuedOutboundTurn {
     typeof turn.content === 'string' &&
     typeof turn.createdAt === 'number' &&
     typeof turn.attempts === 'number' &&
+    (turn.inboxSteerHead === undefined ||
+      (typeof turn.inboxSteerHead === 'string' &&
+        turn.inboxSteerHead.length > 0 &&
+        turn.inboxSteerHead.length <= 4096 &&
+        typeof turn.conversationId === 'string' &&
+        turn.conversationId.length > 0 &&
+        typeof turn.station?.authorityNamespace === 'string' &&
+        turn.station.authorityNamespace.length > 0)) &&
     knownStatus
   );
 }
@@ -1526,6 +1555,31 @@ async function releaseDeferred(
   }
 }
 
+async function releaseUnanswered(
+  claimed: QueuedOutboundTurn,
+): Promise<OutboundSettlement> {
+  try {
+    return await mutate((entries) => {
+      const index = entries.findIndex((entry) => exact(entry, claimed));
+      if (index === -1)
+        return { entries, result: 'stale' as const, changed: false };
+      const next = [...entries];
+      next[index] = {
+        ...next[index]!,
+        dispatchBootId: undefined,
+        claimedAt: undefined,
+        lastAttemptAt: Date.now(),
+        deferredAt: Date.now(),
+      };
+      return { entries: next, result: 'applied' as const, changed: true };
+    });
+  } catch {
+    unavailableClaims.add(claimed.clientTurnId);
+    notify();
+    return 'unavailable';
+  }
+}
+
 interface InternalClaim {
   readonly public: OutboundDispatchClaim;
   readonly settled: () => boolean;
@@ -2022,6 +2076,14 @@ async function flush(
             unavailableClaims.add(claimed.clientTurnId);
             unavailable = true;
           }
+        } else if (result.kind === 'refused') {
+          const refused = await settle(claimed, 'failed', result.reason);
+          unavailable ||= refused === 'unavailable';
+          blockedSessions.add(claimed.sessionId);
+        } else if (result.kind === 'unanswered') {
+          const released = await releaseUnanswered(claimed);
+          unavailable ||= released === 'unavailable';
+          blockedSessions.add(claimed.sessionId);
         } else if (result.kind === 'deferred') {
           const released = await releaseDeferred(claimed);
           unavailable ||= released === 'unavailable';
@@ -2422,7 +2484,7 @@ const POSSIBLE_EFFECT =
  */
 async function applyDeliveryAnswer(
   observed: QueuedOutboundTurn,
-  outcome: TurnDeliveryOutcome,
+  outcome: TurnDeliveryOutcome | 'inbox-accepted',
   notReceived: 'resend' | 'stop',
 ): Promise<void> {
   await mutateState((state) => {
@@ -2439,7 +2501,10 @@ async function applyDeliveryAnswer(
     // The same answer again changes nothing (and wakes no observer).
     if (outcome === 'received' && entry.deliveryCheck?.outcome === 'received')
       return { state, result: undefined, changed: false };
-    const deliveryCheck = { outcome, checkedAt: Date.now() };
+    const deliveryCheck = {
+      outcome: outcome === 'inbox-accepted' ? ('queued' as const) : outcome,
+      checkedAt: Date.now(),
+    };
     const released = {
       ...entry,
       deliveryCheck,
@@ -2477,6 +2542,11 @@ async function applyDeliveryAnswer(
       // receipt used by flush settlement. Keep the row until stronger evidence.
       case 'queued':
         return { state, result: undefined, changed: false };
+      case 'inbox-accepted':
+        if (!entry.inboxSteerHead)
+          return { state, result: undefined, changed: false };
+        next = undefined;
+        break;
       default: {
         // An answer this build does not know proves nothing: change nothing.
         const unhandled: never = outcome;
@@ -2492,7 +2562,7 @@ async function applyDeliveryAnswer(
     return {
       // Station started it: delivered, so never sent again from anywhere.
       state:
-        outcome === 'started'
+        outcome === 'started' || outcome === 'inbox-accepted'
           ? withRetired(settled, entry.clientTurnId, 'accepted')
           : settled,
       result: undefined,
@@ -2504,11 +2574,13 @@ async function applyDeliveryAnswer(
 async function askStation(
   row: QueuedOutboundTurn,
   lookup: OutboundDeliveryLookup,
-): Promise<TurnDeliveryOutcome | undefined> {
+): Promise<TurnDeliveryOutcome | 'inbox-accepted' | undefined> {
   try {
     const answer = await lookup(publicTurn(row));
     // The answer must be about this exact key, never a near match.
-    return answer.clientTurnId === row.clientTurnId
+    return answer.clientTurnId === row.clientTurnId &&
+      (answer.outcome !== 'inbox-accepted' ||
+        answer.conversationId === (row.conversationId ?? row.sessionId))
       ? answer.outcome
       : undefined;
   } catch {
@@ -2532,6 +2604,14 @@ async function reconcile(
     if (row.status !== 'invoking') continue;
     // Only the Station a row was written for can say what became of it.
     if (!rowBelongsToStation(row, station)) continue;
+    if (
+      row.inboxSteerHead &&
+      row.deferredAt !== undefined &&
+      now - row.deferredAt < 2_000
+    ) {
+      received += 1;
+      continue;
+    }
     // A row released without a claim (its request got no answer) is the
     // lookup's at once; a claimed row waits until its renderer is gone.
     if (row.dispatchBootId !== undefined) {
@@ -2687,7 +2767,7 @@ async function check(
     outcome,
     row.status === 'invoking' ? 'resend' : 'stop',
   );
-  return outcome;
+  return outcome === 'inbox-accepted' ? 'queued' : outcome;
 }
 
 export const outboundDispatch: OutboundDispatchModule = {

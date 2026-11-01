@@ -110,8 +110,18 @@ describe('POST /chat whenBusy queue (#3568)', () => {
     expect(read.status).toBe(200);
     expect(await read.json()).toMatchObject({
       data: {
-        entries: [{ kind: 'display', state: 'sent', message: 'visible note' }],
+        entries: [
+          {
+            kind: 'display',
+            state: 'sent',
+            message: 'visible note',
+            ownedByCaller: false,
+          },
+        ],
       },
+    });
+    expect(await (await world.listInbox()).json()).toMatchObject({
+      data: { entries: [{ ownedByCaller: true }] },
     });
     expect(world.adapter.turns).toHaveLength(1);
   });

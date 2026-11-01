@@ -37,6 +37,7 @@ describe('client execution', () => {
               conversationId: 'conv',
               clientTurnId: 'k',
               message: 'go',
+              expectedHead: '["session-a",7]',
             },
           }),
           { status: 202 },

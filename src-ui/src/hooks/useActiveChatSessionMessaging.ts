@@ -26,6 +26,7 @@ import {
 } from '@kontourai/station-sdk';
 import {
   type ApiRequestScope,
+  readConversationInboxHead,
   submitConversationSteer,
 } from '@kontourai/station-sdk/client';
 import { turnInterruptedContinueBoundaryId } from '@kontourai/station-shared/conversation-message';
@@ -34,7 +35,7 @@ import {
   skillExperienceAttachmentInputs,
   skillExperienceInputErrors,
 } from '@kontourai/station-shared/skill-experience-values';
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import { useAccountPreferences } from '../contexts/AccountPreferencesContext';
 import { useActiveChatActions } from '../contexts/ActiveChatsContext';
 import { useAuthorityPersistence } from '../contexts/AuthorityPersistenceContext';
@@ -395,6 +396,14 @@ export function useSendMessage(
     observation: authorityObservation,
   } = useAuthorityPersistence();
   const stationEnvironmentId = authorityObservation?.environmentId;
+  const authorityRef = useRef({
+    namespace: experienceNamespace,
+    status: experienceAuthorityStatus,
+  });
+  authorityRef.current = {
+    namespace: experienceNamespace,
+    status: experienceAuthorityStatus,
+  };
   const sendMessage = useCallback(
     async (
       sessionId: string,
@@ -701,6 +710,154 @@ export function useSendMessage(
         };
         const claimState = activeChatsStore.getSnapshot()[sessionId];
         if (!claimState) return false;
+        if (claimState.conversationId) {
+          if (
+            !experienceNamespace ||
+            experienceAuthorityStatus !== 'verified'
+          ) {
+            addEphemeralMessage(sessionId, {
+              role: 'system',
+              sendFailure: true,
+              content: 'Verify your Station connection before steering.',
+            });
+            return false;
+          }
+          updateChat(sessionId, { queueSendNowPending: true });
+          let liveSteer: LiveOutboundDispatch | undefined;
+          try {
+            const requestOptions = accountPreferences.requestScope
+              ? { requestScope: accountPreferences.requestScope }
+              : {};
+            const expectedHead = await readConversationInboxHead(
+              apiBase,
+              claimState.conversationId,
+              requestOptions,
+            );
+            if (
+              authorityRef.current.namespace !== experienceNamespace ||
+              authorityRef.current.status !== 'verified' ||
+              (accountPreferences.requestScope &&
+                !accountPreferences.requestScope.isCurrent())
+            )
+              throw new Error('Station authority changed.');
+            const { outboundDispatch } = await import('../lib/outboundQueue');
+            const durable = outboundDispatch.beginLive({
+              clientTurnId: clientInputId,
+              sessionId,
+              agentSlug,
+              conversationId: claimState.conversationId,
+              content,
+              inboxSteerHead: expectedHead,
+              station: {
+                apiBase,
+                ...(stationEnvironmentId
+                  ? { environmentId: stationEnvironmentId }
+                  : {}),
+                authorityNamespace: experienceNamespace,
+              },
+            });
+            let timedOut = false;
+            liveSteer = await Promise.race([
+              durable,
+              new Promise<undefined>((resolve) =>
+                setTimeout(() => {
+                  timedOut = true;
+                  resolve(undefined);
+                }, LIVE_DURABILITY_TIMEOUT_MS),
+              ),
+            ]);
+            if (!liveSteer) {
+              if (timedOut)
+                void durable
+                  .then((late) => late.refused())
+                  .catch(() => undefined);
+              throw new Error('Could not save this steer before sending.');
+            }
+            if (
+              authorityRef.current.namespace !== experienceNamespace ||
+              authorityRef.current.status !== 'verified' ||
+              (accountPreferences.requestScope &&
+                !accountPreferences.requestScope.isCurrent())
+            ) {
+              await liveSteer.refused();
+              liveSteer = undefined;
+              throw new Error('Station authority changed.');
+            }
+            if (
+              activeChatsStore.getSnapshot()[sessionId]?.input ===
+              submittedDraft
+            )
+              clearInput(sessionId);
+            try {
+              options?.onDurable?.();
+            } catch {
+              // The durable claim cannot be undone by an observer.
+            }
+            const accepted = await submitConversationSteer(
+              apiBase,
+              claimState.conversationId,
+              { key: clientInputId, message: content, expectedHead },
+              requestOptions,
+            );
+            if (accepted.state === 'cancelled') {
+              await liveSteer.indeterminate(
+                'Station reports this key was dismissed.',
+                { listed: true },
+              );
+              try {
+                options?.onAdmission?.('accepted');
+              } catch {
+                /* Already recorded. */
+              }
+              return true;
+            }
+            await liveSteer.accepted();
+            invalidate(['conversation-inbox']);
+            try {
+              options?.onAdmission?.('accepted');
+            } catch {
+              /* Already recorded. */
+            }
+            return true;
+          } catch (error) {
+            if (liveSteer) {
+              if (
+                (error as { code?: unknown })?.code === 'inbox_stale_head' &&
+                stationAnswered(error)
+              ) {
+                await liveSteer.refused();
+                if (
+                  (activeChatsStore.getSnapshot()[sessionId]?.input ?? '') ===
+                  ''
+                )
+                  updateChat(sessionId, { input: submittedDraft });
+              } else {
+                await liveSteer.unanswered();
+                addEphemeralMessage(sessionId, {
+                  role: 'system',
+                  content:
+                    'Steering was not confirmed. Station will be checked before retrying.',
+                });
+                try {
+                  options?.onAdmission?.('accepted');
+                } catch {
+                  /* Already recorded. */
+                }
+                return true;
+              }
+            }
+            addEphemeralMessage(sessionId, {
+              role: 'system',
+              sendFailure: true,
+              content:
+                'The steer was not sent. Review the conversation and try again.',
+            });
+            options?.onAdmission?.('not-invoked');
+            return false;
+          } finally {
+            updateChat(sessionId, { queueSendNowPending: false });
+          }
+        }
         clearInput(sessionId);
         updateChat(sessionId, {
           queuedMessages: [...claimState.queuedMessages, content],
@@ -712,9 +869,6 @@ export function useSendMessage(
               delivery: 'steering',
               steerThreadId: target.threadId,
               steerTurnId: target.turnId,
-              ...(claimState.conversationId
-                ? { inboxSteerConversationId: claimState.conversationId }
-                : {}),
             },
           ],
           queueSendNowPending: true,
@@ -770,25 +924,6 @@ export function useSendMessage(
           });
         };
         try {
-          if (claimState.conversationId) {
-            const accepted = await submitConversationSteer(
-              apiBase,
-              claimState.conversationId,
-              { key: clientInputId, message: content },
-              {
-                ...(accountPreferences.requestScope
-                  ? { requestScope: accountPreferences.requestScope }
-                  : {}),
-              },
-            );
-            if (accepted.state === 'cancelled') {
-              holdUnconfirmed();
-              return true;
-            }
-            removeClaim();
-            invalidate(['conversation-inbox']);
-            return true;
-          }
           const result = await steerOrchestrationTurn({
             ...target,
             text: content,
@@ -818,22 +953,6 @@ export function useSendMessage(
             updateChat(sessionId, { input: submittedDraft });
           return false;
         } catch (error) {
-          if (
-            (error as { code?: unknown })?.code === 'inbox_stale_head' &&
-            stationAnswered(error)
-          ) {
-            removeClaim();
-            const latest = activeChatsStore.getSnapshot()[sessionId];
-            if ((latest?.input ?? '') === '')
-              updateChat(sessionId, { input: submittedDraft });
-            addEphemeralMessage(sessionId, {
-              role: 'system',
-              sendFailure: true,
-              content:
-                'The conversation changed. Review it before sending again.',
-            });
-            return false;
-          }
           if (isProvablyNotSent(error)) {
             removeClaim();
             const latest = activeChatsStore.getSnapshot()[sessionId];

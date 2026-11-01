@@ -2223,9 +2223,12 @@ export function ChatDockBody({
                   if (
                     entries.some(
                       (entry) =>
+                        metadata.inboxSteerHead !== undefined &&
                         entry.kind === 'steer' &&
+                        entry.ownedByCaller === true &&
                         entry.clientTurnId === clientInputId &&
-                        entry.message === message,
+                        entry.message === message &&
+                        entry.expectedHead === metadata.inboxSteerHead,
                     )
                   ) {
                     retireConfirmedById();

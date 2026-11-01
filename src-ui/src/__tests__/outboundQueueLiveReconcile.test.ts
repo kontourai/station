@@ -517,6 +517,15 @@ describe('live outbox rows survive a killed app and settle by the delivery looku
     const lookup = lookupAnswering('not-received');
     await later.outboundDispatch.reconcile(lookup, { station: stationB });
     expect(lookup).not.toHaveBeenCalled();
+    await later.outboundDispatch.reconcile(
+      async () => ({
+        outcome: 'inbox-accepted',
+        conversationId: 'another-conversation',
+        clientTurnId: 'private-steer',
+      }),
+      { station: stationA },
+    );
+    expect(await later.outboundDispatch.snapshot()).toHaveLength(1);
     await later.outboundDispatch.reconcile(lookup, { station: stationA });
     expect(lookup).toHaveBeenCalledTimes(1);
     const transport = vi.fn(async () => ({
@@ -532,6 +541,34 @@ describe('live outbox rows survive a killed app and settle by the delivery looku
     expect(transport).not.toHaveBeenCalled();
     await later.outboundDispatch.flush(transport, { station: stationA });
     expect(transport).toHaveBeenCalledTimes(1);
+  });
+
+  it('an inbox steer cannot be read or sent under a different authority', async () => {
+    const queue = await freshRenderer();
+    const stationA = {
+      apiBase: 'http://a.test',
+      environmentId: 'env-a',
+      authorityNamespace: 'person-a',
+    };
+    const stationB = { ...stationA, authorityNamespace: 'person-b' };
+    await queue.outboundDispatch.beginLive({
+      ...intent,
+      clientTurnId: 'private-steer',
+      inboxSteerHead: '["thread",1]',
+      station: stationA,
+    });
+    kill();
+    const later = await freshRenderer();
+    const lookup = vi.fn(async () => ({
+      outcome: 'inbox-accepted' as const,
+      conversationId: 'chat-1',
+      clientTurnId: 'private-steer',
+    }));
+    await later.outboundDispatch.reconcile(lookup, { station: stationB });
+    expect(lookup).not.toHaveBeenCalled();
+    await later.outboundDispatch.reconcile(lookup, { station: stationA });
+    expect(lookup).toHaveBeenCalledTimes(1);
+    expect(await later.outboundDispatch.snapshot()).toEqual([]);
   });
 
   it('an unconfirmed row does not hold back the messages written after it', async () => {

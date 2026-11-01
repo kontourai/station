@@ -366,6 +366,8 @@ describe('ChatDockBody stale busy wait', () => {
     listConversationInboxMock.mockResolvedValueOnce([
       {
         kind: 'steer',
+        ownedByCaller: true,
+        expectedHead: '["thread",1]',
         clientTurnId: 'steer-1',
         message: 'steer me',
         state: 'unconfirmed',
@@ -378,6 +380,7 @@ describe('ChatDockBody stale busy wait', () => {
         mode: 'steer' as const,
         delivery: 'indeterminate' as const,
         inboxSteerConversationId: 'conversation-a',
+        inboxSteerHead: '["thread",1]',
       },
     ];
     activeChatsStore.updateChat('thread-busy', {
@@ -407,6 +410,55 @@ describe('ChatDockBody stale busy wait', () => {
     expect(
       activeChatsStore.getSnapshot()['thread-busy'].queuedMessages,
     ).toEqual([]);
+  });
+
+  test('a legacy inbox steer without its original head remains held', async () => {
+    scopeMock.current = {
+      apiBase: 'http://localhost:3242',
+      authorityKey: 'owner',
+      isCurrent: () => true,
+    };
+    listConversationInboxMock.mockResolvedValueOnce([
+      {
+        kind: 'steer',
+        ownedByCaller: true,
+        expectedHead: '["thread",1]',
+        clientTurnId: 'legacy',
+        message: 'keep me',
+        state: 'sent',
+      },
+    ]);
+    activeChatsStore.initChat('thread-busy');
+    const metadata = [
+      {
+        id: 'legacy',
+        mode: 'steer' as const,
+        delivery: 'indeterminate' as const,
+        inboxSteerConversationId: 'conversation-a',
+      },
+    ];
+    activeChatsStore.updateChat('thread-busy', {
+      queuedMessages: ['keep me'],
+      queuedMessageMetadata: metadata,
+    });
+    renderDock({
+      session: buildSession({
+        queuedMessages: ['keep me'],
+        queuedMessageMetadata: metadata,
+        status: 'sending',
+        orchestrationProvider: 'claude',
+        orchestrationSessionStarted: true,
+        orchestrationTurnOpen: true,
+      } as Partial<ChatSession>),
+    });
+    await screen.findByTestId('queued-messages');
+    await act(async () => {
+      await queuedMessagesPropsMock.current?.onSteer('keep me', 'legacy');
+    });
+    expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
+    expect(
+      activeChatsStore.getSnapshot()['thread-busy'].queuedMessages,
+    ).toEqual(['keep me']);
   });
 
   test.each([false, true])(

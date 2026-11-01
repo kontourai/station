@@ -466,13 +466,12 @@ export async function listConversationInbox(
   return result.data.entries;
 }
 
-/** Submit a steer against the current execution's observed inbox head. */
-export async function submitConversationSteer(
+/** Read the current execution head before preparing a keyed steer. */
+export async function readConversationInboxHead(
   apiBase: string,
   conversationId: string,
-  input: { key: string; message: string },
   opts?: ClientRequestOptions,
-): Promise<ConversationInboxEntry> {
+): Promise<string> {
   const url = `${apiBase}/api/orchestration/conversations/${encodeURIComponent(conversationId)}/inbox`;
   const read = await getJson(url, opts);
   const snapshot = (await readExecutionBody(read)) as {
@@ -494,6 +493,20 @@ export async function submitConversationSteer(
       snapshot,
       'This Station cannot safely queue steering.',
     );
+  return head;
+}
+
+/** Submit a steer against the original observed head. */
+export async function submitConversationSteer(
+  apiBase: string,
+  conversationId: string,
+  input: { key: string; message: string; expectedHead?: string },
+  opts?: ClientRequestOptions,
+): Promise<ConversationInboxEntry> {
+  const url = `${apiBase}/api/orchestration/conversations/${encodeURIComponent(conversationId)}/inbox`;
+  const head =
+    input.expectedHead ??
+    (await readConversationInboxHead(apiBase, conversationId, opts));
   const response = await mutateJson(url, 'POST', opts, {
     kind: 'steer',
     key: input.key,
@@ -513,6 +526,7 @@ export async function submitConversationSteer(
     result.data.clientTurnId !== input.key ||
     result.data.conversationId !== conversationId ||
     result.data.message !== input.message ||
+    result.data.expectedHead !== head ||
     ![
       'queued',
       'sending',

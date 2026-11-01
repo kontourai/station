@@ -1700,6 +1700,10 @@ export interface ConversationInboxEntry {
   clientTurnId?: string;
   /** How the message is placed in the conversation. */
   kind: 'follow-up' | 'steer' | 'display';
+  /** The execution head admitted with this entry, when supplied. */
+  expectedHead?: string;
+  /** Whether the authenticated reader is the recorded sender. */
+  ownedByCaller?: boolean;
   state: ConversationInboxEntryState;
   /** 1 for the next to be sent, among entries still waiting; absent once settled. */
   position?: number;

@@ -154,6 +154,7 @@ export interface ThreadInboxActor {
 /** What a queued follow-up sends: the continuation's input, and its sender. */
 export interface ThreadInboxPayload {
   readonly message: string;
+  readonly expectedHead?: string;
   /** Server-created Automation intent, revalidated against its private ledger at placement. */
   readonly serverAutomationIntentId?: string;
   /** Original server-captured identity; older queued entries have unknown proof. */
@@ -224,6 +225,9 @@ function decodePayload(raw: string): ThreadInboxPayload | undefined {
   const attribution = actor.ownerAttribution;
   return {
     message: value.message,
+    ...(typeof value.expectedHead === 'string'
+      ? { expectedHead: value.expectedHead }
+      : {}),
     ...(typeof value.serverAutomationIntentId === 'string'
       ? { serverAutomationIntentId: value.serverAutomationIntentId }
       : {}),
@@ -327,6 +331,7 @@ function projectThreadInboxEntry(
     conversationId: entry.inboxId,
     clientTurnId: entry.key,
     kind: entry.kind,
+    ...(payload?.expectedHead ? { expectedHead: payload.expectedHead } : {}),
     state: PUBLIC_STATE[entry.state],
     ...(position !== undefined ? { position } : {}),
     message: payload?.message ?? '',
@@ -993,14 +998,17 @@ export class ThreadInboxDelivery {
     const entries = this.ports.store.list(this.inboxOf(conversationId));
     const positions = waitingPositions(entries);
     return entries.map((entry) => {
-      const projected = projectThreadInboxEntry(
-        entry,
-        positions.get(entry.key),
-      );
+      const senderId = decodePayload(entry.payload)?.actor.userId;
+      const projected = {
+        ...projectThreadInboxEntry(entry, positions.get(entry.key)),
+        ...(viewerUserId === undefined
+          ? {}
+          : { ownedByCaller: senderId === viewerUserId }),
+      };
       if (
         viewerUserId === undefined ||
         !MAY_STILL_SEND.has(entry.state) ||
-        decodePayload(entry.payload)?.actor.userId === viewerUserId
+        senderId === viewerUserId
       )
         return projected;
       const { clientTurnId: _hidden, ...withoutKey } = projected;
