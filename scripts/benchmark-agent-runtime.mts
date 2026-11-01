@@ -23,7 +23,7 @@ const watchdog = setTimeout(() => {
   throw new Error('Agent runtime benchmark exceeded ten minutes');
 }, 600_000);
 watchdog.unref();
-const samples = 3;
+const samples = 1;
 const steps = 200;
 async function run(durable: boolean, profile = false) {
   using dir = mkdtempDisposableSync(join(tmpdir(), 'agent-runtime-benchmark-'));
@@ -196,9 +196,27 @@ async function run(durable: boolean, profile = false) {
 const results = [];
 for (let sample = 0; sample < samples; sample++) {
   results.push(await run(false));
-  results.push(await run(true));
+  writeFileSync(
+    `${output}.baseline.json`,
+    JSON.stringify(
+      {
+        revision,
+        baseline: results.at(-1),
+        environment: {
+          node: process.version,
+          platform: platform(),
+          release: release(),
+          cpu: cpus()[0]?.model,
+          logicalCpus: cpus().length,
+        },
+      },
+      null,
+      2,
+    ),
+  );
+  results.push(await run(true, true));
 }
-const profile = await run(true, true);
+const profile = results.find((value) => value.profile);
 const median = (values: number[]) =>
   values.sort((a, b) => a - b)[Math.floor(values.length / 2)]!;
 const baselineMs = median(

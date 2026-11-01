@@ -75,7 +75,11 @@ for (const durable of [true, false]) {
             yield { type: 'finish', finishReason: 'stop' };
           })(),
           text: Promise.resolve('running'),
-          usage: Promise.resolve(undefined),
+          usage: Promise.resolve({
+            promptTokens: 0,
+            completionTokens: 0,
+            totalTokens: 0,
+          }),
           finishReason: Promise.resolve('stop'),
         };
       },

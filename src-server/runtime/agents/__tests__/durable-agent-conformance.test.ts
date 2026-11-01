@@ -173,7 +173,7 @@ async function fixture(
       return {
         stream: new ReadableStream({
           async start(controller) {
-            if (controls.partial) {
+            if (controls.partial && calls.length === 1) {
               controller.enqueue({ type: 'stream-start', warnings: [] });
               controller.enqueue({ type: 'text-start', id: 'partial' });
               controller.enqueue({
@@ -238,9 +238,9 @@ async function fixture(
         userId: 'owner',
         conversationId: key.conversationId,
       });
-      void response.text.catch(() => {});
-      void response.usage.catch(() => {});
-      void response.finishReason.catch(() => {});
+      void response.text?.catch(() => {});
+      void response.usage?.catch(() => {});
+      void response.finishReason?.catch(() => {});
       const chunks = [];
       for await (const chunk of response.fullStream) {
         chunks.push(chunk);
@@ -349,7 +349,14 @@ for (const framework of ['voltagent', 'strands'] as const) {
     const f = await fixture(framework, 'unsafe', async () => ++effects);
     f.armBeforeIntent();
     const old = f.consume(f.lease).catch((error) => error);
-    await f.intentEntered;
+    await Promise.race([
+      f.intentEntered,
+      old.then((value) => {
+        throw new Error(
+          'Native loop returned before the held tool intent: ' + String(value),
+        );
+      }),
+    ]);
     expect(effects).toBe(0);
     const recovered = await f.recover();
     await old;
@@ -404,10 +411,24 @@ for (const framework of ['voltagent', 'strands'] as const) {
       answer.resolve();
       await old;
     });
-    await asked.promise;
+    await Promise.race([
+      asked.promise,
+      old.then((value) => {
+        throw new Error(
+          'Native loop completed without requesting approval: ' + String(value),
+        );
+      }),
+    ]);
     const recovered = await f.recover();
     const next = f.consume(recovered);
-    await askedAgain.promise;
+    await Promise.race([
+      askedAgain.promise,
+      next.then(() => {
+        throw new Error(
+          'Recovery completed without an explicit approval answer',
+        );
+      }),
+    ]);
     expect(effects).toBe(0);
     expect(requests[1]?.id).toBe(requests[0]?.id);
     expect(requests[1]?.remaining).toBeLessThanOrEqual(requests[0]!.remaining);
