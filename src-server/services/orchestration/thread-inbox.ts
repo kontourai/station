@@ -181,7 +181,10 @@ function canonicalJson(value: unknown): string {
  * changes what the engine receives. The client origin is not part of it: the
  * same message resent from another surface is the same submission.
  */
-function threadInboxDigest(payload: ThreadInboxPayload): string {
+function threadInboxDigest(
+  payload: ThreadInboxPayload,
+  expectedHead?: number,
+): string {
   return createHash('sha256')
     .update(
       canonicalJson([
@@ -192,6 +195,7 @@ function threadInboxDigest(payload: ThreadInboxPayload): string {
         ...(payload.serverAutomationIntentId
           ? [payload.serverAutomationIntentId]
           : []),
+        ...(expectedHead !== undefined ? [{ expectedHead }] : []),
       ]),
     )
     .digest('hex');
@@ -362,6 +366,7 @@ export function createSqliteThreadInboxStore(
   });
   const run = <C extends KernelCommand>(
     command: C,
+    inHostTransaction = false,
   ): KernelResults[C['type']] => {
     const prior =
       command.type === 'inbox.cancel'
@@ -370,11 +375,16 @@ export function createSqliteThreadInboxStore(
             { liveness: NO_LIVENESS },
           )
         : undefined;
-    const result = kernel.executeSync(command, { liveness: NO_LIVENESS });
+    const result = kernel.executeSync(
+      command,
+      { liveness: NO_LIVENESS },
+      { withinHostTransaction: inHostTransaction },
+    );
     // Only a participant refuses a command, and this storage has none.
     if (result.kind === 'refused' && 'participant' in result)
       throw new Error(`thread inbox: ${command.type} was refused.`);
     if (
+      !inHostTransaction &&
       'inboxId' in command &&
       ['accepted', 'claimed', 'applied', 'cancelled'].includes(result.kind) &&
       !(prior?.kind === 'found' && prior.entry.state === 'cancelled')
@@ -388,16 +398,55 @@ export function createSqliteThreadInboxStore(
       clientTurnId: string;
       payload: ThreadInboxPayload;
       now: number;
-    }): InboxSubmitResult {
-      return run({
+      expectedHead?: number;
+      readHead?: () => number;
+    }): InboxSubmitResult | { kind: 'stale-head'; currentHead: number } {
+      const command = {
         type: 'inbox.submit',
         inboxId: input.conversationId,
         key: input.clientTurnId,
         kind: 'follow-up',
-        digest: threadInboxDigest(input.payload),
-        payload: JSON.stringify(input.payload),
+        digest: threadInboxDigest(input.payload, input.expectedHead),
+        payload: JSON.stringify({
+          ...input.payload,
+          ...(input.expectedHead !== undefined
+            ? { expectedHead: input.expectedHead }
+            : {}),
+        }),
         now: input.now,
-      });
+      } as const;
+      if (input.expectedHead === undefined) return run(command);
+      if (!input.readHead)
+        throw new Error('Expected head requires an atomic head reader.');
+      db.exec('BEGIN IMMEDIATE');
+      let result:
+        | InboxSubmitResult
+        | { kind: 'stale-head'; currentHead: number };
+      try {
+        const prior = run(
+          {
+            type: 'inbox.read',
+            inboxId: input.conversationId,
+            key: input.clientTurnId,
+          },
+          true,
+        );
+        const currentHead = input.readHead();
+        const replaysExisting =
+          prior.kind === 'found' &&
+          prior.entry.state !== 'refused' &&
+          prior.entry.state !== 'cancelled';
+        result =
+          replaysExisting || currentHead === input.expectedHead
+            ? run(command, true)
+            : { kind: 'stale-head', currentHead };
+        db.exec('COMMIT');
+      } catch (error) {
+        db.exec('ROLLBACK');
+        throw error;
+      }
+      if (result.kind === 'accepted') onChanged?.(input.conversationId);
+      return result;
     },
     claimNext(conversationId: string, placement: string, now: number) {
       return run({
@@ -627,6 +676,16 @@ export type ThreadInboxSubmission =
    */
   | { readonly outcome: 'not-permitted' };
 
+type ThreadInboxHeadSubmission =
+  | ThreadInboxSubmission
+  | { readonly outcome: 'stale-head'; readonly currentHead: number };
+
+interface ThreadInboxInput {
+  conversationId: string;
+  clientTurnId: string;
+  payload: ThreadInboxPayload;
+}
+
 export type ThreadInboxCancel =
   | InboxCancelResult
   /** Not the caller's to withdraw (or dismiss); reads as missing. */
@@ -805,11 +864,13 @@ export class ThreadInboxDelivery {
    * Accept a follow-up, durable before this returns, and try to place it. A
    * sender placement would refuse is never accepted.
    */
-  submit(input: {
-    conversationId: string;
-    clientTurnId: string;
-    payload: ThreadInboxPayload;
-  }): ThreadInboxSubmission {
+  submit(
+    input: ThreadInboxInput & { expectedHead: number },
+  ): ThreadInboxHeadSubmission;
+  submit(input: ThreadInboxInput): ThreadInboxSubmission;
+  submit(
+    input: ThreadInboxInput & { expectedHead?: number },
+  ): ThreadInboxHeadSubmission {
     // Only Station's own continuation may use its reserved key prefix: an
     // ordinary sender could otherwise pre-claim that key and turn Station's
     // continuation into a conflict.
@@ -839,7 +900,11 @@ export class ThreadInboxDelivery {
       ...input,
       conversationId: inbox,
       now,
+      readHead: () =>
+        this.ports.headSequence(this.ports.currentSessionId(inbox)),
     });
+    if (result.kind === 'stale-head')
+      return { outcome: 'stale-head', currentHead: result.currentHead };
     if (result.kind === 'conflict') return { outcome: 'conflict' };
     if (result.kind === 'capacity')
       return { outcome: 'capacity', limit: result.limit };

@@ -353,6 +353,54 @@ afterEach(async () => {
 describe('thread inbox (#3568)', () => {
   const path = () => join(makeTempDir('thread-inbox-'), 'orchestration.sqlite');
 
+  test('rejects a stale expected head without writing an inbox entry', async () => {
+    const world = boot(path());
+    await runningFirstTurn(world);
+    const currentHead = world.store.readSessionInventoryHighWater(THREAD);
+    expect(currentHead).toBeGreaterThan(0);
+    expect(
+      world.inbox.submit({
+        conversationId: THREAD,
+        clientTurnId: 'stale-head',
+        payload,
+        expectedHead: 0,
+      }),
+    ).toEqual({ outcome: 'stale-head', currentHead });
+    expect(world.inbox.list(THREAD)).toEqual([]);
+  });
+
+  test('replays the same keyed submission after the conversation head advances', async () => {
+    const world = boot(path());
+    const turn = await runningFirstTurn(world);
+    const expectedHead = world.store.readSessionInventoryHighWater(THREAD);
+    const input = {
+      conversationId: THREAD,
+      clientTurnId: 'head-retry',
+      payload,
+      expectedHead,
+    };
+    expect(world.inbox.submit(input)).toMatchObject({ outcome: 'queued' });
+    expect(
+      JSON.parse(
+        world.store.threadInboxStore().read(THREAD, input.clientTurnId)!.payload,
+      ),
+    ).toMatchObject({ expectedHead });
+    await emit(
+      world,
+      'turn.started',
+      { turnId: 'turn-1', prompt: 'later', inputKind: 'steer' },
+      turn,
+    );
+    expect(world.store.readSessionInventoryHighWater(THREAD)).toBeGreaterThan(
+      expectedHead,
+    );
+    expect(world.inbox.submit(input)).toMatchObject({ outcome: 'queued' });
+    expect(
+      world.inbox.submit({ ...input, expectedHead: expectedHead + 1 }),
+    ).toEqual({ outcome: 'conflict' });
+    expect(world.inbox.list(THREAD)).toHaveLength(1);
+  });
+
   test('a follow-up queued during a turn, then a restart before its terminal, is sent exactly once', async () => {
     const file = path();
     const first = boot(file);
