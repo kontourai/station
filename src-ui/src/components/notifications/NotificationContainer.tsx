@@ -162,6 +162,7 @@ function ToastCard({
           : '',
         isApproval ? 'toast-card--approval' : '',
         isPairing ? 'toast-card--pairing' : '',
+        isTurn ? 'toast-card--turn' : '',
         clickable ? 'toast-card--clickable' : '',
       ]
         .filter(Boolean)

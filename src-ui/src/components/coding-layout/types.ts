@@ -6,6 +6,8 @@ export interface TerminalTab {
   agentSlug?: string;
   agentMode?: string;
   connectionId?: string;
-  shell?: string;
-  shellArgs?: string[];
+  /** The server's terminal session, once one is open for this tab. */
+  terminalId?: string;
+  /** A pre-socket terminal whose owned history the next open imports once. */
+  legacyTerminalId?: string;
 }

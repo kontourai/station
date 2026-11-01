@@ -8753,6 +8753,68 @@ describe('lifecycle build + restart ergonomics', () => {
     expect(existsSync(join(TEST_ALT_HOME, 'logs'))).toBe(false);
   });
 
+  it('gates a fresh home before spawn even when the log lives outside it (#4381)', async () => {
+    ensureDir(TEST_CWD);
+    // An explicit log directory outside the home used to skip the CLI's gate,
+    // so the instance record a prebuilt archive keeps in `<home>/state/...`
+    // landed first and the server refused the home this start created.
+    const outsideLogs = join(TEST_ROOT, 'outside-logs');
+    ensureDir(outsideLogs);
+    writeBuildManifest('fresh-home-outside-log');
+    const markerAtSpawn: boolean[] = [];
+    const spawn = vi.fn(() => {
+      markerAtSpawn.push(
+        existsSync(join(TEST_ALT_HOME, STATION_HOME_SCHEMA_FILE)),
+      );
+      throw new Error('spawn is out of scope');
+    });
+    const { lifecycle } = await loadLifecycleModule({
+      childProcessMock: { execSync: vi.fn(() => ''), spawn },
+    });
+
+    await lifecycle
+      .start({
+        instanceName: 'fresh-home-outside-log',
+        baseDir: TEST_ALT_HOME,
+        logFile: join(outsideLogs, 'station.log'),
+        serverPort: 3264,
+        uiPort: 5296,
+      })
+      .catch(() => {});
+
+    expect(markerAtSpawn).toEqual([true]);
+    expect(
+      JSON.parse(
+        readFileSync(join(TEST_ALT_HOME, STATION_HOME_SCHEMA_FILE), 'utf8'),
+      ),
+    ).toEqual({ version: STATION_HOME_SCHEMA_VERSION });
+  });
+
+  it('refuses an incompatible home before spawn when the log lives outside it (#4381)', async () => {
+    ensureDir(TEST_CWD);
+    ensureDir(join(TEST_ALT_HOME, 'agents'));
+    const outsideLogs = join(TEST_ROOT, 'outside-logs-refused');
+    ensureDir(outsideLogs);
+    writeBuildManifest('incompatible-home-outside-log');
+    const spawn = vi.fn();
+    const { lifecycle } = await loadLifecycleModule({
+      childProcessMock: { execSync: vi.fn(() => ''), spawn },
+    });
+
+    await expect(
+      lifecycle.start({
+        instanceName: 'incompatible-home-outside-log',
+        baseDir: TEST_ALT_HOME,
+        logFile: join(outsideLogs, 'station.log'),
+        serverPort: 3264,
+        uiPort: 5296,
+      }),
+    ).rejects.toThrow('STATION_HOME_RESET_REQUIRED');
+
+    expect(spawn).not.toHaveBeenCalled();
+    expect(existsSync(join(outsideLogs, 'station.log'))).toBe(false);
+  });
+
   it('names the supported reset command in the failure it throws (station#1913)', async () => {
     ensureDir(TEST_CWD);
     ensureDir(TEST_ALT_HOME);
@@ -9852,6 +9914,68 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
       expect(existsSync(join(TEST_CWD, '.station'))).toBe(false);
       expect(existsSync(join(SECOND_VERSION, '.station'))).toBe(false);
     } finally {
+      killSpy.mockRestore();
+    }
+  });
+
+  it('restarts an instance whose UI listener outlived its core server instead of reporting it running (#4002)', async () => {
+    ensurePrebuiltArchive();
+    ensureDir(TEST_ALT_HOME);
+    const [serverPid, uiPid] = [41341, 41342];
+    const dead = new Set<number>();
+    const killSpy = vi.spyOn(process, 'kill').mockImplementation(((
+      pid: number,
+      signal?: NodeJS.Signals | number,
+    ) => {
+      if (signal === 0 && dead.has(pid)) throw new Error('gone');
+      return true;
+    }) as typeof process.kill);
+    const killProcessTree = vi.fn((pid: number) => {
+      dead.add(pid);
+    });
+    const target = { baseDir: TEST_ALT_HOME, serverPort: 3292, uiPort: 5324 };
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      const first = await loadLifecycleModule({
+        childProcessMock: {
+          execSync: vi.fn(() => ''),
+          spawn: readyStartMocks([serverPid, uiPid]),
+        },
+        netConnectMock: makeReadyTcpConnectMock(),
+        platformOverrides: { killProcessTree, sleepSync: vi.fn() },
+      });
+      await first.lifecycle.start(target);
+      // `kill -9` of the core server; the UI listener keeps running.
+      dead.add(serverPid);
+      log.mockClear();
+
+      const restartSpawn = readyStartMocks([41343, 41344]);
+      const second = await loadLifecycleModule({
+        childProcessMock: { execSync: vi.fn(() => ''), spawn: restartSpawn },
+        netConnectMock: makeReadyTcpConnectMock(),
+        platformOverrides: { killProcessTree, sleepSync: vi.fn() },
+      });
+      await second.lifecycle.start(target);
+      const lines = log.mock.calls.map(([line]) => String(line));
+      expect(lines.some((line) => line.includes('Already running'))).toBe(
+        false,
+      );
+      expect(
+        lines.some((line) =>
+          line.includes(`server not running (pid ${serverPid}); restarting`),
+        ),
+      ).toBe(true);
+      // What remained of the old instance was stopped, then a new one started.
+      expect(killProcessTree).toHaveBeenCalledWith(uiPid);
+      expect(restartSpawn).toHaveBeenCalled();
+      const [record] = readdirSync(archiveStateDir(TEST_ALT_HOME));
+      expect(
+        JSON.parse(
+          readFileSync(join(archiveStateDir(TEST_ALT_HOME), record!), 'utf8'),
+        ).serverPid,
+      ).toBe(41343);
+    } finally {
+      log.mockRestore();
       killSpy.mockRestore();
     }
   });

@@ -918,3 +918,18 @@
   );
   border-radius: var(--k-radius-md);
 }
+
+.coding-workbench__tool-overlay[data-sheet] .coding-workbench__tool-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.coding-workbench[data-mobile]
+  .coding-workbench__tool-trigger
+  > svg:not(.choice-caret) {
+  inline-size: 18px;
+  block-size: 18px;
+  flex: none;
+}
+.coding-workbench__tool-count {
+  font-variant-numeric: tabular-nums;
+}

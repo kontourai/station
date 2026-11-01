@@ -73,11 +73,45 @@ export function useMenuFocus<T extends HTMLElement>(
     // Fall back to the container when the menu has nothing focusable in it —
     // an empty notification popover, or one whose items have not arrived yet.
     // Leaving focus on the trigger would let Tab move behind the open popover.
-    const target =
-      container?.querySelector<HTMLElement>(FOCUSABLE) ?? container;
+    let target = container?.querySelector<HTMLElement>(FOCUSABLE) ?? container;
     target?.focus();
 
+    // An item that loads after the menu opened (a lazily loaded "Add to
+    // Task" row) can arrive ABOVE the one focus entered on, which left focus
+    // on the second row (#4406). Until the reader moves, entry follows the
+    // first item; any key or press in the menu is the reader's own move.
+    let settled = false;
+    const settle = () => {
+      settled = true;
+      observer?.disconnect();
+    };
+    const observer =
+      container && typeof MutationObserver !== 'undefined'
+        ? new MutationObserver(() => {
+            if (settled) return;
+            const first = container.querySelector<HTMLElement>(FOCUSABLE);
+            if (!first || first === target) return;
+            if (
+              document.activeElement !== target &&
+              document.activeElement !== container
+            ) {
+              settle();
+              return;
+            }
+            target = first;
+            first.focus();
+          })
+        : null;
+    if (container && observer) {
+      observer.observe(container, { childList: true, subtree: true });
+      container.addEventListener('keydown', settle, true);
+      container.addEventListener('pointerdown', settle, true);
+    }
+
     return () => {
+      observer?.disconnect();
+      container?.removeEventListener('keydown', settle, true);
+      container?.removeEventListener('pointerdown', settle, true);
       // Restore through the shared module (archive#1245). Its own copy was
       // `if (previouslyFocused?.isConnected) previouslyFocused.focus`, which
       // carried both #1126 gaps: a connected-but-unfocusable trigger swallows

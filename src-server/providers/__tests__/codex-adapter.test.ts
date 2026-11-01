@@ -14,6 +14,11 @@ import { FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY } from '@kontourai/statio
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { builtinStationControlServerPath } from '../../runtime/bootstrap/station-control-runtime-env.js';
+import {
+  mintStationControlMcpHeaderAuth,
+  revokeStationControlMcpToken,
+  verifyStationControlMcpToken,
+} from '../../runtime/mcp/station-control-mcp-token.js';
 import { EventBus } from '../../services/orchestration/event-bus.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
@@ -41,6 +46,7 @@ import { expectCanonicalSessionLifecycle } from './adapter-contract-test-utils.j
 import {
   CODEX_COLLAB_V1_CLIENT_INTERRUPT_UNBLOCKS_PARENT,
   CODEX_COLLAB_V1_PARENT_STOP_CASCADES_CHILDREN,
+  CODEX_COLLAB_V2_CLIENT_TURN_INTERRUPT,
   codexCaptureServerMessagesBeforeClientInterrupt,
 } from './codex-collab-fixtures.js';
 
@@ -2577,6 +2583,115 @@ describe('CodexAdapter', () => {
     const PARENT_TURN_ID = '00000000-0000-7000-8000-000000000002';
     const CHILD_ID = '00000000-0000-7000-8000-000000000004';
     const CHILD_TURN_ID = '00000000-0000-7000-8000-000000000005';
+
+    test('child steer targets only the owned active child and refuses stale or unknown targets', async () => {
+      processHandle = new FakeCodexProcess();
+      const adapter = new CodexAdapter({
+        processFactory: () => processHandle!,
+      });
+      const threadId = 'thread-child-steer';
+      await replayCodexCollabPrefix(
+        adapter,
+        threadId,
+        CODEX_COLLAB_V1_CLIENT_INTERRUPT_UNBLOCKS_PARENT,
+      );
+      const before = processHandle.stdin.lines.length;
+      expect(
+        await adapter.steerChildWork(
+          threadId,
+          'unknown-child',
+          CHILD_TURN_ID,
+          'hello',
+        ),
+      ).toEqual({ outcome: 'no-active-task' });
+      expect(
+        await adapter.steerChildWork(threadId, CHILD_ID, 'old-turn', 'hello'),
+      ).toEqual({ outcome: 'no-active-task' });
+      expect(processHandle.stdin.lines).toHaveLength(before);
+      const pending = adapter.steerChildWork(
+        threadId,
+        CHILD_ID,
+        CHILD_TURN_ID,
+        'hello child',
+      );
+      await respondToLatestPendingRequest(adapter, threadId, {
+        turnId: CHILD_TURN_ID,
+      });
+      expect(await pending).toEqual({
+        outcome: 'steered',
+        turnId: CHILD_TURN_ID,
+      });
+      const requests = processHandle.stdin.lines.slice(before).map(parseLine);
+      expect(requests).toHaveLength(1);
+      expect(requests[0]).toMatchObject({
+        method: 'turn/steer',
+        params: {
+          threadId: CHILD_ID,
+          expectedTurnId: CHILD_TURN_ID,
+          input: [{ type: 'text', text: 'hello child', text_elements: [] }],
+        },
+      });
+      await adapter.stopAll();
+    });
+
+    test('v2 child refuses direct steer without sending an RPC', async () => {
+      processHandle = new FakeCodexProcess();
+      const adapter = new CodexAdapter({
+        processFactory: () => processHandle!,
+      });
+      const threadId = 'thread-v2-child-steer';
+      await replayCodexCollabPrefix(
+        adapter,
+        threadId,
+        CODEX_COLLAB_V2_CLIENT_TURN_INTERRUPT,
+      );
+      const before = processHandle.stdin.lines.length;
+      expect(
+        await adapter.steerChildWork(
+          threadId,
+          CHILD_ID,
+          CHILD_TURN_ID,
+          'hello',
+        ),
+      ).toEqual({ outcome: 'unsupported' });
+      expect(processHandle.stdin.lines).toHaveLength(before);
+      await adapter.stopAll();
+    });
+
+    test('child steer reports an ended-turn rejection from Codex without retrying', async () => {
+      processHandle = new FakeCodexProcess();
+      const adapter = new CodexAdapter({
+        processFactory: () => processHandle!,
+      });
+      const threadId = 'thread-child-steer-race';
+      await replayCodexCollabPrefix(
+        adapter,
+        threadId,
+        CODEX_COLLAB_V1_CLIENT_INTERRUPT_UNBLOCKS_PARENT,
+      );
+      const before = processHandle.stdin.lines.length;
+      const pending = adapter.steerChildWork(
+        threadId,
+        CHILD_ID,
+        CHILD_TURN_ID,
+        'hello',
+      );
+      await flushIo();
+      const record = (adapter as any).transport.requireSession(threadId);
+      const id = [...record.pendingRpcRequests.keys()].at(-1);
+      writeServerMessage(adapter, threadId, {
+        id,
+        error: { code: -32600, message: 'no active turn' },
+      });
+      expect(await pending).toEqual({ outcome: 'no-active-task' });
+      expect(
+        processHandle.stdin.lines
+          .slice(before)
+          .map(parseLine)
+          .map((message) => message.method),
+      ).toEqual(['turn/steer']);
+      await adapter.stopAll();
+    });
     // codex-0.155.1-collab-v1-parent-stop-cascades-children.jsonl: same
     // parent ids, two children — registered in this order (004 spawned
     // before 006 in the capture's own collabAgentToolCall spawnAgent items).
@@ -5137,36 +5252,97 @@ describe('CodexAdapter', () => {
     await adapter.stopAll();
   });
 
-  test('an absent approvalMode omits approvalPolicy/sandbox so Codex config applies (station#1950)', async () => {
-    processHandle = new FakeCodexProcess();
-    const adapter = new CodexAdapter({ processFactory: () => processHandle! });
+  test.each([
+    { policy: undefined, sandbox: undefined, expected: 'connection-default' },
+    { policy: 'untrusted', sandbox: 'workspaceWrite', expected: 'ask' },
+    { policy: 'on-request', sandbox: 'workspaceWrite', expected: 'auto' },
+    { policy: 'never', sandbox: 'workspaceWrite', expected: 'never' },
+    { policy: 'never', sandbox: 'dangerFullAccess', expected: 'never' },
+    {
+      policy: 'on-request',
+      sandbox: 'externalSandbox',
+      expected: 'connection-default',
+      requested: 'auto',
+    },
+    { policy: 'never', sandbox: 'readOnly', expected: 'connection-default' },
+    {
+      policy: 'on-failure',
+      sandbox: 'workspaceWrite',
+      expected: 'connection-default',
+    },
+    {
+      policy: 'on-request',
+      sandbox: undefined,
+      expected: 'connection-default',
+    },
+    {
+      policy: { reject: { sandbox_approval: true } },
+      sandbox: 'workspaceWrite',
+      expected: 'connection-default',
+      requested: 'auto',
+    },
+  ])(
+    'reports Codex settings $policy/$sandbox as $expected without changing the startup request',
+    async ({ policy, sandbox, expected, requested }) => {
+      processHandle = new FakeCodexProcess();
+      const adapter = new CodexAdapter({
+        processFactory: () => processHandle!,
+      });
 
-    const sessionPromise = adapter.startSession({
-      provider: 'codex',
-      threadId: 'thread-inherit-default',
-      cwd: '/tmp/project',
-      modelId: 'gpt-5-codex',
-    });
-    await flushIo();
-    writeServerMessage(adapter, 'thread-inherit-default', {
-      id: '1',
-      result: { userAgent: 'test' },
-    });
-    await flushIo();
-    writeServerMessage(adapter, 'thread-inherit-default', {
-      id: '2',
-      result: { thread: { id: 'codex-thread-inherit' }, model: 'gpt-5-codex' },
-    });
-    await withTimeout(sessionPromise, 'startSession inherit default');
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      const sessionPromise = adapter.startSession({
+        provider: 'codex',
+        threadId: 'thread-inherit-default',
+        cwd: '/tmp/project',
+        modelId: 'gpt-5-codex',
+        ...(requested ? { modelOptions: { approvalMode: requested } } : {}),
+      });
+      await flushIo();
+      writeServerMessage(adapter, 'thread-inherit-default', {
+        id: '1',
+        result: { userAgent: 'test' },
+      });
+      await flushIo();
+      writeServerMessage(adapter, 'thread-inherit-default', {
+        id: '2',
+        result: {
+          thread: { id: 'codex-thread-inherit' },
+          model: 'gpt-5-codex',
+          ...(policy ? { approvalPolicy: policy } : {}),
+          ...(sandbox
+            ? {
+                sandbox:
+                  sandbox === 'externalSandbox'
+                    ? { type: sandbox, networkAccess: 'enabled' }
+                    : {
+                        type: sandbox,
+                        networkAccess: false,
+                        writableRoots: [],
+                        excludeTmpdirEnvVar: false,
+                        excludeSlashTmp: false,
+                      },
+              }
+            : {}),
+        },
+      });
+      await withTimeout(sessionPromise, 'startSession inherit default');
 
-    const threadStart = processHandle.stdin.lines
-      .map(parseLine)
-      .find((line) => line.method === 'thread/start');
-    expect(threadStart.params).not.toHaveProperty('approvalPolicy');
-    expect(threadStart.params).not.toHaveProperty('sandbox');
+      const threadStart = processHandle.stdin.lines
+        .map(parseLine)
+        .find((line) => line.method === 'thread/start');
+      expect(threadStart.params.approvalPolicy).toBe(
+        requested === 'auto' ? 'on-request' : undefined,
+      );
+      expect(threadStart.params).not.toHaveProperty('sandbox');
 
-    await adapter.stopAll();
-  });
+      await nextEvent(iterator, 'session.started');
+      const configured = await nextEvent(iterator, 'session.configured');
+      expect(configured.method).toBe('session.configured');
+      expect(configured.metadata?.approvalMode).toBe(expected);
+      expect(configured.metadata?.approvalPolicy).toEqual(policy);
+      await adapter.stopAll();
+    },
+  );
 
   test('native review isolation overrides writable approval modes on thread/start and every turn/start', async () => {
     processHandle = new FakeCodexProcess();
@@ -5251,6 +5427,7 @@ describe('CodexAdapter', () => {
       result: {
         thread: { id: 'codex-thread-applied-mode' },
         model: 'gpt-5-codex',
+        approvalPolicy: 'untrusted',
       },
     });
     await withTimeout(sessionPromise, 'startSession applied-mode');
@@ -5261,7 +5438,7 @@ describe('CodexAdapter', () => {
     const configured = await nextEvent(iterator, 'session.configured');
     expect(configured).toMatchObject({
       method: 'session.configured',
-      metadata: { approvalMode: 'auto' },
+      metadata: { approvalMode: 'ask' },
     });
 
     const turnPromise = adapter.sendTurn({
@@ -5685,7 +5862,7 @@ describe('CodexAdapter', () => {
       );
       expect(configured).toMatchObject({ approvalPolicy: 'never' });
       expect(configured).not.toHaveProperty('sandbox');
-      expect(configured).not.toHaveProperty('approvalMode');
+      expect(configured).toHaveProperty('approvalMode', 'connection-default');
     });
 
     test('R5: session.configured falls back to the requested pair only when Codex reported no sandbox', async () => {
@@ -5941,10 +6118,7 @@ describe('CodexAdapter', () => {
           CODEX_HOME: profileHome,
           STATION_WORKLOAD_SESSION_ID: 'thread-profile-with-tools',
         },
-        [
-          '-c',
-          `mcp_servers.station-control.url="http://127.0.0.1:3141/mcp/station-control?token=${token}"`,
-        ],
+        undefined,
       );
       const events = [
         await nextEvent(iterator, 'session.started'),
@@ -6699,7 +6873,7 @@ describe('station#1195: toolServers wire delivery (mcp_servers -c config args)',
     },
   );
 
-  test('SECURITY: delivers the built-in station-control server as a -c mcp_servers.station-control.url override with the minted per-session URL, never via env', async () => {
+  test('SECURITY: delivers the built-in Station credential through private thread config, never argv or env', async () => {
     const processHandle = new FakeCodexProcess();
     let capturedArgs: string[] | undefined;
     const mintStationControlMcpAuth = vi.fn(
@@ -6770,14 +6944,18 @@ describe('station#1195: toolServers wire delivery (mcp_servers -c config args)',
     expect(mintStationControlMcpAuth).toHaveBeenCalledWith(
       'thread-station-control',
     );
-    expect(capturedArgs).toEqual([
-      '-c',
-      'mcp_servers.station-control.url="http://127.0.0.1:3141/mcp/station-control?token=minted-for-thread-station-control"',
-    ]);
+    expect(capturedArgs).toBeUndefined();
+    const configuredRequest = processHandle.stdin.lines
+      .map(parseLine)
+      .find((line) => line.method === 'thread/start');
+    expect(configuredRequest.params.config).toEqual({
+      'mcp_servers.station-control.url':
+        'http://127.0.0.1:3141/mcp/station-control?token=minted-for-thread-station-control',
+    });
     // The exact env-never-crosses assertion: nothing in the spawn argv
     // (or anywhere else reachable from the adapter's call) carries the
     // real INTERNAL_API_TOKEN env-var name or an `env` key at all.
-    expect(JSON.stringify(capturedArgs)).not.toContain(
+    expect(JSON.stringify(capturedArgs ?? [])).not.toContain(
       'STATION_INTERNAL_API_TOKEN',
     );
 
@@ -7021,3 +7199,195 @@ test.each([
     }
   },
 );
+
+test.each(['start', 'resume', 'fork'] as const)(
+  'private Station MCP header configuration reaches Codex %s over stdin and is revoked on stop',
+  async (mode) => {
+    const process = new FakeCodexProcess();
+    const token = `private-${mode}-credential`;
+    const revoke = vi.fn();
+    let spawnArgs: string[] | undefined;
+    let spawnEnv: Record<string, string> | undefined;
+    const adapter = new CodexAdapter({
+      processFactory: (env, args) => {
+        spawnEnv = env;
+        spawnArgs = args;
+        return process;
+      },
+      resolveSourceHome: () => '/fixture/codex-home',
+      mintStationControlMcpAuth: () => ({
+        url: 'http://127.0.0.1:41031/mcp/station-control',
+        token,
+      }),
+      revokeStationControlMcpAuth: revoke,
+    });
+    const sourceId = '0199a001-0000-7000-8000-000000000001';
+    const childId = '0199a001-0000-7000-8000-000000000002';
+    const input = {
+      provider: 'codex',
+      threadId: `private-${mode}`,
+      cwd: '/fixture/project',
+      agent: {
+        slug: 'agent',
+        toolServers: [
+          {
+            id: 'station-control',
+            transport: 'stdio' as const,
+            command: 'node',
+            args: [builtinStationControlServerPath()],
+          },
+        ],
+      },
+    };
+    const pending =
+      mode === 'fork'
+        ? adapter.adoptSession(
+            {
+              ...input,
+              sourceSessionId: sourceId,
+              sourceKind: 'codex-rollout',
+              sourceAffinity: {
+                kind: 'codex-config-home',
+                ref: 'a'.repeat(64),
+              },
+              sourceBoundary: {
+                kind: 'completed-turn',
+                providerTurnId: 'completed-one',
+                observedEventId: 'observed-one',
+              },
+            },
+            {
+              onProviderChildCreated: () => {},
+              onProviderChildCreationStarted: () => {},
+            },
+          )
+        : adapter.startSession({
+            ...input,
+            ...(mode === 'resume'
+              ? { resumeCursor: { codexThreadId: sourceId } }
+              : {}),
+          });
+    await flushIo();
+    process.stdout.write(
+      `${JSON.stringify({ id: '1', result: { userAgent: 'fixture' } })}\n`,
+    );
+    await flushIo();
+    const request = process.stdin.lines
+      .map(parseLine)
+      .find((line) => line.method === `thread/${mode}`);
+    expect(request.params.config).toEqual({
+      'mcp_servers.station-control.url':
+        'http://127.0.0.1:41031/mcp/station-control',
+      'mcp_servers.station-control.http_headers': {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    expect(JSON.stringify(spawnArgs)).not.toContain(token);
+    expect(JSON.stringify(spawnEnv)).not.toContain(token);
+    process.stdout.write(
+      `${JSON.stringify({
+        id: '2',
+        result: {
+          thread: {
+            id: childId,
+            ...(mode === 'fork'
+              ? {
+                  forkedFromId: sourceId,
+                  threadSource: `station-adoption:${input.threadId}`,
+                  turns: [
+                    { id: 'completed-one', status: 'completed', items: [] },
+                  ],
+                }
+              : {}),
+          },
+          model: 'gpt-test',
+          cwd: '/fixture/project',
+          approvalPolicy: 'on-request',
+          sandbox: { type: 'workspaceWrite' },
+        },
+      })}\n`,
+    );
+    await flushIo();
+    const inventory = process.stdin.lines
+      .map(parseLine)
+      .find((line) => line.method === 'mcpServerStatus/list');
+    expect(inventory?.params).toEqual({
+      threadId: childId,
+      serverName: 'station-control',
+      detail: 'toolsAndAuthOnly',
+    });
+    process.stdout.write(
+      `${JSON.stringify({ id: inventory.id, result: { data: [{ name: 'station-control', runtimeStatus: 'connected', tools: {}, toolsError: null }] } })}\n`,
+    );
+    await pending;
+    await adapter.stopSession(input.threadId);
+    expect(revoke).toHaveBeenCalledWith(input.threadId);
+  },
+);
+
+test('cancelled Codex startup revokes the real private credential and a later start gets a fresh incarnation', async () => {
+  const processes: FakeCodexProcess[] = [];
+  const credentials: string[] = [];
+  const adapter = new CodexAdapter({
+    processFactory: () => {
+      const process = new FakeCodexProcess();
+      processes.push(process);
+      return process;
+    },
+    mintStationControlMcpAuth: (threadId) => {
+      const auth = mintStationControlMcpHeaderAuth(41031, threadId);
+      credentials.push(auth.token);
+      return auth;
+    },
+    revokeStationControlMcpAuth: revokeStationControlMcpToken,
+  });
+  const input = {
+    provider: 'codex',
+    threadId: 'private-rotation',
+    cwd: '/fixture/project',
+    agent: {
+      slug: 'agent',
+      toolServers: [
+        {
+          id: 'station-control',
+          transport: 'stdio' as const,
+          command: 'node',
+          args: [builtinStationControlServerPath()],
+        },
+      ],
+    },
+  };
+  const cancelled = adapter.startSession(input);
+  const rejection = expect(cancelled).rejects.toThrow();
+  await flushIo();
+  expect(verifyStationControlMcpToken(credentials[0])).toBeDefined();
+  await adapter.stopSession(input.threadId);
+  await rejection;
+  expect(verifyStationControlMcpToken(credentials[0])).toBeUndefined();
+  const restarted = adapter.startSession(input);
+  await flushIo();
+  expect(credentials[1]).not.toBe(credentials[0]);
+  expect(verifyStationControlMcpToken(credentials[1])).toBeDefined();
+  processes[1]!.stdout.write(
+    `${JSON.stringify({ id: '1', result: { userAgent: 'fixture' } })}\n`,
+  );
+  await flushIo();
+  processes[1]!.stdout.write(
+    `${JSON.stringify({ id: '2', result: { thread: { id: 'restarted' }, model: 'gpt-test' } })}\n`,
+  );
+  await flushIo();
+  const inventory = processes[1]!.stdin.lines
+    .map(parseLine)
+    .find((line) => line.method === 'mcpServerStatus/list');
+  expect(inventory?.params).toEqual({
+    threadId: 'restarted',
+    serverName: 'station-control',
+    detail: 'toolsAndAuthOnly',
+  });
+  processes[1]!.stdout.write(
+    `${JSON.stringify({ id: inventory.id, result: { data: [{ name: 'station-control', runtimeStatus: 'connected', tools: {}, toolsError: null }] } })}\n`,
+  );
+  await restarted;
+  await adapter.stopSession(input.threadId);
+  expect(verifyStationControlMcpToken(credentials[1])).toBeUndefined();
+});

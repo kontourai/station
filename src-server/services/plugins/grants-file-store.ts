@@ -243,7 +243,10 @@ export class GrantsFileStore<T extends Record<string, unknown>> {
     }
     let release: () => void | Promise<void>;
     try {
-      mkdirSync(dirname(this.options.filePath), { recursive: true });
+      mkdirSync(dirname(this.options.filePath), {
+        recursive: true,
+        mode: 0o700,
+      });
       release = await acquireFileMutationLockAsync(
         `${this.options.filePath}.mutation`,
       );
@@ -291,7 +294,10 @@ export class GrantsFileStore<T extends Record<string, unknown>> {
   async withReadLease<R>(effect: (current: T) => Promise<R>): Promise<R> {
     let release: () => void | Promise<void>;
     try {
-      mkdirSync(dirname(this.options.filePath), { recursive: true });
+      mkdirSync(dirname(this.options.filePath), {
+        recursive: true,
+        mode: 0o700,
+      });
       release = await acquireFileMutationLockAsync(
         `${this.options.filePath}.mutation`,
       );

@@ -310,6 +310,17 @@ interface ProjectRouteDeps {
   /** Project-scoped terminal termination; the route supplies the identity. */
   terminalService?: Pick<TerminalService, 'closeForProject'>;
   /**
+   * #3994: a session id the terminal socket issued (a UUID) closes in
+   * TerminalSessions, under the caller's own terminal authority and only
+   * inside this Project. `false` when it is not this Project's session or
+   * the caller may not operate it.
+   */
+  closeScopedTerminal?: (
+    request: Request,
+    projectId: string,
+    terminalId: string,
+  ) => Promise<boolean>;
+  /**
    * archive#3778 — `OperatingStateService.hasBuilderRun`, the ONE Builder-run
    * predicate the Board's nav entry and route guard already consume. Injected
    * rather than re-derived so the Pane catalogue answers the same question the
@@ -1516,10 +1527,31 @@ export function createProjectRoutes(
       assertSafeLayoutPathSegment('project slug', slug);
       assertSafeLayoutPathSegment('terminal id', terminalId);
 
+      let projectId: string;
       try {
-        storageAdapter.getProject(slug);
+        projectId = storageAdapter.getProject(slug).id;
       } catch {
         return c.json({ success: false, error: 'Project not found' }, 404);
+      }
+
+      if (
+        deps.closeScopedTerminal &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+          terminalId,
+        )
+      ) {
+        // Refusal and absence answer alike: an id outside this Project
+        // discloses nothing about the session it names.
+        return (await deps.closeScopedTerminal(
+          c.req.raw,
+          projectId,
+          terminalId,
+        ))
+          ? c.json({
+              success: true,
+              data: { sessionId: terminalId, projectSlug: slug, terminalId },
+            })
+          : c.json({ success: false, error: 'Terminal not found' }, 404);
       }
 
       if (!deps.terminalService) {

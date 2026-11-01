@@ -170,6 +170,35 @@ describe('end-of-turn toasts', () => {
     expect(toastCards()).toHaveLength(0);
   });
 
+  // #4396: every page load replayed recent turn ends and toasted each again.
+  test('a turn already toasted is not toasted again after a reload; a new turn is', () => {
+    startTurn('turn-1');
+    emit({ method: 'turn.completed', turnId: 'turn-1', outputText: 'Done.' });
+    expect(toastCards()).toHaveLength(1);
+    act(() => {
+      toastStore.dismissAll();
+    });
+
+    // Reload: this page's memory and chat state are gone; the event log
+    // replays the same turn into a fresh chat.
+    resetTurnAttentionNotifications({ reload: true });
+    activeChatsStore.removeChat(BG);
+    activeChatsStore.initChat(BG, {
+      agentSlug: 'dev-agent',
+      agentName: 'Dev Agent',
+      title: 'Refactor auth',
+      conversationId: BG,
+      currentSessionId: BG,
+    });
+    startTurn('turn-1');
+    emit({ method: 'turn.completed', turnId: 'turn-1', outputText: 'Done.' });
+    expect(toastCards()).toHaveLength(0);
+
+    startTurn('turn-2');
+    emit({ method: 'turn.completed', turnId: 'turn-2', outputText: 'Again.' });
+    expect(toastCards()).toHaveLength(1);
+  });
+
   test('the foreground chat never toasts its own turn end', () => {
     navigationStore.setActiveChat(BG);
     startTurn('turn-1');

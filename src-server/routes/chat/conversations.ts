@@ -10,6 +10,7 @@ import {
 } from '@kontourai/ferry';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { AppConfig } from '@kontourai/station-contracts/config';
+import type { ConversationContextBoundaryPolicy } from '@kontourai/station-contracts/conversation-context-boundary';
 import { CONVERSATION_INTENT_SUMMARY_MAX_ITEMS } from '@kontourai/station-contracts/conversation-intent-summary';
 import type {
   ConversationListItem,
@@ -412,7 +413,7 @@ interface SessionMessageReader {
     contextBoundaries?: readonly {
       boundaryId: string;
       successorSessionId: string;
-      policy: 'continue-from-history' | 'empty-next-cold-start';
+      policy: ConversationContextBoundaryPolicy;
       priorTranscriptInjected: boolean;
     }[];
   } | null>;
@@ -781,7 +782,7 @@ export function createConversationRoutes(
       contextBoundaries?: readonly {
         boundaryId: string;
         successorSessionId: string;
-        policy: 'continue-from-history' | 'empty-next-cold-start';
+        policy: ConversationContextBoundaryPolicy;
         priorTranscriptInjected: boolean;
       }[];
     } | null,
@@ -2501,6 +2502,7 @@ export function createGlobalConversationRoutes(
       conversationId: string,
       authority: SessionReadAuthority,
     ): Promise<ConversationOpenResolution | null>;
+    isRuntimeConversation?(conversationId: string): boolean;
   },
   getUserId: () => string = () => getCachedUser().alias,
   acknowledgementStore?: ConversationAcknowledgementStore,
@@ -2937,6 +2939,33 @@ export function createGlobalConversationRoutes(
           success: true,
           data: {
             ...metadata,
+            ...(eventStore
+              ? {
+                  forkProvenance: eventStore.readConversationForkProvenance(id),
+                }
+              : {}),
+          },
+        });
+      }
+
+      if (sessionConversationReader.isRuntimeConversation?.(id)) {
+        const resolved =
+          await sessionConversationReader.resolveConversationOpen?.(
+            id,
+            authority,
+          );
+        if (!resolved)
+          return c.json(
+            { success: false, error: 'Conversation not found' },
+            404,
+          );
+        return c.json({
+          success: true,
+          data: {
+            ...resolved.conversation,
+            agentSlug: publicAgentIdFromRuntimeKey(
+              resolved.conversation.agentSlug,
+            ),
             ...(eventStore
               ? {
                   forkProvenance: eventStore.readConversationForkProvenance(id),

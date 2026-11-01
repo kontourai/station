@@ -364,17 +364,54 @@ function hasOwnersForAllPorts(owners, ports) {
  * (station#3754 review). Production callers use it through
  * {@link probeDogfoodHealth}.
  */
+/**
+ * The parent pid of `pid`, or null when it cannot be read. `ps` runs with a
+ * pinned locale; only the number is read.
+ */
+function parentPidOf(pid, deadline, runSync = execFileSync) {
+  try {
+    const output = runSync('ps', ['-o', 'ppid=', '-p', String(pid)], {
+      encoding: 'utf8',
+      env: { ...process.env, LC_ALL: 'C', TZ: 'UTC' },
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: remainingMs(deadline),
+      windowsHide: true,
+    });
+    const parent = Number.parseInt(String(output).trim(), 10);
+    return Number.isInteger(parent) && parent > 0 ? parent : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether `owners` is the recorded process listening alone or, for a
+ * supervised instance's server ports, the recorded supervisor together with
+ * its own core generation: the supervisor holds each listening socket across
+ * generations (it never accepts on it) and the generation it forked serves
+ * it. Any other co-owner, or one whose parent cannot be read, is a mismatch.
+ */
+function ownsListener(owners, expectedPid, supervised, parentOf) {
+  if (!owners.has(expectedPid)) return false;
+  if (owners.size === 1) return true;
+  if (!supervised || owners.size !== 2) return false;
+  const [generation] = [...owners].filter((pid) => pid !== expectedPid);
+  return parentOf(generation) === expectedPid;
+}
+
 export function assertListenerOwnership(
   record,
   deadline,
   observe = observeListeningPidsByPort,
+  parentOf = (pid) => parentPidOf(pid, deadline),
 ) {
+  const supervised = record.supervised === true;
   const expected = [
-    ['api', record.serverPort, record.serverPid],
-    ['terminal', record.serverPort + 1, record.serverPid],
-    ['voice', record.serverPort + 2, record.serverPid],
-    ['consent', record.serverPort + 3, record.serverPid],
-    ['ui', record.uiPort, record.uiPid],
+    ['api', record.serverPort, record.serverPid, supervised],
+    ['terminal', record.serverPort + 1, record.serverPid, supervised],
+    ['voice', record.serverPort + 2, record.serverPid, supervised],
+    ['consent', record.serverPort + 3, record.serverPid, supervised],
+    ['ui', record.uiPort, record.uiPid, false],
   ];
   const listenerObservation = observe(
     expected.map(([, port]) => port),
@@ -387,9 +424,9 @@ export function assertListenerOwnership(
     authoritative = true,
   } = listenerObservation;
   const diagnostic = reason ? `; reason=${reason}` : '';
-  for (const [name, port, expectedPid] of expected) {
+  for (const [name, port, expectedPid, held] of expected) {
     const owners = ownersByPort.get(port) ?? new Set();
-    if (owners.size !== 1 || !owners.has(expectedPid)) {
+    if (!ownsListener(owners, expectedPid, held, parentOf)) {
       throw new Error(
         `${name} listener ownership mismatch (source=${source}${diagnostic})`,
       );

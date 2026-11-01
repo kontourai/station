@@ -632,6 +632,17 @@ export function usageReceiptsForEventRow(
   const unpricedTokenReceipt: UsageReceipt = {
     id: tokenId,
     ...common,
+    ...(usage.servingRoute
+      ? {
+          route: {
+            ...usage.servingRoute,
+            provenance: { ...usage.servingRoute.provenance },
+          },
+        }
+      : {}),
+    reasoningTokens: isReportedAmount(usage.reasoningTokens)
+      ? usage.reasoningTokens
+      : undefined,
     inputTokens: isReportedAmount(usage.promptTokens)
       ? usage.promptTokens
       : undefined,
@@ -690,5 +701,6 @@ function hasTokenMeasurements(
     event.completionTokens,
     event.cacheReadTokens,
     event.cacheWriteTokens,
+    event.reasoningTokens,
   ].some(isReportedAmount);
 }

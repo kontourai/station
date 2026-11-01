@@ -1,0 +1,7 @@
+{
+  "revision": "c067ba63cc1d53637e6e520ae9339211d95822fb",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed shared composer presentation and merged mobile Inbox, reset eligibility, and start-draft behavior against ChatInputArea, StartComposer, ComposerChoice and focused tests; live device and gallery verification remain separate.","inputs":["docs/design/chat-composer.md","src-ui/src/components/ComposerChoice.tsx","src-ui/src/components/ComposerChoice.css"]}
+  ]
+}

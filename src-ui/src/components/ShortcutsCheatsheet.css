@@ -1,13 +1,5 @@
-/* Width override needs to beat the bare `.modal-content` rule, hence the
-   compound selector. */
-.modal-content.shortcuts-cheatsheet {
-  max-width: 600px;
-}
-
-.shortcuts-cheatsheet__body {
-  max-height: 70vh;
-  overflow: auto;
-}
+/* The panel, its header and its scrolling body are `Dialog`'s
+   (`.station-dialog*` in index.css); this sheet styles only its rows. */
 
 .shortcuts-cheatsheet__group {
   margin-bottom: 24px;
@@ -34,8 +26,10 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
   padding: 8px 12px;
-  background: var(--bg-secondary);
+  /* The dialog panel is --k-panel; rows sit one step off it. */
+  background: var(--k-bg);
   border-radius: 4px;
 }
 

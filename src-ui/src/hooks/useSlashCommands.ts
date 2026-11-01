@@ -1,8 +1,10 @@
 import type { Skill } from '@kontourai/station-contracts/catalog';
+import { resolveEngineCapabilityMatrix } from '@kontourai/station-contracts/engine-capability-matrix';
 import type { AgentMcpPrompt } from '@kontourai/station-contracts/mcp-prompts';
 import { resolveSkillCommandName } from '@kontourai/station-contracts/skill-command';
 import {
   useAgentMcpPromptsQuery,
+  useFeaturePreviewsQuery,
   useProviderCommandsQuery,
   useSkillsQuery,
 } from '@kontourai/station-sdk';
@@ -97,6 +99,11 @@ export function useSlashCommands(
 ) {
   const agents = useAgents();
   const { data: skills } = useSkillsQuery();
+  const { data: previews } = useFeaturePreviewsQuery();
+  const compactionPreview =
+    previews?.some(
+      (preview) => preview.id === 'context-compaction' && preview.enabled,
+    ) === true;
 
   const currentAgent = agentSlug
     ? agents.find((a) => a.slug === agentSlug)
@@ -108,8 +115,19 @@ export function useSlashCommands(
 
   // #3284: prompts from the MCP servers in this agent's tool view. A Station
   // agent only — an ACP engine owns its own commands (above).
+  //
+  // #4405 (A34): and only an Agent the Station runtime actually runs. An
+  // engine's default identity (`codex`, `claude`: `engineDefault`) and an
+  // Agent bound to an engine connection are not in the runtime's agent set,
+  // so the route answers 404 on every chat load for them — routine console
+  // noise for a list that cannot exist.
+  const runsOnStationRuntime =
+    !!currentAgent &&
+    !isAcp &&
+    currentAgent.engineDefault !== true &&
+    !currentAgent.execution?.agentConnectionId;
   const { data: mcpPromptListing } = useAgentMcpPromptsQuery(
-    isAcp ? null : agentSlug,
+    runsOnStationRuntime ? agentSlug : null,
     { staleTime: 60_000 },
   );
 
@@ -150,6 +168,23 @@ export function useSlashCommands(
     };
 
     const builtinCore: SlashCommand[] = [
+      ...(compactionPreview &&
+      currentAgent &&
+      resolveEngineCapabilityMatrix(
+        currentAgent.execution?.agentConnectionId ??
+          (currentAgent.engineConnectionType ? 'external' : undefined),
+        {
+          engineId: currentAgent.engineId,
+          type: currentAgent.engineConnectionType,
+        },
+      ).durability.compaction.owner === 'station'
+        ? [
+            {
+              cmd: '/compact',
+              description: 'Retain a bounded model-generated context summary',
+            },
+          ]
+        : []),
       {
         cmd: '/commands',
         aliases: ['/prompts'],
@@ -307,6 +342,7 @@ export function useSlashCommands(
     return mergeSlashCommandSources(groups, true);
   }, [
     agentSlug,
+    compactionPreview,
     acpCommands,
     availableModels,
     currentAgent,

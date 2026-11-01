@@ -19,7 +19,10 @@ import {
   isTurnInFlight,
 } from '../contexts/active-chats-state';
 import { activeChatsStore } from '../contexts/active-chats-store';
-import { conversationCanMutate } from '../contexts/conversation-open-policy';
+import {
+  conversationCanMutate,
+  conversationOpenPhase,
+} from '../contexts/conversation-open-policy';
 import type {
   HeldOutboundIntent,
   OutboundDispatchTurn,
@@ -309,13 +312,15 @@ export function useOutboundQueueFlush(apiBase: string): void {
               reconcileRetryDelayMs.current = 0;
             }
           }
-          // A chat with a turn running is not sent to: its send would only be
-          // deferred (the end of the turn starts the next pass).
+          // A known busy conversation can accept a durable inbox handoff.
+          // A busy chat without a conversation still waits for its first turn.
           const blockedSessionIds = new Set(
             Object.entries(activeChatsStore.getSnapshot())
               .filter(
                 ([, chat]) =>
-                  !conversationCanMutate(chat) || isTurnInFlight(chat),
+                  (!conversationCanMutate(chat) &&
+                    conversationOpenPhase(chat) !== 'busy') ||
+                  (isTurnInFlight(chat) && !chat.conversationId),
               )
               .map(([sessionId]) => sessionId),
           );
@@ -323,10 +328,20 @@ export function useOutboundQueueFlush(apiBase: string): void {
             async (turn, claim) => {
               if (!current()) return { kind: 'deferred' as const };
               const chat = activeChatsStore.getSnapshot()[turn.sessionId];
-              if (chat && !conversationCanMutate(chat)) {
+              if (
+                chat &&
+                !conversationCanMutate(chat) &&
+                conversationOpenPhase(chat) !== 'busy'
+              ) {
                 return {
                   kind: 'deferred' as const,
                   reason: 'Conversation open state is not currently mutable.',
+                };
+              }
+              if (chat && isTurnInFlight(chat) && !chat.conversationId) {
+                return {
+                  kind: 'deferred' as const,
+                  reason: 'Waiting for the conversation identity.',
                 };
               }
               const result = await sendMessage(

@@ -381,12 +381,20 @@ agent instructions and qualification policy changes require an owner handoff.
 A separate clean publishing job validates the patch and opens one normal PR;
 the agent receives no GitHub publishing credential. The publisher uses the
 dedicated Station automation-app credential with repository-scoped contents/PR permissions
-so its PR triggers ordinary CI. Required checks and review remain authoritative.
+so its PR triggers ordinary CI. The publisher adds no autoland label; landing
+needs separate operator intent. Required checks and review remain authoritative.
 CI uses repository variable `STATION_AUTOMATION_APP_ID` and secret
 `STATION_AUTOMATION_APP_PRIVATE_KEY`; the existing app installation is scoped
 to Station and must remain off ruleset bypass lists. The model defaults to `gpt-6-sol`; `QUALIFICATION_REPAIR_MODEL` can select the
 owner-approved alternative. Missing agent/app credentials surface as a failed
 attempt rather than a successful repair.
+
+Station's separately configured [isolated repair preview](agent-efficiency.md#run-an-isolated-github-repair)
+can observe the same workflow without an AI key in CI. It binds a canonical Task,
+immutable source/result and explicit operator review, then consumes a separate
+App publication grant for a draft PR. It does not change
+`QUALIFICATION_REPAIR_AGENT`, inherit the CI issue's authority, or merge anything.
+Unknown effects remain fenced until explicit operator followup/resolution.
 
 Treat startup, builds, authentication and data-integrity failures as immediate
 integration incidents. The owner can set repository variable

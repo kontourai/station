@@ -266,7 +266,17 @@ const COMPOSITE_BOOLEAN_FIELDS: Readonly<Record<string, readonly string[]>> = {
     'bufferedDelivery',
     'autoFloatAgentBrowserSessions',
   ],
-  inboxSections: ['snoozed', 'earlier'],
+  inboxSections: [
+    'snoozed',
+    'earlier',
+    'needsYou',
+    'open',
+    'running',
+    'idle',
+    'settled',
+    'drafts',
+    'external',
+  ],
   sidebarSections: [
     'openChatsCollapsed',
     'openChatsHidden',

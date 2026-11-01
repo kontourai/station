@@ -38,6 +38,48 @@ usage; do not sum usage across pages. `station group member-output` exposes the
 same cursor as `--after-code-unit`, and the Station Control tool accepts
 `afterCodeUnit`.
 
+## Terminal sessions
+
+`TerminalSessionStore` (from `@kontourai/station-sdk` and
+`@kontourai/station-sdk/client`) operates every terminal on one Station over a
+single multiplexed socket on the API listener, so a proxy path prefix, a tailnet
+name and a native shell all work. Create one per Station with `{apiBase}`;
+optional `requestScope` pins the host authority, `resolveCredential` captures a
+credential owner (otherwise the installed SDK resolver is used, including a
+native shell's host-owned transport), and `requestTicket`, `createSocket` and
+`scheduleFrame` replace the transport for tests.
+
+- `open(target, {cols, rows, launch?, legacyTerminalId?})` asks the server for a
+  new session in `target` (`{projectId, bindingKey}`). `launch` names a
+  server-resolved program (`{kind: 'shell'}` or `{kind: 'agent', connectionId,
+  mode}`); no executable, argument or directory is sent. `legacyTerminalId`
+  imports a pre-socket Coding terminal's owned history once.
+- `attach(target, terminalId)` views an existing session; repeated calls share
+  one view until it is detached.
+- `list(target)` returns the binding's session records, oldest first.
+- `failure`/`restart()` expose and clear a refusal that stopped every session;
+  `dispose()` ends the store.
+
+Both return a `TerminalSession`, the narrow interface a renderer consumes:
+`terminalId`, `state` (`connecting`, `replaying`, `ready`, `reconnecting`,
+`failed`, `detached`), `status`, `readOnly`, `error`; `subscribe({output,
+reset, change})`, `write(data)`, `resize(cols, rows)`, `cwd()`, `close()` and
+`detach()`. A new subscriber first receives the retained output (256 KiB per
+session by default), then live output; `reset` means earlier output is gone.
+Input is coalesced per animation frame and held until replay is acknowledged;
+resize is latest-wins. After a dropped socket the store reconnects with backoff
+(sooner on `online` or when the page becomes visible), fetches a new ticket and
+resumes each session from its last applied sequence. Input already sent is
+never resent, and an `open` whose acknowledgement was lost fails instead of
+starting a second shell. Errors are `TerminalSessionError` with a `code`:
+`unsupported-host` (the host lacks the ticket route; update it), `refused`,
+`credential-unavailable`, `raw-egress-unavailable` (a browser broker route),
+`pty-unavailable` (the host's PTY backend is missing; its `message` is the
+server's reason), `connection-lost` and `protocol`. A refused ticket
+(`refused`, `credential-unavailable`) keeps the host's response as `cause`, a
+`StationHttpError` with its status, code and details, and uses its message. See the
+[socket protocol](api.md#terminal-socket-operator-transport).
+
 ## Terminal output sessions
 
 `TerminalOutputSession` from `@kontourai/station-sdk/client` observes an existing
@@ -45,13 +87,14 @@ terminal through the Station API listener. Pass its `apiBase`, `projectId`,
 `bindingKey`, UUID `terminalId`, a `resolveCredential` callback returning a
 `ClientCredential`, and `onOutput`/`onReset` callbacks. Call `connect()` and
 `dispose()` to own the connection lifetime. An optional `requestScope` pins the
-selected host authority; broker routes and credential-less native transports
-are refused. Both the HTTP probe and socket require a terminal-operate
-credential; output-only describes the commands this client sends, not an
-observe-scope credential.
+selected host authority; broker routes are refused. A native shell's host
+transport mints the socket ticket, so the renderer never holds its bearer. The
+ticket mint requires `terminal:observe` or `terminal:operate`.
 
-An authenticated HTTP probe distinguishes an older host's 404 and reports
-`unsupported-host`, suggesting a host update before any socket is attempted.
+The authenticated ticket mint (`POST /api/terminal/tickets`) distinguishes an
+older host's 404 and reports `unsupported-host`, suggesting a host update before
+any socket is attempted. Its single-use ticket admits the socket before the
+upgrade; no credential frame is sent.
 After attachment, the SDK also requires the server's advertised, enforced
 128-frame outstanding output bound. Hosts without it return `unsupported-host`
 and need an update; older clients can ignore the additive field.
@@ -67,10 +110,8 @@ Callbacks receive an abort
 signal for disposal or failure. Rejected credentials, expired authority and
 protocol errors settle `connect()` and are reported through `onError`.
 
-This read-only client sends no shell input or terminal lifecycle commands. It
-does not replace the Coding terminal view, choose an emulator, or qualify paired
-devices, native transports, provider execution or installed reconnection. Those
-remain part of #3994.
+This read-only client sends no shell input or terminal lifecycle commands; use
+`TerminalSessionStore` to operate a terminal.
 
 ## Local speech and media tools
 
@@ -2235,6 +2276,18 @@ Imperative API calls — use in event handlers, slash commands, or anywhere hook
 
 ### Turn steering and acknowledgement retries
 
+`steerChildWork(apiBase, { threadId, childId, turnId, input, clientInputId })`
+uses a distinct child-only command; `getChildWorkInstructions` reads its
+separately paged Station-attributed history. Both require the host's
+`childWorkSteering` capability. React clients can use
+`useSteerChildWorkMutation` and `useChildWorkInstructionsQuery`. Retain the
+same target, text and key when checking an uncertain delivery; a confirmed
+receipt does not send it again. The mutation does not retry automatically. The
+host capability establishes the API surface, not permission or provider support:
+read and operate authority are checked separately, and Codex v2 can refuse direct
+input even when v1 accepts it. An older host rejects the distinct command rather
+than steering the parent.
+
 `steerOrchestrationTurn({ threadId, text, turnId?, clientInputId?, apiBase? })`
 sends input to an open turn. With an ID it uses the protected `steerTurnOnce`
 wire command, which older servers reject before invocation. Without an ID it
@@ -2874,7 +2927,14 @@ exact Station/local/portable Project scope, members and invitations. Commands
 enable sharing, invite or revoke invitations, change a member, or transfer
 ownership. Capture the returned scope and member revision for writes; do not
 reconstruct authority from a slug or email. Enabling requires the expected local
-Project ID and current Station operator authority.
+Project ID and current Station operator authority. For a paired Device with an
+operator passkey session, `changeProjectAccess` returns
+`{ kind: 'step-up-required', transaction }` instead (#4306). Nothing has changed
+until the passkey confirmation on the consent origin, whose HTTPS review URL must
+share the API base's host name. `getProjectSharingEnablement` reports how the
+caller may enable (`direct`, `operator-passkey`, `operator-sign-in` or
+`unavailable`), and `getProjectSharingStepUpStatus` reads the pending review.
+A host older than #4306 fails the enablement read.
 
 When the read is refused with 403 `project_access_forbidden`,
 `projectAccessRefusal(error)` returns the server's
@@ -2886,7 +2946,8 @@ whether the Project is shared). It returns `undefined` for any other error,
 including an older Station that sends no details.
 
 `@kontourai/station-sdk/project-access` also exports `useProjectAccess(slug,
-requestScope)`. Its query keys include the selected Station and authority, and
+requestScope)` and `useProjectSharingEnablement(slug, requestScope, enabled)`.
+Their query keys include the selected Station and authority, and
 its mutations capture that scope before asynchronous work. Do not persist
 administrative projections or invitation tokens in application caches. Project
 administration grants no Station settings, device or compute authority.
@@ -2927,6 +2988,18 @@ Station chooses provider/callback/return parameters from operator configuration;
 clients cannot supply arbitrary OAuth parameters. See the [deployment guide](../guides/deployment-authentication.md#optional-oidc-choices-with-local-accounts)
 for configuration, callback verification and the independent Device continuation.
 
+A descriptor may also declare `passkey-*` operations (see
+[member passkeys](../guides/deployment-authentication.md#member-passkeys-feature-preview)).
+The `passkey-sign-in`, `passkey-register`, `passkey-add` and `passkey-recover`
+ceremonies use two `runAccountOperation` calls to the same endpoint:
+`{ step: 'options' }` returns `{ options }` for the browser's WebAuthn call,
+then `{ step: 'verify', response }` sends its result. Registration also needs
+`username` in the options body and the invitation as the fourth argument on
+both calls; recovery includes `token` in both bodies. Keep the cookies the
+first call sets; they bind the second call to its challenge. The management
+operations are single calls: `passkey-list` accepts `{}`, and `passkey-remove`
+accepts `{ id }`.
+
 The same account-authentication entry exports `getProjectInvitationPreview(apiBase,
 token)`. It uses a POST body, validates the minimal Project/inviter/role projection,
 and rejects incompatible role/action combinations. Keep the proof out of query
@@ -2944,6 +3017,15 @@ Station operators. Actions disable/enable sign-in, revoke sessions or create a
 one-time recovery link. Capture the selected Station request scope, require
 explicit confirmation and keep recovery links out of persisted caches. External
 providers return a guidance projection instead of local account controls.
+
+The same subpath exports `getAccountSharingSetting(apiBase, options)` and
+`applyAccountSharingSetting(apiBase, choice, options)` for the operator-only
+[Project sharing setting](../guides/deployment-authentication.md#turn-it-on-from-settings).
+The read reports who decides (the stored setting or the deployment), what is
+active, any unresolved pending choice, and the sign-in origins the operator may
+choose. A changed apply returns a transaction and separate review URL. The
+operator confirms there; read the setting again for the restart outcome. Older
+servers can return a direct `restarting` result.
 
 `@kontourai/station-sdk/authority-observation` exports
 `getAuthorityObservation(apiBase, options)` for the closed, credential-bound
@@ -6636,3 +6718,44 @@ management caller. It returns `AutomationDeliveryPage` with `deliveries` and
 preserves the preview refusal's code and Settings link; a 404 from an older
 host reports the unsupported capability. No mutation or agent invocation is
 performed. See [Automation intake](../design/automations.md#observe-only-github-preview).
+
+### Personal conversation resolution and turn directory
+
+`getConversationWorkState` and `setConversationWorkState` in the SDK client
+read or change explicit personal settlement under the `conversation-resolution`
+Feature Preview. State is separate from turn completion and dismissal. Reads
+return `null` on a 404 (unsupported host or disabled preview); mutations preserve
+a refusal with an update/preview remedy. Requests accept `ClientRequestOptions`
+for authority and cancellation.
+
+`getConversationTurnDirectory` reads paginated, indexed turn metadata from the
+existing Session digest under `session-cli-reads`; it returns `null` when that
+host route is unavailable. It fetches no transcript bodies. The UI's history
+owner loads bounded body pages only after a turn is selected.
+
+## Reviewed Project context and learning
+
+`@kontourai/station-sdk/client/project-working-configuration` exposes bounded
+repository discovery and exact-revision apply. Pass the current host request
+scope and immutable Project identity. A 404/501 is unavailable/update guidance;
+a preview refusal does not enable the feature. Apply saves defaults only.
+
+`@kontourai/station-sdk/client/learning-review` exports
+`fetchProjectLearning`, `fetchProjectLearningDetail`, `proposeProjectLearning`
+and `applyProjectLearningIntent`. Every options object carries `requestScope`
+and `projectId`; the latter is a currentness precondition. The response parser
+keeps stage gaps distinct and requires exact receipt references.
+
+`@kontourai/station-sdk/learning-review-query` exposes the corresponding
+Project index, detail, proposal and intent hooks. Query identity includes host
+base, authority key, immutable Project, slug, learning id and comparison id.
+Changed authority or a reused slug cannot display or mutate an older Project's
+cached learning. Classified parent/evidence/source read refusal clears protected
+scope queries, closes an open inspector or copied proposal, and requires a fresh
+authoritative read before reopening. An initial unsupported-host read preserves
+its update guidance. Mutations route to the Knowledge Kit owner and retain its
+revision conflict/unsupported/unavailable result. A transport success does not
+establish activation or an observed effect.
+
+See [bounded agent work](../guides/agent-efficiency.md) for the mounted operator
+flow and the separate setup, provider and release boundaries.

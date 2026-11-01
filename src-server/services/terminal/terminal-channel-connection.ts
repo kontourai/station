@@ -1,6 +1,7 @@
 import {
   decodeTerminalFrame,
   encodeTerminalFrame,
+  TERMINAL_CLOSE,
   TERMINAL_INPUT,
   TERMINAL_MAX_OUTSTANDING_OUTPUT_FRAMES,
   TERMINAL_MIN_WINDOW_BYTES,
@@ -9,6 +10,7 @@ import {
 } from '@kontourai/station-contracts/terminal-transport';
 import { WebSocket } from 'ws';
 import { z } from 'zod/v3';
+import { isPtyUnavailableError } from '../../domain/pty-adapter.js';
 import { createLogger } from '../../utils/logger.js';
 import {
   TERMINAL_LINK_PROTOCOLS,
@@ -24,6 +26,33 @@ const OBSERVER_REPORTS =
   /^(?:\x1b\[[IO]|\x1b\[<\d{1,5};\d{1,5};\d{1,5}[Mm]|\x1b\[\d{1,5};\d{1,5};\d{1,5}M|\x1b\[M[\s\S]{3})+$/;
 
 const logger = createLogger({ name: 'terminal-channel' });
+
+/**
+ * Close with a code, then terminate a peer that ignores the close handshake,
+ * so a refused or expired socket cannot keep holding its slot.
+ */
+export function closeTerminalSocket(
+  ws: WebSocket,
+  code: number,
+  reason: string,
+  graceMs = 1000,
+): void {
+  if (ws.readyState === WebSocket.CLOSED) return;
+  ws.close(code, reason);
+  const terminate = setTimeout(() => ws.terminate(), graceMs);
+  terminate.unref?.();
+  ws.once('close', () => clearTimeout(terminate));
+}
+const launchProfile = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('shell') }).strict(),
+  z
+    .object({
+      kind: z.literal('agent'),
+      connectionId: z.string().min(1).max(128),
+      mode: z.string().min(1).max(128),
+    })
+    .strict(),
+]);
 const channelId = z.number().int().min(1).max(0xffffffff);
 const seq = z.number().int().nonnegative().safe();
 const scope = {
@@ -54,6 +83,13 @@ const commandSchema = z.discriminatedUnion('type', [
       ...attachment,
       fromSeq: z.literal(0).default(0),
       ...dimensions,
+      // A server-resolved program by name; never an executable or cwd.
+      launch: launchProfile.optional(),
+      // Imports this Project's provenance-bound legacy history once.
+      legacyTerminalId: z
+        .string()
+        .regex(/^[A-Za-z0-9_-]{1,128}$/)
+        .optional(),
     })
     .strict(),
   z
@@ -70,6 +106,7 @@ const commandSchema = z.discriminatedUnion('type', [
   z
     .object({ type: z.literal('close'), ...request, channel: channelId })
     .strict(),
+  z.object({ type: z.literal('cwd'), ...request, channel: channelId }).strict(),
   z
     .object({
       type: z.literal('resize'),
@@ -165,7 +202,11 @@ export class TerminalChannelConnection<Principal> {
         }
         const size = this.size(work);
         if (this.queue.length >= 128 || this.queuedBytes + size > 256 * 1024) {
-          this.ws.close(4429, 'terminal_command_capacity');
+          closeTerminalSocket(
+            this.ws,
+            TERMINAL_CLOSE.capacity,
+            'terminal_command_capacity',
+          );
           return;
         }
         this.queue.push(work);
@@ -202,11 +243,17 @@ export class TerminalChannelConnection<Principal> {
         try {
           await this.execute(work);
         } catch (error) {
-          if (!(error instanceof TerminalSessionRefusal))
+          const unavailable = isPtyUnavailableError(error);
+          if (!(error instanceof TerminalSessionRefusal) && !unavailable)
             logger.warn('Terminal command failed', { error });
           this.send({
             type: 'error',
-            code: 'terminal-refused',
+            // A missing PTY backend is a host condition with its own
+            // recovery (the command executor), not an access refusal.
+            code: unavailable ? 'pty-unavailable' : 'terminal-refused',
+            ...(unavailable && {
+              message: (error as Error).message.slice(0, 500),
+            }),
             ...('channel' in work && { channel: work.channel }),
             ...('requestId' in work && { requestId: work.requestId }),
           });
@@ -240,7 +287,14 @@ export class TerminalChannelConnection<Principal> {
       };
       const record =
         work.type === 'open'
-          ? await this.sessions.open(this.principal, targetScope, work)
+          ? await this.sessions.open(this.principal, targetScope, {
+              cols: work.cols,
+              rows: work.rows,
+              ...(work.launch && { launch: work.launch }),
+              ...(work.legacyTerminalId && {
+                legacyTerminalId: work.legacyTerminalId,
+              }),
+            })
           : await this.sessions.read(
               this.principal,
               targetScope,
@@ -312,6 +366,20 @@ export class TerminalChannelConnection<Principal> {
       );
       channel.inputSeq = work.seq;
       this.send({ type: 'input-ack', channel: work.channel, seq: work.seq });
+      return;
+    }
+    if (work.type === 'cwd') {
+      const cwd = await this.sessions.cwd(
+        this.principal,
+        channel.scope,
+        channel.terminalId,
+      );
+      this.send({
+        type: 'cwd',
+        requestId: work.requestId,
+        channel: work.channel,
+        cwd,
+      });
       return;
     }
     if (work.type === 'resize')
@@ -476,7 +544,11 @@ export class TerminalChannelConnection<Principal> {
     )
       return false;
     if (this.ws.bufferedAmount > 32 * TERMINAL_WINDOW_BYTES + 256 * 1024) {
-      this.ws.close(4429, 'terminal_output_capacity');
+      closeTerminalSocket(
+        this.ws,
+        TERMINAL_CLOSE.capacity,
+        'terminal_output_capacity',
+      );
       return false;
     }
     this.ws.send(value instanceof Uint8Array ? value : JSON.stringify(value));

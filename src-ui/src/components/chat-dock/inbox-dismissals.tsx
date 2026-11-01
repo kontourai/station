@@ -1,4 +1,14 @@
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import type { ReactNode } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
+import { useApiBase } from '../../contexts/ApiBaseContext';
+import { toastStore } from '../../contexts/ToastContext';
+import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
 import {
   dismissInboxItem,
   hasInboxDismissal,
@@ -10,7 +20,6 @@ import {
 } from '../../utils/inbox-dismissal-store';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 import type { WorkFactsById } from '../../views/home/work-facts';
-import { Button } from '../Button';
 import { useHeldLifecycles } from './useHeldLifecycles';
 
 export function useInboxDismissals(
@@ -54,12 +63,14 @@ export function useInboxDismissActions(
   items: HomeWorkItem[],
   facts?: WorkFactsById,
 ) {
-  const [last, setLast] = useState<HomeWorkItem | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // A toast can outlive the render where a local draft gained a durable ID.
+  const currentItems = useRef(items);
+  currentItems.current = items;
   const restore = (item: HomeWorkItem) => {
     try {
       const current =
-        items.find(
+        currentItems.current.find(
           (candidate) =>
             candidate.environmentId === item.environmentId &&
             (candidate.id === item.id ||
@@ -69,7 +80,9 @@ export function useInboxDismissActions(
               )),
         ) ?? item;
       restoreInboxItems([current]);
-      setLast(null);
+      if (lastDismissToast) toastStore.dismiss(lastDismissToast);
+      lastDismissToast = null;
+      undoLastDismiss = null;
       setError(null);
     } catch {
       setError('Could not restore this conversation. Try again.');
@@ -79,23 +92,52 @@ export function useInboxDismissActions(
     dismiss: (item: HomeWorkItem) => {
       try {
         dismissInboxItem(item, facts?.get(item.id));
-        setLast(item);
+        if (lastDismissToast) toastStore.dismiss(lastDismissToast);
+        undoLastDismiss = () => restore(item);
         setError(null);
+        lastDismissToast = toastStore.show(
+          'Conversation dismissed',
+          undefined,
+          8000,
+          [{ label: 'Undo', onClick: () => restore(item) }],
+        );
       } catch {
         setError('Could not save dismissal. Try again.');
       }
     },
     restore,
-    notice:
-      error || last ? (
-        <div className="chat-dock-inbox__dismiss-notice">
-          <span role="status">{error ?? 'Conversation dismissed'}</span>
-          {!error && last && (
-            <Button variant="ghost" onClick={() => restore(last)}>
-              Undo
-            </Button>
-          )}
-        </div>
-      ) : null,
+    notice: error ? (
+      <div className="chat-dock-inbox__dismiss-notice">
+        <span role="status">{error}</span>
+      </div>
+    ) : null,
   };
+}
+
+let lastDismissToast: string | null = null;
+let undoLastDismiss: (() => void) | null = null;
+/** One registered Undo command for the latest dismissal across inbox hosts. */
+export function InboxDismissUndo({ children }: { children: ReactNode }) {
+  const { apiBase } = useApiBase();
+  useEffect(() => {
+    void apiBase;
+    undoLastDismiss = null;
+  }, [apiBase]);
+  useKeyboardShortcut(
+    'inbox.undoDismiss',
+    'z',
+    ['cmd'],
+    'Undo inbox dismissal',
+    () => {
+      if (
+        document.activeElement?.closest(
+          'input, textarea, select, [contenteditable], [role="textbox"], .xterm',
+        )
+      )
+        return false;
+      if (!undoLastDismiss) return false;
+      undoLastDismiss();
+    },
+  );
+  return children;
 }

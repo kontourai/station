@@ -1,0 +1,9 @@
+{
+  "revision": "7f6a8ba85ef062fa8834bbd60936913015cafe36",
+
+  "notes": [
+    {"path":"docs/reference/env-vars.md","note":"Checked against the supervisor-link change since the last note: it only replaces a cast with the protocol's isWorkloadEventMessage guard for workload events. No environment variable is added or read differently; STATION_SUPERVISOR_IPC/GENERATION rows remain accurate, and terminal children still do not inherit them (childProcessEnvironment).","inputs":["docs/reference/env-vars.md","src-server/runtime/bootstrap/supervisor-link.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Checked against the regenerated station-docs-content.ts: it is the generator's output for this PR's edits to module-map, deployment and testing (130 topics, npm run docs:mcp:generate). The shipping mechanism, topic count and credential-free MCP surface described here are unchanged.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

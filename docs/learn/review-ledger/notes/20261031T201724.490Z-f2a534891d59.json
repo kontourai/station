@@ -1,0 +1,7 @@
+{
+  "revision": "292bb328da15806ce17991a164555e411ee3c2f2",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"Reviewed script verification, evidence and lint instructions against testing guide change; routed requirements remain accurate.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

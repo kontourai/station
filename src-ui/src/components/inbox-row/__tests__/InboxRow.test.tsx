@@ -375,7 +375,7 @@ describe('a reason is readable in full on every surface', () => {
     expect(screen.getByTestId('inbox-row-answerability').textContent).toBe(
       row.item.unanswerableNotice,
     );
-    // Off the visible line (the word is "Elsewhere"; the basis is the
+    // Off the visible line (the word is "Read only"; the basis is the
     // hover card's), still the row's description.
     expect(screen.getByTestId('inbox-row-status').className).not.toContain(
       'inbox-row__status--reason',

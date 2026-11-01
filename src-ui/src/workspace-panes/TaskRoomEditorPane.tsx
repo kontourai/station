@@ -801,6 +801,7 @@ export function TaskRoomEditorPane({
         <div className="task-room-brief-rendered">
           {text ? (
             <LazyMarkdown
+              softBreaks={false}
               loadingProjection={<SkeletonBlock label="Loading brief" />}
             >
               {text}

@@ -22,6 +22,7 @@ import type {
   SessionTransitionSource,
 } from './session-lifecycle.js';
 import type { StationControlRefusalView } from './station-control-refusal.js';
+import type { PricingSnapshot, UsageReceipt } from './usage-rollup.js';
 import type {
   WorkflowNextActionStatus,
   WorkflowPhase,
@@ -969,6 +970,10 @@ export interface RuntimeWarningEvent extends CanonicalRuntimeEventBase {
 
 export interface TokenUsageUpdatedEvent extends CanonicalRuntimeEventBase {
   method: 'token-usage.updated';
+  /** Separate reported reasoning tokens; tariff rules decide whether output already includes them. */
+  reasoningTokens?: number;
+  /** Contemporaneous route observation, never reconstructed from the current connection. */
+  servingRoute?: UsageReceipt['route'];
   promptTokens?: number;
   completionTokens?: number;
   totalTokens?: number;
@@ -990,19 +995,7 @@ export interface TokenUsageUpdatedEvent extends CanonicalRuntimeEventBase {
    * must never fill it later from a live catalog: this is the historical
    * estimate's immutable provenance.
    */
-  pricingSnapshot?: {
-    id: string;
-    capturedAt: string;
-    /** Catalog authority captured at ingestion, never recovered on read. */
-    source?: string;
-    currency: string;
-    provider: string;
-    model: string;
-    inputPerMillion?: number;
-    outputPerMillion?: number;
-    cacheReadPerMillion?: number;
-    cacheWritePerMillion?: number;
-  };
+  pricingSnapshot?: PricingSnapshot;
   /**
    * Cost in USD **as the provider reported it** (station#1299 item 4).
    *

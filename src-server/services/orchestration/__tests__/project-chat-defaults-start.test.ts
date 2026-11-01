@@ -233,6 +233,12 @@ describe('Project new-chat defaults at session start', () => {
     // Station default only: nothing recorded yet.
     expect((await h.start({ modelId: 'model-a' })).status).toBe('accepted');
     expect(h.adapter.lastStartPosture()).toBe('ask');
+    await vi.waitFor(() => {
+      expect(h.chatDefaults.lastUsed(h.project, USER)).toMatchObject({
+        approval: { approvalMode: 'ask' },
+        models: [expect.objectContaining({ modelId: 'model-a' })],
+      });
+    });
     // A chat the person started in Auto (the composer's carried pick).
     await h.start({ modelId: 'model-b', approvalMode: 'auto' });
     await vi.waitFor(() => {

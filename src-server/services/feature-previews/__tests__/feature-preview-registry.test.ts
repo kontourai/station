@@ -1,4 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -74,6 +80,10 @@ describe('FeaturePreviewRegistry', () => {
 
     expect(registry.list()).toEqual([
       expect.objectContaining({ id: 'task-review', enabled: false }),
+      expect.objectContaining({
+        id: 'continue-interrupted-turn',
+        enabled: false,
+      }),
       expect.objectContaining({ id: 'task-collaboration', enabled: false }),
       expect.objectContaining({ id: 'chat-apps', enabled: false }),
       expect.objectContaining({ id: 'visual-skills', enabled: false }),
@@ -85,6 +95,10 @@ describe('FeaturePreviewRegistry', () => {
     const probe = bindProbe(registry);
     expect(registry.list()).toEqual([
       expect.objectContaining({ id: 'task-review', enabled: false }),
+      expect.objectContaining({
+        id: 'continue-interrupted-turn',
+        enabled: false,
+      }),
       expect.objectContaining({ id: 'task-collaboration', enabled: false }),
       expect.objectContaining({ id: 'chat-apps', enabled: false }),
       expect.objectContaining({ id: 'visual-skills', enabled: false }),
@@ -105,6 +119,8 @@ describe('FeaturePreviewRegistry', () => {
 
     await first.setEnabled('probe', true);
     expect(selectProbe(firstProbe)).toBe('probed');
+    if (process.platform !== 'win32')
+      expect(statSync(join(directory, 'config')).mode & 0o077).toBe(0);
 
     // A new registry is the restart boundary: it must read the durable state,
     // then the same consuming path (not a hand-built response) changes.
@@ -123,6 +139,10 @@ describe('FeaturePreviewRegistry', () => {
 
     expect(registry.list()).toEqual([
       expect.objectContaining({ id: 'task-review', enabled: false }),
+      expect.objectContaining({
+        id: 'continue-interrupted-turn',
+        enabled: false,
+      }),
       expect.objectContaining({ id: 'task-collaboration', enabled: false }),
       expect.objectContaining({ id: 'chat-apps', enabled: false }),
       expect.objectContaining({ id: 'visual-skills', enabled: false }),

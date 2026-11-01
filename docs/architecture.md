@@ -131,14 +131,17 @@ grants/keys through an activation fence, not through generic stream identity.
 These source boundaries do not establish deployed/native or release qualification;
 see [monitoring](guides/monitoring.md).
 
-The legacy Coding terminal and voice use dedicated WebSocket listeners and are
-not represented by the HTTP/SSE arrow. The additive personal-operator terminal
-gateway uses `/api/terminal/socket` on the API listener; the SDK/Coding cutover
-and relay/broker admission remain pending under
-[the terminal transport boundary](design/terminal.md#transport-implementation-boundary-3994-part-b1).
-Browser/Device frames use a binary HTTP stream. A same-origin UI/API proxy does
-not by itself expose dedicated socket ports or bridge upgrades; each route
-still needs transport configuration and platform qualification.
+Voice and the legacy terminal listener (kept for older clients) use dedicated
+WebSocket listeners and are not represented by the HTTP/SSE arrow. The Coding
+terminal uses `/api/terminal/socket` on the API listener, admitted by a
+single-use ticket from an ordinary authenticated request, so it follows the API
+through proxies, tailnet names and native transports; a browser broker route
+has no socket path yet. See
+[operator devices and the Coding cutover](design/terminal.md#operator-devices-and-coding-cutover-3994-part-b2).
+Browser/Device frames use a binary HTTP stream. The lifecycle UI proxy forwards
+only the terminal socket's upgrade; it does not expose dedicated socket ports or
+bridge other upgrades, and each route still needs transport configuration and
+platform qualification.
 
 ### Station-engine chat topology
 

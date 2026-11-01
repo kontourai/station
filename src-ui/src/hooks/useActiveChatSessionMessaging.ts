@@ -25,6 +25,7 @@ import {
   useQueryClient,
 } from '@kontourai/station-sdk';
 import type { ApiRequestScope } from '@kontourai/station-sdk/client';
+import { turnInterruptedContinueBoundaryId } from '@kontourai/station-shared/conversation-message';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import {
   skillExperienceAttachmentInputs,
@@ -42,6 +43,7 @@ import {
   activeChatsStore,
   type ChatUIState,
 } from '../contexts/active-chats-store';
+import { conversationOpenPhase } from '../contexts/conversation-open-policy';
 import {
   type ObservedAgentCatalog,
   observedEngine,
@@ -101,6 +103,11 @@ interface SendTransaction {
   attachments?: FileAttachment[];
   /** Byte-free selected-stage snapshot, restored only after a definitive rejection. */
   attachmentStages?: ComposerAttachmentStageSnapshot[];
+  /**
+   * A message Station composed, not the composer's (`preserveComposer`): it
+   * took nothing from the composer, so a rejection gives nothing back to it.
+   */
+  composed?: true;
 }
 
 type UserCancelableAbortController = AbortController & {
@@ -128,8 +135,11 @@ function prepareSendTransaction(options: {
   attachments?: FileAttachment[];
   /** The send's idempotency key: the bubble's identity too. */
   clientTurnId: string;
+  composed?: boolean;
 }): SendTransaction {
   const originalMessages = options.state?.messages ?? [];
+  const attachmentStages = options.state?.attachmentStages;
+  const composed = options.composed ? ({ composed: true } as const) : {};
   // A resend of the same key (a replay of a kept row, a Retry) is the same
   // message: it keeps its one bubble instead of gaining a second.
   if (
@@ -144,7 +154,8 @@ function prepareSendTransaction(options: {
       optimisticMessages: originalMessages,
       optimisticMessageClientId: options.clientTurnId,
       attachments: options.attachments,
-      attachmentStages: options.state?.attachmentStages,
+      attachmentStages,
+      ...composed,
     };
   const outgoing = buildOutgoingUserMessage(
     originalMessages,
@@ -158,7 +169,8 @@ function prepareSendTransaction(options: {
     optimisticMessages: outgoing.messages,
     optimisticMessageClientId: outgoing.clientId,
     attachments: options.attachments,
-    attachmentStages: options.state?.attachmentStages,
+    attachmentStages,
+    ...composed,
   };
 }
 
@@ -184,6 +196,9 @@ function rejectedSendRollback(
     return next;
   })();
 
+  // Only its own bubble goes: the composer was never part of it.
+  if (transaction.composed)
+    return rollbackMessages ? { messages: rollbackMessages } : {};
   return {
     ...(latestState?.input === '' ? { input: transaction.submittedDraft } : {}),
     ...((latestState?.attachments?.length ?? 0) === 0 &&
@@ -285,12 +300,15 @@ async function observeSendAdmission<T>(
 function discardedMessageNotice(
   restored: boolean,
   text: string,
+  composed = false,
 ): { role: 'system'; content: string } {
   return {
     role: 'system',
-    content: restored
-      ? 'This message was discarded, so it was not sent. Its text is back in the composer.'
-      : `This message was discarded, so it was not sent. Its text was:\n\n${text}`,
+    content: composed
+      ? 'This message was discarded, so it was not sent.'
+      : restored
+        ? 'This message was discarded, so it was not sent. Its text is back in the composer.'
+        : `This message was discarded, so it was not sent. Its text was:\n\n${text}`,
   };
 }
 
@@ -407,6 +425,12 @@ export function useSendMessage(
          * default send-while-busy path.
          */
         queueOnBusy?: boolean;
+        /**
+         * A message Station composed, not the composer's: the composer's
+         * text, attachments and visual skill are neither sent nor cleared,
+         * and a refusal puts nothing back in it.
+         */
+        preserveComposer?: boolean;
         /** Form ownership observes admission without inferring delivery from the legacy return value. */
         onAdmission?: (status: SendAdmission) => void;
         /**
@@ -493,12 +517,22 @@ export function useSendMessage(
         ambientContext = [ambientContext, TASK_SHAPING_INSTRUCTION]
           .filter(Boolean)
           .join('\n\n');
-      const submittedDraft = content;
-      const experienceDraft = options?.dispatch
-        ? undefined
-        : currentState?.skillExperienceDraft;
+      // A Continue key marks the message composed on every send of it that
+      // comes through here (a Retry, an outbox replay), not only the first.
+      // The queue drain sends without touching the composer anyway.
+      const preserveComposer =
+        options?.preserveComposer === true ||
+        turnInterruptedContinueBoundaryId(turnId) !== undefined;
+      // What a refusal restores to an empty composer: nothing, for a message
+      // the composer never held.
+      const submittedDraft = preserveComposer ? '' : content;
+      const experienceDraft =
+        options?.dispatch || preserveComposer
+          ? undefined
+          : currentState?.skillExperienceDraft;
       if (
         !options?.dispatch &&
+        !preserveComposer &&
         (experienceDraft ||
           currentState?.skillExperienceDraftInvalid ||
           options?.skillExperienceDraft)
@@ -555,10 +589,15 @@ export function useSendMessage(
       // Durable outbound replay stays durable either way — it must not
       // collapse into either the in-memory queue or a live steer.
       let steerOpenTurn = false;
+      let queueBusyFollowUp = false;
       // #2309: "is a turn busy" is the server's open turn (on any device, in
       // any lineage child) or this composer's own unacknowledged send. A
       // server that sends no activity record keeps the legacy local status.
-      const turnBusy = isTurnInFlight(currentState);
+      const turnBusy =
+        isTurnInFlight(currentState) ||
+        (!!options?.dispatch &&
+          !!currentState &&
+          conversationOpenPhase(currentState) === 'busy');
 
       if (turnBusy && currentState) {
         if (/^\/[^\s:]+:[^\s]+/.test(content)) {
@@ -577,10 +616,8 @@ export function useSendMessage(
           });
           return false;
         }
-        if (options?.skipInMemoryQueueOnBusy) {
-          // A turn still running is a temporary gate, not a refusal: the
-          // message waits without spending one of its attempts, so a queue
-          // replayed during a long turn never wears out to failed.
+        // Composed continuations must never be steered or queued.
+        if (preserveComposer) {
           return options?.dispatch
             ? ({
                 kind: 'deferred',
@@ -588,10 +625,14 @@ export function useSendMessage(
               } satisfies OutboundDispatchTransportResult)
             : undefined;
         }
+        if (options?.skipInMemoryQueueOnBusy && !options.dispatch) {
+          return undefined;
+        }
         // #2324 (D4): a turn the engine opened on its own is not a turn the
         // user is steering. Their message waits for it to finish, queued,
         // rather than being folded into a reply they did not ask for.
         const steeringCapable =
+          !options?.dispatch &&
           !options?.queueOnBusy &&
           !currentState.queueSendNowPending &&
           !currentState.queueDrainSettling &&
@@ -603,25 +644,10 @@ export function useSendMessage(
           ) &&
           !(attachments && attachments.length > 0);
         if (!steeringCapable) {
-          clearInput(sessionId);
-          updateChat(sessionId, {
-            queuedMessages: [...(currentState.queuedMessages || []), content],
-            queuedMessageMetadata: [
-              ...(currentState.queuedMessageMetadata ??
-                currentState.queuedMessages.map(() => ({
-                  id: randomCorrelationId(),
-                  mode: 'queue' as const,
-                }))),
-              {
-                id: randomCorrelationId(),
-                mode: options?.queueOnBusy ? 'queue' : 'steer',
-              },
-            ],
-          });
-          options?.onAdmission?.('accepted');
-          return;
+          queueBusyFollowUp = true;
+        } else {
+          steerOpenTurn = true;
         }
-        steerOpenTurn = true;
       }
 
       let mcpPromptOrigin:
@@ -849,6 +875,7 @@ export function useSendMessage(
         modelInput: content,
         attachments,
         clientTurnId: resolvedTurnId,
+        composed: preserveComposer,
       });
       // The conversation this send names; the delivery lookup asks by it.
       // A replay sends (and is looked up) under the conversation its row
@@ -861,7 +888,7 @@ export function useSendMessage(
 
       const abortController = new AbortController();
 
-      clearInput(sessionId);
+      if (!preserveComposer) clearInput(sessionId);
       updateChat(sessionId, {
         status: 'sending',
         // #2309: the optimistic window the server has not acknowledged yet.
@@ -871,8 +898,7 @@ export function useSendMessage(
         // The window a Stop has to be held through, named (
         // review): from here until this dispatch's own `turn.started`.
         pendingClientTurnId: resolvedTurnId,
-        attachments: [],
-        attachmentStages: [],
+        ...(preserveComposer ? {} : { attachments: [], attachmentStages: [] }),
         // A new attempt for this key: a lookup answer about an earlier one
         // (a `received` whose refusal was lost in transit, before the
         // lookup-driven resend) describes nothing in flight now.
@@ -900,7 +926,7 @@ export function useSendMessage(
         !sourceStart &&
         !mcpPromptOrigin &&
         !attachments?.length &&
-        !currentState?.attachmentStages?.length
+        (preserveComposer || !currentState?.attachmentStages?.length)
       ) {
         try {
           const { outboundDispatch } = await import('../lib/outboundQueue');
@@ -982,7 +1008,11 @@ export function useSendMessage(
               if (restored) updateChat(sessionId, { input: submittedDraft });
               addEphemeralMessage(
                 sessionId,
-                discardedMessageNotice(restored, submittedDraft),
+                discardedMessageNotice(
+                  restored,
+                  submittedDraft,
+                  preserveComposer,
+                ),
               );
               options?.onAdmission?.('not-invoked');
               return false;
@@ -1039,7 +1069,7 @@ export function useSendMessage(
           );
 
       try {
-        const { dispatchForeground } = await import(
+        const { dispatchForeground, dispatchQueuedForeground } = await import(
           '../lib/foregroundMessageDispatch'
         );
         // #2436: the server applies the conversation's recorded posture to
@@ -1070,7 +1100,7 @@ export function useSendMessage(
               ),
             ) === null
           );
-        const receipt = await dispatchForeground({
+        const dispatchInput = {
           apiBase,
           sessionId,
           agentSlug,
@@ -1117,7 +1147,10 @@ export function useSendMessage(
           ...(mcpPromptOrigin ? { mcpPromptOrigin } : {}),
           conversationId: sentConversationId,
           attachments,
-          attachmentStages: currentState?.attachmentStages,
+          // A composed message carries none of the composer's staged files.
+          attachmentStages: preserveComposer
+            ? undefined
+            : currentState?.attachmentStages,
           ambientContext,
           clientTurnId: resolvedTurnId,
           automaticBackground: Boolean(options?.dispatch),
@@ -1134,7 +1167,49 @@ export function useSendMessage(
           ...(carriedAsHint
             ? { personalApprovalDefault: carriedApprovalPick }
             : {}),
-        });
+        };
+        if (
+          queueBusyFollowUp &&
+          accountPreferences.requestScope &&
+          !accountPreferences.requestScope.isCurrent()
+        )
+          throw new Error('The Station connection changed.');
+        const queuedResult = queueBusyFollowUp
+          ? await dispatchQueuedForeground(dispatchInput)
+          : undefined;
+        if (queuedResult?.outcome === 'queued') {
+          stopDeliveryWatch?.();
+          await live?.accepted();
+          if (
+            accountPreferences.requestScope &&
+            !accountPreferences.requestScope.isCurrent()
+          )
+            return true;
+          const latest = activeChatsStore.getSnapshot()[sessionId];
+          const { input: _input, ...rollback } = rejectedSendRollback(
+            transaction,
+            latest,
+          );
+          updateChat(sessionId, {
+            ...rollback,
+            ...(latest?.pendingClientTurnId === resolvedTurnId
+              ? {
+                  status: currentState?.status ?? 'idle',
+                  abortController: currentState?.abortController,
+                  pendingClientTurnId: currentState?.pendingClientTurnId,
+                  sendAwaitingTurnStart: currentState?.sendAwaitingTurnStart,
+                }
+              : {}),
+          });
+          invalidate(['conversation-inbox']);
+          options?.onAdmission?.('accepted');
+          return options?.dispatch
+            ? ({ kind: 'queued' } satisfies OutboundDispatchTransportResult)
+            : true;
+        }
+        const receipt = queueBusyFollowUp
+          ? queuedResult!.receipt
+          : await dispatchForeground(dispatchInput);
 
         stopDeliveryWatch?.();
         // Station answered with the turn: the transcript holds it now.
@@ -1304,7 +1379,7 @@ export function useSendMessage(
                 'indeterminate',
               ),
             );
-          } else if (providerBusy) {
+          } else if (providerBusy && !queueBusyFollowUp) {
             // Moved into the local queue below, under the same key; its row
             // becomes the held copy only once the queue holds it (below), so
             // a held-copy sync in between cannot drop it.
@@ -1390,7 +1465,7 @@ export function useSendMessage(
                       const now = activeChatsStore.getSnapshot()[sessionId];
                       // The draft the rollback restored is this message:
                       // sending it empties the composer as a send would.
-                      if (now?.input === content)
+                      if (!preserveComposer && now?.input === content)
                         updateChat(sessionId, { input: '' });
                       if (
                         rollback.attachments &&
@@ -1415,6 +1490,9 @@ export function useSendMessage(
                               onAdmission,
                               claimRetry: options?.claimRetry,
                               skipPersonalApprovalDefault: true,
+                              ...(preserveComposer
+                                ? { preserveComposer: true }
+                                : {}),
                             },
                           ),
                         options?.onAdmission,
@@ -1553,7 +1631,11 @@ export function useSendMessage(
               addEphemeralMessage(
                 sessionId,
                 retiredAs === 'discarded'
-                  ? discardedMessageNotice(restored, submittedDraft)
+                  ? discardedMessageNotice(
+                      restored,
+                      submittedDraft,
+                      preserveComposer,
+                    )
                   : {
                       role: 'system',
                       content:
@@ -1641,6 +1723,7 @@ export function useSendMessage(
         // (an ACP reattach) is queued the same way.
         if (
           isQueuedOnRefusalCode(err.code) &&
+          !queueBusyFollowUp &&
           !options?.dispatch &&
           !mcpPromptOrigin &&
           !(attachments && attachments.length > 0)

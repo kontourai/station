@@ -2,6 +2,7 @@ import { resolve } from 'node:path';
 import type { ProjectConfig } from '@kontourai/station-contracts/project';
 import type { ProviderConnectionConfig } from '@kontourai/station-contracts/tool';
 import type { TurnProvenanceContextInjection } from '@kontourai/station-contracts/turn-provenance-context';
+import { currentNativeMemoryHistory } from '../../runtime/conversation/authorized-turn-correlation.js';
 import type { RuntimeContext } from '../../runtime/types.js';
 import {
   type AgentPolicyService,
@@ -126,7 +127,11 @@ export async function prepareChatRequest(
   }
 
   let injectContext: string | null = null;
-  if (context.projectSlug) {
+  const retained = currentNativeMemoryHistory();
+  const boundedRetainedContext =
+    retained?.currentSessionId === context.options.conversationId &&
+    retained?.retainedContextKind !== undefined;
+  if (context.projectSlug && !boundedRetainedContext) {
     try {
       injectContext = await context.ctx.knowledgeService.getInjectContext(
         context.projectSlug,
@@ -145,7 +150,7 @@ export async function prepareChatRequest(
   }
 
   let ragContext: string | null = null;
-  if (context.projectSlug) {
+  if (context.projectSlug && !boundedRetainedContext) {
     try {
       const userMessage = extractChatUserText(context.input);
       if (userMessage) {

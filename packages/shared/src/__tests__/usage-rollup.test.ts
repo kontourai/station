@@ -210,3 +210,74 @@ test('the interactive rollup retains its separate 500-receipt coverage cap', () 
     droppedReceiptCount: 3,
   });
 });
+
+test('cumulative restatements retain separate reasoning and invalidate retail when route or category evidence changes', () => {
+  const route = {
+    id: 'direct',
+    modelRevision: 'r1',
+    tariffId: 't1',
+    provenance: {
+      authority: 'host-observed' as const,
+      sourceRef: 'dispatch:1',
+    },
+  };
+  const old = receipt({
+    provider: 'codex',
+    model: 'model',
+    reasoningTokens: 3,
+    route,
+    retailEquivalent: {
+      state: 'available',
+      amount: 1,
+      currency: 'USD',
+      basis: {
+        routeId: 'direct',
+        modelRevision: 'r1',
+        tariffId: 't1',
+        sourceUrl: 'https://provider.example/pricing',
+        sourceArtifactId: 'source',
+        reviewedAt: '2026-08-01T00:00:00.000Z',
+        effectiveAt: '2026-08-01T00:00:00.000Z',
+        validUntil: '2026-08-30T00:00:00.000Z',
+        cacheInput: 'disjoint',
+        reasoning: 'included-in-output',
+      },
+    },
+  });
+  const partial = receipt({
+    ...old,
+    observedAt: '2026-08-11T00:00:00.000Z',
+    inputTokens: 20,
+    outputTokens: undefined,
+    reasoningTokens: undefined,
+  });
+  const result = foldUsageReceipts({
+    ...window,
+    receipts: [old, partial],
+    coverage: [],
+  });
+  expect(result.aggregateReceipts?.[0]).toMatchObject({
+    inputTokens: 20,
+    outputTokens: 2,
+    reasoningTokens: 3,
+  });
+  expect(result.aggregateReceipts?.[0]?.retailEquivalent).toBeUndefined();
+  expect(result.rows[0]).toMatchObject({
+    inputTokens: 20,
+    outputTokens: 2,
+    reasoningTokens: 3,
+  });
+  const changedRoute = foldUsageReceipts({
+    ...window,
+    receipts: [
+      old,
+      {
+        ...old,
+        observedAt: '2026-08-11T00:00:00.000Z',
+        route: { ...route, tariffId: 't2' },
+      },
+    ],
+    coverage: [],
+  });
+  expect(changedRoute.aggregateReceipts?.[0]?.retailEquivalent).toBeUndefined();
+});

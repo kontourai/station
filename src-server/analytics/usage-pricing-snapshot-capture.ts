@@ -1,5 +1,8 @@
 import { createHash } from 'node:crypto';
-import type { PricingSnapshot } from '@kontourai/station-contracts/usage-rollup';
+import type {
+  PricingSnapshot,
+  UsageReceipt,
+} from '@kontourai/station-contracts/usage-rollup';
 import type { ModelPricing } from '../providers/llm/bedrock-models.js';
 
 /**
@@ -11,6 +14,7 @@ export interface UsagePricingSnapshotCapture {
     provider: string;
     model: string;
     observedAt: string;
+    route?: UsageReceipt['route'];
   }): Promise<PricingSnapshot | undefined>;
 }
 
@@ -35,6 +39,7 @@ export class BedrockUsagePricingSnapshotCapture
     provider: string;
     model: string;
     observedAt: string;
+    route?: UsageReceipt['route'];
   }): Promise<PricingSnapshot | undefined> {
     if (input.provider !== 'bedrock') return undefined;
     const pricing = await this.catalog.getModelPricing(this.region);

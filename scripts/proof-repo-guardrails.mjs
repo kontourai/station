@@ -1400,13 +1400,25 @@ if (
 const terminalPanel = readRequiredSource(
   '../src-ui/src/components/coding-layout/TerminalPanel.tsx',
 );
-if (terminalPanel.includes('/api/system/terminal-port')) {
-  errors.push('TerminalPanel must use the shared terminal port helper.');
+// #3994: the Coding terminal reaches the same-origin terminal socket only
+// through the SDK session store. The second listener on port + 1 is never
+// dialled: proxies, the relay and tailnet names forward only the main port.
+if (
+  terminalPanel.includes('/api/system/terminal-port') ||
+  terminalPanel.includes('fetchTerminalPort') ||
+  /new WebSocket\(/.test(terminalPanel)
+) {
+  errors.push(
+    'TerminalPanel must reach terminals through the SDK session store, never port discovery or a raw WebSocket.',
+  );
 }
 if (terminalPanel.includes('/api/coding/exec')) {
   errors.push('TerminalPanel must use the shared coding exec helper.');
 }
-for (const requiredHelper of ['fetchTerminalPort', 'executeCodingCommand']) {
+for (const requiredHelper of [
+  'useTerminalSessionStore',
+  'executeCodingCommand',
+]) {
   if (!terminalPanel.includes(requiredHelper)) {
     errors.push(`TerminalPanel must use ${requiredHelper}.`);
   }

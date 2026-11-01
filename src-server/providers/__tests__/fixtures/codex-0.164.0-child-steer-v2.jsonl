@@ -1,0 +1,10 @@
+{"kind": "capture", "codexVersion": "0.164.0", "model": "gpt-6.1-sol", "capture": "sanitized selected RPC observations", "ids": "per-capture aliases", "scope": "disposable parent and child"}
+{"kind": "parent_started", "parent": "id-1"}
+{"kind": "parent_message", "phase": "commentary", "text": ""}
+{"kind": "parent_message", "phase": "commentary", "text": "I’ll spawn one subagent to run `sleep 25`, then wait for its response."}
+{"kind": "parent_activity", "phase": "item/started", "activity": "started", "child": "id-2"}
+{"kind": "parent_activity", "phase": "item/completed", "activity": "started", "child": "id-2"}
+{"kind": "observed_child_turn", "thread": "id-2", "turn": "id-3"}
+{"kind": "steer_sent", "child": "id-2", "turn": "id-3"}
+{"kind": "thread_read", "child": "id-2", "status": {"type": "active", "activeFlags": []}, "turns": [{"id": "id-3", "status": "inProgress"}]}
+{"kind": "steer_result", "result": null, "error": {"code": -32600, "message": "direct app-server input is not allowed for multi-agent v2 sub-agents"}}

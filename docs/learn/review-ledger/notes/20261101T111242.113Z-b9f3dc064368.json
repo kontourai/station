@@ -1,0 +1,7 @@
+{
+  "revision": "9f7d3387a831aaa86fe9534bab2f9120d9ef4edd",
+
+  "notes": [
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"Checked: the vitest-resource-manifest.mjs change adds one CLI test to the process-heavy list; nothing about agent-runtime test grouping this page describes changed.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

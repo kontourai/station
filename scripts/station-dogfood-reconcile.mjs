@@ -1068,6 +1068,31 @@ function shouldPollRemote(state, now) {
   return !Number.isFinite(last) || now - last >= REMOTE_CHECK_INTERVAL_MS;
 }
 
+function isSupervisedEvent(event) {
+  return (
+    Number.isInteger(event?.supervisor?.pid) &&
+    Number.isInteger(event?.supervisor?.generation)
+  );
+}
+
+/**
+ * Only the newest supervised generation's exit is the instance's: each older
+ * one drained for a handoff or crashed and was restarted, and a handoff must
+ * never read as a crash that sends the reconciler into recovery. Events the
+ * CLI wrote (start, stop intent and result) always count. Mirrors
+ * `instanceEvents` in packages/shared/src/lifecycle-events.ts.
+ */
+export function supervisedInstanceEvents(events) {
+  let newest = 0;
+  for (const event of events)
+    if (isSupervisedEvent(event))
+      newest = Math.max(newest, event.supervisor.generation);
+  return events.filter(
+    (event) =>
+      !isSupervisedEvent(event) || event.supervisor.generation === newest,
+  );
+}
+
 function classifyPriorExit(config, healthError) {
   const identity = healthError.identity;
   const pid = healthError.pid;
@@ -1098,22 +1123,28 @@ function classifyPriorExit(config, healthError) {
   } finally {
     journalRelease();
   }
-  const events = retainedLines
-    .filter(Boolean)
-    .flatMap((line) => {
-      try {
-        return [JSON.parse(line)];
-      } catch {
-        return [];
-      }
-    })
-    .filter(
-      (event) =>
-        event.instanceId === config.instance &&
-        event.sha === identity.sha &&
-        event.bootId === identity.bootId &&
-        event.pid === pid,
-    );
+  const events = supervisedInstanceEvents(
+    retainedLines
+      .filter(Boolean)
+      .flatMap((line) => {
+        try {
+          return [JSON.parse(line)];
+        } catch {
+          return [];
+        }
+      })
+      .filter(
+        (event) =>
+          event.instanceId === config.instance &&
+          event.bootId === identity.bootId &&
+          // A supervised generation names the supervisor the instance
+          // records; its own pid and build change at each handoff
+          // (LifecycleSupervisor in packages/shared/src/lifecycle-events.ts).
+          (isSupervisedEvent(event)
+            ? event.supervisor.pid === pid
+            : event.sha === identity.sha && event.pid === pid),
+      ),
+  );
   const actual = [...events]
     .reverse()
     .find(

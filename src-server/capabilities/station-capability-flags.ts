@@ -22,6 +22,7 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   // UNWIRED(#91): full group qualification remains open; personal report routes are mounted.
   // Keep this advertisement false until the remaining ownership and journey checks pass.
   delegationGroups: false,
+  childWorkSteering: true,
   privateOperationalOutcomes: true,
   // Automation targets: src-server/routes/operations/scheduler.ts accepts a
   // job `target` and the built-in scheduler runs it through the conversation

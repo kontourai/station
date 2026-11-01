@@ -1,0 +1,31 @@
+{
+  "revision": "1986e6da89b0c24d6ca63dae81f2a213f54319cd",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Inspected historical status and session API handoff against sender and queued dispatch: orchestration remains the current route; the flag plan remains historical. Source inspection only; no historical journey rerun.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Inspected foreground dispatch, outbox adapter and inbox route evidence against sender, dispatch leaf and extracted route harness: ordinary dispatch remains shared with queue drain and route cases still use the scripted engine. Inbox handoff adds a separate SDK queue call; no live journey executed.","inputs":["docs/architecture/module-map.md","src-server/routes/orchestration/__tests__/thread-inbox.routes.test.ts","src-ui/src/hooks/useActiveChatSessionMessaging.ts","src-ui/src/lib/foregroundMessageDispatch.ts"]},
+
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Inspected current form re-entry note and sender/dispatch leaf: normal sender still reaches canonical orchestration; historical phase text is not current route authority. No form journey executed.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts","src-ui/src/lib/foregroundMessageDispatch.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Inspected busy sender branches, queue receipt settlement, pendingMessages count and held row controls; clarified inbox eligibility, started receipt, outbox uncertainty and local Send now scope. Source inspection only; no browser journey executed.","inputs":["docs/design/chat-composer.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts","src-ui/src/lib/foregroundMessageDispatch.ts"]},
+
+    {"path":"docs/design/offline-outbound-queue.md","note":"Inspected live outbound settlement, queued lookup handling and rowBelongsToStation with busy sender: queued lookup stays unresolved, verified environment ID wins over address, legacy rows lack that fence. Clarified receipt and local queue boundaries; no offline journey executed.","inputs":["docs/design/offline-outbound-queue.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Inspected approval carry in sender and foreground request construction: personal default remains a first-send hint and explicit pending pick is refused by queued dispatch. Existing settings precedence remains scoped to its stated first-send path. No account journey executed.","inputs":["docs/design/settings-architecture.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/guides/commands.md","note":"Inspected command handler result and MCP prompt origin through sender and foreground request: expanded text and handled results still enter the normal sender path, with origin retained. Existing tests are historical evidence, not rerun.","inputs":["docs/guides/commands.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Inspected changed sender and orchestration request mapping against the contracts inventory: the change selects existing queue submission rather than changing the documented contract module boundary. No contract suite executed.","inputs":["docs/reference/contracts.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Inspected SDK sendExecutionMessage and queueExecutionMessage callers and foreground request construction: foreground send inventory remains valid and the session API describes the separate inbox helper. No SDK test executed.","inputs":["docs/reference/sdk.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Inspected busy sender, queueExecutionMessage and route test cases with extracted harness: queued receipt indicates persisted inbox admission; live-path started or refusal remains possible. Clarified this distinction; scripted route cases were inspected, not rerun.","inputs":["docs/reference/session-api.md","src-server/routes/orchestration/__tests__/thread-inbox.routes.test.ts","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/reference/skill-experiences.md","note":"Inspected skill draft validation and foreground attachment/input construction: canonical skillExperience input still goes through the request and is excluded from inbox admission by the documented Session API. No skill journey executed.","inputs":["docs/reference/skill-experiences.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts","src-ui/src/lib/foregroundMessageDispatch.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Inspected busy sender, local and held row controls, outbound write and queued lookup behavior: qualified Send now, write failure and unresolved queued inspection. Source inspection only; no browser or provider journey executed.","inputs":["docs/user/getting-started.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts","src-ui/src/lib/foregroundMessageDispatch.ts"]},
+
+    {"path":"packages/sdk/README.md","note":"Inspected useSendMessage busy branch and SDK dispatch callers against the chat example: send can still be queued or refused and binding does not grant authority. Example was not executed.","inputs":["packages/sdk/README.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]}
+  ]
+}

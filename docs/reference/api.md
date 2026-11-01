@@ -53,6 +53,25 @@ state rather than automatically replay the operation. Neither response revokes
 the client's credential. The [home writer owner](../../src-server/services/ssh/home-writer-owner.ts)
 supplies this distinction to the existing HTTP error boundary.
 
+## Personal conversation resolution
+
+The default-off **Open and Settled inbox** (`conversation-resolution`) Feature
+Preview adds `GET /api/conversations/work-state` and
+`PUT /api/conversations/:id/work-state`. Both inherit `orchestration:read`
+transport admission and require a current person/owner-device identity.
+The GET returns `{success:true,data:{settled:{[conversationId]:timestamp}}}`
+with private, no-store caching. The PUT accepts exactly `{settled:boolean}`,
+rechecks conversation read admission and current authority before persisting,
+and returns `{success:true}`. Invalid input returns 400; missing person or stale
+authority returns 403; an unreadable conversation returns 404. A disabled
+preview returns 404 with `code:feature_preview_disabled` and a Settings link.
+
+State is personal and durable across devices. Settlement changes neither
+provider execution nor history, and is separate from dismissal and deletion.
+See the [route owner](../../src-server/routes/chat/conversation-work-state.ts),
+[route tests](../../src-server/routes/chat/__tests__/conversation-work-state.test.ts)
+and [SDK helpers](sdk.md#personal-conversation-resolution-and-turn-directory).
+
 ## Local speech and media tools
 
 Personal hosts mount these Project-independent routes; hosted deployments do
@@ -2067,6 +2086,8 @@ serve it as "The response stream failed." instead
 ([marker scrubber](../../src-server/runtime/conversation/chat-error-marker.ts)).
 The marker never reaches a model: the Station-engine prompt, native-memory
 history and a direct Strands conversation's replayed history all exclude it.
+
+Child steering and separately paged instructions are described in the [Session API](session-api.md#lifecycle-control-commands), including authorization and uncertain delivery.
 
 ### Update Conversation
 
@@ -5966,9 +5987,10 @@ external-engine approval.
 ### Global Conversation Lookup
 
 `GET /api/conversations/:id` returns `{success: true, data}` or 404 when not found.
-The [lookup handler](../../src-server/routes/chat/conversations.ts) checks personal
-Project storage, then file-memory adapters, then the authorized orchestration
-reader. Hosted mode skips the two personal storage branches. File-memory Agent
+The [lookup handler](../../src-server/routes/chat/conversations.ts) first resolves runtime-owned conversations under the request authority, returning
+404 when that read is denied. Other personal conversations use Project storage,
+then file-memory adapters, then the authorized orchestration reader. Hosted
+mode skips the two personal storage branches. File-memory Agent
 attribution comes from the stored resource ID, with the adapter key as fallback;
 response shape can also include Project and fork-provenance fields.
 
@@ -6199,12 +6221,14 @@ framework. It is not an inventory of external engines.
 `GET /api/system/skills` returns `{success: true, data}` from SkillService, or an
 empty list when that service is not supplied to this handler.
 
-### Scoped terminal sessions (personal operator foundation)
+### Scoped terminal sessions (personal operator)
 
 [`/api/projects/:slug/terminal-sessions`](../../src-server/routes/projects/terminal-session-routes.ts) is the #3994 part (a) control seam.
-It is mounted only on personal hosts and requires a current operator acting in
-person. Paired devices, accounts, agents and plugins cannot use it. This is not
-the replacement SDK socket, and the Coding UI still uses the legacy terminal.
+It is mounted only on personal hosts and requires a current operator: in
+person, or through one of the operator's own paired devices (a device tied to
+no person, not a delegation grant or personal token). Members' devices,
+accounts, agents and plugins cannot use it. The Coding UI uses the
+[terminal socket](#terminal-socket-operator-transport) instead.
 
 - `POST` creates a session with `{cols, rows, bindingKey?, subdirectory?,
   legacyTerminalId?}`. `bindingKey` defaults to `project`; `thread:<id>` resolves
@@ -6231,17 +6255,21 @@ the replacement SDK socket, and the Coding UI still uses the legacy terminal.
 Ingress explicitly requires `terminal:observe` for GET/HEAD list and journal
 reads, and `terminal:operate` for POST/DELETE operations. Operate also satisfies
 observe without changing its stored grant. Generic Project read/operate grants
-cannot pass these leaves. The handler's personal-operator restriction remains
-additional; this does not enable paired-device access. The observe token is
-explicit promotion only and joins no preset or default grant.
+cannot pass these leaves. The handler's operator restriction remains
+additional. The observe token is explicit promotion only and joins no preset
+or default grant.
 
 Responses use `{success: true, data?}`. Invalid shapes return 400, access/scope
 refusals return a generic 403, over-bound journal reads return 413, and
 storage/host failures return a generic 503.
 The in-process host preserves journals and identity across service recreation;
-it cannot preserve the shell across a server restart. Journal persistence and
+it cannot preserve the shell across a server restart. Under a process supervisor
+that grants `workloads` (protocol 1.3), the shell and its journal live in the
+supervisor's workload host instead. A session recorded as running is reattached,
+with the same pid and its whole journal, by the next core generation after a
+restart or handoff (see [Shell host](../design/terminal.md#shell-host)). Journal persistence and
 line/byte retention are configured at service construction. Settings and age-based
-retention, live observer/device admission and the SDK store remain pending. See the
+retention remain pending. See the
 [implementation boundary](../design/terminal.md#first-implementation-boundary-3994-part-a).
 
 Core session retention also has whole-store constructor budgets: 1 GiB disk,
@@ -6254,25 +6282,37 @@ The scoped service's POSIX node-pty close terminates discovered owned process gr
 not merely send HUP to the shell pid. See the
 [retention and custody limits](../design/terminal.md#whole-store-retention-and-process-custody).
 
-### Terminal socket (personal operator transport)
+### Terminal socket (operator transport)
 
-`/api/terminal/socket` upgrades on the main API listener. Only the current
-personal operator acting in person can authenticate in this tranche. Browser
-Origin headers must name a configured Station origin; query strings and unknown
-upgrade paths are refused. An ordinary authenticated `GET` is a 204 admission
-probe, not a stream. Send the existing `{type: "auth", protocolVersion: 1,
-credential}` first frame, including on loopback; wait for `authenticated` before
-commands. Authentication times out after five seconds and timeouts count as
-failures. There are at most 64 authenticated connections and a separate budget
-of 32 pending sockets, with eight pending authentications per peer and the
-existing auth failure limiter. Any peer that can reach the main API listener
-can hold pending slots before authentication, including clients without an
-Origin header, and can exhaust them to lock the operator out. The in-person
-rule limits who can authenticate, not who can hold slots. See the
-[remote-admission prerequisites](../design/terminal.md#replay-controls-before-ghostty)
-before admitting remote devices. Personal tokens and account-bound Devices are
-refused before HTTP forwarding regardless of scope. Credentials never appear
-in output or error frames.
+`/api/terminal/socket` upgrades on the main API listener, so a same-origin
+reverse proxy (including a path prefix), a tailnet name and the relay's direct
+route reach it like any other API request; there is no second port. It is
+admitted before the upgrade:
+
+1. `POST /api/terminal/tickets` (no body) through the ordinary authenticated
+   transport, including a native shell's host-owned transport. It requires the
+   operator in person or one of the operator's own paired devices, a current
+   principal and `terminal:observe` or `terminal:operate`; personal access
+   tokens and account-bound Devices are refused. It returns `{success: true,
+   data: {ticket, expiresAt}}` with `Cache-Control: no-store`: a 43-character
+   base64url ticket valid for 30 seconds and redeemable once. An older host
+   answers 404 (treat as unsupported); refusal is 403; more than eight
+   unredeemed tickets per identity is 429.
+2. Open the socket offering two subprotocols, `station.terminal.v1` and
+   `station.terminal.ticket.<ticket>`. The server selects only
+   `station.terminal.v1` and sends `{type: "authenticated", protocolVersion: 1}`.
+   A missing, reused, expired or malformed ticket gets HTTP 401 before any
+   socket exists; the browser Origin allowlist is not consulted, because the
+   ticket carries the HTTP admission decision. Query strings and unknown paths
+   are refused.
+
+There are at most 64 sockets, eight per identity (device or credential) and
+eight reserved for the operator in person; beyond them the upgrade gets 429.
+Nothing is keyed by network address, so devices sharing a relay or proxy
+address do not affect one another. The server pings every 15 seconds and
+terminates a peer that missed a pong; a socket closes with `4000` after one
+hour (reconnect with a new ticket). The `GET` on the same path remains a 204
+admission probe. Credentials and tickets never appear in output or error frames.
 
 Controls are strict JSON objects. Every command except `ack` requires a
 `requestId` string (1–64 characters). Every channel id is an integer from 1 to
@@ -6281,7 +6321,18 @@ ids consumed per socket. All commands retain the authenticated caller's
 Project/binding authority through TerminalSessions.
 
 - `open`: `{type, requestId, channel, projectId, bindingKey, cols, rows,
-  fromSeq?: 0, windowBytes?}`. Opens a server-owned session and attaches it.
+  fromSeq?: 0, windowBytes?, launch?, legacyTerminalId?}`. Opens a
+  server-owned session and attaches it. `launch` names a program the server
+  resolves: `{kind: "shell"}` (the default configured shell) or `{kind:
+  "agent", connectionId, mode}`, a saved, enabled engine connection with an
+  interactive command and one of its live modes; anything else is refused. No
+  executable, argument or directory is ever taken from the request.
+  `legacyTerminalId` (`[A-Za-z0-9_-]{1,128}`) imports the Project binding's
+  provenance-bound pre-socket history once, as the HTTP route does; unowned
+  history is refused and no shell starts. A missing PTY backend returns
+  `error` with code `pty-unavailable` and the server's reason in `message`,
+  distinct from `terminal-refused`; `POST /api/coding/exec` remains the
+  fallback.
 - `attach`: `{type, requestId, channel, projectId, bindingKey, terminalId,
   fromSeq?, windowBytes?}`. `fromSeq` is the last consumed output sequence,
   default zero. Unknown ids and mismatched Projects/bindings are refused.
@@ -6293,6 +6344,9 @@ Project/binding authority through TerminalSessions.
   and `detach` take `{type, requestId, channel}`. They return `done`; an adjacent
   queued resize replaced by a newer resize returns `superseded`. Close ends
   the shell; detach and socket loss leave it running. Restart is not admitted.
+- `cwd`: `{type, requestId, channel}` returns `{type: "cwd", requestId,
+  channel, cwd}` with the shell's current directory, or `null` when the host
+  cannot tell. It requires operate authority.
 - `ack`: `{type, channel, seq}` cumulatively acknowledges consumed output.
   It must name the current acknowledgement or an actually sent record.
   Future, backward and unsent acknowledgements return `invalid-ack`.
@@ -6329,19 +6383,21 @@ progress notification reports the current `lastSeq`. Acknowledging through repla
 must keep emulator reply writers detached during replay.
 
 The command queue refuses capacity beyond 128 pending commands or 256 KiB of
-serialized work with close code 4429. Data sends pause above 2 MiB of socket
+serialized work with close code 4429; a peer that ignores that close is
+terminated after one second. Data sends pause above 2 MiB of socket
 backlog and retry on the heartbeat without advancing journal/filter state.
 Control replies have a further 256 KiB reserve before close code 4429. Quiet channels recheck authority at least once per
 one-second heartbeat, subject to service I/O; every output read rechecks
 before publication. Invalid frames return `invalid-frame`, authority/session
 refusals return generic `terminal-refused`, without exception details.
 
-`@kontourai/station-contracts/terminal-transport` exports the binary codec and
-scope predicate. `terminal:observe` is explicitly promotable and read-only;
-existing scopes/defaults/presets are unchanged. Live observer/device admission,
-relay/broker transport, the SDK store/public-entry test and Coding migration
-remain part b2. The legacy endpoint remains available; see the
-[transport implementation boundary](../design/terminal.md#transport-implementation-boundary-3994-part-b1).
+`@kontourai/station-contracts/terminal-transport` exports the binary codec, the
+ticket and subprotocol constants, launch profiles and the scope predicate.
+`terminal:observe` is explicitly promotable and read-only; existing
+scopes/defaults/presets are unchanged. The SDK's `TerminalSessionStore` is the
+client for this protocol. A browser broker (DataChannel) route has no socket
+path yet. The legacy endpoint remains available for older clients; see the
+[operator devices boundary](../design/terminal.md#operator-devices-and-coding-cutover-3994-part-b2).
 
 ### Get Terminal Port
 
@@ -6830,7 +6886,7 @@ session with step-up can mint or revoke another person's tokens. The desktop's
 local grant lists them; its current write refusal status is tracked in
 [#4109](https://github.com/kontourai/station/issues/4109). A token is refused
 (`403`) on a Project’s member-administration
-routes (`GET /api/projects/:slug/access` and `POST
+routes (`GET /api/projects/:slug/access`, `GET .../access/enablement` and `POST
 /api/projects/:slug/access/**`).
 
 A person tied by a Station local account can hold a token too (#3586). It
@@ -6850,6 +6906,42 @@ deployment provider), the account belongs to another issuer, or it is not
 current. An account-bound device manages its own tokens through `GET`/`POST
 /api/access/tokens` and `DELETE /api/access/tokens/:tokenId` alongside its
 account session.
+
+## Project sharing setting
+
+`/api/operator/account-sharing` turns Project sharing with built-in local
+accounts on or off from Settings (#4305). See
+[deployment authentication](../guides/deployment-authentication.md#turn-it-on-from-settings)
+for precedence, rollback and what turning it off keeps.
+
+| Method | Body | Success `data` |
+| --- | --- | --- |
+| `GET` | none | `AccountSharingSettingView`: `source`, `lockedBy`, `active`, `stored`, unresolved `pending`, `lastApply`, `startupFailure`, offered `origins` and `restart`. |
+| `PUT` | `{ "enabled": false }` or `{ "enabled": true, "publicOrigin": "<offered origin>" }`, at most 4 KiB | `{ "changed": false }`, or HTTP 202 with `{ "changed": true, "confirmation": { "id": "<id>", "reviewUrl": "<url>", "expiresAt": 0 } }` (`expiresAt` is an epoch timestamp in milliseconds). |
+
+Both require the same operator authority as `/api/operator/accounts` (an
+operator credential or a home-possession Device; a device-bound operator
+session is not accepted) and the `access:manage` pairing scope. The transaction's
+distinct-origin review binds the exact choice and revalidates authority and
+state before staging and requesting a handoff. Responses are
+`Cache-Control: no-store`. Refusals use the `success: false` envelope with a
+`code`:
+
+| Status | `code` | When |
+| --- | --- | --- |
+| 403 | `operator_required` | The caller is not the Station operator. |
+| 404 | `feature_preview_disabled` | The `project-sharing-setting` preview is off. |
+| 400 | `invalid_request` | The body is malformed, too large or has another field. |
+| 400 | `origin_not_offered` | `publicOrigin` is not a selectable offered origin. |
+| 409 | `set_by_deployment` | Deployment variables decide; the message names them. |
+| 409 | `restart_unavailable` | No process supervisor runs this Station. |
+| 503 | `consent_unavailable` | The separate review listener, address, session or transaction is unavailable. |
+
+The consent decision reports a refusal if staging or handoff fails. Withdrawal
+is attempted, but a failed withdrawal can leave an unarmed pending choice;
+the read exposes it and boot does not adopt it. A post-rename sync failure
+while arming is an indeterminate publication and is not reported as a failed
+decision, because the new generation may observe it.
 
 ## Create a device invitation
 
@@ -7011,6 +7103,7 @@ Each of these requests with a live operator session returns
 `202 { status: 'step_up_required', transaction: { id, reviewUrl, expiresAt } }`:
 
 - `POST /api/pairing/devices/:deviceId/scope`
+- `POST /api/pairing/requests/:requestId/account-consent`
 - `DELETE /api/pairing/devices/:deviceId`
 - `DELETE /api/pairing/devices/:deviceId/record`
 - `PUT /api/pairing/people/:principalId/group`
@@ -7096,11 +7189,28 @@ approved without a body and remain device-only. Account/relay enrollment that
 requires an account binding cannot use that ordinary path. The separate
 `bindAccountIdentity` option is mutually exclusive with `bindVerifiedIdentity`.
 
-A successful binding response includes `personBindingApproved: true`; callers
-must require that acknowledgement. The subsequent one-time exchange persists
+For browser account binding, `POST /api/pairing/requests/:requestId/account-consent`
+accepts an empty object and requires a current Device-bound operator session.
+It returns `202 step_up_required` with a transaction and consent review URL;
+the POST itself grants nothing. A fresh user-verified passkey on the consent
+origin commits the pinned request and account only after rechecking their state
+and the operator session. The existing `confirm` endpoint remains the host CLI
+path for `bindAccountIdentity`; ordinary unbound approvals are unchanged.
+
+Host `POST .../confirm` returns `personBindingApproved: true` and the binding
+receipt. The browser's consent decision returns `status: 'approved'`; the
+owning session can read the effect, including `personBindingApproved` and
+`principalBinding`, from `GET /api/pairing/device-access-transactions/:id`.
+The subsequent one-time exchange returns the Device with its binding and persists
 the binding with the Device credential, including provider/subject and approval
 provenance. A Tailscale-person binding changes identity resolution; it does not
 add wire scope or Project membership, or relabel existing history.
+
+An account-bound public access request is capped to `orchestration:read` at
+creation and checked again at confirmation and exchange. A browser-cookie
+exchange of another account binding also issues at most read scope. Project
+administration requires an eligible membership role and a separately promoted
+Device with `orchestration:operate`.
 
 The [principal owner](../../src-server/runtime/bootstrap/orchestration-request-principal.ts)
 uses that approved binding on direct requests and rejects a conflicting live
@@ -7426,3 +7536,62 @@ or missing/expired, with refresh/request-again/update recovery.
 
 See [the user journey](../guides/monitoring.md#connect-a-personal-source-in-insights).
 This source contract has not established installed/native/release acceptance.
+
+
+## Reviewed Project context and learning previews
+
+These personal-host routes are off by default. They require the operator in
+person; Station Control cannot create its own working rules or learning grants.
+Older hosts or disabled previews return unavailable/preview guidance.
+
+| Method | Path | Operation |
+| --- | --- | --- |
+| GET | `/api/projects/:slug/working-configuration` | Discover bounded repository guidance and read the current reviewed defaults. |
+| PUT | `/api/projects/:slug/working-configuration` | Apply an exact Project/revision/source-digest draft with a stable operation id. Runs no command. |
+| GET | `/api/projects/:slug/learning` | Read the owner queue with complete or partial coverage. |
+| GET | `/api/projects/:slug/learning/:id` | Inspect one owner projection; optional `compareId` selects a comparison. |
+| POST | `/api/projects/:slug/learning/proposals` | Propose wording from an exact canonical Task-standing or rated-response source. |
+| POST | `/api/projects/:slug/learning/:id/evidence` | Inspect only exact evidence references already admitted by the current owner record. |
+| POST | `/api/projects/:slug/learning/:id/intents` | Evaluate, decide, activate, observe effect, retire or supersede at an expected owner revision. |
+| GET | `/api/analytics/reviewed-tariffs` | Read the private reviewed tariff configuration and revision. |
+| PUT | `/api/analytics/reviewed-tariffs` | Review bounded Bearing catalog bytes and exact tariff bindings under a stable operation id/revision. |
+
+Learning requests include `x-station-learning-project-id` with the immutable
+Project incarnation. It grants no authority; a reused slug refuses before owner
+access. Intent JSON cannot supply actor, Project scope or decision capability.
+Source withdrawal and changed authority withhold protected content at release.
+Knowledge Kit retains the lifecycle, while tariff configuration retains approved
+source bytes rather than a Station-maintained price table. See
+[bounded agent work](../guides/agent-efficiency.md) for evidence limits.
+
+
+## Isolated GitHub repair preview
+
+`/api/isolated-repairs` is a personal-host operator API behind
+`isolated-github-repairs`. Its transport tier is `access:manage`; it additionally
+requires the current operator in person and rejects agent/MCP and hosted calls.
+An operator read may inspect retained audit state after disabling the preview.
+Disabling, revoking, canceling, resolving and archiving remain maintenance;
+creation, enabling, review, grants and publication require the preview again
+inside their mutation authority. Responses are private/no-store.
+
+| Method | Suffix under `/api/isolated-repairs` | Behavior |
+| --- | --- | --- |
+| GET | `/`, `/configuration`, `/profiles` | Read runs, redacted source/rule configuration and fingerprint, or profile revisions. |
+| POST | `/sources`, `/rules` | Create disabled poll sources and isolated-repair rules with server-issued identities. |
+| POST | `/configuration/enable` | Enable/disable an exact source/rule at expected configuration fingerprint. |
+| POST | `/profiles`, `/profiles/:id/enable` | Configure a disabled profile or enable/disable its expected revision. Secret references are never returned. |
+| GET | `/:run/artifact` | Inspect the Task-bound source/result, review, grant, worker evidence and publication checkpoints. |
+| POST | `/:run/review` | Review exact binding/result digests with a verdict and rationale; approval completes the Task. |
+| POST | `/:run/grant` | Separately grant the exact review/result to an enabled publisher for fifteen minutes. Requires source `publish-branch` permission. |
+| POST | `/:run/publish` | Consume one grantId and open a draft PR through GitHub REST APIs. Never merges or arms auto-merge. |
+| POST | `/:run/revoke`, `/:run/cancel` | Revoke future authority/request cancellation; unknown remote effects remain indeterminate. |
+| POST | `/:run/followup` | Record operator followup without claiming that effects are known or admission is free. |
+| POST | `/:run/resolve` | With `acknowledgeUnknownEffects:true` and rationale, release admission after exact ownership/worker stop are settled. No replay. |
+| POST | `/:run/archive` | Retain terminal or explicitly resolved unknown records outside the unarchived-run ceiling. |
+
+Setup/review/grant JSON fields and failure limits are described in
+[bounded agent work](../guides/agent-efficiency.md#run-an-isolated-github-repair).
+A refused/ambiguous operation is not a successful external effect. After review,
+read the artifact again for `review.id`; after an uncertain response, inspect
+retained state instead of creating another publication attempt.

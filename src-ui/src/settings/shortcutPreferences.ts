@@ -50,7 +50,8 @@ export function bindingSignature(binding: ShortcutBinding): string {
 export function browserReservedReason(binding: ShortcutBinding): string | null {
   if (!binding.modifiers.includes('cmd')) return null;
   const key = binding.key.toLowerCase();
-  if (['l', 'r', 't', 'w'].includes(key)) {
+  // #4383: History (H), Open file (O) and Bookmark (D) are browser chords too.
+  if (['d', 'h', 'l', 'o', 'r', 't', 'w'].includes(key)) {
     return 'Your browser may use this shortcut before Station can.';
   }
   if (key === 'n') {

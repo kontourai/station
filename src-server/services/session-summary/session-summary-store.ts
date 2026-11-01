@@ -99,7 +99,9 @@ const isContextBoundary = (value: unknown) => {
   return (
     isString(boundary.boundaryId) &&
     (boundary.policy === 'continue-from-history' ||
-      boundary.policy === 'empty-next-cold-start') &&
+      boundary.policy === 'empty-next-cold-start' ||
+      boundary.policy === 'summary-next-cold-start' ||
+      boundary.policy === 'task-state-next-cold-start') &&
     typeof boundary.priorTranscriptInjected === 'boolean'
   );
 };

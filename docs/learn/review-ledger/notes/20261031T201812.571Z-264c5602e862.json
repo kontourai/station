@@ -1,0 +1,11 @@
+{
+  "revision": "6c69564d1762d3ed0048aa720f617cffa941d842",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the settlement route parameter alignment: the guard and PUT handler now both use /:id/work-state and read id, matching the existing declared scope leaf. Concrete URLs, personal settlement behavior, read-admission recheck and preview boundaries are unchanged. The 179-test scope inventory and three authorization/persistence route tests pass.","inputs":["docs/design/chat-composer.md","src-server/routes/chat/conversation-work-state.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the documented PUT /api/conversations/:id/work-state against the corrected Hono handler and guard. Their parameter name now matches the declared leaf; methods, concrete request paths, request/response schemas and all authorization/preview checks are unchanged. Focused runtime-leaf coverage and route tests pass; no live platform qualification is added.","inputs":["docs/reference/api.md","src-server/routes/chat/conversation-work-state.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the handler's conversationId-to-id parameter-name correction against the SDK settlement helpers. Encoded concrete conversation URLs and public helper arguments/results remain unchanged, as do current authority, cancellation and unsupported-preview handling. Retained existing provider/platform evidence limits.","inputs":["docs/reference/sdk.md","src-server/routes/chat/conversation-work-state.ts"]}
+  ]
+}

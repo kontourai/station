@@ -62,6 +62,43 @@ describe('LocalUiSessionGate pairing recovery (station#2093)', () => {
     ).toBeNull();
   });
 
+  test('automatically reconnects after a backend outage without pairing or a click', async () => {
+    let available = false;
+    const fetchMock = vi.fn(() =>
+      Promise.resolve(
+        available
+          ? new Response('{}', { status: 200 })
+          : Response.json(
+              { ready: false, status: 'unavailable' },
+              { status: 503 },
+            ),
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    renderWithIsolatedConnections(
+      <LocalUiSessionGate apiBase="http://127.0.0.1:42693">
+        <div>Protected application mounted</div>
+      </LocalUiSessionGate>,
+    );
+    await screen.findByRole(
+      'heading',
+      { name: 'Reconnecting to this Station' },
+      { timeout: 3000 },
+    );
+    expect(
+      screen.queryByRole('button', { name: 'Complete pairing' }),
+    ).toBeNull();
+    available = true;
+    await screen.findByText(
+      'Protected application mounted',
+      {},
+      { timeout: 4000 },
+    );
+    expect(
+      screen.queryByRole('button', { name: 'Complete pairing' }),
+    ).toBeNull();
+  });
+
   test('rechecks exactly once after pairing succeeds and mounts protected providers when the new cookie authenticates', async () => {
     const fetchMock = vi
       .fn()

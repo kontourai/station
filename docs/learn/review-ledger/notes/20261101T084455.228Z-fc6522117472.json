@@ -1,0 +1,13 @@
+{
+  "revision": "0f6f688c9f5e5fa3a45311a211c9ce6a41a28d66",
+
+  "notes": [
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"Checked: these operator sign-in and step-up screens render the operator passkey/account flow from runtime-routes.ts. This change touches only the terminal ticket route, the terminal operator gate, the engine sign-in terminal host and terminal process/close projections; none of those surfaces appear in these captures, so the images remain current without re-capture.","inputs":["docs/learn/media/operator-s4-before-sign-in.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"Checked: these operator sign-in and step-up screens render the operator passkey/account flow from runtime-routes.ts. This change touches only the terminal ticket route, the terminal operator gate, the engine sign-in terminal host and terminal process/close projections; none of those surfaces appear in these captures, so the images remain current without re-capture.","inputs":["docs/learn/media/operator-s4-after-sign-in.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"Checked: these operator sign-in and step-up screens render the operator passkey/account flow from runtime-routes.ts. This change touches only the terminal ticket route, the terminal operator gate, the engine sign-in terminal host and terminal process/close projections; none of those surfaces appear in these captures, so the images remain current without re-capture.","inputs":["docs/learn/media/operator-s4-step-up-review.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"Checked: these operator sign-in and step-up screens render the operator passkey/account flow from runtime-routes.ts. This change touches only the terminal ticket route, the terminal operator gate, the engine sign-in terminal host and terminal process/close projections; none of those surfaces appear in these captures, so the images remain current without re-capture.","inputs":["docs/learn/media/operator-s4-after-step-up.png","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

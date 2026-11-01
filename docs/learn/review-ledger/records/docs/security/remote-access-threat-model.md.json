@@ -184,7 +184,11 @@
 
     "src-server/services/walkthroughs/task-walkthrough-store.ts",
 
-    "src-server/routes/__tests__/browser-agent-capture.test.ts"
+    "src-server/routes/__tests__/browser-agent-capture.test.ts",
+
+    "src-server/services/terminal/terminal-tickets.ts",
+
+    "src-server/services/terminal/terminal-gateway.ts"
   ],
 
   "checks": [

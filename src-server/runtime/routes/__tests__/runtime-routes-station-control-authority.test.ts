@@ -38,6 +38,7 @@ import {
   __resetStationControlMcpTokensForTests,
   mintStationControlMcpHeaderAuth,
   mintStationControlMcpToken,
+  revokeStationControlMcpToken,
 } from '../../mcp/station-control-mcp-token.js';
 import { configureRuntimeRoutes } from '../runtime-routes.js';
 
@@ -59,6 +60,8 @@ const support = vi.hoisted(() => ({
    * resolves now (`slug-lookup`) and so grants no Project authority.
    */
   slugOnly: new Map<string, string>(),
+  beforeChildEffect: undefined as (() => Promise<void>) | undefined,
+  childCurrent: undefined as boolean | undefined,
 }));
 
 vi.mock('../runtime-route-support.js', () => {
@@ -93,6 +96,7 @@ const HOSTED_ENV = 'STATION_HOSTED_TENANT_REGISTRY_FILE';
 const SCOPED_COMMANDS = [
   'steerTurn',
   'steerTurnOnce',
+  'steerChildWork',
   'inspectSteerInput',
   'adoptSession',
   'interruptTurn',
@@ -116,6 +120,8 @@ describe('configureRuntimeRoutes: the station-control authority guard', () => {
     support.projects.clear();
     support.hostThreads.clear();
     support.slugOnly.clear();
+    support.beforeChildEffect = undefined;
+    support.childCurrent = undefined;
     for (const close of closers.splice(0)) await close();
   });
 
@@ -188,12 +194,25 @@ describe('configureRuntimeRoutes: the station-control authority guard', () => {
         currentConversationSessionId: (conversationId: string) =>
           conversationId,
         canUserReadSession: () => true,
+        canUserMutateSession: () => true,
         // The real `/commands` route's hand-off: "reached the service".
-        dispatchWithReceipt: async (command: {
-          type: string;
-          threadId?: string;
-          sourceThreadId?: string;
-        }) => {
+        dispatchWithReceipt: async (
+          command: {
+            type: string;
+            threadId?: string;
+            sourceThreadId?: string;
+          },
+          context: { requestCurrent?: () => boolean },
+        ) => {
+          if (command.type === 'steerChildWork' && support.beforeChildEffect) {
+            await support.beforeChildEffect();
+            support.childCurrent = context.requestCurrent?.();
+            if (support.childCurrent !== true)
+              return {
+                receipt: { commandId: 'c', status: 'rejected' },
+                result: { outcome: 'not-authorized' },
+              };
+          }
           support.dispatched.push(
             `${command.type} ${command.threadId ?? command.sourceThreadId}`,
           );
@@ -418,13 +437,27 @@ describe('configureRuntimeRoutes: the station-control authority guard', () => {
     support.hostThreads.add('person-thread-host');
     support.slugOnly.set('op-thread-slug', 'project-a-slug');
     const bodyFor = (type: ScopedCommand, threadId: string) =>
-      type === 'steerTurn' ||
-      type === 'steerTurnOnce' ||
-      type === 'inspectSteerInput'
-        ? { type, threadId, input: 'also check the tests', clientInputId: 'i' }
-        : type === 'adoptSession'
-          ? { type, sourceThreadId: threadId }
-          : { type, threadId };
+      type === 'steerChildWork'
+        ? {
+            type,
+            threadId,
+            childId: 'child',
+            turnId: 'turn',
+            input: 'also check the tests',
+            clientInputId: 'i',
+          }
+        : type === 'steerTurn' ||
+            type === 'steerTurnOnce' ||
+            type === 'inspectSteerInput'
+          ? {
+              type,
+              threadId,
+              input: 'also check the tests',
+              clientInputId: 'i',
+            }
+          : type === 'adoptSession'
+            ? { type, sourceThreadId: threadId }
+            : { type, threadId };
     const bearer = () => callerFor('op-codex', 'url-token');
     const delegated = () =>
       internal({
@@ -578,6 +611,48 @@ describe('configureRuntimeRoutes: the station-control authority guard', () => {
       ]);
     }
   });
+
+  test.each(['token', 'project', 'host'] as const)(
+    'child steer rechecks %s at the effect boundary',
+    async (change) => {
+      const { base } = await setup();
+      const headers = callerFor('op-codex', 'url-token');
+      let entered!: () => void;
+      let resume!: () => void;
+      const enteredPromise = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const resumePromise = new Promise<void>((resolve) => {
+        resume = resolve;
+      });
+      support.beforeChildEffect = async () => {
+        entered();
+        await resumePromise;
+      };
+      const pending = outcome(
+        base,
+        'POST',
+        '/api/orchestration/commands',
+        headers,
+        {
+          type: 'steerChildWork',
+          threadId: 'op-thread',
+          childId: 'child',
+          turnId: 'turn',
+          input: 'hello',
+          clientInputId: 'key',
+        },
+      );
+      await enteredPromise;
+      if (change === 'token') revokeStationControlMcpToken('op-codex');
+      if (change === 'project') support.projects.set('op-thread', 'project-b');
+      if (change === 'host') support.hostThreads.add('op-thread');
+      resume();
+      await pending;
+      expect(support.childCurrent).toBe(false);
+      expect(support.dispatched).toEqual([]);
+    },
+  );
 
   // #2377 slice C3: every command `/commands` accepts is either an approval
   // command (a bound operator's) or held to the caller's scope, so a command

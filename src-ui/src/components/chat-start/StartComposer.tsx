@@ -9,14 +9,20 @@ import {
   useState,
 } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
+import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
 import { useChatPaneFileDrop } from '../../hooks/useChatPaneFileDrop';
 import { useFileAttachment } from '../../hooks/useFileAttachment';
 import { useDockSlotDevice } from '../../hooks/useIsMobile';
+import {
+  composerReturnSends,
+  isComposerSubmitKey,
+} from '../../lib/composerReturnKey';
 import type { ApprovalMode } from '../../utils/approvalMode';
 import { filesFromDataTransfer } from '../../utils/attachment-file-transfer';
 import { MODEL_NOT_REPORTED } from '../../utils/modelCapabilities';
 import { ActionOverflowMenu, type OverflowAction } from '../ActionOverflowMenu';
 import { Button } from '../Button';
+import { ComposerChoice } from '../ComposerChoice';
 import { AgentIcon } from '../icons/AgentIcon';
 import { ArrowDownGlyph, CloseGlyph } from '../icons/Glyph';
 import { displayableProjectIcon, ProjectIcon } from '../icons/ProjectIcon';
@@ -297,6 +303,11 @@ export function StartComposer({
   children?: ReactNode;
 }) {
   const { coarsePointer } = useDockSlotDevice();
+  // The reply composer's submit keys (#4387): Return (per the device setting)
+  // and Ctrl/Cmd+Return start the chat, so the first prompt sends the way
+  // every later one does.
+  const { chatReturnBehavior } = useDeviceSettings();
+  const returnSends = composerReturnSends(chatReturnBehavior, coarsePointer);
   const rootRef = useRef<HTMLFormElement>(null);
   const [fileError, setFileError] = useState<string | null>(null);
   const drop = useChatPaneFileDrop({
@@ -346,9 +357,7 @@ export function StartComposer({
               accent={project.accent}
             />
           )}
-          <span>
-            {project.isGlobal ? NO_PROJECT_PHRASE : `in ${project.label}`}
-          </span>
+          <span>{project.label}</span>
           {!projectFixed && <ArrowDownGlyph className="choice-caret" />}
         </button>
       )}
@@ -431,6 +440,11 @@ export function StartComposer({
           rows={compact ? 1 : 3}
           value={prompt}
           onChange={(event) => onPromptChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (!isComposerSubmitKey(event, returnSends)) return;
+            event.preventDefault();
+            event.currentTarget.form?.requestSubmit();
+          }}
           onPaste={(event) => {
             if (!files) return;
             const pasted = filesFromDataTransfer(event.clipboardData);
@@ -477,7 +491,10 @@ export function StartComposer({
           </p>
         )}
         <div className="start-composer__bar">
-          <fieldset className="start-composer__chips" aria-label="Chat setup">
+          <fieldset
+            className="composer-choices start-composer__chips"
+            aria-label="Chat setup"
+          >
             {agent.status === 'loading' ? (
               <span
                 className="start-composer__chip start-composer__chip--loading"
@@ -487,9 +504,8 @@ export function StartComposer({
                 <Skeleton variant="line" width="9rem" />
               </span>
             ) : (
-              <button
-                type="button"
-                className={`choice-trigger start-composer__chip start-composer__chip--agent${agent.needsSetup ? ' start-composer__chip--attention' : ''}`}
+              <ComposerChoice
+                className={`start-composer__chip start-composer__chip--agent${agent.needsSetup ? ' start-composer__chip--attention' : ''}`}
                 aria-haspopup="dialog"
                 aria-label={`Agent: ${startAgentChipText(agent)}${agent.needsSetup ? ', needs setup' : ''}${!onOpenModel && agent.status === 'ready' && agent.modelNote ? `. ${agent.modelNote}` : ''}`}
                 title={
@@ -498,29 +514,29 @@ export function StartComposer({
                     : undefined
                 }
                 onClick={(event) => onOpenAgents(event.currentTarget)}
-              >
-                {agent.agent && <AgentIcon agent={agent.agent} size="small" />}
-                <span className="start-composer__chip-text">{agentText}</span>
-                <ArrowDownGlyph className="choice-caret" />
-              </button>
+                caption="Agent"
+                value={agentText}
+                icon={
+                  agent.agent && <AgentIcon agent={agent.agent} size="small" />
+                }
+              />
             )}
             {onOpenModel && agent.status === 'ready' && (
-              <button
-                type="button"
-                className="choice-trigger start-composer__chip start-composer__chip--model"
+              <ComposerChoice
+                className="start-composer__chip start-composer__chip--model"
                 aria-haspopup="dialog"
-                aria-label={`Model: ${agent.modelLabel ?? MODEL_NOT_REPORTED}${agent.modelNote ? `. ${agent.modelNote}` : ''}`}
+                aria-label={`Model: ${agent.modelLabel && agent.modelLabel !== MODEL_NOT_REPORTED ? agent.modelLabel : 'Model'}${agent.modelNote ? `. ${agent.modelNote}` : ''}`}
                 title={agent.modelNote}
                 disabled={!agent.agent}
                 onClick={(event) => onOpenModel(event.currentTarget)}
-              >
-                <span className="start-composer__chip-text">
-                  {agent.modelLabel && agent.modelLabel !== MODEL_NOT_REPORTED
+                caption="Model"
+                valueClassName="chat-input__model-name"
+                value={
+                  agent.modelLabel && agent.modelLabel !== MODEL_NOT_REPORTED
                     ? agent.modelLabel
-                    : 'Model'}
-                </span>
-                <ArrowDownGlyph className="choice-caret" />
-              </button>
+                    : 'Model'
+                }
+              />
             )}
             {agent.status === 'ready' &&
               (!agent.environmentId || agent.environmentId === 'current') &&

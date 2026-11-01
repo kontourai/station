@@ -3,7 +3,7 @@ import type { Page } from '@playwright/test';
 /**
  * How a phone reaches Chat inventory since #4199: the dock header's ⋯ "Chat
  * actions" button opens the actions sheet, whose "Chat inventory" row opens
- * the reader. Desktop keeps a "Chat inventory" button in the dock header.
+ * the reader. Desktop reaches the same row through More dock actions.
  */
 export function phoneChatInventoryControls(page: Page) {
   const header = page

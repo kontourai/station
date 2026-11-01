@@ -3920,6 +3920,58 @@ describe('Global Conversation Routes', () => {
     expect(reader.resolveConversationOpen).toHaveBeenCalledOnce();
   });
 
+  test.each(['allowed', 'denied'])(
+    'GET /:id honors runtime authority for %s over shadow records',
+    async (user) => {
+      const adapter = createMockAdapter();
+      adapter.getConversation.mockResolvedValue({
+        id: 'runtime',
+        resourceId: 'agent',
+        title: 'Stale file title',
+      });
+      const reader = {
+        ...emptyHistoryReader(),
+        isRuntimeConversation: vi.fn((id: string) => id === 'runtime'),
+        resolveConversationOpen: vi.fn(async (_id: string, authority: any) =>
+          authority.userId === 'allowed'
+            ? {
+                status: 'ready',
+                conversation: {
+                  id: 'runtime',
+                  source: 'runtime',
+                  agentSlug: 'agent',
+                  title: 'Generated title',
+                  titleSource: 'generated',
+                },
+              }
+            : null,
+        ),
+      };
+      const storage = {
+        getConversation: vi.fn(() => ({
+          id: 'runtime',
+          agentSlug: 'agent',
+          title: 'Stale project title',
+        })),
+      };
+      const makeApp = (user: string) =>
+        createGlobalConversationRoutes(
+          new Map([['agent', adapter]]) as any,
+          storage as any,
+          mockLogger,
+          undefined,
+          reader as any,
+          () => user,
+        );
+      const response = await makeApp(user).request('/runtime');
+      if (user === 'allowed') {
+        expect((await json(response)).data.title).toBe('Generated title');
+      } else {
+        expect(response.status).toBe(404);
+      }
+    },
+  );
+
   test('GET /:id resolves an orchestration-owned conversation', async () => {
     const adapter = createMockAdapter();
     adapter.getConversation.mockResolvedValue(null);

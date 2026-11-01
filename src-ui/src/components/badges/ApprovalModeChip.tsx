@@ -12,9 +12,10 @@ import {
   approvalModeChipLabel,
   approvalModeKnobSupported,
   approvalModeLabel,
+  approvalModeSourceNote,
   resolveEffectiveApprovalMode,
 } from '../../utils/approvalMode';
-import { ArrowDownGlyph } from '../icons/Glyph';
+import { ComposerChoice } from '../ComposerChoice';
 import { LazyBoundary } from '../LazyBoundary';
 import '../chat/chat.css';
 
@@ -239,9 +240,7 @@ export function ApprovalModeChip({
             : 'Own settings'
           : agentDefaultShown
             ? `${approvalModeChipLabel(effective.mode)} (agent default)`
-            : displayedMode === 'connection-default'
-              ? 'Engine default'
-              : approvalModeChipLabel(displayedMode);
+            : approvalModeChipLabel(displayedMode);
   const notAppliedNote =
     notApplied && isApprovalMode(sessionOverride)
       ? ` — ${approvalModeLabel(sessionOverride)} was not applied: Station couldn't switch the engine to its approval rules`
@@ -251,8 +250,10 @@ export function ApprovalModeChip({
       ? selectedLabel
       : agentDefaultShown
         ? `${chipText} — ${approvalModeLabel(effective.mode)}`
-        : notApplied && appliedMode
-          ? selectedLabel
+        : (notApplied && appliedMode) || chipText === selectedLabel
+          ? // #4390: the inherited mode's short and full names are both
+            // "Default"; never announce "Default — Default".
+            selectedLabel
           : `${chipText} — ${selectedLabel}`
   }${notAppliedNote}`;
   const sourceNote = isOverride
@@ -261,14 +262,13 @@ export function ApprovalModeChip({
       ? 'Confirmed by the engine'
       : effective.mode === 'connection-default'
         ? 'Engine settings; active mode not confirmed'
-        : `From ${effective.source === 'account default' ? 'your saved default' : effective.source}`;
+        : approvalModeSourceNote(effective.source);
 
   return (
     <>
-      <button
+      <ComposerChoice
         ref={triggerRef}
-        type="button"
-        className={`choice-trigger chat-input__approval-chip ${
+        className={`chat-input__approval-chip ${
           isPendingApply || isPendingRestrict || isRefused || notApplied
             ? 'chat-input__approval-chip--pending'
             : isOverride
@@ -286,20 +286,13 @@ export function ApprovalModeChip({
           isPendingApply
             ? `Approval mode: ${chipText} — takes effect next turn. Engine approval control. ${policyDisclosure}`
             : `Approval mode: ${isPendingRestrict || isRefused ? `${chipText} — ${pendingNote}` : accessibleLabel}. Engine approval control. ${policyDisclosure}`
-        }${reviewerDisclosure}`}
-        title={`Approval mode: ${selectedLabel}. ${policyDisclosure}${reviewerDisclosure}`}
+        }${reviewerDisclosure} Approval ${chipText}`}
+        title={`Approval mode: ${selectedLabel}. ${policyDisclosure}${reviewerDisclosure} Approval ${chipText}`}
         onClick={() => setIsSheetOpen((open) => !open)}
-      >
-        <span className="chat-input__chip-stack">
-          <span className="chat-input__chip-caption" aria-hidden="true">
-            Approval
-          </span>
-          <span className="chat-input__approval-chip-label" aria-hidden="true">
-            {chipText}
-          </span>
-        </span>
-        <ArrowDownGlyph className="choice-caret" />
-      </button>
+        caption="Approval"
+        value={chipText}
+        valueClassName="chat-input__approval-chip-label"
+      />
       {isSheetOpen && (
         <LazyBoundary
           load={loadComposerModeSheet}

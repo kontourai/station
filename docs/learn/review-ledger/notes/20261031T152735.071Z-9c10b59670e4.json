@@ -1,0 +1,61 @@
+{
+  "revision": "0e23451ac05b9bc859f83928a580301f69b5ba18",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Rechecked historical cutover status and current Session API against the busy sender and queued foreground dispatch: reconnect can submit to the conversation inbox while ordinary live sends retain orchestration routing. Source inspection only; the historical journey was not rerun.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Rechecked dispatch and outbox interface against the sender, flush hook and outbound queue: a queued receipt retires the exact claimed row; a started receipt carries a provider turn. Inspected dock and reconnect inbox integration cases; no journey executed here.","inputs":["docs/architecture/module-map.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts","src-ui/src/hooks/useOutboundQueueFlush.ts","src-ui/src/lib/outboundQueue.ts"]},
+
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Rechecked the current form re-entry qualification against busy sender and queued foreground dispatch: acceptance may be queue admission and does not prove processing; the older endpoint text remains historical. Source inspection only; no form journey rerun.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Rechecked busy Queue admission, held-row controls, pending count and outbox ordering against sender, flush and queue settlement. Inspected CoreDock no-native-steering and reconnect integration cases using the inbox; no browser journey executed here.","inputs":["docs/design/chat-composer.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/design/offline-outbound-queue.md","note":"Rechecked reconnect flush eligibility and queued settlement against sender, flush hook and queue: known busy conversations can hand off; no identity defers; direct queued receipt retires the exact row while queued lookup remains unresolved. Inspected integration cases; no offline journey executed here.","inputs":["docs/design/offline-outbound-queue.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts","src-ui/src/hooks/useOutboundQueueFlush.ts","src-ui/src/lib/outboundQueue.ts"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Rechecked approval-default carry and refusal of an explicit pending pick through sender and queued dispatch, including reconnect replay. First-send preference remains qualified by the account and execution path. Source inspection only; no account journey executed.","inputs":["docs/design/settings-architecture.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/guides/commands.md","note":"Rechecked slash-command handling and prompt origin through the current sender and foreground dispatch: handled commands return before transport and ordinary expanded input follows the sender. Source inspection only; existing command tests were not rerun.","inputs":["docs/guides/commands.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Rechecked sender selection of existing queued foreground request against the contract inventory: reconnect changes the caller and settlement, not the documented package boundary. Source inspection only; no contract suite executed.","inputs":["docs/reference/contracts.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Rechecked sendExecutionMessage and queueExecutionMessage descriptions against foreground dispatch and busy sender: inbox admission can return queued or started and retry identity remains distinct from provider completion. Source inspection only; no SDK suite executed.","inputs":["docs/reference/sdk.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Rechecked busy handoff and queued versus started receipts against sender, foreground dispatch and inbox route tests. Reconnect uses the same queue admission; queued is durable admission, not a started provider turn. Scripted cases inspected, not rerun.","inputs":["docs/reference/session-api.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/reference/skill-experiences.md","note":"Rechecked skill draft handling and foreground request construction with reconnect replay: dispatch does not carry a visual skill draft and inbox eligibility remains limited by the Session API. Source inspection only; no skill journey executed.","inputs":["docs/reference/skill-experiences.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Rechecked local and Station-held controls and the distinction between direct reconnect receipt and later queued lookup against sender, flush and outbox settlement. Inspected reconnect inbox integration; no browser or provider journey executed here.","inputs":["docs/user/getting-started.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"packages/sdk/README.md","note":"Rechecked the chat example and capability boundary against the current sender and foreground queue dispatch: a busy submission can be admitted or refused and a binding does not grant authority. Source inspection only; example not executed.","inputs":["packages/sdk/README.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"CONTEXT-MAP.md","note":"Compared the five context relationships with the changed OutboundDispatch module-map passage: inbox handoff changes a transport outcome, not the stated context boundaries. Source and prose inspection only.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT.md","note":"Rechecked the responsibility and module-map routing claims against the changed OutboundDispatch interface: the queue settlement remains UI-owned and does not alter these domain boundaries. Source inspection only.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"README.md","note":"Rechecked the architecture navigation entry against the changed module-map interface: it remains the contributor route to module interfaces and evidence; the entry makes no queued-delivery guarantee. No installation journey executed.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/README.md","note":"Rechecked contributor navigation and the module map as implementation and evidence route against the updated OutboundDispatch entry; its audience and authority descriptions remain accurate. Navigation inspected, not browser-tested.","inputs":["docs/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Rechecked the investigation guide and module-map interface routing against the queued transport outcome; the guide does not claim inbox admission is provider completion. Existing findings and probes were not rerun.","inputs":["docs/architecture/abstraction-review.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Compared the EventStore ledger dispositions and module-map composition route with the changed browser outbox outcome. Queued receipt settlement does not change the named server ledger extraction claims. No recovery journey rerun.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/glossary.md","note":"Rechecked Session, live-lane and inbox vocabulary against the changed outbox interface and busy sender. A queued offline send can await connection; a Station-held follow-up is not itself proof of a started turn. No UI journey executed.","inputs":["docs/glossary.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Rechecked the Session boundary-contract reference against the updated OutboundDispatch entry: the agent work-claim and task-brief routes do not depend on browser outbox settlement. No delegated or scheduled journey executed.","inputs":["docs/guides/self-configuring-agent.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Compared the Agent identity inventory and its module-map dependency with the changed queued browser transport outcome; identity and engine selection claims are unaffected. Historical inventory not re-audited in full.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Compared settings route, registry and scope description with the changed outbound message transport interface; the settings deep-link contract is unrelated to queued inbox receipts. No settings journey executed.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Rechecked the manual Session and Task inbox descriptions against the changed browser outbox entry: those describe server-held Task messages and do not promise a browser receipt is a provider start. No MCP or provider journey executed.","inputs":["docs/reference/station-docs.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/user/concepts.md","note":"Rechecked held-message controls and ordinary Queue behavior against sender, inbox wrapper and the changed outbox interface; corrected the browser-only claim to allow eligible server admission or a started receipt. Source inspection only; no UI journey executed.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Rechecked the attributed module-map excerpt and input-hash qualifications against the changed map: export remains a derived graph, not inferred call-graph or execution evidence. Example not executed.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Rechecked the instruction to consult the affected module and retain route/service ownership against the changed UI OutboundDispatch section; no server scope rule changes. Instruction and source inspected only.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Rechecked the module-map and design routing instruction against the updated UI outbox outcome: contract-driven state and runtime-backed claims still apply. Instruction and source inspected only.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]}
+  ]
+}

@@ -134,7 +134,9 @@ export function HomeActionSection({
         detail={
           firstSession
             ? hasRunnableAgent
-              ? 'Pick an available agent in the composer above, then send your first message.'
+              ? // #4405 (A46): the card opens the Agents page, so it says
+                // what is there — not "pick one in the composer above".
+                'See the agents ready on this Station. Choose one in the composer when you start a chat.'
               : 'Connect an AI app or configure a model in Connections.'
             : undefined
         }

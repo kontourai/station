@@ -414,6 +414,61 @@
        button's wrap width at this breakpoint, measured) and stays. */
     flex: 1 1 120px;
   }
+
+  /* #4396: an agent-turn card was 392x176 at 412px — a quarter of a phone
+     screen over the transcript or composer, for news that is one line long.
+     On a phone it is a snackbar instead: outcome and chat on the left, Open
+     and × on one row. The eyebrow, the time and the answer snippet stay on
+     the card at wider widths and in the notification history; the chord hint
+     is a keyboard's and a phone has none. */
+  .toast-card--turn {
+    display: flex;
+    align-items: center;
+    gap: var(--k-space-2);
+    padding: var(--k-space-1) var(--k-space-1) var(--k-space-1) 12px;
+  }
+
+  .toast-card--turn .toast-card__header {
+    display: contents;
+  }
+
+  .toast-card--turn .toast-card__content {
+    flex: 1 1 auto;
+    padding-right: 0;
+  }
+
+  .toast-card--turn .toast-card__meta,
+  .toast-card--turn .toast-card__diagnostics,
+  .toast-card--turn .toast-card__shortcut {
+    display: none;
+  }
+
+  .toast-card--turn .toast-card__message,
+  .toast-card--turn .toast-card__conversation span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .toast-card--turn .toast-card__conversation {
+    margin-top: 0;
+    font-size: var(--k-text-sm);
+  }
+
+  .toast-card--turn .toast-card__actions {
+    order: 1;
+    flex: 0 0 auto;
+    margin-top: 0;
+  }
+
+  .toast-card--turn .toast-card__action {
+    flex: 0 0 auto;
+  }
+
+  .toast-card--turn .toast-card__dismiss {
+    order: 2;
+    margin: 0;
+  }
 }
 
 /* archive#3513: `.toast-card__dismiss` sits inside `.toast-card__header`, not

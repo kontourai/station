@@ -1678,7 +1678,7 @@ describe('ChatInputArea', () => {
       renderChatInputArea(props);
       const chip = screen.getByRole('button', { name: /^Approval mode:/ });
       expect(chip.getAttribute('aria-label')).toMatch(
-        /Engine default — OpenCode's own settings/,
+        /Default — OpenCode's own settings/,
       );
       fireEvent.click(chip);
       await screen.findByRole('radiogroup', { name: 'Approval mode' });

@@ -11,6 +11,7 @@ describe('createRuntimeInitializationDeps', () => {
     const configureRoutes = vi.fn();
     const reloadAgents = vi.fn(async () => {});
     const onACPConnectionsReady = vi.fn(async () => {});
+    const getReviewedTariffConfiguration = vi.fn(() => undefined);
     const replaceTemplateVariables = vi.fn(
       (text: string, agentName?: string) => `${text}:${agentName ?? ''}`,
     );
@@ -68,6 +69,7 @@ describe('createRuntimeInitializationDeps', () => {
       acpBridge: { kind: 'acp' } as any,
       onACPConnectionsReady,
       orchestrationEventStore: { kind: 'events' } as any,
+      getReviewedTariffConfiguration,
       usageAggregator: { kind: 'usage' } as any,
       activeAgents: new Map([['default', { id: 'agent' } as any]]),
       agentMetadataMap: new Map([['default', { slug: 'default' }]]),
@@ -115,6 +117,9 @@ describe('createRuntimeInitializationDeps', () => {
     expect(deps.configureRoutes).toBe(configureRoutes);
     expect(deps.reloadAgents).toBe(reloadAgents);
     expect(deps.onACPConnectionsReady).toBe(onACPConnectionsReady);
+    expect(deps.getReviewedTariffConfiguration).toBe(
+      getReviewedTariffConfiguration,
+    );
     expect(deps.replaceTemplateVariables).toBe(replaceTemplateVariables);
     expect(deps.startHealthChecks).toBe(startHealthChecks);
     expect(deps.onCoreConfigReady).toBe(onCoreConfigReady);

@@ -23,6 +23,10 @@ this checkout's source is not evidence that a particular npm version is live.
 
 ## Source distribution
 
+The `qualification-repair-policy` subpath ships `.mjs` plus `.d.mts` so
+pre-install CI and the server can share its pure validator without a TypeScript
+loader. The export map remains the authoritative domain inventory.
+
 The [export map and file list](./package.json) expose `.ts` source under `src/`;
 they do not select a compiled `dist/` package. Type-only imports can be erased
 by the consumer; runtime constants and parsers need a toolchain that handles
@@ -31,7 +35,7 @@ Do not treat the source suffix alone as proof of compatibility with every
 Node loader, bundler or alternate runtime.
 
 The `/terminal-transport` subpath owns the numbered binary frame codec and
-observe/operate scope predicate. The [terminal API](../../docs/reference/api.md#terminal-socket-personal-operator-transport)
+observe/operate scope predicate. The [terminal API](../../docs/reference/api.md#terminal-socket-operator-transport)
 explains controls, bounds and the current personal-operator admission limit.
 It is not the SDK session store, which remains follow-up work under #3994.
 

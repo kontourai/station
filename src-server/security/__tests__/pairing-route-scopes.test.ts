@@ -151,6 +151,16 @@ test('terminal socket HTTP classification refuses personal tokens explicitly', (
   });
 });
 
+test('terminal ticket mint requires at least terminal observe and refuses personal tokens', () => {
+  expect(matchPairingScopeRule('POST', '/api/terminal/tickets')).toMatchObject({
+    scope: 'terminal:observe',
+    personalTokens: 'refused',
+  });
+  expect(requiredPairingScope('POST', '/api/terminal/tickets')).toBe(
+    'terminal:observe',
+  );
+});
+
 describe('pairing-route-scopes: source-derived coverage (station#1098 R2)', () => {
   test('reserves the entire home-authority family for explicit home-transfer grants', () => {
     const transferScope = pairingScopePresetString('home-transfer');

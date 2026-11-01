@@ -1,0 +1,7 @@
+{
+  "revision": "abac7eb2cefdf3b0d4383507682a9f0f90455add",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"Checked against the linked guide change: deployment.md's Windows headless section now says the owned-process sweep recovers Windows orphans under the %LOCALAPPDATA% trust rule. This file links or routes to that guide and makes no claim about Windows orphan sweeping or the Windows floor contents (searched), so it stays accurate.","inputs":["docs/design/automations.md","docs/guides/deployment.md"]}
+  ]
+}

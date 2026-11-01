@@ -60,6 +60,7 @@ interface SessionEventWindowReader {
   contextBoundaries: ConversationContextBoundaryTranscriptMarker[];
   hasMore: boolean;
   loadOlder: () => Promise<void>;
+  loadTurn: (turnId: string, signal?: AbortSignal) => Promise<boolean>;
   reload: () => Promise<void>;
   upgradeRequired: boolean;
   loading: boolean;
@@ -582,6 +583,43 @@ export function useSessionEventWindow(
       await readOlder(pageCursor, { adoptCursor: true, olderLoaded: true });
   }, [readOlder]);
 
+  const loadTurn = useCallback(
+    async (turnId: string, signal?: AbortSignal) => {
+      const requestGeneration = generation.current;
+      const containsWholeTurn = (
+        events: readonly OrchestrationSequencedEvent[],
+      ) =>
+        events.some(
+          ({ event }) =>
+            event.method === 'turn.started' &&
+            event.turnId === turnId &&
+            !!event.eventId &&
+            !partialRef.current.has(event.eventId),
+        );
+      if (containsWholeTurn(eventsRef.current)) return true;
+      let pageCursor = heldGapsRef.current.at(-1)?.cursor ?? cursorRef.current;
+      // Bound each user-requested jump. A retry continues from the retained cursor.
+      for (let pages = 0; pageCursor && pages < 64; pages += 1) {
+        if (signal?.aborted || requestGeneration !== generation.current)
+          return false;
+        const page = await readOlder(pageCursor, {
+          adoptCursor: true,
+          olderLoaded: true,
+        });
+        if (
+          !page ||
+          signal?.aborted ||
+          requestGeneration !== generation.current
+        )
+          return false;
+        if (containsWholeTurn(page.events)) return true;
+        pageCursor = page.nextCursor;
+      }
+      return false;
+    },
+    [readOlder],
+  );
+
   // Page down from a reload's newest page until it runs unbroken to `floor`.
   // Older pages already loaded keep their own cursor, which sits past what is
   // held; otherwise the reader's cursor follows the fill, so Load older
@@ -714,6 +752,7 @@ export function useSessionEventWindow(
     contextBoundaries: currentReader ? contextBoundaries : [],
     hasMore: currentReader && Boolean(cursor || heldGapsRef.current.length),
     loadOlder,
+    loadTurn,
     reload,
     upgradeRequired: currentReader && upgradeRequired,
     loading: currentReader ? loading : Boolean(threadId),

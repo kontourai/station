@@ -1044,6 +1044,7 @@ describe('configureRuntimeRoutes hosted station-control MCP composition', () => 
         }),
         acpBridge: { getStatus: () => ({ connections: [] }) },
         orchestrationService: {
+          bindMandatoryTaskContextVerifier: vi.fn(),
           canUserReadSession: (sessionId: string, authority: any) =>
             sessionId ===
             `${authority.tenantExecutionContext?.tenantId}-session`,
@@ -1199,6 +1200,7 @@ describe('configureRuntimeRoutes hosted station-control MCP composition', () => 
         acpBridge: { getStatus: () => ({ connections: [] }) },
         orchestrationService: new Proxy(
           {
+            bindMandatoryTaskContextVerifier: vi.fn(),
             canUserReadSession: (sessionId: string, authority: any) =>
               sessionId ===
               `${authority.tenantExecutionContext?.tenantId}-session`,

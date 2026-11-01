@@ -18,6 +18,7 @@ import {
   ResponsiveDialogSurface,
 } from '../ResponsiveDialogSurface';
 import { describeReadFailure, ErrorState, SkeletonBlock } from '../state';
+import { ContextCompactionControl } from './ContextCompactionControl';
 import { ThreadUsageBreakdown } from './ThreadUsageBreakdown';
 import type { ConversationStatsSnapshot } from './types';
 import {
@@ -28,6 +29,7 @@ import {
 } from './utils';
 
 interface ConversationStatsModalProps {
+  context?: { apiBase: string; conversationId: string };
   stats: ConversationStatsSnapshot | null;
   isVisible: boolean;
   isLoading: boolean;
@@ -89,6 +91,7 @@ function StatRow({ label, value }: { label: string; value: string }) {
 }
 
 export function ConversationStatsModal({
+  context,
   stats,
   isVisible,
   isLoading,
@@ -188,6 +191,8 @@ export function ConversationStatsModal({
         fontSize: '13px',
         color: 'var(--text-primary)',
         minWidth: 'min(320px, 90vw)',
+        maxHeight: '90dvh',
+        overflowY: 'auto',
         boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
       }}
     >
@@ -552,6 +557,7 @@ export function ConversationStatsModal({
       ) : (
         <div>No stats available</div>
       )}
+      {context && <ContextCompactionControl {...context} />}
     </ResponsiveDialogSurface>
   );
 }

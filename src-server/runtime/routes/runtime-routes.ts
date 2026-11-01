@@ -17,9 +17,11 @@ import {
 } from '@kontourai/station-contracts/task-graph';
 import { TASK_ROOM_CONTEXT_VERSION } from '@kontourai/station-contracts/task-room-work';
 import { knowledgeRootIncarnationKey } from '@kontourai/station-shared/knowledge-root-identity';
+import { HANDOFF_DEFAULTS } from '@kontourai/station-supervisor/protocol';
 import { zodSchema } from 'ai';
 import packageJson from '../../../package.json' with { type: 'json' };
 import { captureAnalyticsHomeActivation } from '../../analytics/analytics-activation.js';
+import { LocalTaskOutcomeSource } from '../../analytics/local-task-outcome-source.js';
 import { RecipientStore } from '../../analytics/recipient-store.js';
 import { AnalyticsSavedViews } from '../../analytics/saved-views.js';
 import { SourceEnrollmentStore } from '../../analytics/source-enrollment-store.js';
@@ -29,6 +31,10 @@ import {
 } from '../../analytics/source-grant-store.js';
 import { ProjectFileTransactions } from '../../domain/project-file-transactions.js';
 import { parseProjectPortableIdentity } from '../../domain/project-identity-record.js';
+import {
+  findCliBinaryAsync,
+  resolveAugmentedPath,
+} from '../../providers/auth/cli-auth.js';
 import { createBrowserRoutes } from '../../routes/browser.js';
 import { createBrowserAgentRoutes } from '../../routes/browser-agent.js';
 import { createDeviceAgentRoutes } from '../../routes/device-agent.js';
@@ -44,6 +50,7 @@ import { createMediaToolsRoutes } from '../../routes/media-tools.js';
 import { createMobileDeviceRoutes } from '../../routes/mobile-device.js';
 import { createAnalyticsSavedViewRoutes } from '../../routes/operations/analytics-saved-views.js';
 import { createRecipientCandidateRoutes } from '../../routes/operations/recipient-candidates.js';
+import { createReviewedTariffRoutes } from '../../routes/operations/reviewed-tariff-routes.js';
 import { createSourceEnrollmentRoutes } from '../../routes/operations/source-enrollments.js';
 import { createSourceGrantApprovalRoutes } from '../../routes/operations/source-grant-approvals.js';
 import { createSourceGrantExportRoutes } from '../../routes/operations/source-grant-export.js';
@@ -56,6 +63,7 @@ import { createTaskReviewCaptureRoutes } from '../../routes/orchestration/task-r
 import { createProjectMembershipRoutes } from '../../routes/projects/project-membership-routes.js';
 import { createProjectRoomRoutes } from '../../routes/projects/project-room-routes.js';
 import { createProjectSharedTaskRoutes } from '../../routes/projects/project-shared-tasks.js';
+import { createAccountSharingRoutes } from '../../routes/system/account-sharing-routes.js';
 import { createApplicationSessionRoutes } from '../../routes/system/application-session-routes.js';
 import { createDeploymentAuthenticationRoutes } from '../../routes/system/deployment-authentication-routes.js';
 import { createLocalAccountAdministrationRoutes } from '../../routes/system/local-account-administration-routes.js';
@@ -74,6 +82,7 @@ import { createWalkthroughRoutes } from '../../routes/walkthroughs.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import {
   isOperatorInPersonNotAgent,
+  isTerminalOperator,
   mayRunCommandsOnHostCurrently,
   requestMayBeAnAgent,
 } from '../../security/coding-authority.js';
@@ -155,6 +164,7 @@ import { createSshDeviceHostActions } from '../../services/devices/hosts/ssh-dev
 import { DeviceToolchainService } from '../../services/devices/toolchain/device-toolchain-service.js';
 import { HtmlReplyPreview } from '../../services/html-reply-preview.js';
 import { AccountPreferencesStore } from '../../services/identity/account-preferences.js';
+import { accountSharingOriginOptions } from '../../services/identity/account-sharing-origins.js';
 import type { ApplicationSessionService } from '../../services/identity/application-session-service.js';
 import type { AuthorityObservationRequestContext } from '../../services/identity/authority-observation.js';
 import type { LoadedDeploymentAuthentication } from '../../services/identity/deployment-authentication-loader.js';
@@ -239,6 +249,11 @@ import { errorMessage } from '../../utils/error-message.js';
 import { canonicalPath } from '../../utils/path-containment.js';
 import { bindLocalMediaPreviews } from '../bootstrap/local-media-runtime.js';
 import {
+  isSupervisedEnvironment,
+  requestSupervisorHandoff,
+  supervisorWorkloadChannel,
+} from '../bootstrap/supervisor-link.js';
+import {
   revokeCoordinatorConversationCredentials,
   STATION_KNOWLEDGE_MCP_PATH,
 } from '../mcp/station-control-mcp-token.js';
@@ -252,6 +267,7 @@ import {
 import { createProjectRoomAccess } from './project-room-access.js';
 import { projectRoomAgentExecution } from './project-room-agent-runtime.js';
 import { createProjectRoomTaskContext } from './project-room-task-context.js';
+import { createProjectSharingStepUp } from './project-sharing-step-up.js';
 import { runtimeToolLibraryDependencies } from './tool-library-runtime.js';
 
 export {
@@ -295,8 +311,8 @@ import {
   type FullAccessRevocationReport,
   isDeviceRequestableScope,
   PAIRING_SCOPE_DESCRIPTIONS,
+  PAIRING_SCOPE_ORCHESTRATION_READ,
   PAIRING_SCOPE_PRESETS,
-  PAIRING_SCOPE_TERMINAL_OPERATE,
   PAIRING_SCOPES,
   type PairedDevice,
   type PairingScope,
@@ -322,6 +338,7 @@ import type {
 } from '@kontourai/station-contracts/execution-target';
 import type { IEmbeddingProvider } from '@kontourai/station-contracts/knowledge-index';
 import type { LaunchableModelInventory } from '@kontourai/station-contracts/model-inventory';
+import type { TerminalProcessSummary } from '@kontourai/station-contracts/orchestration';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import type { SchedulerJob } from '@kontourai/station-contracts/scheduler';
@@ -339,6 +356,7 @@ import {
 } from '@kontourai/station-contracts/tenancy';
 import {
   TERMINAL_SOCKET_PATH,
+  TERMINAL_TICKET_PATH,
   terminalScopeAllows,
 } from '@kontourai/station-contracts/terminal-transport';
 import { workItemRefKey } from '@kontourai/station-contracts/work-item-provider';
@@ -395,11 +413,13 @@ import { createUntrustedContentRoutes } from '../../routes/agents/untrusted-cont
 import { createBoardRoutes } from '../../routes/board.js';
 import { createAgentConversationTitleRoutes } from '../../routes/chat/agent-conversation-title.js';
 import { createChatRoutes } from '../../routes/chat/chat.js';
+import { createConversationMessageReader } from '../../routes/chat/conversation-message-reader.js';
 import {
   conversationReferenceReadDeps,
   createConversationReferenceReadRoutes,
 } from '../../routes/chat/conversation-reference-read.js';
 import { createConversationWorkSearchRoutes } from '../../routes/chat/conversation-work-search.js';
+import { createConversationWorkStateRoutes } from '../../routes/chat/conversation-work-state.js';
 import {
   createConversationRoutes,
   createGlobalConversationRoutes,
@@ -463,6 +483,7 @@ import {
 } from '../../routes/operations/notification-preferences.js';
 import { createNotificationRoutes } from '../../routes/operations/notifications.js';
 import { createPushRoutes } from '../../routes/operations/push-routes.js';
+import { createIsolatedRepairRoutes } from '../../routes/operations/repairs.js';
 import {
   createSchedulerReadProjection,
   createSchedulerRoutes,
@@ -530,6 +551,7 @@ import { createFocusPresenceRoutes } from '../../routes/presence/focus-presence-
 import { createCodingRoutes } from '../../routes/projects/coding.js';
 import { createFsRoutes } from '../../routes/projects/fs.js';
 import { createWorkflowRoutes } from '../../routes/projects/layouts.js';
+import { createProjectLearningReviewRoutes } from '../../routes/projects/learning-review-routes.js';
 import { createPluginPublishRoutes } from '../../routes/projects/plugin-publish-routes.js';
 import { createPluginScaffoldRoutes } from '../../routes/projects/plugin-scaffold-routes.js';
 import {
@@ -537,6 +559,7 @@ import {
   delegationContributionQueryAuthorized,
 } from '../../routes/projects/project-contribution-routes.js';
 import { createProjectS3SourceRoutes } from '../../routes/projects/project-s3-source-routes.js';
+import { createProjectWorkingConfigurationRoutes } from '../../routes/projects/project-working-configuration-routes.js';
 import {
   createProjectCatalogueReader,
   createProjectRoutes,
@@ -590,9 +613,9 @@ import {
   type PairingFailureState,
 } from '../../security/pairing-failure-limiter.js';
 import {
-  credentialAuthorizedForScope,
   grantedPairingScope,
   type PairingScopeContextStore,
+  refusedOnWebSocket,
 } from '../../security/pairing-route-scopes.js';
 import {
   attestedBrowserVisibleHost,
@@ -624,6 +647,7 @@ import {
 import { StationGroupsError } from '../../services/access/station-groups-service.js';
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
 import {
+  ENGINE_SIGN_IN_TERMINAL_SCOPE,
   EngineSignInService,
   registerEngineSignIn,
 } from '../../services/acp/engine-sign-in.js';
@@ -689,6 +713,7 @@ import { VeritasReadinessService } from '../../services/evidence/veritas-readine
 import { WorkflowSidecarService } from '../../services/evidence/workflow-sidecar-service.js';
 import type { FeaturePreviewRegistry } from '../../services/feature-previews/feature-preview-registry.js';
 import type { FeedbackService } from '../../services/feedback/feedback-service.js';
+import { createFeedbackRatingTarget } from '../../services/feedback/feedback-target.js';
 import { FlowMcpUiEvidenceBridge } from '../../services/flow/flow-mcp-ui-evidence-bridge.js';
 import { FlowReadinessBridge } from '../../services/flow/flow-readiness-bridge.js';
 import { FlowRunService } from '../../services/flow/flow-run-service.js';
@@ -739,6 +764,7 @@ import {
   FileConversationAcknowledgementStore,
   ownerDevicePredicate,
 } from '../../services/orchestration/conversation-acknowledgement-store.js';
+import { ConversationWorkStateStore } from '../../services/orchestration/conversation-work-state-store.js';
 import {
   type CoordinatorWakeDelivery,
   coordinatorDeliveryPorts,
@@ -891,7 +917,7 @@ import {
   admittedTelemetryProducer,
   TelemetryProducerStore,
 } from '../../services/telemetry-producers/telemetry-producer-store.js';
-import { InProcessShellHost } from '../../services/terminal/shell-host.js';
+import { createTerminalShellHost } from '../../services/terminal/supervisor-shell-host.js';
 import {
   registerTerminalGateway,
   TerminalGateway,
@@ -901,6 +927,7 @@ import {
   TerminalSessionRefusal,
   TerminalSessions,
 } from '../../services/terminal/terminal-sessions.js';
+import { TerminalTickets } from '../../services/terminal/terminal-tickets.js';
 import type { UsageTelemetryService } from '../../services/usage-telemetry-service.js';
 import { InboundWebhookConfigurationStore } from '../../services/webhooks/inbound-webhook-store.js';
 import { FlowAgentsWorkItemProvider } from '../../services/work-item-providers/flow-agents-work-item-provider.js';
@@ -957,6 +984,7 @@ import {
   createRequestDelegationResolver,
   type RequestDelegationSources,
 } from '../agents/request-delegation.js';
+import type { createAutomationActionsRuntime } from '../automation-actions-runtime.js';
 import {
   accountBoundProjectRouteMayPass,
   installAccountBoundDeviceGate,
@@ -994,6 +1022,10 @@ import {
   loadHostedTenantRegistryFromEnvironment,
   tenantExecutionContextForRequest,
 } from '../bootstrap/runtime-tenant-context.js';
+import {
+  canUseTaskSource,
+  composeContextEfficiencyRuntime,
+} from '../context-efficiency-runtime.js';
 import { nativeRuntimeSpecMatches } from '../conversation/native-foreground-invocation.js';
 import { createSessionGroupRequestAuthority } from '../mcp/session-group-request-authority.js';
 import {
@@ -1105,6 +1137,10 @@ export interface ConfigureRuntimeRoutesContext {
   projectSharedTasks?: ProjectSharedTaskStore;
   deploymentAuthentication?: LoadedDeploymentAuthentication;
   localAccounts?: LoadedLocalAccounts;
+  /** #4305: Settings-controlled Project sharing; absent in embedders that do not offer it. */
+  accountSharing?: () => import('../../routes/system/account-sharing-routes.js').AccountSharingRuntimeState;
+  /** #4305: the Feature Preview that offers that route. */
+  accountSharingPreview?: import('../../services/feature-previews/feature-preview-registry.js').FeaturePreviewSelector;
   applicationSessions?: ApplicationSessionService;
   nativeRelayEnrollment?: NativeRelayEnrollmentService;
   nativeSurfaceRegistry?: NativeSurfaceRegistry;
@@ -1140,6 +1176,10 @@ export interface ConfigureRuntimeRoutesContext {
   port: number;
   host?: string;
   buildProvenanceSnapshot?: BuildProvenanceSnapshot;
+  getReviewedTariffConfiguration?: () =>
+    | import('../../analytics/reviewed-tariff-config.js').ReviewedTariffConfigurationService
+    | undefined;
+  reviewedTariffsEnabled?: () => boolean;
   usageAggregator?: any;
   usageTelemetry?: UsageTelemetryService;
   /** Late-bound: the service is constructed after routes are registered. */
@@ -1257,6 +1297,9 @@ export interface ConfigureRuntimeRoutesContext {
   // Origin of the isolated plugin-frame document, if the shared listener runs.
   getPluginFrameOrigin?: () => string | undefined;
   featurePreviews: FeaturePreviewRegistry;
+  progressiveToolsEnabled?: () => boolean;
+  projectWorkingConfiguration?: import('../project-working-configuration-runtime.js').ProjectWorkingRuntime;
+  learningReview?: import('../learning-review-runtime.js').LearningReviewRuntime;
   // station#1194 (epic #1191, slice B): re-applies the built-in default
   // agent's engine binding immediately after `PUT /config/app` touches
   // `builtinAgentEngineConnectionId` — Voice is deliberately NOT rebound
@@ -1573,6 +1616,8 @@ export async function jobEditRetargetsGrantedWork(
 export function configureRuntimeRoutes(
   context: ConfigureRuntimeRoutesContext,
 ): ConfigureRuntimeRoutesResult {
+  let contextEfficiency: ReturnType<typeof composeContextEfficiencyRuntime>;
+  let durableTaskQuestionWake: TaskQuestionWake | undefined;
   // Shared by the operator grant routes and diagnostics admission.
   const unattendedGrantStore = new UnattendedGrantStore(
     context.configLoader.getProjectHomeDir(),
@@ -3253,6 +3298,7 @@ export function configureRuntimeRoutes(
       hostedTenantRegistry,
       resolveCallerRecord: resolveStationControlCallerRecord,
       resolveExternalClientProjectId: currentLocalProjectId,
+      progressiveToolsEnabled: context.progressiveToolsEnabled,
     }),
   );
   context.app.route(
@@ -3298,6 +3344,10 @@ export function configureRuntimeRoutes(
   // Epic #4003 `get_task_brief`'s REST side: the verified caller's own
   // session, the Task its immutable room execution binding names.
   const taskBriefSource = composeTaskBriefSource({
+    workingConfiguration: context.projectWorkingConfiguration?.forTask,
+    learningContext: (task, owner) =>
+      context.learningReview?.forTask(task, owner) ??
+      Promise.resolve(undefined),
     taskGraph: context.taskGraphService,
     eventStore: context.orchestrationEventStore,
     sessionReadModel: context.orchestrationService,
@@ -3308,6 +3358,10 @@ export function configureRuntimeRoutes(
     workItemObserver,
     logger: context.logger,
   });
+  context.orchestrationService.bindMandatoryTaskContextVerifier(
+    (sessionId, digest) =>
+      taskBriefSource.assertMandatoryContextCurrent(sessionId, digest),
+  );
   context.app.route(
     '/api/orchestration',
     createTaskBriefRoutes({
@@ -3944,7 +3998,55 @@ export function configureRuntimeRoutes(
           },
         };
       },
+      (requestContext) => {
+        const request = requestContext.req.raw;
+        const principal = resolveOrchestrationRequestPrincipal(requestContext);
+        roomRequestPrincipals.set(request, principal);
+        const localStationId =
+          context.environmentSecurityService.devicePairing.environmentId();
+        return new LocalTaskOutcomeSource(
+          localStationId,
+          () => context.taskGraphService.listTasks(),
+          async (task, readAuthority) =>
+            readAuthority.mode === 'personal' &&
+            readAuthority.userId === principal.id &&
+            isRequestPrincipalCurrent(request) &&
+            canonicalTaskSourceMayRead(request, task.id),
+          () => isRequestPrincipalCurrent(request),
+        );
+      },
     ),
+  );
+  context.app.route(
+    '/api/analytics',
+    createReviewedTariffRoutes({
+      service: () => context.getReviewedTariffConfiguration?.(),
+      enabled: () => context.reviewedTariffsEnabled?.() ?? false,
+      authorize: async (requestContext) => {
+        const request = requestContext.req.raw;
+        if (
+          hostedTenantRegistry ||
+          isHostedTenantExecutionRequired() ||
+          isStationInternalRequest(request) ||
+          !isBoundRuntimeLocalOperator(request)
+        )
+          return undefined;
+        const actorId = resolveOrchestrationRequestPrincipal(requestContext).id;
+        if (actorId !== LOCAL_OPERATOR_PRINCIPAL_ID) return undefined;
+        return {
+          actorId,
+          assertCurrent() {
+            if (
+              !isRequestPrincipalCurrent(request) ||
+              !isBoundRuntimeLocalOperator(request) ||
+              resolveOrchestrationRequestPrincipal(requestContext).id !==
+                actorId
+            )
+              throw new Error('Tariff review authority changed');
+          },
+        };
+      },
+    }),
   );
   context.app.route(
     '/api/telemetry',
@@ -5304,24 +5406,7 @@ export function configureRuntimeRoutes(
           }
           return witness();
         },
-        mayRead: (request, id) => {
-          if (
-            !runtimeRequestPrincipalMayAccessHttpRoute(
-              request,
-              context.environmentSecurityService,
-              { method: 'GET', path: `/api/tasks/${encodeURIComponent(id)}` },
-            )
-          )
-            return false;
-          const person = roomRequestPrincipals.get(request);
-          if (!person) return false;
-          if (
-            !isDeploymentAccountPrincipalId(person.id) ||
-            isOperatorInPersonNotAgent(request)
-          )
-            return true;
-          return !!taskMemberAdmission.admit(request, id, 'view');
-        },
+        mayRead: canonicalTaskSourceMayRead,
         mayEdit: (request, id) =>
           (!isDeploymentAccountPrincipalId(
             roomRequestPrincipals.get(request)?.id ?? '',
@@ -5554,6 +5639,16 @@ export function configureRuntimeRoutes(
     }
     const roomEventStore = context.orchestrationEventStore;
     const taskQuestionWake = new TaskQuestionWake({
+      outbox: roomEventStore.taskMemoryStore(),
+      mayReadTask: (task, owner) =>
+        canUseTaskSource(context, task, owner, true),
+      placementCurrent: (task, owner, conversationId) =>
+        canUseTaskSource(context, task, owner, true) &&
+        task.status !== 'done' &&
+        task.status !== 'canceled' &&
+        Boolean(task.sessionId) &&
+        (roomEventStore.conversationForSession(task.sessionId!)
+          ?.conversationId ?? task.sessionId) === conversationId,
       readTask: (taskId) => context.taskGraphService.readTaskView(taskId),
       conversationOf: (sessionId) =>
         roomEventStore.conversationForSession(sessionId)?.conversationId ??
@@ -5568,6 +5663,7 @@ export function configureRuntimeRoutes(
       },
       logger: context.logger,
     });
+    durableTaskQuestionWake = taskQuestionWake;
     const taskReviewSend = new TaskReviewSend({
       store: roomEventStore.taskReviewStore(),
       readTask: (taskId) => context.taskGraphService.readTaskView(taskId),
@@ -5677,6 +5773,10 @@ export function configureRuntimeRoutes(
         : { kind: 'revoked' as const };
     };
     const roomRuntime = new ProjectTaskRoomRuntime({
+      conversationOfSession: (id) =>
+        roomEventStore.conversationForSession(id)?.conversationId ?? id,
+      currentConversationSessionId: (id) =>
+        context.orchestrationService.currentConversationSessionId(id),
       ...(context.projectMembership
         ? {
             subscribeMembershipChanges: (listener) =>
@@ -6506,19 +6606,31 @@ export function configureRuntimeRoutes(
    * delivery exists (it is composed after the inbox it hands wakes to).
    */
   let coordinatorPlacement: CoordinatorWakeDelivery | undefined;
+  let automationActions:
+    | ReturnType<typeof createAutomationActionsRuntime>
+    | undefined;
   function createThreadInboxDelivery(
     eventStore: EventStore,
   ): ThreadInboxDelivery {
     const service = context.orchestrationService;
     return new ThreadInboxDelivery({
       ...conversationDeliveryPorts(eventStore),
+      get automation() {
+        return automationActions;
+      },
       store: eventStore.threadInboxStore(),
-      placementRefusal: ({ conversationId, clientTurnId, payload, queuedAt }) =>
+      placementRefusal: (input) =>
         coordinatorPlacement?.placementRefusal({
-          conversationId,
-          clientTurnId,
-          userId: payload.actor.userId,
-          queuedAt,
+          conversationId: input.conversationId,
+          clientTurnId: input.clientTurnId,
+          userId: input.payload.actor.userId,
+          queuedAt: input.queuedAt,
+        }) ??
+        contextEfficiency?.placementRefusal(input) ??
+        durableTaskQuestionWake?.placementRefusal({
+          conversationId: input.conversationId,
+          clientTurnId: input.clientTurnId,
+          userId: input.payload.actor.userId,
         }),
       hasPossibleEffect: (threadId) =>
         eventStore.sessionTurnBoundaryAuthority().hasPossibleEffect(threadId),
@@ -6679,7 +6791,7 @@ export function configureRuntimeRoutes(
       const delivery = createThreadInboxDelivery(
         context.orchestrationEventStore,
       );
-      delivery.start();
+      // Start after all durable placement owners have been bound below.
       return delivery;
     } catch (error) {
       context.logger.warn('thread inbox delivery is unavailable', {
@@ -6902,6 +7014,19 @@ export function configureRuntimeRoutes(
         })
       : undefined;
   coordinatorPlacement = coordinatorWakes;
+  contextEfficiency = composeContextEfficiencyRuntime(context, {
+    hosted: hostedTenantRegistry !== undefined,
+    inbox: threadInbox,
+    person: agentSchedule.person,
+    authority: readAuthorityForExecution,
+    currentRequest: isRequestPrincipalCurrent,
+    questionWake: () => durableTaskQuestionWake,
+    taskRequestMayRead: canonicalTaskSourceMayRead,
+    taskBrief: (sessionId) => taskBriefSource.forSession(sessionId),
+    sessionTaskAccess: (sessionId) =>
+      projectTaskRoomRuntime?.sessionTaskContextAccess(sessionId) ??
+      Promise.resolve(undefined),
+  });
   const coordinatorEvents = context.orchestrationEventStore;
   context.app.route(
     '/api/orchestration',
@@ -6958,6 +7083,46 @@ export function configureRuntimeRoutes(
     }),
   );
   let generalEventProducer: ReturnType<typeof createEventStreamProducer>;
+  // #3994: the TerminalSessions store, composed further down on personal
+  // hosts only. Engine sign-in, the process routes and the Project terminal
+  // close read it per request.
+  const scopedTerminals: {
+    sessions?: TerminalSessions<Request>;
+  } = {};
+  const scopedTerminalRefused = (error: unknown) => {
+    if (error instanceof TerminalSessionRefusal) return true;
+    throw error;
+  };
+  // The existing process projection, kept for scoped sessions (#3994).
+  const scopedTerminalSummary = (record: {
+    terminalId: string;
+    projectId: string;
+    cwd: string;
+    status: string;
+    pid: number | null;
+    exitCode?: number | null;
+    cols: number;
+    rows: number;
+  }): TerminalProcessSummary => ({
+    kind: 'terminal',
+    sessionId: record.terminalId,
+    projectSlug:
+      context.storageAdapter
+        .listProjects()
+        .find((project) => project.id === record.projectId)?.slug ??
+      record.projectId,
+    terminalId: record.terminalId,
+    cwd: record.cwd,
+    status:
+      record.status === 'starting' || record.status === 'running'
+        ? record.status
+        : 'exited',
+    pid: record.pid,
+    exitCode: record.exitCode ?? null,
+    hasRunningSubprocess: false,
+    cols: record.cols,
+    rows: record.rows,
+  });
   context.app.route(
     '/api/orchestration',
     createOrchestrationRoutes(context.orchestrationService, {
@@ -6998,6 +7163,48 @@ export function configureRuntimeRoutes(
       logger: context.logger,
       actionOperations,
       terminalService: context.terminalService,
+      scopedTerminals: {
+        list: async (request) =>
+          ((await scopedTerminals.sessions?.listObservable(request)) ?? []).map(
+            scopedTerminalSummary,
+          ),
+        read: async (request, terminalId) => {
+          const sessions = scopedTerminals.sessions;
+          const record = (await sessions?.listObservable(request))?.find(
+            (candidate) => candidate.terminalId === terminalId,
+          );
+          if (!sessions || !record) return null;
+          try {
+            const read = await sessions.read(
+              request,
+              record,
+              terminalId,
+              0,
+              64 * 1024,
+            );
+            return {
+              process: scopedTerminalSummary({ ...record, pid: read.pid }),
+              history: read.journal.records.map((entry) => entry.data).join(''),
+            };
+          } catch (error) {
+            scopedTerminalRefused(error);
+            return null;
+          }
+        },
+        close: async (request, terminalId) => {
+          const sessions = scopedTerminals.sessions;
+          const record = (await sessions?.listObservable(request))?.find(
+            (candidate) => candidate.terminalId === terminalId,
+          );
+          if (!sessions || !record) return false;
+          try {
+            await sessions.close(request, record, terminalId);
+            return true;
+          } catch (error) {
+            return !scopedTerminalRefused(error);
+          }
+        },
+      },
       resolvePrincipal: resolveOrchestrationRequestPrincipal,
       // Station #90 lane D (B2): an agent tool's dispatch acts for its
       // verified session's owner, or is marked unattributed; never silently
@@ -7558,8 +7765,25 @@ export function configureRuntimeRoutes(
       ),
     }),
   );
+  // Sign-in terminals are server-owned TerminalSessions launches.
   const engineSignInService = new EngineSignInService({
-    terminal: context.terminalService,
+    terminal: isPersonalHost
+      ? {
+          open: (input) => {
+            if (!scopedTerminals.sessions)
+              throw new Error('Terminal sessions unavailable');
+            return scopedTerminals.sessions.openInternal(
+              ENGINE_SIGN_IN_TERMINAL_SCOPE,
+              input,
+            );
+          },
+          close: async (terminalId) =>
+            scopedTerminals.sessions?.closeInternal(
+              ENGINE_SIGN_IN_TERMINAL_SCOPE,
+              terminalId,
+            ),
+        }
+      : null,
   });
   registerEngineSignIn(engineSignInService);
   context.app.route(
@@ -7666,6 +7890,8 @@ export function configureRuntimeRoutes(
           ),
         };
       }
+      if (account?.kind === 'unavailable')
+        throw new ProjectMembershipRefusal('unavailable');
       if (account && account.kind !== 'absent')
         throw new ProjectMembershipRefusal('forbidden');
       const principal = roomRequestPrincipals.get(request);
@@ -7722,6 +7948,66 @@ export function configureRuntimeRoutes(
       (request) => projectMembershipAuthority(request).operator(),
     ),
   );
+  // #4305: the same operator authority as account administration above, so
+  // any operator step-up added to that check applies here too.
+  if (context.accountSharing && context.accountSharingPreview) {
+    const accountSharingState = context.accountSharing;
+    const sharingIngressByRequest = new WeakMap<Request, string | null>();
+    context.app.route(
+      '/api/operator/account-sharing',
+      createAccountSharingRoutes({
+        homeDirectory: context.configLoader.getProjectHomeDir(),
+        consentChannel: context.consentChannel,
+        requireOperator: (request) =>
+          projectMembershipAuthority(request).operator(),
+        state: accountSharingState,
+        preview: context.accountSharingPreview,
+        origins: async (c) => {
+          if (!sharingIngressByRequest.has(c.req.raw)) {
+            sharingIngressByRequest.set(
+              c.req.raw,
+              attestedBrowserVisibleHost({
+                environment: c.env,
+                header: (name) => c.req.header(name),
+              }) ?? null,
+            );
+          }
+          const configuredUiPort = Number(process.env.STATION_UI_PORT);
+          const uiPort =
+            Number.isInteger(configuredUiPort) &&
+            configuredUiPort > 0 &&
+            configuredUiPort <= 65535
+              ? configuredUiPort
+              : undefined;
+          const detected = uiPort
+            ? await publicIngressOriginResolver(uiPort, {
+                ...process.env,
+                STATION_UI_PORT: String(uiPort),
+              }).resolve()
+            : undefined;
+          return accountSharingOriginOptions({
+            allowedOrigins: (process.env.ALLOWED_ORIGINS ?? '')
+              .split(',')
+              .map((origin) => origin.trim())
+              .filter(Boolean),
+            browserOrigins: resolveConfiguredRuntimeOrigins(context),
+            apiPort: context.port,
+            uiPort,
+            host: context.host,
+            uiIngressAuthority:
+              sharingIngressByRequest.get(c.req.raw) ?? undefined,
+            tailscaleServeOrigins: detected ?? [],
+          });
+        },
+        supervised: () => isSupervisedEnvironment(),
+        requestHandoff: () =>
+          requestSupervisorHandoff({
+            timeoutMs: HANDOFF_DEFAULTS.parkTimeoutMs + 15_000,
+          }),
+        logger: context.logger,
+      }),
+    );
+  }
   const telemetryOperatorAccounts = new WeakMap<Request, () => boolean>();
   const telemetryOperatorDevices = new WeakMap<Request, () => boolean>();
   const assertTelemetryCompanionOperatorLocalCurrent = (request: Request) => {
@@ -7931,34 +8217,50 @@ export function configureRuntimeRoutes(
     );
     await next();
   });
+  const mayPostProjectSharingEnable = (request: Request, slug: string) => {
+    const route = {
+      method: 'POST',
+      path: `/api/projects/${encodeURIComponent(slug)}/access/enable`,
+    };
+    const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+    const binding =
+      principal?.authority === 'device-credential'
+        ? context.environmentSecurityService.identifyDevice(
+            principal.credential,
+          )?.principalBinding
+        : undefined;
+    return (
+      runtimeRequestPrincipalMayAccessHttpRoute(
+        request,
+        context.environmentSecurityService,
+        route,
+      ) &&
+      (!(binding && 'kind' in binding && binding.kind === 'account') ||
+        accountBoundProjectRouteMayPass(route.method, route.path))
+    );
+  };
   context.app.route(
     '/api/projects',
     createProjectMembershipRoutes(
       context.projectMembership,
       projectMembershipAuthority,
       context.deploymentAuthentication?.publicOrigin,
-      (request, slug) => {
-        const route = {
-          method: 'POST',
-          path: `/api/projects/${slug}/access/enable`,
-        };
-        const principal = getRuntimeAuthenticatedRequestPrincipal(request);
-        const binding =
-          principal?.authority === 'device-credential'
-            ? context.environmentSecurityService.identifyDevice(
-                principal.credential,
-              )?.principalBinding
-            : undefined;
-        return (
-          runtimeRequestPrincipalMayAccessHttpRoute(
+      // #4306: an operator passkey session enables sharing remotely, one
+      // fresh consent-origin passkey confirmation per enable.
+      createProjectSharingStepUp({
+        membership: context.projectMembership,
+        authority: projectMembershipAuthority,
+        consentChannel: context.consentChannel,
+        operatorSessions: context.operatorSessions,
+        isPrincipalCurrent: (request) =>
+          isRuntimeRequestPrincipalCurrent(
             request,
             context.environmentSecurityService,
-            route,
-          ) &&
-          (!(binding && 'kind' in binding && binding.kind === 'account') ||
-            accountBoundProjectRouteMayPass(route.method, route.path))
-        );
-      },
+          ),
+        mayPostEnable: mayPostProjectSharingEnable,
+        logger: context.logger,
+      }),
+      mayPostProjectSharingEnable,
     ),
   );
   // #90 Browser pane: personal hosts only (same gate as the device routes),
@@ -8234,6 +8536,28 @@ export function configureRuntimeRoutes(
     );
   }
   const contributionResolution = buildProjectResolutionRouteDeps(context);
+  function canonicalTaskSourceMayRead(request: Request, id: string): boolean {
+    if (
+      !isRequestPrincipalCurrent(request) ||
+      !runtimeRequestPrincipalMayAccessHttpRoute(
+        request,
+        context.environmentSecurityService,
+        { method: 'GET', path: `/api/tasks/${encodeURIComponent(id)}` },
+      )
+    )
+      return false;
+    const personId =
+      roomRequestPrincipals.get(request)?.id ??
+      conversationReadAuthorityForRequest(request).userId;
+    if (!personId) return false;
+    if (
+      !isDeploymentAccountPrincipalId(personId) ||
+      isOperatorInPersonNotAgent(request)
+    )
+      return true;
+    return taskMemberAdmission.admit(request, id, 'view') !== undefined;
+  }
+
   context.app.route(
     '/api/project-contributions',
     createProjectContributionRoutes(
@@ -8329,6 +8653,141 @@ export function configureRuntimeRoutes(
       throw new ProjectMembershipRefusal('forbidden');
     return projectMembershipAuthority(request);
   };
+  if (context.learningReview) {
+    const learning = context.learningReview;
+    const primeLearningPrincipal = async (
+      c: Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
+      next: () => Promise<void>,
+    ) => {
+      roomRequestPrincipals.set(
+        c.req.raw,
+        resolveOrchestrationRequestPrincipal(c),
+      );
+      await next();
+    };
+    context.app.use('/api/projects/:slug/learning', primeLearningPrincipal);
+    context.app.use('/api/projects/:slug/learning/*', primeLearningPrincipal);
+    context.app.route(
+      '/api/projects',
+      createProjectLearningReviewRoutes({
+        enabled: learning.enabled,
+        authorize: async (request, slug) => {
+          if (isStationInternalRequest(request)) return undefined;
+          const project = context.projectService
+            .listProjects()
+            .find((project) => project.slug === slug);
+          if (!project) return undefined;
+          const authority = projectMembershipAuthority(request);
+          try {
+            await authority.operator();
+            const actor = (await authority.current()).principal.id;
+            const access = learning.forProject(
+              project.id,
+              actor,
+              () => {
+                if (
+                  request.signal.aborted ||
+                  !isRequestPrincipalCurrent(request) ||
+                  context.projectService
+                    .listProjects()
+                    .find((entry) => entry.slug === slug)?.id !== project.id
+                )
+                  throw new ProjectMembershipRefusal('forbidden');
+              },
+              true,
+              async () => {
+                await authority.operator();
+                if ((await authority.current()).principal.id !== actor)
+                  throw new ProjectMembershipRefusal('forbidden');
+              },
+            );
+            return {
+              scope: { kind: 'project' as const, id: project.id },
+              service: access.service,
+              isCurrent: async () => {
+                try {
+                  await authority.operator();
+                  if ((await authority.current()).principal.id !== actor)
+                    return false;
+                  access.assertCurrent();
+                  return true;
+                } catch {
+                  return false;
+                }
+              },
+            };
+          } catch (error) {
+            if (error instanceof ProjectMembershipRefusal) return undefined;
+            throw error;
+          }
+        },
+      }),
+    );
+  }
+  if (context.projectWorkingConfiguration) {
+    const working = context.projectWorkingConfiguration;
+    context.app.use(
+      '/api/projects/:slug/working-configuration',
+      async (c, next) => {
+        roomRequestPrincipals.set(
+          c.req.raw,
+          resolveOrchestrationRequestPrincipal(c),
+        );
+        await next();
+      },
+    );
+    context.app.route(
+      '/api/projects',
+      createProjectWorkingConfigurationRoutes({
+        service: working.service,
+        enabled: () =>
+          working.preview.select({
+            enabled: () => true,
+            disabled: () => false,
+          }),
+        authorize: async (request, slug) => {
+          if (isStationInternalRequest(request)) return undefined;
+          const project = context.projectService
+            .listProjects()
+            .find((entry) => entry.slug === slug);
+          if (!project) return undefined;
+          const authority = projectMembershipAuthority(request);
+          try {
+            await authority.operator();
+            const actor = await authority.current();
+            return {
+              projectId: project.id,
+              actorId: actor.principal.id,
+              isCurrent: async () => {
+                if (
+                  context.projectService
+                    .listProjects()
+                    .find((entry) => entry.slug === slug)?.id !== project.id
+                )
+                  return false;
+                try {
+                  await authority.operator();
+                  return (
+                    (await authority.current()).principal.id ===
+                      actor.principal.id &&
+                    context.projectService
+                      .listProjects()
+                      .find((entry) => entry.slug === slug)?.id === project.id
+                  );
+                } catch {
+                  return false;
+                }
+              },
+            };
+          } catch (error) {
+            if (error instanceof ProjectMembershipRefusal) return undefined;
+            throw error;
+          }
+        },
+      }),
+    );
+  }
+
   /**
    * #2377 slice B: whether a station-control agent request may take
    * `action` in the Project named by `projectRef` (its id or slug), for a
@@ -8533,6 +8992,7 @@ export function configureRuntimeRoutes(
   let roomClose: Promise<void> | undefined;
   const projectRoomRuntime = {
     close(): Promise<void> {
+      contextEfficiency?.close();
       if (roomClose) return roomClose;
       roomClosed = true;
       projectRoomService.close();
@@ -8890,30 +9350,76 @@ export function configureRuntimeRoutes(
     authorityFor: conversationReadAuthorityForRequest,
     projects: context.projectService,
   });
-  // Part (a) exposes the storage/host seam only to the personal operator.
-  // Account, hosted, device and plugin admission belongs to #3994(b).
+  // Terminals belong to the operator on a personal host: in person, or
+  // through one of their own paired devices (#3994 owner decision,
+  // 2026-10-31). Members, agents, plugins and hosted tenants are refused.
   if (isPersonalHost) {
-    const authorizeTerminalRequest = (request: Request) =>
-      isOperatorInPersonNotAgent(request) && isRequestPrincipalCurrent(request);
+    const identifyDevice = (credential: string) =>
+      context.environmentSecurityService.identifyDevice(credential);
+    const authorizeTerminalRequest = (request: Request) => {
+      const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+      return (
+        !!principal &&
+        // Personal tokens and account-bound Devices never reach a terminal
+        // socket (#3586), even when the credential also reads as operator.
+        !refusedOnWebSocket(identifyDevice(principal.credential)) &&
+        isTerminalOperator(request, identifyDevice) &&
+        isRequestPrincipalCurrent(request)
+      );
+    };
+    const terminalScopeFor = (request: Request) => {
+      const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+      return principal
+        ? (context.environmentSecurityService.resolveGrantedScope(
+            principal.credential,
+          ) ?? '')
+        : '';
+    };
     const terminalSessions = new TerminalSessions<Request>(
       context.configLoader.getProjectHomeDir(),
-      new InProcessShellHost(
+      createTerminalShellHost(
+        supervisorWorkloadChannel(),
         new NodePtyAdapter(),
         async () => (await context.configLoader.loadAppConfig()).terminalShell,
       ),
       {
-        authorize: (request, _scope, operation) => {
-          const principal = getRuntimeAuthenticatedRequestPrincipal(request);
-          return (
-            authorizeTerminalRequest(request) &&
-            !!principal &&
-            terminalScopeAllows(
-              context.environmentSecurityService.resolveGrantedScope(
-                principal.credential,
-              ) ?? '',
-              operation,
-            )
+        authorize: (request, _scope, operation) =>
+          authorizeTerminalRequest(request) &&
+          terminalScopeAllows(terminalScopeFor(request), operation),
+        legacyProjectSlug: async (_request, scope) => {
+          const project = context.storageAdapter
+            .listProjects()
+            .find((item) => item.id === scope.projectId);
+          if (!project) throw new TerminalSessionRefusal('Project not found');
+          return project.slug;
+        },
+        // An agent tab names a configured connection and one of its live
+        // modes; the program and arguments come from the saved connection.
+        resolveLaunch: async (_request, _scope, profile) => {
+          const connection = (
+            await context.configLoader.loadACPConfig()
+          ).connections.find(
+            (candidate) =>
+              candidate.id === profile.connectionId && candidate.enabled,
           );
+          const live = context.acpBridge
+            .getStatus()
+            .connections.find((status) => status.id === profile.connectionId);
+          if (
+            !connection?.interactive?.args ||
+            !live?.modes.includes(profile.mode)
+          )
+            throw new TerminalSessionRefusal('Launch profile unavailable');
+          const file = await findCliBinaryAsync(connection.command);
+          if (!file)
+            throw new TerminalSessionRefusal('Launch profile unavailable');
+          return {
+            file,
+            args: connection.interactive.args.map((arg) =>
+              arg === '{agent}' ? profile.mode : arg,
+            ),
+            env: { PATH: await resolveAugmentedPath() },
+          };
         },
         resolveRoot: async (request, scope) => {
           const project = context.storageAdapter
@@ -8939,43 +9445,53 @@ export function configureRuntimeRoutes(
       },
     );
     context.terminalService.scopedSessions = terminalSessions;
-    context.app.get('/api/terminal/socket', (c) =>
+    scopedTerminals.sessions = terminalSessions;
+    context.app.get(TERMINAL_SOCKET_PATH, (c) =>
       authorizeTerminalRequest(c.req.raw)
         ? c.body(null, 204)
         : c.json({ success: false, error: 'Terminal access refused' }, 403),
     );
+    // The socket is admitted before its upgrade by a single-use ticket that
+    // this ordinary authenticated route mints, so a browser, a proxy prefix,
+    // a tailnet name and a native shell's host-owned transport all reach it
+    // through the same HTTP admission. The ticket keeps this Request as the
+    // socket's principal; every later operation re-checks it as current.
+    const terminalTickets = new TerminalTickets<Request>();
+    const terminalIdentity = (request: Request) => {
+      const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+      return principal?.deviceId
+        ? `device:${principal.deviceId}`
+        : `credential:${createHash('sha256')
+            .update(principal?.credential ?? '')
+            .digest('hex')}`;
+    };
+    context.app.post(TERMINAL_TICKET_PATH, (c) => {
+      const request = c.req.raw;
+      c.header('Cache-Control', 'no-store');
+      if (
+        !authorizeTerminalRequest(request) ||
+        !terminalScopeAllows(terminalScopeFor(request), 'observe')
+      )
+        return c.json(
+          { success: false, error: 'Terminal access refused' },
+          403,
+        );
+      const ticket = terminalTickets.mint(request, terminalIdentity(request));
+      return ticket
+        ? c.json({ success: true, data: ticket })
+        : c.json(
+            { success: false, error: 'Too many pending terminal tickets' },
+            429,
+          );
+    });
     registerTerminalGateway(
       context.app,
       new TerminalGateway({
         sessions: terminalSessions,
-        allowedOrigins: resolveConfiguredRuntimeOrigins(context),
-        authenticate: async (credential, incoming) => {
-          if (
-            !(await credentialAuthorizedForScope(
-              context.environmentSecurityService,
-              PAIRING_SCOPE_TERMINAL_OPERATE,
-              credential,
-            ))
-          )
-            return undefined;
-          const request = new Request(
-            `http://localhost:${context.port}${TERMINAL_SOCKET_PATH}`,
-            {
-              headers: {
-                authorization: `Bearer ${credential}`,
-                ...(incoming.headers.origin && {
-                  origin: incoming.headers.origin,
-                }),
-              },
-            },
-          );
-          // Run the real HTTP admission pipeline; never synthesize a principal
-          // from a token or forward caller-controlled internal proxy headers.
-          const response = await context.app.fetch(request, { incoming });
-          return response.status === 204 && authorizeTerminalRequest(request)
-            ? request
-            : undefined;
-        },
+        tickets: terminalTickets,
+        // The operator in person keeps reserved slots even when their own
+        // devices, or a flood of them, fill the shared capacity.
+        reserved: (request) => isOperatorInPersonNotAgent(request),
       }),
     );
     context.app.route(
@@ -9049,6 +9565,20 @@ export function configureRuntimeRoutes(
         layoutCatalog,
         kitObservabilityRegistry,
         terminalService: context.terminalService,
+        closeScopedTerminal: async (request, projectId, terminalId) => {
+          const sessions = scopedTerminals.sessions;
+          if (!sessions) return false;
+          try {
+            await sessions.close(
+              request,
+              { projectId, bindingKey: 'project' },
+              terminalId,
+            );
+            return true;
+          } catch (error) {
+            return !scopedTerminalRefused(error);
+          }
+        },
         visualFileFrameOrigin: () => context.getMcpUiFrameOrigin?.(),
         sessionWorkspaceDirectory: (routeContext, projectSlug, thread) =>
           sessionWorkspaceDirectory(routeContext.req.raw, projectSlug, thread),
@@ -10610,6 +11140,33 @@ export function configureRuntimeRoutes(
         ),
     }),
   );
+  const conversationResolutionPreview = context.featurePreviews.bind({
+    id: 'conversation-resolution',
+    label: 'Open and Settled inbox',
+    description:
+      'Keep conversations open until you settle them. Resolution syncs across your devices; no provider work.',
+  });
+  context.app.route(
+    '/api/conversations',
+    createConversationWorkStateRoutes({
+      store: new ConversationWorkStateStore(
+        context.configLoader.getProjectHomeDir(),
+      ),
+      preview: conversationResolutionPreview,
+      authorityFor: conversationReadAuthorityForRequest,
+      isOwnerDevice: ownerDevicePredicate(() =>
+        context.environmentSecurityService.devicePairing.listDevices(),
+      ),
+      canRead: async (id, authority) =>
+        Boolean(
+          await context.orchestrationService.resolveConversationOpen(
+            id,
+            authority,
+          ),
+        ),
+      current: isRequestPrincipalCurrent,
+    }),
+  );
   context.app.route(
     '/api/conversations',
     createGlobalConversationRoutes(
@@ -10685,6 +11242,8 @@ export function configureRuntimeRoutes(
     schedulerService,
     automationLedger,
     automationPreview,
+    automationActions: runtimeAutomationActions,
+    isolatedRepairs,
     notificationService,
     approvalInboxProvider,
     attentionProjection,
@@ -10698,6 +11257,7 @@ export function configureRuntimeRoutes(
     pushGatewayAvailable,
     agentActivityPublisher,
   } = configureRuntimeSupportServices(context, flowRunService, {
+    threadInbox: () => threadInbox,
     focus: focusPresence,
     inAppLiveness: clientStreamPresence.inAppLiveness,
     ...(scheduledConversationRuns
@@ -10714,6 +11274,9 @@ export function configureRuntimeRoutes(
         context.projectService.listProjects().map((project) => project.slug),
       ),
   });
+  automationActions = runtimeAutomationActions;
+  threadInbox?.start();
+  contextEfficiency?.start();
   const nativeInvocationRunReader =
     runtimeContext.orchestrationEventStore.nativeInvocationRunReader();
   const voiceTurnRunReader =
@@ -11067,6 +11630,28 @@ export function configureRuntimeRoutes(
     ),
   );
   context.app.route(
+    '/api/isolated-repairs',
+    createIsolatedRepairRoutes({
+      controller: isolatedRepairs,
+      operator: async (request) => {
+        const assertCurrent = async () => {
+          if (
+            isHostedTenantExecutionRequired() ||
+            !isOperatorInPersonNotAgent(request) ||
+            !isRuntimeRequestPrincipalCurrent(
+              request,
+              context.environmentSecurityService,
+            )
+          )
+            throw new Error('Operator access required');
+          await projectMembershipAuthority(request).operator();
+        };
+        await assertCurrent();
+        return { id: getCachedUser().alias, assertCurrent };
+      },
+    }),
+  );
+  context.app.route(
     '/api/runs',
     createRunRoutes(
       runService,
@@ -11168,9 +11753,87 @@ export function configureRuntimeRoutes(
       },
     }),
   );
+  context.app.use('/api/feedback/rate', bindConversationReadAuthority);
+  context.app.use('/api/feedback/ratings', bindConversationReadAuthority);
   context.app.route(
     '/api/feedback',
-    createFeedbackRoutes(context.feedbackService),
+    createFeedbackRoutes(
+      context.feedbackService,
+      async (request, input) => {
+        const sessionId = input.expectedSessionId;
+        const turnId = input.expectedTurnId;
+        if (
+          !sessionId ||
+          !turnId ||
+          isStationInternalRequest(request) ||
+          !isRequestPrincipalCurrent(request)
+        )
+          return undefined;
+        const authority = conversationReadAuthorityForRequest(request);
+        const service = context.orchestrationService;
+        if (
+          !service.canUserReadConversation(input.conversationId, authority) ||
+          !service
+            .conversationSessionIds(input.conversationId)
+            .includes(sessionId)
+        )
+          return undefined;
+        const detail = await service.readSession(sessionId, authority, {
+          eventMethods: [],
+        });
+        const agentSlug = detail?.session.assignedAgentSlug;
+        if (!agentSlug) return undefined;
+        const reader = createConversationMessageReader({
+          getAdapter: (slug) => context.memoryAdapters.get(slug) ?? null,
+          authorityFor: () => authority,
+          sessionMessageReader: service,
+          logger: context.logger,
+        });
+        const messages = await reader.readConversationMessages(
+          request,
+          agentSlug,
+          input.conversationId,
+          authority,
+        );
+        const message = messages.messages[input.messageIndex];
+        if (
+          message?.metadata?.sessionId !== sessionId ||
+          message.metadata.turnId !== turnId
+        )
+          return undefined;
+        const target = createFeedbackRatingTarget(
+          input.conversationId,
+          message,
+        );
+        if (!target) return undefined;
+        const assertCurrent = () => {
+          if (
+            !isRequestPrincipalCurrent(request) ||
+            request.signal.aborted ||
+            !service.canUserReadSession(sessionId, authority) ||
+            !service.canUserReadConversation(input.conversationId, authority)
+          )
+            throw new Error('Feedback source authority changed');
+        };
+        assertCurrent();
+        return { target, assertCurrent };
+      },
+      (request, target) => {
+        if (!isRequestPrincipalCurrent(request) || request.signal.aborted)
+          return false;
+        const authority = conversationReadAuthorityForRequest(request);
+        return (
+          context.orchestrationService.canUserReadSession(
+            target.sessionId,
+            authority,
+          ) &&
+          context.orchestrationService.canUserReadConversation(
+            target.conversationId,
+            authority,
+          )
+        );
+      },
+    ),
   );
   context.app.route(
     '/api/insights',
@@ -12738,6 +13401,9 @@ export function configureDevicePairingPublicRoutes(
         proof: body.proof,
         requestId: body.requestId,
         clientInstanceId: body.clientInstanceId as string | undefined,
+        ...(browserCookieDelivery && candidate
+          ? { sessionScope: PAIRING_SCOPE_ORCHESTRATION_READ }
+          : {}),
       });
       deviceSessionExchanges.add(1, {
         outcome: 'issued',
@@ -13148,6 +13814,7 @@ export function configureDevicePairingHostRoutes(
     forbiddenPasskeyId?: string,
     items: readonly { label: string; detail: string }[] = [],
     warning?: string,
+    details?: readonly { label: string; detail: string }[],
   ) => {
     const session = operatorSession(c.req.raw);
     const channel = options.consentChannel;
@@ -13173,6 +13840,7 @@ export function configureDevicePairingHostRoutes(
         title: 'Review access change',
         summary,
         items,
+        ...(details ? { details } : {}),
         ...(warning ? { warning } : {}),
         approveLabel: 'Confirm with passkey',
         denyLabel: 'Cancel',
@@ -13586,6 +14254,100 @@ export function configureDevicePairingHostRoutes(
     )
       return c.json({ error: { code: 'operator_session_required' } }, 403);
     return c.json({ requests: pairing.listRequests() });
+  });
+  app.post('/api/pairing/requests/:requestId/account-consent', async (c) => {
+    if (isAgentOriginatedRequest(c.req.raw))
+      return c.json({ error: 'authentication_required' }, 403);
+    const body = await readPairingOfferJson(c.req.raw, new Set(['']));
+    if (!body || Object.keys(body).length !== 0)
+      return c.json({ error: 'invalid_request' }, 400);
+    const requestId = c.req.param('requestId');
+    const accountAuthentication = options.accountAuthentication;
+    const snapshot = (): ConsentTargetSnapshot | null => {
+      const request = pairing
+        .listRequests()
+        .find((item) => item.requestId === requestId);
+      const account = pairing.accountCandidateForRequest(requestId);
+      if (
+        !request ||
+        request.status !== 'pending' ||
+        request.kind !== 'device' ||
+        !account ||
+        pairing.isRelayEnrollmentRequest(requestId)
+      )
+        return null;
+      const scope = parsePairingScope(request.scope);
+      if (
+        !scope ||
+        !scope.includes(PAIRING_SCOPE_ORCHESTRATION_READ) ||
+        scope.some(isProtectedPairingPromotionScope)
+      )
+        return null;
+      return {
+        kind: 'device-access-change',
+        subject: requestId,
+        fingerprint: JSON.stringify({
+          request,
+          account,
+          bindAccountIdentity: true,
+          approvedScope: PAIRING_SCOPE_ORCHESTRATION_READ,
+        }),
+      };
+    };
+    const target = snapshot();
+    const account = pairing.accountCandidateForRequest(requestId);
+    const request = pairing
+      .listRequests()
+      .find((item) => item.requestId === requestId);
+    if (!target || !account || !request || !accountAuthentication)
+      return c.json({ error: 'person_binding_unavailable' }, 409);
+    return stepUp(
+      c,
+      target,
+      `Approve access for “${request.deviceName}” and link it to this account.`,
+      snapshot,
+      async (_passkeyId, _sessionId, assertCurrent) => {
+        const verified = await accountAuthentication.verifySessionReference(
+          account.sessionId,
+          new AbortController().signal,
+        );
+        assertCurrent();
+        if (
+          verified.kind !== 'authenticated' ||
+          accountAuthentication.describe().issuer !==
+            account.candidate.issuer ||
+          verified.session.subject !== account.candidate.subject
+        ) {
+          throw new ConsentCommitRefusedError(
+            'The account session is no longer current.',
+            false,
+            'target_changed',
+          );
+        }
+        const confirmation = pairing.confirmRequest(
+          requestId,
+          { kind: 'presented-credential' },
+          { principalId: LOCAL_OPERATOR_PRINCIPAL_ID, kind: 'account' },
+          { scope: PAIRING_SCOPE_ORCHESTRATION_READ },
+        );
+        return { ...confirmation, personBindingApproved: true };
+      },
+      undefined,
+      [
+        { label: 'Browser', detail: request.deviceName },
+        { label: 'Station account', detail: account.candidate.displayName },
+        {
+          label: 'Access',
+          detail:
+            PAIRING_SCOPE_DESCRIPTIONS[PAIRING_SCOPE_ORCHESTRATION_READ].label,
+        },
+      ],
+      'Account and Project permissions limit this Device’s access.',
+      [
+        { label: 'Account provider', detail: account.candidate.issuer },
+        { label: 'Account ID', detail: account.candidate.subject },
+      ],
+    );
   });
   app.post('/api/pairing/requests/:requestId/confirm', async (c) => {
     const requestId = c.req.param('requestId');

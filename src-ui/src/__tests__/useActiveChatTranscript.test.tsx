@@ -1350,6 +1350,25 @@ describe('useActiveChatTranscript', () => {
             ?.turnId,
       ),
     ).toEqual(['turn-5c', 'turn-6']);
+    // Continue keys on the interruption: a kept notice carries its own, and
+    // a dropped one hands it to the row that now says it.
+    expect(notices.map((notice) => notice.interruptedTurnBoundaryId)).toEqual([
+      'boundary-5c',
+      'boundary-6',
+    ]);
+    expect(
+      result.current.messages
+        .filter((message) => message.interruptedTurnBoundaryId)
+        .map((message) => [
+          message.role,
+          message.turnId,
+          message.interruptedTurnBoundaryId,
+        ]),
+    ).toEqual([
+      ['assistant', 'turn-5', 'boundary-5'],
+      ['user', undefined, 'boundary-5c'],
+      ['user', undefined, 'boundary-6'],
+    ]);
   });
 
   test('station#3415: a durable mid-turn compaction reaches the dock as a system row after its one-row turn', async () => {
@@ -2702,6 +2721,90 @@ describe('useActiveChatTranscript', () => {
       'e3:user',
       'e3:assistant',
     ]);
+  });
+
+  test('loads an unloaded selected turn lazily through the history owner and stops at that turn', async () => {
+    fetchWindow
+      .mockResolvedValueOnce({
+        protocolVersion: 1,
+        watermark: 30,
+        hasMore: true,
+        nextCursor: 'page-two',
+        events: [
+          event('e30', 'turn.started', { turnId: 'latest', prompt: 'Latest' }),
+        ],
+      })
+      .mockResolvedValueOnce({
+        protocolVersion: 1,
+        watermark: 30,
+        hasMore: true,
+        nextCursor: 'page-three',
+        events: [
+          event('e20', 'turn.started', { turnId: 'middle', prompt: 'Middle' }),
+        ],
+      })
+      .mockResolvedValueOnce({
+        protocolVersion: 1,
+        watermark: 30,
+        hasMore: true,
+        nextCursor: 'not-requested',
+        events: [
+          event('e10', 'turn.started', {
+            turnId: 'chosen',
+            prompt: 'Chosen older turn',
+          }),
+        ],
+      });
+    const view = renderHook(() =>
+      useActiveChatTranscript('http://station.test', baseSession),
+    );
+    await waitFor(() => expect(view.result.current.settled).toBe(true));
+    expect(fetchWindow).toHaveBeenCalledTimes(1);
+    expect(
+      view.result.current.messages.some((row) => row.turnId === 'chosen'),
+    ).toBe(false);
+    let found = false;
+    await act(async () => {
+      found = await view.result.current.loadTurn('chosen');
+    });
+    expect(found).toBe(true);
+    expect(fetchWindow).toHaveBeenCalledTimes(3);
+    expect(
+      fetchWindow.mock.calls.slice(1).map((call) => call[2].cursor),
+    ).toEqual(['page-two', 'page-three']);
+    expect(
+      view.result.current.messages.some(
+        (row) => row.content === 'Chosen older turn',
+      ),
+    ).toBe(true);
+    await act(async () => {
+      expect(await view.result.current.loadTurn('chosen')).toBe(true);
+    });
+    expect(fetchWindow).toHaveBeenCalledTimes(3);
+  });
+
+  test('a cancelled turn jump does not fetch older pages', async () => {
+    fetchWindow.mockResolvedValueOnce({
+      protocolVersion: 1,
+      watermark: 30,
+      hasMore: true,
+      nextCursor: 'older',
+      events: [
+        event('e30', 'turn.started', { turnId: 'latest', prompt: 'Latest' }),
+      ],
+    });
+    const view = renderHook(() =>
+      useActiveChatTranscript('http://station.test', baseSession),
+    );
+    await waitFor(() => expect(view.result.current.settled).toBe(true));
+    const abort = new AbortController();
+    abort.abort();
+    await act(async () => {
+      expect(
+        await view.result.current.loadTurn('older-turn', abort.signal),
+      ).toBe(false);
+    });
+    expect(fetchWindow).toHaveBeenCalledTimes(1);
   });
 
   test('retains the event displaced from a sliding newest window after older pages were loaded', async () => {

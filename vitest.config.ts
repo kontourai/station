@@ -43,6 +43,13 @@ export default defineConfig({
         replacement: path.resolve(__dirname, './src-shared/$1'),
       },
       {
+        find: '@kontourai/station-contracts/qualification-repair-policy',
+        replacement: path.resolve(
+          __dirname,
+          './packages/contracts/src/qualification-repair-policy.mjs',
+        ),
+      },
+      {
         find: /^@kontourai\/station-contracts\/(.+)$/,
         replacement: path.resolve(__dirname, './packages/contracts/src/$1.ts'),
       },

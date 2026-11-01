@@ -122,7 +122,7 @@ that every listed option has passed a live workflow.
 Personal display choices now belong to the authenticated person on this Station:
 theme, accent, named color theme (family, dark flavor and accent; see
 [user color themes](../decisions/user-color-themes.md)), chat font and
-reasoning/tool visibility, answer delivery, diff
+reasoning/tool visibility, answer delivery and width, diff
 style/wrapping, auto-hide, model-picker preferences, the conversation-delete
 confirmation and Developer navigation. The account preference contract is
 [`account-preferences.ts`](../../packages/contracts/src/account-preferences.ts).
@@ -133,6 +133,11 @@ cached separately for first paint ([appearance cache](../../src-ui/src/lib/appea
 that cache is not a device setting and yields once the account answers or
 the page gets a definite "no person" (signed out, a refused credential; not
 while a session or relay account is still being checked).
+
+**Customize → Appearance → Answer width** offers Comfortable, Wide (default)
+and Full width. It changes assistant answers only; phone answers use the
+available width. The shared device-setting key `chatAnswerWidth` supplies the
+legacy/default value and participates in account preferences.
 
 Device scope retains microphone and output providers, push permission, haptics,
 Return behavior, keyboard shortcuts, panel dimensions/placement and navigation

@@ -32,7 +32,11 @@
 
     "scripts/run-ci-fast.mjs",
 
-    "scripts/docs-truth-gate-aggregate.mjs"
+    "scripts/docs-truth-gate-aggregate.mjs",
+
+    "src-server/routes/operations/repairs.ts",
+
+    "src-server/services/automation/repair-controller.ts"
   ],
 
   "checks": [

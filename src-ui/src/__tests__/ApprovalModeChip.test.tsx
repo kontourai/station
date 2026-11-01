@@ -97,7 +97,7 @@ describe('ApprovalModeChip', () => {
     const { rerender } = render(
       <ApprovalModeChip engineConnectionId="codex" onChange={vi.fn()} />,
     );
-    expect(chipValue()).toBe('Engine default');
+    expect(chipValue()).toBe('Default');
     rerender(
       <ApprovalModeChip
         engineConnectionId="codex"
@@ -273,13 +273,11 @@ describe('ApprovalModeChip', () => {
     );
 
     expect(
-      screen.getByRole('button', { name: /^Approval mode: Auto — Auto\./ }),
+      screen.getByRole('button', { name: /^Approval mode: Auto\./ }),
     ).toBeTruthy();
     await openSheet();
     expect(option(/^Auto/).getAttribute('aria-checked')).toBe('true');
-    expect(option(/^Connection default/).getAttribute('aria-checked')).toBe(
-      'false',
-    );
+    expect(option(/^Default/).getAttribute('aria-checked')).toBe('false');
   });
 
   test('an untouched Codex connection inherits the engine default rather than Station Never (station#1950)', async () => {
@@ -293,16 +291,16 @@ describe('ApprovalModeChip', () => {
 
     expect(
       screen.getByRole('button', {
-        name: /^Approval mode: Engine default — Codex's own settings\./,
+        name: /^Approval mode: Default — Codex's own settings\./,
       }),
     ).toBeTruthy();
     await openSheet();
-    const defaultOption = option(/^Connection default/);
+    const defaultOption = option(/^Default/);
     expect(defaultOption.getAttribute('aria-checked')).toBe('true');
     // Says what the engine default concretely is for Codex, not only that
     // Station has not confirmed a mode.
     expect(defaultOption.closest('label')?.textContent).toContain(
-      'Your Codex settings apply until you pick a mode. If unset, no command uses the network or writes beyond this folder and temp unasked.',
+      'Codex settings apply until you pick one. If unset, it asks to go online or write outside temp and the chat folder (home if no project).',
     );
   });
 
@@ -731,11 +729,11 @@ describe('ApprovalModeChip', () => {
 
     const chip = screen.getByRole('button', { name: /^Approval mode:/ });
     expect(chip.getAttribute('aria-label')).toContain(
-      'Approval mode: Engine default — Connection default. Engine approval control.',
+      'Approval mode: Default. Engine approval control.',
     );
     expect(
       chip.querySelector('.chat-input__approval-chip-label')?.textContent,
-    ).toBe('Engine default');
+    ).toBe('Default');
   });
 
   // WCAG 2.5.3 Label in Name: a speech-input user says what they see, so the

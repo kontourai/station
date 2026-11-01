@@ -579,6 +579,24 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ACCESS_MANAGE,
     origin: 'explicit',
   },
+  // #4305: the route itself also requires the Station operator; the scope
+  // only decides which paired devices may reach that check.
+  {
+    id: '/api/operator/account-sharing:operator-read',
+    method: 'GET',
+    prefix: '/api/operator/account-sharing',
+    exact: true,
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/operator/account-sharing:operator-apply',
+    method: 'PUT',
+    prefix: '/api/operator/account-sharing',
+    exact: true,
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
   {
     id: '/api/operator/telemetry-companion:prerequisites',
     method: 'GET',
@@ -646,6 +664,16 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     origin: 'explicit',
     // #3586: who holds a Project, and its open invitations, are not a
     // script's to read; the person uses a device.
+    personalTokens: 'refused',
+  },
+  {
+    // #4306: how this caller may enable sharing; it reads no Project data.
+    id: '/api/projects/:slug/access/enablement:sharing-enablement-read',
+    method: 'GET',
+    prefix: '/api/projects/:slug/access/enablement',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
     personalTokens: 'refused',
   },
   ...[
@@ -775,6 +803,13 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
   // Deliberately NOT a family: `/automations` mutations create and enable
   // triggers that start agent work, so every mutating method stays unmapped
   // (refused) until a later slice classifies it on purpose.
+  {
+    id: '/api/isolated-repairs:operator',
+    method: '*',
+    prefix: '/api/isolated-repairs',
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
   {
     id: '/automations:read',
     method: 'GET',
@@ -1577,6 +1612,19 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     prefix: '/api/terminal/socket',
     exact: true,
     scope: PAIRING_SCOPE_TERMINAL_OPERATE,
+    origin: 'explicit',
+    personalTokens: 'refused',
+  },
+  // #3994: the single-use socket ticket. Minting admits a socket that can
+  // only watch until each operation's own observe/operate check passes, so
+  // the floor is observe; the route also requires the operator (in person
+  // or one of their own devices).
+  {
+    id: '/api/terminal/tickets:terminal-observe',
+    method: 'POST',
+    prefix: '/api/terminal/tickets',
+    exact: true,
+    scope: PAIRING_SCOPE_TERMINAL_OBSERVE,
     origin: 'explicit',
     personalTokens: 'refused',
   },
@@ -2391,7 +2439,12 @@ export interface PairingScopeCredentialResolver {
  * session runs outside the HTTP gates (no account check, Project membership
  * or Agent audience), so admitting either would bypass them.
  */
-function refusedOnWebSocket(
+/**
+ * Credentials no terminal or voice socket admits, whatever their scope: a
+ * personal access token and an account-bound Device (#3586). The terminal
+ * socket ticket mint applies the same refusal on every check (#3994).
+ */
+export function refusedOnWebSocket(
   device: ReturnType<PairingScopeCredentialResolver['identifyDevice']>,
 ): boolean {
   if (!device) return false;
@@ -3963,6 +4016,16 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'POST', path: '/api/analytics/rescan' },
     { method: 'DELETE', path: '/api/analytics/usage' },
     { method: 'GET', path: '/api/analytics/usage' },
+    // Reviewed tariffs are local catalog/configuration data, not account
+    // charges or a provider request. GET reads and PUT saves only that state;
+    // the other all(...) methods return 405. The bound local-operator and
+    // current-authority checks remain independent of the family scope.
+    { method: 'GET', path: '/api/analytics/reviewed-tariffs' },
+    { method: 'HEAD', path: '/api/analytics/reviewed-tariffs' },
+    { method: 'POST', path: '/api/analytics/reviewed-tariffs' },
+    { method: 'PUT', path: '/api/analytics/reviewed-tariffs' },
+    { method: 'PATCH', path: '/api/analytics/reviewed-tariffs' },
+    { method: 'DELETE', path: '/api/analytics/reviewed-tariffs' },
     { method: 'GET', path: '/api/attention' },
     // Action operations are a visibility-filtered status envelope. Creation
     // and settlement remain with the owning domain mutation; cancel inherits
@@ -4057,6 +4120,8 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // sensitivity is no greater than the surrounding orchestration-read
     // family.
     { method: 'GET', path: '/api/conversations/search' },
+    { method: 'GET', path: '/api/conversations/work-state' },
+    { method: 'PUT', path: '/api/conversations/:id/work-state' },
     // Agent-only work discovery; same read scope and transcript admission.
     { method: 'GET', path: '/api/conversations/work/search' },
     { method: 'GET', path: '/api/conversations/:id' },
@@ -4598,6 +4663,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'GET',
       path: '/api/orchestration/sessions/:threadId/child-work/:childId/transcript',
     },
+    {
+      method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/child-work/:childId/instructions',
+    },
     { method: 'GET', path: '/api/orchestration/sessions/loaded' },
     { method: 'GET', path: '/api/orchestration/sessions/read-model' },
     { method: 'GET', path: '/api/projects' },
@@ -4633,6 +4702,22 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // and the model and approval mode the caller's own last chat here
     // started with. A read of the caller's own history; mutates nothing.
     { method: 'GET', path: '/api/projects/:slug/chat-defaults' },
+    // This Station's Project-scoped learning records and canonical sources.
+    // Intents change owner lifecycle state, not execution/installation grants;
+    // POST source/evidence reads conservatively retain the operate tier.
+    // Every leaf separately requires the current operator, Project incarnation
+    // and source authority. No peer/other-Station data or model call is added.
+    { method: 'GET', path: '/api/projects/:slug/learning' },
+    { method: 'GET', path: '/api/projects/:slug/learning/:id' },
+    { method: 'POST', path: '/api/projects/:slug/learning/source' },
+    { method: 'POST', path: '/api/projects/:slug/learning/:id/evidence' },
+    { method: 'POST', path: '/api/projects/:slug/learning/proposals' },
+    { method: 'POST', path: '/api/projects/:slug/learning/:id/intents' },
+    // Bounded files in the Project's admitted local execution root and saved
+    // review defaults. Applying defaults executes no command; operator and
+    // root/content-currentness checks still fence both family-tier leaves.
+    { method: 'GET', path: '/api/projects/:slug/working-configuration' },
+    { method: 'PUT', path: '/api/projects/:slug/working-configuration' },
     // How far the Project's checkout is behind its upstream, from local git
     // refs: its branch, upstream name, commit counts and an update command
     // naming the working directory `GET /:slug` already returns. A read that

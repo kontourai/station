@@ -101,6 +101,9 @@ const derived = pathReadPinEdges({ root: ROOT });
  * construction. Shrinking this list is the goal; growing it is a decision.
  */
 const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
+  // Reads only package.json created in a trackTempDirs checkout fixture,
+  // never repository source. Its real service and route imports select it.
+  'src-server/services/projects/__tests__/project-working-configuration.test.ts',
   // Read captured public Sigstore bundles under __fixtures__/sigstore (test
   // data, not production source); their verifier and trust-rule imports
   // select them for changes.
@@ -211,6 +214,10 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   // inside the fake `opencode` scripts it writes and spawns. Its import of
   // opencode-model-capabilities.ts selects it for source changes.
   'src-server/services/acp/__tests__/opencode-model-capabilities.test.ts',
+  // Same shape: its module-anchored read is the fake workload host under
+  // __fixtures__/, and its only readFileSync is that host's pid file in the
+  // temp home it spawns into. No repository source to pin.
+  'packages/supervisor/src/__tests__/workloads.test.ts',
   // Device hosts: these read only their own fixtures (real OpenSSH
   // transcripts, anchored to the test file) or, for the resolver, walk the
   // server source tree to prove a structural rule. Neither names a source

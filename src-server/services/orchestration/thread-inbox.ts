@@ -151,6 +151,8 @@ export interface ThreadInboxActor {
 /** What a queued follow-up sends: the continuation's input, and its sender. */
 export interface ThreadInboxPayload {
   readonly message: string;
+  /** Server-created Automation intent, revalidated against its private ledger at placement. */
+  readonly serverAutomationIntentId?: string;
   /** Original server-captured identity; older queued entries have unknown proof. */
   readonly inputDigest?: string;
   readonly ambientContext?: string;
@@ -187,6 +189,9 @@ function threadInboxDigest(payload: ThreadInboxPayload): string {
         payload.message,
         payload.ambientContext ?? null,
         payload.model ?? null,
+        ...(payload.serverAutomationIntentId
+          ? [payload.serverAutomationIntentId]
+          : []),
       ]),
     )
     .digest('hex');
@@ -203,9 +208,18 @@ function decodePayload(raw: string): ThreadInboxPayload | undefined {
   const actor = value?.actor as Record<string, unknown> | undefined;
   if (typeof value?.message !== 'string' || typeof actor?.userId !== 'string')
     return undefined;
+  if (
+    value.serverAutomationIntentId !== undefined &&
+    (typeof value.serverAutomationIntentId !== 'string' ||
+      !/^[0-9a-f]{64}$/.test(value.serverAutomationIntentId))
+  )
+    return undefined;
   const attribution = actor.ownerAttribution;
   return {
     message: value.message,
+    ...(typeof value.serverAutomationIntentId === 'string'
+      ? { serverAutomationIntentId: value.serverAutomationIntentId }
+      : {}),
     ...(typeof value.inputDigest === 'string'
       ? { inputDigest: value.inputDigest }
       : {}),
@@ -508,7 +522,25 @@ export function threadInboxRecordNonDelivery(
     : undefined;
 }
 
+export interface AutomationInboxPlacement {
+  placementRefusal(input: {
+    conversationId: string;
+    clientTurnId: string;
+    payload: ThreadInboxPayload;
+  }): { reasonCode: string; reason: string } | undefined;
+  runPlacement(
+    input: {
+      conversationId: string;
+      threadId: string;
+      clientTurnId: string;
+      payload: ThreadInboxPayload;
+    },
+    start: () => Promise<SessionStartResult>,
+  ): Promise<SessionStartResult>;
+}
+
 export interface ThreadInboxDeliveryPorts {
+  readonly automation?: AutomationInboxPlacement;
   readonly store: ThreadInboxStore;
   /** A Session's lifecycle fold events, oldest first (`ACTIVE_TURN_FOLD_METHODS`). */
   foldEvents(threadId: string): readonly SessionWaitFoldEvent[];
@@ -785,6 +817,8 @@ export class ThreadInboxDelivery {
       input.clientTurnId.startsWith(MEMORY_CONTINUATION_CLIENT_TURN_PREFIX) &&
       input.payload.clientOrigin?.actor.kind !== 'internal'
     )
+      return { outcome: 'not-permitted' };
+    if (input.payload.serverAutomationIntentId && !this.ports.automation)
       return { outcome: 'not-permitted' };
     const inbox = this.inboxOf(input.conversationId);
     const now = this.now();
@@ -1290,13 +1324,34 @@ export class ThreadInboxDelivery {
                   };
                 }
               }
+              if (!refusal && payload.serverAutomationIntentId) {
+                refusal =
+                  this.ports.automation?.placementRefusal({
+                    conversationId,
+                    clientTurnId: entry.key,
+                    payload,
+                  }) ??
+                  (this.ports.automation
+                    ? undefined
+                    : {
+                        reasonCode: 'automation_placement_unavailable',
+                        reason: 'Automation placement is unavailable.',
+                      });
+              }
               if (refusal) return { outcome: 'indeterminate' };
-              return this.ports.start({
+              const input = {
                 conversationId,
                 threadId: current,
                 payload,
                 clientTurnId: entry.key,
-              });
+              };
+              if (payload.serverAutomationIntentId) {
+                if (!this.ports.automation) return { outcome: 'indeterminate' };
+                return this.ports.automation.runPlacement(input, () =>
+                  this.ports.start(input),
+                );
+              }
+              return this.ports.start(input);
             },
           }),
         );

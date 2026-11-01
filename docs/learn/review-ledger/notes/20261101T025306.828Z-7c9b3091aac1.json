@@ -1,0 +1,7 @@
+{
+  "revision": "f0f106971a474fba14956ab42f3cd10ebf91b44c",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed task-first Home coverage mapping against its changed test and manifest. Project selector expectations use the complete accessible name; broader product run has independent fixture and selector failures, so coverage is not a passing runtime claim.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/task-first-home.spec.ts"]}
+  ]
+}

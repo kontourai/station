@@ -141,6 +141,8 @@ function resolveCurrentLocation(options: {
 }
 
 const NO_SHORTCUT_MODIFIERS: ('cmd' | 'ctrl' | 'shift' | 'alt')[] = [];
+/** `?` is Shift+/ on the layouts that type it with one key. */
+const QUESTION_MARK_MODIFIERS: ('cmd' | 'ctrl' | 'shift' | 'alt')[] = ['shift'];
 
 /**
  * The query-param key the `station <dir>` launcher (archive#1986) deep-links a
@@ -573,6 +575,17 @@ function App({
     KERNEL_RESERVED_SHORTCUTS.shortcuts.binding.key,
     [...KERNEL_RESERVED_SHORTCUTS.shortcuts.binding.modifiers],
     'Show keyboard shortcuts',
+    useCallback(() => {
+      setShowShortcutsCheatsheet(true);
+    }, []),
+  );
+  // #4407: `?` is the key people try first for a shortcut list. A printable
+  // key, so the registry leaves it to any text field that has focus.
+  useKeyboardShortcut(
+    'app.shortcutsHelp',
+    '?',
+    QUESTION_MARK_MODIFIERS,
+    'Keyboard shortcuts help',
     useCallback(() => {
       setShowShortcutsCheatsheet(true);
     }, []),

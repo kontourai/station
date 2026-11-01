@@ -6,7 +6,7 @@ const SUMMARIES: Readonly<Record<string, string>> = {
   defaultApprovalMode:
     'Permissions for new sessions, including unattended runs. Full access removes the sandbox and approval prompts.',
   defaultMaxTurns:
-    'Fallback step limit for VoltAgent runs. Strands and native engines do not apply it.',
+    'Fallback step limit for runs on Station’s own engine. Other engines do not apply it.',
   defaultMaxOutputTokens:
     'Maximum tokens per response. Leave empty to use the model’s limit.',
   defaultWorkspaceIsolation:

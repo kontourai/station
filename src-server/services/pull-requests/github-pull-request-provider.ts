@@ -519,7 +519,7 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
         '--repo',
         `${host}/${c.repository.owner}/${c.repository.name}`,
         '--json',
-        'number,url,title,body,state,author,headRefName,baseRefName,headRefOid,baseRefOid,commits,reviews,comments,mergeable,mergeStateStatus',
+        'number,url,title,body,state,author,headRefName,baseRefName,headRefOid,commits,reviews,comments,mergeable,mergeStateStatus',
         ...(q.state ? ['--state', q.state.toLowerCase()] : []),
         ...(q.limit ? ['--limit', String(q.limit)] : []),
       ],
@@ -574,7 +574,7 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
       '--repo',
       `${host}/${c.repository.owner}/${c.repository.name}`,
       '--json',
-      'number,url,title,body,state,author,headRefName,baseRefName,headRefOid,baseRefOid,commits,reviews,comments,mergeable,mergeStateStatus',
+      'number,url,title,body,state,author,headRefName,baseRefName,headRefOid,commits,reviews,comments,mergeable,mergeStateStatus',
     ]);
   }
   getPullRequestByIdentity(
@@ -588,7 +588,7 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
       '--repo',
       `${c.host}/${c.repository.owner}/${c.repository.name}`,
       '--json',
-      'number,url,title,body,state,author,headRefName,baseRefName,headRefOid,baseRefOid,commits,reviews,comments,mergeable,mergeStateStatus',
+      'number,url,title,body,state,author,headRefName,baseRefName,headRefOid,commits,reviews,comments,mergeable,mergeStateStatus',
     ]);
   }
   openPullRequest(c: PullRequestRepositoryContext, input: any) {

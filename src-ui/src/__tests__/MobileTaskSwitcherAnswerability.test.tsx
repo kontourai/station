@@ -143,7 +143,7 @@ describe('MobileInboxPanel answerability basis', () => {
 
   test('translates the label instead of leaking the wire enum', () => {
     renderSheet([task()]);
-    expect(screen.getByText('Elsewhere')).toBeTruthy();
+    expect(screen.getByText('Read only')).toBeTruthy();
     expect(screen.queryByText('Unanswerable')).toBeNull();
   });
 
@@ -164,7 +164,7 @@ describe('MobileInboxPanel answerability basis', () => {
     ).toBeTruthy();
     expect(within(row).getAllByText('Running')).toHaveLength(1);
     expect(within(row).queryByText('Active')).toBeNull();
-    expect(screen.getByRole('heading', { name: /^Running/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Running/ })).toBeTruthy();
   });
 });
 
@@ -212,11 +212,11 @@ describe('MobileInboxPanel lane-move focus', () => {
           tasks={[{ ...running, lifecycleLabel: 'Ready' }, other]}
         />,
       );
-      expect(screen.getByRole('heading', { name: /^Running/ })).toBeTruthy();
+      expect(screen.getByRole('button', { name: /^Running/ })).toBeTruthy();
       act(() => {
         vi.advanceTimersByTime(LIFECYCLE_HOLD_MS);
       });
-      expect(screen.queryByRole('heading', { name: /^Running/ })).toBeNull();
+      expect(screen.queryByRole('button', { name: /^Running/ })).toBeNull();
       expect(document.activeElement).toBe(screen.getByRole('button', { name }));
     } finally {
       vi.useRealTimers();

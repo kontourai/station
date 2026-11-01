@@ -73,8 +73,17 @@ export interface EngineSignInAttempt {
   kind: EngineSignInMethodKind;
   state: EngineSignInAttemptState;
   startedAt: string;
-  /** For `terminal`: the host terminal session to attach to while it runs. */
-  terminal?: { projectSlug: string; terminalId: string };
+  /**
+   * For `terminal`: the host terminal session to attach to while it runs.
+   * Hosts with the terminal socket also name its scope (`projectId`,
+   * `bindingKey`); `terminalId` is then the socket's session id.
+   */
+  terminal?: {
+    projectSlug: string;
+    terminalId: string;
+    projectId?: string;
+    bindingKey?: string;
+  };
   /** https links the engine printed while signing in. Never opened by Station. */
   links?: string[];
   /** A short, already-sanitized reason for `failed`. */

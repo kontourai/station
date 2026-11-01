@@ -681,6 +681,33 @@ export function useDockShellChrome({
     restoreDockToDocked,
   ]);
 
+  // A maximize ended from OUTSIDE the shell leaves the snap incoherent. The
+  // region model restores a maximized dock when a page opens in `main`
+  // (`restoreMaximizedDocks`, #2982/#2988) — the drawer's Activity or Home
+  // row at `/`, where no pathname changes and the restore above never runs.
+  // That clears the region's `maximized` and nothing else, so a dock that
+  // reached Full through `applyDockSnap('full')` still holds `dockSnap ===
+  // 'full'`, and the mobile lockstep below re-derives the full height from it:
+  // the page opened behind a dock that stayed `viewport - toolbar` tall
+  // (#4399). The shell's own exits set the snap before the flag clears, so
+  // this sees a coherent snap for them and does nothing.
+  const wasDockMaximizedRef = useRef(effectiveIsDockMaximized);
+  useEffect(() => {
+    const wasMaximized = wasDockMaximizedRef.current;
+    wasDockMaximizedRef.current = effectiveIsDockMaximized;
+    if (!publishesDockSlotClearance) return;
+    if (!wasMaximized || effectiveIsDockMaximized) return;
+    const reconciled = snapAfterNavigationRestore(dockSnap);
+    if (!reconciled) return;
+    setDockSnap(reconciled);
+    if (shellHoldsChat) writeDockSnap(reconciled);
+  }, [
+    dockSnap,
+    effectiveIsDockMaximized,
+    publishesDockSlotClearance,
+    shellHoldsChat,
+  ]);
+
   // Mobile keeps the dock's committed height in lockstep with the persisted
   // snap (Half/Full) whenever open — desktop's continuous drag owns its own
   // height directly.

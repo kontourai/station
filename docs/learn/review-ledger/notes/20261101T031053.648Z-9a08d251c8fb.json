@@ -1,0 +1,31 @@
+{
+  "revision": "933ec6b9bc39b20e2ef7ff269ce058b187e0136e",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed StartComposer ownership and changed selector labels against the component and parity tests. Project, agent, model, and permissions choices retain their existing owners and behavior; labels now include the visible values. No runtime or provider claim is added.","inputs":["docs/architecture/module-map.md","src-ui/src/components/chat-start/StartComposer.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the shared composer description and historical comparison against StartComposer, StartApprovalSummary and parity tests. Project and permissions captions changed; the comparison is explicitly historical, not a current rendering. No provider or device behavior was verified.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/StartComposerParity.test.tsx","src-ui/src/components/chat-start/StartComposer.tsx","tests/cross-runtime-chat-switching.spec.ts"]},
+
+    {"path":"docs/design/motion.md","note":"Reviewed the reduced-motion gallery description against the screenshots spec delta: only the project button accessible-name assertion changes. Capture coverage and motion behavior are unchanged; this review does not execute motion measurements.","inputs":["docs/design/motion.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed Home and composer coverage against the task-first-home selector changes. The project selection journeys and their mocked boundary remain the same; this review does not establish a browser run.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/task-first-home.spec.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed responsive control and touch target guidance against the cross-runtime project selector assertion changes and StartComposer. The selector now names its displayed project; the test edits do not change responsive geometry. Physical layout is not established by this review.","inputs":["docs/guides/responsive-ui.md","tests/cross-runtime-chat-switching.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the gallery and fixture guidance against the screenshots spec change. Only the expected project accessible name changed; the capture, comparison and fixture protocols remain unchanged.","inputs":["docs/guides/testing.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed the gallery reference against the screenshots spec diff. The changed selector is in the new-chat project fixture and does not alter telemetry capture scenarios or telemetry behavior.","inputs":["docs/reference/usage-telemetry.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"Reviewed the smoke manifest and scope against the cross-runtime selector changes. Those changes update project names in existing fixture journeys and do not change the eight-spec smoke contract or its evidence limits.","inputs":["docs/testing/browser-smoke.md","tests/cross-runtime-chat-switching.spec.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed New Chat project and agent selection guidance against StartComposer and its parity and cross-runtime tests. Project selection and start authority are unchanged; visible selector text now omits the redundant in prefix. No live provider or device journey was verified.","inputs":["docs/user/getting-started.md","src-ui/src/__tests__/StartComposerParity.test.tsx","src-ui/src/components/chat-start/StartComposer.tsx","tests/cross-runtime-chat-switching.spec.ts"]},
+
+    {"path":"docs/learn/media/new-chat-start-before.png","note":"Inspected this image, its caption and recorded revision, the historical comparison in the composer design, and the StartComposer source delta. This is a retained historical before/after image, not a claim about current selector text. Preserved its original capture and provenance; no new browser, provider or device evidence is claimed.","inputs":["docs/learn/media/new-chat-start-before.png","src-ui/src/components/chat-start/StartComposer.tsx"]},
+
+    {"path":"docs/learn/media/new-chat-start-after.png","note":"Inspected this image, its caption and recorded revision, the historical comparison in the composer design, and the StartComposer source delta. This is a retained historical before/after image, not a claim about current selector text. Preserved its original capture and provenance; no new browser, provider or device evidence is claimed.","inputs":["docs/learn/media/new-chat-start-after.png","src-ui/src/components/chat-start/StartComposer.tsx"]},
+
+    {"path":"docs/learn/media/project-start-before.png","note":"Inspected this image, its caption and recorded revision, the historical comparison in the composer design, and the StartComposer source delta. This is a retained historical before/after image, not a claim about current selector text. Preserved its original capture and provenance; no new browser, provider or device evidence is claimed.","inputs":["docs/learn/media/project-start-before.png","src-ui/src/components/chat-start/StartComposer.tsx"]},
+
+    {"path":"docs/learn/media/project-start-after.png","note":"Inspected this image, its caption and recorded revision, the historical comparison in the composer design, and the StartComposer source delta. This is a retained historical before/after image, not a claim about current selector text. Preserved its original capture and provenance; no new browser, provider or device evidence is claimed.","inputs":["docs/learn/media/project-start-after.png","src-ui/src/components/chat-start/StartComposer.tsx"]}
+  ]
+}

@@ -16,6 +16,7 @@ export interface UIBlockFormSubmission {
 
 interface UIBlockActions {
   readOnly?: boolean;
+  canSendChildInstruction?: boolean;
   submitForm: (submission: UIBlockFormSubmission, formKey: string) => void;
   formScope?: string;
 }

@@ -138,7 +138,11 @@
 
     "src-ui/src/components/chat-dock/MobileInboxPanel.tsx",
 
-    "src-ui/src/components/chat-dock/MobileSheetPending.tsx"
+    "src-ui/src/components/chat-dock/MobileSheetPending.tsx",
+
+    "src-ui/src/components/ComposerChoice.tsx",
+
+    "src-ui/src/components/ComposerChoice.css"
   ],
 
   "checks": [

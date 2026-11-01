@@ -61,7 +61,7 @@ async function detail(
   withChecks = false,
 ) {
   const repository = `${host}/${context.repository.owner}/${context.repository.name}`;
-  return record(
+  const value = record(
     JSON.parse(
       (
         await run(
@@ -73,7 +73,7 @@ async function detail(
                 '--repo',
                 repository,
                 '--json',
-                `number,url,title,body,state,author,headRefName,baseRefName,headRefOid,baseRefOid,commits,reviews,comments,mergeable${withChecks ? ',statusCheckRollup' : ''}`,
+                `number,url,title,body,state,author,headRefName,baseRefName,headRefOid,commits,reviews,comments,mergeable${withChecks ? ',statusCheckRollup' : ''}`,
               ]
             : [
                 'mr',
@@ -88,6 +88,29 @@ async function detail(
       ).stdout,
     ),
   );
+  if (forge === 'github') {
+    // gh's PR field allowlist omits baseRefOid on supported older releases.
+    const refs = record(
+      JSON.parse(
+        (
+          await run([
+            'api',
+            paths(forge, context, ref).detail,
+            '--hostname',
+            host,
+            '--jq',
+            '{head: .head.sha, base: .base.sha}',
+          ])
+        ).stdout,
+      ),
+    );
+    if (sha(refs.head) !== sha(value.headRefOid))
+      throw new Error(
+        'The pull request changed during the review read. Refresh.',
+      );
+    value.baseRefOid = sha(refs.base);
+  }
+  return value;
 }
 /**
  * The most check contexts one review carries to the client. `gh pr view

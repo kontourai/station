@@ -353,6 +353,15 @@ export function ProjectSidebarBoards({
    */
   const openOnCreate = useRef(false);
 
+  /**
+   * #4405 (A28): the slug a `+` create is still naming. The `+` does not
+   * navigate while the person is typing in the list, but once they confirm
+   * the name with Enter the gesture is finished and the new Board opens —
+   * before this it stayed on the previous page and the Board had to be found
+   * and clicked.
+   */
+  const namingCreatedBoard = useRef<string | null>(null);
+
   const createBoard = useCreatePersonalLayoutMutation({
     // A Board created by `+` has a placeholder name, so the create is only
     // half the gesture — the user is naming it. Entering rename on success
@@ -367,6 +376,7 @@ export function ProjectSidebarBoards({
       // joins — on a phone that means the drawer is open, because the `+` is
       // inside it — so the rename input is on screen and nothing navigates.
       if (!fromPalette) {
+        namingCreatedBoard.current = created.slug;
         setMode({ kind: 'rename', slug: created.slug });
         return;
       }
@@ -477,6 +487,7 @@ export function ProjectSidebarBoards({
 
   const commitRename = (slug: string, name: string) => {
     setMode({ kind: 'rest' });
+    namingCreatedBoard.current = null;
     const trimmed = name.trim();
     const current = rows.find((row) => row.slug === slug)?.name;
     if (!trimmed || trimmed === current) return;
@@ -574,7 +585,14 @@ export function ProjectSidebarBoards({
                   onKeyDown={(event) => {
                     if (event.key === 'Enter') {
                       event.preventDefault();
+                      const opensCreated =
+                        namingCreatedBoard.current === board.slug;
                       commitRename(board.slug, event.currentTarget.value);
+                      if (opensCreated) {
+                        closeNavigator();
+                        navigate(path);
+                        if (isMobile) onAfterNavigate?.();
+                      }
                     } else if (event.key === 'Escape') {
                       event.preventDefault();
                       // Discards the edit. Clearing the mode UNMOUNTS this

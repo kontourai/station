@@ -190,6 +190,8 @@ export type OutboundSettlement =
  */
 export type OutboundDispatchTransportResult =
   | { kind: 'accepted'; providerTurnId: string }
+  /** Station durably accepted the key into its conversation inbox. */
+  | { kind: 'queued' }
   /** A temporary pre-provider gate. Releasing it must not consume an attempt. */
   | { kind: 'deferred'; reason?: string }
   | { kind: 'not-invoked'; reason?: string };
@@ -1993,6 +1995,33 @@ async function flush(
             unavailableClaims.add(claimed.clientTurnId);
             unavailable ||= accepted === 'unavailable';
           }
+        } else if (result.kind === 'queued') {
+          try {
+            const outcome = await mutateState((state) => {
+              const index = state.turns.findIndex((entry) =>
+                exact(entry, claimed!),
+              );
+              if (index < 0)
+                return { state, result: 'stale' as const, changed: false };
+              return {
+                state: withRetired(
+                  {
+                    ...state,
+                    turns: state.turns.filter((_, i) => i !== index),
+                  },
+                  claimed!.clientTurnId,
+                  'accepted',
+                ),
+                result: 'applied' as const,
+                changed: true,
+              };
+            });
+            if (outcome !== 'applied')
+              unavailableClaims.add(claimed.clientTurnId);
+          } catch {
+            unavailableClaims.add(claimed.clientTurnId);
+            unavailable = true;
+          }
         } else if (result.kind === 'deferred') {
           const released = await releaseDeferred(claimed);
           unavailable ||= released === 'unavailable';
@@ -2444,9 +2473,8 @@ async function applyDeliveryAnswer(
                 lastError: NOT_RECEIVED_STOPPED,
               };
         break;
-      // #3568: Station holds the message in the conversation's inbox. This
-      // queue never hands a send to the inbox, so it cannot meet one of its
-      // own keys there yet: like an unknown answer, change nothing.
+      // A lookup reporting a queued row does not provide the direct admission
+      // receipt used by flush settlement. Keep the row until stronger evidence.
       case 'queued':
         return { state, result: undefined, changed: false };
       default: {

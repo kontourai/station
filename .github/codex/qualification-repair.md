@@ -15,5 +15,5 @@ messages, change credentials or run full regression. Do not start other agents.
 Leave reviewable source changes and new files in the worktree, without committing.
 Your final report must name each failure, repair or remaining blocker, focused
 commands actually executed and their outcomes. A separate trusted publisher will
-validate the diff and open one ordinary PR. A full qualification run after that
-PR lands is the release authority.
+validate the diff and open one ordinary PR without an autoland label. A full
+qualification run after that PR lands is the release authority.

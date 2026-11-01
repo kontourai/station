@@ -78,6 +78,7 @@ import {
   DocumentGlyph,
   FolderGlyph,
   GlobeGlyph,
+  MessageGlyph,
   PlusGlyph,
   ShieldGlyph,
   TargetGlyph,
@@ -1229,6 +1230,11 @@ export function CodingWorkbench({
                 aria-expanded={toolPickerOpen}
                 onClick={() => setToolPickerOpen(true)}
               >
+                {page === 'drill-in' && drilledIn ? (
+                  railGlyph(drilledIn.descriptorId)
+                ) : (
+                  <MessageGlyph />
+                )}
                 <span>{page === 'drill-in' ? drillInLabel : 'Chat'}</span>
                 <ArrowDownGlyph className="choice-caret" />
               </button>
@@ -1569,7 +1575,8 @@ export function CodingWorkbench({
                 goToChatPage();
               }}
             >
-              Chat
+              <MessageGlyph />
+              <span>Chat</span>
             </Button>
             {railInstances.map((instance) => (
               <Button
@@ -1593,7 +1600,7 @@ export function CodingWorkbench({
                 <span>{paneLabel(instance)}</span>
                 {badges[instance.descriptorId] === undefined ? null : (
                   <span className="coding-workbench__tool-count">
-                    {badges[instance.descriptorId]} changed files
+                    {badges[instance.descriptorId]}
                   </span>
                 )}
               </Button>

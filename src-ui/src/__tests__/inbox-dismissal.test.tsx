@@ -9,11 +9,22 @@ import {
 } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ChatDockInboxPanel } from '../components/chat-dock/ChatDockInboxPanel';
+import { InboxDismissUndo } from '../components/chat-dock/inbox-dismissals';
 import { useInboxNeedsYouCount } from '../components/chat-dock/useInboxGroups';
+import { NotificationContainer } from '../components/notifications/NotificationContainer';
 import { ActiveChatsStore } from '../contexts/active-chats-store';
+import { KeyboardShortcutsProvider } from '../contexts/KeyboardShortcutsContext';
+import { ToastProvider, toastStore } from '../contexts/ToastContext';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import type { HomeWorkItem } from '../views/home/home-view-model';
 import type { WorkFactsById } from '../views/home/work-facts';
+
+vi.mock('../contexts/ApiBaseContext', () => ({
+  useApiBase: () => ({ apiBase: 'http://localhost' }),
+}));
+vi.mock('../contexts/NavigationContext', () => ({
+  useNavigationActions: () => ({ navigate: vi.fn() }),
+}));
 
 const NOW = Date.parse('2026-10-28T18:00:00Z');
 const thread: HomeWorkItem = {
@@ -38,21 +49,26 @@ function Harness({
 }) {
   const count = useInboxNeedsYouCount(items, NOW);
   return (
-    <>
-      <output aria-label="Needs you count">{count}</output>
-      <ChatDockInboxPanel
-        items={items}
-        workFacts={facts}
-        now={NOW}
-        activeChatSessionId={null}
-        openChatSessionIds={[]}
-        onFocusChat={vi.fn()}
-        onOpenConversation={vi.fn()}
-        onOpenSession={vi.fn()}
-        onCloseChat={vi.fn()}
-        onOpenHistory={vi.fn()}
-      />
-    </>
+    <ToastProvider>
+      <KeyboardShortcutsProvider>
+        <InboxDismissUndo>
+          <output aria-label="Needs you count">{count}</output>
+          <ChatDockInboxPanel
+            items={items}
+            workFacts={facts}
+            now={NOW}
+            activeChatSessionId={null}
+            openChatSessionIds={[]}
+            onFocusChat={vi.fn()}
+            onOpenConversation={vi.fn()}
+            onOpenSession={vi.fn()}
+            onCloseChat={vi.fn()}
+            onOpenHistory={vi.fn()}
+          />
+          <NotificationContainer />
+        </InboxDismissUndo>
+      </KeyboardShortcutsProvider>
+    </ToastProvider>
   );
 }
 
@@ -63,11 +79,29 @@ function dismiss() {
 }
 
 beforeEach(() => {
+  toastStore.clear();
+  toastStore.clearHistory();
   localStorage.clear();
   deviceSettingsStore.reloadFromStorage();
 });
 
 describe('inbox dismissal through the rendered panel', () => {
+  it('undoes with the primary modifier shortcut and leaves editor undo alone', () => {
+    render(<Harness items={[thread]} />);
+    dismiss();
+    const editor = document.createElement('textarea');
+    document.body.append(editor);
+    editor.focus();
+    fireEvent.keyDown(editor, { key: 'z', ctrlKey: true, metaKey: true });
+    expect(
+      screen.queryByRole('button', { name: 'Review the inbox, Station' }),
+    ).toBeNull();
+    editor.remove();
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
+    expect(
+      screen.getByRole('button', { name: 'Review the inbox, Station' }),
+    ).toBeTruthy();
+  });
   it.each([
     thread,
     { ...thread, kind: 'chat' as const, chatSessionId: 'open-chat' },

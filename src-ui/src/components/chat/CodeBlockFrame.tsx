@@ -23,7 +23,13 @@ export function CodeBlockFrame({
     if (!body) return;
     const viewport = body.closest<HTMLElement>('.chat-messages');
     const measure = () => {
-      const pageHeight = viewport?.clientHeight || window.innerHeight;
+      // The footer repeats Copy only for a block taller than what the reader
+      // can see. A reading viewport squeezed below half the window (a dock
+      // mid-relayout after a rotation, #4392) is not that page: measured
+      // against it, every short block grew a second bar (#4393).
+      const pageHeight = viewport
+        ? Math.max(viewport.clientHeight, window.innerHeight / 2)
+        : window.innerHeight;
       setRepeatActions(body.getBoundingClientRect().height > pageHeight);
     };
     const observer = new ResizeObserver(measure);
@@ -70,9 +76,13 @@ export function CodeBlockFrame({
     copyResetRef.current = window.setTimeout(() => setCopyState('idle'), 1500);
   }, [code]);
 
-  const actions = (
-    <ResponsiveSurfaceActions className="code-block-actions">
-      <span>{lang}</span>
+  // The footer carries Copy alone: a second language label read as a second
+  // header (#4393).
+  const actions = (footer: boolean) => (
+    <ResponsiveSurfaceActions
+      className={`code-block-actions${footer ? ' code-block-actions--footer' : ''}`}
+    >
+      {!footer && <span>{lang}</span>}
       <Button
         variant="ghost"
         onClick={() => void handleCopy()}
@@ -98,7 +108,7 @@ export function CodeBlockFrame({
   );
   return (
     <div className="code-block-frame">
-      {actions}
+      {actions(false)}
       <div ref={bodyRef} className="code-block-body">
         {html ? (
           <div dangerouslySetInnerHTML={{ __html: html }} />
@@ -108,7 +118,7 @@ export function CodeBlockFrame({
           </pre>
         )}
       </div>
-      {repeatActions && actions}
+      {repeatActions && actions(true)}
     </div>
   );
 }

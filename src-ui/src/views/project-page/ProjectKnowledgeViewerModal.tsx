@@ -54,7 +54,8 @@ export function ProjectKnowledgeViewerModal({
             doc.filename.endsWith('.md') ? (
               <div className="project-page__doc-viewer-markdown">
                 <QuoteSurfaceCloseContext.Provider value={onClose}>
-                  <LazyMarkdown>{content}</LazyMarkdown>
+                  {/* A stored .md file is a document: keep CommonMark folding. */}
+                  <LazyMarkdown softBreaks={false}>{content}</LazyMarkdown>
                 </QuoteSurfaceCloseContext.Provider>
               </div>
             ) : (

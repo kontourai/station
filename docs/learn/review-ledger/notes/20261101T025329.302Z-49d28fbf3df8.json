@@ -1,0 +1,7 @@
+{
+  "revision": "f0f106971a474fba14956ab42f3cd10ebf91b44c",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed the start composer and project selection guidance against StartComposer and the cross-runtime journey. Project and no-project choices remain as described; local smoke passed, without live provider or physical device verification.","inputs":["docs/user/getting-started.md","tests/cross-runtime-chat-switching.spec.ts"]}
+  ]
+}

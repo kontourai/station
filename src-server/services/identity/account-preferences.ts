@@ -32,6 +32,7 @@ const fields = {
   chatShowReasoning: z.boolean(),
   chatShowToolDetails: z.boolean(),
   chatFontSize: z.number().int().min(10).max(24).nullable(),
+  chatAnswerWidth: z.enum(['comfortable', 'wide', 'full']),
   chatDockAutoHide: z.boolean(),
   confirmConversationDelete: z.boolean(),
   developerToolsEnabled: z.boolean(),
@@ -107,6 +108,7 @@ const patchSchema = z
     chatShowReasoning: fields.chatShowReasoning.nullable().optional(),
     chatShowToolDetails: fields.chatShowToolDetails.nullable().optional(),
     chatFontSize: fields.chatFontSize.nullable().optional(),
+    chatAnswerWidth: fields.chatAnswerWidth.nullable().optional(),
     chatDockAutoHide: fields.chatDockAutoHide.nullable().optional(),
     confirmConversationDelete: fields.confirmConversationDelete
       .nullable()

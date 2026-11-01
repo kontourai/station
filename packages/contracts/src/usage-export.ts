@@ -965,6 +965,7 @@ function wireUsageRow(value: unknown): value is UsageRollupRow {
         'outputTokens',
         'cacheReadTokens',
         'cacheWriteTokens',
+        'reasoningTokens',
         'reportedCost',
         'estimatedCost',
         'reportedCostBuckets',
@@ -982,7 +983,13 @@ function wireUsageRow(value: unknown): value is UsageRollupRow {
     !optionalFields(value, ['day'], wireDay) ||
     !optionalFields(
       value,
-      ['inputTokens', 'outputTokens', 'cacheReadTokens', 'cacheWriteTokens'],
+      [
+        'inputTokens',
+        'outputTokens',
+        'cacheReadTokens',
+        'cacheWriteTokens',
+        'reasoningTokens',
+      ],
       wireAmount,
     ) ||
     (value.reportedCost !== undefined &&

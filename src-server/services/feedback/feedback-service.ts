@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+import type { FeedbackRatingTarget } from '@kontourai/station-contracts/feedback';
 /**
  * FeedbackService — message ratings, automated analysis, and behavior guidelines.
  */
@@ -5,7 +7,6 @@
 import { join } from 'node:path';
 import { feedbackOps } from '../../telemetry/metrics.js';
 import { createLogger } from '../../utils/logger.js';
-import { JsonFileStore } from '../infra/json-store.js';
 import {
   hasFeedbackAnalysis,
   needsFeedbackAnalysis,
@@ -13,12 +14,18 @@ import {
   runFullFeedbackAnalysis,
   runMiniFeedbackAnalysis,
 } from './feedback-analysis.js';
+import {
+  assertFeedbackHistoryCapacity,
+  FeedbackEvidenceStore,
+} from './feedback-evidence-store.js';
+import { feedbackRatingEvidenceDigest } from './feedback-target.js';
 
 const logger = createLogger({ name: 'feedback-service' });
 
 export type RatingValue = 'thumbs_up' | 'thumbs_down';
 
 export interface MessageRating {
+  target?: FeedbackRatingTarget;
   id: string;
   agentSlug: string;
   conversationId: string;
@@ -40,6 +47,10 @@ export interface FeedbackSummary {
 
 export interface FeedbackStore {
   ratings: MessageRating[];
+  ratingEvidence?: {
+    revision: string;
+    record: Omit<MessageRating, 'analysis' | 'analyzedAt'>;
+  }[];
   summary: FeedbackSummary | null;
   /** Hash of the full summary prompt; absent on legacy stores. */
   summaryBasis?: string;
@@ -60,7 +71,7 @@ const ANALYSIS_INTERVAL_MS = 10 * 60 * 1000;
 const INITIAL_ANALYSIS_DELAY_MS = 5000;
 
 export class FeedbackService {
-  private store: JsonFileStore<FeedbackStore>;
+  private store: FeedbackEvidenceStore;
   private timer: ReturnType<typeof setInterval> | null = null;
   private initialTimer: ReturnType<typeof setTimeout> | null = null;
   private analyzeFn: AnalyzeCallback | null = null;
@@ -81,9 +92,8 @@ export class FeedbackService {
   private analysisTail: Promise<void> = Promise.resolve();
 
   constructor(dataDir: string) {
-    this.store = new JsonFileStore<FeedbackStore>(
+    this.store = new FeedbackEvidenceStore(
       join(dataDir, 'feedback', 'feedback.json'),
-      { ratings: [], summary: null },
     );
   }
 
@@ -92,16 +102,18 @@ export class FeedbackService {
     this.analyzeFn = fn;
   }
 
-  rateMessage(params: {
-    agentSlug: string;
-    conversationId: string;
-    messageIndex: number;
-    messagePreview: string;
-    rating: RatingValue;
-    reason?: string;
-  }): MessageRating {
+  rateMessage(
+    params: {
+      agentSlug: string;
+      conversationId: string;
+      messageIndex: number;
+      messagePreview: string;
+      rating: RatingValue;
+      reason?: string;
+    },
+    verifiedTarget?: FeedbackRatingTarget,
+  ): MessageRating {
     const data = this.store.read();
-    const key = `${params.conversationId}:${params.messageIndex}`;
     const existing = data.ratings.findIndex(
       (rating) =>
         rating.conversationId === params.conversationId &&
@@ -109,7 +121,8 @@ export class FeedbackService {
     );
 
     const entry: MessageRating = {
-      id: existing >= 0 ? data.ratings[existing].id : key,
+      id: existing >= 0 ? data.ratings[existing].id : randomUUID(),
+      ...(verifiedTarget ? { target: { ...verifiedTarget } } : {}),
       agentSlug: params.agentSlug,
       conversationId: params.conversationId,
       messageIndex: params.messageIndex,
@@ -125,6 +138,36 @@ export class FeedbackService {
     };
 
     if (existing >= 0) {
+      const prior = data.ratings[existing]!;
+      if (
+        feedbackRatingEvidenceDigest(prior) ===
+          feedbackRatingEvidenceDigest(entry) &&
+        prior.agentSlug === entry.agentSlug &&
+        prior.messagePreview === entry.messagePreview
+      )
+        return structuredClone(prior);
+      const revision = feedbackRatingEvidenceDigest(prior);
+      if (revision !== feedbackRatingEvidenceDigest(entry)) {
+        const currentRevision = feedbackRatingEvidenceDigest(entry);
+        const history = (data.ratingEvidence ?? []).filter(
+          (item) =>
+            item.record.id !== prior.id || item.revision !== currentRevision,
+        );
+        if (
+          !history.some(
+            (item) => item.record.id === prior.id && item.revision === revision,
+          )
+        ) {
+          const {
+            analysis: _analysis,
+            analyzedAt: _analyzedAt,
+            ...raw
+          } = prior;
+          history.push({ revision, record: raw });
+        }
+        assertFeedbackHistoryCapacity(history);
+        data.ratingEvidence = history;
+      }
       data.ratings[existing] = entry;
       data.summary = null;
       data.summaryBasis = undefined;
@@ -145,6 +188,18 @@ export class FeedbackService {
   removeRating(conversationId: string, messageIndex: number): boolean {
     const data = this.store.read();
     const before = data.ratings.length;
+    const withdrawn = new Set(
+      data.ratings
+        .filter(
+          (rating) =>
+            rating.conversationId === conversationId &&
+            rating.messageIndex === messageIndex,
+        )
+        .map((rating) => rating.id),
+    );
+    data.ratingEvidence = data.ratingEvidence?.filter(
+      (entry) => !withdrawn.has(entry.record.id),
+    );
     data.ratings = data.ratings.filter(
       (rating) =>
         !(
@@ -160,6 +215,50 @@ export class FeedbackService {
       return true;
     }
     return false;
+  }
+
+  captureRatingEvidence(): {
+    get(id: string, revision?: string): MessageRating | undefined;
+    assertCurrent(): void;
+  } {
+    const captured = this.store.capture();
+    const current = new Map(
+      captured.data.ratings.map((record) => [
+        record.id,
+        structuredClone(record),
+      ]),
+    );
+    const revisions = new Map<string, MessageRating>();
+    for (const record of current.values())
+      revisions.set(
+        JSON.stringify([record.id, feedbackRatingEvidenceDigest(record)]),
+        record,
+      );
+    for (const entry of captured.data.ratingEvidence ?? [])
+      if (
+        current.has(entry.record.id) &&
+        !revisions.has(JSON.stringify([entry.record.id, entry.revision]))
+      )
+        revisions.set(
+          JSON.stringify([entry.record.id, entry.revision]),
+          structuredClone(entry.record),
+        );
+    return {
+      get(id, revision) {
+        const record = revision
+          ? revisions.get(JSON.stringify([id, revision]))
+          : current.get(id);
+        return record ? structuredClone(record) : undefined;
+      },
+      assertCurrent: captured.assertCurrent,
+    };
+  }
+
+  getRatingEvidence(id: string, revision?: string): MessageRating | undefined {
+    const captured = this.captureRatingEvidence();
+    const record = captured.get(id, revision);
+    captured.assertCurrent();
+    return record;
   }
 
   getRatings(): MessageRating[] {
@@ -487,6 +586,7 @@ ${avoid || '(none identified yet)'}
     this.lastAnalyzedAt = null;
     const data = this.store.read();
     this.store.write({
+      ratingEvidence: data.ratingEvidence,
       ratings: data.ratings.map((rating) => ({
         ...rating,
         analysis: undefined,

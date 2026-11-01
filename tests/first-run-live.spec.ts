@@ -334,7 +334,7 @@ test('phone first run recovers from no provider to a real streamed reply', async
       page.getByRole('heading', { name: 'New Project' }),
     ).toBeVisible();
     await page
-      .locator('input[placeholder="/path/to/project"]')
+      .locator('input[placeholder="~/code/my-project"]')
       .fill(`${REPO_ROOT}/`);
     await page
       .locator('input[placeholder="My Project"]')

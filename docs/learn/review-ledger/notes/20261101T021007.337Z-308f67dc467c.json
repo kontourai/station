@@ -1,0 +1,65 @@
+{
+  "revision": "c13b31341d23f31f6593cf7df84811c372f49776",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Reviewed the source delta since the existing review: c13b31341d2 adds one blank line between the person-request helper and imports in orchestration.ts. It changes no behavior or documented claim; prior review scope and evidence remain unchanged.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Reviewed the source delta since the existing review: c13b31341d2 adds one blank line between the person-request helper and imports in orchestration.ts. It changes no behavior or documented claim; prior review scope and evidence remain unchanged.","inputs":["docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture.md","note":"Reviewed the source delta since the existing review: c13b31341d2 adds one blank line between the person-request helper and imports in orchestration.ts. It changes no behavior or documented claim; prior review scope and evidence remain unchanged.","inputs":["docs/architecture.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed the source delta since the existing review: c13b31341d2 adds one blank line between the person-request helper and imports in orchestration.ts. It changes no behavior or documented claim; prior review scope and evidence remain unchanged.","inputs":["docs/architecture/abstraction-review.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the source delta since the existing review: c13b31341d2 adds one blank line between the person-request helper and imports in orchestration.ts. It changes no behavior or documented claim; prior review scope and evidence remain unchanged.","inputs":["docs/architecture/module-map.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the source delta since the existing review: c13b31341d2 adds one blank line between the person-request helper and imports in orchestration.ts. It changes no behavior or documented claim; prior review scope and evidence remain unchanged.","inputs":["docs/design/chat-composer.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Reviewed the source delta since the existing review: c13b31341d2 adds one blank line between the person-request helper and imports in orchestration.ts. It changes no behavior or documented claim; prior review scope and evidence remain unchanged.","inputs":["docs/design/task-room-agent-requests.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"Reviewed the source delta since the existing review: c13b31341d2 adds one blank line between the person-request helper and imports in orchestration.ts. It changes no behavior or documented claim; prior review scope and evidence remain unchanged.","inputs":["docs/guides/acp.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed the source delta since the existing review: c13b31341d2 adds one blank line between the person-request helper and imports in orchestration.ts. It changes no behavior or documented claim; prior review scope and evidence remain unchanged.","inputs":["docs/guides/agent-configuration.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the source delta since the existing review: c13b31341d2 adds one blank line between the person-request helper and imports in orchestration.ts. It changes no behavior or documented claim; prior review scope and evidence remain unchanged.","inputs":["docs/guides/connections.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Reviewed the source delta since the existing review: c13b31341d2 adds one blank line between the person-request helper and imports in orchestration.ts. It changes no behavior or documented claim; prior review scope and evidence remain unchanged.","inputs":["docs/guides/delegation-attempt-claims.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Reviewed the source delta since the existing review: c13b31341d2 adds one blank line between the person-request helper and imports in orchestration.ts. It changes no behavior or documented claim; prior review scope and evidence remain unchanged.","inputs":["docs/guides/home-transfer-controller.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Reviewed the source delta since the existing review: c13b31341d2 adds one blank line between the person-request helper and imports in orchestration.ts. It changes no behavior or documented claim; prior review scope and evidence remain unchanged.","inputs":["docs/guides/private-runner-partition.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Reviewed the source delta since the existing review: c13b31341d2 adds one blank line between the person-request helper and imports in orchestration.ts. It changes no behavior or documented claim; prior review scope and evidence remain unchanged.","inputs":["docs/guides/product-law-authoring.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Reviewed the source delta since the existing review: c13b31341d2 adds one blank line between the person-request helper and imports in orchestration.ts. It changes no behavior or documented claim; prior review scope and evidence remain unchanged.","inputs":["docs/guides/repository-layout.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed the source delta since the existing review: c13b31341d2 adds one blank line between the person-request helper and imports in orchestration.ts. It changes no behavior or documented claim; prior review scope and evidence remain unchanged.","inputs":["docs/guides/self-configuring-agent.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Reviewed the source delta since the existing review: c13b31341d2 adds one blank line between the person-request helper and imports in orchestration.ts. It changes no behavior or documented claim; prior review scope and evidence remain unchanged.","inputs":["docs/guides/work-board-security.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Reviewed the source delta since the existing review: c13b31341d2 adds one blank line between the person-request helper and imports in orchestration.ts. It changes no behavior or documented claim; prior review scope and evidence remain unchanged.","inputs":["docs/guides/workspace-packages.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed the source delta since the existing review: c13b31341d2 adds one blank line between the person-request helper and imports in orchestration.ts. It changes no behavior or documented claim; prior review scope and evidence remain unchanged.","inputs":["docs/reference/agent-smoke-confidence.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the source delta since the existing review: c13b31341d2 adds one blank line between the person-request helper and imports in orchestration.ts. It changes no behavior or documented claim; prior review scope and evidence remain unchanged.","inputs":["docs/reference/api.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed the source delta since the existing review: c13b31341d2 adds one blank line between the person-request helper and imports in orchestration.ts. It changes no behavior or documented claim; prior review scope and evidence remain unchanged.","inputs":["docs/reference/config.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the source delta since the existing review: c13b31341d2 adds one blank line between the person-request helper and imports in orchestration.ts. It changes no behavior or documented claim; prior review scope and evidence remain unchanged.","inputs":["docs/reference/contracts.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the source delta since the existing review: c13b31341d2 adds one blank line between the person-request helper and imports in orchestration.ts. It changes no behavior or documented claim; prior review scope and evidence remain unchanged.","inputs":["docs/reference/sdk.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed the source delta since the existing review: c13b31341d2 adds one blank line between the person-request helper and imports in orchestration.ts. It changes no behavior or documented claim; prior review scope and evidence remain unchanged.","inputs":["docs/reference/session-api.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/skill-experiences.md","note":"Reviewed the source delta since the existing review: c13b31341d2 adds one blank line between the person-request helper and imports in orchestration.ts. It changes no behavior or documented claim; prior review scope and evidence remain unchanged.","inputs":["docs/reference/skill-experiences.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Reviewed the source delta since the existing review: c13b31341d2 adds one blank line between the person-request helper and imports in orchestration.ts. It changes no behavior or documented claim; prior review scope and evidence remain unchanged.","inputs":["docs/user/concepts.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Reviewed the source delta since the existing review: c13b31341d2 adds one blank line between the person-request helper and imports in orchestration.ts. It changes no behavior or documented claim; prior review scope and evidence remain unchanged.","inputs":["docs/user/workspace-checkpoints.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed the source delta since the existing review: c13b31341d2 adds one blank line between the person-request helper and imports in orchestration.ts. It changes no behavior or documented claim; prior review scope and evidence remain unchanged.","inputs":["examples/self-configuring-agent/README.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Reviewed the source delta since the existing review: c13b31341d2 adds one blank line between the person-request helper and imports in orchestration.ts. It changes no behavior or documented claim; prior review scope and evidence remain unchanged.","inputs":["packages/monument/CONTEXT.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Reviewed the source delta since the existing review: c13b31341d2 adds one blank line between the person-request helper and imports in orchestration.ts. It changes no behavior or documented claim; prior review scope and evidence remain unchanged.","inputs":["packages/monument/README.md","src-server/routes/orchestration/orchestration.ts"]}
+  ]
+}

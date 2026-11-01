@@ -40,7 +40,19 @@
 
     "src-server/adapters/pty-process-groups.ts",
 
-    "src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts"
+    "src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts",
+
+    "src-server/services/terminal/terminal-tickets.ts",
+
+    "packages/sdk/src/client/terminal-session-store.ts",
+
+    "packages/sdk/src/client/terminal-output-session.ts",
+
+    "src-ui/src/components/coding-layout/TerminalPanel.tsx",
+
+    "src-server/security/coding-authority.ts",
+
+    "src-server/services/terminal/__tests__/terminal-gateway-admission.test.ts"
   ],
 
   "checks": [

@@ -231,3 +231,24 @@
   min-height: 44px;
   color: var(--k-action);
 }
+
+.chat-dock-inbox__toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-1);
+  padding: var(--k-space-2);
+  border-bottom: 1px solid var(--k-line);
+}
+.chat-dock-inbox__toolbar-title {
+  flex: 1;
+  color: var(--k-text);
+  font-weight: 600;
+}
+.chat-dock-inbox__toolbar svg {
+  inline-size: 16px;
+  block-size: 16px;
+}
+.chat-dock-inbox__toolbar > button {
+  min-inline-size: 44px;
+  min-block-size: 44px;
+}

@@ -7,12 +7,14 @@ import {
 import { workAttentionCount } from '../../views/home/home-lane-model';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 import type { WorkFactsById } from '../../views/home/work-facts';
+import { workStatus } from '../../views/home/work-status';
 import { useInboxScope } from './InboxScopeFilter';
 import { useInboxDismissals } from './inbox-dismissals';
 import {
   groupMobileActivity,
   type MobileActivityGroup,
 } from './mobile-activity-groups';
+import { useConversationWorkState } from './useConversationWorkState';
 
 /**
  * THE inbox's groups, from its live sources: the items with brief lifecycle
@@ -28,6 +30,11 @@ export function useInboxGroups(
   workFacts?: WorkFactsById,
 ): MobileActivityGroup[] {
   const { visible, dismissed } = useInboxDismissals(items, workFacts);
+  const state = useConversationWorkState();
+  const resolution = useMemo(
+    () => (state.supported ? new Set(Object.keys(state.settled)) : undefined),
+    [state.supported, state.settled],
+  );
   const version = useSyncExternalStore(
     subscribeSnoozes,
     snoozesVersion,
@@ -38,12 +45,12 @@ export function useInboxGroups(
   const snoozed = useMemo(() => readSnoozes(now), [now, version]);
   return useMemo(
     () => [
-      ...groupMobileActivity(visible, now, snoozed, workFacts),
+      ...groupMobileActivity(visible, now, snoozed, workFacts, resolution),
       ...(dismissed.length
         ? [{ id: 'dismissed' as const, label: 'Dismissed', items: dismissed }]
         : []),
     ],
-    [visible, now, snoozed, workFacts, dismissed],
+    [visible, now, snoozed, workFacts, dismissed, resolution],
   );
 }
 
@@ -71,5 +78,10 @@ export function useInboxWorkingCount(
 ): number {
   const scope = useInboxScope(items, now, workFacts);
   const groups = useInboxGroups(scope.items, now, workFacts);
-  return groups.find((group) => group.id === 'running')?.items.length ?? 0;
+  return groups
+    .flatMap((group) => group.items)
+    .filter(
+      (item) =>
+        workStatus(item, now, workFacts?.get(item.id)).lane === 'running',
+    ).length;
 }

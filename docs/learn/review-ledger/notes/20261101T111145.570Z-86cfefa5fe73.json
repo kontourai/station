@@ -1,0 +1,7 @@
+{
+  "revision": "9f7d3387a831aaa86fe9534bab2f9120d9ef4edd",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Checked: vitest-resource-manifest.mjs gains one process-heavy entry for the spawned UI-proxy upgrade test, following the existing classification rules this guide describes; no rule, lane or budget changed.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

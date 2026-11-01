@@ -1,0 +1,41 @@
+{
+  "revision": "b3d0a81624bc8c7bb35166a6ecba9b9b8d9be49a",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Reviewed architecture SDK and Device-to-API boundaries against root index additions: child instruction query/mutation exports are additive, use authenticated HTTP and do not change foreground dispatch or EventStore ownership. No prose change; no deployed-device qualification.","inputs":["docs/architecture.md","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Reviewed historical UIBlock form producer/rendering and action context against ChatMessageList and UIBlockActionsContext changes. The added child permission flag is consumed by the subagent panel, not a new UIBlock renderer or form approval channel; retain historical status. No prose change; source review only.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/components/chat/ChatMessageList.tsx","src-ui/src/components/chat/UIBlockActionsContext.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed parent composer steering, read-only resolution and anchored child card preservation against ChatMessageList authority propagation. Child instructions use their separate panel and wire command; no change to parent queue or fold claims. No prose change; focused panel and SDK tests passed 13, not visual proof.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/ChatMessageList.tsx"]},
+
+    {"path":"docs/design/knowledge-recall-ui.md","note":"Reviewed SDK KnowledgeRecall component and authorized record-query ownership against additive root exports for child instructions. These hooks neither change recall record identity, host mounting nor read authorization. No prose change; no new knowledge integration execution.","inputs":["docs/design/knowledge-recall-ui.md","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/design/pane-host-contract.md","note":"Reviewed pane host intent, SDK data access and occurrence-bound capability claims against SDK root additions. Child instruction hooks do not add an iframe bridge, arbitrary session authority or a new host capability. No prose change; preserve design classification.","inputs":["docs/design/pane-host-contract.md","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Reviewed Chat placement, child-card mount and per-session remount limitations against ChatMessageList, SubagentTranscriptCard and child query. The expanded child panel is inside its card; scoped query/history and local pending identity do not change pane navigation or imply unsaved UI state persists across remount. No prose change; focused panel tests only, no viewport claim.","inputs":["docs/design/placement.md","packages/sdk/src/query-domains/chatRuntimeOrchestration.ts","src-ui/src/__tests__/ChatMessageList.subagentCards.test.tsx","src-ui/src/components/chat/ChatMessageList.tsx","src-ui/src/components/chat/SubagentTranscriptCard.tsx"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed public SDK integration route and hosted qualification requirements against SDK child steering additions. Capability discovery, current authority, explicit refusal and same-key retry do not establish hosted deployment, published package or a provider journey. No prose change.","inputs":["docs/guides/integrating-station.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed responsive surface contracts against SDK barrel query additions. The new hooks do not change dialog geometry, viewport breakpoints or 44px obligations; child-panel visual layout remains separately unverified. No prose change.","inputs":["docs/guides/responsive-ui.md","packages/sdk/src/index.ts","packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"Reviewed token and theme ownership against SDK query/barrel additions. Child instruction hooks do not alter theme selection or token definitions; no light/dark rendering is inferred. No prose change.","inputs":["docs/guides/theming.md","packages/sdk/src/index.ts","packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Reviewed backend route validation, scope and receipt principles against SDK query/barrel additions. Client hooks do not grant server authority or change durable SSE semantics; child dispatch retains explicit authorization and uncertain acknowledgement. No prose change.","inputs":["docs/patterns/backend.md","packages/sdk/src/index.ts","packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed SDK query-domain and transport ownership against child instruction query/mutation: domain hooks use client operations, request scope, authority-key cache identity and retry false; mutation does not automatically retry. Existing frontend guidance remains valid. No prose change.","inputs":["docs/patterns/frontend.md","packages/sdk/src/index.ts","packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed API conversation and child steering links against SDK query exports. React hook additions do not alter HTTP path, authentication, journal paging or response contract. Session API remains the detailed owner. No prose change; source review only.","inputs":["docs/reference/api.md","packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed child instruction SDK client, capability handshake, query and mutation exports and actual request scope against SDK reference. Clarified no automatic mutation retry, separate authority/provider limits and old-host distinct-command refusal. Focused SDK and UI tests passed 13; no package publication or deployed proof.","inputs":["docs/reference/sdk.md","packages/sdk/src/client/orchestration.ts","packages/sdk/src/index.ts","packages/sdk/src/query-domains/chatRuntimeOrchestration.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed static credential-free Station Docs scope against child query-domain addition. The query reads an authorized runtime journal and does not add credentialed runtime retrieval or change the shipped docs server content. No prose change; no MCP or deployment claim.","inputs":["docs/reference/station-docs.md","packages/sdk/src/query-domains/chatRuntimeOrchestration.ts"]},
+
+    {"path":"examples/meeting-transcription/README.md","note":"Reviewed meeting transcription example packaging, SDK import and transcript-to-Agent limitations against root barrel additions. Child instruction hooks do not repair the existing SDK build-root limitation or prove an installed transcription journey. No prose change.","inputs":["examples/meeting-transcription/README.md","packages/sdk/src/index.ts"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Reviewed SDK instructions against updated SDK reference and new child query/mutation: stable public exports, consumer tests and cache/caller cancellation expectations remain appropriate; no governance or instruction edit. Source review only.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/README.md","note":"Reviewed SDK root React surface and client subpath description against added query and mutation hooks. They add no credentials or authorization and do not make the export itself proof of host support; the detailed SDK reference owns recovery. No prose change; no registry release claim.","inputs":["packages/sdk/README.md","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed child instruction user copy against the expanded card, continue authority and operator/device operate grant, capability-gated SDK client, persisted same-target key and explicit retry. Clarified Sent/Not sent/unconfirmed and same-key check with new submission only when eligible. Focused panel and SDK tests passed 13; no light/dark, native or deployed qualification.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

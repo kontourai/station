@@ -18,7 +18,7 @@ const SURFACE_LABELS: Record<ClientOriginSurface, string> = {
   mobile: 'Mobile app',
   cli: 'CLI',
   mcp: 'MCP client',
-  unknown: 'Unknown surface',
+  unknown: 'Unknown app',
 };
 
 /**
@@ -50,8 +50,8 @@ export function clientOriginSummary(origin: ClientOrigin | undefined): string {
       : origin.actor.kind === 'operator'
         ? 'Operator'
         : origin.actor.kind === 'internal'
-          ? 'Station (internal)'
-          : 'Unknown actor';
-  const surface = clientOriginSurfaceLabel(origin) ?? SURFACE_LABELS.unknown;
-  return `${actor} · ${surface}`;
+          ? 'Station'
+          : 'Unknown sender';
+  const surface = clientOriginSurfaceLabel(origin);
+  return surface ? `${actor} · ${surface}` : actor;
 }

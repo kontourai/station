@@ -75,6 +75,7 @@ import {
   type ProviderAdapterModelCatalog,
   type ProviderAdapterShape,
   type ProviderAdoptionHooks,
+  type ProviderChildSteerResult,
   type ProviderDiscardSessionRecovery,
   type ProviderExecutionAuthInput,
   type ProviderExecutionAuthObservation,
@@ -133,6 +134,7 @@ import {
   mergeCapabilityDeliveryMetadata,
 } from './capability-delivery-metadata.js';
 import {
+  codexChildSteerTarget,
   codexRunningChildTurnId,
   codexRunningChildTurns,
   requestStop as requestCodexChildStop,
@@ -179,6 +181,7 @@ import {
 } from './codex-confinement.js';
 import { CodexGoals } from './codex-goals.js';
 import {
+  type CodexStationMcpAuth,
   type CodexToolServerSkip,
   resolveCodexMcpServers,
 } from './codex-mcp-passthrough.js';
@@ -253,8 +256,7 @@ interface CodexAdapterOptions {
   ) => string | null;
   /**
    * archive#1195: mints a per-session, short-lived, station-control-scoped
-   * bearer token and returns the full station-control HTTP/SSE MCP endpoint
-   * URL it authenticates — called ONLY when the resolved agent's
+   * bearer credential delivered only through private thread configuration — called ONLY when the resolved agent's
    * `toolServers` includes the canonical built-in station-control server
    * (see `resolveAgentToolServers`). `threadId` is Station's own session
    * id, used as the token's revocation key. Undefined/missing (older/test
@@ -267,13 +269,13 @@ interface CodexAdapterOptions {
     tenantExecutionContext?: import('@kontourai/station-contracts/tenancy').TenantExecutionContext,
     allowedTools?: readonly string[],
     coordinatorGeneration?: number,
-  ) => string | undefined;
+  ) => CodexStationMcpAuth | undefined;
   mintStationKnowledgeMcpAuth?: (
     threadId: string,
     tenantExecutionContext?: import('@kontourai/station-contracts/tenancy').TenantExecutionContext,
     allowedTools?: readonly string[],
     coordinatorGeneration?: number,
-  ) => string | undefined;
+  ) => CodexStationMcpAuth | undefined;
   /** Best-effort cleanup counterpart to `mintStationControlMcpAuth` — called
    * on ordinary session stop. Never required to be provided; a missing
    * closure just means the token lives out its bounded TTL instead. */
@@ -2236,11 +2238,15 @@ export class CodexAdapter implements ProviderAdapterShape {
         },
       });
       this.transport.sendNotification(record, 'initialized');
-      const authoredMcpConfig = await this.authoredMcpConfig(
+      const authoredSelection = await this.authoredMcpConfig(
         record,
         input,
         toolServers.report?.delivered ?? [],
       );
+      const authoredMcpConfig =
+        toolServers.privateConfig || authoredSelection
+          ? { ...authoredSelection, ...toolServers.privateConfig }
+          : undefined;
 
       const modelOptions = (input.modelOptions ?? {}) as CodexModelOptions;
       // #2493: `never` reaches `danger-full-access` only for a `host`
@@ -2337,6 +2343,9 @@ export class CodexAdapter implements ProviderAdapterShape {
       const reportedSandbox = readCodexSandboxPolicy(
         (result as { sandbox?: unknown } | undefined)?.sandbox,
       );
+      const reportedApprovalPolicy = (
+        result as { approvalPolicy?: unknown } | undefined
+      )?.approvalPolicy;
       // #2494: the confinement record comes from Codex's response, never
       // from the sandbox Station sent. A start whose policy requires
       // confinement and whose engine does not report it applied is refused
@@ -2346,7 +2355,7 @@ export class CodexAdapter implements ProviderAdapterShape {
       // configuration, when Station sent no knobs) requires confinement too.
       const plan = requiredByReportedPolicy(
         input.confinementPlan,
-        (result as { approvalPolicy?: unknown } | undefined)?.approvalPolicy,
+        reportedApprovalPolicy,
       );
       const reportedProfile = readActivePermissionProfileId(result);
       const sandboxEvidence = {
@@ -2425,6 +2434,10 @@ export class CodexAdapter implements ProviderAdapterShape {
       const configuredSandbox = reportedSandbox
         ? codexSandboxModeOfPolicy(reportedSandbox)
         : approvalKnobs?.sandbox;
+      const configuredApprovalPolicy =
+        reportedApprovalPolicy === undefined
+          ? approvalKnobs?.approvalPolicy
+          : reportedApprovalPolicy;
       record.session = {
         ...record.session,
         modelRoute: connectionLaunch.route,
@@ -2492,20 +2505,18 @@ export class CodexAdapter implements ProviderAdapterShape {
         ...reportedModelMetadata(reportedModelFromInit),
         reasoningEffort: mapReasoningEffort(modelOptions),
         fastMode: modelOptions.fastMode ?? false,
-        ...(approvalKnobs
+        approvalMode: configuredSandbox
+          ? mapCodexKnobsToApprovalMode({
+              approvalPolicy: configuredApprovalPolicy,
+              sandbox: configuredSandbox,
+            })
+          : 'connection-default',
+        ...(configuredApprovalPolicy
           ? {
-              approvalPolicy: approvalKnobs.approvalPolicy,
+              approvalPolicy: configuredApprovalPolicy,
               ...(configuredSandbox
                 ? {
                     sandbox: configuredSandbox,
-                    // Resolved approvalMode alongside the raw knobs, so the
-                    // client can track a durable lastAppliedApprovalMode
-                    // baseline at session start (archive#727 review round
-                    // 3, item 1), derived from the applied pair.
-                    approvalMode: mapCodexKnobsToApprovalMode({
-                      approvalPolicy: approvalKnobs.approvalPolicy,
-                      sandbox: configuredSandbox,
-                    }),
                   }
                 : {}),
               // #2493: the pair alone no longer says whether `never` is
@@ -2832,6 +2843,7 @@ export class CodexAdapter implements ProviderAdapterShape {
     input: ProviderSessionStartInput,
   ): Promise<{
     configArgs?: string[];
+    privateConfig?: Record<string, unknown>;
     report?: CapabilityDeliveryChannelReport;
   }> {
     const toolServers = input.agent?.toolServers;
@@ -2908,12 +2920,13 @@ export class CodexAdapter implements ProviderAdapterShape {
             : []),
         )
       : undefined;
-    const { configArgs, deliveredIds, skipped } = resolveCodexMcpServers(
-      toolServers,
-      stationControlMcpUrl,
-      stationKnowledgeMcpUrl,
-      oauthTokens,
-    );
+    const { configArgs, privateConfig, deliveredIds, skipped } =
+      resolveCodexMcpServers(
+        toolServers,
+        stationControlMcpUrl,
+        stationKnowledgeMcpUrl,
+        oauthTokens,
+      );
     const undelivered: CapabilityUndelivered[] = skipped.map(
       (skip: CodexToolServerSkip) => ({
         capability: 'toolServers',
@@ -2929,14 +2942,17 @@ export class CodexAdapter implements ProviderAdapterShape {
         reason: entry.reason,
       });
     }
-    if (configArgs.length > 0) {
-      codexToolServersDelivered.add(configArgs.length / 2, {
+    if (deliveredIds.length > 0) {
+      codexToolServersDelivered.add(deliveredIds.length, {
         provider: this.provider,
       });
     }
 
     return {
       configArgs: configArgs.length > 0 ? configArgs : undefined,
+      privateConfig: Object.keys(privateConfig).length
+        ? privateConfig
+        : undefined,
       report: {
         source: 'agent',
         requested: toolServers.map((server) => server.id),
@@ -3247,6 +3263,43 @@ export class CodexAdapter implements ProviderAdapterShape {
       prompt: text,
       inputKind: 'steer',
     });
+  }
+
+  async steerChildWork(
+    threadId: string,
+    childId: string,
+    turnId: string,
+    input: string,
+  ): Promise<ProviderChildSteerResult> {
+    const record = this.transport.requireSession(threadId);
+    const target = codexChildSteerTarget(record, childId, turnId);
+    if (target !== 'ready') return { outcome: target };
+    const text = input.trim();
+    if (!text) throw new Error('Steer input is empty.');
+    try {
+      const result = await this.transport.sendRequest(record, 'turn/steer', {
+        threadId: childId,
+        input: [{ type: 'text', text, text_elements: [] }],
+        expectedTurnId: turnId,
+      });
+      if (extractStringField(result, 'turnId') !== turnId)
+        throw new Error('Codex returned an unexpected child steer turn id.');
+    } catch (error) {
+      const message = errorMessage(error).toLowerCase();
+      if (
+        message.includes(
+          'direct app-server input is not allowed for multi-agent v2',
+        )
+      )
+        return { outcome: 'unsupported' };
+      if (
+        message.includes('no active turn') ||
+        message.includes('cannot accept same-turn steering')
+      )
+        return { outcome: 'no-active-task' };
+      throw error;
+    }
+    return { outcome: 'steered', turnId };
   }
 
   async interruptTurn(threadId: string, turnId?: string) {

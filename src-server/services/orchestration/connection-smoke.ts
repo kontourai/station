@@ -306,30 +306,26 @@ export class ConnectionSmoke {
     let cleanupError: unknown;
     try {
       const adapter = this.deps.adapterFor(input.provider);
-      const cleanupObservableOwnership = async () => {
-        if (
-          sessionStarted &&
+      const ownershipReleased = async () => {
+        if (this.deps.hasThreadProvider(threadId) || !adapter) return false;
+        let adapterOwnsSession = true;
+        await this.deps.runOperationWithinDeadline(
+          adapter.hasSession(threadId).then((ownsSession) => {
+            adapterOwnsSession = ownsSession;
+          }),
+          `${adapter.provider} smoke ownership check`,
+          cleanupDeadline,
+        );
+        return (
+          !adapterOwnsSession &&
           !this.deps.hasThreadProvider(threadId) &&
-          adapter
-        ) {
-          // A provider can exit and release its binding before the diagnostic
-          // settles. Historical startup success alone is not live ownership.
-          let adapterOwnsSession = true;
-          await this.deps.runOperationWithinDeadline(
-            adapter.hasSession(threadId).then((ownsSession) => {
-              adapterOwnsSession = ownsSession;
-            }),
-            `${adapter.provider} smoke ownership check`,
-            cleanupDeadline,
-          );
-          if (
-            !adapterOwnsSession &&
-            !this.deps.hasThreadProvider(threadId) &&
-            Date.now() <= cleanupDeadline
-          ) {
-            sessionStarted = false;
-            return;
-          }
+          Date.now() <= cleanupDeadline
+        );
+      };
+      const cleanupObservableOwnership = async () => {
+        if (sessionStarted && (await ownershipReleased())) {
+          sessionStarted = false;
+          return;
         }
         if (sessionStarted || this.deps.hasThreadProvider(threadId)) {
           // archive#3525: this connectivity probe's turn was never a user
@@ -337,30 +333,35 @@ export class ConnectionSmoke {
           // machinery, not something to alarm a user about.
           this.deps.armInternalStop(threadId);
           await this.deps.runCleanupWithinDeadline(
-            () =>
-              this.deps
-                .dispatch({ type: 'stopSession', threadId })
-                .then(() => undefined),
+            async () => {
+              try {
+                await this.deps.dispatch({ type: 'stopSession', threadId });
+              } catch (error) {
+                // Adapter resolution can release a stale binding before stop
+                // refuses. Confirm absence rather than matching error text.
+                if (!(await ownershipReleased())) throw error;
+              }
+            },
             `${input.provider} smoke session cleanup`,
             cleanupDeadline,
           );
           sessionStarted = false;
           return;
         }
-        if (!controller.signal.aborted || !adapter) return;
+        if (!adapter) return;
         let adapterOwnsSession = false;
         await this.deps.runOperationWithinDeadline(
           adapter.hasSession(threadId).then((ownsSession) => {
             adapterOwnsSession = ownsSession;
           }),
-          `${adapter.provider} timed-out smoke ownership check`,
+          `${adapter.provider} unbound smoke ownership check`,
           cleanupDeadline,
         );
         if (adapterOwnsSession) {
           this.deps.armInternalStop(threadId);
           await this.deps.runCleanupWithinDeadline(
             () => adapter.stopSession(threadId),
-            `${adapter.provider} timed-out smoke cleanup`,
+            `${adapter.provider} unbound smoke cleanup`,
             cleanupDeadline,
           );
         }
@@ -393,7 +394,10 @@ export class ConnectionSmoke {
         durationMs,
         reasonCode: 'cleanup-failed',
         reason:
-          'The diagnostic ended, but Station could not confirm runtime cleanup within its bounded grace.',
+          'The diagnostic ended, but Station could not confirm runtime cleanup within its bounded grace.' +
+          (result.ok
+            ? ''
+            : ` Original diagnostic (${result.reasonCode}): ${result.reason}`),
         action:
           'Recover the diagnostic runtime session before running another smoke.',
         ...(input.modelId ? { model: input.modelId } : {}),

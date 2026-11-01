@@ -53,6 +53,7 @@ import {
 } from './message-bubble/MessageDeliveryNote';
 import { MessageRating } from './message-bubble/MessageRating';
 import {
+  describeModelOptions,
   resolveTurnEngine,
   resolveTurnEngineId,
   resolveTurnModelIdentity,
@@ -523,11 +524,7 @@ function MessageBubbleComponent({
   // states the engine, the badge row states the model(s), and the card's
   // collapsed headline stands down for whatever they already said.
   const modelIdentity = resolveTurnModelIdentity(msg);
-  const modelOptionsTitle = msg.modelOptions
-    ? Object.entries(msg.modelOptions)
-        .map(([key, value]) => `${key}: ${String(value)}`)
-        .join(' · ')
-    : undefined;
+  const modelOptionsTitle = describeModelOptions(msg.modelOptions);
   // #2211: the settled row's reasoning moves out of the bubble into the turn
   // overflow menu. The reasoning part is the turn's record of what the model
   // thought, so it stays reachable per-row; the streaming row keeps its
@@ -712,6 +709,9 @@ function MessageBubbleComponent({
             messageIndex={idx}
             messagePreview={textContent.slice(0, 200)}
             agentSlug={rowAgentSlug}
+            turnId={msg.turnId}
+            sessionId={msg.sessionId}
+            projectSlug={activeSession.projectSlug}
           />
         )}
     </>
@@ -896,6 +896,9 @@ function MessageBubbleComponent({
           messageIndex={idx}
           messagePreview={textContent.slice(0, 200)}
           agentSlug={rowAgentSlug}
+          turnId={msg.turnId}
+          sessionId={msg.sessionId}
+          projectSlug={activeSession.projectSlug}
         />
       )}
     </>
@@ -1128,7 +1131,9 @@ function MessageBubbleComponent({
             ? msg.role === 'user' && !sender && userControlCount > 0
               ? `calc(100% - ${8 + 44 * userControlCount}px)`
               : undefined
-            : '70%',
+            : msg.role === 'assistant' && !sender
+              ? undefined
+              : '70%',
         }}
         onContextMenu={onBubbleContextMenu}
         // Only to learn whether a finger is down: its long-press is text

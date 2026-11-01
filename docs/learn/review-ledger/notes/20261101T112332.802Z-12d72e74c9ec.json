@@ -1,0 +1,7 @@
+{
+  "revision": "0c7d6ae56aca1eb4cde6a90a1aefce55eecd10fc",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Checked engine-sign-in.ts: the attempt parser now also accepts the optional terminal projectId and bindingKey the host returns. The page's engine sign-in passages (profile sign-in reads, line ~499-513) describe the read and the panel's offer, not the attempt's terminal fields, so they stay accurate; the terminal section already says a sign-in view attaches by id.","inputs":["docs/reference/sdk.md","packages/sdk/src/engine-sign-in.ts"]}
+  ]
+}

@@ -1,7 +1,11 @@
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { describe, expect, it } from 'vitest';
 import { frameAgentMessage } from '../agent-message-frame.js';
-import { projectRuntimeEventsToMessages } from '../runtime-event-projection.js';
+import {
+  projectRuntimeEventsToMessages,
+  turnInterruptedContinueBoundaryId,
+  turnInterruptedContinueClientTurnId,
+} from '../runtime-event-projection.js';
 
 const base = {
   provider: 'claude',
@@ -1718,6 +1722,40 @@ describe('projectRuntimeEventsToMessages', () => {
           },
         ],
       });
+      // The chat's Continue keys its send on the interruption it reports.
+      expect(messages[0]?.metadata?.interruptedTurnBoundaryId).toBe(
+        'turn-boundary:abc',
+      );
+    });
+
+    it('keys Continue on the interruption: one key per boundary, stable across calls', () => {
+      expect(turnInterruptedContinueClientTurnId('turn-boundary:abc')).toBe(
+        'continue-interrupted:turn-boundary:abc',
+      );
+      expect(turnInterruptedContinueClientTurnId('turn-boundary:abc')).toBe(
+        turnInterruptedContinueClientTurnId('turn-boundary:abc'),
+      );
+      expect(turnInterruptedContinueClientTurnId('turn-boundary:abc')).not.toBe(
+        turnInterruptedContinueClientTurnId('turn-boundary:abd'),
+      );
+    });
+
+    it('reads the boundary back from a Continue key, and only from one', () => {
+      expect(
+        turnInterruptedContinueBoundaryId(
+          turnInterruptedContinueClientTurnId('turn-boundary:abc'),
+        ),
+      ).toBe('turn-boundary:abc');
+      expect(turnInterruptedContinueBoundaryId('continue-interrupted:')).toBe(
+        undefined,
+      );
+      expect(
+        turnInterruptedContinueBoundaryId(
+          'x-continue-interrupted:turn-boundary:abc',
+        ),
+      ).toBeUndefined();
+      expect(turnInterruptedContinueBoundaryId('a-random-key')).toBeUndefined();
+      expect(turnInterruptedContinueBoundaryId(undefined)).toBeUndefined();
     });
 
     it('renders NO banner for a fabricated (sessionState, transitionReason, transitionSource) triple missing interruptedTurnBoundary', () => {

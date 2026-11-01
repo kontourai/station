@@ -50,6 +50,7 @@ export class LocalAccountAdministration {
   }
 
   setDisabled(accountId: string, disabled: boolean): void {
+    this.requireIndependentWrite();
     const changed = this.database
       .prepare(`INSERT INTO station_account_policy(account_id, disabled, sessions_revoked_at)
       SELECT id, ?, ? FROM user WHERE id = ?
@@ -60,12 +61,22 @@ export class LocalAccountAdministration {
   }
 
   revokeSessions(accountId: string): void {
+    this.requireIndependentWrite();
     const changed = this.database
       .prepare(`INSERT INTO station_account_policy(account_id, disabled, sessions_revoked_at)
       SELECT id, 0, ? FROM user WHERE id = ?
       ON CONFLICT(account_id) DO UPDATE SET sessions_revoked_at = MAX(station_account_policy.sessions_revoked_at, excluded.sessions_revoked_at)`)
       .run(Date.now(), accountId);
     if (changed.changes !== 1) throw new Error('Local account not found.');
+  }
+
+  private requireIndependentWrite(): void {
+    // Better Auth may hold this connection across an asynchronous ceremony.
+    // Never acknowledge a policy write owned by that transaction's rollback.
+    if (this.database.isTransaction)
+      throw new Error(
+        'Local account operation is busy; retry after authentication completes.',
+      );
   }
 
   /** #3586: whether the account exists at all (`permits` admits unknown ids). */

@@ -5,6 +5,15 @@ import {
 } from '@kontourai/station-sdk';
 import { useCallback, useEffect, useState } from 'react';
 import { isComposingKeyEvent } from '../../../lib/isComposingKeyEvent';
+import { errorText } from '../../../utils/errorText';
+import { Button } from '../../Button';
+import { LazyBoundary } from '../../LazyBoundary';
+import { ErrorState } from '../../state';
+
+const loadRatedLearningAction = () =>
+  import('../../../views/learning-review/LearningRecordActions').then(
+    (module) => ({ default: module.RatedResponseLearningAction }),
+  );
 
 type RatingValue = 'thumbs_up' | 'thumbs_down' | null;
 
@@ -47,6 +56,9 @@ interface MessageRatingProps {
   messageIndex: number;
   messagePreview: string;
   agentSlug: string;
+  turnId?: string;
+  sessionId?: string;
+  projectSlug?: string;
 }
 
 export function MessageRating({
@@ -54,18 +66,30 @@ export function MessageRating({
   messageIndex,
   messagePreview,
   agentSlug,
+  turnId,
+  sessionId,
+  projectSlug,
 }: MessageRatingProps) {
+  const [saveError, setSaveError] = useState<unknown>();
   const [rating, setRating] = useState<RatingValue>(null);
   const [showReasonInput, setShowReasonInput] = useState(false);
   const [reasonText, setReasonText] = useState('');
   const [savedReason, setSavedReason] = useState<string | undefined>(undefined);
-  const { data: ratings = [] } = useFeedbackRatingsQuery({ staleTime: 30_000 });
+  const ratingsQuery = useFeedbackRatingsQuery({ staleTime: 30_000 });
+  const ratings = ratingsQuery.data ?? [];
   const saveRatingMutation = useSaveFeedbackRatingMutation();
   const deleteRatingMutation = useDeleteFeedbackRatingMutation();
+  const storedRating = ratings.find(
+    (entry) =>
+      entry.conversationId === conversationId &&
+      entry.messageIndex === messageIndex &&
+      entry.target?.sessionId === sessionId &&
+      entry.target?.turnId === turnId,
+  );
 
   useEffect(() => {
     const existing = ratings.find(
-      (entry: any) =>
+      (entry) =>
         entry.conversationId === conversationId &&
         entry.messageIndex === messageIndex,
     );
@@ -80,24 +104,23 @@ export function MessageRating({
 
   const submitRating = useCallback(
     async (value: RatingValue, reason?: string) => {
-      try {
-        if (value) {
-          await saveRatingMutation.mutateAsync({
-            agentSlug,
-            conversationId,
-            messageIndex,
-            messagePreview,
-            rating: value,
-            ...(reason ? { reason } : {}),
-          });
-        } else {
-          await deleteRatingMutation.mutateAsync({
-            conversationId,
-            messageIndex,
-          });
-        }
-      } catch {
-        throw new Error('rate failed');
+      if (value) {
+        await saveRatingMutation.mutateAsync({
+          agentSlug,
+          conversationId,
+          messageIndex,
+          messagePreview,
+          rating: value,
+          ...(sessionId && turnId
+            ? { expectedSessionId: sessionId, expectedTurnId: turnId }
+            : {}),
+          ...(reason ? { reason } : {}),
+        });
+      } else {
+        await deleteRatingMutation.mutateAsync({
+          conversationId,
+          messageIndex,
+        });
       }
     },
     [
@@ -106,12 +129,15 @@ export function MessageRating({
       deleteRatingMutation,
       messageIndex,
       messagePreview,
+      sessionId,
+      turnId,
       saveRatingMutation,
     ],
   );
 
   const handleRate = useCallback(
     async (value: RatingValue) => {
+      setSaveError(undefined);
       const newRating = rating === value ? null : value;
       const previousRating = rating;
       setRating(newRating);
@@ -119,7 +145,8 @@ export function MessageRating({
         setShowReasonInput(true);
         try {
           await submitRating(newRating);
-        } catch {
+        } catch (error) {
+          setSaveError(error);
           setRating(previousRating);
         }
       } else {
@@ -127,7 +154,8 @@ export function MessageRating({
         setReasonText('');
         try {
           await submitRating(newRating);
-        } catch {
+        } catch (error) {
+          setSaveError(error);
           setRating(previousRating);
         }
       }
@@ -144,61 +172,95 @@ export function MessageRating({
     try {
       await submitRating(rating, reason);
       setSavedReason(reason);
-    } catch {
-      // Keep input open on save failure.
+    } catch (error) {
+      setSaveError(error);
+      return;
     }
     setShowReasonInput(false);
     setReasonText('');
   }, [rating, reasonText, submitRating]);
 
   return (
-    <span className="message__rating">
-      <button
-        type="button"
-        className={`message__rating-btn${rating === 'thumbs_up' ? ' message__rating-btn--active' : ''}`}
-        onClick={() => handleRate('thumbs_up')}
-        title="Good response"
-        aria-label="Good response"
-        aria-pressed={rating === 'thumbs_up'}
-      >
-        <ThumbUpIcon filled={rating === 'thumbs_up'} />
-      </button>
-      <button
-        type="button"
-        className={`message__rating-btn${rating === 'thumbs_down' ? ' message__rating-btn--active' : ''}`}
-        onClick={() => handleRate('thumbs_down')}
-        title="Bad response"
-        aria-label="Bad response"
-        aria-pressed={rating === 'thumbs_down'}
-      >
-        <ThumbDownIcon filled={rating === 'thumbs_down'} />
-      </button>
-      <span
-        className={`message__rating-expand${showReasonInput ? ' message__rating-expand--open' : ''}`}
-      >
-        {showReasonInput ? (
-          <input
-            className="message__rating-reason"
-            placeholder="Why? (optional)"
-            maxLength={100}
-            value={reasonText}
-            onChange={(event) => setReasonText(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && !isComposingKeyEvent(event))
-                handleReasonSubmit();
-              if (event.key === 'Escape') {
-                setShowReasonInput(false);
-                setReasonText('');
-              }
-            }}
-            onBlur={handleReasonSubmit}
-          />
-        ) : savedReason ? (
-          <span className="message__rating-reason-label" title={savedReason}>
-            {savedReason}
-          </span>
-        ) : null}
+    <>
+      <span className="message__rating">
+        <button
+          type="button"
+          className={`message__rating-btn${rating === 'thumbs_up' ? ' message__rating-btn--active' : ''}`}
+          onClick={() => handleRate('thumbs_up')}
+          title="Good response"
+          aria-label="Good response"
+          aria-pressed={rating === 'thumbs_up'}
+        >
+          <ThumbUpIcon filled={rating === 'thumbs_up'} />
+        </button>
+        <button
+          type="button"
+          className={`message__rating-btn${rating === 'thumbs_down' ? ' message__rating-btn--active' : ''}`}
+          onClick={() => handleRate('thumbs_down')}
+          title="Bad response"
+          aria-label="Bad response"
+          aria-pressed={rating === 'thumbs_down'}
+        >
+          <ThumbDownIcon filled={rating === 'thumbs_down'} />
+        </button>
+        <span
+          className={`message__rating-expand${showReasonInput ? ' message__rating-expand--open' : ''}`}
+        >
+          {showReasonInput ? (
+            <input
+              className="message__rating-reason"
+              placeholder="Why? (optional)"
+              maxLength={100}
+              value={reasonText}
+              onChange={(event) => setReasonText(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !isComposingKeyEvent(event))
+                  handleReasonSubmit();
+                if (event.key === 'Escape') {
+                  setShowReasonInput(false);
+                  setReasonText('');
+                }
+              }}
+              onBlur={handleReasonSubmit}
+            />
+          ) : savedReason ? (
+            <span className="message__rating-reason-label" title={savedReason}>
+              {savedReason}
+            </span>
+          ) : null}
+        </span>
       </span>
-    </span>
+      {saveError && (
+        <ErrorState
+          variant="compact"
+          title="Rating not saved"
+          description={errorText(saveError)}
+          action={
+            <Button size="sm" onClick={() => void ratingsQuery.refetch()}>
+              Refresh ratings
+            </Button>
+          }
+        />
+      )}
+      {turnId &&
+        sessionId &&
+        projectSlug &&
+        rating &&
+        storedRating?.rating === rating &&
+        !showReasonInput &&
+        typeof storedRating?.id === 'string' && (
+          <LazyBoundary
+            load={loadRatedLearningAction}
+            componentProps={{
+              conversationId,
+              turnId,
+              projectSlug,
+              ratingId: storedRating.id,
+            }}
+            pending={null}
+            unavailable={() => <span>Learning context unavailable</span>}
+          />
+        )}
+    </>
   );
 }

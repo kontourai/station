@@ -28,7 +28,17 @@ export type DeploymentAuthenticationOperation =
   | 'change-password'
   | 'refresh-session'
   | 'logout'
-  | 'revoke-session';
+  | 'revoke-session'
+  /** Usernameless passkey sign-in: a two-step `options` then `verify` ceremony. */
+  | 'passkey-sign-in'
+  /** Invitation-gated account creation with a passkey instead of a password. */
+  | 'passkey-register'
+  /** Add a passkey to the signed-in account. */
+  | 'passkey-add'
+  /** Enrol a passkey with an operator-issued recovery token. */
+  | 'passkey-recover'
+  | 'passkey-list'
+  | 'passkey-remove';
 
 export interface DeploymentAuthenticationEndpoint {
   /** A path relative to the Station-assigned authentication base path, beginning with '/'. */

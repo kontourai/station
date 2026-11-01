@@ -346,7 +346,13 @@
 
     "packages/contracts/src/project-checkout-freshness.ts",
 
-    "packages/contracts/src/session-goal.ts"
+    "packages/contracts/src/session-goal.ts",
+
+    "packages/contracts/src/isolated-repair.ts",
+
+    "packages/contracts/src/qualification-repair-policy.mjs",
+
+    "packages/contracts/src/qualification-repair-policy.d.mts"
   ],
 
   "checks": [

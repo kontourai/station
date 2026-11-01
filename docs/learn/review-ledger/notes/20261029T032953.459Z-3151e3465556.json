@@ -1,0 +1,15 @@
+{
+  "revision": "685b43ed373cec808042e8d48cb4a511819f24f5",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"local-account-provider.ts at 685b43ed373 moves the member-passkey branch of handle() into handleMemberPasskey() unchanged (preview refusal, then local-account-passkeys.ts). The module map's deployment-authentication paragraph (member passkeys through the Better Auth plugin, describe() withholding passkey operations while the preview is off) still matches; 119 focused tests and the 10 fault injections pass on this revision.","inputs":["docs/architecture/module-map.md","src-server/services/identity/local-account-provider.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"local-account-provider.ts at 685b43ed373 only extracts the member-passkey branch into handleMemberPasskey(); the feature_preview_disabled refusal, the six endpoints, origin binding and revocation behaviour the member passkeys section describes are unchanged. Re-checked by local-account-passkeys.test.ts (15), the PAT production-composition test and member-passkeys-live.spec.ts on this revision.","inputs":["docs/guides/deployment-authentication.md","src-server/services/identity/local-account-provider.ts"]},
+
+    {"path":"docs/privacy-policy.md","note":"local-account-provider.ts at 685b43ed373 is a behaviour-preserving extraction of the passkey branch; what the local account store keeps (including the passkey fields added for #4303) is unchanged.","inputs":["docs/privacy-policy.md","src-server/services/identity/local-account-provider.ts"]},
+
+    {"path":"docs/reference/play-data-safety.md","note":"Checked against #4303's local-account-provider.ts changes, up to the 685b43ed373 extraction: member passkeys are stored only in the Station host's private local-account store and never sent to the developer or a third party by the Android app, so no data-safety category, sharing or collection declaration changes.","inputs":["docs/reference/play-data-safety.md","src-server/services/identity/local-account-provider.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"local-account-provider.ts at 685b43ed373 extracts the passkey branch without changing the /api/account-auth/** boundary: declared endpoints only, Origin checks, the passkey_origin_unsupported refusal for approved non-auth origins, and no Device or Project authority from account sessions. Re-checked by the passkey origin-seam test and fault injection F9 on this revision.","inputs":["docs/security/remote-access-threat-model.md","src-server/services/identity/local-account-provider.ts"]}
+  ]
+}

@@ -1,8 +1,8 @@
 /**
- * Automation intake, observe-only (slice S2 of epic kontourai/station#3439):
- * dedupe a normalized event, match it against a source's actionable rules,
- * record the outcome, and open or close episodes. It starts nothing; the
- * `dispatch-task` action arrives in S3 and claims through the same ledger.
+ * Automation intake (epic kontourai/station#3439): match a normalized event,
+ * dedupe it, and atomically retain its delivery, episode changes and bounded
+ * dispatch intent. Intake performs no provider calls; the action runtime
+ * consumes the retained intent through the ledger's claim boundary.
  *
  * Matching is exact string equality over normalized fields only (design
  * section 3): no regex, glob, negation or expression form.
@@ -14,7 +14,12 @@ import type {
   AutomationMatcher,
   AutomationRefusalReason,
   AutomationRule,
+  AutomationSource,
 } from '@kontourai/station-contracts/automation';
+import {
+  automationIntentId,
+  automationPolicyFingerprint,
+} from './automation-intent.js';
 import type { AutomationLedger } from './automation-ledger.js';
 
 /** Every `where` entry holds; an array matches any member; empty never matches. */
@@ -89,6 +94,7 @@ export type AutomationIntakeResult = Readonly<{
 export function recordAutomationEvent(input: {
   ledger: AutomationLedger;
   rules: readonly AutomationRule[];
+  source?: AutomationSource;
   event: AutomationEvent;
   /** Transport identity; a polled event uses its semantic key. */
   transportId: string;
@@ -120,19 +126,48 @@ export function recordAutomationEvent(input: {
       ...(matched[0] ? { ruleId: matched[0].id } : {}),
     },
     openings: matched.flatMap((rule) => {
-      const episodeKey = automationEpisodeKey(rule, event);
-      return rule.episode && episodeKey
+      const episodeKey =
+        automationEpisodeKey(rule, event) ??
+        (input.source && rule.action.kind !== 'notify'
+          ? JSON.stringify([rule.id, event.semanticKey])
+          : undefined);
+      return episodeKey
         ? [
             {
               ruleId: rule.id,
               episodeKey,
               episodeId: automationEpisodeId(event),
-              maxAttempts: rule.episode.maxAttempts,
+              maxAttempts: rule.episode?.maxAttempts ?? 1,
+              ...(!rule.episode ? { perDelivery: true } : {}),
               now,
             },
           ]
         : [];
     }),
+    intents: input.source
+      ? matched.flatMap((rule) => {
+          if (rule.action.kind === 'notify') return [];
+          const episodeKey =
+            automationEpisodeKey(rule, event) ??
+            JSON.stringify([rule.id, event.semanticKey]);
+          const episodeId = automationEpisodeId(event);
+          return [
+            {
+              intentId: automationIntentId(rule.id, episodeKey, episodeId),
+              sourceId: event.sourceId,
+              ruleId: rule.id,
+              episodeKey,
+              episodeId,
+              policyFingerprint: automationPolicyFingerprint(
+                input.source!,
+                rule,
+              ),
+              event,
+              action: rule.action,
+            },
+          ];
+        })
+      : [],
     closings: closing.flatMap((rule) => {
       const episodeKey = automationEpisodeKey(rule, event);
       return episodeKey ? [{ ruleId: rule.id, episodeKey }] : [];

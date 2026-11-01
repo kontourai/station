@@ -70,6 +70,42 @@ describe('stationHomeSchemaNeedsReset (station#1913)', () => {
     expect(stationHomeSchemaNeedsReset(home)).toBe(false);
   });
 
+  it('bootstraps over the empty lifecycle state a refused archive start left (#4381)', () => {
+    const home = makeHome();
+    mkdirSync(join(home, 'state', 'nightly', 'instances'), { recursive: true });
+    expect(stationHomeSchemaNeedsReset(home)).toBe(false);
+    ensureStationHomeSchemaSync(home, { acquireMutationLock: () => () => {} });
+    expect(readStationHomeSchemaVersion(home)).toBe(
+      STATION_HOME_SCHEMA_VERSION,
+    );
+  });
+
+  it('keeps refusing lifecycle state that holds anything but empty instance directories (#4381)', () => {
+    const withRecord = makeHome();
+    mkdirSync(join(withRecord, 'state', 'nightly', 'instances'), {
+      recursive: true,
+    });
+    writeFileSync(
+      join(withRecord, 'state', 'nightly', 'instances', 'instance-a.json'),
+      '{}',
+    );
+    const withOther = makeHome();
+    mkdirSync(join(withOther, 'state', 'nightly', 'data'), {
+      recursive: true,
+    });
+    const asFile = makeHome();
+    mkdirSync(asFile, { recursive: true });
+    writeFileSync(join(asFile, 'state'), 'x');
+    for (const home of [withRecord, withOther, asFile]) {
+      expect(stationHomeSchemaNeedsReset(home)).toBe(true);
+      expect(() =>
+        ensureStationHomeSchemaSync(home, {
+          acquireMutationLock: () => () => {},
+        }),
+      ).toThrow(StationHomeResetRequiredError);
+    }
+  });
+
   it('is true for a marker-less home with real content -- the exact pre-#1560 shape from station#1913', () => {
     const home = makeHome();
     mkdirSync(join(home, 'agents'), { recursive: true });

@@ -190,6 +190,12 @@ export interface ChatMessage {
    */
   stationMemoryContinuation?: boolean;
   /**
+   * The interrupted-turn boundary this row reports: the restart notice, or
+   * the stopped row that says "Station restarted mid-turn" in its place.
+   * Continue keys its send on it.
+   */
+  interruptedTurnBoundaryId?: string;
+  /**
    * #3419: the agent that sent this user-role row, from the server's own
    * record. Its presence is what makes the row an incoming agent message
    * rather than the person's; `content` is the sender's own words.

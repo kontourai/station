@@ -1,0 +1,49 @@
+{
+  "revision": "0b6d62f2aca0bcee4e785d1ddc19c570d050159f",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Frozen historical managed-chat rollout: orchestration route delta adds child instruction read and command, not the superseded flag cutover, private execution adapter or original migration decision. No live rollout claim.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"Frozen answerability decision: contract adds separate child steering command/result; service adds its dispatch, not answerability projection or open-request decoration. Process-local observation and fresh authorization distinction remain; no UI or CLI requalification.","inputs":["docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","packages/contracts/src/orchestration.ts","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Frozen SSE decision: new bounded instruction GET and command admission do not change authenticated fetch SSE Last-Event-ID replay or historical connection budgets. No browser, native or saturation run.","inputs":["docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"Accepted posture history: traced child command through route, request-current and service confinement checks; added source-scoped distinction from historical steerTurn and linked receipt owner. Focused child-work transcript route suite passed 13; no hosted or native run.","inputs":["docs/design/approval-posture-server-ordered.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Onboarding direction: Codex adapter adds owned-child turn/steer; service adds child dispatch, not provider catalog, credential profile detection or onboarding setup. Dated provider audits retained; no installed-provider onboarding run.","inputs":["docs/design/connections-onboarding.md","src-server/providers/adapters/codex-adapter.ts","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Notification design and dated receipts: service addition is child steer dispatch, not notification publisher, native registration or delivery-status owner. No gateway, account, installed app or phone run.","inputs":["docs/design/notification-delivery.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Placement model and dated child-card history: contract adds separately targeted child command and EventStore adds instruction journal; existing spawn placement, same-turn row anchoring and usage claims do not describe this command and are unchanged. No new UI/device qualification.","inputs":["docs/design/placement.md","packages/contracts/src/orchestration.ts","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/portable-project-identity.md","note":"Staged Project identity design: orchestration service child steer addition does not change project-session-directory resolution, binding authority or execution-root admission. No remote checkout or fleet run.","inputs":["docs/design/portable-project-identity.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Task-room agent request design: orchestration route adds child instruction GET and command; Task room work module request selection and delegation retry remain separate, and no claim of browser/provider acceptance follows. No live journey run.","inputs":["docs/design/task-room-agent-requests.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Terminal proposal: API reference delta changes Global Conversation Lookup authorization order, not terminal socket/session or proposed relay boundaries. No terminal or relay run.","inputs":["docs/design/terminal.md","docs/reference/api.md"]},
+
+    {"path":"docs/guides/acp.md","note":"ACP guide: new orchestration child command/read leaves existing ACP steerTurn extension negotiation, session event persistence and ACP connection routes unchanged. No ACP engine or native journey run.","inputs":["docs/guides/acp.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Agent configuration guide: child steering additions to Codex adapter, command/service and scoped ingress do not alter saved Agent prompt, tool defaults, approval or optional Codex question configuration; no installed engine run.","inputs":["docs/guides/agent-configuration.md","src-server/providers/adapters/codex-adapter.ts","src-server/routes/orchestration/orchestration.ts","src-server/security/station-control-authority-guard.ts","src-server/security/station-control-request-authority.ts","src-server/services/orchestration/orchestration-service.ts","src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Connections guide: Codex child turn steering and Session instruction read do not change provider setup, model/engine readiness, connection trust, pairing or Station-control ingress permissions. No UI or provider qualification.","inputs":["docs/guides/connections.md","src-server/providers/adapters/codex-adapter.ts","src-server/routes/orchestration/orchestration.ts","src-server/security/pairing-route-scopes.ts","src-server/security/station-control-authority-guard.ts","src-server/security/station-control-request-authority.ts","src-server/services/orchestration/orchestration-service.ts","src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Delegation attempt claims: route adds distinct child command and read, not portable delegation attemptId admission, verified grant binding or claim lookup. No remote delegation run.","inputs":["docs/guides/delegation-attempt-claims.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Integration guide: API reference delta changes authorized runtime-owned conversation lookup ordering, not the guide public-interface routing or proposed multi-tenant delivery requirements. No hosted deployment run.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Monitoring guide: EventStore delta adds child instruction receipt journal and private deletion, not monitoring emitter, telemetry sink or documented child usage accounting. No OTLP, native or provider measurement run.","inputs":["docs/guides/monitoring.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Private runner operations plan: new orchestration command/read does not change GitHub Actions runner label, capacity or host partition policy. No runner or infrastructure operation.","inputs":["docs/guides/private-runner-partition.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Product-law authoring guide: orchestration command/read addition does not change exact behavioral/fault observation requirements or path disposition workflow. No product-law suite rerun.","inputs":["docs/guides/product-law-authoring.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Repository layout guide: orchestration route adds child read/command within existing src-server HTTP and services ownership; directory and instruction routing remain accurate. No repository-wide inventory.","inputs":["docs/guides/repository-layout.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Responsive UI contributor guide: pairing table adds a server child-instruction read leaf, not responsive layout, dialog or accessibility requirements. No browser or device UI run.","inputs":["docs/guides/responsive-ui.md","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Self-configuring Agent guide: traced scoped-thread policy, ingress caller recheck and route/service authority across adapter resolution; clarified parent-thread target without granting tools or host scope. Focused child-work transcript route suite passed 13; no Agent or provider journey.","inputs":["docs/guides/self-configuring-agent.md","packages/contracts/src/orchestration.ts","src-server/providers/adapters/codex-adapter.ts","src-server/routes/orchestration/orchestration.ts","src-server/security/station-control-authority-guard.ts","src-server/security/station-control-request-authority.ts","src-server/services/orchestration/orchestration-service.ts","src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/design/automations.md","note":"Automation proposal: security-guide delta adds child instruction and steering authority boundaries; its Funnel refusal and proposal for approved ingress or scheduler pull remain unchanged. Existing automation foundation does not compose intake/dispatch; no live automation run.","inputs":["docs/design/automations.md","docs/design/approval-posture-server-ordered.md","docs/security/remote-access-threat-model.md"]}
+  ]
+}

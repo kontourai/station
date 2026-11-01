@@ -7,6 +7,7 @@ import {
   type ProjectInvitationView,
   type ProjectMemberRole,
   type ProjectMembershipScope,
+  type ProjectSharingEnablement,
   parseProjectAccessRefusalDetails,
 } from '@kontourai/station-contracts/project-membership';
 import { z } from 'zod/v3';
@@ -14,6 +15,7 @@ import {
   type ClientRequestOptions,
   getJson,
   mutateJson,
+  readJsonBody,
   StationHttpError,
 } from './http';
 import { unwrapProjectResponse } from './project-response';
@@ -162,8 +164,15 @@ export type ProjectAccessCommand =
       scope: ProjectMembershipScope;
       recipientId: string;
     } & ProjectAccessMutationIntent);
+/** A pending consent-origin passkey review (#4306); nothing has changed yet. */
+export interface ProjectSharingStepUp {
+  id: string;
+  reviewUrl: string;
+  expiresAt: number;
+}
 export type ProjectAccessCommandResult =
   | { kind: 'enabled'; view: ProjectAccessAdministrationView }
+  | { kind: 'step-up-required'; transaction: ProjectSharingStepUp }
   | { kind: 'invited'; invitation: ProjectInvitationView; token: string }
   | { kind: 'changed' };
 
@@ -199,14 +208,18 @@ export async function changeProjectAccess(
             : { expectedActor: command.expectedActor }),
         }
       : data;
-  const result = await unwrapProjectResponse<unknown>(
-    await mutateJson(
-      `${apiBase}/api/projects/${encodeURIComponent(slug)}/access${suffix}`,
-      'POST',
-      { ...options, readOnly: false },
-      body,
-    ),
+  const response = await mutateJson(
+    `${apiBase}/api/projects/${encodeURIComponent(slug)}/access${suffix}`,
+    'POST',
+    { ...options, readOnly: false },
+    body,
   );
+  if (kind === 'enable' && response.status === 202)
+    return {
+      kind: 'step-up-required',
+      transaction: stepUpTransaction(await readJsonBody(response), apiBase),
+    };
+  const result = await unwrapProjectResponse<unknown>(response);
   if (kind === 'enable')
     return { kind: 'enabled', view: administration(result, slug) };
   if (command.kind === 'invite') {
@@ -264,4 +277,102 @@ export function readProjectInvitationToken(value: string): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Accept only a review on the separate HTTPS consent origin of this same
+ * host name; the app origin never runs a passkey ceremony.
+ */
+function stepUpTransaction(
+  body: unknown,
+  apiBase: string,
+): ProjectSharingStepUp {
+  const parsed = z
+    .object({
+      status: z.literal('step_up_required'),
+      transaction: z.object({
+        id: z.string().min(1).max(128),
+        reviewUrl: z.string().url(),
+        expiresAt: z.number().finite(),
+      }),
+    })
+    .safeParse(body);
+  if (!parsed.success) throw new Error('Invalid step-up response.');
+  const review = new URL(parsed.data.transaction.reviewUrl);
+  const app = new URL(apiBase);
+  if (
+    review.protocol !== 'https:' ||
+    review.hostname !== app.hostname ||
+    review.origin === app.origin
+  )
+    throw new Error('Invalid step-up response.');
+  return { ...parsed.data.transaction, reviewUrl: review.href };
+}
+
+const enablementSchema = z.union([
+  z.object({ enable: z.enum(['direct', 'operator-passkey', 'unavailable']) }),
+  z.object({
+    enable: z.literal('operator-sign-in'),
+    signInUrl: z.string().url(),
+  }),
+]);
+
+/** How this caller may turn on sharing for a Project; describes the caller only. */
+export async function getProjectSharingEnablement(
+  apiBase: string,
+  slug: string,
+  options?: ClientRequestOptions,
+): Promise<ProjectSharingEnablement> {
+  const parsed = enablementSchema.safeParse(
+    await unwrapProjectResponse<unknown>(
+      await getJson(
+        `${apiBase}/api/projects/${encodeURIComponent(slug)}/access/enablement`,
+        options,
+      ),
+    ),
+  );
+  if (!parsed.success)
+    throw new Error('Project sharing enablement response is incompatible.');
+  const data = parsed.data;
+  if (data.enable !== 'operator-sign-in') return { enable: data.enable };
+  return new URL(data.signInUrl).protocol === 'https:'
+    ? { enable: 'operator-sign-in', signInUrl: data.signInUrl }
+    : { enable: 'unavailable' };
+}
+
+/** The status of a pending step-up; only the session that opened it may read it. */
+export async function getProjectSharingStepUpStatus(
+  apiBase: string,
+  transactionId: string,
+  options?: ClientRequestOptions,
+): Promise<
+  | 'pending'
+  | 'approved'
+  | 'denied'
+  | 'expired'
+  | 'target_changed'
+  | 'session_ended'
+> {
+  const response = await getJson(
+    `${apiBase}/api/pairing/device-access-transactions/${encodeURIComponent(transactionId)}`,
+    {
+      ...options,
+      headers: { ...options?.headers, 'X-Station-Background-Refresh': '1' },
+    },
+  );
+  const parsed = z
+    .object({
+      status: z.enum([
+        'pending',
+        'approved',
+        'denied',
+        'expired',
+        'target_changed',
+        'session_ended',
+      ]),
+    })
+    .safeParse(await readJsonBody(response));
+  if (!response.ok || !parsed.success)
+    throw new Error('The passkey review status is unavailable.');
+  return parsed.data.status;
 }

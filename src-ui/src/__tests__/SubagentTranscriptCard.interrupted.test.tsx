@@ -7,7 +7,9 @@
  * outcome gets; a batch counts it as "N interrupted".
  */
 
+import { ConnectionsProvider } from '@kontourai/station-connect';
 import type { ChildWorkItem } from '@kontourai/station-contracts/child-work';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   cleanup,
   fireEvent,
@@ -15,12 +17,22 @@ import {
   screen,
   within,
 } from '@testing-library/react';
+import type { PropsWithChildren } from 'react';
 import { afterEach, describe, expect, test } from 'vitest';
 import { SubagentCardsForCalls } from '../components/chat/SubagentTranscriptCard';
 import { TranscriptChildrenContext } from '../components/chat/transcript-child-work';
 
 const THREAD = 'codex-session-1';
 const TOOL_CALL = 'call_spawn_1';
+const queryClient = new QueryClient();
+
+function Providers({ children }: PropsWithChildren) {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <ConnectionsProvider seedDefault={false}>{children}</ConnectionsProvider>
+    </QueryClientProvider>
+  );
+}
 
 function child(
   childId: string,
@@ -66,10 +78,14 @@ function renderChildren(items: ChildWorkItem[]) {
     >
       <SubagentCardsForCalls calls={[{ part: toolPart, index: 0 }]} />
     </TranscriptChildrenContext.Provider>,
+    { wrapper: Providers },
   );
 }
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  queryClient.clear();
+});
 
 describe('an interrupted subagent', () => {
   test('reads Interrupted with a settled mark, not the pending dashed ring', () => {

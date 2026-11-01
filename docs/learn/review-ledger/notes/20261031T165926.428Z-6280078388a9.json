@@ -1,0 +1,7 @@
+{
+  "revision": "783fa1535fee98b6944fc9f4ce50c7288a9aee60",
+
+  "notes": [
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Re-reviewed ordinary startup rejection before provider binding against Codex record registration/teardown and session-command failure handling. Cleanup now observes and stops unbound adapter ownership even without diagnostic timeout; active failed teardown or unknown ownership retains diagnostics. New regressions failed on the prior owner (2 failed, 623 passed); repaired focused suite passed all 625. Independent delta review and read-only verification found no remaining gap. Windows live startup context, source release promotion, and full peer acceptance remain tracked separately in #4375.","inputs":["docs/reference/agent-smoke-confidence.md","src-server/services/orchestration/connection-smoke.ts"]}
+  ]
+}

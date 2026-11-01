@@ -1,14 +1,14 @@
-import { randomBytes } from 'node:crypto';
 import { once } from 'node:events';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
-import { createConnection } from 'node:net';
 import { join } from 'node:path';
 import {
   decodeTerminalFrame,
   encodeTerminalFrame,
   TERMINAL_INPUT,
   TERMINAL_MAX_OUTSTANDING_OUTPUT_FRAMES,
+  TERMINAL_SOCKET_PROTOCOL,
+  TERMINAL_TICKET_PROTOCOL_PREFIX,
   terminalScopeAllows,
 } from '@kontourai/station-contracts/terminal-transport';
 import { TerminalOutputSession } from '@kontourai/station-sdk/client';
@@ -20,6 +20,32 @@ import { NodePtyAdapter } from '../../../adapters/node-pty-adapter.js';
 import { InProcessShellHost } from '../shell-host.js';
 import { TerminalGateway } from '../terminal-gateway.js';
 import { TerminalSessions } from '../terminal-sessions.js';
+import { TerminalTickets } from '../terminal-tickets.js';
+
+/** The ticket mint as the runtime serves it: bearer in, single-use ticket out. */
+function mintTickets(
+  tickets: TerminalTickets<string>,
+  admit: (credential: string | undefined) => 200 | 401 | 403,
+) {
+  return (
+    req: import('node:http').IncomingMessage,
+    res: import('node:http').ServerResponse,
+  ) => {
+    const credential = req.headers.authorization?.replace(/^Bearer /, '');
+    const status = admit(credential);
+    if (status !== 200 || !credential) {
+      res.writeHead(status).end();
+      return;
+    }
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(
+      JSON.stringify({
+        success: true,
+        data: tickets.mint(credential, credential),
+      }),
+    );
+  };
+}
 
 const temp = trackTempDirs();
 const scope = { projectId: 'alpha', bindingKey: 'project' };
@@ -131,6 +157,7 @@ describe.skipIf(process.platform === 'win32')(
     let root: string;
     let gateway: TerminalGateway<string>;
     let sessions: TerminalSessions<string>;
+    let tickets: TerminalTickets<string>;
     let url: string;
     const clients: Client[] = [];
     const outputReaders: TerminalOutputSession[] = [];
@@ -155,8 +182,18 @@ describe.skipIf(process.platform === 'win32')(
           resolveRoot: async () => root,
         },
       );
+      tickets = new TerminalTickets<string>();
+      const mint = mintTickets(tickets, (credential) =>
+        credential === 'revoked'
+          ? 401
+          : credential && grants.has(credential)
+            ? 200
+            : 403,
+      );
       server = createServer((req, res) => {
-        if (req.url === '/api/terminal/socket') {
+        if (req.method === 'POST' && req.url === '/api/terminal/tickets')
+          mint(req, res);
+        else if (req.url === '/api/terminal/socket') {
           const credential = req.headers.authorization?.replace(/^Bearer /, '');
           res.writeHead(
             credential === 'revoked'
@@ -170,9 +207,8 @@ describe.skipIf(process.platform === 'win32')(
       });
       gateway = new TerminalGateway({
         sessions,
-        allowedOrigins: ['http://station.test'],
-        authenticate: async (credential) =>
-          grants.has(credential) ? credential : undefined,
+        tickets,
+        reserved: (principal) => principal === 'operator',
       });
       gateway.mount(server, { upgraded: () => undefined });
       server.listen(0, '127.0.0.1');
@@ -194,11 +230,13 @@ describe.skipIf(process.platform === 'win32')(
     });
     async function connect(principal = 'operator') {
       const client = new Client(
-        new WebSocket(url, { origin: 'http://station.test' }),
+        new WebSocket(url, [
+          TERMINAL_SOCKET_PROTOCOL,
+          `${TERMINAL_TICKET_PROTOCOL_PREFIX}${tickets.mint(principal, principal)!.ticket}`,
+        ]),
       );
       clients.push(client);
       await once(client.ws, 'open');
-      client.send({ type: 'auth', protocolVersion: 1, credential: principal });
       await client.wait((frame) => frame.type === 'authenticated');
       return client;
     }
@@ -344,7 +382,7 @@ describe.skipIf(process.platform === 'win32')(
       expect(rendered.length).toBeGreaterThan(140);
     });
 
-    test('SDK reaches gateway first-frame refusal after an accepted HTTP probe', async () => {
+    test('SDK reports a grant revoked between its ticket and its attach', async () => {
       const record = await open();
       grants.set('probe-only', 'terminal:operate');
       const apiBase = url
@@ -358,11 +396,12 @@ describe.skipIf(process.platform === 'win32')(
           origin: apiBase,
           credential: 'probe-only',
         }),
-        createSocket: (target) => {
+        createSocket: (target, protocols) => {
           grants.delete('probe-only');
-          return new WebSocket(target, {
-            origin: 'http://station.test',
-          }) as unknown as import('@kontourai/station-sdk/client').TerminalOutputSocket;
+          return new WebSocket(
+            target,
+            protocols,
+          ) as unknown as import('@kontourai/station-sdk/client').TerminalOutputSocket;
         },
         onOutput: () => undefined,
         onReset: () => undefined,
@@ -414,14 +453,12 @@ describe.skipIf(process.platform === 'win32')(
           segmentBytes: 1024,
         },
       );
-      const listener = createServer((_req, res) => {
-        res.writeHead(204);
-        res.end();
-      });
+      const isolatedTickets = new TerminalTickets<string>();
+      const listener = createServer(mintTickets(isolatedTickets, () => 200));
       const transport = new TerminalGateway({
         sessions: isolated,
-        allowedOrigins: [],
-        authenticate: async () => 'operator',
+        tickets: isolatedTickets,
+        reserved: () => true,
       });
       transport.mount(listener, { upgraded: () => undefined });
       listener.listen(0, '127.0.0.1');
@@ -542,23 +579,6 @@ describe.skipIf(process.platform === 'win32')(
       return result;
     }
 
-    async function upgradeStatus(peer?: string) {
-      const ws = new WebSocket(url, {
-        origin: 'http://station.test',
-        ...(peer && { headers: { 'x-test-peer': peer } }),
-      });
-      clients.push(new Client(ws));
-      ws.on('error', () => undefined);
-      return new Promise<number>((resolve) => {
-        ws.once('open', () => resolve(101));
-        ws.once('unexpected-response', (_req, response) => {
-          resolve(response.statusCode!);
-          response.resume();
-          ws.terminate();
-        });
-      });
-    }
-
     test('quiet shell revocation is published without client input or PTY output', async () => {
       const opened = await open();
       await sessions.write(
@@ -577,127 +597,6 @@ describe.skipIf(process.platform === 'win32')(
       );
       expect(error.code).toBe('terminal-refused');
     });
-
-    test.each(['ipv4', 'ipv6'] as const)(
-      'pending authentication has a separate global budget and releases a slot on success (%s)',
-      async (family) => {
-        // Distinct peer addresses at the listener seam; every socket and auth
-        // frame still traverses the real WebSocket implementation.
-        server.prependListener('upgrade', (request) =>
-          Object.defineProperty(request.socket, 'remoteAddress', {
-            value: request.headers['x-test-peer'] ?? 'operator-peer',
-          }),
-        );
-        const pending = await Promise.all(
-          Array.from({ length: 32 }, async (_, index) => {
-            const client = new Client(
-              new WebSocket(url, {
-                origin: 'http://station.test',
-                headers: {
-                  'x-test-peer':
-                    family === 'ipv4'
-                      ? `192.0.2.${Math.floor(index / 8) + 1}`
-                      : `2001:db8::${Math.floor(index / 8) + 1}`,
-                },
-              }),
-            );
-            clients.push(client);
-            await once(client.ws, 'open');
-            return client;
-          }),
-        );
-        expect(await upgradeStatus()).toBe(429);
-        pending[0]!.send({
-          type: 'auth',
-          protocolVersion: 1,
-          credential: 'operator',
-        });
-        await pending[0]!.wait((frame) => frame.type === 'authenticated');
-        const admitted = await connect();
-        expect(admitted.ws.readyState).toBe(WebSocket.OPEN);
-      },
-    );
-
-    test('pending sockets do not consume authenticated capacity and concurrent auth cannot exceed it', async () => {
-      for (let offset = 0; offset < 63; offset += 7)
-        await Promise.all(Array.from({ length: 7 }, () => connect()));
-      const pending = await Promise.all(
-        Array.from({ length: 8 }, async () => {
-          const client = new Client(
-            new WebSocket(url, { origin: 'http://station.test' }),
-          );
-          clients.push(client);
-          await once(client.ws, 'open');
-          return client;
-        }),
-      );
-      expect(await upgradeStatus()).toBe(429);
-      pending[0]!.send({
-        type: 'auth',
-        protocolVersion: 1,
-        credential: 'operator',
-      });
-      await pending[0]!.wait((frame) => frame.type === 'authenticated');
-      const closed = once(pending[1]!.ws, 'close');
-      pending[1]!.send({
-        type: 'auth',
-        protocolVersion: 1,
-        credential: 'operator',
-      });
-      expect((await closed)[0]).toBe(4429);
-    });
-
-    test('auth timeouts count toward peer failure throttling', async () => {
-      for (const count of [8, 2]) {
-        await Promise.all(
-          Array.from({ length: count }, async () => {
-            const ws = new WebSocket(url, { origin: 'http://station.test' });
-            clients.push(new Client(ws));
-            await once(ws, 'open');
-            expect((await once(ws, 'close'))[0]).toBe(4401);
-          }),
-        );
-      }
-      const rejected = new WebSocket(url, { origin: 'http://station.test' });
-      rejected.on('error', () => undefined);
-      const status = new Promise<number>((resolve) => {
-        rejected.once('open', () => resolve(101));
-        rejected.once('unexpected-response', (_req, response) => {
-          resolve(response.statusCode!);
-          response.resume();
-          rejected.terminate();
-        });
-      });
-      clients.push(new Client(rejected));
-      expect(await status).toBe(429);
-    }, 20000);
-
-    test('auth timeout terminates a peer that ignores the close handshake promptly', async () => {
-      const target = new URL(url);
-      const socket = createConnection({
-        host: target.hostname,
-        port: Number(target.port),
-      });
-      let received = '';
-      socket.on('data', (chunk) => {
-        received += chunk.toString('latin1');
-      });
-      try {
-        await once(socket, 'connect');
-        socket.write(
-          `GET ${target.pathname} HTTP/1.1\r\nHost: ${target.host}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: ${randomBytes(16).toString('base64')}\r\nSec-WebSocket-Version: 13\r\nOrigin: http://station.test\r\n\r\n`,
-        );
-        await expect
-          .poll(() => received, { timeout: 3000 })
-          .toContain('101 Switching Protocols');
-        // This raw peer never sends a close reply; ws otherwise waits 30 seconds.
-        await expect
-          .poll(() => socket.destroyed, { timeout: 10000 })
-          .toBe(true);
-      } finally {
-        socket.destroy();
-      }
-    }, 15000);
 
     test('aggregate channel credit fits the socket output backlog guard', async () => {
       const client = await connect();
@@ -738,27 +637,30 @@ describe.skipIf(process.platform === 'win32')(
       expect(client.output.length).toBeGreaterThan(0);
     });
 
-    test('shares HTTP listener and requires a valid first auth frame even on loopback', async () => {
+    test('shares HTTP listener and refuses an upgrade without a ticket even on loopback', async () => {
       const response = await fetch(url.replace('ws:', 'http:'));
       expect(response.status).toBe(403);
       const ordinary = await fetch(new URL('/', url.replace('ws:', 'http:')));
       expect(await ordinary.text()).toBe('ordinary HTTP on the same listener');
-      const ws = new WebSocket(url, { origin: 'http://station.test' });
+      // A forged credential frame is no longer an admission path at all.
+      const ws = new WebSocket(url, [TERMINAL_SOCKET_PROTOCOL]);
       clients.push(new Client(ws));
-      await once(ws, 'open');
-      const closed = once(ws, 'close');
-      ws.send(
-        JSON.stringify({
-          type: 'auth',
-          protocolVersion: 1,
-          credential: 'forged',
-        }),
-      );
-      expect((await closed)[0]).toBe(4401);
+      ws.on('error', () => undefined);
+      const [, refused] = (await once(ws, 'unexpected-response')) as [
+        unknown,
+        { statusCode: number; resume(): void },
+      ];
+      refused.resume();
+      expect(refused.statusCode).toBe(401);
     });
 
     test.each([
-      ['foreign origin', '/api/terminal/socket', 'http://foreign.test', 403],
+      [
+        'an origin without a ticket',
+        '/api/terminal/socket',
+        'http://foreign.test',
+        401,
+      ],
       [
         'query credential',
         '/api/terminal/socket?token=operator',

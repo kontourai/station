@@ -10,6 +10,7 @@ import {
   useState,
 } from 'react';
 import { markTranscriptPhase } from './chat/transcriptLayoutTrace';
+import './LazyBoundary.css';
 
 type AnyLoad = () => Promise<{ default: ComponentType<any> }>;
 type AnyLazy = LazyExoticComponent<ComponentType<any>>;

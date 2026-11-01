@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { openPrivateSqlite } from '../../utils/private-sqlite.js';
+import type { FeaturePreviewSelector } from '../feature-previews/feature-preview-registry.js';
 import type { ProjectMembershipService } from '../projects/project-membership-service.js';
 import {
   type AccountDirectory,
@@ -107,6 +108,8 @@ export async function loadLocalAccounts(
   host: { stationId: string; homeDirectory: string },
   membership: Pick<ProjectMembershipService, 'mayRegister'>,
   signOutBrowserOrigins: readonly string[] = [],
+  /** #4303: absent, member passkeys are never offered. */
+  previews: { memberPasskeys?: FeaturePreviewSelector } = {},
 ): Promise<LoadedLocalAccounts> {
   const input = structuredClone(configuration);
   const signOutOrigins = Object.freeze([...new Set(signOutBrowserOrigins)]);
@@ -115,6 +118,13 @@ export async function loadLocalAccounts(
     host,
     input.allowedBrowserOrigins,
   );
+  const preview = previews.memberPasskeys;
+  // Read on each request and each descriptor: a choice changed after
+  // composition applies to the next sign-in page and the next ceremony.
+  const memberPasskeysOffered = () =>
+    preview
+      ? preview.select({ enabled: () => true, disabled: () => false })
+      : false;
   let provider: LocalAccountProvider | undefined;
   try {
     provider = await createLocalAccountProvider(
@@ -132,9 +142,13 @@ export async function loadLocalAccounts(
       input.oidc,
       {},
       signOutOrigins,
+      { memberPasskeys: memberPasskeysOffered },
     );
     return {
-      service: new DeploymentAuthenticationService(provider),
+      service: new DeploymentAuthenticationService(provider, Date.now, {
+        offers: (endpoint) =>
+          !endpoint.operation.startsWith('passkey-') || memberPasskeysOffered(),
+      }),
       publicOrigin: providerHost.publicOrigin,
       allowedBrowserOrigins: providerHost.allowedBrowserOrigins,
       signOutBrowserOrigins: signOutOrigins,

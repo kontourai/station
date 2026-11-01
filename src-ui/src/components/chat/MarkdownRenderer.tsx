@@ -25,6 +25,7 @@ import {
   PATH_MENTION_ATTRIBUTE,
   remarkPathMentions,
 } from './remarkPathMentions';
+import { remarkSoftBreaks } from './remarkSoftBreaks';
 import { workspaceVisualPath } from './WorkspaceFileReply';
 
 export type MarkdownRenderProbe = {
@@ -41,6 +42,12 @@ export type MarkdownRendererProps = Options & {
    * reference/footnote definitions and settled callers use the full parser.
    */
   incremental?: boolean;
+  /**
+   * Render a single newline in prose as a line break (#4385), as chat does.
+   * On by default: agent output means its line breaks. A view of a stored,
+   * hard-wrapped document turns it off to keep CommonMark paragraph folding.
+   */
+  softBreaks?: boolean;
   /** Deterministic test seam for splitter failure and render-cost probes. */
   splitBlocks?: typeof splitMarkdownBlocks;
   renderProbe?: MarkdownRenderProbe;
@@ -113,9 +120,14 @@ const sourceAwareComponents: NonNullable<Options['components']> = {
 };
 // After GFM, so a URL it autolinks is already a link and is not re-scanned
 // for path mentions.
-const remarkPlugins: NonNullable<Options['remarkPlugins']> = [
+const documentRemarkPlugins: NonNullable<Options['remarkPlugins']> = [
   remarkGfm,
   remarkPathMentions,
+];
+// Soft breaks last, so the path-mention scan still sees each line's text.
+const chatRemarkPlugins: NonNullable<Options['remarkPlugins']> = [
+  ...documentRemarkPlugins,
+  remarkSoftBreaks,
 ];
 
 function FullMarkdown(options: Options) {
@@ -123,7 +135,7 @@ function FullMarkdown(options: Options) {
     <ReactMarkdown
       {...options}
       components={options.components ?? sourceAwareComponents}
-      remarkPlugins={remarkPlugins}
+      remarkPlugins={options.remarkPlugins ?? chatRemarkPlugins}
     />
   );
 }
@@ -191,6 +203,7 @@ let warnedSplitterFallback = false;
  */
 function MarkdownRendererComponent({
   incremental = false,
+  softBreaks = true,
   splitBlocks = splitMarkdownBlocks,
   renderProbe,
   children,
@@ -225,12 +238,14 @@ function MarkdownRendererComponent({
       components: components ?? sourceAwareComponents,
       disallowedElements,
       rehypePlugins,
+      remarkPlugins: softBreaks ? chatRemarkPlugins : documentRemarkPlugins,
       remarkRehypeOptions,
       skipHtml,
       unwrapDisallowed,
       urlTransform: urlTransform ?? chatUrlTransform,
     }),
     [
+      softBreaks,
       allowElement,
       allowedElements,
       components,

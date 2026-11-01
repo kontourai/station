@@ -192,7 +192,11 @@
 
     "src-server/domain/migrations/026-task-write-back.ts",
 
-    "src-server/services/scheduling/scheduled-conversation-runs.ts"
+    "src-server/services/scheduling/scheduled-conversation-runs.ts",
+
+    "src-server/services/automation/repair-store.ts",
+
+    "packages/shared/src/station-home-store-registry.ts"
   ],
 
   "checks": [

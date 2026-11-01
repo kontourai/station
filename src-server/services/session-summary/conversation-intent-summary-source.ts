@@ -33,7 +33,7 @@ interface ConversationIntentSummarySourceInput {
   /** Only consumed archive#4148 markers belong in a derived-source revision. */
   consumedBoundaries?: readonly {
     boundaryId: string;
-    policy: 'continue-from-history' | 'empty-next-cold-start';
+    policy: import('@kontourai/station-contracts/conversation-context-boundary').ConversationContextBoundaryPolicy;
     priorTranscriptInjected: boolean;
   }[];
   /** Already authority-filtered, bounded reverse lookup results. */

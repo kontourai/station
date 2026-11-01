@@ -38,6 +38,10 @@ import {
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type { FullAccessRevocationReport } from '@kontourai/station-contracts/environment-security';
 import { STATION_CONFINEMENT_RECORD_METADATA_KEY } from '@kontourai/station-contracts/execution-confinement';
+import {
+  type LearningReviewRevisionRef,
+  parseLearningContextContributions,
+} from '@kontourai/station-contracts/learning-review';
 import type {
   AgentRunSummary,
   ConversationHandoffStatusProjection,
@@ -56,6 +60,7 @@ import type {
   OrchestrationSessionSummary,
   SessionBoardItem,
   SetApprovalModeResult,
+  SteerChildWorkResult,
   SteerInputInspectionResult,
   SteerTurnResult,
 } from '@kontourai/station-contracts/orchestration';
@@ -99,6 +104,7 @@ import {
   stripReservedOrchestrationMetadata,
   TASK_BRIEF_COMPOSED_METADATA_KEY,
   TASK_BRIEF_METADATA_KEY,
+  TASK_LEARNING_CONTRIBUTIONS_METADATA_KEY,
   unsupportedModelOptionError,
   unsupportedModelOptionKeys,
   WORKSPACE_PANE_HOST_ACTION_METADATA_KEY,
@@ -592,6 +598,7 @@ interface OrchestrationDispatchInternalOptions {
   /** Request authority forwarded only by the server-owned foreground resolver. */
   nativeMemoryReadAuthority?: SessionReadAuthority;
   sessionStartAdmission?: SessionCommandInternalOptions['sessionStartAdmission'];
+  beforeProviderStart?: SessionCommandInternalOptions['beforeProviderStart'];
   /** Exact server-owned Task reservation scope; never read from public metadata. */
   roomExecutionBinding?: SessionCommandInternalOptions['roomExecutionBinding'];
   /** Epic #4003: see `SessionCommandInternalOptions.taskBrief`. */
@@ -1475,11 +1482,22 @@ function pendingFirstTurnInstructions(
   return firstTurnInstructions;
 }
 
-function taskBriefStartRecord(brief: { digest: string; text: string }) {
+function taskBriefStartRecord(brief: {
+  digest: string;
+  text: string;
+  mandatoryContextDigest?: string;
+  learningContributions?: readonly LearningReviewRevisionRef[];
+  retainedByBoundary?: boolean;
+}) {
   return {
     version: TASK_BRIEF_VERSION,
     digest: brief.digest,
     text: brief.text,
+    learningContributions: brief.learningContributions ?? [],
+    ...(brief.retainedByBoundary ? { retainedByBoundary: true } : {}),
+    ...(brief.mandatoryContextDigest
+      ? { mandatoryContextDigest: brief.mandatoryContextDigest }
+      : {}),
   };
 }
 
@@ -1496,11 +1514,27 @@ function isGenuineFirstTurn(events: readonly { method?: unknown }[]): boolean {
  */
 function pendingTaskBrief(
   events: readonly { method?: unknown; metadata?: unknown }[],
-): { digest: string; text: string } | undefined {
+):
+  | {
+      digest: string;
+      text: string;
+      learningContributions: readonly LearningReviewRevisionRef[];
+      retainedByBoundary: boolean;
+      mandatoryContextDigest?: string;
+    }
+  | undefined {
   if (events.some((event) => event.method === 'turn.started')) {
     return undefined;
   }
-  let brief: { digest: string; text: string } | undefined;
+  let brief:
+    | {
+        digest: string;
+        text: string;
+        learningContributions: readonly LearningReviewRevisionRef[];
+        retainedByBoundary: boolean;
+        mandatoryContextDigest?: string;
+      }
+    | undefined;
   for (const event of events) {
     if (
       event.method !== 'session.started' &&
@@ -1520,8 +1554,31 @@ function pendingTaskBrief(
       typeof text === 'string' &&
       text.length > 0 &&
       text.length <= TASK_BRIEF_MAX_CHARS
-    )
-      brief = { digest, text };
+    ) {
+      const refs = (record as Record<string, unknown>).learningContributions;
+      const learningContributions =
+        refs === undefined ? [] : parseLearningContextContributions(refs);
+      if (!learningContributions)
+        throw new Error('Stored Task learning contributions are invalid');
+      const mandatoryContextDigest = (record as Record<string, unknown>)
+        .mandatoryContextDigest;
+      if (
+        mandatoryContextDigest !== undefined &&
+        (typeof mandatoryContextDigest !== 'string' ||
+          !/^[a-f0-9]{64}$/.test(mandatoryContextDigest))
+      )
+        throw new Error('Stored mandatory Task context digest is invalid');
+      brief = {
+        ...(typeof mandatoryContextDigest === 'string'
+          ? { mandatoryContextDigest }
+          : {}),
+        digest,
+        text,
+        learningContributions,
+        retainedByBoundary:
+          (record as Record<string, unknown>).retainedByBoundary === true,
+      };
+    }
   }
   return brief;
 }
@@ -2295,6 +2352,99 @@ export class OrchestrationService {
         if (released) this.toolRestrictions.delete(threadId);
       }
     });
+  }
+
+  private taskSourceVerifier?: (sessionId: string) => Promise<void>;
+  bindTaskSourceVerifier(verifier: (sessionId: string) => Promise<void>): void {
+    this.taskSourceVerifier = verifier;
+  }
+  private retainedTaskStateVerifier?: (
+    sessionId: string,
+    seed: import('@kontourai/station-contracts/conversation-context-boundary').ConversationContextBoundarySeed,
+  ) => Promise<void>;
+  bindRetainedTaskStateVerifier(
+    verifier: NonNullable<OrchestrationService['retainedTaskStateVerifier']>,
+  ): void {
+    this.retainedTaskStateVerifier = verifier;
+  }
+  private mandatoryTaskContextVerifier?: (
+    sessionId: string,
+    expectedDigest: string,
+  ) => Promise<void>;
+  /** Trusted startup composition; the persisted digest remains authoritative across restart. */
+  bindMandatoryTaskContextVerifier(
+    verifier: (sessionId: string, expectedDigest: string) => Promise<void>,
+  ): void {
+    this.mandatoryTaskContextVerifier = verifier;
+  }
+  private async assertMandatoryTaskContextAtProviderTurn(
+    threadId: string,
+  ): Promise<void> {
+    const assertSource = async () => {
+      if (
+        !this.options.eventStore?.readProjectTaskRoomExecutionBinding(
+          threadId,
+        ) ||
+        !this.taskSourceVerifier
+      )
+        return;
+      try {
+        await this.taskSourceVerifier(threadId);
+      } catch {
+        throw new ConversationSeedTurnRefusedError(
+          'Task source access or current execution role changed before provider placement.',
+        );
+      }
+    };
+    await assertSource();
+    const state =
+      this.options.eventStore?.conversationContextBoundaryForSuccessor(
+        threadId,
+      )?.seed;
+    if (
+      state?.kind === 'task-state' &&
+      !this.options.eventStore?.latestEventByMethod(threadId, 'turn.started')
+    ) {
+      if (!this.retainedTaskStateVerifier)
+        throw new ConversationSeedTurnRefusedError(
+          'Retained Task state admission is unavailable.',
+        );
+      try {
+        await this.retainedTaskStateVerifier(threadId, state);
+      } catch {
+        throw new ConversationSeedTurnRefusedError(
+          'Retained Task state changed before provider placement. Refresh the Task context.',
+        );
+      }
+    }
+    const brief =
+      this.firstStartedMetadataOfThread(threadId)?.[TASK_BRIEF_METADATA_KEY];
+    if (
+      !brief ||
+      typeof brief !== 'object' ||
+      !('mandatoryContextDigest' in brief)
+    ) {
+      await assertSource();
+      return;
+    }
+    const digest = (brief as { mandatoryContextDigest?: unknown })
+      .mandatoryContextDigest;
+    if (
+      typeof digest !== 'string' ||
+      !/^[a-f0-9]{64}$/.test(digest) ||
+      !this.mandatoryTaskContextVerifier
+    )
+      throw new ConversationSeedTurnRefusedError(
+        'Mandatory Task context admission is unavailable. Refresh the Task execution.',
+      );
+    try {
+      await this.mandatoryTaskContextVerifier(threadId, digest);
+    } catch {
+      throw new ConversationSeedTurnRefusedError(
+        'Required Task context changed before provider dispatch. Refresh the Task execution.',
+      );
+    }
+    await assertSource();
   }
   /** Shared receiver-local path observation used by target planning and start admission. */
   readonly resolveProjectSessionDirectory?: (
@@ -7368,6 +7518,20 @@ export class OrchestrationService {
     );
   }
 
+  readChildSteerInstructions(
+    threadId: string,
+    childId: string,
+    offset: number,
+    limit: number,
+  ) {
+    return this.options.eventStore?.listChildSteerInstructions(
+      threadId,
+      childId,
+      offset,
+      limit,
+    );
+  }
+
   /**
    * Presence-subject resolution (body lives in SessionAuthorization —
    * epic archive#4024, archive#4166); the initialize() latch stays here (T9).
@@ -7389,6 +7553,17 @@ export class OrchestrationService {
    */
   consumeInternalStopSuppression(turnId: string): boolean {
     return this.internalStops.consume(turnId);
+  }
+
+  isRuntimeConversation(conversationId: string): boolean {
+    this.initialize();
+    const store = this.options.eventStore;
+    if (!store) return true;
+    return Boolean(
+      store.readSessionByThread(conversationId) ||
+        store.conversationForSession(conversationId) ||
+        store.conversationSessions(conversationId).length,
+    );
   }
 
   async readSessionConversation(
@@ -7667,14 +7842,27 @@ export class OrchestrationService {
             throw new Error(
               'Credential profile selection is reserved for Station-managed recovery.',
             );
-          if (internal?.roomExecutionBinding) {
+          const lineage = this.options.eventStore?.conversationForSession(
+            input.threadId,
+          );
+          const inheritedBinding =
+            lineage?.predecessorSessionId &&
+            internal?.conversationIdentity?.conversationId ===
+              lineage.conversationId
+              ? this.options.eventStore?.readProjectTaskRoomExecutionBinding(
+                  lineage.predecessorSessionId,
+                )
+              : undefined;
+          const roomBinding =
+            internal?.roomExecutionBinding ?? inheritedBinding;
+          if (roomBinding) {
             if (this.options.requireTenantExecutionContext?.())
               throw new Error(
                 'Room execution binding is unavailable in hosted mode.',
               );
             const bound =
               await this.options.eventStore?.bindProjectTaskRoomExecution({
-                ...internal.roomExecutionBinding,
+                ...roomBinding,
                 sessionId: input.threadId,
               });
             if (this.options.requireTenantExecutionContext?.())
@@ -8057,14 +8245,53 @@ export class OrchestrationService {
           // Epic #4003: the dispatch-built Task brief, stamped after the
           // reserved-key strip removed any caller-supplied value, for the
           // first turn to compose (`pendingTaskBrief`).
-          if (internal?.taskBrief) {
+          const retainedSeed =
+            this.options.eventStore?.conversationContextBoundaryForSuccessor(
+              startInput.threadId,
+            )?.seed;
+          const retainedBrief =
+            retainedSeed?.kind === 'task-state' &&
+            retainedSeed.taskBriefDigest &&
+            retainedSeed.mandatoryContextDigest
+              ? {
+                  digest: retainedSeed.taskBriefDigest,
+                  text: retainedSeed.text,
+                  mandatoryContextDigest: retainedSeed.mandatoryContextDigest,
+                  learningContributions:
+                    retainedSeed.learningContributions ?? [],
+                  retainedByBoundary: true,
+                }
+              : undefined;
+          if (retainedSeed?.kind === 'task-state' && !retainedBrief)
+            throw new ConversationSeedTurnRefusedError(
+              'The retained Task state lacks trusted context provenance.',
+            );
+          const lineage = this.options.eventStore?.conversationForSession(
+            startInput.threadId,
+          );
+          const predecessorMetadata =
+            lineage?.predecessorSessionId &&
+            internal?.conversationIdentity?.conversationId ===
+              lineage.conversationId &&
+            this.options.eventStore?.readProjectTaskRoomExecutionBinding(
+              startInput.threadId,
+            )
+              ? this.firstStartedMetadataOfThread(lineage.predecessorSessionId)
+              : undefined;
+          const carriedBrief = predecessorMetadata
+            ? pendingTaskBrief([
+                { method: 'session.started', metadata: predecessorMetadata },
+              ])
+            : undefined;
+          const admittedTaskBrief =
+            internal?.taskBrief ?? retainedBrief ?? carriedBrief;
+          if (admittedTaskBrief) {
             startInput = {
               ...startInput,
               metadata: {
                 ...startInput.metadata,
-                [TASK_BRIEF_METADATA_KEY]: taskBriefStartRecord(
-                  internal.taskBrief,
-                ),
+                [TASK_BRIEF_METADATA_KEY]:
+                  taskBriefStartRecord(admittedTaskBrief),
               },
             };
           }
@@ -8235,6 +8462,11 @@ export class OrchestrationService {
                               internal?.delegationGroupAdmission?.assertCurrent();
                               assertPostureCurrent();
                             });
+                            const start = () => {
+                              const before = internal?.beforeProviderStart;
+                              if (before) check(() => before(input.threadId));
+                              return adapter.startSession(input);
+                            };
                             if (internal?.reservedStationTurn) {
                               if (context.tenantExecutionContext)
                                 throw new SessionStartRefusedError(
@@ -8249,11 +8481,11 @@ export class OrchestrationService {
                                 internal.reservedStationTurn,
                                 context.userId,
                                 input.threadId,
-                                () => adapter.startSession(input),
+                                start,
                                 check,
                               );
                             }
-                            return adapter.startSession(input);
+                            return start();
                           };
                           return group?.invokeCurrent
                             ? group.invokeCurrent(invoke)
@@ -8568,6 +8800,7 @@ export class OrchestrationService {
     | ProviderSession
     | ProviderTurnStartResult
     | SteerTurnResult
+    | SteerChildWorkResult
     | SteerInputInspectionResult
     | InterruptTurnResult
     | SetApprovalModeResult
@@ -8578,6 +8811,7 @@ export class OrchestrationService {
       | ProviderSession
       | ProviderTurnStartResult
       | SteerTurnResult
+      | SteerChildWorkResult
       | SteerInputInspectionResult
       | InterruptTurnResult
       | SetApprovalModeResult
@@ -8700,6 +8934,7 @@ export class OrchestrationService {
       | ProviderSession
       | ProviderTurnStartResult
       | SteerTurnResult
+      | SteerChildWorkResult
       | SteerInputInspectionResult
       | InterruptTurnResult
       | SetApprovalModeResult
@@ -8995,7 +9230,7 @@ export class OrchestrationService {
           const firstTurnContext = [
             ...stationContext,
             pendingPrompt,
-            pendingBrief?.text,
+            pendingBrief?.retainedByBoundary ? undefined : pendingBrief?.text,
             pendingHostImageGuide,
             publicTurnInput.ambientContext?.trim()
               ? publicTurnInput.ambientContext
@@ -9067,7 +9302,11 @@ export class OrchestrationService {
                 ? { [FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY]: true }
                 : {}),
               ...(pendingBrief
-                ? { [TASK_BRIEF_COMPOSED_METADATA_KEY]: pendingBrief.digest }
+                ? {
+                    [TASK_BRIEF_COMPOSED_METADATA_KEY]: pendingBrief.digest,
+                    [TASK_LEARNING_CONTRIBUTIONS_METADATA_KEY]:
+                      pendingBrief.learningContributions,
+                  }
                 : {}),
             },
           };
@@ -9594,6 +9833,12 @@ export class OrchestrationService {
                               );
                             assertInputRequestCurrent();
                             this.assertAdapterCurrent(adapter);
+                            await this.assertMandatoryTaskContextAtProviderTurn(
+                              turnInput.threadId,
+                            );
+                            assertInputRequestCurrent();
+                            this.assertAdapterCurrent(adapter);
+                            this.assertTurnAdmitted(turnInput.threadId);
                             this.assertForkContextAtProviderTurn(
                               turnInput,
                               context,
@@ -10419,6 +10664,228 @@ export class OrchestrationService {
           };
           this.persistReceipt(receipt);
           return { receipt, result };
+        }
+        case 'steerChildWork': {
+          const store = this.options.eventStore;
+          const input = {
+            threadId: command.threadId,
+            childId: command.childId,
+            turnId: command.turnId,
+            clientInputId: command.clientInputId,
+            input: command.input,
+          };
+          const uncertain: SteerChildWorkResult = {
+            outcome: 'indeterminate',
+            threadId: command.threadId,
+            clientInputId: command.clientInputId,
+          };
+          if (!store) {
+            this.persistReceipt(receipt);
+            return {
+              receipt,
+              result: {
+                outcome: 'unavailable',
+                threadId: command.threadId,
+              } as SteerChildWorkResult,
+            };
+          }
+          if (context?.requestCurrent?.() !== true) {
+            this.persistReceipt(receipt);
+            return {
+              receipt,
+              result: {
+                outcome: 'not-authorized',
+                threadId: command.threadId,
+              } as SteerChildWorkResult,
+            };
+          }
+          const prior = store.readChildSteerInput(input);
+          if (prior) {
+            this.persistReceipt(receipt);
+            if (
+              prior.outcome === 'unsupported' ||
+              prior.outcome === 'no-active-task'
+            )
+              return { receipt, result: prior };
+            return {
+              receipt,
+              result:
+                prior.outcome === 'steered'
+                  ? ({
+                      outcome: 'steered',
+                      threadId: command.threadId,
+                      childId: command.childId,
+                      turnId: prior.turnId,
+                    } as SteerChildWorkResult)
+                  : uncertain,
+            };
+          }
+          const parentTurnId = activeTurnIdForEvents(
+            store
+              .listEventsByMethods(command.threadId, ACTIVE_TURN_FOLD_METHODS)
+              .map((stored) => stored.payload),
+          );
+          if (!parentTurnId || this.isDormantSessionThread(command.threadId)) {
+            this.persistReceipt(receipt);
+            return {
+              receipt,
+              result: {
+                outcome: 'no-active-task',
+                threadId: command.threadId,
+              } as SteerChildWorkResult,
+            };
+          }
+          if (this.ranUnconfinedNowConfined(command.threadId, parentTurnId)) {
+            this.persistReceipt(receipt);
+            return {
+              receipt,
+              result: {
+                outcome: 'confinement-changed',
+                threadId: command.threadId,
+              } as SteerChildWorkResult,
+            };
+          }
+          const adapter = await resolveOrchestrationAdapterForThread({
+            threadId: command.threadId,
+            threadProviders: this.threadProviders,
+            requireAdapter: (provider) => this.requireAdapter(provider),
+            adapters: this.options.adapterRegistry.list(),
+          });
+          this.assertAdapterCurrent(adapter);
+          if (!adapter.steerChildWork) {
+            this.persistReceipt(receipt);
+            return {
+              receipt,
+              result: {
+                outcome: 'unsupported',
+                threadId: command.threadId,
+              } as SteerChildWorkResult,
+            };
+          }
+          if (
+            context.requestCurrent() !== true ||
+            !this.sessionAuthz.canReadSessionForCommand(
+              command.threadId,
+              context.userId,
+              context.tenantExecutionContext,
+            ) ||
+            this.ranUnconfinedNowConfined(command.threadId, parentTurnId)
+          ) {
+            this.persistReceipt(receipt);
+            return {
+              receipt,
+              result: {
+                outcome: 'not-authorized',
+                threadId: command.threadId,
+              } as SteerChildWorkResult,
+            };
+          }
+          if (
+            !store.claimChildSteerInput(input, {
+              createdAt: new Date().toISOString(),
+              ...(context.principal ? { principal: context.principal } : {}),
+              ...(context.clientOrigin
+                ? { clientOrigin: context.clientOrigin }
+                : {}),
+            })
+          ) {
+            const held = store.readChildSteerInput(input);
+            this.persistReceipt(receipt);
+            if (
+              held?.outcome === 'unsupported' ||
+              held?.outcome === 'no-active-task'
+            )
+              return { receipt, result: held };
+            return {
+              receipt,
+              result:
+                held?.outcome === 'steered'
+                  ? ({
+                      outcome: 'steered',
+                      threadId: command.threadId,
+                      childId: command.childId,
+                      turnId: held.turnId,
+                    } as SteerChildWorkResult)
+                  : uncertain,
+            };
+          }
+          try {
+            this.assertAdapterCurrent(adapter);
+            if (
+              context.requestCurrent() !== true ||
+              !this.sessionAuthz.canReadSessionForCommand(
+                command.threadId,
+                context.userId,
+                context.tenantExecutionContext,
+              ) ||
+              this.ranUnconfinedNowConfined(command.threadId, parentTurnId) ||
+              activeTurnIdForEvents(
+                store
+                  .listEventsByMethods(
+                    command.threadId,
+                    ACTIVE_TURN_FOLD_METHODS,
+                  )
+                  .map((stored) => stored.payload),
+              ) !== parentTurnId
+            ) {
+              this.persistReceipt(receipt);
+              return { receipt, result: uncertain };
+            }
+            let timeout: ReturnType<typeof setTimeout> | undefined;
+            const result = await Promise.race([
+              adapter.steerChildWork(
+                command.threadId,
+                command.childId,
+                command.turnId,
+                command.input,
+              ),
+              new Promise<never>((_, reject) => {
+                timeout = setTimeout(
+                  () =>
+                    reject(new Error('Child steer acknowledgement timed out.')),
+                  10_000,
+                );
+              }),
+            ]).finally(() => clearTimeout(timeout));
+            if (
+              !result ||
+              typeof result !== 'object' ||
+              !('outcome' in result) ||
+              typeof result.outcome !== 'string' ||
+              !['steered', 'unsupported', 'no-active-task'].includes(
+                result.outcome,
+              )
+            )
+              throw new Error('Invalid child steer acknowledgement.');
+            if (result.outcome !== 'steered') {
+              store.refuseChildSteerInput(input, result.outcome);
+              this.persistReceipt(receipt);
+              return {
+                receipt,
+                result: {
+                  outcome: result.outcome,
+                  threadId: command.threadId,
+                } as SteerChildWorkResult,
+              };
+            }
+            if (result.turnId !== command.turnId)
+              throw new Error('Child steer acknowledgement target changed.');
+            this.assertAdapterCurrentAfterCommand(adapter);
+            store.confirmChildSteerInput(input);
+            this.persistReceipt(receipt);
+            return {
+              receipt,
+              result: {
+                outcome: 'steered',
+                threadId: command.threadId,
+                childId: command.childId,
+                turnId: result.turnId,
+              } as SteerChildWorkResult,
+            };
+          } catch {
+            this.persistReceipt(receipt);
+            return { receipt, result: uncertain };
+          }
         }
         case 'steerTurn': {
           const steerInput = command.clientInputId
@@ -12846,6 +13313,7 @@ export class OrchestrationService {
         provider: event.provider,
         model,
         observedAt: new Date().toISOString(),
+        route: event.servingRoute,
       });
       return snapshot ? { ...event, pricingSnapshot: snapshot } : event;
     } catch (error) {
@@ -14300,6 +14768,48 @@ export class OrchestrationService {
     const originEvent = this.clientOriginTurns.apply(event);
     if (!originEvent) return undefined;
     event = originEvent;
+    if (event.method === 'turn.started') {
+      const metadata = { ...event.metadata };
+      let projected =
+        Object.hasOwn(metadata, TASK_BRIEF_COMPOSED_METADATA_KEY) ||
+        Object.hasOwn(metadata, TASK_LEARNING_CONTRIBUTIONS_METADATA_KEY);
+      delete metadata[TASK_BRIEF_COMPOSED_METADATA_KEY];
+      delete metadata[TASK_LEARNING_CONTRIBUTIONS_METADATA_KEY];
+      if (event.invocationId) {
+        const stored = this.options.eventStore?.readPreparedTurnIntent(
+          event.threadId,
+          event.invocationId,
+        );
+        const input = stored?.capture.adapterInput.metadata;
+        const digest = input?.[TASK_BRIEF_COMPOSED_METADATA_KEY];
+        const refs = parseLearningContextContributions(
+          input?.[TASK_LEARNING_CONTRIBUTIONS_METADATA_KEY],
+        );
+        const replay = this.options.eventStore?.readPersistedTurnStartMetadata(
+          event.threadId,
+          event.eventId,
+          event.invocationId,
+        );
+        const witnessed =
+          stored &&
+          (stored.state === 'invoking' ||
+            stored.state === 'accepted' ||
+            (replay?.[TASK_BRIEF_COMPOSED_METADATA_KEY] === digest &&
+              JSON.stringify(
+                replay?.[TASK_LEARNING_CONTRIBUTIONS_METADATA_KEY],
+              ) === JSON.stringify(refs)));
+        if (
+          witnessed &&
+          typeof digest === 'string' &&
+          /^[a-f0-9]{64}$/.test(digest)
+        ) {
+          metadata[TASK_BRIEF_COMPOSED_METADATA_KEY] = digest;
+          if (refs) metadata[TASK_LEARNING_CONTRIBUTIONS_METADATA_KEY] = refs;
+          projected = true;
+        }
+      }
+      if (projected) event = { ...event, metadata };
+    }
     // Progress is a fact about the ENGINE producing output, not about what we
     // chose to publish. The turn-stall watchdog (archive#2959) observes here,
     // so it must see every raw delta as it arrives -- batching them for
@@ -15448,6 +15958,8 @@ export class OrchestrationService {
       threadId,
       async () => {
         if (!current()) throw unavailable();
+        await this.assertMandatoryTaskContextAtProviderTurn(threadId);
+        if (!current()) throw unavailable();
         this.assertForkContextAtProviderTurn(stored.capture.adapterInput);
         const owned = this.sessionStartBoundaries.resumePrepared?.(
           stored.capture,
@@ -15605,6 +16117,12 @@ export class OrchestrationService {
     );
     return createNativeMemoryHistoryCompanion({
       binding,
+      taskBriefBounded: Boolean(
+        store.readProjectTaskRoomExecutionBinding(threadId) &&
+          this.firstStartedMetadataOfThread(threadId)?.[
+            TASK_BRIEF_METADATA_KEY
+          ],
+      ),
       allowMissingCurrentRecord,
       readCanonicalSession: async (id) => {
         if (!this.sessionAuthz.canReadSession(id, authority))

@@ -947,11 +947,19 @@ stay in every clone's history after the pull request merges.
 The Windows portable floor is deliberately not named or treated as
 `test:full`. It combines the physically proven pre-push tier with the portable
 OpenSSH argv, cleanup, and broken-pipe contracts, the file-memory
-transcript durability suite, and the Windows process identity probe run
-against real processes. The durability suite is here because torn-tail repair
-truncates through a non-append descriptor, which Windows requires. The probe
-test is the one test of that PowerShell probe that does not fake it (skipped
-off Windows). Full Windows Vitest parity
+transcript durability suite, the Windows process identity probe run
+against real processes, and the Windows owned-process registry suite. The
+durability suite is here because torn-tail repair truncates through a
+non-append descriptor, which Windows requires. The probe test is the one test
+of that PowerShell probe that does not fake it (skipped off Windows). It also
+compiles the archive's process-birth helper and proves the helper prints the
+probe's birth (#2805). The registry suite kills a real owner and proves the
+startup sweep reaps its orphaned engine and grandchild (#3873). The
+supervisor's terminal workload tests run there too: the workload host with
+real ConPTY shells, and a journey whose shell keeps its pid and journal across
+a handoff of built supervisor and workload host bundles. A ConPTY cannot change
+parents, so Windows is where that design is load-bearing.
+Full Windows Vitest parity
 remains failing closed under issue #1420; do not add exclusions or
 `continue-on-error` to relabel that gap green.
 
@@ -2584,8 +2592,11 @@ receipt); `fast-checks-statics` runs `ci:fast` with
 UI bundle budget, enforced by the fresh browser startup build rather than a
 second standalone UI build. `fast-checks` requires successful plan/statics jobs.
 The `aggregate` command independently validates empty-plan omission or proves
-that each allocated shard ran its exact slice. An unexpected skip, cancellation,
-missing receipt, or receipt for another plan or head fails the check. A deferred
+that each allocated shard ran its exact slice. Each nonempty resource group also
+compares Vitest’s reported file identities with its planned files; missing,
+duplicate, unexpected, or outside-checkout identities cause a parser error even
+when aggregate test counts pass. An unexpected skip, cancellation, missing
+receipt, or receipt for another plan or head fails the check. A deferred
 selection (the selector's exit 3) is reported and passes only when its executed
 mapped tests pass; a real assertion or infrastructure failure is not converted
 into deferral. The unresolved obligation remains for main/release full

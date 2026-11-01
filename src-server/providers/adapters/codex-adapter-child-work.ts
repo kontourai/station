@@ -93,6 +93,7 @@ export const SETTLED_AWAITING_OWN_TERMINAL_MAX = 64;
 const TITLE_MAX_CHARS = 200;
 
 interface CodexChildFacts {
+  protocol?: 'v1' | 'v2';
   depth?: number;
   totalTokens?: number;
   lastAgentMessage?: string;
@@ -291,6 +292,7 @@ function isRunning(record: CodexSessionRecord, childId: string): boolean {
 }
 
 interface ChildIdentity {
+  protocol?: 'v1' | 'v2';
   parent?: ChildWorkParent;
   depth?: number;
   title?: string;
@@ -335,6 +337,8 @@ function registerChild(
     return;
   }
   const facts = state.children.get(childId) ?? {};
+  if (identity.protocol === 'v2' || !facts.protocol)
+    facts.protocol = identity.protocol;
   if (facts.depth === undefined && identity.depth !== undefined) {
     facts.depth = identity.depth;
   }
@@ -469,15 +473,24 @@ function syncChildStopControl(
 ): void {
   const existing = itemFor(context.record, childId);
   if (existing?.status !== 'running') return;
-  const hasTarget =
-    stateOf(context.record).children.get(childId)?.activeTurnId !== undefined;
+  const facts = stateOf(context.record).children.get(childId);
+  const hasTarget = facts?.activeTurnId !== undefined;
   const hasControl = existing.controls?.stop === 'provider-task-stop';
-  if (hasTarget === hasControl) return;
+  const turnId = facts?.protocol === 'v1' ? facts.activeTurnId : undefined;
+  const steer =
+    turnId && new TextEncoder().encode(turnId).length <= 512
+      ? turnId
+      : undefined;
+  if (hasTarget === hasControl && existing.controls?.steer?.turnId === steer)
+    return;
   emit(context, {
     kind: 'upsert',
     item: {
       ...existing,
-      controls: hasTarget ? { stop: 'provider-task-stop' } : {},
+      controls: {
+        ...(hasTarget ? { stop: 'provider-task-stop' as const } : {}),
+        ...(steer ? { steer: { turnId: steer } } : {}),
+      },
     },
   });
 }
@@ -576,8 +589,15 @@ export function observeCodexSubagentItem(
       // started item carries an empty one). It is the child's model, not a
       // kind of child, and is absent when the engine left it empty.
       const model = extractString(item.model)?.trim();
+      if (senderThreadId !== reportingThreadId) return true;
       for (const childId of receivers) {
+        if (
+          childId === context.record.codexThreadId ||
+          childId === reportingThreadId
+        )
+          continue;
         registerChild(context, childId, {
+          protocol: 'v1',
           parent: parentFor(
             context.record,
             reportingThreadId,
@@ -668,6 +688,7 @@ function observeSubAgentActivity(
   const agentPath = extractString(item.agentPath);
   const name = agentPath?.split('/').filter(Boolean).at(-1);
   registerChild(context, childId, {
+    protocol: 'v2',
     parent: parentFor(
       context.record,
       reportingThreadId,
@@ -814,6 +835,24 @@ export function codexRunningChildTurnId(
 ): string | undefined {
   if (itemFor(record, childId)?.status !== 'running') return undefined;
   return stateOf(record).children.get(childId)?.activeTurnId;
+}
+
+export function codexChildSteerTarget(
+  record: CodexSessionRecord,
+  childId: string,
+  turnId: string,
+): 'ready' | 'unsupported' | 'no-active-task' {
+  const facts = stateOf(record).children.get(childId);
+  if (
+    itemFor(record, childId)?.status !== 'running' ||
+    !facts?.activeTurnId ||
+    facts.activeTurnId !== turnId
+  )
+    return 'no-active-task';
+  if (facts.protocol !== 'v1') return 'unsupported';
+  if (itemFor(record, childId)?.controls?.steer?.turnId !== turnId)
+    return 'no-active-task';
+  return 'ready';
 }
 
 /**

@@ -1,0 +1,7 @@
+{
+  "revision": "d78b225f5394a5bc98efff510bd5c8eeff17f1b7",
+
+  "notes": [
+    {"path":"docs/guides/release-rings.md","note":"Searched this document for claims about the changed behavior Changed sources: the Windows archive stages the precompiled guard and its SHA-256 in runtime/ and checks parity with PowerShell (#2805); the portable route also covers the guard build module, the guard source and process-identity.mjs. No remaining claim here contradicts them.","inputs":["docs/guides/release-rings.md","scripts/lib/portable-server-archive.mjs","scripts/pr-delivery-paths.json"]}
+  ]
+}

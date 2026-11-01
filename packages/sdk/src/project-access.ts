@@ -3,15 +3,19 @@ import { type ApiRequestScope, isApiRequestScope } from './client/http';
 import {
   changeProjectAccess,
   getProjectAccess,
+  getProjectSharingEnablement,
   type ProjectAccessCommand,
 } from './client/project-access';
 
 export {
   changeProjectAccess,
   getProjectAccess,
+  getProjectSharingEnablement,
+  getProjectSharingStepUpStatus,
   type ProjectAccessCommand,
   type ProjectAccessCommandResult,
   type ProjectAccessMutationIntent,
+  type ProjectSharingStepUp,
   projectAccessRefusal,
 } from './client/project-access';
 
@@ -75,4 +79,41 @@ export function useProjectAccess(slug: string, requestScope?: ApiRequestScope) {
       });
     },
   };
+}
+
+/**
+ * #4306: how this caller may turn on sharing. A host without the read (older
+ * than #4306) fails the query; callers then keep their previous behavior.
+ */
+export function useProjectSharingEnablement(
+  slug: string,
+  requestScope?: ApiRequestScope,
+  enabled = true,
+) {
+  const valid = isApiRequestScope(requestScope);
+  return useQuery({
+    queryKey: valid
+      ? ([
+          'project-sharing-enablement',
+          requestScope.apiBase,
+          requestScope.authorityKey,
+          slug,
+        ] as const)
+      : ['project-sharing-enablement-unbound'],
+    queryFn: ({ signal }) => {
+      if (!isApiRequestScope(requestScope))
+        throw new Error(
+          'Project access requires a current Station connection.',
+        );
+      return getProjectSharingEnablement(requestScope.apiBase, slug, {
+        requestScope,
+        signal,
+      });
+    },
+    enabled: valid && enabled,
+    gcTime: 0,
+    staleTime: 0,
+    retry: false,
+    refetchOnWindowFocus: true,
+  });
 }

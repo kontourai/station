@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import {
+  describeModelOptions,
   resolveTurnEngine,
   resolveTurnModelIdentity,
 } from '../components/chat/message-bubble/utils';
@@ -292,5 +293,16 @@ describe('resolveTurnModelIdentity (station#1410 review finding SF5, closed in s
         provenance: envelope(),
       }),
     ).toEqual({ source: 'envelope', claims: [] });
+  });
+});
+
+describe('#4402: describeModelOptions', () => {
+  test('names the request options in words, never wire keys or raw booleans', () => {
+    expect(
+      describeModelOptions({ reasoningEffort: 'medium', fastMode: false }),
+    ).toBe('Reasoning effort: medium · Fast mode: off');
+    expect(describeModelOptions({ customKnob: 3 })).toBe('customKnob: 3');
+    expect(describeModelOptions({})).toBeUndefined();
+    expect(describeModelOptions(undefined)).toBeUndefined();
   });
 });

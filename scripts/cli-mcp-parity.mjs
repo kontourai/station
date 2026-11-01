@@ -58,6 +58,9 @@ async function importTs(path) {
 export async function loadSurfaces() {
   const help = await importTs('packages/cli/src/help.ts');
   const policy = await importTs('src-server/tools/station-control-policy.ts');
+  const discovery = await importTs(
+    'src-server/tools/station-control-disclosure.ts',
+  );
   const browser = await importTs('src-server/tools/station-browser-policy.ts');
   const verbs = help.knownCommands();
   const cli = verbs.flatMap(
@@ -67,6 +70,7 @@ export async function loadSurfaces() {
   return {
     tools: [
       ...Object.keys(policy.STATION_CONTROL_TOOL_POLICY),
+      ...Object.values(discovery.STATION_CONTROL_DISCOVERY_TOOL_NAMES),
       ...browser.STATION_BROWSER_TOOL_NAMES,
     ],
     cli,

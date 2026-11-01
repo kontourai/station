@@ -1,0 +1,27 @@
+{
+  "revision": "7d9427c248afc275bf1cf4cc18981b7fad886f0d",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked StartComposer ownership against the changed accessible labels; component routing is unchanged. UI typecheck and focused parity tests passed.","inputs":["docs/architecture/module-map.md","src-ui/src/components/chat-start/StartComposer.tsx"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked ApprovalModeChip change: it adds the visible caption and value to its accessible name, without changing policy enforcement or approval delivery.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/components/badges/ApprovalModeChip.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed StartComposer and ChatInputArea accessible names and parity tests; selector behavior and the described composer ownership are unchanged. Gallery and live-device evidence are separate.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-start/StartComposer.tsx","src-ui/src/components/chat/ChatInputArea.tsx"]},
+
+    {"path":"docs/design/motion.md","note":"Checked screenshot fixture locator adjustment: it matches the new Project accessible name and changes no motion behavior or capture timing.","inputs":["docs/design/motion.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Checked screenshot fixture locator adjustment against the gallery runner and baseline instructions; capture and comparison procedures are unchanged.","inputs":["docs/guides/testing.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked the screenshot fixture locator change; it does not alter telemetry data, collection or accounting behavior.","inputs":["docs/reference/usage-telemetry.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed StartComposer and ChatInputArea accessible name changes against new-chat and approval instructions; user-visible selection behavior is unchanged. Focused tests passed; live provider and device evidence remains unverified.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-start/StartComposer.tsx","src-ui/src/components/chat/ChatInputArea.tsx"]},
+
+    {"path":"docs/learn/media/new-chat-start-before.png","note":"Inspected this retained before/after image and the StartComposer change; the source change adjusts accessible names only and does not change these historical pixels. This is not a new device capture.","inputs":["docs/learn/media/new-chat-start-before.png","src-ui/src/components/chat-start/StartComposer.tsx"]},
+
+    {"path":"docs/learn/media/new-chat-start-after.png","note":"Inspected this retained before/after image and the StartComposer change; the source change adjusts accessible names only and does not change these historical pixels. This is not a new device capture.","inputs":["docs/learn/media/new-chat-start-after.png","src-ui/src/components/chat-start/StartComposer.tsx"]},
+
+    {"path":"docs/learn/media/project-start-before.png","note":"Inspected this retained before/after image and the StartComposer change; the source change adjusts accessible names only and does not change these historical pixels. This is not a new device capture.","inputs":["docs/learn/media/project-start-before.png","src-ui/src/components/chat-start/StartComposer.tsx"]},
+
+    {"path":"docs/learn/media/project-start-after.png","note":"Inspected this retained before/after image and the StartComposer change; the source change adjusts accessible names only and does not change these historical pixels. This is not a new device capture.","inputs":["docs/learn/media/project-start-after.png","src-ui/src/components/chat-start/StartComposer.tsx"]}
+  ]
+}

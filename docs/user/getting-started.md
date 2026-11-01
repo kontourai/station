@@ -67,8 +67,7 @@ Existing installations retain their choice and previously imported history.
 
 ## Inspect what a chat used
 
-Choose **Inventory** in the chat header on desktop, or **⋯** then **Chat
-inventory** in the phone chat header. Pick a group,
+Choose **⋯** then **Chat inventory** in the chat header. Pick a group,
 then **View details** on an item to read the authored message, attachment
 metadata, or recorded tool result. **Recorded origin** identifies the Session,
 turn and event; **Open session** opens the surrounding work. Output rows keep
@@ -77,7 +76,7 @@ state rather than an empty result. The answer's **Basis** chip still opens
 inspection scoped to that answer.
 
 To see how much of the model's context window a chat has used, read the meter
-beside the model under the message box, or choose **⋯** then **Conversation
+beside Send under the message box, or choose **⋯** then **Conversation
 stats** in the phone chat header, which names the share used. Either opens the
 chat's stats.
 
@@ -203,8 +202,8 @@ choices follow the same signed-in person across devices connected to this
 Station. They are saved as you change them, and other clients refresh on focus
 or reconnect. **Import previous preferences** brings over this browser's older
 portable choices without replacing settings your account already has. **Use
-default** removes a personal display choice; **Use inherited default** returns
-new-chat approvals to the Agent, Station or engine setting.
+default** removes a personal display choice; choosing **Default** for a
+new-chat approval mode returns it to the Agent, Station or engine setting.
 
 While offline, changes wait on this page and are not saved yet. Keep the page
 open until saving finishes. If another device changed a composite preference,
@@ -216,8 +215,9 @@ which scope owns a choice. If your Device is not linked to a person, preferences
 remain local. Different Stations keep separate account preferences.
 
 The approval chip shows the known mode, including **Full access**, **Auto** or
-**Ask**. **Engine default** means the engine's active mode has not been confirmed.
-For Codex the picker says what that is: your own Codex settings. If you set
+**Ask**. **Default** means the engine's own settings apply and its active mode
+has not been confirmed.
+For Codex, inherited settings resolve to a supported mode when the reported approval policy and sandbox match. Otherwise, the picker describes the engine default as your own Codex settings. If you set
 none, no command Codex runs uses the network or writes outside the chat's
 folder and temporary directories without asking; it may ask before other
 writes too. Codex's web search and MCP tools are not commands and are not
@@ -551,10 +551,10 @@ Project's model or the usual default applies and the Model chip's tooltip says
 why. The approval mode can be set for the Project (Ask first, Auto or full
 access) or follow your last chat there. It applies below the Agent's own mode
 and replaces your personal default for that engine, and full access is only
-reused when you can grant it. **Permissions** on the composer names where its
-mode came from, and opens the approval picker to choose this chat's mode
-before you start; picking **Default** there uses the Agent's, then the
-Station's default instead.
+reused when you can grant it. The composer's permissions button shows the
+requested mode. Open it to see where the mode came from or choose this chat's
+mode before you start. **Default** uses the engine's saved permissions;
+the active mode is confirmed after startup.
 
 Until Station has loaded your projects, the chips show placeholders and
 **Start** waits, so a start never runs in a project Station has guessed. If
@@ -660,10 +660,18 @@ from inbox**. On mobile, use the row’s Details menu; with **Sheet gestures
 preview** enabled in Settings → Advanced → Developer tools, swipe left to
 reveal the clock and × controls. The clock opens Snooze duration choices; ×
 dismisses the conversation. Dismissal leaves running work and history intact.
-Choose **Undo**, or expand **Dismissed** and choose **Restore to inbox**.
+Choose **Undo** in the toast, press **⌘Z** / **Ctrl+Z** outside an editor,
+or expand **Dismissed** and choose **Restore to inbox**.
 Dismissal is saved on this browser/device, like Snooze. A changed status, a
 changed attention kind, or newer activity outside a running turn brings the
 conversation back; streaming progress during the same running turn does not.
+
+With **Open and Settled inbox** enabled in Feature previews, unfinished
+conversations stay **Open** after an Agent finishes a turn. Choose **Settle**
+when the conversation's work is done, or **Reopen** to bring it back. Closed
+Tasks follow their existing close-on-merge setting; standalone linked PRs do
+not settle a conversation automatically. Settlement syncs across your devices
+and is separate from dismissal or deletion. Each inbox group can collapse.
 
 The workspace map lists Projects and their named Layouts, followed by your
 **Personal Boards**. Its **+** creates a Board and lets you name it, even
@@ -680,11 +688,8 @@ Sidebar utilities. Conversations and composer drafts stay in the chat dock and
 its inbox (⌘D).
 
 Selecting a project in the sidebar opens its workspace and makes it the default
-for new chats. An existing chat stays with its original project. On a computer,
-the project beside **New** in the dock header shows that default; choose it to
-pick another without leaving the workspace. On a phone, the chat bar's **New
-chats** value does the same, and with a long chat title it shows only a folder
-icon.
+for new chats. An existing chat stays with its original project. Choose a
+different Project in the new-chat composer before starting a conversation.
 The next sidebar project selection updates that default again.
 
 To give a project an icon, open its settings and choose the icon beside its
@@ -811,21 +816,41 @@ when you return to the conversation.
 
 ### Send a follow-up while an engine works
 
+For a running Codex subagent that supports direct instructions, expand its
+card and use **Send to** that subagent. Station shows those instructions and
+their delivery status separately from the engine transcript: **Sent**, **Not
+sent**, or **Delivery unconfirmed**. Sending requires permission to continue the
+chat and an operator or device grant that can operate it. If delivery is
+unconfirmed, **Check saved instruction** retries the same instruction and target
+with its original key; Station will not automatically send a new instruction.
+Once the saved one is resolved, you can submit a new instruction if the
+subagent is still eligible. Some Codex
+subagents cannot accept direct instructions. Older Stations need an update to
+offer this control.
+When the engine transcript is open, sent instructions are collapsed in the
+Station list; open one to read its attributed copy. Unconfirmed instructions
+remain visible, and the engine's prompts remain available in its transcript.
+
 Keep typing during a turn. **Send** defaults to **Queue**, which delivers after
 the turn finishes; its dropdown offers **Steer**. Claude Code and Codex can take
 native steering. Other engines hold steering until a safe boundary can be proven;
 currently they wait until the turn finishes. Each pending row shows its mode.
-**Send now** deliberately stops the active turn immediately and sends the
-selected message after Station confirms the stop. **Stop** remains separate.
+For a locally queued message, **Send now** stops the active turn and sends the
+selected message after Station confirms the stop. Messages held by Station can
+be removed when permitted, but cannot be edited or sent now from the list. **Stop** remains separate.
 Steer and Queue carry text only. You can still attach files or dictate during a
 turn: files wait in the draft, which says why, until you send it after the turn
 ends.
 
-A text message is saved on this device before it is sent. If the app closes or
+The app attempts to save a text message on this device before sending it. If
+the write fails or times out, it sends without that saved row and keeps the
+saved draft. If the app closes or
 the connection drops before Station answers, the app asks Station what happened
 at its next launch or reconnect: a message Station never received is sent once,
 with the same identity, and one Station may have started is kept and marked,
-never sent twice. A message with attachments or a visual skill keeps its draft
+never sent twice. If Station accepts the reconnect send into its inbox, the local outbox
+settles that row. If a later delivery lookup finds it queued, the local row
+remains for inspection. A message with attachments or a visual skill keeps its draft
 until Station answers instead.
 
 Once Station confirms a turn started, a late network error does not queue that

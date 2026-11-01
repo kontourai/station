@@ -218,7 +218,7 @@ export function renderSettingRow({
             >
               {descriptor.values.map((option) => (
                 <option key={option} value={option}>
-                  {option}
+                  {descriptor.labels?.[option] ?? option}
                 </option>
               ))}
             </select>

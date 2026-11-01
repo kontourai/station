@@ -180,6 +180,7 @@ export function ChildWorkTranscript({
       {transcript.hasNextPage && (
         <Button
           size="sm"
+          className="tap-target"
           pending={transcript.isFetchingNextPage}
           onClick={() => void transcript.fetchNextPage()}
         >
@@ -189,6 +190,7 @@ export function ChildWorkTranscript({
       {running && !transcript.isPending && (
         <Button
           size="sm"
+          className="tap-target"
           pending={transcript.isRefetching}
           onClick={() => void refetch()}
         >

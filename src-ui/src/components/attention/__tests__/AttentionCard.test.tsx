@@ -370,6 +370,19 @@ describe('AttentionCard — device pairing kind (#765 D5)', () => {
   const review = () =>
     fireEvent.click(screen.getByRole('button', { name: 'Review' }));
 
+  test('account-bound review opens pairing management without submitting approval', () => {
+    const opened = vi.fn();
+    window.addEventListener('station:open-connections-modal', opened);
+    renderCard(basePairing({ requiresAccountBinding: true }));
+    review();
+    expect(opened).toHaveBeenCalledWith(
+      expect.objectContaining({ detail: { mode: 'pair-host' } }),
+    );
+    expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
+    expect(pairingMocks.confirmPairing).not.toHaveBeenCalled();
+    window.removeEventListener('station:open-connections-modal', opened);
+  });
+
   test('the card is one line with Review; its dialog approves the exact request', () => {
     renderCard(basePairing());
 

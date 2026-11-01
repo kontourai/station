@@ -35,9 +35,9 @@ describe('StartApprovalSummary on the engine default', () => {
     render(<StartApprovalSummary agent={agent} onPick={vi.fn()} />);
 
     const chip = screen.getByRole('button', { name: /^Permissions: / });
-    expect(chip.textContent).toContain('Permissions: Engine settings');
+    expect(chip.textContent).toContain('Permissions Default');
     expect(chip.getAttribute('title')).toBe(
-      'Your Codex settings apply until you pick a mode. If unset, no command uses the network or writes beyond this folder and temp unasked.',
+      'Codex settings apply until you pick one. If unset, it asks to go online or write outside temp and the chat folder (home if no project).',
     );
   });
 

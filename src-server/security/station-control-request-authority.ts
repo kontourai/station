@@ -37,6 +37,21 @@ export type StationControlRequestAuthority =
   | { readonly kind: 'caller-less' };
 
 const authorities = new WeakMap<Request, StationControlRequestAuthority>();
+const currentChecks = new WeakMap<Request, () => boolean>();
+
+/** Bound by the ingress guard, never by a client. */
+export function bindStationControlRequestCurrent(
+  request: Request,
+  check: () => boolean,
+): void {
+  currentChecks.set(request, check);
+}
+
+export function stationControlRequestCurrent(request: Request): boolean {
+  const authority = authorities.get(request);
+  if (!authority || authority.kind === 'server') return true;
+  return currentChecks.get(request)?.() === true;
+}
 
 /** Written by the station-control authority guard only. */
 export function bindStationControlRequestAuthority(

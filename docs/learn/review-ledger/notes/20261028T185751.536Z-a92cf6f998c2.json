@@ -1,0 +1,7 @@
+{
+  "revision": "9abd0a597028a2eaaf1b80bc5620d44704e679df",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Reviewed the PR observation contract against the changed GitHub review reader: base SHA comes from gh api, head is cross-checked with gh pr view, and closing reads still bind the snapshot to the head/base pair. No public type or authorization change. Actual provider detail and review reads for station PR 4277 succeeded with gh 2.46.0; diff, checks and inline comments available. Existing prose remains accurate.","inputs":["docs/reference/contracts.md","src-server/services/pull-requests/__tests__/pull-request-review.test.ts","src-server/services/pull-requests/pull-request-review.ts"]}
+  ]
+}

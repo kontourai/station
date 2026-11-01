@@ -1539,3 +1539,57 @@
   flex-wrap: wrap;
   gap: var(--k-space-2);
 }
+
+/* #4305: Project sharing with local accounts. */
+.account-sharing__toggle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-space-3);
+  padding-block: var(--k-space-2);
+}
+/* Layout comes from ResponsiveSurfaceActions; only spacing here. */
+.account-sharing__actions {
+  padding-block: var(--k-space-2);
+}
+.account-sharing__origins {
+  display: grid;
+  gap: var(--k-space-1);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.account-sharing__origins legend {
+  padding: 0;
+  margin-bottom: var(--k-space-1);
+  font-weight: 600;
+}
+.account-sharing__origin {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--k-space-2);
+  min-height: 44px;
+  padding: var(--k-space-2);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  cursor: pointer;
+}
+.account-sharing__origin input {
+  margin-top: 0.2rem;
+}
+.account-sharing__origin--unavailable {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+.account-sharing__origin-value {
+  display: block;
+  overflow-wrap: anywhere;
+  font-family: var(--k-font-mono);
+}
+.account-sharing__locked {
+  display: grid;
+  justify-items: start;
+  gap: var(--k-space-1);
+}

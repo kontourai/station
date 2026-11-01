@@ -51,18 +51,15 @@ import { RegionChromeSlotsContext } from '../workspace-panes/RegionChromeSlots';
 function renderHeader({
   fullscreen = false,
   chatIdentity,
-  projectContext,
   workspaceControls,
 }: {
   fullscreen?: boolean;
   chatIdentity?: ReactNode;
-  projectContext?: ReactNode;
   workspaceControls?: ChatDockWorkspaceControls;
 } = {}) {
   return render(
     <ChatDockHeader
       chatIdentity={chatIdentity}
-      projectContext={projectContext}
       chatControls={{
         sessions: [],
         unreadCount: 0,

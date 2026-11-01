@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   __resetStationControlMcpTokensForTests,
   mintStationControlMcpToken,
+  revokeStationControlMcpToken,
 } from '../../../runtime/mcp/station-control-mcp-token.js';
 import {
   createStationControlMcpRoutes,
@@ -706,5 +707,104 @@ describe('station-control-mcp-route', () => {
       ),
     );
     expect(tenantHeaders.sort()).toEqual(['alpha', 'bravo']);
+  });
+
+  test('stateless HTTP family loading is credential-local, rechecked on each request and reset by rotation', async () => {
+    let enabled = true;
+    let issuerCurrent = true;
+    const mint = (session: string) =>
+      mintStationControlMcpToken(
+        session,
+        'http-header-token',
+        undefined,
+        undefined,
+        ['list_agents', 'get_agent'],
+        'station-control',
+        undefined,
+        () => issuerCurrent,
+        true,
+      ).token;
+    const first = mint('dynamic-one');
+    const other = mint('dynamic-two');
+    const app = createStationControlMcpRoutes({
+      port: TEST_PORT,
+      progressiveToolsEnabled: () => enabled,
+      resolveCallerRecord: () => ({
+        principal: { id: 'person:reader', source: 'session-owner' },
+        localProjectId: 'project-one',
+        projectSlug: 'project-one',
+        projectIdSource: 'session-record',
+      }),
+    });
+    const rpc = async (
+      token: string,
+      method: string,
+      params: Record<string, unknown> = {},
+    ) => {
+      const response = await app.request(
+        STATION_CONTROL_MCP_PATH,
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            accept: 'application/json, text/event-stream',
+            authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+        },
+        envFor(LOOPBACK),
+      );
+      expect(response.status).toBe(200);
+      return readJsonRpcResult(response);
+    };
+    const list = async (token: string) =>
+      (await rpc(token, 'tools/list')).result.tools.map(
+        (tool: { name: string }) => tool.name,
+      );
+    expect(await list(first)).toEqual([
+      'list_tool_families',
+      'load_tool_family',
+    ]);
+    const families = JSON.parse(
+      (
+        await rpc(first, 'tools/call', {
+          name: 'list_tool_families',
+          arguments: {},
+        })
+      ).result.content[0].text,
+    ).families;
+    expect(families).toHaveLength(1);
+    expect(families[0].toolCount).toBe(2);
+    await rpc(first, 'tools/call', {
+      name: 'load_tool_family',
+      arguments: { family: families[0].name },
+    });
+    expect(await list(first)).toContain('list_agents');
+    expect(await list(other)).not.toContain('list_agents');
+    enabled = false;
+    expect(await list(first)).toEqual(
+      expect.arrayContaining(['list_agents', 'get_agent']),
+    );
+    expect(await list(first)).not.toContain('load_tool_family');
+    enabled = true;
+    revokeStationControlMcpToken('dynamic-one');
+    const rotated = mint('dynamic-one');
+    expect(await list(rotated)).not.toContain('list_agents');
+    const denied = async (token: string) =>
+      app.request(
+        STATION_CONTROL_MCP_PATH,
+        {
+          method: 'POST',
+          headers: {
+            authorization: `Bearer ${token}`,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+        },
+        envFor(LOOPBACK),
+      );
+    expect((await denied(first)).status).toBe(401);
+    issuerCurrent = false;
+    expect((await denied(rotated)).status).toBe(401);
   });
 });

@@ -39,7 +39,6 @@ import {
   highestSymbolVersion,
   symbolVersionFloor,
 } from './lib/elf-symbol-floor.mjs';
-import { findFreePortBlock, findFreePortOutside } from './lib/free-ports.mjs';
 import {
   archiveTool,
   PORTABLE_ARCHIVE_ROOT,
@@ -50,6 +49,7 @@ import {
   redact,
   stationLogReport,
 } from './lib/portable-smoke-diagnostics.mjs';
+import { choosePortableSmokePorts } from './lib/portable-smoke-ports.mjs';
 import { parseStopHint } from './lib/station-stop-hint.mjs';
 import { verifyTelemetryCompanion } from './package-telemetry-companion.mjs';
 
@@ -349,8 +349,7 @@ async function refusesConnections(port) {
  * voice, consent) and a UI port outside it, none of them the owner's.
  */
 async function choosePorts() {
-  const serverPort = await findFreePortBlock(4);
-  const uiPort = await findFreePortOutside(serverPort, 4);
+  const { serverPort, uiPort } = await choosePortableSmokePorts();
   for (const port of [0, 1, 2, 3].map((n) => serverPort + n).concat(uiPort)) {
     if (RESERVED_PORTS.has(port)) fail(`refusing reserved port ${port}`);
   }

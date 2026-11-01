@@ -40,16 +40,31 @@ export type ModelProviderOption = {
  * "Us.anthropic.claude Sonnet 4 5 20250929 V1:0", which is not a prettier name
  * but a fabricated one. For those the id itself is the most honest thing we
  * have, so it is returned unchanged (archive#3391).
+ *
+ * A dot BETWEEN DIGITS is a version number, not a provider qualifier
+ * (#4402): `gpt-6.1-sol` reads "GPT 6.1 Sol" — the Codex catalog's own name —
+ * where the transcript used to print the raw id because the dot alone sent
+ * it down the provider-qualified path. Any other dot still does.
  */
+const VERSION_DOT = /(?<=\d)\.(?=\d)/g;
+const UPPERCASE_PARTS = new Set(['gpt']);
+
 export function prettifyModelId(modelId: string): string {
   const id = modelId.trim();
-  if (!id || /[.:/]/.test(id)) return id;
+  if (!id || /[:/]/.test(id) || id.replace(VERSION_DOT, '').includes('.'))
+    return id;
   const oneM = /\[1m\]$/i.test(id);
   const base = id
     .replace(/\[1m\]$/i, '')
     .replace(/^claude-/i, '')
     .split('-')
-    .map((part) => (part ? part[0].toUpperCase() + part.slice(1) : part))
+    .map((part) =>
+      UPPERCASE_PARTS.has(part.toLowerCase())
+        ? part.toUpperCase()
+        : part
+          ? part[0].toUpperCase() + part.slice(1)
+          : part,
+    )
     .join(' ');
   const label = oneM ? `${base} (1M)` : base;
   // 'claude-' prettifies to '' — a stripped prefix and nothing else. A blank

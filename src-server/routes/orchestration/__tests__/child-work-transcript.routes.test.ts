@@ -10,6 +10,7 @@ import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   installClaudeSubagentTranscript,
   TRANSCRIPT_AGENT_ID,
+  TRANSCRIPT_SESSION_ID,
 } from '../../../providers/__tests__/claude-subagent-transcript-fixture.js';
 import { replayClaudeTaskCapture } from '../../../providers/__tests__/claude-task-captures.js';
 import {
@@ -48,6 +49,7 @@ function fixture(
   let current = true;
   let readable = true;
   const listChildWorkHistory = vi.fn(() => history);
+  const readChildSteerInstructions = vi.fn(() => ({ entries: [] }));
   const childWorkTranscripts = createChildWorkTranscriptModule({
     listChildWorkHistory,
     canReadSession: () => readable,
@@ -55,6 +57,7 @@ function fixture(
   const service = {
     canUserReadSession: () => readable,
     childWorkTranscripts,
+    readChildSteerInstructions,
   } as unknown as OrchestrationService;
   const app = createOrchestrationRoutes(service, {
     eventBus: { subscribe: () => () => {} },
@@ -64,9 +67,14 @@ function fixture(
   });
   return {
     listChildWorkHistory,
+    readChildSteerInstructions,
     request: (childId = TRANSCRIPT_AGENT_ID, query = '') =>
       app.request(
         `/sessions/${thread}/child-work/${encodeURIComponent(childId)}/transcript${query}`,
+      ),
+    requestInstructions: (childId = TRANSCRIPT_AGENT_ID) =>
+      app.request(
+        `/sessions/${thread}/child-work/${encodeURIComponent(childId)}/instructions`,
       ),
     revokeCaller: () => {
       current = false;
@@ -151,6 +159,55 @@ describe('#3163 GET /sessions/:threadId/child-work/:childId/transcript', () => {
     );
     await unavailable(await fixture(forged).request());
   });
+
+  test.each([
+    ['matching identity', THREAD, 'engine-subagent', 200],
+    ['foreign reporter', 'other-parent', 'engine-subagent', 404],
+    ['different producer', THREAD, 'station-delegate', 404],
+  ] as const)(
+    'snapshot member with %s gates transcript and instruction reads',
+    async (_label, reporterThreadId, producer, status) => {
+      const history: CanonicalRuntimeEvent[] = [
+        {
+          eventId: 'snapshot-member-identity',
+          provider: 'claude',
+          threadId: THREAD,
+          createdAt: '2026-09-23T02:00:00.000Z',
+          method: 'child-work.updated',
+          delta: {
+            kind: 'snapshot',
+            producer: 'engine-subagent',
+            reporterThreadId: THREAD,
+            running: [
+              {
+                producer,
+                reporterThreadId,
+                childId: TRANSCRIPT_AGENT_ID,
+                status: 'running',
+                transcript: {
+                  kind: 'claude-subagent',
+                  sessionId: TRANSCRIPT_SESSION_ID,
+                  agentId: TRANSCRIPT_AGENT_ID,
+                },
+              },
+            ],
+          },
+        },
+      ];
+      const f = fixture(history);
+      const responses = await Promise.all([
+        f.request(),
+        f.requestInstructions(),
+      ]);
+      expect(responses.map((response) => response.status)).toEqual([
+        status,
+        status,
+      ]);
+      expect(f.readChildSteerInstructions).toHaveBeenCalledTimes(
+        status === 200 ? 1 : 0,
+      );
+    },
+  );
 
   test('an unreadable session or a stale caller reads nothing', async () => {
     const session = fixture();

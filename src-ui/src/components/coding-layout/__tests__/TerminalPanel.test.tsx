@@ -21,28 +21,69 @@ import {
 import { MOBILE_MEDIA_QUERY } from '../../../hooks/useIsMobile';
 import { TerminalPanel } from '../TerminalPanel';
 
-const { fetchTerminalPort, credentialProvider, assertRawEgress, station } =
-  vi.hoisted(() => ({
-    fetchTerminalPort: vi.fn(),
-    assertRawEgress: vi.fn(),
-    credentialProvider: {
-      getCredential: (): string | undefined => undefined,
-      getProtocolVersion: (): number | undefined => undefined,
-    },
-    station: { apiBase: 'http://localhost' },
-  }));
+const { executeCodingCommand, store, FakeSession } = vi.hoisted(() => {
+  type Listener = {
+    output?(data: Uint8Array, sequence: number): void;
+    reset?(): void;
+    change?(session: unknown): void;
+  };
+  /** The renderer-facing session interface, driven by the test. */
+  class FakeSession {
+    static instances: FakeSession[] = [];
+    terminalId: string | undefined;
+    state = 'connecting';
+    status: string | undefined;
+    readOnly = false;
+    error: { code: string; message: string } | undefined;
+    listeners = new Set<Listener>();
+    write = vi.fn((_data: string) => this.state === 'ready');
+    resize = vi.fn();
+    cwd = vi.fn(async () => '/workspace/live');
+    close = vi.fn(async () => undefined);
+    detach = vi.fn(() => {
+      this.state = 'detached';
+    });
+    constructor(
+      readonly target: { projectId: string; bindingKey: string },
+      readonly intent: Record<string, unknown>,
+    ) {
+      this.terminalId = intent.terminalId as string | undefined;
+      FakeSession.instances.push(this);
+    }
+    subscribe(listener: Listener) {
+      this.listeners.add(listener);
+      return () => this.listeners.delete(listener);
+    }
+    emit(patch: Partial<FakeSession>) {
+      Object.assign(this, patch);
+      for (const listener of this.listeners) listener.change?.(this);
+    }
+    output(text: string, sequence = 1) {
+      for (const listener of this.listeners)
+        listener.output?.(new TextEncoder().encode(text), sequence);
+    }
+  }
+  const store = {
+    failure: undefined as unknown,
+    restart: vi.fn(),
+    open: vi.fn(
+      (target: FakeSession['target'], options: Record<string, unknown>) =>
+        new FakeSession(target, { kind: 'open', ...options }),
+    ),
+    attach: vi.fn(
+      (target: FakeSession['target'], terminalId: string) =>
+        new FakeSession(target, { kind: 'attach', terminalId }),
+    ),
+  };
+  return { executeCodingCommand: vi.fn(), store, FakeSession };
+});
 
-vi.mock('@kontourai/station-sdk', () => ({
-  assertClientRawEgressAllowed: assertRawEgress,
-  executeCodingCommand: vi.fn(),
-  fetchTerminalPort,
+vi.mock('@kontourai/station-sdk', () => ({ executeCodingCommand }));
+vi.mock('../terminalSessionStore', () => ({
+  useTerminalSessionStore: () => store,
 }));
 vi.mock('../../../contexts/ApiBaseContext', () => ({
-  useApiBase: () => ({
-    apiBase: station.apiBase,
-    connectionId: 'direct-1',
-    credentialProvider,
-  }),
+  useApiBase: () => ({ apiBase: 'http://localhost', connectionId: 'direct-1' }),
 }));
 vi.mock('../../../hooks/useIsMobile', async (original) => ({
   ...(await original<typeof import('../../../hooks/useIsMobile')>()),
@@ -59,6 +100,7 @@ const { FakeFitAddon, FakeTerminal } = vi.hoisted(() => {
     loadAddon = vi.fn();
     open = vi.fn();
     write = vi.fn();
+    reset = vi.fn();
     dispose = vi.fn();
     focus = vi.fn();
     dataListener: ((data: string) => void) | null = null;
@@ -82,6 +124,13 @@ const { FakeFitAddon, FakeTerminal } = vi.hoisted(() => {
     select(text: string) {
       this.selection = text;
       this.selectionListener?.();
+    }
+    written(): string {
+      return this.write.mock.calls
+        .map(([value]) =>
+          typeof value === 'string' ? value : new TextDecoder().decode(value),
+        )
+        .join('');
     }
   }
 
@@ -107,41 +156,6 @@ const originalScrollTo = Object.getOwnPropertyDescriptor(
 vi.mock('@xterm/xterm', () => ({ Terminal: FakeTerminal }));
 vi.mock('@xterm/addon-fit', () => ({ FitAddon: FakeFitAddon }));
 
-class FakeWebSocket {
-  static OPEN = 1;
-  static instances: FakeWebSocket[] = [];
-  readonly send = vi.fn((raw: string) => {
-    const message = JSON.parse(raw);
-    if (message.type !== 'cwd') return;
-    queueMicrotask(() => {
-      this.onmessage?.({
-        data: JSON.stringify({
-          type: 'cwd',
-          requestId: message.requestId,
-          cwd: FakeWebSocket.liveCwd,
-        }),
-      } as MessageEvent);
-    });
-  });
-  readonly close = vi.fn(() => {
-    this.readyState = 3;
-    this.onclose?.({ code: 1000 } as CloseEvent);
-  });
-  readyState = FakeWebSocket.OPEN;
-  onopen: (() => void) | null = null;
-  onmessage: ((event: MessageEvent) => void) | null = null;
-  onerror: (() => void) | null = null;
-  onclose: ((event: CloseEvent) => void) | null = null;
-  static liveCwd = '/workspace/live';
-
-  constructor(
-    readonly url: string,
-    readonly protocols?: string | string[],
-  ) {
-    FakeWebSocket.instances.push(this);
-  }
-}
-
 class FakeResizeObserver {
   static instances: FakeResizeObserver[] = [];
   constructor(readonly callback: () => void) {
@@ -151,32 +165,30 @@ class FakeResizeObserver {
   disconnect = vi.fn();
 }
 
+const target = { projectId: 'project-a-id', bindingKey: 'project' };
+const terminalId = '62b97fa1-b690-4d77-82b1-747dc86d3c11';
+
 beforeEach(() => {
-  assertRawEgress.mockReset().mockImplementation(() => undefined);
   Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
     configurable: true,
     value: vi.fn(),
   });
-  fetchTerminalPort.mockResolvedValue(4310);
-  FakeWebSocket.instances = [];
-  FakeWebSocket.liveCwd = '/workspace/live';
+  FakeSession.instances = [];
   FakeTerminal.instances = [];
   FakeFitAddon.instances = [];
   FakeFitAddon.dimensions = { cols: 80, rows: 24 };
   FakeResizeObserver.instances = [];
+  store.failure = undefined;
   activeChatsStore.removeChat('chat-a');
   chatDraftsStore.clear('chat-a');
   activeChatsStore.initChat('chat-a');
   navigationStore.setActiveChat('chat-a');
-  vi.stubGlobal('WebSocket', FakeWebSocket);
   vi.stubGlobal('ResizeObserver', FakeResizeObserver);
   vi.stubGlobal('matchMedia', () => ({ matches: false }));
 });
 
 afterEach(() => {
   cleanup();
-  station.apiBase = 'http://localhost';
-  credentialProvider.getCredential = () => undefined;
   activeChatsStore.removeChat('chat-a');
   chatDraftsStore.clear('chat-a');
   navigationStore.setActiveChat(null);
@@ -189,14 +201,18 @@ afterEach(() => {
       .scrollTo;
 });
 
-function renderTerminal() {
+function renderTerminal(
+  props: Partial<Parameters<typeof TerminalPanel>[0]> = {},
+) {
   return render(
     <NavigationProvider>
       <ActiveChatsProvider>
         <TerminalPanel
           projectSlug="project-a"
           workingDir="/workspace"
-          terminalId="terminal-one"
+          target={target}
+          terminalId={terminalId}
+          {...props}
         />
       </ActiveChatsProvider>
     </NavigationProvider>,
@@ -204,17 +220,10 @@ function renderTerminal() {
 }
 
 async function connectTerminal() {
-  await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
-  const socket = FakeWebSocket.instances[0]!;
-  socket.onopen?.();
-  socket.onmessage?.({
-    data: JSON.stringify({
-      type: 'snapshot',
-      sessionId: 'project-a:terminal-one',
-      history: '',
-    }),
-  } as MessageEvent);
-  return { socket, terminal: FakeTerminal.instances[0]! };
+  await waitFor(() => expect(FakeSession.instances).toHaveLength(1));
+  const session = FakeSession.instances[0]!;
+  act(() => session.emit({ state: 'ready', status: 'running' }));
+  return { session, terminal: FakeTerminal.instances[0]! };
 }
 
 // The glyph size follows the app's one mobile breakpoint, including its
@@ -230,168 +239,133 @@ test.each([
   expect(FakeTerminal.instances[0]?.options?.fontSize).toBe(fontSize);
 });
 
-test('renderer unmount detaches its WebSocket without sending a terminal close command', async () => {
+test('attaches an existing session by id and unmount detaches without closing it', async () => {
   const rendered = renderTerminal();
-
-  const { socket } = await connectTerminal();
-
+  const { session } = await connectTerminal();
+  expect(store.attach).toHaveBeenCalledWith(target, terminalId);
+  expect(store.open).not.toHaveBeenCalled();
   rendered.unmount();
+  expect(session.detach).toHaveBeenCalledTimes(1);
+  expect(session.close).not.toHaveBeenCalled();
+});
 
-  expect(socket.close).toHaveBeenCalledTimes(1);
-  expect(
-    socket.send.mock.calls.map(([message]) => JSON.parse(message as string)),
-  ).not.toContainEqual(
-    expect.objectContaining({
-      type: 'close',
-      sessionId: 'project-a:terminal-one',
+test('a new tab asks the server for a session and reports its id once', async () => {
+  const onOpened = vi.fn();
+  renderTerminal({
+    terminalId: undefined,
+    viewKey: 'term-1',
+    launch: { kind: 'agent', connectionId: 'claude', mode: 'code' },
+    onOpened,
+  });
+  await waitFor(() => expect(store.open).toHaveBeenCalledTimes(1));
+  // A program is named, never chosen: no executable, args or cwd leave here.
+  expect(store.open).toHaveBeenCalledWith(target, {
+    cols: 80,
+    rows: 24,
+    launch: { kind: 'agent', connectionId: 'claude', mode: 'code' },
+  });
+  const session = FakeSession.instances[0]!;
+  act(() => session.emit({ terminalId, state: 'replaying' }));
+  act(() => session.emit({ state: 'ready' }));
+  expect(onOpened).toHaveBeenCalledTimes(1);
+  expect(onOpened).toHaveBeenCalledWith(terminalId);
+});
+
+test('unowned saved history still yields a fresh shell', async () => {
+  renderTerminal({
+    terminalId: undefined,
+    viewKey: 'term-1700000000000',
+    legacyTerminalId: 'term-1700000000000',
+  });
+  await waitFor(() => expect(store.open).toHaveBeenCalledTimes(1));
+  expect(store.open.mock.calls[0]![1]).toMatchObject({
+    legacyTerminalId: 'term-1700000000000',
+  });
+  act(() =>
+    FakeSession.instances[0]!.emit({
+      state: 'failed',
+      error: { code: 'refused', message: 'Terminal access was refused.' },
     }),
+  );
+  await waitFor(() => expect(store.open).toHaveBeenCalledTimes(2));
+  expect(store.open.mock.calls[1]![1]).not.toHaveProperty('legacyTerminalId');
+  expect(screen.queryByText('Terminal access was refused.')).toBeNull();
+});
+
+test('writes session output and typed input through the store, and reports exit', async () => {
+  renderTerminal();
+  const { session, terminal } = await connectTerminal();
+  act(() => session.output('hello from the shell'));
+  expect(terminal.written()).toContain('hello from the shell');
+  act(() => terminal.dataListener?.('ls\r'));
+  expect(session.write).toHaveBeenCalledWith('ls\r');
+  act(() => session.emit({ status: 'exited' }));
+  expect(terminal.written()).toContain('[terminal exited]');
+  expect(screen.getByRole('alert').textContent).toContain(
+    'The shell has exited.',
   );
 });
 
-test('routine context updates keep the connected shell while a changed credential reconnects it', async () => {
+test('a dropped connection shows reconnecting and an explicit reconnect starts a new view of the same session', async () => {
   renderTerminal();
-  const { socket, terminal } = await connectTerminal();
-  act(() => navigationStore.setActiveChat('chat-a'));
-  expect(socket.close).not.toHaveBeenCalled();
-  expect(terminal.dispose).not.toHaveBeenCalled();
-  expect(FakeWebSocket.instances).toHaveLength(1);
-
-  credentialProvider.getCredential = () => 'changed-current-credential';
-  act(() => navigationStore.setActiveChat(null));
-  await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(2));
-  expect(socket.close).toHaveBeenCalledTimes(1);
-});
-
-test('retains terminal output after a lost connection and reconnects its identity without replaying typed commands', async () => {
-  renderTerminal();
-  const { socket, terminal } = await connectTerminal();
-  act(() => terminal.dataListener?.('echo once\r'));
-  act(() => {
-    socket.readyState = 3;
-    socket.onclose?.({ code: 1006 } as CloseEvent);
-  });
-  expect(screen.getByRole('alert').textContent).toMatch(/connection lost/i);
-  expect(screen.getByRole('application', { name: 'Terminal' })).toBeTruthy();
-  expect(terminal.dispose).not.toHaveBeenCalled();
+  const { session } = await connectTerminal();
+  act(() => session.emit({ state: 'reconnecting' }));
+  expect(screen.getByRole('alert').textContent).toMatch(/reconnecting/i);
+  act(() =>
+    session.emit({
+      state: 'failed',
+      error: { code: 'connection-lost', message: 'Terminal unavailable.' },
+    }),
+  );
   fireEvent.click(screen.getByRole('button', { name: 'Reconnect terminal' }));
-  await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(2));
-  const replacement = FakeWebSocket.instances[1]!;
-  act(() => replacement.onopen?.());
-  expect(replacement.send.mock.calls.map(([raw]) => JSON.parse(raw))).toEqual([
-    expect.objectContaining({
-      type: 'open',
-      projectSlug: 'project-a',
-      terminalId: 'terminal-one',
+  await waitFor(() => expect(store.attach).toHaveBeenCalledTimes(2));
+  expect(store.attach.mock.calls[1]).toEqual([target, terminalId]);
+  // Reattaching never replays typed input.
+  expect(FakeSession.instances[1]!.write).not.toHaveBeenCalled();
+});
+
+test('a missing PTY backend swaps to the command executor with the server reason', async () => {
+  renderTerminal();
+  const { session } = await connectTerminal();
+  act(() =>
+    session.emit({
+      state: 'failed',
+      error: {
+        code: 'pty-unavailable',
+        message: 'node-pty could not load on this host',
+      },
     }),
-  ]);
-  expect(
-    replacement.send.mock.calls.some(
-      ([raw]) => JSON.parse(raw).type === 'data',
-    ),
-  ).toBe(false);
-});
-
-test('ignores data and exit events for any session other than its own', async () => {
-  renderTerminal();
-  const { socket, terminal } = await connectTerminal();
-  const deliver = (message: Record<string, unknown>) =>
-    act(() =>
-      socket.onmessage?.({ data: JSON.stringify(message) } as MessageEvent),
-    );
-
-  deliver({
-    type: 'data',
-    sessionId: 'project-b:terminal-two',
-    data: 'foreign-shell-output',
-  });
-  deliver({
-    type: 'exited',
-    sessionId: 'project-b:terminal-two',
-    exitCode: 0,
-    signal: null,
-  });
-
-  expect(terminal.write).not.toHaveBeenCalledWith('foreign-shell-output');
-  expect(terminal.write).not.toHaveBeenCalledWith(
-    expect.stringContaining('[terminal exited]'),
   );
-  expect(screen.queryByText('The shell has exited.')).toBeNull();
-
-  // Positive control: the panel's own session still reaches the terminal.
-  deliver({
-    type: 'data',
-    sessionId: 'project-a:terminal-one',
-    data: 'own-shell-output',
-  });
-  expect(terminal.write).toHaveBeenCalledWith('own-shell-output');
-  deliver({
-    type: 'exited',
-    sessionId: 'project-a:terminal-one',
-    exitCode: 0,
-    signal: null,
-  });
-  expect(terminal.write).toHaveBeenCalledWith(
-    expect.stringContaining('[terminal exited]'),
-  );
-});
-
-test('does not query a terminal port or open a raw socket when route policy blocks egress', async () => {
-  assertRawEgress.mockImplementationOnce(() => {
-    throw new Error(
-      'Browser broker routes do not support direct terminal connections yet. Select a direct Station connection to use this feature.',
-    );
-  });
-
-  renderTerminal();
-
   expect((await screen.findByRole('alert')).textContent).toContain(
-    'Browser broker routes do not support direct terminal connections',
+    'node-pty could not load on this host',
   );
-  expect(fetchTerminalPort).not.toHaveBeenCalled();
-  expect(FakeWebSocket.instances).toHaveLength(0);
+  expect(screen.getByPlaceholderText('Type a command...')).toBeTruthy();
 });
 
-test('rechecks route binding after terminal port lookup before opening the socket', async () => {
-  let releasePort!: (port: number) => void;
-  fetchTerminalPort.mockImplementationOnce(
-    () => new Promise<number>((resolve) => (releasePort = resolve)),
-  );
-  assertRawEgress.mockImplementationOnce(() => undefined);
-  assertRawEgress.mockImplementationOnce(() => {
-    throw new Error(
-      'Browser broker routes do not support direct terminal connections yet. Select a direct Station connection to use this feature.',
-    );
-  });
-
+test('a broker route refusal is shown instead of a terminal', async () => {
   renderTerminal();
-  await waitFor(() => expect(fetchTerminalPort).toHaveBeenCalledTimes(1));
-  releasePort(4310);
-
+  await waitFor(() => expect(FakeSession.instances).toHaveLength(1));
+  act(() =>
+    FakeSession.instances[0]!.emit({
+      state: 'failed',
+      error: {
+        code: 'raw-egress-unavailable',
+        message:
+          'Terminals need a direct Station connection. Select a direct connection and try again.',
+      },
+    }),
+  );
   expect((await screen.findByRole('alert')).textContent).toContain(
-    'Browser broker routes do not support direct terminal connections',
+    'Terminals need a direct Station connection',
   );
-  expect(assertRawEgress).toHaveBeenCalledTimes(2);
-  expect(FakeWebSocket.instances).toHaveLength(0);
 });
 
-test('closes a socket selected before a route change without sending terminal open content', async () => {
-  assertRawEgress.mockImplementationOnce(() => undefined);
-  assertRawEgress.mockImplementationOnce(() => undefined);
-  assertRawEgress.mockImplementationOnce(() => {
-    throw new Error('The selected Station authority is no longer available.');
-  });
-  renderTerminal();
-  await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
-
-  const socket = FakeWebSocket.instances[0]!;
-  socket.onopen?.();
-
-  expect(socket.close).toHaveBeenCalled();
-  expect(
-    socket.send.mock.calls.some(
-      ([raw]) => JSON.parse(raw as string).type === 'open',
-    ),
-  ).toBe(false);
+test('an attach-only view without a session id never opens a shell', async () => {
+  renderTerminal({ terminalId: undefined, attachOnly: true });
+  expect((await screen.findByRole('alert')).textContent).toContain(
+    'This terminal session is unavailable.',
+  );
+  expect(store.open).not.toHaveBeenCalled();
 });
 
 test('scans one selection spanning two PTY reads without redacting the live terminal', async () => {
@@ -454,7 +428,7 @@ test('appends a fenced live-CWD selection to the real composer draft without dis
   activeChatsStore.updateChat('chat-a', { input: 'Keep this existing draft.' });
   chatDraftsStore.set('chat-a', 'Keep this existing draft.');
   renderTerminal();
-  const { socket, terminal } = await connectTerminal();
+  const { session, terminal } = await connectTerminal();
 
   await act(() => terminal.select('build failed'));
   fireEvent.click(screen.getByRole('button', { name: 'Send to chat' }));
@@ -470,9 +444,9 @@ test('appends a fenced live-CWD selection to the real composer draft without dis
   await waitFor(() => expect(chatDraftsStore.get('chat-a')).toBe(expected));
   expect(activeChatsStore.getSnapshot()['chat-a']?.input).toBe(expected);
   expect(dispatch).not.toHaveBeenCalled();
-  expect(
-    socket.send.mock.calls.map(([raw]) => JSON.parse(raw as string).type),
-  ).not.toContain('data');
+  // The working directory came from the session, and nothing was typed.
+  expect(session.cwd).toHaveBeenCalledTimes(1);
+  expect(session.write).not.toHaveBeenCalled();
 });
 
 test('copies the complete terminal selection', async () => {
@@ -487,26 +461,6 @@ test('copies the complete terminal selection', async () => {
   await waitFor(() =>
     expect(writeText).toHaveBeenCalledWith('copy exactly this'),
   );
-});
-
-test('sends a remote Station credential only in the first frame, never in the socket URL or subprotocols', async () => {
-  const credential = 'sentinel-station-credential-7f3a';
-  station.apiBase = 'https://station.example.test';
-  credentialProvider.getCredential = () => credential;
-  renderTerminal();
-
-  await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
-  const socket = FakeWebSocket.instances[0]!;
-  socket.onopen?.();
-
-  expect(socket.url).toBe('wss://station.example.test:4310');
-  expect(socket.url).not.toContain(credential);
-  expect(JSON.stringify(socket.protocols ?? null)).not.toContain(credential);
-  // The control: the credential did resolve, and went in-band.
-  expect(JSON.parse(socket.send.mock.calls[0]![0])).toMatchObject({
-    type: 'auth',
-    credential,
-  });
 });
 
 test('repaints the canvas from the terminal variables when the root theme changes', async () => {
@@ -552,7 +506,7 @@ test('repaints the canvas from the terminal variables when the root theme change
   }
 });
 
-test('coalesces resize bursts, skips unchanged cells, and cancels pending work on unmount', async () => {
+test('coalesces resize bursts into the latest size once per frame and cancels pending work on unmount', async () => {
   const frames = new Map<number, FrameRequestCallback>();
   let frameId = 0;
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
@@ -567,30 +521,25 @@ test('coalesces resize bursts, skips unchanged cells, and cancels pending work o
       pending.forEach((callback) => callback(0));
     });
   const mounted = renderTerminal();
-  const { socket } = await connectTerminal();
+  const { session } = await connectTerminal();
   const observer = FakeResizeObserver.instances.at(-1)!;
   const fit = FakeFitAddon.instances.at(-1)!.fit;
   flush();
   fit.mockClear();
-  socket.send.mockClear();
+  session.resize.mockClear();
   observer.callback();
   observer.callback();
   observer.callback();
   expect(frames.size).toBe(1);
   flush();
   expect(fit).not.toHaveBeenCalled();
-  expect(socket.send).not.toHaveBeenCalled();
   FakeFitAddon.dimensions = { cols: 90, rows: 30 };
   observer.callback();
   observer.callback();
   flush();
   expect(fit).toHaveBeenCalledTimes(1);
-  expect(socket.send.mock.calls.map(([raw]) => JSON.parse(raw))).toEqual([
-    { type: 'resize', sessionId: 'project-a:terminal-one', cols: 90, rows: 30 },
-  ]);
-  observer.callback();
-  flush();
-  expect(socket.send).toHaveBeenCalledTimes(1);
+  expect(session.resize).toHaveBeenLastCalledWith(90, 30);
+  expect(session.resize).toHaveBeenCalledTimes(2);
   observer.callback();
   mounted.unmount();
   expect(frames.size).toBe(0);

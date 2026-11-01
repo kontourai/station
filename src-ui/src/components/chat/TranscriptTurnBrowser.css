@@ -1,0 +1,30 @@
+.transcript-turn-browser {
+  min-inline-size: 0;
+}
+.transcript-turn-browser__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--k-space-1);
+}
+.transcript-turn-browser__list button {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-3);
+  inline-size: 100%;
+  min-block-size: 44px;
+  text-align: start;
+}
+.transcript-turn-browser__number {
+  flex: 0 0 3ch;
+  color: var(--k-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.transcript-turn-browser__prompt {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

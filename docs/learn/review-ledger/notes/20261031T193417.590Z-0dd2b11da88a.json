@@ -1,0 +1,7 @@
+{
+  "revision": "33fbf6f05820474b02728ed1b1f9d9a33ac488e4",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Follow-up after label consistency integration: both default and preview Read only group headings now read SESSION_STATUS_WORDS.elsewhere, matching the row and Station Control vocabulary. The turn/group and Project-placement claims remain unchanged; physical-device limits remain.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/mobile-activity-groups.ts"]}
+  ]
+}

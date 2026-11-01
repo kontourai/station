@@ -285,7 +285,7 @@ describe('station#1194: engineControlPlaneCapability (can the engine host statio
     expect(
       engineControlPlaneCapability(ENGINE_CAPABILITY_MATRICES.claude),
     ).toBe('full');
-    // Codex: session/wire with delivery 'url-token' (#1195) — capable even
+    // Codex: session/wire with private header delivery (#1195) — capable even
     // though its CHANNEL is the same 'wire' as ACP's; the delivery field is
     // what distinguishes them, exactly as in session-agent-resolution.ts.
     expect(engineControlPlaneCapability(ENGINE_CAPABILITY_MATRICES.codex)).toBe(
@@ -380,7 +380,7 @@ describe('station#1194: engineControlPlaneCapability (can the engine host statio
           state: 'session',
           channel: 'app-home',
           builtinStationControlDelivery: {
-            mechanism: 'url-token',
+            mechanism: 'http-header-token',
             basis: 'declared',
           },
         },
@@ -752,7 +752,7 @@ describe('station#1194: resolveBuiltinAgentEngineBinding (rebind + default-selec
           state: 'session',
           channel: 'wire',
           builtinStationControlDelivery: {
-            mechanism: 'url-token',
+            mechanism: 'http-header-token',
             basis: 'declared',
           },
         } as const,

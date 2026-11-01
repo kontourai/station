@@ -17,6 +17,27 @@ interface FinalizedTurnProvenance {
   answerEligible?: boolean;
 }
 
+/**
+ * #4400: the turn is over, so none of its calls is still executing. A call the
+ * live stream marked `running` that never received its own terminal event (an
+ * exec runner that timed out, a dropped frame) would otherwise keep reading
+ * "Running …" under a Done turn. It settles to `call` with no result, which
+ * is exactly what the durable projection records for an open call in a turn
+ * that is no longer live: "No result recorded".
+ */
+function settleOpenToolCalls<Part extends { type: string; state?: unknown }>(
+  parts: Part[] | undefined,
+): Part[] | undefined {
+  if (!parts?.some((part) => isOpenToolCall(part))) return parts;
+  return parts.map((part) =>
+    isOpenToolCall(part) ? { ...part, state: 'call' } : part,
+  );
+}
+
+function isOpenToolCall(part: { type: string; state?: unknown }): boolean {
+  return part.type === 'tool-invocation' && part.state === 'running';
+}
+
 export function finalizeAssistantTurn(
   threadId: string,
   fallbackText?: string,
@@ -125,9 +146,9 @@ export function finalizeAssistantTurn(
   // narrated text being discarded) so the failure text itself still isn't
   // rendered a second time.
   const committedContent = isDuplicateErrorText ? '' : content;
-  const committedContentParts = isDuplicateErrorText
-    ? nonTextParts
-    : streamingMessage?.contentParts;
+  const committedContentParts = settleOpenToolCalls(
+    isDuplicateErrorText ? nonTextParts : streamingMessage?.contentParts,
+  );
 
   // archive#1295: no normal write path stamped this before, so a healthy
   // chat's `latestChatTimestamp` reduced to 0 for every finalized assistant

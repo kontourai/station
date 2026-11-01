@@ -5098,7 +5098,7 @@ describe('#2324 a delegated task event carries a provider-triggered turn’s tri
 });
 
 describe('#225 a delegated task usage event keeps every canonical usage field', () => {
-  test('projects all ten TokenUsageUpdatedEvent usage fields and bounds the opaque tier', async () => {
+  test('projects canonical token counters and bounds the opaque tier', async () => {
     const { projectDelegatedTaskEvent } = await import(
       '../station-control-delegation.js'
     );
@@ -5111,6 +5111,7 @@ describe('#225 a delegated task usage event keeps every canonical usage field', 
       method: 'token-usage.updated',
       promptTokens: 1200,
       completionTokens: 300,
+      reasoningTokens: 120,
       totalTokens: 1500,
       cacheReadTokens: 900,
       cacheWriteTokens: 44785,
@@ -5138,6 +5139,7 @@ describe('#225 a delegated task usage event keeps every canonical usage field', 
       turnId: 'turn-1',
       promptTokens: 1200,
       completionTokens: 300,
+      reasoningTokens: 120,
       totalTokens: 1500,
       cacheReadTokens: 900,
       cacheWriteTokens: 44785,

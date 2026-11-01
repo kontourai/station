@@ -32,8 +32,11 @@ import {
   type CoreToSupervisorMessage,
   GENERATION_CAPABILITIES,
   type HandoffPhase,
+  isWorkloadEventMessage,
   MAX_LISTENER_SPARES,
   SUPERVISOR_ENV,
+  type WorkloadEventMessage,
+  type WorkloadRequest,
 } from '@kontourai/station-supervisor/protocol';
 
 /** Stable listeners the supervisor holds across generations. */
@@ -331,6 +334,17 @@ export class SupervisorLink implements ListenerLink {
   private shutdownHandler: (() => Promise<void> | void) | null = null;
   private disconnected = false;
   private drainRequest: DrainRequest | null = null;
+  /** Protocol 1.3: the supervisor granted `workloads` in `promote`. */
+  private workloadsGranted = false;
+  private nextWorkloadRequest = 1;
+  private readonly workloadRequests = new Map<
+    string,
+    { resolve(result: unknown): void; reject(error: Error): void }
+  >();
+  private readonly workloadListeners = new Set<
+    (event: WorkloadEventMessage) => void
+  >();
+  private workloadEvents: WorkloadEventMessage[] = [];
 
   constructor(options: SupervisorLinkOptions = {}) {
     this.proc = options.process ?? (process as SupervisorChannelProcess);
@@ -566,6 +580,81 @@ export class SupervisorLink implements ListenerLink {
     return () => this.outcomeListeners.delete(listener);
   }
 
+  /** Whether this generation runs its terminals as supervisor workloads. */
+  get workloads(): boolean {
+    return this.workloadsGranted && !this.disconnected;
+  }
+
+  /**
+   * Sends one workload request (protocol 1.3). Rejects with an Error whose
+   * `code` is the workload error code: `unavailable` when workloads were
+   * not granted or the supervisor is gone.
+   */
+  requestWorkload(request: WorkloadRequest): Promise<unknown> {
+    if (!this.workloads) {
+      return Promise.reject(
+        Object.assign(new Error('supervisor workloads are unavailable'), {
+          code: 'unavailable',
+        }),
+      );
+    }
+    const id = String(this.nextWorkloadRequest++);
+    return new Promise((resolve, reject) => {
+      this.workloadRequests.set(id, { resolve, reject });
+      if (!this.send({ type: 'workload.request', id, request })) {
+        this.workloadRequests.delete(id);
+        reject(
+          Object.assign(new Error('the supervisor channel is closed'), {
+            code: 'unavailable',
+          }),
+        );
+      }
+    });
+  }
+
+  /**
+   * Workload events, delivered a macrotask after they arrive: a reply and an
+   * event the supervisor sent after it can arrive in one turn, and the
+   * requester must see the reply (and subscribe) before the event.
+   */
+  onWorkloadEvent(listener: (event: WorkloadEventMessage) => void): () => void {
+    this.workloadListeners.add(listener);
+    return () => this.workloadListeners.delete(listener);
+  }
+
+  private onWorkloadResponse(message: Record<string, unknown>): void {
+    const id = typeof message.id === 'string' ? message.id : '';
+    const pending = this.workloadRequests.get(id);
+    if (!pending) return;
+    this.workloadRequests.delete(id);
+    if (message.ok === true) {
+      pending.resolve(message.result);
+      return;
+    }
+    pending.reject(
+      Object.assign(
+        new Error(
+          typeof message.message === 'string'
+            ? message.message
+            : 'workload request failed',
+        ),
+        { code: typeof message.code === 'string' ? message.code : 'failed' },
+      ),
+    );
+  }
+
+  private onWorkloadEventMessage(message: Record<string, unknown>): void {
+    if (!isWorkloadEventMessage(message)) return;
+    this.workloadEvents.push(message);
+    if (this.workloadEvents.length > 1) return;
+    setImmediate(() => {
+      const events = this.workloadEvents;
+      this.workloadEvents = [];
+      for (const event of events)
+        for (const listener of [...this.workloadListeners]) listener(event);
+    });
+  }
+
   // -------------------------------------------------------------------------
 
   private send(
@@ -695,7 +784,18 @@ export class SupervisorLink implements ListenerLink {
     }
     switch (message.type) {
       case 'promote':
+        if (this.expected === null && !this.parkSettled) {
+          this.workloadsGranted =
+            Array.isArray(message.capabilities) &&
+            message.capabilities.includes('workloads');
+        }
         this.onPromote(message.listeners);
+        return;
+      case 'workload.response':
+        this.onWorkloadResponse(message);
+        return;
+      case 'workload.event':
+        this.onWorkloadEventMessage(message);
         return;
       case 'listener.adopt':
         this.onAdopt(message.name, handle);
@@ -939,6 +1039,14 @@ export class SupervisorLink implements ListenerLink {
     if (this.disconnected) return;
     this.disconnected = true;
     this.log('supervisor IPC channel disconnected; shutting down');
+    for (const pending of this.workloadRequests.values()) {
+      pending.reject(
+        Object.assign(new Error('the supervisor channel closed'), {
+          code: 'unavailable',
+        }),
+      );
+    }
+    this.workloadRequests.clear();
     this.failPark(new Error('supervisor disconnected'));
     const handler = this.shutdownHandler;
     if (!handler) {
@@ -1021,6 +1129,16 @@ export function onHandoffOutcome(
   const link = installedLink;
   if (!(link instanceof SupervisorLink)) return () => {};
   return link.onHandoffOutcome(listener);
+}
+
+/**
+ * The supervisor's workload channel when it granted this generation
+ * `workloads` (protocol 1.3), so terminals run as supervisor workloads;
+ * otherwise null, and terminals stay in this process.
+ */
+export function supervisorWorkloadChannel(): SupervisorLink | null {
+  const link = installedLink;
+  return link instanceof SupervisorLink && link.workloads ? link : null;
 }
 
 /** The link every stable listener binds through. */

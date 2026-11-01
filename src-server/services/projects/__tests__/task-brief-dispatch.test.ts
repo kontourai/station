@@ -10,10 +10,16 @@
  * Codex and Station adapters do. What is asserted is the input the engine
  * adapter is actually handed for the first turn.
  */
-import { mkdirSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
-import { TASK_BRIEF_COMPOSED_METADATA_KEY } from '@kontourai/station-contracts/provider';
+import type { LearningReviewTaskContext } from '@kontourai/station-contracts/learning-review';
+import type { ProjectWorkingContext } from '@kontourai/station-contracts/project-working-configuration';
+import {
+  TASK_BRIEF_COMPOSED_METADATA_KEY,
+  TASK_LEARNING_CONTRIBUTIONS_METADATA_KEY,
+} from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import type { TaskRecordWrite } from '@kontourai/station-contracts/task-memory';
@@ -32,10 +38,15 @@ import { EventBus } from '../../orchestration/event-bus.js';
 import { EventStore } from '../../orchestration/event-store.js';
 import { OrchestrationService } from '../../orchestration/orchestration-service.js';
 import type { WorkItemObserver } from '../../work-item-providers/github-work-item-observer.js';
-import { TASK_BRIEF_QUOTE_RULE } from '../task-brief.js';
+import { ProjectWorkingConfigurationService } from '../project-working-configuration.js';
+import {
+  TASK_BRIEF_QUOTE_RULE,
+  TaskContextAdmissionError,
+} from '../task-brief.js';
 import {
   composeTaskBriefSource,
   createTaskBriefSource,
+  type TaskBriefSource,
 } from '../task-brief-source.js';
 import { composeTaskDispatcher } from '../task-dispatch-composition.js';
 import { TaskGraphService } from '../task-graph-service.js';
@@ -87,10 +98,20 @@ class RecordingAdapter implements ProviderAdapterShape {
       provider: this.provider,
       threadId: input.threadId,
       turnId,
+      invocationId: input.invocationId,
       createdAt: new Date().toISOString(),
       method: 'turn.started',
       prompt: input.displayInput ?? input.input,
     } as CanonicalRuntimeEvent);
+    this.events.push({
+      eventId: `evt-${input.threadId}-${turnId}-completed`,
+      provider: this.provider,
+      threadId: input.threadId,
+      turnId,
+      invocationId: input.invocationId,
+      createdAt: new Date().toISOString(),
+      method: 'turn.completed',
+    });
     return { threadId: input.threadId, turnId };
   });
 
@@ -228,6 +249,14 @@ describe('Task dispatch delivers the Task brief with the first turn', () => {
       taskId?: string;
       /** Who dispatches; the Station operator by default. */
       ownerUserId?: string;
+      workingConfiguration?: (
+        task: TaskRecord,
+        userId: string | undefined,
+      ) => Promise<ProjectWorkingContext>;
+      learningContext?: (
+        task: TaskRecord,
+        owner: string | undefined,
+      ) => Promise<LearningReviewTaskContext | undefined>;
     } = {},
   ) {
     const task = options.taskId
@@ -268,6 +297,12 @@ describe('Task dispatch delivers the Task brief with the first turn', () => {
             .kind,
         ).toBe('recorded');
     }
+    const bindSource = (source: TaskBriefSource) => {
+      service.bindMandatoryTaskContextVerifier((sessionId, digest) =>
+        source.assertMandatoryContextCurrent(sessionId, digest),
+      );
+      return source;
+    };
     const dispatcher = composeTaskDispatcher(graph, {
       orchestrationService: service,
       resolveAgentStart: fixtureAgentStartResolver(provider),
@@ -282,33 +317,39 @@ describe('Task dispatch delivers the Task brief with the first turn', () => {
         release: vi.fn(),
         status: vi.fn(),
       } as never,
-      taskBrief: composeTaskBriefSource({
-        taskGraph: graph,
-        eventStore,
-        sessionReadModel: service,
-        readAuthorityForUser: (userId) =>
-          sessionReadAuthorityFromRequest(userId, undefined, undefined),
-        // The Task names its Project by slug; claims are scoped by the
-        // Project's opaque id, as `stationControlSessionScope` writes them.
-        localProjectIdFor: (identity) =>
-          identity === 'brief-project' ? BRIEF_PROJECT_LOCAL_ID : undefined,
-        roomRuntime: () => ({
-          readTaskDocumentForBrief: async () => ({
-            kind: 'available',
-            revision: 'rev-7',
-            text: options.document ?? DOCUMENT,
-          }),
-        }),
-        workItemObserver: {
-          observeWorkItem:
-            options.observeWorkItem ??
-            (async () => {
-              throw new Error(
-                'this dispatch was not expected to read the tracker',
-              );
+      taskBrief: bindSource(
+        composeTaskBriefSource({
+          ...(options.workingConfiguration
+            ? { workingConfiguration: options.workingConfiguration }
+            : {}),
+          taskGraph: graph,
+          learningContext: options.learningContext,
+          eventStore,
+          sessionReadModel: service,
+          readAuthorityForUser: (userId) =>
+            sessionReadAuthorityFromRequest(userId, undefined, undefined),
+          // The Task names its Project by slug; claims are scoped by the
+          // Project's opaque id, as `stationControlSessionScope` writes them.
+          localProjectIdFor: (identity) =>
+            identity === 'brief-project' ? BRIEF_PROJECT_LOCAL_ID : undefined,
+          roomRuntime: () => ({
+            readTaskDocumentForBrief: async () => ({
+              kind: 'available',
+              revision: 'rev-7',
+              text: options.document ?? DOCUMENT,
             }),
-        },
-      }),
+          }),
+          workItemObserver: {
+            observeWorkItem:
+              options.observeWorkItem ??
+              (async () => {
+                throw new Error(
+                  'this dispatch was not expected to read the tracker',
+                );
+              }),
+          },
+        }),
+      ),
     });
     const outcome = await dispatcher.dispatch(task.id, {
       agentId: FIXTURE_TASK_AGENT,
@@ -325,6 +366,73 @@ describe('Task dispatch delivers the Task brief with the first turn', () => {
     );
     return { task, sessionId };
   }
+
+  test('approved learning reaches actual first input and canonical receipt, while public contribution metadata never substitutes its own refs', async () => {
+    const own = {
+      authority: 'station',
+      kind: 'project-guidance',
+      id: 'approved-guidance',
+      revision: 'revision-1',
+    };
+    const forged = { ...own, id: 'forged-guidance' };
+    const { sessionId } = await dispatch('station-agent', {
+      learningContext: async () => ({
+        text: '> Prefer bounded focused checks.',
+        contributions: [own],
+      }),
+    });
+    const adapter = adapters.find((item) => item.provider === 'station-agent')!;
+    await service.dispatch({
+      type: 'sendTurn',
+      input: {
+        threadId: sessionId,
+        input: 'Apply the reviewed guidance.',
+        metadata: { [TASK_LEARNING_CONTRIBUTIONS_METADATA_KEY]: [forged] },
+      },
+    });
+    const actual = adapter.sendTurn.mock.calls[0]![0];
+    expect(actual.input).toContain('> Prefer bounded focused checks.');
+    expect(actual.metadata?.[TASK_LEARNING_CONTRIBUTIONS_METADATA_KEY]).toEqual(
+      [own],
+    );
+    await waitFor(() =>
+      eventStore
+        .listEvents(sessionId)
+        .some((event) => event.method === 'turn.completed'),
+    );
+    const observed = eventStore.readRecentTaskLearningContributions([
+      'brief-project',
+    ]);
+    expect(observed).toEqual([
+      expect.objectContaining({
+        sessionId,
+        turnId: expect.any(String),
+        contributions: [own],
+      }),
+    ]);
+    await service.dispatch({
+      type: 'sendTurn',
+      input: {
+        threadId: sessionId,
+        input: 'Next step.',
+        metadata: { [TASK_LEARNING_CONTRIBUTIONS_METADATA_KEY]: [forged] },
+      },
+    });
+    expect(
+      adapter.sendTurn.mock.calls[1]![0].metadata?.[
+        TASK_LEARNING_CONTRIBUTIONS_METADATA_KEY
+      ],
+    ).toBeUndefined();
+    await waitFor(
+      () =>
+        eventStore
+          .listEvents(sessionId)
+          .filter((event) => event.method === 'turn.completed').length === 2,
+    );
+    expect(
+      eventStore.readRecentTaskLearningContributions(['brief-project']),
+    ).toEqual(observed);
+  });
 
   test.each(['claude', 'codex', 'station-agent'] as const)(
     '%s: the first turn the engine receives carries the brief, once',
@@ -369,7 +477,7 @@ describe('Task dispatch delivers the Task brief with the first turn', () => {
       await waitFor(() =>
         eventStore
           .listEvents(sessionId)
-          .some((event) => event.method === 'turn.started'),
+          .some((event) => event.method === 'turn.completed'),
       );
       await service.dispatch({
         type: 'sendTurn',
@@ -382,6 +490,95 @@ describe('Task dispatch delivers the Task brief with the first turn', () => {
       ).toBeUndefined();
     },
   );
+  test('a reviewed Project context revoked after Session start refuses the first model turn instead of dropping mandatory context', async () => {
+    let allowed = true;
+    const workingConfiguration = async (): Promise<ProjectWorkingContext> => {
+      if (!allowed)
+        throw new TaskContextAdmissionError('Project context was revoked.');
+      return {
+        state: 'reviewed',
+        revision: 1,
+        sourceDigest: 'a'.repeat(64),
+        text: '> Retained reviewed rule.',
+        omittedRules: 0,
+      };
+    };
+    const { sessionId } = await dispatch('claude', { workingConfiguration });
+    allowed = false;
+    await expect(
+      service.dispatch({
+        type: 'sendTurn',
+        input: { threadId: sessionId, input: 'Start on the source.' },
+      }),
+    ).rejects.toThrow(/context|revoked/i);
+    expect(
+      adapters.find((adapter) => adapter.provider === 'claude')!.sendTurn,
+    ).not.toHaveBeenCalled();
+  });
+
+  test('a fresh Task execution delivers reviewed Project rules, acceptance and lazy evidence with the existing memory brief at the actual engine boundary', async () => {
+    writeFileSync(join(tmp, 'AGENTS.md'), 'Keep intentional edits.');
+    const configuration = new ProjectWorkingConfigurationService(
+      tmp,
+      async () => ({ projectId: BRIEF_PROJECT_LOCAL_ID, cwd: tmp }),
+    );
+    const discovered = await configuration.discover(
+      'brief-project',
+      () => true,
+    );
+    await configuration.apply(
+      'brief-project',
+      {
+        expectedProjectId: BRIEF_PROJECT_LOCAL_ID,
+        expectedRevision: 0,
+        sourceDigest: discovered.sourceDigest,
+        operationId: randomUUID(),
+        draft: {
+          ...discovered.suggested,
+          completionCriteria: 'Independent review.',
+          evidencePointers: ['docs/work.md'],
+        },
+      },
+      'human:local:operator',
+      () => true,
+    );
+    const workingConfiguration = vi.fn(
+      async (
+        _task: TaskRecord,
+        userId: string | undefined,
+      ): Promise<ProjectWorkingContext> => {
+        expect(userId).toBe('human:local:operator');
+        return configuration.forTask(
+          'brief-project',
+          () => userId === 'human:local:operator',
+        );
+      },
+    );
+    const { task, sessionId } = await dispatch('station-agent', {
+      workingConfiguration,
+    });
+    await service.dispatch({
+      type: 'sendTurn',
+      input: {
+        threadId: sessionId,
+        input: 'Resume the Task from its current state.',
+      },
+    });
+    const first = adapters.find(
+      (adapter) => adapter.provider === 'station-agent',
+    )!.sendTurn.mock.calls[0]![0];
+    expect(workingConfiguration).toHaveBeenCalledWith(
+      expect.objectContaining({ id: task.id }),
+      'human:local:operator',
+    );
+    expect(first.ambientContext).toContain('> Keep intentional edits.');
+    expect(first.ambientContext).toContain('> Independent review.');
+    expect(first.ambientContext).toContain('> docs/work.md');
+    expect(first.ambientContext).toContain('Omitted rules: 0');
+    expect(first.ambientContext).toContain(`> ${SUMMARY}`);
+    expect(first.ambientContext).toContain('`tracker-reread`');
+    expect(first.ambientContext!.length).toBeLessThanOrEqual(16000);
+  });
 
   test('a tracker read that does not observe the item is one line, and never fails the dispatch', async () => {
     const observe = vi.fn<WorkItemObserver['observeWorkItem']>(async () => ({

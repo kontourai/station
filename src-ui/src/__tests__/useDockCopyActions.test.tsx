@@ -92,7 +92,7 @@ describe('useDockCopyActions', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Copy project path' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Copy folder path' }));
 
     await waitFor(() =>
       expect(writeText).toHaveBeenCalledWith(
@@ -124,7 +124,7 @@ describe('useDockCopyActions', () => {
 
   test('omits a row it has no value for rather than offering a copy of nothing', () => {
     render(<Probe conversationId={null} workingDirectory="/tmp/alpha" />);
-    expect(rows()).toEqual(['Copy project path']);
+    expect(rows()).toEqual(['Copy folder path']);
   });
 
   test('omits the path row when the session resolved no directory', () => {

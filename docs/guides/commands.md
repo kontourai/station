@@ -26,6 +26,14 @@ This guide describes Station's chat-client path. Sending a slash-prefixed
 string directly through the Session API does not invoke these UI handlers.
 See [the ACP guide](acp.md) for engine discovery and its autocomplete limits.
 
+## Refresh or compact context
+
+The context-compaction preview offers `/compact` when Station owns compaction.
+Declared native and ACP commands keep their precedence. Task-bound work refreshes
+its bounded Task state without a summary model; interactive summaries are a
+separate model effect. See [bounded agent work](agent-efficiency.md#compact-without-rewriting-history)
+for safe-boundary, automatic-policy and unknown-usage limits.
+
 ## Example Agent Configuration
 
 The `commands` field belongs to the [Agent specification](agent-configuration.md).

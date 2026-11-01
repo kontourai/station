@@ -274,6 +274,20 @@ export {
   listTaskOutputs,
   listTaskOutputs as fetchTaskOutputs,
 } from './client/task-outputs';
+export type {
+  TerminalSession,
+  TerminalSessionErrorCode,
+  TerminalSessionListener,
+  TerminalSessionRecord,
+  TerminalSessionState,
+  TerminalSessionStatus,
+  TerminalSessionStoreOptions,
+  TerminalSessionTarget,
+} from './client/terminal-session-store';
+export {
+  TerminalSessionError,
+  TerminalSessionStore,
+} from './client/terminal-session-store';
 export { setClientOriginResolver } from './client-origin';
 export type {
   AutoSelectItem,
@@ -954,6 +968,7 @@ export {
   useBulkApproveProposedChangesMutation,
   useBulkRejectProposedChangesMutation,
   useCheckACPConnectionMutation,
+  useChildWorkInstructionsQuery,
   useChildWorkTranscriptQuery,
   useClearAppHomeProfileMutation,
   useClearFeedbackAnalysisMutation,
@@ -1232,6 +1247,7 @@ export {
   useStationPeopleQuery,
   useStationUsageQuery,
   useStatsQuery,
+  useSteerChildWorkMutation,
   useStopProviderTaskMutation,
   useSurveyFlowReviewsQuery,
   useSyncKnowledgeGraphNeo4jMutation,

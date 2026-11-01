@@ -32,7 +32,7 @@ the current file bytes and are not retained published pages.
 
 ## Images saved on the host
 
-With the **Chat images from the host** Feature Preview on (**Settings →
+With the **Chat images from the host** Feature Preview on by default (**Settings →
 Advanced → Feature previews**), a Markdown image in a reply whose address is an
 absolute path on the Station host, or a `file:` URL, is shown on every device,
 including the phone app, without a Project. When the reply finishes, Station

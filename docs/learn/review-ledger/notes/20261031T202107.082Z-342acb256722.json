@@ -1,0 +1,7 @@
+{
+  "revision": "292bb328da15806ce17991a164555e411ee3c2f2",
+
+  "notes": [
+    {"path":"tests/AGENTS.md","note":"Reviewed testing guide links and fixture evidence requirements; shard coverage change does not alter browser fixture scope.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

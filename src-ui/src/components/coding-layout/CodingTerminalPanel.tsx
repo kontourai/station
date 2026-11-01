@@ -29,7 +29,9 @@ export function CodingTerminalPanel({
   onToggleTabMode,
   canTogglePTY,
   onOpenNewTerminal,
+  onTerminalOpened,
   projectSlug,
+  projectId,
   workingDir,
 }: {
   id?: string;
@@ -56,7 +58,11 @@ export function CodingTerminalPanel({
   onToggleTabMode: (id: string) => void;
   canTogglePTY: (tab: TerminalTab) => boolean;
   onOpenNewTerminal: () => void;
+  /** A tab's new terminal was accepted under this server session id. */
+  onTerminalOpened?: (tabId: string, terminalId: string) => void;
   projectSlug: string;
+  /** Absent while the Project is loading; terminals wait for it. */
+  projectId?: string;
   workingDir: string;
 }) {
   const moveFocus = (
@@ -290,9 +296,24 @@ export function CodingTerminalPanel({
                 <TerminalPanel
                   projectSlug={projectSlug}
                   workingDir={workingDir}
-                  terminalId={tab.id}
-                  shell={tab.shell}
-                  shellArgs={tab.shellArgs}
+                  target={
+                    projectId ? { projectId, bindingKey: 'project' } : undefined
+                  }
+                  viewKey={tab.id}
+                  terminalId={tab.terminalId}
+                  legacyTerminalId={tab.legacyTerminalId}
+                  launch={
+                    tab.type === 'agent' && tab.connectionId
+                      ? {
+                          kind: 'agent',
+                          connectionId: tab.connectionId,
+                          mode: tab.agentMode || tab.agentSlug || '',
+                        }
+                      : undefined
+                  }
+                  onOpened={(terminalId) =>
+                    onTerminalOpened?.(tab.id, terminalId)
+                  }
                   isActive={tab.id === activeTabId}
                 />
               )}

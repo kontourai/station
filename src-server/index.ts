@@ -120,6 +120,7 @@ async function main() {
   }
   const processLifecycle = createRuntimeProcessLifecycle();
   processLifecycle.installExitObserver();
+  processLifecycle.observeGenerationStart();
   // A killed or crashed process never runs its own temp cleanup, so reclaim
   // anything older than a day before doing anything else. Best-effort: a
   // failure here must never block boot.

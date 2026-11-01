@@ -1,0 +1,11 @@
+{
+  "revision": "51d64db2faf03e08e2889f5431ddc3b2d2e2b013",
+
+  "notes": [
+    {"path":"docs/user/settings.md","note":"Reviewed the sole Settings input change: replace the relative operator-guide link with its exact absolute GitHub URL because the guide is not admitted to public Pages. Target section, preview label/default-off/cost and retained-maintenance semantics are unchanged. Public documentation hygiene now passes; no guide was implicitly published and no runtime/source/capture bytes changed.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"Reviewed the sole Settings input change: replace the relative operator-guide link with its exact absolute GitHub URL because the guide is not admitted to public Pages. Target section, preview label/default-off/cost and retained-maintenance semantics are unchanged. Public documentation hygiene now passes; no guide was implicitly published and no runtime/source/capture bytes changed.","inputs":["docs/guides/agent-efficiency.md","docs/user/settings.md"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Reviewed the sole Settings input change: replace the relative operator-guide link with its exact absolute GitHub URL because the guide is not admitted to public Pages. Target section, preview label/default-off/cost and retained-maintenance semantics are unchanged. Public documentation hygiene now passes; no guide was implicitly published and no runtime/source/capture bytes changed.","inputs":["docs/guides/feature-previews.md","docs/user/settings.md"]}
+  ]
+}

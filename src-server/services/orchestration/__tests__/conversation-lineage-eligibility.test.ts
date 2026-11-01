@@ -34,6 +34,7 @@ function detail(
 function emptyStartContextStore(): Pick<
   EventStore,
   | 'conversationStartContext'
+  | 'conversationContextBoundaryForSuccessor'
   | 'conversationForSession'
   | 'readSessionInventoryHighWater'
   | 'reserveConversationStartContext'
@@ -41,6 +42,7 @@ function emptyStartContextStore(): Pick<
 > {
   return {
     conversationStartContext: () => undefined,
+    conversationContextBoundaryForSuccessor: () => undefined,
     conversationForSession: (sessionId) => ({
       conversationId: 'conversation-policy',
       sessionId,

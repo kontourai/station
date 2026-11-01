@@ -109,6 +109,17 @@
   color: var(--text-tertiary);
 }
 
+.command-palette__option-shortcut {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  border: 1px solid var(--k-line);
+  border-radius: 4px;
+  background: var(--k-panel-raised);
+  color: var(--k-text-muted);
+  font-family: var(--k-font-mono);
+  font-size: var(--k-text-xs);
+}
+
 .command-palette__pane-notice {
   display: grid;
   gap: 4px;

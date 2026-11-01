@@ -10,6 +10,7 @@ import type {
   EngineId,
   ProviderSession,
 } from '@kontourai/station-contracts/provider';
+import { RESOURCE_ENGINE_START_CAPACITY_CODE } from '@kontourai/station-contracts/provider-failure';
 import { isKnownFullAccessAcpModeId } from '../../providers/adapters/acp-session-mode.js';
 import {
   type FullAccessGrant,
@@ -45,6 +46,8 @@ type MonitorTaskDispatchIntent = Readonly<{
   maxTokens: number;
   /** Arms the private monitor observer before an engine can start this Task. */
   onSessionReserved?: (input: { taskId: string; sessionId: string }) => void;
+  /** Accepted readiness/capacity; runs immediately before the provider start. */
+  beforeProviderStart?: (sessionId: string) => void;
   /** Removes an observer whose Task dispatch never acquired a session. */
   onSessionAbandoned?: (sessionId: string) => void;
 }>;
@@ -485,6 +488,12 @@ class TaskDispatcherImplementation implements TaskDispatcher {
           retryable: true,
         };
       }
+      if (startRefused && error.code === RESOURCE_ENGINE_START_CAPACITY_CODE)
+        return {
+          kind: 'unavailable',
+          reason: errorMessage(error),
+          retryable: true,
+        };
       return {
         kind: blocked ? 'contended' : 'failed',
         reason: errorMessage(error),
@@ -555,7 +564,10 @@ class TaskDispatcherImplementation implements TaskDispatcher {
  * restores the Task instead of recording an indeterminate start.
  */
 export class TaskDispatchStartRefusedError extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    readonly code?: string,
+  ) {
     super(message);
     this.name = 'TaskDispatchStartRefusedError';
   }

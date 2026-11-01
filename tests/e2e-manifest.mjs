@@ -1751,7 +1751,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      "P1-G5 packaged proof for managed, connected Claude/Codex, ACP, conversation, agent, and project switching. kontourai/station#793 adds desktop-anchored-popover and mobile-edge-sheet coverage for the chat-dock project switcher (ChatDockProjectSwitcherSheet), reusing this spec's Alpha/Beta project fixtures.",
+      'P1-G5 packaged proof for managed, connected Claude/Codex, ACP, conversation, agent, and project switching. The October 30 header decision is covered through the desktop start-composer Project chooser and active-chat binding preservation. At 320/390/412px, the empty-dock Projects sheet retains workspace navigation and hold hints, while active chats retain Inbox/New/Chat actions and choose future Projects only in the start composer. These reuse the Alpha/Beta fixtures.',
     exceptions: [],
   },
   {
@@ -1911,6 +1911,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Real isolated Station and synthetic one-host operator/guest browsers prove the invited-admin People and access journey: admin inspection, manual single-use invitation creation and cancellation, read-only Device explanation after an operator rescope, read+operate restore, and honest self-demotion. This is diagnostic one-host evidence, not two-human, two-machine, provider, mail, model, or native acceptance.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/member-passkeys-live.spec.ts',
+    bucket: 'smoke-live',
+    surface: 'Member passkey acceptance',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real isolated Station on a localhost authentication origin and a Chromium CDP virtual authenticator prove invited passkey-only registration and acceptance, passkey sign-in with no password sent, refusal after the operator disables the account, and single-use operator recovery onto a replacement authenticator. A virtual authenticator is not a platform authenticator, synced passkey, or native app.',
     exceptions: [],
   },
   {

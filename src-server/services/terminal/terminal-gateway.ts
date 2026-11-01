@@ -1,17 +1,21 @@
 import type { IncomingMessage, Server } from 'node:http';
 import type { Socket } from 'node:net';
-import { TERMINAL_SOCKET_PATH } from '@kontourai/station-contracts/terminal-transport';
-import { WebSocket, WebSocketServer } from 'ws';
-import type { ListenerLink } from '../../runtime/bootstrap/supervisor-link.js';
-import { RuntimeAuthFailureLimiter } from '../../security/runtime-request-security.js';
 import {
-  authenticatedWebSocketAck,
-  decodeWebSocketAuthFrame,
-  WEBSOCKET_AUTH_CLOSE,
-} from '../../security/websocket-auth.js';
+  TERMINAL_CLOSE,
+  TERMINAL_SOCKET_PATH,
+  TERMINAL_SOCKET_PROTOCOL,
+  TERMINAL_TICKET_PROTOCOL_PREFIX,
+} from '@kontourai/station-contracts/terminal-transport';
+import { type WebSocket, WebSocketServer } from 'ws';
+import type { ListenerLink } from '../../runtime/bootstrap/supervisor-link.js';
+import { authenticatedWebSocketAck } from '../../security/websocket-auth.js';
 import { createLogger } from '../../utils/logger.js';
-import { TerminalChannelConnection } from './terminal-channel-connection.js';
+import {
+  closeTerminalSocket,
+  TerminalChannelConnection,
+} from './terminal-channel-connection.js';
 import type { TerminalSessions } from './terminal-sessions.js';
+import type { TerminalTickets } from './terminal-tickets.js';
 
 const logger = createLogger({ name: 'terminal-gateway' });
 const gateways = new WeakMap<object, TerminalGateway<Request>>();
@@ -29,28 +33,86 @@ export function terminalGatewayFor(
   return gateways.get(app);
 }
 
+export interface TerminalGatewayLimits {
+  /** Authenticated sockets across every identity. */
+  connections: number;
+  /** Sockets one identity (a credential or device) may hold. */
+  perIdentity: number;
+  /** Slots only an identity marked `reserved` (the operator in person) may use. */
+  reserved: number;
+  /** A socket is closed with {@link TERMINAL_CLOSE.lifetime} after this long. */
+  maxLifetimeMs: number;
+  /** Protocol ping interval; a peer that misses one pong is terminated. */
+  heartbeatMs: number;
+}
+
+const DEFAULT_LIMITS: TerminalGatewayLimits = {
+  connections: 64,
+  perIdentity: 8,
+  reserved: 8,
+  maxLifetimeMs: 60 * 60 * 1000,
+  heartbeatMs: 15_000,
+};
+
+/** Reads the offered subprotocols: every ticket, and whether the version is offered. */
+function offered(request: IncomingMessage): {
+  tickets: string[];
+  versioned: boolean;
+} {
+  const header = request.headers['sec-websocket-protocol'];
+  const values =
+    typeof header === 'string'
+      ? header.split(',').map((value) => value.trim())
+      : [];
+  return {
+    tickets: values
+      .filter((value) => value.startsWith(TERMINAL_TICKET_PROTOCOL_PREFIX))
+      .map((value) => value.slice(TERMINAL_TICKET_PROTOCOL_PREFIX.length)),
+    versioned: values.includes(TERMINAL_SOCKET_PROTOCOL),
+  };
+}
+
+/**
+ * The terminal socket on the main API listener. Admission happens before the
+ * upgrade: a request must redeem a single-use ticket that an authenticated
+ * HTTP request minted (`TerminalTickets`). An unauthenticated peer therefore
+ * never holds a socket, and no admission state is keyed by network address,
+ * so a relay, proxy or tailnet address shared by several people cannot be
+ * locked out by one of them. Capacity is shared fairly per identity, with
+ * slots reserved for the operator in person.
+ */
 export class TerminalGateway<Principal> {
   private wss = new WebSocketServer({
     noServer: true,
     maxPayload: 64 * 1024 + 13,
     perMessageDeflate: false,
+    // Never echo the ticket: select only the version subprotocol.
+    handleProtocols: (protocols) =>
+      protocols.has(TERMINAL_SOCKET_PROTOCOL)
+        ? TERMINAL_SOCKET_PROTOCOL
+        : false,
   });
-  private connections = new Set<TerminalChannelConnection<Principal>>();
-  private limiter = new RuntimeAuthFailureLimiter();
-  private pendingPeers = new Map<string, number>();
-  private pendingSockets = new Set<WebSocket>();
+  private connections = new Map<
+    TerminalChannelConnection<Principal>,
+    { identity: string; reserved: boolean }
+  >();
+  /** Whether each socket answered the previous ping. */
+  private alive = new Map<WebSocket, boolean>();
+  private readonly limits: TerminalGatewayLimits;
+  private heartbeat?: ReturnType<typeof setInterval>;
   private unmount?: () => void;
 
   constructor(
     private options: {
       sessions: TerminalSessions<Principal>;
-      allowedOrigins: readonly string[];
-      authenticate: (
-        credential: string,
-        request: IncomingMessage,
-      ) => Promise<Principal | undefined>;
+      tickets: TerminalTickets<Principal>;
+      /** True for an identity that may use the reserved operator slots. */
+      reserved: (principal: Principal) => boolean;
+      limits?: Partial<TerminalGatewayLimits>;
     },
-  ) {}
+  ) {
+    this.limits = { ...DEFAULT_LIMITS, ...options.limits };
+  }
 
   mount(server: Server, link: Pick<ListenerLink, 'upgraded'>): void {
     const upgrade = (
@@ -62,119 +124,119 @@ export class TerminalGateway<Principal> {
         socket.end('HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n');
         return;
       }
-      if (
-        [request.headers.origin, request.headers['sec-websocket-origin']].some(
-          (origin) =>
-            origin !== undefined &&
-            (typeof origin !== 'string' ||
-              !this.options.allowedOrigins.includes(origin)),
-        )
-      ) {
-        socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
+      const { tickets, versioned } = offered(request);
+      // Every presented ticket is consumed, whatever happens next: a ticket
+      // seen once is never admitted later.
+      const redeemed = tickets.map((ticket) =>
+        this.options.tickets.redeem(ticket),
+      );
+      const admitted =
+        versioned && redeemed.length === 1 ? redeemed[0] : undefined;
+      if (!admitted) {
+        socket.end('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
         return;
       }
-      const peer = request.socket.remoteAddress ?? '<absent>';
-      if (
-        this.connections.size >= 64 ||
-        this.pendingSockets.size >= 32 ||
-        (this.pendingPeers.get(peer) ?? 0) >= 8 ||
-        this.limiter.retryAfterSeconds(peer) !== undefined
-      ) {
+      const reserved = this.options.reserved(admitted.principal);
+      if (!this.hasCapacity(admitted.identity, reserved)) {
         socket.end(
           'HTTP/1.1 429 Too Many Requests\r\nConnection: close\r\n\r\n',
         );
         return;
       }
       this.wss.handleUpgrade(request, socket, head, (ws) => {
-        this.wss.emit('connection', ws, request);
         link.upgraded(request.socket);
-        this.authenticate(ws, request, peer);
+        this.accept(ws, admitted.principal, admitted.identity, reserved);
       });
     };
     server.on('upgrade', upgrade);
+    this.heartbeat = setInterval(() => this.ping(), this.limits.heartbeatMs);
+    this.heartbeat.unref?.();
     this.unmount = () => server.off('upgrade', upgrade);
   }
 
   stop(): void {
     this.unmount?.();
-    for (const connection of this.connections) connection.stop();
+    clearInterval(this.heartbeat);
+    for (const connection of this.connections.keys()) connection.stop();
     this.connections.clear();
-    for (const ws of this.wss.clients) ws.terminate();
+    for (const ws of this.alive.keys()) ws.terminate();
+    this.alive.clear();
     this.wss.close();
   }
 
-  private authenticate(
+  private hasCapacity(identity: string, reserved: boolean): boolean {
+    let total = 0;
+    let unreserved = 0;
+    let held = 0;
+    for (const connection of this.connections.values()) {
+      ++total;
+      if (!connection.reserved) ++unreserved;
+      if (connection.identity === identity) ++held;
+    }
+    return (
+      total < this.limits.connections &&
+      held < this.limits.perIdentity &&
+      (reserved || unreserved < this.limits.connections - this.limits.reserved)
+    );
+  }
+
+  private accept(
     ws: WebSocket,
-    request: IncomingMessage,
-    peer: string,
+    principal: Principal,
+    identity: string,
+    reserved: boolean,
   ): void {
-    this.pendingPeers.set(peer, (this.pendingPeers.get(peer) ?? 0) + 1);
-    this.pendingSockets.add(ws);
-    let pending = true;
-    let checking = false;
-    const release = () => {
-      if (!pending) return;
-      pending = false;
-      this.pendingSockets.delete(ws);
-      clearTimeout(timeout);
-      const count = (this.pendingPeers.get(peer) ?? 1) - 1;
-      if (count) this.pendingPeers.set(peer, count);
-      else this.pendingPeers.delete(peer);
-    };
-    const timeout = setTimeout(() => {
-      this.limiter.recordFailure(peer);
-      release();
-      ws.close(...WEBSOCKET_AUTH_CLOSE.timeout);
-      const terminate = setTimeout(() => ws.terminate(), 100);
-      terminate.unref();
-      ws.once('close', () => clearTimeout(terminate));
-    }, 5000);
-    ws.once('close', release);
-    ws.once('error', release);
+    // Capacity was checked before the upgrade; a concurrent upgrade may have
+    // taken the last slot while this handshake completed.
+    if (!this.hasCapacity(identity, reserved)) {
+      closeTerminalSocket(ws, TERMINAL_CLOSE.capacity, 'terminal_capacity');
+      return;
+    }
+    this.alive.set(ws, true);
+    ws.on('pong', () => {
+      if (this.alive.has(ws)) this.alive.set(ws, true);
+    });
     ws.on('error', (error) =>
       logger.debug('Terminal socket failed', { error }),
     );
-    // One frame, one in-flight verification. Pipelined commands before the
-    // authentication acknowledgement are refused rather than being replayed.
-    const message = async (raw: import('ws').RawData, binary: boolean) => {
-      if (!pending || checking) {
-        ws.close(...WEBSOCKET_AUTH_CLOSE.required);
-        return;
-      }
-      checking = true;
-      const frame = binary ? undefined : decodeWebSocketAuthFrame(raw, 4096);
-      try {
-        const principal = frame?.ok
-          ? await this.options.authenticate(frame.credential, request)
-          : undefined;
-        if (!pending || ws.readyState !== WebSocket.OPEN) return;
-        if (principal === undefined) {
-          this.limiter.recordFailure(peer);
-          release();
-          ws.close(...WEBSOCKET_AUTH_CLOSE.required);
-          return;
-        }
-        release();
-        if (this.connections.size >= 64) {
-          ws.close(4429, 'terminal_connection_capacity');
-          return;
-        }
-        this.limiter.clear(peer);
-        ws.off('message', message);
-        const connection = new TerminalChannelConnection(
+    const connection = new TerminalChannelConnection(
+      ws,
+      this.options.sessions,
+      principal,
+    );
+    this.connections.set(connection, { identity, reserved });
+    const lifetime = setTimeout(
+      () =>
+        closeTerminalSocket(
           ws,
-          this.options.sessions,
-          principal,
-        );
-        this.connections.add(connection);
-        ws.once('close', () => this.connections.delete(connection));
-        ws.send(authenticatedWebSocketAck());
-      } catch (error) {
-        logger.warn('Terminal authentication unavailable', { error });
-        release();
-        ws.close(...WEBSOCKET_AUTH_CLOSE.required);
+          TERMINAL_CLOSE.lifetime,
+          'terminal_connection_lifetime',
+        ),
+      this.limits.maxLifetimeMs,
+    );
+    lifetime.unref?.();
+    ws.once('close', () => {
+      clearTimeout(lifetime);
+      this.connections.delete(connection);
+      this.alive.delete(ws);
+    });
+    ws.send(authenticatedWebSocketAck());
+  }
+
+  /** A half-open peer never answers; it is terminated, freeing its slot. */
+  private ping(): void {
+    for (const [ws, alive] of this.alive) {
+      if (!alive) {
+        ws.terminate();
+        continue;
       }
-    };
-    ws.on('message', message);
+      this.alive.set(ws, false);
+      try {
+        ws.ping();
+      } catch (error) {
+        logger.debug('Terminal ping failed', { error });
+        ws.terminate();
+      }
+    }
   }
 }

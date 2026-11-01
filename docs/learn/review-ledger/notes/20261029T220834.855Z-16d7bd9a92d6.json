@@ -1,0 +1,7 @@
+{
+  "revision": "5979983d802e19a268dce3d5cb64cb933ad0b910",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Reviewed merged account token route fixture: member passkey preview and upstream notification service coexist; documented account and notification boundaries remain unchanged; focused fixture passed.","inputs":["docs/reference/api.md","src-server/runtime/routes/__tests__/runtime-routes-account-personal-tokens.test.ts"]}
+  ]
+}

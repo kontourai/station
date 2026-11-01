@@ -1,0 +1,7 @@
+{
+  "revision": "75683d756638771bdc3d8d75900f88131349b52f",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Regenerated station-docs-content.ts for #4306 changed only the content digest and the module-map-derived DeploymentAuthentication topic body (operator passkey paragraph now names the Project-sharing step-up). Searched this reference for digest values, topic counts and that topic; it states no fixed digest or count and does not quote that body, so it is unaffected.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

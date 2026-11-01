@@ -1,0 +1,15 @@
+{
+  "revision": "4d26a20a069015b12c95df71c6460370d71ff65c",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Scoped review of the StartComposer delta: selector DOM and geometry moved to ComposerChoice, while selection resolution, event delivery, startup submission and module boundaries remain in the same owners. Module-map claims remain accurate. Shared selector and rail are documented in chat-composer and responsive-ui.","inputs":["docs/architecture/module-map.md","src-ui/src/components/chat-start/StartComposer.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Scoped review of chat.css delta: caption, ellipsis, touch-floor and selector-rail styling moved to shared ComposerChoice.css; chat activity placement, model context, engine-move hints and dock visibility rules remain in chat.css. Existing placement claims remain accurate. Chromium engine-move tests passed after preserving hint space.","inputs":["docs/design/placement.md","src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed ChatDockBody delta: only optional AgentIcon presentation is passed through to ChatInputArea. No configuration key, preference scope, engine selection or approval-default resolution changed. Existing config reference remains accurate.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDockBody.tsx"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed ChatDockBody delta: optional AgentIcon React presentation is passed into the local composer; public contracts, provider identity, approval authority, event schemas and requests are unchanged. Existing contracts reference remains accurate.","inputs":["docs/reference/contracts.md","src-ui/src/components/chat-dock/ChatDockBody.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"Reviewed ChatDockBody delta against Agent/engine/model terminology: AgentIcon accompanies the same resolved Agent name and cannot change the selected engine or model. Shared selector captions preserve those concepts. Existing conceptual guidance remains accurate.","inputs":["docs/user/concepts.md","src-ui/src/components/chat-dock/ChatDockBody.tsx"]}
+  ]
+}

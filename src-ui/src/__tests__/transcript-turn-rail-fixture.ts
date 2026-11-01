@@ -16,6 +16,10 @@ const ROOT = resolve(import.meta.dirname, '../../..');
  */
 const STUBS: Array<{ pattern: RegExp; overrides: string }> = [
   {
+    pattern: /src-ui\/src\/hooks\/useSurfaceVisibilityFlags\.tsx?$/,
+    overrides: 'export const useSurfaceVisibilityFlags = () => new Set();',
+  },
+  {
     pattern: /src-ui\/src\/contexts\/AgentsContext\.tsx?$/,
     overrides: 'export const useAgents = () => [];',
   },
@@ -61,7 +65,7 @@ const shellStubs: Plugin = {
     build.onResolve(
       {
         filter:
-          /(AgentsContext|ApiBaseContext|AuthContext|ToastContext|useToolApproval|useActiveChatSessions|SessionSummaryCard)$/,
+          /(AgentsContext|ApiBaseContext|AuthContext|ToastContext|useToolApproval|useActiveChatSessions|SessionSummaryCard|useSurfaceVisibilityFlags)$/,
       },
       async (args) => {
         if (args.namespace === 'turn-rail-stub' || args.pluginData?.real)
@@ -135,6 +139,10 @@ export async function turnRailBrowserFixture({
     import {createRoot} from 'react-dom/client';
     import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
     import {ChatMessageList} from './src-ui/src/components/chat/ChatMessageList';
+    import { requestTurnBrowser } from './src-ui/src/components/chat/transcript-turn-browser-events';
+    import { ChatDockHeaderMoreMenu } from './src-ui/src/components/chat-dock/ChatDockHeaderMoreMenu';
+    import { deviceSettingsStore } from './src-ui/src/lib/device-settings-store';
+    window.__setAnswerWidth = value => deviceSettingsStore.set('chatAnswerWidth', value);
     const TOPICS = ['the deploy script','flaky retry tests','the session store','a migration plan','the release notes','the inbox filters','dock resize behaviour','the approval queue'];
     function makeMessages(turns){
       const messages=[];
@@ -156,6 +164,7 @@ export async function turnRailBrowserFixture({
       const [activity,setActivity]=useState(null);
       useEffect(()=>{
         window.__session=session;
+        window.__setAnswerText=content=>setSession(current=>({...current,messages:current.messages.map((message,index)=>index===current.messages.length-1?{...message,content}:message)}));
         window.__growTail=()=>setSession(current=>{
           const messages=[...current.messages];
           const last=messages[messages.length-1];
@@ -165,6 +174,7 @@ export async function turnRailBrowserFixture({
       },[session]);
       return <QueryClientProvider client={client}>
         <div className="chat-dock__body" style={{height:${dockHeight},display:'flex',flexDirection:'column'}}>
+          <ChatDockHeaderMoreMenu actions={[{key:"browse-turns",label:"Browse turns",onSelect:()=>requestTurnBrowser(session.id)}]}/>
           <ChatMessageList activeSession={session} fontSize={14} showReasoning={false} showToolDetails={false} scrollControlsTarget={activity}/>
           <div className="chat-input" style={{flex:'none'}}><div className="chat-input__meta" style={{display:'flex',minHeight:44,padding:8}}><div className="chat-input__settings"><button type="button" className="choice-trigger" style={{minHeight:44}}>Agent: Dev Agent</button></div><div className="chat-input__activity" ref={setActivity}/></div></div>
         </div>

@@ -28,6 +28,7 @@ import {
   openChatsStore,
 } from '../contexts/open-chats-store';
 import { pluginRegistry } from '../core/PluginRegistry';
+import { deviceSettingsStore } from '../lib/device-settings-store';
 import { REGION_SURFACE_REGISTRY } from '../regions/region-model';
 
 // --- SDK + navigation mocks ------------------------------------------------
@@ -163,7 +164,13 @@ vi.mock('../platform/PlatformProfileContext', () => ({
   usePlatformProfile: () => ({ isMobile: false }),
 }));
 
-vi.mock('../contexts/KeyboardShortcutsContext', () => ({
+vi.mock('../contexts/KeyboardShortcutsContext', async (importOriginal) => ({
+  // The real chord spelling: the palette shows what the registry would.
+  formatShortcutChord: (
+    await importOriginal<
+      typeof import('../contexts/KeyboardShortcutsContext')
+    >()
+  ).formatShortcutChord,
   evaluateShortcutWhen: () => shortcutWhenEnabled,
   useShortcutRegistry: () => ({
     getAllShortcuts: () => [
@@ -520,7 +527,7 @@ describe('CommandPalette', () => {
       'Search commands and indexed conversation messages',
     );
     expect(input.getAttribute('placeholder')).toBe(
-      'Search commands, projects, agents, indexed conversation messages…',
+      'Search commands, projects and chats…',
     );
     fireEvent.change(input, { target: { value: 'c' } });
     expect(screen.queryByText(/cobalt albatross/)).toBeNull();
@@ -751,6 +758,30 @@ describe('CommandPalette', () => {
     expect(
       screen.getByRole('option', { name: /Run registered command/ }),
     ).toBeTruthy();
+  });
+
+  // #4407: rows carried a generic "Commands" tag; the chord is what a
+  // palette row can teach.
+  test('a shortcut-backed row shows its chord instead of a group tag', async () => {
+    await renderCommandPalette();
+    open();
+    const row = screen.getByRole('option', { name: /New chat/ });
+    const chord = row.querySelector('kbd');
+    expect(chord?.textContent).toMatch(/^(Ctrl\+T|⌘T)$/);
+    expect(row.textContent).not.toContain('Commands');
+  });
+
+  test('the Developer destination explains itself', async () => {
+    deviceSettingsStore.set('developerToolsEnabled', true);
+    try {
+      await renderCommandPalette();
+      open();
+      expect(
+        screen.getByRole('option', { name: /^Developer/ }).textContent,
+      ).toContain('Logs, diagnostics and internals of this Station');
+    } finally {
+      deviceSettingsStore.set('developerToolsEnabled', false);
+    }
   });
 
   test('projects both registered region toggles into the command palette', async () => {

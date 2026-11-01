@@ -1,3 +1,4 @@
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type { ReactNode, RefObject } from 'react';
 import { useState } from 'react';
 import { useAccountPreferences } from '../../contexts/AccountPreferencesContext';
@@ -140,7 +141,12 @@ export function ComposerModeSheet({
               checked={saveAsDefault}
               onChange={(event) => setSaveAsDefault(event.target.checked)}
             />{' '}
-            Save as my {engineConnectionId} default
+            {/* #4390: the engine's product name, never its raw id. */}
+            Save as my{' '}
+            {(engineConnectionId &&
+              engineDisplayLabel(engineConnectionId as never)) ??
+              'engine'}{' '}
+            default
           </label>
         )}
         {saveAsDefault && (

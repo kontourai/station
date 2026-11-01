@@ -29,7 +29,7 @@ export const STATUS_GLYPH_BY_STATE = {
   Unanswerable: {
     glyph: '?',
     color: 'warning',
-    ariaLabel: 'Elsewhere',
+    ariaLabel: 'Read only',
   },
   Completed: { glyph: '✓', color: 'success', ariaLabel: 'Done' },
 } as const satisfies Record<SessionStateLabel, StatusGlyphPresentation>;

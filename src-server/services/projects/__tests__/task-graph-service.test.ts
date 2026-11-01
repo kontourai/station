@@ -231,6 +231,37 @@ function createTempService(
 }
 
 describe('TaskGraphService', () => {
+  test('owner-local idempotent creation persists, reloads and replays one Task without changing its original input', async () => {
+    const home = makeTempDir('station-idempotent-task-');
+    const input = {
+      projectId: 'project-alpha',
+      title: 'Automation diagnosis',
+      description: 'One retained outcome.',
+    };
+    const deps = { resolveProjectWorkspace: async () => home };
+    const original = await new TaskGraphService(
+      home,
+      deps,
+    ).createTaskIdempotent(input, 'automation-rule', 'retained-operation');
+    const reopened = new TaskGraphService(home, deps);
+    expect(reopened.readTask(original.id)?.title).toBe(input.title);
+    const replay = await reopened.createTaskIdempotent(
+      input,
+      'automation-rule',
+      'retained-operation',
+    );
+    expect(replay.id).toBe(original.id);
+    expect(reopened.listTasks()).toHaveLength(1);
+    await expect(
+      reopened.createTaskIdempotent(
+        { ...input, title: 'Different outcome' },
+        'automation-rule',
+        'retained-operation',
+      ),
+    ).rejects.toThrow('conflicts with its original input');
+    expect(reopened.readTask(original.id)?.title).toBe(input.title);
+  });
+
   test('capture roots follow current on-disk Task bindings and refuse corrupt replacements', async () => {
     const home = makeTempDir('station-capture-roots-');
     const service = new TaskGraphService(home, {

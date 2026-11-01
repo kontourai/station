@@ -112,4 +112,20 @@ describe('foldConversationTurns', () => {
     expect(fold.presentations).toHaveLength(2);
     expect(fold.turnCounts.size).toBe(0);
   });
+
+  test('#4386: selecting the representative row keeps its conversation folded', () => {
+    const newest = summary('conv-a:session:2', { conversationId: 'conv-a' });
+    const root = summary('conv-a');
+
+    const fold = foldConversationTurns([flat(newest), flat(root)], {
+      pinnedThreadId: 'conv-a:session:2',
+    });
+
+    expect(
+      fold.presentations.map((p) =>
+        p.kind === 'session' ? p.session.threadId : p,
+      ),
+    ).toEqual(['conv-a:session:2']);
+    expect(fold.turnCounts.get('conv-a:session:2')).toBe(2);
+  });
 });

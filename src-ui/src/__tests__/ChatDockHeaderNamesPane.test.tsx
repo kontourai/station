@@ -25,10 +25,10 @@ vi.mock('../hooks/useKeyboardShortcut', () => ({
 import { ChatDockHeader } from '../components/chat-dock/ChatDockHeader';
 import { RegionChromeSlotsContext } from '../workspace-panes/RegionChromeSlots';
 
-function workspaceControls() {
+function workspaceControls(isInboxOpen = false) {
   return {
     showInboxToggle: true,
-    isInboxOpen: true,
+    isInboxOpen,
     onToggleInbox: vi.fn(),
     backgroundTasksTriggerRef: createRef<HTMLButtonElement>(),
     backgroundTasksRunningCount: 0,
@@ -59,7 +59,6 @@ describe('ChatDockHeader in a bar that names the pane', () => {
           <ChatDockHeader
             fullscreen
             chatIdentity={<span>Dev Agent Chat</span>}
-            projectContext={<span>Dev</span>}
             chatControls={{
               sessions: [
                 { id: 'a', title: 'One', status: 'idle' },
@@ -148,9 +147,14 @@ describe('ChatDockHeader in a bar that names the pane', () => {
       expect(container.querySelector('.chat-dock__header')).not.toBeNull();
       expect(container.textContent).toContain('Dev Agent Chat');
       expect(
-        await screen.findByText('New', {}, { timeout: 15_000 }),
+        await screen.findByRole(
+          'button',
+          { name: 'New chat' },
+          { timeout: 15_000 },
+        ),
       ).toBeTruthy();
-      // The bar's one labelled action; Open is a row of its ⋯ menu.
+      expect(screen.queryByText('New')).toBeNull();
+      // Open is a row of the overflow menu.
       expect(screen.queryByText('Open')).toBeNull();
     } finally {
       leading.remove();

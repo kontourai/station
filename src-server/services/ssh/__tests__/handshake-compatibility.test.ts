@@ -138,6 +138,8 @@ describe('public handshake capability flags (station#1095)', () => {
     expect(handshake.capabilities).toEqual(STATION_CAPABILITY_FLAGS);
     expect(handshake.capabilities).toEqual({
       delegationGroups: false,
+
+      childWorkSteering: true,
       privateOperationalOutcomes: true,
       scheduledConversationTarget: true,
       sshEnvironments: true,
@@ -180,6 +182,8 @@ describe('public handshake capability flags (station#1095)', () => {
     // ships those surfaces.
     expect(body.capabilities).toEqual({
       delegationGroups: false,
+
+      childWorkSteering: true,
       privateOperationalOutcomes: true,
       scheduledConversationTarget: true,
       sshEnvironments: true,

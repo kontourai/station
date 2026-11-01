@@ -9,15 +9,18 @@ import capturedCodexEvents from './fixtures/codex-subagent-transcript-events.jso
  * publishes.
  */
 
+import { ConnectionsProvider } from '@kontourai/station-connect';
 import type { ChildWorkItem } from '@kontourai/station-contracts/child-work';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   cleanup,
   fireEvent,
-  render,
+  render as renderUI,
   screen,
   within,
 } from '@testing-library/react';
+import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
 const useStreamingContent = vi.fn();
@@ -40,6 +43,19 @@ import {
 
 const THREAD = 'claude-session-1';
 const TOOL_CALL = 'toolu_agent_1';
+const queryClient = new QueryClient();
+
+function render(ui: ReactNode) {
+  return renderUI(ui, {
+    wrapper: ({ children }) => (
+      <QueryClientProvider client={queryClient}>
+        <ConnectionsProvider seedDefault={false}>
+          {children}
+        </ConnectionsProvider>
+      </QueryClientProvider>
+    ),
+  });
+}
 
 const child: ChildWorkItem = {
   producer: 'engine-subagent',
@@ -142,6 +158,7 @@ const toolPart = {
 
 afterEach(() => {
   cleanup();
+  queryClient.clear();
   useStreamingContent.mockReset();
 });
 

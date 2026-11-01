@@ -58,6 +58,41 @@ function fold(...deltas: ChildWorkDelta[]): ChildWorkRegistryState {
   return deltas.reduce(applyChildWorkDelta, createEmptyChildWorkRegistry());
 }
 
+test('steer controls are bounded and cannot survive settlement or an omitted snapshot', () => {
+  const key = item('child', {
+    controls: { stop: 'provider-task-stop', steer: { turnId: 'turn' } },
+  });
+  const running = fold(snapshot(key));
+  expect(childWorkForReporter(running, REPORTER)[0].controls).toEqual(
+    key.controls,
+  );
+  const ended = applyChildWorkDelta(running, settle('child', 'completed'));
+  expect(childWorkForReporter(ended, REPORTER)[0].controls).toEqual({
+    stop: 'provider-task-stop',
+  });
+  const afterLate = applyChildWorkDelta(ended, snapshot(key));
+  expect(
+    childWorkForReporter(afterLate, REPORTER)[0].controls?.steer,
+  ).toBeUndefined();
+  const omitted = applyChildWorkDelta(running, snapshot());
+  expect(
+    childWorkForReporter(omitted, REPORTER)[0].controls?.steer,
+  ).toBeUndefined();
+  const oversized = fold(
+    snapshot(
+      item('child', {
+        controls: {
+          stop: 'provider-task-stop',
+          steer: { turnId: 'é'.repeat(257) },
+        },
+      }),
+    ),
+  );
+  expect(childWorkForReporter(oversized, REPORTER)[0].controls).toEqual({
+    stop: 'provider-task-stop',
+  });
+});
+
 function get(state: ChildWorkRegistryState, childId: string) {
   return state.items[
     childWorkKey({

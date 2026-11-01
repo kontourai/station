@@ -288,6 +288,9 @@ export function ReviewDocumentView({
   const markdown = useMemo(
     () => (
       <MarkdownRenderer
+        // A stored, hard-wrapped document: keep CommonMark paragraph folding
+        // so the rendered text still maps back to its source (#4385).
+        softBreaks={false}
         rehypePlugins={[sourcePlugin]}
         components={reviewMarkdownComponents}
       >

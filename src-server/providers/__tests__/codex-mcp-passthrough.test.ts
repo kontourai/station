@@ -201,3 +201,34 @@ describe('resolveCodexMcpServers', () => {
     });
   });
 });
+
+test('built-in header credentials appear only in private thread overrides, without changing public server delivery', () => {
+  const result = resolveCodexMcpServers(
+    [
+      toolServer({
+        id: 'station-control',
+        command: 'node',
+        args: [builtinStationControlServerPath()],
+      }),
+      toolServer(),
+    ],
+    {
+      url: 'http://127.0.0.1:41031/mcp/station-control',
+      token: 'private-credential',
+    },
+  );
+  expect(JSON.stringify(result.configArgs)).not.toContain('private-credential');
+  expect(result.configArgs).toEqual([
+    '-c',
+    'mcp_servers.weather.command="npx"',
+    '-c',
+    'mcp_servers.weather.args=["-y", "weather-mcp"]',
+  ]);
+  expect(result.privateConfig).toEqual({
+    'mcp_servers.station-control.url':
+      'http://127.0.0.1:41031/mcp/station-control',
+    'mcp_servers.station-control.http_headers': {
+      Authorization: 'Bearer private-credential',
+    },
+  });
+});

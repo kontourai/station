@@ -67,6 +67,13 @@ The existing composition example is
 [`bindFleetConsumerProbesPreview` and `fleetProbes`](../../src-server/runtime/bootstrap/station-runtime.ts).
 Its disabled branch skips optional probe work and continues ordinary routing.
 
+A preview with no server branch, whose only consumer is the UI (`task-review`,
+`continue-interrupted-turn`), is offered by the
+[registry's](../../src-server/services/feature-previews/feature-preview-registry.ts)
+own constructor through `rememberConsumer`, not a composition bind. The UI reads
+its choice from the catalog at each entry point; any server operation it uses
+keeps its ordinary access checks and is not gated by the preview.
+
 ## Gate every entry point
 
 Inventory every path that can reach the feature, including direct callers that
@@ -76,6 +83,14 @@ bypass the UI. Complete the applicable items before shipping:
   uploads, and mutations. An off preview must return the typed refusal below,
   without allocating resources or writing feature state. Retain the ordinary
   access guards; a preview is not an authorization check.
+- **Retained execution maintenance:** a preview may keep narrowly documented
+  operator audit, disable, revoke, cancellation, unknown-effect resolution and
+  archival routes available after it is turned off. They must retain current
+  operator authority and cannot start a provider, create a new grant or enable
+  configuration. The [isolated repair preview](agent-efficiency.md#run-an-isolated-github-repair)
+  uses this exception so disabling work does not make its unknown effects
+  impossible to inspect or settle. New setup/enable writes still select the
+  preview inside the mutation lock.
 - **Station Control MCP tools:** gate tool advertisement/registration where
   appropriate and select again in the handler. A cached tool list or direct
   call must not bypass the switch. Return a tool error (`isError: true` at the

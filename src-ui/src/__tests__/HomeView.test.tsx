@@ -1416,9 +1416,14 @@ describe('HomeView', () => {
       expect(
         screen.getAllByRole('textbox', { name: 'What would you like done?' }),
       ).toHaveLength(1);
-      fireEvent.click(
-        screen.getByRole('button', { name: /View available agents/ }),
-      );
+      const agentsCard = screen.getByRole('button', {
+        name: /View available agents/,
+      });
+      // #4405 (A46): the card opens the Agents page, so its copy must not
+      // send the person to "the composer above" instead.
+      expect(agentsCard.textContent).not.toContain('composer above');
+      expect(agentsCard.textContent).toContain('See the agents ready');
+      fireEvent.click(agentsCard);
       expect(onNavigate).toHaveBeenLastCalledWith({ type: 'agents' });
       const project = screen.getByRole('button', { name: /New Project/ });
       expect(project.textContent).toContain(
