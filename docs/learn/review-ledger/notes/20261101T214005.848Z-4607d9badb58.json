@@ -1,0 +1,7 @@
+{
+  "revision": "de6a603a9e9a62edd7547849ddd979e33396168a",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed prepared-turn resume and session-boundary claims against the instance attachment barrier and transaction-cut test: startup repair settles before the injected ownership and invocation cuts; admission and durable outcomes remain unchanged.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/__tests__/prepared-turn-intent-crash.process.test.ts"]}
+  ]
+}
