@@ -72,6 +72,7 @@ const { RegionModelProvider, useRegionModel } = await import(
   '../contexts/RegionModelContext'
 );
 const { useDockShellChrome } = await import('../hooks/useDockShellChrome');
+const { dockSnapPixels } = await import('../components/chat-dock/dockSnap');
 
 describe('useDockShellChrome reads its open state from the region model', () => {
   beforeEach(() => {
@@ -742,5 +743,95 @@ describe('setRegionOpen reopens at the shell’s own snap (#2155 D3)', () => {
       maximized: false,
     });
     expect(result.current.chrome.dockSnap).toBe('collapsed');
+  });
+});
+
+/**
+ * #4399: on a phone, Chat actions › Full screen is `applyDockSnap('full')`,
+ * and the drawer's Activity row opens the page AT `/` — no pathname change,
+ * so the restore is the region model's (`restoreMaximizedDocks`), which
+ * clears `maximized` and nothing else. The publishing shell must not then
+ * re-derive Full from its own snap and keep the page covered.
+ */
+describe('a page open at / shows the page past a full-screen phone dock (#4399)', () => {
+  const SNAP_KEY = 'station.chatDock.snap';
+
+  function stubPhone() {
+    const innerWidth = Object.getOwnPropertyDescriptor(window, 'innerWidth');
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      value: 412,
+    });
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: true,
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    }));
+    return () => {
+      vi.unstubAllGlobals();
+      if (innerWidth) Object.defineProperty(window, 'innerWidth', innerWidth);
+    };
+  }
+
+  beforeEach(() => {
+    window.localStorage.removeItem(SNAP_KEY);
+  });
+
+  test('the drawer’s Activity row returns a full-screen Chat to Half', () => {
+    const restore = stubPhone();
+    try {
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      const wrapper = ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={client}>
+          <RegionModelProvider>{children}</RegionModelProvider>
+        </QueryClientProvider>
+      );
+      const { result } = renderHook(
+        () => ({
+          chrome: useDockShellChrome({
+            publishesDockSlotClearance: true,
+            registersDockShortcuts: false,
+            regionId: 'bottom',
+          }),
+          model: useRegionModel(),
+        }),
+        { wrapper },
+      );
+      expect(result.current.chrome.isMobile).toBe(true);
+      const metrics = {
+        viewportHeight: result.current.chrome.visualViewport.height,
+        toolbarHeight: result.current.chrome.toolbarHeight,
+        collapsedHeight: result.current.chrome.collapsedHeight,
+      };
+
+      act(() => result.current.chrome.applyDockSnap('full'));
+      expect(result.current.model.regions.bottom.maximized).toBe(true);
+      expect(result.current.chrome.dockHeight).toBe(
+        dockSnapPixels('full', metrics),
+      );
+
+      act(() => {
+        result.current.model.openSurfaceInRegion('activity', {
+          region: 'main',
+        });
+      });
+
+      expect(result.current.model.regions.main.occupant).toBe('activity');
+      expect(result.current.model.regions.bottom.maximized).toBe(false);
+      expect(result.current.chrome.dockSnap).toBe('half');
+      expect(result.current.chrome.dockHeight).toBe(
+        dockSnapPixels('half', metrics),
+      );
+      expect(window.localStorage.getItem(SNAP_KEY)).toBe('half');
+    } finally {
+      restore();
+    }
   });
 });
