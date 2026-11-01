@@ -1,0 +1,7 @@
+{
+  "revision": "5cf19f613f505df73a14c45fb1f0a8bded68f347",
+
+  "notes": [
+    {"path":"packages/contracts/AGENTS.md","note":"Reviewed the provider-failure registry and reference-table additions: two pure closed mappings classify create conflict and indeterminate as nonretryable. Contract ownership, environment-free helper rules and published subpath imports remain unchanged. The focused contract and registry keepers passed 102 tests; this scoped review makes no installed/runtime claim.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}
