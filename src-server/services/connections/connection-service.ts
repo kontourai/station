@@ -117,6 +117,7 @@ import {
   settleConcurrentWork,
   throwIfAborted,
 } from '../../utils/bounded-async.js';
+import { prepareManagedAcpWorkspace } from '../acp/managed-acp-workspace.js';
 import type { CredentialApplicationHandle } from '../orchestration/credential-application-ledger.js';
 import type { CredentialProfileRecoveryAdapter } from '../orchestration/credential-recovery-module.js';
 import type { EventStore } from '../orchestration/event-store.js';
@@ -777,6 +778,18 @@ export class ConnectionService {
 
   setSmokeRunner(runner: ConnectionSmokeRunner): void {
     this.smokeRunner = runner;
+  }
+
+  /**
+   * Where a one-turn smoke runs: a private probe workspace under the Station
+   * home, never the server's own working directory (#4380). The server runs
+   * from its code root, which for an installed archive is a read-only version
+   * directory; an engine sandbox started there creates `.git`/`.agents`
+   * placeholders in it, and an empty `.git` used to make the next `start`
+   * treat the signed archive as a source checkout.
+   */
+  private smokeWorkingDirectory(connectionId: string): Promise<string> {
+    return prepareManagedAcpWorkspace({ kind: 'probe', connectionId });
   }
 
   /**
@@ -2531,7 +2544,7 @@ export class ConnectionService {
       ...(typeof connection.config.defaultModel === 'string'
         ? { modelId: connection.config.defaultModel }
         : {}),
-      cwd: process.cwd(),
+      cwd: await this.smokeWorkingDirectory(attempt.connectionId),
       credentialProfileRef: attempt.candidateProfileRef,
       timeoutMs: Math.max(5_000, Math.min(options.timeoutMs ?? 45_000, 60_000)),
     });
@@ -3489,7 +3502,7 @@ export class ConnectionService {
             connectionId: connection.id,
             provider,
             modelId: configuredModel,
-            cwd: process.cwd(),
+            cwd: await this.smokeWorkingDirectory(connection.id),
             ...(connection.type === 'acp'
               ? { metadata: { connectionId: connection.id } }
               : {}),

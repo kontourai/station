@@ -301,9 +301,9 @@ vi.mock('../../../providers/connection-factories.js', () => ({
   createVectorDbProvider: vi.fn(() => null),
 }));
 
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import {
   captureLoggerLines,
   stopLoggerCaptures,
@@ -3202,6 +3202,23 @@ describe('ConnectionService', () => {
         timeoutMs: 20_000,
       }),
     );
+    // #4380: the smoke never runs in the server's own directory, which for
+    // an installed archive is the read-only version directory an engine
+    // sandbox would litter with `.git`/`.agents` placeholders. It runs in a
+    // private probe workspace under the Station home.
+    const smokeCwd = runner.mock.calls[0][0].cwd as string;
+    expect(smokeCwd).not.toBe(process.cwd());
+    expect(
+      relative(
+        realpathSync(join(process.env.STATION_HOME!, 'runtime')),
+        smokeCwd,
+      ).split(/[\\/]/),
+    ).toEqual([
+      'acp-workspaces',
+      'probe',
+      expect.stringMatching(/^[0-9a-f]{64}$/),
+    ]);
+    expect(statSync(smokeCwd).isDirectory()).toBe(true);
     expect(evidence).toMatchObject({
       level: 'smoke-passed',
       smoke: { status: 'passed', model: 'gpt-5.4', turnLimit: 1 },
