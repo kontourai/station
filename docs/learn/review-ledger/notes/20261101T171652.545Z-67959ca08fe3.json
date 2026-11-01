@@ -1,0 +1,7 @@
+{
+  "revision": "333fcda1c0982ac881085c27a2721c17b7b51dca",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Only ci-fast-checks-job-graph.test.ts changed, pinning #4365's third PR shard slot; governance README claims unaffected.","inputs":[".veritas/README.md","scripts/__tests__/ci-fast-checks-job-graph.test.ts"]}
+  ]
+}
