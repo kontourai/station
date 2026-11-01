@@ -2820,7 +2820,14 @@ exact Station/local/portable Project scope, members and invitations. Commands
 enable sharing, invite or revoke invitations, change a member, or transfer
 ownership. Capture the returned scope and member revision for writes; do not
 reconstruct authority from a slug or email. Enabling requires the expected local
-Project ID and current Station operator authority.
+Project ID and current Station operator authority. For a paired Device with an
+operator passkey session, `changeProjectAccess` returns
+`{ kind: 'step-up-required', transaction }` instead (#4306). Nothing has changed
+until the passkey confirmation on the consent origin, whose HTTPS review URL must
+share the API base's host name. `getProjectSharingEnablement` reports how the
+caller may enable (`direct`, `operator-passkey`, `operator-sign-in` or
+`unavailable`), and `getProjectSharingStepUpStatus` reads the pending review.
+A host older than #4306 fails the enablement read.
 
 When the read is refused with 403 `project_access_forbidden`,
 `projectAccessRefusal(error)` returns the server's
@@ -2832,7 +2839,8 @@ whether the Project is shared). It returns `undefined` for any other error,
 including an older Station that sends no details.
 
 `@kontourai/station-sdk/project-access` also exports `useProjectAccess(slug,
-requestScope)`. Its query keys include the selected Station and authority, and
+requestScope)` and `useProjectSharingEnablement(slug, requestScope, enabled)`.
+Their query keys include the selected Station and authority, and
 its mutations capture that scope before asynchronous work. Do not persist
 administrative projections or invitation tokens in application caches. Project
 administration grants no Station settings, device or compute authority.
@@ -2873,6 +2881,18 @@ Station chooses provider/callback/return parameters from operator configuration;
 clients cannot supply arbitrary OAuth parameters. See the [deployment guide](../guides/deployment-authentication.md#optional-oidc-choices-with-local-accounts)
 for configuration, callback verification and the independent Device continuation.
 
+A descriptor may also declare `passkey-*` operations (see
+[member passkeys](../guides/deployment-authentication.md#member-passkeys-feature-preview)).
+The `passkey-sign-in`, `passkey-register`, `passkey-add` and `passkey-recover`
+ceremonies use two `runAccountOperation` calls to the same endpoint:
+`{ step: 'options' }` returns `{ options }` for the browser's WebAuthn call,
+then `{ step: 'verify', response }` sends its result. Registration also needs
+`username` in the options body and the invitation as the fourth argument on
+both calls; recovery includes `token` in both bodies. Keep the cookies the
+first call sets; they bind the second call to its challenge. The management
+operations are single calls: `passkey-list` accepts `{}`, and `passkey-remove`
+accepts `{ id }`.
+
 The same account-authentication entry exports `getProjectInvitationPreview(apiBase,
 token)`. It uses a POST body, validates the minimal Project/inviter/role projection,
 and rejects incompatible role/action combinations. Keep the proof out of query
@@ -2890,6 +2910,15 @@ Station operators. Actions disable/enable sign-in, revoke sessions or create a
 one-time recovery link. Capture the selected Station request scope, require
 explicit confirmation and keep recovery links out of persisted caches. External
 providers return a guidance projection instead of local account controls.
+
+The same subpath exports `getAccountSharingSetting(apiBase, options)` and
+`applyAccountSharingSetting(apiBase, choice, options)` for the operator-only
+[Project sharing setting](../guides/deployment-authentication.md#turn-it-on-from-settings).
+The read reports who decides (the stored setting or the deployment), what is
+active, any unresolved pending choice, and the sign-in origins the operator may
+choose. A changed apply returns a transaction and separate review URL. The
+operator confirms there; read the setting again for the restart outcome. Older
+servers can return a direct `restarting` result.
 
 `@kontourai/station-sdk/authority-observation` exports
 `getAuthorityObservation(apiBase, options)` for the closed, credential-bound
@@ -6283,3 +6312,44 @@ management caller. It returns `AutomationDeliveryPage` with `deliveries` and
 preserves the preview refusal's code and Settings link; a 404 from an older
 host reports the unsupported capability. No mutation or agent invocation is
 performed. See [Automation intake](../design/automations.md#observe-only-github-preview).
+
+### Personal conversation resolution and turn directory
+
+`getConversationWorkState` and `setConversationWorkState` in the SDK client
+read or change explicit personal settlement under the `conversation-resolution`
+Feature Preview. State is separate from turn completion and dismissal. Reads
+return `null` on a 404 (unsupported host or disabled preview); mutations preserve
+a refusal with an update/preview remedy. Requests accept `ClientRequestOptions`
+for authority and cancellation.
+
+`getConversationTurnDirectory` reads paginated, indexed turn metadata from the
+existing Session digest under `session-cli-reads`; it returns `null` when that
+host route is unavailable. It fetches no transcript bodies. The UI's history
+owner loads bounded body pages only after a turn is selected.
+
+## Reviewed Project context and learning
+
+`@kontourai/station-sdk/client/project-working-configuration` exposes bounded
+repository discovery and exact-revision apply. Pass the current host request
+scope and immutable Project identity. A 404/501 is unavailable/update guidance;
+a preview refusal does not enable the feature. Apply saves defaults only.
+
+`@kontourai/station-sdk/client/learning-review` exports
+`fetchProjectLearning`, `fetchProjectLearningDetail`, `proposeProjectLearning`
+and `applyProjectLearningIntent`. Every options object carries `requestScope`
+and `projectId`; the latter is a currentness precondition. The response parser
+keeps stage gaps distinct and requires exact receipt references.
+
+`@kontourai/station-sdk/learning-review-query` exposes the corresponding
+Project index, detail, proposal and intent hooks. Query identity includes host
+base, authority key, immutable Project, slug, learning id and comparison id.
+Changed authority or a reused slug cannot display or mutate an older Project's
+cached learning. Classified parent/evidence/source read refusal clears protected
+scope queries, closes an open inspector or copied proposal, and requires a fresh
+authoritative read before reopening. An initial unsupported-host read preserves
+its update guidance. Mutations route to the Knowledge Kit owner and retain its
+revision conflict/unsupported/unavailable result. A transport success does not
+establish activation or an observed effect.
+
+See [bounded agent work](../guides/agent-efficiency.md) for the mounted operator
+flow and the separate setup, provider and release boundaries.

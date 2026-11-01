@@ -818,7 +818,21 @@
 
     "src-ui/src/components/chat/SessionGoalControl.tsx",
 
-    "packages/sdk/src/client/automations.ts"
+    "packages/sdk/src/client/automations.ts",
+
+    "src-server/routes/chat/conversation-work-state.ts",
+
+    "src-server/routes/chat/__tests__/conversation-work-state.test.ts",
+
+    "src-ui/src/components/chat/TranscriptTurnBrowser.tsx",
+
+    "packages/sdk/src/query-domains/learningReview.ts",
+
+    "src-ui/src/views/learning-review/LearningRecordActions.tsx",
+
+    "src-ui/src/views/learning-review/__tests__/LearningRecordActions.test.tsx",
+
+    "src-server/services/identity/local-account-passkeys.ts"
   ],
 
   "checks": [

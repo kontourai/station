@@ -167,6 +167,8 @@
     "verify:telemetry-companion": "node scripts/package-telemetry-companion.mjs verify",
     "qualify:telemetry-broker": "node packages/telemetry-broker/qualify.mjs",
     "qualify:telemetry-companion": "node scripts/qualify-telemetry-companion.mjs",
+    "qualify:isolated-repair": "node scripts/qualify-isolated-repair.mjs",
+    "qualify:isolated-repair:prepare": "flow-agents kit prepare-worker",
     "typecheck:contracts": "node scripts/tsc-slot.mjs -p packages/contracts/tsconfig.json --noEmit",
     "typecheck:sdk": "node scripts/tsc-slot.mjs -p packages/sdk/tsconfig.tests.json --noEmit",
     "typecheck:board-pane": "node scripts/tsc-slot.mjs -p packages/board-pane/tsconfig.tests.json --noEmit",
@@ -356,8 +358,8 @@
     "@kontourai/ephemeris": "0.4.1",
     "@kontourai/ferry": "0.6.0",
     "@kontourai/fieldwork": "0.15.0",
-    "@kontourai/flow": "5.3.0",
-    "@kontourai/flow-agents": "9.7.0",
+    "@kontourai/flow": "5.4.0",
+    "@kontourai/flow-agents": "9.10.0",
     "@kontourai/monument": "^0.1.0",
     "@kontourai/relay": "0.7.1",
     "@kontourai/station-basis-pane": "^0.3.0",
@@ -437,7 +439,10 @@
     "web-push": "3.6.7",
     "ws": "^8.22.0",
     "zod": "^4.6.6",
-    "zod-to-json-schema": "^3.25.2"
+    "zod-to-json-schema": "^3.25.2",
+    "@better-auth/passkey": "1.7.13",
+    "@simplewebauthn/browser": "13.3.0",
+    "@kontourai/bearing": "0.2.0"
   },
   "devDependencies": {
     "fake-indexeddb": "6.2.6",

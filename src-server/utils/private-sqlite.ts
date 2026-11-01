@@ -3,10 +3,7 @@ import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { applyWalJournalMode } from './sqlite-wal.js';
 
-/** Opens operator-owned SQLite state beneath an already admitted Station home. */
-export function openPrivateSqlite(path: string, owner: string): DatabaseSync {
-  const parent = dirname(path);
-  mkdirSync(parent, { recursive: true, mode: 0o700 });
+export function assertPrivateDirectory(parent: string, owner: string): void {
   const directory = lstatSync(parent);
   if (
     !directory.isDirectory() ||
@@ -16,6 +13,13 @@ export function openPrivateSqlite(path: string, owner: string): DatabaseSync {
   ) {
     throw new Error(`${owner} requires a private operator-owned directory.`);
   }
+}
+
+/** Opens operator-owned SQLite state beneath an already admitted Station home. */
+export function openPrivateSqlite(path: string, owner: string): DatabaseSync {
+  const parent = dirname(path);
+  mkdirSync(parent, { recursive: true, mode: 0o700 });
+  assertPrivateDirectory(parent, owner);
   let created = false;
   try {
     const fd = openSync(path, 'wx', 0o600);

@@ -138,7 +138,13 @@
 
     "src-ui/src/workspace-panes/browser-pane/browserPaneApi.ts",
 
-    "src-ui/src/views/activity/activity-list-model.ts"
+    "src-ui/src/views/activity/activity-list-model.ts",
+
+    "packages/contracts/src/session-attention.ts",
+
+    "src-ui/src/views/home/work-status.ts",
+
+    "src-ui/src/__tests__/session-state-word-consistency.test.ts"
   ],
 
   "checks": [

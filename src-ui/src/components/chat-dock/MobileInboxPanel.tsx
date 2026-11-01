@@ -156,10 +156,8 @@ export function MobileInboxPanel({
       : scope.items;
   }, [query, scope.items]);
   const groups = useInboxGroups(matchingItems, now, workFacts);
-  const visibleGroups = useMemo(
-    () => groups.filter((group) => group.items.length > 0),
-    [groups],
-  );
+  const visibleGroups = groups;
+  const hasVisibleItems = groups.some((group) => group.items.length > 0);
 
   useLayoutEffect(() => {
     if (!open) return;
@@ -228,7 +226,7 @@ export function MobileInboxPanel({
         />
       )}
       <div className="mobile-inbox__list">
-        {loadError && visibleGroups.length === 0 ? (
+        {loadError && !hasVisibleItems ? (
           <ErrorState
             variant="compact"
             title="Unable to load chats and tasks"
@@ -248,13 +246,13 @@ export function MobileInboxPanel({
           >
             <SkeletonList count={3} />
           </div>
-        ) : visibleGroups.length === 0 && query.trim() ? (
+        ) : !hasVisibleItems && query.trim() ? (
           <FilteredEmpty
             query={query}
             noun="work"
             onClear={() => setQuery('')}
           />
-        ) : visibleGroups.length === 0 ? (
+        ) : !hasVisibleItems ? (
           <Empty
             variant="compact"
             label={
@@ -269,7 +267,7 @@ export function MobileInboxPanel({
             }
           />
         ) : null}
-        {loadError && visibleGroups.length > 0 && (
+        {loadError && hasVisibleItems && (
           <p role="status">
             Some chats may be out of date.{' '}
             {onRetryLoad && (
@@ -297,7 +295,7 @@ export function MobileInboxPanel({
             onToggle: (id) =>
               setDeviceSetting('inboxSections', {
                 ...inboxSections,
-                [id]: !inboxSections[id],
+                [id]: inboxSections[id] === false,
               }),
           }}
           chrome="touch"

@@ -204,6 +204,37 @@ function briefAtEveryCap(documentText: string) {
 }
 
 describe('buildTaskBrief', () => {
+  test('reviewed Project context shares the hard brief budget without hiding the newest standing Task decision', () => {
+    const workingContext = {
+      state: 'reviewed' as const,
+      revision: 1,
+      sourceDigest: 'a'.repeat(64),
+      omittedRules: 3,
+      text: `Reviewed source pointers and omissions.\n${'p'.repeat(2300)}`,
+    };
+    const brief = buildTaskBrief(
+      input({
+        task: {
+          ...LINKED_TASK,
+          title: 't'.repeat(600),
+          description: 'g'.repeat(1200),
+        },
+        observation: observed({ comments: 9, title: 'i'.repeat(600) }),
+        text: 'b'.repeat(5000),
+        summary: summary('s'.repeat(4000)),
+        records: [record('decision', 'latest', 'Keep this standing decision.')],
+        workingContext,
+      }),
+    );
+    expect(brief.text.length).toBeLessThanOrEqual(16000);
+    expect(brief.text).toContain(workingContext.text);
+    expect(brief.text).toContain('Keep this standing decision.');
+    expect(
+      buildTaskBrief(
+        input({ workingContext: { ...workingContext, revision: 2 } }),
+      ).digest,
+    ).not.toBe(buildTaskBrief(input({ workingContext })).digest);
+  });
   test('composes the layers in order: Task and work item, summary, records, Sessions, omissions, rules', () => {
     const brief = buildTaskBrief(
       input({

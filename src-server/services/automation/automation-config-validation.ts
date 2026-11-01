@@ -1,6 +1,4 @@
 /**
- * UNWIRED(#3439): only the unwired Automation store calls this; intake will.
- *
  * Strict structural validation for the Automation configuration file.
  *
  * Every object is checked against an exact key set, so an unknown field is a
@@ -18,6 +16,7 @@ import {
   AUTOMATION_EVENT_FIELDS,
   AUTOMATION_EXECUTION_LIMITS,
   AUTOMATION_SCHEMA_VERSION,
+  type AutomationAction,
   type AutomationEventType,
   type AutomationRule,
   type AutomationSource,
@@ -310,6 +309,12 @@ function validateEpisode(
   }
 }
 
+export function isAutomationAction(value: unknown): value is AutomationAction {
+  const problems: string[] = [];
+  validateAction(value, 'action', problems);
+  return problems.length === 0;
+}
+
 function validateAction(
   value: unknown,
   where: string,
@@ -326,11 +331,21 @@ function validateAction(
     }
     return;
   }
-  if (value.kind !== 'dispatch-task') {
+  if (value.kind !== 'dispatch-task' && value.kind !== 'isolated-repair') {
     problems.push(`${where}: unknown action kind`);
     return;
   }
-  unknownKeys(value, DISPATCH_KEYS, where, problems);
+  const repair = value.kind === 'isolated-repair';
+  unknownKeys(
+    value,
+    repair
+      ? ['kind', 'projectId', 'agentId', 'profileId', 'instructions', 'budget']
+      : DISPATCH_KEYS,
+    where,
+    problems,
+  );
+  if (repair && !boundedId(value.profileId))
+    problems.push(`${where}: profileId invalid`);
   if (!boundedId(value.projectId)) problems.push(`${where}: projectId invalid`);
   if (!boundedId(value.agentId)) problems.push(`${where}: agentId invalid`);
   if (
@@ -349,6 +364,20 @@ function validateAction(
   const budget = value.budget;
   if (!isRecord(budget)) {
     problems.push(`${where}.budget: required`);
+    return;
+  }
+  if (repair) {
+    unknownKeys(
+      budget,
+      ['maxProviderRequests', 'maxWallRuntimeMs'],
+      `${where}.budget`,
+      problems,
+    );
+    if (
+      !boundedInteger(budget.maxProviderRequests, 1, 128) ||
+      !boundedInteger(budget.maxWallRuntimeMs, 1, 3_600_000)
+    )
+      problems.push(`${where}.budget: out of range`);
     return;
   }
   unknownKeys(budget, BUDGET_KEYS, `${where}.budget`, problems);
@@ -376,7 +405,7 @@ function grantsAction(source: AutomationSource, rule: AutomationRule): boolean {
     (grant) =>
       grant.projectId === action.projectId &&
       grant.agentId === action.agentId &&
-      grant.actions.includes('dispatch-task'),
+      grant.actions.includes(action.kind),
   );
 }
 
@@ -415,6 +444,12 @@ function validateRule(
     validateEpisode(value.episode, type, `${where}.episode`, problems);
   }
   validateAction(value.action, `${where}.action`, problems);
+  if (
+    isRecord(value.action) &&
+    value.action.kind === 'isolated-repair' &&
+    value.episode === undefined
+  )
+    problems.push(`${where}: isolated repairs require an episode policy`);
   if (!isRecord(value.rateLimit)) {
     problems.push(`${where}.rateLimit: required`);
   } else {

@@ -101,6 +101,9 @@ const derived = pathReadPinEdges({ root: ROOT });
  * construction. Shrinking this list is the goal; growing it is a decision.
  */
 const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
+  // Reads only package.json created in a trackTempDirs checkout fixture,
+  // never repository source. Its real service and route imports select it.
+  'src-server/services/projects/__tests__/project-working-configuration.test.ts',
   // Read captured public Sigstore bundles under __fixtures__/sigstore (test
   // data, not production source); their verifier and trust-rule imports
   // select them for changes.

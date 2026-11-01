@@ -651,3 +651,22 @@ above; they do not currently appear as buttons.
 | Logs | [Logger](../../src-server/utils/logger.ts), [store](../../src-server/services/infra/server-log-store.ts), [reader](../../src-server/services/infra/server-log-reader.ts), [diagnostics route](../../src-server/routes/system/diagnostics.ts) |
 | Attachments | [Blob store](../../src-server/services/orchestration/attachment-blob-store.ts), [event store and bindings](../../src-server/services/orchestration/event-store.ts), [authorized read route](../../src-server/routes/orchestration/attachments.ts) |
 | Personal conversation roots | [Bootstrap predicate and creation](../../src-server/knowledge-store/conversation-root-bootstrap.ts), [runtime caller](../../src-server/runtime/bootstrap/station-runtime.ts) |
+
+
+## Isolated repair profiles and retained runs
+
+The personal operator repair preview stores redacted-by-API metadata in private
+`<STATION_HOME>/security/repair-profiles.json` and run records/evidence under
+`<STATION_HOME>/automation/repairs/`. Profile files hold parsed Datum references,
+never materialized provider/App secrets. Execution and publisher profiles have
+separate revisions and start disabled; source/rule enablement has its own
+configuration fingerprint. Use the [operator API](api.md#isolated-github-repair-preview)
+instead of editing custody or grant records by hand.
+
+Unarchived and archived run ceilings are sixteen and 128 respectively. An
+indeterminate run remains unknown after explicit admission release; consumed
+grants and its episode replay fence stay retained. Both paths fall under the
+existing home-store registry's `security`/`automation` state roots. Mutable source
+workspaces are separate owned temporary directories and are removed only after
+verified worker stop. See [setup and recovery](../guides/agent-efficiency.md#run-an-isolated-github-repair)
+for costs, budgets, cancellation and export/retention boundaries.

@@ -505,12 +505,12 @@ part of this check.
 
 ### Let Station hold a follow-up
 
-A follow-up sent to a conversation whose turn is still running is refused
-today, and the client holds it until the turn ends. A send to `POST /chat` that
-adds `"whenBusy": "queue"` (with its `conversationId` and `clientTurnId`)
-asks Station to hold it instead, in the conversation's durable inbox. The
-message is stored before the answer arrives, so it survives a closed tab,
-another device and a restart.
+A follow-up sent without a queue request may be refused while the
+conversation's turn is running. A send to `POST /chat` that adds `"whenBusy": "queue"` (with its `conversationId` and `clientTurnId`)
+asks Station to hold it instead, in the conversation's durable inbox when eligible. A queued receipt means the message was stored
+before the answer and survives a closed tab, another device and a restart.
+The request can instead take the live path and return a started receipt or a
+refusal; a request alone does not prove storage.
 
 - When the conversation is busy (its current Session has a turn open, or
   earlier follow-ups are still waiting), the send is held and answered `202`
@@ -1653,7 +1653,7 @@ set it; Station strips any value a caller supplies):
   `runtime-attested` (Station's own runtime vouched for it): the session is
   real work of your conversation that runs under another owner. In hosted
   mode that happens when Station can't attribute the dispatch to a bound
-  caller (for example a Codex session calling through its URL token), so the
+  caller (for example an external engine using a delegated-custody Session capability), so the
   delegate is the Station operator's. It is counted as not visible: no node,
   and the total is partial with one line saying how many such tasks there are.
   The stamp counts only on the session's start record, beside the parent it

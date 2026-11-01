@@ -1225,7 +1225,6 @@ export function ChatInputArea({
               )}
             </>
           )}
-          {contextMeter}
           {modeChoices.length > 0 && onAcpSessionModeChange ? (
             <React.Suspense fallback={null}>
               <AcpSessionModeChip
@@ -1801,6 +1800,7 @@ export function ChatInputArea({
             </span>
           )}
           <span className="chat-controls-row__spacer" />
+          {contextMeter}
           {/* On a phone Send/Queue hide (keeping their width) until there is
               something to send, so typing never moves Stop. Stop therefore
               sits after them, at the row's edge: before them it floated

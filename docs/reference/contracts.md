@@ -9,6 +9,15 @@ scope and conversation. `LAYOUT_PANELS_LAYOUT_BOUND` and
 `LAYOUT_PANELS_SESSION_BOUND` bound retention. The v3 device envelope retires the
 pre-release Coding-only panel preference; it does not preserve those old sizes.
 
+`@kontourai/station-contracts/isolated-repair` owns request/wall budget and bounded
+repair-run projection shapes. A projection is observational; it cannot grant
+execution or publication. `automation` adds the `isolated-repair` rule action and
+source `publish-branch` capability; an isolated repair requires an episode policy.
+`qualification-repair-policy` is a dependency-free `.mjs` protected-path validator
+shared by pre-install CI intake and the trusted Station publisher. Its `.d.mts`
+entry supplies types without duplicating the implementation. See
+[isolated repairs](../guides/agent-efficiency.md#run-an-isolated-github-repair).
+
 ## Ownership rules
 
 - This package owns stable cross-package types and constants. Existing domain
@@ -297,7 +306,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/learning-review` | Owner-neutral learning lifecycle projections and explicit access gaps |
 | `@kontourai/station-contracts/layout` | `layoutOwner` derives ownership and `layoutSubject` derives the optional Project subject. Project ownership implies its Project; principal ownership without a subject remains a Board or reusable template. Personal records never inherit Coding's implicit primary Chat claim. Layout definitions, tabs, skills, templates, and repository workspace binding (`workspaceBinding: 'repository'`); legacy Coding records retain their repository binding. The layout contract fields `primary`, `presentation` and `drillIns` (#2995): `parseLayoutPresentationDeclaration` refuses unknown values and unresolvable drill-ins with `InvalidLayoutDeclarationError`; `layoutPresentationDeclaration`, `layoutClaimsPrimaryChat`, `layoutPresentsAsStack` and `findPrimaryChatLayout` (built-in Coding first, then the lowest `id`) read a layout read's stated declaration (a withheld read declares nothing; a stored built-in Coding record that states nothing reads as `BUILTIN_CODING_LAYOUT`'s declaration until slice j). `LAYOUT_PRIMARY_CHAT_PERMISSION` names the plugin permission a contributed `primary: 'chat'` needs. A catalog contribution's optional, server-issued `lifecycleGeneration` is identity only, never a permission; a reinstall or an enablement change replaces it and it never repeats. `null` is history the server cannot vouch for, under which a host admits nothing |
 | `@kontourai/station-contracts/personal-board` | Declarative dashboard sections, saved/proposed Board document and revisioned authoring inputs |
-| `@kontourai/station-contracts/local-accounts` | Operator-only account projections, sign-in/session actions and one-time recovery results |
+| `@kontourai/station-contracts/local-accounts` | Operator-only account projections, sign-in/session actions, one-time recovery results and the Project sharing setting |
 | `@kontourai/station-contracts/notification` | Notification payloads and actions |
 | `@kontourai/station-contracts/orchestration` | Connected-agent/orchestration request and response shapes. A session event window may carry `latestTool: { turnId, name }` independently of its transcript caps, bounded to a 256-byte UTF-8 name and 4096-byte turn ID at the snapshot watermark. `null` means no usable current-turn tool; only an absent field permits older-server event fallback. A new turn clears the fact; steering the same turn preserves it. No arguments or inferred tool-running state are included. `turnStartDetached: true` marks a capped newest page whose oldest event is its oldest turn's `turn.started`, re-added across events the page left out; its `nextCursor` reads that gap first. Absent means the page is contiguous, or the host predates the field. Conversation windows may include `memoryContinuation: { eligible, turnId? }`, the server's current person-continuation decision; an absent field does not authorize a stored-event Continue action. Submission still checks the sender's permission and current state. |
 | `@kontourai/station-contracts/required-slots` | Required Home and shared Inbox/Chat default identities, non-empty assignment parser, default mutation refusal and pure override/default/safe-mode resolution; declarations grant no execution or role authority. See [required slots](../guides/plugins.md#required-home-and-inboxchat-slots) |
@@ -306,7 +315,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/project` | Project config and metadata, and `projectIconProblem`: the one rule for a stored project icon (a short glyph, or a PNG/JPEG/WebP/ICO data URL of at most 128 KiB whose bytes match its type) that the create and update routes, the icon pickers and the renderer share |
 | `@kontourai/station-contracts/project-checkout-freshness` | How far a Project's checkout is behind its upstream, from local git refs: the `GET /api/projects/:slug/checkout-freshness` view (`stale`, `not-stale` or `unknown` with a reason), the default thresholds, `resolveProjectCheckoutStaleThresholds` and `projectCheckoutStaleReasons` |
 | `@kontourai/station-contracts/project-chat-defaults` | How a Project's new chat picks its model and approval mode (`fixed` or `last-used`), the `GET /api/projects/:slug/chat-defaults` view, and `resolveProjectChatApprovalDefault`, the one resolution the session start and that view share |
-| `@kontourai/station-contracts/project-membership` | Exact Station/local/portable Project scope, member roles/actions, single-use or verified-email invitations, administration projections and the sharing state a refused administration read discloses (`ProjectAccessRefusalDetails`) |
+| `@kontourai/station-contracts/project-membership` | Exact Station/local/portable Project scope, member roles/actions, invitations, administration projections, sharing enablement and refusal details |
 | `@kontourai/station-contracts/provider` | Provider kinds and provider-facing contract enums/types |
 | `@kontourai/station-contracts/runtime` | Session metadata, workflow metadata, runtime responses |
 | `@kontourai/station-contracts/runtime-events` | Runtime event stream payloads |
@@ -2306,3 +2315,30 @@ comparison retain the existing saved-view owner and revision protocol.
 `PrivateOperationalOutcomeSummary.observedTurns` counts distinct retained turns
 with terminal observations; completed/aborted/failed partition those observations,
 with unknown retained-only coverage. Independent source populations stay separate.
+
+
+## Bounded context and reviewed learning
+
+`@kontourai/station-contracts/project-working-configuration` owns the reviewed
+repository sources, editable draft, revision/digest and bounded Task context.
+Discovery and apply carry Project incarnation and source identity; declared
+commands carry no execution authority. The server owns persistence and scope.
+
+`@kontourai/station-contracts/learning-review` owns the seven-stage projection,
+typed source selection, proposal/owner intent and receipt views. Source capture,
+evaluation, approval, activation, observed effect and retirement stay distinct.
+A missing owner fact stays a typed gap. The immutable Project request header
+prevents slug-reuse races and is not authorization. Knowledge Kit's public
+`knowledge.learning/v1` API owns lifecycle transitions; Station's projection is
+not a second store or an inference from raw Knowledge `status`.
+
+`@kontourai/station-contracts/conversation-context-boundary` extends the existing
+durable boundary with bounded summary and Task-state seeds. Their successor
+cuts earlier model history without deleting the transcript; exact source and
+summary provenance remain attached. Unknown native state is omitted explicitly.
+
+`@kontourai/station-contracts/project-supervision` names opt-in supervision,
+Task incarnation, checkpoint, coordinator and known wait facts. The server
+reconciles through the existing inbox; it does not infer a new workflow DAG.
+See [bounded agent work](../guides/agent-efficiency.md) for current consumers and
+qualification limits.

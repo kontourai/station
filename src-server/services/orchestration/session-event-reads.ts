@@ -470,6 +470,13 @@ export class SessionEventReads {
                   priorTranscriptInjected:
                     marker.policy === 'continue-from-history',
                   consumedAt: marker.consumedAt,
+                  ...(marker.seed
+                    ? {
+                        seed: (({ text: _text, ...metadata }) => metadata)(
+                          marker.seed,
+                        ),
+                      }
+                    : {}),
                 },
               ]
             : [],

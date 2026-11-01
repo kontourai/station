@@ -200,7 +200,23 @@
 
     "src-ui/src/__tests__/MessageBubble.basisChipFit.test.tsx",
 
-    "src-ui/src/__tests__/SubagentTranscriptCard.interrupted.test.tsx"
+    "src-ui/src/__tests__/SubagentTranscriptCard.interrupted.test.tsx",
+
+    "src-ui/src/components/chat/TranscriptTurnBrowser.tsx",
+
+    "src-ui/src/components/chat-dock/useConversationWorkState.ts",
+
+    "src-ui/src/components/chat-dock/inbox-dismissals.tsx",
+
+    "src-ui/src/__tests__/conversation-resolution.test.tsx",
+
+    "src-ui/src/__tests__/TranscriptTurnBrowser.test.tsx",
+
+    "src-ui/src/__tests__/transcript-turn-rail.browser.test.tsx",
+
+    "src-server/routes/chat/conversation-work-state.ts",
+
+    "src-ui/src/components/chat-dock/mobile-activity-groups.ts"
   ],
 
   "checks": [

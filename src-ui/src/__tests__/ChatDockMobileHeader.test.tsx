@@ -218,7 +218,7 @@ async function openActions() {
 }
 
 describe('mobile conversation focus', () => {
-  test('keeps project and conversation switching directly reachable with readable context', () => {
+  test('keeps conversation switching direct and leaves future-project choice out of the active chat', () => {
     const onToggleInbox = vi.fn();
     renderHeader({
       onToggleInbox,
@@ -237,14 +237,9 @@ describe('mobile conversation focus', () => {
     fireEvent.click(inbox);
     expect(onToggleInbox).toHaveBeenCalledOnce();
     expect(
-      screen.getByRole('button', {
-        name: 'Switch project — New chats, Kontour AI',
-      }).textContent,
-    ).toContain('Kontour AI');
+      screen.queryByRole('button', { name: /^Switch project/ }),
+    ).toBeNull();
     expect(screen.getByRole('button', { name: 'Chat actions' })).toBeTruthy();
-    expect(
-      screen.getByRole('button', { name: /^Switch project/ }),
-    ).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Inbox' })).toBeTruthy();
   });
   test('the activity dot on chat actions says what it means', () => {
@@ -276,6 +271,7 @@ describe('mobile conversation focus', () => {
     'opens the canonical project creation route from the picker',
     async ({ projects }) => {
       renderHeader({
+        agentIdentity: null,
         projectSwitcher: {
           projectSlug: '',
           projectName: 'Choose a project',
@@ -336,6 +332,7 @@ describe('mobile conversation focus', () => {
     const onOpenProject = vi.fn();
     const onSwitchProject = vi.fn();
     renderHeader({
+      agentIdentity: null,
       projectSwitcher: {
         projectSlug: 'kontour-ai',
         projectName: 'Kontour AI',
@@ -407,7 +404,10 @@ describe('mobile switcher names include their visible text', () => {
   test.each([['the project switcher', /^Switch project/]])(
     '%s',
     (_label, name) => {
-      renderHeader({ sessionProjectMismatchLabel: 'This chat: Alpha' });
+      renderHeader({
+        agentIdentity: null,
+        sessionProjectMismatchLabel: 'This chat: Alpha',
+      });
       const button = screen.getByRole('button', { name });
       const visible = words(button.textContent ?? '');
       expect(visible.length).toBeGreaterThan(0);
@@ -420,12 +420,7 @@ describe('mobile switcher names include their visible text', () => {
 describe('the mobile dock bar control set (#928 C2b)', () => {
   test('an open bar exposes navigation, primary context actions, and secondary actions', () => {
     renderHeader();
-    for (const name of [
-      'Collapse chat',
-      'Switch project — New chats, Kontour AI',
-      'Inbox',
-      'Chat actions',
-    ]) {
+    for (const name of ['Collapse chat', 'Inbox', 'Chat actions']) {
       expect(screen.getByRole('button', { name })).toBeTruthy();
     }
   });

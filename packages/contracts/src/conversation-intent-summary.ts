@@ -49,7 +49,7 @@ export interface ConversationIntentSummaryRelatedEvidenceRef {
 /** Exact consumed-context disclosure supplied by the runtime event window. */
 export interface ConversationIntentSummaryContextBoundary {
   boundaryId: string;
-  policy: 'continue-from-history' | 'empty-next-cold-start';
+  policy: import('./conversation-context-boundary.js').ConversationContextBoundaryPolicy;
   priorTranscriptInjected: boolean;
 }
 

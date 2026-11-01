@@ -300,6 +300,19 @@ export class OperatorSessionService {
     return stored.passkey.id;
   }
 
+  /** Recheck the verified assertion's passkey at a synchronous commit boundary. */
+  isStepUpPasskeyCurrent(id: string): boolean {
+    const origin = this.deps.origin;
+    const passkey = this.deps.registry.existing()?.get(id);
+    return (
+      !!origin &&
+      !!passkey &&
+      passkey.revokedAt === null &&
+      passkey.origin === origin &&
+      passkey.rpId === new URL(origin).hostname
+    );
+  }
+
   signOut(secret: string, credential: string): boolean {
     const session = this.resolve(secret, credential);
     if (!session) return false;
@@ -348,9 +361,19 @@ export function isOperatorSessionRead(method: string, path: string): boolean {
         /^\/api\/outside-agent\/(requests|transactions)\/[^/]+$/.test(path)))
   );
 }
+export function isAccountBindingConsentLeaf(
+  method: string,
+  path: string,
+): boolean {
+  return (
+    method === 'POST' &&
+    /^\/api\/pairing\/requests\/[^/]+\/account-consent$/.test(path)
+  );
+}
 export function isOperatorSessionLeaf(method: string, path: string): boolean {
   return (
     isOperatorSessionRead(method, path) ||
+    isAccountBindingConsentLeaf(method, path) ||
     (method === 'POST' &&
       /^\/api\/pairing\/requests\/[^/]+\/confirm$/.test(path)) ||
     (method === 'POST' &&

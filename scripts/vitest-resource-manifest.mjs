@@ -141,6 +141,12 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Creates a private FIFO and reads it in a bounded child so a blocking regression cannot hang Vitest.
+  'src-server/services/identity/__tests__/account-sharing-setting.test.ts',
+  // Isolated repair caller owns real Git children, private journals, and an actual Task graph.
+  'src-server/services/automation/__tests__/repair-controller.test.ts',
+  // Exercises the real provider budget/HTTP relay with synthetic transport and Docker command boundaries.
+  'src-server/services/automation/__tests__/repair-worker.test.ts',
   // Exercises the serialized CLI UI listener in an owned Node child.
   'src-server/runtime/frameworks/__tests__/http-receive.integration.test.ts',
   // Runs the preview-docs CLI against private source/doc fixtures and the real repo.

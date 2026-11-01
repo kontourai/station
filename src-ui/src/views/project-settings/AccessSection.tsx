@@ -4,11 +4,15 @@ import {
   StationHttpError,
 } from '@kontourai/station-sdk/client';
 import {
+  getProjectSharingStepUpStatus,
   type ProjectAccessCommand,
+  type ProjectSharingStepUp,
   projectAccessRefusal,
   useProjectAccess,
+  useProjectSharingEnablement,
 } from '@kontourai/station-sdk/project-access';
-import { type ReactNode, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { type ReactNode, useEffect, useState } from 'react';
 import {
   AccountIdentityConflict,
   isAccountIdentityConflict,
@@ -22,6 +26,14 @@ import {
   ENABLE_SHARING_FORBIDDEN,
   projectAccessErrorMessage,
 } from './projectAccessErrorText';
+
+const STEP_UP_OUTCOMES = {
+  denied: 'Cancelled. Nothing was applied.',
+  expired: 'The review expired. Nothing was applied.',
+  target_changed: 'This changed since you asked. Nothing was applied.',
+  session_ended: 'Your operator session ended. Nothing was applied.',
+  unavailable: 'The review status is unavailable. Refresh access to check.',
+} as const;
 
 export function AccessSection({
   slug,
@@ -76,13 +88,59 @@ function AccessPanel({
   const { query, mutation, change } = useProjectAccess(slug, authority);
   const busy = mutation.isPending || query.isFetching;
   const [enableError, setEnableError] = useState<string>();
+  const [review, setReview] = useState<ProjectSharingStepUp>();
+  const refused =
+    allowEnableSharing &&
+    query.error instanceof StationHttpError &&
+    query.error.status === 403;
+  // #4306: how this caller may turn on sharing. An older host has no such
+  // read; the failed query keeps the previous behavior (offer Enable).
+  const enablement = useProjectSharingEnablement(slug, authority, refused);
+  const ability =
+    enablement.isError &&
+    enablement.error instanceof StationHttpError &&
+    enablement.error.status === 404
+      ? 'direct'
+      : enablement.data?.enable;
+  const reviewStatus = useQuery({
+    queryKey: ['project-sharing-step-up', authority?.apiBase, review?.id],
+    queryFn: () =>
+      getProjectSharingStepUpStatus(authority!.apiBase, review!.id, {
+        requestScope: authority,
+      }),
+    enabled: !!authority && !!review,
+    gcTime: 0,
+    retry: false,
+    refetchInterval: 2000,
+  });
+  const reviewOutcome = reviewStatus.isError
+    ? 'unavailable'
+    : reviewStatus.data;
+  useEffect(() => {
+    if (!reviewOutcome || reviewOutcome === 'pending') return;
+    setReview(undefined);
+    if (reviewOutcome === 'approved') void query.refetch();
+    else setEnableError(STEP_UP_OUTCOMES[reviewOutcome]);
+  }, [reviewOutcome, query.refetch]);
   const [identityConflict, setIdentityConflict] = useState(false);
 
   async function enable() {
     setEnableError(undefined);
+    // Open during the click, before the request yields user activation.
+    const reviewWindow =
+      ability === 'operator-passkey'
+        ? window.open('about:blank', '_blank')
+        : null;
     try {
-      await change({ kind: 'enable', localProjectId: projectId });
+      const result = await change({
+        kind: 'enable',
+        localProjectId: projectId,
+      });
+      if (result.kind !== 'step-up-required') return void reviewWindow?.close();
+      reviewWindow?.location.replace(result.transaction.reviewUrl);
+      setReview(result.transaction);
     } catch (cause) {
+      reviewWindow?.close();
       if (isAccountIdentityConflict(cause)) setIdentityConflict(true);
       else
         setEnableError(
@@ -123,7 +181,7 @@ function AccessPanel({
     const enableButton = (
       <Button
         variant="primary"
-        pending={mutation.isPending}
+        pending={mutation.isPending || !!review}
         onClick={() => void enable()}
       >
         Enable Project sharing
@@ -150,8 +208,33 @@ function AccessPanel({
                 ? 'Turn on sharing to invite people with a link. You become the Project owner.'
                 : 'Sharing can be turned on from this Project’s settings.'
             }
-            action={allowEnableSharing ? enableButton : undefined}
+            action={
+              allowEnableSharing &&
+              (ability === 'direct' || ability === 'operator-passkey')
+                ? enableButton
+                : undefined
+            }
           />
+          {enablement.data?.enable === 'operator-sign-in' && (
+            <p>
+              <a
+                href={enablement.data.signInUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Sign in as operator
+              </a>{' '}
+              to enable sharing.
+            </p>
+          )}
+          {review && (
+            <p role="status">
+              Waiting for your passkey.{' '}
+              <a href={review.reviewUrl} target="_blank" rel="noreferrer">
+                Review sharing change
+              </a>
+            </p>
+          )}
           {enableAlert}
         </AccessFrame>
       );
@@ -166,6 +249,19 @@ function AccessPanel({
                 : 'A Project owner or admin manages access. Turning sharing on needs Station owner authority.'
             }
           />
+          {refusal.sharing === 'undisclosed' &&
+            enablement.data?.enable === 'operator-sign-in' && (
+              <p>
+                <a
+                  href={enablement.data.signInUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Sign in as operator
+                </a>{' '}
+                to enable sharing.
+              </p>
+            )}
         </AccessFrame>
       );
     if (
@@ -180,8 +276,36 @@ function AccessPanel({
           <Empty
             label="Sharing may be off"
             description="This Station didn’t say whether you can turn on sharing here."
-            action={allowEnableSharing ? enableButton : undefined}
+            action={
+              allowEnableSharing &&
+              (ability === 'direct' || ability === 'operator-passkey')
+                ? enableButton
+                : undefined
+            }
           />
+          {enablement.data?.enable === 'operator-sign-in' && (
+            <p>
+              <a
+                href={enablement.data.signInUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Sign in as operator
+              </a>{' '}
+              to enable sharing.
+            </p>
+          )}
+          {review && (
+            <p role="status">
+              Waiting for your passkey.{' '}
+              <a href={review.reviewUrl} target="_blank" rel="noreferrer">
+                Review sharing change
+              </a>
+            </p>
+          )}
+          <Button disabled={busy} onClick={() => void query.refetch()}>
+            Refresh access
+          </Button>
           {enableAlert}
         </AccessFrame>
       );

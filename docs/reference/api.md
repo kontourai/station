@@ -44,6 +44,25 @@ authorities. The [runtime composition](../../src-server/runtime/routes/runtime-r
 mounts handlers and their request boundaries. A handler existing in source does
 not mean every deployment mounts or admits it.
 
+## Personal conversation resolution
+
+The default-off **Open and Settled inbox** (`conversation-resolution`) Feature
+Preview adds `GET /api/conversations/work-state` and
+`PUT /api/conversations/:id/work-state`. Both inherit `orchestration:read`
+transport admission and require a current person/owner-device identity.
+The GET returns `{success:true,data:{settled:{[conversationId]:timestamp}}}`
+with private, no-store caching. The PUT accepts exactly `{settled:boolean}`,
+rechecks conversation read admission and current authority before persisting,
+and returns `{success:true}`. Invalid input returns 400; missing person or stale
+authority returns 403; an unreadable conversation returns 404. A disabled
+preview returns 404 with `code:feature_preview_disabled` and a Settings link.
+
+State is personal and durable across devices. Settlement changes neither
+provider execution nor history, and is separate from dismissal and deletion.
+See the [route owner](../../src-server/routes/chat/conversation-work-state.ts),
+[route tests](../../src-server/routes/chat/__tests__/conversation-work-state.test.ts)
+and [SDK helpers](sdk.md#personal-conversation-resolution-and-turn-directory).
+
 ## Local speech and media tools
 
 Personal hosts mount these Project-independent routes; hosted deployments do
@@ -6137,7 +6156,7 @@ session with step-up can mint or revoke another person's tokens. The desktop's
 local grant lists them; its current write refusal status is tracked in
 [#4109](https://github.com/kontourai/station/issues/4109). A token is refused
 (`403`) on a Project’s member-administration
-routes (`GET /api/projects/:slug/access` and `POST
+routes (`GET /api/projects/:slug/access`, `GET .../access/enablement` and `POST
 /api/projects/:slug/access/**`).
 
 A person tied by a Station local account can hold a token too (#3586). It
@@ -6157,6 +6176,42 @@ deployment provider), the account belongs to another issuer, or it is not
 current. An account-bound device manages its own tokens through `GET`/`POST
 /api/access/tokens` and `DELETE /api/access/tokens/:tokenId` alongside its
 account session.
+
+## Project sharing setting
+
+`/api/operator/account-sharing` turns Project sharing with built-in local
+accounts on or off from Settings (#4305). See
+[deployment authentication](../guides/deployment-authentication.md#turn-it-on-from-settings)
+for precedence, rollback and what turning it off keeps.
+
+| Method | Body | Success `data` |
+| --- | --- | --- |
+| `GET` | none | `AccountSharingSettingView`: `source`, `lockedBy`, `active`, `stored`, unresolved `pending`, `lastApply`, `startupFailure`, offered `origins` and `restart`. |
+| `PUT` | `{ "enabled": false }` or `{ "enabled": true, "publicOrigin": "<offered origin>" }`, at most 4 KiB | `{ "changed": false }`, or HTTP 202 with `{ "changed": true, "confirmation": { "id": "<id>", "reviewUrl": "<url>", "expiresAt": 0 } }` (`expiresAt` is an epoch timestamp in milliseconds). |
+
+Both require the same operator authority as `/api/operator/accounts` (an
+operator credential or a home-possession Device; a device-bound operator
+session is not accepted) and the `access:manage` pairing scope. The transaction's
+distinct-origin review binds the exact choice and revalidates authority and
+state before staging and requesting a handoff. Responses are
+`Cache-Control: no-store`. Refusals use the `success: false` envelope with a
+`code`:
+
+| Status | `code` | When |
+| --- | --- | --- |
+| 403 | `operator_required` | The caller is not the Station operator. |
+| 404 | `feature_preview_disabled` | The `project-sharing-setting` preview is off. |
+| 400 | `invalid_request` | The body is malformed, too large or has another field. |
+| 400 | `origin_not_offered` | `publicOrigin` is not a selectable offered origin. |
+| 409 | `set_by_deployment` | Deployment variables decide; the message names them. |
+| 409 | `restart_unavailable` | No process supervisor runs this Station. |
+| 503 | `consent_unavailable` | The separate review listener, address, session or transaction is unavailable. |
+
+The consent decision reports a refusal if staging or handoff fails. Withdrawal
+is attempted, but a failed withdrawal can leave an unarmed pending choice;
+the read exposes it and boot does not adopt it. A post-rename sync failure
+while arming is an indeterminate publication and is not reported as a failed
+decision, because the new generation may observe it.
 
 ## Create a device invitation
 
@@ -6318,6 +6373,7 @@ Each of these requests with a live operator session returns
 `202 { status: 'step_up_required', transaction: { id, reviewUrl, expiresAt } }`:
 
 - `POST /api/pairing/devices/:deviceId/scope`
+- `POST /api/pairing/requests/:requestId/account-consent`
 - `DELETE /api/pairing/devices/:deviceId`
 - `DELETE /api/pairing/devices/:deviceId/record`
 - `PUT /api/pairing/people/:principalId/group`
@@ -6403,11 +6459,28 @@ approved without a body and remain device-only. Account/relay enrollment that
 requires an account binding cannot use that ordinary path. The separate
 `bindAccountIdentity` option is mutually exclusive with `bindVerifiedIdentity`.
 
-A successful binding response includes `personBindingApproved: true`; callers
-must require that acknowledgement. The subsequent one-time exchange persists
+For browser account binding, `POST /api/pairing/requests/:requestId/account-consent`
+accepts an empty object and requires a current Device-bound operator session.
+It returns `202 step_up_required` with a transaction and consent review URL;
+the POST itself grants nothing. A fresh user-verified passkey on the consent
+origin commits the pinned request and account only after rechecking their state
+and the operator session. The existing `confirm` endpoint remains the host CLI
+path for `bindAccountIdentity`; ordinary unbound approvals are unchanged.
+
+Host `POST .../confirm` returns `personBindingApproved: true` and the binding
+receipt. The browser's consent decision returns `status: 'approved'`; the
+owning session can read the effect, including `personBindingApproved` and
+`principalBinding`, from `GET /api/pairing/device-access-transactions/:id`.
+The subsequent one-time exchange returns the Device with its binding and persists
 the binding with the Device credential, including provider/subject and approval
 provenance. A Tailscale-person binding changes identity resolution; it does not
 add wire scope or Project membership, or relabel existing history.
+
+An account-bound public access request is capped to `orchestration:read` at
+creation and checked again at confirmation and exchange. A browser-cookie
+exchange of another account binding also issues at most read scope. Project
+administration requires an eligible membership role and a separately promoted
+Device with `orchestration:operate`.
 
 The [principal owner](../../src-server/runtime/bootstrap/orchestration-request-principal.ts)
 uses that approved binding on direct requests and rejects a conflicting live
@@ -6733,3 +6806,62 @@ or missing/expired, with refresh/request-again/update recovery.
 
 See [the user journey](../guides/monitoring.md#connect-a-personal-source-in-insights).
 This source contract has not established installed/native/release acceptance.
+
+
+## Reviewed Project context and learning previews
+
+These personal-host routes are off by default. They require the operator in
+person; Station Control cannot create its own working rules or learning grants.
+Older hosts or disabled previews return unavailable/preview guidance.
+
+| Method | Path | Operation |
+| --- | --- | --- |
+| GET | `/api/projects/:slug/working-configuration` | Discover bounded repository guidance and read the current reviewed defaults. |
+| PUT | `/api/projects/:slug/working-configuration` | Apply an exact Project/revision/source-digest draft with a stable operation id. Runs no command. |
+| GET | `/api/projects/:slug/learning` | Read the owner queue with complete or partial coverage. |
+| GET | `/api/projects/:slug/learning/:id` | Inspect one owner projection; optional `compareId` selects a comparison. |
+| POST | `/api/projects/:slug/learning/proposals` | Propose wording from an exact canonical Task-standing or rated-response source. |
+| POST | `/api/projects/:slug/learning/:id/evidence` | Inspect only exact evidence references already admitted by the current owner record. |
+| POST | `/api/projects/:slug/learning/:id/intents` | Evaluate, decide, activate, observe effect, retire or supersede at an expected owner revision. |
+| GET | `/api/analytics/reviewed-tariffs` | Read the private reviewed tariff configuration and revision. |
+| PUT | `/api/analytics/reviewed-tariffs` | Review bounded Bearing catalog bytes and exact tariff bindings under a stable operation id/revision. |
+
+Learning requests include `x-station-learning-project-id` with the immutable
+Project incarnation. It grants no authority; a reused slug refuses before owner
+access. Intent JSON cannot supply actor, Project scope or decision capability.
+Source withdrawal and changed authority withhold protected content at release.
+Knowledge Kit retains the lifecycle, while tariff configuration retains approved
+source bytes rather than a Station-maintained price table. See
+[bounded agent work](../guides/agent-efficiency.md) for evidence limits.
+
+
+## Isolated GitHub repair preview
+
+`/api/isolated-repairs` is a personal-host operator API behind
+`isolated-github-repairs`. Its transport tier is `access:manage`; it additionally
+requires the current operator in person and rejects agent/MCP and hosted calls.
+An operator read may inspect retained audit state after disabling the preview.
+Disabling, revoking, canceling, resolving and archiving remain maintenance;
+creation, enabling, review, grants and publication require the preview again
+inside their mutation authority. Responses are private/no-store.
+
+| Method | Suffix under `/api/isolated-repairs` | Behavior |
+| --- | --- | --- |
+| GET | `/`, `/configuration`, `/profiles` | Read runs, redacted source/rule configuration and fingerprint, or profile revisions. |
+| POST | `/sources`, `/rules` | Create disabled poll sources and isolated-repair rules with server-issued identities. |
+| POST | `/configuration/enable` | Enable/disable an exact source/rule at expected configuration fingerprint. |
+| POST | `/profiles`, `/profiles/:id/enable` | Configure a disabled profile or enable/disable its expected revision. Secret references are never returned. |
+| GET | `/:run/artifact` | Inspect the Task-bound source/result, review, grant, worker evidence and publication checkpoints. |
+| POST | `/:run/review` | Review exact binding/result digests with a verdict and rationale; approval completes the Task. |
+| POST | `/:run/grant` | Separately grant the exact review/result to an enabled publisher for fifteen minutes. Requires source `publish-branch` permission. |
+| POST | `/:run/publish` | Consume one grantId and open a draft PR through GitHub REST APIs. Never merges or arms auto-merge. |
+| POST | `/:run/revoke`, `/:run/cancel` | Revoke future authority/request cancellation; unknown remote effects remain indeterminate. |
+| POST | `/:run/followup` | Record operator followup without claiming that effects are known or admission is free. |
+| POST | `/:run/resolve` | With `acknowledgeUnknownEffects:true` and rationale, release admission after exact ownership/worker stop are settled. No replay. |
+| POST | `/:run/archive` | Retain terminal or explicitly resolved unknown records outside the unarchived-run ceiling. |
+
+Setup/review/grant JSON fields and failure limits are described in
+[bounded agent work](../guides/agent-efficiency.md#run-an-isolated-github-repair).
+A refused/ambiguous operation is not a successful external effect. After review,
+read the artifact again for `review.id`; after an uncertain response, inspect
+retained state instead of creating another publication attempt.

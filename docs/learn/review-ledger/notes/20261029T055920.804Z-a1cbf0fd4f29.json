@@ -1,0 +1,7 @@
+{
+  "revision": "89f9da58cca513022a568d01cb5426574da08f69",
+
+  "notes": [
+    {"path":"docs/design/walkthroughs.md","note":"Reviewed the design’s link to the Walkthrough guide and its import and Project authorization context after the guide clarified Settings or deployment can enable sharing. The design contract is unchanged; no import, transcription or human speech evidence was rerun.","inputs":["docs/design/walkthroughs.md","docs/guides/walkthroughs.md"]}
+  ]
+}

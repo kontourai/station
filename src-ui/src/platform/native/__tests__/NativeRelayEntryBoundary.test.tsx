@@ -24,6 +24,8 @@ const entry = vi.hoisted(() => ({
   recovery: vi.fn(),
   preferences: vi.fn(),
   session: vi.fn(),
+  workState: vi.fn(),
+  undo: vi.fn(),
   version: 0,
   repository: null as NativeStationProfileStorage | null,
   launch: null as unknown,
@@ -177,6 +179,20 @@ vi.mock('../../../contexts/VoiceProviderContext', () => ({
 vi.mock('../../../contexts/WorkClaimsContext', () => ({
   WorkClaimsProvider: Through,
 }));
+// These operator-only owners are probes like Auth and account preferences.
+// The actual main tree must keep them out of native relay and intake states.
+vi.mock('../../../components/chat-dock/useConversationWorkState', () => ({
+  ConversationWorkStateProvider: ({ children }: { children: ReactNode }) => {
+    entry.workState();
+    return children;
+  },
+}));
+vi.mock('../../../components/chat-dock/inbox-dismissals', () => ({
+  InboxDismissUndo: ({ children }: { children: ReactNode }) => {
+    entry.undo();
+    return children;
+  },
+}));
 vi.mock('../../../core/PermissionManager', () => ({
   PermissionManager: Through,
 }));
@@ -270,6 +286,8 @@ it('the actual main entry cuts native routes above operator providers through pe
   expect(screen.queryByText('Native member entry')).toBeNull();
   expect(entry.auth).not.toHaveBeenCalled();
   expect(entry.operator).not.toHaveBeenCalled();
+  expect(entry.workState).not.toHaveBeenCalled();
+  expect(entry.undo).not.toHaveBeenCalled();
   expect(entry.discoveryInputs).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'Close' }));
   await screen.findByText('Native member entry');
@@ -278,6 +296,8 @@ it('the actual main entry cuts native routes above operator providers through pe
   expect(entry.preferences).not.toHaveBeenCalled();
   expect(entry.session).not.toHaveBeenCalled();
   expect(entry.operator).not.toHaveBeenCalled();
+  expect(entry.workState).not.toHaveBeenCalled();
+  expect(entry.undo).not.toHaveBeenCalled();
   expect(entry.discoveryInputs).not.toHaveBeenCalled();
   entry.retired.mockClear();
   await act(async () => {
@@ -303,6 +323,8 @@ it('the actual main entry cuts native routes above operator providers through pe
   expect(screen.getByText('Native member entry')).toBeDefined();
   expect(entry.auth).not.toHaveBeenCalled();
   expect(entry.operator).not.toHaveBeenCalled();
+  expect(entry.workState).not.toHaveBeenCalled();
+  expect(entry.undo).not.toHaveBeenCalled();
   expect(entry.discoveryInputs).not.toHaveBeenCalled();
   act(() => {
     entry.relay = false;
@@ -311,6 +333,8 @@ it('the actual main entry cuts native routes above operator providers through pe
   });
   await screen.findByText('Operator workspace');
   expect(entry.auth).toHaveBeenCalled();
+  expect(entry.workState).toHaveBeenCalled();
+  expect(entry.undo).toHaveBeenCalled();
   expect(entry.recovery).toHaveBeenCalled();
   expect(entry.preferences).toHaveBeenCalled();
   expect(entry.session).toHaveBeenCalled();
@@ -318,6 +342,8 @@ it('the actual main entry cuts native routes above operator providers through pe
   const discoveryCalls = entry.discoveryInputs.mock.calls.length;
   const operatorCalls = entry.operator.mock.calls.length;
   const authCalls = entry.auth.mock.calls.length;
+  const workStateCalls = entry.workState.mock.calls.length;
+  const undoCalls = entry.undo.mock.calls.length;
   await act(async () => {
     for (const handler of entry.nativeHandlers.values())
       handler({
@@ -332,6 +358,8 @@ it('the actual main entry cuts native routes above operator providers through pe
     screen.getByText('Operator workspace').closest('[inert]'),
   ).not.toBeNull();
   expect(entry.operator).toHaveBeenCalledTimes(operatorCalls);
+  expect(entry.workState).toHaveBeenCalledTimes(workStateCalls);
+  expect(entry.undo).toHaveBeenCalledTimes(undoCalls);
   expect(entry.auth).toHaveBeenCalledTimes(authCalls);
   expect(entry.discoveryInputs).toHaveBeenCalledTimes(discoveryCalls);
   fireEvent.click(screen.getByRole('button', { name: 'Close' }));
@@ -342,6 +370,8 @@ it('the actual main entry cuts native routes above operator providers through pe
   entry.recovery.mockClear();
   entry.preferences.mockClear();
   entry.session.mockClear();
+  entry.workState.mockClear();
+  entry.undo.mockClear();
   act(() => {
     entry.relay = true;
     entry.version++;
@@ -353,6 +383,8 @@ it('the actual main entry cuts native routes above operator providers through pe
   expect(entry.preferences).not.toHaveBeenCalled();
   expect(entry.session).not.toHaveBeenCalled();
   expect(entry.operator).not.toHaveBeenCalled();
+  expect(entry.workState).not.toHaveBeenCalled();
+  expect(entry.undo).not.toHaveBeenCalled();
   expect(entry.discoveryInputs).not.toHaveBeenCalled();
   act(() => {
     entry.native = false;
@@ -361,5 +393,7 @@ it('the actual main entry cuts native routes above operator providers through pe
   });
   await screen.findByText('Operator workspace');
   expect(entry.auth).toHaveBeenCalled();
+  expect(entry.workState).toHaveBeenCalled();
+  expect(entry.undo).toHaveBeenCalled();
   expect(entry.discoveryInputs).toHaveBeenCalled();
 });

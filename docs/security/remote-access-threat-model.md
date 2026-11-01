@@ -17,8 +17,9 @@ mobile continuity baseline; the earlier reconnect work is recorded in
 
 Tool-server OAuth credentials are plaintext JSON with mode `0600` under
 `<home>/security/` (`tool-server-credentials.json` and
-`tool-server-principal-credentials.json`). Same-user processes, including agents
-outside macOS Seatbelt confinement, can read remote tokens directly. Remote MCP
+`tool-server-principal-credentials.json`). Same-user host processes without
+filesystem confinement, including Agent processes with those host permissions,
+can read remote tokens directly. Remote MCP
 proxy delivery does not provide encryption at rest or protection from same-user
 filesystem access. See [connected accounts](../guides/connections.md#connect-an-oauth-mcp-server-to-an-agent).
 
@@ -97,6 +98,14 @@ startup. Follow-up, out of scope here: the consent cookie is not `Secure`;
 marking it so would break the plain-http consent path. See
 the [deployment guide](../guides/deployment.md#reaching-the-consent-origin-over-https).
 
+The Project sharing setting uses a transaction-bound consent session and the
+separate review page to isolate its decision from app-origin scripts. This is
+not a fresh passkey assertion or proof of human presence or same-machine
+location: a caller holding the operator credential can automate the HTTP
+review and decision, and a holder of the exact transaction cookie can decide
+that transaction. Browser Origin and Fetch Metadata do not authenticate raw
+HTTP callers. The S4 passkey ceremony below is a stronger, separate authority.
+
 Operator passkey enrollment (#3257, slice S2b) runs on this origin and only when
 `STATION_TRUSTED_CONSENT_ORIGIN` is set; without it enrollment is unavailable
 (an IP-only Station has no remote operator sign-in). A paired browser opens an
@@ -149,6 +158,9 @@ admission runs first; an invalid operator cookie cannot block that authority. Fo
 pairing approval, a valid operator session takes precedence so its decision
 requires a separate passkey review. The
 session path verifies the binding Device and enforces alias/account policy.
+The account-binding consent leaf explicitly selects the operator session even
+when the Device could otherwise approve pairing, and does not accept the Device
+credential as a substitute for the session or the consent-origin assertion.
 S4 admits exact scope/revoke/removal, group, token, passkey-revocation and
 ordinary Device pairing-approval requests
 only to create a transaction: 202, with no mutation. The owning session alone can
@@ -159,9 +171,34 @@ native consent cannot substitute. The initiating live session may deny through
 the same exact consent-origin and one-use nonce checks without a passkey. Denial
 is terminal and cannot commit a write; a later approval is refused.
 Commit rechecks expected target state and live
-session authority. There is no step-up window. Step-up and automatic status or
+session authority. Account-bound approval also rechecks the provider session,
+issuer and subject before committing the still-pending request. There is no step-up window. Step-up and automatic status or
 inventory refreshes never extend the operator session. Token secrets exist only
 in the initiating commit response, never in the transaction record or later reads.
+
+Turning on Project sharing (#4306) uses the same S4 transaction.
+`POST /api/projects/:slug/access/enable` still commits directly only for the
+operator credential or a `home-possession` grant. A paired Device that ordinary
+admission lets post that leaf, and that presents an operator session bound to
+the same Device, receives `202` and a `project-sharing-enable` transaction
+instead. Its fingerprint pins the slug, the local Project id and the owner, the
+principal that Device resolves to. The review names that owner. The S4 rules
+apply unchanged: one fresh UV assertion on the consent origin, a one-use render
+nonce, the owning session alone, and no step-up window. At commit Station
+rechecks the reviewed owner, the Device credential and the live session (bound
+Device, passkey, credential epoch, expiry). It checks the session again inside
+the Project lease, where the membership service calls `operator()`. A Project
+owner or admin without a session, a different Device carrying the session
+cookie, an agent-originated request and a delegation grant keep the existing
+`403`. `GET /api/projects/:slug/access/enablement` reports which path applies
+to the caller and reads no Project data. A committed enable writes
+`station.project_sharing.enabled` (actor, local Project id, transaction id)
+through the runtime logger, like `station.device_access.changed`. It adds no
+usage-telemetry event. Two residual risks: app-origin plugin code can open such
+a review, as with other S4 requests, but cannot approve it; and the owner is
+the Device's resolved principal. Behind Tailscale Serve with WhoIs that is the
+tailnet person; a Device with no person binding owns as itself, so revoking
+that Device leaves the Project without a reachable owner.
 
 Sign-out remains on the consent origin with its own one-use page nonce and exact
 Origin/Fetch Metadata checks. Remote revoke-all is a follow-up; both API DELETE

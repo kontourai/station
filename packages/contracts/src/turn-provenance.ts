@@ -562,7 +562,9 @@ function isContextBoundaryValue(
     isRecord(value) &&
     isNonEmptyString(value.boundaryId) &&
     (value.policy === 'continue-from-history' ||
-      value.policy === 'empty-next-cold-start') &&
+      value.policy === 'empty-next-cold-start' ||
+      value.policy === 'summary-next-cold-start' ||
+      value.policy === 'task-state-next-cold-start') &&
     typeof value.priorTranscriptInjected === 'boolean'
   );
 }

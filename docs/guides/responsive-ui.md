@@ -197,10 +197,9 @@ every child. Terminal/editor phone controls should stay in one horizontally
 scrollable row; their input font must avoid mobile browser zoom. Test the real
 terminal/editor caller instead of assuming a CSS declaration proves this.
 
-The chat header's **Inventory** control opens the full reader directly on
-desktop. On a phone it is the **Chat inventory** row of the header's **⋯**
-sheet: the bar's edge reserve holds two 44px controls, and a third wrapped the
-header onto a second line (#4192). This is separate from the compact Basis/answer inspection described
+The chat header's **⋯** menu holds **Chat inventory** and **Browse turns** on
+desktop and phones. Keeping secondary actions there avoids wrapping the
+phone header onto a second line (#4192). This is separate from the compact Basis/answer inspection described
 above. Selecting a row reveals detail inline, within the existing scrollable
 reader; it does not add another modal. Closing returns focus to the opener.
 
@@ -279,9 +278,9 @@ something; Connections is the first adopter.
 
 The mobile chat header keeps the conversation title on one line with the
 assistant beneath it. Coding omits the repeated conversation crumb on its chat
-page; pane drill-ins retain the return-to-chat crumb. Project and conversation switching remain directly
-reachable. The Project control’s New chats caption names future context;
-it does not move the open conversation. A phone browser retries an unavailable Station without reloading, and
+page; pane drill-ins retain the return-to-chat crumb. Conversation switching remains directly
+reachable. Choose the Project in the new-chat composer; the active conversation
+keeps its original Project. A phone browser retries an unavailable Station without reloading, and
 rechecks on foreground or network return. A refused credential waits for explicit
 pairing; Request access opens the selected Station directly. Pairing inputs keep
 a 16px floor on phones to avoid Safari zoom, and the dialog includes its padding

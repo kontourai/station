@@ -3,7 +3,10 @@
 An operator can supply Station's account authentication through the public
 `@kontourai/station-contracts/deployment-authentication` contract. The adapter
 is trusted server code selected at process startup. Project plugins and HTTP
-requests cannot register an authentication authority.
+requests cannot register an authentication authority. The built-in local
+account provider can also be turned on from Settings; see
+[Turn it on from Settings](#turn-it-on-from-settings) for why that does not
+weaken this rule.
 
 This interface supplies account login operations and a verified person. Device
 grants, Project membership, private Session access and execution offers remain
@@ -62,13 +65,90 @@ for local development. This configuration does not provision public reachability
 or TLS. Solo local operation still requires neither accounts nor a provider when
 these opt-ins are absent.
 
+### Turn it on from Settings
+
+Without these variables, the Station operator can turn the same configuration
+on in **Settings → System → Project sharing with local accounts**
+([#4305](https://github.com/kontourai/station/issues/4305)). The control is a
+Feature Preview: turn on **Project sharing setting** (`project-sharing-setting`)
+in **Settings → Advanced → Feature previews** first. While the preview is off
+the route refuses with `feature_preview_disabled`, but a saved choice stays in
+force, so turning the preview off never signs invited people out.
+
+- **Who and confirmation.** The operator can request a change with an operator
+  credential or a home-possession Device. A paired Device with `access:manage`
+  alone or a Project administrator cannot request one. App-origin scripts
+  with the host browser session can request a review but cannot decide it. Open the
+  separate confirmation page and approve the displayed choice. On the same
+  machine, the browser's transaction-bound consent session permits that review;
+  the page's one-use nonce and origin keep app-origin scripts from deciding it.
+  The listener and browser must be able to use the consent session on its host.
+  This is not a passkey or proof that a person is present: a local script with
+  the operator credential can automate the review and decision. A device-bound
+  operator passkey session is not accepted by this setting yet.
+- **Sign-in address.** You choose the public origin from addresses this Station
+  knows serves the UI: its UI listener, Tailscale Serve mappings to that
+  listener, and allowed origins witnessed at the UI proxy. The API listener is
+  not offered. An address is selectable only when it is HTTPS (or HTTP
+  loopback) and the API admits it as a browser origin. For a proxy address, add
+  it to `ALLOWED_ORIGINS` and open Settings through that UI ingress. This is
+  configuration and ingress evidence, not proof another device can reach it.
+  The localhost choice works only on this computer.
+- **Applying.** Confirmation stages the change in
+  `<STATION_HOME>/config/account-sharing.json` and asks the
+  [process supervisor](../design/process-supervisor.md) to hand off to a new
+  generation. A staged choice is not eligible for boot until the handoff
+  starts draining. Open requests drain and clients reconnect. A Station started
+  without the supervisor (`STATION_DIRECT_LAUNCH=1`, `--watch`, the desktop
+  sidecar) refuses the change instead of applying half of it.
+- **Rollback.** The new generation marks the change as attempted before it uses
+  it, and commits it only after it starts. If the change fails to load (for
+  example, an account store whose authority secret is missing), Station starts
+  with sharing off and records why. If the generation dies before committing,
+  the next start discards the change and uses the previous one. A refused or
+  unanswered restart attempts to withdraw the unarmed change. If withdrawal
+  cannot be confirmed, the pending state remains visible; an unarmed choice is
+  never adopted. A published arm whose directory sync fails has an uncertain
+  durability outcome, so check the setting after restart.
+- **File custody.** On POSIX, the `config` directory and the setting file must
+  be owned by the current user and private; symlinks, hard-linked files and
+  special files are refused. Existing nonprivate directories need operator
+  permission repair. Windows does not enforce POSIX ownership or mode bits,
+  and skips directory fsync; the same symlink and regular-file checks apply.
+- **Precedence.** If any of `STATION_PROJECT_SHARING`, `STATION_LOCAL_ACCOUNTS`,
+  `STATION_AUTHENTICATION_MODULE`, `STATION_AUTHENTICATION_ORIGIN`,
+  `STATION_AUTHENTICATION_BROWSER_ORIGINS`, `STATION_LOCAL_ACCOUNT_OIDC_FILE` or
+  `STATION_HOSTED_TENANT_REGISTRY_FILE` is set, even to `0`, the deployment
+  decides. Startup ignores the stored setting, and Settings shows it as **Set
+  by the deployment** with no control. Optional OIDC choices remain
+  environment-only.
+- **Turning it off.** Station restarts without Project membership or the
+  account provider. The account store, its authority secret and Project
+  membership records stay in the Station home. While it is off nobody can sign
+  in, account sessions are not recognized, and account-tied personal access
+  tokens are refused. Project sharing controls and invitations are
+  unavailable. Turning it on again with the same Station home restores accounts,
+  memberships and unexpired sessions, as an ordinary restart does. To end
+  sessions for good, use **Sign out all sessions** for each account before
+  turning it off.
+
+Why the built-in provider may be chosen from Settings when a module may not:
+the rule that HTTP requests cannot register an authentication authority is
+about code. A module is arbitrary JavaScript that Station imports and trusts
+with the account store, so only process configuration chosen by whoever runs
+the process may name one. The built-in provider is code that already ships in
+Station. The setting chooses only whether it runs and which already-admitted
+origin it uses. It can name no module, path or secret, and the stored shape has
+no field for one. Only the operator, who already controls the Station home
+and its credentials, can change it.
+
 The operator enables sharing in a Project's **People and access** section,
-chooses a role and creates a single-use invitation link. Before sharing is on,
-an eligible caller sees **Sharing is off** and **Enable Project sharing**.
-Station offers this only to a human caller with Station owner (operator) authority
-whose Device credential can reach the enable route, for example the operator
-console on the Station's own computer. Other callers see an explanation instead
-and are not told whether the Project is shared. Share the link manually;
+on the host or from an eligible paired browser signed in with an operator passkey,
+which confirms each enable with the passkey
+([Turn on Project sharing from a paired browser](operator-passkeys.md#turn-on-project-sharing-from-a-paired-browser)).
+Before sharing is on, an eligible caller sees **Sharing is off** and **Enable Project sharing**.
+Other callers see an explanation without disclosure of the sharing state. The owner
+chooses a role and creates a single-use invitation link. Share the link manually;
 no email is sent. The default link may be accepted by any authenticated person
 who possesses it, once, before its expiry. Cancel a pending link from that same
 section. An optional email restriction requires provider-verified contact
@@ -94,6 +174,85 @@ this Station home's `authentication` directory. Restart preserves existing
 account identity and unexpired cookies. Another Station identity or a missing
 authority secret for an existing account store is refused. Preserve that whole
 private directory under the Station home backup/recovery procedure.
+
+### Member passkeys (Feature Preview)
+
+Invited people can use passkeys instead of, or as well as, a password
+([#4303](https://github.com/kontourai/station/issues/4303)). This is the
+**Member passkeys** Station-wide Feature Preview, off by default: turn it on in
+Settings → Advanced → Feature previews. With it on:
+
+- **Join.** The invitation page offers **Create account with a passkey**. It
+  needs only a username; the invitation is checked when the passkey request
+  starts and again before the account is created.
+- **Sign in.** **Sign in with a passkey** needs no username.
+- **Manage.** A signed-in member lists, adds and removes their passkeys. Adding
+  one needs a sign-in from the last 15 minutes, so someone holding an old
+  session cannot quietly add a credential. The same session must still be
+  current when the credential is saved: signing out or revoking that session
+  during the ceremony prevents the addition. Sign in again before retrying.
+  Station refuses to remove a passkey-only account's last passkey.
+- **Recover.** The operator's recovery link offers **Add a passkey instead**
+  next to the password form. The link is the same single-use, 20-minute token,
+  so whichever path completes first uses it. Like a password reset, it ends the
+  account's other sessions. Existing passkeys stay; the member can remove the
+  lost one after signing in.
+
+Every passkey must verify the person (PIN or biometric). Station uses Better
+Auth's maintained passkey plugin for the WebAuthn ceremony and stores public
+keys in the same private account store. The plugin's own routes are not
+exposed; Station decides which account each ceremony may register to, and each
+of the six passkey operations accepts exactly one kind of authority.
+
+Passkeys follow the same account policy as passwords. A disabled account cannot
+sign in with a passkey. Disabling an account, or signing it out everywhere, ends
+sessions that started with a passkey, including the live-session checks Station
+makes before committing a change. It also stops personal access tokens made
+before then (#3586). Removing a passkey stops it from signing in but does not
+sign out existing sessions; use **Revoke sessions** for that.
+
+If an authentication transaction is active, account disable/enable and session
+revocation return `503 account_operation_unavailable` without applying or queuing
+the action. Retry after authentication finishes. Passkey removal and pending
+Device enrollment promotion or cleanup likewise refuse or defer independent
+writes while that transaction owns the account database. A successful retry
+commits independently, so a failed registration cannot roll it back.
+
+Member passkeys are not operator passkeys. They live in the account store, while
+[operator passkeys](operator-passkeys.md) live in a separate registry. A member
+passkey only ever creates an ordinary account session, which carries no operator
+authority.
+
+Turning the preview off withdraws the passkey options from the sign-in page and
+refuses every passkey request with `feature_preview_disabled`. Stored passkeys
+and sessions stay; a passkey-only member then needs a recovery link to set a
+password. Native-app sign-in (relay enrollment) still uses username and
+password.
+
+#### The origin decides which passkeys work
+
+WebAuthn binds every passkey to a relying-party ID. Station uses the hostname
+of its configured sign-in origin as that ID and accepts passkey responses only
+from that exact origin. For sharing enabled in Settings, this is the saved
+public origin. Deployment-owned local accounts use
+`STATION_AUTHENTICATION_ORIGIN` with `STATION_LOCAL_ACCOUNTS=1`; deployment
+configuration takes precedence over the saved Settings choice.
+
+- **Use the sign-in address.** Passkeys work only on pages served from
+  the configured sign-in origin. Another address in `ALLOWED_ORIGINS` can use
+  passwords but is refused with `passkey_origin_unsupported`. Browsers also
+  refuse a bare IP address as a passkey origin; use a DNS name or `localhost`.
+- **A new hostname orphans every member passkey.** Browsers and authenticators
+  will not offer the old passkeys, and Station would refuse them. Before
+  changing the hostname, make sure each passkey-only member can recover: issue
+  recovery links after the change so they can enrol new passkeys, or ask them to
+  set a password first. Account identities do not change, because the issuer
+  does not depend on the URL.
+- **A new scheme or port keeps the same relying-party ID.** Existing passkeys
+  keep working at the new origin.
+- **Stations that share a hostname share a relying-party ID.** A browser may
+  offer one Station's passkeys on another. Station refuses any passkey it did
+  not register, so this is only confusing, not a way in.
 
 Private-file checks enforce ownership and modes on POSIX systems. The Windows
 path checks file/directory shape and symlinks, but does not validate a private
@@ -151,7 +310,12 @@ and implement idempotent resource closure.
 - `endpoints` lists exact relative paths, GET/POST methods and their login,
   callback, registration, contact-verification, recovery, refresh or revocation
   purpose. An explicit POST logout operation is required. The core `/session`,
-  `/invitation-preview`, and `/accept-invitation` paths are reserved.
+  `/invitation-preview`, and `/accept-invitation` paths are reserved. The
+  optional `passkey-sign-in`, `passkey-register`, `passkey-add`,
+  `passkey-recover`, `passkey-list` and `passkey-remove` operations declare
+  passkey endpoints. Each ceremony is one POST endpoint called twice: with
+  `{ "step": "options" }` and then with `{ "step": "verify", "response": … }`.
+  Browsers show passkey choices only for declared operations.
 - Optional `login` selects the standard browser entry: `email-password` or
   `username-password` names
   declared POST `signInPath` and optional `signUpPath` operations; `redirect`
@@ -286,12 +450,25 @@ entry sends `requireAccountBinding: true` with a fresh client-instance
 correlation; Station attaches an optional
 `accountCandidate` containing the provider-verified `issuer`, opaque `subject`
 and display name. A client cannot nominate or replace that candidate. The
-operator reviews it and confirms with `{ "bindAccountIdentity": true }`.
-This flag is mutually exclusive with the existing
-`bindVerifiedIdentity` Tailnet-person approval. Confirmation returns the
-bounded `principalBinding` receipt, including its account kind, issuer,
-subject, display name, approval ID, approver and time. Station rechecks the
-provider session and operator credential after reading the confirmation body.
+operator reviews it in pairing management and confirms the account-bound
+request with a fresh operator passkey on the consent origin. The host CLI
+continues to confirm with `{ "bindAccountIdentity": true }`. This flag is mutually exclusive with the existing
+`bindVerifiedIdentity` Tailnet-person approval. The CLI confirmation returns a
+bounded `principalBinding` receipt. The browser's consent decision returns its
+status; its transaction effect holds the approval receipt, and exchange returns
+the bound Device. Station rechecks the
+provider session and operator credential after reading the CLI confirmation body.
+For the browser transaction, Station rechecks the pending request, candidate,
+provider session and operator session at commit. A browser without an operator
+session must [enroll and sign in with an owner passkey](operator-passkeys.md).
+Notifications hand account-bound requests to pairing management without
+projecting the account identity into the attention item.
+
+An account-bound access request starts with `orchestration:read`, even if the
+client asks for more. Station checks that cap again at approval and exchange.
+Project administration needs both an eligible membership role and an explicit
+Device promotion to `orchestration:operate`; membership alone does not widen
+the Device grant. Terminal access remains separately gated.
 
 Reusing a client-instance correlation can replace an earlier Device only within
 the existing ingress replacement domain. If either Device has an account
@@ -432,7 +609,11 @@ The audited POST leaves beneath `/api/projects/:slug/access` are
 Read the current administration response for its exact Project scope and member
 revisions before submitting a change. Current membership must independently
 permit the action: an operate grant does not turn a viewer into an admin, and
-ownership transfer remains owner-only. Enabling sharing is operator-only.
+ownership transfer remains owner-only. Enabling sharing needs Station operator
+authority: the operator credential, a `home-possession` grant, or an operator
+passkey session that confirms that enable with a fresh passkey on the consent
+origin. A Project role never grants it. `GET .../access/enablement` reports
+which of these applies to the caller.
 Stale revisions and replaced Project scopes refuse rather than overwrite.
 
 Administration views and invitation tokens recheck current account, Device,
@@ -496,7 +677,10 @@ so a provider redirect can return to it. The server's invitation expiry and
 single-use checks remain authoritative. Password-reset proof stays only in the
 open page's memory. An invalid new invitation cannot select a prior invitation
 saved in the tab. `/account/reset#token=<proof>` uses the provider's declared
-recovery operation and returns to sign-in after success.
+recovery operation and returns to sign-in after success. When the provider
+declares passkey operations and the browser supports WebAuthn, the same page
+offers passkey registration, sign-in, recovery and management. A passkey
+registration or recovery signs the person in directly.
 
 A new invitation fragment received in an already open tab replaces the current
 entry and clears its form state. An earlier acceptance finishing afterward clears
