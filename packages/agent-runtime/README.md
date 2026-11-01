@@ -24,7 +24,10 @@ implicitly call it.
 
 The first `begin.execute` COMMIT acknowledgment permits one provider dispatch.
 An acknowledgment retry returns a receipt, never another dispatch grant.
-Recovery can resend and incur model billing again. Every visible prefix part
+After a committed dispatch grant, a lost outcome is indeterminate: recovery
+does not grant another dispatch without provider idempotency or result lookup,
+which this experimental runtime does not yet implement. A request pinned
+without a dispatch grant can still be dispatched after takeover. Every visible prefix part
 commits before projection. The ordered suffix beginning with a tool-enabling
 part or successful terminal remains held through EOF, strict tape validation,
 durable body put and complete COMMIT acknowledgment. Empty-prefix completion
