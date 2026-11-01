@@ -1,6 +1,7 @@
 import './ShortcutsCheatsheet.css';
 import {
   findShortcutConflicts,
+  listedShortcuts,
   useShortcutRegistry,
 } from '../contexts/KeyboardShortcutsContext';
 import {
@@ -24,7 +25,7 @@ export function ShortcutsCheatsheet({
   if (!isOpen) return null;
 
   const shortcuts = getAllShortcuts();
-  const groups = groupShortcuts(shortcuts);
+  const groups = groupShortcuts(listedShortcuts(shortcuts));
   const conflicts = findShortcutConflicts(shortcuts).filter(
     (conflict) => conflict.ambiguous,
   );
