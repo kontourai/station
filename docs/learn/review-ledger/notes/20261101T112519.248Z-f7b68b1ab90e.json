@@ -1,0 +1,7 @@
+{
+  "revision": "0c7d6ae56aca1eb4cde6a90a1aefce55eecd10fc",
+
+  "notes": [
+    {"path":"packages/sdk/AGENTS.md","note":"Checked: the sdk.md edit adds one sentence about TerminalSessionError keeping the host refusal as cause. This file's instructions (stable exports, canonical reference, consumer tests) are unchanged by it.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}
