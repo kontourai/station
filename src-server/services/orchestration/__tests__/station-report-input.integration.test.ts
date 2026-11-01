@@ -29,6 +29,7 @@ import {
 } from '../../../security/runtime-request-security.js';
 import { createLogger } from '../../../utils/logger.js';
 import { ApprovalRegistry } from '../../approvals/approval-registry.js';
+import { EnvironmentSecurityService } from '../../ssh/environment-security-service.js';
 import {
   type HomeWriterLease,
   HomeWriterOwner,
@@ -41,6 +42,7 @@ import { OrchestrationService } from '../orchestration-service.js';
 import { createSessionAgentResolver } from '../session-agent-resolution.js';
 import { reportAdmissionSignature } from '../station-report-group-admission.js';
 import { StationReportGroupCustody } from '../station-report-group-custody.js';
+import { StationReportGroupPreparation } from '../station-report-group-preparation.js';
 import { StationReportGroupRuntime } from '../station-report-group-runtime.js';
 import { createReportFlow } from './delegation-source-fixtures/flow.js';
 import {
@@ -85,33 +87,174 @@ function publicationFor(h: Awaited<ReturnType<typeof setup>>) {
   const abort = new AbortController();
   const operations: Promise<unknown>[] = [];
   const inputErrors: unknown[] = [];
-  const acquisitions: Array<{
+  type Acquisition = {
+    id: number;
     stack: string[];
     phase: 'waiting' | 'acquired' | 'rejected';
     requestedAt: number;
+    settledAt?: number;
+    reason?: string;
     lease?: HomeWriterLease;
+  };
+  const authorityCost = { calls: 0, depth: 0, outerMs: 0, maxMs: 0 };
+  const preparationCost = { calls: 0, depth: 0, outerMs: 0, maxMs: 0 };
+  const authorityByAdmission: Record<
+    string,
+    { calls: number; outerMs: number; maxMs: number }
+  > = {};
+  const leaseEntries = new WeakMap<HomeWriterLease, Acquisition>();
+  let activeAcquisition: Acquisition | undefined;
+  const runWithLease = HomeWriterOwner.prototype.runWithLease;
+  const scopeObserver = vi
+    .spyOn(HomeWriterOwner.prototype, 'runWithLease')
+    .mockImplementation(function (this: HomeWriterOwner, lease, body) {
+      const previous = activeAcquisition;
+      activeAcquisition = leaseEntries.get(lease) ?? previous;
+      try {
+        return runWithLease.call(this, lease, body);
+      } finally {
+        activeAcquisition = previous;
+      }
+    });
+  const authority = EnvironmentSecurityService.prototype.withCurrentAuthority;
+  const authorityObserver = vi
+    .spyOn(EnvironmentSecurityService.prototype, 'withCurrentAuthority')
+    .mockImplementation(function (this: EnvironmentSecurityService, check) {
+      const began = performance.now();
+      const outer = authorityCost.depth++ === 0;
+      const label =
+        activeAcquisition?.stack.slice(3, 5).join('\n') ??
+        'outside observed Home acquisition';
+      authorityCost.calls++;
+      try {
+        return authority.call(this, check);
+      } finally {
+        authorityCost.depth--;
+        if (outer) {
+          const elapsed = performance.now() - began;
+          authorityCost.outerMs += elapsed;
+          authorityCost.maxMs = Math.max(authorityCost.maxMs, elapsed);
+          let item = authorityByAdmission[label];
+          if (!item) {
+            item = { calls: 0, outerMs: 0, maxMs: 0 };
+            authorityByAdmission[label] = item;
+          }
+          item.calls++;
+          item.outerMs += elapsed;
+          item.maxMs = Math.max(item.maxMs, elapsed);
+        }
+      }
+    });
+  const preparation = StationReportGroupPreparation.prototype.assertCurrent;
+  const preparationObserver = vi
+    .spyOn(StationReportGroupPreparation.prototype, 'assertCurrent')
+    .mockImplementation(function (
+      this: StationReportGroupPreparation,
+      ...args
+    ) {
+      const began = performance.now();
+      const outer = preparationCost.depth++ === 0;
+      preparationCost.calls++;
+      try {
+        return preparation.apply(this, args);
+      } finally {
+        preparationCost.depth--;
+        if (outer) {
+          const elapsed = performance.now() - began;
+          preparationCost.outerMs += elapsed;
+          preparationCost.maxMs = Math.max(preparationCost.maxMs, elapsed);
+        }
+      }
+    });
+  const recent: Acquisition[] = [];
+  const live = new Map<number, Acquisition>();
+  const counts = { requested: 0, acquired: 0, rejected: 0, untracked: 0 };
+  const rejections: Record<string, number> = {};
+  const start = performance.now();
+  const samples: Array<{
+    elapsedMs: number;
+    requested: number;
+    acquired: number;
+    rejected: number;
+    live: Array<{ id: number; phase: string; ageMs: number; stack: string[] }>;
   }> = [];
+  const sample = () => {
+    const now = performance.now();
+    const observed = [...live.values()].flatMap((entry) => {
+      if (entry.phase === 'acquired' && entry.lease) {
+        try {
+          entry.lease.assertCurrent();
+        } catch (error) {
+          if (
+            error instanceof HomeWriterUnavailableError &&
+            error.reason === 'borrow-unavailable'
+          ) {
+            live.delete(entry.id);
+            return [];
+          }
+          return [
+            {
+              id: entry.id,
+              phase: 'currentness-error',
+              ageMs: now - entry.requestedAt,
+              stack: entry.stack,
+            },
+          ];
+        }
+      }
+      return [
+        {
+          id: entry.id,
+          phase: entry.phase,
+          ageMs: now - entry.requestedAt,
+          stack: entry.stack,
+        },
+      ];
+    });
+    samples.push({
+      elapsedMs: now - start,
+      ...counts,
+      live: observed.slice(0, 16),
+    });
+    if (samples.length > 8) samples.shift();
+  };
+  const sampleTimer = setInterval(sample, 10000);
+  sampleTimer.unref();
   const acquire = HomeWriterOwner.prototype.acquire;
   const acquisitionObserver = vi
     .spyOn(HomeWriterOwner.prototype, 'acquire')
     .mockImplementation(async function (this: HomeWriterOwner, ...args) {
-      const observation = {
+      const entry: Acquisition = {
+        id: ++counts.requested,
         stack: new Error().stack?.split('\n').slice(2, 10) ?? [],
-        phase: 'waiting' as 'waiting' | 'acquired' | 'rejected',
+        phase: 'waiting',
         requestedAt: performance.now(),
-        lease: undefined as HomeWriterLease | undefined,
       };
-      if (acquisitions.length < 512) acquisitions.push(observation);
+      recent.push(entry);
+      if (recent.length > 128) recent.shift();
+      if (live.size >= 512) sample();
+      if (live.size < 512) live.set(entry.id, entry);
+      else counts.untracked++;
       try {
         const lease = await acquire.apply(this, args);
-        observation.phase = 'acquired';
-        observation.lease = lease;
+        entry.phase = 'acquired';
+        entry.settledAt = performance.now();
+        entry.lease = lease;
+        leaseEntries.set(lease, entry);
+        counts.acquired++;
         return lease;
       } catch (error) {
-        observation.phase = 'rejected';
+        entry.phase = 'rejected';
+        entry.settledAt = performance.now();
+        entry.reason =
+          error instanceof HomeWriterUnavailableError ? error.reason : 'other';
+        counts.rejected++;
+        rejections[entry.reason] = (rejections[entry.reason] ?? 0) + 1;
+        live.delete(entry.id);
         throw error;
       }
     });
+  let inputInvocations = 0;
   const createInput = inputRuntimeOwner.createReportInputRuntime;
   const inputObserver = vi
     .spyOn(inputRuntimeOwner, 'createReportInputRuntime')
@@ -119,6 +262,7 @@ function publicationFor(h: Awaited<ReturnType<typeof setup>>) {
       const actual = createInput(...args);
       return Object.assign(
         (...input: Parameters<typeof actual>) => {
+          inputInvocations++;
           const pending = actual(...input);
           void pending.catch((error: unknown) => {
             inputErrors.push(error);
@@ -130,6 +274,7 @@ function publicationFor(h: Awaited<ReturnType<typeof setup>>) {
     });
 
   onTestFinished(async () => {
+    clearInterval(sampleTimer);
     abort.abort();
     const failures: unknown[] = [];
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -150,6 +295,9 @@ function publicationFor(h: Awaited<ReturnType<typeof setup>>) {
       if (timer) clearTimeout(timer);
       inputObserver.mockRestore();
       acquisitionObserver.mockRestore();
+      preparationObserver.mockRestore();
+      authorityObserver.mockRestore();
+      scopeObserver.mockRestore();
     }
     try {
       await runtime.shutdown();
@@ -165,45 +313,28 @@ function publicationFor(h: Awaited<ReturnType<typeof setup>>) {
   return {
     participant,
     inputFailure: () => inputErrors[0],
-    home: () =>
-      acquisitions
-        .flatMap((observation) => {
-          if (observation.phase === 'waiting')
-            return [
-              {
-                phase: observation.phase,
-                ageMs: performance.now() - observation.requestedAt,
-                stack: observation.stack,
-              },
-            ];
-          if (observation.phase === 'acquired' && observation.lease) {
-            try {
-              observation.lease.assertCurrent();
-              return [
-                {
-                  phase: 'held',
-                  ageMs: performance.now() - observation.requestedAt,
-                  stack: observation.stack,
-                },
-              ];
-            } catch (error) {
-              if (
-                !(error instanceof HomeWriterUnavailableError) ||
-                error.reason !== 'borrow-unavailable'
-              )
-                return [
-                  {
-                    phase: 'currentness-error',
-                    ageMs: performance.now() - observation.requestedAt,
-                    stack: observation.stack,
-                  },
-                ];
-            }
-          }
-          return [];
-        })
-        .slice(0, 16),
-    inputCreated: () => inputObserver.mock.calls.length,
+    home: () => ({
+      counts,
+      cost: {
+        authority: authorityCost,
+        preparation: preparationCost,
+        authorityByAdmission,
+        durationsOverlap: true,
+      },
+      rejections,
+      samples,
+      recent: recent
+        .slice(-8)
+        .map(({ id, phase, reason, requestedAt, settledAt, stack }) => ({
+          id,
+          phase,
+          reason,
+          elapsedMs: (settledAt ?? performance.now()) - requestedAt,
+          stack,
+        })),
+    }),
+    inputRuntimesConstructed: () => inputObserver.mock.calls.length,
+    inputInvocationCount: () => inputInvocations,
     signal: abort.signal,
     track: (operation: Promise<unknown>) => {
       operations.push(operation);
@@ -438,7 +569,8 @@ test('funded three-seat mixed-model report serves input, member results and acco
             starts: starts.mock.calls.length,
             rawFetch: h.rawFetch.mock.calls.length,
             home: operation.home(),
-            inputCreated: operation.inputCreated(),
+            inputRuntimesConstructed: operation.inputRuntimesConstructed(),
+            inputInvocations: operation.inputInvocationCount(),
             events: starts.mock.calls
               .flatMap(([entry]) => eventStore.listEvents(entry.threadId))
               .slice(-12)
@@ -661,7 +793,8 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
             starts: starts.mock.calls.length,
             rawFetch: h.rawFetch.mock.calls.length,
             home: operation.home(),
-            inputCreated: operation.inputCreated(),
+            inputRuntimesConstructed: operation.inputRuntimesConstructed(),
+            inputInvocations: operation.inputInvocationCount(),
             events: starts.mock.calls
               .flatMap(([entry]) => eventStore.listEvents(entry.threadId))
               .slice(-12)

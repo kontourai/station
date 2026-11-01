@@ -31,13 +31,17 @@ deadlines with seven passes. No restoration-wide green result is claimed. These
 constructor-level controls do not qualify initialized storage teardown or the
 actual multi-seat report caller.
 
-Both actual report-input callers still fail before canonical input. At the latest
-60-second observation, the HTTP case had no live acquisition; the direct case
+Both actual report-input callers failed before canonical input in the recorded
+uncommitted candidate preceding `889b995f86d`. At its 60-second observation, the
+HTTP case had no live acquisition; the direct case
 held a final-fetch Home scope about 473 ms old while SDK stream publication
 awaited Home for about 470 ms. This does not prove the proposed persistent
 nested-acquisition deadlock. No ambient scope reuse or deadline increase was
-introduced. Repeated full preparation/authority validation remains a separate
-measured cost lead, not a qualified performance improvement.
+introduced. That diagnostic counted runtime constructions, not actual input
+invocations; its absence of a question or input error does not establish that the
+input runtime ran. The later committed cleanup change is not qualified by that
+older observation. Repeated full preparation/authority validation remains a
+separate measured cost lead, not a qualified performance improvement.
 
 The retention store and mounted-hook selection passes all 77 cases on the
 integrated source. Current browser/device observations, remaining group
@@ -3590,3 +3594,38 @@ The clean-tree readiness run also remains failed on required documentation truth
 It selected no changed source nodes and did not run connected-agent tests; its
 root lint/governance/hygiene results are not combined-branch qualification.
 No feature is enabled and no PR is open.
+
+## Current admission-cost diagnostic
+
+The follow-up diagnostic on the `3e14b5eddfe` production bytes keeps recent Home
+acquisitions, rejection reasons and periodic live samples. It distinguishes input
+runtime construction from actual invocation. Both callers still fail before a
+canonical question. The measured cases requested 71 and 100 Home acquisitions,
+completed 70 and 100, and recorded zero rejections. Neither invoked input; the
+HTTP case started no member, while the direct case started two without raw fetch.
+This is progress through changing scopes, not evidence for the earlier static
+deadlock claim or a cascade of recorded `busy` failures.
+
+Pass-through counters attribute about 40.37s and 38.45s of the observation windows
+to outer `withCurrentAuthority` calls (66,324 and 65,002 total nested calls).
+`preparation.assertCurrent` accounts for about 17.23s and 14.07s within overlapping
+work. Authority checks under SDK `get` transactions contribute about 9.72s and
+8.79s; separate authority inspection contributes about 3.53s and 3.20s. These
+inclusive wall durations overlap and include scheduling/profiling overhead. They
+are a current cost attribution, not an unbiased performance comparison. No guard,
+Home fairness rule or deadline was changed.
+
+The bounded independent review accepts the cleanup ownership delta while retaining
+three input hardening follow-ups: adjacent handler-delivery currentness, abort on
+publication retirement, and registration before the one-time input claim. Those
+are not established causes of these pre-input timeouts. A separately specified
+read-only metadata owner is a possible experiment, not an implemented shortcut.
+It would need real request/Home custody, canonical read-only store enforcement,
+no launch outlets, and unchanged full admission, commit and effect fences.
+
+The current provenance/reader/route/UI selection passes 276 cases in nine files.
+All six indexed historical native artifacts still match, but five of their eleven
+recorded inputs changed. Those receipts therefore remain historical native proof,
+not current combined-source native qualification. Full source, runtime, device,
+documentation and final review obligations remain open; no PR or feature
+enablement follows from these diagnostics.
