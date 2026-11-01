@@ -13,7 +13,7 @@
 import { appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import type { LanguageModelV3StreamPart } from '@ai-sdk/provider';
+import { APICallError, type LanguageModelV3StreamPart } from '@ai-sdk/provider';
 import { coordinatorWakeClientTurnId } from '@kontourai/station-contracts/coordinator';
 import {
   EXTERNAL_ENGINE_DURABILITY,
@@ -594,9 +594,12 @@ describe('thread inbox (#3568)', () => {
               { state: 'sending' },
             ]);
             if (crashed)
-              throw new Error(
-                'power lost before model dispatch acknowledgement',
-              );
+              throw new APICallError({
+                message: 'power lost before model dispatch acknowledgement',
+                url: 'https://model.fixture',
+                requestBodyValues: {},
+                isRetryable: true,
+              });
           }
           return {
             stream: simulateReadableStream<LanguageModelV3StreamPart>({
@@ -695,6 +698,7 @@ describe('thread inbox (#3568)', () => {
       await run;
       other?.inbox.stop();
       if (crashed) {
+        expect(calls).toBe(2);
         expect(world.inbox.list(THREAD)).toMatchObject([{ state: 'sending' }]);
         await crash(world);
         const recovered = boot(file, { steerFidelity: () => 'emulated' });
