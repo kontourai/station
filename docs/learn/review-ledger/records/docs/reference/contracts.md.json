@@ -352,7 +352,11 @@
 
     "packages/contracts/src/qualification-repair-policy.mjs",
 
-    "packages/contracts/src/qualification-repair-policy.d.mts"
+    "packages/contracts/src/qualification-repair-policy.d.mts",
+
+    "src-ui/src/hooks/orchestration/snapshotHandlers.ts",
+
+    "src-ui/src/hooks/useDerivedSessions.ts"
   ],
 
   "checks": [
