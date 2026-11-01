@@ -3144,7 +3144,7 @@ export function createOrchestrationRoutes(
         return c.json(
           {
             success: false,
-            error: error.message,
+            error: errorMessage(error),
             code: 'client_turn_input_conflict',
           },
           409,
@@ -3153,7 +3153,7 @@ export function createOrchestrationRoutes(
         return c.json(
           {
             success: false,
-            error: error.message,
+            error: errorMessage(error),
             code: FOREGROUND_MESSAGE_INDETERMINATE_CODE,
             outcome: 'indeterminate',
             conversationId: error.sessionId,
@@ -4439,7 +4439,7 @@ export function createOrchestrationRoutes(
         return c.json(
           {
             success: false,
-            error: error.message,
+            error: errorMessage(error),
             code: error.code,
             ...(error instanceof DelegationCreateIndeterminateError
               ? {
