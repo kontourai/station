@@ -28,6 +28,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { Button } from '../components/Button';
 import { CodingWorkbench } from '../components/coding-layout/CodingWorkbench';
 import {
   hostRendersCodingPane,
@@ -118,6 +119,7 @@ import {
   resolveLayoutDeclaration,
   resolveProjectLayoutRendererKind,
 } from './project-layout-kind';
+import { useDockedCodingTerminal } from './useDockedCodingTerminal';
 
 const loadProjectBasisMcpWorkspacePane = () =>
   import('../workspace-panes/BasisMcpWorkspacePane').then(
@@ -462,6 +464,7 @@ export function LayoutStackHost({
   // Past the wide fold a pane opens beside the centre's Chat (#3040) — only
   // where the centre HAS Chat; a bottom-only device keeps the drill-in.
   const wide = useCodingWide() && centerChat;
+  const dockedTerminal = useDockedCodingTerminal(projectSlug);
   /**
    * The host's panes render once the reader has drilled in during this mount,
    * and stay mounted (hidden) after, so a pane keeps its state across the
@@ -1190,6 +1193,8 @@ export function LayoutStackHost({
         terminalInstance
           ? {
               instance: terminalInstance,
+              docked: dockedTerminal.docked,
+              undock: dockedTerminal.undock,
               render: () => (
                 <WorkspacePaneFrame
                   instanceId={terminalInstance.instanceId}
@@ -1247,9 +1252,21 @@ export function LayoutStackHost({
               renderPanes,
               instance.instanceId,
               terminalInstance?.instanceId ?? null,
-            )
-              ? renderCodingPane(instance, presentation)
-              : null
+            ) ? (
+              instance.instanceId === terminalInstance?.instanceId &&
+              dockedTerminal.docked ? (
+                <Empty
+                  label="Terminal is open in the dock"
+                  action={
+                    <Button size="sm" onClick={dockedTerminal.undock}>
+                      Move here
+                    </Button>
+                  }
+                />
+              ) : (
+                renderCodingPane(instance, presentation)
+              )
+            ) : null
           }
         />
       ) : null}
