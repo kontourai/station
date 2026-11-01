@@ -1350,6 +1350,25 @@ describe('useActiveChatTranscript', () => {
             ?.turnId,
       ),
     ).toEqual(['turn-5c', 'turn-6']);
+    // Continue keys on the interruption: a kept notice carries its own, and
+    // a dropped one hands it to the row that now says it.
+    expect(notices.map((notice) => notice.interruptedTurnBoundaryId)).toEqual([
+      'boundary-5c',
+      'boundary-6',
+    ]);
+    expect(
+      result.current.messages
+        .filter((message) => message.interruptedTurnBoundaryId)
+        .map((message) => [
+          message.role,
+          message.turnId,
+          message.interruptedTurnBoundaryId,
+        ]),
+    ).toEqual([
+      ['assistant', 'turn-5', 'boundary-5'],
+      ['user', undefined, 'boundary-5c'],
+      ['user', undefined, 'boundary-6'],
+    ]);
   });
 
   test('station#3415: a durable mid-turn compaction reaches the dock as a system row after its one-row turn', async () => {

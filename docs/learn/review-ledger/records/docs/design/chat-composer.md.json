@@ -188,6 +188,10 @@
 
     "src-ui/src/__tests__/ChatDockBody.offlineSettling.test.tsx",
 
+    "src-ui/src/components/chat-dock/interruptedTurnContinue.ts",
+
+    "src-ui/src/components/chat/message-bubble/visibleContent.ts",
+
     "src-ui/src/components/chat-dock/DockStartComposer.tsx",
 
     "src-ui/src/components/chat/ToolCallBatch.tsx",

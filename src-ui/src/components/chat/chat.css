@@ -1487,6 +1487,13 @@
   .related-pane-strip .button.button {
     min-height: 44px;
   }
+
+  /* A system notice's recovery action and the Continue under a row a
+     restart stopped. */
+  .system-event__action.system-event__action,
+  .interrupted-turn-continue .button.button {
+    min-height: 44px;
+  }
   /* Qualified to outrank the base rule, which comes later in this file. */
   .station-switcher__item .station-switcher__remove {
     min-width: 44px;
@@ -2376,6 +2383,11 @@
 .system-event__action:hover {
   color: var(--text-primary);
   border-color: var(--accent-primary);
+}
+
+.interrupted-turn-continue {
+  display: flex;
+  margin: var(--k-space-1) 0 var(--k-space-2);
 }
 
 /* One quiet meta row under a settled answer (archive#2652 redesign): the
