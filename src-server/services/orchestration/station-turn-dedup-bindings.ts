@@ -1,15 +1,53 @@
+import { randomUUID } from 'node:crypto';
 import {
-  type KernelCommand,
-  type KernelResult,
-  type OwnerLiveness,
-  resolveKernelLimits,
+  type OwnerIdentity,
+  ownerLivenessFromProbe,
+  type ProcessIdentityProbe,
+  type TurnDedupHost,
 } from '@kontourai/monument';
+import type { SqliteKernelTables } from '@kontourai/monument/sqlite';
 import {
-  openSqliteKernelStorage,
-  type SqliteKernelTables,
-} from '@kontourai/monument/sqlite';
-import type { TurnIdempotencyPersistence } from '../turn-idempotency.js';
-import type { SqliteDatabase } from './sqlite-database.js';
+  exactProcessIdentity,
+  probeExactProcessIdentity,
+} from '@kontourai/station-shared/process-identity';
+import { ClientTurnInputConflictError } from '../../providers/adapter-shape.js';
+import { turnDedupClaims } from '../../telemetry/metrics.js';
+
+export interface TurnIdempotencyProcessIdentity {
+  exact(pid: number): { pid: number; start: string } | null;
+  probe: ProcessIdentityProbe;
+}
+const defaultProcessIdentity: TurnIdempotencyProcessIdentity = {
+  exact: exactProcessIdentity,
+  probe: probeExactProcessIdentity,
+};
+const custody = new WeakMap<
+  object,
+  { key: string; owner: OwnerIdentity; createdAt: number }
+>();
+export function readPreparedClaimCustody(claim: object) {
+  return custody.get(claim);
+}
+export function stationTurnDedupHost(
+  identity: TurnIdempotencyProcessIdentity = defaultProcessIdentity,
+): TurnDedupHost {
+  const exact = identity.exact(process.pid);
+  const owner: OwnerIdentity = exact
+    ? {
+        id: randomUUID(),
+        pid: process.pid,
+        identityKind: 'exact',
+        birth: exact.start,
+      }
+    : { id: randomUUID(), pid: process.pid, identityKind: 'unverified' };
+  return {
+    owner,
+    liveness: ownerLivenessFromProbe(identity.probe),
+    conflictError: () => new ClientTurnInputConflictError(),
+    bindPreparedClaim: (claim, record) => custody.set(claim, record),
+    recordClaim: (outcome) => turnDedupClaims.add(1, { outcome }),
+  };
+}
 
 /**
  * The legacy soft cap, retained for callers that report it. Station's timed
@@ -22,7 +60,7 @@ export const TURN_DEDUP_RESOLVED_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
  * archive#1224 (offline): folds `(threadId, clientTurnId)` into the
- * flat key the shared `TurnIdempotencyStore` (`../turn-idempotency.ts`)
+ * flat key the Monument `TurnIdempotencyStore`
  * deals in, so the same `clientTurnId` reused on two different threads never
  * collides.
  *
@@ -46,7 +84,7 @@ export function turnDedupKey(threadId: string, clientTurnId: string): string {
  * `threadId` — see `turnDedupKey`'s doc comment. `forgetThread`'s exact-prefix
  * cleanup uses it.
  */
-function turnDedupThreadPrefix(threadId: string): string {
+export function turnDedupThreadPrefix(threadId: string): string {
   return `${threadId.length}:${threadId}::`;
 }
 const CHAT_KEY_PREFIX = 'chat:';
@@ -84,72 +122,3 @@ export const STATION_TURN_DEDUP_KERNEL_TABLES: SqliteKernelTables = {
   turnBoundary: 'unused',
   inbox: 'unused',
 };
-
-const LONE_SURROGATE =
-  /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
-
-/** Liveness is consulted only by a claim; the other commands never ask. */
-const NO_LIVENESS: OwnerLiveness = () => 'unknown';
-
-export interface SqliteTurnDedupPersistence extends TurnIdempotencyPersistence {
-  /**
-   * Forget every claim and tombstone of `threadId`, as part of the transaction
-   * the caller already holds: they commit or roll back together.
-   */
-  forgetThread(threadId: string): void;
-}
-
-/**
- * The storage half of the turn-dedup algorithm: Monument's `node:sqlite`
- * adapter over `orchestration_turn_dedup` on `EventStore`'s own connection.
- * `EventStore` composes this into the behavioral TurnDeduplicator while
- * retaining SQLite and transaction ownership privately.
- */
-export function createSqliteTurnDedupPersistence({
-  db,
-  maxEntries = TURN_DEDUP_MAX_ENTRIES,
-}: {
-  db: SqliteDatabase;
-  maxEntries?: number;
-}): SqliteTurnDedupPersistence {
-  const kernel = openSqliteKernelStorage({
-    database: db,
-    tables: STATION_TURN_DEDUP_KERNEL_TABLES,
-  });
-  // Live windows and unresolved claims are independent of global pressure.
-  // Expired keys leave tombstones until their thread is deleted; chat keys
-  // have no thread cleanup and their tombstones remain.
-  const limits = {
-    turnDedupMaxEntries: maxEntries,
-    turnDedupMinResolvedEntries: maxEntries,
-    turnDedupResolvedRetentionMs: TURN_DEDUP_RESOLVED_RETENTION_MS,
-    turnDedupTombstoneRetention: [],
-  };
-  // Refuse a bad limit now, not at the first claim.
-  resolveKernelLimits(limits);
-  return {
-    execute<C extends KernelCommand>(
-      command: C,
-      liveness: OwnerLiveness,
-    ): KernelResult<C> {
-      return kernel.executeSync(command, { liveness, limits });
-    },
-    forgetThread(threadId) {
-      // archive#1224 HIGH fix (independent review): an exact prefix, never a
-      // `LIKE`, so `%` and `_` inside a thread id cannot over-match another
-      // thread's keys. SQLite keeps a lone surrogate as U+FFFD, so that is
-      // what the stored keys hold and what the prefix must name.
-      kernel.executeSync(
-        {
-          type: 'turnDedup.forgetPrefix',
-          prefix: turnDedupThreadPrefix(threadId).replace(
-            LONE_SURROGATE,
-            '\uFFFD',
-          ),
-        },
-        { liveness: NO_LIVENESS },
-        { withinHostTransaction: true },
-      );
-    },
-  };
-}

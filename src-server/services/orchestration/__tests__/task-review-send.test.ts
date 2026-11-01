@@ -19,7 +19,7 @@ import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
 import { ACTIVE_TURN_FOLD_METHODS } from '../session-lifecycle-service.js';
-import { TURN_DEDUP_MAX_ENTRIES } from '../sqlite-turn-dedup-persistence.js';
+import { TURN_DEDUP_MAX_ENTRIES } from '../station-turn-dedup-bindings.js';
 import { createTaskLeadReader } from '../task-question-wake.js';
 import { TaskReviewSend } from '../task-review-send.js';
 import { ThreadInboxDelivery } from '../thread-inbox.js';

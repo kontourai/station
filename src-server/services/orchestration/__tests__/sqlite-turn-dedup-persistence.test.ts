@@ -7,7 +7,7 @@ import { createSqliteSessionControlRequestKeys } from '../session-control-reques
 import {
   chatTurnDedupKey,
   turnDedupKey,
-} from '../sqlite-turn-dedup-persistence.js';
+} from '../station-turn-dedup-bindings.js';
 
 /**
  * What Station keeps of the turn-dedup rules is where the rows live and how

@@ -10,6 +10,14 @@ import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import type { SQLOutputValue } from 'node:sqlite';
 import {
+  awaitTurnResolution,
+  createPreparedTurnClaim,
+  createTurnDeduplicator,
+  resolveKernelLimits,
+  type TurnDeduplicator,
+  TurnIdempotencyStore,
+} from '@kontourai/monument';
+import {
   openSqliteKernelStorage,
   type SqliteKernelStorage,
 } from '@kontourai/monument/sqlite';
@@ -226,11 +234,6 @@ import {
   type IsolatedTranscriptReads,
 } from '../search/isolated-transcript-search.js';
 import {
-  awaitTurnResolution,
-  type TurnIdempotencyProcessIdentity,
-  TurnIdempotencyStore,
-} from '../turn-idempotency.js';
-import {
   type AdoptionLedger,
   createAdoptionLedger,
 } from './adoption-ledger.js';
@@ -404,11 +407,14 @@ import { createSqliteRevisionEvidencePersistence } from './sqlite-revision-evide
 import { createSqliteSessionTurnBoundaryCoordinator } from './sqlite-session-turn-boundary.js';
 import {
   chatTurnDedupKey,
-  createSqliteTurnDedupPersistence,
-  type SqliteTurnDedupPersistence,
+  STATION_TURN_DEDUP_KERNEL_TABLES,
+  stationTurnDedupHost,
   TURN_DEDUP_MAX_ENTRIES,
+  TURN_DEDUP_RESOLVED_RETENTION_MS,
+  type TurnIdempotencyProcessIdentity,
   turnDedupKey,
-} from './sqlite-turn-dedup-persistence.js';
+  turnDedupThreadPrefix,
+} from './station-turn-dedup-bindings.js';
 import {
   createSqliteTaskMemoryStore,
   type TaskMemoryStore,
@@ -437,11 +443,6 @@ import {
   querySessionOwner,
   queryTranscriptMessages,
 } from './transcript-search-queries.js';
-import {
-  createPreparedTurnClaim,
-  createTurnDeduplicator,
-  type TurnDeduplicator,
-} from './turn-deduplicator.js';
 import {
   createSqliteUsageLimitResumeChoices,
   type UsageLimitResumeChoices,
@@ -2353,9 +2354,7 @@ export interface ConversationHistoryQuarantineRecord {
 }
 
 /**
- * Bound on retained turn-dedup rows, owned by
- * `./sqlite-turn-dedup-persistence.ts`. Re-exported here because the `/chat`
- * facade imports it from this module.
+ * Legacy dedup soft cap, re-exported for the `/chat` facade.
  */
 export { TURN_DEDUP_MAX_ENTRIES };
 
@@ -2596,7 +2595,7 @@ export class EventStore {
    */
   private readonly attachmentBlobs: AttachmentBlobStore;
   private readonly turnIdempotence: TurnIdempotencyStore;
-  private readonly turnDedupPersistence: SqliteTurnDedupPersistence;
+  private readonly turnDedupKernel: SqliteKernelStorage;
   private readonly turnDedupMaxEntries: number;
   private readonly recoveryLedgerOwner: RecoveryOwner;
   private readonly recoveryProcessIdentity: RecoveryLedgerProcessIdentity;
@@ -2951,9 +2950,7 @@ export class EventStore {
         'session-inventory/v1',
       );
       // Client-turn claims are shared by orchestration and direct /chat.
-      // SQLite-backed half of the ONE shared algorithm in
-      // `../turn-idempotency.ts` (the `/chat` route shares the same algorithm
-      // against a JSON-file-backed adapter, `routes/chat/chat-turn-dedup.ts`).
+      // Monument runs the shared claim algorithm against these SQLite tables.
       // `value` is NULL while the claiming request's `adapter.sendTurn` call is
       // still in flight, and set once it resolves.
       ensureOrchestrationTurnDedupColumns(this.db);
@@ -2961,13 +2958,25 @@ export class EventStore {
       ensureTurnBoundarySequenceFence(this.db);
       ensurePreparedTurnIntents(this.db);
       ensureInvocationTerminalRetirement(this.db);
-      this.turnDedupPersistence = createSqliteTurnDedupPersistence({
-        db: this.db,
-        maxEntries: this.turnDedupMaxEntries,
+      this.turnDedupKernel = openSqliteKernelStorage({
+        database: this.db,
+        tables: STATION_TURN_DEDUP_KERNEL_TABLES,
+      });
+      const turnDedupLimits = resolveKernelLimits({
+        turnDedupMaxEntries: this.turnDedupMaxEntries,
+        turnDedupMinResolvedEntries: this.turnDedupMaxEntries,
+        turnDedupResolvedRetentionMs: TURN_DEDUP_RESOLVED_RETENTION_MS,
+        turnDedupTombstoneRetention: [],
       });
       this.turnIdempotence = new TurnIdempotencyStore(
-        this.turnDedupPersistence,
-        turnProcessIdentity,
+        {
+          execute: (command, liveness) =>
+            this.turnDedupKernel.executeSync(command, {
+              liveness,
+              limits: turnDedupLimits,
+            }),
+        },
+        stationTurnDedupHost(turnProcessIdentity),
       );
       ensureOrchestrationSessionStateColumns(this.db);
       ensureNativeInvocationRunColumns(this.db);
@@ -16986,7 +16995,17 @@ export class EventStore {
         )
         .run(threadId);
       // #3559: a deleted thread's claims and their tombstones leave with it.
-      this.turnDedupPersistence.forgetThread(threadId);
+      this.turnDedupKernel.executeSync(
+        {
+          type: 'turnDedup.forgetPrefix',
+          prefix: turnDedupThreadPrefix(threadId).replace(
+            /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g,
+            '\uFFFD',
+          ),
+        },
+        { liveness: () => 'unknown' },
+        { withinHostTransaction: true },
+      );
       // #3568: a deleted conversation's queued follow-ups go with it. A
       // conversation is keyed by its root Session, so only that deletion
       // names any entries.
@@ -17025,8 +17044,7 @@ export class EventStore {
   /**
    * archive#1224 (offline): claims `clientTurnId` for `threadId` so
    * the caller can safely call `adapter.sendTurn` — the crux of server-side
-   * turn idempotency. Thin delegate onto the shared `TurnIdempotencyStore`
-   * (`../turn-idempotency.ts`) — see that file for the full claim/resolve/
+   * turn idempotency. The Monument `TurnIdempotencyStore` owns the claim/resolve/
    * release contract this and its `/chat`-side counterpart
    * (`routes/chat/chat-turn-dedup.ts`) both implement identically. Scoped
    * per-thread by folding `threadId` into the shared store's flat key, so

@@ -6,6 +6,7 @@ import type {
   KernelResult,
   OwnerIdentity,
   OwnerLiveness,
+  TurnClaim,
 } from '@kontourai/monument';
 import { decideTurnBoundaryObserveTerminal } from '@kontourai/monument';
 import {
@@ -17,7 +18,6 @@ import {
   type SqliteInvocationTerminalFacts,
 } from '@kontourai/monument/sqlite';
 import { z } from 'zod';
-import { readPreparedClaimCustody } from '../turn-idempotency.js';
 import {
   type CapturedTurnIntent,
   decodeTurnIntent,
@@ -32,10 +32,10 @@ import {
 } from './session-turn-boundary.js';
 import type { SqliteDatabase } from './sqlite-database.js';
 import {
+  readPreparedClaimCustody,
   STATION_TURN_DEDUP_KERNEL_TABLES,
   turnDedupKey,
-} from './sqlite-turn-dedup-persistence.js';
-import type { TurnClaim } from './turn-deduplicator.js';
+} from './station-turn-dedup-bindings.js';
 
 /** Station's host tables and admission policy; Monument owns the boundary writes. */
 export function createSqliteSessionTurnBoundaryCoordinator({

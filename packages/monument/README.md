@@ -154,6 +154,12 @@ replacing the owner does not leave trusted stale proof. Owned SQLite tables
 upgrade additively on open. Older binaries and callers without digests cannot
 enforce this contract; legacy rows remain unknown.
 
+The synchronous `TurnIdempotencyStore` and `createTurnDeduplicator` compose
+these commands for hosts with synchronous transaction access. The host
+supplies owner identity, liveness, conflict errors, metrics, and private
+prepared-claim custody; the package does not probe a process or retain host
+credentials. This helper does not replace the Promise-based storage port.
+
 `turnDedupMaxEntries` remains a soft cap on all dedup rows. Only resolved rows
 can be evicted, oldest first; each eviction leaves an expired-key tombstone.
 An optional `turnDedupMinResolvedEntries` stops eviction once that many resolved

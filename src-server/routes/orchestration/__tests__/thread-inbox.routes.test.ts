@@ -6,7 +6,7 @@ import {
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { describe, expect, test, vi } from 'vitest';
-import { turnDedupKey } from '../../../services/orchestration/sqlite-turn-dedup-persistence.js';
+import { turnDedupKey } from '../../../services/orchestration/station-turn-dedup-bindings.js';
 import { foregroundTurnSubmissionDigest } from '../../../services/orchestration/turn-submission-digest.js';
 
 import {

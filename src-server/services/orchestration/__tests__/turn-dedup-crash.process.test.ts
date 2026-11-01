@@ -26,7 +26,7 @@ import type {
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
-import { turnDedupKey } from '../sqlite-turn-dedup-persistence.js';
+import { turnDedupKey } from '../station-turn-dedup-bindings.js';
 
 const CHILD_TIMEOUT_MS = 60_000;
 const THREAD_ID = 'thread-3559';
@@ -53,7 +53,7 @@ const OWNER_PROGRAM = `
   import { EventStore } from ${moduleUrl('src-server/services/orchestration/event-store.ts')};
   import { EventBus } from ${moduleUrl('src-server/services/orchestration/event-bus.ts')};
   import { OrchestrationService } from ${moduleUrl('src-server/services/orchestration/orchestration-service.ts')};
-  import { turnDedupKey } from ${moduleUrl('src-server/services/orchestration/sqlite-turn-dedup-persistence.ts')};
+  import { turnDedupKey } from ${moduleUrl('src-server/services/orchestration/station-turn-dedup-bindings.ts')};
   import { GateTestAdapter, createGateTestRegistry } from ${moduleUrl('src-server/__test-utils__/orchestration-gate-test-harness.ts')};
   const [dbPath, mode, threadId, clientTurnId] = process.argv.slice(1);
   const report = (step, extra = {}) =>

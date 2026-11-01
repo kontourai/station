@@ -127,6 +127,7 @@ function isPersonRequest(request: Request): boolean {
   return principal !== undefined && principal.kind !== 'internal';
 }
 
+import { TurnIdempotencySettledError } from '@kontourai/monument';
 import {
   AnswerAssessmentConflictError,
   AnswerAssessmentModule,
@@ -211,7 +212,6 @@ import {
   type TaskRoomWorkScope,
 } from '../../services/projects/task-room-work-module.js';
 import { CLIENT_SESSION_ID_PATTERN } from '../../services/ssh/client-connection-presence.js';
-import { TurnIdempotencySettledError } from '../../services/turn-idempotency.js';
 import {
   orchestrationStreamDuration,
   orchestrationStreamPresenceOps,

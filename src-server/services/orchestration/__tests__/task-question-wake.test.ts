@@ -34,7 +34,7 @@ import {
 } from '../project-supervision.js';
 import { ProjectTaskRoomRuntime } from '../project-task-room-runtime.js';
 import { ACTIVE_TURN_FOLD_METHODS } from '../session-lifecycle-service.js';
-import { TURN_DEDUP_MAX_ENTRIES } from '../sqlite-turn-dedup-persistence.js';
+import { TURN_DEDUP_MAX_ENTRIES } from '../station-turn-dedup-bindings.js';
 import {
   createTaskLeadReader,
   TaskQuestionWake,

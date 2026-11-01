@@ -2,17 +2,21 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import {
+  createTurnDeduplicator,
+  TurnIdempotencyStore,
+} from '@kontourai/monument';
+import { openSqliteKernelStorage } from '@kontourai/monument/sqlite';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ORCHESTRATION_EVENT_STORE_MIGRATION } from '../../../domain/migrations/003-orchestration-events.js';
-import { TurnIdempotencyStore } from '../../turn-idempotency.js';
 import { EventStore } from '../event-store.js';
 import {
   chatTurnDedupKey,
-  createSqliteTurnDedupPersistence,
+  STATION_TURN_DEDUP_KERNEL_TABLES,
+  stationTurnDedupHost,
   turnDedupKey,
-} from '../sqlite-turn-dedup-persistence.js';
-import { createTurnDeduplicator } from '../turn-deduplicator.js';
+} from '../station-turn-dedup-bindings.js';
 
 describe('TurnDeduplicator', () => {
   const makeTempDir = trackTempDirs();
@@ -734,17 +738,23 @@ describe('TurnDeduplicator', () => {
   test('keeps an owner handle usable when its first durable resolve rolls back', () => {
     const database = new DatabaseSync(':memory:');
     database.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
-    const persistence = createSqliteTurnDedupPersistence({ db: database });
-    let failResolve = true;
-    const store = new TurnIdempotencyStore({
-      execute: (command, liveness) => {
-        if (failResolve && command.type === 'turnDedup.resolve') {
-          failResolve = false;
-          throw new Error('injected rollback');
-        }
-        return persistence.execute(command, liveness);
-      },
+    const kernel = openSqliteKernelStorage({
+      database,
+      tables: STATION_TURN_DEDUP_KERNEL_TABLES,
     });
+    let failResolve = true;
+    const store = new TurnIdempotencyStore(
+      {
+        execute: (command, liveness) => {
+          if (failResolve && command.type === 'turnDedup.resolve') {
+            failResolve = false;
+            throw new Error('injected rollback');
+          }
+          return kernel.executeSync(command, { liveness });
+        },
+      },
+      stationTurnDedupHost(),
+    );
     const ledger = createTurnDeduplicator({
       store,
       keyFor: (thread, id) => `${thread}:${id}`,

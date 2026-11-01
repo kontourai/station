@@ -76,7 +76,7 @@ import type { ConversationForkProvenance, EventStore } from './event-store.js';
 // import cycle exists.
 import type { SessionReadScope } from './orchestration-service.js';
 import { conversationTitle } from './session-query-module.js';
-import type { TurnDeduplicator } from './turn-deduplicator.js';
+import type { TurnDeduplicator } from '@kontourai/monument';
 
 const CONVERSATION_HISTORY_MAX_ENTRIES = 100;
 const CONTINUATION_TRANSCRIPT_HEADING =

@@ -43,7 +43,7 @@ import { createSessionAgentResolver } from '../../../services/orchestration/sess
 import {
   STATION_TURN_DEDUP_KERNEL_TABLES,
   turnDedupKey,
-} from '../../../services/orchestration/sqlite-turn-dedup-persistence.js';
+} from '../../../services/orchestration/station-turn-dedup-bindings.js';
 import { authorizeStationControlRequest } from '../../../tools/station-control-policy.js';
 import { createOrchestrationRoutes } from '../orchestration.js';
 

@@ -38,7 +38,7 @@ import {
   SessionTurnWaiter,
   type SessionTurnWaitPorts,
 } from '../session-turn-wait.js';
-import { turnDedupKey } from '../sqlite-turn-dedup-persistence.js';
+import { turnDedupKey } from '../station-turn-dedup-bindings.js';
 
 const DAY = 24 * 60 * 60 * 1000;
 const makeTempDir = trackTempDirs();
