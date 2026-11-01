@@ -262,6 +262,7 @@ async function deriveCallerChildDelegation(
     // is named by its own id, never left out (an absent parent reads as a
     // root to every consumer).
     conversationId: caller.conversationId ?? caller.sessionId,
+    sessionId: caller.sessionId,
     ...(spec ? { spec } : {}),
     ...(current ? { current } : {}),
   });

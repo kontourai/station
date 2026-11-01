@@ -336,6 +336,12 @@ import {
   DRAFT_ENDING_TURN_METHODS,
   projectionFactKeysForEvent,
 } from './orchestration-session-state.js';
+import {
+  backfillSessionOwnership,
+  OWNERSHIP_TREE_SCHEMA,
+  readSessionOwnership,
+  recordSessionOwnership,
+} from './ownership-tree.js';
 import { decodeTurnIntent } from './prepared-turn-intent.js';
 import { createSqliteProjectSupervisionStore } from './project-supervision.js';
 import {
@@ -2865,6 +2871,7 @@ export class EventStore {
     try {
       this.db.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
       this.db.exec(CANCELLATION_FENCE_SCHEMA);
+      this.db.exec(OWNERSHIP_TREE_SCHEMA);
       this.db.exec(`CREATE TABLE IF NOT EXISTS orchestration_steer_inputs (
         thread_id TEXT NOT NULL,
         client_input_id TEXT NOT NULL,
@@ -2981,6 +2988,7 @@ export class EventStore {
       ensureCredentialApplicationCommitPendingIndex(this.db);
       ensureOrchestrationEventStoreColumns(this.db);
       migrateSessionParentMentions(this.db);
+      backfillSessionOwnership(this.db);
       ensurePositiveTurnStartIndex(this.db);
       // #4003: Task memory (summary revisions and keyed records), apart from
       // the room document.
@@ -5065,6 +5073,7 @@ export class EventStore {
           'UPDATE orchestration_stream_identity SET high_water = ? WHERE singleton = 1',
         )).run(globalSequence);
         this.recordAttachmentRefs(event.threadId, persisted.blobRefs);
+        recordSessionOwnership(this.db, event, globalSequence);
         this.recordEventContent(event.threadId, ingress.spills);
         this.chargeCommittedToolImages(persisted.toolImageKey);
         this.projectConversationHistoryEvent(event);
@@ -15034,6 +15043,10 @@ export class EventStore {
     terminalId: string,
   ): boolean {
     return recordCascadeStopIntent(this.db, parentId, childId, terminalId);
+  }
+
+  sessionOwnershipEdges(parentId?: string) {
+    return readSessionOwnership(this.db, parentId);
   }
 
   pendingCascadeStops(): Array<{
