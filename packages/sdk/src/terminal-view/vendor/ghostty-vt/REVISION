@@ -1,0 +1,4 @@
+ghostty v1.4.0 83fb95624b0439ee660c2679b43b38c8b63769cd
+zig 0.17.0
+args -Demit-lib-vt -Dtarget=wasm32-freestanding -Doptimize=ReleaseSmall -Dvt-features=-kitty_graphics,-snapshot
+sha256 19318c11df6816ad76f9f612d693ce57cadef4d15321aa5f0f2c84c117762e73

@@ -28,6 +28,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [PrivateUsageStorage](#privateusagestorage) | Store canonical private pages and checkpoints atomically under an opaque storage capability; Core owns person/source authority. | `packages/telemetry-broker/src/private-usage-store.ts` |
 | [Local speech and media tools](#local-speech-and-media-tools) | Resolve consented media tools and transcribe bounded local audio/video. | `src-server/services/media-tools/media-tools-resolver.ts` |
 | [TerminalSessions](#terminalsessions) | Authorize Project/binding terminal operations and preserve bounded numbered output across reconnects. | `src-server/services/terminal/terminal-sessions.ts` |
+| [TerminalView](#terminalview) | Render a terminal session with Station's surface over Ghostty's libghostty-vt WebAssembly. | `packages/sdk/src/terminal-view/TerminalView.tsx` |
 | [ProductTelemetryReceiver](#producttelemetryreceiver) | Commit and query disclosed product observations with scoped source credentials and explicit delivery coverage. | `packages/telemetry-broker/src/store.ts` |
 | [PluginTelemetryPublisher](#plugintelemetrypublisher) | Validate signed public publisher declarations and deliver kernel-owned, per-publisher counts under notice/consent policy. | `src-server/services/plugin-telemetry-service.ts` |
 | [VirtualApplicationIngress](#virtualapplicationingress) | Dispatch encrypted connector requests into ordinary application authorization without socket or cookie authority. | `src-server/services/connections/virtual-application.ts` |
@@ -6295,3 +6296,36 @@ its injected identity seam does not qualify live pairing or remote egress. The
 checks durable replay, scope/cwd refusals, service-level observer refusal,
 journal bounds and history migration. It does not qualify Windows, native
 clients, live remote access, or process survival across server restarts.
+
+## TerminalView
+
+[TerminalView](../../packages/sdk/src/terminal-view/TerminalView.tsx) is the
+public `@kontourai/station-sdk/terminal-view` entry. It renders any
+[`TerminalViewSession`](../../packages/sdk/src/terminal-view/session.ts) and
+owns no transport. Its [controller](../../packages/sdk/src/terminal-view/controller.ts)
+keeps React out of the frame loop: input, visibility, the renderer and the
+screen-reader mirror live there, and React subscribes to a snapshot.
+
+The [engine](../../packages/sdk/src/terminal-view/engine/terminal-engine.ts)
+wraps the vendored libghostty-vt module (Ghostty v1.4.0,
+[built reproducibly](../../scripts/ghostty-vt/build-wasm.mjs)) inside a Web
+Worker. Only render-state rows marked dirty cross to the UI thread, named by
+stable row ids; the [host](../../packages/sdk/src/terminal-view/engine/engine-host.ts)
+holds one frame in flight until the UI acknowledges it and sends none while
+hidden. Replayed journal output updates the screen with the reply writer and
+bell detached. The [WebGL2 renderer](../../packages/sdk/src/terminal-view/render/webgl2-renderer.ts)
+draws instanced rectangles and atlas glyphs, survives context loss and
+releases its context while hidden; a [canvas 2D renderer](../../packages/sdk/src/terminal-view/render/canvas2d-renderer.ts)
+is the fallback. [Box drawing](../../packages/sdk/src/terminal-view/render/box-drawing.ts)
+is drawn at cell size rather than taken from a font.
+
+**Code and evidence.** The [ABI test](../../packages/sdk/src/__tests__/terminal-view/ghostty-vt-abi.test.ts)
+pins the revision and SHA-256 and checks every struct offset and enum value
+Station uses against the module's `ghostty_type_json()`. The
+[engine test](../../packages/sdk/src/__tests__/terminal-view/terminal-engine.test.ts)
+runs the real module headlessly: rows and styles, encoders, replies detached
+during replay, the mirror after cursor-addressed redraws, find, selection and
+OSC 8. The [boundary test](../../packages/sdk/src/__tests__/terminal-view/coding-layout-boundary.test.ts)
+keeps the Coding layout on the public entry. **Do not reintroduce:** a second
+emulator, terminal state in React render, replies written during replay, or a
+Coding import of terminal internals.

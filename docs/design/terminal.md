@@ -247,6 +247,32 @@ Ghostty adapter needs bounded parsing/rendering work, an explicit reset/title
 contract and detached reply/report writers during replay. This tranche does
 not qualify those emulator behaviors or establish full VT fidelity.
 
+## Emulator implementation boundary (#3994, phase 3)
+
+[`TerminalView`](../reference/sdk.md#terminal-view) is Station's surface over
+Ghostty's `libghostty-vt`, compiled to WebAssembly from the Ghostty v1.4.0 tag
+(`83fb956`) with Zig 0.17.0 by
+[`scripts/ghostty-vt/build-wasm.mjs`](../../scripts/ghostty-vt/build-wasm.mjs).
+The vendored module omits Kitty graphics and state snapshots. Station's adapter
+is written from Ghostty's public headers; its struct offsets and enum values
+are checked against the module's own `ghostty_type_json()` manifest.
+
+The emulator runs in a Web Worker. Only rows the render state marks dirty
+cross to the UI thread, named by stable row ids; one frame is in flight at a
+time and hidden terminals produce none. Replayed journal output updates the
+screen with the reply writer and bell detached, so a reattach cannot type
+query answers at the prompt. Program titles stay untrusted text. Links admit
+only `http:`/`https:` URLs and `path:line[:col]`; OSC 8 targets are read
+through `ghostty_grid_ref_hyperlink_uri` and pass the same scheme check.
+
+Accessibility follows [Accessibility](#accessibility): the mirror is Ghostty's
+plain-text formatting of scrollback and screen (emulator rows, not bytes) and
+is kept only in screen reader mode; announcements are coalesced to one per
+second with a length cap; Escape then Tab leaves the terminal. Browsers expose
+no screen-reader signal, so the mode follows the host's setting or an explicit
+`detectScreenReader` callback. Shell-integration marks, images and ligatures
+remain deferred.
+
 ## Why
 
 The terminal is a core surface, not a Coding-layout accessory. The legacy

@@ -1,0 +1,252 @@
+.station-terminal {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  background: var(--terminal-background, var(--k-panel, var(--k-bg)));
+  color: var(--terminal-foreground, var(--k-text));
+}
+
+.station-terminal__body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.station-terminal__grid {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  cursor: text;
+  touch-action: none;
+  padding-inline-start: var(--k-space-1);
+}
+
+.station-terminal__grid:focus-within {
+  outline: 2px solid var(--k-focus);
+  outline-offset: -2px;
+}
+
+.station-terminal__canvas {
+  display: block;
+}
+
+/* The input sits at the cursor so IME candidate windows open beside it. */
+.station-terminal__input {
+  position: absolute;
+  width: 1px;
+  min-height: 1em;
+  padding: 0;
+  border: 0;
+  margin: 0;
+  opacity: 0;
+  resize: none;
+  overflow: hidden;
+  white-space: nowrap;
+  caret-color: transparent;
+  color: transparent;
+  background: transparent;
+  font-size: 16px; /* Below 16px, iOS zooms the page on focus. */
+}
+
+.station-terminal__composition {
+  position: absolute;
+  padding: 0 1px;
+  background: var(--k-panel-raised, var(--k-panel));
+  color: var(--k-text);
+  border-bottom: 2px solid var(--k-focus);
+  white-space: pre;
+  pointer-events: none;
+}
+
+.station-terminal__scrollbar {
+  position: relative;
+  width: 10px;
+  flex: none;
+  cursor: default;
+  touch-action: none;
+}
+
+.station-terminal__thumb {
+  position: absolute;
+  inset-inline: 2px;
+  min-height: 12px;
+  border-radius: var(--k-radius-sm, 4px);
+  background: var(--k-line-strong, var(--k-line));
+}
+
+.station-terminal__latest {
+  position: absolute;
+  inset-inline-end: var(--k-space-4);
+  inset-block-end: var(--k-space-3);
+}
+
+.station-terminal__overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--k-space-4);
+  background: var(--terminal-background, var(--k-panel, var(--k-bg)));
+}
+
+.station-terminal__banner {
+  position: absolute;
+  inset-inline: 0;
+  inset-block-start: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-3);
+  padding: var(--k-space-2) var(--k-space-3);
+  background: var(--k-panel-raised, var(--k-panel));
+  color: var(--k-text);
+  border-bottom: 1px solid var(--k-line);
+  font-size: var(--k-text-sm);
+}
+
+.station-terminal__find {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  padding: var(--k-space-1) var(--k-space-2);
+  background: var(--k-panel-raised, var(--k-panel));
+  border-bottom: 1px solid var(--k-line);
+}
+
+.station-terminal__find input {
+  flex: 1;
+  min-width: 0;
+  min-height: 32px;
+  padding: 0 var(--k-space-2);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-control, 6px);
+  background: var(--k-bg);
+  color: var(--k-text);
+  font: inherit;
+}
+
+.station-terminal__find input:focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 1px;
+}
+
+.station-terminal__find-count {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  white-space: nowrap;
+}
+
+.station-terminal__menu {
+  position: fixed;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  min-width: 180px;
+  padding: var(--k-space-1);
+  background: var(--k-panel-raised, var(--k-panel));
+  color: var(--k-text);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-overlay, 8px);
+  box-shadow: var(--k-elevation-overlay);
+}
+
+.station-terminal__menu [role="menuitem"] {
+  min-height: 32px;
+  padding: 0 var(--k-space-3);
+  border: 0;
+  border-radius: var(--k-radius-sm, 4px);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+}
+
+.station-terminal__menu [role="menuitem"]:hover:not(:disabled),
+.station-terminal__menu [role="menuitem"]:focus-visible {
+  background: var(--k-active, var(--k-panel));
+  outline: 2px solid var(--k-focus);
+  outline-offset: -2px;
+}
+
+.station-terminal__menu [role="menuitem"]:disabled {
+  color: var(--k-text-faint, var(--k-text-muted));
+}
+
+.station-terminal__keys {
+  display: flex;
+  gap: var(--k-space-1);
+  padding: var(--k-space-1);
+  overflow-x: auto;
+  border-top: 1px solid var(--k-line);
+  background: var(--k-panel-raised, var(--k-panel));
+}
+
+.station-terminal__keys button {
+  flex: none;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 var(--k-space-2);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-control, 6px);
+  background: var(--k-bg);
+  color: var(--k-text);
+  font: inherit;
+}
+
+.station-terminal__keys button[aria-pressed="true"] {
+  background: var(--k-action);
+  color: var(--k-action-contrast);
+  border-color: var(--k-action);
+}
+
+.station-terminal__keys button:focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 1px;
+}
+
+@media (max-width: 767px) {
+  .station-terminal__menu [role="menuitem"],
+  .station-terminal__find input {
+    min-height: 44px;
+  }
+
+  .station-terminal__find .button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .station-terminal__scrollbar {
+    width: 14px;
+  }
+}
+
+/* Screen reader mirror: off screen, but focusable and navigable. */
+.station-terminal__mirror,
+.station-terminal__visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: pre;
+  border: 0;
+}
+
+/* The mirror is off screen, so its focus shows on the grid it mirrors. */
+.station-terminal:has(.station-terminal__mirror:focus) .station-terminal__grid {
+  outline: 2px dashed var(--k-focus);
+  outline-offset: -2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .station-terminal * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
