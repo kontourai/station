@@ -1,4 +1,9 @@
 import './TaskChatStart.css';
+import {
+  ENGINE_CAPABILITY_MATRICES,
+  resolveEngineCapabilityMatrix,
+  UNKNOWN_EXTERNAL_ENGINE_MATRIX,
+} from '@kontourai/station-contracts/engine-capability-matrix';
 import type { ProjectRunLocations } from '@kontourai/station-contracts/project';
 import type { InstalledSkillExperienceV1 } from '@kontourai/station-contracts/skill-experience';
 import {
@@ -641,6 +646,19 @@ export function NewChatModal({
     project: selectedProject,
     acpConnections,
   });
+  const forkAgent = flatList[selectedAgentIndex];
+  const forkConnection = agentConnections.find(
+    (connection) => connection.id === forkAgent?.execution?.agentConnectionId,
+  );
+  const forkProfile = forkAgent
+    ? forkAgent.engineId
+      ? (ENGINE_CAPABILITY_MATRICES[forkAgent.engineId] ??
+        UNKNOWN_EXTERNAL_ENGINE_MATRIX)
+      : resolveEngineCapabilityMatrix(
+          forkAgent.execution?.agentConnectionId,
+          forkConnection,
+        )
+    : undefined;
   // Where a project with no folder would run with this Agent.
   const folderlessHint = resolveNewChatWorkspaceHint({
     agent: showStart ? draftAgent : flatList[selectedAgentIndex],
@@ -1593,6 +1611,15 @@ export function NewChatModal({
         {mode?.kind === 'fork' && (
           <div className="new-chat-modal__compat-warning" role="note">
             <strong>New independent conversation.</strong> {mode.disclosure}{' '}
+            {forkProfile && (
+              <span>
+                {forkProfile.durability.fork.state === 'native'
+                  ? 'Native engine fork declared'
+                  : forkProfile.durability.fork.state === 'emulated'
+                    ? 'Engine fork is emulated'
+                    : 'Native engine fork unavailable'}
+              </span>
+            )}{' '}
             <Button variant="link" onClick={closeChatRequest}>
               Cancel fork
             </Button>
