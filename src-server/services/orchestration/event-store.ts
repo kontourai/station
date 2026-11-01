@@ -15053,13 +15053,31 @@ export class EventStore {
     return recordCascadeStopIntent(this.db, parentId, childId, terminalId);
   }
 
+  /** Edge confirmation and pending obligations must share one committed snapshot. */
+  private readOwnershipSnapshot<T>(read: () => T): T {
+    if (this.db.isTransaction) return read();
+    this.db.exec('BEGIN');
+    try {
+      const result = read();
+      this.db.exec('COMMIT');
+      return result;
+    } catch (error) {
+      if (this.db.isTransaction) this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
   ownedDescendantsBottomUp(parentId: string) {
-    return ownedDescendantsBottomUp(this.db, parentId);
+    return this.readOwnershipSnapshot(() =>
+      ownedDescendantsBottomUp(this.db, parentId),
+    );
   }
 
   ownedStopTargets(parentId: string) {
-    return ownedDescendantsBottomUp(this.db, parentId).filter(
-      (id) => !isCascadeStopSettled(this.db, id),
+    return this.readOwnershipSnapshot(() =>
+      ownedDescendantsBottomUp(this.db, parentId).filter(
+        (id) => !isCascadeStopSettled(this.db, id),
+      ),
     );
   }
 
@@ -15067,29 +15085,31 @@ export class EventStore {
     runningChildCount: number;
     pendingStopCount: number;
   } {
-    const children = ownedDescendantsBottomUp(this.db, parentId);
-    const owned = new Set([parentId, ...children]);
-    const pendingStopCount = this.pendingCascadeStops().filter((intent) =>
-      owned.has(intent.childId),
-    ).length;
-    let runningChildCount = 0;
-    for (const childId of children) {
-      const stoppedAndFenced = this.db
-        .prepare(`SELECT 1 FROM orchestration_cascade_stop_intents i
+    return this.readOwnershipSnapshot(() => {
+      const children = ownedDescendantsBottomUp(this.db, parentId);
+      const owned = new Set([parentId, ...children]);
+      const pendingStopCount = this.pendingCascadeStops().filter((intent) =>
+        owned.has(intent.childId),
+      ).length;
+      let runningChildCount = 0;
+      for (const childId of children) {
+        const stoppedAndFenced = this.db
+          .prepare(`SELECT 1 FROM orchestration_cascade_stop_intents i
         JOIN orchestration_cancellation_fences f ON f.thread_id = i.child_session_id AND f.terminal_event_id = i.terminal_event_id
         WHERE i.child_session_id = ? AND i.state = 'completed' LIMIT 1`)
-        .get(childId);
-      if (stoppedAndFenced) continue;
-      if (
-        this.db
-          .prepare(`SELECT 1 FROM provider_session_state WHERE thread_id = ? AND status = 'running'
+          .get(childId);
+        if (stoppedAndFenced) continue;
+        if (
+          this.db
+            .prepare(`SELECT 1 FROM provider_session_state WHERE thread_id = ? AND status = 'running'
         UNION ALL SELECT 1 FROM orchestration_turn_boundaries WHERE thread_id = ? AND state IN ('prepared', 'invoking', 'accepted', 'indeterminate')
         UNION ALL SELECT 1 FROM orchestration_ownership_starts WHERE child_session_id = ? LIMIT 1`)
-          .get(childId, childId, childId)
-      )
-        runningChildCount++;
-    }
-    return { runningChildCount, pendingStopCount };
+            .get(childId, childId, childId)
+        )
+          runningChildCount++;
+      }
+      return { runningChildCount, pendingStopCount };
+    });
   }
 
   reserveOwnershipStart(childId: string, metadata?: Record<string, unknown>) {
@@ -15097,14 +15117,16 @@ export class EventStore {
   }
 
   hasPendingCascadeDescendant(childId: string, terminalId: string): boolean {
-    const pending = new Set(
-      this.pendingCascadeStops()
-        .filter((intent) => intent.terminalId === terminalId)
-        .map((intent) => intent.childId),
-    );
-    return ownedDescendantsBottomUp(this.db, childId).some((id) =>
-      pending.has(id),
-    );
+    return this.readOwnershipSnapshot(() => {
+      const pending = new Set(
+        this.pendingCascadeStops()
+          .filter((intent) => intent.terminalId === terminalId)
+          .map((intent) => intent.childId),
+      );
+      return ownedDescendantsBottomUp(this.db, childId).some((id) =>
+        pending.has(id),
+      );
+    });
   }
 
   pendingCascadeStops(): Array<{
