@@ -59,7 +59,9 @@ import {
   type ApprovalMode,
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
   CLIENT_TURN_IN_FLIGHT_CODE,
+  CLIENT_TURN_INPUT_CONFLICT_CODE,
   type DelegationProvenance,
+  isSteerConflictCode,
   MEMORY_CONTINUATION_CLIENT_TURN_PREFIX,
   PROVIDER_SESSION_STARTING_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
@@ -3599,12 +3601,25 @@ export function createOrchestrationRoutes(
           clientOrigin: resolveClientOriginForRequest(c.req.raw),
         },
       };
-      const result =
-        body.kind === 'steer'
-          ? inbox.submitSteer({ ...input, expectedHead: body.expectedHead })
-          : body.kind === 'follow-up'
-            ? inbox.submit(input)
-            : inbox.submitDisplay(input);
+      let result: ReturnType<ThreadInboxDelivery['submitSteer']>;
+      try {
+        result =
+          body.kind === 'steer'
+            ? inbox.submitSteer({ ...input, expectedHead: body.expectedHead })
+            : body.kind === 'follow-up'
+              ? inbox.submit(input)
+              : inbox.submitDisplay(input);
+      } catch (error) {
+        if (!isSteerConflictCode(errorCode(error))) throw error;
+        return c.json(
+          {
+            success: false,
+            code: CLIENT_TURN_INPUT_CONFLICT_CODE,
+            error: 'This key already names different steer input.',
+          },
+          409,
+        );
+      }
       if (result.outcome === 'stale-head')
         return c.json(
           {

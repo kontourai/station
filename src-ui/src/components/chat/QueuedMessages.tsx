@@ -210,7 +210,11 @@ export function QueuedMessages({
       )
       .map((entry, index) => [entry, index + 1]),
   );
-  const localOrderStart = heldOrder.size;
+  const localSendOrder = new Map(
+    localRows
+      .filter(({ idx }) => !metadata?.[idx]?.originUnverified)
+      .map(({ idx }, order) => [idx, heldOrder.size + order + 1]),
+  );
   const visible =
     outboxCount > 0 ||
     localRows.length > 0 ||
@@ -249,10 +253,15 @@ export function QueuedMessages({
   function renderLocalRow(row: QueueRow, idx: number) {
     const msg = row.message;
     // 1 = next to send, after what Station holds.
-    const orderNum = localOrderStart + idx + 1;
+    const orderNum = localSendOrder.get(idx);
     return (
       <div className="queued-message">
-        <span className="queued-message__order">{orderNum}</span>
+        <span
+          className="queued-message__order"
+          aria-hidden={orderNum === undefined ? true : undefined}
+        >
+          {orderNum}
+        </span>
         {editingIndex === idx ? (
           <input
             ref={editInputRef}
@@ -443,7 +452,9 @@ export function QueuedMessages({
             className="queued-message__status"
             title={
               entry.state === 'queued'
-                ? 'Sent when the current turn ends, even if you close the app.'
+                ? entry.kind === 'steer'
+                  ? 'Held for the next boundary this engine or Station can accept.'
+                  : 'Sent when the current turn ends, even if you close the app.'
                 : undefined
             }
           >
@@ -454,7 +465,13 @@ export function QueuedMessages({
           )}
         </span>
         {removable && (
-          <div className="queued-message__utilities">
+          <div
+            className={
+              entry.state === 'unconfirmed'
+                ? 'queued-message__actions'
+                : 'queued-message__utilities'
+            }
+          >
             {entry.kind === 'steer' &&
               entry.state === 'unconfirmed' &&
               held?.onResend && (
@@ -532,7 +549,7 @@ export function QueuedMessages({
       {held?.unavailable && (
         <div className="queued-messages__hold" role="status">
           <span className="queued-messages__failure-text">
-            Couldn’t load held messages.
+            Couldn’t load inbox entries.
           </span>
           <button
             type="button"

@@ -324,38 +324,50 @@ describe('ChatDockBody stale busy wait', () => {
   // A refused steer is a send that did not go: the short-dock composer line
   // repeats it, so the notice carries sendFailure. (A steer whose delivery
   // cannot be confirmed is held as unconfirmed since #3127, not a failure.)
-  test('a refused steer is a send-failure notice', async () => {
-    steerOrchestrationTurnMock.mockResolvedValueOnce({
-      outcome: 'no-active-turn',
-    });
-    // The steer path reads the held message from the store (#3127).
-    activeChatsStore.initChat('thread-busy');
-    activeChatsStore.updateChat('thread-busy', {
-      queuedMessages: ['steer me'],
-      queuedMessageMetadata: [{ id: 'steer-1', mode: 'steer' }],
-    });
-    renderDock({
-      session: buildSession({
+  test.each([false, true])(
+    'a refused steer is a send-failure notice (typed conflict=%s)',
+    async (conflict) => {
+      if (conflict)
+        steerOrchestrationTurnMock.mockRejectedValueOnce(
+          Object.assign(new Error('key names different input'), {
+            code: 'client_turn_input_conflict',
+            status: 409,
+            stationEnvelope: true,
+          }),
+        );
+      else
+        steerOrchestrationTurnMock.mockResolvedValueOnce({
+          outcome: 'no-active-turn',
+        });
+      // The steer path reads the held message from the store (#3127).
+      activeChatsStore.initChat('thread-busy');
+      activeChatsStore.updateChat('thread-busy', {
         queuedMessages: ['steer me'],
         queuedMessageMetadata: [{ id: 'steer-1', mode: 'steer' }],
-        status: 'sending',
-        orchestrationProvider: 'claude',
-        orchestrationSessionStarted: true,
-        orchestrationTurnOpen: true,
-      } as Partial<ChatSession>),
-    });
-    await screen.findByTestId('queued-messages');
-    const onSteer = queuedMessagesPropsMock.current?.onSteer;
-    expect(onSteer).toBeTypeOf('function');
-    await act(async () => {
-      await onSteer('steer me', 'steer-1');
-    });
-    expect(steerOrchestrationTurnMock).toHaveBeenCalledTimes(1);
-    expect(addEphemeralMessageMock).toHaveBeenCalledWith(
-      'thread-busy',
-      expect.objectContaining({ role: 'system', sendFailure: true }),
-    );
-  });
+      });
+      renderDock({
+        session: buildSession({
+          queuedMessages: ['steer me'],
+          queuedMessageMetadata: [{ id: 'steer-1', mode: 'steer' }],
+          status: 'sending',
+          orchestrationProvider: 'claude',
+          orchestrationSessionStarted: true,
+          orchestrationTurnOpen: true,
+        } as Partial<ChatSession>),
+      });
+      await screen.findByTestId('queued-messages');
+      const onSteer = queuedMessagesPropsMock.current?.onSteer;
+      expect(onSteer).toBeTypeOf('function');
+      await act(async () => {
+        await onSteer('steer me', 'steer-1');
+      });
+      expect(steerOrchestrationTurnMock).toHaveBeenCalledTimes(1);
+      expect(addEphemeralMessageMock).toHaveBeenCalledWith(
+        'thread-busy',
+        expect.objectContaining({ role: 'system', sendFailure: true }),
+      );
+    },
+  );
 
   test('an unanswered inbox steer is reconciled through the inbox without invoking the adapter', async () => {
     scopeMock.current = {

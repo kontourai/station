@@ -1,0 +1,27 @@
+.conversation-inbox-notes {
+  display: grid;
+  gap: var(--k-space-2);
+  margin-block: var(--k-space-2);
+  min-width: 0;
+}
+
+.conversation-inbox-note {
+  display: grid;
+  gap: var(--k-space-1);
+  min-width: 0;
+  padding: var(--k-space-2);
+  border: 1px solid var(--k-border);
+  border-radius: var(--k-radius-control);
+  background: var(--k-panel);
+  color: var(--k-text);
+}
+
+.conversation-inbox-note__body {
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.conversation-inbox-note__kind {
+  justify-self: start;
+}

@@ -3406,7 +3406,11 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     );
   });
 
-  it('returns a stale-head steer to the composer without claiming it was sent', async () => {
+  it.each([
+    'inbox_stale_head',
+    'inbox_key_conflict',
+    'client_turn_input_conflict',
+  ])('returns a definitive %s steer refusal to the composer', async (code) => {
     enableSteerOutbox();
     activeChatsStore.updateChat(sessionId, {
       status: 'sending',
@@ -3416,7 +3420,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       input: 'review this',
     });
     submitConversationSteerMock.mockRejectedValueOnce(
-      new CodedOrchestrationError(409, 'changed', 'inbox_stale_head'),
+      new CodedOrchestrationError(409, 'changed', code),
     );
     const { result } = renderHook(() => useSendMessage('http://api.test'));
     await act(async () => {
@@ -3426,6 +3430,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     expect(activeChatsStore.getSnapshot()[sessionId].queuedMessages).toEqual(
       [],
     );
+    expect(await outboundDispatch.snapshot()).toEqual([]);
     expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
   });
 

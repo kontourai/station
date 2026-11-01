@@ -199,17 +199,21 @@ test('retains the observed head only in the current authority cache', async () =
   ).toBe(false);
 });
 
-test('shows display-only entries without counting them as pending sends', async () => {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async () =>
-      response([{ ...entry('sent', 'visible note'), kind: 'display' }]),
-    ),
-  );
-  mount();
+test('shows display notes, discloses a lost read and recovers without counting notes as sends', async () => {
+  const read = () =>
+    response([{ ...entry('sent', 'visible note'), kind: 'display' }]);
+  const fetcher = vi.fn(async () => read());
+  vi.stubGlobal('fetch', fetcher);
+  const { client } = mount();
   expect(await screen.findByText('visible note')).toBeTruthy();
   expect(screen.getByText('Display only')).toBeTruthy();
   expect(screen.queryByText(/pending/)).toBeNull();
+  fetcher.mockRejectedValue(new Error('offline'));
+  await act(() => client.refetchQueries({ queryKey: ['conversation-inbox'] }));
+  expect(await screen.findByText('Couldn’t load inbox entries.')).toBeTruthy();
+  fetcher.mockImplementation(async () => read());
+  fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+  expect(await screen.findByText('visible note')).toBeTruthy();
 });
 
 test('an unknown steer offers explicit review and resend without automatically sending it', async () => {
@@ -268,7 +272,7 @@ test('a failed refresh makes a previously available count unavailable, never zer
   await screen.findByText('1 pending');
   failed = true;
   await act(() => client.refetchQueries({ queryKey: ['conversation-inbox'] }));
-  await screen.findByText('Couldn’t load held messages.');
+  await screen.findByText('Couldn’t load inbox entries.');
   expect(screen.queryByText(/0 pending/)).toBeNull();
   // The last-read rows are not shown as if current; they collapse away.
   await waitFor(() => expect(screen.queryByText('own')).toBeNull());

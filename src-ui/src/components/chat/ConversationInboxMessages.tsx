@@ -1,9 +1,11 @@
+import { Badge } from '@kontourai/ui/react';
 import { useMemo } from 'react';
 import {
   useConversationInbox,
   visibleInboxEntries,
 } from '../../hooks/useConversationInbox';
 import { type HeldMessages, QueuedMessages } from './QueuedMessages';
+import './ConversationInboxMessages.css';
 
 type QueuedMessagesProps = Parameters<typeof QueuedMessages>[0];
 
@@ -61,15 +63,20 @@ export function ConversationInboxMessages({
   return (
     <>
       {displayEntries.length > 0 && (
-        <section aria-label="Display-only entries">
+        <section
+          className="conversation-inbox-notes"
+          aria-label="Display-only entries"
+        >
           {displayEntries.map((entry) => (
             <div
-              className="queued-message"
+              className="conversation-inbox-note"
               key={entry.clientTurnId ?? `${entry.createdAt}:${entry.message}`}
             >
-              <span className="queued-message__text">
-                <span className="queued-message__body">{entry.message}</span>
-                <span className="queued-message__status">Display only</span>
+              <span className="conversation-inbox-note__body">
+                {entry.message}
+              </span>
+              <span className="conversation-inbox-note__kind">
+                <Badge value="Display only" />
               </span>
             </div>
           ))}

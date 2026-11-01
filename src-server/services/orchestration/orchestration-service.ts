@@ -5386,6 +5386,14 @@ export class OrchestrationService {
     return this.options.adapterRegistry.get(provider)?.metadata.durability;
   }
 
+  canSteerAtPostToolBoundary(threadId: string, turnId: string): boolean {
+    return (
+      !this.quarantinedThreads.has(threadId) &&
+      !this.isDormantSessionThread(threadId) &&
+      !this.ranUnconfinedNowConfined(threadId, turnId)
+    );
+  }
+
   async steerFidelityForThread(
     threadId: string,
   ): Promise<'native' | 'emulated' | 'none'> {

@@ -2059,7 +2059,10 @@ steering placement, crash continuation, tool replay, pending approvals, context
 carriage, fork, compaction, partial output and usage. Each cell identifies current
 fidelity (`native`, `emulated` or `none`) and its user-facing limit. Compaction
 also declares its owner (`station`, `engine` or `unknown`) independently of
-Station's crash-recovery support. These are
+Station's crash-recovery support. Steering may identify an `engine-defined`
+or `station-observed` boundary. Context carriage identifies `station-memory`
+or transcript `seed` history ownership; an unreported owner preserves the seed.
+Consumers use these declarations rather than provider-name durability rules. These are
 delivery declarations, not permission to replay an effect with an unknown outcome.
 
 Built-in adapters expose the profile in their metadata. The engine capability
@@ -2072,7 +2075,10 @@ The engine description's **Recovery and delivery** disclosure reads these cells.
 Claude and Codex declare their live steering channels as native. ACP discloses a
 connection-dependent orchestration-command fallback that may interrupt and
 reprompt; the ordinary chat composer does not offer ACP steering. Live steering does
-not imply restart safety: no current profile promises mid-turn crash continuation,
+not imply restart continuation: the inbox persists text and its expected head
+before claiming a handoff, but an unacknowledged claim remains unknown and is
+never automatically replayed. Station-owned steering is emulated at an observed
+post-tool boundary, otherwise the terminal boundary. No current profile promises mid-turn crash continuation,
 automatic tool replay or durable approval waits. Context supplied by Station has
 no accepted-through acknowledgement, and usage remains engine-reported where
 available. The unknown-engine profile does not infer context, output or usage

@@ -6,6 +6,7 @@ import {
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { describe, expect, test, vi } from 'vitest';
+import { ClientTurnInputConflictError } from '../../../providers/adapter-shape.js';
 import { turnDedupKey } from '../../../services/orchestration/sqlite-turn-dedup-persistence.js';
 import { foregroundTurnSubmissionDigest } from '../../../services/orchestration/turn-submission-digest.js';
 
@@ -122,6 +123,32 @@ describe('POST /chat whenBusy queue (#3568)', () => {
       automaticBackground: true,
     });
     expect(world.prompts()).toEqual(['read the file']);
+  });
+
+  test('a typed steer receipt conflict is HTTP409 before inbox admission', async () => {
+    const world = station();
+    await world.busy();
+    vi.spyOn(world.inbox, 'submitSteer').mockImplementation(() => {
+      throw new ClientTurnInputConflictError();
+    });
+    const response = await world.app.request(
+      `/api/orchestration/conversations/${CONVERSATION}/inbox`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          kind: 'steer',
+          key: 'conflict',
+          message: 'different text',
+          expectedHead: world.inbox.currentHead(CONVERSATION),
+        }),
+      },
+    );
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      code: 'client_turn_input_conflict',
+    });
+    expect(world.inbox.list(CONVERSATION)).toEqual([]);
   });
 
   test('a display entry is visible immediately to another reader without starting a turn', async () => {

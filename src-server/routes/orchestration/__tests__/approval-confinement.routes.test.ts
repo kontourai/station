@@ -15,8 +15,10 @@
  * `OrchestrationService` derives confinement and hands the engine its input.
  * The recording engines read exactly what an adapter would receive.
  */
+
 import { join } from 'node:path';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
+import { STEERING_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
 import {
   PAIRING_SCOPE_APPROVAL_FULL_ACCESS,
   PAIRING_SCOPE_PRESETS,
@@ -129,6 +131,7 @@ class RecordingEngine implements ProviderAdapterShape {
       displayName: provider,
       description: `${provider} confinement test engine`,
       capabilities: ['agent-runtime'],
+      durability: STEERING_ENGINE_DURABILITY,
     };
   }
 
@@ -1906,12 +1909,18 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
       }),
     );
     expect(f.claude.steers).toHaveLength(1);
+    expect(f.service.canSteerAtPostToolBoundary(threadId, firstTurn)).toBe(
+      true,
+    );
 
     const removed = await removeFullAccess(f, laptop.device.id);
     expect(bare(removed.body.fullAccessRevocation).stillUnconfined).toEqual([
       { conversationId, until: 'next-turn' },
     ]);
 
+    expect(f.service.canSteerAtPostToolBoundary(threadId, firstTurn)).toBe(
+      false,
+    );
     expect((await steer('after')).result).toEqual({
       outcome: 'confinement-changed',
       threadId,

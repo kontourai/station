@@ -12,6 +12,7 @@
  * owns.
  */
 import { useConnectionStatus } from '@kontourai/station-connect';
+import { isSteerConflictCode } from '@kontourai/station-contracts/provider';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useAuthorityPersistence } from '../contexts/AuthorityPersistenceContext';
 import {
@@ -378,7 +379,8 @@ export function useOutboundQueueFlush(apiBase: string): void {
                   if (
                     refusal?.stationEnvelope === true &&
                     (refusal.code === 'inbox_stale_head' ||
-                      refusal.code === 'conversation_inbox_full')
+                      refusal.code === 'conversation_inbox_full' ||
+                      isSteerConflictCode(refusal.code))
                   )
                     return {
                       kind: 'refused' as const,

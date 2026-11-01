@@ -217,7 +217,10 @@ describe('mounted composer inbox handoff (test-scoped caller)', () => {
       const request = new Request(input, init);
       if (
         request.method === 'POST' &&
-        new URL(request.url).pathname === '/api/orchestration/chat'
+        [
+          '/api/orchestration/chat',
+          '/api/orchestration/chat/background',
+        ].includes(new URL(request.url).pathname)
       )
         submissions++;
       return world.app.request(request);

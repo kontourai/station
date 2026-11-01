@@ -47,6 +47,7 @@ it('retains legacy input for destination review without exposing send or steer',
     />,
   );
   expect(screen.getByText('Review destination')).toBeTruthy();
+  expect(screen.queryByText('1', { exact: true })).toBeNull();
   expect(screen.queryByRole('button', { name: 'Send as steer' })).toBeNull();
   expect(
     screen.queryByRole('button', { name: /Send pending message/ }),

@@ -32,6 +32,7 @@ import type {
   ProviderSessionStartInput,
   ProviderTurnStartResult,
 } from '../../../providers/adapter-shape.js';
+import { ClientTurnInputConflictError } from '../../../providers/adapter-shape.js';
 import { isForegroundIndeterminateShape } from '../../../routes/orchestration/orchestration.js';
 import { runWithAuthorizedTurnCorrelation } from '../../../runtime/conversation/authorized-turn-correlation.js';
 import { VoltAgentFramework } from '../../../runtime/frameworks/voltagent-adapter.js';
@@ -213,6 +214,8 @@ function boot(
     // The production schedule, scaled down: a busy flag that outlives its
     // terminal is looked at again.
     retryDelaysMs: [5, 10, 20, 40],
+    postToolMaySteer: (threadId, turnId) =>
+      service.canSteerAtPostToolBoundary(threadId, turnId),
     ...ports,
   });
   inbox.start();
@@ -526,125 +529,199 @@ describe('thread inbox (#3568)', () => {
     expect(world.inbox.list(THREAD)).toHaveLength(1);
   });
 
-  test('the Station-owned tool loop consumes a durable steer after tools and retains it in later model steps', async () => {
-    const file = path();
-    const world = boot(file, { steerFidelity: () => 'emulated' });
-    await runningFirstTurn(world);
-    let calls = 0;
-    const usage = {
-      inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
-      outputTokens: { total: 1, text: 0, reasoning: 0 },
-    };
-    const model = new MockLanguageModelV3({
-      doStream: async () => {
-        const round = calls++;
-        return {
-          stream: simulateReadableStream<LanguageModelV3StreamPart>({
-            chunks:
-              round < 2
-                ? [
-                    {
-                      type: 'tool-call' as const,
-                      toolCallId: `tool-${round}`,
-                      toolName: 'inspect',
-                      input: '{}',
-                    },
-                    {
-                      type: 'finish' as const,
-                      finishReason: {
-                        unified: 'tool-calls' as const,
-                        raw: 'tool_calls',
-                      },
-                      usage,
-                    },
-                  ]
-                : [
-                    { type: 'text-start' as const, id: 'answer' },
-                    {
-                      type: 'text-delta' as const,
-                      id: 'answer',
-                      delta: 'done',
-                    },
-                    { type: 'text-end' as const, id: 'answer' },
-                    {
-                      type: 'finish' as const,
-                      finishReason: { unified: 'stop' as const, raw: 'stop' },
-                      usage,
-                    },
-                  ],
-          }),
-        };
-      },
-    });
-    let tools = 0;
-    const agent = await new VoltAgentFramework().createTempAgent({
-      name: 'inbox-proof',
-      hooks: { beforeToolCall: async () => true },
-      instructions: 'Use inspect.',
-      model,
-      maxSteps: 3,
-      tools: [
-        {
-          name: 'inspect',
-          description: 'Inspect',
-          parameters: { type: 'object', properties: {} },
-          execute: async () => {
-            if (tools++ === 0) {
-              world.inbox.submitSteer({
-                conversationId: THREAD,
-                clientTurnId: 'post-tool',
-                payload,
-                expectedHead: world.inbox.currentHead(THREAD),
-              });
-              await world.inbox.idle();
-              expect(world.inbox.list(THREAD)).toMatchObject([
-                { state: 'queued' },
-              ]);
-            }
-            return 'result';
-          },
+  test.each(['deliver', 'conflict', 'hold'] as const)(
+    'the Station post-tool loop applies the durable steer decision %s',
+    async (mode) => {
+      const conflict = mode === 'conflict';
+      const held = mode === 'hold';
+      const file = path();
+      let receiptReads = 0;
+      const world = boot(file, {
+        steerFidelity: () => 'emulated',
+        ...(held ? { postToolMaySteer: () => false } : {}),
+        inspectSteer: () => {
+          if (conflict && ++receiptReads > 1)
+            throw new ClientTurnInputConflictError();
+          return undefined;
         },
-      ],
-    });
-    await runWithAuthorizedTurnCorrelation(
-      {
-        accountId: OWNER,
-        sessionId: THREAD,
-        turnId: 'turn-1',
-        correlationId: 'post-tool-proof',
-      },
-      async () => {
-        const result = await agent.streamText('read the file', {
+      });
+      await runningFirstTurn(world);
+      let calls = 0;
+      const usage = {
+        inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+        outputTokens: { total: 1, text: 0, reasoning: 0 },
+      };
+      const model = new MockLanguageModelV3({
+        doStream: async () => {
+          const round = calls++;
+          return {
+            stream: simulateReadableStream<LanguageModelV3StreamPart>({
+              chunks:
+                round < 2
+                  ? [
+                      {
+                        type: 'tool-call' as const,
+                        toolCallId: `tool-${round}`,
+                        toolName: 'inspect',
+                        input: '{}',
+                      },
+                      {
+                        type: 'finish' as const,
+                        finishReason: {
+                          unified: 'tool-calls' as const,
+                          raw: 'tool_calls',
+                        },
+                        usage,
+                      },
+                    ]
+                  : [
+                      { type: 'text-start' as const, id: 'answer' },
+                      {
+                        type: 'text-delta' as const,
+                        id: 'answer',
+                        delta: 'done',
+                      },
+                      { type: 'text-end' as const, id: 'answer' },
+                      {
+                        type: 'finish' as const,
+                        finishReason: { unified: 'stop' as const, raw: 'stop' },
+                        usage,
+                      },
+                    ],
+            }),
+          };
+        },
+      });
+      let tools = 0;
+      const agent = await new VoltAgentFramework().createTempAgent({
+        name: 'inbox-proof',
+        hooks: { beforeToolCall: async () => true },
+        instructions: 'Use inspect.',
+        model,
+        maxSteps: 3,
+        tools: [
+          {
+            name: 'inspect',
+            description: 'Inspect',
+            parameters: { type: 'object', properties: {} },
+            execute: async () => {
+              if (tools++ === 0) {
+                world.inbox.submitSteer({
+                  conversationId: THREAD,
+                  clientTurnId: 'post-tool',
+                  payload,
+                  expectedHead: world.inbox.currentHead(THREAD),
+                });
+                await world.inbox.idle();
+                expect(world.inbox.list(THREAD)).toMatchObject([
+                  { state: 'queued' },
+                ]);
+              }
+              return 'result';
+            },
+          },
+        ],
+      });
+      await runWithAuthorizedTurnCorrelation(
+        {
+          accountId: OWNER,
+          sessionId: THREAD,
+          turnId: 'turn-1',
+          correlationId: 'post-tool-proof',
+        },
+        async () => {
+          const result = await agent.streamText('read the file', {
+            conversationId: THREAD,
+            userId: OWNER,
+          });
+          for await (const _chunk of result.fullStream) {
+            /* Drain the real loop. */
+          }
+        },
+      );
+      expect(calls).toBe(3);
+      for (const call of model.doStreamCalls.slice(1)) {
+        expect(
+          call.prompt.filter(
+            (message) =>
+              message.role === 'user' &&
+              message.content.some(
+                (part) => part.type === 'text' && part.text === FOLLOW_UP,
+              ),
+          ),
+        ).toHaveLength(conflict || held ? 0 : 1);
+      }
+      expect(world.inbox.list(THREAD)).toMatchObject([
+        held
+          ? { state: 'queued' }
+          : conflict
+            ? { state: 'refused', reasonCode: 'client_turn_input_conflict' }
+            : { state: 'sent', turnId: 'turn-1' },
+      ]);
+      expect(world.adapter.steers).toEqual([]);
+      await crash(world);
+      const second = boot(file, { steerFidelity: () => 'emulated' });
+      await second.inbox.reconcile();
+      expect(second.inbox.list(THREAD)).toMatchObject([
+        { state: held ? 'queued' : conflict ? 'refused' : 'sent' },
+      ]);
+      if (held) {
+        await startSession(second);
+        await settle(second);
+        expect(followUpSends()).toEqual([FOLLOW_UP]);
+      } else expect(followUpSends()).toEqual([]);
+    },
+  );
+
+  test.each(['admission', 'native-race', 'fallback-race'] as const)(
+    'a typed steer conflict at %s cannot become another engine effect',
+    async (phase) => {
+      let reads = 0;
+      const steer = vi.fn(async () => {
+        throw new ClientTurnInputConflictError();
+      });
+      const world = boot(path(), {
+        steerFidelity: () =>
+          phase === 'fallback-race' ? 'emulated' : 'native',
+        inspectSteer: () => {
+          reads += 1;
+          if (phase === 'admission' || (phase === 'fallback-race' && reads > 1))
+            throw new ClientTurnInputConflictError();
+          return undefined;
+        },
+        steer,
+      });
+      const owner = await runningFirstTurn(world);
+      const submit = () =>
+        world.inbox.submitSteer({
           conversationId: THREAD,
-          userId: OWNER,
+          clientTurnId: 'typed-conflict',
+          payload,
+          expectedHead: world.inbox.currentHead(THREAD),
         });
-        for await (const _chunk of result.fullStream) {
-          /* Drain the real loop. */
+      if (phase === 'admission') {
+        expect(submit).toThrow(ClientTurnInputConflictError);
+        expect(world.inbox.list(THREAD)).toEqual([]);
+      } else {
+        expect(submit().outcome).toBe('queued');
+        await world.inbox.idle();
+        if (phase === 'fallback-race') {
+          await emit(
+            world,
+            'turn.completed',
+            { turnId: 'turn-1', outputText: 'done' },
+            owner,
+          );
+          await settle(world);
         }
-      },
-    );
-    expect(calls).toBe(3);
-    for (const call of model.doStreamCalls.slice(1)) {
-      expect(
-        call.prompt.filter(
-          (message) =>
-            message.role === 'user' &&
-            message.content.some(
-              (part) => part.type === 'text' && part.text === FOLLOW_UP,
-            ),
-        ),
-      ).toHaveLength(1);
-    }
-    expect(world.inbox.list(THREAD)).toMatchObject([
-      { state: 'sent', turnId: 'turn-1' },
-    ]);
-    expect(world.adapter.steers).toEqual([]);
-    await crash(world);
-    const second = boot(file, { steerFidelity: () => 'emulated' });
-    await second.inbox.reconcile();
-    expect(second.inbox.list(THREAD)).toMatchObject([{ state: 'sent' }]);
-    expect(followUpSends()).toEqual([]);
-  });
+        expect(world.inbox.list(THREAD)).toMatchObject([
+          { state: 'refused', reasonCode: 'client_turn_input_conflict' },
+        ]);
+      }
+      expect(followUpSends()).toEqual([]);
+      expect(steer).toHaveBeenCalledTimes(phase === 'native-race' ? 1 : 0);
+    },
+  );
 
   test.each(['before-claim', 'after-claim'] as const)(
     'native steer restart at %s preserves text and head without replaying a claim',

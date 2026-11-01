@@ -6,6 +6,7 @@ import type {
 import {
   ACP_APPROVAL_GOVERNANCE_REFUSED_CODE,
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
+  isSteerConflictCode,
   MODEL_NOT_ADVERTISED_CODE,
 } from '@kontourai/station-contracts/provider';
 import { isFirstSendFailure } from '@kontourai/station-contracts/session-attention';
@@ -839,7 +840,8 @@ export function useSendMessage(
         } catch (error) {
           if (liveSteer) {
             if (
-              (error as { code?: unknown })?.code === 'inbox_stale_head' &&
+              ((error as { code?: unknown })?.code === 'inbox_stale_head' ||
+                isSteerConflictCode((error as { code?: unknown })?.code)) &&
               stationAnswered(error)
             ) {
               await liveSteer.refused();
@@ -1789,7 +1791,17 @@ export function useSendMessage(
         const observedSessionId = foreground?.sessionId;
         const rollbackComposer = foregroundIndeterminate
           ? {}
-          : rejectedSendRollback(transaction, latestState);
+          : {
+              ...rejectedSendRollback(transaction, latestState),
+              ...(stationAnswered(error)
+                ? {
+                    deliveryChecks: withoutDeliveryCheck(
+                      latestState?.deliveryChecks,
+                      resolvedTurnId,
+                    ),
+                  }
+                : {}),
+            };
         // Pre-stream fetch-level failure (agent-not-found, model-override
         // validation, provider-resolution throws, or the SDK's
         // `ChatHttpError` carrying the server's real HTTP-error body — see

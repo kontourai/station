@@ -173,6 +173,62 @@ describe('useOutboundQueueFlush', () => {
     expect(sendMessage).not.toHaveBeenCalled();
   });
 
+  it.each(['inbox_key_conflict', 'client_turn_input_conflict'])(
+    'holds a definitive %s steer conflict as not sent instead of automatically retrying',
+    async (code) => {
+      let stored: unknown;
+      _setOutboundQueueStorage({
+        getItem: async () => stored,
+        setItem: async (_key, value) => {
+          stored = value;
+        },
+        updateItem: async (_key, updater) => {
+          stored = updater(stored);
+        },
+      });
+      await outboundDispatch.recordUnanswered({
+        clientTurnId: 'conflicted-steer',
+        sessionId: 'session-1',
+        conversationId: 'conversation-1',
+        agentSlug: 'codex',
+        content: 'change course',
+        inboxSteerHead: '["session-1",1]',
+        station: {
+          apiBase: 'http://api.test',
+          authorityNamespace: 'authority-1',
+        },
+      });
+      listConversationInbox.mockResolvedValue([]);
+      submitConversationSteer.mockRejectedValue(
+        Object.assign(new Error('Key names different input'), {
+          code,
+          stationEnvelope: true,
+        }),
+      );
+      renderHook(() => useOutboundQueueFlush('http://api.test'), {
+        wrapper: ({ children }) =>
+          createElement(
+            AuthorityPersistenceContext.Provider,
+            {
+              value: {
+                status: 'verified',
+                namespace: 'authority-1',
+                observation: null,
+              },
+            },
+            children,
+          ),
+      });
+      await waitFor(async () =>
+        expect(await outboundDispatch.snapshot()).toMatchObject([
+          { clientTurnId: 'conflicted-steer', status: 'failed' },
+        ]),
+      );
+      expect(submitConversationSteer).toHaveBeenCalledTimes(1);
+      expect(sendMessage).not.toHaveBeenCalled();
+    },
+  );
+
   it('keeps a failed steer replay for another lookup rather than claiming non-delivery', async () => {
     let stored: unknown;
     _setOutboundQueueStorage({

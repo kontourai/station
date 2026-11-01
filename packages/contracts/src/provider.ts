@@ -998,6 +998,14 @@ export const PROVIDER_SESSION_START_FAILED_CODE =
 export const CLIENT_TURN_IN_FLIGHT_CODE = 'client_turn_in_flight';
 /** The key already names a different submitted intent. No turn was accepted. */
 export const CLIENT_TURN_INPUT_CONFLICT_CODE = 'client_turn_input_conflict';
+
+/** A steer request with this refusal did not acquire a new input claim. */
+export function isSteerConflictCode(code: unknown): boolean {
+  return (
+    code === CLIENT_TURN_INPUT_CONFLICT_CODE || code === 'inbox_key_conflict'
+  );
+}
+
 /** This keyed input cannot be represented completely by the supported digest. */
 export const CLIENT_TURN_INPUT_UNSUPPORTED_CODE =
   'client_turn_input_unsupported';

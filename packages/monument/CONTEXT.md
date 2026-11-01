@@ -26,7 +26,7 @@ native framework loops.
 | Turn dedup | one claim per key, with its owner, invocation state and optional versioned input digest | A dead owner's claim is reclaimed only when that owner provably never began its effect (`pending` or `untracked`). `begun` and unknown answer `indeterminate`, and the turn is never sent again. A key whose resolved row retention evicted answers `expired`: the effect ran, and the key is never claimed afresh. |
 | Turn boundary | one active fence per invocation, optionally with an opaque immutable intent binding | Ordinary intent uses `reserved` → `prepared` → `invoking` → `accepted` or `indeterminate`. Preparation links an optional pending dedup key; begin changes both fences in one transaction. After a crash, complete prepared intent is retained as a separate resumable candidate. Explicit resume compares both dead exact owners and revisions before transferring them. Dead reservations and inputless legacy preparation are removed; invoking becomes indeterminate. Legacy lifecycle, task-dispatch and engine-opened acceptance remain unchanged. |
 | Request keys | one row per caller, tool and key, with a digest | A reused key with a different digest is a conflict. A stored attempt without a result is never treated as new. |
-| Inbox | one entry per inbox and key: its digest, opaque payload, FIFO sequence, state and recorded placement | A reused key with a different digest is a conflict; with the same digest it answers the stored entry, and a refused or cancelled one is queued again. The head (oldest unsettled entry) is claimed with its placement in the same transaction, before the host's effect, and only one entry per inbox is `placing`. A `placing` entry is never claimed afresh: after a crash the host re-drives it under the same key. An `unconfirmed` head blocks the inbox until it is cancelled, or until the host proves its effect and resolves it to `placed` or back to `queued`; a `refused` one does not. |
+| Inbox | one entry per inbox and key: its digest, opaque payload, FIFO sequence, state and recorded placement | A reused key with a different digest is a conflict; with the same digest it answers the stored entry, and a refused or never-placed cancelled one can be queued again. A dismissed uncertain claim stays occupied. The head (oldest unsettled entry) is claimed with its placement in the same transaction, before the host's effect, and only one entry per inbox is `placing`. A `placing` entry is never claimed afresh: after a crash the host settles it from proof or preserves uncertainty; a native steer claim is not replay permission. An `unconfirmed` head blocks the inbox until it is cancelled, or until the host proves its effect and resolves it to `placed` or back to `queued`; a `refused` one does not. |
 | Steer receipts | one input digest and optional confirmed turn per thread/client-input key | A pending or changed-input receipt stays indeterminate; only the matching unconfirmed row can be confirmed. Restart never frees a claim. Explicit thread deletion is the only forgetting operation. |
 | Owner liveness | none | There is one three-state rule: `dead`, `live` or `unknown`. A pid whose birth differs from the recorded one is `dead`, and `unknown` never frees a claim. Reconcile takes its verdicts before the transaction, one probe per process, and applies each only to a row that has not changed since. |
 
@@ -149,9 +149,10 @@ vite or vitest configs are accepted limits, left to review.
   decision, never claim the key afresh. Past the TTL it stops holding a quota
   slot, so a claim that can never resolve does not lock its caller out of the
   per-caller cap, or everyone out of the store-wide one.
-- **Inbox:** a submit first forgets the inbox's settled entries (`placed`,
-  `refused`, `cancelled`) last updated before `inboxSettledRetentionMs`. An
-  inbox holds at most `inboxMaxUnsettled` unsettled entries; a submit past it
+- **Inbox:** submit expires safe settled follow-ups before
+  `inboxSettledRetentionMs`. Steer keys, display notes and dismissed uncertain
+  claims survive until explicit inbox deletion. An
+  inbox holds at most `inboxMaxUnsettled` unsettled entries; a queued submit past it
   answers `capacity` and writes nothing. `inbox.forget` removes one inbox
   outright, for a host whose conversation was deleted.
 - **Terminal-turn facts:** inputless legacy rows use retained provider turn ids a

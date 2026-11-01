@@ -1470,6 +1470,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Same shape again: launches a real Chromium to prove a long Dialog body
   // scrolls and keeps the footer's commit action on screen and hittable.
   'src-ui/src/__tests__/Dialog.chrome.geometry.test.tsx',
+  // Owns Chromium for the durable inbox's responsive actions and display notes.
+  'src-ui/src/__tests__/ConversationInboxMessages.geometry.test.tsx',
   // Same shape again: launch a real Chromium to measure the Coding layout's
   // rail (scrolling inside the window) and the Chat column's edges (8px
   // borderless splitters, the folded inbox strip's rule colour) against the

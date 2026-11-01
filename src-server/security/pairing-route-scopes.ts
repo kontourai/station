@@ -4338,6 +4338,11 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'GET',
       path: '/api/orchestration/conversations/:conversationId/inbox',
     },
+    // Local input admission rechecks conversation and sender authority at the operate tier.
+    {
+      method: 'POST',
+      path: '/api/orchestration/conversations/:conversationId/inbox',
+    },
     {
       method: 'DELETE',
       path: '/api/orchestration/conversations/:conversationId/inbox/:clientTurnId',

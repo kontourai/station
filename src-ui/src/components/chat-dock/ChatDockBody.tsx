@@ -4,6 +4,7 @@ import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display'
 import {
   ENGINE_MEMORY_EXHAUSTED_CODE,
   ENGINE_SIGN_IN_REQUIRED_CODE,
+  isSteerConflictCode,
 } from '@kontourai/station-contracts/provider';
 import { MCP_SIGN_IN_REQUIRED_CODE } from '@kontourai/station-contracts/provider-failure';
 import { isFirstSendFailure } from '@kontourai/station-contracts/session-attention';
@@ -2371,7 +2372,11 @@ export function ChatDockBody({
                   sendFailure: true,
                   content: steerRefusalMessage(result),
                 });
-              } catch {
+              } catch (error) {
+                const conflict =
+                  (error as { stationEnvelope?: unknown })?.stationEnvelope ===
+                    true &&
+                  isSteerConflictCode((error as { code?: unknown })?.code);
                 const held = activeChatsStore.getSnapshot()[activeSession.id];
                 activeChatsStore.updateChat(activeSession.id, {
                   queuedMessageMetadata: held?.queuedMessageMetadata?.map(
@@ -2383,8 +2388,10 @@ export function ChatDockBody({
                 });
                 addEphemeralMessage(activeSession.id, {
                   role: 'system',
-                  content:
-                    'Station could not confirm steering delivery. Your message remains held.',
+                  ...(conflict ? { sendFailure: true } : {}),
+                  content: conflict
+                    ? 'That steer key names different input. Review the held message before resending.'
+                    : 'Station could not confirm steering delivery. Your message remains held.',
                 });
               } finally {
                 activeChatsStore.updateChat(activeSession.id, {
