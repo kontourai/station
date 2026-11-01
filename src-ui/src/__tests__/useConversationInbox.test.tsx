@@ -101,10 +101,13 @@ function entry(
   };
 }
 
-function response(entries: ConversationInboxEntry[]) {
-  return new Response(JSON.stringify({ success: true, data: { entries } }), {
-    headers: { 'content-type': 'application/json' },
-  });
+function response(entries: ConversationInboxEntry[], currentHead?: string) {
+  return new Response(
+    JSON.stringify({ success: true, data: { entries, currentHead } }),
+    {
+      headers: { 'content-type': 'application/json' },
+    },
+  );
 }
 
 type Local = { messages: string[]; metadata?: PendingMessageMetadata[] };
@@ -158,6 +161,38 @@ test('shows actual server states and keeps keyless entries read-only without per
   const query = client.getQueryCache().getAll()[0];
   expect(query).toBeDefined();
   expect(shouldPersistQuery(query)).toBe(false);
+});
+
+test('retains the observed head only in the current authority cache', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => response([], '["session",4]')),
+  );
+  const { client } = mount();
+  await waitFor(() =>
+    expect(
+      client.getQueryData([
+        'conversation-inbox',
+        'http://station.test',
+        'device-a',
+        'conversation',
+        'head',
+      ]),
+    ).toBe('["session",4]'),
+  );
+  expect(
+    shouldPersistQuery(
+      client.getQueryCache().find({
+        queryKey: [
+          'conversation-inbox',
+          'http://station.test',
+          'device-a',
+          'conversation',
+          'head',
+        ],
+      })!,
+    ),
+  ).toBe(false);
 });
 
 test('shows display-only entries without counting them as pending sends', async () => {

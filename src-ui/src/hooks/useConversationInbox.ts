@@ -117,6 +117,10 @@ export function useConversationInbox(
           requireCredential: scope.requiresEnrolledCredential !== false,
           signal,
           timeoutMs: DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
+          onHead: (head) => {
+            if (!signal.aborted && scope.isCurrent())
+              client.setQueryData([...queryKey, 'head'], head);
+          },
         },
       );
       if (!scope.isCurrent())

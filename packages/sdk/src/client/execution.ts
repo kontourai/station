@@ -445,7 +445,7 @@ export async function queueExecutionMessage(
 export async function listConversationInbox(
   apiBase: string,
   conversationId: string,
-  opts?: ClientRequestOptions,
+  opts?: ClientRequestOptions & { onHead?: (head: string) => void },
 ): Promise<ConversationInboxEntry[]> {
   const response = await getJson(
     `${apiBase}/api/orchestration/conversations/${encodeURIComponent(conversationId)}/inbox`,
@@ -453,7 +453,7 @@ export async function listConversationInbox(
   );
   const result = (await readExecutionBody(response)) as {
     success?: boolean;
-    data?: { entries?: ConversationInboxEntry[] };
+    data?: { entries?: ConversationInboxEntry[]; currentHead?: unknown };
     error?: string;
     code?: string;
   };
@@ -463,6 +463,12 @@ export async function listConversationInbox(
       result,
       'The conversation inbox is unavailable.',
     );
+  if (
+    typeof result.data.currentHead === 'string' &&
+    result.data.currentHead.length > 0 &&
+    result.data.currentHead.length <= 4096
+  )
+    opts?.onHead?.(result.data.currentHead);
   return result.data.entries;
 }
 

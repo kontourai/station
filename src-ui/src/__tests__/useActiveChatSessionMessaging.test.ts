@@ -26,11 +26,12 @@ import {
 import { resetAttachmentObjectUrls } from '../components/chat/attachment-object-urls';
 import { SkillExperienceForm } from '../components/skill-experiences/SkillExperienceForm';
 
+const authorityFixture = vi.hoisted(() => ({
+  namespace: 'authority-1',
+  status: 'verified',
+}));
 vi.mock('../contexts/AuthorityPersistenceContext', () => ({
-  useAuthorityPersistence: () => ({
-    namespace: 'authority-1',
-    status: 'verified',
-  }),
+  useAuthorityPersistence: () => authorityFixture,
 }));
 
 // The rendered bubble below asks only about its attachment chip: its avatar
@@ -310,6 +311,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
   }
   beforeEach(() => {
     accountPreferenceFixture.requestScope = undefined;
+    authorityFixture.status = 'verified';
     accountPreferenceFixture.data.values.interactiveApprovalModes = {};
     vi.clearAllMocks();
     outboundQueueMode.useActual = false;
@@ -3358,6 +3360,88 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       },
     ]);
     expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps an offline steer with the last observed head for later inbox handoff', async () => {
+    enableSteerOutbox();
+    accountPreferenceFixture.requestScope = {
+      apiBase: 'http://api.test',
+      authorityKey: 'authority-1',
+      isCurrent: () => true,
+    };
+    sessionCache.setQueryData(
+      [
+        'conversation-inbox',
+        'http://api.test',
+        'authority-1',
+        sessionId,
+        'head',
+      ],
+      '["thread",7]',
+    );
+    readConversationInboxHeadMock.mockRejectedValueOnce(
+      new TypeError('offline'),
+    );
+    submitConversationSteerMock.mockRejectedValueOnce(new TypeError('offline'));
+    activeChatsStore.updateChat(sessionId, {
+      status: 'sending',
+      orchestrationProvider: 'claude',
+      openTurnId: 'turn-open',
+      conversationId: sessionId,
+      input: 'offline steer',
+    });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await result.current(sessionId, 'claude', sessionId, 'offline steer');
+    });
+    expect(await outboundDispatch.snapshot()).toMatchObject([
+      {
+        status: 'invoking',
+        inboxSteerHead: '["thread",7]',
+        content: 'offline steer',
+      },
+    ]);
+    expect(activeChatsStore.getSnapshot()[sessionId].queuedMessages).toEqual(
+      [],
+    );
+  });
+
+  it('records an offline steer but does not submit while authority is unverified', async () => {
+    enableSteerOutbox();
+    authorityFixture.status = 'unverified';
+    accountPreferenceFixture.requestScope = {
+      apiBase: 'http://api.test',
+      authorityKey: 'authority-1',
+      isCurrent: () => true,
+    };
+    sessionCache.setQueryData(
+      [
+        'conversation-inbox',
+        'http://api.test',
+        'authority-1',
+        sessionId,
+        'head',
+      ],
+      '["thread",7]',
+    );
+    readConversationInboxHeadMock.mockRejectedValueOnce(
+      new TypeError('offline'),
+    );
+    activeChatsStore.updateChat(sessionId, {
+      status: 'sending',
+      orchestrationProvider: 'claude',
+      openTurnId: 'turn-open',
+      conversationId: sessionId,
+      input: 'offline steer',
+    });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await result.current(sessionId, 'claude', sessionId, 'offline steer');
+    });
+    expect(submitConversationSteerMock).not.toHaveBeenCalled();
+    expect(await outboundDispatch.snapshot()).toMatchObject([
+      { status: 'invoking', inboxSteerHead: '["thread",7]' },
+    ]);
   });
 
   it('does not submit a steer when its authority changes during the head read', async () => {

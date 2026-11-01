@@ -390,6 +390,7 @@ export function useSendMessage(
   const invalidate = useInvalidateQuery();
   const queryClient = useQueryClient();
   const accountPreferences = useAccountPreferences();
+  const inboxRequestScope = accountPreferences.requestScope;
   const {
     namespace: experienceNamespace,
     status: experienceAuthorityStatus,
@@ -713,7 +714,7 @@ export function useSendMessage(
         if (claimState.conversationId) {
           if (
             !experienceNamespace ||
-            experienceAuthorityStatus !== 'verified'
+            experienceAuthorityStatus === 'unavailable'
           ) {
             addEphemeralMessage(sessionId, {
               role: 'system',
@@ -725,20 +726,48 @@ export function useSendMessage(
           updateChat(sessionId, { queueSendNowPending: true });
           let liveSteer: LiveOutboundDispatch | undefined;
           try {
-            const requestOptions = accountPreferences.requestScope
-              ? { requestScope: accountPreferences.requestScope }
-              : {};
-            const expectedHead = await readConversationInboxHead(
-              apiBase,
-              claimState.conversationId,
-              requestOptions,
-            );
-            if (
-              authorityRef.current.namespace !== experienceNamespace ||
-              authorityRef.current.status !== 'verified' ||
-              (accountPreferences.requestScope &&
-                !accountPreferences.requestScope.isCurrent())
-            )
+            const usableInboxScope =
+              inboxRequestScope?.isCurrent() &&
+              inboxRequestScope.apiBase === apiBase
+                ? inboxRequestScope
+                : undefined;
+            if (experienceAuthorityStatus !== 'verified' && !usableInboxScope)
+              throw new Error('Station authority is unavailable.');
+            const requestOptions = usableInboxScope
+              ? { requestScope: usableInboxScope }
+              : accountPreferences.requestScope
+                ? { requestScope: accountPreferences.requestScope }
+                : {};
+            const authorityIsCurrent = () =>
+              authorityRef.current.namespace === experienceNamespace &&
+              authorityRef.current.status !== 'unavailable' &&
+              (!usableInboxScope || usableInboxScope.isCurrent()) &&
+              (!accountPreferences.requestScope ||
+                accountPreferences.requestScope.isCurrent());
+            let expectedHead: string;
+            try {
+              expectedHead = await readConversationInboxHead(
+                apiBase,
+                claimState.conversationId,
+                requestOptions,
+              );
+            } catch (error) {
+              const cached =
+                inboxRequestScope?.isCurrent() &&
+                inboxRequestScope.apiBase === apiBase
+                  ? queryClient.getQueryData<unknown>([
+                      'conversation-inbox',
+                      apiBase,
+                      inboxRequestScope.authorityKey,
+                      claimState.conversationId,
+                      'head',
+                    ])
+                  : undefined;
+              if (typeof cached !== 'string' || !cached || cached.length > 4096)
+                throw error;
+              expectedHead = cached;
+            }
+            if (!authorityIsCurrent())
               throw new Error('Station authority changed.');
             const { outboundDispatch } = await import('../lib/outboundQueue');
             const durable = outboundDispatch.beginLive({
@@ -773,12 +802,7 @@ export function useSendMessage(
                   .catch(() => undefined);
               throw new Error('Could not save this steer before sending.');
             }
-            if (
-              authorityRef.current.namespace !== experienceNamespace ||
-              authorityRef.current.status !== 'verified' ||
-              (accountPreferences.requestScope &&
-                !accountPreferences.requestScope.isCurrent())
-            ) {
+            if (!authorityIsCurrent()) {
               await liveSteer.refused();
               liveSteer = undefined;
               throw new Error('Station authority changed.');
@@ -792,6 +816,15 @@ export function useSendMessage(
               options?.onDurable?.();
             } catch {
               // The durable claim cannot be undone by an observer.
+            }
+            if (authorityRef.current.status !== 'verified') {
+              await liveSteer.unanswered();
+              try {
+                options?.onAdmission?.('accepted');
+              } catch {
+                /* Already recorded. */
+              }
+              return true;
             }
             const accepted = await submitConversationSteer(
               apiBase,
@@ -2159,6 +2192,7 @@ export function useSendMessage(
       accountPreferences.saving,
       experienceNamespace,
       experienceAuthorityStatus,
+      inboxRequestScope,
       agentConnections,
       apiBase,
       assignConversationId,
