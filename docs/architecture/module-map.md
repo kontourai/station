@@ -1794,9 +1794,9 @@ through VoltAgent's prepareStep after tools settle. The
 refuses ambiguous runtime ownership without aborting the turn and unregisters
 on stop. Prompt preparation leaves the claim in flight; the carrying model
 request must return before memory, the canonical steer event and receipt are
-recorded and the entry is settled. Prior compaction cannot drop retained input. Delivery rechecks
-sender/placement policy and current turn confinement before injecting the text, retains it in later model
-steps and records the acknowledgement. Other loops use the terminal boundary.
+recorded and the entry is settled. Prior compaction cannot drop retained input.
+Delivery rechecks sender/placement policy and current turn confinement before
+injecting the text, retains it in later model steps and records the acknowledgement. Other loops use the terminal boundary.
 The UI renders server entries and an explicit Review and resend action.
 New busy sends and outbox replay use whenBusy queue; replay retains its
 background resource-admission class. Unscoped sessionStorage input is retained

@@ -57,8 +57,9 @@ export interface KernelLimits {
    * hold. A submission past it is refused, never truncated.
    */
   readonly inboxMaxUnsettled: number;
+  /** Retained display notes per inbox, counted after expiry runs. */
   readonly inboxMaxDisplay: number;
-  /** A settled follow-up without an uncertain claim older than this is forgotten on the inbox's next submit. */
+  /** Display notes and safe settled follow-ups older than this expire on the next submit. */
   readonly inboxSettledRetentionMs: number;
 }
 
