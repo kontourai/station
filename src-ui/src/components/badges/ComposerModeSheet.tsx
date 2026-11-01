@@ -143,9 +143,9 @@ export function ComposerModeSheet({
             />{' '}
             {/* #4390: the engine's product name, never its raw id. */}
             Save as my{' '}
-            {(engineConnectionId &&
-              engineDisplayLabel(engineConnectionId as never)) ??
-              'engine'}{' '}
+            {(engineConnectionId
+              ? engineDisplayLabel(engineConnectionId)
+              : null) ?? 'engine'}{' '}
             default
           </label>
         )}

@@ -202,11 +202,6 @@ export function resolveTurnModelIdentity(
   return { source: 'envelope', claims };
 }
 
-/**
- * #4402: the request's model options in words, for the requested-model
- * claim's tooltip. The raw option keys (`reasoningEffort`, `fastMode: false`)
- * are wire names; an unknown key is shown as itself rather than guessed at.
- */
 const MODEL_OPTION_LABELS: Record<string, string> = {
   effort: 'Reasoning effort',
   reasoningEffort: 'Reasoning effort',
@@ -218,6 +213,11 @@ const MODEL_OPTION_LABELS: Record<string, string> = {
   serviceTier: 'Service tier',
 };
 
+/**
+ * #4402: the request's model options in words, for the requested-model
+ * claim's tooltip. The raw option keys (`reasoningEffort`, `fastMode: false`)
+ * are wire names; an unknown key is shown as itself rather than guessed at.
+ */
 export function describeModelOptions(
   options: Readonly<Record<string, unknown>> | null | undefined,
 ): string | undefined {
