@@ -122,7 +122,17 @@
 
     "package.json#/scripts/build:agent-runtime",
 
-    "package.json#/scripts/agent-runtime-import-boundary:gate"
+    "package.json#/scripts/agent-runtime-import-boundary:gate",
+
+    "packages/agent-runtime/src/turn-journal.ts",
+
+    "packages/agent-runtime/src/turn-runtime.ts",
+
+    "packages/agent-runtime/src/turn-model.ts",
+
+    "packages/agent-runtime/src/turn-approvals.ts",
+
+    "packages/agent-runtime/src/turn-projection.ts"
   ],
 
   "checks": []
