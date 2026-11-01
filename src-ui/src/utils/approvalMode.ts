@@ -150,8 +150,12 @@ const ENGINE_MODE_DESCRIPTIONS: Partial<
     // "Codex Auto", which the read-only case is not. It is scoped to
     // commands: Codex's hosted web search and MCP tool calls are not
     // sandboxed commands, so they fall outside it.
+    //
+    // #4389: "this folder" alone read as a project folder, but a chat with no
+    // project runs in the home folder (`resolveStartSessionCwd`), so the copy
+    // names that case instead of implying a narrower bound.
     codex:
-      'Your Codex settings apply until you pick a mode. If unset, no command uses the network or writes beyond this folder and temp unasked.',
+      'Your Codex settings apply until you pick a mode. If unset, no command uses the network or writes outside this chat’s working folder and temp unasked. A chat with no project works in your home folder.',
   },
   ask: {
     codex:
