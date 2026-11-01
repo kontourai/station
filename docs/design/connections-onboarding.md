@@ -370,6 +370,10 @@ until the same intent is reconciled. A request failure does not prove the prior 
 process or credential binding was restored. The original archive#1247 stack relationship is
 history, not a current prerequisite or application fallback.
 
+Automatic staging waits until startup reconciliation succeeds. An unreadable scan or
+unresolved obligation blocks staging across connections; the coordinator retries an
+armed recovery while it remains running. Exact scoped cleanup can still proceed.
+
 **Accepted gaps (disclosed, not defects — security review rounds 2-4, orchestrator-accepted):**
 
 1. **Case-insensitive containment on darwin/win32 is a platform proxy.** The global-config
