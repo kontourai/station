@@ -1,0 +1,7 @@
+{
+  "revision": "a97818c3a43c55aa27ebcc1e7b4bd3f5b6838f05",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed startup scan availability, staging admission and due-scan retry against CredentialRecoveryModule, SessionRecoveryCoordinator and their focused SQLite tests. Mid-scan due outcome loss remains documented; no provider journey was exercised.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/credential-recovery-module.ts","src-server/services/orchestration/session-recovery-coordinator.ts"]}
+  ]
+}

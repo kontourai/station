@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { ownerLivenessFromProbe } from '@kontourai/monument';
 import type {
   ConnectionRecoveryIntent,
   ConnectionRecoveryOutcome,
@@ -682,15 +683,19 @@ function ownerIsLive(
   processIdentity: RecoveryLedgerProcessIdentity,
 ): boolean {
   if (!ownerId || !ownerPid) return false;
-  if (releasedOwners.has(ownerId)) return false;
-  if (ownerPid === process.pid && activeOwners.has(ownerId)) return true;
-  const observed = processIdentity.probe(ownerPid);
-  if (observed.state === 'dead') return false;
-  if (observed.state === 'unavailable') return true;
-  // An unverified owner cannot safely be reclaimed while its PID is live.
+  const owner =
+    ownerIdentityKind === 'exact' && ownerBirth
+      ? {
+          id: ownerId,
+          pid: ownerPid,
+          identityKind: 'exact' as const,
+          birth: ownerBirth,
+        }
+      : { id: ownerId, pid: ownerPid, identityKind: 'unverified' as const };
   return (
-    ownerIdentityKind !== 'exact' ||
-    !ownerBirth ||
-    observed.identity.start === ownerBirth
+    ownerLivenessFromProbe((pid) => processIdentity.probe(pid), {
+      isReleased: (id) => releasedOwners.has(id),
+      isLocallyLive: (id) => ownerPid === process.pid && activeOwners.has(id),
+    })(owner) !== 'dead'
   );
 }
