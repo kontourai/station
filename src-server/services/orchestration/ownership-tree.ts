@@ -16,7 +16,13 @@ export const OWNERSHIP_TREE_SCHEMA = `CREATE TABLE IF NOT EXISTS orchestration_s
   PRIMARY KEY (child_session_id, event_id)
 );
 CREATE INDEX IF NOT EXISTS idx_session_ownership_parent
-  ON orchestration_session_ownership(parent_session_id, binding, background_boundary)`;
+  ON orchestration_session_ownership(parent_session_id, binding, background_boundary);
+CREATE TABLE IF NOT EXISTS orchestration_ownership_starts (
+  child_session_id TEXT PRIMARY KEY,
+  parent_session_id TEXT NOT NULL,
+  created_head INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_ownership_starts_parent ON orchestration_ownership_starts(parent_session_id)`;
 
 export interface SessionOwnershipEdge {
   childId: string;
@@ -108,6 +114,76 @@ export function recordSessionOwnership(
     event.eventId,
     metadata?.backgroundBoundary === true ? 1 : 0,
   );
+  if (verified)
+    db.prepare(
+      'DELETE FROM orchestration_ownership_starts WHERE child_session_id = ?',
+    ).run(event.threadId);
+}
+
+/** Enroll before the provider effect so cancellation cannot miss a child still starting. */
+export function reserveOwnershipStart(
+  db: TransactionalSqliteDatabase,
+  childId: string,
+  metadata?: Record<string, unknown>,
+): void {
+  const raw = metadata?.delegation;
+  if (
+    metadata?.stationDelegationProvenance !== 'caller-derived' ||
+    metadata?.backgroundBoundary === true ||
+    !raw ||
+    typeof raw !== 'object' ||
+    !('parentSessionId' in raw) ||
+    typeof raw.parentSessionId !== 'string'
+  )
+    return;
+  const parentId = raw.parentSessionId;
+  writeTransaction(db, 'reserve_ownership_start', () => {
+    db.prepare(
+      'UPDATE orchestration_stream_identity SET high_water = high_water WHERE singleton = 1',
+    ).run();
+    const cancelled = db
+      .prepare(`SELECT 1 FROM orchestration_cancellation_fences WHERE thread_id = ?
+      UNION ALL SELECT 1 FROM orchestration_events e WHERE e.thread_id = ?
+      AND (e.method IN ('session.exited', 'turn.aborted', 'session.cancellation-requested') OR (e.method = 'session.state-changed' AND e.session_state = 'canceled'))
+      AND e.global_sequence > COALESCE((SELECT MAX(global_sequence) FROM orchestration_events WHERE thread_id = ? AND method IN ('turn.started', 'session.started')), 0) LIMIT 1`)
+      .get(parentId, parentId, parentId);
+    if (cancelled)
+      throw new Error(
+        'The initiating Session is cancellation-fenced; no child was started.',
+      );
+    if (
+      db
+        .prepare(
+          "SELECT 1 FROM orchestration_events WHERE thread_id = ? AND method = 'session.started' LIMIT 1",
+        )
+        .get(childId)
+    )
+      return;
+    if (
+      !db
+        .prepare(
+          "SELECT 1 FROM orchestration_events WHERE thread_id = ? AND method = 'session.started' LIMIT 1",
+        )
+        .get(parentId)
+    )
+      throw new Error(
+        'The initiating Session is unavailable; no child was started.',
+      );
+    db.prepare(`INSERT INTO orchestration_ownership_starts VALUES (?, ?,
+      (SELECT high_water FROM orchestration_stream_identity WHERE singleton = 1))
+      ON CONFLICT(child_session_id) DO NOTHING`).run(childId, parentId);
+    const current = z
+      .object({ parent_session_id: z.string() })
+      .parse(
+        db
+          .prepare(
+            'SELECT parent_session_id FROM orchestration_ownership_starts WHERE child_session_id = ?',
+          )
+          .get(childId),
+      );
+    if (current.parent_session_id !== parentId)
+      throw new Error('Initiating Session ownership conflicts.');
+  });
 }
 
 /** The naming index selects source events; naming alone still grants no authority. */
@@ -186,12 +262,31 @@ export function ownedDescendantsBottomUp(
     if (
       edge.binding !== 'verified' ||
       edge.backgroundBoundary ||
-      edge.createdSequence >= before
+      (edge.createdSequence >= before &&
+        db
+          .prepare(`SELECT 1 FROM orchestration_events WHERE thread_id = ?
+        AND global_sequence > ? AND global_sequence < ? AND method IN ('turn.started', 'session.started') LIMIT 1`)
+          .get(edge.parentId, before, edge.createdSequence))
     )
       continue;
     const children = byParent.get(edge.parentId) ?? [];
     children.push(edge.childId);
     byParent.set(edge.parentId, children);
+  }
+  const starts = z
+    .array(
+      z.object({
+        child_session_id: z.string(),
+        parent_session_id: z.string(),
+        created_head: z.number(),
+      }),
+    )
+    .parse(db.prepare('SELECT * FROM orchestration_ownership_starts').all());
+  for (const start of starts) {
+    if (start.created_head >= before) continue;
+    const children = byParent.get(start.parent_session_id) ?? [];
+    children.push(start.child_session_id);
+    byParent.set(start.parent_session_id, children);
   }
   const seen = new Set<string>([parentId]);
   const ordered: string[] = [];

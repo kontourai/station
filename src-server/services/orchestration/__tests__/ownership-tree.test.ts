@@ -179,3 +179,157 @@ test('open reconstructs ownership from the naming index without promoting histor
     reopened.close();
   }
 });
+
+test('open derives the pending stop and admission fence from an unprojected legacy terminal', () => {
+  const path = join(makeTempDir('cascade-open-'), 'events.sqlite');
+  const store = new EventStore(path);
+  store.appendEvent(start('parent'));
+  store.appendEvent(
+    start('child', {
+      delegation: { parentSessionId: 'parent', parentConversationId: 'parent' },
+      stationDelegationProvenance: 'caller-derived',
+    }),
+  );
+  store.close();
+  const terminal = {
+    eventId: 'legacy-terminal',
+    threadId: 'parent',
+    sessionId: 'parent',
+    provider: 'claude',
+    method: 'session.exited',
+    createdAt: at,
+    reason: 'stopped',
+  };
+  const db = new DatabaseSync(path);
+  db.prepare(`INSERT INTO orchestration_events (id, provider, thread_id, method, payload, created_at, sequence, global_sequence)
+    VALUES (?, 'claude', 'parent', 'session.exited', ?, ?, 2, 3)`).run(
+    terminal.eventId,
+    JSON.stringify(terminal),
+    at,
+  );
+  db.prepare(
+    'UPDATE orchestration_stream_identity SET high_water = 3 WHERE singleton = 1',
+  ).run();
+  db.close();
+  const reopened = new EventStore(path);
+  try {
+    expect(reopened.pendingCascadeStops()).toEqual([
+      { parentId: 'parent', childId: 'child', terminalId: 'legacy-terminal' },
+    ]);
+    expect(
+      reopened.sessionTurnBoundaryAuthority().claim('child', at).kind,
+    ).toBe('unavailable');
+  } finally {
+    reopened.close();
+  }
+});
+
+test('a child still in provider start is enrolled before cancellation and stopped when its adapter binds', async () => {
+  const root = makeTempDir('cascade-starting-');
+  const store = new EventStore(join(root, 'events.sqlite'));
+  const engine = new GateTestAdapter();
+  let entered!: () => void;
+  const starting = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const order: string[] = [];
+  const attempts: string[] = [];
+  const running = new Set(['parent']);
+  const adapter: import('../../../providers/adapter-shape.js').ProviderAdapterShape =
+    engine;
+  adapter.stopSession = async (id) => {
+    order.push(id);
+    running.delete(id);
+  };
+  adapter.hasSession = async (id) => running.has(id);
+  const original = engine.startSession.bind(engine);
+  engine.startSession = async (input) => {
+    attempts.push(input.threadId);
+    entered();
+    await gate;
+    const session = await original(input);
+    running.add(input.threadId);
+    engine.events.push(start(input.threadId, input.metadata));
+    return session;
+  };
+  const service = new OrchestrationService({
+    adapterRegistry: createGateTestRegistry(adapter),
+    eventStore: store,
+    eventBus: new EventBus(),
+    logger: { debug() {}, warn() {} },
+  });
+  let child:
+    | ReturnType<OrchestrationService['startSessionInternal']>
+    | undefined;
+  try {
+    service.initialize();
+    await awaitSessionRecoveryCompleted(service);
+    store.appendEvent(start('parent'));
+    service.seedSessionRecord({
+      threadId: 'parent',
+      provider: 'claude',
+      status: 'running',
+    });
+    const delegation = createChildDelegationContext({
+      agentSlug: 'planner',
+      conversationId: 'parent',
+      sessionId: 'parent',
+    });
+    child = service.startSessionInternal(
+      {
+        type: 'start-session',
+        input: {
+          provider: 'claude',
+          threadId: 'child',
+          cwd: root,
+          metadata: { delegation },
+        },
+      },
+      {},
+      {
+        delegationProvenance: {
+          context: delegation,
+          provenance: 'caller-derived',
+        },
+      },
+    );
+    await starting;
+    await expect(
+      service.dispatch({ type: 'stopSession', threadId: 'parent' }),
+    ).rejects.toThrow('Owned Session stops remain pending');
+    expect(order).toEqual([]);
+    release();
+    expect((await child).status).toBe('accepted');
+    await expect.poll(() => order).toEqual(['child', 'parent']);
+    expect(store.pendingCascadeStops()).toEqual([]);
+    const late = await service.startSessionInternal(
+      {
+        type: 'start-session',
+        input: {
+          provider: 'claude',
+          threadId: 'late-child',
+          cwd: root,
+          metadata: { delegation },
+        },
+      },
+      {},
+      {
+        delegationProvenance: {
+          context: delegation,
+          provenance: 'caller-derived',
+        },
+      },
+    );
+    expect(late.status).not.toBe('accepted');
+    expect(attempts).toEqual(['child']);
+  } finally {
+    release();
+    await child;
+    await service.shutdown();
+    store.close();
+  }
+});

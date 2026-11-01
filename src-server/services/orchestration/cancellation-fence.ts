@@ -1,4 +1,4 @@
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { z } from 'zod';
 import {
   type TransactionalSqliteDatabase,
   writeTransaction,
@@ -66,7 +66,12 @@ export function recordCascadeStopIntent(
 
 export function deriveCascadeStopIntents(
   db: TransactionalSqliteDatabase,
-  event: CanonicalRuntimeEvent,
+  event: {
+    method: string;
+    eventId: string;
+    threadId: string;
+    sessionState?: string;
+  },
   sequence: number,
 ): void {
   const requested = event.method === 'session.cancellation-requested';
@@ -82,11 +87,57 @@ export function deriveCascadeStopIntents(
     return;
   // An ancestor's durable request already includes this fenced subtree.
   if (!requested && isCancellationFenced(db, event.threadId)) return;
+  if (
+    !requested &&
+    db
+      .prepare(`SELECT 1 FROM orchestration_events r WHERE r.thread_id = ?
+    AND r.method = 'session.cancellation-requested' AND r.global_sequence < ?
+    AND r.global_sequence > COALESCE((SELECT MAX(global_sequence) FROM orchestration_events
+      WHERE thread_id = r.thread_id AND global_sequence < ? AND method IN ('turn.started', 'session.started')), 0) LIMIT 1`)
+      .get(event.threadId, sequence, sequence)
+  )
+    return;
   const descendants = ownedDescendantsBottomUp(db, event.threadId, sequence);
   for (const childId of descendants)
     recordCascadeStopIntent(db, event.threadId, childId, event.eventId);
   if (requested)
     recordCascadeStopIntent(db, event.threadId, event.threadId, event.eventId);
+}
+
+export function backfillCascadeStopIntents(
+  db: TransactionalSqliteDatabase,
+): void {
+  writeTransaction(db, 'cascade_recovery', () => {
+    const rows = z
+      .array(
+        z.object({
+          id: z.string(),
+          thread_id: z.string(),
+          method: z.string(),
+          global_sequence: z.number().int(),
+          session_state: z.string().nullable(),
+        }),
+      )
+      .parse(
+        db
+          .prepare(`
+      SELECT id, thread_id, method, global_sequence, session_state FROM orchestration_events
+      WHERE method IN ('session.exited', 'turn.aborted', 'session.cancellation-requested')
+        OR (method = 'session.state-changed' AND session_state = 'canceled') ORDER BY global_sequence`)
+          .all(),
+      );
+    for (const row of rows)
+      deriveCascadeStopIntents(
+        db,
+        {
+          method: row.method,
+          eventId: row.id,
+          threadId: row.thread_id,
+          ...(row.session_state ? { sessionState: row.session_state } : {}),
+        },
+        row.global_sequence,
+      );
+  });
 }
 
 /** Call while holding the same SQLite writer transaction as admission. */

@@ -244,6 +244,7 @@ import {
   isAttachmentBlobRef,
 } from './attachment-blob-store.js';
 import {
+  backfillCascadeStopIntents,
   CANCELLATION_FENCE_SCHEMA,
   deriveCascadeStopIntents,
   recordCascadeStopIntent,
@@ -344,6 +345,7 @@ import {
   ownedDescendantsBottomUp,
   readSessionOwnership,
   recordSessionOwnership,
+  reserveOwnershipStart,
 } from './ownership-tree.js';
 import { decodeTurnIntent } from './prepared-turn-intent.js';
 import { createSqliteProjectSupervisionStore } from './project-supervision.js';
@@ -2992,6 +2994,7 @@ export class EventStore {
       ensureOrchestrationEventStoreColumns(this.db);
       migrateSessionParentMentions(this.db);
       backfillSessionOwnership(this.db);
+      backfillCascadeStopIntents(this.db);
       ensurePositiveTurnStartIndex(this.db);
       // #4003: Task memory (summary revisions and keyed records), apart from
       // the room document.
@@ -15057,6 +15060,10 @@ export class EventStore {
     return ownedDescendantsBottomUp(this.db, parentId);
   }
 
+  reserveOwnershipStart(childId: string, metadata?: Record<string, unknown>) {
+    reserveOwnershipStart(this.db, childId, metadata);
+  }
+
   hasPendingCascadeDescendant(childId: string, terminalId: string): boolean {
     const pending = new Set(
       this.pendingCascadeStops()
@@ -15110,7 +15117,14 @@ export class EventStore {
         ? { birth: row.owner_birth }
         : {}),
     };
-    if (row.owner_id === this.recoveryLedgerOwner.id && locallyHeld)
+    if (
+      locallyHeld &&
+      (row.owner_id === this.recoveryLedgerOwner.id ||
+        (row.owner_pid === process.pid &&
+          row.owner_identity_kind === 'exact' &&
+          'birth' in this.recoveryLedgerOwner &&
+          owner.birth === this.recoveryLedgerOwner.birth))
+    )
       return { custody: 'local', reason: 'local-boundary-and-adapter', owner };
     const observed = this.recoveryProcessIdentity.probe(owner.pid);
     if (

@@ -8042,6 +8042,7 @@ export class OrchestrationService {
                         },
                       ),
                     internal?.sessionStartAdmission,
+                    input,
                   ),
               );
             };
@@ -11798,7 +11799,13 @@ export class OrchestrationService {
     threadId: string,
     invoke: () => Promise<T>,
     admission?: Parameters<typeof runSessionStartWithBoundary>[3],
+    ownershipInput?: ProviderSessionStartInput,
   ): Promise<T> {
+    if (ownershipInput)
+      this.options.eventStore?.reserveOwnershipStart(
+        threadId,
+        ownershipInput.metadata,
+      );
     this.discardedDraftThreads.delete(threadId);
     return this.trackStartUnderway(threadId, () =>
       runSessionStartWithBoundary(
@@ -11815,6 +11822,7 @@ export class OrchestrationService {
    * which must end whatever engine a Draft holds before deleting it.
    */
   private cascadeStopReconciliation?: Promise<void>;
+  private cascadeStopReconcileAgain = false;
   private readonly cascadeStopAdapters = new Map<
     string,
     ProviderAdapterShape
@@ -11865,82 +11873,89 @@ export class OrchestrationService {
   }
 
   private reconcileCascadeStops(): Promise<void> {
-    if (this.cascadeStopReconciliation) return this.cascadeStopReconciliation;
+    if (this.cascadeStopReconciliation) {
+      this.cascadeStopReconcileAgain = true;
+      return this.cascadeStopReconciliation;
+    }
     const store = this.options.eventStore;
     if (!store) return Promise.resolve();
     const reconcile = async () => {
-      for (const intent of store.pendingCascadeStops()) {
-        if (
-          store.hasPendingCascadeDescendant(intent.childId, intent.terminalId)
-        )
-          continue;
-        const retained = this.cascadeStopAdapters.get(intent.childId);
-        const owner = store.cascadeStopOwner(
-          intent.childId,
-          this.sessionAdapters.has(intent.childId) || retained !== undefined,
-        );
-        const evidence = {
-          ...owner,
-          registeredEnginePids: owner.owner
-            ? ownedProcessEvidenceFor(owner.owner)
-            : null,
-        };
-        const changed = store.recordCascadeStopCustody(
-          intent.childId,
-          intent.terminalId,
-          owner.custody,
-          evidence,
-        );
-        if (owner.custody !== 'local') {
-          if (changed && owner.custody === 'unknown')
-            this.options.logger.warn(
-              'Cascade stop custody is unknown; retaining pending intent',
-              { ...intent, ...evidence },
-            );
-          continue;
-        }
-        try {
-          const adapter = this.sessionAdapters.get(intent.childId) ?? retained;
-          if (!adapter) continue;
-          this.cascadeStopAdapters.set(intent.childId, adapter);
-          const trigger = store.eventById(
-            intent.parentId,
-            intent.terminalId,
-          )?.payload;
+      do {
+        this.cascadeStopReconcileAgain = false;
+        for (const intent of store.pendingCascadeStops()) {
           if (
-            intent.childId === intent.parentId &&
-            trigger?.method === 'session.cancellation-requested' &&
-            trigger.action === 'cancel'
-          ) {
-            const result =
-              await this.cooperativeStop.interruptUserTurnCooperatively(
+            store.hasPendingCascadeDescendant(intent.childId, intent.terminalId)
+          )
+            continue;
+          const retained = this.cascadeStopAdapters.get(intent.childId);
+          const owner = store.cascadeStopOwner(
+            intent.childId,
+            this.sessionAdapters.has(intent.childId) || retained !== undefined,
+          );
+          const evidence = {
+            ...owner,
+            registeredEnginePids: owner.owner
+              ? ownedProcessEvidenceFor(owner.owner)
+              : null,
+          };
+          const changed = store.recordCascadeStopCustody(
+            intent.childId,
+            intent.terminalId,
+            owner.custody,
+            evidence,
+          );
+          if (owner.custody !== 'local') {
+            if (changed && owner.custody === 'unknown')
+              this.options.logger.warn(
+                'Cascade stop custody is unknown; retaining pending intent',
+                { ...intent, ...evidence },
+              );
+            continue;
+          }
+          try {
+            const adapter =
+              this.sessionAdapters.get(intent.childId) ?? retained;
+            if (!adapter) continue;
+            this.cascadeStopAdapters.set(intent.childId, adapter);
+            const trigger = store.eventById(
+              intent.parentId,
+              intent.terminalId,
+            )?.payload;
+            if (
+              intent.childId === intent.parentId &&
+              trigger?.method === 'session.cancellation-requested' &&
+              trigger.action === 'cancel'
+            ) {
+              const result =
+                await this.cooperativeStop.interruptUserTurnCooperatively(
+                  adapter,
+                  intent.childId,
+                  trigger.turnId,
+                );
+              this.cascadeInterruptResults.set(intent.terminalId, result);
+            } else if (this.sessionAdapters.has(intent.childId)) {
+              await this.stopSessionNow(intent.childId, false);
+            } else {
+              await this.cooperativeStop.stopUserSessionImmediately(
                 adapter,
                 intent.childId,
-                trigger.turnId,
               );
-            this.cascadeInterruptResults.set(intent.terminalId, result);
-          } else if (this.sessionAdapters.has(intent.childId)) {
-            await this.stopSessionNow(intent.childId, false);
-          } else {
-            await this.cooperativeStop.stopUserSessionImmediately(
-              adapter,
-              intent.childId,
-            );
+            }
+            store.completeCascadeStop(intent.childId, intent.terminalId);
+            if (
+              !store
+                .pendingCascadeStops()
+                .some((next) => next.childId === intent.childId)
+            )
+              this.cascadeStopAdapters.delete(intent.childId);
+          } catch (error) {
+            this.options.logger.warn('Cascade stop remains pending', {
+              ...intent,
+              error: errorMessage(error),
+            });
           }
-          store.completeCascadeStop(intent.childId, intent.terminalId);
-          if (
-            !store
-              .pendingCascadeStops()
-              .some((next) => next.childId === intent.childId)
-          )
-            this.cascadeStopAdapters.delete(intent.childId);
-        } catch (error) {
-          this.options.logger.warn('Cascade stop remains pending', {
-            ...intent,
-            error: errorMessage(error),
-          });
         }
-      }
+      } while (this.cascadeStopReconcileAgain);
     };
     this.cascadeStopReconciliation = Promise.resolve()
       .then(reconcile)
@@ -14164,6 +14179,13 @@ export class OrchestrationService {
       sessionReadModel: this.sessionReadModel,
       session,
     });
+    if (
+      adapter &&
+      this.options.eventStore
+        ?.pendingCascadeStops()
+        .some((intent) => intent.childId === session.threadId)
+    )
+      this.observeCascadeStops();
   }
 
   /**
