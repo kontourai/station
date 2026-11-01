@@ -857,6 +857,26 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
             store.readSessionByThread(reserved!.sessionId),
           ).toBeUndefined();
           reservedSeedDigest = reserved!.contextSeed!.seedDigest;
+          // A later source event must not be folded into this already pinned
+          // reservation when Station reopens it.
+          const laterTurn = {
+            provider: target.provider,
+            threadId: handoffReceipt.data.sessionId,
+            turnId: 'after-reservation-turn',
+            createdAt: new Date().toISOString(),
+          } as const;
+          store.appendEvent({
+            ...laterTurn,
+            eventId: 'after-reservation-start',
+            method: 'turn.started',
+            prompt: 'Context added after reservation.',
+          });
+          store.appendEvent({
+            ...laterTurn,
+            eventId: 'after-reservation-complete',
+            method: 'turn.completed',
+            outputText: 'Late source answer.',
+          });
           const sourceTurns = sourceAdapter.turns.length;
           const targetTurns = targetAdapter.turns.length;
           await service.shutdown();
@@ -1072,8 +1092,12 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
           });
           await eventually(() => expect(sourceAdapter.turns).toHaveLength(3));
         }
-        if (restartBeforeReturnStart)
+        if (restartBeforeReturnStart) {
           expect(firstReturnSeedDigest).toBe(reservedSeedDigest);
+          expect(sourceAdapter.turns.at(-1)?.ambientContext).not.toContain(
+            'Context added after reservation.',
+          );
+        }
         if (oversizedCatchup) {
           expect(status?.nativeAcceptedTextThrough).toEqual([]);
           expect(
@@ -1269,7 +1293,8 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
         ),
       ).toHaveLength(
         (repeatNativeReturn ? 6 : nativeReturn ? 4 : 3) +
-          (rebindBeforeDispatch ? 1 : 0),
+          (rebindBeforeDispatch ? 1 : 0) +
+          (restartBeforeReturnStart ? 1 : 0),
       );
       expect(
         restored?.events.filter(
