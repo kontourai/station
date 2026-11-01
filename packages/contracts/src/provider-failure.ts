@@ -156,6 +156,8 @@ export const PROVIDER_FAILURE_KINDS = {
   [ADOPTION_ENGINE_NOT_READY_CODE]: 'unavailable',
   foreground_invocation_unavailable: 'conflict',
   delegation_attempt_capacity: 'busy',
+  delegation_create_conflict: 'conflict',
+  delegation_create_indeterminate: 'indeterminate',
   continuation_place_refused: 'input_unsupported',
   'muse-exit-without-terminal': 'engine_crashed',
   'muse-spawn-failed': 'unavailable',

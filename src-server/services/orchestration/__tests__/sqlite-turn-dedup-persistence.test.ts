@@ -2,6 +2,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { ClientTurnInputConflictError } from '../../../providers/adapter-shape.js';
 import { EventStore } from '../event-store.js';
 import { createSqliteSessionControlRequestKeys } from '../session-control-request-keys.js';
 import {
@@ -338,24 +339,27 @@ describe('turn dedup over Station tables', () => {
     ).toBe(true);
     store.close();
     const reopened = new EventStore(file);
+    expect(reopened.claimSteerInput(input)).toBe(false);
+    expect(reopened.readSteerInput(input)?.outcome).toBe('indeterminate');
     for (const other of [
-      input,
       { ...input, childId: 'child-b' },
       { ...input, turnId: 'turn-b' },
       { ...input, input: 'different' },
       { ...input, childId: undefined },
     ]) {
       expect(reopened.claimSteerInput(other)).toBe(false);
-      expect(reopened.readSteerInput(other)?.outcome).toBe('indeterminate');
+      expect(() => reopened.readSteerInput(other)).toThrow(
+        ClientTurnInputConflictError,
+      );
     }
     reopened.confirmChildSteerInput(input);
     expect(reopened.readSteerInput(input)).toMatchObject({
       outcome: 'steered',
       turnId: 'turn-a',
     });
-    expect(
-      reopened.readSteerInput({ ...input, childId: 'child-b' })?.outcome,
-    ).toBe('indeterminate');
+    expect(() =>
+      reopened.readSteerInput({ ...input, childId: 'child-b' }),
+    ).toThrow(ClientTurnInputConflictError);
     expect(
       reopened.claimChildSteerInput(
         { ...input, threadId: 'other-parent' },

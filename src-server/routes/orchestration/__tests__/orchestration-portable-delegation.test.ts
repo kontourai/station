@@ -1,3 +1,6 @@
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { keyedTurnRequest } from '../../../__test-utils__/turn-admission-fixture.js';
+import { FileDelegationAttemptClaimStore } from '../../../services/orchestration/delegation-attempt-claim-store.js';
 /**
  * #484 phase A — the receiver-side portable-execution slice, unit-bounded,
  * plus the controller/receiver split (root review of d097bccf8):
@@ -31,6 +34,7 @@ import {
   afterAll,
   afterEach,
   beforeAll,
+  beforeEach,
   describe,
   expect,
   test,
@@ -47,8 +51,49 @@ import { createOrchestrationRoutes } from '../orchestration.js';
 
 const logger = { debug: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn() };
 
+const makeClaimDir = trackTempDirs();
+const claimFixture = vi.hoisted(() => ({ home: '' }));
+beforeEach(() => {
+  claimFixture.home = makeClaimDir('portable-claims-');
+});
+
+vi.mock(
+  '../../../tools/station-control-delegation.js',
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import('../../../tools/station-control-delegation.js')
+      >();
+    return {
+      ...actual,
+      delegateTask: (
+        input: Parameters<typeof actual.delegateTask>[0],
+        service?: Parameters<typeof actual.delegateTask>[1],
+        remote?: Parameters<typeof actual.delegateTask>[2],
+      ) =>
+        actual.delegateTask(
+          {
+            ...input,
+            userId: input.userId ?? input.readAuthority?.userId ?? 'bound-user',
+            ...(Object.hasOwn(input, 'delegationAttemptClaimStore')
+              ? {}
+              : {
+                  delegationAttemptClaimStore:
+                    new FileDelegationAttemptClaimStore(claimFixture.home),
+                }),
+          },
+          service,
+          remote,
+        ),
+    };
+  },
+);
+
 function baseDeps(overrides: Record<string, unknown> = {}) {
   return {
+    delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(
+      makeClaimDir('portable-claims-'),
+    ),
     eventBus: new EventBus(),
     logger,
     getUserId: () => 'bound-user',
@@ -143,7 +188,9 @@ describe('POST /delegations — portable execution admission (#484 phase A)', ()
     const res = await app.request('/delegations', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ prompt: 'Ship it', target: PORTABLE_TARGET }),
+      body: JSON.stringify(
+        keyedTurnRequest({ prompt: 'Ship it', target: PORTABLE_TARGET }),
+      ),
     });
     expect(res.status, await res.clone().text()).toBe(200);
     // The route mints NOTHING eagerly: the admission owner is untouched
@@ -195,7 +242,9 @@ describe('POST /delegations — portable execution admission (#484 phase A)', ()
     const res = await app.request('/delegations', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ prompt: 'Ship it', target: PORTABLE_TARGET }),
+      body: JSON.stringify(
+        keyedTurnRequest({ prompt: 'Ship it', target: PORTABLE_TARGET }),
+      ),
     });
     expect(res.status).toBe(403);
     expect(await res.json()).toMatchObject({
@@ -221,14 +270,16 @@ describe('POST /delegations — portable execution admission (#484 phase A)', ()
     const res = await app.request('/delegations', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        prompt: 'Ship it',
-        target: {
-          environment: { kind: 'current' },
-          agent: 'planner',
-          workspace: { kind: 'project', projectSlug: 'local' },
-        },
-      }),
+      body: JSON.stringify(
+        keyedTurnRequest({
+          prompt: 'Ship it',
+          target: {
+            environment: { kind: 'current' },
+            agent: 'planner',
+            workspace: { kind: 'project', projectSlug: 'local' },
+          },
+        }),
+      ),
     });
     expect(res.status, await res.clone().text()).toBe(200);
     expect(authorizeReceiverExecution).not.toHaveBeenCalled();
@@ -243,19 +294,19 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
   const fetchCalls: string[] = [];
   const routes: Array<{
     match: (url: string) => boolean;
-    reply: () => unknown;
+    reply: (init?: RequestInit) => unknown;
   }> = [];
   beforeAll(() => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async (input: unknown, init?: unknown) => {
+      vi.fn(async (input: unknown, init?: RequestInit) => {
         const url = String(input);
         for (const route of routes) {
           if (route.match(url)) {
             fetchCalls.push(
               `${init && (init as any).method ? (init as any).method : 'GET'} ${url}`,
             );
-            return new Response(JSON.stringify(route.reply()), {
+            return new Response(JSON.stringify(route.reply(init)), {
               status: 200,
               headers: { 'content-type': 'application/json' },
             });
@@ -285,7 +336,14 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
         options.startSessionInternal ??
         vi.fn(async () => ({ status: 'accepted' as const })),
       dispatchWithReceipt:
-        options.dispatchWithReceipt ?? vi.fn(async () => ({ events: [] })),
+        options.dispatchWithReceipt ??
+        vi.fn(async () => ({
+          receipt: {
+            commandId: 'portable-turn-command',
+            status: 'accepted' as const,
+          },
+          result: { turnId: 'portable-turn' },
+        })),
     } as unknown as OrchestrationService;
   }
 
@@ -368,7 +426,13 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
     const startSessionInternal = vi.fn(async () => ({
       status: 'accepted' as const,
     }));
-    const dispatchWithReceipt = vi.fn(async () => ({ events: [] }));
+    const dispatchWithReceipt = vi.fn(async () => ({
+      receipt: {
+        commandId: 'portable-turn-command',
+        status: 'accepted' as const,
+      },
+      result: { turnId: 'portable-turn' },
+    }));
     const { delegateTask } = await import(
       '../../../tools/station-control-delegation.js'
     );
@@ -392,7 +456,13 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
     const startSessionInternal = vi.fn(async () => ({
       status: 'accepted' as const,
     }));
-    const dispatchWithReceipt = vi.fn(async () => ({ events: [] }));
+    const dispatchWithReceipt = vi.fn(async () => ({
+      receipt: {
+        commandId: 'portable-turn-command',
+        status: 'accepted' as const,
+      },
+      result: { turnId: 'portable-turn' },
+    }));
     const { delegateTask } = await import(
       '../../../tools/station-control-delegation.js'
     );
@@ -420,7 +490,13 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
     const startSessionInternal = vi.fn(async () => ({
       status: 'accepted' as const,
     }));
-    const dispatchWithReceipt = vi.fn(async () => ({ events: [] }));
+    const dispatchWithReceipt = vi.fn(async () => ({
+      receipt: {
+        commandId: 'portable-turn-command',
+        status: 'accepted' as const,
+      },
+      result: { turnId: 'portable-turn' },
+    }));
     const rechecks = vi.fn(async () => {});
     const { delegateTask } = await import(
       '../../../tools/station-control-delegation.js'
@@ -495,7 +571,13 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
     const startSessionInternal = vi.fn(async () => ({
       status: 'accepted' as const,
     }));
-    const dispatchWithReceipt = vi.fn(async () => ({ events: [] }));
+    const dispatchWithReceipt = vi.fn(async () => ({
+      receipt: {
+        commandId: 'portable-turn-command',
+        status: 'accepted' as const,
+      },
+      result: { turnId: 'portable-turn' },
+    }));
     const { delegateTask } = await import(
       '../../../tools/station-control-delegation.js'
     );
@@ -616,7 +698,13 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
     const startSessionInternal = vi.fn(async () => ({
       status: 'accepted' as const,
     }));
-    const dispatchWithReceipt = vi.fn(async () => ({ events: [] }));
+    const dispatchWithReceipt = vi.fn(async () => ({
+      receipt: {
+        commandId: 'portable-turn-command',
+        status: 'accepted' as const,
+      },
+      result: { turnId: 'portable-turn' },
+    }));
     await expect(
       delegateTask(
         {
@@ -638,7 +726,13 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
     const startSessionInternal = vi.fn(async () => ({
       status: 'accepted' as const,
     }));
-    const dispatchWithReceipt = vi.fn(async () => ({ events: [] }));
+    const dispatchWithReceipt = vi.fn(async () => ({
+      receipt: {
+        commandId: 'portable-turn-command',
+        status: 'accepted' as const,
+      },
+      result: { turnId: 'portable-turn' },
+    }));
     const { delegateTask } = await import(
       '../../../tools/station-control-delegation.js'
     );
@@ -675,7 +769,13 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
     const startSessionInternal = vi.fn(async () => ({
       status: 'accepted' as const,
     }));
-    const dispatchWithReceipt = vi.fn(async () => ({ events: [] }));
+    const dispatchWithReceipt = vi.fn(async () => ({
+      receipt: {
+        commandId: 'portable-turn-command',
+        status: 'accepted' as const,
+      },
+      result: { turnId: 'portable-turn' },
+    }));
     const { delegateTask } = await import(
       '../../../tools/station-control-delegation.js'
     );
@@ -809,7 +909,13 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
     const startSessionInternal = vi.fn(async () => ({
       status: 'accepted' as const,
     }));
-    const dispatchWithReceipt = vi.fn(async () => ({ events: [] }));
+    const dispatchWithReceipt = vi.fn(async () => ({
+      receipt: {
+        commandId: 'portable-turn-command',
+        status: 'accepted' as const,
+      },
+      result: { turnId: 'portable-turn' },
+    }));
     await expect(
       delegateTask(
         {
@@ -965,7 +1071,7 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
       return app.request('/delegations', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ prompt: 'Ship it', target }),
+        body: JSON.stringify(keyedTurnRequest({ prompt: 'Ship it', target })),
       }) as Promise<Response>;
     }
 
@@ -1026,7 +1132,13 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
       const startSessionInternal = vi.fn(async () => ({
         status: 'accepted' as const,
       }));
-      const dispatchWithReceipt = vi.fn(async () => ({ events: [] }));
+      const dispatchWithReceipt = vi.fn(async () => ({
+        receipt: {
+          commandId: 'portable-turn-command',
+          status: 'accepted' as const,
+        },
+        result: { turnId: 'portable-turn' },
+      }));
       const app = compositionApp({
         service: orchestrationStub({
           startSessionInternal,
@@ -1055,7 +1167,13 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
       const startSessionInternal = vi.fn(async () => ({
         status: 'accepted' as const,
       }));
-      const dispatchWithReceipt = vi.fn(async () => ({ events: [] }));
+      const dispatchWithReceipt = vi.fn(async () => ({
+        receipt: {
+          commandId: 'portable-turn-command',
+          status: 'accepted' as const,
+        },
+        result: { turnId: 'portable-turn' },
+      }));
       const app = compositionApp({
         service: orchestrationStub({
           startSessionInternal,
@@ -1144,7 +1262,13 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
       const startSessionInternal = vi.fn(async () => ({
         status: 'accepted' as const,
       }));
-      const dispatchWithReceipt = vi.fn(async () => ({ events: [] }));
+      const dispatchWithReceipt = vi.fn(async () => ({
+        receipt: {
+          commandId: 'portable-turn-command',
+          status: 'accepted' as const,
+        },
+        result: { turnId: 'portable-turn' },
+      }));
       const app = compositionApp({
         service: orchestrationStub({
           startSessionInternal,
@@ -1172,7 +1296,13 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
       const startSessionInternal = vi.fn(async () => ({
         status: 'accepted' as const,
       }));
-      const dispatchWithReceipt = vi.fn(async () => ({ events: [] }));
+      const dispatchWithReceipt = vi.fn(async () => ({
+        receipt: {
+          commandId: 'portable-turn-command',
+          status: 'accepted' as const,
+        },
+        result: { turnId: 'portable-turn' },
+      }));
       const app = compositionApp({
         service: orchestrationStub({
           startSessionInternal,
@@ -1271,13 +1401,19 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
           match: (url) =>
             url.startsWith(PEER_API_FG) &&
             url.includes('/api/orchestration/chat'),
-          reply: () => ({
-            success: true,
-            data: {
-              conversationId: 'conv:remote',
-              providerTurnId: 'turn:remote',
-            },
-          }),
+          reply: (init) => {
+            const request = JSON.parse(String(init?.body));
+            return {
+              success: true,
+              data: {
+                conversationId: request.conversationId,
+                sessionId: request.conversationId,
+                providerTurnId: 'turn:remote',
+                target: { kind: 'agent', id: 'planner' },
+                resolution: {},
+              },
+            };
+          },
         },
       );
     });
@@ -1315,7 +1451,9 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
       return foregroundApp().request('/chat', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ message: 'Hello there', target }),
+        body: JSON.stringify(
+          keyedTurnRequest({ message: 'Hello there', target }),
+        ),
       }) as Promise<Response>;
     }
 
@@ -1458,7 +1596,7 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
       const res = await app.request('/delegations/task:1/continue', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ message: 'One more thing' }),
+        body: JSON.stringify(keyedTurnRequest({ message: 'One more thing' })),
       });
       expect(res.status, await res.clone().text()).toBe(200);
       // The route mints NOTHING eagerly — the follow-up body carries no
@@ -1514,7 +1652,7 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
       const res = await app.request('/delegations/task:1/continue', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ message: 'One more thing' }),
+        body: JSON.stringify(keyedTurnRequest({ message: 'One more thing' })),
       });
       expect(res.status).toBe(403);
       expect(await res.json()).toMatchObject({
@@ -1674,7 +1812,9 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
           const res = await app.request(path, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify(body),
+            body: JSON.stringify(
+              path.endsWith('/continue') ? keyedTurnRequest(body) : body,
+            ),
           });
           expect(res.status).toBe(403);
           expect(await res.json()).toMatchObject({
@@ -1714,7 +1854,9 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
           const res = await app.request(path, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify(body),
+            body: JSON.stringify(
+              path.endsWith('/continue') ? keyedTurnRequest(body) : body,
+            ),
           });
           expect(res.status).toBe(403);
           expect(await res.json()).toMatchObject({
@@ -1750,7 +1892,9 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
           const res = await app.request(path, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify(body),
+            body: JSON.stringify(
+              path.endsWith('/continue') ? keyedTurnRequest(body) : body,
+            ),
           });
           expect(res.status, await res.clone().text()).toBe(200);
           expect(peerPosts).toHaveLength(1);
@@ -1793,7 +1937,9 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
             const res = await app.request(path, {
               method: 'POST',
               headers: { 'content-type': 'application/json' },
-              body: JSON.stringify(body),
+              body: JSON.stringify(
+                path.endsWith('/continue') ? keyedTurnRequest(body) : body,
+              ),
             });
             expect(res.status).toBe(400);
             const answer = (await res.json()) as Record<string, unknown>;

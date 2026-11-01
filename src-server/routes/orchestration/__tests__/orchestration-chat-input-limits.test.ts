@@ -37,12 +37,14 @@ describe('orchestration turn-text bounds derive from CHAT_INPUT_MAX_CHARS (stati
   test('delegate task prompt accepts exactly the shared limit and refuses one more', () => {
     expect(() =>
       delegateTaskSchema.parse({
+        clientTurnId: 'size-probe',
         target,
         prompt: 'x'.repeat(CHAT_INPUT_MAX_CHARS),
       }),
     ).not.toThrow();
     expect(() =>
       delegateTaskSchema.parse({
+        clientTurnId: 'size-probe',
         target,
         prompt: 'x'.repeat(CHAT_INPUT_MAX_CHARS + 1),
       }),
@@ -52,11 +54,13 @@ describe('orchestration turn-text bounds derive from CHAT_INPUT_MAX_CHARS (stati
   test('delegated-task continuation message accepts exactly the shared limit and refuses one more', () => {
     expect(() =>
       continueDelegatedTaskBodySchema.parse({
+        clientTurnId: 'size-probe',
         message: 'x'.repeat(CHAT_INPUT_MAX_CHARS),
       }),
     ).not.toThrow();
     expect(() =>
       continueDelegatedTaskBodySchema.parse({
+        clientTurnId: 'size-probe',
         message: 'x'.repeat(CHAT_INPUT_MAX_CHARS + 1),
       }),
     ).toThrow();
@@ -70,6 +74,7 @@ describe('orchestration turn-text bounds derive from CHAT_INPUT_MAX_CHARS (stati
     expect(() =>
       orchestrationCommandSchema.parse({
         type: 'steerTurn',
+        clientInputId: 'size-probe',
         threadId: 'thread-1',
         input: 'x'.repeat(CHAT_INPUT_MAX_CHARS),
       }),
@@ -77,6 +82,7 @@ describe('orchestration turn-text bounds derive from CHAT_INPUT_MAX_CHARS (stati
     expect(() =>
       orchestrationCommandSchema.parse({
         type: 'steerTurn',
+        clientInputId: 'size-probe',
         threadId: 'thread-1',
         input: 'x'.repeat(CHAT_INPUT_MAX_CHARS + 1),
       }),

@@ -24,6 +24,7 @@ import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { z } from 'zod/v3';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { keyedTurnRequest } from '../../../__test-utils__/turn-admission-fixture.js';
 import { POSTURE_OPTION_KEYS } from '../../../routes/orchestration/dispatch-scope.js';
 import {
   continueDelegatedTaskBodySchema,
@@ -35,7 +36,9 @@ import {
 import { __resetStationServerSelfAttestationForTests } from '../../../security/station-server-scope.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import { NotificationService } from '../../../services/notifications/notification-service.js';
+import { FileDelegationAttemptClaimStore } from '../../../services/orchestration/delegation-attempt-claim-store.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
+import { EventStore } from '../../../services/orchestration/event-store.js';
 import { SESSION_LOCAL_PROJECT_ID_METADATA_KEY } from '../../../services/orchestration/session-project-identity.js';
 import { STATION_CONTROL_CALLER_TOKEN_HEADER } from '../../../tools/station-control-shared.js';
 import {
@@ -106,9 +109,10 @@ vi.mock('../../../tools/station-control-delegation.js', async (original) => {
       support.dispatchedTargets.push(input.target);
       return answer(input);
     };
-  const handle = () => ({
-    conversationId: 'c',
-    sessionId: 's',
+  const handle = (input: Record<string, unknown>) => ({
+    conversationId: input.conversationId ?? 'c',
+    sessionId: input.conversationId ?? 's',
+    resolution: {},
     providerTurnId: 't',
     target: { kind: 'agent', id: 'writer' },
   });
@@ -176,12 +180,17 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
 
   async function setup() {
     const homeDir = makeTempDir('station-control-authority-');
+    const inboxEventStore = new EventStore(join(homeDir, 'inbox.sqlite'));
+    closers.push(async () => {
+      inboxEventStore.close();
+    });
     const service = new NotificationService(new EventBus(), homeDir, 999_999);
     closers.push(() => service.shutdown());
     support.notificationService = service;
     __resetStationServerSelfAttestationForTests();
     const app = new Hono();
     const context = deepStub({
+      delegationAttemptClaims: new FileDelegationAttemptClaimStore(homeDir),
       projectSharedTasks: undefined,
       deploymentAuthentication: undefined,
       localAccounts: undefined,
@@ -216,6 +225,7 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
       metricsLog: [],
       monitoringEvents: [],
       orchestrationEventStore: deepStub({
+        threadInboxStore: () => inboxEventStore.threadInboxStore(),
         sessionTurnBoundaryAuthority: () => ({
           reconcile: () => ({ kind: 'available', interrupted: [] }),
         }),
@@ -234,6 +244,8 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
         },
       }),
       orchestrationService: deepStub({
+        readPendingConversationSubmission: () => undefined,
+        inspectTurnDelivery: () => ({ outcome: 'not-received' as const }),
         // The production caller derivation reads the session's owner here.
         resolveSessionActingPrincipal: (threadId: string) => {
           const id = ownerOf(threadId);
@@ -374,7 +386,13 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
     const response = await fetch(`${base}${path}`, {
       method: 'POST',
       headers,
-      body: JSON.stringify(body),
+      body: JSON.stringify(
+        path.includes('/chat') ||
+          path.includes('/delegations') ||
+          path.includes('/commands')
+          ? keyedTurnRequest(body)
+          : body,
+      ),
     });
     const text = await response.text();
     let parsed: { code?: string; reason?: string; error?: string } = {};
@@ -1250,7 +1268,17 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
       const response = await fetch(`${base}${path}`, {
         method,
         headers,
-        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        ...(body === undefined
+          ? {}
+          : {
+              body: JSON.stringify(
+                path.includes('/chat') ||
+                  path.includes('/delegations') ||
+                  path.includes('/commands')
+                  ? keyedTurnRequest(body)
+                  : body,
+              ),
+            }),
       });
       const payload = (await response.json().catch(() => ({}))) as {
         code?: string;
@@ -1498,7 +1526,7 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
       const response = await fetch(`${base}${request.path}`, {
         method: 'POST',
         headers,
-        body: JSON.stringify(request.body),
+        body: JSON.stringify(keyedTurnRequest(request.body)),
       });
       const body = (await response.json().catch(() => ({}))) as {
         code?: string;

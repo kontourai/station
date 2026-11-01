@@ -23,6 +23,8 @@ const routes = [
     'foreground',
     '/chat',
     {
+      clientTurnId: 'projection-key',
+      conversationId: 'conversation:failure',
       message: 'Continue',
       target: { environment: { kind: 'current' }, agent: 'codex' },
     },
@@ -39,7 +41,7 @@ const routes = [
   [
     'continue',
     '/chat/conversation%3Afailure/continue',
-    { message: 'Continue' },
+    { message: 'Continue', clientTurnId: 'projection-key' },
   ],
   [
     'receipt',

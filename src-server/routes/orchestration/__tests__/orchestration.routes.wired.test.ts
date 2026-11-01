@@ -182,6 +182,7 @@ describe('Orchestration routes wired to the real delegation service (#977 AC12)'
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        clientTurnId: 'fixture-turn-key',
         prompt: 'Ship it',
         target: {
           environment: { kind: 'current' },
@@ -264,7 +265,10 @@ describe('Orchestration routes wired to the real delegation service (#977 AC12)'
     const res = await app.request('/delegations/unbound-task/continue', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: 'Keep going' }),
+      body: JSON.stringify({
+        clientTurnId: 'fixture-turn-key',
+        message: 'Keep going',
+      }),
     });
 
     expect(res.status).toBe(400);

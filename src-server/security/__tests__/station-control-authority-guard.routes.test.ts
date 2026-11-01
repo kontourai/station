@@ -35,6 +35,7 @@ import {
   vi,
 } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
+import { keyedTurnToolArguments } from '../../__test-utils__/turn-admission-fixture.js';
 import { StationAgentAdapter } from '../../providers/adapters/station-agent-adapter.js';
 import { createStationControlCallerRoutes } from '../../routes/mcp/station-control-caller-route.js';
 import {
@@ -515,7 +516,7 @@ async function callTool(
   try {
     const response = await engine.call(9, 'tools/call', {
       name,
-      arguments: args,
+      arguments: keyedTurnToolArguments(name, args),
     });
     const text = response.result?.content?.[0]?.text;
     let parsed: unknown = response;

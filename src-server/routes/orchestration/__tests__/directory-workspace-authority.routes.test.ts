@@ -20,9 +20,11 @@ import {
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { keyedTurnRequest } from '../../../__test-utils__/turn-admission-fixture.js';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
 import { refusesWorkingDirectoryChoice } from '../../../security/coding-authority.js';
 import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
+import { FileDelegationAttemptClaimStore } from '../../../services/orchestration/delegation-attempt-claim-store.js';
 import type { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
 import { createLogger } from '../../../utils/logger.js';
@@ -93,7 +95,15 @@ async function fixture() {
     return paired.credential;
   };
 
-  const executeForegroundMessage = vi.fn(async () => HANDLE);
+  const executeForegroundMessage = vi.fn(
+    async (input: { conversationId?: string }) => ({
+      ...HANDLE,
+      conversationId: input.conversationId,
+      sessionId: input.conversationId,
+      target: { kind: 'agent', id: 'builder' },
+      resolution: {},
+    }),
+  );
   const handoffConversation = vi.fn(async () => HANDLE);
   const delegateTask = vi.fn(async () => ({ taskId: 'task-1' }));
 
@@ -132,6 +142,7 @@ async function fixture() {
         eventBus: { emit() {} },
         logger: { debug: vi.fn() },
         getUserId: () => 'operator',
+        delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(root),
         executeForegroundMessage,
         handoffConversation,
         delegateTask,
@@ -153,7 +164,11 @@ async function fixture() {
           Authorization: `Bearer ${credential}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(body),
+        body: JSON.stringify(
+          path.includes('/chat') || path.includes('/delegations')
+            ? keyedTurnRequest(body)
+            : body,
+        ),
       },
       // A home-possession credential is honoured only from this computer.
       loopback

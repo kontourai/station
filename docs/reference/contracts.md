@@ -936,6 +936,8 @@ No existing diagnostic code is renamed or removed.
 | `stage_capacity` | `busy` | `true` |
 | `foreground_invocation_unavailable` | `conflict` | `false` |
 | `delegation_attempt_capacity` | `busy` | `true` |
+| `delegation_create_conflict` | `conflict` | `false` |
+| `delegation_create_indeterminate` | `indeterminate` | `false` |
 | `continuation_place_refused` | `input_unsupported` | `false` |
 | `acp-approval-takeover-failed` | `warning` | `false` |
 | `acp_approval_governance_refused` | `permission_denied` | `false` |

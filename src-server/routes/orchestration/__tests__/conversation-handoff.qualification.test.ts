@@ -29,6 +29,7 @@ import {
   type ExecutionTargetExecutionDependencies,
   executeForegroundMessage,
 } from '../../../services/execution-target/execution-target-execution.js';
+import { FileDelegationAttemptClaimStore } from '../../../services/orchestration/delegation-attempt-claim-store.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import type { NativeSessionOwnership } from '../../../services/orchestration/native-session-ownership.js';
@@ -443,6 +444,9 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
         );
       const createApp = () => {
         const routes = createOrchestrationRoutes(service, {
+          delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(
+            root,
+          ),
           eventBus,
           logger: { debug: vi.fn() },
           getUserId: () => OWNER,
@@ -504,6 +508,7 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
       }
 
       const started = await post('/api/orchestration/chat', {
+        conversationId,
         clientTurnId: 'initial-send',
         message: `Remember ${CONTEXT_TOKEN}.`,
         target: { environment: { kind: 'current' }, agent: source.agent },

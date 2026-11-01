@@ -93,8 +93,8 @@ never reclaimed: the engine may already have accepted it.
 `steerReceipts.confirm` changes only an unconfirmed row with the same digest.
 It answers `stale` for a missing, changed-input or already-confirmed row and
 never replaces a confirmed turn. `steerReceipts.read` returns `confirmed` with
-the turn only for the matching digest, `indeterminate` for any other retained
-row, or `absent`. These commands do not place a steer or authorize a replay.
+the turn for a matching confirmed row, `indeterminate` for a matching pending
+row, `conflict` for a different digest, or `absent`. These commands do not place a steer or authorize a replay.
 Only the host's explicit thread deletion calls `steerReceipts.forgetThread`;
 there is no age-based expiry. All receipt command strings must be well-formed
 Unicode. Lone surrogates throw before receipt access or participant callbacks;

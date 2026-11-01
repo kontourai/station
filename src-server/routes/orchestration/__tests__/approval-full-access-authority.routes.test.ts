@@ -25,9 +25,11 @@ import {
   createGateTestRegistry,
   GateTestAdapter,
 } from '../../../__test-utils__/orchestration-gate-test-harness.js';
+import { keyedTurnRequest } from '../../../__test-utils__/turn-admission-fixture.js';
 import { AgentConfigNotFoundError } from '../../../domain/config-loader-agents.js';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
 import { bindFullAccessRefusalIdentity } from '../../../security/full-access-refusal.js';
+import { FileDelegationAttemptClaimStore } from '../../../services/orchestration/delegation-attempt-claim-store.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
@@ -187,6 +189,7 @@ async function fixture(
   app.route(
     '/api/orchestration',
     createOrchestrationRoutes(service, {
+      delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(root),
       eventBus,
       logger: { debug: vi.fn() },
       getUserId: () => 'operator',
@@ -225,7 +228,12 @@ async function fixture(
         Authorization: `Bearer ${credential}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify(
+        path.includes('/orchestration/chat') ||
+          path.includes('/orchestration/delegations')
+          ? keyedTurnRequest(body)
+          : body,
+      ),
     });
     return { status: res.status, body: (await res.json()) as any };
   };
@@ -245,7 +253,12 @@ async function fixture(
   ) => {
     const [init, env] = internalRequestInit(agent, {
       method,
-      body: JSON.stringify(body),
+      body: JSON.stringify(
+        path.includes('/orchestration/chat') ||
+          path.includes('/orchestration/delegations')
+          ? keyedTurnRequest(body)
+          : body,
+      ),
     });
     const res = await app.request(path, init, env as never);
     return { status: res.status, body: (await res.json()) as any };
