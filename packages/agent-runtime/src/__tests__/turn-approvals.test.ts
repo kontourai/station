@@ -39,17 +39,19 @@ it('pending approval survives a crash with its original deadline and resolves on
   const asked = gate();
   const answer = gate<boolean>();
   let resumedAsks = 0;
+  let resumedPending: unknown;
   const approved = restored.approval(tool, 1_000, async (pending) => {
     resumedAsks++;
-    expect(pending).toEqual({
-      id: 'approval:tool:delete',
-      deadline: 1_100,
-      remainingMs: 60,
-    });
+    resumedPending = pending;
     asked.resolve();
     return answer.promise;
   });
   await asked.promise;
+  expect(resumedPending).toEqual({
+    id: 'approval:tool:delete',
+    deadline: 1_100,
+    remainingMs: 60,
+  });
   const duplicate = restored.approval(tool, 1_000, async () => {
     throw Error('Duplicate approval wait');
   });
