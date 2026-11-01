@@ -482,10 +482,15 @@ describe('collapsed Personal Boards navigation', () => {
     ).toBe(true);
     fireEvent.change(input, { target: { value: 'My desk' } });
     fireEvent.keyDown(input, { key: 'Enter' });
-    expect(screen.getByRole('button', { name: 'My desk' })).toBeTruthy();
     expect(calls.update).toEqual([
       { layoutSlug: 'untitled-board', update: { name: 'My desk' } },
     ]);
+    // #4405 (A28): naming finishes the gesture, so the new Board opens and
+    // the popup that created it closes.
+    expect(navigate).toHaveBeenCalledWith('/boards/untitled-board');
+    expect(
+      screen.queryByRole('dialog', { name: 'Personal Boards' }),
+    ).toBeNull();
   });
 
   test('palette creation with the rail collapsed opens the Board without a hidden rename', async () => {
@@ -807,6 +812,23 @@ describe('creating a Board from the panel', () => {
     // absence. Without this, `openOnCreate` could be stuck true and only the
     // happy path would notice.
     expect(navigate).not.toHaveBeenCalled();
+  });
+
+  test('#4405 (A28): naming a + Board with Enter opens it', async () => {
+    await renderSidebar(<ProjectSidebar />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'New Board' }));
+    });
+    expect(navigate).not.toHaveBeenCalled();
+    const input = screen.getByRole('textbox', {
+      name: 'Rename Untitled Board',
+    });
+    fireEvent.change(input, { target: { value: 'UX audit board' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(calls.update).toEqual([
+      { layoutSlug: 'untitled-board', update: { name: 'UX audit board' } },
+    ]);
+    expect(navigate).toHaveBeenCalledWith('/boards/untitled-board');
   });
 
   test('+ on an existing section creates the next free slug and enters rename', async () => {

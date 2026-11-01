@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import { render, screen, within } from '@testing-library/react';
-import { expect, test, vi } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 
 const state = vi.hoisted(() => ({
   sessions: [] as OrchestrationSessionSummary[],
@@ -90,4 +90,30 @@ test('#4386: a conversation whose engine session was continued is one Recent wor
   expect(links[0].getAttribute('href')).toBe(
     `/?surface=activity&session=${encodeURIComponent('codex:abc:session:1111')}`,
   );
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+test('#4405 (A28): Recent work says how long ago, not an absolute date', () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-10-31T10:07:00.000Z'));
+  state.sessions = [summary('codex:recent', '2026-10-31T10:05:00.000Z')];
+
+  render(
+    <PersonalBoardSectionContent
+      section={{
+        id: 's1',
+        kind: 'recent-work',
+        title: 'Recent work',
+        width: 'half',
+        limit: 8,
+      }}
+    />,
+  );
+
+  const time = screen.getByRole('list').querySelector('time')!;
+  expect(time.textContent).toBe('2m');
+  expect(time.getAttribute('dateTime')).toBe('2026-10-31T10:05:00.000Z');
 });

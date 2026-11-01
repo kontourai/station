@@ -12,6 +12,7 @@ import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { useScopedProjectsQuery } from '../../contexts/ProjectsContext';
 import { isPlainLeftClick } from '../../utils/attentionOpen';
+import { absoluteTime, relativeTime } from '../../utils/relativeTime';
 import { latestSessionPerConversation } from '../sessions/conversation-groups';
 
 function StationLink({
@@ -168,6 +169,7 @@ function RecentSection({
         !section.projectSlug || session.projectSlug === section.projectSlug,
     ),
   ).slice(0, section.limit);
+  const now = Date.now();
   return (
     <ReadState query={query} empty={!rows.length}>
       <ul className="personal-board__rows">
@@ -178,8 +180,13 @@ function RecentSection({
             >
               {session.displayTitle || 'Untitled conversation'}
             </StationLink>
-            <time dateTime={session.updatedAt}>
-              {new Date(session.updatedAt).toLocaleDateString()}
+            {/* #4405 (A28): the work surfaces' one time format; the
+                absolute instant is the tooltip, as everywhere else. */}
+            <time
+              dateTime={session.updatedAt}
+              title={absoluteTime(Date.parse(session.updatedAt)) || undefined}
+            >
+              {relativeTime(Date.parse(session.updatedAt), now)}
             </time>
           </li>
         ))}

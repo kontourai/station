@@ -70,7 +70,10 @@ export function useDockCopyActions(input: {
       ? [
           {
             key: 'copy-project-path',
-            label: 'Copy project path',
+            // #4405 (A27): the working folder, which is the home folder for a
+            // chat with no project — "project path" promised a project that
+            // was not there.
+            label: 'Copy folder path',
             onSelect: () => {
               void copy(input.workingDirectory as string);
             },

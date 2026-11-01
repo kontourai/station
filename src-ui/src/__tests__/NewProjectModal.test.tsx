@@ -317,7 +317,7 @@ describe('NewProjectModal starter layout picker', () => {
     });
     workspace.focus();
     fireEvent.click(workspace);
-    expect(screen.getByPlaceholderText('/path/to/project')).toBeTruthy();
+    expect(screen.getByPlaceholderText('~/code/my-project')).toBeTruthy();
     expect(document.activeElement).toBe(workspace);
   });
   test('knowledge intent skips workspace setup and opens Sources after creation', async () => {

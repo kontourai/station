@@ -360,7 +360,7 @@ test('project header path suggestions dismiss before an outside navigation actio
   await page
     .getByRole('button', { name: /^Edit working directory \S/ })
     .click();
-  const directory = page.getByPlaceholder('/path/to/project');
+  const directory = page.getByPlaceholder('~/code/my-project');
   await directory.fill('/tmp/pro');
   const options = page.locator('.path-autocomplete__option');
   await expect(options).toHaveCount(2);
@@ -434,7 +434,7 @@ test.describe('Project lifecycle', () => {
 
     await page.goto('/projects/new');
     await fillStable(page, 'input[placeholder="My Project"]', 'Git Project');
-    await page.getByPlaceholder('/path/to/project').fill('/tmp/git-project/');
+    await page.getByPlaceholder('~/code/my-project').fill('/tmp/git-project/');
 
     await expect(
       page.getByText('Recommended for this Git directory'),
