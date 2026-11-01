@@ -1,0 +1,7 @@
+{
+  "revision": "1389a2d72d36b16dbd1ad6ae74299fc6521b2338",
+
+  "notes": [
+    {"path":"docs/design/station-instance-reconciler.md","note":"Rechecked against the cleanup commit: lifecycle-events.ts drops \"as before\" from the LifecycleSupervisor comment; code unchanged. This document's claims do not depend on the changed lines and remain accurate.","inputs":["docs/design/station-instance-reconciler.md","packages/shared/src/lifecycle-events.ts"]}
+  ]
+}

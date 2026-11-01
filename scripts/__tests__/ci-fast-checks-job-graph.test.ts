@@ -787,7 +787,8 @@ describe('repository-wide PR source runner ceilings', () => {
       },
     );
   };
-  test('25 simultaneous PRs expose exactly two statics and two shard slots, with no cancellation or pending replacement', () => {
+  // #4365 added a third shared shard slot for odd shards of PRs ending 0-2.
+  test('25 simultaneous PRs expose exactly two statics and three shard slots, with no cancellation or pending replacement', () => {
     const statics = new Set();
     const shards = new Set();
     for (let pr = 3700; pr < 3725; pr++) {
@@ -796,16 +797,22 @@ describe('repository-wide PR source runner ceilings', () => {
         shards.add(sourceGroups(jobs['fast-checks-shard'], pr, shard));
     }
     expect(statics.size).toBe(2);
-    expect(shards.size).toBe(2);
-    expect(new Set([...statics, ...shards]).size).toBe(4);
+    expect(shards).toEqual(
+      new Set(['ci-pr-shards-odd', 'ci-pr-shards-even', 'ci-pr-shards-third']),
+    );
+    expect(new Set([...statics, ...shards]).size).toBe(5);
     for (const id of ['fast-checks-statics', 'fast-checks-shard']) {
       expect(jobs[id].concurrency?.queue).toBe('max');
       expect(jobs[id].concurrency?.['cancel-in-progress']).toBe(false);
     }
   });
   test('odd and even one-shard PRs use both slots; four-way plans keep every shard without cancelling siblings', () => {
-    expect(sourceGroups(jobs['fast-checks-shard'], 3701)).not.toBe(
-      sourceGroups(jobs['fast-checks-shard'], 3702),
+    // PRs ending 0-2 send shard 1 to the third slot; 3703/3704 keep odd/even.
+    expect(sourceGroups(jobs['fast-checks-shard'], 3703)).not.toBe(
+      sourceGroups(jobs['fast-checks-shard'], 3704),
+    );
+    expect(sourceGroups(jobs['fast-checks-shard'], 3701)).toBe(
+      'ci-pr-shards-third',
     );
     const slots = [1, 2, 3, 4].map((shard) =>
       sourceGroups(jobs['fast-checks-shard'], 3701, shard),

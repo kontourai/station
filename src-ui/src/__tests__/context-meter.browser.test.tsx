@@ -1,12 +1,13 @@
+import { resolve } from 'node:path';
 import type { Plugin } from 'esbuild';
 import { expect, test } from 'vitest';
+import { resolveCssImports } from '../../../tests/helpers/css-cascade-fixture';
 import { scrollBrowserFixture } from './scroll-browser-fixture';
 
 /**
- * The context meter in the composer's meta row, beside the model picker, laid
- * out by the real stylesheets in Chromium. Its track once sat in a
- * shrink-to-fit button as a `flex: 1` box and resolved to 0px, so the meter
- * read "Context:  (4.0%)" with no bar at all; jsdom cannot see that.
+ * The context meter in the composer's controls row, laid out by the real
+ * stylesheets and design tokens in Chromium; jsdom cannot see whether the
+ * ring renders.
  */
 
 // Composer controls that are not under test, and the stats read the meter
@@ -56,7 +57,7 @@ const controls: Plugin = {
   },
 };
 
-test('the composer’s context meter has a visible track and fill beside the model picker', async () => {
+test('the composer’s context meter has a visible track and fill in the controls row', async () => {
   const { browser, page, errors } = await scrollBrowserFixture(
     `
     import React, {useRef,useState} from 'react';
@@ -78,6 +79,10 @@ test('the composer’s context meter has a visible track and fill beside the mod
     [controls],
   );
   try {
+    // Design tokens: the ring's track stroke is a token, unset without them.
+    await page.addStyleTag({
+      content: resolveCssImports(resolve('src-ui/src/index.css')),
+    });
     const meter = page.getByRole('button', { name: 'Context 4.0% used' });
     await meter.waitFor();
     expect(errors).toEqual([]);
@@ -88,24 +93,37 @@ test('the composer’s context meter has a visible track and fill beside the mod
         const rect = element.getBoundingClientRect();
         return { left: rect.left, top: rect.top, width: rect.width };
       };
+      const stroke = (selector: string) => {
+        const style = getComputedStyle(document.querySelector(selector)!);
+        return {
+          color: style.stroke,
+          width: style.strokeWidth,
+          dash: style.strokeDasharray,
+        };
+      };
       return {
         track: box('.context-meter__track'),
-        fill: box('.context-meter__fill'),
+        ring: box('.context-meter__ring'),
+        trackStroke: stroke('.context-meter__track'),
+        fillStroke: stroke('.context-meter__fill'),
         model: box('.chat-input__model-btn'),
-        meterInMeta: Boolean(
+        meterInControls: Boolean(
           document
             .querySelector('.context-meter')
-            ?.closest('.chat-input__meta .chat-input__settings'),
+            ?.closest('.chat-controls-row'),
         ),
       };
     });
-    // In the composer's meta row, after the model picker it measures.
-    expect(geometry.meterInMeta).toBe(true);
+    // #4377: the meter trails the controls row, right of the model picker.
+    expect(geometry.meterInControls).toBe(true);
     expect(geometry.track.left).toBeGreaterThan(geometry.model.left);
-    // The track has its own width; the fill is 4% of it, not of nothing.
-    expect(geometry.track.width).toBeGreaterThanOrEqual(20);
-    expect(geometry.fill.width).toBeGreaterThan(0);
-    expect(geometry.fill.width).toBeCloseTo(geometry.track.width * 0.04, 0);
+    // #4377: a ring. The track is a stroked circle with real size; the
+    // fill's dash covers 4 of the circle's 100 path units.
+    expect(geometry.ring.width).toBeGreaterThanOrEqual(20);
+    expect(geometry.trackStroke.color).not.toBe('none');
+    expect(parseFloat(geometry.trackStroke.width)).toBeGreaterThan(0);
+    expect(parseFloat(geometry.fillStroke.width)).toBeGreaterThan(0);
+    expect(geometry.fillStroke.dash.replace(/px/g, '')).toMatch(/^4,? 100$/);
     expect(await meter.textContent()).toBe('4%');
   } finally {
     await browser.close();

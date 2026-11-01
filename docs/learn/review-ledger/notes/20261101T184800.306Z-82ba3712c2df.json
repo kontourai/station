@@ -1,0 +1,7 @@
+{
+  "revision": "1389a2d72d36b16dbd1ad6ae74299fc6521b2338",
+
+  "notes": [
+    {"path":"docs/guides/deployment.md","note":"Rechecked against the cleanup commit: deployment.md reorders the lifecycle journal paragraph so \"It classifies\" refers to the journal again; every claim is kept verbatim; station-dogfood-health.mjs reattaches the assertListenerOwnership JSDoc to its function; listener ownership logic unchanged. Reread the edited lines in context against their sources; no claim changed.","inputs":["docs/guides/deployment.md","scripts/station-dogfood-health.mjs"]}
+  ]
+}

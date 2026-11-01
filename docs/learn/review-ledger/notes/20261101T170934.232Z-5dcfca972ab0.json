@@ -1,0 +1,7 @@
+{
+  "revision": "7a2b4de76dcf0bb8ab56daeefb37d0ac6003a604",
+
+  "notes": [
+    {"path":"docs/reference/play-data-safety.md","note":"Only renderPrivacyPolicy changed; renderPlayDataSafety output is unchanged and still matches this artifact.","inputs":["docs/reference/play-data-safety.md","src-server/services/privacy-inventory.ts"]}
+  ]
+}
