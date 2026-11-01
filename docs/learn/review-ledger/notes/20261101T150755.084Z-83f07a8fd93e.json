@@ -1,0 +1,7 @@
+{
+  "revision": "4fc48d51b3e8f0e856818f3979f8c82e078dae57",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed recovery admission, partial scan handling and request-key relocation against the Monument protocol, Station SQLite bindings and focused tests. Recovery SQL commands and adapter conformance remain in Station; no live provider result is claimed.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/credential-recovery-module.ts","src-server/services/orchestration/event-store.ts","src-server/services/orchestration/recovery-ledger.ts","src-server/services/orchestration/session-recovery-coordinator.ts","src-server/services/orchestration/session-turn-boundary.ts","src-server/services/orchestration/thread-inbox.ts","packages/monument/src/recovery-ledger.ts","packages/monument/src/session-control.ts","src-server/services/orchestration/recovery-ledger-binding.ts","src-server/services/orchestration/sqlite-session-control-request-keys.ts"]}
+  ]
+}

@@ -640,8 +640,6 @@
 
     "src-server/services/orchestration/project-task-room-working-state.ts",
 
-    "src-server/services/orchestration/recovery-ledger.ts",
-
     "src-server/services/orchestration/run-service.ts",
 
     "src-server/services/orchestration/session-command-module.ts",
@@ -1508,7 +1506,15 @@
 
     "src-server/services/terminal/terminal-tickets.ts",
 
-    "packages/sdk/src/client/terminal-session-store.ts"
+    "packages/sdk/src/client/terminal-session-store.ts",
+
+    "packages/monument/src/recovery-ledger.ts",
+
+    "packages/monument/src/session-control.ts",
+
+    "src-server/services/orchestration/recovery-ledger-binding.ts",
+
+    "src-server/services/orchestration/sqlite-session-control-request-keys.ts"
   ],
 
   "checks": [

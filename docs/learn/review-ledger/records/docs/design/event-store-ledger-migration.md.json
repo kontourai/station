@@ -24,15 +24,17 @@
 
     "src-server/services/orchestration/orchestration-service.ts",
 
-    "src-server/services/orchestration/recovery-ledger.ts",
-
     "src-server/services/orchestration/sqlite-turn-dedup-persistence.ts",
 
     "src-server/services/orchestration/turn-deduplicator.ts",
 
     "src-server/services/orchestration/sqlite-session-turn-boundary.ts",
 
-    "src-server/services/orchestration/__tests__/monument-boundary-append.test.ts"
+    "src-server/services/orchestration/__tests__/monument-boundary-append.test.ts",
+
+    "packages/monument/src/recovery-ledger.ts",
+
+    "src-server/services/orchestration/recovery-ledger-binding.ts"
   ],
 
   "checks": [
