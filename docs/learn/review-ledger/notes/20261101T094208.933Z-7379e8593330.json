@@ -1,0 +1,7 @@
+{
+  "revision": "ddd0bee6de13a456e2ecfee5cd267c2981826c56",
+
+  "notes": [
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Searched this document for claims about the changed behavior Changed sources: the owned-process registry is trusted, written and swept on Windows, reaping only the birth-verified engine tree (#3873). No remaining claim here contradicts them.","inputs":["docs/guides/local-collaboration-lab.md","src-server/services/infra/process-utils.ts"]}
+  ]
+}

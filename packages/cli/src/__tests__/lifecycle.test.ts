@@ -9918,6 +9918,68 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
     }
   });
 
+  it('restarts an instance whose UI listener outlived its core server instead of reporting it running (#4002)', async () => {
+    ensurePrebuiltArchive();
+    ensureDir(TEST_ALT_HOME);
+    const [serverPid, uiPid] = [41341, 41342];
+    const dead = new Set<number>();
+    const killSpy = vi.spyOn(process, 'kill').mockImplementation(((
+      pid: number,
+      signal?: NodeJS.Signals | number,
+    ) => {
+      if (signal === 0 && dead.has(pid)) throw new Error('gone');
+      return true;
+    }) as typeof process.kill);
+    const killProcessTree = vi.fn((pid: number) => {
+      dead.add(pid);
+    });
+    const target = { baseDir: TEST_ALT_HOME, serverPort: 3292, uiPort: 5324 };
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      const first = await loadLifecycleModule({
+        childProcessMock: {
+          execSync: vi.fn(() => ''),
+          spawn: readyStartMocks([serverPid, uiPid]),
+        },
+        netConnectMock: makeReadyTcpConnectMock(),
+        platformOverrides: { killProcessTree, sleepSync: vi.fn() },
+      });
+      await first.lifecycle.start(target);
+      // `kill -9` of the core server; the UI listener keeps running.
+      dead.add(serverPid);
+      log.mockClear();
+
+      const restartSpawn = readyStartMocks([41343, 41344]);
+      const second = await loadLifecycleModule({
+        childProcessMock: { execSync: vi.fn(() => ''), spawn: restartSpawn },
+        netConnectMock: makeReadyTcpConnectMock(),
+        platformOverrides: { killProcessTree, sleepSync: vi.fn() },
+      });
+      await second.lifecycle.start(target);
+      const lines = log.mock.calls.map(([line]) => String(line));
+      expect(lines.some((line) => line.includes('Already running'))).toBe(
+        false,
+      );
+      expect(
+        lines.some((line) =>
+          line.includes(`server not running (pid ${serverPid}); restarting`),
+        ),
+      ).toBe(true);
+      // What remained of the old instance was stopped, then a new one started.
+      expect(killProcessTree).toHaveBeenCalledWith(uiPid);
+      expect(restartSpawn).toHaveBeenCalled();
+      const [record] = readdirSync(archiveStateDir(TEST_ALT_HOME));
+      expect(
+        JSON.parse(
+          readFileSync(join(archiveStateDir(TEST_ALT_HOME), record!), 'utf8'),
+        ).serverPid,
+      ).toBe(41343);
+    } finally {
+      log.mockRestore();
+      killSpy.mockRestore();
+    }
+  });
+
   /**
    * An install.sh archive install (v0.7.0-preview.3 active through `current`)
    * whose home holds one running service; `serviceFields` adjusts its

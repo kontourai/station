@@ -1196,6 +1196,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // grandchild in its group) to prove the spawn is registered and released
   // only once the whole group exits. Same shape as the Codex test above.
   'src-server/services/flow/__tests__/flow-run-service.owned-process.test.ts',
+  // #3873: on Windows, kills a real owner fixture and sweeps its orphaned
+  // engine and grandchild through the per-user registry; elsewhere only the
+  // policy units run. It runs in the required Windows PR job.
+  'src-server/services/infra/__tests__/owned-process-windows.test.ts',
   // #561: wraps the birth-probe primitives pass-through and registers two
   // real detached sleepers to count probes of this process.
   'src-server/services/infra/__tests__/owned-process-owner-birth.test.ts',

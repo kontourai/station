@@ -1,0 +1,7 @@
+{
+  "revision": "d78b225f5394a5bc98efff510bd5c8eeff17f1b7",
+
+  "notes": [
+    {"path":"docs/reference/verification-receipts.md","note":"Searched this document for claims about the changed behavior Changed sources: test:windows:portable additionally runs owned-process-windows.test.ts. No remaining claim here contradicts them.","inputs":["docs/reference/verification-receipts.md","package.json#/scripts"]}
+  ]
+}

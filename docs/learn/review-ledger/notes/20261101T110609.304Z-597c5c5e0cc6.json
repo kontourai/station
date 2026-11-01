@@ -1,0 +1,7 @@
+{
+  "revision": "26a727f39a7a2f84eecd4ee86b60ddbb01eb1b7d",
+
+  "notes": [
+    {"path":"src-ui/AGENTS.md","note":"Checked against the docs/guides/testing.md change: the Windows portable floor paragraph now also names the owned-process registry suite and the birth-helper parity test. This file only routes to testing.md and states no Windows floor contents, so it stays accurate.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

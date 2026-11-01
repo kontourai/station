@@ -605,10 +605,15 @@ launchd and systemd adapters. Its
 Scheduler registration, the command wrapper, process identity and trusted paths.
 Windows live-owner engine cleanup uses `taskkill /T`, escalating to `/F` when
 needed. The [owned-process startup sweep](../../src-server/services/infra/process-utils.ts)
-recovers POSIX process groups only; Windows does not persist or consume those
-orphan records. After an abrupt Windows owner exit, startup does not establish
-that all of its engine descendants were reclaimed. This is separate from Task
-Scheduler restart policy and does not establish reboot recovery.
+also recovers orphans on Windows (#3873). It trusts its registry only as a real
+directory, not a reparse point, inside the user's own `%LOCALAPPDATA%` (by
+default `%LOCALAPPDATA%\Temp\station-owned-processes`). After an abrupt owner
+exit, the next start reaps an engine whose recorded birth still matches. It
+kills that engine and only the descendants created after the parent they
+name, one pid at a time and never with `/T`, because Windows keeps a stale
+parent pid after the parent exits. A record whose process table cannot be read
+is retained, not acted on. This is separate from Task Scheduler restart policy
+and does not establish reboot recovery.
 The published CLI can control an existing installed service with
 `service status|start|stop`; installing or removing a service needs the
 lifecycle CLI of a checkout or a prebuilt server archive, and the

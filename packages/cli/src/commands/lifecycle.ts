@@ -1722,6 +1722,26 @@ function isInstanceRunning(record: InstanceStateRecord): boolean {
   return isProcessAlive(record.serverPid) || isProcessAlive(record.uiPid);
 }
 
+/**
+ * Whether the record's core server is still running: its recorded pid is
+ * alive and, when the start captured a fingerprint, still the same process
+ * (a reused pid is not this server). For a supervised record the pid is the
+ * supervisor's, which owns the core while it lives. An identity that cannot
+ * be read counts as alive: only a proven absence may restart an instance.
+ *
+ * `isInstanceRunning` keeps its either-pid rule for `stop` and reclaim, so a
+ * half-dead instance stays stoppable; `start` asks this one before it reports
+ * an instance as already running (#4002).
+ */
+function isInstanceServerAlive(record: InstanceStateRecord): boolean {
+  if (!isProcessAlive(record.serverPid)) return false;
+  if (!record.serverFingerprint || !record.serverPid) return true;
+  const actual = inspectProcessFingerprint(record.serverPid);
+  return (
+    !actual || fingerprintMatchesRecorded(actual, record.serverFingerprint)
+  );
+}
+
 function notifyBuildUpdated(serverPort: number): void {
   try {
     execSync(
@@ -4790,12 +4810,22 @@ export async function start(opts: StartOptions = {}): Promise<void> {
   const hostedProbeHeaders = hostedProbeAuthority
     ? { Host: hostedProbeAuthority }
     : undefined;
-  const runningMatch = ensureSingleMatch(
+  let runningMatch = ensureSingleMatch(
     listRunningInstances({ projectHome }).filter((record) =>
       matchesSelector(record, normalizedSelector),
     ),
     'start',
   );
+  // A record whose UI listener outlived its core server is not running: it
+  // would answer "Already running" while nothing serves the API (#4002).
+  // Stop what remains, which also frees its ports, and start it afresh.
+  if (runningMatch && !isInstanceServerAlive(runningMatch)) {
+    console.log(
+      `Instance ${runningMatch.instanceId}: server not running (pid ${runningMatch.serverPid ?? 'unrecorded'}); restarting`,
+    );
+    stopRecord(runningMatch, false, 'recovery');
+    runningMatch = null;
+  }
   // The home schema gate runs below, before the log directory and the
   // instance record are written — after the recursive mkdir, because the
   // gate requires the home's parent to exist and a custom --base path may

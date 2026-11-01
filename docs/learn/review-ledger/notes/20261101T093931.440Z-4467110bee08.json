@@ -1,0 +1,7 @@
+{
+  "revision": "ddd0bee6de13a456e2ecfee5cd267c2981826c56",
+
+  "notes": [
+    {"path":"docs/guides/desktop-build.md","note":"Searched this document for claims about the changed behavior Changed sources: a fresh home may hold the archive CLI's own state/<channel>/instances records (#4381). No remaining claim here contradicts them.","inputs":["docs/guides/desktop-build.md","packages/shared/src/station-home-schema.ts"]}
+  ]
+}
