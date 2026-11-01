@@ -90,6 +90,7 @@ interface CredentialRecoveryObservation {
 type CredentialRecoveryOutcome =
   | { kind: 'unnecessary' }
   | { kind: 'conflicted' }
+  | { kind: 'unavailable' }
   | { kind: 'restarted'; turnId: string }
   | { kind: 'recovered' }
   | { kind: 'rolled-back' }
@@ -192,7 +193,8 @@ class CredentialRecoveryImplementation implements CredentialRecoveryModule {
   private async recoverAfterStartup(
     observation: CredentialRecoveryObservation,
   ): Promise<CredentialRecoveryOutcome> {
-    await this.awaitStartupReadiness();
+    const readiness = await this.awaitStartupReadiness();
+    if (readiness.kind !== 'reconciled') return { kind: 'unavailable' };
     return this.recoverOne(observation);
   }
 

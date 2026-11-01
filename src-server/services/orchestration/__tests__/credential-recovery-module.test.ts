@@ -549,10 +549,17 @@ describe('CredentialRecoveryModule', () => {
       },
     };
 
-    await expect(module.recover(observation)).resolves.toEqual({ kind: 'unavailable' });
+    await expect(module.recover(observation)).resolves.toEqual({
+      kind: 'unavailable',
+    });
     expect(stage).not.toHaveBeenCalled();
-    expect(recoveryLedger(eventStore).find(intent.fingerprint)).toMatchObject({ outcome: 'armed' });
-    await expect(module.recover(observation)).resolves.toEqual({ kind: 'restarted', turnId: 'recovered' });
+    expect(recoveryLedger(eventStore).find(intent.fingerprint)).toMatchObject({
+      outcome: 'armed',
+    });
+    await expect(module.recover(observation)).resolves.toEqual({
+      kind: 'restarted',
+      turnId: 'recovered',
+    });
     expect(stage).toHaveBeenCalledOnce();
     eventStore.close();
   });
@@ -561,13 +568,22 @@ describe('CredentialRecoveryModule', () => {
     const { databasePath } = await persistAcceptedLinkedReceipt();
     const store = new EventStore(databasePath);
     const ledger = recoveryLedger(store);
-    const makeIntent = (provider: string) => ledger.arm({
-      fingerprint: `${provider}:new:capacity:account`, threadId: `${provider}-new`, provider,
-      sourceEventId: `${provider}-event`, sourceTurnId: 'new', failureKind: 'capacity',
-      scope: 'account', decision: 'retry-now', dueAt: '2026-08-12T00:00:00.000Z',
-      maxAttempts: 1, outcome: 'armed', createdAt: '2026-08-12T00:00:00.000Z',
-      updatedAt: '2026-08-12T00:00:00.000Z',
-    });
+    const makeIntent = (provider: string) =>
+      ledger.arm({
+        fingerprint: `${provider}:new:capacity:account`,
+        threadId: `${provider}-new`,
+        provider,
+        sourceEventId: `${provider}-event`,
+        sourceTurnId: 'new',
+        failureKind: 'capacity',
+        scope: 'account',
+        decision: 'retry-now',
+        dueAt: '2026-08-12T00:00:00.000Z',
+        maxAttempts: 1,
+        outcome: 'armed',
+        createdAt: '2026-08-12T00:00:00.000Z',
+        updatedAt: '2026-08-12T00:00:00.000Z',
+      });
     const same = makeIntent('codex');
     const other = makeIntent('other');
     let settled = false;
@@ -576,21 +592,35 @@ describe('CredentialRecoveryModule', () => {
       eventStore: store,
       adapter: {
         stage,
-        inspectStartup: vi.fn(async () => settled ? { kind: 'already-adopted' as const } : { kind: 'indeterminate' as const }),
+        inspectStartup: vi.fn(async () =>
+          settled
+            ? { kind: 'already-adopted' as const }
+            : { kind: 'indeterminate' as const },
+        ),
         acknowledgeStartup: vi.fn(async () => ({ kind: 'applied' as const })),
       },
       restartResume: vi.fn(async () => ({ turnId: 'recovered' })),
       restoreSession: vi.fn(async () => undefined),
       now: () => new Date('2026-08-12T00:00:01.000Z'),
     });
-    const recover = (intent: ConnectionRecoveryIntent) => module.recover({
-      intent, replay: { threadId: intent.threadId, input: 'input', recoveryCorrelationId: 'id', signal: new AbortController().signal },
-    });
+    const recover = (intent: ConnectionRecoveryIntent) =>
+      module.recover({
+        intent,
+        replay: {
+          threadId: intent.threadId,
+          input: 'input',
+          recoveryCorrelationId: 'id',
+          signal: new AbortController().signal,
+        },
+      });
     await expect(recover(same)).resolves.toEqual({ kind: 'unavailable' });
     await expect(recover(other)).resolves.toEqual({ kind: 'unavailable' });
     expect(stage).not.toHaveBeenCalled();
     settled = true;
-    await expect(recover(other)).resolves.toEqual({ kind: 'restarted', turnId: 'recovered' });
+    await expect(recover(other)).resolves.toEqual({
+      kind: 'restarted',
+      turnId: 'recovered',
+    });
     expect(stage).toHaveBeenCalledOnce();
     store.close();
   });
@@ -901,9 +931,11 @@ describe('CredentialRecoveryModule', () => {
           throw new Error('commit stale');
         }),
         rollback,
-        rollbackPending: vi.fn(async () => {
-          throw new Error('still unavailable');
-        }).mockResolvedValueOnce(undefined),
+        rollbackPending: vi
+          .fn(async () => {
+            throw new Error('still unavailable');
+          })
+          .mockResolvedValueOnce(undefined),
       },
       restartResume: vi.fn(async () => ({ turnId: 'recovered-turn' })),
       restoreSession: vi.fn(async () => undefined),
@@ -1319,9 +1351,11 @@ describe('CredentialRecoveryModule', () => {
           throw new Error('commit unavailable');
         }),
         rollback,
-        rollbackPending: vi.fn(async () => {
-          throw new Error('compensation unavailable');
-        }).mockResolvedValueOnce(undefined),
+        rollbackPending: vi
+          .fn(async () => {
+            throw new Error('compensation unavailable');
+          })
+          .mockResolvedValueOnce(undefined),
       },
       restartResume: vi.fn(async () => ({ turnId: 'recovered-turn' })),
       restoreSession,
@@ -1462,9 +1496,11 @@ describe('CredentialRecoveryModule', () => {
         // an application before its call failed. It is not an unavailable
         // candidate and therefore must never re-arm the recovery intent.
         stage: vi.fn(async () => ({ kind: 'indeterminate' as const })),
-        rollbackPending: vi.fn(async () => {
-          throw new Error('scoped cleanup unavailable');
-        }).mockResolvedValueOnce(undefined),
+        rollbackPending: vi
+          .fn(async () => {
+            throw new Error('scoped cleanup unavailable');
+          })
+          .mockResolvedValueOnce(undefined),
       },
       restoreSession: vi.fn(async () => undefined),
       now: () => new Date('2026-08-12T00:00:00.000Z'),

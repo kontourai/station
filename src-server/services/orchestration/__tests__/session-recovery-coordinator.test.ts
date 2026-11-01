@@ -1146,9 +1146,11 @@ describe('SessionRecoveryCoordinator', () => {
         }),
         commit: vi.fn(async () => ({ kind: 'adopted' as const })),
         rollback,
-        rollbackPending: vi.fn(async () => {
-          throw new Error('compensation unavailable during shutdown');
-        }).mockResolvedValueOnce(undefined),
+        rollbackPending: vi
+          .fn(async () => {
+            throw new Error('compensation unavailable during shutdown');
+          })
+          .mockResolvedValueOnce(undefined),
       },
       now: () => now,
     });
@@ -2700,16 +2702,26 @@ describe('SessionRecoveryCoordinator', () => {
     const { path, fingerprint } = abandonedDueClaim();
     const store = new EventStore(path);
     const scan = vi.spyOn(
-      store as unknown as { preparedRecoveryDispatches: (...args: unknown[]) => unknown },
+      store as unknown as {
+        preparedRecoveryDispatches: (...args: unknown[]) => unknown;
+      },
       'preparedRecoveryDispatches',
     );
-    scan.mockImplementationOnce(() => { throw new Error('SQLITE_BUSY'); });
+    scan.mockImplementationOnce(() => {
+      throw new Error('SQLITE_BUSY');
+    });
     const { coordinator, outcomes } = restartedCoordinator(store);
     coordinator.reconcile();
     expect(outcomes).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(60_000);
-    expect(recoveryLedger(store).find(fingerprint)).toMatchObject({ outcome: 'indeterminate' });
-    expect(outcomes).toHaveBeenCalledWith({ failureKind: 'capacity', decision: 'retry-now', outcome: 'indeterminate' });
+    expect(recoveryLedger(store).find(fingerprint)).toMatchObject({
+      outcome: 'indeterminate',
+    });
+    expect(outcomes).toHaveBeenCalledWith({
+      failureKind: 'capacity',
+      decision: 'retry-now',
+      outcome: 'indeterminate',
+    });
     await coordinator.dispose();
     store.close();
     vi.useRealTimers();
