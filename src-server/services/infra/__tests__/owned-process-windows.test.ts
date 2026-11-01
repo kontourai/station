@@ -2,9 +2,7 @@ import { spawn } from 'node:child_process';
 import {
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
-  rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
@@ -313,12 +311,18 @@ function isAlive(pid: number | null | undefined): boolean {
 describe.runIf(process.platform === 'win32')(
   'Windows orphan engine journey (#3873)',
   () => {
+    // The default registry lives under the per-user %LOCALAPPDATA%\Temp, so the
+    // journey's registry does too; the tracker removes it after the finally.
+    const tempRoot = join(process.env.LOCALAPPDATA ?? '', 'Temp');
+    const registryTempDir = trackTempDirs({ base: tempRoot });
+
     test('a killed owner leaves an orphan the sweep reaps, grandchild included', async () => {
-      const localAppData = process.env.LOCALAPPDATA;
-      expect(localAppData, 'LOCALAPPDATA must be set on Windows').toBeTruthy();
-      const tempRoot = join(localAppData!, 'Temp');
+      expect(
+        process.env.LOCALAPPDATA,
+        'LOCALAPPDATA must be set on Windows',
+      ).toBeTruthy();
       mkdirSync(tempRoot, { recursive: true });
-      const registryDir = mkdtempSync(join(tempRoot, 'station-sweep-win-'));
+      const registryDir = registryTempDir('station-sweep-win-');
       const gcFile = join(registryDir, 'grandchild.pid');
       const owner = spawn(
         process.execPath,
@@ -399,7 +403,6 @@ describe.runIf(process.platform === 'win32')(
             // Already gone.
           }
         }
-        rmSync(registryDir, { recursive: true, force: true });
       }
     }, 180_000);
   },

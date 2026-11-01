@@ -743,7 +743,7 @@ const WINDOWS_PROCESS_TABLE_TIMEOUT_MS = 30_000;
  * Parse `<pid> <ppid> <creation FILETIME>` lines. Null when any non-blank line
  * is malformed: a partial table is never read as a complete one.
  */
-export function parseWindowsProcessTable(
+function parseWindowsProcessTable(
   stdout: string,
 ): WindowsProcessEntry[] | null {
   const entries: WindowsProcessEntry[] = [];
