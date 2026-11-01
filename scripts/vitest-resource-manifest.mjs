@@ -148,6 +148,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/orchestration/__tests__/reserved-input-turn.integration.test.ts',
   'src-server/services/orchestration/__tests__/report-input-runtime.integration.test.ts',
   'src-server/services/orchestration/__tests__/station-report-input.integration.test.ts',
+  'src-server/services/orchestration/__tests__/station-report-preparation-return.test.ts',
   'src-server/services/orchestration/__tests__/station-report-group-continuation.test.ts',
   'src-server/services/orchestration/__tests__/station-report-sync-recovery.test.ts',
   'src-server/services/orchestration/__tests__/station-report-accounting-recovery.test.ts',

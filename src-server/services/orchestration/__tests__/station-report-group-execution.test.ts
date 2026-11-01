@@ -20,7 +20,6 @@ import {
 } from '@kontourai/station-shared/station-home-lifecycle';
 import { Hono } from 'hono';
 import { test, vi } from 'vitest';
-import { z } from 'zod/v3';
 import { runCli } from '../../../../packages/cli/src/cli.js';
 import { createGateTestRegistry } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { StationAgentAdapter } from '../../../providers/adapters/station-agent-adapter.js';
@@ -40,7 +39,6 @@ import { HomeWriterOwner } from '../../ssh/home-writer-owner.js';
 import { RoundsFinalFetchLaunchFence } from '../delegation-group-launch-fence.js';
 import { StationDelegationPersistence } from '../delegation-group-persistence.js';
 import * as sdkSource from '../delegation-group-sdk-source-wire-owner.js';
-import { SourceRefusal } from '../delegation-group-source-admission.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
@@ -66,7 +64,6 @@ test.each([
   'independent',
   'flow',
   'mixed',
-  'source-receipt-after-store-return',
   'revoked-before-claim',
   'metadata-release-fault',
   'publication-release-fault',
@@ -75,7 +72,6 @@ test.each([
 ] as const)(
   'report HTTP owner qualifies %s source custody and truthful accounting',
   async (scenario) => {
-    const sourceAfterStore = scenario === 'source-receipt-after-store-return';
     const revokeBeforeClaim = scenario === 'revoked-before-claim';
     const metadataReleaseFault = scenario === 'metadata-release-fault';
     const publicationReleaseFault = scenario === 'publication-release-fault';
@@ -85,11 +81,7 @@ test.each([
     const retirementFault =
       metadataReleaseFault || publicationReleaseFault || launchReleaseFault;
     const mode =
-      scenario === 'mixed'
-        ? 'mixed'
-        : scenario === 'flow' || sourceAfterStore
-          ? 'flow'
-          : 'independent';
+      scenario === 'flow' || scenario === 'mixed' ? scenario : 'independent';
     const wallNow = Date.now;
     const h = await setup();
     const startedAt = wallNow();
@@ -507,9 +499,6 @@ test.each([
       orchestration,
       rawFetch: h.rawFetch,
     };
-    let sourceReceiptMutation:
-      | { groupId: string; authorityId: string }
-      | undefined;
     const roundsStore = StationDelegationPersistence.prototype.roundsStore;
     let groupWrites = 0;
     let groupStoreReturns = 0;
@@ -556,66 +545,6 @@ test.each([
             await assertPhysicalHomeHeld();
             groupStoreReturns++;
             recordJournalPhase(lastKind, 'store-returned');
-            if (
-              sourceAfterStore &&
-              lastKind === 'command:create' &&
-              !sourceReceiptMutation
-            ) {
-              const admission = await this.readReportAdmission(
-                groupId,
-                args[0],
-              );
-              assert.ok(admission);
-              const member = admission.data.members.at(-1);
-              assert.ok(member);
-              assert.equal(member.seatId, 'join');
-              const envelope = admission.data.envelopes.find(
-                (entry) => entry.execution_id === member.reservedTaskId,
-              );
-              assert.ok(envelope);
-              const reference =
-                envelope.execution_binding.source.source_admission_receipt;
-              const path = join(
-                h.f.home,
-                'report-groups',
-                'sources',
-                `snapshot-${reference.id}.json`,
-              );
-              const bytes = readFileSync(path);
-              const receipt = z
-                .object({
-                  payload: z.object({
-                    schema: z.literal(2),
-                    kind: z.literal('sealed-source-no-tools'),
-                    provenance: z.object({
-                      id: z.string(),
-                      subject: z.object({
-                        groupId: z.string(),
-                        workItemId: z.string(),
-                      }),
-                    }),
-                  }),
-                })
-                .parse(JSON.parse(bytes.toString('utf8')));
-              assert.equal(receipt.payload.provenance.id, reference.id);
-              assert.deepEqual(receipt.payload.provenance.subject, {
-                groupId,
-                workItemId: member.reservedTaskId,
-              });
-              const before = fs.statSync(path, { bigint: true });
-              const replacement = `${path}.replacement`;
-              writeFileSync(replacement, bytes, { flag: 'wx', mode: 0o600 });
-              fs.renameSync(replacement, path);
-              assert.notEqual(
-                fs.statSync(path, { bigint: true }).ino,
-                before.ino,
-              );
-              assert.deepEqual(readFileSync(path), bytes);
-              sourceReceiptMutation = {
-                groupId,
-                authorityId: admission.data.root.authority_id,
-              };
-            }
           }
           return result;
         },
@@ -747,41 +676,6 @@ test.each([
       });
       if (transportOwnershipFailures.length)
         throw transportOwnershipFailures[0];
-      if (sourceAfterStore) {
-        const changed = sourceReceiptMutation;
-        assert.ok(
-          changed,
-          'actual admission-linked receipt was replaced after group store return',
-        );
-        assert.equal(response.status, 503, JSON.stringify(body));
-        assert.equal(createFailures.length, 1);
-        const failure = createFailures[0];
-        assert.ok(failure instanceof DelegationRoundsTransactionUncertainError);
-        assert.equal(failure.status, 'returned-cleanup-unknown');
-        assert.ok(failure.cause instanceof SourceRefusal);
-        assert.equal(failure.cause.code, 'snapshot_receipt_changed');
-        assert.equal(h.rawFetch.mock.calls.length, 0);
-        assert.equal(queuedExecutionWitness, undefined);
-        assert.deepEqual(protectedPublications, []);
-        const persisted = new StationDelegationPersistence(
-          join(h.f.home, 'report-groups'),
-        );
-        const saved = await requestWriter.runOwnedLease(abort.signal, (lease) =>
-          persisted.readReportExecution(
-            changed.groupId,
-            changed.authorityId,
-            () => requestWriter.runWithLease(lease, () => undefined),
-          ),
-        );
-        assert.equal(
-          saved.group?.revision,
-          1,
-          'create committed before its returned source fence refused',
-        );
-        assert.equal(saved.group?.attempts.length, 0);
-        assert.equal(saved.authority?.invocations.length, 0);
-        return;
-      }
       if (!revokeBeforeClaim && !retirementFault)
         assert.equal(
           response.status,
