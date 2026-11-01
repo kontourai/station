@@ -1,14 +1,16 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:net';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import {
   describeSocketError,
   lastFatalServerLogLine,
   serverStartFailureContext,
   waitForTcpOk,
 } from '../commands/lifecycle.js';
+
+const makeTempDir = trackTempDirs();
 
 const servers: Server[] = [];
 
@@ -132,48 +134,44 @@ describe('start failure names its cause (#4382)', () => {
   });
 
   test("names the server log's last fatal line since this start, and the log", () => {
-    const dir = mkdtempSync(join(tmpdir(), 'station-start-failure-'));
-    try {
-      const log = join(dir, 'station-x.log');
-      const fatal =
-        "Error: STATION_HOME_RESET_REQUIRED: Station home '/h' uses an incompatible schema.";
-      writeFileSync(
-        log,
-        [
-          '--- 2026-10-31T19:00:00.000Z station lifecycle start instance=x build=a pid=1 ---',
-          'Error: listen EADDRINUSE: address already in use 127.0.0.1:1',
-          '',
-          '--- 2026-10-31T19:16:29.000Z station lifecycle start instance=x build=a pid=2 supervised ---',
-          '[station-supervisor] 2026-10-31T19:16:29.260Z generation 1 started (pid 3)',
-          `\u001b[31m${fatal}\u001b[39m`,
-          '    at reset (file:///x/command-station.js:1:1)',
-          '    at main (file:///x/command-station.js:2:2)',
-          '[station-supervisor] 2026-10-31T19:16:54.262Z generation 1 exited code=1 signal=null',
-          '',
-        ].join('\n'),
-      );
-      expect(lastFatalServerLogLine(log)).toBe(fatal);
-      expect(serverStartFailureContext(log)).toEqual([
-        `Last server error: ${fatal}`,
-        `Server log: ${log}`,
-      ]);
+    const dir = makeTempDir('station-start-failure-');
+    const log = join(dir, 'station-x.log');
+    const fatal =
+      "Error: STATION_HOME_RESET_REQUIRED: Station home '/h' uses an incompatible schema.";
+    writeFileSync(
+      log,
+      [
+        '--- 2026-10-31T19:00:00.000Z station lifecycle start instance=x build=a pid=1 ---',
+        'Error: listen EADDRINUSE: address already in use 127.0.0.1:1',
+        '',
+        '--- 2026-10-31T19:16:29.000Z station lifecycle start instance=x build=a pid=2 supervised ---',
+        '[station-supervisor] 2026-10-31T19:16:29.260Z generation 1 started (pid 3)',
+        `\u001b[31m${fatal}\u001b[39m`,
+        '    at reset (file:///x/command-station.js:1:1)',
+        '    at main (file:///x/command-station.js:2:2)',
+        '[station-supervisor] 2026-10-31T19:16:54.262Z generation 1 exited code=1 signal=null',
+        '',
+      ].join('\n'),
+    );
+    expect(lastFatalServerLogLine(log)).toBe(fatal);
+    expect(serverStartFailureContext(log)).toEqual([
+      `Last server error: ${fatal}`,
+      `Server log: ${log}`,
+    ]);
 
-      // No error since this start's header: an earlier boot's is not named.
-      writeFileSync(
-        log,
-        [
-          'Error: an earlier boot',
-          '--- 2026-10-31T19:20:00.000Z station lifecycle start instance=x build=a pid=4 ---',
-          'starting',
-        ].join('\n'),
-      );
-      expect(lastFatalServerLogLine(log)).toBeNull();
-      const missing = join(dir, 'missing.log');
-      expect(serverStartFailureContext(missing)).toEqual([
-        `Server log: ${missing}`,
-      ]);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
+    // No error since this start's header: an earlier boot's is not named.
+    writeFileSync(
+      log,
+      [
+        'Error: an earlier boot',
+        '--- 2026-10-31T19:20:00.000Z station lifecycle start instance=x build=a pid=4 ---',
+        'starting',
+      ].join('\n'),
+    );
+    expect(lastFatalServerLogLine(log)).toBeNull();
+    const missing = join(dir, 'missing.log');
+    expect(serverStartFailureContext(missing)).toEqual([
+      `Server log: ${missing}`,
+    ]);
   });
 });

@@ -1,9 +1,9 @@
 import './ShortcutsCheatsheet.css';
 import {
   findShortcutConflicts,
-  listedShortcuts,
   useShortcutRegistry,
 } from '../contexts/KeyboardShortcutsContext';
+import { listedShortcuts } from '../contexts/listedShortcuts';
 import { Dialog } from './Dialog';
 import { groupShortcuts } from './shortcuts-cheatsheet-utils';
 import { Empty } from './state';

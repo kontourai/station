@@ -15,8 +15,8 @@ import { ShortcutsCheatsheet } from '../components/ShortcutsCheatsheet';
 import {
   formatShortcutChord,
   KeyboardShortcutsProvider,
-  listedShortcuts,
 } from '../contexts/KeyboardShortcutsContext';
+import { listedShortcuts } from '../contexts/listedShortcuts';
 import { useCloseShortcut } from '../hooks/useCloseShortcut';
 import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut';
 

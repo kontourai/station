@@ -111,7 +111,7 @@ const RESERVED_SHORTCUT_IDS: ReadonlySet<string> = new Set(
  * The physical chord a binding fires on this platform: off a Mac, `cmd` IS
  * Control (see the dispatcher), so `cmd+k` and `ctrl+k` are one chord there.
  */
-function effectiveChordSignature(
+export function effectiveChordSignature(
   binding: { key: string; modifiers: readonly ShortcutModifier[] },
   mac: boolean = isMac,
 ): string {
@@ -295,32 +295,6 @@ export function orderShortcuts(
 ): KeyboardShortcut[] {
   return Array.from(shortcuts).sort(
     (left, right) => (right.priority ?? 0) - (left.priority ?? 0),
-  );
-}
-
-/**
- * The shortcuts a list should show. A lower-priority fallback that does the
- * same named thing on the same chord as a live higher-priority shortcut can
- * never fire while that one is registered — Settings' own Escape and the
- * route-level "Go up one level" fallback — so listing both reads as the same
- * command twice (#4383). It reappears the moment the owner is rebound,
- * cleared or unmounted, because then it is reachable again.
- */
-export function listedShortcuts(
-  shortcuts: Iterable<KeyboardShortcut>,
-): KeyboardShortcut[] {
-  const all = Array.from(shortcuts);
-  return all.filter(
-    (shortcut) =>
-      shortcut.disabled ||
-      !all.some(
-        (other) =>
-          other !== shortcut &&
-          !other.disabled &&
-          other.description === shortcut.description &&
-          (other.priority ?? 0) > (shortcut.priority ?? 0) &&
-          effectiveChordSignature(other) === effectiveChordSignature(shortcut),
-      ),
   );
 }
 

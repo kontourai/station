@@ -3,9 +3,10 @@ import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/o
 import { render, screen, within } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
 
-const state = vi.hoisted(() => ({
-  sessions: [] as OrchestrationSessionSummary[],
-}));
+const state = vi.hoisted(() => {
+  const sessions: OrchestrationSessionSummary[] = [];
+  return { sessions };
+});
 vi.mock('@kontourai/station-sdk', async (original) => ({
   ...(await original<typeof import('@kontourai/station-sdk')>()),
   useTasksQuery: () => ({ data: [], isLoading: false, isError: false }),

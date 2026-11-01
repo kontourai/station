@@ -3,9 +3,9 @@ import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import { Empty } from '../../components/state';
 import {
   type KeyboardShortcut,
-  listedShortcuts,
   useShortcutRegistry,
 } from '../../contexts/KeyboardShortcutsContext';
+import { listedShortcuts } from '../../contexts/listedShortcuts';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import {
   bindingSignature,

@@ -1064,7 +1064,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
     ).toBeVisible();
     await expect(
       form.getByRole('button', {
-        name: 'Agent: Codex · gpt-5.4',
+        name: 'Agent: Codex · GPT 5.4',
         exact: true,
       }),
     ).toBeVisible();
