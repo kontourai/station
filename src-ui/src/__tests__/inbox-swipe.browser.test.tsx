@@ -15,6 +15,9 @@ const fixture = `
   import {ChatDockInboxPanel} from './src-ui/src/components/chat-dock/ChatDockInboxPanel';
   import {MobileInboxPanel} from './src-ui/src/components/chat-dock/MobileInboxPanel';
   import {deviceSettingsStore} from './src-ui/src/lib/device-settings-store';
+  import {NavigationProvider} from './src-ui/src/contexts/NavigationContext';
+  import {ToastProvider} from './src-ui/src/contexts/ToastContext';
+  import {NotificationContainer} from './src-ui/src/components/notifications/NotificationContainer';
   const items = [
     {id:'saved', kind:'orchestration', kindLabel:'Conversation', title:'Review the inbox', projectSlug:'station', projectLabel:'Station', agentSlug:'codex', agentLabel:'Codex', provider:'codex', executionProviders:['codex','claude','pi','kiro'], modelLabel:'GPT', updatedAt:Date.now(), lifecycleLabel:'Running'},
     {id:'idle', kind:'orchestration', kindLabel:'Conversation', title:'Plan the next release', projectSlug:'station', projectLabel:'Station', agentSlug:'claude', agentLabel:'Claude', provider:'claude', modelLabel:'Sonnet', updatedAt:Date.now(), lifecycleLabel:'Ready'},
@@ -30,9 +33,11 @@ const fixture = `
     window.opens = 0; window.closes = 0;
     const props = { agents:[{slug:'codex',name:'Codex',engineId:'codex'},{slug:'claude',name:'Claude',engineId:'claude'}], projectIconBySlug:new Map([['station',${JSON.stringify(projectArtwork)}]]), activeChatSessionId:null, openChatSessionIds:[], onFocusChat:()=>window.opens++, onOpenConversation:()=>{window.opens++;return true}, onOpenSession:()=>window.opens++, onCloseChat:()=>window.closes++ };
     root = createRoot(document.getElementById('root'));
-    root.render(<QueryClientProvider client={new QueryClient()}>
+    // Dismissal Undo is a toast action (#4377), so the host renders toasts.
+    root.render(<QueryClientProvider client={new QueryClient()}><NavigationProvider><ToastProvider>
+      <NotificationContainer/>
       {mobile ? <MobileInboxPanel {...props} open tasks={items} triggerRef={React.createRef()}  onClose={()=>{}} /> : <div style={{width:340}}><ChatDockInboxPanel {...props} items={items} onOpenHistory={()=>{}} /></div>}
-    </QueryClientProvider>);
+    </ToastProvider></NavigationProvider></QueryClientProvider>);
   };
 `;
 
@@ -106,6 +111,9 @@ test('mobile swipes reveal existing actions without opening or stopping a conver
       .map((path) => resolveCssImports(resolve(path)))
       .join('\n');
     await page.addStyleTag({ content: css });
+    // A plain-HTTP LAN origin: the dismissal toast must work without Web
+    // Crypto's secure-context-only randomUUID.
+    expect(await page.evaluate(() => isSecureContext)).toBe(false);
     const cdp = await page.context().newCDPSession(page);
     await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true });
     await mount(page, true);
