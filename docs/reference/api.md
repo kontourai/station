@@ -5568,7 +5568,11 @@ Responses use `{success: true, data?}`. Invalid shapes return 400, access/scope
 refusals return a generic 403, over-bound journal reads return 413, and
 storage/host failures return a generic 503.
 The in-process host preserves journals and identity across service recreation;
-it cannot preserve the shell across a server restart. Journal persistence and
+it cannot preserve the shell across a server restart. Under a process supervisor
+that grants `workloads` (protocol 1.3), the shell and its journal live in the
+supervisor's workload host instead. A session recorded as running is reattached,
+with the same pid and its whole journal, by the next core generation after a
+restart or handoff (see [Shell host](../design/terminal.md#shell-host)). Journal persistence and
 line/byte retention are configured at service construction. Settings and age-based
 retention, live observer/device admission and the SDK store remain pending. See the
 [implementation boundary](../design/terminal.md#first-implementation-boundary-3994-part-a).
