@@ -767,7 +767,7 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   says the pick was not applied. A newly recorded decision clears that. Any other ACP engine
   shows **Approval: Set by engine**, which opens a read-only explanation and
   offers no mode. Codex's Default likewise names the engine's own settings
-  ("Engine default — Codex's own settings"), and its description states what
+  ("Default — Codex's own settings"), and its description states what
   an unconfigured Codex does there, as a bound on which commands run unasked:
   none that uses the network or writes outside the chat's folder and temp.
   Hosted web search and MCP tool calls are not sandboxed commands and fall

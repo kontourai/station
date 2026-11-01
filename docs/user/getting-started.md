@@ -215,7 +215,8 @@ which scope owns a choice. If your Device is not linked to a person, preferences
 remain local. Different Stations keep separate account preferences.
 
 The approval chip shows the known mode, including **Full access**, **Auto** or
-**Ask**. **Engine default** means the engine's active mode has not been confirmed.
+**Ask**. **Default** means the engine's own settings apply and its active mode
+has not been confirmed.
 For Codex, inherited settings resolve to a supported mode when the reported approval policy and sandbox match. Otherwise, the picker describes the engine default as your own Codex settings. If you set
 none, no command Codex runs uses the network or writes outside the chat's
 folder and temporary directories without asking; it may ask before other
