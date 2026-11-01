@@ -69,8 +69,11 @@ export class WorkloadHost {
   private readonly pending = new Map<string, (reply: WorkloadReply) => void>();
   private readonly registry = new Map<string, WorkloadStatus>();
   private stopped = false;
+  private readonly options: WorkloadHostOptions;
 
-  constructor(private readonly options: WorkloadHostOptions) {}
+  constructor(options: WorkloadHostOptions) {
+    this.options = options;
+  }
 
   /** Whether workloads can be offered to a generation at all. */
   get available(): boolean {

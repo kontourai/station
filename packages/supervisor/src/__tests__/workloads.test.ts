@@ -72,7 +72,9 @@ function spawnEcho(dir: string, workloadId: string): WorkloadRequest {
     workloadId,
     kind: 'command',
     candidates: [{ command: process.execPath, args: ECHO }],
-    cwd: dir,
+    // Not the temp home: Windows cannot remove a directory that is a live
+    // process's working directory, and teardown may race the workload's end.
+    cwd: process.cwd(),
     env: { ...process.env } as Record<string, string>,
     cols: 80,
     rows: 24,

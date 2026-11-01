@@ -633,7 +633,7 @@ export class TerminalSessions<Principal> {
 
   private async retire(record: SessionRecord): Promise<void> {
     const pending = this.journals.get(record.terminalId);
-    let journal: TerminalJournal | undefined;
+    let journal: SessionJournal | undefined;
     if (pending) {
       const settled = await Promise.allSettled([pending]);
       const result = settled[0]!;

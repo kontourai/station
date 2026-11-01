@@ -315,7 +315,13 @@ export class PtyWorkloadHost {
           windowsHide: true,
           timeout: KILL_DEADLINE_MS,
         });
-        this.quietly(() => workload.process.kill());
+        // Closing the PTY of a shell taskkill already ended makes node-pty
+        // attach to a console that is gone, so only one still running.
+        const ended = await Promise.race([
+          workload.exited.then(() => true),
+          this.delay(this.killGraceMs).then(() => false),
+        ]);
+        if (!ended) this.quietly(() => workload.process.kill());
       } else if (workload.process.terminate) {
         await workload.process.terminate().catch(() => {
           this.quietly(() => workload.process.kill('SIGKILL'));
