@@ -278,7 +278,7 @@ export function main() {
     '--',
     'src-server',
     'src-ui/src',
-    'packages/sdk/src',
+    'packages',
   ])
     .split('\0')
     .filter(Boolean);
@@ -290,7 +290,7 @@ export function main() {
     '--',
     'src-server',
     'src-ui/src',
-    'packages/sdk/src',
+    'packages',
   ])
     .split('\0')
     .filter(Boolean);

@@ -49,50 +49,53 @@ test('ignores protocol-only branches, profile reads and comment text', () => {
   expect(findDurabilityProviderBranches(source)).toEqual([]);
 });
 
-test('the executable gate rejects a durability decision even if committed into its baseline', () => {
-  const root = makeTempDir('station-durability-branch-');
-  const git = (args: string[]) =>
-    execFileSync('git', args, { cwd: root, windowsHide: true });
-  git(['init', '-q']);
-  mkdirSync(join(root, 'src-server'), { recursive: true });
-  const file = join(root, 'src-server', 'service.ts');
-  const old =
-    "function questionnaire(provider: string) { return provider === 'claude'; }\n";
-  writeFileSync(file, old);
-  git(['add', '.']);
-  git([
-    '-c',
-    'user.name=Fixture',
-    '-c',
-    'user.email=fixture@example.invalid',
-    'commit',
-    '-qm',
-    'fixture',
-  ]);
-  const run = () =>
-    spawnSyncBounded(process.execPath, [gate], {
-      cwd: root,
-      encoding: 'utf8',
-      env: { ...process.env, STATION_CI_FAST_BASE: 'HEAD' },
-    });
-  writeFileSync(file, `${old}export const marker = 1;\n`);
-  expect(run().status).toBe(0);
-  writeFileSync(
-    file,
-    `${old}function steer(provider: string) { return provider === 'codex'; }\n`,
-  );
-  const bad = run();
-  expect(bad.status).toBe(1);
-  expect(bad.stderr).toContain("provider === 'codex'");
-  git(['add', '.']);
-  git([
-    '-c',
-    'user.name=Fixture',
-    '-c',
-    'user.email=fixture@example.invalid',
-    'commit',
-    '-qm',
-    'bad baseline',
-  ]);
-  expect(run().status).toBe(1);
-});
+test.each(['src-server/service.ts', 'packages/agent-runtime/src/service.ts'])(
+  'the executable gate rejects a durability decision in %s even if committed into its baseline',
+  (relativeFile) => {
+    const root = makeTempDir('station-durability-branch-');
+    const git = (args: string[]) =>
+      execFileSync('git', args, { cwd: root, windowsHide: true });
+    git(['init', '-q']);
+    const file = join(root, relativeFile);
+    mkdirSync(join(file, '..'), { recursive: true });
+    const old =
+      "function questionnaire(provider: string) { return provider === 'claude'; }\n";
+    writeFileSync(file, old);
+    git(['add', '.']);
+    git([
+      '-c',
+      'user.name=Fixture',
+      '-c',
+      'user.email=fixture@example.invalid',
+      'commit',
+      '-qm',
+      'fixture',
+    ]);
+    const run = () =>
+      spawnSyncBounded(process.execPath, [gate], {
+        cwd: root,
+        encoding: 'utf8',
+        env: { ...process.env, STATION_CI_FAST_BASE: 'HEAD' },
+      });
+    writeFileSync(file, `${old}export const marker = 1;\n`);
+    expect(run().status).toBe(0);
+    writeFileSync(
+      file,
+      `${old}function steer(provider: string) { return provider === 'codex'; }\n`,
+    );
+    const bad = run();
+    expect(bad.status).toBe(1);
+    expect(bad.stderr).toContain("provider === 'codex'");
+    git(['add', '.']);
+    git([
+      '-c',
+      'user.name=Fixture',
+      '-c',
+      'user.email=fixture@example.invalid',
+      'commit',
+      '-qm',
+      'bad baseline',
+    ]);
+    expect(run().status).toBe(1);
+  },
+);
