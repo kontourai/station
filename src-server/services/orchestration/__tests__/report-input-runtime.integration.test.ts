@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DelegationRoundsTransactionUncertainError } from '@kontourai/flow-agents/delegation-group-rounds';
 import { RESERVED_SOURCE_EXECUTION_METADATA_KEY } from '@kontourai/station-contracts/provider';
+import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { onTestFinished, test, vi } from 'vitest';
 import { isRuntimePublicationParticipant } from '../../../runtime/bootstrap/runtime-publication-participant.js';
@@ -36,6 +37,8 @@ test.each([
   'send-failed',
   'storage-drift',
   'close-failed',
+  'registration-failed',
+  'publication-retire',
 ] as const)(
   'fixed MCP input preserves canonical answer and durable send custody: %s',
   async (scenario) => {
@@ -136,8 +139,19 @@ test.each([
     const publication = await publicationReady;
     const writer = await HomeWriterOwner.forHome(f.home);
     let expectedPublicationFailure: unknown;
+    let registrationRefused = false;
+    const registrationFailure = new Error(
+      'controlled cleanup registration failure',
+    );
+    let questionSignal: AbortSignal | undefined;
     const runtime = createReportInputRuntime({
-      retainCleanup: publication.retainCleanup,
+      retainCleanup: (cleanup) => {
+        if (scenario === 'registration-failed') {
+          registrationRefused = true;
+          throw registrationFailure;
+        }
+        return publication.retainCleanup(cleanup);
+      },
       persistence,
       withHome: (current, body) =>
         publication.withHome({ owner: writer, current }, body),
@@ -183,16 +197,58 @@ test.each([
         allowedTools: scenario === 'no-grant' ? [] : ['station_request_input'],
         inputRuntime: (request, open, signal, current) => {
           binding = request.binding;
-          return runtime(request, open, signal, current);
+          return runtime(
+            request,
+            (form, beforeOpen, requestSignal) => {
+              questionSignal = requestSignal;
+              return open(form, beforeOpen, requestSignal);
+            },
+            signal,
+            current,
+          );
         },
       },
     );
+    type Opened = Extract<
+      ReturnType<typeof driver.canonicalEvents>[number],
+      { method: 'request.opened' }
+    >;
+    let stopInput = () => {};
+    const inputOpened = new Promise<Opened>((resolve) => {
+      stopInput = driver.eventBus.subscribe(({ event }) => {
+        if (event !== SERVER_EVENTS.ORCHESTRATION_EVENT) return;
+        const opened = driver
+          .canonicalEvents()
+          .find((entry) => entry.method === 'request.opened');
+        if (opened?.method === 'request.opened') {
+          stopInput();
+          resolve(opened);
+        }
+      });
+    });
+    onTestFinished(() => stopInput());
     const running = driver.run();
     try {
-      if (scenario === 'no-grant') {
+      if (scenario === 'no-grant' || scenario === 'registration-failed') {
         await running;
         assert.ok(driver.invocationFailure);
         assert.deepEqual(sends, []);
+        if (scenario === 'registration-failed') {
+          assert.equal(registrationRefused, true);
+          assert.equal(driver.invocationFailure, registrationFailure);
+          assert.ok(binding);
+          assert.equal(
+            existsSync(
+              join(
+                reportRoot,
+                'station-report-input-v1',
+                `${reportInputKey(binding)}.json`,
+              ),
+            ),
+            false,
+            'cleanup registration must precede the durable input claim',
+          );
+        }
         assert.ok(
           !driver
             .canonicalEvents()
@@ -201,25 +257,15 @@ test.each([
         assert.equal(f.starts, 1);
         return;
       }
-      let opened:
-        | Extract<
-            ReturnType<typeof driver.canonicalEvents>[number],
-            { method: 'request.opened' }
-          >
-        | undefined;
-      await vi.waitFor(
-        () => {
-          const event = driver
-            .canonicalEvents()
-            .find((e) => e.method === 'request.opened');
-          if (event?.method !== 'request.opened')
-            throw Error(
-              `No canonical form: ${String(driver.invocationFailure)}`,
-            );
-          opened = event;
-        },
-        { timeout: 10000 },
-      );
+      const opened = await Promise.race([
+        inputOpened,
+        running.then(() => {
+          throw (
+            driver.invocationFailure ??
+            new Error('Input operation returned without a canonical form')
+          );
+        }),
+      ]);
       if (!opened || !binding) throw Error('Canonical binding missing');
       await writer.runRequest(invocation.signal, () => {
         assert.equal(sends.length, 1);
@@ -233,10 +279,40 @@ test.each([
           .canonicalEvents()
           .some((event) => event.method === 'turn.completed'),
       );
-      if (scenario === 'abort' || scenario === 'owner-close') {
-        if (scenario === 'owner-close') await runtime.close();
+      if (
+        scenario === 'abort' ||
+        scenario === 'owner-close' ||
+        scenario === 'publication-retire'
+      ) {
+        if (scenario === 'publication-retire') {
+          assert.ok(questionSignal);
+          done();
+          let shutdownFailure: unknown;
+          try {
+            await ownerRuntime.shutdown();
+          } catch (error) {
+            shutdownFailure = error;
+          }
+          assert.equal(
+            questionSignal.aborted,
+            true,
+            'publication retirement must abort its open input question',
+          );
+          if (shutdownFailure) throw shutdownFailure;
+        } else if (scenario === 'owner-close') await runtime.close();
         else invocation.abort('controlled stop while awaiting input');
         await running;
+        if (scenario === 'publication-retire')
+          await assert.rejects(() =>
+            driver.orchestration.dispatch({
+              type: 'respondToRequest',
+              threadId: opened.threadId,
+              requestId: opened.requestId,
+              expectedRequestEventId: opened.eventId,
+              decision: 'accept',
+              content: { answer: 'LATE_SCOPE' },
+            }),
+          );
         const retained = read(binding);
         assert.equal(retained?.physicalSends, 1);
         assert.ok(retained?.question);
@@ -307,7 +383,7 @@ test.each([
             );
             cleanupAllowed = true;
             const beforeRetry = closed.length;
-            await runtime.close();
+            await ownerRuntime.shutdown();
             assert.equal(closed.length, beforeRetry + 1);
             assert.ok(closed.every((transport) => transport === closed[0]));
             assert.equal(sends.length, 2);

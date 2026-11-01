@@ -183,7 +183,6 @@ export function createReportInputRuntime(owners: {
         scope.current,
       );
     });
-    await ledger.begin(binding);
     requireInput(retained.size < 128);
     const handler = createMcpHandler(() => serverFactory(binding.question), {
       legacy: 'reject',
@@ -191,6 +190,7 @@ export function createReportInputRuntime(owners: {
     const custody = new MCPLocalConnectionCustody({ capacity: 1 });
     const claim = custody.acquire(SERVER_ID, 'managed');
     let closing: Promise<void> | undefined;
+    let result: InputRequestResponse | undefined;
     const resource = {
       abort,
       close(): Promise<void> {
@@ -210,14 +210,18 @@ export function createReportInputRuntime(owners: {
     };
     const physicalClose = resource.close;
     try {
-      resource.close = owners.retainCleanup(physicalClose);
+      resource.close = owners.retainCleanup(async () => {
+        if (result === undefined)
+          abort.abort('report input retired before protocol settlement');
+        await physicalClose();
+      });
     } catch (error) {
       await physicalClose();
       throw error;
     }
     retained.add(resource);
-    let result: InputRequestResponse | undefined;
     try {
+      await ledger.begin(binding);
       const connection = await claim.connect(
         {
           id: SERVER_ID,
@@ -309,7 +313,7 @@ export function createReportInputRuntime(owners: {
                 await ledger.bindQuestion(binding, event);
                 await checkCurrent();
               },
-              elicitation.signal,
+              AbortSignal.any([signal, elicitation.signal]),
             );
             await checkCurrent();
             await authorize();

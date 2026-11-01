@@ -723,6 +723,7 @@ export async function publicFenceFixture(
   });
   return {
     observed,
+    eventBus: bus,
     get task() {
       return acceptedTask;
     },

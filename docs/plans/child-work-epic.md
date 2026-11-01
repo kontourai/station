@@ -29,7 +29,14 @@ intended close-failure control with eight other passes. Exact restoration passed
 that control again, but the full restored selection failed two earlier form-open
 deadlines with seven passes. No restoration-wide green result is claimed. These
 constructor-level controls do not qualify initialized storage teardown or the
-actual multi-seat report caller.
+actual multi-seat report caller. A later follow-up now passes all 11 fixed-MCP
+cases: cleanup registration precedes the durable claim, retirement aborts an
+unfinished question, and failed close retries through actual runtime shutdown.
+Normal parsed protocol results close without being aborted before ledger finish.
+Its new controls pin the controlled registration error and refuse a late answer
+after retirement. Server-test types and scoped Biome pass; clean-commit mutation
+qualification of the conditional abort remains pending. The handler-delivery
+fence after an awaited currentness check remains separately open.
 
 Both actual report-input callers failed before canonical input in the recorded
 uncommitted candidate preceding `889b995f86d`. At its 60-second observation, the
@@ -3681,3 +3688,30 @@ obligation, not an admission-only failure. No ledger coverage was fabricated or
 advanced. The SSE ADR review additionally found that the documented missing-stream-
 acknowledgement fallback is absent in the current UI stream owner; it remains
 unresolved pending a caller control and repair.
+
+## Input claim ordering and retirement custody
+
+The registration-failure control used the actual controlled MCP input fixture,
+real publication participant and Home owner. It failed before the ordering repair
+because a durable claim already existed when cleanup registration was refused.
+The claim now begins inside try/finally only after cleanup has been retained.
+
+A second real-retirement control failed with ten other passes: the question's
+signal remained live after publication cleanup. Retained cleanup now aborts when
+no protocol result has been parsed and combines that owned signal with the
+elicitation signal. A normal parsed result still closes without an abort before
+ledger finish. That marker is not a durability receipt: retirement after answer
+retention but before parsing can still leave an uncertain, non-replayable claim.
+
+The fixture observes the actual canonical event after persistence instead of a
+separate ten-second polling deadline. Product and overall test budgets did not
+change. The strengthened selection passes all 11 cases, including exact
+registration-error identity, refusal of a later answer after retirement and
+physical-close retry through StationRuntime.shutdown. Server-test types and
+scoped Biome pass. Independent Opus source review found no blocker and disclosed
+low residuals, including close-error masking if registration and physical close
+both fail. That construction has no connected transport; broader cleanup and
+factory claims are not inferred from it. Clean-commit abort mutation remains
+pending, and the awaited handler-fetch fence remains open. Actual multi-seat
+caller receipts remain FAIL; flags stay disabled and no PR or aggregate epic
+acceptance follows from this bounded repair.
