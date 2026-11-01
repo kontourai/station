@@ -419,7 +419,7 @@ export function resolveProviderDurabilityProfile(
     bedrock: STATION_ENGINE_DURABILITY,
     ollama: STATION_ENGINE_DURABILITY,
   };
-  return Object.hasOwn(profiles, provider)
+  return Object.prototype.hasOwnProperty.call(profiles, provider)
     ? profiles[provider]
     : UNKNOWN_ENGINE_DURABILITY;
 }
