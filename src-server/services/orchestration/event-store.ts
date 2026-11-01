@@ -13,8 +13,8 @@ import {
   createRecoveryLedger,
   type RecoveryLedgerProcessIdentity,
   type RecoveryOwner,
-  type RecoveryTransition,
   releaseRecoveryLedgerOwner,
+  SqliteRecoveryStorage,
 } from '@kontourai/monument/recovery';
 import type { SessionControlRequestKeys } from '@kontourai/monument/session-control';
 import {
@@ -44,7 +44,6 @@ import {
 } from '@kontourai/station-contracts/client-origin';
 import type {
   ConnectionRecoveryIntent,
-  ConnectionRecoveryOutcome,
   ConnectionRecoveryOutcomeReason,
   ConnectionRecoveryProjection,
 } from '@kontourai/station-contracts/connection-recovery';
@@ -367,7 +366,6 @@ import {
   type ProjectTaskRoomWorkingState,
 } from './project-task-room-working-state.js';
 import type {
-  RecoveryIntentInput,
   RecoveryLedger,
   RecoveryLedgerCoordinator,
 } from './recovery-ledger-binding.js';
@@ -2645,6 +2643,11 @@ export class EventStore {
   private skillExperienceSnapshots?: SkillExperienceSnapshots;
   private registryTrustPolicyDecisions?: RegistryTrustPolicyDecisions;
   private sessionControlKeys?: SessionControlRequestKeys;
+  private recoverySql?: SqliteRecoveryStorage<
+    ConnectionRecoveryIntent,
+    ConnectionRecoveryProjection,
+    ConnectionRecoveryOutcomeReason
+  >;
   private delegationResults?: DelegationResultStore;
   private threadInbox?: ThreadInboxStore;
   private taskMemory?: TaskMemoryStore;
@@ -15356,39 +15359,40 @@ export class EventStore {
       };
     } = {},
   ): RecoveryLedger {
+    const storage = this.recoveryStorage();
     const coordinator: RecoveryLedgerCoordinator = {
-      arm: (input) => this.armRecoveryIntent(input),
-      find: (fingerprint) => this.findRecoveryIntent(fingerprint),
-      latestProjection: (threadId) => this.readRecoveryProjection(threadId),
-      pending: () => this.readPendingRecoveryIntents(),
-      compensationSnapshot: () => this.readRecoveryCompensationSnapshot(),
-      claim: (input) => this.claimRecoveryDispatch(input),
-      release: (input) => this.releaseRecoveryDispatch(input),
-      accept: (input) => this.acceptRecoveryDispatch(input),
+      arm: (input) => storage.armRecoveryIntent(input),
+      find: (fingerprint) => storage.findRecoveryIntent(fingerprint),
+      latestProjection: (threadId) => storage.readRecoveryProjection(threadId),
+      pending: () => storage.readPendingRecoveryIntents(),
+      compensationSnapshot: () => storage.readRecoveryCompensationSnapshot(),
+      claim: (input) => storage.claimRecoveryDispatch(input),
+      release: (input) => storage.releaseRecoveryDispatch(input),
+      accept: (input) => storage.acceptRecoveryDispatch(input),
       observe: (correlationId, turnId, now) =>
-        this.observeRecoveryDispatchCorrelation(correlationId, turnId, now),
+        storage.observeRecoveryDispatchCorrelation(correlationId, turnId, now),
       indeterminate: (fingerprint, attemptId, now) =>
-        this.markRecoveryDispatchIndeterminate(fingerprint, attemptId, now),
-      linkCredential: (input) => this.linkRecoveryCredentialAttempt(input),
+        storage.markRecoveryDispatchIndeterminate(fingerprint, attemptId, now),
+      linkCredential: (input) => storage.linkRecoveryCredentialAttempt(input),
       reconcilePrepared: (kind, unlinkedOnly) =>
         this.preparedRecoveryDispatches(kind, unlinkedOnly),
       indeterminatePrepared: (input) =>
         this.indeterminatePreparedRecoveryDispatch(input),
       terminal: (fingerprint, outcome, now) =>
-        this.recordRecoveryTerminal(fingerprint, outcome, now),
+        storage.recordRecoveryTerminal(fingerprint, outcome, now),
       compensationRequired: (fingerprint, now, expectedOutcome) =>
-        this.markRecoveryCompensation(fingerprint, now, expectedOutcome),
+        storage.markRecoveryCompensation(fingerprint, now, expectedOutcome),
       resolveCompensation: (fingerprint, now) =>
-        this.resolveRecoveryCompensationRecord(fingerprint, now),
+        storage.resolveRecoveryCompensationRecord(fingerprint, now),
       cancel: (fingerprint, now, reason) =>
-        this.cancelRecovery(fingerprint, now, reason),
-      retireWaiting: (input) => this.retireWaitingRecovery(input),
-      awaitingUser: () => this.readUsageLimitIntentsAwaitingUser(),
+        storage.cancelRecovery(fingerprint, now, reason),
+      retireWaiting: (input) => storage.retireWaitingRecovery(input),
+      awaitingUser: () => storage.readUsageLimitIntentsAwaitingUser(),
       cancelSourceTerminated: (now) =>
-        this.cancelSourceTerminatedRecoveries(now),
+        storage.cancelSourceTerminatedRecoveries(now),
       cancelIfSourceTerminated: (fingerprint, now) =>
-        this.cancelRecoveryIfSourceTerminated(fingerprint, now),
-      cancelShutdownRequested: (now) => this.cancelShutdownRecoveries(now),
+        storage.cancelRecoveryIfSourceTerminated(fingerprint, now),
+      cancelShutdownRequested: (now) => storage.cancelShutdownRecoveries(now),
     };
     const startup = options.credentialStartup;
     return createRecoveryLedger<
@@ -16202,556 +16206,60 @@ export class EventStore {
     return rows.map((row: any) => mapCommandReceiptRow(row));
   }
 
-  private armRecoveryIntent(
-    input: RecoveryIntentInput,
-  ): ConnectionRecoveryIntent {
-    this.db
-      .prepare(
-        `INSERT OR IGNORE INTO orchestration_recovery_intents
-          (fingerprint, thread_id, provider, source_event_id, source_turn_id,
-           failure_kind, scope, decision, due_at, attempts, max_attempts,
-           outcome, dispatch_attempt_id, recovery_correlation_id,
-           dispatch_settlement, dispatch_kind, resumed_turn_id, outcome_reason, usage_limit, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?, ?)`,
-      )
-      .run(
-        input.fingerprint,
-        input.threadId,
-        input.provider,
-        input.sourceEventId,
-        input.sourceTurnId,
-        input.failureKind,
-        input.scope,
-        input.decision,
-        input.dueAt ?? null,
-        input.maxAttempts,
-        input.outcome,
-        input.usageLimit ? 1 : null,
-        input.createdAt,
-        input.updatedAt,
-      );
-    return this.findRecoveryIntent(input.fingerprint)!;
-  }
-
-  private findRecoveryIntent(
-    fingerprint: string,
-  ): ConnectionRecoveryIntent | null {
-    const row = this.db
-      .prepare(
-        `SELECT fingerprint, thread_id, provider, source_event_id, source_turn_id,
-                failure_kind, scope, decision, due_at, attempts, max_attempts,
-                outcome, dispatch_attempt_id, recovery_correlation_id,
-                dispatch_settlement, dispatch_kind, resumed_turn_id, outcome_reason, usage_limit, created_at, updated_at
-         FROM orchestration_recovery_intents WHERE fingerprint = ?`,
-      )
-      .get(fingerprint) as RecoveryIntentRow | undefined;
-    return row ? mapRecoveryIntentRow(row) : null;
-  }
-
-  private readRecoveryProjection(
-    threadId: string,
-  ): ConnectionRecoveryProjection | undefined {
-    const row = this.db
-      .prepare(
-        `SELECT fingerprint, thread_id, provider, source_event_id, source_turn_id,
-                failure_kind, scope, decision, due_at, attempts, max_attempts,
-                outcome, dispatch_attempt_id, recovery_correlation_id,
-                dispatch_settlement, dispatch_kind, resumed_turn_id, outcome_reason, usage_limit, created_at, updated_at
-         FROM orchestration_recovery_intents
-         WHERE thread_id = ? ORDER BY updated_at DESC, rowid DESC LIMIT 1`,
-      )
-      .get(threadId) as RecoveryIntentRow | undefined;
-    if (!row) return undefined;
-    const intent = mapRecoveryIntentRow(row);
-    return {
-      failureKind: intent.failureKind,
-      scope: intent.scope,
-      decision: intent.decision,
-      outcome: intent.outcome,
-      ...(intent.dueAt ? { dueAt: intent.dueAt } : {}),
-      attempts: intent.attempts,
-      maxAttempts: intent.maxAttempts,
-      ...(intent.outcomeReason ? { outcomeReason: intent.outcomeReason } : {}),
-      ...(intent.usageLimit ? { usageLimit: true as const } : {}),
-      updatedAt: intent.updatedAt,
-    };
-  }
-
-  private readPendingRecoveryIntents(): ConnectionRecoveryIntent[] {
-    return this.db
-      .prepare(
-        `SELECT fingerprint, thread_id, provider, source_event_id, source_turn_id,
-                failure_kind, scope, decision, due_at, attempts, max_attempts,
-                outcome, dispatch_attempt_id, recovery_correlation_id,
-                dispatch_settlement, dispatch_kind, resumed_turn_id, outcome_reason, usage_limit, created_at, updated_at
-         FROM orchestration_recovery_intents
-         WHERE outcome IN ('armed', 'resumed') ORDER BY due_at ASC, created_at ASC`,
-      )
-      .all()
-      .map((row: unknown) => mapRecoveryIntentRow(row as RecoveryIntentRow));
-  }
-
-  /** #3157: usage-limit intents left to the user (`manual`), never claimed. */
-  private readUsageLimitIntentsAwaitingUser(): ConnectionRecoveryIntent[] {
-    return this.db
-      .prepare(
-        `SELECT fingerprint, thread_id, provider, source_event_id, source_turn_id,
-                failure_kind, scope, decision, due_at, attempts, max_attempts,
-                outcome, dispatch_attempt_id, recovery_correlation_id,
-                dispatch_settlement, dispatch_kind, resumed_turn_id, outcome_reason, usage_limit, created_at, updated_at
-         FROM orchestration_recovery_intents
-         WHERE outcome = 'manual' AND usage_limit = 1
-           AND dispatch_attempt_id IS NULL AND recovery_correlation_id IS NULL
-         ORDER BY updated_at ASC`,
-      )
-      .all()
-      .map((row: unknown) => mapRecoveryIntentRow(row as RecoveryIntentRow));
-  }
-
-  private readRecoveryCompensationSnapshot(): ConnectionRecoveryIntent[] {
-    return this.db
-      .prepare(
-        `SELECT fingerprint, thread_id, provider, source_event_id, source_turn_id,
-                failure_kind, scope, decision, due_at, attempts, max_attempts,
-                outcome, dispatch_attempt_id, recovery_correlation_id,
-                dispatch_settlement, dispatch_kind, resumed_turn_id, outcome_reason, usage_limit, created_at, updated_at
-         FROM orchestration_recovery_intents
-         WHERE outcome = 'compensation-required'
-         ORDER BY updated_at ASC, created_at ASC`,
-      )
-      .all()
-      .map((row: unknown) => mapRecoveryIntentRow(row as RecoveryIntentRow));
-  }
-
-  private claimRecoveryDispatch(input: {
-    fingerprint: string;
-    kind: 'due' | 'profile';
-    /**
-     * #3157: the user's own "Resume now" on a usage-limit stop. It claims a
-     * waiting (`armed`) or left-to-the-user (`manual`) usage-limit intent
-     * before its due time, and is still an ordinary `due` dispatch.
-     */
-    immediate?: boolean;
-    dispatchAttemptId: string;
-    recoveryCorrelationId: string;
-    owner: RecoveryOwner;
-    now: string;
-  }): ConnectionRecoveryIntent | null {
-    const immediate = input.kind === 'due' && input.immediate === true;
-    const eligibility = immediate
-      ? "outcome IN ('armed', 'manual') AND usage_limit = 1"
-      : input.kind === 'due'
-        ? "outcome = 'armed' AND due_at IS NOT NULL AND due_at <= ?"
-        : "outcome IN ('armed', 'manual')";
-    const row = this.db
-      .prepare(
-        `UPDATE orchestration_recovery_intents AS intent
-         SET outcome = 'resumed', attempts = attempts + 1, outcome_reason = NULL,
-             dispatch_attempt_id = ?, recovery_correlation_id = ?,
-             dispatch_settlement = 'prepared', dispatch_kind = ?,
-             dispatch_owner_id = ?, dispatch_owner_pid = ?,
-             dispatch_owner_birth = ?, dispatch_owner_identity_kind = ?, updated_at = ?
-         WHERE fingerprint = ? AND ${eligibility} AND attempts < max_attempts
-           AND dispatch_attempt_id IS NULL AND recovery_correlation_id IS NULL
-           AND NOT ${RECOVERY_SOURCE_TERMINATED}
-         RETURNING fingerprint, thread_id, provider, source_event_id, source_turn_id,
-                   failure_kind, scope, decision, due_at, attempts, max_attempts,
-                   outcome, dispatch_attempt_id, recovery_correlation_id,
-                   dispatch_settlement, dispatch_kind, resumed_turn_id, outcome_reason, usage_limit, created_at, updated_at`,
-      )
-      .get(
-        input.dispatchAttemptId,
-        input.recoveryCorrelationId,
-        input.kind,
-        input.owner.id,
-        input.owner.pid,
-        input.owner.identityKind === 'exact' ? input.owner.birth : null,
-        input.owner.identityKind,
-        input.now,
-        input.fingerprint,
-        ...(input.kind === 'due' && !immediate ? [input.now] : []),
-      ) as RecoveryIntentRow | undefined;
-    return row ? mapRecoveryIntentRow(row) : null;
-  }
-
-  private releaseRecoveryDispatch(input: {
-    fingerprint: string;
-    dispatchAttemptId: string;
-    outcome: 'armed' | 'manual';
-    now: string;
-  }): RecoveryTransition {
-    const result = this.db
-      .prepare(
-        `UPDATE orchestration_recovery_intents
-         SET outcome = ?, attempts = MAX(attempts - 1, 0),
-             dispatch_attempt_id = NULL, recovery_correlation_id = NULL,
-             dispatch_settlement = NULL, dispatch_kind = NULL,
-             dispatch_owner_id = NULL, dispatch_owner_pid = NULL,
-             dispatch_owner_birth = NULL, dispatch_owner_identity_kind = NULL,
-             credential_attempt_id = NULL, updated_at = ?
-         WHERE fingerprint = ? AND outcome = 'resumed' AND dispatch_attempt_id = ?
-           AND dispatch_settlement = 'prepared'`,
-      )
-      .run(
-        input.outcome,
-        input.now,
-        input.fingerprint,
-        input.dispatchAttemptId,
-      ) as {
-      changes: number | bigint;
-    };
-    return recoveryTransition(result);
-  }
-
-  private acceptRecoveryDispatch(input: {
-    fingerprint: string;
-    dispatchAttemptId: string;
-    turnId: string;
-    now: string;
-  }): RecoveryTransition {
-    const result = this.db
-      .prepare(
-        `UPDATE orchestration_recovery_intents
-         SET resumed_turn_id = COALESCE(resumed_turn_id, ?),
-             dispatch_settlement = 'accepted', updated_at = ?
-         WHERE fingerprint = ? AND outcome = 'resumed' AND dispatch_attempt_id = ?
-           AND dispatch_settlement = 'prepared'`,
-      )
-      .run(
-        input.turnId,
-        input.now,
-        input.fingerprint,
-        input.dispatchAttemptId,
-      ) as {
-      changes: number | bigint;
-    };
-    return recoveryTransition(result);
-  }
-
-  private observeRecoveryDispatchCorrelation(
-    recoveryCorrelationId: string,
-    turnId: string,
-    now: string,
-  ): ConnectionRecoveryIntent | null {
-    const row = this.db
-      .prepare(
-        `UPDATE orchestration_recovery_intents
-         SET resumed_turn_id = COALESCE(resumed_turn_id, ?), updated_at = ?
-         WHERE recovery_correlation_id = ? AND outcome = 'resumed'
-         RETURNING fingerprint, thread_id, provider, source_event_id, source_turn_id,
-                   failure_kind, scope, decision, due_at, attempts, max_attempts,
-                   outcome, dispatch_attempt_id, recovery_correlation_id,
-                   dispatch_settlement, dispatch_kind, resumed_turn_id, outcome_reason, usage_limit, created_at, updated_at`,
-      )
-      .get(turnId, now, recoveryCorrelationId) as RecoveryIntentRow | undefined;
-    return row ? mapRecoveryIntentRow(row) : null;
-  }
-
-  private markRecoveryDispatchIndeterminate(
-    fingerprint: string,
-    dispatchAttemptId: string,
-    now: string,
-  ): RecoveryTransition {
-    const result = this.db
-      .prepare(
-        `UPDATE orchestration_recovery_intents
-         SET outcome = 'indeterminate', updated_at = ?
-         WHERE fingerprint = ? AND outcome = 'resumed' AND dispatch_attempt_id = ?
-           AND dispatch_settlement = 'prepared'`,
-      )
-      .run(now, fingerprint, dispatchAttemptId) as { changes: number | bigint };
-    return recoveryTransition(result);
-  }
-
-  private linkRecoveryCredentialAttempt(input: {
-    fingerprint: string;
-    dispatchAttemptId: string;
-    credentialAttemptId: string;
-    now: string;
-  }): RecoveryTransition {
-    const result = this.db
-      .prepare(
-        `UPDATE orchestration_recovery_intents
-         SET credential_attempt_id = ?, updated_at = ?
-         WHERE fingerprint = ? AND outcome = 'resumed'
-           AND dispatch_settlement = 'prepared' AND dispatch_kind = 'profile'
-           AND dispatch_attempt_id = ?
-           AND (credential_attempt_id IS NULL OR credential_attempt_id = ?)`,
-      )
-      .run(
-        input.credentialAttemptId,
-        input.now,
-        input.fingerprint,
-        input.dispatchAttemptId,
-        input.credentialAttemptId,
-      ) as { changes: number | bigint };
-    return recoveryTransition(result);
+  private recoveryStorage(): SqliteRecoveryStorage<
+    ConnectionRecoveryIntent,
+    ConnectionRecoveryProjection,
+    ConnectionRecoveryOutcomeReason
+  > {
+    if (!this.recoverySql)
+      this.recoverySql = new SqliteRecoveryStorage({
+        db: this.db,
+        table: 'orchestration_recovery_intents',
+        mapRecord: (row) => mapRecoveryIntentRow(row as RecoveryIntentRow),
+        project: (intent) => ({
+          failureKind: intent.failureKind,
+          scope: intent.scope,
+          decision: intent.decision,
+          outcome: intent.outcome,
+          ...(intent.dueAt ? { dueAt: intent.dueAt } : {}),
+          attempts: intent.attempts,
+          maxAttempts: intent.maxAttempts,
+          ...(intent.outcomeReason
+            ? { outcomeReason: intent.outcomeReason }
+            : {}),
+          ...(intent.usageLimit ? { usageLimit: true as const } : {}),
+          updatedAt: intent.updatedAt,
+        }),
+        sourceTerminalSql: RECOVERY_SOURCE_TERMINATED,
+        afterTerminalWrite: () => this.faults.recoveryTransition?.(),
+      });
+    return this.recoverySql;
   }
 
   private preparedRecoveryDispatches(
-    kind?: 'due' | 'profile',
-    unlinkedOnly = false,
-  ): Array<{
-    intent: ConnectionRecoveryIntent;
-    ownerId: string | null;
-    ownerPid: number | null;
-    ownerBirth: string | null;
-    ownerIdentityKind: string | null;
-    credentialAttemptId: string | null;
-  }> {
-    return this.db
-      .prepare(
-        `SELECT fingerprint, thread_id, provider, source_event_id, source_turn_id,
-                failure_kind, scope, decision, due_at, attempts, max_attempts,
-                outcome, dispatch_attempt_id, recovery_correlation_id,
-                dispatch_settlement, dispatch_kind, resumed_turn_id, outcome_reason, usage_limit, created_at, updated_at,
-                dispatch_owner_id, dispatch_owner_pid, dispatch_owner_birth,
-                dispatch_owner_identity_kind, credential_attempt_id
-         FROM orchestration_recovery_intents
-         WHERE ((
-             outcome = 'resumed' AND dispatch_settlement IN ('prepared', 'accepted')
-           ) OR (
-             outcome = 'succeeded' AND credential_attempt_id IS NOT NULL
-           ) OR (
-             outcome = 'indeterminate' AND credential_attempt_id IS NOT NULL
-           ) OR (
-             ? = 1 AND outcome = 'indeterminate'
-             AND credential_attempt_id IS NULL
-           ))
-           AND (? IS NULL OR dispatch_kind = ?)
-           AND (? = 0 OR credential_attempt_id IS NULL)
-           AND (
-             (dispatch_attempt_id IS NOT NULL AND recovery_correlation_id IS NOT NULL)
-             OR (? = 1 AND outcome = 'indeterminate' AND credential_attempt_id IS NULL)
-           )
-         ORDER BY updated_at ASC, created_at ASC`,
-      )
-      .all(
-        unlinkedOnly ? 1 : 0,
-        kind ?? null,
-        kind ?? null,
-        unlinkedOnly ? 1 : 0,
-        unlinkedOnly ? 1 : 0,
-      )
-      .map((row: unknown) => {
-        const prepared = row as RecoveryIntentRow & {
-          dispatch_owner_id: string | null;
-          dispatch_owner_pid: number | null;
-          dispatch_owner_birth: string | null;
-          dispatch_owner_identity_kind: string | null;
-          credential_attempt_id: string | null;
-        };
-        return {
-          intent: mapRecoveryIntentRow(prepared),
-          ownerId: prepared.dispatch_owner_id,
-          ownerPid: prepared.dispatch_owner_pid,
-          ownerBirth: prepared.dispatch_owner_birth,
-          ownerIdentityKind: prepared.dispatch_owner_identity_kind,
-          credentialAttemptId: prepared.credential_attempt_id,
-        };
-      });
+    ...args: Parameters<
+      SqliteRecoveryStorage<
+        ConnectionRecoveryIntent,
+        ConnectionRecoveryProjection,
+        ConnectionRecoveryOutcomeReason
+      >['preparedRecoveryDispatches']
+    >
+  ) {
+    return this.recoveryStorage().preparedRecoveryDispatches(...args);
   }
 
-  private indeterminatePreparedRecoveryDispatch(input: {
-    fingerprint: string;
-    dispatchAttemptId: string;
-    recoveryCorrelationId: string;
-    ownerId: string | null;
-    ownerPid: number | null;
-    now: string;
-  }): ConnectionRecoveryIntent | null {
-    const row = this.db
-      .prepare(
-        `UPDATE orchestration_recovery_intents
-         SET outcome = 'indeterminate', updated_at = ?
-         WHERE fingerprint = ? AND outcome = 'resumed'
-           AND dispatch_settlement = 'prepared'
-           AND dispatch_attempt_id = ? AND recovery_correlation_id = ?
-           AND dispatch_owner_id IS ? AND dispatch_owner_pid IS ?
-         RETURNING fingerprint, thread_id, provider, source_event_id, source_turn_id,
-                   failure_kind, scope, decision, due_at, attempts, max_attempts,
-                   outcome, dispatch_attempt_id, recovery_correlation_id,
-                   dispatch_settlement, dispatch_kind, resumed_turn_id, outcome_reason, usage_limit, created_at, updated_at`,
-      )
-      .get(
-        input.now,
-        input.fingerprint,
-        input.dispatchAttemptId,
-        input.recoveryCorrelationId,
-        input.ownerId,
-        input.ownerPid,
-      ) as RecoveryIntentRow | undefined;
-    return row ? mapRecoveryIntentRow(row) : null;
-  }
-
-  private recordRecoveryTerminal(
-    fingerprint: string,
-    outcome: Extract<
-      ConnectionRecoveryOutcome,
-      'succeeded' | 'failed' | 'canceled'
-    >,
-    now: string,
-  ): RecoveryTransition {
-    try {
-      const result = this.db
-        .prepare(
-          `UPDATE orchestration_recovery_intents SET outcome = ?, updated_at = ?
-         WHERE fingerprint = ? AND outcome IN ('resumed', 'indeterminate')
-           AND (? != 'succeeded' OR (outcome = 'resumed' AND dispatch_settlement = 'accepted'))`,
-        )
-        .run(outcome, now, fingerprint, outcome) as {
-        changes: number | bigint;
-      };
-      this.faults.recoveryTransition?.();
-      return recoveryTransition(result);
-    } catch (error) {
-      // A durable UPDATE can succeed before the caller observes a driver or
-      // post-write fault. Re-read only this exact desired terminal fact.
-      const row = this.db
-        .prepare(
-          'SELECT outcome FROM orchestration_recovery_intents WHERE fingerprint = ?',
-        )
-        .get(fingerprint) as { outcome?: string } | undefined;
-      if (row?.outcome === outcome) return { kind: 'applied' };
-      throw error;
-    }
-  }
-
-  private markRecoveryCompensation(
-    fingerprint: string,
-    now: string,
-    expectedOutcome: 'resumed' | 'canceled' | 'indeterminate' = 'resumed',
-  ): RecoveryTransition {
-    const result = this.db
-      .prepare(
-        `UPDATE orchestration_recovery_intents
-         SET outcome = 'compensation-required', updated_at = ?
-         WHERE fingerprint = ? AND outcome = ?`,
-      )
-      .run(now, fingerprint, expectedOutcome) as { changes: number | bigint };
-    return recoveryTransition(result);
-  }
-
-  private resolveRecoveryCompensationRecord(
-    fingerprint: string,
-    now: string,
-  ): RecoveryTransition {
-    const result = this.db
-      .prepare(
-        `UPDATE orchestration_recovery_intents
-         SET outcome = 'failed', updated_at = ?
-         WHERE fingerprint = ? AND outcome = 'compensation-required'`,
-      )
-      .run(now, fingerprint) as { changes: number | bigint };
-    return recoveryTransition(result);
-  }
-
-  private cancelRecovery(
-    fingerprint: string,
-    now: string,
-    reason?: ConnectionRecoveryOutcomeReason,
-  ): RecoveryTransition {
-    const result = this.db
-      .prepare(
-        `UPDATE orchestration_recovery_intents
-         SET outcome = 'canceled', outcome_reason = COALESCE(?, outcome_reason), updated_at = ?
-         WHERE fingerprint = ? AND outcome IN ('armed', 'resumed', 'manual')`,
-      )
-      .run(reason ?? null, now, fingerprint) as { changes: number | bigint };
-    return recoveryTransition(result);
-  }
-
-  /**
-   * #3157: settles an intent that is still only waiting — armed, never
-   * claimed — without a dispatch. Anything already claimed belongs to its
-   * claim and is left alone (`stale`).
-   */
-  private retireWaitingRecovery(input: {
-    fingerprint: string;
-    outcome: 'manual' | 'canceled';
-    reason: ConnectionRecoveryOutcomeReason;
-    now: string;
-  }): RecoveryTransition {
-    const result = this.db
-      .prepare(
-        `UPDATE orchestration_recovery_intents
-         SET outcome = ?, outcome_reason = ?, updated_at = ?
-         WHERE fingerprint = ?
-           AND (outcome = 'armed' OR (outcome = 'manual' AND usage_limit = 1))
-           AND dispatch_attempt_id IS NULL AND recovery_correlation_id IS NULL`,
-      )
-      .run(input.outcome, input.reason, input.now, input.fingerprint) as {
-      changes: number | bigint;
-    };
-    return recoveryTransition(result);
-  }
-
-  /**
-   * A persisted source terminal is stronger than a lost in-process cancel
-   * result. On restart, cancel only the exact still-pending intent whose
-   * source turn has a durable terminal event; no timer or provider retry can
-   * then revive it.
-   */
-  private cancelSourceTerminatedRecoveries(now: string): RecoveryTransition {
-    const result = this.db
-      .prepare(
-        `UPDATE orchestration_recovery_intents AS intent
-         SET outcome = 'canceled', updated_at = ?
-         WHERE intent.outcome IN ('armed', 'resumed', 'manual')
-           AND ${RECOVERY_SOURCE_TERMINATED}`,
-      )
-      .run(now) as { changes: number | bigint };
-    return recoveryTransition(result);
-  }
-
-  /**
-   * #3563: the same rule for one intent, when its timer fires. A startup
-   * repair that answered `unavailable` cannot then replay a turn whose source
-   * already ended, and it no longer has to gate every other recovery.
-   * `applied` canceled the intent; `stale` means dispatch may proceed.
-   */
-  private cancelRecoveryIfSourceTerminated(
-    fingerprint: string,
-    now: string,
-  ): RecoveryTransition {
-    const result = this.db
-      .prepare(
-        `UPDATE orchestration_recovery_intents AS intent
-         SET outcome = 'canceled', updated_at = ?
-         WHERE intent.fingerprint = ?
-           AND intent.outcome IN ('armed', 'resumed', 'manual')
-           AND ${RECOVERY_SOURCE_TERMINATED}`,
-      )
-      .run(now, fingerprint) as { changes: number | bigint };
-    return recoveryTransition(result);
-  }
-
-  /** A bounded shutdown may lose its per-intent CAS result. Persist the
-   * cancel request itself so startup fences it before any timer is rebuilt.
-   *
-   * #3157: a usage-limit intent that is only waiting for its provider reset,
-   * or that the user was left to resume (`manual`, whether the setting was off
-   * or the provider gave no reset), holds no dispatch to stop. It is not
-   * fenced: a restart rebuilds its timer (`reconcile`), a manual one is never
-   * dispatched on its own, and the coordinator re-checks the Session before
-   * any dispatch. */
-  private cancelShutdownRecoveries(now: string): RecoveryTransition {
-    const result = this.db
-      .prepare(
-        `UPDATE orchestration_recovery_intents
-         SET shutdown_cancel_requested_at = ?, updated_at = ?
-         WHERE outcome IN ('armed', 'resumed', 'manual')
-           AND NOT (
-             COALESCE(dispatch_attempt_id, recovery_correlation_id) IS NULL
-             AND COALESCE(usage_limit, 0) = 1
-             AND (
-               (outcome = 'armed' AND decision = 'wait-until-reset')
-               OR outcome = 'manual'
-             )
-           )`,
-      )
-      .run(now, now) as { changes: number | bigint };
-    return recoveryTransition(result);
+  private indeterminatePreparedRecoveryDispatch(
+    ...args: Parameters<
+      SqliteRecoveryStorage<
+        ConnectionRecoveryIntent,
+        ConnectionRecoveryProjection,
+        ConnectionRecoveryOutcomeReason
+      >['indeterminatePreparedRecoveryDispatch']
+    >
+  ) {
+    return this.recoveryStorage().indeterminatePreparedRecoveryDispatch(
+      ...args,
+    );
   }
 
   /**
@@ -18189,12 +17697,6 @@ const RECOVERY_SOURCE_TERMINATED = `(
       AND event.method IN ('turn.aborted', 'turn.failed')
   )
 )`;
-
-function recoveryTransition(result: {
-  changes: number | bigint;
-}): RecoveryTransition {
-  return Number(result.changes) === 1 ? { kind: 'applied' } : { kind: 'stale' };
-}
 
 function credentialApplicationTransition(result: {
   changes: number | bigint;
