@@ -105,7 +105,9 @@ for (const mode of ['complete', 'lost-terminal', 'cancel'] as const) {
     await original.pause();
     first.close();
     const store = new EventStore(file);
-    cleanup.push(() => store.close());
+    cleanup.push(() => {
+      store.close();
+    });
     const records = store.takeInterruptedTurnBoundaries();
     expect(records).toHaveLength(1);
     const record = records[0]!;
@@ -168,6 +170,7 @@ for (const mode of ['complete', 'lost-terminal', 'cancel'] as const) {
       logger,
     });
     await adapter.startSession({
+      provider: 'station-agent',
       threadId: 'conversation',
       cwd: home,
       metadata: { agentId: 'assistant', userId: 'owner' },

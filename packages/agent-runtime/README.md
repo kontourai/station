@@ -13,7 +13,7 @@ AI SDK v3 interface, VoltAgent 2.10.0 and Strands 1.19.0 VercelModel. Optional
 framework dependencies are exact peers. The package imports no Station code.
 
 The public root also exports an agent-turn journal and recovery owner. Its
-separate `agent_steps_` namespace declares writer format `agent-steps/5` and
+separate `agent_steps_` namespace declares writer format `agent-steps/6` and
 leaves existing `runtime-model/1` records intact. An active conversation has
 one owner. Recovery requires a proven-dead owner and compares the complete
 observed fence inside the SQLite write transaction. A retained Station turn
@@ -25,7 +25,8 @@ for the original agent definition and Session, reauthorizes current access,
 then re-enters the framework with its retained history. Changed or unavailable
 configuration holds recovery. Only text turns are admitted by this preview.
 Writer 5 adds cancellation requests, terminal timestamps and retained transport
-frames. It validates exact schemas from writers 1–4, preserves existing record
+frames. Writer 6 pins canonical Conversation affinity separately from the
+execution Session coordinate. It validates exact schemas from writers 1–5, preserves existing record
 bytes and adds new tables atomically. Legacy settled rows receive a migration
 observation timestamp rather than a reconstructed historical completion time.
 The prior writer refuses the new metadata; future writers refuse here too.

@@ -172,6 +172,7 @@ function createStationOwner(home: string) {
     isReleased: (id) => releasedOwners.has(id),
   });
   let preview: FeaturePreviewSelector | undefined;
+  let conversationIdentity: ((sessionId: string) => string) | undefined;
   let recoveryReady: ((input: DurableAgentDescriptor) => boolean) | undefined;
   let reconcile:
     | ((input: DurableAgentDescriptor, turnId: string) => void | Promise<void>)
@@ -341,6 +342,7 @@ function createStationOwner(home: string) {
     },
     configure(options: {
       preview: FeaturePreviewSelector;
+      conversationIdentity?: typeof conversationIdentity;
       authorize?: (input: DurableAgentDescriptor) => Promise<void>;
       onWire?: typeof onWire;
       failed: (error: unknown) => void;
@@ -349,6 +351,7 @@ function createStationOwner(home: string) {
       reconcile?: typeof reconcile;
     }) {
       preview = options.preview;
+      conversationIdentity = options.conversationIdentity;
       recoveryReady = options.recoveryReady;
       reconcile = options.reconcile;
       authorize = options.authorize;
@@ -510,6 +513,13 @@ function createStationOwner(home: string) {
         lease = await runtime.start({
           key,
           input: agentWire(captured),
+          ...(conversationIdentity
+            ? {
+                affinityConversationId: conversationIdentity(
+                  key.conversationId,
+                ),
+              }
+            : {}),
           implementation: 'station-agent/1',
         });
         bindDurableApprovalObserver(lease, (id) => onApproval?.(captured, id));

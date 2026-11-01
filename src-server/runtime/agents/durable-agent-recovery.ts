@@ -38,6 +38,7 @@ export function configureDurableAgentRecovery(options: {
   adapter: StationAgentAdapter;
   orchestration: OrchestrationService;
   preview: FeaturePreviewSelector;
+  conversationIdentity?: (sessionId: string) => string;
   approvalRegistry: ApprovalRegistry;
   agentHooks?: Map<string, unknown>;
   agentSpecs: Map<string, AgentSpec>;
@@ -49,6 +50,7 @@ export function configureDurableAgentRecovery(options: {
     options.logger.error('Durable Station turn failed', { error });
   owner.configure({
     preview: options.preview,
+    conversationIdentity: options.conversationIdentity,
     recoveryReady: (input) =>
       !!input.correlation &&
       adapter.canRecoverDurableTurn(

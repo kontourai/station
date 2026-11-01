@@ -859,6 +859,9 @@ export async function initializeRuntime(
       adapter: stationAgentAdapter,
       orchestration: orchestrationService,
       preview: deps.durableAgentPreview,
+      conversationIdentity: (sessionId) =>
+        orchestrationEventStore.conversationForSession(sessionId)
+          ?.conversationId ?? sessionId,
       approvalRegistry,
       agentHooks: deps.agentHooksMap,
       agentSpecs: deps.agentSpecs,

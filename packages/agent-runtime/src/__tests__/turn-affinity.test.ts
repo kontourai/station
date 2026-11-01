@@ -93,3 +93,30 @@ it('provider affinity reaches the native model boundary and new conversations ne
     scripted: { sessionId: f.lease.providerSessionId },
   });
 });
+
+it('successor Sessions share canonical conversation affinity while forks get a fresh identity', async () => {
+  const f = await turnFixture();
+  cleanup.push(() => f.close());
+  await f.lease.run(async () => {});
+  const first = await f.runtime.start({
+    key: { ...f.key, conversationId: 'session-A' },
+    affinityConversationId: 'canonical-conversation',
+    input: 'first',
+    implementation: 'station-agent/1',
+  });
+  await first.run(async () => {});
+  const successor = await f.runtime.start({
+    key: { ...f.key, conversationId: 'session-B' },
+    affinityConversationId: 'canonical-conversation',
+    input: 'next',
+    implementation: 'station-agent/1',
+  });
+  const fork = await f.runtime.start({
+    key: { ...f.key, conversationId: 'session-C' },
+    affinityConversationId: 'fork-conversation',
+    input: 'fork',
+    implementation: 'station-agent/1',
+  });
+  expect(successor.providerSessionId).toBe(first.providerSessionId);
+  expect(fork.providerSessionId).not.toBe(first.providerSessionId);
+});
