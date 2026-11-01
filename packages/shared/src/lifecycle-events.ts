@@ -76,7 +76,7 @@ export type StopIntent =
  * generation's events name it here: they belong to the instance whose pid is
  * `pid`, while the event's own `pid` (and, after a handoff into a new build,
  * its `sha`) is the generation's. Events without it, from a direct start or
- * an older server, match by their own pid and sha as before.
+ * an older server, match by their own pid and sha.
  */
 export type LifecycleSupervisor = { pid: number; generation: number };
 
