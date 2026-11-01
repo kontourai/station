@@ -301,9 +301,9 @@ vi.mock('../../../providers/connection-factories.js', () => ({
   createVectorDbProvider: vi.fn(() => null),
 }));
 
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { isAbsolute, join, relative } from 'node:path';
 import {
   captureLoggerLines,
   stopLoggerCaptures,
@@ -3202,6 +3202,31 @@ describe('ConnectionService', () => {
         timeoutMs: 20_000,
       }),
     );
+    // #4380: the smoke never runs in the server's own directory, which for
+    // an installed archive is the read-only version directory an engine
+    // sandbox would litter with `.git`/`.agents` placeholders. It runs in a
+    // private probe workspace under the Station home.
+    const smokeCwd = runner.mock.calls[0][0].cwd as string;
+    // Compare resolved paths by their tail: on Windows the runner's temp
+    // root can surface as an 8.3 short name on one side and the long name on
+    // the other, so a `relative()` between them climbs out with `..`.
+    const resolvedSmokeCwd = realpathSync.native(smokeCwd);
+    expect(resolvedSmokeCwd).not.toBe(realpathSync.native(process.cwd()));
+    const fromServerCwd = relative(
+      realpathSync.native(process.cwd()),
+      resolvedSmokeCwd,
+    );
+    // Not inside the server's directory (a cross-drive path is absolute).
+    expect(!fromServerCwd.startsWith('..') && !isAbsolute(fromServerCwd)).toBe(
+      false,
+    );
+    expect(resolvedSmokeCwd.split(/[\\/]/).slice(-4)).toEqual([
+      'runtime',
+      'acp-workspaces',
+      'probe',
+      expect.stringMatching(/^[0-9a-f]{64}$/),
+    ]);
+    expect(statSync(smokeCwd).isDirectory()).toBe(true);
     expect(evidence).toMatchObject({
       level: 'smoke-passed',
       smoke: { status: 'passed', model: 'gpt-5.4', turnLimit: 1 },

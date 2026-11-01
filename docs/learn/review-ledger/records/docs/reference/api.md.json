@@ -634,7 +634,9 @@
 
     "src-server/routes/operations/repairs.ts",
 
-    "src-server/services/automation/repair-controller.ts"
+    "src-server/services/automation/repair-controller.ts",
+
+    "src-server/services/terminal/terminal-tickets.ts"
   ],
 
   "checks": [

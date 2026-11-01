@@ -21,6 +21,7 @@ import {
   openSync,
   readdirSync,
   readFileSync,
+  readSync,
   realpathSync,
   renameSync,
   rmSync,
@@ -1312,6 +1313,72 @@ export function buildUiBootstrapScript(opts: {
 }
 
 /**
+ * #3994: forward the terminal socket's WebSocket upgrade through the UI
+ * server to the API listener, so a browser that reached Station through this
+ * proxy (a tailnet name, a reverse proxy, a phone) opens the same-origin
+ * socket. Only that exact path is forwarded; every other upgrade is dropped.
+ * The socket is admitted by the single-use ticket the gateway redeems, never
+ * by this hop, so every `x-station-*`, `tailscale-*` and forwarding header is
+ * stripped rather than attested. Self-contained: it is serialized into the
+ * spawned server with `Function.prototype.toString`.
+ */
+export function configureTerminalUpgrade(
+  server: {
+    on(
+      event: 'upgrade',
+      listener: (
+        request: import('node:http').IncomingMessage,
+        socket: import('node:stream').Duplex,
+        head: Buffer,
+      ) => void,
+    ): unknown;
+  },
+  net: { connect(port: number, host: string): import('node:net').Socket },
+  upstreamPort: number,
+): void {
+  const terminalSocketPath = '/api/terminal/socket';
+  server.on('upgrade', (request, socket, head) => {
+    if (
+      request.url !== terminalSocketPath ||
+      String(request.headers.upgrade ?? '').toLowerCase() !== 'websocket'
+    ) {
+      socket.destroy();
+      return;
+    }
+    const lines = [`GET ${terminalSocketPath} HTTP/1.1`];
+    for (let index = 0; index < request.rawHeaders.length; index += 2) {
+      const name = request.rawHeaders[index] ?? '';
+      const lower = name.toLowerCase();
+      if (
+        lower === 'host' ||
+        lower === 'forwarded' ||
+        lower.startsWith('x-forwarded-') ||
+        lower.startsWith('x-station-') ||
+        lower.startsWith('tailscale-')
+      )
+        continue;
+      lines.push(`${name}: ${request.rawHeaders[index + 1] ?? ''}`);
+    }
+    lines.push(`Host: 127.0.0.1:${upstreamPort}`);
+    const upstream = net.connect(upstreamPort, '127.0.0.1');
+    const close = () => {
+      socket.destroy();
+      upstream.destroy();
+    };
+    upstream.once('connect', () => {
+      upstream.write(`${lines.join('\r\n')}\r\n\r\n`);
+      if (head.length) upstream.write(head);
+      upstream.pipe(socket);
+      socket.pipe(upstream);
+    });
+    upstream.on('error', close);
+    upstream.on('close', close);
+    socket.on('error', close);
+    socket.on('close', close);
+  });
+}
+
+/**
  * Build the `node -e` source string for the spawned UI server, serializing the
  * shared {@link uiRequestHandler} so the live server and tests share one
  * implementation.
@@ -1374,6 +1441,7 @@ export function buildUiServerScript(opts: {
     const server=http.createServer(uiRequestHandler({http,crypto,fs,path,dir,mime,inject,upstreamPort,backendPrefixes,backendExcludedPrefixes,backendNavigationPrefixes,readinessFile,identity,internalApiToken,trustedTailscaleServeOrigin,hostedTenantAuthorities,immutableAsset,documentCsp}));
     (${configureHttpReceive.toString()})(server,uploadPolicy,mediaUploadPolicies.walkthrough.totalMs);
     (${configureHttpKeepAlive.toString()})(server);
+    (${configureTerminalUpgrade.toString()})(server,require('net'),upstreamPort);
     server.listen(${opts.uiPort},${JSON.stringify(opts.host ?? '0.0.0.0')});
     ${opts.exitWithLauncher ? "if(process.connected)process.on('disconnect',()=>process.exit(0));else process.exit(0);" : ''}
   `;
@@ -1652,6 +1720,26 @@ function getInstanceServicePorts(
  */
 function isInstanceRunning(record: InstanceStateRecord): boolean {
   return isProcessAlive(record.serverPid) || isProcessAlive(record.uiPid);
+}
+
+/**
+ * Whether the record's core server is still running: its recorded pid is
+ * alive and, when the start captured a fingerprint, still the same process
+ * (a reused pid is not this server). For a supervised record the pid is the
+ * supervisor's, which owns the core while it lives. An identity that cannot
+ * be read counts as alive: only a proven absence may restart an instance.
+ *
+ * `isInstanceRunning` keeps its either-pid rule for `stop` and reclaim, so a
+ * half-dead instance stays stoppable; `start` asks this one before it reports
+ * an instance as already running (#4002).
+ */
+function isInstanceServerAlive(record: InstanceStateRecord): boolean {
+  if (!isProcessAlive(record.serverPid)) return false;
+  if (!record.serverFingerprint || !record.serverPid) return true;
+  const actual = inspectProcessFingerprint(record.serverPid);
+  return (
+    !actual || fingerprintMatchesRecorded(actual, record.serverFingerprint)
+  );
 }
 
 function notifyBuildUpdated(serverPort: number): void {
@@ -4500,6 +4588,96 @@ export async function awaitReadiness(
 }
 
 /**
+ * A connect failure as text. Connecting to `localhost` tries every address it
+ * resolves to (Node's happy-eyeballs), and when all of them refuse the error
+ * is an AggregateError whose own message is empty — which printed as `()`
+ * (#4382). Name the inner failures, or at least the code, instead.
+ */
+export function describeSocketError(error: unknown): string {
+  if (!(error instanceof Error)) return String(error) || 'connection failed';
+  if (error.message) return error.message;
+  if (error instanceof AggregateError) {
+    const inner = [
+      ...new Set(
+        error.errors
+          .map((cause) =>
+            cause instanceof Error
+              ? cause.message || (cause as NodeJS.ErrnoException).code
+              : String(cause),
+          )
+          .filter(Boolean),
+      ),
+    ];
+    if (inner.length > 0) return inner.join('; ');
+  }
+  return (error as NodeJS.ErrnoException).code ?? 'connection failed';
+}
+
+/** How much of a server log's end `lastFatalServerLogLine` reads. */
+const FATAL_LOG_TAIL_BYTES = 64 * 1024;
+const LIFECYCLE_START_HEADER = /^--- \S+ station lifecycle start /;
+// `Error: STATION_HOME_RESET_REQUIRED: …`, `Error: listen EADDRINUSE …`,
+// `TypeError: …`: the first line of an uncaught error a failed boot prints.
+const FATAL_LOG_LINE =
+  /^(?:Uncaught )?(?:[A-Za-z]*Error|[A-Z][A-Z0-9_]{3,}): \S/;
+const LOG_LEVEL_FATAL_LINE = /\b(?:FATAL|ERROR)\b.*\(station\)/;
+/** ANSI colour codes (ESC [ … m) the server's pretty logger writes. */
+const ANSI_ESCAPE = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g');
+
+/**
+ * The last fatal-looking line the managed server wrote to `logFile` since this
+ * start's header, or null when there is none or the log is unreadable. A
+ * server that exits before it listens leaves its cause only there, and the
+ * start failure used to say nothing about it (#4382).
+ */
+export function lastFatalServerLogLine(logFile: string): string | null {
+  let text: string;
+  try {
+    const fd = openSync(logFile, fsConstants.O_RDONLY);
+    try {
+      const { size } = fstatSync(fd);
+      const length = Math.min(size, FATAL_LOG_TAIL_BYTES);
+      const buffer = Buffer.alloc(length);
+      readSync(fd, buffer, 0, length, size - length);
+      text = buffer.toString('utf8');
+    } finally {
+      closeSync(fd);
+    }
+  } catch {
+    return null;
+  }
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.replace(ANSI_ESCAPE, ''));
+  let from = 0;
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    if (LIFECYCLE_START_HEADER.test(lines[index])) {
+      from = index + 1;
+      break;
+    }
+  }
+  for (let index = lines.length - 1; index >= from; index -= 1) {
+    const line = lines[index].trim();
+    if (FATAL_LOG_LINE.test(line) || LOG_LEVEL_FATAL_LINE.test(line)) {
+      return line.length > 500 ? `${line.slice(0, 500)}…` : line;
+    }
+  }
+  return null;
+}
+
+/**
+ * What a failed start adds after its own message: the server's last fatal
+ * log line, when there is one, and where the log is (#4382).
+ */
+export function serverStartFailureContext(logFile: string): string[] {
+  const fatal = lastFatalServerLogLine(logFile);
+  return [
+    ...(fatal ? [`Last server error: ${fatal}`] : []),
+    `Server log: ${logFile}`,
+  ];
+}
+
+/**
  * Waits for a TCP listener the managed server opens beside its API port (the
  * terminal and voice sockets). With `childAlive` it takes the same bounded
  * slow-boot extension as `waitForIdentity` (#2964): while the server is alive
@@ -4555,7 +4733,7 @@ export async function waitForTcpOk(
         socket.once('connect', () => finish({ ok: true }));
         socket.once('timeout', () => finish({ ok: false, failure: 'timeout' }));
         socket.once('error', (error) =>
-          finish({ ok: false, failure: error.message }),
+          finish({ ok: false, failure: describeSocketError(error) }),
         );
       },
     );
@@ -4632,16 +4810,27 @@ export async function start(opts: StartOptions = {}): Promise<void> {
   const hostedProbeHeaders = hostedProbeAuthority
     ? { Host: hostedProbeAuthority }
     : undefined;
-  const runningMatch = ensureSingleMatch(
+  let runningMatch = ensureSingleMatch(
     listRunningInstances({ projectHome }).filter((record) =>
       matchesSelector(record, normalizedSelector),
     ),
     'start',
   );
-  // The home schema gate runs in the logDirectoryIsInsideHome block below —
-  // after the recursive mkdir, because the gate requires the home's parent to
-  // exist and a custom --base path may have a multi-level missing ancestor
-  // chain (#1570 review; supersedes the earlier pre-mkdir call from #1567).
+  // A record whose UI listener outlived its core server is not running: it
+  // would answer "Already running" while nothing serves the API (#4002).
+  // Stop what remains, which also frees its ports, and start it afresh.
+  if (runningMatch && !isInstanceServerAlive(runningMatch)) {
+    console.log(
+      `Instance ${runningMatch.instanceId}: server not running (pid ${runningMatch.serverPid ?? 'unrecorded'}); restarting`,
+    );
+    stopRecord(runningMatch, false, 'recovery');
+    runningMatch = null;
+  }
+  // The home schema gate runs below, before the log directory and the
+  // instance record are written — after the recursive mkdir, because the
+  // gate requires the home's parent to exist and a custom --base path may
+  // have a multi-level missing ancestor chain (#1570 review; supersedes the
+  // earlier pre-mkdir call from #1567).
   const buildPaths = resolveBuildPaths(instanceId);
   const needsBuild = !watch && (Boolean(build) || !isInstalled(instanceId));
   const warnStale = () => {
@@ -4735,18 +4924,22 @@ export async function start(opts: StartOptions = {}): Promise<void> {
     );
   }
 
+  // An empty home directory is gate-safe scaffolding, and the recursive
+  // mkdir must come first: the gate requires the home's parent to exist, and
+  // a custom --base path may have a multi-level missing ancestor chain.
+  mkdirSync(projectHome, { recursive: true, mode: 0o700 });
+  // Writing logs/ into a home the server has not gated yet would make a
+  // brand-new home fail the #1560 schema gate on first boot (#1570). So would
+  // the instance record a prebuilt archive keeps in `<home>/state/<channel>`
+  // for a home that is its own Station root (`--temp-home`, `--home=<dir>`),
+  // whatever the log location (#4381). The CLI ships in lockstep with the
+  // server, so running the same gate here either bootstraps the marker or
+  // fails closed with the server's exact error — before anything is written
+  // or spawned.
+  ensureStationHomeSchemaSync(projectHome);
+
   let logDirectory = requestedLogDirectory;
   if (logDirectoryIsInsideHome) {
-    // An empty home directory is gate-safe scaffolding, and the recursive
-    // mkdir must come first: the gate requires the home's parent to exist,
-    // and a custom --base path may have a multi-level missing ancestor chain.
-    mkdirSync(projectHome, { recursive: true, mode: 0o700 });
-    // Writing logs/ into a home the server has not gated yet would make a
-    // brand-new home fail the #1560 schema gate on first boot (#1570). The
-    // CLI ships in lockstep with the server, so running the same gate here
-    // either bootstraps the marker or fails closed with the server's exact
-    // error — before anything is written or spawned.
-    ensureStationHomeSchemaSync(projectHome);
     let current = resolve(projectHome);
     for (const segment of homeRelation.split(/[\\/]+/).filter(Boolean)) {
       current = join(current, segment);
@@ -5307,7 +5500,10 @@ export async function start(opts: StartOptions = {}): Promise<void> {
     // tense is true when it prints.
     warnOnSharedHome(instanceId, projectHome);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = [
+      error instanceof Error ? error.message : String(error),
+      ...serverStartFailureContext(logFile),
+    ].join('\n');
     try {
       stop({ generation });
     } catch (cleanupError) {

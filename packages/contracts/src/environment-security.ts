@@ -524,8 +524,7 @@ export const PAIRING_SCOPE_DESCRIPTIONS: Record<
   },
   [PAIRING_SCOPE_TERMINAL_OBSERVE]: {
     label: 'Watch terminals',
-    summary:
-      'Takes effect with remote watch: view terminal output without typing or changing sessions.',
+    summary: 'View terminal output without typing or changing sessions.',
   },
   [PAIRING_SCOPE_TERMINAL_OPERATE]: {
     label: 'Terminal',

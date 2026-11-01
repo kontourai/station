@@ -6267,22 +6267,35 @@ They do not qualify a real Chromium or provider run.
 [TerminalSessions](../../src-server/services/terminal/terminal-sessions.ts) owns
 instance UUIDs, durable Project/binding records, cwd confinement and operation
 authority. [ShellHost](../../src-server/services/terminal/shell-host.ts) supplies
-a replaceable process handle; the in-process implementation uses node-pty.
+a replaceable process handle. The in-process implementation uses node-pty;
+[SupervisorShellHost](../../src-server/services/terminal/supervisor-shell-host.ts)
+is used instead when the process supervisor grants `workloads`. Then the shell and
+its journal live in the supervisor's workload host
+([PtyWorkloadHost](../../src-server/services/terminal/pty-workload-host.ts), built as
+`station-pty-host.js`), and a running session is reattached after a core restart.
 [TerminalJournal](../../src-server/services/terminal/terminal-journal.ts) owns
 serialized sanitized records, bounded memory and append-only disk segments.
-The [personal-operator control routes](../../src-server/routes/projects/terminal-session-routes.ts)
-are composed by runtime routes and disposed through TerminalService. Hosted,
-account, device, agent and plugin admission is withheld. The legacy Coding
-socket and process projections retain their current owner during migration.
+The [operator control routes](../../src-server/routes/projects/terminal-session-routes.ts)
+are composed by runtime routes and disposed through TerminalService. They admit
+the operator in person and the operator's own paired devices
+([`isTerminalOperator`](../../src-server/security/coding-authority.ts)); hosted,
+account, member, agent and plugin admission is withheld. Engine sign-in, the
+Project terminal close and the process projections reach TerminalSessions for
+socket session ids; the legacy listener keeps its own sessions until removal.
 
 The [design boundary](../design/terminal.md#first-implementation-boundary-3994-part-a)
-separates this foundation from supervisor survival, retention Settings, the
-live paired-device admission, SDK runtime and Ghostty. The
+separates this foundation from retention Settings and Ghostty. The
 [same-origin gateway](../../src-server/services/terminal/terminal-gateway.ts)
-mounts on the API listener through the Station Hono provider; its
+mounts on the API listener through the Station Hono provider and redeems a
+single-use [ticket](../../src-server/services/terminal/terminal-tickets.ts)
+before each upgrade, with per-identity fairness, reserved operator slots,
+ping/pong liveness and a maximum lifetime. Its
 [channel runtime](../../src-server/services/terminal/terminal-channel-connection.ts)
 owns per-channel byte credit, replay acknowledgement and a bounded command
-queue. It uses the same personal-operator admission limit as the HTTP seam.
+queue. It uses the same operator admission as the HTTP seam. The SDK's
+[session store](../../packages/sdk/src/client/terminal-session-store.ts) is its
+client; the [admission suite](../../src-server/services/terminal/__tests__/terminal-gateway-admission.test.ts)
+drives the store against the real gateway.
 Global reservations bound retained record/journal instances, disk storage and raw
 tail payload. Ended/failed records can expire; request-triggered eviction checks
 operate authority on the victim's stored Project/binding, while live sessions

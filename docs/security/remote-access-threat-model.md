@@ -246,7 +246,8 @@ malformed identity never produce verified provenance.
 | HTTP request from a disallowed Origin | `403` | `403` | `403` |
 | Repeated authentication failures | Subject to bounded limiting | `429` with `Retry-After` | A valid credential clears the peer's failure window |
 | Terminal or voice `WS /__station/health` | Identity-only; no business session | Identity-only; no business session | Identity-only; no business session |
-| Other terminal or voice WebSocket paths | Existing local flow | Closed before session allocation | Requires the first-frame protocol below |
+| `WS /api/terminal/socket` on the main API listener | `401` before upgrade unless it redeems a single-use ticket | Same | Same; the ticket's minting request must be the operator in person or one of the operator's own paired devices ([terminal socket](#terminal-socket-on-operator-devices-3994)) |
+| Other terminal or voice WebSocket paths (the legacy terminal listener on `port + 1`, voice) | Existing local flow | Closed before session allocation | Requires the first-frame protocol below |
 
 Account-bound Knowledge access is limited to GET/HEAD source capabilities,
 root and adapter listings, record listings/details, graph reads and exact
@@ -1023,31 +1024,95 @@ dispatch. A claimed instruction with an uncertain acknowledgement stays
 indeterminate instead of being sent again. The Station-owned journal is deleted
 with the Session while client-input key tombstones prevent cross-Session reuse.
 These are source boundaries, not native-device or hosted journey qualification.
-The additive #3994 b1 socket at `/api/terminal/socket` uses the main API
-listener with first-frame credentials and the HTTP admission pipeline. It
-requires the personal operator in person even on loopback. Project/binding
+The #3994 socket at `/api/terminal/socket` uses the main API listener. Since
+part b2 it is admitted before its upgrade by a single-use ticket minted by
+`POST /api/terminal/tickets` through the ordinary HTTP admission pipeline (see
+[Terminal socket on operator devices](#terminal-socket-on-operator-devices-3994)).
+It admits the operator in person and the operator's own paired devices, even
+on loopback. Project/binding
 session checks, replay acknowledgement, strict input sequencing and bounded
-credit apply before terminal effects/output. The new `terminal:observe` token
+credit apply before terminal effects/output. The `terminal:observe` token
 is explicit operator promotion only and changes no preset or default grant.
-Paired devices, account principals, agents and plugins remain refused on this
-socket; remote relay/broker egress is not enabled by this tranche. The
+Members' devices, account principals, personal access tokens, agents and
+plugins remain refused. The
 [transport boundary](../design/terminal.md#transport-implementation-boundary-3994-part-b1)
-separates real-socket fixture evidence from future live remote qualification.
+separates real-socket fixture evidence from live remote qualification.
 The socket additionally admits only HTTP/HTTPS OSC 8 link metadata and
 discards a current observer's complete mouse/focus input reports. Core retention
 reserves configured journal/tail limits against global budgets; request-triggered
 eviction requires operate authority on the victim's stored Project/binding and
 never chooses a live session. POSIX scoped-session cleanup freezes and kills
 discovered owned descendant groups. The retained legacy listener and raw history
-remain separately owned during migration; these changes do not qualify native,
-Windows, account, broker or relay terminal admission. Personal
-access tokens and account-bound Devices are refused before HTTP forwarding.
-Pending auth has its own 32-socket budget (eight per peer), separate from 64
-authenticated connections; five-second timeouts count toward failure limiting.
+remain separately owned during migration; these changes do not qualify
+physical native, Windows/ConPTY, account or broker terminal admission. Personal
+access tokens and account-bound Devices are refused at the ticket mint.
 
-The terminal WebSocket requires `terminal:operate`, and the voice WebSocket
+### Terminal socket on operator devices (#3994)
+
+Owner decision (2026-10-31): every one of the operator's own paired devices
+counts as the operator for `terminal:operate` and `terminal:observe`, whether
+it reaches Station through a same-origin reverse proxy, a tailnet name, the
+relay's HTTP route or a native shell. "Own" is server-derived on every check
+([`isOperatorsOwnDevice`](../../src-server/security/coding-authority.ts)): a
+`device` credential whose current record is tied to no person, is not a
+delegation grant, is not a personal access token and is not revoked. A device
+tied to another person (a member, #3557) is refused, as are the internal
+principal and any request that may be an agent's; #2497 confinement for
+non-operator members is a separate program and is not widened here.
+
+- **Admission before upgrade.** A client first calls
+  `POST /api/terminal/tickets`, which requires the operator test above, a
+  current principal and at least `terminal:observe` (the pairing table refuses
+  personal tokens). The response is a 32-byte random ticket, valid for 30
+  seconds and redeemable once. The client offers it as a WebSocket subprotocol
+  (`station.terminal.ticket.<ticket>`) beside `station.terminal.v1`; the server
+  selects only `station.terminal.v1`, so the ticket is never echoed, never
+  enters a URL, access log or referrer, and only its SHA-256 digest is kept.
+  Redemption consumes it whether or not the upgrade then succeeds. An upgrade
+  without exactly one valid ticket gets `401` before any socket, parser or
+  timer exists, so an unauthenticated peer can no longer hold pending slots.
+- **Not a credential.** The ticket is not an operator or Device credential: it
+  authorizes one upgrade for 30 seconds and carries the minting Request as the
+  socket principal. Every later operation re-checks that principal as current
+  and re-reads its device record and scope; revoking or rebinding the device
+  refuses the next operation and its output. A socket's maximum lifetime is one
+  hour (close `4000`), after which the client reconnects with a new ticket.
+- **Origin.** Ticket-bound upgrades do not consult the browser Origin
+  allowlist. The ticket is obtainable only through an authenticated,
+  CORS-governed HTTP request, so a cross-site page cannot ride ambient cookies
+  to a socket; native WebViews and tailnet or proxy hostnames (whose Origin
+  the old allowlist did not know, the cause of the phone's close `1006`/`403`)
+  are admitted through the same HTTP decision that admits their other requests.
+- **Native shells.** Desktop, iOS and Android fetch the ticket through their
+  host-owned native HTTP transport, so the renderer never holds the bearer, and
+  open the socket to the selected direct origin. No Rust WebSocket bridge
+  exists. Physical-device qualification is recorded with the change, not here.
+- **Fairness and reserved slots.** At most 64 sockets in total and eight per
+  identity (a device id, else a digest of the credential). Eight slots are
+  reserved for the operator in person, so the operator's own devices, or a
+  runaway client, cannot lock the host's own browser or desktop out. Each
+  identity may hold eight unredeemed tickets (256 in total).
+- **Relay and shared addresses.** No admission state is keyed by network
+  address. A relay, reverse proxy, tailnet exit or carrier NAT shared by
+  several devices therefore cannot be blocked by one of them, and a failed
+  redemption backs nothing off. Guessing a ticket is infeasible (256 bits);
+  the mint itself sits behind the ordinary HTTP authentication limits.
+- **Liveness.** The server pings every 15 seconds and terminates a peer that
+  missed the previous pong. Every capacity or lifetime close terminates a peer
+  that ignores the close handshake after one second.
+- **UI server hop.** The CLI's UI server forwards only the
+  `/api/terminal/socket` upgrade to the loopback API listener and strips every
+  `x-station-*`, `tailscale-*` and forwarding header; it attests nothing. The
+  ticket is the only admission, so a forged proxy header gains no authority.
+- **Broker routes.** A browser broker route (WebRTC DataChannel) has no
+  WebSocket path to Station; the client refuses raw terminal egress there
+  before minting a ticket. That egress stays closed until a broker transport
+  for the socket exists and this model is updated again.
+
+The legacy terminal WebSocket requires `terminal:operate`, and the voice WebSocket
 requires `orchestration:operate`; both refuse an account-bound device and any
-personal access token whatever its scope (#3586). Pairing-family routes
+personal access token whatever its scope (#3586). The terminal socket ticket
+requires `terminal:observe` or `terminal:operate` and refuses the same callers. Pairing-family routes
 have additional credential-kind and explicit approval-leaf rules described
 above; a generic operate grant cannot reach them. A
 route the table does not recognize fails closed — denied, with a loud server
@@ -1083,9 +1148,12 @@ Starting, reading or cancelling one, and storing or removing an engine key, are
 an agent's is refused. A terminal sign-in runs the connection's own program
 with arguments taken only from the engine's live handshake, never from the
 request, so a paired device also needs both `coding:exec` and
-`terminal:operate` to start it; attaching also needs `terminal:operate`. Its
-session is closed at a 15-minute deadline and its terminal reopens only while
-it runs (`attachOnly`), never as a fresh shell. Any other
+`terminal:operate` to start it. Since #3994 b2 it is a server-owned
+`TerminalSessions` launch under a scope no Project can take; a client attaches
+to it by id through the terminal socket, with the operator test above and
+`terminal:operate` to type. Its
+session is closed at a 15-minute deadline and the view only attaches while
+it runs (`attachOnly`), never opening a fresh shell. Any other
 method goes to ACP `authenticate` on a short-lived process with a five-minute
 deadline; only https links from its stderr are relayed, and the server opens
 none. The attempt read is `engine:login` because it carries those links. A
@@ -2045,7 +2113,9 @@ require an exact allowed browser `Origin`; originless mutations fail closed.
 Operator and Device credentials in URLs, query parameters, logs, screenshots, WebSocket negotiated
 subprotocols, or public handshake responses are forbidden.
 
-Remote terminal and voice WebSockets send this as the first application frame:
+The legacy terminal listener and voice WebSockets send this as the first
+application frame (the main-listener terminal socket uses a single-use ticket
+instead; see [Terminal socket on operator devices](#terminal-socket-on-operator-devices-3994)):
 
 ```json
 {"type":"auth","protocolVersion":1,"credential":"<credential>"}

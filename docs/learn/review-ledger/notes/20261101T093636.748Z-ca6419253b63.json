@@ -1,0 +1,7 @@
+{
+  "revision": "ddd0bee6de13a456e2ecfee5cd267c2981826c56",
+
+  "notes": [
+    {"path":"docs/guides/code-hygiene.md","note":"Searched this document for claims about the changed behavior Changed sources: test:windows:portable additionally runs owned-process-windows.test.ts. No remaining claim here contradicts them.","inputs":["docs/guides/code-hygiene.md","package.json#/scripts"]}
+  ]
+}

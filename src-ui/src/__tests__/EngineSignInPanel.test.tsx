@@ -125,7 +125,12 @@ test('shows Not checked, the terms note, and starts a terminal sign-in by method
             kind: 'terminal',
             state: 'running',
             startedAt: '2026-10-21T10:00:01.000Z',
-            terminal: { projectSlug: '.engine-sign-in', terminalId: 'pi-1' },
+            terminal: {
+              projectSlug: '.engine-sign-in',
+              projectId: '.engine-sign-in',
+              bindingKey: 'engine-sign-in',
+              terminalId: '62b97fa1-b690-4d77-82b1-747dc86d3c11',
+            },
           },
         }
       : undefined,
@@ -150,7 +155,9 @@ test('shows Not checked, the terms note, and starts a terminal sign-in by method
   expect(JSON.parse(terminal.getAttribute('data-props') ?? '{}')).toMatchObject(
     {
       projectSlug: '.engine-sign-in',
-      terminalId: 'pi-1',
+      // Attached by the server's session id, under the sign-in scope.
+      target: { projectId: '.engine-sign-in', bindingKey: 'engine-sign-in' },
+      terminalId: '62b97fa1-b690-4d77-82b1-747dc86d3c11',
       attachOnly: true,
     },
   );

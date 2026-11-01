@@ -30,6 +30,7 @@ import {
   stageDesktopServerRuntime,
 } from './desktop-server-runtime.mjs';
 import { STATION_SERVER_EXTERNALS } from './server-build-config.mjs';
+import { stageWindowsBirthHelper } from './windows-birth-helper.mjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const PORTABLE_NODE_RUNTIME_CONFIG = join(
@@ -410,7 +411,9 @@ function treeFootprint(root) {
  *   install.ps1             Windows archives only: the Windows installer
  *                           (#2675 slice W), carried for the same reason
  *   lib/station-cli.mjs     the lifecycle-capable Station CLI, bundled
- *   runtime/                the pinned, digest-verified official Node.js
+ *   runtime/                the pinned, digest-verified official Node.js;
+ *                           on Windows also the precompiled process-birth
+ *                           helper and its SHA-256 (#2805)
  *   .station-prebuilt-archive  tells the CLI there is nothing to build
  *   dist-server/            the server bundle, stamped with this provenance,
  *                           plus the station-build.json `station start` reads
@@ -483,6 +486,8 @@ async function stagePortableServerTree({
     rmSync(output, { recursive: true });
   }
   stageNodeRuntime(target, nodeDistributionBytes, join(stageRoot, 'runtime'));
+  if (target.platform === 'win32')
+    stageWindowsBirthHelper(join(stageRoot, 'runtime'));
   stageLaunchers(projectRoot, stageRoot);
   // As in a source release (whose tarball is the repository), the archive
   // carries the installer: packaged `station upgrade` re-runs it, so the

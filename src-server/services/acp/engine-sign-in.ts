@@ -27,10 +27,6 @@ import type {
   EngineSubscriptionTermsNotice,
 } from '@kontourai/station-contracts/engine-sign-in';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
-import type {
-  TerminalEvent,
-  TerminalOpenInput,
-} from '../../domain/terminal-types.js';
 import {
   findCliBinaryAsync,
   resolveAugmentedPath,
@@ -53,6 +49,11 @@ import { engineCredentialEnvFor } from './engine-credentials.js';
 
 /** Terminal sessions for sign-ins live under this project slug, which no Project can take. */
 export const ENGINE_SIGN_IN_TERMINAL_PROJECT = '.engine-sign-in';
+/** The terminal scope a client attaches to a sign-in under; no Project has this id. */
+export const ENGINE_SIGN_IN_TERMINAL_SCOPE = {
+  projectId: ENGINE_SIGN_IN_TERMINAL_PROJECT,
+  bindingKey: 'engine-sign-in',
+} as const;
 const SIGN_IN_HANDSHAKE_TIMEOUT_MS = 30_000;
 const SIGN_IN_METHODS_TTL_MS = 5 * 60_000;
 const AGENT_SIGN_IN_TIMEOUT_MS = 5 * 60_000;
@@ -77,11 +78,22 @@ export class EngineSignInError extends Error {
 
 class EngineSignInDeadlineError extends EngineSignInError {}
 
-/** The terminal surface this module needs; `TerminalService` satisfies it. */
+/**
+ * The terminal surface this module needs: a server-owned launch in
+ * `TerminalSessions` under {@link ENGINE_SIGN_IN_TERMINAL_SCOPE}, which a
+ * client attaches to by id through the terminal socket.
+ */
 export interface SignInTerminalHost {
-  open(input: TerminalOpenInput): Promise<{ sessionId: string }>;
-  close(sessionId: string): Promise<void>;
-  subscribe(cb: (event: TerminalEvent) => void): () => void;
+  open(input: {
+    cwd: string;
+    cols: number;
+    rows: number;
+    launch: { file: string; args: string[]; env: Record<string, string> };
+  }): Promise<{
+    terminalId: string;
+    exited: Promise<{ exitCode: number | null }>;
+  }>;
+  close(terminalId: string): Promise<void>;
 }
 
 interface MethodsObservation {
@@ -498,20 +510,17 @@ export class EngineSignInService {
       // The protocol: method variables override the launch configuration.
       ...sanitizeConnectionEnvMap(method.env),
     };
-    const terminalId = `${config.id.replace(/[^A-Za-z0-9_-]/g, '_')}-${randomUUID()}`;
     const view: EngineSignInAttempt = {
       id: randomUUID(),
       methodId,
       kind: 'terminal',
       state: 'running',
       startedAt: new Date(this.#now()).toISOString(),
-      terminal: { projectSlug: ENGINE_SIGN_IN_TERMINAL_PROJECT, terminalId },
     };
-    let sessionId: string | null = null;
+    let terminalId: string | null = null;
     let deadline: ReturnType<typeof setTimeout> | undefined;
-    let unsubscribe: (() => void) | undefined;
     const close = () => {
-      if (sessionId) void terminal.close(sessionId).catch(() => undefined);
+      if (terminalId) void terminal.close(terminalId).catch(() => undefined);
     };
     const live = this.#register(
       config,
@@ -523,33 +532,38 @@ export class EngineSignInService {
       },
       () => {
         if (deadline) clearTimeout(deadline);
-        unsubscribe?.();
       },
     );
-    const expectedSessionId = `${ENGINE_SIGN_IN_TERMINAL_PROJECT}:${terminalId}`;
-    unsubscribe = terminal.subscribe((event) => {
-      if (event.type !== 'exited' || event.sessionId !== expectedSessionId)
-        return;
-      live.finish(
-        event.exitCode === 0 ? 'succeeded' : 'failed',
-        event.exitCode === 0
-          ? undefined
-          : `The sign-in ended with exit code ${event.exitCode}.`,
-      );
-    });
     try {
-      const snapshot = await terminal.open({
-        projectSlug: ENGINE_SIGN_IN_TERMINAL_PROJECT,
-        terminalId,
+      const opened = await terminal.open({
         cwd: homedir(),
         cols: 100,
         rows: 30,
-        shell: program,
-        shellArgs: [...(config.args ?? []), ...extra],
-        env,
+        launch: {
+          file: program,
+          args: [...(config.args ?? []), ...extra],
+          env,
+        },
       });
-      sessionId = snapshot.sessionId;
-      if (live.view.state === 'cancelled') close();
+      terminalId = opened.terminalId;
+      void opened.exited.then(({ exitCode }) =>
+        live.finish(
+          exitCode === 0 ? 'succeeded' : 'failed',
+          exitCode === 0
+            ? undefined
+            : `The sign-in ended with exit code ${exitCode ?? 'unknown'}.`,
+        ),
+      );
+      if (live.view.state === 'running')
+        live.view = {
+          ...live.view,
+          terminal: {
+            projectSlug: ENGINE_SIGN_IN_TERMINAL_PROJECT,
+            ...ENGINE_SIGN_IN_TERMINAL_SCOPE,
+            terminalId,
+          },
+        };
+      else close();
     } catch (error) {
       live.finish('failed', errorText(error));
       throw new EngineSignInError(

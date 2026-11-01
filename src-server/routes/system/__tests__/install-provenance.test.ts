@@ -475,7 +475,13 @@ describe('resolveInstallProvenance on a prebuilt archive (#2675 D3)', () => {
   ): string {
     const versionRoot = join(installRoot, 'versions', '0.8.0-preview.1');
     mkdirSync(join(versionRoot, 'dist-server'), { recursive: true });
-    if (git) mkdirSync(join(versionRoot, '.git'));
+    if (git) {
+      mkdirSync(join(versionRoot, '.git'));
+      writeFileSync(
+        join(versionRoot, '.git', 'HEAD'),
+        'ref: refs/heads/main\n',
+      );
+    }
     writeFileSync(
       join(versionRoot, '.station-prebuilt-archive'),
       'station-prebuilt-archive-v1\n',
@@ -538,5 +544,16 @@ describe('resolveInstallProvenance on a prebuilt archive (#2675 D3)', () => {
         resolveGit: notACheckout,
       }).installKind,
     ).toBe('unknown');
+  });
+
+  test('an engine sandbox’s empty .git placeholder leaves the archive an archive (#4380)', () => {
+    const versionRoot = archiveVersion(tempRoot());
+    mkdirSync(join(versionRoot, '.git'));
+    mkdirSync(join(versionRoot, '.agents'));
+    expect(
+      resolveInstallProvenance(join(versionRoot, 'dist-server'), {
+        resolveGit: notACheckout,
+      }).installKind,
+    ).toBe('archive');
   });
 });

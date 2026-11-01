@@ -72,6 +72,69 @@ export function isOperatorInPersonNotAgent(request: Request): boolean {
   return isOperatorInPerson(request) && !actsForAnAgent(request);
 }
 
+/** The paired-device facts {@link isOperatorsOwnDevice} re-reads per call. */
+export interface OperatorDeviceRecord {
+  readonly id: string;
+  readonly kind?: string;
+  readonly credentialKind?: string;
+  readonly principalBinding?: unknown;
+  readonly revokedAt?: number | string | null;
+}
+
+/**
+ * #3994 owner decision (2026-10-31): one of the operator's OWN paired
+ * devices (a phone or browser over a relay, tailnet or proxy, the desktop
+ * or mobile app). Such a device is tied to no person: #3557 caps a device
+ * tied to a person by that person's group, and a personal access token is
+ * always tied to its owner. A delegation grant is another Station acting
+ * for an agent, never the operator. The record is re-read from the pairing
+ * owner on every call, so revocation, rebinding or a scope change applies
+ * to the next check.
+ */
+export function isOperatorsOwnDevice(
+  request: Request,
+  identifyDevice: (
+    credential: string,
+  ) => OperatorDeviceRecord | null | undefined,
+): boolean {
+  if (actsForAnAgent(request)) return false;
+  const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+  if (
+    !principal ||
+    principal.kind === 'internal' ||
+    principal.authority !== 'device-credential' ||
+    !principal.deviceId ||
+    principal.deviceKind === 'delegation'
+  )
+    return false;
+  const device = identifyDevice(principal.credential);
+  return (
+    !!device &&
+    device.id === principal.deviceId &&
+    device.kind !== 'delegation' &&
+    device.credentialKind !== 'personal-token' &&
+    !device.principalBinding &&
+    (device.revokedAt ?? null) === null
+  );
+}
+
+/**
+ * The operator for terminal authority: in person, or through one of their
+ * own paired devices ({@link isOperatorsOwnDevice}). Never an agent and
+ * never a device tied to another person.
+ */
+export function isTerminalOperator(
+  request: Request,
+  identifyDevice: (
+    credential: string,
+  ) => OperatorDeviceRecord | null | undefined,
+): boolean {
+  return (
+    isOperatorInPersonNotAgent(request) ||
+    isOperatorsOwnDevice(request, identifyDevice)
+  );
+}
+
 /**
  * The operator in person, or a caller the auth boundary accepted whose
  * granted scope carries `coding:exec` (a device the operator allowed to run

@@ -95,8 +95,10 @@ and historical qualifications below are not current image or cloud proof.
 
 The default Compose mapping exposes port 3000. The lifecycle UI proxy serves
 the UI, HTTP API, event streams, identity and Device pairing through that origin.
-Dedicated terminal and voice listeners are separate; this proxy has no WebSocket
-upgrade bridge to them, and the default mapping does not publish their ports.
+The Coding terminal's ticket-admitted `/api/terminal/socket` upgrade is
+forwarded through this proxy to the API listener. The dedicated voice and legacy
+terminal listeners are separate; this proxy has no upgrade bridge to them, and
+the default mapping does not publish their ports.
 The image runs as Node's unprivileged UID/GID `1000` and persists its home
 in the `station-data` volume.
 
@@ -603,10 +605,15 @@ launchd and systemd adapters. Its
 Scheduler registration, the command wrapper, process identity and trusted paths.
 Windows live-owner engine cleanup uses `taskkill /T`, escalating to `/F` when
 needed. The [owned-process startup sweep](../../src-server/services/infra/process-utils.ts)
-recovers POSIX process groups only; Windows does not persist or consume those
-orphan records. After an abrupt Windows owner exit, startup does not establish
-that all of its engine descendants were reclaimed. This is separate from Task
-Scheduler restart policy and does not establish reboot recovery.
+also recovers orphans on Windows (#3873). It trusts its registry only as a real
+directory, not a reparse point, inside the user's own `%LOCALAPPDATA%` (by
+default `%LOCALAPPDATA%\Temp\station-owned-processes`). After an abrupt owner
+exit, the next start reaps an engine whose recorded birth still matches. It
+kills that engine and only the descendants created after the parent they
+name, one pid at a time and never with `/T`, because Windows keeps a stale
+parent pid after the parent exits. A record whose process table cannot be read
+is retained, not acted on. This is separate from Task Scheduler restart policy
+and does not establish reboot recovery.
 The published CLI can control an existing installed service with
 `service status|start|stop`; installing or removing a service needs the
 lifecycle CLI of a checkout or a prebuilt server archive, and the
@@ -1097,7 +1104,12 @@ normal restarts, and rotates only while Station is stopped after 10 MiB,
 retaining the immediately previous secured log.
 The bounded JSONL lifecycle journal correlates instance, exact SHA, random boot
 ID, and backend PID across `started`, fsynced `stop_intent`, observed shutdown,
-and process-exit events. It classifies expected promotion, operator stop,
+and process-exit events. A start under the process supervisor records the
+supervisor's PID; each core generation stamps its events with that supervisor
+and its generation number, and only the newest generation's exit counts as
+the instance's, so a handoff is not read as a stop or a crash. Dogfood health
+accepts a supervised instance's server ports held by the recorded supervisor
+together with its own child generation. It classifies expected promotion, operator stop,
 expected recovery/rollback, unexpected signal, crash, and an unobservable
 SIGKILL/native crash without inventing a sender. Public readiness responses
 never expose the PID, paths, journal reason, or boot identity.

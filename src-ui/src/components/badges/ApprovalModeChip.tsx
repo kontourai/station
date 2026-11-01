@@ -12,6 +12,7 @@ import {
   approvalModeChipLabel,
   approvalModeKnobSupported,
   approvalModeLabel,
+  approvalModeSourceNote,
   resolveEffectiveApprovalMode,
 } from '../../utils/approvalMode';
 import { ComposerChoice } from '../ComposerChoice';
@@ -249,8 +250,10 @@ export function ApprovalModeChip({
       ? selectedLabel
       : agentDefaultShown
         ? `${chipText} — ${approvalModeLabel(effective.mode)}`
-        : notApplied && appliedMode
-          ? selectedLabel
+        : (notApplied && appliedMode) || chipText === selectedLabel
+          ? // #4390: the inherited mode's short and full names are both
+            // "Default"; never announce "Default — Default".
+            selectedLabel
           : `${chipText} — ${selectedLabel}`
   }${notAppliedNote}`;
   const sourceNote = isOverride
@@ -259,7 +262,7 @@ export function ApprovalModeChip({
       ? 'Confirmed by the engine'
       : effective.mode === 'connection-default'
         ? 'Engine settings; active mode not confirmed'
-        : `From ${effective.source === 'account default' ? 'your saved default' : effective.source}`;
+        : approvalModeSourceNote(effective.source);
 
   return (
     <>

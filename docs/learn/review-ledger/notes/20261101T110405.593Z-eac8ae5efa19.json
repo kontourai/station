@@ -1,0 +1,7 @@
+{
+  "revision": "d78b225f5394a5bc98efff510bd5c8eeff17f1b7",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"Searched this document for claims about the changed behavior Changed sources: owned-process-windows.test.ts is classified as a real-process suite. No remaining claim here contradicts them.","inputs":["scripts/AGENTS.md","docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

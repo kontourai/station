@@ -202,8 +202,8 @@ choices follow the same signed-in person across devices connected to this
 Station. They are saved as you change them, and other clients refresh on focus
 or reconnect. **Import previous preferences** brings over this browser's older
 portable choices without replacing settings your account already has. **Use
-default** removes a personal display choice; **Use inherited default** returns
-new-chat approvals to the Agent, Station or engine setting.
+default** removes a personal display choice; choosing **Default** for a
+new-chat approval mode returns it to the Agent, Station or engine setting.
 
 While offline, changes wait on this page and are not saved yet. Keep the page
 open until saving finishes. If another device changed a composite preference,
@@ -215,7 +215,8 @@ which scope owns a choice. If your Device is not linked to a person, preferences
 remain local. Different Stations keep separate account preferences.
 
 The approval chip shows the known mode, including **Full access**, **Auto** or
-**Ask**. **Engine default** means the engine's active mode has not been confirmed.
+**Ask**. **Default** means the engine's own settings apply and its active mode
+has not been confirmed.
 For Codex, inherited settings resolve to a supported mode when the reported approval policy and sandbox match. Otherwise, the picker describes the engine default as your own Codex settings. If you set
 none, no command Codex runs uses the network or writes outside the chat's
 folder and temporary directories without asking; it may ask before other

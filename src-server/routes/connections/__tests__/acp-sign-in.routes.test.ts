@@ -24,7 +24,6 @@ import {
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
-import type { TerminalOpenInput } from '../../../domain/terminal-types.js';
 import { BUILTIN_ACP_ENGINES } from '../../../providers/llm/builtin-acp-engines.js';
 import {
   clearAll,
@@ -40,7 +39,10 @@ import {
   EngineCredentials,
   registerEngineCredentials,
 } from '../../../services/acp/engine-credentials.js';
-import { EngineSignInService } from '../../../services/acp/engine-sign-in.js';
+import {
+  EngineSignInService,
+  type SignInTerminalHost,
+} from '../../../services/acp/engine-sign-in.js';
 import type { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
 import {
@@ -155,15 +157,17 @@ async function fixture(extraConnections: ACPConnectionConfig[] = []) {
     ...extraConnections,
   ];
   const acpJson = JSON.stringify({ connections });
-  const opened: TerminalOpenInput[] = [];
+  const opened: Parameters<SignInTerminalHost['open']>[0][] = [];
   const service = new EngineSignInService({
     terminal: {
       open: async (input) => {
         opened.push(input);
-        return { sessionId: `${input.projectSlug}:${input.terminalId}` };
+        return {
+          terminalId: '62b97fa1-b690-4d77-82b1-747dc86d3c11',
+          exited: new Promise(() => undefined),
+        };
       },
       close: async () => undefined,
-      subscribe: () => () => undefined,
     },
   });
 
@@ -307,7 +311,7 @@ describe.runIf(posix)('engine sign-in route authority', () => {
     });
     expect(res.status).toBe(200);
     expect(f.opened).toHaveLength(1);
-    expect(f.opened[0].shellArgs).toEqual(['--terminal-login']);
+    expect(f.opened[0].launch.args).toEqual(['--terminal-login']);
   });
 
   test("a request that may be an agent's is refused, even on the operator's credential", async () => {

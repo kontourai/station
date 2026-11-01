@@ -1,6 +1,6 @@
 # Integrated terminal
 
-Status: In progress under #3994. The scoped in-process foundation and personal-operator same-origin gateway are implemented. The SDK now has an output-only session reader; operating-session state, paired-device/remote admission, Coding cutover and Ghostty remain proposed.
+Status: In progress under #3994. The scoped in-process foundation, the same-origin gateway, operator-device ticket admission, the SDK session store and the Coding cutover (still rendered by xterm.js) are implemented. Supervisor workloads, Ghostty, the layout and removal of the legacy stack remain proposed.
 
 > **Reading status: proposal (2026-10-17).** Replaces the current terminal
 > stack end to end. The bounded implementation below precedes that replacement; the current Coding UI behavior is
@@ -16,9 +16,10 @@ The new [TerminalSessions service](../../src-server/services/terminal/terminal-s
 Project/binding scope, realpath-confined launch directories, durable session
 metadata, and sanitized sequence journals. `ShellHost` returns a process handle
 whose write, resize, signal and exit operations can later proxy a supervisor
-workload. [InProcessShellHost](../../src-server/services/terminal/shell-host.ts) uses the existing node-pty adapter. The [journal](../../src-server/services/terminal/terminal-journal.ts), [stream filter](../../src-server/services/terminal/terminal-output-sanitizer.ts), and [real PTY tests](../../src-server/services/terminal/__tests__/terminal-sessions.process.test.ts) own the storage/filter evidence. Journals are
-owned by the service in this tranche; moving their ownership into the supervisor
-and providing its list/read protocol remain later workload work.
+workload. [InProcessShellHost](../../src-server/services/terminal/shell-host.ts) uses the existing node-pty adapter. The [journal](../../src-server/services/terminal/terminal-journal.ts), [stream filter](../../src-server/services/terminal/terminal-output-sanitizer.ts), and [real PTY tests](../../src-server/services/terminal/__tests__/terminal-sessions.process.test.ts) own the storage/filter evidence. Under a supervisor that grants
+`workloads` (protocol 1.3), the supervisor's workload host owns the PTY and its
+journal, and the core reads it through the workload protocol (see Shell host
+below); otherwise the service owns both.
 
 A personal-operator HTTP control seam at
 `/api/projects/:slug/terminal-sessions` exercises the production service without
@@ -40,9 +41,10 @@ continue to use `TerminalService` and retain their existing behavior, including
 #3781's connection ownership checks. This does not claim that legacy socket
 commands have acquired Project-principal authorization.
 
-Session metadata and journal output survive disposal and a new service instance;
-in-process shells do not survive server exit. Restored sessions are ended and
-never execute their old input again. Opening with a legacy terminal id imports
+Session metadata and journal output survive disposal and a new service instance.
+In-process shells do not survive server exit, and restored sessions are ended
+and never execute their old input again. Supervisor workloads do survive (see
+Shell host). Opening with a legacy terminal id imports
 a provenance-bound history filename once and retains the mapping in the durable
 record. The legacy writer emits a receipt only for a fresh file or a previously
 verified receipt; it records the Project id captured when the shell opened,
@@ -89,8 +91,8 @@ service and reads its journal after clean disposal. This provides
 filesystem persistence across service recreation, not power-loss qualification.
 
 The Settings controls for persistence/location, age and aggregate retention,
-clear-history actions, supervisor survival, doctor reporting, explicit restart,
-and command sessions remain follow-ups within phase 1. `terminal:observe` is
+clear-history actions, doctor reporting, explicit restart, and command sessions
+in the UI remain follow-ups within phase 1. `terminal:observe` is
 governed by the Admin ceiling; no preset gains it. Its description names future
 remote-watch admission. The complete scope vocabulary uses 253 of the parser's
 256 characters, leaving three characters. Part b1 adds the personal-operator socket
@@ -105,9 +107,11 @@ phase 3; no interim TerminalView is introduced.
 Every connection, including loopback, must pass the existing first-frame auth
 protocol. The runtime sends its credential through the normal HTTP admission
 pipeline and retains that authenticated Request for per-operation checks.
-This tranche admits only the current personal operator in person, as part (a)
-does. Account, hosted, paired-device, agent and plugin admission stays refused.
-No request-supplied principal, cwd or executable is accepted.
+Part b1 admitted only the operator in person through a first-frame credential;
+part b2 (below) replaces that with ticket admission before the upgrade and
+admits the operator's own paired devices. Account, hosted, member, agent and
+plugin admission stays refused. No request-supplied principal, cwd or
+executable is accepted.
 
 [TerminalChannelConnection](../../src-server/services/terminal/terminal-channel-connection.ts)
 serializes open, attach, list, input, resize, close and detach. Only adjacent
@@ -116,7 +120,7 @@ Restart is refused until the session service owns explicit restart semantics.
 The [wire contract](../../packages/contracts/src/terminal-transport.ts) carries
 input/output as UTF-8 binary frames with a 13-byte header (one-byte kind,
 four-byte channel, eight-byte sequence, big-endian). JSON controls and the
-bounded credit protocol are described in the [API reference](../reference/api.md#terminal-socket-personal-operator-transport).
+bounded credit protocol are described in the [API reference](../reference/api.md#terminal-socket-operator-transport).
 
 The journal remains the single output source. Invalidation subscribes before
 attach reads, and reads serialize with appends/compaction. Gateway reads are
@@ -149,12 +153,70 @@ authentication, bounded PTY replay and first-frame refusal; its transport contro
 revocation and disposal. It does not open or operate a shell or replace the
 Coding view. See the [SDK contract](../reference/sdk.md#terminal-output-sessions).
 
-Part b2 still owns Project/principal
-admission for paired devices, remote relay/broker egress and its threat model,
-the SDK session store and public-entry proof, Coding's xterm adapter and saved
-terminal migration. The legacy listener, port discovery, Coding UI, saved tabs,
-process projections and close endpoint remain on TerminalService until that
-cutover. A Coding render before b2 can qualify only legacy compatibility.
+Part b2 below delivers device admission, the session store and the Coding
+cutover.
+
+## Operator devices and Coding cutover (#3994, part b2)
+
+Owner decision (2026-10-31): every one of the operator's own paired devices is
+the operator for terminals: a browser through a same-origin proxy, a tailnet
+name or the relay's HTTP route, and the Desktop, iOS and Android shells. A
+device tied to no person, not a delegation grant and not a personal token is
+the operator's own ([`isOperatorsOwnDevice`](../../src-server/security/coding-authority.ts));
+members stay refused. The [threat model](../security/remote-access-threat-model.md#terminal-socket-on-operator-devices-3994)
+records the admission and its residual risks.
+
+- **Through the UI server.** The CLI's [UI server](../../packages/cli/src/commands/lifecycle.ts)
+  forwards only the `/api/terminal/socket` upgrade to the API listener and
+  strips every `x-station-*`, `tailscale-*` and forwarding header, so a phone
+  that reached Station through the UI port or a tailnet name opens the same
+  socket. Other upgrades are dropped.
+- **Ticket admission before upgrade.** `POST /api/terminal/tickets` mints a
+  [single-use 30-second ticket](../../src-server/services/terminal/terminal-tickets.ts)
+  through ordinary HTTP admission; the socket offers it as a subprotocol and
+  the [gateway](../../src-server/services/terminal/terminal-gateway.ts)
+  redeems it before allocating anything. The first-frame path and its pending
+  budget are gone, closing the slot-holding gap the previous section described.
+  Native shells mint through their host transport; no Rust WebSocket bridge.
+- **Fairness and liveness (#4077).** 64 sockets, eight per identity, eight
+  reserved for the operator in person; nothing keyed by address, so a shared
+  relay or proxy address cannot lock others out. Protocol ping/pong terminates
+  half-open peers, a socket lives at most an hour, and every capacity or
+  lifetime close falls back to terminate after one second.
+- **Server-resolved programs.** Socket `open` takes a launch profile name
+  (`shell`, or an `agent` connection and live mode) that the server resolves
+  from saved configuration, a `legacyTerminalId` for the one-time history
+  import, and nothing else. A missing PTY backend reports `pty-unavailable`
+  with the server's reason, so Coding falls back to `POST /api/coding/exec`.
+  A `cwd` operation (operate authority) feeds Send to chat.
+- **Legacy consumers re-pointed.** Engine sign-in starts a server-owned
+  launch in `TerminalSessions` under a scope no Project can take and the panel
+  attaches by id. `DELETE /api/projects/:slug/terminals/:id` and the
+  `/api/orchestration/processes/terminals*` projections accept socket session
+  ids under the caller's own terminal authority, keeping their shapes.
+- **SDK store.** [`TerminalSessionStore`](../../packages/sdk/src/client/terminal-session-store.ts)
+  multiplexes every session on one socket per Station, coalesces input per
+  frame, keeps resize latest-wins, buffers bounded output for late
+  subscribers, resumes each channel from its applied sequence with backoff and
+  wakes on `online` or visibility. Its `TerminalSession` interface is what a
+  renderer consumes; the later Ghostty view uses the same interface.
+- **Coding cutover.** [TerminalPanel](../../src-ui/src/components/coding-layout/TerminalPanel.tsx)
+  keeps xterm.js, the theme, selection hand-off and the mobile key toolbar on
+  the store. Tabs are keyed per Project and reconciled with the server's
+  session list, so a shell opened on one device appears on another. Saved
+  `coding-terminal-tabs` are migrated once into the first Project that opens:
+  labels kept, the old id named for history import, any stored program
+  dropped; unowned history falls back to a fresh shell. No group or split
+  record is added.
+
+The real-socket evidence is in the
+[admission suite](../../src-server/services/terminal/__tests__/terminal-gateway-admission.test.ts)
+(platform-independent, real sockets and the SDK store, scripted PTY) and the
+POSIX [real-PTY suite](../../src-server/services/terminal/__tests__/terminal-gateway.process.test.ts).
+Physical iOS, Android and Desktop devices, Windows/ConPTY and a browser broker
+(DataChannel) route are not qualified: the broker route has no socket path and
+stays refused at the client. The legacy listener, port discovery and
+`TerminalService` remain for older clients until the removal phase.
 
 ### Whole-store retention and process custody
 
@@ -211,24 +273,11 @@ remain terminal content. Scheme validation prevents active local/script links;
 visual spoofing remains the renderer's responsibility, so these values grant
 no Station or navigation authority.
 
-Pending authentication has its own 32-socket budget, separate from 64 authenticated
-connections, with eight pending sockets per exact source address. This is a
-bounded resource limit, not an availability guarantee: four IPv4 addresses or
-IPv6 addresses (including siblings in one /64) can occupy all pending slots and
-renew them by disconnecting before the five-second timeout. Eight sockets behind one relay address can block
-other users of that address, and timeout failures back off that shared address.
-Any peer that can reach the main API listener can hold pending slots, including
-clients without an Origin header. The in-person rule limits authentication,
-not who can hold slots, so this gap can lock the operator out today.
-Before b2 admits remote devices, it must provide:
-
-- credential- or ticket-bound admission before upgrade;
-- per-identity fairness, or reserved slots for loopback/the operator;
-- a relay/shared-address policy.
-
-An IPv6 /64 key alone would not solve the shared-address or multi-IPv4 case.
-Five-second auth timeouts count as failures; peers that ignore the close handshake
-are terminated after another 100 ms. Socket data pauses above 2 MiB of queued wire bytes and retries
+Part b1 let any reachable peer hold one of 32 pending first-frame slots, which
+could lock the operator out. Part b2 removed that path: admission is
+ticket-bound before upgrade, with per-identity fairness, reserved operator
+slots and no address-keyed state (see
+[part b2](#operator-devices-and-coding-cutover-3994-part-b2)). Socket data pauses above 2 MiB of queued wire bytes and retries
 on the heartbeat; cursor/filter state advances only after sending. Control
 replies have a separate 256 KiB reserve before close code 4429. Frame overhead
 therefore cannot close a client merely for using its channel credit.
@@ -373,6 +422,27 @@ resize, signal, list, and journal reads. Two implementations:
   default once the supervisor ships.
 - **In-process** runs node-pty inside the core server. Tests use it, and it
   is the fallback when no supervisor is present.
+
+**Implemented (#3994, protocol 1.3).**
+[`SupervisorShellHost`](../../src-server/services/terminal/supervisor-shell-host.ts)
+is the host whenever the supervisor grants this core `workloads`. Otherwise
+`InProcessShellHost` is, unchanged; that covers a direct start, `--watch`,
+a 1.2 supervisor, and a build without a workload host. The shell, its PTY
+(ConPTY on Windows) and its journal live in the supervisor's workload host
+([`pty-workload-host.ts`](../../src-server/services/terminal/pty-workload-host.ts)),
+which uses this journal and sanitizer unchanged. `TerminalSessions` reads
+that journal through the host while the shell runs, and from disk once it
+has exited. Draining for a handoff, it detaches from its shells instead of
+ending them. On the next generation's start it reattaches every session it
+recorded as running and the host still runs; the rest are marked exited. A
+session whose start was never recorded is ended. Clients reconnect and
+resume from their last sequence, so output from while no core was attached
+is replayed, not lost. `ShellHost.attach` and `HostedShellProcess` are the
+only additions to the host interface. Write, resize, signal and terminate
+stay on the process handle, and reads on its journal. The
+[supervisor design](process-supervisor.md) covers the protocol, kill-tree
+escalation and the evidence. Windows job objects per workload, Settings
+controls for the host, and the UI for command sessions are not implemented.
 
 The supervisor survives a core server restart or upgrade, not a machine
 reboot. After a reboot, Station restores instead: the server record reopens

@@ -1,0 +1,7 @@
+{
+  "revision": "ddd0bee6de13a456e2ecfee5cd267c2981826c56",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"Searched this document for claims about the changed behavior Changed sources: the Windows archive stages the precompiled guard and its SHA-256 in runtime/ and checks parity with PowerShell (#2805); test:windows:portable additionally runs owned-process-windows.test.ts; the owned-process registry is trusted, written and swept on Windows, reaping only the birth-verified engine tree (#3873). No remaining claim here contradicts them.","inputs":["docs/guides/development.md","package.json#/scripts","scripts/lib/portable-server-archive.mjs","src-server/services/infra/process-utils.ts"]}
+  ]
+}

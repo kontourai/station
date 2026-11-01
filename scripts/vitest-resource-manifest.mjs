@@ -175,6 +175,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Production route/auth composition opens real terminal PTYs in a private home.
   'src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts',
   'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
+  // The supervisor's workload host with real PTYs (ConPTY on Windows) and
+  // command children it kills as trees; a core restart is a second
+  // TerminalSessions on the same private home. No ports or host state.
+  'src-server/services/terminal/__tests__/supervisor-shell-host.process.test.ts',
   // Two disposable workers contend on private SQLite connections; no shared host output or timing assertion.
   'src-server/services/outside-agent/__tests__/oauth-concurrency.test.ts',
   // Two cache-enabled server bootstrap processes drive real MCP, Strands, CLI and shell children.
@@ -448,6 +452,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #3567: bounded CLI executable children send to a per-test loopback
   // fixture to verify lost-response JSON handles in both entry points.
   'packages/cli/src/__tests__/core-http.test.ts',
+  // #3994: spawns the generated UI server as a real `node -e` child and owns
+  // per-test loopback listeners (an upstream WebSocket server and the proxy).
+  'packages/cli/src/__tests__/ui-proxy-terminal-upgrade.test.ts',
   // Spawns the CLI entry point as bounded children against a per-test
   // loopback HTTP fixture to assert exit status and request shape.
   'packages/cli/src/__tests__/telemetry-producers-command.test.ts',
@@ -1189,6 +1196,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // grandchild in its group) to prove the spawn is registered and released
   // only once the whole group exits. Same shape as the Codex test above.
   'src-server/services/flow/__tests__/flow-run-service.owned-process.test.ts',
+  // #3873: on Windows, kills a real owner fixture and sweeps its orphaned
+  // engine and grandchild through the per-user registry; elsewhere only the
+  // policy units run. It runs in the required Windows PR job.
+  'src-server/services/infra/__tests__/owned-process-windows.test.ts',
   // #561: wraps the birth-probe primitives pass-through and registers two
   // real detached sleepers to count probes of this process.
   'src-server/services/infra/__tests__/owned-process-owner-birth.test.ts',
@@ -1603,6 +1614,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // with the opt-out; then service run, killed and stopped with a frozen
   // supervisor. Builds its own dist-server-*/dist-ui-* directories.
   'packages/cli/src/__tests__/supervised-lifecycle.real.test.ts',
+  // The built supervisor and workload host bundles run a core built from the
+  // production terminal modules: a live shell keeps its pid and journal
+  // across a handoff. Builds its own dist-server-* directory.
+  'src-server/services/terminal/__tests__/supervisor-terminal.real.test.ts',
   // Process supervisor: real supervisor children fork fixture core
   // generations, hand a held listening socket between them, and hammer it
   // with keep-alive HTTP and SSE clients on an ephemeral port.
@@ -1611,6 +1626,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'packages/supervisor/src/__tests__/crash-restart.test.ts',
   'packages/supervisor/src/__tests__/build-root.test.ts',
   'packages/supervisor/src/__tests__/listener-handle.test.ts',
+  // Fixture core generations relay workload requests to a fixture workload
+  // host child that runs command children; one test SIGKILLs that host.
+  'packages/supervisor/src/__tests__/workloads.test.ts',
   // A SIGKILLed supervisor, its orphaned core, and a second supervisor that reaps it.
   'packages/supervisor/src/__tests__/stale-generation.test.ts',
   // Spawns a sleeper process to prove a mismatched fingerprint is never killed.

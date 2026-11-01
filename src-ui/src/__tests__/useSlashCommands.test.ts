@@ -6,6 +6,7 @@ import { renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const useProviderCommandsQueryMock = vi.fn();
+const useAgentMcpPromptsQueryMock = vi.fn(() => ({ data: undefined }));
 let skills: any[] = [];
 let agents: any[] = [];
 let compactionPreview = false;
@@ -21,7 +22,8 @@ vi.mock('@kontourai/station-sdk', () => ({
   }),
   useProviderCommandsQuery: (...args: unknown[]) =>
     useProviderCommandsQueryMock(...args),
-  useAgentMcpPromptsQuery: () => ({ data: undefined }),
+  useAgentMcpPromptsQuery: (...args: unknown[]) =>
+    useAgentMcpPromptsQueryMock(...(args as [])),
 }));
 
 vi.mock('../contexts/AgentsContext', () => ({
@@ -314,5 +316,39 @@ describe('useSlashCommands — the /model row names what the composer names', ()
     // `modelIdentityLabel` answers this itself, which is why the old
     // `|| 'Model not reported'` fallbacks were unreachable.
     expect(row.currentModel).toBe('Model not reported');
+  });
+});
+
+describe('#4405 (A34): MCP prompts are read only for Agents the Station runtime runs', () => {
+  it.each([
+    [
+      'an engine default identity',
+      { slug: 'codex', name: 'Codex', engineId: 'codex', engineDefault: true },
+    ],
+    [
+      'an Agent bound to an engine connection',
+      {
+        slug: 'reviewer',
+        name: 'Reviewer',
+        execution: { agentConnectionId: 'claude-code' },
+      },
+    ],
+  ])('never asks for %s, which the route can only answer 404', (_, agent) => {
+    agents = [agent];
+    useAgentMcpPromptsQueryMock.mockClear();
+    renderHook(() => useSlashCommands(agent.slug));
+    expect(useAgentMcpPromptsQueryMock).toHaveBeenCalled();
+    for (const call of useAgentMcpPromptsQueryMock.mock.calls as unknown[][])
+      expect(call[0]).toBeNull();
+  });
+
+  it('still asks for a Station runtime Agent', () => {
+    agents = [{ slug: 'writer', name: 'Writer' }];
+    useAgentMcpPromptsQueryMock.mockClear();
+    renderHook(() => useSlashCommands('writer'));
+    expect(useAgentMcpPromptsQueryMock).toHaveBeenCalledWith(
+      'writer',
+      expect.anything(),
+    );
   });
 });

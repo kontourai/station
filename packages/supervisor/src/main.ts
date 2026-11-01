@@ -2,7 +2,7 @@
  * Supervisor process entry:
  *
  *   node station-supervisor.js --entry <core entry> --home <dir> --instance <id>
- *     [--build-root <dir>] [--control <path>]
+ *     [--build-root <dir>] [--control <path>] [--workload-host <entry>]
  *
  * `--control` defaults to the endpoint derived from home and instance, which
  * is what clients derive too. Tuning flags exist for operators and tests.
@@ -13,7 +13,7 @@
  * runs this bundle as a client of the supervisor already serving that home
  * and instance (see client-command.ts).
  */
-import { realpathSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import {
@@ -32,6 +32,7 @@ import {
   isValidInstanceId,
   resolveControlEndpoint,
   unixSocketPathLimit,
+  WORKLOAD_HOST_BUNDLE_NAME,
 } from './protocol.ts';
 import { runSupervisor } from './supervisor.ts';
 
@@ -62,6 +63,7 @@ const USAGE = [
   "  --build-root   handoff entries must be inside this directory (default: the entry's directory)",
   '  --exit-with-parent  drain and exit when the IPC channel from its launcher closes (station service run)',
   '  --control      control socket path (default: derived from --home and --instance)',
+  `  --workload-host  workload host entry inside --build-root (default: ${WORKLOAD_HOST_BUNDLE_NAME} beside the entry, if present)`,
   '',
   'usage: station-supervisor --request <status|stop|handoff> --home <dir> --instance <id> [--entry <core entry>]',
   '  Sends one control request to the supervisor serving that home and instance',
@@ -110,6 +112,7 @@ function parseCommandLine(): Record<string, string | boolean | undefined> {
         control: { type: 'string' },
         'build-root': { type: 'string' },
         'exit-with-parent': { type: 'boolean' },
+        'workload-host': { type: 'string' },
         ...Object.fromEntries(
           Object.keys(DURATION_FLAGS).map((flag) => [
             flag,
@@ -229,6 +232,22 @@ async function main(): Promise<void> {
     );
   }
   const entry = checked.entry;
+  // The workload host owns terminals across generations. A build without
+  // one leaves them in the core, as before protocol 1.3.
+  const hostRequested = raw['workload-host'];
+  const hostCandidate = resolve(
+    hostRequested ?? join(dirname(initialEntry), WORKLOAD_HOST_BUNDLE_NAME),
+  );
+  let workloadHost: string | null = null;
+  if (hostRequested !== undefined || existsSync(hostCandidate)) {
+    const host = boundary(hostCandidate);
+    if ('refused' in host) {
+      fail(
+        `--workload-host must be a .js or .mjs file inside --build-root ${buildRoot}: ${hostCandidate}`,
+      );
+    }
+    workloadHost = host.entry;
+  }
 
   const derived = endpointOrFail({
     home: raw.home,
@@ -281,6 +300,7 @@ async function main(): Promise<void> {
     restart,
     lockPendingGraceMs,
     ...(exitWithParent ? { exitWithParent } : {}),
+    workloadHost,
   });
 }
 

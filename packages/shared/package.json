@@ -85,6 +85,7 @@
     "./turn-provenance-fold": "./src/turn-provenance-fold.ts",
     "./lifecycle-events": "./src/lifecycle-events.ts",
     "./process-identity": "./src/process-identity.mjs",
+    "./windows-system-utility": "./src/windows-system-utility.mjs",
     "./launch-path": "./src/launch-path.ts",
     "./station-home-schema": "./src/station-home-schema.ts",
     "./station-home-recovery-preflight": "./src/station-home-recovery-preflight.ts",

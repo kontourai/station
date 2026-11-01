@@ -1988,9 +1988,10 @@ Connections has one clear home for each relationship:
 
 Device-pairing scopes apply to protected HTTP requests even when a desktop app
 or CLI talks to Station on the same computer. A **Read-only** Device can view
-and stream permitted state, but cannot mutate resources. Remote terminal
-WebSockets additionally require `terminal:operate`; **Standard** includes that
-scope along with read and operate. The operator changes an existing Device's
+and stream permitted state, but cannot mutate resources. Terminals
+additionally require `terminal:operate` (or `terminal:observe` to watch) and a
+device that belongs to the operator; **Standard** includes `terminal:operate`
+along with read and operate. The operator changes an existing Device's
 scope in place with **Paired devices** → the Device → **Change access**, or on
 the Station host with `station environment access scope`; `access:manage` is
 never granted this way. A phone or browser that uses Station's **Request
