@@ -34,8 +34,7 @@ export function ComposerChoice({
         </span>
       )}
       <span className="chat-input__chip-stack" aria-hidden="true">
-        <span className="chat-input__chip-caption">{caption}</span>
-        {' '}
+        <span className="chat-input__chip-caption">{caption}</span>{' '}
         <span className={`composer-choice__value ${valueClassName ?? ''}`}>
           {value}
         </span>
