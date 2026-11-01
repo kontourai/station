@@ -753,11 +753,13 @@ async function chooseProject(page: Page, composer: Locator, slug: string) {
 async function openProjectDraft(page: Page) {
   const opened = await openNewChatDraft(page);
   await expect(
-    opened.draft.getByRole('button', { name: 'Project: No project' }),
+    opened.draft.getByRole('button', {
+      name: 'Project: No project. Without a project',
+    }),
   ).toBeVisible();
   await chooseProject(page, opened.draft, 'station');
   await expect(
-    opened.draft.getByRole('button', { name: 'Project: Station' }),
+    opened.draft.getByRole('button', { name: 'Project: Station. in Station' }),
   ).toBeVisible();
   return opened;
 }
@@ -1055,7 +1057,10 @@ test.describe('Task-first Home (#332, mocked)', () => {
     const start = form.getByRole('button', { name: 'Start', exact: true });
     // Both chips name what Start uses: the bound project and its default.
     await expect(
-      form.getByRole('button', { name: 'Project: Station', exact: true }),
+      form.getByRole('button', {
+        name: 'Project: Station. in Station',
+        exact: true,
+      }),
     ).toBeVisible();
     await expect(
       form.getByRole('button', {
@@ -1124,7 +1129,9 @@ test.describe('Task-first Home (#332, mocked)', () => {
     // assertion (now after an explicit click, not implicit) moved.
     const { dialog: newChat } = await openNewChatDraft(page);
     await expect(
-      newChat.getByRole('button', { name: 'Project: No project' }),
+      newChat.getByRole('button', {
+        name: 'Project: No project. Without a project',
+      }),
     ).toBeVisible();
     await newChat.press('Escape');
     await expect(newChat).toHaveCount(0);
@@ -1397,7 +1404,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
     await expect(advertised).toBeVisible();
     await expect(
       homeComposer.getByRole('button', {
-        name: 'Project: Station',
+        name: 'Project: Station. in Station',
         exact: true,
       }),
     ).toBeVisible();
@@ -1409,7 +1416,10 @@ test.describe('Task-first Home (#332, mocked)', () => {
       }),
     ).toBeVisible();
     await expect(
-      draft.getByRole('button', { name: 'Project: Station', exact: true }),
+      draft.getByRole('button', {
+        name: 'Project: Station. in Station',
+        exact: true,
+      }),
     ).toBeVisible();
     await dialog.press('Escape');
     await expect(dialog).toHaveCount(0);
@@ -1476,7 +1486,9 @@ test.describe('Task-first Home (#332, mocked)', () => {
 
     const opened = await openNewChatDraft(page);
     await expect(
-      opened.draft.getByRole('button', { name: 'Project: No project' }),
+      opened.draft.getByRole('button', {
+        name: 'Project: No project. Without a project',
+      }),
     ).toBeVisible();
     await sendDraft(opened, 'Start a direct chat.');
     await expect(page.locator('.chat-dock')).toBeVisible();

@@ -236,7 +236,7 @@ test.describe('ACP + Project Context', () => {
       .click();
     await expect(
       composer.getByRole('button', {
-        name: /^Project: (My Project|my-project)$/,
+        name: /^Project: (My Project\. in My Project|my-project\. in my-project)$/,
       }),
     ).toBeVisible();
   });

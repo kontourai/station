@@ -280,7 +280,7 @@ async function selectNoWorkspace(page: import('@playwright/test').Page) {
   await chooseProject(page, /No project/);
   await expect(
     startComposer(page).getByRole('button', {
-      name: 'Project: No project',
+      name: 'Project: No project. Without a project',
       exact: true,
     }),
   ).toBeVisible();
@@ -361,14 +361,14 @@ test('provider-managed project ignores a stale unsupported project model even wh
   // its model/engine behavior.
   await expect(
     startComposer(page).getByRole('button', {
-      name: 'Project: No project',
+      name: 'Project: No project. Without a project',
       exact: true,
     }),
   ).toBeVisible();
   await chooseProject(page, /My Project/);
   await expect(
     startComposer(page).getByRole('button', {
-      name: 'Project: My Project',
+      name: 'Project: My Project. in My Project',
       exact: true,
     }),
   ).toBeVisible();
@@ -431,13 +431,13 @@ test('selected project context shows Station via the global provider-managed fal
   // project explicitly before checking its model/engine behavior.
   await expect(
     startComposer(page).getByRole('button', {
-      name: 'Project: No project',
+      name: 'Project: No project. Without a project',
       exact: true,
     }),
   ).toBeVisible();
   await chooseProject(page, /My Project/);
   const chip = startComposer(page).getByRole('button', {
-    name: 'Project: My Project',
+    name: 'Project: My Project. in My Project',
     exact: true,
   });
   await expect(chip).toHaveAttribute(
@@ -608,9 +608,13 @@ test('new chat preserves context, search, keyboard, pointer, and close interacti
     '/Users/me/dev/github/kontourai',
   );
   await dropdown.getByRole('button', { name: /No project/ }).click();
-  await expect(projectChip).toHaveAccessibleName('Project: No project');
+  await expect(projectChip).toHaveAccessibleName(
+    'Project: No project. Without a project',
+  );
   await chooseProject(page, /My Project/);
-  await expect(projectChip).toHaveAccessibleName('Project: My Project');
+  await expect(projectChip).toHaveAccessibleName(
+    'Project: My Project. in My Project',
+  );
 
   // Search, in the Agent chip's list.
   let agents = await openAgentList(page);
@@ -625,7 +629,9 @@ test('new chat preserves context, search, keyboard, pointer, and close interacti
   await expect(startComposer(page)).toBeVisible();
 
   await chooseProject(page, /No project/);
-  await expect(projectChip).toHaveAccessibleName('Project: No project');
+  await expect(projectChip).toHaveAccessibleName(
+    'Project: No project. Without a project',
+  );
 
   // Keyboard: arrows move the highlight; Enter chooses the Agent and closes
   // the list, and starts nothing.
@@ -784,14 +790,14 @@ test('new chat project path stays overflow-free at 390x844', async ({
   // project-path layout remains contained on a phone.
   await expect(
     startComposer(page).getByRole('button', {
-      name: 'Project: No project',
+      name: 'Project: No project. Without a project',
       exact: true,
     }),
   ).toBeVisible();
   await chooseProject(page, /My Project/);
   // The chip names the project and carries the folder the chat runs in.
   const chip = startComposer(page).getByRole('button', {
-    name: 'Project: My Project',
+    name: 'Project: My Project. in My Project',
     exact: true,
   });
   await expect(chip).toHaveAttribute(
