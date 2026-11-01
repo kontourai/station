@@ -138,9 +138,10 @@ single-use ticket from an ordinary authenticated request, so it follows the API
 through proxies, tailnet names and native transports; a browser broker route
 has no socket path yet. See
 [operator devices and the Coding cutover](design/terminal.md#operator-devices-and-coding-cutover-3994-part-b2).
-Browser/Device frames use a binary HTTP stream. A same-origin UI/API proxy does
-not by itself expose dedicated socket ports or bridge upgrades; each route
-still needs transport configuration and platform qualification.
+Browser/Device frames use a binary HTTP stream. The lifecycle UI proxy forwards
+only the terminal socket's upgrade; it does not expose dedicated socket ports or
+bridge other upgrades, and each route still needs transport configuration and
+platform qualification.
 
 ### Station-engine chat topology
 
