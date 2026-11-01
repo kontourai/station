@@ -75,7 +75,7 @@ it('provider affinity reaches the native model boundary and new conversations ne
   });
   expect(next.providerSessionId).toBe(f.lease.providerSessionId);
   const children = await Promise.all(
-    ['child😀', 'child\uE000'].map((conversationId) =>
+    ['child\uE000', 'child😀'].map((conversationId) =>
       f.runtime.start({
         key: { ...f.key, conversationId },
         implementation: 'station-agent/1',
