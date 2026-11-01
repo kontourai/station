@@ -9977,6 +9977,21 @@ export class OrchestrationService {
           }
         }
         case 'interruptTurn': {
+          if (
+            this.options.eventStore?.ownedDescendantsBottomUp(command.threadId)
+              .length
+          ) {
+            const result = await this.requestOwnedCascade(
+              command.threadId,
+              'cancel',
+            );
+            if (!result)
+              throw new Error(
+                'Cascade cancellation outcome is unavailable; inspect the Session.',
+              );
+            this.persistReceipt(receipt);
+            return { receipt, result };
+          }
           // archive#3493 residual 1: mid-materialisation there IS work to
           // cancel — the turn that triggered the start is about to be
           // announced, and the dormant branch would answer `no-active-turn`
@@ -11384,6 +11399,13 @@ export class OrchestrationService {
           live.push(member);
       }
       // From here the members' events are dropped (see the gate), and a send
+      for (const member of started()) {
+        if (!eventStore.ownedDescendantsBottomUp(member).length) continue;
+        await this.requestOwnedCascade(member, 'stop');
+        const index = live.indexOf(member);
+        if (index !== -1) live.splice(index, 1);
+      }
+      // From here the members' events are dropped (see the gate), and a send
       // queued behind the locks is refused (`DraftDiscardedError`).
       for (const member of members) this.markDraftDiscarded(member);
       try {
@@ -11793,6 +11815,54 @@ export class OrchestrationService {
    * which must end whatever engine a Draft holds before deleting it.
    */
   private cascadeStopReconciliation?: Promise<void>;
+  private readonly cascadeStopAdapters = new Map<
+    string,
+    ProviderAdapterShape
+  >();
+  private readonly cascadeInterruptResults = new Map<
+    string,
+    InterruptTurnResult
+  >();
+
+  private async requestOwnedCascade(
+    threadId: string,
+    action: 'stop' | 'cancel',
+  ): Promise<InterruptTurnResult | undefined> {
+    const store = this.options.eventStore;
+    if (!store) throw new Error('Cascade event store is unavailable.');
+    const pending = store
+      .pendingCascadeStops()
+      .find(
+        (intent) => intent.childId === threadId && intent.parentId === threadId,
+      );
+    let terminalId = pending?.terminalId;
+    if (!terminalId) {
+      terminalId = crypto.randomUUID();
+      const provider =
+        this.threadProviders.get(threadId) ??
+        store.readSessionByThread(threadId)?.provider;
+      if (!provider) throw new Error(`Session not found: ${threadId}`);
+      this.projectAndPublishEvent({
+        eventId: terminalId,
+        threadId,
+        sessionId: threadId,
+        provider,
+        createdAt: new Date().toISOString(),
+        method: 'session.cancellation-requested',
+        action,
+      });
+    }
+    await this.reconcileCascadeStops();
+    if (
+      store
+        .pendingCascadeStops()
+        .some((intent) => intent.terminalId === terminalId)
+    )
+      throw new Error(`Owned Session stops remain pending: ${threadId}`);
+    const result = this.cascadeInterruptResults.get(terminalId);
+    this.cascadeInterruptResults.delete(terminalId);
+    return result;
+  }
 
   private reconcileCascadeStops(): Promise<void> {
     if (this.cascadeStopReconciliation) return this.cascadeStopReconciliation;
@@ -11800,9 +11870,14 @@ export class OrchestrationService {
     if (!store) return Promise.resolve();
     const reconcile = async () => {
       for (const intent of store.pendingCascadeStops()) {
+        if (
+          store.hasPendingCascadeDescendant(intent.childId, intent.terminalId)
+        )
+          continue;
+        const retained = this.cascadeStopAdapters.get(intent.childId);
         const owner = store.cascadeStopOwner(
           intent.childId,
-          this.sessionAdapters.has(intent.childId),
+          this.sessionAdapters.has(intent.childId) || retained !== undefined,
         );
         const evidence = {
           ...owner,
@@ -11825,8 +11900,40 @@ export class OrchestrationService {
           continue;
         }
         try {
-          await this.stopSessionNow(intent.childId);
+          const adapter = this.sessionAdapters.get(intent.childId) ?? retained;
+          if (!adapter) continue;
+          this.cascadeStopAdapters.set(intent.childId, adapter);
+          const trigger = store.eventById(
+            intent.parentId,
+            intent.terminalId,
+          )?.payload;
+          if (
+            intent.childId === intent.parentId &&
+            trigger?.method === 'session.cancellation-requested' &&
+            trigger.action === 'cancel'
+          ) {
+            const result =
+              await this.cooperativeStop.interruptUserTurnCooperatively(
+                adapter,
+                intent.childId,
+                trigger.turnId,
+              );
+            this.cascadeInterruptResults.set(intent.terminalId, result);
+          } else if (this.sessionAdapters.has(intent.childId)) {
+            await this.stopSessionNow(intent.childId, false);
+          } else {
+            await this.cooperativeStop.stopUserSessionImmediately(
+              adapter,
+              intent.childId,
+            );
+          }
           store.completeCascadeStop(intent.childId, intent.terminalId);
+          if (
+            !store
+              .pendingCascadeStops()
+              .some((next) => next.childId === intent.childId)
+          )
+            this.cascadeStopAdapters.delete(intent.childId);
         } catch (error) {
           this.options.logger.warn('Cascade stop remains pending', {
             ...intent,
@@ -11851,7 +11958,17 @@ export class OrchestrationService {
     });
   }
 
-  private async stopSessionNow(threadId: string): Promise<void> {
+  private async stopSessionNow(
+    threadId: string,
+    cascade = true,
+  ): Promise<void> {
+    if (
+      cascade &&
+      this.options.eventStore?.ownedDescendantsBottomUp(threadId).length
+    ) {
+      await this.requestOwnedCascade(threadId, 'stop');
+      return;
+    }
     // archive#3493 residual 1: a Stop that lands mid-materialisation
     // must tear down the engine that is starting, not report success
     // around it. Await the in-flight start (bounded by the
@@ -14549,6 +14666,9 @@ export class OrchestrationService {
   ): CanonicalRuntimeEvent {
     const { projectedEvent, session } = committed;
     if (
+      event.method === 'session.cancellation-requested' ||
+      (event.method === 'session.state-changed' &&
+        event.sessionState === 'canceled') ||
       event.method === 'turn.started' ||
       event.method === 'turn.aborted' ||
       event.method === 'session.exited'

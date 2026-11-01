@@ -7,11 +7,83 @@ import {
 } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { awaitSessionRecoveryCompleted } from '../../../__test-utils__/session-runtime-barriers.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import type { ProviderAdapterShape } from '../../../providers/adapter-shape.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
 
 const makeTempDir = trackTempDirs();
+
+test('Stop traverses verified descendants bottom-up and excludes claimed and background boundaries', async () => {
+  const store = new EventStore(
+    join(makeTempDir('cascade-tree-'), 'events.sqlite'),
+  );
+  const engine = new GateTestAdapter();
+  const adapter: ProviderAdapterShape = engine;
+  const running = new Set([
+    'parent',
+    'child',
+    'grandchild',
+    'claimed',
+    'background',
+  ]);
+  const order: string[] = [];
+  vi.spyOn(adapter, 'stopSession').mockImplementation(async (id) => {
+    order.push(id);
+    running.delete(id);
+  });
+  vi.spyOn(adapter, 'hasSession').mockImplementation(async (id) =>
+    running.has(id),
+  );
+  const service = new OrchestrationService({
+    adapterRegistry: createGateTestRegistry(adapter),
+    eventStore: store,
+    eventBus: new EventBus(),
+    logger: { debug() {}, warn() {} },
+  });
+  try {
+    service.initialize();
+    await awaitSessionRecoveryCompleted(service);
+    for (const [id, parent, binding, background] of [
+      ['parent', undefined, undefined, false],
+      ['child', 'parent', 'caller-derived', false],
+      ['grandchild', 'child', 'caller-derived', false],
+      ['claimed', 'parent', 'direct-claim', false],
+      ['background', 'parent', 'caller-derived', true],
+    ] as const) {
+      store.appendEvent({
+        eventId: `${id}-started`,
+        provider: 'claude',
+        threadId: id,
+        sessionId: id,
+        method: 'session.started',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        metadata: parent
+          ? {
+              delegation: {
+                parentConversationId: parent,
+                parentSessionId: parent,
+              },
+              stationDelegationProvenance: binding,
+              backgroundBoundary: background,
+            }
+          : {},
+      });
+      service.seedSessionRecord({
+        threadId: id,
+        provider: 'claude',
+        status: 'running',
+      });
+    }
+    await service.dispatch({ type: 'stopSession', threadId: 'parent' });
+    expect(order).toEqual(['grandchild', 'child', 'parent']);
+    expect([...running]).toEqual(['claimed', 'background']);
+    expect(store.pendingCascadeStops()).toEqual([]);
+  } finally {
+    await service.shutdown();
+    store.close();
+  }
+});
 
 test.each(['missing', 'dead', 'unavailable', 'reused'] as const)(
   'cascade retains unknown custody for a %s owner without using the dormant stop path',

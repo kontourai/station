@@ -1,4 +1,5 @@
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { z } from 'zod';
 import {
   type TransactionalSqliteDatabase,
   writeTransaction,
@@ -25,6 +26,26 @@ export interface SessionOwnershipEdge {
   eventId: string;
   backgroundBoundary: boolean;
 }
+
+const ownershipRows = z.array(
+  z.object({
+    child_session_id: z.string(),
+    parent_session_id: z.string(),
+    binding: z.enum(['verified', 'claimed']),
+    created_seq: z.number().int(),
+    event_id: z.string(),
+    background_boundary: z.union([z.literal(0), z.literal(1)]),
+  }),
+);
+const sourceRows = z.array(
+  z.object({
+    event_id: z.string(),
+    child_session_id: z.string(),
+    source_method: z.enum(['session.started', 'session.configured']),
+    global_sequence: z.number().int(),
+    payload: z.string(),
+  }),
+);
 
 /** Only a start's server-derived initiating Session grants lifecycle authority. */
 export function recordSessionOwnership(
@@ -94,12 +115,14 @@ export function backfillSessionOwnership(
   db: TransactionalSqliteDatabase,
 ): void {
   writeTransaction(db, 'ownership_backfill', () => {
-    const rows = db
-      .prepare(`SELECT m.event_id, m.child_session_id, m.source_method, m.global_sequence, e.payload
+    const rows = sourceRows.parse(
+      db
+        .prepare(`SELECT m.event_id, m.child_session_id, m.source_method, m.global_sequence, e.payload
       FROM orchestration_session_parent_mentions m JOIN orchestration_events e ON e.id = m.event_id
       WHERE NOT EXISTS (SELECT 1 FROM orchestration_session_ownership o WHERE o.event_id = m.event_id)
       ORDER BY m.global_sequence`)
-      .all();
+        .all(),
+    );
     for (const row of rows) {
       if (
         row.source_method !== 'session.started' &&
@@ -143,12 +166,43 @@ export function readSessionOwnership(
             'SELECT * FROM orchestration_session_ownership WHERE parent_session_id = ? ORDER BY created_seq',
           )
           .all(parentId);
-  return rows.map((row) => ({
+  return ownershipRows.parse(rows).map((row) => ({
     childId: String(row.child_session_id),
     parentId: String(row.parent_session_id),
-    binding: row.binding as SessionOwnershipEdge['binding'],
+    binding: row.binding,
     createdSequence: Number(row.created_seq),
     eventId: String(row.event_id),
     backgroundBoundary: row.background_boundary === 1,
   }));
+}
+
+export function ownedDescendantsBottomUp(
+  db: SqliteDatabase,
+  parentId: string,
+  before = Number.MAX_SAFE_INTEGER,
+): string[] {
+  const byParent = new Map<string, string[]>();
+  for (const edge of readSessionOwnership(db)) {
+    if (
+      edge.binding !== 'verified' ||
+      edge.backgroundBoundary ||
+      edge.createdSequence >= before
+    )
+      continue;
+    const children = byParent.get(edge.parentId) ?? [];
+    children.push(edge.childId);
+    byParent.set(edge.parentId, children);
+  }
+  const seen = new Set<string>([parentId]);
+  const ordered: string[] = [];
+  const visit = (parent: string) => {
+    for (const child of byParent.get(parent) ?? []) {
+      if (seen.has(child)) continue;
+      seen.add(child);
+      visit(child);
+      ordered.push(child);
+    }
+  };
+  visit(parentId);
+  return ordered;
 }

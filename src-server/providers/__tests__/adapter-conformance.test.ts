@@ -300,6 +300,22 @@ for (const { name, label, transport } of registrations) {
       }
       await engine.adapter.stopSession(THREAD);
       expect(await engine.adapter.hasSession(THREAD)).toBe(false);
+      await expect
+        .poll(
+          () =>
+            published().filter(
+              (event) =>
+                event.method === 'session.exited' && event.threadId === THREAD,
+            ).length,
+        )
+        .toBe(1);
+      const afterFirstStop = published().length;
+      await expect(engine.adapter.stopSession(THREAD)).resolves.toBeUndefined();
+      await expect(
+        engine.adapter.stopSession('never-started-child'),
+      ).resolves.toBeUndefined();
+      expect(await engine.adapter.hasSession(THREAD)).toBe(false);
+      expect(published()).toHaveLength(afterFirstStop);
     });
 
     const quiet = () => new Promise((resolve) => setTimeout(resolve, 30));

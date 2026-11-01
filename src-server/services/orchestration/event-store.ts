@@ -245,6 +245,7 @@ import {
 } from './attachment-blob-store.js';
 import {
   CANCELLATION_FENCE_SCHEMA,
+  deriveCascadeStopIntents,
   recordCascadeStopIntent,
 } from './cancellation-fence.js';
 import {
@@ -312,6 +313,7 @@ import {
   createSqliteDelegationResultStore,
   type DelegationResultStore,
   migrateDelegationResultSchema,
+  writeTransaction,
 } from './delegation-result-delivery.js';
 import {
   MAX_EVENT_CONTENT_BYTES,
@@ -339,6 +341,7 @@ import {
 import {
   backfillSessionOwnership,
   OWNERSHIP_TREE_SCHEMA,
+  ownedDescendantsBottomUp,
   readSessionOwnership,
   recordSessionOwnership,
 } from './ownership-tree.js';
@@ -5074,6 +5077,7 @@ export class EventStore {
         )).run(globalSequence);
         this.recordAttachmentRefs(event.threadId, persisted.blobRefs);
         recordSessionOwnership(this.db, event, globalSequence);
+        deriveCascadeStopIntents(this.db, event, globalSequence);
         this.recordEventContent(event.threadId, ingress.spills);
         this.chargeCommittedToolImages(persisted.toolImageKey);
         this.projectConversationHistoryEvent(event);
@@ -15049,6 +15053,21 @@ export class EventStore {
     return readSessionOwnership(this.db, parentId);
   }
 
+  ownedDescendantsBottomUp(parentId: string) {
+    return ownedDescendantsBottomUp(this.db, parentId);
+  }
+
+  hasPendingCascadeDescendant(childId: string, terminalId: string): boolean {
+    const pending = new Set(
+      this.pendingCascadeStops()
+        .filter((intent) => intent.terminalId === terminalId)
+        .map((intent) => intent.childId),
+    );
+    return ownedDescendantsBottomUp(this.db, childId).some((id) =>
+      pending.has(id),
+    );
+  }
+
   pendingCascadeStops(): Array<{
     parentId: string;
     childId: string;
@@ -15056,7 +15075,7 @@ export class EventStore {
   }> {
     return this.db
       .prepare(
-        "SELECT parent_session_id AS parentId, child_session_id AS childId, terminal_event_id AS terminalId FROM orchestration_cascade_stop_intents WHERE state = 'pending'",
+        "SELECT parent_session_id AS parentId, child_session_id AS childId, terminal_event_id AS terminalId FROM orchestration_cascade_stop_intents WHERE state = 'pending' ORDER BY rowid",
       )
       .all() as Array<{
       parentId: string;
@@ -15114,25 +15133,30 @@ export class EventStore {
     custody: 'local' | 'peer' | 'unknown',
     evidence: unknown,
   ): boolean {
-    return (
-      Number(
-        this.db
-          .prepare(
-            `INSERT INTO orchestration_cascade_stop_custody VALUES (?, ?, ?, ?)
+    const result = this.db
+      .prepare(
+        `INSERT INTO orchestration_cascade_stop_custody VALUES (?, ?, ?, ?)
        ON CONFLICT(child_session_id, terminal_event_id) DO UPDATE SET custody = excluded.custody, evidence_json = excluded.evidence_json
        WHERE custody != excluded.custody OR evidence_json != excluded.evidence_json`,
-          )
-          .run(childId, terminalId, custody, JSON.stringify(evidence)).changes,
-      ) > 0
-    );
+      )
+      .run(childId, terminalId, custody, JSON.stringify(evidence));
+    if (!result || typeof result !== 'object' || !('changes' in result))
+      throw new Error('SQLite did not acknowledge cascade custody.');
+    return Number(result.changes) > 0;
   }
 
   completeCascadeStop(childId: string, terminalId: string): void {
-    this.db
-      .prepare(
-        "UPDATE orchestration_cascade_stop_intents SET state = 'completed' WHERE child_session_id = ? AND terminal_event_id = ?",
-      )
-      .run(childId, terminalId);
+    writeTransaction(this.db, 'complete_cascade_stop', () => {
+      this.db
+        .prepare(
+          "UPDATE orchestration_cascade_stop_intents SET state = 'completed' WHERE child_session_id = ? AND terminal_event_id = ?",
+        )
+        .run(childId, terminalId);
+      this.db
+        .prepare(`DELETE FROM orchestration_cancellation_fences WHERE thread_id = ? AND terminal_event_id = ?
+        AND EXISTS (SELECT 1 FROM orchestration_cascade_stop_intents WHERE child_session_id = ? AND parent_session_id = ? AND terminal_event_id = ? AND state = 'completed')`)
+        .run(childId, terminalId, childId, childId, terminalId);
+    });
   }
 
   readInputlessTurnDisposition(threadId: string) {

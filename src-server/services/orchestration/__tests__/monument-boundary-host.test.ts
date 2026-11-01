@@ -55,7 +55,9 @@ test('a durable cancellation fence refuses a new turn on another connection', ()
   const root = makeTempDir('cancellation-fence-');
   const path = join(root, 'events.sqlite');
   const store = open(path);
-  closes.push(() => store.close());
+  closes.push(() => {
+    store.close();
+  });
   const peer = new DatabaseSync(path);
   closes.push(() => peer.close());
   peer.exec(`CREATE TABLE IF NOT EXISTS orchestration_cancellation_fences (

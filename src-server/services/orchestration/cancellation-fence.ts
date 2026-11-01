@@ -1,7 +1,9 @@
+import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import {
   type TransactionalSqliteDatabase,
   writeTransaction,
 } from './delegation-result-delivery.js';
+import { ownedDescendantsBottomUp } from './ownership-tree.js';
 import type { SqliteDatabase } from './sqlite-database.js';
 
 export const CANCELLATION_FENCE_SCHEMA = `CREATE TABLE IF NOT EXISTS orchestration_cancellation_fences (
@@ -38,25 +40,53 @@ export function recordCascadeStopIntent(
     ).run();
     const terminal = db
       .prepare(
-        "SELECT 1 FROM orchestration_events WHERE id = ? AND thread_id = ? AND method IN ('session.exited', 'turn.aborted')",
+        "SELECT 1 FROM orchestration_events WHERE id = ? AND thread_id = ? AND (method IN ('session.exited', 'turn.aborted', 'session.cancellation-requested') OR (method = 'session.state-changed' AND session_state = 'canceled'))",
       )
       .get(terminalId, parentId);
     if (!terminal) throw new Error('Cascade parent terminal is unavailable.');
     const existing = db
       .prepare(
-        'SELECT parent_session_id FROM orchestration_cascade_stop_intents WHERE child_session_id = ? AND terminal_event_id = ?',
+        'SELECT parent_session_id, state FROM orchestration_cascade_stop_intents WHERE child_session_id = ? AND terminal_event_id = ?',
       )
-      .get(childId, terminalId) as { parent_session_id: string } | undefined;
+      .get(childId, terminalId) as
+      | { parent_session_id: string; state: string }
+      | undefined;
     if (existing && existing.parent_session_id !== parentId)
       throw new Error('Cascade intent parent conflict.');
     db.prepare(
       'INSERT OR IGNORE INTO orchestration_cascade_stop_intents VALUES (?, ?, ?, ?)',
     ).run(parentId, childId, terminalId, 'pending');
+    if (parentId === childId && existing?.state === 'completed') return false;
     db.prepare(
       'INSERT OR IGNORE INTO orchestration_cancellation_fences VALUES (?, ?)',
     ).run(childId, terminalId);
     return existing === undefined;
   });
+}
+
+export function deriveCascadeStopIntents(
+  db: TransactionalSqliteDatabase,
+  event: CanonicalRuntimeEvent,
+  sequence: number,
+): void {
+  const requested = event.method === 'session.cancellation-requested';
+  if (
+    !requested &&
+    event.method !== 'session.exited' &&
+    event.method !== 'turn.aborted' &&
+    !(
+      event.method === 'session.state-changed' &&
+      event.sessionState === 'canceled'
+    )
+  )
+    return;
+  // An ancestor's durable request already includes this fenced subtree.
+  if (!requested && isCancellationFenced(db, event.threadId)) return;
+  const descendants = ownedDescendantsBottomUp(db, event.threadId, sequence);
+  for (const childId of descendants)
+    recordCascadeStopIntent(db, event.threadId, childId, event.eventId);
+  if (requested)
+    recordCascadeStopIntent(db, event.threadId, event.threadId, event.eventId);
 }
 
 /** Call while holding the same SQLite writer transaction as admission. */
