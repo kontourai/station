@@ -1522,7 +1522,9 @@
 
     "src-server/services/orchestration/__tests__/cancellation-fence.test.ts",
 
-    "src-server/services/orchestration/__tests__/cancellation-fence-race.process.test.ts"
+    "src-server/services/orchestration/__tests__/cancellation-fence-race.process.test.ts",
+
+    "src-server/services/orchestration/__tests__/ownership-cascade-review.test.ts"
   ],
 
   "checks": [
