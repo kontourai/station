@@ -17,6 +17,7 @@ import {
   createDelegationRoundsController,
   type DelegationRoundsHost,
   type DelegationRoundsTransactionOwner,
+  type DelegationRoundsTransactionScope,
 } from '@kontourai/flow-agents/delegation-group-rounds';
 import { canonicalJson } from '@kontourai/relay';
 import type {
@@ -54,7 +55,10 @@ import {
   wireIdentityDigest,
 } from './delegation-group-wire-intent-store.js';
 import type { OrchestrationService } from './orchestration-service.js';
-import type { ReportRoundsPublication } from './report-rounds-publication.js';
+import type {
+  ReportRoundsPublication,
+  ReportRoundsScope,
+} from './report-rounds-publication.js';
 import {
   type ReportAccountingRecoveryIntent,
   signReportAccountingRecoveryIntent,
@@ -278,8 +282,16 @@ export class StationReportGroupCustody {
   async inspectForMutation(
     context: RuntimeSourceRequestContext,
     groupId: string,
+    publication?: ReportRoundsPublication,
   ) {
-    return this.#inspect(await this.#context(context, 'POST'), groupId);
+    const captured = await this.#context(context, 'POST');
+    if (!publication) return this.#inspect(captured, groupId);
+    const owner = await HomeWriterOwner.forHome(
+      this.owners.environment.getProjectHomeDir(),
+    );
+    return publication.withHome({ owner, current: captured.current }, (scope) =>
+      this.#inspect({ ...captured, current: scope.current }, groupId),
+    );
   }
   async loadIntentForMutation(
     context: RuntimeSourceRequestContext,
@@ -1238,111 +1250,146 @@ export class StationReportGroupCustody {
     groupId: string,
     input: ReportGroupFinalizeSyncInput,
     dispatchLedger: AuthorizationLedger,
-    publicationCurrent?: () => void,
+    publication?: ReportRoundsPublication,
   ) {
     const command = structuredClone(input);
     id(command.operationKey);
     id(command.syncOperationKey);
     const captured = await this.#context(context, 'POST');
-    const authorized = {
-      ...captured,
-      current: (): undefined => {
-        captured.current();
-        publicationCurrent?.();
-        return undefined;
-      },
+    const baseCurrent = (): undefined => {
+      publication?.assertCurrent();
+      return captured.current();
     };
-    const before = await this.#inspect(authorized, groupId);
+    const owner = publication
+      ? await HomeWriterOwner.forHome(
+          this.owners.environment.getProjectHomeDir(),
+        )
+      : undefined;
+    const before =
+      publication && owner
+        ? await publication.withHome(
+            { owner, current: captured.current },
+            (scope) =>
+              this.#inspect({ ...captured, current: scope.current }, groupId),
+          )
+        : await this.#inspect({ ...captured, current: baseCurrent }, groupId);
     const group = before?.group;
     const root = before?.authority?.epochs.at(-1)?.root;
     if (!before || !group || !root) refuse();
-    const service = createDelegationAuthorityServiceV3(
-      this.owners.persistence.roundsAuthorityStore(authorized.current),
-      {
-        now: () => new Date().toISOString(),
-        authorize: async (action, candidate) => {
-          authorized.current();
-          return action === 'inspect' && same(candidate, root);
+    const build = (
+      scope?: ReportRoundsScope,
+    ): Pick<
+      DelegationRoundsTransactionScope,
+      'store' | 'host' | 'authorityService'
+    > => {
+      const current = scope?.current ?? baseCurrent;
+      const service = createDelegationAuthorityServiceV3(
+        this.owners.persistence.roundsAuthorityStore(current, current, scope),
+        {
+          now: () => new Date().toISOString(),
+          authorize: async (action, candidate) => {
+            current();
+            return action === 'inspect' && same(candidate, root);
+          },
+          confirmExecution: async () => false,
+          authenticateRenewal: async () => null,
         },
-        confirmExecution: async () => false,
-        authenticateRenewal: async () => null,
-      },
-      { maxRenewals: 0 },
-    );
-    const controller = createDelegationRoundsController({
-      store: this.owners.persistence.roundsStore(authorized.current),
-      authorityService: service,
-      dispatchLedger,
-      host: {
-        authorize: async ({ action, groupId: candidate, current }) => {
-          authorized.current();
-          return ['finalizeSync', 'replay'].includes(action) &&
-            candidate === groupId &&
-            (!current || same(current, group))
-            ? root.authenticated_principal_ref
-            : null;
-        },
-        retainContinuation: async (spec, receipt) => {
-          authorized.current();
-          if (!same(spec, group.spec)) refuse();
-          const pending = group.continuations.find(
-            (c) => c.command.operationKey === command.syncOperationKey,
-          );
-          if (
-            !pending?.prepared ||
-            pending.command.kind !== 'sync' ||
-            !same(pending.prepared, receipt)
-          )
-            refuse();
-          const seatId = pending.command.seatId;
-          const member = before.admission.members.find(
-            (m) => m.seatId === seatId,
-          );
-          if (!member) refuse();
-          for (const proof of pending.prepared.terminalProofs) {
-            const observation =
-              await this.owners.persistence.readReportObservation(
-                groupId,
-                proof.invocationId,
-                proof.reference,
-                authorized.current,
-              );
-            const invocation = before.authority!.invocations.find(
-              (i) => i.invocationId === proof.invocationId,
+        { maxRenewals: 0 },
+      );
+      return {
+        store: this.owners.persistence.roundsStore(current, current, scope),
+        authorityService: service,
+        host: {
+          authorize: async ({
+            action,
+            groupId: candidate,
+            current: projection,
+          }) => {
+            current();
+            return ['finalizeSync', 'replay'].includes(action) &&
+              candidate === groupId &&
+              (!projection || same(projection, group))
+              ? root.authenticated_principal_ref
+              : null;
+          },
+          retainContinuation: async (spec, receipt) => {
+            current();
+            if (!same(spec, group.spec)) refuse();
+            const pending = group.continuations.find(
+              (c) => c.command.operationKey === command.syncOperationKey,
             );
             if (
-              observation.seatId !== member.seatId ||
-              observation.observation.kind !== 'terminal' ||
-              observation.observation.sessionId !== member.reservedTaskId ||
-              !invocation?.terminal ||
-              invocation.usage === null
+              !pending?.prepared ||
+              pending.command.kind !== 'sync' ||
+              !same(pending.prepared, receipt)
             )
               refuse();
-            await this.owners.persistence.assertProviderEvidenceReference(
-              observation.observation.evidence,
-              {
-                groupId,
-                rootId: root.authority_id,
-                invocationId: proof.invocationId,
-                executionId: member.reservedTaskId,
-                usage: invocation.usage,
-              },
-              authorized.current,
+            const authority = await service.inspect(root.authority_id);
+            current();
+            const seatId = pending.command.seatId;
+            const member = before.admission.members.find(
+              (m) => m.seatId === seatId,
             );
-          }
-          return this.owners.persistence.retainReportFlowObservation(
-            groupId,
-            'continuation',
-            receipt,
-            authorized.current,
-          );
+            if (!member) refuse();
+            for (const proof of pending.prepared.terminalProofs) {
+              const observation =
+                await this.owners.persistence.readReportObservation(
+                  groupId,
+                  proof.invocationId,
+                  proof.reference,
+                  current,
+                );
+              const invocation = authority.invocations.find(
+                (i) => i.invocationId === proof.invocationId,
+              );
+              if (
+                observation.seatId !== member.seatId ||
+                observation.observation.kind !== 'terminal' ||
+                observation.observation.sessionId !== member.reservedTaskId ||
+                !invocation?.terminal ||
+                invocation.usage === null
+              )
+                refuse();
+              await this.owners.persistence.assertProviderEvidenceReference(
+                observation.observation.evidence,
+                {
+                  groupId,
+                  rootId: root.authority_id,
+                  invocationId: proof.invocationId,
+                  executionId: member.reservedTaskId,
+                  usage: invocation.usage,
+                },
+                current,
+              );
+            }
+            return this.owners.persistence.retainReportFlowObservation(
+              groupId,
+              'continuation',
+              receipt,
+              current,
+            );
+          },
+          executionHost: () => refuse(),
+          prepareRequest: async () => refuse(),
+          retainObservation: async () => refuse(),
+          confirmTerminal: async () => refuse(),
+          requestDescendantCancellation: async () => refuse(),
         },
-        executionHost: () => refuse(),
-        prepareRequest: async () => refuse(),
-        retainObservation: async () => refuse(),
-        confirmTerminal: async () => refuse(),
-        requestDescendantCancellation: async () => refuse(),
-      },
+      };
+    };
+    const controller = createDelegationRoundsController({
+      ...build(),
+      dispatchLedger,
+      ...(publication && owner
+        ? {
+            transactionOwner: publication.transactionOwner({
+              groupId,
+              owner,
+              current: captured.current,
+              build: (scope) => build(scope),
+            }),
+          }
+        : {}),
     });
     return controller.finalizeSync({
       kind: 'finalizeSync',

@@ -511,28 +511,22 @@ export class StationReportGroupRuntime {
     groupId: string,
     command: ReportGroupFinalizeSyncInput,
   ) {
-    const work = async (
-      lease?: import('../../runtime/bootstrap/runtime-publication-participant.js').RuntimePublicationLease,
-    ) => {
+    return this.#withRoundsPublication(context, async (publication) => {
       const result = await this.#custody.finalizeSync(
         context,
         groupId,
         command,
         this.#dispatch,
-        lease?.assertCurrent,
+        publication,
       );
       const historical = await this.#custody.inspectForMutation(
         context,
         groupId,
+        publication,
       );
       if (!historical) throw new StationReportCustodyUnavailable();
       return { replayed: result.replayed, group: view(historical) };
-    };
-    const participant = this.owners.publicationParticipant;
-    if (participant === undefined) return work();
-    if (!isRuntimePublicationParticipant(participant))
-      throw new StationReportCustodyUnavailable();
-    return participant.run(work);
+    });
   }
   async get(context: RuntimeSourceRequestContext, groupId: string) {
     const result = await this.#custody.inspect(context, groupId);

@@ -3248,3 +3248,41 @@ lane; accumulated documentation freshness is still its required failure. The
 previous failed runs remain retained evidence. This does not qualify live
 provider/native/device behavior, complete remaining controller adoption, enable
 report groups/finalizers or make the epic ready for a PR.
+
+
+## Sync finalization transaction ownership checkpoint
+
+The runtime sync-finalization caller now admits an authentic publication parent
+and builds its rounds store, V3 authority service and host from each transaction's
+exact HomeWriter lease. Initial and final inspection use separate short metadata
+scopes. The installed published Flow Agents 9.11.0 controller retains transaction
+custody through the full durable store return, then releases before the caller
+returns. No provider or human work is admitted by this finalization command.
+Invocation evidence is re-read through the scoped V3 service instead of using
+only the earlier inspection snapshot.
+
+The pre-fix real-caller regression failed because an independent physical lock
+could be acquired inside the transaction. The first repair passed 14 focused
+cases and scoped server-test types. Independent Opus execution reproduced those
+14 passes and types, but withheld readiness: physical exclusion alone did not
+prove that either store received its exact lease, and caller failure controls
+were missing. This remains a bounded review, not an epic approval.
+
+The strengthened caller now exercises both lease-bound stores, requires their
+actual leases to be live during access and unusable after retirement, and checks
+physical and synchronous HomeWriter acquisition after completion and replay.
+It also aborts the actual request at transaction entry before mutation and
+requires the group revision to remain unchanged. A retirement fault armed only
+after underlying store return must produce typed transaction uncertainty and
+runtime shutdown refusal; removing the fault permits cleanup retry and home
+acquisition. The resulting three-file keeper passes all 14 cases, with scoped
+server-test types and Biome passing. Raw outputs are not reinvoked and the public
+context receipt remains incomplete rather than inventing an acknowledgement.
+
+Clean-commit mutation qualification and a queued real-credential revocation
+control remain open. Continuation, continuation finalization, renewal adoption,
+authenticated public-parent borrowing, active cancellation/ACK and the funded
+input/context journey still need their own qualification. Accumulated review
+freshness and generated MCP equality remain separate documentation obligations.
+Report capabilities and finalizers remain disabled; no new live provider,
+native, browser, physical-device, hosted or whole-epic readiness follows here.

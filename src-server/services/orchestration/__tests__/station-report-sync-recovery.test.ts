@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { realpathSync } from 'node:fs';
+import fs, { realpathSync } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { join } from 'node:path';
 import { FileAuthorizationLedger } from '@kontourai/dispatch';
 import { flowRunHead, loadRun } from '@kontourai/flow';
@@ -16,8 +17,17 @@ import {
 } from '@kontourai/flow-agents/delegation-group-rounds';
 import type { ModelRuntime } from '@kontourai/relay';
 import { canonicalJson } from '@kontourai/relay';
-import { test } from 'vitest';
+import { prepareFileMutationOwner } from '@kontourai/station-shared/lifecycle-events';
+import { test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { isRuntimePublicationParticipant } from '../../../runtime/bootstrap/runtime-publication-participant.js';
+import { StationRuntime } from '../../../runtime/bootstrap/station-runtime.js';
+import {
+  bindRuntimeLocalOperator,
+  getRuntimeAuthenticatedRequestPrincipal,
+  setRuntimeAuthenticatedRequestPrincipal,
+} from '../../../security/runtime-request-security.js';
+import { HomeWriterOwner } from '../../ssh/home-writer-owner.js';
 import { StationDelegationPersistence } from '../delegation-group-persistence.js';
 import { EventBus } from '../event-bus.js';
 import { OrchestrationService } from '../orchestration-service.js';
@@ -27,6 +37,7 @@ import {
   verifyReportContinuationTurn,
 } from '../station-report-group-cancellation.js';
 import { StationReportGroupCustody } from '../station-report-group-custody.js';
+import { StationReportGroupRuntime } from '../station-report-group-runtime.js';
 import { createReportFlow } from './delegation-source-fixtures/flow.js';
 import { requestFor, setup } from './delegation-source-fixtures/report.js';
 
@@ -283,24 +294,214 @@ test('sync finalization refuses an absent receipt and recovers a lost result wit
       ),
       /rounds_revision_conflict/,
     );
-    const finished = await reader.finalizeSync(
-      h.f.context(requestFor(h, 'POST')),
-      groupId,
-      command,
-      dispatchLedger,
-    );
-    assert.equal(finished.replayed, false);
-    assert.equal(
-      finished.projection.continuations[0].receipt?.acknowledged,
-      false,
-    );
-    const replay = await reader.finalizeSync(
-      h.f.context(requestFor(h, 'POST')),
-      groupId,
-      command,
-      dispatchLedger,
-    );
-    assert.equal(replay.replayed, true);
+    {
+      const runtimeOwner = new StationRuntime({ projectHomeDir: h.f.home });
+      const participant = Reflect.get(
+        runtimeOwner,
+        'runtimePublicationParticipant',
+      );
+      assert.ok(isRuntimePublicationParticipant(participant));
+      const orchestration = new OrchestrationService({
+        adapterRegistry: { register: forbid, get: forbid, list: () => [] },
+        eventBus: new EventBus(),
+        logger: { debug() {}, warn() {} },
+      });
+      const report = new StationReportGroupRuntime({
+        publicationParticipant: participant,
+        runtime: h.preparationOwners.runtime,
+        orchestration,
+        rawFetch: h.rawFetch,
+      });
+      const writer = await HomeWriterOwner.forHome(h.f.home);
+      const probe = await prepareFileMutationOwner(
+        join(h.f.home, 'security', '.home-writer.mutation'),
+      );
+      const checkHeld = async () => {
+        const attempt = probe.tryAcquire();
+        if (attempt.kind === 'acquired') await attempt.lease.release();
+        assert.equal(
+          attempt.kind,
+          'busy',
+          'sync finalization owns home through store return',
+        );
+        assert.throws(
+          () => writer.runSynchronous(() => undefined),
+          { name: 'HomeWriterUnavailableError', reason: 'busy' },
+          'sync finalization cannot lend ambient home authority',
+        );
+      };
+      const checkReleased = async () => {
+        const attempt = probe.tryAcquire();
+        assert.equal(
+          attempt.kind,
+          'acquired',
+          'finalization releases physical home',
+        );
+        if (attempt.kind === 'acquired') await attempt.lease.release();
+        writer.runSynchronous(() => undefined);
+      };
+      let bodies = 0,
+        returns = 0,
+        authorityReads = 0;
+      const retiredBindings: Array<() => void> = [];
+      let stopBeforeBody: (() => void) | undefined;
+      let failRelease = false;
+      let releaseFault: { mockRestore(): void } | undefined;
+      const authorityStore =
+        StationDelegationPersistence.prototype.roundsAuthorityStore;
+      const authorityObserver = vi
+        .spyOn(StationDelegationPersistence.prototype, 'roundsAuthorityStore')
+        .mockImplementation(function (
+          this: StationDelegationPersistence,
+          ...args
+        ) {
+          const actual = authorityStore.apply(this, args);
+          return {
+            ...actual,
+            transact: async (id, body) => {
+              const scope = args[2];
+              assert.ok(scope, 'authority access requires an exact home lease');
+              scope.owner.runWithLease(scope.lease, () => undefined);
+              retiredBindings.push(() =>
+                scope.owner.runWithLease(scope.lease, () => undefined),
+              );
+              authorityReads++;
+              return actual.transact(id, body);
+            },
+          };
+        });
+      const roundsStore = StationDelegationPersistence.prototype.roundsStore;
+      const observer = vi
+        .spyOn(StationDelegationPersistence.prototype, 'roundsStore')
+        .mockImplementation(function (
+          this: StationDelegationPersistence,
+          ...args
+        ) {
+          const actual = roundsStore.apply(this, args);
+          return {
+            ...actual,
+            transact: async (id, body) => {
+              const scope = args[2];
+              assert.ok(scope, 'group access requires an exact home lease');
+              scope.owner.runWithLease(scope.lease, () => undefined);
+              retiredBindings.push(() =>
+                scope.owner.runWithLease(scope.lease, () => undefined),
+              );
+              const result = await actual.transact(id, async (journal) => {
+                stopBeforeBody?.();
+                stopBeforeBody = undefined;
+                const next = await body(journal);
+                await checkHeld();
+                bodies++;
+                return next;
+              });
+              await checkHeld();
+              returns++;
+              if (failRelease) {
+                failRelease = false;
+                const remove = fs.rmSync;
+                releaseFault = vi
+                  .spyOn(fs, 'rmSync')
+                  .mockImplementation((path, options) => {
+                    if (
+                      String(path).includes(
+                        '.home-writer.mutation.guard.stale-',
+                      )
+                    )
+                      throw Error(
+                        'injected finalizeSync home retirement failure',
+                      );
+                    return remove(path, options);
+                  });
+                syncBuiltinESMExports();
+              }
+              return result;
+            },
+          };
+        });
+      try {
+        const abort = new AbortController();
+        const originalRequest = requestFor(h, 'POST');
+        const abortedRequest = new Request(originalRequest, {
+          signal: abort.signal,
+        });
+        const principal =
+          getRuntimeAuthenticatedRequestPrincipal(originalRequest);
+        assert.ok(principal);
+        setRuntimeAuthenticatedRequestPrincipal(abortedRequest, principal);
+        bindRuntimeLocalOperator(abortedRequest);
+        stopBeforeBody = () =>
+          abort.abort(Error('controlled finalizeSync request abort'));
+        await assert.rejects(
+          report.finalizeSync(h.f.context(abortedRequest), groupId, command),
+          /controlled finalizeSync request abort/,
+        );
+        assert.equal(
+          stopBeforeBody,
+          undefined,
+          'abort reached the real transaction body',
+        );
+        await checkReleased();
+        assert.equal(
+          (await reader.inspect(h.f.context(requestFor(h)), groupId))?.group
+            ?.revision,
+          held.revision,
+        );
+        const finished = await report.finalizeSync(
+          h.f.context(requestFor(h, 'POST')),
+          groupId,
+          command,
+        );
+        assert.equal(finished.replayed, false);
+        await checkReleased();
+        assert.equal(finished.group.contextSyncs?.[0]?.state, 'incomplete');
+        const replay = await report.finalizeSync(
+          h.f.context(requestFor(h, 'POST')),
+          groupId,
+          command,
+        );
+        assert.equal(replay.replayed, true);
+        await checkReleased();
+        assert.ok(bodies > 0);
+        assert.ok(authorityReads > 0);
+        assert.equal(returns, bodies);
+        for (const late of retiredBindings) {
+          assert.throws(late, {
+            name: 'HomeWriterUnavailableError',
+            reason: 'borrow-unavailable',
+          });
+        }
+        failRelease = true;
+        await assert.rejects(
+          report.finalizeSync(
+            h.f.context(requestFor(h, 'POST')),
+            groupId,
+            command,
+          ),
+          { code: 'rounds_transaction_uncertain' },
+        );
+        assert.ok(
+          releaseFault,
+          'failure was armed only after actual store return',
+        );
+        await assert.rejects(runtimeOwner.shutdown(), {
+          code: 'runtime_publication_pending',
+        });
+        releaseFault.mockRestore();
+        releaseFault = undefined;
+        syncBuiltinESMExports();
+        await runtimeOwner.shutdown();
+        await checkReleased();
+      } finally {
+        releaseFault?.mockRestore();
+        syncBuiltinESMExports();
+        authorityObserver.mockRestore();
+        observer.mockRestore();
+        await probe.close();
+        await orchestration.shutdown();
+        await runtimeOwner.shutdown();
+      }
+    }
     const retained = await reader.inspect(h.f.context(requestFor(h)), groupId);
     assert.deepEqual(retained?.authority?.invocations, originalLedger);
     assert.equal(modelCalls, 1);
