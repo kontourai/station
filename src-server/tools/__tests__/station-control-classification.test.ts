@@ -102,6 +102,10 @@ describe('station-control tool classification', () => {
     ]);
     // Skill listing is a read, so it stays on the auto-approved list.
     expect(SC_AUTO_APPROVED_TOOLS).toContain('station-control_list_skills');
+    expect(classifyControlTool('device_capture_to_task')).toBe('mutating');
+    expect(SC_AUTO_APPROVED_TOOLS).not.toContain(
+      'station-control_device_capture_to_task',
+    );
     // Spot-check the contract: CRUD/install/dispatch are mutating. Most
     // list/get/navigate/status tools are read-only; delegation discovery is
     // gated because selecting an SSH environment may reconnect it.

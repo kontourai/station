@@ -17,8 +17,9 @@ mobile continuity baseline; the earlier reconnect work is recorded in
 
 Tool-server OAuth credentials are plaintext JSON with mode `0600` under
 `<home>/security/` (`tool-server-credentials.json` and
-`tool-server-principal-credentials.json`). Same-user processes, including agents
-outside macOS Seatbelt confinement, can read remote tokens directly. Remote MCP
+`tool-server-principal-credentials.json`). Same-user host processes without
+filesystem confinement, including Agent processes with those host permissions,
+can read remote tokens directly. Remote MCP
 proxy delivery does not provide encryption at rest or protection from same-user
 filesystem access. See [connected accounts](../guides/connections.md#connect-an-oauth-mcp-server-to-an-agent).
 
@@ -97,6 +98,14 @@ startup. Follow-up, out of scope here: the consent cookie is not `Secure`;
 marking it so would break the plain-http consent path. See
 the [deployment guide](../guides/deployment.md#reaching-the-consent-origin-over-https).
 
+The Project sharing setting uses a transaction-bound consent session and the
+separate review page to isolate its decision from app-origin scripts. This is
+not a fresh passkey assertion or proof of human presence or same-machine
+location: a caller holding the operator credential can automate the HTTP
+review and decision, and a holder of the exact transaction cookie can decide
+that transaction. Browser Origin and Fetch Metadata do not authenticate raw
+HTTP callers. The S4 passkey ceremony below is a stronger, separate authority.
+
 Operator passkey enrollment (#3257, slice S2b) runs on this origin and only when
 `STATION_TRUSTED_CONSENT_ORIGIN` is set; without it enrollment is unavailable
 (an IP-only Station has no remote operator sign-in). A paired browser opens an
@@ -142,12 +151,18 @@ every read, so a revoked binding cannot resume after restart.
 `__Host-station-operator` is Secure, HttpOnly, SameSite=Strict, Path=/, with no
 Domain. A hostname cookie also reaches the app on another port. That is an
 accepted read disclosure: app-origin plugin code can read
-`GET /api/pairing/devices`, `GET /api/operator/passkeys` and
+`GET /api/pairing/devices`, `GET /api/pairing/requests`, `GET /api/operator/passkeys` and
 `GET /api/operator/session` while the session is live. Exact-leaf admission
 stamps `operator-session`, never `operator-credential`. Ordinary bearer/Device
-admission runs first; an operator cookie cannot block that authority. The
+admission runs first; an invalid operator cookie cannot block that authority. For
+pairing approval, a valid operator session takes precedence so its decision
+requires a separate passkey review. The
 session path verifies the binding Device and enforces alias/account policy.
-S4 admits exact scope/revoke/removal, group, token and passkey-revocation requests
+The account-binding consent leaf explicitly selects the operator session even
+when the Device could otherwise approve pairing, and does not accept the Device
+credential as a substitute for the session or the consent-origin assertion.
+S4 admits exact scope/revoke/removal, group, token, passkey-revocation and
+ordinary Device pairing-approval requests
 only to create a transaction: 202, with no mutation. The owning session alone can
 read or review it. Its canonical fingerprint and one-use render nonce bind a
 fresh UV assertion on the consent origin to that exact action. Only
@@ -156,9 +171,34 @@ native consent cannot substitute. The initiating live session may deny through
 the same exact consent-origin and one-use nonce checks without a passkey. Denial
 is terminal and cannot commit a write; a later approval is refused.
 Commit rechecks expected target state and live
-session authority. There is no step-up window. Step-up and automatic status or
+session authority. Account-bound approval also rechecks the provider session,
+issuer and subject before committing the still-pending request. There is no step-up window. Step-up and automatic status or
 inventory refreshes never extend the operator session. Token secrets exist only
 in the initiating commit response, never in the transaction record or later reads.
+
+Turning on Project sharing (#4306) uses the same S4 transaction.
+`POST /api/projects/:slug/access/enable` still commits directly only for the
+operator credential or a `home-possession` grant. A paired Device that ordinary
+admission lets post that leaf, and that presents an operator session bound to
+the same Device, receives `202` and a `project-sharing-enable` transaction
+instead. Its fingerprint pins the slug, the local Project id and the owner, the
+principal that Device resolves to. The review names that owner. The S4 rules
+apply unchanged: one fresh UV assertion on the consent origin, a one-use render
+nonce, the owning session alone, and no step-up window. At commit Station
+rechecks the reviewed owner, the Device credential and the live session (bound
+Device, passkey, credential epoch, expiry). It checks the session again inside
+the Project lease, where the membership service calls `operator()`. A Project
+owner or admin without a session, a different Device carrying the session
+cookie, an agent-originated request and a delegation grant keep the existing
+`403`. `GET /api/projects/:slug/access/enablement` reports which path applies
+to the caller and reads no Project data. A committed enable writes
+`station.project_sharing.enabled` (actor, local Project id, transaction id)
+through the runtime logger, like `station.device_access.changed`. It adds no
+usage-telemetry event. Two residual risks: app-origin plugin code can open such
+a review, as with other S4 requests, but cannot approve it; and the owner is
+the Device's resolved principal. Behind Tailscale Serve with WhoIs that is the
+tailnet person; a Device with no person binding owns as itself, so revoking
+that Device leaves the Project without a reachable owner.
 
 Sign-out remains on the consent origin with its own one-use page nonce and exact
 Origin/Fetch Metadata checks. Remote revoke-all is a follow-up; both API DELETE
@@ -237,9 +277,52 @@ current canonical Conversation lineage and reader access. Ordinary account membe
 does not authorize relationship mutations. Linking neither publishes a Task or private
 conversation nor grants execution.
 
+The personal Task-room leaves separately compose current Device scope and
+account standing with the exact shared Task incarnation and Project membership.
+`view` permits reads and presence, `discuss` permits messages, and `edit`
+permits edit planning. The account-bound allowlist excludes batch settlement,
+attachments, memory, review and agent requests. A changed membership revision
+invalidates the captured stream admission; an in-process notification prompts
+closure and the idle cadence rechecks within its 15-second interval. Per-delivery
+checks remain. Neither the member preview nor a Task share grants host execution
+or access to a private Session.
+
 Previously verified cookie sessions require the provider's synchronous live witness at
 relationship commit/delivery seams; missing support, revoked/expired sessions and
 pending enrollment fail closed. A historical authenticated result alone is insufficient.
+
+On the scoped surfaces below, a currently witnessed local-account cookie session
+supplies the acting person. A verified Serve WhoIs identity is ingress
+provenance and does not establish membership or link people. Device and account
+bindings must agree, and an account cannot borrow an operator or another Device
+grant. Revoked sessions fail closed. Without an account session, existing
+WhoIs and Device attribution remains unchanged.
+
+The WhoIs exception applies to these exact surfaces:
+
+- Any method on `/api/account-auth` and its descendants.
+- `POST` to `/.well-known/station/v1/pairing/access-request` and `/.well-known/station/v1/pairing/exchange`.
+- Any method on `/api/projects/:slug/access` and its descendants.
+- `GET` or `HEAD` on `/api/projects`, `/api/projects/:slug`, and the Project's `room` and `shared-work` paths and descendants.
+- `GET` or `HEAD` on `/api/tasks/:id/children`, `/api/tasks/:id/work-chats`, and `/api/tasks/:id/work-chats/:chatId`; `PUT` on `/api/tasks/:id/parent`; `POST` on the children and work-chats paths; and `DELETE` on the work-chats path.
+
+Other leaves retain their existing ingress-agreement behavior. This exception
+changes person attribution only; each route still enforces its own admission and
+resource permissions. A conflicting operator or Device caught by the scoped
+local-account rule is refused with `403 account_identity_conflict`. The local
+account's `POST /api/account-auth/sign-out` remains available to end that
+account session; it does not revoke the Device credential. For local accounts,
+the route and provider accept an exact Station-allowed browser Origin for that
+operation only. Missing or untrusted Origins remain refused, and the exception
+does not widen sign-in or other account operations. Account-tied personal tokens
+retain their separate conflict refusal described below.
+
+An approved account-bound Device exchange can supersede a Device with the same
+client-instance correlation only when both approved account issuer and subject
+match, in addition to the existing ingress replacement domain. A different
+account or an unbound Device is not superseded by that exchange. WhoIs and the
+correlation alone do not link accounts or grant authority.
+
 
 The account-authentication exception is specified in the
 [deployment authentication guide](../guides/deployment-authentication.md).
@@ -275,7 +358,11 @@ It grants no sending, personal-source or service-activation authority.
 The [external-surface table](../../src-server/security/pairing-route-scopes.ts)
 owns the method/path-specific exceptions; a public classification at the Device
 gate does not waive the endpoint's own checks. The station-control HTTP/SSE
-endpoint has a separately minted, scoped MCP query token. That exception does
+endpoint has a separately minted, scoped MCP credential in a query or header.
+Credentials for Station tools added solely by coordinator designation recheck
+that designation and are revoked on removal or replacement; independently
+authored Agent or Project grants are separate. A process-local generation
+fences a provider start that outlives the designation change. That exception does
 not permit an operator or Device credential in a URL. Inbound webhooks verify
 their named HMAC token, timestamp and nonce; an attachment stage grant authorizes
 only its exact short-lived upload.
@@ -496,7 +583,7 @@ checks `capabilities.<name> === true` instead of branching on a version number.
 Station's own seeded flags live in one registry,
 `src-server/capabilities/station-capability-flags.ts`, whose resolver withdraws
 a flag in a deployment mode that refuses every call to its route (hosted mode
-omits `sessionInventoryInputRead` and `webPushNotifications`). That discloses nothing new: a hosted
+omits `sessionInventoryInputRead`, `webPushNotifications`, `connectionRoutes` and `coordinatorSession`). That discloses nothing new: a hosted
 Station answers the handshake only through tenant ingress and refuses an
 unadmitted caller with 421 `tenant_context_required`; the sdk exposes a
 `hasCapability(descriptor, name)` accessor (`@kontourai/station-sdk`) that
@@ -565,6 +652,14 @@ rate bucket but uses the 22 MiB attachment-command body ceiling so bounded
 base64 image data fits. Adjacent Task mutations retain the standard body limit.
 Room upload, reference resolution and byte reads also enforce their current
 Task capability and incarnation; a paired route-family grant alone is insufficient.
+
+Task Review Walkthrough list, manifest, frame and video reads inherit the Task
+family's `orchestration:read` tier and independently recheck person-review
+authority, the Task incarnation and the live Walkthroughs preview. They refuse
+Station-internal requests and use `no-store`; video reads verify the retained
+length and digest. The sensitive Browser recording tool requires a bound lead
+Session and publishes only after authority and clean-workspace rechecks. A clip
+can expose page contents and is served through that Task's authorized reads.
 
 The exact `POST /api/projects/:projectSlug/walkthroughs/import` and
 `POST /api/transcription` uploads also retain the standard principal rate
@@ -1857,7 +1952,9 @@ machine", and the difference is the residue, stated without softening:
   existing trust boundary — the same user can already read the local-grant
   secret and operator credential files. API redaction defends paired
   principals **without** terminal/agent authority (a phone using Developer →
-  Logs, `read_logs` over pairing, a scoped grant that cannot spawn a shell).
+  Logs or a scoped grant that cannot spawn a shell). Agent `read_logs` calls
+  are denied unless an operator grants their verified bound session; the grant
+  is not available to caller-less or weaker-assurance channels.
   Scrubbing the token from PTY/engine env closes the cheaper path that used
   to turn `printenv` into an ephemeral `home-possession` principal.
 

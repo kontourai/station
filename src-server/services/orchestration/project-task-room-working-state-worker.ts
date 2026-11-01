@@ -1,9 +1,12 @@
+import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { parentPort, workerData } from 'node:worker_threads';
+import { canonicalizeForDigest } from '@kontourai/station-contracts/fleet-routing-receipt';
 import { PROJECT_TASK_ROOM_RUNTIME_MIGRATION } from '../../domain/migrations/006-project-task-room-runtime.js';
 import { PROJECT_TASK_ROOM_REVISION_PUBLICATION_MIGRATION } from '../../domain/migrations/008-project-task-room-revision-publication.js';
 import { ensureProjectTaskRoomRevisionAttributionColumn } from '../../domain/migrations/009-project-task-room-revision-attribution.js';
 import { ensureProjectTaskRoomRevisionFreezeColumn } from '../../domain/migrations/024-project-task-room-revision-freeze.js';
+import { PROJECT_TASK_ROOM_SAVE_REVISIONS_MIGRATION } from '../../domain/migrations/024-project-task-room-save-revisions.js';
 import {
   type RevisionEvidenceAdmissionRefusal,
   revisionEvidenceAdmission,
@@ -12,6 +15,7 @@ import {
 } from '../../domain/revision-bound-evidence.js';
 import {
   DEFAULT_RETAINED_WORKING_STATE_OPERATIONS,
+  MAX_WORKING_STATE_SNAPSHOT_BYTES,
   SharedWorkingState,
   type TextDocumentOperation,
   type WorkingStateSnapshot,
@@ -43,13 +47,96 @@ db.exec(PROJECT_TASK_ROOM_RUNTIME_MIGRATION);
 initializeProjectTaskRoomSourceSeals(db);
 db.exec(PROJECT_TASK_ROOM_REVISION_PUBLICATION_MIGRATION);
 ensureProjectTaskRoomRevisionAttributionColumn(db);
+db.exec('BEGIN IMMEDIATE');
+try {
+  const needsBackfill = !db
+    .prepare(
+      "SELECT 1 FROM sqlite_master WHERE type='table' AND name='project_task_room_save_revisions'",
+    )
+    .get();
+  db.exec(PROJECT_TASK_ROOM_SAVE_REVISIONS_MIGRATION);
+  db.exec(`CREATE TABLE IF NOT EXISTS project_task_room_save_revisions_pending (
+    project_id TEXT NOT NULL, task_id TEXT NOT NULL, document_id TEXT NOT NULL,
+    PRIMARY KEY(project_id, task_id, document_id)
+  )`);
+  if (needsBackfill) {
+    db.exec(`INSERT OR IGNORE INTO project_task_room_save_revisions_pending
+      SELECT DISTINCT project_id,task_id,document_id FROM project_task_room_working_batches`);
+  }
+  const documents = db
+    .prepare(
+      'SELECT project_id,task_id,document_id FROM project_task_room_save_revisions_pending',
+    )
+    .all();
+  const receipts = db.prepare(
+    'SELECT receipt_json FROM project_task_room_working_batches WHERE project_id=? AND task_id=? AND document_id=? ORDER BY rowid',
+  );
+  const insert = db.prepare(
+    'INSERT INTO project_task_room_save_revisions VALUES(?,?,?,?,?)',
+  );
+  for (const row of documents) {
+    const key = [row.project_id, row.task_id, row.document_id];
+    const revisions: string[] = [];
+    let valid = true;
+    for (const receipt of receipts.iterate(...key)) {
+      try {
+        const revision = JSON.parse(receipt.receipt_json)?.revision;
+        if (
+          typeof revision !== 'string' ||
+          !/^swsr-v[12]:[a-f0-9]{64}$/.test(revision)
+        ) {
+          valid = false;
+          break;
+        }
+        revisions.push(revision);
+      } catch {
+        valid = false;
+        break;
+      }
+    }
+    if (!valid || !revisions.length) continue;
+    const format = revisions[0].startsWith('swsr-v1:') ? 1 : 2;
+    const empty = {
+      schemaVersion: format,
+      documentId: row.document_id,
+      ...(format === 1 ? { atoms: [] } : { runs: [] }),
+      knownOperations: [],
+      deferredOperations: [],
+    };
+    const initial = `swsr-v${format}:${createHash('sha256')
+      .update(JSON.stringify(canonicalizeForDigest(empty)) ?? 'null')
+      .digest('hex')}`;
+    const ordered = [initial];
+    const seen = new Set(ordered);
+    for (const revision of revisions) {
+      if (revision === ordered[ordered.length - 1]) continue;
+      if (seen.has(revision)) {
+        valid = false;
+        break;
+      }
+      seen.add(revision);
+      ordered.push(revision);
+    }
+    if (!valid) continue;
+    for (const [ordinal, revision] of ordered.entries())
+      insert.run(...key, revision, ordinal);
+    db.prepare(
+      'DELETE FROM project_task_room_save_revisions_pending WHERE project_id=? AND task_id=? AND document_id=?',
+    ).run(...key);
+  }
+  db.exec('COMMIT');
+} catch (error) {
+  db.exec('ROLLBACK');
+  throw error;
+}
 ensureProjectTaskRoomRevisionFreezeColumn(db);
 const maxRetainedOperations = Number.isSafeInteger(
   workerData.maxRetainedOperations,
 )
   ? workerData.maxRetainedOperations
   : DEFAULT_RETAINED_WORKING_STATE_OPERATIONS;
-const MAX_REVISION_PUBLICATION_SNAPSHOT_BYTES = 512 * 1024;
+const MAX_REVISION_PUBLICATION_SNAPSHOT_BYTES =
+  MAX_WORKING_STATE_SNAPSHOT_BYTES;
 const maxWorkingSnapshotBytes = Number.isSafeInteger(
   workerData.maxWorkingSnapshotBytes,
 )
@@ -414,6 +501,19 @@ function retainedFloor(scope: any, fallback: string) {
     .get(...key(scope)) as { prior_revision?: string } | undefined;
   return row?.prior_revision ?? fallback;
 }
+function revisionOrdinals(scope: any, revisions: readonly string[]) {
+  const query = db.prepare(
+    'SELECT ordinal FROM project_task_room_save_revisions WHERE project_id=? AND task_id=? AND document_id=? AND revision=?',
+  );
+  return Object.fromEntries(
+    revisions.flatMap((revision) => {
+      const row = query.get(...key(scope), revision) as
+        | { ordinal: number }
+        | undefined;
+      return row ? [[revision, row.ordinal]] : [];
+    }),
+  );
+}
 function canResume(scope: any, after: string, revision: string) {
   if (after === revision) return true;
   let cursor = after;
@@ -478,6 +578,31 @@ async function handle(message: any) {
               floor: snapshot.checkpointRevision,
             },
       );
+    }
+    if (value.type === 'revision-ordinals') {
+      if (
+        db
+          .prepare(
+            'SELECT 1 FROM project_task_room_save_revisions_pending WHERE project_id=? AND task_id=? AND document_id=?',
+          )
+          .get(...key(value.scope))
+      )
+        return send(id, { kind: 'unavailable' });
+      const row = db
+        .prepare(
+          'SELECT revision FROM project_task_room_working_states WHERE project_id=? AND task_id=? AND document_id=?',
+        )
+        .get(...key(value.scope)) as { revision: string } | undefined;
+      const currentRevision =
+        row?.revision ?? load(value.scope)?.snapshot().revision;
+      if (currentRevision !== value.revision)
+        return send(id, { kind: 'unavailable' });
+      return send(id, {
+        kind: 'available',
+        revisionOrdinals: row
+          ? revisionOrdinals(value.scope, value.revisions)
+          : { [value.revision]: 0 },
+      });
     }
     if (value.type === 'private-snapshot') {
       const state = load(value.scope);
@@ -901,7 +1026,14 @@ async function handle(message: any) {
         const snapshotJson = JSON.stringify(snapshot);
         const snapshotBytes = Buffer.byteLength(snapshotJson, 'utf8');
         // Deterministic: no retry of this write can fit, so name it (#4007).
-        if (snapshotBytes > maxWorkingSnapshotBytes) {
+        // Keep deletion headroom even for diagnostic workloads that skip the
+        // evidence ledger. Deleting inside a live run can grow its snapshot.
+        const reserveBytes = (value.operations as TextDocumentOperation[]).some(
+          (operation) => operation.kind === 'insert',
+        )
+          ? TASK_ROOM_INSERT_RESERVE_BYTES
+          : 0;
+        if (snapshotBytes + reserveBytes > maxWorkingSnapshotBytes) {
           db.exec('ROLLBACK');
           return send(id, { kind: 'rejected', reason: 'document-full' });
         }
@@ -924,6 +1056,32 @@ async function handle(message: any) {
         ) {
           db.exec('ROLLBACK');
           return send(id, { kind: 'unavailable' });
+        }
+        // Only the final state of a committed save gets an ordinal. This is
+        // independent of per-operation resume cursors and their pruning.
+        const saveHead = db
+          .prepare(
+            'SELECT MAX(ordinal) AS ordinal FROM project_task_room_save_revisions WHERE project_id=? AND task_id=? AND document_id=?',
+          )
+          .get(...key(value.scope)) as { ordinal: number | null };
+        const pendingOrdinals = db
+          .prepare(
+            'SELECT 1 FROM project_task_room_save_revisions_pending WHERE project_id=? AND task_id=? AND document_id=?',
+          )
+          .get(...key(value.scope));
+        if (!pendingOrdinals && saveHead.ordinal === null) {
+          db.prepare(
+            'INSERT INTO project_task_room_save_revisions VALUES(?,?,?,?,0)',
+          ).run(...key(value.scope), baseWorkingRevision);
+        }
+        if (!pendingOrdinals && snapshot.revision !== baseWorkingRevision) {
+          db.prepare(
+            'INSERT INTO project_task_room_save_revisions VALUES(?,?,?,?,?)',
+          ).run(
+            ...key(value.scope),
+            snapshot.revision,
+            (saveHead.ordinal ?? 0) + 1,
+          );
         }
         const projection = { revision: snapshot.revision, text: state.text() };
         let nextOrdinal = Number(

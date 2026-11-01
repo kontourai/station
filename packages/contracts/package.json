@@ -25,6 +25,12 @@
     "LICENSE"
   ],
   "exports": {
+    "./isolated-repair": "./src/isolated-repair.ts",
+    "./qualification-repair-policy": {
+      "types": "./src/qualification-repair-policy.d.mts",
+      "default": "./src/qualification-repair-policy.mjs"
+    },
+    "./session-goal": "./src/session-goal.ts",
     "./terminal-transport": "./src/terminal-transport.ts",
     "./walkthrough": "./src/walkthrough.ts",
     "./station-control-external-client": "./src/station-control-external-client.ts",
@@ -65,7 +71,9 @@
     "./answer-share-channel": "./src/answer-share-channel.ts",
     "./attachment-staging": "./src/attachment-staging.ts",
     "./agent-schedule": "./src/agent-schedule.ts",
+    "./coordinator": "./src/coordinator.ts",
     "./station-control-refusal": "./src/station-control-refusal.ts",
+    "./claude-artifact": "./src/claude-artifact.ts",
     "./attention": "./src/attention.ts",
     "./action-operation": "./src/action-operation.ts",
     "./auth": "./src/auth.ts",
@@ -81,6 +89,7 @@
     "./channel-log": "./src/channel-log.ts",
     "./client-origin": "./src/client-origin.ts",
     "./chat-attachment": "./src/chat-attachment.ts",
+    "./chat-app": "./src/chat-app.ts",
     "./chat-host-images": "./src/chat-host-images.ts",
     "./connection-recovery": "./src/connection-recovery.ts",
     "./connection-quota": "./src/connection-quota.ts",
@@ -112,6 +121,8 @@
     "./git-remote-identity": "./src/git-remote-identity.ts",
     "./guidance-assets": "./src/guidance-assets.ts",
     "./inbound-webhook": "./src/inbound-webhook.ts",
+    "./integration-status": "./src/integration-status.ts",
+    "./task-write-back": "./src/task-write-back.ts",
     "./http": "./src/http.ts",
     "./knowledge": "./src/knowledge.ts",
     "./openai-compat-catalog-semantics": "./src/openai-compat-catalog-semantics.ts",
@@ -150,6 +161,7 @@
     "./project-reference-integrity": "./src/project-reference-integrity.ts",
     "./project-settings-overrides": "./src/project-settings-overrides.ts",
     "./project-chat-defaults": "./src/project-chat-defaults.ts",
+    "./project-checkout-freshness": "./src/project-checkout-freshness.ts",
     "./registry-lifecycle": "./src/registry-lifecycle.ts",
     "./runtime": "./src/runtime.ts",
     "./runtime-events": "./src/runtime-events.ts",
@@ -201,6 +213,7 @@
     "./turn-provenance-context": "./src/turn-provenance-context.ts",
     "./turn-changed-files": "./src/turn-changed-files.ts",
     "./turn-stall-window": "./src/turn-stall-window.ts",
+    "./conversation-title": "./src/conversation-title.ts",
     "./ui-block": "./src/ui-block.ts",
     "./work-item-provider": "./src/work-item-provider.ts",
     "./pull-request-provider": "./src/pull-request-provider.ts",
@@ -243,12 +256,15 @@
     "./mcp-prompts": "./src/mcp-prompts.ts",
     "./account-preferences": "./src/account-preferences.ts",
     "./html-reply": "./src/html-reply.ts",
-    "./runtime-event-content": "./src/runtime-event-content.ts"
+    "./runtime-event-content": "./src/runtime-event-content.ts",
+    "./project-working-configuration": "./src/project-working-configuration.ts",
+    "./project-supervision": "./src/project-supervision.ts",
+    "./feedback": "./src/feedback.ts"
   },
   "dependencies": {
     "@kontourai/datum": "0.8.1",
-    "@kontourai/flow": "5.2.2",
-    "@kontourai/flow-agents": "6.5.1",
+    "@kontourai/flow": "5.4.0",
+    "@kontourai/flow-agents": "9.10.0",
     "@kontourai/surface": "^6.2.1",
     "@kontourai/thread": "0.5.0"
   },

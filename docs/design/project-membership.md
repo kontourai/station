@@ -17,8 +17,9 @@
 > Implementation update: local username/password enrollment and manually shared,
 > single-use invitation links are the first account path. No mail service is
 > required. The membership store/service, operator/admin controls and standalone
-> account entry implement these boundaries; shared-resource admission and real
-> two-human/device acceptance remain incomplete. See the
+> account entry implement these boundaries. The personal Task room also admits
+> members to individually shared Task incarnations as described below; complete
+> shared-resource admission and real two-human/device acceptance remain incomplete. See the
 > [deployment authentication guide](../guides/deployment-authentication.md).
 > An optional email restriction still requires provider-verified contact evidence.
 > Possession of a general link is an explicit invitation capability, never a
@@ -72,9 +73,14 @@ membership. See [peer pairing](station-peer-pairing.md) and
 [PrincipalRef](../../packages/contracts/src/principal.ts) already separates
 human, agent, service and tenant attribution. The
 [request composition](../../src-server/runtime/routes/runtime-routes.ts)
-currently prefers verified ingress identity, then verified operator authority,
-then device identity. Consequently, the same device can resolve to a tailnet
-principal on one route and a device principal on another. A device principal
+without an account session prefers verified ingress identity, then verified
+operator authority, then device identity. Consequently, the same device can
+resolve to a tailnet principal on one route and a device principal on another.
+For the exact account, pairing and membership surfaces listed in the
+[deployment authentication guide](../guides/deployment-authentication.md), a
+current local-account cookie session names the person; Serve WhoIs remains ingress
+provenance and an accompanying Device must be bound to that account. It does
+not grant membership or operator authority. A device principal
 is useful attribution but is not evidence that several devices belong to one
 person. [Identity sources](identity.md) remain provider-qualified.
 
@@ -167,6 +173,34 @@ never grant access to another Project. Friendly role presets select
 these actions; they are not tokens appended to device pairing scopes.
 Only an authorized owner/admin may grant actions within their grant authority.
 Reject removal of the last active owner unless ownership transfer commits first.
+
+Turning sharing on for a Project (`POST .../access/enable`) needs Station
+operator authority, separate from any membership. Until then, the
+administration read `GET .../access` is refused with `403
+project_access_forbidden`, as it is for a non-manager. That refusal carries
+`ProjectAccessRefusalDetails` (#4302). The service reads the sharing state only
+after the caller has human authority and current operator credentials or a
+Device-bound operator passkey session, and passes HTTP admission for
+`POST .../access/enable`, including pairing scope and the account-bound Device gate. That caller learns `off` (and that it can enable)
+or `on`. Everyone else gets `undisclosed`, the same for a shared, unshared or
+missing Project.
+
+For a personal Station Task room, the
+[member admission](../../src-server/runtime/routes/task-member-admission.ts)
+composes the current account-bound Device and Project membership with the exact
+Task incarnation, share and portable Project identity. `view` admits discovery,
+history, document and presence reads; `discuss` admits messages; `edit` admits
+edit planning. The account-bound route inventory does not admit batch settlement,
+attachments, Task memory, review or agent requests in this slice. The member's
+revision is captured and rechecked, including on delivery. The service notifies
+in-process subscribers synchronously after a committed membership change, with
+the Project, principal and committed revision. Listener errors are isolated;
+notifications are not durable across a process failure. A stream whose captured
+admission is no longer current closes, with a 15-second idle recheck as a
+fallback. A missing or
+unshared Task is not found. Membership grants no host execution or private
+Session access. Local account and route tests exercise two principals; the
+real two-person/device journey remains unverified.
 
 Private Sessions remain private by default. New Project work must explicitly
 record whether it is Project-shared. Sharing existing work requires a review

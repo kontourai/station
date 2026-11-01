@@ -15,6 +15,7 @@ import {
   PREBUILT_ARCHIVE_MARKER_FILENAME,
 } from '../../packages/cli/src/commands/lifecycle.js';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
+import { VERIFIED_PNPM_SETUP_ACTION } from '../actionlint-gate.mjs';
 import { STATION_DOCS_INPUT_PATHS } from '../generate-station-docs.mjs';
 import {
   execFileSyncBounded,
@@ -352,6 +353,22 @@ describe('portable server archive workflow', () => {
     'utf8',
   );
   const workflow = load(source) as Workflow;
+
+  it('uses the verified pnpm bootstrap for the non-Intel archive runners', () => {
+    type Step = { name?: string; uses?: string; if?: string; with?: unknown };
+    const steps = (workflow.jobs.archive as unknown as { steps: Step[] }).steps;
+    const setup = steps.find((step) => step.name === 'Setup pinned pnpm');
+    expect(setup?.if).toBe("runner.os != 'macOS' || runner.arch != 'X64'");
+    expect(setup?.uses).toBe(VERIFIED_PNPM_SETUP_ACTION);
+    expect(setup?.with).toBeUndefined();
+    expect(
+      steps.some(
+        (step) =>
+          step.name === 'Setup pinned pnpm from its JS package (Intel macOS)' &&
+          step.if === "runner.os == 'macOS' && runner.arch == 'X64'",
+      ),
+    ).toBe(true);
+  });
 
   it('builds and smokes every supported target in its archive format', () => {
     expect(workflow.jobs.archive.strategy['max-parallel']).toBe(2);

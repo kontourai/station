@@ -3,6 +3,7 @@ import { validateChatInputFileParts } from '@kontourai/station-contracts/chat-at
 import {
   isSafeToolServerCredentialKey,
   isSafeToolServerId,
+  isToolClientMetadataDocumentUrl,
 } from '@kontourai/station-contracts/tool';
 import { z } from 'zod/v3';
 import {
@@ -226,6 +227,8 @@ export const credentialProfileApplyRequestSchema = z.object({
 });
 
 // Integrations
+const untrustedContentPermissionSchema = z.enum(['ask', 'allow', 'deny']);
+
 export const integrationSchema = z.object({
   id: z.string().refine(isSafeToolServerId, {
     message:
@@ -303,7 +306,77 @@ export const integrationSchema = z.object({
     })
     .strict()
     .optional(),
+  // #3483: the person's classification and outbound-after-untrusted-content
+  // permissions. Change receipts are server-written and never accepted here.
+  contentTrust: z.enum(['untrusted', 'trusted']).optional(),
+  trustReadOnlyHints: z.boolean().optional(),
+  untrustedContentPermissions: z
+    .object({
+      default: untrustedContentPermissionSchema.optional(),
+      tools: z
+        .record(
+          z.string().min(1).max(200).refine(isSafeToolServerCredentialKey),
+          untrustedContentPermissionSchema,
+        )
+        .refine((tools) => Object.keys(tools).length <= 500)
+        .optional(),
+    })
+    .strict()
+    .optional(),
+  // `clientSecretRef` is deliberately absent, like `secretEnvRefs`: only the
+  // secret-binding routes write it, and a save preserves the existing one.
+  oauthClient: z
+    .object({
+      clientId: z
+        .string()
+        .trim()
+        .min(1)
+        .max(512)
+        .regex(/^[\x21-\x7e]+$/, 'Client ID must be visible ASCII')
+        .optional(),
+      issuer: z
+        .string()
+        .max(2048)
+        .refine(isAuthorizationServerIssuer, {
+          message:
+            'Authorization server must be an HTTPS issuer URL with no credentials, query or fragment',
+        })
+        .optional(),
+      clientMetadataUrl: z
+        .string()
+        .max(2048)
+        .refine(isToolClientMetadataDocumentUrl, {
+          message:
+            'Client metadata URL must be an HTTPS URL with a path and no credentials or fragment',
+        })
+        .optional(),
+      scopes: z
+        .array(z.string().regex(/^[\x21\x23-\x5b\x5d-\x7e]{1,256}$/))
+        .max(32)
+        .optional(),
+    })
+    .strict()
+    .optional(),
 });
+
+/** RFC 8414 issuer identifier: HTTPS, no credentials, query or fragment. */
+function isAuthorizationServerIssuer(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === 'https:' &&
+      !url.username &&
+      !url.password &&
+      !url.search &&
+      !url.hash &&
+      !value.includes('?') &&
+      !value.includes('#')
+    );
+  } catch {
+    return false;
+  }
+}
+
 export const integrationEnabledSchema = z.object({ enabled: z.boolean() });
 export const integrationToolsApplySchema = z.object({
   disabledTools: z.array(z.string()),
@@ -436,6 +509,11 @@ export const chatSchema = z.object({
 
 // Feedback
 export const rateSchema = z.object({
+  agentSlug: z.string().optional(),
+  messagePreview: z.string().max(10000).optional(),
+  expectedSessionId: z.string().min(1).max(512).optional(),
+  expectedTurnId: z.string().min(1).max(512).optional(),
+  target: z.never().optional(),
   messageIndex: z.number().int().min(0),
   rating: z.enum(['thumbs_up', 'thumbs_down']),
   conversationId: z.string().optional(),

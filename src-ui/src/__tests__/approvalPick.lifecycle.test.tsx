@@ -109,9 +109,11 @@ vi.mock('../hooks/useStreamingMessage', () => ({
 }));
 
 const sendExecutionMessage = vi.hoisted(() => vi.fn());
+const queueExecutionMessage = vi.hoisted(() => vi.fn());
 vi.mock('@kontourai/station-sdk/client', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk/client')>()),
   sendExecutionMessage,
+  queueExecutionMessage,
 }));
 
 vi.mock('../hooks/useActiveChatSessions', () => ({
@@ -119,6 +121,7 @@ vi.mock('../hooks/useActiveChatSessions', () => ({
   useCancelMessage: () => vi.fn(),
 }));
 
+import type { ConversationInboxQueuedReceipt } from '@kontourai/station-contracts/orchestration';
 import { ApprovalModeChip } from '../components/badges/ApprovalModeChip';
 import {
   hydrateActiveChats,
@@ -405,6 +408,29 @@ describe('an approval pick as a server-ordered command (#2436)', () => {
           : {}),
       }),
     );
+    queueExecutionMessage.mockImplementation(
+      async (
+        _apiBase: string,
+        body: { conversationId: string; clientTurnId: string; message: string },
+      ) => {
+        const receipt: ConversationInboxQueuedReceipt = {
+          outcome: 'queued',
+          conversationId: body.conversationId,
+          clientTurnId: body.clientTurnId,
+          entry: {
+            conversationId: body.conversationId,
+            clientTurnId: body.clientTurnId,
+            kind: 'follow-up',
+            state: 'queued',
+            position: 1,
+            message: body.message,
+            createdAt: '2026-09-23T00:00:00.000Z',
+            updatedAt: '2026-09-23T00:00:00.000Z',
+          },
+        };
+        return receipt;
+      },
+    );
     setOrchestrationApprovalMode.mockImplementation(
       async (input: { threadId: string; approvalMode: string }) => ({
         threadId: input.threadId,
@@ -421,6 +447,48 @@ describe('an approval pick as a server-ordered command (#2436)', () => {
     activeChatsStore.removeChat(SESSION_ID);
     stationConfig.current = undefined;
     vi.clearAllMocks();
+  });
+
+  test('the send hook carries a slash prompt origin with its resolved text', async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    const handler = vi.fn().mockResolvedValue({
+      text: 'prompt text',
+      mcpPromptOrigin: {
+        serverId: 'mail',
+        name: 'summarize',
+        receipt: 'opaque',
+      },
+    });
+    const sender = renderHook(
+      () =>
+        useSendMessage('http://station.test', undefined, undefined, handler),
+      { wrapper },
+    );
+    await act(async () => {
+      await sender.result.current(
+        SESSION_ID,
+        'codex',
+        'conv-1',
+        '/mail:summarize',
+      );
+    });
+    expect(sendExecutionMessage).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        message: 'prompt text',
+        mcpPromptOrigin: {
+          serverId: 'mail',
+          name: 'summarize',
+          receipt: 'opaque',
+        },
+      }),
+      expect.anything(),
+    );
   });
 
   test('with a session, a pick is sent as a command at once and folded at its sequence', async () => {
@@ -561,31 +629,65 @@ describe('an approval pick as a server-ordered command (#2436)', () => {
     expect(body.setApprovalMode).toBe('ask');
   });
 
-  test('probe D: a queued follow-up drained after the turn carries a pick the server has not received', async () => {
+  test('probe D: an unrecorded pick blocks inbox handoff until recorded; Station then owns the follow-up', async () => {
     const { pick, sender } = renderComposer();
     await act(async () => {
       await sender.result.current(SESSION_ID, 'codex', 'conv-1', 'first');
     });
     act(() => turnStarted('t1', undefined));
-    // Offline now: the command fails, so the pick stays queued.
     setOrchestrationApprovalMode.mockRejectedValueOnce(new Error('offline'));
     await pick('ask');
+    expect(chat().queuedApprovalMode).toBe('ask');
     sendExecutionMessage.mockClear();
     await act(async () => {
-      await sender.result.current(SESSION_ID, 'codex', 'conv-1', 'follow-up');
+      await sender.result.current(
+        SESSION_ID,
+        'codex',
+        'conv-1',
+        'follow-up',
+        undefined,
+        undefined,
+        undefined,
+        { queueOnBusy: true },
+      );
     });
-    expect(chat().queuedMessages).toEqual(['follow-up']);
+    expect(queueExecutionMessage).not.toHaveBeenCalled();
+    expect(sendExecutionMessage).not.toHaveBeenCalled();
+    expect(chat().queuedApprovalMode).toBe('ask');
+    expect(chat().input).toBe('follow-up');
+
+    await pick('auto');
+    await pick('ask');
+    expect(chat().queuedApprovalMode).toBeUndefined();
+    await act(async () => {
+      await sender.result.current(
+        SESSION_ID,
+        'codex',
+        'conv-1',
+        'follow-up',
+        undefined,
+        undefined,
+        undefined,
+        { queueOnBusy: true },
+      );
+    });
+    expect(queueExecutionMessage).toHaveBeenCalledOnce();
+    expect(queueExecutionMessage).toHaveBeenCalledWith(
+      'http://station.test',
+      expect.objectContaining({
+        conversationId: 'conv-1',
+        message: 'follow-up',
+        clientTurnId: expect.any(String),
+        setApprovalMode: undefined,
+        setApprovalModeBasedOn: undefined,
+      }),
+      expect.any(Object),
+    );
+    expect(chat().queuedMessages).toEqual([]);
     act(() => turnCompleted('t1'));
-    await vi.waitFor(() => expect(sendExecutionMessage).toHaveBeenCalled(), {
-      timeout: 2000,
-    });
-    const drained = sendExecutionMessage.mock.calls[0]?.[1] as {
-      message: string;
-      setApprovalMode?: string;
-    };
-    expect(drained.message).toBe('follow-up');
-    expect(drained.setApprovalMode).toBe('ask');
-    await vi.waitFor(() => expect(chat().queuedApprovalMode).toBeUndefined());
+    await vi.dynamicImportSettled();
+    expect(sendExecutionMessage).not.toHaveBeenCalled();
+    expect(queueExecutionMessage).toHaveBeenCalledOnce();
   });
 
   describe('the fold is by server sequence, never by arrival', () => {
@@ -919,9 +1021,13 @@ describe('an approval pick as a server-ordered command (#2436)', () => {
       await sender.result.current(SESSION_ID, 'codex', 'conv-1', 'first');
     });
     act(() => turnStarted('t1', undefined));
-    await act(async () => {
-      await sender.result.current(SESSION_ID, 'codex', 'conv-1', 'follow-up');
-    });
+    // A locally retained queue from before Station accepted inbox handoffs.
+    act(() =>
+      activeChatsStore.updateChat(SESSION_ID, {
+        queuedMessages: ['follow-up'],
+        queuedMessageMetadata: [{ id: 'offline-follow-up', mode: 'queue' }],
+      }),
+    );
     sendExecutionMessage.mockClear();
     act(() => turnCompleted('t1'));
     await vi.waitFor(() => expect(sendExecutionMessage).toHaveBeenCalled(), {

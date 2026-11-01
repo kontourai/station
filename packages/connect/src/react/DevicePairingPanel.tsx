@@ -28,9 +28,9 @@ import {
 import {
   clearPendingExchange,
   decodeDevicePairingPayload,
+  describeAccessRequestFailure,
   describePairingRequestFailure,
   encodeDevicePairingPayload,
-  isTransportFailure,
   knownOperatorCli,
   loadPendingExchange,
   type PendingPairingExchange,
@@ -637,10 +637,10 @@ export function JoinDevicePairingPanel({
         deviceName,
         // A device asks for everything a device can have, never the default
         // grant's `access:manage`; the operator limits it when approving. An
-        // account-bound guest request asks for the plain Standard preset:
-        // its elevated grants are the operator's call.
+        // account-bound guest request starts read-only; wider access needs
+        // an explicit operator promotion after pairing.
         scope: accountBoundDeviceRequest
-          ? pairingScopePresetString(DEFAULT_PAIRING_SCOPE_PRESET)
+          ? 'orchestration:read'
           : FULL_DEVICE_ACCESS_SCOPE,
         ...(accountBoundDeviceRequest
           ? {
@@ -713,16 +713,7 @@ export function JoinDevicePairingPanel({
       setPending(nextPending);
       onApprovalPending?.(nextPending);
     } catch (requestError) {
-      const status = (requestError as { status?: number }).status;
-      setError(
-        isTransportFailure(requestError)
-          ? describePairingRequestFailure(requestError)
-          : status === 403
-            ? 'This Station does not allow access requests from this app address.'
-            : status === 429
-              ? 'Too many access requests. Wait a moment, then try again.'
-              : 'Could not send your request. Check the connection and try again.',
-      );
+      setError(describeAccessRequestFailure(requestError));
     } finally {
       requestInFlight.current = false;
       setRequestingAccess(false);
@@ -1323,6 +1314,37 @@ export function HostDevicePairingPanel({
   // device's own access (401 class) — the state `onReconnect` addresses.
   const [authBlocked, setAuthBlocked] = useState(false);
   const [operatorHandoff, setOperatorHandoff] = useState(false);
+  const [accountReview, setAccountReview] = useState<{
+    requestId: string;
+    url: string;
+  } | null>(null);
+  const [accountSignInUrl, setAccountSignInUrl] = useState<string | null>(null);
+  const [accountPasskeyRequired, setAccountPasskeyRequired] = useState<
+    string | null
+  >(null);
+  const [operatorLink, setOperatorLink] = useState<{
+    url: string;
+    review: boolean;
+    requestId?: string;
+    poll?: boolean;
+  } | null>(null);
+  const consentLink = useCallback(
+    (value: unknown) => {
+      try {
+        if (typeof value !== 'string') return null;
+        const url = new URL(value);
+        const app = new URL(apiBase);
+        return url.protocol === 'https:' &&
+          url.hostname === app.hostname &&
+          url.origin !== app.origin
+          ? url.href
+          : null;
+      } catch {
+        return null;
+      }
+    },
+    [apiBase],
+  );
   const [reconnecting, setReconnecting] = useState(false);
   // #2228 slice 3: a remembered reachable address (the tailnet or LAN URL the
   // operator last created an offer with for this Station) outranks the active
@@ -1389,6 +1411,7 @@ export function HostDevicePairingPanel({
     async (path: string, init: RequestInit = {}) =>
       request(new URL(path, apiBase), {
         ...init,
+        credentials: 'include',
         headers: { ...authHeaders(getCredential()), ...init.headers },
       }),
     [apiBase, getCredential, request],
@@ -1420,14 +1443,16 @@ export function HostDevicePairingPanel({
       const generation = ++refreshGeneration.current;
       try {
         const [requestResponse, deviceResponse] = await Promise.all([
-          authenticatedFetch('/api/pairing/requests'),
+          authenticatedFetch('/api/pairing/requests', {
+            headers: background ? { 'X-Station-Background-Refresh': '1' } : {},
+          }),
           authenticatedFetch('/api/pairing/devices', {
             headers: background ? { 'X-Station-Background-Refresh': '1' } : {},
           }),
         ]);
         const [requestBody, deviceBody] = await Promise.all([
-          requestResponse.ok ? requestResponse.json() : undefined,
-          deviceResponse.ok ? deviceResponse.json() : undefined,
+          requestResponse.json().catch(() => undefined),
+          deviceResponse.json().catch(() => undefined),
         ]);
         if (generation !== refreshGeneration.current) return;
         if (
@@ -1441,6 +1466,11 @@ export function HostDevicePairingPanel({
           if (errorOwner.current !== 'action') {
             const authenticationFailed =
               requestResponse.status === 401 || deviceResponse.status === 401;
+            const signInUrl = consentLink(
+              requestBody?.signInUrl ?? deviceBody?.signInUrl,
+            );
+            if (signInUrl)
+              setOperatorLink({ url: signInUrl, review: false, poll: true });
             setAuthBlocked(authenticationFailed);
             setOperatorHandoff(!authenticationFailed);
             setError(
@@ -1461,14 +1491,27 @@ export function HostDevicePairingPanel({
           setAuthBlocked(false);
           setOperatorHandoff(false);
         }
-        if (requestBody) setRequests(requestBody.requests ?? []);
-        if (deviceBody) setDevices(deviceBody.devices ?? []);
+        if (requestResponse.ok && requestBody) {
+          setRequests(requestBody.requests ?? []);
+          setAccountReview((review) =>
+            review &&
+            (requestBody.requests ?? []).some(
+              (item: DevicePairingRequest) =>
+                item.requestId === review.requestId &&
+                item.status === 'pending',
+            )
+              ? review
+              : null,
+          );
+        }
+        if (deviceResponse.ok && deviceBody)
+          setDevices(deviceBody.devices ?? []);
       } catch {
         // Polling is best-effort. A later generation retries without allowing a
         // slow or failed response to overwrite newer inbox state.
       }
     },
-    [authenticatedFetch, setError],
+    [authenticatedFetch, consentLink, setError],
   );
 
   useEffect(() => {
@@ -1484,18 +1527,38 @@ export function HostDevicePairingPanel({
     };
   }, [refresh]);
 
+  useEffect(() => {
+    if (!operatorLink?.review || !operatorLink.requestId) return;
+    if (
+      requests.some(
+        (request) =>
+          request.requestId === operatorLink.requestId &&
+          request.status === 'confirmed',
+      )
+    ) {
+      setOperatorLink(null);
+      setError(null);
+    }
+  }, [operatorLink, requests, setError]);
+
   const actOnRequest = async (
     request: DevicePairingRequest,
     action: 'approve' | 'deny',
   ) => {
     if (requestActionIdsRef.current.has(request.requestId)) return;
     setError(null);
+    setOperatorLink(null);
     refreshGeneration.current += 1;
     requestActionIdsRef.current.add(request.requestId);
     setRequestActionIds(new Set(requestActionIdsRef.current));
+    let reviewWindow: Window | null = null;
     try {
       const bindPerson = personBindingRequests.has(request.requestId);
       const bindAccount = accountBindingRequests.has(request.requestId);
+      reviewWindow =
+        action === 'approve' && bindAccount
+          ? window.open('about:blank', '_blank')
+          : null;
       // An account binding confirms the request as asked; trimming is for an
       // ordinary device approval.
       const scope =
@@ -1512,18 +1575,103 @@ export function HostDevicePairingPanel({
       };
       const response = await authenticatedFetch(
         `/api/pairing/requests/${request.requestId}${
-          action === 'approve' ? '/confirm' : ''
+          action === 'approve'
+            ? bindAccount
+              ? '/account-consent'
+              : '/confirm'
+            : ''
         }`,
         {
           method: action === 'approve' ? 'POST' : 'DELETE',
-          ...(action === 'approve' && Object.keys(body).length > 0
+          ...(action === 'approve' &&
+          (bindAccount || Object.keys(body).length > 0)
             ? {
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
+                body: JSON.stringify(bindAccount ? {} : body),
               }
             : {}),
         },
       );
+      if (action === 'approve' && bindAccount) {
+        if (response.status === 202) {
+          const result = await response.json();
+          const url = new URL(result.transaction?.reviewUrl);
+          const base = new URL(apiBase);
+          if (
+            result.status !== 'step_up_required' ||
+            typeof result.transaction?.id !== 'string' ||
+            !Number.isFinite(result.transaction?.expiresAt) ||
+            url.protocol !== 'https:' ||
+            url.hostname !== base.hostname ||
+            url.origin === base.origin
+          ) {
+            reviewWindow?.close();
+            throw new Error('Invalid consent review');
+          }
+          setAccountPasskeyRequired(null);
+          setAccountReview({ requestId: request.requestId, url: url.href });
+          if (reviewWindow) {
+            reviewWindow.opener = null;
+            reviewWindow.location.replace(url.href);
+          }
+          return;
+        }
+        reviewWindow?.close();
+        if (response.status === 401) {
+          setAuthBlocked(true);
+          setError(
+            "This device's access to this Station needs review. Reconnect it, then try again.",
+          );
+          return;
+        }
+        if (response.status === 403) {
+          const result = await response.json().catch(() => null);
+          const code =
+            typeof result?.error === 'string'
+              ? result.error
+              : result?.error?.code;
+          if (
+            code !== 'operator_session_required' &&
+            code !== 'insufficient_scope'
+          ) {
+            setError(
+              'This Station refused the account access review. Check the connection and try again.',
+            );
+            return;
+          }
+          try {
+            const url = new URL(result?.signInUrl);
+            setAccountSignInUrl(
+              url.protocol === 'https:' &&
+                url.hostname === new URL(apiBase).hostname
+                ? url.href
+                : null,
+            );
+          } catch {
+            setAccountSignInUrl(null);
+          }
+          setAccountPasskeyRequired(request.requestId);
+          return;
+        }
+        setError(
+          response.status === 404
+            ? 'Update this Station to approve account-bound access in the browser.'
+            : response.status === 409
+              ? 'Identity binding is no longer available for this request. Refresh the account, then pair again.'
+              : 'This account access review is unavailable. Try again.',
+        );
+        return;
+      }
+      if (response.status === 202 && action === 'approve') {
+        const result = await response.json();
+        const url =
+          result?.status === 'step_up_required'
+            ? consentLink(result.transaction?.reviewUrl)
+            : null;
+        if (!url) throw new Error('Invalid operator review');
+        setOperatorLink({ url, review: true, requestId: request.requestId });
+        return;
+      }
       if (!response.ok) {
         if (
           action === 'approve' &&
@@ -1537,15 +1685,20 @@ export function HostDevicePairingPanel({
         }
         // A refused approval names this host's own CLI (a Station that
         // predates it, or any other answer, falls back to `station`).
+        const refusal =
+          response.status === 403 && action === 'approve'
+            ? await response.json().catch(() => null)
+            : null;
+        const signInUrl = consentLink(refusal?.signInUrl);
+        if (signInUrl)
+          setOperatorLink({
+            url: signInUrl,
+            review: false,
+            requestId: request.requestId,
+          });
         const operatorCli =
           response.status === 403 && action === 'approve'
-            ? knownOperatorCli(
-                (
-                  (await response.json().catch(() => null)) as {
-                    operatorCli?: unknown;
-                  } | null
-                )?.operatorCli,
-              )
+            ? knownOperatorCli(refusal?.operatorCli)
             : undefined;
         setError(
           response.status === 401
@@ -1620,6 +1773,7 @@ export function HostDevicePairingPanel({
       }
       await refresh();
     } catch {
+      reviewWindow?.close();
       setError(
         `This Station could not ${action} that access request. Try again.`,
       );
@@ -1853,17 +2007,27 @@ export function HostDevicePairingPanel({
               ) : (
                 <RequestedScopeChecklist
                   deviceName={request.deviceName}
-                  requestedScope={request.scope}
+                  requestedScope={
+                    request.requireAccountBinding ||
+                    accountBindingRequests.has(request.requestId)
+                      ? 'orchestration:read'
+                      : request.scope
+                  }
                   // An account binding confirms the request as asked, so its
                   // list shows everything kept, not an earlier untick.
                   kept={
+                    request.requireAccountBinding ||
                     accountBindingRequests.has(request.requestId)
-                      ? new Set(requestedScopeTokens(request.scope))
+                      ? new Set(requestedScopeTokens('orchestration:read'))
                       : keptScopeOf(request)
                   }
                   disabled={
                     requestActionIds.has(request.requestId) ||
                     accountBindingRequests.has(request.requestId)
+                  }
+                  allowLimit={
+                    !request.requireAccountBinding &&
+                    !accountBindingRequests.has(request.requestId)
                   }
                   onChange={(next) =>
                     setKeptScopes((current) =>
@@ -2014,16 +2178,17 @@ export function HostDevicePairingPanel({
                         {request.requireAccountBinding
                           ? 'The invitee requested account-bound access. Approval can create only this account-bound Device. The pilot can view permitted Projects; editing and running work are unavailable.'
                           : 'Requires this account to sign in again. This pilot can view permitted Projects; editing and running work are unavailable. It does not grant membership.'}
-                        <span
-                          style={{ display: 'block', overflowWrap: 'anywhere' }}
-                        >
-                          Issuer: {request.accountCandidate.issuer}
-                          <br />
-                          Subject: {request.accountCandidate.subject}
-                        </span>
                       </small>
                     </span>
                   </label>
+                  <details>
+                    <summary>Account details</summary>
+                    <div style={{ overflowWrap: 'anywhere' }}>
+                      Account provider: {request.accountCandidate.issuer}
+                      <br />
+                      Account ID: {request.accountCandidate.subject}
+                    </div>
+                  </details>
                   {!request.requireAccountBinding &&
                     request.source === 'tailnet' &&
                     request.requester && (
@@ -2198,8 +2363,78 @@ export function HostDevicePairingPanel({
                   </button>
                 </>
               )}
+              {operatorLink?.requestId === request.requestId && (
+                <p role="status">
+                  {operatorLink.review
+                    ? 'Approval is pending passkey confirmation. '
+                    : ''}
+                  <a
+                    href={operatorLink.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {operatorLink.review
+                      ? 'Review and confirm with passkey'
+                      : 'Sign in as operator'}
+                  </a>
+                  {operatorLink.review
+                    ? ''
+                    : ', then return and approve again.'}
+                </p>
+              )}
             </div>
           ))}
+          {accountReview && (
+            <p role="status">
+              Waiting for passkey confirmation.{' '}
+              <a href={accountReview.url} target="_blank" rel="noreferrer">
+                Review access change
+              </a>
+            </p>
+          )}
+          {accountPasskeyRequired && (
+            <p role="status">
+              Approving an invited person’s browser needs an owner passkey.{' '}
+              {accountSignInUrl && (
+                <>
+                  <a href={accountSignInUrl} target="_blank" rel="noreferrer">
+                    Sign in as operator
+                  </a>{' '}
+                  or{' '}
+                  <a
+                    href={accountSignInUrl.replace(
+                      '/operator/sign-in',
+                      '/operator/passkeys/enroll',
+                    )}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    enroll an owner passkey
+                  </a>
+                  , then approve again.{' '}
+                </>
+              )}
+              {!accountSignInUrl && (
+                <>
+                  Set <code>STATION_TRUSTED_CONSENT_ORIGIN</code> to the HTTPS
+                  DNS origin serving the consent listener on this Station’s
+                  browser host, then restart. Or run{' '}
+                  <code>
+                    station environment access approve {accountPasskeyRequired}{' '}
+                    --force --bind-account
+                  </code>{' '}
+                  on the Station host.{' '}
+                </>
+              )}
+              <a
+                href="https://github.com/kontourai/station/blob/main/docs/guides/operator-passkeys.md"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Passkey setup
+              </a>
+            </p>
+          )}
         </section>
       )}
       {!offer ? (
@@ -2476,6 +2711,24 @@ export function HostDevicePairingPanel({
       {error && (
         <div className="pairing-error" role="alert">
           <p>{error}</p>
+          {operatorLink && !operatorLink.requestId && (
+            <p>
+              <a
+                href={operatorLink.url}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {operatorLink.review
+                  ? 'Review and confirm with passkey'
+                  : 'Sign in as operator'}
+              </a>
+              {operatorLink.review
+                ? ''
+                : operatorLink.poll
+                  ? ', then return and check the connection again.'
+                  : ', then return and approve again.'}
+            </p>
+          )}
           {authBlocked && onReconnect && (
             <button
               type="button"

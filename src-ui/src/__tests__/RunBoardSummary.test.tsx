@@ -76,7 +76,7 @@ describe('RunBoardSummary', () => {
     );
 
     const board = screen.getByTestId('run-board');
-    expect(board.getAttribute('aria-label')).toBe('1 elsewhere');
+    expect(board.getAttribute('aria-label')).toBe('1 read only');
     expect(board.textContent).not.toContain('Unanswerable');
   });
 

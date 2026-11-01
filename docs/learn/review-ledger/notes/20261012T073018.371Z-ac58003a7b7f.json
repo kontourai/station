@@ -1,0 +1,13 @@
+{
+  "revision": "09d3f1e666b7ab592daddd789295b8d745d4d91e",
+
+  "notes": [
+    {"path":"docs/learn/media/new-chat-start-before.png","note":"Dated before capture of the shared start redesign; not a claim about the current Station control. Bytes unchanged; this change relabels the Station control and adds a plain-text state, so these frames stay historical evidence at their recorded revision.","inputs":["docs/learn/media/new-chat-start-before.png","src-ui/src/components/chat-start/StartComposer.css","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/learn/media/new-chat-start-after.png","note":"Dated after capture of the shared start redesign, showing the earlier on <host> label. Bytes unchanged and kept as revision-bound evidence; current 390px dark and light renders of Runs on <Station> were captured for this change outside the repo.","inputs":["docs/learn/media/new-chat-start-after.png","src-ui/src/components/chat-start/StartComposer.css","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/learn/media/project-start-before.png","note":"Dated before capture of the Project page start; bytes unchanged and historical at its recorded revision. This change only relabels the Station control.","inputs":["docs/learn/media/project-start-before.png","src-ui/src/components/home/HomeStartComposer.tsx"]},
+
+    {"path":"docs/learn/media/project-start-after.png","note":"Dated after capture of the Project page start showing the earlier on Kontour label. Bytes unchanged and kept as revision-bound evidence of that redesign; the current label was verified in fresh 390px renders for this change.","inputs":["docs/learn/media/project-start-after.png","src-ui/src/components/home/HomeStartComposer.tsx"]}
+  ]
+}

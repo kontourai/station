@@ -6,8 +6,14 @@ on the host. A session reads paired devices and the operator's own passkey and
 current-session metadata, and requests step-up for writes. A device-access change
 requires a fresh passkey confirmation on the separate consent origin for that exact action
 ([#3257 S4](https://github.com/kontourai/station/issues/3257)). There is no
-step-up window. The host and separately granted device-administration channels
+step-up window. Turning on sharing for a Project uses the same per-action
+confirmation. The host and separately granted device-administration channels
 remain independent.
+
+Operator passkeys are separate from the passkeys invited members can use with
+Station accounts ([member passkeys](deployment-authentication.md#member-passkeys-feature-preview)).
+The two use different stores, and a member passkey never grants operator
+authority.
 
 ## Before you start
 
@@ -77,10 +83,18 @@ remain independent.
 4. Choose **Sign out**, then confirm on the consent-origin page to end the
    session. Closing the browser window alone does not sign out.
 
+To approve an ordinary pending Device pairing, open its review in **Needs
+attention** or the pairing panel. If asked, sign in as operator and return to
+the request. Choose **Approve**, then open **Review and confirm with passkey**
+and confirm the requested access. The request remains pending until the
+passkey confirmation succeeds; a denied, expired or changed request cannot be
+approved by an earlier review. Account-bound and delegation requests still
+require the host approval path.
+
 The session uses `__Host-station-operator`, a Secure, HttpOnly,
 SameSite=Strict cookie with Path=/ and no Domain. Cookies are scoped by hostname,
 not port: the same-host app origin receives it too. While signed in, app-origin
-plugin code can read the device inventory and the operator's passkey/session
+plugin code can read the device inventory, pending pairing requests, and the operator's passkey/session
 metadata. It cannot run a passkey ceremony or mutate with operator-session
 authority directly: a write only requests a transaction and cannot approve it. Do not treat HttpOnly as isolation from same-origin code using the
 session to make allowed requests.
@@ -107,6 +121,14 @@ A browser on the Station host without a configured HTTPS consent origin can no
 longer change device access from this panel. Use `station environment access …`
 on the host instead.
 
+To approve an invited person's browser, open pairing management and choose the
+account's Project access. Approve opens a separate passkey review naming the
+browser, Station account and read-only access; account details expose the
+provider and account ID. Confirm with a fresh
+passkey; the request stays pending until that confirmation succeeds. If needed,
+enroll and sign in as described above, then return and approve again. Without a
+configured HTTPS consent origin, use the host CLI's `--bind-account` path.
+
 1. Sign in as operator. Choose **Change access**, select permissions, and choose
    **Apply**. Revoking a device or removing its revoked record uses the same flow.
 2. The panel opens a separate consent-origin review. If the browser blocks the
@@ -131,6 +153,38 @@ on the host instead.
    repeat an indeterminate write.
 
 ![Cancelled review with outcome text and no action buttons](../learn/media/operator-s4-step-up-cancelled.png)
+
+## Turn on Project sharing from a paired browser
+
+Turning on sharing for a Project needs Station operator authority. Without an
+operator session, only the host (the Desktop or the operator credential) can do
+it. A signed-in operator session can do it from a paired browser admitted to
+the Project-sharing enable route, with one passkey confirmation per Project
+([#4306](https://github.com/kontourai/station/issues/4306)).
+
+1. The browser must be paired with permission to operate (`orchestration:operate`)
+   and admitted to the enable route. Account-bound Devices cannot use this route,
+   even with an operator session. Sign in as operator as above.
+2. Open the Project's **Settings → People and access**. If you are not signed
+   in, the section offers **Sign in as operator**. Once you are, it offers
+   **Enable Project sharing**.
+3. Choose **Enable Project sharing**. A separate consent-origin review opens.
+   It names the Project and the **Owner**: the identity this browser acts as.
+   Behind Tailscale Serve with WhoIs that is your tailnet identity, so your
+   other tailnet devices manage the Project too. A browser with no person
+   identity owns the Project as itself. Revoking it later leaves the Project
+   without a reachable owner, so transfer ownership to another member first.
+4. Choose **Confirm with passkey**. The section shows the Project's members
+   once the confirmation is committed. **Cancel**, an expired review, a
+   revoked passkey or Device, or an ended session applies nothing.
+
+If the Project is removed or replaced, the review closes as `target_changed`.
+It cannot turn on sharing for a new Project that happens to use the same slug;
+open a new request for that Project.
+
+After that, the owner manages invitations and members through ordinary Project
+roles. Those actions need no operator session. A Project admin or owner never
+gains operator authority from that role.
 
 Group changes and operator-managed personal-token API actions also require per-action
 step-up. The passkey session cannot read `GET /api/pairing/people`, so **Settings →

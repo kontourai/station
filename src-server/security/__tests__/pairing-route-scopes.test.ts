@@ -243,6 +243,25 @@ describe('pairing-route-scopes: source-derived coverage (station#1098 R2)', () =
     expect(identities).toEqual([...new Set(identities)]);
   });
 
+  test('classifies only the person notification leaves at their read and mutate tiers', () => {
+    for (const [method, path, scope] of [
+      ['GET', '/api/me/notifications', 'orchestration:read'],
+      ['POST', '/api/me/notifications/:id/read', 'orchestration:operate'],
+      ['DELETE', '/api/me/notifications/:id', 'orchestration:operate'],
+    ] as const) {
+      expect(isLeafScopeDeclared(method, path)).toBe(true);
+      expect(requiredPairingScope(method, path)).toBe(scope);
+      expect(PAIRING_SCOPE_FAMILY_INHERITED_LEAVES).toContainEqual({
+        method,
+        path,
+      });
+    }
+    expect(isLeafScopeDeclared('POST', '/api/me/notifications')).toBe(false);
+    expect(
+      isLeafScopeDeclared('DELETE', '/api/me/notifications/:id/read'),
+    ).toBe(false);
+  });
+
   test('inherits read scope for the local operating-state availability leaf', () => {
     const path = '/api/projects/:slug/operating-state/availability';
     expect(isLeafScopeDeclared('GET', path)).toBe(true);
@@ -931,6 +950,13 @@ describe('pairing-route-scopes: table-driven lookups', () => {
     ['GET', '/api/skills/experiences', 'orchestration:read'],
     ['GET', '/api/tasks/task-1/user-input-references', 'orchestration:read'],
     ['POST', '/api/tasks/task-1/references', 'orchestration:operate'],
+    ['GET', '/api/tasks/task-1/room', 'orchestration:read'],
+    ['GET', '/api/tasks/task-1/room/history', 'orchestration:read'],
+    ['GET', '/api/tasks/task-1/room/document', 'orchestration:read'],
+    ['GET', '/api/tasks/task-1/room/events', 'orchestration:read'],
+    ['POST', '/api/tasks/task-1/room/messages', 'orchestration:operate'],
+    ['POST', '/api/tasks/task-1/room/live', 'orchestration:operate'],
+    ['POST', '/api/tasks/task-1/room/edit-plan', 'orchestration:operate'],
     ['POST', '/api/tasks/task-1/room/output-feedback', 'orchestration:operate'],
     ['GET', '/api/projects/my-proj/knowledge/status', 'orchestration:read'],
     ['POST', '/api/projects', 'orchestration:operate'],
@@ -2016,7 +2042,23 @@ test('declares exact inventory input inspection at the read tier', () => {
   expect(requiredPairingScope('GET', path)).toBe('orchestration:read');
 });
 
+test('Task write-back log is a declared Task read', () => {
+  expect(isLeafScopeDeclared('GET', '/api/tasks/:taskId/write-back')).toBe(
+    true,
+  );
+  expect(requiredPairingScope('GET', '/api/tasks/task-a/write-back')).toBe(
+    'orchestration:read',
+  );
+});
+
 test('Task capture and review comments require operate scope; capture reads use read scope', () => {
+  for (const path of [
+    '/api/tasks/task-a/review/walkthroughs',
+    '/api/tasks/task-a/review/walkthroughs/clip-a',
+    '/api/tasks/task-a/review/walkthroughs/clip-a/video',
+    '/api/tasks/task-a/review/walkthroughs/clip-a/frames/frame-a',
+  ])
+    expect(requiredPairingScope('GET', path)).toBe('orchestration:read');
   expect(
     requiredPairingScope('POST', '/api/tasks/task-a/review/captures'),
   ).toBe('orchestration:operate');
@@ -2035,4 +2077,18 @@ test('Task capture and review comments require operate scope; capture reads use 
   expect(
     requiredPairingScope('POST', '/api/tasks/task-a/review/captures/extra'),
   ).toBe('orchestration:operate');
+});
+test('integration status has only the Connections read scope', () => {
+  expect(requiredPairingScope('GET', '/api/integrations/status')).toBe(
+    'orchestration:read',
+  );
+  expect(requiredPairingScope('HEAD', '/api/integrations/status')).toBe(
+    'orchestration:read',
+  );
+  expect(
+    requiredPairingScope('POST', '/api/integrations/status'),
+  ).toBeUndefined();
+  expect(
+    requiredPairingScope('GET', '/api/integrations/status/other'),
+  ).toBeUndefined();
 });

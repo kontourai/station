@@ -3,6 +3,7 @@ import {
   type ChatHostImageMap,
   chatHostImageMapFromEvent,
 } from '@kontourai/station-contracts/chat-host-images';
+import { claudeArtifactLinkOfEvent } from '@kontourai/station-contracts/claude-artifact';
 import type { ClientOriginSender } from '@kontourai/station-contracts/client-origin';
 import { isStationMemoryContinuationTurn } from '@kontourai/station-contracts/provider';
 import {
@@ -254,6 +255,15 @@ export interface ProjectRuntimeEventsOptions {
    * `turnEndedReason` instead.
    */
   markEndedTurns?: boolean;
+  /**
+   * Event ids of `turn.started` events held without the rest of their turn:
+   * a `turnStartDetached` window re-added them, and no read has reached them
+   * in range yet (`useSessionEventWindow`). Their turn's middle is not in
+   * these events. Its terminal `outputText` is then never adopted —
+   * the text it would add is in the missing events, and adopting it would
+   * repeat the text the window already shows.
+   */
+  partialTurnStartEventIds?: ReadonlySet<string>;
 }
 
 /**
@@ -464,6 +474,8 @@ export function projectRuntimeEventsToMessages(
   // currently active Session for historical turn identity.
   let turnSessionId: string | undefined;
   let turnAnswerEligible = false;
+  /** Whether the open turn's middle is missing from these events. */
+  let turnSeenInPart = false;
   /** The open turn's last pre-steer row, owner of last resort. */
   let preSteerRowIndex: number | undefined;
   const revokedAnswerTurns = new Set<string>();
@@ -901,6 +913,8 @@ export function projectRuntimeEventsToMessages(
           ? { kind: 'provider', sessionId: ev.threadId, engine: ev.provider }
           : undefined;
         turnAnchorEventId = ev.eventId;
+        turnSeenInPart =
+          options.partialTurnStartEventIds?.has(ev.eventId) ?? false;
         stamp(ev.createdAt);
         turnModel =
           typeof ev.metadata?.effectiveModel === 'string'
@@ -1172,6 +1186,8 @@ export function projectRuntimeEventsToMessages(
           if (ev.htmlReply) existing.htmlReply = ev.htmlReply;
           const refusal = stationControlRefusalView(ev.stationControlRefusal);
           if (refusal) existing.stationControlRefusal = refusal;
+          const artifact = claudeArtifactLinkOfEvent(ev);
+          if (artifact) existing.claudeArtifact = artifact;
           if (ev.outputReceipt?.truncated) existing.outputTruncated = true;
           existing.error = spillableDisplayText(ev.error);
           existing.sourceEventId = ev.eventId;
@@ -1255,6 +1271,9 @@ export function projectRuntimeEventsToMessages(
             output: ev.output,
             ...(ev.spilledContent ? { contentThreadId: ev.threadId } : {}),
             ...(ev.htmlReply ? { htmlReply: ev.htmlReply } : {}),
+            ...(claudeArtifactLinkOfEvent(ev)
+              ? { claudeArtifact: claudeArtifactLinkOfEvent(ev) }
+              : {}),
             ...(stationControlRefusalView(ev.stationControlRefusal)
               ? {
                   stationControlRefusal: stationControlRefusalView(
@@ -1457,6 +1476,7 @@ export function projectRuntimeEventsToMessages(
         if (revoked) revokedAnswerTurns.add(revoked);
         turnSessionId ??= ev.threadId;
         adoptTerminalIdentity(ev.turnId);
+        turnSeenInPart = false;
         turnAnswerEligible = false;
         stamp(ev.createdAt);
         flushText();
@@ -1515,15 +1535,38 @@ export function projectRuntimeEventsToMessages(
         // against its preview would cut a streamed reply to the preview. The
         // streamed text stands; only a turn that streamed nothing shows the
         // preview, marked as partial.
+        // #4266: a window that holds only this turn's tail (its prompt was
+        // added out of range) has seen a suffix of the text; the rest is in
+        // the events still to load. Adopting `outputText` here repeated
+        // the text the window shows and pulled the missing middle to the
+        // bottom of the turn.
+        const seenInPart = turnSeenInPart;
+        turnSeenInPart = false;
         const outputText =
-          typeof ev.outputText === 'string' ? ev.outputText : undefined;
-        if (outputText === undefined && ev.outputText && !emittedText) {
+          seenInPart || typeof ev.outputText !== 'string'
+            ? undefined
+            : ev.outputText;
+        if (
+          !seenInPart &&
+          outputText === undefined &&
+          ev.outputText &&
+          !emittedText
+        ) {
           textBuf = spillableDisplayText(ev.outputText) ?? '';
           if (isRuntimeEventContentRef(ev.outputText))
             pendingSpilledText = { threadId: ev.threadId, ref: ev.outputText };
         }
         if (outputText && outputText !== emittedText) {
-          if (outputText.startsWith(emittedText)) {
+          if (
+            // A window whose text is all a suffix of `outputText`, with text
+            // before the last tool row, has missed the turn's start (an older
+            // server marks no gap). Replacing the tail would repeat the text
+            // before the tool row; adopt nothing.
+            emittedText.length > textBuf.length &&
+            outputText.endsWith(emittedText)
+          ) {
+            // Nothing to adopt.
+          } else if (outputText.startsWith(emittedText)) {
             textBuf += outputText.slice(emittedText.length);
           } else if (
             // Otherwise the pre-#2300 fallback, unchanged: an engine whose

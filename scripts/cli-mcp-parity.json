@@ -1,11 +1,5 @@
 {
-  "app": {
-    "conversation fork": {
-      "missing": 4281,
-      "route": "POST /agents/:slug/conversations/:conversationId/fork",
-      "want": "A `station conversation fork` action and a fork_conversation tool"
-    }
-  },
+  "app": {},
   "cli": {
     "acp command-options": {
       "missing": 4286,
@@ -22,6 +16,10 @@
     "acp status": {
       "missing": 4286,
       "want": "Acp_status"
+    },
+    "activity": {
+      "tools": ["list_active_work", "list_project_activity"],
+      "note": "--project mirrors list_project_activity; without it, every readable Session (list_active_work)."
     },
     "agents chat": {
       "tools": ["send_message"]
@@ -77,6 +75,10 @@
       "exempt": "person-only",
       "reason": "Person directory lookup (/api/users/search)."
     },
+    "automation deliveries": {
+      "exempt": "person-only",
+      "reason": "Operator-only observation history; the Automation ledger has no Project or agent audience binding."
+    },
     "branding get": {
       "exempt": "presentation",
       "reason": "Whitelabel branding for UI chrome (/api/branding)."
@@ -108,6 +110,10 @@
     "checkpoints status": {
       "exempt": "local-host",
       "reason": "Reads git checkpoint refs in this Station home on disk."
+    },
+    "claims list": {
+      "tools": ["list_project_activity"],
+      "note": "A person lists claims over GET /api/orchestration/work-claims; agents read the same claims through list_project_activity. Claim, renew and release stay agent-only until a person can be a claimant (#3427)."
     },
     "cloud import-project": {
       "exempt": "local-host",
@@ -227,6 +233,9 @@
       "tools": ["get_conversation_messages", "read_conversation"],
       "note": "Export endpoint GET /agents/:slug/conversations/:id/export?format= has no tool; transcript read is covered."
     },
+    "conversation fork": {
+      "tools": ["fork_conversation"]
+    },
     "delegate attempt": {
       "exempt": "client-local",
       "reason": "Looks up a CLI invocation's lost handle by client attempt id (GET /api/orchestration/delegations/attempts/:id); MCP returns the handle synchronously."
@@ -239,6 +248,9 @@
     },
     "delegate interrupt": {
       "tools": ["interrupt_task"]
+    },
+    "delegate list": {
+      "tools": ["list_delegated_tasks"]
     },
     "delegate respond": {
       "tools": ["respond_to_task_request"]
@@ -542,6 +554,10 @@
       "exempt": "person-only",
       "reason": "Preview yields the permission set/digest a person approves; agents must not echo it into an install."
     },
+    "plugin recovery-backups": {
+      "exempt": "person-only",
+      "reason": "Recovery inventory includes operator-local paths and is restricted to the operator."
+    },
     "plugin registry": {
       "missing": 4285,
       "want": "List_registry_plugins"
@@ -735,6 +751,9 @@
       "exempt": "local-host",
       "reason": "Launchd/systemd/Windows service management."
     },
+    "sessions digest": {
+      "tools": ["get_session_digest"]
+    },
     "sessions inspect": {
       "missing": 3427,
       "want": "Get_session_tool_result"
@@ -750,6 +769,17 @@
     "sessions read": {
       "missing": 3427,
       "want": "read_conversation reads the transcript, not the orchestration session snapshot this reads"
+    },
+    "sessions search": {
+      "tools": ["search_sessions"]
+    },
+    "sessions transcript": {
+      "tools": ["read_conversation"],
+      "note": "Uses the owner-only /read route, so it does not check Project view access as the tool does."
+    },
+    "sessions wait": {
+      "tools": ["wait_session"],
+      "note": "Person route under /api/orchestration/session-reads; reports a restart-interrupted turn as restart-interrupted (exit 3)."
     },
     "setup existing": {
       "exempt": "local-host",
@@ -1028,6 +1058,78 @@
       "missing": 4282,
       "want": "Board unpin"
     },
+    "browser_capture_to_task": {
+      "exempt": "agent-self",
+      "reason": "Captures a Browser Screen into the calling agent's bound Task."
+    },
+    "browser_click": {
+      "exempt": "agent-ui",
+      "reason": "Drives the person's Browser pane for the bound agent."
+    },
+    "browser_close": {
+      "exempt": "agent-ui",
+      "reason": "Drives the person's Browser pane for the bound agent."
+    },
+    "browser_color_scheme": {
+      "exempt": "agent-ui",
+      "reason": "Drives the person's Browser pane for the bound agent."
+    },
+    "browser_drag": {
+      "exempt": "agent-ui",
+      "reason": "Drives the person's Browser pane for the bound agent."
+    },
+    "browser_evaluate": {
+      "exempt": "agent-ui",
+      "reason": "Drives the person's Browser pane for the bound agent."
+    },
+    "browser_hover": {
+      "exempt": "agent-ui",
+      "reason": "Drives the person's Browser pane for the bound agent."
+    },
+    "browser_navigate": {
+      "exempt": "agent-ui",
+      "reason": "Drives the person's Browser pane for the bound agent."
+    },
+    "browser_open": {
+      "exempt": "agent-ui",
+      "reason": "Drives the person's Browser pane for the bound agent."
+    },
+    "browser_press": {
+      "exempt": "agent-ui",
+      "reason": "Drives the person's Browser pane for the bound agent."
+    },
+    "browser_record_to_task": {
+      "exempt": "agent-self",
+      "reason": "Records the Browser into the calling agent's bound Task; the route refuses non-internal requests."
+    },
+    "browser_resize": {
+      "exempt": "agent-ui",
+      "reason": "Drives the person's Browser pane for the bound agent."
+    },
+    "browser_scroll": {
+      "exempt": "agent-ui",
+      "reason": "Drives the person's Browser pane for the bound agent."
+    },
+    "browser_select": {
+      "exempt": "agent-ui",
+      "reason": "Drives the person's Browser pane for the bound agent."
+    },
+    "browser_snapshot": {
+      "exempt": "agent-ui",
+      "reason": "Reads the person's Browser pane for the bound agent."
+    },
+    "browser_status": {
+      "exempt": "agent-ui",
+      "reason": "Lists Browser pane sessions for the bound agent."
+    },
+    "browser_type": {
+      "exempt": "agent-ui",
+      "reason": "Drives the person's Browser pane for the bound agent."
+    },
+    "browser_wait_for": {
+      "exempt": "agent-ui",
+      "reason": "Reads the person's Browser pane for the bound agent."
+    },
     "cancel_wake_up": {
       "exempt": "agent-self",
       "reason": "Cancels the caller's own wake-up."
@@ -1045,6 +1147,14 @@
     },
     "continue_task": {
       "cli": ["delegate continue"]
+    },
+    "coordinator_picture_read": {
+      "exempt": "agent-self",
+      "reason": "Reads the calling coordinator's person-scoped working picture."
+    },
+    "coordinator_picture_update": {
+      "exempt": "agent-self",
+      "reason": "Updates only the calling coordinator's person-scoped working picture."
     },
     "create_agent": {
       "cli": ["agents create"]
@@ -1081,6 +1191,10 @@
     "delete_job": {
       "cli": ["schedule delete"]
     },
+    "device_capture_to_task": {
+      "exempt": "agent-self",
+      "reason": "Captures a controlled device into the calling agent's bound Task; the route refuses non-internal requests."
+    },
     "device_close": {
       "exempt": "agent-self",
       "reason": "Computer use inside the calling agent's own turn; the route refuses every non-internal request, and a person drives devices in the UI pane."
@@ -1113,6 +1227,9 @@
     },
     "enable_job": {
       "cli": ["schedule enable"]
+    },
+    "fork_conversation": {
+      "cli": ["conversation fork"]
     },
     "get_achievements": {
       "missing": 4284,
@@ -1166,8 +1283,7 @@
       "cli": ["schedule status"]
     },
     "get_session_digest": {
-      "missing": 3427,
-      "want": "Sessions digest"
+      "cli": ["sessions digest"]
     },
     "get_session_inventory": {
       "missing": 3427,
@@ -1228,8 +1344,7 @@
       "cli": ["delegate interrupt"]
     },
     "list_active_work": {
-      "missing": 3427,
-      "want": "Activity --active"
+      "cli": ["activity"]
     },
     "list_agents": {
       "cli": ["agents list"],
@@ -1239,8 +1354,7 @@
       "cli": ["agents conversations"]
     },
     "list_delegated_tasks": {
-      "missing": 3427,
-      "want": "Delegate list"
+      "cli": ["delegate list"]
     },
     "list_delegation_environments": {
       "cli": ["environment list"]
@@ -1274,8 +1388,7 @@
       "cli": ["plugin list"]
     },
     "list_project_activity": {
-      "missing": 3427,
-      "want": "Activity --project"
+      "cli": ["activity"]
     },
     "list_project_layouts": {
       "cli": ["projects layouts"],
@@ -1313,12 +1426,20 @@
       "cli": ["skills list"],
       "note": "Different route: MCP GET /api/system/skills, CLI GET /api/skills (SDK keeps both fetchers deliberately; installed vs system catalogue)."
     },
+    "list_tool_families": {
+      "exempt": "agent-self",
+      "reason": "MCP transport discovery for the verified runtime credential; loading schemas grants no tool authority and has no person-facing CLI state."
+    },
     "list_wake_ups": {
       "exempt": "agent-self",
       "reason": "Lists the caller's own wake-ups."
     },
     "list_walkthroughs": {
       "cli": ["walkthrough list"]
+    },
+    "load_tool_family": {
+      "exempt": "agent-self",
+      "reason": "MCP transport discovery for the verified runtime credential; loading schemas grants no tool authority and has no person-facing CLI state."
     },
     "migrate_knowledge": {
       "cli": ["knowledge migrate"]
@@ -1351,8 +1472,7 @@
       "reason": "See get_answer_assessment_target."
     },
     "read_conversation": {
-      "missing": 3427,
-      "want": "Sessions read --around/--cursor"
+      "cli": ["sessions transcript"]
     },
     "read_logs": {
       "missing": 4284,
@@ -1420,8 +1540,7 @@
       "cli": ["knowledge search"]
     },
     "search_sessions": {
-      "missing": 3427,
-      "want": "Sessions search"
+      "cli": ["sessions search"]
     },
     "send_message": {
       "cli": ["chat", "agents chat"],
@@ -1484,8 +1603,7 @@
       "want": "Plugin validate"
     },
     "wait_session": {
-      "missing": 3427,
-      "want": "Sessions wait"
+      "cli": ["sessions wait"]
     },
     "workload_status": {
       "exempt": "agent-self",

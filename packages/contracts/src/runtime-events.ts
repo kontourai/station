@@ -1,6 +1,7 @@
 import type { PersistedChatAttachment } from './chat-attachment.js';
 import type { ChatHostImageSource } from './chat-host-images.js';
 import type { ChildWorkDelta } from './child-work.js';
+import type { ClaudeArtifactLink } from './claude-artifact.js';
 import type { ClientOrigin } from './client-origin.js';
 import type { HtmlReplyReference } from './html-reply.js';
 import type { PrincipalRef } from './principal.js';
@@ -21,6 +22,7 @@ import type {
   SessionTransitionSource,
 } from './session-lifecycle.js';
 import type { StationControlRefusalView } from './station-control-refusal.js';
+import type { PricingSnapshot, UsageReceipt } from './usage-rollup.js';
 import type {
   WorkflowNextActionStatus,
   WorkflowPhase,
@@ -675,6 +677,12 @@ export interface ToolCompletedEvent extends CanonicalRuntimeEventBase {
   /** Bounded page display reference retained independently of output excerpts. */
   htmlReply?: HtmlReplyReference;
   /**
+   * The claude.ai page a Claude Code `Artifact` publish produced, read by
+   * the Claude adapter from the tool's structured output (never its text)
+   * and admitted only as an https://claude.ai URL. See `claude-artifact.ts`.
+   */
+  claudeArtifact?: ClaudeArtifactLink;
+  /**
    * A station-control tool's refusal, read from its whole result before a
    * history window cut it to an excerpt (which no longer parses). Bounded;
    * see `station-control-refusal.ts`.
@@ -962,6 +970,10 @@ export interface RuntimeWarningEvent extends CanonicalRuntimeEventBase {
 
 export interface TokenUsageUpdatedEvent extends CanonicalRuntimeEventBase {
   method: 'token-usage.updated';
+  /** Separate reported reasoning tokens; tariff rules decide whether output already includes them. */
+  reasoningTokens?: number;
+  /** Contemporaneous route observation, never reconstructed from the current connection. */
+  servingRoute?: UsageReceipt['route'];
   promptTokens?: number;
   completionTokens?: number;
   totalTokens?: number;
@@ -983,19 +995,7 @@ export interface TokenUsageUpdatedEvent extends CanonicalRuntimeEventBase {
    * must never fill it later from a live catalog: this is the historical
    * estimate's immutable provenance.
    */
-  pricingSnapshot?: {
-    id: string;
-    capturedAt: string;
-    /** Catalog authority captured at ingestion, never recovered on read. */
-    source?: string;
-    currency: string;
-    provider: string;
-    model: string;
-    inputPerMillion?: number;
-    outputPerMillion?: number;
-    cacheReadPerMillion?: number;
-    cacheWritePerMillion?: number;
-  };
+  pricingSnapshot?: PricingSnapshot;
   /**
    * Cost in USD **as the provider reported it** (station#1299 item 4).
    *

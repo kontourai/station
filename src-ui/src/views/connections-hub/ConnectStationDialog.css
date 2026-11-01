@@ -44,3 +44,8 @@
   border: 0;
   min-width: 0;
 }
+
+.connect-station-peer {
+  display: grid;
+  gap: var(--k-space-3);
+}

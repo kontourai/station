@@ -156,7 +156,7 @@ import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
 import { type ComponentProps, createRef } from 'react';
 import { renderWithIsolatedConnections } from '../../../__tests__/renderWithIsolatedConnections';
 import { ChatDockInboxPanel } from '../../../components/chat-dock/ChatDockInboxPanel';
-import { MobileTaskSwitcher } from '../../../components/chat-dock/MobileTaskSwitcher';
+import { MobileInboxPanel } from '../../../components/chat-dock/MobileInboxPanel';
 import type { ProjectMetadata } from '../../../contexts/ProjectsContext';
 import { useGitLocationByThreadId } from '../../../hooks/useGitLocationByThreadId';
 import { useProjectAccents } from '../../../hooks/useProjectAccents';
@@ -923,12 +923,12 @@ function DockInboxHost(
 /** The phone sheet as `ChatDock` feeds it. */
 function SheetHost(
   props: Omit<
-    ComponentProps<typeof MobileTaskSwitcher>,
+    ComponentProps<typeof MobileInboxPanel>,
     'gitLocationByThreadId' | 'projectAccentBySlug'
   >,
 ) {
   return (
-    <MobileTaskSwitcher
+    <MobileInboxPanel
       {...props}
       gitLocationByThreadId={useGitLocationByThreadId()}
       projectAccentBySlug={useProjectAccents()}
@@ -1041,11 +1041,19 @@ describe('Home, the dock and Activity agree on one item', () => {
     const workFacts = buildWorkFacts({ items, sessions: summaries });
     const activity = renderView().container;
     const home = render(
-      <HomeSurface
-        model={homeModel(items)}
-        continuation={null}
-        onNavigate={vi.fn()}
-      />,
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <NavigationProvider>
+          <HomeSurface
+            model={homeModel(items)}
+            continuation={null}
+            onNavigate={vi.fn()}
+          />
+        </NavigationProvider>
+      </QueryClientProvider>,
     ).container;
     const dock = render(
       <DockInboxHost
@@ -1070,7 +1078,6 @@ describe('Home, the dock and Activity agree on one item', () => {
           open
           tasks={items}
           activeChatSessionId={null}
-          visualViewportStyle={{}}
           triggerRef={createRef<HTMLButtonElement>()}
           onClose={vi.fn()}
           onFocusChat={vi.fn()}
@@ -1080,7 +1087,7 @@ describe('Home, the dock and Activity agree on one item', () => {
           workFacts={workFacts}
         />
       </QueryClientProvider>,
-    ).baseElement.querySelector('.mobile-task-switcher__panel') as HTMLElement;
+    ).baseElement.querySelector('.mobile-inbox') as HTMLElement;
     return { activity, home, dock, sheet };
   }
 
@@ -1145,7 +1152,7 @@ describe('Home, the dock and Activity agree on one item', () => {
     }
   });
 
-  test('a project wears one colour on Home, in the dock and in the sheet', () => {
+  test('project marks follow each surface layout', () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(NOW);
     // Three projects, so the accent is set-aware: `station` sorts last and
@@ -1172,6 +1179,11 @@ describe('Home, the dock and Activity agree on one item', () => {
     };
     expect(swatch(home)).toBe('var(--event-tool-call)');
     expect(swatch(dock)).toBe(swatch(home));
-    expect(swatch(sheet)).toBe(swatch(home));
+    const line = sheet.querySelector('.inbox-row__project-context')!;
+    expect(line.querySelectorAll('svg')).toHaveLength(1);
+    expect(line.querySelector('.inbox-row__project-accent')).toBeNull();
+    expect(line.querySelector('.inbox-row__project')?.textContent).toBe(
+      'station',
+    );
   });
 });

@@ -11,7 +11,10 @@ import type { EnrollmentActor } from '../../analytics/source-enrollment-store.js
 import { SourceEnrollmentStore } from '../../analytics/source-enrollment-store.js';
 import { createPushRoutes } from '../../routes/operations/push-routes.js';
 import { createRecipientCandidateRoutes } from '../../routes/operations/recipient-candidates.js';
+import { createSchedulerRoutes } from '../../routes/operations/scheduler.js';
+import { createCoordinatorRoutes } from '../../routes/orchestration/coordinator.js';
 import { createOrchestrationRoutes } from '../../routes/orchestration/orchestration.js';
+import { createSessionPersonActivityRoutes } from '../../routes/orchestration/session-project-activity.js';
 import { createSystemStatusRoutes } from '../../routes/system/system-status-routes.js';
 import { HOSTED_TENANT_REGISTRY_FILE_ENV } from '../../runtime/bootstrap/hosted-tenant-mode.js';
 import {
@@ -19,10 +22,12 @@ import {
   resolveRuntimeWebPushEnabled,
 } from '../../runtime/routes/runtime-route-support.js';
 import { configureRuntimePublicRoutes } from '../../runtime/routes/runtime-routes.js';
+import { EventStore } from '../../services/orchestration/event-store.js';
 import { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
 import {
   resolveStationCapabilityFlags,
   STATION_CAPABILITY_FLAGS,
+  servesCoordinatorSession,
 } from '../station-capability-flags.js';
 import { TABLED_CAPABILITY_FLAGS } from './consumed-capability-flag-names.js';
 
@@ -191,6 +196,33 @@ const CONSUMED_FLAGS: Record<
     );
     return response.status === 200;
   },
+  // GET /api/orchestration/coordinator answers only where the runtime mounts
+  // the routes with a store, from the same predicate as the flag.
+  coordinatorSession: async (deployment) => {
+    const eventStore = new EventStore(
+      join(makeTempDir('coordinator-flag-'), 'orchestration.sqlite'),
+    );
+    try {
+      const routes = new Hono().route(
+        '/api/orchestration',
+        createCoordinatorRoutes({
+          store: servesCoordinatorSession(deployment)
+            ? eventStore.coordinatorStore()
+            : undefined,
+          person: () => ({
+            userId: 'owner',
+            mayRead: () => true,
+            mayMutate: () => true,
+          }),
+          dispatchActor: () => ({ userId: 'owner' }),
+        }),
+      );
+      const response = await routes.request('/api/orchestration/coordinator');
+      return response.status === 200;
+    } finally {
+      eventStore.close();
+    }
+  },
   // GET /api/system/routes answers the Station routes only where runtime
   // route support composes a resolver, from the same predicate as the flag.
   connectionRoutes: async ({ hosted }) => {
@@ -211,6 +243,41 @@ const CONSUMED_FLAGS: Record<
     } as never);
     return (await routes.request('/routes')).status === 200;
   },
+  // POST /scheduler/jobs accepts a job `target` (an automation that runs in
+  // a conversation). The scheduler routes answer 404 to every hosted request,
+  // whatever the body, because scheduler storage has no tenant binding.
+  scheduledConversationTarget: async ({ hosted }) => {
+    const addJob = vi.fn(async () => "Job 'digest' created");
+    const routes = createSchedulerRoutes(
+      { addJob } as never,
+      { error: vi.fn(), info: vi.fn(), debug: vi.fn() } as never,
+      {
+        readAuthorityForRequest: () =>
+          ({ mode: hosted ? 'hosted' : 'personal' }) as never,
+        admitAutomationTarget: () => ({
+          ok: true,
+          createdBy: { userId: 'owner' },
+        }),
+      },
+    );
+    const response = await routes.request('/jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'digest',
+        schedule: { kind: 'every', everyMs: 3_600_000 },
+        prompt: 'Summarize',
+        target: { kind: 'conversation', conversationId: 'conversation-a' },
+      }),
+    });
+    return (
+      response.status === 200 &&
+      addJob.mock.calls.length === 1 &&
+      (addJob.mock.calls[0] as unknown[])[0] !== undefined &&
+      ((addJob.mock.calls[0] as unknown[])[0] as { target?: unknown })
+        .target !== undefined
+    );
+  },
   // Not gated by a client today, but withdrawn in hosted mode, so pinned too.
   // GET /vapid-public-key answers under resolveRuntimeWebPushEnabled. That
   // configureRuntimeSupportServices composes webPushEnabled from it is pinned
@@ -229,6 +296,28 @@ const CONSUMED_FLAGS: Record<
       clearPushSubscription: vi.fn(),
     });
     return (await routes.request('/vapid-public-key')).status === 200;
+  },
+  // GET /api/orchestration/session-reads/activity answers a person's list.
+  sessionPersonReads: async ({ hosted }) => {
+    const routes = createSessionPersonActivityRoutes({
+      orchestrationService: {
+        canUserReadSession: () => true,
+        currentConversationSessionId: (id: string) => id,
+        firstStartedMetadataOfThread: () => undefined,
+        listSessionReadModel: vi.fn(async () => []),
+      },
+      eventStore: {} as never,
+      resolvePrincipal: () =>
+        ({ id: 'owner', kind: 'human', display: 'Owner' }) as never,
+      ...(hosted
+        ? { hostedTenantRegistry: parseHostedTenantRegistry(REGISTRY) }
+        : {}),
+      projectIdForSlug: () => undefined,
+      personMayView: () => true,
+      personViewsEveryProject: () => true,
+      preview: { select: (branches) => branches.enabled() },
+    });
+    return (await routes.request('/activity')).status === 200;
   },
   // GET /events honours Last-Event-ID: a cursor inside the gap replays the
   // missed event instead of sending a fresh snapshot.
@@ -301,11 +390,14 @@ describe('consumed capability flags match what their routes serve', () => {
   // a tenant reader) still reds.
   const EXPECTED: Record<string, Record<'personal' | 'hosted', boolean>> = {
     privateOperationalOutcomes: { personal: true, hosted: true },
+    scheduledConversationTarget: { personal: true, hosted: false },
     sessionEventWindow: { personal: true, hosted: true },
     sessionInventoryInputRead: { personal: true, hosted: false },
     eventStreamResume: { personal: true, hosted: true },
+    sessionPersonReads: { personal: true, hosted: true },
     webPushNotifications: { personal: true, hosted: false },
     connectionRoutes: { personal: true, hosted: false },
+    coordinatorSession: { personal: true, hosted: false },
   };
 
   test('every flag a deployment withdraws has a row', () => {

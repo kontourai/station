@@ -1,0 +1,13 @@
+{
+  "revision": "5c288b673d1cdf47f201abf8ca8d0a932167e4b5",
+
+  "notes": [
+    {"path":"docs/guides/native-releases.md","note":"Reviewed the portable smoke script delta: reserved OS-selected ports are retried before boot and the refusal guard and platform evidence requirements remain intact; focused allocator and archive tests passed, hosted smoke remains unverified.","inputs":["docs/guides/native-releases.md","scripts/smoke-portable-server-archive.mjs"]},
+
+    {"path":"docs/guides/nightly.md","note":"Reviewed the portable smoke script delta against Nightly delivery: retrying reserved port candidates changes no source gate, target matrix, publication or signing requirement; hosted output remains unverified.","inputs":["docs/guides/nightly.md","scripts/smoke-portable-server-archive.mjs"]},
+
+    {"path":"docs/guides/release-rings.md","note":"Reviewed the portable delivery path filter delta: the new transitive smoke-port module is included in portable classification; signing, provenance and release admission remain unchanged.","inputs":["docs/guides/release-rings.md","scripts/pr-delivery-paths.json"]},
+
+    {"path":"docs/guides/releasing.md","note":"Reviewed portable delivery path classification for the new smoke-port module; release checks and promotion requirements are unchanged, and local focused checks do not establish hosted release proof.","inputs":["docs/guides/releasing.md","scripts/pr-delivery-paths.json"]}
+  ]
+}

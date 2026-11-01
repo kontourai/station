@@ -101,8 +101,7 @@ jobs:
       - name: Setup pinned pnpm
         # #2675: pnpm v11 ships no working native binary for Intel macOS.
         if: runner.os != 'macOS' || runner.arch != 'X64'
-        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
-        with: { install: false }
+        uses: kontourai/station/.github/actions/setup-verified-pnpm@382b4af65e5f8bc5e3d62bd64ef1eba8653af50f
       - name: Setup pinned pnpm from its JS package (Intel macOS)
         if: runner.os == 'macOS' && runner.arch == 'X64'
         shell: bash

@@ -39,6 +39,35 @@ function response(body: unknown, status = 200) {
   });
 }
 
+test('the pairing panel offers operator sign-in when its inventory is refused', async () => {
+  const request = vi.fn(async () =>
+    response(
+      {
+        error: { code: 'insufficient_scope' },
+        signInUrl: 'https://station.example.test:8443/operator/sign-in',
+      },
+      403,
+    ),
+  );
+  render(
+    <HostDevicePairingPanel
+      apiBase="https://station.example.test"
+      publicEndpoint="https://station.example.test"
+      getCredential={() => 'device'}
+      request={request}
+      onCancel={vi.fn()}
+    />,
+  );
+  expect(
+    (
+      await screen.findByRole('link', { name: 'Sign in as operator' })
+    ).getAttribute('href'),
+  ).toBe('https://station.example.test:8443/operator/sign-in');
+  expect(
+    screen.getByText(/then return and check the connection again/),
+  ).toBeTruthy();
+});
+
 test('a polling authentication refusal is visible, pauses automatic retries, and can be checked explicitly', async () => {
   vi.useFakeTimers({
     toFake: [
@@ -1150,6 +1179,44 @@ describe('device pairing panels', () => {
     },
   );
 
+  test.each([
+    [
+      'constructor',
+      'This Station does not allow access requests from this app address.',
+    ],
+    [
+      'insufficient_scope',
+      'This Station refused this access request. Ask its operator to review permissions.',
+    ],
+    [
+      'identity_credential_quota_reached',
+      'This Station has already granted you as many devices as it allows. Revoke one under Paired Devices on the Station, then try again.',
+    ],
+  ])(
+    'direct access explains %s without blaming the app address',
+    async (code, message) => {
+      const request = vi
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValue(response({ error: { code } }, 403));
+      const onPending = vi.fn();
+      const onPaired = vi.fn();
+      render(
+        <JoinDevicePairingPanel
+          initialMode="direct"
+          directEndpoint="https://remote.example.test"
+          onApprovalPending={onPending}
+          onPaired={onPaired}
+          onCancel={vi.fn()}
+        />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Request access' }));
+      expect((await screen.findByRole('alert')).textContent).toContain(message);
+      expect(onPending).not.toHaveBeenCalled();
+      expect(onPaired).not.toHaveBeenCalled();
+      expect(request).toHaveBeenCalledTimes(1);
+    },
+  );
+
   test('native request-access explains an unreachable host and offers retry', async () => {
     vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(
       new TypeError('network unavailable'),
@@ -1620,6 +1687,64 @@ describe('device pairing panels', () => {
         "Only this Station's operator can grant Skip approval prompts. Use Limit access to leave it out of “Casey phone”'s access, or run this on the Station: npx @kontourai/station-cli@nightly environment access approve request-kept --force",
       ),
     ).toBeTruthy();
+  });
+
+  test('a passkey approval remains pending and offers the review link', async () => {
+    const pending = {
+      requestId: 'request-review',
+      offerId: 'offer-review',
+      deviceName: 'New browser',
+      scope: 'orchestration:read coding:exec',
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      source: 'same-origin',
+      status: 'pending',
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const path = new URL(String(input)).pathname;
+      if (path === '/api/pairing/requests/request-review/confirm')
+        return response(
+          {
+            status: 'step_up_required',
+            transaction: {
+              id: 'review',
+              reviewUrl: 'https://station.example.test:8443/consent/review',
+              expiresAt: Date.now() + 60_000,
+            },
+          },
+          202,
+        );
+      if (path === '/api/pairing/requests')
+        return response({ requests: [pending] });
+      if (path === '/api/pairing/devices') return response({ devices: [] });
+      throw new Error(`unexpected fetch ${path}`);
+    });
+    render(
+      <HostDevicePairingPanel
+        apiBase="https://station.example.test"
+        publicEndpoint="https://station.example.test"
+        getCredential={() => 'device'}
+        onCancel={vi.fn()}
+      />,
+    );
+    await screen.findByText(/New browser asks for/);
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    expect(
+      await screen.findByText('Approval is pending passkey confirmation.'),
+    ).toBeTruthy();
+    expect(
+      screen
+        .getByRole('link', { name: 'Review and confirm with passkey' })
+        .getAttribute('href'),
+    ).toBe('https://station.example.test:8443/consent/review');
+    pending.status = 'confirmed';
+    await waitFor(
+      () =>
+        expect(
+          screen.queryByText('Approval is pending passkey confirmation.'),
+        ).toBeNull(),
+      { timeout: 3000 },
+    );
   });
 
   test('names the host CLI when this Station refuses the approval (station#1490)', async () => {
@@ -3303,7 +3428,7 @@ describe('explicit verified-person pairing consent', () => {
     },
   );
 
-  test('account binding requires an explicit click, excludes Tailscale binding, and sends only the account signal', async () => {
+  test('account binding opens the passkey consent review after an explicit choice', async () => {
     const request = {
       requestId: 'account-request',
       offerId: 'account-offer',
@@ -3321,27 +3446,28 @@ describe('explicit verified-person pairing consent', () => {
       },
       expiresAt: Date.now() + 60_000,
     };
-    let approved = false;
+    let requested = false;
+    vi.spyOn(window, 'open').mockReturnValue(null);
     const fetchSpy = vi
       .spyOn(globalThis, 'fetch')
       .mockImplementation(async (input) => {
         const path = new URL(String(input)).pathname;
         if (path === '/api/pairing/requests')
-          return response({ requests: approved ? [] : [request] });
+          return response({ requests: [request] });
         if (path === '/api/pairing/devices') return response({ devices: [] });
-        if (path === '/api/pairing/requests/account-request/confirm') {
-          approved = true;
-          return response({
-            ...request,
-            status: 'confirmed',
-            principalBinding: {
-              kind: 'account',
-              issuer: request.accountCandidate.issuer,
-              subject: request.accountCandidate.subject,
-              displayName: request.accountCandidate.displayName,
-              approvalId: 'approval-1',
+        if (path === '/api/pairing/requests/account-request/account-consent') {
+          requested = true;
+          return response(
+            {
+              status: 'step_up_required',
+              transaction: {
+                id: 'txn-1',
+                reviewUrl: 'https://station.example.test:8443/consent/txn-1',
+                expiresAt: Date.now() + 60000,
+              },
             },
-          });
+            202,
+          );
         }
         return response({ error: 'unexpected' }, 500);
       });
@@ -3367,14 +3493,23 @@ describe('explicit verified-person pairing consent', () => {
     fireEvent.click(account);
     expect((account as HTMLInputElement).checked).toBe(true);
     expect((person as HTMLInputElement).checked).toBe(false);
+    fireEvent.click(screen.getByText('Account details'));
+    expect(
+      screen.getByText(/Account provider: https:\/\/accounts\.example\.test/),
+    ).toBeTruthy();
+    expect(screen.getByText(/Account ID: account-123/)).toBeTruthy();
     expect((approve as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(approve);
-    await waitFor(() => expect(approved).toBe(true));
+    await waitFor(() => expect(requested).toBe(true));
     const call = fetchSpy.mock.calls.find(([input]) =>
-      new URL(String(input)).pathname.endsWith('/account-request/confirm'),
+      new URL(String(input)).pathname.endsWith(
+        '/account-request/account-consent',
+      ),
     );
-    expect(call![1]?.body).toBe(JSON.stringify({ bindAccountIdentity: true }));
-    expect(screen.queryByText(/did not confirm/)).toBeNull();
+    expect(call![1]?.body).toBe('{}');
+    expect(
+      await screen.findByRole('link', { name: 'Review access change' }),
+    ).toHaveProperty('href', 'https://station.example.test:8443/consent/txn-1');
   });
 
   test('an account candidate requires explicit Personal Device approval when it is not bound', async () => {
@@ -3441,7 +3576,7 @@ describe('explicit verified-person pairing consent', () => {
       if (path === '/api/pairing/requests')
         return response({ requests: [request] });
       if (path === '/api/pairing/devices') return response({ devices: [] });
-      if (path.endsWith('/confirm')) {
+      if (path.endsWith('/account-consent')) {
         confirms += 1;
         return response({ error: 'person_binding_unavailable' }, 409);
       }
@@ -3465,6 +3600,114 @@ describe('explicit verified-person pairing consent', () => {
       await screen.findByText(/Identity binding is no longer available/),
     ).toBeTruthy();
     expect(confirms).toBe(1);
+  });
+
+  test('missing operator session offers passkey enrollment and sign-in', async () => {
+    const pending = {
+      requestId: 'member',
+      deviceName: 'Member browser',
+      status: 'pending',
+      source: 'pairing-code',
+      requireAccountBinding: true,
+      accountCandidate: {
+        issuer: 'urn:station:test',
+        subject: 'member',
+        displayName: 'Member',
+      },
+      expiresAt: Date.now() + 60_000,
+    };
+    vi.spyOn(window, 'open').mockReturnValue(null);
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const path = new URL(String(input)).pathname;
+      if (path === '/api/pairing/requests')
+        return response({ requests: [pending] });
+      if (path === '/api/pairing/devices') return response({ devices: [] });
+      if (path.endsWith('/account-consent'))
+        return response(
+          {
+            error: { code: 'operator_session_required' },
+            signInUrl: 'https://station.example.test:8443/operator/sign-in',
+          },
+          403,
+        );
+      return response({}, 500);
+    });
+    render(
+      <HostDevicePairingPanel
+        apiBase="https://station.example.test"
+        publicEndpoint="https://station.example.test"
+        getCredential={() => undefined}
+        onCancel={vi.fn()}
+      />,
+    );
+    fireEvent.click(
+      await screen.findByRole('radio', { name: /Use Member’s Project access/ }),
+    );
+    expect(screen.queryByText('Limit access')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    expect(await screen.findByText(/needs an owner passkey/)).toBeTruthy();
+    expect(
+      screen.getByRole('link', { name: 'enroll an owner passkey' }),
+    ).toHaveProperty(
+      'href',
+      'https://station.example.test:8443/operator/passkeys/enroll',
+    );
+    expect(
+      screen.getByRole('link', { name: 'Sign in as operator' }),
+    ).toBeTruthy();
+  });
+
+  test('without a trusted consent origin the guidance names configuration and host CLI', async () => {
+    const pending = {
+      requestId: 'member-no-origin',
+      deviceName: 'Member browser',
+      status: 'pending',
+      source: 'pairing-code',
+      requireAccountBinding: true,
+      accountCandidate: {
+        issuer: 'urn:station:test',
+        subject: 'member',
+        displayName: 'Member',
+      },
+      expiresAt: Date.now() + 60_000,
+    };
+    vi.spyOn(window, 'open').mockReturnValue(null);
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const path = new URL(String(input)).pathname;
+      if (path === '/api/pairing/requests')
+        return response({ requests: [pending] });
+      if (path === '/api/pairing/devices') return response({ devices: [] });
+      if (path.endsWith('/account-consent'))
+        return response(
+          { error: { code: 'operator_session_required' }, signInUrl: null },
+          403,
+        );
+      return response({}, 500);
+    });
+    render(
+      <HostDevicePairingPanel
+        apiBase="https://station.example.test"
+        publicEndpoint="https://station.example.test"
+        getCredential={() => undefined}
+        onCancel={vi.fn()}
+      />,
+    );
+    fireEvent.click(
+      await screen.findByRole('radio', { name: /Use Member’s Project access/ }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    expect(
+      await screen.findByText('STATION_TRUSTED_CONSENT_ORIGIN'),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        'station environment access approve member-no-origin --force --bind-account',
+      ),
+    ).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Passkey setup' })).toBeTruthy();
+    expect(
+      screen.queryByRole('link', { name: 'enroll an owner passkey' }),
+    ).toBeNull();
   });
 });
 

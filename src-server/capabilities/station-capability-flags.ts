@@ -20,6 +20,11 @@ import type { StationCapabilityFlags } from '@kontourai/station-contracts';
 
 export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   privateOperationalOutcomes: true,
+  // Automation targets: src-server/routes/operations/scheduler.ts accepts a
+  // job `target` and the built-in scheduler runs it through the conversation
+  // inbox (any engine). Hosted deployments withdraw it: see
+  // servesScheduledConversationTarget.
+  scheduledConversationTarget: true,
   // SSH environment management: src-server/services/ssh/, /api/ssh-environments
   // routes, packages/sdk/src/query-domains/sshEnvironments.ts.
   sshEnvironments: true,
@@ -104,6 +109,17 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   // `continueDelegatedTask`, re-checked by the orchestration service at
   // engine invocation). Senders gate the field on this flag.
   delegatedInputAnswers: true,
+  // #3628: the person's coordinator Session, src-server/routes/orchestration/
+  // coordinator.ts. Hosted deployments withdraw it: see
+  // servesCoordinatorSession.
+  coordinatorSession: true,
+  // #3427: the person-facing Session reads under
+  // `/api/orchestration/session-reads` (`station sessions wait|digest`,
+  // `station activity`). A STATIC protocol fact about this build: whether
+  // the reads answer is the `session-cli-reads` Feature Preview's, which
+  // refuses with its own typed answer, so an older host's 404 and an off
+  // preview stay distinguishable.
+  sessionPersonReads: true,
 };
 
 /** Deployment facts that decide whether a build-supported route can serve. */
@@ -149,6 +165,20 @@ export function servesConnectionRoutes(
   return !deployment.hosted;
 }
 
+/** Scheduler storage is not tenant-bound, so hosted routes refuse these targets. */
+function servesScheduledConversationTarget(
+  deployment: StationCapabilityDeployment,
+): boolean {
+  return !deployment.hosted;
+}
+
+/** Hosted Stations have no conversation inbox through which to wake a coordinator. */
+export function servesCoordinatorSession(
+  deployment: StationCapabilityDeployment,
+): boolean {
+  return !deployment.hosted;
+}
+
 /** Flags whose route serves only in some deployment modes. */
 const DEPLOYMENT_SERVED_FLAGS: Readonly<
   Partial<
@@ -161,6 +191,8 @@ const DEPLOYMENT_SERVED_FLAGS: Readonly<
   sessionInventoryInputRead: servesSessionInventoryInputRead,
   webPushNotifications: servesWebPushNotifications,
   connectionRoutes: servesConnectionRoutes,
+  scheduledConversationTarget: servesScheduledConversationTarget,
+  coordinatorSession: servesCoordinatorSession,
 };
 
 /**

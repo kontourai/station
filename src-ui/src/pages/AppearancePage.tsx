@@ -333,6 +333,34 @@ export function AppearancePage() {
         {formatSettingsMessage('scopeAccount', locale)}
       </p>
 
+      <PageSection className="appearance__section" title="Conversation">
+        <PageRow
+          title="Answer width"
+          description="Space available to assistant answers."
+        >
+          <div
+            className="appearance-choice__row"
+            role="radiogroup"
+            aria-label="Answer width"
+          >
+            {(['comfortable', 'wide', 'full'] as const).map((width) => (
+              <Button
+                key={width}
+                variant="ghost"
+                role="radio"
+                aria-checked={settings.chatAnswerWidth === width}
+                onClick={() => setDeviceSetting('chatAnswerWidth', width)}
+              >
+                {width === 'comfortable'
+                  ? 'Comfortable'
+                  : width === 'wide'
+                    ? 'Wide'
+                    : 'Full width'}
+              </Button>
+            ))}
+          </div>
+        </PageRow>
+      </PageSection>
       <PageSection className="appearance__section">
         <PageRow
           title="Mode"

@@ -8,6 +8,7 @@ import {
   readFileSync,
   rmSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs';
 import { rm } from 'node:fs/promises';
@@ -15,6 +16,7 @@ import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
+import { sweepStationTempRoot } from '@kontourai/station-shared/temp-dir';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
@@ -24,12 +26,17 @@ import {
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { loadOrCreateAgentRegistry } from '../../../domain/agent-registry.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
+import {
+  loadIntegrationConfig,
+  saveIntegrationConfig,
+} from '../../../domain/config-loader-storage.js';
 import { ensureStationHomeSchema } from '../../../domain/home-schema-gate.js';
 import { JsonManifestRegistryProvider } from '../../../providers/registries/json-manifest-registry.js';
 import * as pluginBundles from '../../../routes/plugins/plugin-bundles.js';
 import { registerPluginInstallRoutes } from '../../../routes/plugins/plugin-install-routes.js';
 import { loadPluginProviders } from '../../../routes/plugins/plugin-loader.js';
 import { createRegistryRoutes } from '../../../routes/plugins/registry.js';
+import { errorMessage } from '../../../routes/schemas/schemas.js';
 import { execGitSync } from '../../../utils/git-exec.js';
 import type { Logger } from '../../../utils/logger.js';
 import {
@@ -120,6 +127,27 @@ const getPluginRegistryProviders = vi.hoisted(() =>
 );
 const installIntegration = vi.hoisted(() => vi.fn());
 const installIntegrationByCommand = vi.hoisted(() => vi.fn());
+const integrationRestoreFault = vi.hoisted(() => ({ enabled: false }));
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const original = await importOriginal<typeof import('node:fs/promises')>();
+  return {
+    ...original,
+    rename: async (
+      from: Parameters<typeof original.rename>[0],
+      to: Parameters<typeof original.rename>[1],
+    ) => {
+      if (
+        integrationRestoreFault.enabled &&
+        String(to).endsWith('/integrations/mail')
+      ) {
+        throw Object.assign(new Error('injected restore EACCES'), {
+          code: 'EACCES',
+        });
+      }
+      return original.rename(from, to);
+    },
+  };
+});
 
 vi.mock('../../../providers/registries/registry.js', () => ({
   getAgentRegistryProvider: vi.fn().mockReturnValue({
@@ -4721,6 +4749,405 @@ describe('installPluginFromSource', () => {
       id: 'shared',
       command: 'new-command',
       plugin: 'replace-plugin',
+    });
+  });
+
+  test('a reinstall keeps the stored classification and receipts and drops forged ones (#3483)', async () => {
+    const root = trackedTempDir('station-plugin-receipts-');
+    const sourceDir = join(root, 'registry', 'mail-plugin');
+    const installedDir = join(root, 'plugins', 'mail-plugin');
+    writePlugin(sourceDir, {
+      name: 'mail-plugin',
+      version: '2.0.0',
+      agents: [],
+    });
+    writePlugin(installedDir, {
+      name: 'mail-plugin',
+      version: '1.0.0',
+      agents: [],
+    });
+    mkdirSync(join(sourceDir, 'integrations', 'mail'), { recursive: true });
+    writeFileSync(
+      join(sourceDir, 'integrations', 'mail', 'integration.json'),
+      JSON.stringify({
+        id: 'mail',
+        command: 'mail-mcp',
+        contentTrust: 'trusted',
+        untrustedContentChanges: [
+          { at: '2000-01-01T00:00:00.000Z', by: 'forged' },
+        ],
+      }),
+    );
+    const history = [
+      {
+        at: '2026-10-28T00:00:00.000Z',
+        by: 'person',
+        contentTrust: 'untrusted',
+      },
+    ];
+    mkdirSync(join(root, 'integrations', 'mail'), { recursive: true });
+    writeFileSync(
+      join(root, 'integrations', 'mail', 'integration.json'),
+      JSON.stringify({
+        id: 'mail',
+        command: 'mail-mcp',
+        plugin: 'mail-plugin',
+        contentTrust: 'untrusted',
+        untrustedContentChanges: history,
+      }),
+    );
+
+    await installPluginFromSource(sourceDir, [], deps(root));
+
+    const stored = await loadIntegrationConfig(root, 'mail');
+    expect(stored.contentTrust).toBe('untrusted');
+    expect(stored.untrustedContentChanges).toEqual(history);
+  });
+
+  test('failed install-over retains a person edit made after publication', async () => {
+    const root = trackedTempDir('station-plugin-rollback-receipts-');
+    const source = join(root, 'source');
+    const installed = join(root, 'plugins', 'mail-plugin');
+    writePlugin(source, { name: 'mail-plugin', version: '2.0.0', agents: [] });
+    writePlugin(installed, {
+      name: 'mail-plugin',
+      version: '1.0.0',
+      agents: [],
+    });
+    mkdirSync(join(source, 'integrations', 'mail'), { recursive: true });
+    writeFileSync(
+      join(source, 'integrations', 'mail', 'integration.json'),
+      JSON.stringify({ id: 'mail', command: 'new' }),
+    );
+    await saveIntegrationConfig(root, 'mail', {
+      id: 'mail',
+      command: 'old',
+      plugin: 'mail-plugin',
+      contentTrust: 'untrusted',
+    } as any);
+    const failing = {
+      ...deps(root),
+      reconcileEngineConnections: vi
+        .fn()
+        .mockImplementationOnce(async () => {
+          await saveIntegrationConfig(
+            root,
+            'mail',
+            {
+              id: 'mail',
+              command: 'new',
+              plugin: 'mail-plugin',
+              contentTrust: 'untrusted',
+              untrustedContentPermissions: { default: 'deny' },
+            } as any,
+            { changedBy: 'person' },
+          );
+          throw new Error('reconcile failed');
+        })
+        .mockResolvedValue(undefined),
+    };
+    await expect(installPluginFromSource(source, [], failing)).rejects.toThrow(
+      'reconcile failed',
+    );
+    const restored = await loadIntegrationConfig(root, 'mail');
+    expect(restored.command).toBe('old');
+    expect(restored.untrustedContentChanges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          by: 'person',
+          permissions: { default: 'deny' },
+        }),
+      ]),
+    );
+  });
+
+  test('failed install-over restores retired integration person settings', async () => {
+    const root = trackedTempDir('station-plugin-retired-receipts-');
+    const source = join(root, 'source');
+    writePlugin(source, { name: 'mail-plugin', version: '2.0.0', agents: [] });
+    writePlugin(join(root, 'plugins', 'mail-plugin'), {
+      name: 'mail-plugin',
+      version: '1.0.0',
+      agents: [],
+    });
+    await saveIntegrationConfig(root, 'mail', {
+      id: 'mail',
+      command: 'old',
+      plugin: 'mail-plugin',
+      contentTrust: 'untrusted',
+    } as any);
+    const failing = {
+      ...deps(root),
+      buildPlugin: vi.fn(async () => {
+        await saveIntegrationConfig(
+          root,
+          'mail',
+          {
+            id: 'mail',
+            command: 'old',
+            plugin: 'mail-plugin',
+            contentTrust: 'untrusted',
+            untrustedContentPermissions: { default: 'deny' },
+          } as any,
+          { changedBy: 'person' },
+        );
+      }),
+      reconcileEngineConnections: vi
+        .fn()
+        .mockRejectedValueOnce(new Error('reconcile failed'))
+        .mockResolvedValue(undefined),
+    };
+    await expect(installPluginFromSource(source, [], failing)).rejects.toThrow(
+      'reconcile failed',
+    );
+    const restored = await loadIntegrationConfig(root, 'mail');
+    expect(restored.contentTrust).toBe('untrusted');
+    expect(restored.untrustedContentPermissions).toEqual({ default: 'deny' });
+    expect(restored.trustReadOnlyHints).toBeUndefined();
+    expect(
+      (restored.untrustedContentChanges ?? []).some(
+        (change: { by?: string }) => change.by === 'person',
+      ),
+    ).toBe(true);
+  });
+
+  test('failed install-over compensation retains its backup for recovery', async () => {
+    const root = trackedTempDir('station-plugin-compensation-');
+    const previousTempRoot = process.env.STATION_TEMP_ROOT;
+    process.env.STATION_TEMP_ROOT = join(root, 'station-temp');
+    try {
+      const source = join(root, 'source');
+      writePlugin(source, {
+        name: 'mail-plugin',
+        version: '2.0.0',
+        agents: [],
+      });
+      writePlugin(join(root, 'plugins', 'mail-plugin'), {
+        name: 'mail-plugin',
+        version: '1.0.0',
+        agents: [],
+      });
+      await saveIntegrationConfig(
+        root,
+        'mail',
+        {
+          id: 'mail',
+          command: 'old',
+          plugin: 'mail-plugin',
+          contentTrust: 'untrusted',
+        } as any,
+        { changedBy: 'person' },
+      );
+      const failing = {
+        ...deps(root),
+        reconcileEngineConnections: vi.fn(async () => {
+          integrationRestoreFault.enabled = true;
+          throw new Error('late reconcile failure');
+        }),
+      };
+      const failure = await installPluginFromSource(source, [], failing).catch(
+        (error) => error,
+      );
+      const backups = readdirSync(join(root, 'station-temp')).filter((name) =>
+        name.startsWith('plugin-install-'),
+      );
+      expect(backups).toHaveLength(1);
+      expect(failure.message).toContain(
+        `recovery required; backup id ${backups[0]}`,
+      );
+      expect(errorMessage(failure)).toContain(`backup id ${backups[0]}`);
+      const backupPath = join(root, 'station-temp', backups[0]);
+      const { listRetainedPluginBackups } = await import(
+        '../plugin-recovery-inventory.js'
+      );
+      expect(listRetainedPluginBackups(root)).toEqual([
+        expect.objectContaining({
+          id: backups[0],
+          path: backupPath,
+          integrations: ['mail'],
+        }),
+      ]);
+      expect(failing.logger.error).toHaveBeenCalledWith(
+        'Plugin install recovery required',
+        { backupId: backups[0], backupPath },
+      );
+      const old = new Date(Date.now() - 48 * 60 * 60 * 1000);
+      utimesSync(backupPath, old, old);
+      await sweepStationTempRoot();
+      expect(existsSync(backupPath)).toBe(true);
+      const restored = JSON.parse(
+        readFileSync(
+          join(
+            root,
+            'station-temp',
+            backups[0],
+            'integrations',
+            'mail',
+            'integration.json',
+          ),
+          'utf8',
+        ),
+      );
+      expect(restored).toMatchObject({
+        id: 'mail',
+        command: 'old',
+        plugin: 'mail-plugin',
+      });
+    } finally {
+      integrationRestoreFault.enabled = false;
+      if (previousTempRoot === undefined) delete process.env.STATION_TEMP_ROOT;
+      else process.env.STATION_TEMP_ROOT = previousTempRoot;
+    }
+  });
+  test.each([
+    {
+      label: 'a secret-binding reference and another issuer',
+      bundled: {
+        id: 'shared',
+        transport: 'streamable-http',
+        endpoint: 'https://mcp.honest.example/mcp',
+        oauthClient: {
+          clientId: 'client-a',
+          issuer: 'https://attacker-as.example',
+          clientSecretRef: 'operator-secret',
+        },
+      },
+      refusal: /secret binding references/,
+    },
+    {
+      label: 'another issuer without a bundled binding',
+      bundled: {
+        id: 'shared',
+        transport: 'streamable-http',
+        endpoint: 'https://mcp.honest.example/mcp',
+        oauthClient: {
+          clientId: 'client-a',
+          issuer: 'https://attacker-as.example',
+        },
+      },
+      refusal: /Unbind the OAuth client secret/,
+    },
+    {
+      label: 'a pre-registered client with no issuer',
+      bundled: {
+        id: 'shared',
+        transport: 'streamable-http',
+        endpoint: 'https://mcp.honest.example/mcp',
+        oauthClient: { clientId: 'client-a' },
+      },
+      refusal: /authorization server's issuer/,
+    },
+    {
+      label: "Station's instance identity file",
+      bundled: {
+        id: 'shared',
+        transport: 'streamable-http',
+        endpoint: 'https://mcp.honest.example/mcp',
+      },
+      instanceFile: '.station-instance',
+      refusal: /instance identity file/,
+    },
+    ...['.STATION-INSTANCE', '.Station-OAuth-Issuer'].map((name) => ({
+      label: `Station's sidecar spelled ${name}`,
+      bundled: {
+        id: 'shared',
+        transport: 'streamable-http',
+        endpoint: 'https://mcp.honest.example/mcp',
+      },
+      instanceFile: name,
+      refusal: /instance identity file/,
+    })),
+  ])(
+    'a plugin bundle with $label cannot replace its integration (#4279)',
+    async ({ bundled, refusal, instanceFile }) => {
+      const root = trackedTempDir('station-plugin-oauth-client-');
+      const sourceDir = join(root, 'registry', 'replace-plugin');
+      writePlugin(sourceDir, {
+        name: 'replace-plugin',
+        version: '2.0.0',
+        agents: [],
+      });
+      writePlugin(join(root, 'plugins', 'replace-plugin'), {
+        name: 'replace-plugin',
+        version: '1.0.0',
+        agents: [],
+      });
+      mkdirSync(join(sourceDir, 'integrations', 'shared'), { recursive: true });
+      writeFileSync(
+        join(sourceDir, 'integrations', 'shared', 'integration.json'),
+        JSON.stringify(bundled),
+      );
+      // A recorded instance id a bundle copies in could revive a deleted
+      // integration's client-secret grant.
+      if (instanceFile)
+        writeFileSync(
+          join(sourceDir, 'integrations', 'shared', instanceFile),
+          '0f6c2d8e-6a51-4b7e-9d1c-2f3a4b5c6d7e',
+        );
+      const installed = join(
+        root,
+        'integrations',
+        'shared',
+        'integration.json',
+      );
+      mkdirSync(join(root, 'integrations', 'shared'), { recursive: true });
+      const before = JSON.stringify({
+        id: 'shared',
+        transport: 'streamable-http',
+        endpoint: 'https://mcp.honest.example/mcp',
+        plugin: 'replace-plugin',
+        oauthClient: {
+          clientId: 'client-a',
+          issuer: 'https://accounts.honest.example',
+          clientSecretRef: 'operator-secret',
+        },
+      });
+      writeFileSync(installed, before);
+
+      await expect(
+        installPluginFromSource(sourceDir, [], deps(root)),
+      ).rejects.toThrow(refusal);
+      expect(readFileSync(installed, 'utf-8')).toBe(before);
+    },
+  );
+
+  test('install publishes a valid own OAuth client and keeps the operator binding', async () => {
+    const root = trackedTempDir('station-plugin-own-oauth-');
+    const source = join(root, 'source');
+    writePlugin(source, { name: 'own-plugin', version: '2.0.0', agents: [] });
+    writePlugin(join(root, 'plugins', 'own-plugin'), {
+      name: 'own-plugin',
+      version: '1.0.0',
+      agents: [],
+    });
+    const client = {
+      clientId: 'own-client',
+      issuer: 'https://accounts.example',
+    };
+    const def = {
+      id: 'own',
+      plugin: 'own-plugin',
+      transport: 'streamable-http',
+      endpoint: 'https://mcp.example/mcp',
+      oauthClient: client,
+    };
+    mkdirSync(join(source, 'integrations', 'own'), { recursive: true });
+    writeFileSync(
+      join(source, 'integrations', 'own', 'integration.json'),
+      JSON.stringify(def),
+    );
+    mkdirSync(join(root, 'integrations', 'own'), { recursive: true });
+    writeFileSync(
+      join(root, 'integrations', 'own', 'integration.json'),
+      JSON.stringify({
+        ...def,
+        oauthClient: { ...client, clientSecretRef: 'own-secret' },
+      }),
+    );
+    await installPluginFromSource(source, [], deps(root));
+    expect((await loadIntegrationConfig(root, 'own')).oauthClient).toEqual({
+      ...client,
+      clientSecretRef: 'own-secret',
     });
   });
 

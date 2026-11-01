@@ -297,8 +297,11 @@ returns the current title/category with the indexed excerpt and score.
   `topK` results. If it stops at that bound first, `index.scanLimitReached` is
   `true`.
 
-The `search_knowledge` tool and the Ask tab return only the results, not this
-report.
+Both `search_knowledge` MCP profiles retain the results array in `data` and
+return the report alongside it as `index`. Read that report before treating an
+empty or short result as complete. `index: null` means an older host did not
+report health; it does not mean the index is current. The Ask tab still returns
+only results.
 
 ## `root:conversations`: past conversations as a knowledge root
 
@@ -870,3 +873,13 @@ Those require their own configured service or device observation.
   sqlite-vec was chosen as the built-in index, and the evaluation of the runner-up (real LanceDB).
 - [docs/design/knowledge-foundation.md](../design/knowledge-foundation.md) — the full
   `KnowledgeStoreProvider`/`KnowledgeIndexProvider` interface contracts and landed file references.
+
+
+## Reviewed learning lifecycle
+
+Project Sources also offers the **Learning lifecycle review** preview. It uses
+Knowledge Kit's public lifecycle API rather than interpreting a raw record's
+`active` status as approved guidance. Sources, evaluation, decision, activation,
+effects and retirement retain distinct owner receipts. See
+[bounded agent work](agent-efficiency.md#review-and-use-a-learning) for the
+operator flow, current consumer and platform limits.

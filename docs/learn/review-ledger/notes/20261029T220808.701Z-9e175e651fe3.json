@@ -1,0 +1,7 @@
+{
+  "revision": "5979983d802e19a268dce3d5cb64cb933ad0b910",
+
+  "notes": [
+    {"path":"docs/testing/browser-smoke.md","note":"Reviewed PR smoke selection against manifest; member passkeys belongs to smoke-live, not the documented PR smoke suite; no browser execution implied.","inputs":["docs/testing/browser-smoke.md","scripts/__tests__/e2e-manifest.test.ts"]}
+  ]
+}

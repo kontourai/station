@@ -20,15 +20,12 @@
  * where the engine is willing to carry it (`station-control-mcp-route.ts`
  * accepts either):
  *
- *  - Query string (`buildStationControlMcpUrl`) — Codex (archive#1195). Its
- *    `-c mcp_servers.<id>.url=` override is a spawn-time argv, not a payload
- *    the app-server stores or forwards, and codex config has no header
- *    channel; the URL is the only field available.
- *  - `Authorization: Bearer` header (`buildStationControlMcpHeaderUrl` +
- *    `acp-mcp-passthrough.ts`) — ACP (archive#1684). An ACP `session/new`
- *    payload IS handed to the external agent app, so the credential goes in
- *    the field ACP designates for MCP credentials (`McpServerHttp.headers`)
- *    and the URL is built with no token in it at all.
+ *  - Header-only URL plus `Authorization: Bearer` — current Codex private
+ *    thread/start, thread/resume and thread/fork configuration, and ACP's
+ *    declared HTTP MCP payload after its observed support check. The bearer
+ *    is not placed in Codex argv. Both remain delegated-custody.
+ *  - Query string (`buildStationControlMcpUrl`) — retained legacy consumers.
+ *    This is bearer-exposed delivery and never supplies bound assurance.
  *
  * This is a DISTINCT trust boundary from `INTERNAL_API_TOKEN`: a valid
  * token here only proves "the caller may open the station-control MCP
@@ -57,12 +54,15 @@ import {
 } from '@kontourai/station-contracts/station-control-external-client';
 import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import { stationControlMcpTokenMinted } from '../../telemetry/metrics.js';
+import { StationControlDisclosure } from '../../tools/station-control-disclosure.js';
 
 export const STATION_CONTROL_MCP_PATH = '/mcp/station-control';
 export const STATION_KNOWLEDGE_MCP_PATH = '/mcp/station-knowledge';
 export type BuiltinStationApiMcpId = 'station-control' | 'station-knowledge';
 export type StationMcpCredentialPurpose =
   | BuiltinStationApiMcpId
+  | 'coordinator-control'
+  | 'coordinator-knowledge'
   | `oauth-proxy:${string}`;
 
 /** Default lifetime — 12 hours: generous enough for a long-running Codex or
@@ -80,8 +80,8 @@ export const DEFAULT_TTL_MS = 12 * 60 * 60 * 1000;
 /**
  * Which delivery channel a mint is for (archive#1684). Required, not
  * defaulted: the two channels have different exposure — a URL query string
- * the engine holds (Codex) versus an `Authorization` header on an ACP
- * `session/new` payload — and a default would silently attribute one
+ * a legacy engine holds versus an `Authorization` header on the engine's
+ * private configuration payload — and a default would silently attribute one
  * channel's mints to the other on the one metric that can tell them apart.
  */
 export type StationControlMcpTokenChannel =
@@ -155,6 +155,8 @@ interface StationControlMcpTokenEntry {
   externalClientLeaseId?: string;
   callerRecordBinding?: string;
   isIssuerCurrent?: () => boolean;
+  dynamicTools?: boolean;
+  disclosure?: StationControlDisclosure;
 }
 
 const tokensByDigest = new Map<string, StationControlMcpTokenEntry>();
@@ -165,6 +167,28 @@ const digestBySession = new Map<
   Map<StationMcpCredentialPurpose, string>
 >();
 const digestByExternalClientLease = new Map<string, string>();
+const coordinatorGenerations = new Map<string, number>();
+export function coordinatorGeneration(conversationId: string): number {
+  return coordinatorGenerations.get(conversationId) ?? 0;
+}
+function advanceCoordinatorGeneration(conversationId: string): void {
+  coordinatorGenerations.set(
+    conversationId,
+    coordinatorGeneration(conversationId) + 1,
+  );
+}
+
+/** Retire designation-only credentials, including those of successor Sessions. */
+export function revokeCoordinatorConversationCredentials(
+  conversationId: string,
+  sessionIds: readonly string[],
+): void {
+  advanceCoordinatorGeneration(conversationId);
+  for (const sessionId of new Set([conversationId, ...sessionIds])) {
+    revokeStationControlMcpToken(sessionId, 'coordinator-control');
+    revokeStationControlMcpToken(sessionId, 'coordinator-knowledge');
+  }
+}
 
 function digest(token: string): string {
   return createHash('sha256').update(token).digest('hex');
@@ -189,7 +213,17 @@ export function mintStationControlMcpToken(
   allowedTools?: readonly string[],
   serverId: StationMcpCredentialPurpose = 'station-control',
   onRevoke?: () => void,
+  isIssuerCurrent?: () => boolean,
+  dynamicTools = false,
 ): MintedStationControlMcpToken {
+  if (
+    (serverId === 'coordinator-control' ||
+      serverId === 'coordinator-knowledge') &&
+    !isIssuerCurrent
+  )
+    throw new Error(
+      'A coordinator credential requires a designation-generation guard.',
+    );
   const replacedLiveToken =
     digestBySession.get(sessionId)?.has(serverId) ?? false;
   revokeRuntimeToken(sessionId, serverId);
@@ -198,6 +232,8 @@ export function mintStationControlMcpToken(
   const tokenDigest = digest(token);
   tokensByDigest.set(tokenDigest, {
     onRevoke,
+    dynamicTools,
+    ...(isIssuerCurrent ? { isIssuerCurrent } : {}),
     sessionId,
     serverId,
     expiresAt,
@@ -250,7 +286,18 @@ export function verifyStationControlMcpToken(
     options.serverId !== verified.serverId
   )
     return undefined;
-  if (options.serverId && verified.serverId !== options.serverId)
+  if (
+    options.serverId &&
+    verified.serverId !== options.serverId &&
+    !(
+      options.serverId === 'station-control' &&
+      verified.serverId === 'coordinator-control'
+    ) &&
+    !(
+      options.serverId === 'station-knowledge' &&
+      verified.serverId === 'coordinator-knowledge'
+    )
+  )
     return undefined;
   if (options.channels && !options.channels.includes(verified.channel))
     return undefined;
@@ -332,6 +379,32 @@ export function verifyStationControlMcpTokenEntry(
     }
   }
   return undefined;
+}
+
+/** One disclosure object belongs to the token's private record and dies with it. */
+export function stationControlDisclosureForToken(
+  candidate: string,
+  enabled: () => boolean,
+): StationControlDisclosure | undefined {
+  if (!verifyStationControlMcpTokenEntry(candidate)) return undefined;
+  const tokenDigest = digest(candidate),
+    entry = tokensByDigest.get(tokenDigest);
+  if (
+    !entry ||
+    !entry.dynamicTools ||
+    entry.externalClientLeaseId ||
+    (entry.serverId !== 'station-control' &&
+      entry.serverId !== 'coordinator-control')
+  )
+    return undefined;
+  entry.disclosure ??= new StationControlDisclosure(
+    () =>
+      tokensByDigest.get(tokenDigest) === entry &&
+      entry.expiresAt > Date.now() &&
+      (!entry.isIssuerCurrent || entry.isIssuerCurrent()) &&
+      enabled(),
+  );
+  return entry.disclosure;
 }
 
 function removeTokenEntry(
@@ -541,6 +614,8 @@ export function mintStationControlMcpHeaderAuth(
   sessionId: string,
   tenantExecutionContext?: TenantExecutionContext,
   serverId: BuiltinStationApiMcpId = 'station-control',
+  coordinatorDerived = false,
+  isIssuerCurrent?: () => boolean,
 ): { url: string; token: string } {
   const { token } = mintStationControlMcpToken(
     sessionId,
@@ -548,7 +623,13 @@ export function mintStationControlMcpHeaderAuth(
     undefined,
     tenantExecutionContext,
     undefined,
-    serverId,
+    coordinatorDerived
+      ? serverId === 'station-knowledge'
+        ? 'coordinator-knowledge'
+        : 'coordinator-control'
+      : serverId,
+    undefined,
+    isIssuerCurrent,
   );
   return { url: buildStationControlMcpHeaderUrl(port, serverId), token };
 }
@@ -558,4 +639,5 @@ export function __resetStationControlMcpTokensForTests(): void {
   tokensByDigest.clear();
   digestByExternalClientLease.clear();
   digestBySession.clear();
+  coordinatorGenerations.clear();
 }

@@ -309,7 +309,7 @@
 
 /* Not editing: the field's text is drawn as host + path instead. */
 .browser-pane__omni:not(.browser-pane__omni--editing)
-.browser-pane__omni-input {
+  .browser-pane__omni-input {
   color: transparent;
 }
 
@@ -754,7 +754,7 @@
 
 /* Touch-sized with the pane's own controls (see `.browser-pane[data-coarse]`). */
 .browser-pane__workspace:has(> .browser-pane:is([data-coarse], [data-narrow]))
-.browser-tabs {
+  .browser-tabs {
   --icon-button-size: 44px;
 }
 

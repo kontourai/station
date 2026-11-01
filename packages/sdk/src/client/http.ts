@@ -1269,6 +1269,20 @@ export async function getJson(
   opts?: ClientRequestOptions,
 ): Promise<Response> {
   const requestOptions = snapshotRequestOptions(opts);
+  return getJsonWithResolvedCredential(
+    url,
+    requestOptions,
+    await resolveRequestCredential(requestOptions),
+  );
+}
+
+/** Bind a request and its response reports to the same captured credential owner. */
+export async function getJsonWithResolvedCredential(
+  url: string,
+  opts: ClientRequestOptions | undefined,
+  configured: ClientCredential | undefined,
+): Promise<Response> {
+  const requestOptions = snapshotRequestOptions(opts);
   const maximum = requestOptions?.maxResponseBytes;
   if (maximum !== undefined && (!Number.isSafeInteger(maximum) || maximum < 1))
     throw new Error('Invalid response byte limit');
@@ -1277,7 +1291,6 @@ export async function getJson(
     ...(requestOptions?.redirect ? { redirect: requestOptions.redirect } : {}),
   };
   if (requestOptions?.signal) init.signal = requestOptions.signal;
-  const configured = await resolveRequestCredential(requestOptions);
   const assertAuthority = bindRequestAuthority(url, requestOptions, configured);
   const headers = withClientOriginHeaders(
     resolveRequestHeaders(url, configured, requestOptions),

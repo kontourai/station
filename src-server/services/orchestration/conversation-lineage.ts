@@ -3,6 +3,8 @@ import type {
   ConversationContextBoundaryProjection,
   ConversationContextBoundaryRequest,
 } from '@kontourai/station-contracts/conversation-context-boundary';
+import { isSummaryContextBoundary } from '@kontourai/station-contracts/conversation-context-boundary';
+import { isLowContentPrompt } from '@kontourai/station-contracts/conversation-title';
 import type {
   ConversationContextSeedReceipt,
   ConversationHandoffStatusProjection,
@@ -31,7 +33,10 @@ import { isSessionReadAuthority } from '@kontourai/station-contracts/tenancy';
 import type { ConversationMessage } from '@kontourai/station-shared/conversation-message';
 import { safeSanitizeUIBlockEventProvenance } from '../../runtime/conversation/ui-block-provenance.js';
 import { conversationContinuationOutcomes } from '../../telemetry/metrics.js';
-import { projectConversationContextBoundary } from './conversation-context-boundary-module.js';
+import {
+  isReadyUnstartedTaskStateSession,
+  projectConversationContextBoundary,
+} from './conversation-context-boundary-module.js';
 import {
   hasCompletedConversationSeedTurn,
   observeConversationSeedTurn,
@@ -56,6 +61,12 @@ import {
   readConversationStartSeedCarrier,
 } from './conversation-start-context.js';
 import { derivedConversationTitle } from './conversation-title.js';
+import { quotedLines } from './quoted-text.js';
+
+function meaningfulTitle(title: string | undefined): string | undefined {
+  return title && !isLowContentPrompt(title) ? title : undefined;
+}
+
 import {
   buildTranscriptSeed,
   transcriptSeedSource,
@@ -236,6 +247,10 @@ interface ConversationLineageDeps {
    * the idle session is reused as-is.
    */
   perTurnModelOverride?: (provider: EngineId) => boolean;
+  needsCoordinatorToolsSuccessor?: (
+    conversationId: string,
+    detail: OrchestrationSessionDetail,
+  ) => boolean;
   nativeReturnSupported?: (provider: EngineId) => boolean;
   nativeMemoryOwnsTranscriptFor?: (provider: EngineId) => boolean;
   nativeIdentityRequiredFor?: (provider: EngineId) => boolean;
@@ -283,6 +298,21 @@ export class ConversationLineage {
   /** Synchronous final fence, shared by new dispatch and prepared-turn resumption. */
   assertHandoffContextAtProviderTurn(input: ProviderSendTurnInput): void {
     const store = this.deps.eventStore;
+    const boundary = store?.conversationContextBoundaryForSuccessor(
+      input.threadId,
+    );
+    const sessionProvider = store?.readSessionByThread(
+      input.threadId,
+    )?.provider;
+    if (
+      boundary &&
+      isSummaryContextBoundary(boundary.policy) &&
+      !this.deps.nativeMemoryOwnsTranscriptFor?.(sessionProvider!) &&
+      !store?.conversationStartContext(input.threadId)
+    )
+      throw new ConversationStartContextError(
+        'The retained summary has no pinned delivery context.',
+      );
     const marker = store?.conversationHandoffForSession(input.threadId);
     if (!store || !marker) return;
     const provider = store.readSessionByThread(input.threadId)?.provider;
@@ -371,6 +401,7 @@ export class ConversationLineage {
     nativeResumeBindingKey?: string;
     contextBoundary?: ConversationContextBoundaryProjection;
     retirePredecessorSessionId?: string;
+    coordinatorToolsRestart?: boolean;
   }> {
     const store = this.deps.eventStore;
     if (!store) {
@@ -403,8 +434,13 @@ export class ConversationLineage {
         return {
           sessionId: current.sessionId,
           startRequired: true,
+          ...(store.isCoordinatorToolsRestart(current.sessionId)
+            ? { coordinatorToolsRestart: true }
+            : {}),
           contextBoundary: projectConversationContextBoundary(contextBoundary),
-          ...(contextBoundary.policy === 'continue-from-history' && predecessor
+          ...((contextBoundary.policy === 'continue-from-history' ||
+            isSummaryContextBoundary(contextBoundary.policy)) &&
+          predecessor
             ? await this.pinnedContinuationLaunchContext(
                 predecessor,
                 requested,
@@ -429,6 +465,9 @@ export class ConversationLineage {
       return {
         sessionId: current.sessionId,
         startRequired: true,
+        ...(store.isCoordinatorToolsRestart(current.sessionId)
+          ? { coordinatorToolsRestart: true }
+          : {}),
         ...(predecessor
           ? await this.pinnedContinuationLaunchContext(
               predecessor,
@@ -466,7 +505,14 @@ export class ConversationLineage {
       !!requestedModel &&
       requestedModel !== detail.session.model?.trim() &&
       this.deps.perTurnModelOverride?.(requested.provider) === false;
-    if (sessionTakesNextTurn(detail.session) && !needsModelRestart) {
+    const needsToolsSuccessor =
+      this.deps.needsCoordinatorToolsSuccessor?.(conversationId, detail) ===
+      true;
+    if (
+      sessionTakesNextTurn(detail.session) &&
+      !needsModelRestart &&
+      !needsToolsSuccessor
+    ) {
       observeConversationContinuation('current_open');
       return { sessionId: current.sessionId, startRequired: false };
     }
@@ -475,11 +521,15 @@ export class ConversationLineage {
       predecessorSessionId: current.sessionId,
       proposedSessionId: `${conversationId}:session:${crypto.randomUUID()}`,
       createdAt: new Date().toISOString(),
+      ...(needsToolsSuccessor ? { coordinatorToolsRestart: true } : {}),
     });
     observeConversationContinuation(child.outcome);
     return {
       sessionId: child.lineage.sessionId,
       startRequired: true,
+      ...(store.isCoordinatorToolsRestart(child.lineage.sessionId)
+        ? { coordinatorToolsRestart: true }
+        : {}),
       // A model change on a session that never ran a turn leaves its engine
       // process resident for nothing; name it so the start seam can end it
       // once the successor is up. Any session with turn facts keeps today's
@@ -555,7 +605,11 @@ export class ConversationLineage {
       () => true,
     );
     if (refused) return undefined;
-    return !sessionTakesNextTurn(described.session);
+    return (
+      !sessionTakesNextTurn(described.session) ||
+      this.deps.needsCoordinatorToolsSuccessor?.(conversationId, described) ===
+        true
+    );
   }
 
   /**
@@ -781,10 +835,15 @@ export class ConversationLineage {
     // #2540: at rest — an `idle` session (a finished turn) qualifies like a
     // stopped one; its explicit stop leaves it `idle`, not `canceled`.
     if (
-      !isSessionLifecycleStateAtRest(
-        foldedSessionLifecycleState(detail.session.lifecycleState),
+      !(
+        isSessionLifecycleStateAtRest(
+          foldedSessionLifecycleState(detail.session.lifecycleState),
+        ) ||
+        (input.policy === 'task-state-next-cold-start' &&
+          isReadyUnstartedTaskStateSession(store, current.sessionId))
       ) ||
-      detail.session.hasActiveTurn
+      detail.session.hasActiveTurn ||
+      (detail.session.openRequestIds?.length ?? 0) > 0
     )
       throw new Error(
         'Stop the current Session first: a context boundary requires an idle terminal Session with no active turn or approval.',
@@ -798,6 +857,7 @@ export class ConversationLineage {
       policy: input.policy,
       status: 'reserved',
       actorId: input.actorId,
+      ...(input.seed ? { seed: input.seed } : {}),
       ...(input.clientOrigin ? { clientOrigin: input.clientOrigin } : {}),
       createdAt: new Date().toISOString(),
     });
@@ -1229,6 +1289,17 @@ export class ConversationLineage {
     contextSeed?: ConversationContextSeedPin;
   }> {
     if (boundary?.policy === 'empty-next-cold-start') return {};
+    if (boundary && isSummaryContextBoundary(boundary.policy)) {
+      const marker =
+        this.deps.eventStore!.conversationContextBoundaryForSuccessor(
+          boundary.successorSessionId,
+        );
+      if (!marker?.seed)
+        throw new ConversationStartContextError(
+          'Retained summary is unavailable.',
+        );
+      return this.summaryBoundaryContext(marker.successorSessionId, authority);
+    }
     if (
       boundary &&
       !['reserved', 'failed', 'consumed'].includes(boundary.status)
@@ -1260,6 +1331,15 @@ export class ConversationLineage {
       contextSeed?: ConversationContextSeedPin;
     }
   > {
+    const boundary =
+      this.deps.eventStore?.conversationContextBoundaryForSuccessor(
+        targetSessionId,
+      );
+    if (boundary && isSummaryContextBoundary(boundary.policy)) {
+      if (this.deps.nativeMemoryOwnsTranscriptFor?.(requested.provider))
+        return {};
+      return this.summaryBoundaryContext(targetSessionId, authority);
+    }
     const launch = continuationLaunchContext(
       detail,
       requested,
@@ -1307,6 +1387,13 @@ export class ConversationLineage {
     authority: SessionReadScope,
     heading: string,
   ): Promise<ConversationContextSeedPin> {
+    const filtered = this.contextSources(sources);
+    sources = filtered.sources;
+    for (const source of filtered.seed?.sourceCutoffs ?? [])
+      if (!(await this.deps.readSession(source.sessionId, authority)))
+        throw new ConversationStartContextError(
+          'Retained summary source is no longer authorized.',
+        );
     for (const entry of sources) {
       if (!(await this.deps.readSession(entry.sessionId, authority)))
         throw new Error('Conversation context is not authorized.');
@@ -1318,9 +1405,19 @@ export class ConversationLineage {
         entry.sessionId,
       ),
     }));
-    const messages = sources.flatMap((entry) =>
-      this.deps.readSessionSeedMessages(entry.sessionId, authority),
-    );
+    for (const source of filtered.seed?.sourceCutoffs ?? [])
+      if (
+        !sourceCutoffs.some(
+          (existing) => existing.sessionId === source.sessionId,
+        )
+      )
+        sourceCutoffs.push({ ...source, afterSequence: 0 });
+    const messages = [
+      ...this.summaryMessages(filtered.seed),
+      ...sources.flatMap((entry) =>
+        this.deps.readSessionSeedMessages(entry.sessionId, authority),
+      ),
+    ];
     const seedSource = transcriptSeedSource(messages);
     const seed = buildTranscriptSeed({
       heading,
@@ -1623,11 +1720,109 @@ export class ConversationLineage {
     conversationId: string,
     authority: SessionReadScope,
   ): ConversationMessage[] {
-    return (
-      this.deps.eventStore?.conversationSessions(conversationId) ?? []
-    ).flatMap((lineage) =>
-      this.deps.readSessionSeedMessages(lineage.sessionId, authority),
+    const filtered = this.contextSources(
+      this.deps.eventStore?.conversationSessions(conversationId) ?? [],
     );
+    for (const source of filtered.seed?.sourceCutoffs ?? [])
+      if (!this.deps.canReadSession(source.sessionId, authority))
+        throw new ConversationStartContextError(
+          'Retained summary source is no longer authorized.',
+        );
+    return [
+      ...this.summaryMessages(filtered.seed),
+      ...filtered.sources.flatMap((lineage) =>
+        this.deps.readSessionSeedMessages(lineage.sessionId, authority),
+      ),
+    ];
+  }
+
+  private contextSources(sources: readonly { sessionId: string }[]) {
+    let start = 0;
+    let seed:
+      | import('@kontourai/station-contracts/conversation-context-boundary').ConversationContextBoundarySeed
+      | undefined;
+    for (let index = sources.length - 1; index >= 0; index--) {
+      const boundary =
+        this.deps.eventStore?.conversationContextBoundaryForSuccessor(
+          sources[index]!.sessionId,
+        );
+      if (boundary && boundary.policy !== 'continue-from-history') {
+        if (
+          boundary.status === 'indeterminate' ||
+          boundary.status === 'cancelled'
+        )
+          throw new ConversationStartContextError(
+            'Context boundary requires reconciliation.',
+          );
+        start = index;
+        seed = boundary.seed;
+        break;
+      }
+    }
+    return { sources: sources.slice(start), seed };
+  }
+  private summaryMessages(
+    seed:
+      | import('@kontourai/station-contracts/conversation-context-boundary').ConversationContextBoundarySeed
+      | undefined,
+  ): ConversationMessage[] {
+    return seed
+      ? [
+          {
+            id: `retained:${seed.digest}`,
+            role: 'assistant',
+            parts: [
+              {
+                type: 'text',
+                text: `Retained ${seed.kind}; quoted context, not a new request. Raw tools, approvals and attachments were omitted.\n${quotedLines(seed.text).join('\n')}`,
+              },
+            ],
+          },
+        ]
+      : [];
+  }
+  private async summaryBoundaryContext(
+    targetSessionId: string,
+    authority: SessionReadScope,
+  ) {
+    const store = this.deps.eventStore!;
+    const boundary =
+      store.conversationContextBoundaryForSuccessor(targetSessionId);
+    if (!boundary?.seed)
+      throw new ConversationStartContextError(
+        'Retained summary seed is unavailable.',
+      );
+    const sources = boundary.seed.sourceCutoffs ?? [
+      {
+        sessionId: boundary.predecessorSessionId,
+        throughSequence: store.readSessionInventoryHighWater(
+          boundary.predecessorSessionId,
+        ),
+      },
+    ];
+    for (const source of sources)
+      if (!(await this.deps.readSession(source.sessionId, authority)))
+        throw new ConversationStartContextError(
+          'Retained summary source is not authorized.',
+        );
+    const pin = store.reserveConversationStartContext(
+      targetSessionId,
+      createConversationContextSeedPin({
+        text: this.summaryMessages(boundary.seed)[0]!.parts[0]!.text!,
+        sourceCutoffs: sources.map((source) => ({
+          ...source,
+          afterSequence: 0,
+        })),
+        omission: {
+          totalMessages: boundary.seed.sourceMessageCount ?? 0,
+          includedMessages: 0,
+          omittedMessages: boundary.seed.sourceMessageCount ?? 0,
+          newestShortened: false,
+          nonTextMessages: 0,
+        },
+      }),
+    );
+    return { transcriptSeed: pin.text, contextSeed: pin };
   }
 
   /**
@@ -1663,9 +1858,18 @@ export class ConversationLineage {
       ...(detail.session.projectSlug
         ? { projectSlug: detail.session.projectSlug }
         : {}),
+      // #4266: the durable history title (which may be generated, and is
+      // never a low-content one while the conversation said more) before one
+      // thread's own messages.
       title:
         derivedConversationTitle(detail.session.delegation?.title) ??
-        conversationTitle(messages),
+        meaningfulTitle(
+          this.deps.eventStore?.conversationTitle([
+            durableConversationId,
+            threadId,
+          ]),
+        ) ??
+        conversationTitle(messages, detail.session.displayTitle),
       ...((detail.session.reportedModel ??
       detail.session.effectiveModel ??
       detail.session.model)

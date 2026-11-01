@@ -1,0 +1,7 @@
+{
+  "revision": "5cb3487df58a1666c0da3e74bcaf4dfdaffa5b4a",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Edited the advisory paragraph: release requires issuer, endpoint and integration instance at every token request. Checked against secret-binding-administration.ts and tool-server-oauth.ts. Other inputs: the advisory paragraph adds the instance-pinned grant; the provider re-resolves a pre-registered client secret at every read and publishes consent tokens with their client by compare-and-swap; tokens are paired with their client id.","inputs":["docs/guides/dependency-security.md","src-server/services/plugins/tool-server-oauth.ts"]}
+  ]
+}

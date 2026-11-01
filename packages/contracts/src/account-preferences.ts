@@ -13,6 +13,7 @@ export const ACCOUNT_PREFERENCE_KEYS = [
   'chatShowReasoning',
   'chatShowToolDetails',
   'chatFontSize',
+  'chatAnswerWidth',
   'chatDockAutoHide',
   'confirmConversationDelete',
   'developerToolsEnabled',

@@ -166,6 +166,7 @@ const ARGS: Record<string, Record<string, unknown>> = {
   write_pull_request_guides: { targets: [GUIDE_TARGET] },
   device_open: { platform: 'android', deviceId: 'emulator-5554' },
   device_screenshot: { deviceSessionId: 'device-session' },
+  device_capture_to_task: { deviceSessionId: 'device-session' },
   device_snapshot: { deviceSessionId: 'device-session' },
   device_input: {
     deviceSessionId: 'device-session',
@@ -187,6 +188,7 @@ const ARGS: Record<string, Record<string, unknown>> = {
   get_conversation_messages: { agent: 'a', conversationId: 'c' },
   read_conversation: { conversationId: 'c', limit: 5 },
   delete_conversation: { agent: 'a', conversationId: 'c' },
+  fork_conversation: { agent: 'a', conversationId: 'c', targetAgent: 'b' },
   search_sessions: { query: 'cobalt' },
   search_conversations: { query: 'cobalt' },
   rename_session: { conversationId: 'c', title: 'A title' },
@@ -198,6 +200,11 @@ const ARGS: Record<string, Record<string, unknown>> = {
   board_unpin: { reference: { kind: 'session', id: 's' }, name: 'w' },
   board_move: { reference: { kind: 'session', id: 's' }, name: 'w' },
   board_read: { reference: { kind: 'session', id: 's' } },
+  coordinator_picture_update: {
+    conversationId: 'c',
+    status: 'waiting',
+    summary: 'Review',
+  },
   schedule_wake_up: { minutes: 5, note: 'check the build' },
   cancel_wake_up: { id: 'w' },
   propose_job: {

@@ -396,6 +396,46 @@ describe('Task review through configureRuntimeRoutes', () => {
     };
   }
 
+  test('Task write-back reads use the real Task room authority and do not cross Tasks', async () => {
+    const e = await setup();
+    const other = await e.taskGraph.createTask({
+      projectId: PROJECT,
+      title: 'Another Task',
+    });
+    const target = {
+      kind: 'chat' as const,
+      system: 'discord',
+      destination: 'channel',
+      action: 'message',
+    };
+    const add = (task: typeof e.task) =>
+      e.store.taskWriteBackStore().start({
+        projectId: PROJECT,
+        taskId: task.id,
+        taskCreatedAt: task.createdAt,
+        initiatedBy: { kind: 'person', id: 'owner' },
+        beforeCommit: () => true,
+        target,
+      });
+    expect(add(e.task).ok).toBe(true);
+    expect(add(other).ok).toBe(true);
+    const path = `/api/tasks/${e.task.id}/write-back`;
+    const result = await e.asOperator('GET', path);
+    expect(result.status).toBe(200);
+    expect(result.json.data.entries).toHaveLength(1);
+    expect(result.json.data.entries[0]).toMatchObject({
+      taskId: e.task.id,
+      state: 'pending',
+      target,
+    });
+    expect(
+      (await e.asOperator('GET', path, undefined, REVOKED_CREDENTIAL)).status,
+    ).not.toBe(200);
+    expect(
+      (await e.asOperator('GET', '/api/tasks/no-such-task/write-back')).status,
+    ).toBe(404);
+  });
+
   test('author labels preserve profile names and use Teammate for unknown people', async () => {
     const identity = vi
       .spyOn(auth, 'getCachedUser')
@@ -537,6 +577,72 @@ describe('Task review through configureRuntimeRoutes', () => {
     expect(await labels()).toContainEqual({ author: missing, name: 'Agent' });
   });
 
+  test('review ordinal work is sparse, cached across polls and selected reads, and refreshed after saves', async () => {
+    const e = await setup();
+    await e.edit('First plan');
+    const thread = await e.createThread();
+    await e.edit('First plan plus second save');
+    await e.edit('First plan plus third save');
+    const ordinalOwner = vi.spyOn(e.runtime, 'readPlanOrdinalsForReview');
+    const entries = vi.spyOn(e.store.taskReviewStore(), 'listThreadEntries');
+    const readPlan = async (path = e.reviewPath) => {
+      const response = await e.asOperator('GET', path);
+      expect(response.status).toBe(200);
+      return path === e.reviewPath
+        ? response.json.data.items.find((item: any) => item.kind === 'plan')
+        : response.json.data;
+    };
+    entries.mockClear();
+    const first = await readPlan();
+    expect(entries).toHaveBeenCalledTimes(1);
+    const latest = first.artifact.revision;
+    expect(first.revisionOrdinals).toEqual({
+      [thread.artifact.revision]: 1,
+      [latest]: 3,
+    });
+    expect(
+      Buffer.byteLength(JSON.stringify(first.revisionOrdinals), 'utf8'),
+    ).toBeLessThan(300);
+    expect(ordinalOwner).toHaveBeenCalledTimes(1);
+    expect(ordinalOwner.mock.calls[0]![3]).toEqual([
+      latest,
+      thread.artifact.revision,
+    ]);
+    for (let poll = 0; poll < 3; poll++)
+      expect((await readPlan()).revisionOrdinals).toEqual(
+        first.revisionOrdinals,
+      );
+    const selected = await readPlan(
+      `${e.reviewPath}/items/plan/${encodeURIComponent(first.id)}`,
+    );
+    expect(selected.revisionOrdinals).toEqual(first.revisionOrdinals);
+    expect(ordinalOwner).toHaveBeenCalledTimes(1);
+    await e.edit('First plan plus fourth save');
+    const fourth = await readPlan();
+    expect(fourth.revisionOrdinals).toEqual({
+      [thread.artifact.revision]: 1,
+      [fourth.artifact.revision]: 4,
+    });
+    expect(ordinalOwner).toHaveBeenCalledTimes(2);
+    expect(ordinalOwner.mock.calls[1]![3]).toEqual([
+      fourth.artifact.revision,
+      thread.artifact.revision,
+    ]);
+    await e.asOperator(
+      'POST',
+      `${e.reviewPath}/threads/${thread.threadId}/resolve`,
+      { reason: 'Done', operationId: 'sparse-resolve' },
+    );
+    const filtered = await e.asOperator('GET', `${e.reviewPath}?state=open`);
+    expect(filtered.status).toBe(200);
+    expect(filtered.json.data.threads).toEqual([]);
+    expect(
+      filtered.json.data.items.find((item: any) => item.kind === 'plan')
+        .revisionOrdinals,
+    ).toEqual({ [fourth.artifact.revision]: 4 });
+    expect(ordinalOwner).toHaveBeenCalledTimes(2);
+  });
+
   test('plan edits relocate quotes before marking Outdated, retain the original quote, and resolve/reopen without changing room state or Task status', async () => {
     const e = await setup();
     await e.edit('First plan\nDetails.');
@@ -577,6 +683,12 @@ describe('Task review through configureRuntimeRoutes', () => {
     expect(e.evidence()).toEqual(evidenceBefore);
     await e.edit('Intro.\nFirst plan\nDetails.');
     let read = await e.asOperator('GET', e.reviewPath);
+    const planItem = read.json.data.items.find(
+      (item: { kind: string }) => item.kind === 'plan',
+    );
+    expect(planItem.revisionOrdinals[thread.artifact.revision]).toBe(1);
+    expect(planItem.revisionOrdinals[planItem.artifact.revision]).toBe(2);
+
     expect(read.json.data.threads[0]).toMatchObject({
       state: 'open',
       outdated: false,

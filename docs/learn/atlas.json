@@ -10,7 +10,8 @@
         "docs/design/portable-project-identity.md",
         "docs/design/task-dispatcher.md",
         "docs/reference/task-basis-mcp-app.md",
-        "docs/learn/walkthroughs.md#projects-and-tasks"
+        "docs/learn/walkthroughs.md#projects-and-tasks",
+        "docs/guides/agent-efficiency.md"
       ],
       "modules": [
         "ProjectFileTransactions",
@@ -20,7 +21,8 @@
         "TaskReviewThreads",
         "Whole Task Basis collection",
         "Project session directory",
-        "StarterWorkRegistry"
+        "StarterWorkRegistry",
+        "Project working configuration"
       ],
       "questions": [
         "Which record owns the work when no engine is running?",
@@ -43,6 +45,7 @@
       ],
       "modules": [
         "SessionQueryModule",
+        "SessionGoalModule",
         "ConversationSessionLineage",
         "SessionCommandModule",
         "SkillExperienceRuntime",
@@ -51,6 +54,7 @@
         "TurnDeduplicator",
         "SessionMessageDelivery",
         "SessionDigest",
+        "CoordinatorWakeDelivery",
         "WorkClaimStore",
         "AdoptionLedger",
         "RecoveryLedger and private CredentialApplicationFactory/Handle",
@@ -58,7 +62,8 @@
         "OutboundDispatchModule",
         "Session inventory Sources",
         "Workspace checkpoints",
-        "TerminalSessions"
+        "TerminalSessions",
+        "Context compaction and Project supervision"
       ],
       "questions": [
         "Where is the boundary between accepting a command and knowing an engine accepted it?",
@@ -233,6 +238,7 @@
         "OperationalEventSubscriptions",
         "ExtensionNotificationBindings",
         "SchedulerLedger and BuiltinScheduler",
+        "IsolatedRepairController",
         "NativeInvocationRuns",
         "Monitoring history and Agent catalog reads",
         "ProductTelemetryReceiver",

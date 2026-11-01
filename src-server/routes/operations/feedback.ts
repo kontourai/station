@@ -1,9 +1,15 @@
+import type { FeedbackRatingTarget } from '@kontourai/station-contracts/feedback';
+import { FeedbackEvidenceStoreError } from '../../services/feedback/feedback-evidence-store.js';
+import { errorMessage } from '../schemas/schemas.js';
 /**
  * Feedback Routes — message rating and insights REST API.
  */
 
 import { Hono } from 'hono';
-import type { FeedbackService } from '../../services/feedback/feedback-service.js';
+import type {
+  FeedbackService,
+  MessageRating,
+} from '../../services/feedback/feedback-service.js';
 import { feedbackOps } from '../../telemetry/metrics.js';
 import {
   feedbackAnalyzeSchema,
@@ -15,8 +21,31 @@ import {
   validate,
 } from '../schemas/schemas.js';
 
-export function createFeedbackRoutes(feedbackService: FeedbackService) {
+export interface FeedbackTargetExpectation {
+  conversationId: string;
+  messageIndex: number;
+  expectedSessionId?: string;
+  expectedTurnId?: string;
+}
+export function createFeedbackRoutes(
+  feedbackService: FeedbackService,
+  resolveTarget?: (
+    request: Request,
+    input: FeedbackTargetExpectation,
+  ) => Promise<
+    { target: FeedbackRatingTarget; assertCurrent(): void } | undefined
+  >,
+  canExposeTarget?: (request: Request, target: FeedbackRatingTarget) => boolean,
+) {
   const app = new Hono();
+  const publicRating = (request: Request, entry: MessageRating) => {
+    try {
+      if (entry.target && canExposeTarget?.(request, entry.target) === true)
+        return entry;
+    } catch {}
+    const { target: _privateTarget, ...publicEntry } = entry;
+    return publicEntry;
+  };
 
   // Rate a message
   app.post('/rate', validate(rateSchema), async (c) => {
@@ -38,16 +67,68 @@ export function createFeedbackRoutes(feedbackService: FeedbackService) {
         400,
       );
     }
-    const entry = feedbackService.rateMessage({
-      agentSlug: agentSlug || 'unknown',
-      conversationId,
-      messageIndex,
-      messagePreview: messagePreview || '',
-      rating,
-      reason,
-    });
+    const expectsTarget =
+      body.expectedSessionId !== undefined || body.expectedTurnId !== undefined;
+    if (expectsTarget && (!body.expectedSessionId || !body.expectedTurnId))
+      return c.json(
+        {
+          success: false,
+          code: 'feedback_target_changed',
+          error: 'Both response coordinates are required.',
+        },
+        400,
+      );
+    const proof =
+      body.expectedSessionId && body.expectedTurnId
+        ? await resolveTarget?.(c.req.raw, {
+            conversationId,
+            messageIndex,
+            expectedSessionId: body.expectedSessionId,
+            expectedTurnId: body.expectedTurnId,
+          })
+        : undefined;
+    if (expectsTarget && !proof)
+      return c.json(
+        {
+          success: false,
+          code: 'feedback_target_changed',
+          error:
+            'The response changed or is unavailable. Refresh it before rating.',
+        },
+        409,
+      );
+    if (
+      proof &&
+      (proof.target.conversationId !== conversationId ||
+        proof.target.sessionId !== body.expectedSessionId ||
+        proof.target.turnId !== body.expectedTurnId)
+    )
+      return c.json({ success: false, error: 'Feedback target changed' }, 409);
+    proof?.assertCurrent();
+    let entry: MessageRating;
+    try {
+      entry = feedbackService.rateMessage(
+        {
+          agentSlug: agentSlug || 'unknown',
+          conversationId,
+          messageIndex,
+          messagePreview: messagePreview || '',
+          rating,
+          reason,
+        },
+        proof?.target,
+      );
+    } catch (error) {
+      if (error instanceof FeedbackEvidenceStoreError)
+        return c.json(
+          { success: false, code: error.code, error: errorMessage(error) },
+          error.code === 'feedback_capacity' ? 409 : 503,
+        );
+      throw error;
+    }
+    proof?.assertCurrent();
     feedbackOps.add(1, { op: 'submit' });
-    return c.json({ success: true, data: entry });
+    return c.json({ success: true, data: publicRating(c.req.raw, entry) });
   });
 
   // Remove a rating
@@ -59,7 +140,12 @@ export function createFeedbackRoutes(feedbackService: FeedbackService) {
 
   // List all ratings
   app.get('/ratings', (c) => {
-    return c.json({ success: true, data: feedbackService.getRatings() });
+    return c.json({
+      success: true,
+      data: feedbackService
+        .getRatings()
+        .map((entry) => publicRating(c.req.raw, entry)),
+    });
   });
 
   // Get behavior guidelines (what gets injected into prompts)

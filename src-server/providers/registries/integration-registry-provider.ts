@@ -11,6 +11,7 @@ import { toolOriginLocation } from '../../services/plugins/integration-origin.js
 import { createLogger } from '../../utils/logger.js';
 import { resolveHomeDir } from '../../utils/paths.js';
 import type { IIntegrationRegistryProvider } from '../provider-interfaces.js';
+import { mcpSubregistryIntegrationProviders } from './mcp-subregistry-provider.js';
 
 const logger = createLogger({ name: 'integration-registry-provider' });
 
@@ -94,8 +95,14 @@ export async function readDiskIntegrations(
         String(def.id ?? entry.name),
       );
       const command = def.command ?? runtimeCommand;
-      const present =
-        command === process.execPath && command === runtimeCommand
+      // A remote server has no binary to find; its state is its connection.
+      const remote =
+        (def.transport === 'streamable-http' || def.transport === 'sse') &&
+        typeof def.endpoint === 'string' &&
+        command === undefined;
+      const present = remote
+        ? undefined
+        : command === process.execPath && command === runtimeCommand
           ? await access(command, fsConstants.X_OK).then(
               () => true,
               () => false,
@@ -111,7 +118,7 @@ export async function readDiskIntegrations(
           ? { iconUrl: `/integrations/${encodeURIComponent(entry.name)}/icon` }
           : {}),
         installed: true,
-        status: present ? 'connected' : 'missing binary',
+        ...(remote ? {} : { status: present ? 'connected' : 'missing binary' }),
       });
     } catch (error) {
       logger.debug('Failed to read integration definition', {
@@ -231,7 +238,19 @@ export function createIntegrationRegistryProvider(
               message: 'The registry did not return an integration definition.',
             },
           };
-        return { result, definition, origin: originFor(provider, item) };
+        const curated = mcpSubregistryIntegrationProviders().find(
+          (candidate) =>
+            candidate.source.status().origin === 'station' &&
+            candidate === provider,
+        );
+        return {
+          result,
+          definition,
+          origin: originFor(provider, item),
+          ...(curated
+            ? { stationCuratedTrust: definition.contentTrust ?? 'trusted' }
+            : {}),
+        };
       }
       return {
         result: { success: false, message: `No provider could install ${id}` },

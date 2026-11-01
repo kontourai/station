@@ -27,10 +27,29 @@ import {
 vi.mock('../views/task-workspace/TaskRelationships', () => ({
   TaskRelationships: () => null,
 }));
+vi.mock('../views/task-workspace/TaskWriteBackSection', () => ({
+  TaskWriteBackSection: () => <div data-testid="task-write-back-section" />,
+}));
 vi.mock('../views/task-workspace/review/TaskReviewTab', () => ({
   TaskReviewTab: () => (
     <section aria-label="Task review">Review content</section>
   ),
+}));
+vi.mock('../views/task-workspace/TaskOverviewTimeline', () => ({
+  TaskOverviewTimeline: ({
+    visible,
+    onOpenCapture,
+  }: {
+    visible: boolean;
+    onOpenCapture: (id: string) => void;
+  }) =>
+    visible ? (
+      <section aria-label="Timeline">
+        <button type="button" onClick={() => onOpenCapture('timeline-screen')}>
+          Review Timeline Screen
+        </button>
+      </section>
+    ) : null,
 }));
 let featurePreviews: Array<{ id: string; enabled: boolean }> = [];
 
@@ -2039,12 +2058,27 @@ describe('TaskWorkspaceView', () => {
         .getByRole('tab', { name: 'Overview' })
         .getAttribute('aria-selected'),
     ).toBe('true');
+    expect(screen.queryByRole('region', { name: 'Timeline' })).toBeNull();
     featurePreviews = [{ id: 'task-review', enabled: true }];
     view.rerender(<TaskWorkspaceView taskId="task-alpha" />);
     expect(
       screen.getByRole('tab', { name: 'Review' }).getAttribute('aria-selected'),
     ).toBe('true');
     expect(screen.getByRole('tabpanel', { name: 'Review' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('tab', { name: 'Overview' }));
+    await screen.findByRole('region', { name: 'Timeline' });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Review Timeline Screen' }),
+    );
+    expect(new URLSearchParams(window.location.search).get('taskView')).toBe(
+      'review',
+    );
+    expect(new URLSearchParams(window.location.search).get('reviewKind')).toBe(
+      'capture',
+    );
+    expect(new URLSearchParams(window.location.search).get('reviewItem')).toBe(
+      'timeline-screen',
+    );
     taskOutputsResult.data = [taskOutput()];
     view.rerender(<TaskWorkspaceView taskId="task-alpha" />);
     fireEvent.click(screen.getByRole('tab', { name: 'Details' }));
@@ -2086,6 +2120,22 @@ describe('TaskWorkspaceView', () => {
         .getByRole('tab', { name: 'Overview' })
         .getAttribute('aria-selected'),
     ).toBe('true');
+  });
+
+  test('mounts write-back history only in Details while the chat apps preview is enabled', () => {
+    featurePreviews = [{ id: 'chat-apps', enabled: true }];
+    const view = render(<TaskWorkspaceView taskId="task-alpha" />, {
+      openDetails: false,
+    });
+    expect(screen.queryByTestId('task-write-back-section')).toBeNull();
+    fireEvent.click(screen.getByRole('tab', { name: 'Details' }));
+    expect(screen.getByTestId('task-write-back-section')).toBeTruthy();
+    fireEvent.click(screen.getByRole('tab', { name: 'Overview' }));
+    expect(screen.queryByTestId('task-write-back-section')).toBeNull();
+    fireEvent.click(screen.getByRole('tab', { name: 'Details' }));
+    featurePreviews = [];
+    view.rerender(<TaskWorkspaceView taskId="task-alpha" />);
+    expect(screen.queryByTestId('task-write-back-section')).toBeNull();
   });
 
   test('reads Task view deep links and browser Back without carrying the view to a different Task', async () => {

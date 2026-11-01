@@ -45,6 +45,38 @@ async function fixture() {
 }
 
 describe('account preference HTTP persistence', () => {
+  test('answer width persists across devices and restart, validates choices, and resets independently', async () => {
+    const f = await fixture();
+    for (const chatAnswerWidth of ['comfortable', 'wide', 'full']) {
+      expect(
+        (await f.call({ chatAnswerWidth }, { 'x-test-device': 'phone' }))
+          .status,
+      ).toBe(200);
+      const restarted = new Hono().route('/api/me', f.build());
+      expect(
+        await (
+          await f.call(undefined, { 'x-test-device': 'desktop' }, restarted)
+        ).json(),
+      ).toMatchObject({
+        data: { values: { chatAnswerWidth } },
+      });
+    }
+    expect((await f.call({ chatAnswerWidth: 'unbounded' })).status).toBe(400);
+    expect(await (await f.call()).json()).toMatchObject({
+      data: { values: { chatAnswerWidth: 'full' } },
+    });
+    expect(
+      (await f.call({ chatAnswerWidth: null, theme: 'dark' })).status,
+    ).toBe(200);
+    expect(await (await f.call()).json()).toMatchObject({
+      data: { values: { theme: 'dark' } },
+    });
+    const reset = (await (await f.call()).json()) as {
+      data: { values: Record<string, unknown> };
+    };
+    expect(reset.data.values).not.toHaveProperty('chatAnswerWidth');
+  });
+
   test('two devices of one person share durable preferences while another person and tenant remain separate', async () => {
     const f = await fixture();
     expect((await f.call()).status).toBe(200);

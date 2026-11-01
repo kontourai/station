@@ -312,6 +312,18 @@
 
     "packages/contracts/src/task-review-matcher.ts",
 
+    "packages/contracts/src/chat-app.ts",
+
+    "packages/contracts/src/integration-status.ts",
+
+    "packages/contracts/src/__tests__/chat-app.test.ts",
+
+    "packages/contracts/src/__tests__/integration-status.test.ts",
+
+    "packages/contracts/src/__tests__/discord-compatibility.test.ts",
+
+    "packages/contracts/src/contract-validation.ts",
+
     "packages/contracts/src/project-task-room.ts",
 
     "packages/contracts/src/task-approval.ts",
@@ -330,7 +342,17 @@
 
     "src-ui/src/__tests__/execution.test.ts",
 
-    "src-ui/src/__tests__/ChatDockBody.offlineSettling.test.tsx"
+    "src-ui/src/__tests__/ChatDockBody.offlineSettling.test.tsx",
+
+    "packages/contracts/src/project-checkout-freshness.ts",
+
+    "packages/contracts/src/session-goal.ts",
+
+    "packages/contracts/src/isolated-repair.ts",
+
+    "packages/contracts/src/qualification-repair-policy.mjs",
+
+    "packages/contracts/src/qualification-repair-policy.d.mts"
   ],
 
   "checks": [

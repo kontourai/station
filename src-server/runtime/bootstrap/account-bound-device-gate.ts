@@ -36,6 +36,20 @@ import {
 import { deploymentAccountPrincipal } from '../../services/identity/deployment-authentication-service.js';
 import { PrincipalUnresolvedError } from '../../services/identity/principal-resolver.js';
 
+export function accountBoundProjectRouteMayPass(
+  method: string,
+  path: string,
+): boolean {
+  return !(
+    (path === '/api/projects' || path.startsWith('/api/projects/')) &&
+    method !== 'GET' &&
+    method !== 'HEAD' &&
+    !isAccountBoundGuestAdminWrite(path, method) &&
+    !isAccountBoundRoomLeaf(path, method) &&
+    !isAccountBoundLayoutLeaf(path, method)
+  );
+}
+
 /** Structural Hono context — the gate reads/answers, never dispatches. */
 interface GateContext {
   env: unknown;
@@ -89,6 +103,18 @@ export function isTaskRelationshipHttpLeaf(
   return method === 'DELETE' && /^\/api\/tasks\/[^/]+\/work-chats$/.test(path);
 }
 
+/** Task room transport only; room membership still authorizes every effect. */
+export function isTaskRoomHttpLeaf(method: string, path: string): boolean {
+  if (method === 'GET' || method === 'HEAD')
+    return /^\/api\/tasks\/[^/]+\/room(?:\/(?:history|document|events))?$/.test(
+      path,
+    );
+  return (
+    method === 'POST' &&
+    /^\/api\/tasks\/[^/]+\/room\/(?:messages|live|edit-plan)$/.test(path)
+  );
+}
+
 /** Layout transport only; principal ownership and Project action checks remain in their routes. */
 function isAccountBoundLayoutLeaf(path: string, method: string): boolean {
   if (method === 'GET' || method === 'HEAD')
@@ -116,6 +142,8 @@ function isAccountBoundLayoutLeaf(path: string, method: string): boolean {
 }
 
 export interface AccountBoundDeviceGateDeps {
+  localAccountSignOutEnabled?: boolean;
+  accountSessionOwnsPerson?(request: Request): boolean;
   currentRelationshipAccountDevice?(
     request: Request,
     binding: Extract<DevicePrincipalBinding, { kind: 'account' }>,
@@ -213,6 +241,20 @@ function isAccountBoundOwnTokenLeaf(path: string, method: string): boolean {
     ((method === 'GET' || method === 'HEAD' || method === 'POST') &&
       path === '/api/access/tokens') ||
     (method === 'DELETE' && /^\/api\/access\/tokens\/[^/]+$/.test(path))
+  );
+}
+
+/** A person's own notification feed and its read/dismiss mutations. */
+function isAccountBoundPersonNotificationLeaf(
+  path: string,
+  method: string,
+): boolean {
+  return (
+    ((method === 'GET' || method === 'HEAD') &&
+      path === '/api/me/notifications') ||
+    (method === 'POST' &&
+      /^\/api\/me\/notifications\/[^/]+\/read$/.test(path)) ||
+    (method === 'DELETE' && /^\/api\/me\/notifications\/[^/]+$/.test(path))
   );
 }
 
@@ -326,6 +368,15 @@ export function installAccountBoundDeviceGate(
         deps.identifyIngress(c))
     )
       return c.json({ error: { code: 'account_identity_conflict' } }, 401);
+    // Logout only revokes the account session; it grants no Device authority.
+    if (
+      deps.localAccountSignOutEnabled &&
+      c.req.method === 'POST' &&
+      c.req.path === '/api/account-auth/sign-out'
+    ) {
+      await next();
+      return;
+    }
     const accountOperation =
       c.req.path === '/api/account-auth' ||
       c.req.path.startsWith('/api/account-auth/');
@@ -340,7 +391,8 @@ export function installAccountBoundDeviceGate(
       account?.kind !== 'authenticated' &&
       !(
         account?.kind === 'absent' &&
-        isTaskRelationshipHttpLeaf(c.req.method, c.req.path) &&
+        (isTaskRelationshipHttpLeaf(c.req.method, c.req.path) ||
+          isTaskRoomHttpLeaf(c.req.method, c.req.path)) &&
         deps.currentRelationshipAccountDevice?.(c.req.raw, accountBinding) ===
           true
       )
@@ -357,7 +409,14 @@ export function installAccountBoundDeviceGate(
           { error: { code: 'account_authentication_invalid' } },
           401,
         );
-      const ingress = deps.identifyIngress(c);
+      let accountOwnsPerson = false;
+      try {
+        accountOwnsPerson = deps.accountSessionOwnsPerson?.(c.req.raw) === true;
+      } catch (error) {
+        if (!(error instanceof PrincipalUnresolvedError)) throw error;
+        return c.json({ error: { code: 'account_identity_conflict' } }, 403);
+      }
+      const ingress = accountOwnsPerson ? null : deps.identifyIngress(c);
       if (accountBinding && ingress) {
         return c.json({ error: { code: 'account_identity_conflict' } }, 401);
       }
@@ -386,14 +445,7 @@ export function installAccountBoundDeviceGate(
           { error: { code: 'account_bound_device_route_forbidden' } },
           403,
         );
-      if (
-        (path === '/api/projects' || path.startsWith('/api/projects/')) &&
-        method !== 'GET' &&
-        method !== 'HEAD' &&
-        !isAccountBoundGuestAdminWrite(path, method) &&
-        !isAccountBoundRoomLeaf(path, method) &&
-        !isAccountBoundLayoutLeaf(path, method)
-      ) {
+      if (!accountBoundProjectRouteMayPass(method, path)) {
         return c.json(
           { error: { code: 'account_bound_device_route_forbidden' } },
           403,
@@ -458,7 +510,9 @@ export function installAccountBoundDeviceGate(
         isAccountBoundRoomLeaf(path, method) ||
         isAccountBoundLayoutLeaf(path, method) ||
         isTaskRelationshipHttpLeaf(method, path) ||
+        isTaskRoomHttpLeaf(method, path) ||
         isAccountBoundOwnTokenLeaf(path, method) ||
+        isAccountBoundPersonNotificationLeaf(path, method) ||
         (path === '/api/me/preferences' &&
           (method === 'GET' || method === 'HEAD' || method === 'PATCH')) ||
         path === '/api/account-auth' ||

@@ -266,6 +266,8 @@ export const TASK_BRIEF_METADATA_KEY = 'stationTaskBrief';
  * brief's digest: that turn's own record of what it carried.
  */
 export const TASK_BRIEF_COMPOSED_METADATA_KEY = 'stationTaskBriefComposed';
+export const TASK_LEARNING_CONTRIBUTIONS_METADATA_KEY =
+  'stationLearningContextContributions';
 export const WORKSPACE_PANE_HOST_ACTION_METADATA_KEY =
   'workspacePaneHostAction';
 
@@ -355,6 +357,7 @@ export const RESERVED_ORCHESTRATION_METADATA_KEYS = [
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
   TASK_BRIEF_METADATA_KEY,
   TASK_BRIEF_COMPOSED_METADATA_KEY,
+  TASK_LEARNING_CONTRIBUTIONS_METADATA_KEY,
   WORKSPACE_PANE_HOST_ACTION_METADATA_KEY,
   STATION_CONFINEMENT_METADATA_KEY,
   STATION_CONFINEMENT_GRANTOR_METADATA_KEY,
@@ -802,6 +805,41 @@ export const ENGINE_SESSION_BINDING_DEAD_CODE = 'engine-session-binding-dead';
 export const ENGINE_MEMORY_EXHAUSTED_CODE = 'engine-memory-exhausted';
 
 /**
+ * Before #4257 the Codex adapter published a memory kill as a
+ * `codex-turn-orphaned` `runtime.error` whose message began with this
+ * sentence. Stored failures keep that shape.
+ */
+const LEGACY_CODEX_MEMORY_KILL_PREFIX =
+  'Codex was killed because memory was exhausted.';
+
+/**
+ * Whether a `runtime.error` reports an engine memory kill: today's
+ * {@link ENGINE_MEMORY_EXHAUSTED_CODE}, or the shape stored before #4257.
+ */
+export function isEngineMemoryExhaustedFailure(failure: {
+  readonly code?: unknown;
+  readonly message?: unknown;
+}): boolean {
+  return (
+    failure.code === ENGINE_MEMORY_EXHAUSTED_CODE ||
+    (failure.code === 'codex-turn-orphaned' &&
+      typeof failure.message === 'string' &&
+      failure.message.trimStart().startsWith(LEGACY_CODEX_MEMORY_KILL_PREFIX))
+  );
+}
+
+/** The last raw error decides whether a turn can be continued. */
+export function lastRuntimeError<T extends { readonly method?: unknown }>(
+  events: readonly T[],
+): T | undefined {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event?.method === 'runtime.error') return event;
+  }
+  return undefined;
+}
+
+/**
  * `runtime.warning` code: the kernel OOM killer killed a process inside an
  * engine's workload scope (normally a command the engine started) while the
  * engine kept running. `details` carries `newKills`, `oomKills` and
@@ -1026,6 +1064,9 @@ export interface AttachedSessionSourceMetadata {
 export interface ResolvedAgentToolServer {
   /** Station tool-server id (`ToolDef.id`, kind 'mcp'). */
   id: string;
+  /** Added solely by the coordinator designation, not authored by the Agent or Project. */
+  coordinatorDerived?: true;
+  coordinatorGeneration?: number;
   displayName?: string;
   transport?: 'stdio' | 'sse' | 'streamable-http';
   command?: string;

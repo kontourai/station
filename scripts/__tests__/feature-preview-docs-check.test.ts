@@ -9,10 +9,13 @@ const script = join(root, 'scripts/feature-preview-docs-check.mjs');
 const registry =
   'src-server/services/feature-previews/feature-preview-registry.ts';
 const makeTempDir = trackTempDirs();
-// The copied registry offers these consumers itself, through rememberConsumer.
+// The copied registry offers this consumer itself, through rememberConsumer.
 const registryOffered = [
+  'integration-content-trust',
   'task-review',
   'continue-interrupted-turn',
+  'task-collaboration',
+  'chat-apps',
   'visual-skills',
 ];
 

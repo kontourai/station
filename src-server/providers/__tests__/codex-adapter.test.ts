@@ -14,9 +14,18 @@ import { FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY } from '@kontourai/statio
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { builtinStationControlServerPath } from '../../runtime/bootstrap/station-control-runtime-env.js';
+import {
+  mintStationControlMcpHeaderAuth,
+  revokeStationControlMcpToken,
+  verifyStationControlMcpToken,
+} from '../../runtime/mcp/station-control-mcp-token.js';
 import { EventBus } from '../../services/orchestration/event-bus.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
+import {
+  projectDelegatedTaskEvent,
+  snapshotFor,
+} from '../../tools/station-control-delegation.js';
 import {
   CodexAdapter,
   projectCodexQuotaSnapshot,
@@ -2604,6 +2613,56 @@ describe('CodexAdapter', () => {
       }
     }
 
+    test('a spawned child names its own rollout under the CODEX_HOME the session was spawned with', async () => {
+      processHandle = new FakeCodexProcess();
+      const processFactory = vi.fn(
+        (_env?: Record<string, string>) => processHandle!,
+      );
+      const adapter = new CodexAdapter({
+        processFactory,
+        getAppHomeEnv: async () => ({
+          env: { CODEX_HOME: '/profiles/child-home' },
+          profileRef: 'child-home',
+        }),
+      });
+      const transport = (adapter as any).transport;
+      const published: any[] = [];
+      const publish = transport.publish.bind(transport);
+      transport.publish = (event: any, record?: unknown) => {
+        published.push(event);
+        return publish(event, record);
+      };
+      const threadId = 'thread-child-transcript-ref';
+      try {
+        await replayCodexCollabPrefix(
+          adapter,
+          threadId,
+          CODEX_COLLAB_V1_CLIENT_INTERRUPT_UNBLOCKS_PARENT,
+        );
+        // The home the process was actually spawned with...
+        expect(processFactory.mock.calls[0][0]).toMatchObject({
+          CODEX_HOME: '/profiles/child-home',
+        });
+        // ...is the one the running child's published ref names.
+        const refs = published.flatMap((event) =>
+          event.method === 'child-work.updated' &&
+          event.delta.kind === 'snapshot'
+            ? event.delta.running
+                .filter((item: any) => item.childId === CHILD_ID)
+                .map((item: any) => item.transcript)
+            : [],
+        );
+        expect(refs.length).toBeGreaterThan(0);
+        expect(refs.at(-1)).toEqual({
+          kind: 'codex-thread',
+          threadId: CHILD_ID,
+          configHome: '/profiles/child-home',
+        });
+      } finally {
+        await adapter.stopAll();
+      }
+    });
+
     test('per-child stop sends exactly two interrupts — the child, then the parent — and both settle cancelled', async () => {
       processHandle = new FakeCodexProcess();
       const adapter = new CodexAdapter({
@@ -4478,6 +4537,82 @@ describe('CodexAdapter', () => {
     });
   });
 
+  test('a sandbox helper startup refusal reaches delegation as safe actionable guidance', async () => {
+    processHandle = new FakeCodexProcess();
+    const adapter = new CodexAdapter({ processFactory: () => processHandle! });
+    const events: any[] = [];
+    const drain = (async () => {
+      for await (const event of adapter.streamEvents()) events.push(event);
+    })();
+    const starting = adapter.startSession({
+      provider: 'codex',
+      threadId: 'sandbox-start-refusal',
+      cwd: makeSessionWorkspace('sandbox-start-refusal-'),
+    });
+    const failed = starting.catch((error: unknown) => error);
+    await flushIo();
+    writeServerMessage(adapter, 'sandbox-start-refusal', {
+      id: '1',
+      result: {},
+    });
+    await flushIo();
+    writeServerMessage(adapter, 'sandbox-start-refusal', {
+      id: '2',
+      error: {
+        code: -32603,
+        message:
+          'failed to load AGENTS.md: fs sandbox helper: bwrap: No permissions to create namespace /private/secret-proof',
+      },
+    });
+    const failure = await failed;
+    expect(failure).toMatchObject({ code: 'sandbox_unavailable' });
+    expect(String(failure)).not.toContain('secret-proof');
+    await adapter.stopAll();
+    await drain;
+    const terminal = events
+      .filter((event) => event.method === 'runtime.error')
+      .at(-1);
+    expect(terminal).toMatchObject({
+      code: 'sandbox_unavailable',
+      kind: 'permission_denied',
+      retryable: false,
+    });
+    const snapshot = snapshotFor({
+      target: {
+        apiBase: 'http://current.invalid',
+        environmentId: 'current',
+        environmentName: 'Current',
+        kind: 'current',
+      },
+      metadata: {
+        taskId: 'sandbox-start-refusal',
+        conversationId: 'sandbox-start-refusal',
+        targetKind: 'agent',
+        targetId: 'codex',
+      },
+      detail: {
+        session: {
+          threadId: 'sandbox-start-refusal',
+          status: 'error',
+          lifecycleState: 'failed',
+          terminalAttribution: { kind: 'runtime_error' },
+        },
+        events,
+      },
+    });
+    expect(snapshot.status).toBe('failed');
+    const reason = snapshot.reason;
+    expect(reason).toMatchObject({
+      code: 'sandbox_unavailable',
+      detail: expect.stringMatching(/host.*sandbox/i),
+    });
+    const projected = projectDelegatedTaskEvent(1, terminal);
+    expect(projected.text).toBe(reason?.detail);
+    expect(
+      JSON.stringify({ failure, terminal, reason, projected }),
+    ).not.toContain('secret-proof');
+  });
+
   test('retains a failed-start session until process exit is confirmed', async () => {
     const deferredExit = new DeferredExitCodexProcess();
     processHandle = deferredExit;
@@ -5711,10 +5846,7 @@ describe('CodexAdapter', () => {
           CODEX_HOME: profileHome,
           STATION_WORKLOAD_SESSION_ID: 'thread-profile-with-tools',
         },
-        [
-          '-c',
-          `mcp_servers.station-control.url="http://127.0.0.1:3141/mcp/station-control?token=${token}"`,
-        ],
+        undefined,
       );
       const events = [
         await nextEvent(iterator, 'session.started'),
@@ -6410,7 +6542,7 @@ describe('station#1195: toolServers wire delivery (mcp_servers -c config args)',
     await adapter.stopAll();
   });
 
-  test('SECURITY: delivers the built-in station-control server as a -c mcp_servers.station-control.url override with the minted per-session URL, never via env', async () => {
+  test('SECURITY: delivers the built-in Station credential through private thread config, never argv or env', async () => {
     const processHandle = new FakeCodexProcess();
     let capturedArgs: string[] | undefined;
     const mintStationControlMcpAuth = vi.fn(
@@ -6464,14 +6596,18 @@ describe('station#1195: toolServers wire delivery (mcp_servers -c config args)',
     expect(mintStationControlMcpAuth).toHaveBeenCalledWith(
       'thread-station-control',
     );
-    expect(capturedArgs).toEqual([
-      '-c',
-      'mcp_servers.station-control.url="http://127.0.0.1:3141/mcp/station-control?token=minted-for-thread-station-control"',
-    ]);
+    expect(capturedArgs).toBeUndefined();
+    const configuredRequest = processHandle.stdin.lines
+      .map(parseLine)
+      .find((line) => line.method === 'thread/start');
+    expect(configuredRequest.params.config).toEqual({
+      'mcp_servers.station-control.url':
+        'http://127.0.0.1:3141/mcp/station-control?token=minted-for-thread-station-control',
+    });
     // The exact env-never-crosses assertion: nothing in the spawn argv
     // (or anywhere else reachable from the adapter's call) carries the
     // real INTERNAL_API_TOKEN env-var name or an `env` key at all.
-    expect(JSON.stringify(capturedArgs)).not.toContain(
+    expect(JSON.stringify(capturedArgs ?? [])).not.toContain(
       'STATION_INTERNAL_API_TOKEN',
     );
 
@@ -6610,4 +6746,172 @@ test('external adoption forks the native thread and records its distinct child b
   });
   process.stdout.write(`${JSON.stringify({ id: '3', result: {} })}\n`);
   await cleanup;
+});
+
+test.each(['start', 'resume', 'fork'] as const)(
+  'private Station MCP header configuration reaches Codex %s over stdin and is revoked on stop',
+  async (mode) => {
+    const process = new FakeCodexProcess();
+    const token = `private-${mode}-credential`;
+    const revoke = vi.fn();
+    let spawnArgs: string[] | undefined;
+    let spawnEnv: Record<string, string> | undefined;
+    const adapter = new CodexAdapter({
+      processFactory: (env, args) => {
+        spawnEnv = env;
+        spawnArgs = args;
+        return process;
+      },
+      resolveSourceHome: () => '/fixture/codex-home',
+      mintStationControlMcpAuth: () => ({
+        url: 'http://127.0.0.1:41031/mcp/station-control',
+        token,
+      }),
+      revokeStationControlMcpAuth: revoke,
+    });
+    const sourceId = '0199a001-0000-7000-8000-000000000001';
+    const childId = '0199a001-0000-7000-8000-000000000002';
+    const input = {
+      provider: 'codex',
+      threadId: `private-${mode}`,
+      cwd: '/fixture/project',
+      agent: {
+        slug: 'agent',
+        toolServers: [
+          {
+            id: 'station-control',
+            transport: 'stdio' as const,
+            command: 'node',
+            args: [builtinStationControlServerPath()],
+          },
+        ],
+      },
+    };
+    const pending =
+      mode === 'fork'
+        ? adapter.adoptSession(
+            {
+              ...input,
+              sourceSessionId: sourceId,
+              sourceKind: 'codex-rollout',
+              sourceAffinity: {
+                kind: 'codex-config-home',
+                ref: 'a'.repeat(64),
+              },
+              sourceBoundary: {
+                kind: 'completed-turn',
+                providerTurnId: 'completed-one',
+                observedEventId: 'observed-one',
+              },
+            },
+            {
+              onProviderChildCreated: () => {},
+              onProviderChildCreationStarted: () => {},
+            },
+          )
+        : adapter.startSession({
+            ...input,
+            ...(mode === 'resume'
+              ? { resumeCursor: { codexThreadId: sourceId } }
+              : {}),
+          });
+    await flushIo();
+    process.stdout.write(
+      `${JSON.stringify({ id: '1', result: { userAgent: 'fixture' } })}\n`,
+    );
+    await flushIo();
+    const request = process.stdin.lines
+      .map(parseLine)
+      .find((line) => line.method === `thread/${mode}`);
+    expect(request.params.config).toEqual({
+      'mcp_servers.station-control.url':
+        'http://127.0.0.1:41031/mcp/station-control',
+      'mcp_servers.station-control.http_headers': {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    expect(JSON.stringify(spawnArgs)).not.toContain(token);
+    expect(JSON.stringify(spawnEnv)).not.toContain(token);
+    process.stdout.write(
+      `${JSON.stringify({
+        id: '2',
+        result: {
+          thread: {
+            id: childId,
+            ...(mode === 'fork'
+              ? {
+                  forkedFromId: sourceId,
+                  threadSource: `station-adoption:${input.threadId}`,
+                  turns: [
+                    { id: 'completed-one', status: 'completed', items: [] },
+                  ],
+                }
+              : {}),
+          },
+          model: 'gpt-test',
+          cwd: '/fixture/project',
+          approvalPolicy: 'on-request',
+          sandbox: { type: 'workspaceWrite' },
+        },
+      })}\n`,
+    );
+    await pending;
+    await adapter.stopSession(input.threadId);
+    expect(revoke).toHaveBeenCalledWith(input.threadId);
+  },
+);
+
+test('cancelled Codex startup revokes the real private credential and a later start gets a fresh incarnation', async () => {
+  const processes: FakeCodexProcess[] = [];
+  const credentials: string[] = [];
+  const adapter = new CodexAdapter({
+    processFactory: () => {
+      const process = new FakeCodexProcess();
+      processes.push(process);
+      return process;
+    },
+    mintStationControlMcpAuth: (threadId) => {
+      const auth = mintStationControlMcpHeaderAuth(41031, threadId);
+      credentials.push(auth.token);
+      return auth;
+    },
+    revokeStationControlMcpAuth: revokeStationControlMcpToken,
+  });
+  const input = {
+    provider: 'codex',
+    threadId: 'private-rotation',
+    cwd: '/fixture/project',
+    agent: {
+      slug: 'agent',
+      toolServers: [
+        {
+          id: 'station-control',
+          transport: 'stdio' as const,
+          command: 'node',
+          args: [builtinStationControlServerPath()],
+        },
+      ],
+    },
+  };
+  const cancelled = adapter.startSession(input);
+  const rejection = expect(cancelled).rejects.toThrow();
+  await flushIo();
+  expect(verifyStationControlMcpToken(credentials[0])).toBeDefined();
+  await adapter.stopSession(input.threadId);
+  await rejection;
+  expect(verifyStationControlMcpToken(credentials[0])).toBeUndefined();
+  const restarted = adapter.startSession(input);
+  await flushIo();
+  expect(credentials[1]).not.toBe(credentials[0]);
+  expect(verifyStationControlMcpToken(credentials[1])).toBeDefined();
+  processes[1]!.stdout.write(
+    `${JSON.stringify({ id: '1', result: { userAgent: 'fixture' } })}\n`,
+  );
+  await flushIo();
+  processes[1]!.stdout.write(
+    `${JSON.stringify({ id: '2', result: { thread: { id: 'restarted' }, model: 'gpt-test' } })}\n`,
+  );
+  await restarted;
+  await adapter.stopSession(input.threadId);
+  expect(verifyStationControlMcpToken(credentials[1])).toBeUndefined();
 });

@@ -6,6 +6,7 @@ import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { tenantExecutionContextFromSession } from '@kontourai/station-contracts/tenancy';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import { Agent, type ServerProviderFactory, VoltAgent } from '@voltagent/core';
+import type { ReviewedTariffConfigurationService } from '../../analytics/reviewed-tariff-config.js';
 import type {
   OrchestrationUsageRef,
   UsageAggregator,
@@ -55,6 +56,10 @@ import {
 } from '../../providers/registries/registry.js';
 import type { AttachedSessionSource } from '../../providers/sessions/attached-session-source.js';
 import { attachVoiceWebSocket } from '../../routes/operations/voice.js';
+import {
+  createRuntimeNativeForkReadAdmissionDomain,
+  type NativeForkReadAdmissionDomain,
+} from '../../security/native-fork-read-admission.js';
 import {
   assertRuntimeHttpRouteCoverage,
   credentialAuthorizedForScope,
@@ -122,6 +127,7 @@ import {
   bootstrapRuntimeDefaultAgent,
   materializeBuiltinIntegrations,
 } from '../agents/runtime-default-agent.js';
+import { recordManagedModelContext } from '../context-efficiency-runtime.js';
 import type { RuntimeEventLog } from '../conversation/runtime-event-log.js';
 import { safeSanitizeUIBlockEventProvenance } from '../conversation/ui-block-provenance.js';
 import { withPrivateOrchestrationAdapter } from '../frameworks/orchestration-adapter-registry.js';
@@ -133,6 +139,7 @@ import {
 } from '../frameworks/voltagent-hono-runtime.js';
 import * as MCPManager from '../mcp/mcp-manager.js';
 import {
+  coordinatorGeneration,
   mintStationControlMcpHeaderAuth,
   revokeStationControlMcpToken,
 } from '../mcp/station-control-mcp-token.js';
@@ -168,6 +175,9 @@ import {
 type RuntimeFramework = VoltAgentFramework | StrandsFramework;
 
 export interface InitializeRuntimeDeps {
+  getReviewedTariffConfiguration?: () =>
+    | ReviewedTariffConfigurationService
+    | undefined;
   validateProjectTools?: (
     slug: string,
     spec: AgentSpec,
@@ -185,6 +195,7 @@ export interface InitializeRuntimeDeps {
   environmentSecurityService: Pick<
     EnvironmentSecurityService,
     | 'verifyCredential'
+    | 'authorizeCredential'
     | 'resolveGrantedScope'
     // #3586: the voice WebSocket refuses account-bound devices and tokens.
     | 'identifyDevice'
@@ -313,12 +324,14 @@ export interface InitializeRuntimeDeps {
   /** Publishes services captured by route registration before VoltAgent calls configureFullApp. */
   onRouteServicesReady: (services: {
     orchestrationService: OrchestrationService;
+    nativeForkStoredReadBinder?: NativeForkReadAdmissionDomain['bindAtConversationMount'];
     usageAggregator?: UsageAggregator;
   }) => void | Promise<void>;
   onVoltAgentCreated: (voltAgent: VoltAgent) => void;
 }
 
 interface InitializeRuntimeResult {
+  nativeForkStoredReadBinder: NativeForkReadAdmissionDomain['bindAtConversationMount'];
   registryPolicyApplication?: RegistryTrustPolicyApplication;
   appConfig: AppConfig;
   framework: RuntimeFramework;
@@ -463,15 +476,44 @@ export async function initializeRuntime(
     // inline body (review fix): an inline closure here was the one
     // production site for the per-session/revocable/bounded-TTL properties
     // and no test could reach it.
-    mintStationControlMcpAuth: (threadId, tenantExecutionContext) =>
-      mintStationControlMcpHeaderAuth(port, threadId, tenantExecutionContext),
-    mintStationKnowledgeMcpAuth: (threadId, tenantExecutionContext) =>
-      mintStationControlMcpHeaderAuth(
+    mintStationControlMcpAuth: (
+      threadId,
+      tenantExecutionContext,
+      generation,
+    ) => {
+      const conversationId =
+        orchestrationEventStore.conversationForSession(threadId)
+          ?.conversationId ?? threadId;
+      return mintStationControlMcpHeaderAuth(
+        port,
+        threadId,
+        tenantExecutionContext,
+        'station-control',
+        generation !== undefined,
+        generation === undefined
+          ? undefined
+          : () => coordinatorGeneration(conversationId) === generation,
+      );
+    },
+    mintStationKnowledgeMcpAuth: (
+      threadId,
+      tenantExecutionContext,
+      generation,
+    ) => {
+      const conversationId =
+        orchestrationEventStore.conversationForSession(threadId)
+          ?.conversationId ?? threadId;
+      return mintStationControlMcpHeaderAuth(
         port,
         threadId,
         tenantExecutionContext,
         'station-knowledge',
-      ),
+        generation !== undefined,
+        generation === undefined
+          ? undefined
+          : () => coordinatorGeneration(conversationId) === generation,
+      );
+    },
     revokeStationControlMcpAuth: (threadId: string, serverId) =>
       revokeStationControlMcpToken(threadId, serverId),
   });
@@ -535,6 +577,27 @@ export async function initializeRuntime(
       }
     },
     logger,
+    // #3628: read at each Session start, so a designation reaches the
+    // coordinator's next Session (and a successor Session of it).
+    isCoordinatorSession: (threadId) => {
+      try {
+        const conversationId =
+          orchestrationEventStore.conversationForSession(threadId)
+            ?.conversationId ?? threadId;
+        return (
+          orchestrationEventStore
+            .coordinatorStore()
+            .designationForConversation(conversationId) !== undefined
+        );
+      } catch {
+        return false;
+      }
+    },
+    coordinatorGenerationForSession: (threadId) =>
+      coordinatorGeneration(
+        orchestrationEventStore.conversationForSession(threadId)
+          ?.conversationId ?? threadId,
+      ),
   });
   // archive#1745: the `providerRegistrationSettled` barrier that used to be
   // built here is gone. Plugin-contributed adapters still do not exist in
@@ -568,7 +631,11 @@ export async function initializeRuntime(
   const idleSessionParkAfterMs = parseNonNegativeIntegerEnv(
     process.env.STATION_IDLE_SESSION_PARK_AFTER_MS,
   );
+  const nativeForkStoredReadDomain = createRuntimeNativeForkReadAdmissionDomain(
+    deps.environmentSecurityService,
+  );
   const orchestrationService = new OrchestrationService({
+    nativeForkStoredReadVerifier: nativeForkStoredReadDomain.verifyForService,
     ...(deps.hostImagesPreview
       ? { hostImagesPreview: deps.hostImagesPreview }
       : {}),
@@ -589,7 +656,15 @@ export async function initializeRuntime(
     // The budget an engine is told about is the one its scope enforces.
     workloadEngineLimits: (sessionId) => enforcedWorkloadLimits(sessionId),
     pricingSnapshotCapture: {
-      capture: async (input) => usagePricingSnapshotCapture?.capture(input),
+      capture: async (input) => {
+        const reviewed = deps.getReviewedTariffConfiguration?.();
+        if (reviewed) {
+          const snapshot = await reviewed.capture(input);
+          if (snapshot && deps.getReviewedTariffConfiguration?.() === reviewed)
+            return snapshot;
+        }
+        return usagePricingSnapshotCapture?.capture(input);
+      },
     },
     turnDeduplicator: orchestrationEventStore.createTurnDeduplicator(),
     // #764: a user-requested continuation of a stopped ACP conversation must
@@ -699,6 +774,11 @@ export async function initializeRuntime(
     agentPolicyService: getAgentPolicyService(logger),
     workflowSidecarService: new WorkflowSidecarService({ logger }),
     resolveSessionAgent,
+    coordinatorGenerationForSession: (threadId) =>
+      coordinatorGeneration(
+        orchestrationEventStore.conversationForSession(threadId)
+          ?.conversationId ?? threadId,
+      ),
     loadAgentPresentation: async (slug) => {
       const spec =
         (await loadSessionAgentSpec(slug)) ?? builtinStationAgentSpec(slug);
@@ -918,6 +998,8 @@ export async function initializeRuntime(
   // service that configureRoutes captures before constructing it.
   await onRouteServicesReady({
     orchestrationService,
+    nativeForkStoredReadBinder:
+      nativeForkStoredReadDomain.bindAtConversationMount,
     usageAggregator: nextUsageAggregator,
   });
 
@@ -945,6 +1027,8 @@ export async function initializeRuntime(
     logger,
     bootstrapDefaultAgent: async () =>
       (await bootstrapRuntimeDefaultAgent({
+        observeModelContext: (observation) =>
+          recordManagedModelContext(orchestrationEventStore, observation),
         appConfig,
         builtinEngineBinding,
         configLoader: deps.configLoader as any,
@@ -1185,6 +1269,8 @@ export async function initializeRuntime(
 
   return {
     registryPolicyApplication,
+    nativeForkStoredReadBinder:
+      nativeForkStoredReadDomain.bindAtConversationMount,
     appConfig,
     framework,
     orchestrationService,

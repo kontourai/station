@@ -27,7 +27,13 @@
 
 import type { AttentionProjection } from '@kontourai/station-contracts/attention';
 import type { Notification } from '@kontourai/station-contracts/notification';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { useState } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -44,10 +50,29 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => ({
   }),
 }));
 
+// Snooze is a Feature Preview; off unless a test turns it on.
+const snoozePreviews: { id: string; enabled: boolean }[] = [];
+const snoozeAttention = vi.fn();
+const unsnoozeAttention = vi.fn();
+const snoozeNotification = vi.fn();
 vi.mock('@kontourai/station-sdk', () => ({
   LIVE_NOTIFICATION_STATUSES: ['pending', 'delivered'],
   useNotificationsQuery: () => ({ data: notifications, isLoading: false }),
   useAttentionQuery: () => ({ data: attention, isLoading: false }),
+  useDevicePresentation: () => undefined,
+  useFeaturePreviewsQuery: () => ({ data: snoozePreviews }),
+  useSnoozeAttentionItemMutation: () => ({
+    mutate: snoozeAttention,
+    isPending: false,
+  }),
+  useUnsnoozeAttentionItemMutation: () => ({
+    mutate: unsnoozeAttention,
+    isPending: false,
+  }),
+  useSnoozeNotificationMutation: () => ({
+    mutate: snoozeNotification,
+    isPending: false,
+  }),
   useOrchestrationSessionsQuery: () => ({ data: [], isSuccess: true }),
   useDismissNotificationMutation: () => ({ isPending: false, mutate: vi.fn() }),
   useNotificationActionMutation: () => ({ isPending: false, mutate: vi.fn() }),
@@ -140,7 +165,9 @@ describe('#2081 — the notification bell closes its own popover', () => {
     // The press must have left focus INSIDE the popover, or the dismissal the
     // second press relies on was never armed and the assertion below would
     // pass against the defect as well as against the fix.
-    expect(panel()?.contains(document.activeElement)).toBe(true);
+    await waitFor(() => {
+      expect(panel()?.contains(document.activeElement)).toBe(true);
+    });
 
     pointerClick(bell);
 

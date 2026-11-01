@@ -1,5 +1,9 @@
 import type { OrchestrationSequencedEvent } from '@kontourai/station-contracts/orchestration';
 import {
+  isEngineMemoryExhaustedFailure,
+  lastRuntimeError,
+} from '@kontourai/station-contracts/provider';
+import {
   type CanonicalRuntimeEvent,
   isDeferredRetriableTurnError,
 } from '@kontourai/station-contracts/runtime-events';
@@ -71,11 +75,13 @@ function isLiveFailureMarker(message: ChatMessage): boolean {
 interface ProjectedTurnFailure {
   turnId: string;
   startedAt: number;
+  /** The turn's newest projected moment. */
+  endedAt: number;
   /** The turn's projected `runtime.error`, when it shows one. */
   failure?: { code?: string; message: string };
 }
 
-/** Each projected turn's first moment and the failure it shows, if any. */
+/** Each projected turn's first moment and its last failure, if any. */
 function projectedTurnFailures(
   projected: readonly ChatMessage[],
 ): ProjectedTurnFailure[] {
@@ -86,9 +92,10 @@ function projectedTurnFailures(
       typeof message.timestamp !== 'number'
     )
       continue;
-    const part = message.contentParts?.find(
-      (candidate) => candidate.runtimeError === true,
-    );
+    // The turn's LAST failure, as the server reads it (`deadTurn`).
+    const part = [...(message.contentParts ?? [])]
+      .reverse()
+      .find((candidate) => candidate.runtimeError === true);
     const failure = part
       ? {
           code: part.runtimeErrorCode,
@@ -100,12 +107,14 @@ function projectedTurnFailures(
       turns.set(message.turnId, {
         turnId: message.turnId,
         startedAt: message.timestamp,
+        endedAt: message.timestamp,
         failure,
       });
       continue;
     }
     turn.startedAt = Math.min(turn.startedAt, message.timestamp);
-    turn.failure ??= failure;
+    turn.endedAt = Math.max(turn.endedAt, message.timestamp);
+    turn.failure = failure ?? turn.failure;
   }
   return [...turns.values()].sort((a, b) => a.startedAt - b.startedAt);
 }
@@ -162,6 +171,33 @@ function adoptStoredFailureMarkers(
       },
     ];
   });
+}
+
+/** Recreate a stored failure marker only for the server-authorized turn. */
+function storedMemoryKillMarkers(
+  turns: readonly ProjectedTurnFailure[],
+  markedTurnIds: ReadonlySet<string>,
+  fact: { eligible: boolean; turnId?: string } | undefined,
+): ChatMessage[] {
+  const turn = fact?.eligible
+    ? turns.find((item) => item.turnId === fact.turnId)
+    : undefined;
+  if (
+    !turn?.failure ||
+    markedTurnIds.has(turn.turnId) ||
+    !isEngineMemoryExhaustedFailure(turn.failure)
+  )
+    return [];
+  const { code, message } = turn.failure;
+  return [
+    {
+      id: `stored-memory-kill:${turn.turnId}`,
+      role: 'user',
+      turnId: turn.turnId,
+      timestamp: turn.endedAt,
+      content: `${CHAT_ERROR_MARKER_PREFIX}${code ? `:${code}` : ''}] ${message}`,
+    },
+  ];
 }
 
 function isLiveSupplementalMessage(message: ChatMessage): boolean {
@@ -320,11 +356,17 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
               ? new Error(replayHistory.errorMessage)
               : undefined,
             loadOlder: () => requestReplayHistory(session.id),
+            loadTurn: async () => false,
             reload: () => requestReplayHistory(session.id),
           }
         : { ...serverWindow, reload: retryHistory },
     [replayHistory, serverWindow, session.id, retryHistory],
   );
+  // #4266: turns the window holds only as their start and tail; a replay's
+  // tape is whole.
+  const partialTurnStartEventIds = replayHistory
+    ? undefined
+    : serverWindow.partialTurnStartEventIds;
   const subscribeLive = useCallback(
     (listener: () => void) => subscribeSequencedLiveEvents(apiBase, listener),
     [apiBase],
@@ -586,6 +628,7 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
       {
         stableIds: true,
         markEndedTurns: true,
+        ...(partialTurnStartEventIds ? { partialTurnStartEventIds } : {}),
         ...(liveOpenTurnThread
           ? {
               liveOpenTurn: {
@@ -810,10 +853,38 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     // Matched on turn identity, not on text: two turns can fail the same
     // way, and a global text match would collapse them. A marker with no
     // turn identity keeps the text-comparison fallback it had before.
-    const markerMessages = adoptStoredFailureMarkers(
+    const projectedFailures = projectedTurnFailures(visibleProjected);
+    const rawFailures = projectedFailures.map((turn) => {
+      const failure = lastRuntimeError(
+        stitchedEvents
+          .map(({ event }) => event)
+          .filter((event) => event.turnId === turn.turnId),
+      );
+      return {
+        ...turn,
+        failure:
+          failure?.method === 'runtime.error'
+            ? { code: failure.code, message: failure.message }
+            : undefined,
+      };
+    });
+    const adoptedMarkers = adoptStoredFailureMarkers(
       session.messages,
-      projectedTurnFailures(visibleProjected),
+      projectedFailures,
     );
+    const markerMessages = [
+      ...adoptedMarkers,
+      ...storedMemoryKillMarkers(
+        rawFailures,
+        new Set(
+          adoptedMarkers
+            .filter((message) => isLiveFailureMarker(message))
+            .map((message) => message.turnId)
+            .filter((turnId): turnId is string => typeof turnId === 'string'),
+        ),
+        serverWindow.memoryContinuation,
+      ),
+    ];
     const markerFailureTurnIds = new Set(
       markerMessages
         .filter((message) => isLiveFailureMarker(message))
@@ -944,7 +1015,9 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     session.stopSettledTurnId,
     changedFilesByTurn,
     window.events,
+    serverWindow.memoryContinuation,
     stitchedEvents,
+    partialTurnStartEventIds,
     window.sessionLineage,
     window.handoffs,
     window.contextBoundaries,

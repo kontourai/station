@@ -2,16 +2,19 @@ import { describe, expect, test } from 'vitest';
 import {
   applyChildWorkDelta,
   CHILD_WORK_ITEMS_MAX_PER_REPORTER,
+  CHILD_WORK_STATUSES,
   CHILD_WORK_SUMMARY_MAX_CHARS,
   CHILD_WORK_TOOL_NAME_MAX_CHARS,
   type ChildWorkDelta,
   type ChildWorkItem,
   type ChildWorkRegistryState,
+  childWorkDisplayStatus,
   childWorkForReporter,
   childWorkKey,
   childWorkSettleFromItem,
   createEmptyChildWorkRegistry,
   forgetChildWorkReporter,
+  parseChildWorkTranscriptRef,
   projectDelegateChildWork,
 } from '../child-work.js';
 
@@ -767,5 +770,186 @@ describe('#3163 a child’s own model and transcript identity', () => {
     expect(fold(snapshot(item('a', { transcript })))[0].transcript).toEqual(
       transcript,
     );
+  });
+
+  const CODEX_THREAD = '01a15c8b-3a97-7700-ab44-0d4e19ca09dd';
+
+  test.each([
+    [
+      'a bare thread ref',
+      { kind: 'codex-thread', threadId: CODEX_THREAD },
+      { kind: 'codex-thread', threadId: CODEX_THREAD },
+    ],
+    [
+      'a POSIX config home',
+      { kind: 'codex-thread', threadId: CODEX_THREAD, configHome: '/h/.codex' },
+      { kind: 'codex-thread', threadId: CODEX_THREAD, configHome: '/h/.codex' },
+    ],
+    [
+      'a Windows config home',
+      {
+        kind: 'codex-thread',
+        threadId: CODEX_THREAD,
+        configHome: 'C:\\Users\\b\\.codex',
+      },
+      {
+        kind: 'codex-thread',
+        threadId: CODEX_THREAD,
+        configHome: 'C:\\Users\\b\\.codex',
+      },
+    ],
+    [
+      'a ref carrying members of another kind',
+      {
+        kind: 'codex-thread',
+        threadId: CODEX_THREAD,
+        sessionId: SESSION,
+        path: '/etc/passwd',
+      },
+      { kind: 'codex-thread', threadId: CODEX_THREAD },
+    ],
+  ])(
+    'a Codex thread ref: %s is kept, and only its own members',
+    (_label, raw, kept) => {
+      expect(parseChildWorkTranscriptRef(raw)).toEqual(kept);
+      expect(
+        fold(
+          snapshot(
+            item('a', { transcript: raw as ChildWorkItem['transcript'] }),
+          ),
+        )[0].transcript,
+      ).toEqual(kept);
+    },
+  );
+
+  test.each([
+    ['a path-like thread id', { threadId: '../../sessions/x' }],
+    ['a rollout file name', { threadId: `rollout-${CODEX_THREAD}.jsonl` }],
+    ['a missing thread id', {}],
+    ['a numeric thread id', { threadId: 7 }],
+    [
+      'a relative config home',
+      { threadId: CODEX_THREAD, configHome: '.codex' },
+    ],
+    [
+      'a config home with NUL',
+      { threadId: CODEX_THREAD, configHome: '/h/\0/.codex' },
+    ],
+    ['a non-string config home', { threadId: CODEX_THREAD, configHome: 1 }],
+  ])('a Codex thread ref with %s is not a ref', (_label, ref) => {
+    const raw = { kind: 'codex-thread', ...ref };
+    expect(parseChildWorkTranscriptRef(raw)).toBeUndefined();
+    expect(
+      fold(
+        snapshot(item('a', { transcript: raw as ChildWorkItem['transcript'] })),
+      )[0].transcript,
+    ).toBeUndefined();
+  });
+
+  test('a Claude ref is not read as a Codex one, or the reverse', () => {
+    expect(
+      parseChildWorkTranscriptRef({
+        kind: 'codex-thread',
+        sessionId: SESSION,
+        agentId: 'a1',
+      }),
+    ).toBeUndefined();
+    expect(
+      parseChildWorkTranscriptRef({
+        kind: 'claude-subagent',
+        threadId: CODEX_THREAD,
+      }),
+    ).toBeUndefined();
+  });
+});
+
+describe('interrupted: the engine process ended under a running child', () => {
+  const interrupt = (childId: string) =>
+    settle(childId, 'unresolved', { endedBy: 'engine-exit' });
+
+  test('the wire statuses stay the set released clients know', () => {
+    // An older client labels and counts children by this set; a status it
+    // does not know rendered blank and crashed its roster count. An
+    // interruption therefore rides on `unresolved` as `endedBy`.
+    expect([...CHILD_WORK_STATUSES]).toEqual([
+      'running',
+      'completed',
+      'failed',
+      'cancelled',
+      'stopped-unconfirmed',
+      'unresolved',
+    ]);
+  });
+
+  test('reads as interrupted, and only on an unresolved child', () => {
+    const state = fold(snapshot(item('a')), interrupt('a'));
+    expect(get(state, 'a')).toMatchObject({
+      status: 'unresolved',
+      endedBy: 'engine-exit',
+    });
+    expect(childWorkDisplayStatus(get(state, 'a'))).toBe('interrupted');
+    // A bare unresolved is still "No result".
+    expect(
+      childWorkDisplayStatus(
+        get(fold(snapshot(item('b')), settle('b', 'unresolved')), 'b'),
+      ),
+    ).toBe('unresolved');
+    // The marker means nothing on another status, so it is dropped.
+    const completed = get(
+      fold(
+        snapshot(item('c')),
+        settle('c', 'completed', { endedBy: 'engine-exit' }),
+      ),
+      'c',
+    );
+    expect(completed.endedBy).toBeUndefined();
+    expect(childWorkDisplayStatus(completed)).toBe('completed');
+  });
+
+  test('is sticky: a later report cannot overwrite an observed interruption', () => {
+    const interrupted = fold(
+      snapshot(item('a')),
+      interrupt('a'),
+      settle('a', 'completed', { result: { summary: 'late' } }),
+      settle('a', 'failed'),
+      snapshot(item('a')),
+      { kind: 'upsert', item: item('a') },
+    );
+    expect(get(interrupted, 'a')).toMatchObject({
+      status: 'unresolved',
+      endedBy: 'engine-exit',
+    });
+    // As for every sticky terminal, a later settle may only fill what is
+    // absent (here a summary); the outcome itself stays.
+    // ...where a later outcome still corrects a bare unresolved one.
+    const unresolved = fold(
+      snapshot(item('a')),
+      settle('a', 'unresolved'),
+      settle('a', 'completed'),
+    );
+    expect(get(unresolved, 'a')).toMatchObject({ status: 'completed' });
+  });
+
+  test('an engine exit after a bare unresolved records the interruption', () => {
+    const state = fold(
+      snapshot(item('a')),
+      settle('a', 'unresolved'),
+      interrupt('a'),
+    );
+    expect(childWorkDisplayStatus(get(state, 'a'))).toBe('interrupted');
+  });
+
+  test('replays from a stored item as the same settle', () => {
+    const stored = get(fold(snapshot(item('a')), interrupt('a')), 'a');
+    const replay = childWorkSettleFromItem(stored);
+    expect(replay).toMatchObject({
+      kind: 'settle',
+      status: 'unresolved',
+      endedBy: 'engine-exit',
+    });
+    expect(get(fold(replay!, settle('a', 'completed')), 'a')).toMatchObject({
+      status: 'unresolved',
+      endedBy: 'engine-exit',
+    });
   });
 });

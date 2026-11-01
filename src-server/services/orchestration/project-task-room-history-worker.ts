@@ -17,11 +17,15 @@ import type {
   ProjectTaskRoomScope,
 } from '@kontourai/station-contracts/project-task-room';
 import {
+  isProjectTaskRoomMentions,
   isTaskRoomAttachments,
   PROJECT_TASK_ROOM_MAX_PAGE_JSON_ITEMS,
+  parseProjectTaskRoomPrincipal,
+  projectTaskRoomWriteSchemaVersion,
 } from '@kontourai/station-contracts/project-task-room';
 import { PROJECT_TASK_ROOM_HISTORY_MIGRATION } from '../../domain/migrations/005-project-task-room-history.js';
 import { PROJECT_TASK_ROOM_ATTACHMENTS_MIGRATION } from '../../domain/migrations/023-project-task-room-attachments.js';
+import { PROJECT_TASK_ROOM_MEMBERS_MIGRATION } from '../../domain/migrations/028-project-task-room-members.js';
 import { SharedWorkingState } from '../../domain/shared-working-state.js';
 import { applyWalJournalMode } from '../../utils/sqlite-wal.js';
 import { measureBoundedJson, plainDataObject } from './bounded-json.js';
@@ -202,27 +206,10 @@ function validScope(value: unknown): value is ProjectTaskRoomScope {
   );
 }
 function validPrincipal(value: unknown) {
-  if (!plainDataObject(value)) return false;
-  return value.kind === 'operator'
-    ? exactObject(value, ['kind', 'operatorId', 'deviceId']) &&
-        typeof value.operatorId === 'string' &&
-        typeof value.deviceId === 'string'
-    : value.kind === 'agent' &&
-        exactObject(value, [
-          'kind',
-          'agentId',
-          'ownerOperatorId',
-          'deviceId',
-          'authorizationReceiptId',
-        ]) &&
-        [
-          'agentId',
-          'ownerOperatorId',
-          'deviceId',
-          'authorizationReceiptId',
-        ].every(
-          (key) => typeof value[key] === 'string' && value[key].length > 0,
-        );
+  return (
+    parseProjectTaskRoomPrincipal(value, 'station.project-task-room/v5') !==
+    null
+  );
 }
 function validResolvedLink(value: unknown, exactKind?: string) {
   return (
@@ -266,8 +253,10 @@ function validBody(value: unknown) {
     );
   if (value.kind === 'human-message')
     return (
-      exactObject(value, ['kind', 'text', 'attachments']) &&
+      exactObject(value, ['kind', 'text', 'attachments', 'mentions']) &&
       typeof value.text === 'string' &&
+      (value.mentions === undefined ||
+        isProjectTaskRoomMentions(value.mentions)) &&
       (value.attachments === undefined ||
         isTaskRoomAttachments(value.attachments))
     );
@@ -527,6 +516,7 @@ const db = new DatabaseSync(init.databasePath, { timeout: init.lockWaitMs });
 applyWalJournalMode(db, { store: 'project task room history' });
 db.exec(PROJECT_TASK_ROOM_HISTORY_MIGRATION);
 db.exec(PROJECT_TASK_ROOM_ATTACHMENTS_MIGRATION);
+db.exec(PROJECT_TASK_ROOM_MEMBERS_MIGRATION);
 initializeProjectTaskRoomSourceSeals(db);
 let faultPending = init.faultAfterCommitOnce === true;
 let unavailableAfterCommitPending = init.unavailableAfterCommitOnce === true;
@@ -977,9 +967,12 @@ async function append(request: AppendRequest, requestId: number) {
       proposalId: request.proposalId,
       channelId: room.channel_id,
       author:
-        request.principal.kind === 'operator'
+        request.principal.kind !== 'agent'
           ? {
-              memberId: request.principal.operatorId,
+              memberId:
+                request.principal.kind === 'member'
+                  ? request.principal.principalId
+                  : request.principal.operatorId,
               deviceId: request.principal.deviceId,
               keyId: 'station-local-l0',
             }
@@ -1040,24 +1033,32 @@ async function append(request: AppendRequest, requestId: number) {
     const hasAttachments =
       request.body.kind === 'human-message' &&
       !!request.body.attachments?.length;
-    const attachmentFormat =
-      hasAttachments ||
-      !!db
-        .prepare(
-          'SELECT version FROM project_task_room_attachment_formats WHERE channel_id=?',
-        )
-        .get(room.channel_id);
-    const record: ProjectTaskRoomRecord = {
-      schemaVersion: attachmentFormat
+    const previousVersion = db
+      .prepare(
+        'SELECT version FROM project_task_room_member_formats WHERE channel_id=?',
+      )
+      .get(room.channel_id)
+      ? 'station.project-task-room/v5'
+      : db
+            .prepare(
+              'SELECT version FROM project_task_room_attachment_formats WHERE channel_id=?',
+            )
+            .get(room.channel_id)
         ? 'station.project-task-room/v4'
-        : request.body.kind === 'output-feedback' ||
-            db
+        : db
               .prepare(
                 'SELECT version FROM project_task_room_formats WHERE channel_id=?',
               )
               .get(room.channel_id)
           ? 'station.project-task-room/v3'
-          : 'station.project-task-room/v2',
+          : 'station.project-task-room/v2';
+    const schemaVersion = projectTaskRoomWriteSchemaVersion(
+      previousVersion,
+      request.principal,
+      request.body,
+    );
+    const record: ProjectTaskRoomRecord = {
+      schemaVersion,
       scope: request.scope,
       principal: request.principal,
       ...(request.correlationId
@@ -1168,6 +1169,10 @@ async function append(request: AppendRequest, requestId: number) {
         return refused(admission);
       }
     }
+    if (schemaVersion === 'station.project-task-room/v5')
+      db.prepare(
+        'INSERT OR IGNORE INTO project_task_room_member_formats(channel_id,version) VALUES(?,5)',
+      ).run(room.channel_id);
     if (hasAttachments)
       db.prepare(
         'INSERT OR IGNORE INTO project_task_room_attachment_formats(channel_id,version) VALUES(?,4)',
@@ -1276,16 +1281,25 @@ function decode(row: Row): ProjectTaskRoomRecord | undefined {
         'station.project-task-room/v2',
         'station.project-task-room/v3',
         'station.project-task-room/v4',
+        'station.project-task-room/v5',
       ].includes(record?.schemaVersion) ||
+      !parseProjectTaskRoomPrincipal(record.principal, record.schemaVersion) ||
       (record.body?.kind === 'output-feedback' &&
         (![
           'station.project-task-room/v3',
           'station.project-task-room/v4',
+          'station.project-task-room/v5',
         ].includes(record.schemaVersion) ||
-          record.principal?.kind !== 'operator')) ||
+          record.principal?.kind === 'agent')) ||
       (record.body?.kind === 'human-message' &&
         record.body.attachments !== undefined &&
-        record.schemaVersion !== 'station.project-task-room/v4') ||
+        ![
+          'station.project-task-room/v4',
+          'station.project-task-room/v5',
+        ].includes(record.schemaVersion)) ||
+      (record.body?.kind === 'human-message' &&
+        record.body.mentions !== undefined &&
+        record.schemaVersion !== 'station.project-task-room/v5') ||
       envelope.seq !== row.seq ||
       envelope.channelId !== row.channel_id ||
       envelope.proposal.proposalId !== row.proposal_id ||

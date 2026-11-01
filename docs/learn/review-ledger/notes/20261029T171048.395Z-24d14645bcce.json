@@ -1,0 +1,23 @@
+{
+  "revision": "031df5ddcd5e47d5d497970812ae93db4150e531",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Review-fix round: NotificationHistory now holds an approval's Undo under its notification id; inbox approval claims (no session grant; accepted actions open the conversation) unchanged and still accurate.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/components/notifications/NotificationHistory.tsx"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"Review-fix round: useMutableSessionDetailState keeps a snoozed, unacknowledged failure dismissable (checks acknowledgedAt). No claim here about that banner's Dismiss or snooze; layer-dismissal text is about panes, unaffected.","inputs":["docs/design/pane-relationships.md","src-ui/src/hooks/useMutableSessionDetailState.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Review-fix round: AttentionCard answers exact-request approvals inline only on the inbox page; other surfaces keep Inspect request. Its Inbox actions text stays accurate.","inputs":["docs/guides/agent-configuration.md","src-ui/src/components/attention/AttentionCard.tsx"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Review-fix round: NotificationsPage keeps the sectioned layout while anything is snoozed and fixes deferred filtering; the Starter approval action still opens the exact row without deciding.","inputs":["docs/guides/starter-work.md","src-ui/src/pages/NotificationsPage.tsx"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Review-fix round: Re-checked 'Inspect an approval' against the fix: inbox approvals answer on the row, Inspect request remains for review requests and non-inbox cards.","inputs":["docs/learn/walkthroughs.md","src-ui/src/pages/NotificationsPage.tsx"]},
+
+    {"path":"docs/reference/session-api.md","note":"Review-fix round: AttentionCard change is UI-only (inline decision scoped to the inbox); the snooze and attention route sections are unaffected.","inputs":["docs/reference/session-api.md","src-ui/src/components/attention/AttentionCard.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Review-fix round: 'Return to a decision' re-checked: approvals answer on the row in Notifications/the bell; Inspect request for review requests. Page now keeps Snoozed reachable when everything is snoozed, consistent with the text.","inputs":["docs/user/getting-started.md","src-ui/src/pages/NotificationsPage.tsx"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"Review-fix round: Still illustrates RequestInspectionDialog, which now also remains on non-inbox approval cards. Not recaptured.","inputs":["docs/learn/media/inspect-request.png","src-ui/src/pages/NotificationsPage.tsx"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Review-fix round: Still illustrates RequestInspectionDialog's open/identity/close steps, unchanged. Not recaptured.","inputs":["docs/learn/media/inspect-request.webm","src-ui/src/pages/NotificationsPage.tsx"]}
+  ]
+}

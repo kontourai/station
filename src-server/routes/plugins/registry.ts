@@ -2,6 +2,7 @@ import type {
   PluginInstallationRevision,
   PluginManifest,
 } from '@kontourai/station-contracts/plugin';
+import { withoutToolBindingReferences } from '@kontourai/station-contracts/tool';
 import { recordIntegrationOrigin } from '../../services/plugins/integration-origin.js';
 import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
 import { ensurePluginInstallTrustMigration } from '../../services/plugins/plugin-install-trust-migration.js';
@@ -27,6 +28,7 @@ import { unregisterPluginEngineConnections } from '../../domain/agent-registry.j
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import { PROTOTYPE_AFFECTING_KEYS } from '../../domain/skill-paths.js';
 import { UnsupportedRegistrySkillFormatError } from '../../providers/registries/github-skill-registry.js';
+import { mcpSubregistryIntegrationProviders } from '../../providers/registries/mcp-subregistry-provider.js';
 import {
   getAgentRegistryProvider,
   getIntegrationRegistryProvider,
@@ -743,7 +745,11 @@ export function createRegistryRoutes(
             .replace(/\\n/g, ' ')
             .trim() || undefined,
       }));
-    return c.json({ success: true, data: items });
+    // Read after listing so a source's first read is reflected.
+    const mcpSources = mcpSubregistryIntegrationProviders().map((provider) =>
+      provider.status(),
+    );
+    return c.json({ success: true, data: items, mcpSources });
   });
 
   // #2067: operator-only, same shape and same reason as the agent twin.
@@ -791,7 +797,10 @@ export function createRegistryRoutes(
         } catch {
           // A first registry install has no prior Station-owned binding map.
         }
-        if (Object.keys(existing?.secretEnvRefs ?? {}).length > 0) {
+        if (
+          Object.keys(existing?.secretEnvRefs ?? {}).length > 0 ||
+          existing?.oauthClient?.clientSecretRef
+        ) {
           return c.json(
             {
               success: false,
@@ -801,11 +810,19 @@ export function createRegistryRoutes(
             409,
           );
         }
-        const persisted = { ...toolDef, enabled: false };
         // Registry/provider metadata is untrusted relative to the operator
         // binding authority. It can never author a reference.
-        delete persisted.secretEnvRefs;
-        await configLoader.saveIntegration(toolDef.id, persisted);
+        const persisted = withoutToolBindingReferences({
+          ...toolDef,
+          enabled: false,
+        });
+        await configLoader.saveIntegration(toolDef.id, persisted, {
+          externalDefaults: true,
+          ...('stationCuratedTrust' in installed &&
+          installed.stationCuratedTrust
+            ? { stationCuratedTrust: installed.stationCuratedTrust }
+            : {}),
+        });
         if ('origin' in installed && installed.origin)
           recordIntegrationOrigin(
             configLoader.getProjectHomeDir(),

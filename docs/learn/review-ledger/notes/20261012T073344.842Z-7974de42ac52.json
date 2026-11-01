@@ -1,0 +1,63 @@
+{
+  "revision": "77c0ca7892914313cd62e62dffc26462106a9bb3",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Updated the Status unavailable paragraph and added the failure-stack paragraph for this change: pill suppressed only while the recovery notice reports a failed check (ChatDockBody composerActivity), banner note gated on sendInvitable (open proven and orchestration:operate), Start new chat withheld from a device lacking operate, chords hidden on a coarse pointer. Each claim is exercised by ChatDockBody.sessionFailureBanner, ConversationOpenRecoveryNotice and NotificationContainer tests; the composer-menu chord is reasoned, not tested.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/ChatDockBody.sessionFailureBanner.test.tsx","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat/chat.css","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Added the recovery notice's Retry/Start new chat to the list of controls the entry sheet's (hover: none) block floors at 44px, matching the index.css selector added here; ChatDockFailureStack.geometry measures it at 1024x1366 touch. The phone-width __actions rule claim is unchanged and still covers the row at 390px.","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-action-surfaces.txt","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat/chat.css","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/testing.md","note":"vitest-resource-manifest gained one PROCESS_HEAVY entry (the Chromium geometry test). The guide describes the manifest's groups and ownership, not individual entries, so no prose change.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"The new Chromium geometry test is classified in scripts/vitest-resource-manifest.mjs as this file requires for child-process tests; no rule here changed, no prose change.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"docs/reference/api.md","note":"ChatDock.tsx change is UI-only (operate-scope gating of Start new chat on the picker recovery path, coarse-pointer command-launcher chord); no HTTP route, payload or scope semantics changed, so the chat-dock consumer link stays accurate. No prose change.","inputs":["docs/reference/api.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"ChatDock/ChatDockBody changes add no configuration, setting or environment input; checked the chat dock attachment re-send claim is unaffected. No prose change.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockBody.tsx"]},
+
+    {"path":"docs/design/collaborative-editor-pane.md","note":"index.css delta only moves the dock failure-banner inset to chat.css, sets .session-history-error to --k-text-sm and adds one (hover: none) selector; none touches the historical editor pane claims. No prose change.","inputs":["docs/design/collaborative-editor-pane.md","src-ui/src/index.css"]},
+
+    {"path":"docs/design/placement.md","note":"index.css/chat.css/ChatDock deltas are the dock failure-banner inset, recovery-notice type step and touch floor, plus a coarse-pointer chord; no placement, region or pane-chrome claim depends on them. No prose change.","inputs":["docs/design/placement.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat/chat.css","src-ui/src/index.css"]},
+
+    {"path":"docs/design/session-tape-replay.md","note":"index.css delta (failure-banner inset moved to chat.css, recovery-notice font token, one (hover: none) selector) does not touch replay surfaces. No prose change.","inputs":["docs/design/session-tape-replay.md","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/connections.md","note":"index.css delta is confined to the chat dock failure banner and recovery notice; no connections UI claim depends on it. No prose change.","inputs":["docs/guides/connections.md","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/knowledge.md","note":"index.css delta is confined to the chat dock failure banner and recovery notice; no Knowledge claim depends on it. No prose change.","inputs":["docs/guides/knowledge.md","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/starter-work.md","note":"index.css delta is confined to the chat dock failure banner and recovery notice; no starter-work claim depends on it. No prose change.","inputs":["docs/guides/starter-work.md","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/theming.md","note":"The recovery notice and failure banner now use the existing --k-text-sm token instead of --text-sm/0.82rem; theming rules (use --k-* tokens) are followed, no token added or renamed. No prose change.","inputs":["docs/guides/theming.md","docs/ui/responsive-action-surfaces.txt","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"index.css/chat.css deltas affect only the failed-session banner and recovery notice, which no walkthrough step shows. No prose change.","inputs":["docs/learn/walkthroughs.md","src-ui/src/index.css"]},
+
+    {"path":"docs/patterns/backend.md","note":"UI-only change (index.css failure-stack styles); no backend pattern claim affected. No prose change.","inputs":["docs/patterns/backend.md","docs/ui/responsive-action-surfaces.txt","src-ui/src/index.css"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Change follows the documented patterns: reuses useCoarsePointer and the authority context rather than a parallel helper, and styles through tokens. No claim here changed. No prose change.","inputs":["docs/patterns/frontend.md","docs/ui/responsive-action-surfaces.txt","src-ui/src/index.css"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"index.css delta is confined to the chat dock failure banner and recovery notice; no smoke-confidence claim depends on it. No prose change.","inputs":["docs/reference/agent-smoke-confidence.md","src-ui/src/index.css"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"index.css delta is confined to the chat dock failure banner and recovery notice; no Task room acceptance claim depends on it. No prose change.","inputs":["docs/reference/project-task-room-collaboration-acceptance.md","src-ui/src/index.css"]},
+
+    {"path":"docs/user/getting-started.md","note":"index.css/chat.css/ChatDock deltas change only failure-stack styling, operate-scope gating and coarse-pointer chord hints; checked the guide's chat and read-only statements are unaffected. No prose change.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat/chat.css","src-ui/src/index.css"]},
+
+    {"path":"examples/knowledge-library/README.md","note":"index.css delta is confined to the chat dock failure banner and recovery notice; the example's claims do not depend on it. No prose change.","inputs":["examples/knowledge-library/README.md","src-ui/src/index.css"]},
+
+    {"path":"src-desktop/icons/README.md","note":"index.css delta is confined to the chat dock failure banner and recovery notice; icon claims unaffected. No prose change.","inputs":["src-desktop/icons/README.md","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/project-with-task.png","note":"Reasoned: the index.css delta only restyles the failed-session banner and recovery notice, which this capture does not show; image not recaptured.","inputs":["docs/learn/media/project-with-task.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/shared-task-document.png","note":"Reasoned: the index.css delta only restyles the failed-session banner and recovery notice, which this capture does not show; image not recaptured.","inputs":["docs/learn/media/shared-task-document.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"Reasoned: the index.css delta only restyles the failed-session banner and recovery notice, which this capture does not show; image not recaptured.","inputs":["docs/learn/media/connections-models.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"Reasoned: the index.css delta only restyles the failed-session banner and recovery notice, which this capture does not show; image not recaptured.","inputs":["docs/learn/media/inspect-request.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Reasoned: the index.css delta only restyles the failed-session banner and recovery notice, which this recording does not show; not recaptured.","inputs":["docs/learn/media/inspect-request.webm","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"Reasoned: the index.css delta only restyles the failed-session banner and recovery notice, which this recording does not show; not recaptured.","inputs":["docs/learn/media/connections-tour.webm","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/repository-knowledge.png","note":"Reasoned: the index.css delta only restyles the failed-session banner and recovery notice, which this capture does not show; image not recaptured.","inputs":["docs/learn/media/repository-knowledge.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/repository-knowledge-narrow.png","note":"Reasoned: the index.css delta only restyles the failed-session banner and recovery notice, which this capture does not show; image not recaptured.","inputs":["docs/learn/media/repository-knowledge-narrow.png","src-ui/src/index.css"]}
+  ]
+}

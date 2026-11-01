@@ -1,0 +1,15 @@
+{
+  "revision": "72dae3e0e1f7b188d13b7da944959b6c6380bfcd",
+
+  "notes": [
+    {"path":"docs/guides/web-push-notifications.md","note":"Compared paired-device registration, hosted refusal and delivery limits to runtime route delta: plugin command Project/Task requirement checks do not change Web Push routing or device identity. No browser push delivery run.","inputs":["docs/guides/web-push-notifications.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/walkthroughs.md","note":"Compared preview gating, Project drive/view and import lifecycle to runtime route delta: plugin command requirement Project reads do not alter walkthrough authorization or publication rechecks. No recording or device journey run.","inputs":["docs/guides/walkthroughs.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Compared Starter dispatch correlation and personal-home mounting to runtime route delta: plugin command requirement checks are separate from Starter readiness and dispatch. No live Starter launch run.","inputs":["docs/guides/starter-work.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/pull-request-guides.md","note":"Compared guide generation, exact-head staleness and bound-operator tool limits to runtime route delta: plugin command requirement admission does not change review guide lifecycle. No model or forge journey run.","inputs":["docs/user/pull-request-guides.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Compared checkpoint preview, restore refusal and CLI limitation to runtime route delta: plugin command Project/Task requirement checks do not change checkpoint capture or restore. No packaged restore run.","inputs":["docs/user/workspace-checkpoints.md","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

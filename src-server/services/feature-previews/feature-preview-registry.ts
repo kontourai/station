@@ -93,6 +93,17 @@ export class FeaturePreviewRegistry {
       description:
         'Offer Continue on a chat turn a Station restart cut off. It sends the agent a short note to pick up where it stopped.',
     });
+    this.rememberConsumer({
+      id: 'task-collaboration',
+      label: 'Task collaboration',
+      description: 'Show member names and presence in shared Task rooms.',
+    });
+    this.rememberConsumer({
+      id: 'chat-apps',
+      label: 'Chat apps',
+      description:
+        'Show integration capability status and Task write-back history.',
+    });
     // Consumed by the start composers' "Use a visual skill" entry points. The
     // inventory route and authoring contract stay unconditional: hiding the
     // entry points does not change what an installed plugin may declare.
@@ -101,6 +112,12 @@ export class FeaturePreviewRegistry {
       label: 'Visual skills',
       description:
         'Offer installed visual skills when starting a chat: guided question rounds and optional plugin panes around a bundled Skill.',
+    });
+    this.rememberConsumer({
+      id: 'integration-content-trust',
+      label: 'Content trust settings',
+      description:
+        'Configure how tool servers and built-in tools behave after reading untrusted content.',
     });
     this.state = new GrantsFileStore<FeaturePreviewState>({
       filePath: featurePreviewStatePath(homeDir),

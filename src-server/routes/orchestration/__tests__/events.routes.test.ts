@@ -11,6 +11,7 @@ import {
   sessionReadAuthorityFromRequest,
   tenantId,
 } from '@kontourai/station-contracts/tenancy';
+import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   createGateTestRegistry,
@@ -23,6 +24,7 @@ import {
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import { UI_NAVIGATE_AUDIENCE_FIELD } from '../../projects/ui-commands.js';
+import { streamSSE } from '../../sse-response.js';
 
 // archive#1205: this file's new real-service ownership-gate suite imports
 // the real `OrchestrationService`, which (via `EventStore`) touches several
@@ -35,6 +37,7 @@ import { UI_NAVIGATE_AUDIENCE_FIELD } from '../../projects/ui-commands.js';
 // (`orchestrationEventsPersisted`).
 const {
   createEventRoutes,
+  createEventStreamProducer,
   isApprovalEvent,
   isNotificationEvent,
   isUiNavigateEvent,
@@ -49,6 +52,40 @@ const mockLogger = {
   error: vi.fn(),
   debug: vi.fn(),
 };
+
+describe('reusable event stream producer', () => {
+  test('uses the host request to filter project events and releases presence on disconnect', async () => {
+    const bus = new EventBus();
+    const release = vi.fn();
+    const producer = createEventStreamProducer({
+      eventBus: bus,
+      getACPStatus: () => ({ connected: false, connections: [] }),
+      logger: mockLogger,
+      connectClientSession: () => ({ touch: vi.fn(), release }),
+      canReadPluginDraftEvent: (data, c) =>
+        (data as { project: string }).project === c.req.header('x-project'),
+    });
+    const app = new Hono();
+    app.get('/shared', (c) => streamSSE(c, (stream) => producer(c, stream)));
+    const response = await app.request('/shared', {
+      headers: { 'x-project': 'allowed' },
+    });
+    bus.emit(SERVER_EVENTS.PLUGIN_DRAFTS_REBUILT, {
+      project: 'denied',
+      marker: 'secret',
+    } as never);
+    bus.emit(SERVER_EVENTS.PLUGIN_DRAFTS_REBUILT, {
+      project: 'allowed',
+      marker: 'visible',
+    } as never);
+    const payload = await readStreamUntil(response.body!, (text) =>
+      text.includes('visible'),
+    );
+    expect(payload).not.toContain('secret');
+    expect(payload).toContain('visible');
+    await vi.waitFor(() => expect(release).toHaveBeenCalledTimes(1));
+  });
+});
 
 describe('paired-device event-stream lifecycle', () => {
   test('keeps only one outstanding heartbeat write for a stalled reader', async () => {
@@ -263,6 +300,28 @@ function gatedChannelFixture(name: string): Record<string, unknown> {
 }
 
 describe('Event Routes (SSE)', () => {
+  test('principal notifications never enter the shared stream', async () => {
+    const bus = new EventBus();
+    const app = createEventRoutes({
+      eventBus: bus,
+      getACPStatus: () => ({ connected: false, connections: [] }),
+      logger: mockLogger,
+    });
+    const response = await app.request('/');
+    bus.emit(SERVER_EVENTS.NOTIFICATION_DELIVERED, {
+      id: 'private-notification',
+      metadata: { envelope: { audience: { kind: 'principal' } } },
+    });
+    bus.emit(SERVER_EVENTS.NOTIFICATION_DELIVERED, {
+      id: 'owner-notification',
+    });
+    bus.emit(SERVER_EVENTS.CONFIG_CHANGED, { marker: 'liveness' });
+    const payload = await readStreamUntil(response.body!, (text) =>
+      text.includes('"marker":"liveness"'),
+    );
+    expect(payload).not.toContain('private-notification');
+    expect(payload).toContain('owner-notification');
+  });
   test('GET / streams initial ACP status event', async () => {
     const bus = new EventBus();
     const app = createEventRoutes({

@@ -96,6 +96,7 @@ export function ConversationStats({
     <LazyBoundary
       load={loadConversationStatsModal}
       componentProps={{
+        context: { apiBase, conversationId },
         isVisible,
         isLoading,
         stats,

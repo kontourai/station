@@ -264,7 +264,7 @@ describe('ProjectLiveWorkSection', () => {
         'Blocked',
       ],
       running: ['Running'],
-      idle: ['Idle', 'Elsewhere'],
+      idle: ['Idle', 'Read only'],
     };
 
     mocks.sessions.push(
@@ -358,7 +358,7 @@ describe('ProjectLiveWorkSection', () => {
     ).toBeTruthy();
     expect(
       screen.getByRole('button', {
-        name: /Stranded request.*Elsewhere/i,
+        name: /Stranded request.*Read only/i,
       }),
     ).toBeTruthy();
   });

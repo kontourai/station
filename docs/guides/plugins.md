@@ -543,6 +543,17 @@ and need registry access; a local catalog does not promise a network-free build.
 | `smart-routing` | A provider plugin with no UI entrypoint |
 | `matt-pocock-engineering` | Attributed pinned Skills and five visual entry definitions; agent, project/tracker setup and authority remain prerequisites |
 
+The bundled **Integrations** catalog also offers Exa web search, Context7 and
+Microsoft Learn documentation, Lightpanda browsing and MarkItDown conversion.
+See [starter integration setup and qualification](../../examples/registry/integrations/README.md)
+for provider data boundaries, local runtime requirements and the public-registry
+direction. Adding an integration saves it disabled; configure and enable it in
+Connections before selecting it for an Agent.
+Remote HTTP/SSE entries have no executable to discover: their marketplace row
+shows installed state rather than `missing binary`. A catalog row does not
+attest that its remote connection or tools are working; inspect the connection
+probe and execute the required task separately.
+
 The fuller catalog at `examples/registry/manifest.json` adds examples that pull
 npm dependencies (`enterprise-layout`, `survey-review-workbench`,
 `fieldwork-review`). Point at it — or at your own manifest, or a hosted URL — by
@@ -1183,7 +1194,9 @@ Implements `listAvailable()`, `listInstalled()`, `install(id)`, and
 | `sync()` | `Promise<void>` |
 
 `getToolDef` returns the integration definition or `null` when this provider
-does not own the ID. `sync` reconciles that provider's definitions. The
+does not own the ID. Station's MCP subregistry sources are providers of this
+kind ([design](../design/mcp-subregistry-curation.md)); a refused entry
+answers `install` with its reasons and `getToolDef` with `null`. `sync` reconciles that provider's definitions. The
 [integration registry aggregator](../../src-server/providers/registries/integration-registry-provider.ts)
 calls both methods on its providers. `update(id)` and
 `installByCommand(command)` are optional. The
@@ -1544,6 +1557,24 @@ is no general pin-update/migration or user-facing code-rollback operation here.
 of managed recovery. See [Applied registry trust policy](../design/registry-trust-policy.md)
 and [installation lifecycle](../design/plugin-installation-lifecycle.md) for
 refusals, retention and the legacy path's limits.
+
+If an install and its compensation both fail, the error gives a retained
+backup id. Enable **Plugin recovery inventory** in **Settings → Advanced →
+Feature previews**. An operator can run `station plugin recovery-backups` against that
+Station to list the id, creation time, integration names, size, local path and
+manual recovery guidance. The API is `GET /api/plugins/recovery-backups` and
+requires the operator credential. Newly created backups carry their home
+identity; older backups without that identity are omitted because the shared
+temporary root may contain other Stations' backups. Find an older backup by
+its id and full path in the Station operator log.
+
+Stop Station and take a separate copy of its home and the retained backup.
+Compare the saved plugin and integrations with the current home, trust
+overlays and grant records. Preserve later person choices, and restore only
+reviewed components manually. Do not overwrite the entire registry-install
+file with its saved copy. Restart Station and review plugin permissions and
+integrations before enabling it. Automated restore is intentionally absent
+until a cross-store atomic boundary can protect newer state and grants.
 
 ## Build System
 

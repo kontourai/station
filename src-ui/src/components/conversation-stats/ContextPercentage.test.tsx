@@ -61,8 +61,8 @@ describe('ContextPercentage live ACP usage', () => {
     ) as HTMLElement;
     expect(button.getAttribute('style')).toBeNull();
     const fill = container.querySelector('.context-meter__fill') as HTMLElement;
-    expect(fill.style.transform).toBe('scaleX(0.6)');
-    expect(fill.style.background).toBe('var(--meter-mid)');
+    expect(fill.getAttribute('stroke-dasharray')).toBe('60 100');
+    expect(fill.style.stroke).toBe('var(--meter-mid)');
   });
 
   test('renders an exact zero-used observation as 0%', () => {

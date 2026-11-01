@@ -54,6 +54,7 @@ export const STATION_HOME_ROOTS: Readonly<
   '.review-evidence-coordination': 'state',
   '.storage-transactions': 'state',
   'action-operations.json': 'state',
+  'attention-snoozes.json': 'state',
   'agent-plugin-data': 'state',
   agents: 'state',
   analytics: 'state',
@@ -74,6 +75,7 @@ export const STATION_HOME_ROOTS: Readonly<
   'conversation-acknowledgements.json': 'state',
   'conversation-intent-summaries': 'state',
   'conversation-pull-request-links.json': 'state',
+  'conversation-work-state.json': 'state',
   coordination: 'state',
   data: 'state',
   'delegation-attempt-claims.json': 'state',
@@ -93,6 +95,7 @@ export const STATION_HOME_ROOTS: Readonly<
   // Versioned, pinned downloads are re-acquirable; trials retain older pins.
   'media-tools': 'external',
   'notifications.json': 'state',
+  'principal-notifications.json': 'state',
   // Reviewed commands and started-effect receipts must survive maintenance.
   'operator-setup': 'state',
   'plugin-grants.json': 'state',
@@ -106,6 +109,7 @@ export const STATION_HOME_ROOTS: Readonly<
   'project-resource-shadow.json': 'state',
   // Private source selections and AWS profile names; credentials stay with AWS.
   'project-s3-sources.json': 'state',
+  'project-working-configuration': 'state',
   projects: 'state',
   prompts: 'state',
   'proposed-changes.json': 'state',
@@ -129,6 +133,9 @@ export const STATION_HOME_ROOTS: Readonly<
   'terminal-sessions.json': 'state',
   'turn-checkpoints': 'state',
   'turn-checkpoints-evicted': 'state',
+  // #3483: durable untrusted-content marks per conversation. A protection,
+  // so it is restored with the conversations it marks.
+  'untrusted-conversation-marks.json': 'state',
   vectordb: 'state',
   workflows: 'state',
   'workspace-home-role.json': 'state',
@@ -267,6 +274,7 @@ export function containsExternalStationHomePath(
  */
 export const STATION_HOME_SQLITE_STORES: readonly (readonly string[])[] =
   Object.freeze([
+    // Includes chat-app links, bindings, kill switches and delivery receipts.
     ['data', 'orchestration.sqlite'],
     ['scheduler', 'scheduler.sqlite'],
     ['automation', 'automation.sqlite'],

@@ -14,6 +14,7 @@ import {
   StationHttpError,
 } from '@kontourai/station-sdk';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useClientBootstrapReadiness } from '../../contexts/AuthorityPersistenceContext';
 import {
   type ElidedHistorySummary,
   NO_ELIDED_HISTORY,
@@ -285,6 +286,7 @@ export function useSessionEventStream(
   isAuthorityCurrent?: () => boolean,
   authorityKey?: string,
 ): SessionEventStream {
+  const bootstrap = useClientBootstrapReadiness();
   const [events, setEvents] = useState<OrchestrationEvent[]>([]);
   const [connected, setConnected] = useState(false);
   const [nextCursor, setNextCursor] = useState<string | undefined>(undefined);
@@ -460,7 +462,7 @@ export function useSessionEventStream(
     persistedKeys.current = new Set();
     elidedReasons.current = new Map();
     epoch.current += 1;
-    if (!threadId) return;
+    if (!threadId || (shared && bootstrap.status !== 'settled')) return;
 
     let active = true;
     const isCurrent = () => active && (isAuthorityCurrent?.() ?? true);
@@ -907,8 +909,19 @@ export function useSessionEventStream(
             apiBase,
             options,
           );
-          ensureOrchestrationEventStream(apiBase, undefined, authorityKey);
-          return subscription;
+          const release = ensureOrchestrationEventStream(
+            apiBase,
+            undefined,
+            authorityKey,
+            false,
+            bootstrap.sharedRealtime,
+          );
+          return {
+            close: () => {
+              subscription.close();
+              release();
+            },
+          };
         }
       : fetchSSE;
     authenticatedStream = openStream(
@@ -1104,6 +1117,8 @@ export function useSessionEventStream(
     apiBase,
     threadId,
     shared,
+    bootstrap.status,
+    bootstrap.sharedRealtime,
     isAuthorityCurrent,
     authorityKey,
     apply,

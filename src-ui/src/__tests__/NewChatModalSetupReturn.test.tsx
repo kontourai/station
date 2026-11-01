@@ -7,6 +7,7 @@ import type {
   SkillExperienceDefinitionV1,
   SkillExperienceInventoryV1,
 } from '@kontourai/station-contracts/skill-experience';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
   cleanup,
@@ -60,6 +61,17 @@ vi.mock('@kontourai/station-sdk', () => ({
     refetch: experienceRead.refetch,
   }),
   useMaterializeEngineAgentMutation: () => ({ mutateAsync: vi.fn() }),
+  // The Station choice's reads; nothing here lists another Station.
+  useSshEnvironmentsQuery: () => ({
+    data: [],
+    isSuccess: true,
+    isError: false,
+  }),
+  usePeerCredentialsQuery: () => ({
+    data: [],
+    isSuccess: true,
+    isError: false,
+  }),
 }));
 const screenSize = vi.hoisted(() => ({ mobile: false }));
 vi.mock('../hooks/useIsMobile', async (importActual) => ({
@@ -211,13 +223,26 @@ function harness(props: Partial<Parameters<typeof NewChatModal>[0]> = {}) {
     requestAuthority: authority,
     projectIconBySlug: new Map<string, string>(),
   };
-  const view = render(<ModalHarness {...defaults} {...props} />);
+  // The start composer's Station control reads this caller's authority, as
+  // in the app, which always mounts it under a QueryClient.
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const view = render(
+    <QueryClientProvider client={client}>
+      <ModalHarness {...defaults} {...props} />
+    </QueryClientProvider>,
+  );
   return {
     ...view,
     onSelect,
     onClose,
     update: (next: Partial<Parameters<typeof NewChatModal>[0]>) =>
-      view.rerender(<ModalHarness {...defaults} {...props} {...next} />),
+      view.rerender(
+        <QueryClientProvider client={client}>
+          <ModalHarness {...defaults} {...props} {...next} />
+        </QueryClientProvider>,
+      ),
   };
 }
 async function openSetup() {
@@ -226,11 +251,11 @@ async function openSetup() {
   await waitFor(() =>
     expect(navigationStore.getSnapshot().pathname).toMatch(/^\/connections/),
   );
-  expect(screen.queryByRole('dialog', { name: 'New Chat' })).toBeNull();
+  expect(screen.queryByRole('region', { name: 'New Chat' })).toBeNull();
 }
 async function returnToChat() {
   fireEvent.click(screen.getByRole('button', { name: 'Return to New Chat' }));
-  await screen.findByRole('dialog', { name: 'New Chat' });
+  await screen.findByRole('region', { name: 'New Chat' });
 }
 beforeAll(() => {
   window.matchMedia = vi.fn().mockReturnValue({
@@ -422,7 +447,7 @@ describe('New Chat repair and return', () => {
     // No restore: the user walks back themselves, through a write that closes
     // the dock. The comparison is all that decides between resume and cancel.
     act(() => navigationStore.navigate('/', { dock: null }));
-    await screen.findByRole('dialog', { name: 'New Chat' });
+    await screen.findByRole('region', { name: 'New Chat' });
     expect(view.onClose).not.toHaveBeenCalled();
   });
 
@@ -430,13 +455,29 @@ describe('New Chat repair and return', () => {
     const view = harness();
     await openSetup();
     act(() => navigationStore.navigate('/'));
-    await screen.findByRole('dialog', { name: 'New Chat' });
+    await screen.findByRole('region', { name: 'New Chat' });
     await openSetup();
     act(() => navigationStore.navigate('/settings'));
     expect(view.onClose).toHaveBeenCalledTimes(1);
     expect(
       screen.queryByRole('button', { name: 'Return to New Chat' }),
     ).toBeNull();
+  });
+  // Navigating away from setup is leaving the draft (the dock keeps the size
+  // that navigation asked for), while the banner's Cancel return dismisses it.
+  test('navigating away from setup leaves the draft; Cancel return dismisses it', async () => {
+    const onLeave = vi.fn();
+    const view = harness({ onLeave });
+    await openSetup();
+    act(() => navigationStore.navigate('/settings'));
+    expect(onLeave).toHaveBeenCalledTimes(1);
+    expect(view.onClose).not.toHaveBeenCalled();
+    view.unmount();
+    const second = harness({ onLeave });
+    await openSetup();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel return' }));
+    expect(second.onClose).toHaveBeenCalledTimes(1);
+    expect(onLeave).toHaveBeenCalledTimes(1);
   });
   test('cancel and unmount clear the exact banner', async () => {
     const view = harness();
@@ -583,11 +624,11 @@ test('return waits for the owning setup form navigation guard', async () => {
   );
   try {
     fireEvent.click(screen.getByRole('button', { name: 'Return to New Chat' }));
-    expect(screen.queryByRole('dialog', { name: 'New Chat' })).toBeNull();
+    expect(screen.queryByRole('region', { name: 'New Chat' })).toBeNull();
     expect(navigationStore.getSnapshot().pathname).toMatch(/^\/connections/);
     await waitFor(() => expect(continueNavigation).toBeTypeOf('function'));
     act(() => continueNavigation?.());
-    await screen.findByRole('dialog', { name: 'New Chat' });
+    await screen.findByRole('region', { name: 'New Chat' });
   } finally {
     unregister();
   }
@@ -602,17 +643,17 @@ test('refetch promises fence immediate interaction before fetching notifications
     () => new Promise<void>((resolve) => settle.push(resolve)),
   );
   fireEvent.click(screen.getByRole('button', { name: 'Return to New Chat' }));
-  expect(screen.queryByRole('dialog', { name: 'New Chat' })).toBeNull();
+  expect(screen.queryByRole('region', { name: 'New Chat' })).toBeNull();
   expect(view.onSelect).not.toHaveBeenCalled();
   await waitFor(() => expect(settle).toHaveLength(2));
   await act(async () => {
     settle[0]();
   });
-  expect(screen.queryByRole('dialog', { name: 'New Chat' })).toBeNull();
+  expect(screen.queryByRole('region', { name: 'New Chat' })).toBeNull();
   await act(async () => {
     settle[1]();
   });
-  await screen.findByRole('dialog', { name: 'New Chat' });
+  await screen.findByRole('region', { name: 'New Chat' });
   expect(view.onSelect).not.toHaveBeenCalled();
 });
 
@@ -629,7 +670,7 @@ test('cancel during revalidation retires the pending continuation', async () => 
   await act(async () => {
     settle.forEach((resolve) => resolve());
   });
-  expect(screen.queryByRole('dialog', { name: 'New Chat' })).toBeNull();
+  expect(screen.queryByRole('region', { name: 'New Chat' })).toBeNull();
   expect(view.onClose).toHaveBeenCalledTimes(1);
   expect(view.onSelect).not.toHaveBeenCalled();
 });
@@ -660,7 +701,7 @@ test('opening repair from the same Connections route stays in setup', async () =
   harness();
   await openSetup();
   await act(async () => {});
-  expect(screen.queryByRole('dialog', { name: 'New Chat' })).toBeNull();
+  expect(screen.queryByRole('region', { name: 'New Chat' })).toBeNull();
   expect(
     screen.getByRole('button', { name: 'Return to New Chat' }),
   ).toBeTruthy();
@@ -680,7 +721,7 @@ test('same-path query restoration honors a rejecting dirty-form guard', async ()
   try {
     fireEvent.click(screen.getByRole('button', { name: 'Return to New Chat' }));
     await act(async () => {});
-    expect(screen.queryByRole('dialog', { name: 'New Chat' })).toBeNull();
+    expect(screen.queryByRole('region', { name: 'New Chat' })).toBeNull();
     expect(new URLSearchParams(window.location.search).get('selected')).toBe(
       'editing',
     );
@@ -721,7 +762,7 @@ test.each(['cancel', 'authority loss'] as const)(
       }
       await act(async () => approve?.());
       expect(navigationStore.isCurrentLocation(repairLocation)).toBe(true);
-      expect(screen.queryByRole('dialog', { name: 'New Chat' })).toBeNull();
+      expect(screen.queryByRole('region', { name: 'New Chat' })).toBeNull();
       expect(view.onClose).toHaveBeenCalledTimes(1);
     } finally {
       unregister();
@@ -773,7 +814,7 @@ test('a refused setup navigation restores the draft with feedback instead of lea
   try {
     fireEvent.click(screen.getByRole('button', { name: 'Connect Assistant' }));
     await screen.findByText(/Could not open setup/);
-    expect(screen.getByRole('dialog', { name: 'New Chat' })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'New Chat' })).toBeTruthy();
     expect(
       screen.queryByRole('button', { name: 'Return to New Chat' }),
     ).toBeNull();

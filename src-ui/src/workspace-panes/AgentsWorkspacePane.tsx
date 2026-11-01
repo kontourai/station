@@ -18,6 +18,7 @@ import {
 import { Empty, ErrorState, SkeletonBlock } from '../components/state';
 import { useAgents } from '../contexts/AgentsContext';
 import { useApiBase } from '../contexts/ApiBaseContext';
+import { useClientBootstrapReadiness } from '../contexts/AuthorityPersistenceContext';
 import type { ChatUIState } from '../contexts/active-chats-state';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import {
@@ -193,10 +194,24 @@ export function AgentsWorkspacePane() {
   // with the stream so read-model facts (a new delegate's first turn) reach
   // the sessions query this pane reads, with or without a dock mounted.
   const queryClient = useQueryClient();
-  useEffect(
-    () => ensureOrchestrationEventStream(apiBase, queryClient),
-    [apiBase, queryClient],
-  );
+  const bootstrap = useClientBootstrapReadiness();
+  const streamAuthorityKey = bootstrap.authorityKey;
+  useEffect(() => {
+    if (bootstrap.status !== 'settled') return;
+    return ensureOrchestrationEventStream(
+      apiBase,
+      queryClient,
+      streamAuthorityKey,
+      false,
+      bootstrap.sharedRealtime,
+    );
+  }, [
+    apiBase,
+    queryClient,
+    streamAuthorityKey,
+    bootstrap.status,
+    bootstrap.sharedRealtime,
+  ]);
 
   // D2: a cached session list can predate work that started while this pane
   // was closed; the query does not refetch on mount, and the stream's

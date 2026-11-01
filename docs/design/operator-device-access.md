@@ -7,8 +7,15 @@
 > The merged runtime also implements #3257 S2b consent-origin passkey enrollment
 > and host administration; see [Operator passkeys](../guides/operator-passkeys.md).
 > S3 adds consent-origin sign-in and device-bound, read-only operator sessions.
-> S4 implements per-action step-up with no reusable window. The dated body below retains the original
+> S4 implements per-action step-up with no reusable window. #4306 adds one target
+> outside the owner-approved table below: `project-sharing-enable`, fingerprint
+> `{slug, localProjectId, ownerId}`; see the
+> [threat model](../security/remote-access-threat-model.md). The dated body below retains the original
 > design assumptions and line citations; it is not a complete current-state inventory.
+
+The later pairing approval flow also permits an operator session to request a
+passkey review for an ordinary Device request. It does not enable the remote
+CLI or native-app scenarios excluded by the historical D9 decision below.
 
 A separate scoped administration path now accepts an explicitly promoted
 `access:devices` Device for existing-device list/scope/revoke/remove operations,
@@ -22,6 +29,9 @@ This grants no operator identity. Its invitations, request approvals and scope
 introductions cannot transfer protected administration or consent scopes;
 `coding:exec` and `approval:full-access` remain explicit Device-use grants.
 Native consent custody stays separate.
+Account-bound browser approval now uses the same passkey-only
+`device-access-change` transaction, with the pending request and account pinned
+and rechecked at commit. The host CLI retains its operator-credential path.
 The dated passkey proposal below remains the separate operator-session design;
 its former blanket ordinary-device refusals are historical assumptions.
 

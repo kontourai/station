@@ -85,37 +85,19 @@ export type DeliveryChannel =
  *   spawn env, safe because the Claude Agent SDK spawns the MCP child
  *   itself inside Station's own process (see
  *   `claude-mcp-passthrough.ts`'s header comment).
- * - `'url-token'` — Codex (wire channel): env can never cross
- *   (Codex independently manages its own MCP connections), so the
- *   substitution is a per-session, short-lived, scoped bearer token minted
- *   fresh per session and delivered in the station-control HTTP/SSE MCP
- *   endpoint's URL query string — never as env, never persisted to disk
- *   (see `station-control-mcp-token.ts` and `codex-mcp-passthrough.ts`).
- * - `'http-header-token'` — ACP (wire channel). Env can never cross — the
- *   connected agent app
- *   reads the whole `session/new` payload — and unlike Codex there is no
- *   spawn-time argv to carry a URL out of band: here the payload IS the
- *   wire, so a query-string token would be a credential sitting in a URL
- *   the external app may log, store, or echo back. The substitution is
- *   therefore the SAME per-session, 12-hour-TTL, station-control-scoped
- *   bearer token (`station-control-mcp-token.ts` `DEFAULT_TTL_MS`) presented
- *   in an
- *   `Authorization: Bearer` header on an ACP `type: 'http'` MCP server
- *   entry (`McpServerHttp.headers`) pointing at Station's own
- *   station-control endpoint — ACP's designated channel for MCP
- *   credentials, and one `station-control-mcp-route.ts` already accepts.
- *   The URL itself carries no token at all
- *   (`buildStationControlMcpHeaderUrl`). Delivery lives in
- *   `acp-mcp-passthrough.ts`; the per-connection gate that decides whether
- *   this mechanism may be used AT ALL lives in `acp-adapter.ts` — see
- *   `basis` below, and note that the gate, not this cell, is what makes the
- *   claim true for one session.
+ * - `'url-token'` — retained legacy wire delivery. The URL contains a scoped
+ *   bearer, so possession is bearer-exposed rather than bound.
+ * - `'http-header-token'` — Codex's private thread/start, thread/resume and
+ *   thread/fork JSON-RPC configuration carries a header-only bearer. ACP
+ *   carries it in its declared HTTP MCP header field, but only after its live
+ *   initialize handshake advertises HTTP MCP support. Both are delegated
+ *   custody: moving a credential off argv does not prove connection binding.
  *
  * ## Why this is an object with a `basis`, not a bare string
  *
  * The two shipped mechanisms are *statically* true of their engine: Claude's
- * SDK owns the MCP child, Codex's `-c` session overrides are confirmed
- * per-process semantics. Neither varies per connection, so their basis is
+ * SDK owns the MCP child, Codex's private thread configuration accepts
+ * HTTP headers. Neither varies per connection, so their basis is
  * `'declared'` — a reviewed, permanent property of the engine class.
  *
  * ACP's HTTP MCP transport is NOT statically knowable: it is an optional,
@@ -151,6 +133,7 @@ export type DeliveryChannel =
 export type BuiltinStationControlDelivery =
   | { mechanism: 'env'; basis: 'declared' }
   | { mechanism: 'url-token'; basis: 'declared' }
+  | { mechanism: 'http-header-token'; basis: 'declared' }
   | {
       mechanism: 'http-header-token';
       basis: 'runtime_observation';
@@ -321,10 +304,12 @@ export type BuiltInToolsCell =
  * label-without-derivation defect. NO external engine has
  * a wired per-tool disable:
  *
- * - claude: the Claude Agent SDK exposes `disallowedTools`, but
- *   `claude-adapter.ts buildOptions` does not pass it — an upstream option
- *   is not a wired path (the same actually-ships-today rule as codex's
- *   `systemPrompt` cell above).
+ * - claude: `claude-adapter.ts buildOptions` passes the SDK's
+ *   `disallowedTools` only for an Agent's MCP tool selection and to keep
+ *   the `Artifact` tool off while `claudeArtifactsEnabled` is off. Nothing
+ *   carries a per-built-in-tool disable from a person to it, so no control
+ *   is wired (the same actually-ships-today rule as codex's `systemPrompt`
+ *   cell above).
  * - codex: `approvalPolicy`/`sandbox` knobs (codex-approval-mode.ts) are
  *   MODE-level gates over execution, not per-tool disables.
  * - muse / acp / unknown: no channel exists at all.
@@ -969,12 +954,12 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
       evidence:
         "tool identity at the PreToolUse/canUseTool policy seam (claude-adapter.test.ts pins 'Bash' rules and exercises 'Read')",
     },
-    // The SDK's `disallowedTools` option exists UNWIRED — see
-    // BuiltInToolControlCell's audit note. No control may render for this
-    // engine until an adapter wires and proves it.
+    // No per-built-in-tool control is wired — see BuiltInToolControlCell's
+    // audit note. No control may render for this engine until an adapter
+    // wires and proves it.
     builtInToolControl: {
       state: 'none',
-      note: 'SDK disallowedTools exists but claude-adapter does not pass it',
+      note: 'claude-adapter passes SDK disallowedTools only for MCP tool selection and the Artifact setting',
     },
   },
   codex: {
@@ -1021,26 +1006,13 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     // itself decides how to reach each configured MCP server, exactly the
     // "external, less-trusted process spawns its own MCP children"
     // property `DeliveryChannel`'s doc comment names for 'wire'. The
-    // canonical built-in station-control server is exempted from the
-    // resolver's blanket env rejection via `builtinStationControlDelivery:
-    // 'url-token'` — NOT by broadening 'wire' env exemptions generally
-    // (ACP is also 'wire' and delivers station-control
-    // too, but it names its OWN mechanism — 'http-header-token', on its own
-    // evidence basis — rather than inheriting this one. Two engines, one
-    // channel, two independent substitutions: exactly what
-    // keying on this FIELD rather than on the channel buys) — because
-    // codex-mcp-passthrough.ts
-    // never forwards env at all: it mints a short-lived, per-session,
-    // station-control-scoped bearer token (station-control-mcp-token.ts)
-    // and substitutes a `url` config value pointing at Station's own
-    // HTTP/SSE MCP endpoint for station-control, with the token riding the
-    // URL's query string — the one part of a wire payload that is safe to
-    // cross this channel.
+    // Built-in credentials travel in private thread JSON-RPC configuration;
+    // authored third-party server definitions keep their existing overrides.
     toolServers: {
       state: 'session',
       channel: 'wire',
       builtinStationControlDelivery: {
-        mechanism: 'url-token',
+        mechanism: 'http-header-token',
         basis: 'declared',
       },
     },
@@ -1215,7 +1187,7 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     instructionsInFirstTurn: { state: 'session', channel: 'first-turn' },
     // archive#888/archive#895 (authored passthrough), archive#1684 (the built-in server).
     //
-    // Mechanism 'http-header-token', NOT codex's 'url-token', even though
+    // Mechanism 'http-header-token', runtime-observed rather than Codex's declared headers, even though
     // both are the same 'wire' channel: an ACP `session/new` payload is
     // itself the thing the external agent app receives and keeps, so a
     // token in a URL query string would be a credential written into a
@@ -1475,7 +1447,7 @@ export interface ControlPlaneObservation {
  *
  * - "full" ⟺ station-control is actually deliverable to this subject now:
  *   Station's own engine (`native`); a `basis: 'declared'` mechanism (Claude
- *   Code's `'env'` over its subprocess channel; Codex's `'url-token'`
+ *   Code's `'env'` over its subprocess channel; Codex's `'http-header-token'`
  *   over its wire channel), which is statically true of the engine
  *   class and ignores the observation entirely; or a
  *   `basis: 'runtime_observation'` mechanism whose observation says yes.
@@ -1552,7 +1524,7 @@ export function engineControlPlaneCapability(
  * a surface explaining "these are the engines that can run the built-in
  * assistant" cannot drift from what the resolver will actually accept. When
  * an engine's cell gains a `builtinStationControlDelivery` mechanism (as
- * Codex's does with `'url-token'`) its name appears here on the
+ * Codex's does with `'http-header-token'`) its name appears here on the
  * same commit, with no copy change anywhere.
  *
  * An engine the canonical label function cannot name is omitted rather than

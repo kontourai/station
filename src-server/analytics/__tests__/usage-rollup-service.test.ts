@@ -1,7 +1,10 @@
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { usageCredentialAccountKey } from '../../providers/app-home/app-home-profiles.js';
-import type { UsageReceiptSource } from '../usage-rollup-service.js';
+import type {
+  UsageReceiptSource,
+  UsageRollupReadAuthority,
+} from '../usage-rollup-service.js';
 import {
   RemoteStationUsageReceiptSource,
   UsageRollupService,
@@ -540,4 +543,73 @@ describe('UsageRollupService (station#4135)', () => {
       oversized.read(request, authority, new AbortController().signal),
     ).rejects.toThrow(/byte limit/);
   });
+});
+
+test('Task outcome joins use full-window canonical receipts and exact Station identity, preserving unknown outcomes and zero reports', async () => {
+  const receipts = ['local', 'peer'].map((stationId) => ({
+    id: `${stationId}-usage`,
+    stationId,
+    provider: 'engine',
+    taskId: 'same-id',
+    observedAt: '2026-08-10T00:00:00.000Z',
+    reportedCost: { amount: 0, currency: 'USD' },
+    pricing: { status: 'unpriced' as const },
+  }));
+  const read = vi.fn(
+    async (
+      tasks: readonly { stationId: string; taskId: string }[],
+      passedAuthority: UsageRollupReadAuthority,
+    ) => {
+      expect(passedAuthority).toBe(authority);
+      expect(tasks).toEqual([
+        { stationId: 'local', taskId: 'same-id' },
+        { stationId: 'peer', taskId: 'same-id' },
+      ]);
+      return new Map([
+        [
+          '["local","same-id"]',
+          {
+            state: 'available' as const,
+            taskCreatedAt: '2026-08-01T00:00:00.000Z',
+            status: 'done' as const,
+          },
+        ],
+      ]);
+    },
+  );
+  const sources: UsageReceiptSource[] = receipts.map((receipt) => ({
+    stationId: receipt.stationId,
+    read: async () => ({
+      receipts: [],
+      aggregateReceipts: [receipt],
+      coverage: {
+        stationId: receipt.stationId,
+        state: 'complete',
+        window: request,
+      },
+    }),
+  }));
+  const result = await new UsageRollupService(sources, [], { read }).read(
+    request,
+    authority,
+  );
+  expect(result.receipts).toEqual([]);
+  expect(result.taskOutcomes).toEqual([
+    {
+      stationId: 'local',
+      taskId: 'same-id',
+      receiptCount: 1,
+      reportedCostBuckets: [{ amount: 0, currency: 'USD' }],
+      state: 'available',
+      taskCreatedAt: '2026-08-01T00:00:00.000Z',
+      status: 'done',
+    },
+    {
+      stationId: 'peer',
+      taskId: 'same-id',
+      receiptCount: 1,
+      reportedCostBuckets: [{ amount: 0, currency: 'USD' }],
+      state: 'unavailable',
+    },
+  ]);
 });

@@ -21,6 +21,7 @@ import {
   engineConnectionId,
   engineId,
 } from '@kontourai/station-contracts/agent-identity';
+import { CLAUDE_ARTIFACT_TOOL_NAME } from '@kontourai/station-contracts/claude-artifact';
 import { STEERING_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
 import {
   type ConfinementFallbackReason,
@@ -34,6 +35,7 @@ import type {
   ProviderContinuityCapabilities,
   ProviderSessionSourceAffinity,
   ResolvedAgentDefinition,
+  ResolvedAgentToolServer,
 } from '@kontourai/station-contracts/provider';
 import {
   APPROVAL_ESCALATION_REQUIRES_RESTART_CODE,
@@ -42,6 +44,7 @@ import {
   NATIVE_RESUME_BINDING_METADATA_KEY,
   NATIVE_RESUME_IDENTITY_METADATA_KEY,
   readApprovalMode,
+  SESSION_CAPABILITY_DELIVERY_METADATA_KEY,
   SYSTEM_PROMPT_CAPABILITY_ID,
 } from '@kontourai/station-contracts/provider';
 import { CONFINED_FULL_ACCESS_UNAVAILABLE_CODE } from '@kontourai/station-contracts/provider-failure';
@@ -76,6 +79,7 @@ import {
   type PreToolPolicyDecision,
   type StagedPreToolPolicyEvaluator,
 } from '../../runtime/agents/pre-tool-policy.js';
+import { builtinStationApiServerId } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import {
   canonicalizeExternalToolName,
   isAuthenticStationBrowserCall,
@@ -158,11 +162,16 @@ import {
 import { effectiveModelMetadata } from '../llm/effective-model-metadata.js';
 import { providerFailure } from '../provider-failure.js';
 import {
+  classifyEngineStartupFailure,
+  engineStartupFailureEvent,
+} from '../provider-startup-failure.js';
+import {
   decodeChatAttachments,
   decodeUtf8Attachment,
 } from '../sessions/chat-attachments.js';
 import { snapshotSessionSourceAffinity } from '../sessions/session-source-affinity.js';
 import { resolveConfigHomeAffinity } from '../sessions/transcript-file-io.js';
+import { toPassthroughToolDef } from './agent-tool-server-mapping.js';
 import {
   assertExecutionOverrideDelivery,
   mergeCapabilityDeliveryMetadata,
@@ -702,8 +711,23 @@ type ClaudeSessionRecord = {
   deliveryProbeServerId?: string;
   /** #2932: the redacted end of the engine's stderr (claude-code-spawn.ts). */
   engineStderrTail?: () => string;
+  /**
+   * The SDK stream failed and the `claude` process was seen to exit, so its
+   * still-running subagents settle `interrupted`.
+   */
+  engineDied?: boolean;
+  /** `stopSession` began: a stream failure after it is the stop, not a death. */
+  stopping?: boolean;
   promptQueue: AsyncUserMessageQueue;
   query: Query;
+  mcpServers: Record<string, McpServerConfig>;
+  tenantExecutionContext?: TenantExecutionContext;
+  configuredMetadata?: Record<string, unknown>;
+  coordinatorControlState?: 'pending' | 'ready' | 'uncertain';
+  coordinatorControlExpected?: readonly string[];
+  coordinatorControlGeneration?: number;
+  coordinatorKnowledgeGeneration?: number;
+  stationControlBuiltin: boolean;
   pendingRequests: Map<string, PendingRequest>;
   /** Mirrors `ClaudeMessageState.activeTurnId`; derived from `sdkTurns`. */
   activeTurnId?: string;
@@ -881,6 +905,30 @@ function claudeConnectionEnvForSpawn(
 /** Matches the `any`-typed logger convention used across `providers/adapters` (e.g. AcpAdapterOptions.logger). */
 type ClaudeAdapterLogger = any;
 
+interface ClaudeArtifactsSpawnEnv {
+  CLAUDE_CODE_ARTIFACT: '1' | '0';
+}
+
+/**
+ * The env that turns Claude Code's Artifact tool on or off for one spawn,
+ * from `AppConfig.claudeArtifactsEnabled`.
+ *
+ * The CLI keeps the tool off under the Agent SDK unless
+ * `CLAUDE_CODE_ARTIFACT` is truthy, and a defined falsy value (`0`) turns
+ * it off before any other enable (including
+ * `CLAUDE_CODE_BRIDGE_CHILD_ARTIFACT`) is consulted (Claude Code 0.3.304
+ * bundle). Off is therefore written as `0`, not left unset: the setting is
+ * authoritative, so an ambient enable in Station's own environment, or one
+ * in the connection's `env` map, cannot publish to claude.ai while Settings
+ * shows the tool off. `buildOptions` also disallows the tool when off,
+ * because a Claude settings file's `env` block can set the variable back
+ * to `1` inside the CLI. The engine still offers the tool only to a
+ * first-party claude.ai subscription login.
+ */
+function claudeArtifactsSpawnEnv(enabled: boolean): ClaudeArtifactsSpawnEnv {
+  return { CLAUDE_CODE_ARTIFACT: enabled === true ? '1' : '0' };
+}
+
 export interface ClaudeAdapterOptions {
   resolveMcpOAuth?: EngineMcpOAuthResolver;
   resolveSourceHome?: (
@@ -983,6 +1031,12 @@ export interface ClaudeAdapterOptions {
    * credentials, so it never blocks a session start.
    */
   getConnectionEnv?: () => Promise<Record<string, string> | undefined>;
+  /**
+   * `AppConfig.claudeArtifactsEnabled`, read at each session start (never by
+   * a running session). Absent or failing reads as off. See
+   * {@link claudeArtifactsSpawnEnv} for what reaches the spawn.
+   */
+  getArtifactsEnabled?: () => Promise<boolean>;
   getConnectionLaunch?: () => Promise<ReturnType<typeof engineProxyLaunch>>;
   /**
    * Station#1157 review fix (MEDIUM): the running instance's own
@@ -1012,10 +1066,25 @@ export interface ClaudeAdapterOptions {
     tenantExecutionContext?: TenantExecutionContext,
     allowedTools?: readonly string[],
   ) => unknown;
+  /** Current designation, resolved from Station's durable ownership. */
+  isCoordinatorSession?: (threadId: string) => boolean;
+  coordinatorGenerationForSession?: (threadId: string) => number;
+  /** Re-resolve the designated Agent's selected, canonical Station Control server. */
+  resolveCoordinatorStationControl?: (
+    threadId: string,
+  ) => Promise<ResolvedAgentToolServer | undefined>;
+  /** Separate, designation-scoped in-process credential for a live refresh. */
+  createInProcessCoordinatorStationControl?: (
+    threadId: string,
+    tenantExecutionContext?: TenantExecutionContext,
+    allowedTools?: readonly string[],
+    generation?: number,
+  ) => unknown;
   createInProcessStationKnowledge?: (
     threadId: string,
     tenantExecutionContext?: TenantExecutionContext,
     allowedTools?: readonly string[],
+    generation?: number,
   ) => unknown;
   /**
    * #90 D14: serves the built-in browser tools (`station-browser`) IN-PROCESS
@@ -1393,7 +1462,35 @@ async function evaluateClaudePreToolPolicy(
   }
 }
 
+async function coordinatorMcpDeadline<T>(operation: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error('Coordinator tool refresh timed out')),
+          10_000,
+        );
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export class ClaudeAdapter implements ProviderAdapterShape {
+  readonly coordinatorToolsRefresh = true as const;
+  coordinatorToolsNeedSuccessor(threadId: string): boolean {
+    const record = this.sessions.get(threadId);
+    const generations = [
+      record?.coordinatorControlGeneration,
+      record?.coordinatorKnowledgeGeneration,
+    ].filter((value): value is number => value !== undefined);
+    if (generations.length === 0) return false;
+    const current = this.options.coordinatorGenerationForSession?.(threadId);
+    return generations.some((generation) => current !== generation);
+  }
   readonly provider = 'claude' as const;
   readonly adoptionLifecycle = 'reported' as const;
   private readonly continuity: ProviderContinuityCapabilities = {
@@ -1536,6 +1633,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         !sourceCursor,
       );
       const augmentedEnv = await this.resolveAugmentedSpawnEnv();
+      const artifactsEnv = await this.resolveArtifactsEnv();
       const preToolPolicy = await this.resolvePreToolPolicy(input);
       const oauthTokens = await this.options.resolveMcpOAuth?.(input);
       const claudeExecutable = launchedClaudeExecutable(
@@ -1562,6 +1660,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           connectionLaunch?.route,
           undefined,
           oauthTokens,
+          artifactsEnv,
         );
       const seatbelt = await this.prepareSeatbeltStart(input, {
         appHomeEnv,
@@ -1584,6 +1683,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         connectionLaunch?.route,
         seatbelt.confined,
         oauthTokens,
+        artifactsEnv,
       );
       if (seatbelt.fallback)
         this.publishConfinementFallback(input.threadId, seatbelt.fallback);
@@ -1857,6 +1957,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         false,
       );
       const augmentedEnv = await this.resolveAugmentedSpawnEnv();
+      const artifactsEnv = await this.resolveArtifactsEnv();
       const preToolPolicy = await this.resolvePreToolPolicy(input);
       const oauthTokens = await this.options.resolveMcpOAuth?.(input);
       const claudeExecutable = launchedClaudeExecutable(
@@ -1877,6 +1978,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           connectionLaunch?.route,
           undefined,
           oauthTokens,
+          artifactsEnv,
         );
       const session = await this.startTrackedSession(
         { ...input, resumeCursor, persistSession: true },
@@ -1892,6 +1994,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         connectionLaunch?.route,
         undefined,
         oauthTokens,
+        artifactsEnv,
       );
       this.publishConfinementFallback(input.threadId, adoptionFallback);
       return session;
@@ -2008,6 +2111,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     modelRoute?: ReturnType<typeof engineProxyLaunch>['route'],
     seatbelt?: SeatbeltStart,
     oauthTokens?: ReadonlyMap<string, string>,
+    artifactsEnv: ClaudeArtifactsSpawnEnv = claudeArtifactsSpawnEnv(false),
   ): ProviderSession | Promise<ProviderSession> {
     const now = new Date().toISOString();
     const promptQueue = new AsyncUserMessageQueue();
@@ -2133,6 +2237,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
             hostBypassGrant ||
             permissionMode === 'bypassPermissions',
           sessionTmpDir,
+          artifactsEnv,
         ),
       });
     } catch (error) {
@@ -2172,6 +2277,26 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         (nativeId && this.options.nativeSessionOwnership ? true : undefined),
       promptQueue,
       query: sdkQuery,
+      mcpServers: { ...toolServers.mcpServers, ...builtinServers },
+      coordinatorControlGeneration: input.agent?.toolServers?.find(
+        (server) =>
+          server.id === 'station-control' && server.coordinatorDerived,
+      )?.coordinatorGeneration,
+      coordinatorKnowledgeGeneration: input.agent?.toolServers?.find(
+        (server) =>
+          server.id === 'station-knowledge' && server.coordinatorDerived,
+      )?.coordinatorGeneration,
+      stationControlBuiltin:
+        input.agent?.toolServers?.some(
+          (server) =>
+            builtinStationApiServerId(
+              server.id,
+              toPassthroughToolDef(server),
+            ) === 'station-control',
+        ) === true,
+      ...(input.tenantExecutionContext
+        ? { tenantExecutionContext: input.tenantExecutionContext }
+        : {}),
       pendingRequests: new Map(),
       approvedTools: new Set(),
       serverGrants: new Set(),
@@ -2343,6 +2468,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
 
       configuredMetadata[MODEL_SELECTION_RECEIPT_METADATA_KEY] =
         modelSelectionReceipt(input.modelId, record.session.model);
+      record.configuredMetadata = configuredMetadata;
 
       this.publish({
         eventId: crypto.randomUUID(),
@@ -2428,7 +2554,187 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         'busy',
       );
     this.refuseSendWhileTurnOwed(record);
+    if (this.options.isCoordinatorSession?.(input.threadId)) {
+      await this.ensureCoordinatorControl(record);
+      this.refuseSendWhileTurnOwed(record);
+    }
     return this.dispatchTurn(record, input, crypto.randomUUID());
+  }
+
+  private async ensureCoordinatorControl(
+    record: ClaudeSessionRecord,
+  ): Promise<void> {
+    const threadId = record.session.threadId;
+    if (
+      !this.options.isCoordinatorSession?.(threadId) ||
+      record.coordinatorControlState === 'ready'
+    )
+      return;
+    if (
+      record.mcpServers['station-control'] &&
+      !record.coordinatorControlState
+    ) {
+      if (record.stationControlBuiltin) return;
+      throw new SendTurnRefusedError(
+        'A different station-control server is configured. Choose another name before enabling coordinator tools.',
+        'provider_error',
+      );
+    }
+    const refuse = () =>
+      new SendTurnRefusedError(
+        'Station could not confirm the coordinator tools are connected. Restart this Session and try again.',
+        'provider_error',
+      );
+    if (
+      !this.options.resolveCoordinatorStationControl ||
+      typeof record.query.setMcpServers !== 'function' ||
+      typeof record.query.mcpServerStatus !== 'function'
+    )
+      throw refuse();
+    if (record.coordinatorControlState === 'uncertain') throw refuse();
+    if (!record.coordinatorControlState) {
+      // Fence concurrent turns before the first asynchronous SDK request.
+      // Failure leaves the result uncertain, so no later turn repeats it.
+      record.coordinatorControlState = 'uncertain';
+      // A same-named server discovered from another configuration source is
+      // not ours to replace, even if it reports itself connected.
+      let existing: Awaited<ReturnType<Query['mcpServerStatus']>>;
+      try {
+        existing = await coordinatorMcpDeadline(record.query.mcpServerStatus());
+      } catch {
+        throw refuse();
+      }
+      if (existing.some((entry) => entry.name === 'station-control'))
+        throw new SendTurnRefusedError(
+          'A different station-control server is configured. Choose another name before enabling coordinator tools.',
+          'provider_error',
+        );
+      let control: ResolvedAgentToolServer | undefined;
+      try {
+        control = await coordinatorMcpDeadline(
+          this.options.resolveCoordinatorStationControl(threadId),
+        );
+      } catch {
+        throw refuse();
+      }
+      if (
+        !control ||
+        builtinStationApiServerId(control.id, toPassthroughToolDef(control)) !==
+          'station-control' ||
+        !this.options.isCoordinatorSession?.(threadId)
+      )
+        throw refuse();
+      const selected = control.disabledTools?.length
+        ? (control.allowedTools ?? control.toolNames ?? []).filter(
+            (name) => !control.disabledTools!.includes(name),
+          )
+        : control.allowedTools;
+      if (
+        control.coordinatorDerived &&
+        control.coordinatorGeneration === undefined
+      )
+        throw refuse();
+      const instance = control.coordinatorDerived
+        ? this.options.createInProcessCoordinatorStationControl?.(
+            threadId,
+            record.tenantExecutionContext,
+            selected,
+            control.coordinatorGeneration,
+          )
+        : this.options.createInProcessStationControl?.(
+            threadId,
+            record.tenantExecutionContext,
+            selected,
+          );
+      if (!instance) throw refuse();
+      const next = {
+        ...record.mcpServers,
+        'station-control': {
+          type: 'sdk' as const,
+          name: 'station-control',
+          instance: instance as never,
+        },
+      };
+      try {
+        const result = await coordinatorMcpDeadline(
+          record.query.setMcpServers(next),
+        );
+        if (
+          Object.keys(result.errors).length ||
+          result.removed.length ||
+          !result.added.includes('station-control')
+        )
+          throw refuse();
+        record.mcpServers = next;
+        record.coordinatorControlExpected = selected;
+        record.coordinatorControlGeneration = control.coordinatorDerived
+          ? control.coordinatorGeneration
+          : undefined;
+        record.coordinatorControlState = 'pending';
+      } catch {
+        throw refuse();
+      }
+    }
+    let status: Awaited<ReturnType<Query['mcpServerStatus']>>;
+    try {
+      status = await coordinatorMcpDeadline(record.query.mcpServerStatus());
+    } catch {
+      throw refuse();
+    }
+    const server = status.find((entry) => entry.name === 'station-control');
+    if (
+      server?.source !== 'sdk' ||
+      server.status !== 'connected' ||
+      !(record.coordinatorControlExpected ?? ['delegate_task']).every((name) =>
+        server.tools?.some(
+          (tool) => tool.name === name || tool.name.endsWith(`__${name}`),
+        ),
+      )
+    )
+      throw refuse();
+    if (!this.options.isCoordinatorSession?.(threadId)) throw refuse();
+    record.coordinatorControlState = 'ready';
+    const previous = record.configuredMetadata?.[
+      SESSION_CAPABILITY_DELIVERY_METADATA_KEY
+    ] as
+      | {
+          toolServers?: {
+            source?: string;
+            requested?: string[];
+            delivered?: string[];
+            undelivered?: unknown[];
+          };
+          [key: string]: unknown;
+        }
+      | undefined;
+    const tools = previous?.toolServers;
+    const metadata = {
+      ...record.configuredMetadata,
+      [SESSION_CAPABILITY_DELIVERY_METADATA_KEY]: {
+        ...previous,
+        toolServers: {
+          ...tools,
+          source: tools?.source ?? 'agent',
+          requested: [
+            ...new Set([...(tools?.requested ?? []), 'station-control']),
+          ],
+          delivered: [
+            ...new Set([...(tools?.delivered ?? []), 'station-control']),
+          ],
+          undelivered: tools?.undelivered ?? [],
+        },
+      },
+    };
+    record.configuredMetadata = metadata;
+    this.publish({
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId,
+      sessionId: threadId,
+      createdAt: new Date().toISOString(),
+      method: 'session.configured',
+      metadata,
+    });
   }
 
   /**
@@ -3105,6 +3411,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     // Settle outstanding canUseTool promises before teardown so the SDK
     // callback never hangs on a stopped session (mirrors acp-adapter, archive#148).
     this.cancelPendingRequests(record, threadId);
+    record.stopping = true;
     record.promptQueue.close();
     record.query.close();
     await record.engineProcess?.terminate();
@@ -3627,6 +3934,25 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           (name) => !control.disabledTools!.includes(name),
         )
       : control?.allowedTools;
+    const knowledge = toolServers.find(
+      (server) => server.id === 'station-knowledge',
+    );
+    if (
+      control?.coordinatorDerived &&
+      (!this.options.createInProcessCoordinatorStationControl ||
+        control.coordinatorGeneration === undefined)
+    )
+      throw new Error(
+        'Coordinator Station Control cannot be delivered safely.',
+      );
+    if (
+      knowledge?.coordinatorDerived &&
+      (!this.options.createInProcessStationKnowledge ||
+        knowledge.coordinatorGeneration === undefined)
+    )
+      throw new Error(
+        'Coordinator Station Knowledge cannot be delivered safely.',
+      );
     const { servers, skipped } = resolveClaudeMcpServers(
       toolServers,
       {
@@ -3643,22 +3969,36 @@ export class ClaudeAdapter implements ProviderAdapterShape {
                   input.threadId,
                   tenantExecutionContext,
                   allowedTools,
+                  ...(knowledge?.coordinatorDerived
+                    ? [knowledge.coordinatorGeneration]
+                    : []),
                 ),
             }
           : {}),
-        ...(this.options.createInProcessStationControl
+        ...((
+          control?.coordinatorDerived
+            ? this.options.createInProcessCoordinatorStationControl
+            : this.options.createInProcessStationControl
+        )
           ? {
               inProcess: () =>
-                selectedControlTools !== undefined
-                  ? this.options.createInProcessStationControl!(
+                control?.coordinatorDerived
+                  ? this.options.createInProcessCoordinatorStationControl!(
                       input.threadId,
                       tenantExecutionContext,
                       selectedControlTools,
+                      control.coordinatorGeneration,
                     )
-                  : this.options.createInProcessStationControl!(
-                      input.threadId,
-                      tenantExecutionContext,
-                    ),
+                  : selectedControlTools !== undefined
+                    ? this.options.createInProcessStationControl!(
+                        input.threadId,
+                        tenantExecutionContext,
+                        selectedControlTools,
+                      )
+                    : this.options.createInProcessStationControl!(
+                        input.threadId,
+                        tenantExecutionContext,
+                      ),
             }
           : {}),
         ...(tenantExecutionContext ? { tenantExecutionContext } : {}),
@@ -3731,6 +4071,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
      * Seatbelt-confined spawn gets none: its wrapper sets its own TMPDIR.
      */
     sessionTmpDir?: string,
+    artifactsEnv: ClaudeArtifactsSpawnEnv = claudeArtifactsSpawnEnv(false),
   ): Options {
     const modelOptions = claudeAppliedModelOptions(input.modelOptions);
     // #2947: the approval guardian's allows, by the engine's tool-use id,
@@ -3778,27 +4119,34 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         ? 'allowed'
         : 'changed';
     };
-    return {
-      cwd: input.cwd,
+    const disallowedTools = [
       ...(input.agent?.toolServers?.some(
         (server) =>
           server.allowedTools !== undefined || server.disabledTools?.length,
       )
-        ? {
-            disallowedTools: input.agent.toolServers.flatMap((server) =>
-              [
-                ...new Set([
-                  ...(server.disabledTools ?? []),
-                  ...(server.allowedTools !== undefined
-                    ? (server.toolNames ?? []).filter(
-                        (name) => !server.allowedTools!.includes(name),
-                      )
-                    : []),
-                ]),
-              ].map((name) => `mcp__${server.id}__${name}`),
-            ),
-          }
-        : {}),
+        ? input.agent.toolServers.flatMap((server) =>
+            [
+              ...new Set([
+                ...(server.disabledTools ?? []),
+                ...(server.allowedTools !== undefined
+                  ? (server.toolNames ?? []).filter(
+                      (name) => !server.allowedTools!.includes(name),
+                    )
+                  : []),
+              ]),
+            ].map((name) => `mcp__${server.id}__${name}`),
+          )
+        : []),
+      // The `0` in artifactsEnv is not enough on its own: a settings file's
+      // `env` block (user, project or local tier) is applied inside the CLI
+      // and re-enables the tool. A disallowed tool cannot be re-allowed there.
+      ...(artifactsEnv.CLAUDE_CODE_ARTIFACT === '1'
+        ? []
+        : [CLAUDE_ARTIFACT_TOOL_NAME]),
+    ];
+    return {
+      cwd: input.cwd,
+      ...(disallowedTools.length ? { disallowedTools } : {}),
       model: input.modelId,
       // #1551: run the Claude Code the user installed. Omitted when none
       // resolved, which is the SDK's documented "use the built-in executable"
@@ -3916,6 +4264,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
                 input.agent.toolServerLoading === 'always' ? 'false' : 'true',
             }
           : {}),
+        // After every caller/ambient layer: the Station setting owns this
+        // key (see `claudeArtifactsSpawnEnv`).
+        ...artifactsEnv,
         TMPDIR: sessionTmpDir ?? ensureEngineSpawnTmpDir(),
       }),
       // #2932: the SDK reads stdout from the process this returns, after
@@ -4413,12 +4764,15 @@ export class ClaudeAdapter implements ProviderAdapterShape {
    */
   private settleSessionEnd(record: ClaudeSessionRecord): void {
     const publish = (event: CanonicalRuntimeEvent) => this.publish(event);
-    const endedChildren = settleOpenClaudeChildren({
-      provider: this.provider,
-      record,
-      publish,
-      createdAt: new Date().toISOString(),
-    });
+    const endedChildren = settleOpenClaudeChildren(
+      {
+        provider: this.provider,
+        record,
+        publish,
+        createdAt: new Date().toISOString(),
+      },
+      { engineDied: record.engineDied === true },
+    );
     // A child that ended with the session can no longer be waiting on the
     // approvals it raised (canUseTool's agentID is its task_id): withdraw
     // them, so a late "Allow for this session" cannot mint a grant.
@@ -4511,6 +4865,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           record.terminalResultObserved === 'binding-dead' ? 'dead' : 'error';
         return;
       }
+      // The engine died only when its process is seen gone: a stream can
+      // fail (a malformed frame, a transport error) with `claude` alive.
+      if (!record.stopping && record.engineProcess?.exited() === true)
+        record.engineDied = true;
       // The SDK folds the engine's stderr into an exit error only for its
       // own spawn; Station's spawn kept the tail, so add it here.
       const detail = claudeExitDetailWithStderr(
@@ -4520,6 +4878,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       const message = record.session.model
         ? `Claude model "${record.session.model}" failed: ${detail}`
         : detail;
+      const startupFailure = classifyEngineStartupFailure('claude', detail);
       this.publish({
         eventId: crypto.randomUUID(),
         provider: this.provider,
@@ -4529,6 +4888,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         ...providerFailure('provider_error'),
         severity: 'error',
         message,
+        ...(startupFailure ? engineStartupFailureEvent(startupFailure) : {}),
       } satisfies ProviderRuntimeErrorEvent);
       record.session.status = 'error';
       record.promptQueue.close();
@@ -4606,6 +4966,24 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         `Claude app-home profile lookup failed; continuing with the global Claude Code config: ${errorMessage(error)}`,
       );
       return undefined;
+    }
+  }
+
+  /**
+   * The Artifact tool's spawn env for this start. A failed setting read
+   * starts the session with the tool off rather than blocking it: off is
+   * the default, and the read asserts nothing about credentials.
+   */
+  private async resolveArtifactsEnv(): Promise<ClaudeArtifactsSpawnEnv> {
+    try {
+      return claudeArtifactsSpawnEnv(
+        (await this.options.getArtifactsEnabled?.()) === true,
+      );
+    } catch (error) {
+      (this.options.logger ?? console).warn?.(
+        `Claude artifacts setting lookup failed; starting with the Artifact tool off: ${errorMessage(error)}`,
+      );
+      return claudeArtifactsSpawnEnv(false);
     }
   }
 

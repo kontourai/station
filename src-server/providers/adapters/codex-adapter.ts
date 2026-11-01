@@ -103,6 +103,11 @@ import {
 } from '../llm/effective-model-metadata.js';
 import { providerFailure } from '../provider-failure.js';
 import {
+  classifyEngineStartupFailure,
+  EngineStartupFailure,
+  engineStartupFailureEvent,
+} from '../provider-startup-failure.js';
+import {
   decodeChatAttachments,
   rejectFileAttachments,
 } from '../sessions/chat-attachments.js';
@@ -160,7 +165,9 @@ import {
   requiredByReportedPolicy,
   STATION_CODEX_PERMISSION_PROFILE,
 } from './codex-confinement.js';
+import { CodexGoals } from './codex-goals.js';
 import {
+  type CodexStationMcpAuth,
   type CodexToolServerSkip,
   resolveCodexMcpServers,
 } from './codex-mcp-passthrough.js';
@@ -235,8 +242,7 @@ interface CodexAdapterOptions {
   ) => string | null;
   /**
    * archive#1195: mints a per-session, short-lived, station-control-scoped
-   * bearer token and returns the full station-control HTTP/SSE MCP endpoint
-   * URL it authenticates — called ONLY when the resolved agent's
+   * bearer credential delivered only through private thread configuration — called ONLY when the resolved agent's
    * `toolServers` includes the canonical built-in station-control server
    * (see `resolveAgentToolServers`). `threadId` is Station's own session
    * id, used as the token's revocation key. Undefined/missing (older/test
@@ -248,12 +254,14 @@ interface CodexAdapterOptions {
     threadId: string,
     tenantExecutionContext?: import('@kontourai/station-contracts/tenancy').TenantExecutionContext,
     allowedTools?: readonly string[],
-  ) => string | undefined;
+    coordinatorGeneration?: number,
+  ) => CodexStationMcpAuth | undefined;
   mintStationKnowledgeMcpAuth?: (
     threadId: string,
     tenantExecutionContext?: import('@kontourai/station-contracts/tenancy').TenantExecutionContext,
     allowedTools?: readonly string[],
-  ) => string | undefined;
+    coordinatorGeneration?: number,
+  ) => CodexStationMcpAuth | undefined;
   /** Best-effort cleanup counterpart to `mintStationControlMcpAuth` — called
    * on ordinary session stop. Never required to be provided; a missing
    * closure just means the token lives out its bounded TTL instead. */
@@ -838,6 +846,7 @@ export class CodexAdapter implements ProviderAdapterShape {
   }
 
   private readonly transport: CodexAdapterTransport;
+  readonly goals: CodexGoals;
   private readonly processFactory: (
     appHomeEnv?: Record<string, string>,
     extraArgs?: string[],
@@ -877,7 +886,13 @@ export class CodexAdapter implements ProviderAdapterShape {
           method,
         }),
       (threadId) => this.options.revokeStationControlMcpAuth?.(threadId),
+      () =>
+        this.options.logger?.warn?.(
+          'Codex app-server emitted stderr; details are withheld',
+          { provider: 'codex' },
+        ),
     );
+    this.goals = new CodexGoals(this.transport);
   }
 
   async getPrerequisites(options?: {
@@ -2007,6 +2022,9 @@ export class CodexAdapter implements ProviderAdapterShape {
       nowIso: () => this.now().toISOString(),
     });
     record.preparedResumeBindingKey = resumeBindingKey;
+    // Where Codex writes this session's thread rollouts, children included:
+    // a child's transcript ref names it, never a file path.
+    if (isAbsolute(configurationHome)) record.codexHome = configurationHome;
     if (sourceAffinity) {
       this.transport.setStdoutIngressLimit(
         record,
@@ -2057,11 +2075,15 @@ export class CodexAdapter implements ProviderAdapterShape {
         },
       });
       this.transport.sendNotification(record, 'initialized');
-      const authoredMcpConfig = await this.authoredMcpConfig(
+      const authoredSelection = await this.authoredMcpConfig(
         record,
         input,
         toolServers.report?.delivered ?? [],
       );
+      const authoredMcpConfig =
+        toolServers.privateConfig || authoredSelection
+          ? { ...authoredSelection, ...toolServers.privateConfig }
+          : undefined;
 
       const modelOptions = (input.modelOptions ?? {}) as CodexModelOptions;
       // #2493: `never` reaches `danger-full-access` only for a `host`
@@ -2404,6 +2426,19 @@ export class CodexAdapter implements ProviderAdapterShape {
           'Codex startup failed and process termination was not confirmed.',
         );
       }
+      const startupFailure = classifyEngineStartupFailure('codex', error);
+      if (startupFailure) {
+        this.transport.publish({
+          eventId: crypto.randomUUID(),
+          provider: this.provider,
+          threadId: input.threadId,
+          createdAt: this.now().toISOString(),
+          method: 'runtime.error',
+          severity: 'error',
+          ...engineStartupFailureEvent(startupFailure),
+        } satisfies ProviderRuntimeErrorEvent);
+        throw new EngineStartupFailure(startupFailure);
+      }
       throw error;
     }
   }
@@ -2588,10 +2623,19 @@ export class CodexAdapter implements ProviderAdapterShape {
     input: ProviderSessionStartInput,
   ): Promise<{
     configArgs?: string[];
+    privateConfig?: Record<string, unknown>;
     report?: CapabilityDeliveryChannelReport;
   }> {
     const toolServers = input.agent?.toolServers;
     if (toolServers === undefined) return {};
+    if (
+      toolServers.some(
+        (server) =>
+          server.coordinatorDerived &&
+          server.coordinatorGeneration === undefined,
+      )
+    )
+      throw new Error('Coordinator generation is required.');
 
     const oauthTokens = await this.options.resolveMcpOAuth?.(input);
     const hasBuiltinStationControl = toolServers.some(
@@ -2615,18 +2659,25 @@ export class CodexAdapter implements ProviderAdapterShape {
         )
       : control?.allowedTools;
     const stationControlMcpUrl = hasBuiltinStationControl
-      ? selectedControlTools !== undefined
+      ? control?.coordinatorDerived
         ? this.options.mintStationControlMcpAuth?.(
             input.threadId,
             input.tenantExecutionContext,
             selectedControlTools,
+            control.coordinatorGeneration,
           )
-        : input.tenantExecutionContext
+        : selectedControlTools !== undefined
           ? this.options.mintStationControlMcpAuth?.(
               input.threadId,
               input.tenantExecutionContext,
+              selectedControlTools,
             )
-          : this.options.mintStationControlMcpAuth?.(input.threadId)
+          : input.tenantExecutionContext
+            ? this.options.mintStationControlMcpAuth?.(
+                input.threadId,
+                input.tenantExecutionContext,
+              )
+            : this.options.mintStationControlMcpAuth?.(input.threadId)
       : undefined;
 
     const knowledge = toolServers.find(
@@ -2644,14 +2695,18 @@ export class CodexAdapter implements ProviderAdapterShape {
           input.threadId,
           input.tenantExecutionContext,
           selectedKnowledgeTools,
+          ...(knowledge.coordinatorDerived
+            ? [knowledge.coordinatorGeneration]
+            : []),
         )
       : undefined;
-    const { configArgs, deliveredIds, skipped } = resolveCodexMcpServers(
-      toolServers,
-      stationControlMcpUrl,
-      stationKnowledgeMcpUrl,
-      oauthTokens,
-    );
+    const { configArgs, privateConfig, deliveredIds, skipped } =
+      resolveCodexMcpServers(
+        toolServers,
+        stationControlMcpUrl,
+        stationKnowledgeMcpUrl,
+        oauthTokens,
+      );
     const undelivered: CapabilityUndelivered[] = skipped.map(
       (skip: CodexToolServerSkip) => ({
         capability: 'toolServers',
@@ -2667,14 +2722,17 @@ export class CodexAdapter implements ProviderAdapterShape {
         reason: entry.reason,
       });
     }
-    if (configArgs.length > 0) {
-      codexToolServersDelivered.add(configArgs.length / 2, {
+    if (deliveredIds.length > 0) {
+      codexToolServersDelivered.add(deliveredIds.length, {
         provider: this.provider,
       });
     }
 
     return {
       configArgs: configArgs.length > 0 ? configArgs : undefined,
+      privateConfig: Object.keys(privateConfig).length
+        ? privateConfig
+        : undefined,
       report: {
         source: 'agent',
         requested: toolServers.map((server) => server.id),

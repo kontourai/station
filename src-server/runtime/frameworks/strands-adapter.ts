@@ -44,6 +44,7 @@ import type { NativeMemoryHistoryCompanion } from '../conversation/native-memory
 import { createNativeOutputDeclarationTool } from '../native-output-declaration.js';
 import { resolveManagedModelBinding } from '../plugins/runtime-provider-resolution.js';
 import { getLoadedMCPToolProvenance } from '../tools/mcp-tool-names.js';
+import { getBuiltinVendedToolIdentity } from '../tools/vended-tool-compat.js';
 import type {
   AgentBundle,
   AgentCreationConfig,
@@ -131,6 +132,10 @@ class StrandsAgentWrapper implements IAgent {
     },
     readonly instructions?: string | (() => string),
     private readonly toolView?: (tools: ITool[]) => IAgent,
+    private readonly modelContext?: {
+      modelId: string;
+      afterModelGeneration?: IAgentHooks['afterModelGeneration'];
+    },
   ) {
     this.strandsAgent = strandsAgent;
     this.memory = memory;
@@ -396,6 +401,46 @@ class StrandsAgentWrapper implements IAgent {
           if (mapped) {
             // Accumulate usage from metadata events
             if (mapped.type === 'usage') {
+              const last = mapped as {
+                promptTokens?: number;
+                completionTokens?: number;
+              };
+              if (
+                self.modelContext?.afterModelGeneration &&
+                Number.isSafeInteger(last.promptTokens) &&
+                last.promptTokens! >= 0 &&
+                Number.isSafeInteger(last.completionTokens) &&
+                last.completionTokens! >= 0
+              ) {
+                const raw = (
+                  event as {
+                    event?: {
+                      usage?: {
+                        cacheReadInputTokens?: number;
+                        cacheWriteInputTokens?: number;
+                      };
+                    };
+                  }
+                ).event?.usage;
+                await self.modelContext.afterModelGeneration({
+                  invocation: resolveStrandsInvocationContext(
+                    invokeOptions.invocationState,
+                    self._invocationCtx,
+                  ),
+                  modelId: self.modelContext.modelId,
+                  modelIdentitySource: 'runtime-model',
+                  source: 'strands-metadata',
+                  inputTokenAccounting: 'provider-specific',
+                  inputTokens: last.promptTokens!,
+                  outputTokens: last.completionTokens!,
+                  ...(Number.isSafeInteger(raw?.cacheReadInputTokens)
+                    ? { cacheReadInputTokens: raw!.cacheReadInputTokens }
+                    : {}),
+                  ...(Number.isSafeInteger(raw?.cacheWriteInputTokens)
+                    ? { cacheWriteInputTokens: raw!.cacheWriteInputTokens }
+                    : {}),
+                });
+              }
               observedUsage = true;
               accUsage.promptTokens += (mapped as any).promptTokens || 0;
               accUsage.completionTokens +=
@@ -585,6 +630,10 @@ export class StrandsFramework {
             addAgentTools(tools, additions),
           );
         },
+        {
+          modelId: resolvedModel,
+          afterModelGeneration: config.hooks?.afterModelGeneration,
+        },
       );
       if (history)
         bindStrandsNativeHistory(strandsAgent, strandsAgent.messages);
@@ -594,6 +643,12 @@ export class StrandsFramework {
         deniedToolCalls,
         invocationCtx,
         purposeEnabledToolNames,
+        findBuiltinToolIdentity: (name) => {
+          const candidates = viewTools.filter((tool) => tool.name === name);
+          return candidates.length === 1
+            ? getBuiltinVendedToolIdentity(candidates[0])
+            : undefined;
+        },
         memoryAdapter: opts.memoryAdapter as unknown as IMemory,
         logger: opts.logger,
         resolvedModel,
@@ -721,6 +776,12 @@ export class StrandsFramework {
         deniedToolCalls,
         invocationCtx,
         purposeEnabledToolNames,
+        findBuiltinToolIdentity: (name) => {
+          const candidates = viewTools.filter((tool) => tool.name === name);
+          return candidates.length === 1
+            ? getBuiltinVendedToolIdentity(candidates[0])
+            : undefined;
+        },
       });
       // archive#914: `createAgent` above passes the adapter into this slot "so
       // conversations persist"; passing null here gave temp agents no

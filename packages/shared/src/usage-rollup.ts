@@ -189,6 +189,10 @@ export class UsageReceiptRowAccumulator {
       row.cacheWriteTokens !== undefined;
     row.inputTokens = addMeasured(row.inputTokens, receipt.inputTokens);
     row.outputTokens = addMeasured(row.outputTokens, receipt.outputTokens);
+    row.reasoningTokens = addMeasured(
+      row.reasoningTokens,
+      receipt.reasoningTokens,
+    );
     row.cacheReadTokens = addMeasured(
       row.cacheReadTokens,
       receipt.cacheReadTokens,
@@ -387,6 +391,7 @@ function mergeReceiptObservations(
       'outputTokens',
       'cacheReadTokens',
       'cacheWriteTokens',
+      'reasoningTokens',
     ] as const) {
       if (result[field] === undefined && older[field] !== undefined) {
         result[field] = older[field];
@@ -394,7 +399,19 @@ function mergeReceiptObservations(
       }
     }
   }
+  const sameRoute =
+    older.route?.id === newer.route?.id &&
+    older.route?.modelRevision === newer.route?.modelRevision &&
+    older.route?.tariffId === newer.route?.tariffId;
   if (older.model !== newer.model) delete result.model;
+  if (
+    cumulativeTokens &&
+    (!sameRoute ||
+      inheritedComponent ||
+      older.model !== newer.model ||
+      older.pricing.pricingSnapshotId !== newer.pricing.pricingSnapshotId)
+  )
+    delete result.retailEquivalent;
   if (
     cumulativeTokens &&
     (inheritedComponent ||

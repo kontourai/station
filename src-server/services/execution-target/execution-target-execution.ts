@@ -107,6 +107,7 @@ export interface ForegroundMessageInput {
   expectedInputRequest?: AttentionRequestReference;
   target: ExecutionTarget;
   message: string;
+  mcpPromptOrigin?: import('@kontourai/station-contracts/mcp-prompts').VerifiedMcpPromptOrigin;
   conversationId?: string;
   attachments?: ChatAttachmentInput[];
   /** Authorized staged bytes; inspection validates an earlier proof holder without binding. */
@@ -411,6 +412,7 @@ export interface ExecutionTargetExecutionDependencies
       clientOrigin?: ClientOrigin;
       principal?: PrincipalRef;
       submissionDigest?: string | null;
+      mcpPromptOrigin?: import('@kontourai/station-contracts/mcp-prompts').VerifiedMcpPromptOrigin;
     },
   ) => Promise<{ turnId: string }>;
   /**
@@ -537,6 +539,7 @@ export interface ExecutionTargetExecutionDependencies
     contextBoundary?: ConversationContextBoundaryProjection;
     /** A never-ran predecessor to stop once this start succeeds. */
     retirePredecessorSessionId?: string;
+    coordinatorToolsRestart?: boolean;
   }>;
   /** Best-effort teardown of a retired predecessor's engine process. */
   retireSession?: (
@@ -679,6 +682,7 @@ export async function executeForegroundMessage(
       'attachments',
       'expectedInputRequest',
       'skillExperience',
+      'mcpPromptOrigin',
     ]);
   }
   const message = input.message.trim();
@@ -690,6 +694,10 @@ export async function executeForegroundMessage(
   }
 
   const resolved = await resolveExecutionTarget(input.target, deps);
+  if (input.mcpPromptOrigin && resolved.access.kind !== 'current')
+    throw new Error(
+      'MCP prompt origin cannot be safely carried to another Station.',
+    );
   // Target resolution makes both explicit saved and project-default saved
   // Environments concrete. Refuse process-local staged bytes before their
   // resolver can hydrate or send anything to a non-current Station.
@@ -1346,6 +1354,9 @@ export async function executeForegroundMessage(
           // resumable as every delegated session.
           ...agentExecutionBindingMetadata(resolved),
           conversationId,
+          ...(continuation?.coordinatorToolsRestart
+            ? { coordinatorToolsRestart: true }
+            : {}),
           // #4162: the key of the send this start is for, so a same-key
           // retry answered from that send's turn can say it started here.
           ...(effectiveClientTurnId
@@ -1591,6 +1602,7 @@ export async function executeForegroundMessage(
     },
     input.clientOrigin ||
       input.principal ||
+      input.mcpPromptOrigin ||
       submissionDigest ||
       context?.inboxPlacement
       ? {
@@ -1601,6 +1613,9 @@ export async function executeForegroundMessage(
               : {}),
           ...(input.clientOrigin ? { clientOrigin: input.clientOrigin } : {}),
           ...(input.principal ? { principal: input.principal } : {}),
+          ...(input.mcpPromptOrigin
+            ? { mcpPromptOrigin: input.mcpPromptOrigin }
+            : {}),
         }
       : undefined,
   );

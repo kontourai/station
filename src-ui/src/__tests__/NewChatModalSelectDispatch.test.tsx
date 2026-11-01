@@ -28,7 +28,6 @@ import type {
   SkillExperienceInventoryV1,
 } from '@kontourai/station-contracts/skill-experience';
 import type { ExternalEngineReadinessProjection } from '@kontourai/station-contracts/system-status';
-import type { DelegatedTaskHandle } from '@kontourai/station-sdk';
 import {
   act,
   cleanup,
@@ -40,7 +39,6 @@ import {
 } from '@testing-library/react';
 import type { ComponentProps } from 'react';
 import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
-import type { StartStationControl } from '../components/chat-start/StartStationControl';
 import type { AgentData } from '../contexts/AgentsContext';
 import type { ProjectMetadata } from '../contexts/ProjectsContext';
 import {
@@ -50,32 +48,10 @@ import {
 } from '../hooks/lastChosenModel';
 import { resetStartChoicesForTests } from '../hooks/useStartSelection';
 
-const remoteRun = vi.hoisted((): { complete: (() => void) | null } => ({
-  complete: null,
-}));
+// The Station control reads this caller's Station inventory; its own
+// behavior is covered in `StartStationControl.test.tsx`.
 vi.mock('../components/chat-start/StartStationControl', () => ({
-  StartStationControl: ({
-    prompt,
-    onStarted,
-  }: ComponentProps<typeof StartStationControl>) => (
-    <button
-      type="button"
-      onClick={() => {
-        const handle: DelegatedTaskHandle = {
-          conversationId: 'task:remote',
-          taskId: 'task:remote',
-          sessionId: 'session:remote',
-          currentSessionId: 'session:remote',
-          status: 'dispatched',
-          environment: { kind: 'peer', id: 'env-kontour', name: 'Kontour' },
-          target: { kind: 'agent', id: agentId('assistant') },
-        };
-        remoteRun.complete = () => onStarted(handle, 'Kontour', prompt);
-      }}
-    >
-      Stage a remote task
-    </button>
-  ),
+  StartStationControl: () => <span>Runs on this Station</span>,
 }));
 
 const AGENT: AgentData = {
@@ -133,9 +109,34 @@ const selectionModelState = {
   refreshSetup: undefined as (() => Promise<void>) | undefined,
 };
 
+// Undefined except where a test needs the task launcher's authority scope.
+const hostScope = vi.hoisted(() => ({
+  current: undefined as
+    | { apiBase: string; authorityKey: string; isCurrent: () => boolean }
+    | undefined,
+}));
 vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
   ...(await importOriginal<object>()),
-  useHostRequestAuthorityScope: () => undefined,
+  useHostRequestAuthorityScope: () => hostScope.current,
+}));
+// The remote start's task launcher, reduced to the props this modal hands it.
+const launcher = vi.hoisted(() => ({
+  props: null as null | {
+    initialPrompt?: string;
+    initialEnvironmentId?: string;
+    onDraftChange?: (prompt: string) => void;
+    onDelegated: (
+      task: unknown,
+      targetName: string,
+      placement: { stationName: string; prompt: string },
+    ) => void;
+  },
+}));
+vi.mock('../components/chat-dock/DelegationLauncher', () => ({
+  DelegationLauncher: (props: NonNullable<typeof launcher.props>) => {
+    launcher.props = props;
+    return <div role="dialog" aria-label="Run on a Station" />;
+  },
 }));
 
 vi.mock('../hooks/useIsMobile', async (importActual) => ({
@@ -191,6 +192,26 @@ vi.mock('@kontourai/station-sdk', () => ({
   },
   useMaterializeEngineAgentMutation: () => ({ mutateAsync: materializeMock }),
   useConnectAndMaterializeEngineMutation: () => ({ mutateAsync: connectMock }),
+}));
+
+// The Station list is the SDK's environment and peer reads, which this file
+// stands in for wholesale: this Station and one paired peer, so the Station
+// control (shown only with a choice of Stations) is offered.
+vi.mock('../hooks/useExecutionStationCatalog', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useExecutionStations: () => ({
+    enabled: true,
+    settled: true,
+    stations: [
+      { id: 'current', name: 'This Station' },
+      { id: 'peer-kontour', name: 'Kontour' },
+    ],
+    nameFor: (id: string) =>
+      id === 'peer-kontour' ? 'Kontour' : 'This Station',
+    knownNameFor: (id: string) =>
+      id === 'peer-kontour' ? 'Kontour' : 'This Station',
+    stationsUnavailable: false,
+  }),
 }));
 
 vi.mock('../hooks/useNewChatSelectionModel', () => ({
@@ -250,7 +271,7 @@ const { buildCodingChatInitialMessage } = await import(
   '../components/coding-layout/chatContextDraft'
 );
 const { composerDraftContext } = await import(
-  '../components/chat-dock/ChatDockModalStack'
+  '../components/chat-dock/DockStartComposer'
 );
 const { pluginAuthoringComposerDraft } = await import(
   '../views/plugin-management/plugin-authoring-primer'
@@ -258,6 +279,8 @@ const { pluginAuthoringComposerDraft } = await import(
 
 afterEach(() => {
   cleanup();
+  hostScope.current = undefined;
+  launcher.props = null;
   resetStartChoicesForTests();
   // Chip choices are remembered in storage; no test may inherit another's.
   localStorage.clear();
@@ -389,7 +412,7 @@ describe('NewChatModal select dispatch invariant (#3013)', () => {
     selectionModelState.agents = [AUTHORED_CODEX, AGENT];
     renderForkModal();
 
-    expect(screen.getByRole('dialog', { name: 'Fork from here' })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Fork from here' })).toBeTruthy();
     expect(screen.getByRole('note').textContent).toMatch(
       /new independent conversation.*engine cursor.*tool state.*approval state do not carry/i,
     );
@@ -1127,7 +1150,10 @@ describe('intent-first preparation', () => {
       />,
     );
     await waitFor(() => expect(materializeMock).toHaveBeenCalledOnce());
-    fireEvent.click(screen.getByRole('button', { name: 'Close new chat' }));
+    // The draft has no close button: Escape (or leaving for a chat) dismisses.
+    fireEvent.keyDown(screen.getByRole('region', { name: 'New chat' }), {
+      key: 'Escape',
+    });
     await act(async () => complete?.({ data: AUTHORED_CODEX }));
     expect(onClose).toHaveBeenCalledOnce();
     expect(onSelect).not.toHaveBeenCalled();
@@ -1370,27 +1396,6 @@ describe('the start composer in the dock', () => {
     clickAgent(slug);
   }
 
-  test.each([
-    ['new draft', 'new draft'],
-    ['submitted draft', ''],
-  ])(
-    'remote task completion preserves the latest draft (%s)',
-    (latest, expected) => {
-      remoteRun.complete = null;
-      start(undefined, { initialPrompt: 'submitted draft' });
-      fireEvent.click(
-        screen.getByRole('button', { name: 'Stage a remote task' }),
-      );
-      fireEvent.change(message(), { target: { value: latest } });
-      expect(remoteRun.complete).not.toBeNull();
-      act(() => remoteRun.complete!());
-      expect(message().value).toBe(expected);
-      expect(screen.getByRole('status').textContent).toContain(
-        'Task started on Kontour',
-      );
-    },
-  );
-
   test('typing and choosing another Agent do not open a chat; Start starts the chosen Agent once with the message', async () => {
     selectionModelState.agents = [AGENT, AUTHORED_CODEX];
     const onSelect = start();
@@ -1533,6 +1538,63 @@ describe('the start composer in the dock', () => {
 
   // Home's composer sends what its chips show; the dock starts exactly that
   // and never substitutes its own default.
+  test.each([
+    ['new draft', 'new draft'],
+    ['submitted draft', ''],
+  ])(
+    'a remote start hands its task and Station on, keeping the latest draft (%s)',
+    async (latest, expected) => {
+      const fingerprint = 'b'.repeat(64);
+      const profile: AgentData = {
+        slug: agentId('reviewer'),
+        name: 'Reviewer',
+        available: true,
+        definitionFingerprint: fingerprint,
+      };
+      selectionModelState.agents = [profile];
+      selectionModelState.recommendedAgent = profile;
+      hostScope.current = {
+        apiBase: 'http://station.test',
+        authorityKey: 'authority-1',
+        isCurrent: () => true,
+      };
+      const onTaskStarted = vi.fn();
+      const onSelect = start(vi.fn(), {
+        startWithDefault: true,
+        initialPrompt: 'submitted draft',
+        onTaskStarted,
+        startSelection: {
+          context: '__global__',
+          agentSlug: profile.slug,
+          model: {
+            modelId: 'remote-model',
+            executionAgentId: agentId('reviewer'),
+            expectedDefinitionFingerprint: fingerprint,
+            environmentId: 'env-brian-media',
+            providerOptions: {},
+          },
+        },
+      });
+      await screen.findByRole('dialog', { name: 'Run on a Station' });
+      expect(onSelect).not.toHaveBeenCalled();
+      const props = launcher.props!;
+      expect(props.initialEnvironmentId).toBe('env-brian-media');
+      act(() => props.onDraftChange?.(latest));
+      const task = { sessionId: 'session:remote' };
+      act(() =>
+        props.onDelegated(task, 'Reviewer', {
+          stationName: 'brian-media',
+          prompt: 'submitted draft',
+        }),
+      );
+      expect(onTaskStarted).toHaveBeenCalledWith(task, 'brian-media');
+      expect(
+        screen.queryByRole('dialog', { name: 'Run on a Station' }),
+      ).toBeNull();
+      expect(message().value).toBe(expected);
+    },
+  );
+
   describe("a start carrying Home's selection", () => {
     test('carries an explicit This Station selection for a plain Agent without fabricating an engine override', async () => {
       selectionModelState.agents = [AGENT];
@@ -2013,7 +2075,8 @@ test('New Task start surface retains its label and Escape closes it', () => {
     />,
   );
   expect(screen.getByRole('region', { name: 'New Task' })).toBeTruthy();
-  expect(screen.getByRole('heading', { name: 'Shape a Task' })).toBeTruthy();
+  // No title bar: the draft's own line names what Start will do.
+  expect(screen.getByText(/^Shape a Task without a project on /)).toBeTruthy();
   fireEvent.keyDown(screen.getByPlaceholderText('Describe the idea…'), {
     key: 'Escape',
   });

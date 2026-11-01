@@ -21,7 +21,10 @@ import {
 } from './markdown-blocks';
 import { chatUrlTransform, MarkdownImage } from './markdown-images';
 import { QuoteSourceLink } from './QuoteSourceLink';
-import { remarkPathMentions } from './remarkPathMentions';
+import {
+  PATH_MENTION_ATTRIBUTE,
+  remarkPathMentions,
+} from './remarkPathMentions';
 import { workspaceVisualPath } from './WorkspaceFileReply';
 
 export type MarkdownRenderProbe = {
@@ -54,6 +57,12 @@ function MarkdownParagraph({
         !isValidElement<{ href?: string; src?: string; children?: ReactNode }>(
           child,
         )
+      )
+        return false;
+      // A path mention (prose or inline code) stays inline: no visual.
+      if (
+        (child.props as Record<string, unknown>)[PATH_MENTION_ATTRIBUTE] !==
+        undefined
       )
         return false;
       return (
