@@ -1,5 +1,39 @@
 [
   {
+    "timestampUtc": "2026-11-01T01:42:05Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.2496.41261236636",
+    "sha": "2b49d99ec926c52d85779b0e60b1d25d72430b4a",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/41261236636",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.2496.41261236636 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "4037fadb92bf4fd7257237b3f5ed3d2ce97af782",
+      "groups": {
+        "feat": [
+          "[#4309](https://github.com/kontourai/station/pull/4309) feat(access): turn on Project sharing remotely with an operator passkey step-up (#4306)",
+          "[#4325](https://github.com/kontourai/station/pull/4325) feat(identity): passkeys for invited local-account members",
+          "[#4377](https://github.com/kontourai/station/pull/4377) feat(chat): simplify inbox, composer and conversation navigation"
+        ],
+        "fix": [
+          "[#4410](https://github.com/kontourai/station/pull/4410) fix(ci): avoid reserved ports in portable smoke",
+          "[#4333](https://github.com/kontourai/station/pull/4333) fix(pairing): approve account-bound browsers with passkey consent"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 5
+    }
+  },
+  {
     "timestampUtc": "2026-10-31T22:08:50Z",
     "channel": "nightly-npm",
     "version": "0.11.0-nightly.2495.41245722791",
