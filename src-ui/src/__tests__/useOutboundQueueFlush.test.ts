@@ -954,10 +954,11 @@ describe('useOutboundQueueFlush', () => {
       },
     });
     activeChatsStore.updateChat('session-1', {
-      queuedMessages: ['held one', 'steering one'],
+      queuedMessages: ['held one', 'steering one', 'unscoped legacy input'],
       queuedMessageMetadata: [
         { id: 'held-key', mode: 'queue' },
         { id: 'steer-key', mode: 'steer', delivery: 'steering' },
+        { id: 'legacy-key', mode: 'queue', originUnverified: true },
       ],
     });
     renderHook(() => useOutboundQueueFlush('http://api.test'));

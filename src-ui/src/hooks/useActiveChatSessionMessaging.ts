@@ -7,8 +7,6 @@ import {
   ACP_APPROVAL_GOVERNANCE_REFUSED_CODE,
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
   MODEL_NOT_ADVERTISED_CODE,
-  PROVIDER_SESSION_STARTING_CODE,
-  PROVIDER_TURN_IN_PROGRESS_CODE,
 } from '@kontourai/station-contracts/provider';
 import { isFirstSendFailure } from '@kontourai/station-contracts/session-attention';
 import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
@@ -74,11 +72,10 @@ import {
   SESSION_START_INDETERMINATE_CODE,
   translateChatError,
 } from '../utils/chatErrorTranslation';
-import { liveTurnTarget, serverTurnLive } from '../utils/conversation-activity';
+import { liveTurnTarget } from '../utils/conversation-activity';
 import { userFacingErrorMessage } from '../utils/errorText';
 import { sessionAdapterSupportsSteering } from '../utils/execution';
 import { withDeliveryCheck } from '../utils/messageDeliveryState';
-import { drainQueuedMessageOnTurnCompleted } from './orchestration/queueDrain';
 import { isReplayThread } from './orchestration/replay/replay-registry';
 import { buildOutgoingUserMessage } from './useActiveChatSessions.helpers';
 import { useStreamingMessage } from './useStreamingMessage';
@@ -116,19 +113,6 @@ type UserCancelableAbortController = AbortController & {
   /** Set only by the Stop path before it releases the foreground observer. */
   _userInitiated?: boolean;
 };
-
-/**
- * Refusals that move a composer send into the queue under the same key (the
- * engine is replying on its own, or the session is still starting). The
- * outbox row and the queue must agree on this list: the row becomes the
- * queued message's held copy, never a refusal that hands the text back.
- */
-function isQueuedOnRefusalCode(code: unknown): boolean {
-  return (
-    code === PROVIDER_TURN_IN_PROGRESS_CODE ||
-    code === PROVIDER_SESSION_STARTING_CODE
-  );
-}
 
 function prepareSendTransaction(options: {
   state: ChatUIState | undefined;
@@ -1250,7 +1234,6 @@ export function useSendMessage(
         const offerInbox = Boolean(
           !queueBusyFollowUp &&
             currentState?.conversationId &&
-            !options?.dispatch &&
             !preserveComposer &&
             !dispatchInput.setApprovalMode &&
             !dispatchInput.expectedDefinitionFingerprint &&
@@ -1458,9 +1441,6 @@ export function useSendMessage(
           const userStopped =
             (abortController as UserCancelableAbortController)._userInitiated &&
             abortController.signal.aborted;
-          const providerBusy =
-            isQueuedOnRefusalCode((error as { code?: unknown })?.code) &&
-            stationAnswered(error);
           if (foreground) {
             // Station said it may have started: keep the text as unconfirmed
             // evidence (never resent), and say so on the message.
@@ -1473,10 +1453,6 @@ export function useSendMessage(
                 'indeterminate',
               ),
             );
-          } else if (providerBusy && !queueBusyFollowUp) {
-            // Moved into the local queue below, under the same key; its row
-            // becomes the held copy only once the queue holds it (below), so
-            // a held-copy sync in between cannot drop it.
           } else if (stationAnswered(error) || userStopped) {
             // Station refused it (nothing started): the composer gets the
             // text back below.
@@ -1808,64 +1784,6 @@ export function useSendMessage(
           return false;
         }
 
-        // #2324 (D4): the engine began a turn of its own before this send
-        // reached it (the composer queues when it already sees one). The
-        // refusal is retryable: move the message into the queue that drains
-        // when that turn finishes, rather than calling it failed. A send with
-        // attachments cannot ride the text queue, so it keeps the ordinary
-        // error and Retry below. A send that outwaited its session's start
-        // (an ACP reattach) is queued the same way.
-        if (
-          isQueuedOnRefusalCode(err.code) &&
-          !queueBusyFollowUp &&
-          !options?.dispatch &&
-          !mcpPromptOrigin &&
-          !(attachments && attachments.length > 0)
-        ) {
-          const { input: _restoredDraft, ...rollback } = rejectedSendRollback(
-            transaction,
-            latestState,
-          );
-          updateChat(sessionId, {
-            ...rollback,
-            status: 'idle',
-            error: undefined,
-            abortController: undefined,
-            pendingClientTurnId: undefined,
-            sendAwaitingTurnStart: undefined,
-            queuedMessages: [...(latestState?.queuedMessages ?? []), content],
-            // A lookup answer about the refused attempt (a `received` while
-            // it waited on a starting session) must not label the resend.
-            deliveryChecks: withoutDeliveryCheck(
-              latestState?.deliveryChecks,
-              resolvedTurnId,
-            ),
-            // The same key the send carried: its durable held row and the
-            // drain's eventual send are one message.
-            queuedMessageMetadata: [
-              ...(latestState?.queuedMessageMetadata ??
-                (latestState?.queuedMessages ?? []).map(() => ({
-                  id: randomCorrelationId(),
-                  mode: 'queue' as const,
-                }))),
-              { id: resolvedTurnId, mode: 'queue' as const },
-            ],
-          });
-          await live?.hold();
-          // The turn it waited on may already have ended while this refusal
-          // was in flight; its end was the queue's only trigger.
-          if (
-            serverTurnLive(activeChatsStore.getSnapshot()[sessionId]) !== true
-          ) {
-            drainQueuedMessageOnTurnCompleted(apiBase, sessionId);
-          }
-          options?.onAdmission?.('accepted');
-          return false;
-        }
-
-        // This error-only loader keeps the foreground receipt classifier out
-        // of the initial chat shell. Classification still runs before any
-        // observer or retry affordance is exposed.
         const foreground = queueModule?.readForeground(err);
         const foregroundIndeterminate = !!foreground;
         const observedSessionId = foreground?.sessionId;

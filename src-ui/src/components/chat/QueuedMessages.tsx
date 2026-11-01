@@ -32,6 +32,7 @@ interface QueuedMessagesProps {
   failure?: { message: string; code?: string; at: number };
   /** Retry the head of the queue now, rather than waiting for the next turn. */
   onRetry?: () => void;
+  onReviewOrigin?: (messageId: string) => void;
   /**
    * #3157: the conversation stopped on a provider usage limit, so the queue
    * does not send on its own; Send now still does.
@@ -120,6 +121,7 @@ export function QueuedMessages({
   onPendingSettled,
   failure,
   onRetry,
+  onReviewOrigin,
   heldByUsageLimit,
   held,
   outbox,
@@ -185,7 +187,9 @@ export function QueuedMessages({
   const needsReview = Boolean(
     notSent ||
       (outboxCount > 0 && outbox?.needsReview) ||
-      metadata?.some((entry) => entry.delivery === 'indeterminate') ||
+      metadata?.some(
+        (entry) => entry.delivery === 'indeterminate' || entry.originUnverified,
+      ) ||
       held?.removalError ||
       held?.unavailable ||
       heldEntries.some((entry) => entry.state === 'unconfirmed'),
@@ -282,47 +286,70 @@ export function QueuedMessages({
               {/* Clamped to two lines; Edit opens the full text. */}
               <span className="queued-message__body">{msg}</span>
               <span className="queued-message__status">
-                {metadata?.[idx]?.delivery
-                  ? metadata[idx].delivery === 'steering'
-                    ? 'Steer · Sending steering'
-                    : 'Steer · Delivery not confirmed; retry steering'
-                  : metadata?.[idx]?.mode === 'steer'
-                    ? waitingForTools
-                      ? 'Steer · Waiting for tools to finish'
-                      : 'Steer · Waiting for this turn to finish'
-                    : 'Queue · Queued for next turn'}
+                {metadata?.[idx]?.originUnverified
+                  ? metadata[idx].delivery
+                    ? 'Review destination · Delivery unknown'
+                    : 'Review destination'
+                  : metadata?.[idx]?.delivery
+                    ? metadata[idx].delivery === 'steering'
+                      ? 'Steer · Sending steering'
+                      : 'Steer · Delivery not confirmed; retry steering'
+                    : metadata?.[idx]?.mode === 'steer'
+                      ? waitingForTools
+                        ? 'Steer · Waiting for tools to finish'
+                        : 'Steer · Waiting for this turn to finish'
+                      : 'Queue · Queued for next turn'}
               </span>
             </span>
-            {onSendMessageNow && metadata?.[idx] && (
-              <button
-                type="button"
-                className="queued-message__btn"
-                disabled={
-                  sendNowPending ||
-                  pendingRows.has(row.id) ||
-                  !!metadata?.[idx]?.delivery
-                }
-                title="Stop the current turn immediately and send this message"
-                aria-label={`Send pending message ${orderNum} now`}
-                onClick={() => {
-                  if (pendingRef.current.has(row.id)) return;
-                  pendingRef.current.add(row.id);
-                  setPendingRows(new Set(pendingRef.current));
-                  void onSendMessageNow(metadata[idx].id).finally(() => {
-                    pendingRef.current.delete(row.id);
+            {metadata?.[idx] &&
+              (metadata[idx].originUnverified
+                ? onReviewOrigin
+                : onSendMessageNow) && (
+                <Button
+                  variant="ghost"
+                  className="queued-message__btn"
+                  disabled={
+                    !metadata[idx].originUnverified &&
+                    (sendNowPending ||
+                      pendingRows.has(row.id) ||
+                      !!metadata[idx].delivery)
+                  }
+                  title={
+                    metadata[idx].originUnverified
+                      ? 'Check the destination and prior delivery before sending this saved input.'
+                      : 'Stop the current turn immediately and send this message'
+                  }
+                  aria-label={
+                    metadata[idx].originUnverified
+                      ? 'Review and resend'
+                      : `Send pending message ${orderNum} now`
+                  }
+                  onClick={() => {
+                    if (metadata[idx].originUnverified) {
+                      onReviewOrigin?.(metadata[idx].id);
+                      return;
+                    }
+                    if (!onSendMessageNow || pendingRef.current.has(row.id))
+                      return;
+                    pendingRef.current.add(row.id);
                     setPendingRows(new Set(pendingRef.current));
-                  });
-                }}
-              >
-                Send now
-              </button>
-            )}
+                    void onSendMessageNow(metadata[idx].id).finally(() => {
+                      pendingRef.current.delete(row.id);
+                      setPendingRows(new Set(pendingRef.current));
+                    });
+                  }}
+                >
+                  {metadata[idx].originUnverified
+                    ? 'Review and resend'
+                    : 'Send now'}
+                </Button>
+              )}
             {/* The list renders reversed (newest on top, next-to-drain
                 at the bottom), so the VISUAL up direction corresponds
                 to a HIGHER real array index (drains later): ▲ calls
                 moveDown(realIdx) and ▼ calls moveUp(realIdx). Review
                 #613-1 caught the inverted wiring. */}
-            {canSteer && onSteer && (
+            {canSteer && onSteer && !metadata?.[idx]?.originUnverified && (
               <button
                 type="button"
                 disabled={pendingRows.has(row.id)}

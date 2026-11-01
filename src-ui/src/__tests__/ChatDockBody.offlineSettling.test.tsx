@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import { type ReactNode, useEffect, useState } from 'react';
 import { describe, expect, test, vi } from 'vitest';
+import { outboundDispatch } from '../lib/outboundQueue';
 
 const fetchCapability = vi.hoisted(() => vi.fn());
 const fetchWindow = vi.hoisted(() => vi.fn());
@@ -134,7 +135,6 @@ vi.mock('../components/chat/OutboundQueuedMessages', () => ({
 }));
 
 import { ChatDockBody } from '../components/chat-dock/ChatDockBody';
-import { activeChatsStore } from '../contexts/active-chats-store';
 import type { ChatSession } from '../types';
 
 const chatInput = {
@@ -301,87 +301,39 @@ describe('the outbox facts the pending list reads', () => {
     );
   });
 
-  test('Send on a copy from a closed window joins this window’s queue while a turn runs, under its own key', async () => {
+  test('Send on a closed-window copy releases its outbox key for server inbox handoff', async () => {
+    const send = vi.spyOn(outboundDispatch, 'sendHeld').mockResolvedValue();
     const closed = {
       clientTurnId: 'held-closed',
-      content: 'queued in a window that closed',
+      content: 'saved input',
       createdAt: 1,
       status: 'pending' as const,
       heldElsewhere: true as const,
       heldByClosedWindow: true as const,
     };
-    const running: ChatSession = {
+    const running = {
       ...session(0),
       status: 'running',
       orchestrationTurnOpen: true,
-      queuedMessages: ['queued here'],
-      queuedMessageMetadata: [{ id: 'local-1', mode: 'queue' }],
+      queuedMessages: [],
       outboundQueuedTurns: [closed],
-    } as unknown as ChatSession;
-    updateChatSpy.mockClear();
-    outboxProps.mockClear();
-    render(dock(running));
-    await waitFor(() => expect(outboxProps).toHaveBeenCalled());
-    const { onSendHeld } = outboxProps.mock.lastCall![0] as {
-      onSendHeld: (turn: typeof closed) => Promise<void>;
-    };
-    await onSendHeld(closed);
-    // It sends after what is already queued here, in that order, and keeps
-    // its key, so the queue's durable copy takes the held row over.
-    expect(updateChatSpy).toHaveBeenCalledWith('offline-thread', {
-      queuedMessages: ['queued here', 'queued in a window that closed'],
-      queuedMessageMetadata: [
-        { id: 'local-1', mode: 'queue' },
-        { id: 'held-closed', mode: 'queue' },
-      ],
-    });
-  });
-  test('a second Send on the same closed-window copy before the re-render queues it once', async () => {
-    const closed = {
-      clientTurnId: 'held-twice',
-      content: 'queued in a window that closed',
-      createdAt: 1,
-      status: 'pending' as const,
-      heldElsewhere: true as const,
-      heldByClosedWindow: true as const,
-    };
-    const running: ChatSession = {
-      ...session(0),
-      status: 'running',
-      orchestrationTurnOpen: true,
-      queuedMessages: ['queued here'],
-      queuedMessageMetadata: [{ id: 'local-1', mode: 'queue' }],
-      outboundQueuedTurns: [closed],
-    } as unknown as ChatSession;
-    // The real store owns the queue; this render's props stay stale.
-    activeChatsStore.initChat(running.id);
-    activeChatsStore.updateChat(running.id, {
-      queuedMessages: running.queuedMessages,
-      queuedMessageMetadata: running.queuedMessageMetadata,
-    });
-    updateChatSpy.mockReset();
-    updateChatSpy.mockImplementation((id, updates) =>
-      activeChatsStore.updateChat(id, updates),
-    );
-    outboxProps.mockClear();
+    } as ChatSession;
     try {
+      outboxProps.mockClear();
+      updateChatSpy.mockClear();
       render(dock(running));
       await waitFor(() => expect(outboxProps).toHaveBeenCalled());
       const { onSendHeld } = outboxProps.mock.lastCall![0] as {
         onSendHeld: (turn: typeof closed) => Promise<void>;
       };
-      await Promise.all([onSendHeld(closed), onSendHeld(closed)]);
-      expect(updateChatSpy).toHaveBeenCalledTimes(1);
-      expect(
-        activeChatsStore.getChatForExecutionSession(running.id)
-          ?.queuedMessageMetadata,
-      ).toEqual([
-        { id: 'local-1', mode: 'queue' },
-        { id: 'held-twice', mode: 'queue' },
-      ]);
+      await onSendHeld(closed);
+      expect(send).toHaveBeenCalledExactlyOnceWith('held-closed');
+      expect(updateChatSpy).not.toHaveBeenCalledWith(
+        'offline-thread',
+        expect.objectContaining({ queuedMessages: expect.anything() }),
+      );
     } finally {
-      updateChatSpy.mockReset();
-      activeChatsStore.removeChat(running.id);
+      send.mockRestore();
     }
   });
 });

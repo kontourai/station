@@ -298,6 +298,13 @@ export async function sendPendingMessageNow(
       (message) => message.id === messageId,
     ) ?? -1;
   if (index < 0) return;
+  if (chat.queuedMessageMetadata?.[index]?.originUnverified) {
+    activeChatsStore.addEphemeralMessage(threadId, {
+      role: 'system',
+      content: 'Review the saved message’s destination before resending it.',
+    });
+    return;
+  }
   if (chat.queuedMessageMetadata?.[index]?.delivery) {
     activeChatsStore.addEphemeralMessage(threadId, {
       role: 'system',
@@ -460,6 +467,7 @@ export function drainQueuedMessageOnTurnCompleted(
     // two tabs holding copies of the same local queue can still dispatch
     // twice. A shared durable send claim is needed before calling that case
     // exactly once across devices (#2530).
+    chat?.queuedMessageMetadata?.[0]?.originUnverified ||
     chat?.queuedMessageMetadata?.[0]?.delivery ||
     chat?.queueDrainSettling ||
     chat?.queueSendNowPending ||

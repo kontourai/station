@@ -711,6 +711,11 @@ describe('queued follow-ups survive a reload (UX audit T3)', () => {
     expect(rehydrated.s1?.queuedMessageFailure).toEqual(
       chats.s1.queuedMessageFailure,
     );
+    expect(
+      rehydrated.s1?.queuedMessageMetadata?.map(
+        (item) => item.originUnverified,
+      ),
+    ).toEqual([true, true]);
   });
 
   test('an uncertain inbox steer keeps its reconciliation identity across reload', () => {

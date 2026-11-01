@@ -58,7 +58,10 @@ function heldOutboundIntents(
         : {}),
     };
     const held: Array<
-      readonly [string, { id: string; delivery?: string } | undefined]
+      readonly [
+        string,
+        { id: string; delivery?: string; originUnverified?: true } | undefined,
+      ]
     > = chat.queuedMessages.map(
       (content, index) =>
         [content, chat.queuedMessageMetadata?.[index]] as const,
@@ -69,7 +72,7 @@ function heldOutboundIntents(
         chat.pendingQueueDispatch.metadata,
       ]);
     for (const [content, metadata] of held) {
-      if (!metadata || metadata.delivery) continue;
+      if (!metadata || metadata.delivery || metadata.originUnverified) continue;
       intents.push({ ...base, clientTurnId: metadata.id, content });
     }
   }

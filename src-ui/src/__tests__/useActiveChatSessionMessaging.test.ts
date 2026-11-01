@@ -2962,128 +2962,37 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     );
   });
 
-  it('a send refused because its session is still starting moves into the queue instead of failing', async () => {
-    sendExecutionMessageMock.mockRejectedValueOnce(
-      new CodedOrchestrationError(
-        400,
-        'The session is still starting. Nothing was sent; try again in a moment.',
-        'provider_session_starting',
-      ),
-    );
-    // A turn is open by the time the refusal lands, so the queue waits for
-    // its end rather than draining at once (the same shape as #2324 below).
-    activeChatsStore.updateChat(sessionId, {
-      conversationId: 'conversation-start',
-    });
-    const { result } = renderHook(() => useSendMessage('http://api.test'));
-    const sent = act(async () => {
-      await result.current(sessionId, 'claude', sessionId, 'during start');
-    });
-    activeChatsStore.updateChat(sessionId, {
-      conversationActivity: {
-        conversationId: 'conversation-start',
-        asOfSequence: 9,
-        openTurn: {
-          turnId: 'turn:start',
-          threadId: sessionId,
-          startedAt: '2026-09-23T00:00:00.000Z',
-        },
-      },
-    });
-    await sent;
-
-    const chat = activeChatsStore.getSnapshot()[sessionId];
-    expect(chat.queuedMessages).toEqual(['during start']);
-    expect(chat.status).not.toBe('error');
-    expect(chat.error).toBeUndefined();
-    expect(chat.ephemeralMessages ?? []).toEqual([]);
-    expect(
-      chat.messages?.some(
-        (message) =>
-          message.role === 'user' && message.content === 'during start',
-      ),
-    ).toBe(false);
-  });
-
-  it('#2324 (D4): a send refused because the engine began its own turn moves into the queue instead of failing', async () => {
-    sendExecutionMessageMock.mockRejectedValueOnce(
-      new CodedOrchestrationError(
-        400,
-        'The agent is replying on its own; your message will be sent when it finishes.',
-        'provider_turn_in_progress',
-      ),
-    );
-    // The server shows the provider turn open by the time the refusal lands,
-    // so the queue waits for its end rather than draining at once.
-    activeChatsStore.updateChat(sessionId, {
-      conversationId: 'conversation-q',
-    });
-    const { result } = renderHook(() => useSendMessage('http://api.test'));
-    const sent = act(async () => {
-      await result.current(sessionId, 'claude', sessionId, 'raced it');
-    });
-    activeChatsStore.updateChat(sessionId, {
-      conversationActivity: {
-        conversationId: 'conversation-q',
-        asOfSequence: 9,
-        openTurn: {
-          turnId: 'provider:q',
-          threadId: sessionId,
-          startedAt: '2026-09-23T00:00:00.000Z',
-          trigger: 'provider',
-        },
-      },
-    });
-    await sent;
-
-    const chat = activeChatsStore.getSnapshot()[sessionId];
-    expect(chat.queuedMessages).toEqual(['raced it']);
-    expect(chat.status).not.toBe('error');
-    expect(chat.error).toBeUndefined();
-    // Not left as a sent row, and not restored as a draft too.
-    expect(
-      chat.messages?.some(
-        (message) => message.role === 'user' && message.content === 'raced it',
-      ),
-    ).toBe(false);
-    expect(chat.input ?? '').toBe('');
-    expect(chat.ephemeralMessages ?? []).toEqual([]);
-  });
-
-  it('#2324 (D4): a refused send whose provider turn already ended by the time the refusal lands starts draining from the queue at once', async () => {
-    // Only the drain's settle timer is faked, so its send never runs here:
-    // what is under test is that the drain STARTED (it pops the head and
-    // marks itself settling synchronously), not the drained send.
-    vi.useFakeTimers({ toFake: ['setTimeout'] });
-    try {
+  it.each(['provider_session_starting', 'provider_turn_in_progress'])(
+    'keeps a definitive %s refusal in the composer when Station did not queue it',
+    async (code) => {
       sendExecutionMessageMock.mockRejectedValueOnce(
-        new CodedOrchestrationError(
-          400,
-          'The agent is replying on its own; your message will be sent when it finishes.',
-          'provider_turn_in_progress',
-        ),
+        new CodedOrchestrationError(400, 'Nothing was sent.', code),
       );
-      // The server shows no open turn: the provider turn's end — the queue's
-      // only trigger — has already passed.
       activeChatsStore.updateChat(sessionId, {
-        conversationId: 'conversation-r',
-        conversationActivity: {
-          conversationId: 'conversation-r',
-          asOfSequence: 3,
-        },
+        conversationId: 'conversation-race',
+        input: 'keep the draft',
       });
       const { result } = renderHook(() => useSendMessage('http://api.test'));
       await act(async () => {
-        await result.current(sessionId, 'claude', sessionId, 'after it ended');
+        await result.current(sessionId, 'claude', sessionId, 'keep the draft');
       });
+      expect(sendExecutionMessageMock).toHaveBeenCalledWith(
+        'http://api.test',
+        expect.objectContaining({ whenBusy: 'queue' }),
+        expect.any(Object),
+      );
       const chat = activeChatsStore.getSnapshot()[sessionId];
       expect(chat.queuedMessages).toEqual([]);
-      expect(chat.queueDrainSettling).toBe(true);
-    } finally {
-      vi.clearAllTimers();
-      vi.useRealTimers();
-    }
-  });
+      expect(chat.input).toBe('keep the draft');
+      expect(chat.queueDrainSettling).not.toBe(true);
+      expect(
+        chat.messages?.some(
+          (message) =>
+            message.role === 'user' && message.content === 'keep the draft',
+        ),
+      ).toBe(false);
+    },
+  );
 
   it('#2324 review J4: a refused send WITH attachments is not dropped into the text queue — it keeps its attachments and the ordinary error', async () => {
     activeChatsStore.updateChat(sessionId, {
