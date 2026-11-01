@@ -89,7 +89,47 @@ for (const kind of ['memory', 'sqlite'] as const)
       });
     });
 
-    it('begin receipt never grants another execution and proven-dead takeover grants a distinct attempt', async () => {
+    it('a pinned request without a dispatch grant can begin after takeover', async () => {
+      const f = await fixture(kind);
+      cleanup.push(() => f.close());
+      const pinned = await f.storage.execute(
+        operation({
+          type: 'pin',
+          key,
+          expected: f.opened.snapshot.fence,
+          pin: f.pin,
+        }),
+        f.context,
+      );
+      if (pinned.kind === 'refused') throw new Error('pin prerequisite');
+      const restored = await f.storage.execute(
+        operation({
+          type: 'takeOver',
+          key,
+          expected: pinned.fence,
+          owner: nextOwner,
+        }),
+        { liveness: () => 'dead' },
+      );
+      if (restored.kind !== 'restored')
+        throw new Error('takeover prerequisite');
+      expect(
+        await f.storage.execute(
+          operation({
+            type: 'begin',
+            key,
+            expected: restored.snapshot.fence,
+            requestId: f.pin.requestId,
+          }),
+          f.context,
+        ),
+      ).toMatchObject({
+        kind: 'execute',
+        attempt: { number: 1, owner: nextOwner },
+      });
+    });
+
+    it('a dispatched request remains indeterminate after proven-dead takeover', async () => {
       const f = await fixture(kind);
       cleanup.push(() => f.close());
       const pinned = await f.storage.execute(
@@ -157,13 +197,7 @@ for (const kind of ['memory', 'sqlite'] as const)
         }),
         f.context,
       );
-      expect(second).toMatchObject({
-        kind: 'execute',
-        attempt: { number: 2, owner: nextOwner, requestId: 'request' },
-      });
-      if (second.kind !== 'execute')
-        throw new Error('second begin prerequisite');
-      expect(second.attempt.grantId).not.toBe(begun.attempt.grantId);
+      expect(second).toEqual({ kind: 'refused', reason: 'indeterminate' });
       expect(restored.pendingRequest).toEqual(f.pin);
     });
 
@@ -290,7 +324,7 @@ for (const kind of ['memory', 'sqlite'] as const)
     });
   });
 
-it('real SQLite abort audit is stable, monotone and ready only after required applied acknowledgments', async () => {
+it('real SQLite keeps an aborted partial in audit and excludes it from model context', async () => {
   const f = await fixture();
   cleanup.push(() => f.close());
   const sink = openSqliteRuntimeProjection({
@@ -362,40 +396,14 @@ it('real SQLite abort audit is stable, monotone and ready only after required ap
     }),
     f.context,
   );
-  if (second.kind !== 'execute') throw new Error('second begin prerequisite');
-  const tape = await f.bodies.put(
-    'runtime-ai-sdk-v3-tape/1',
-    tapeBytes('request', 2, parts.map(normalizePart)),
-  );
-  const completed = await f.storage.execute(
-    operation({
-      type: 'complete',
-      key,
-      expected: second.fence,
-      attempt: second.attempt,
-      tape,
-      lastPartialSequence: -1,
-    }),
-    f.context,
-  );
-  if (completed.kind === 'refused') throw new Error('complete prerequisite');
-  await f.storage.execute(
-    operation({
-      type: 'finish',
-      key,
-      expected: completed.fence,
-      status: 'completed',
-    }),
-    f.context,
-  );
-  expect(await sink.readModelContext(key)).toEqual({ kind: 'unavailable' });
+  expect(second).toEqual({ kind: 'refused', reason: 'indeterminate' });
   await drainModelOutbox(f.storage, sink, key, f.context);
   const oldPartial = listed.entries[0];
   if (!oldPartial) throw new Error('old partial prerequisite');
   await sink.apply(oldPartial);
   await sink.apply(oldPartial);
   const audit = await sink.readAudit(key);
-  expect(audit.map((p) => p.kind)).toEqual(['partial', 'aborted', 'completed']);
+  expect(audit.map((p) => p.kind)).toEqual(['partial', 'aborted']);
   expect(audit[1]).toMatchObject({
     requestId: 'request',
     attempt: 1,
@@ -404,10 +412,7 @@ it('real SQLite abort audit is stable, monotone and ready only after required ap
   expect(await f.bodies.read(body)).toEqual(
     encode({ type: 'text-delta', id: 'old', delta: 'OLD-PARTIAL' }),
   );
-  expect(await sink.readModelContext(key)).toEqual({
-    kind: 'ready',
-    tapes: [tape],
-  });
+  expect(await sink.readModelContext(key)).toEqual({ kind: 'unavailable' });
 });
 
 for (const scenario of [

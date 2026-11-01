@@ -3,13 +3,77 @@
 `@kontourai/agent-runtime` retains model requests and completed native streams
 for an authorized generation. The existing VoltAgent or Strands loop continues
 to choose model calls. This private workspace package is experimental Tier 1;
-it is not a released package or Station restart integration.
+it is not a released package. Station adopts its agent-turn protocol behind
+the **Crash-durable Station Agent** Feature Preview (off by default).
 
 The root entry exports the twelve model commands, coordinator, staged memory
 adapter, fixed policy and ordered outbox drain. `/sqlite` uses a host-supplied
 Node 24 `DatabaseSync`. `/ai-sdk`, `/voltagent` and `/strands` bind the pinned
 AI SDK v3 interface, VoltAgent 2.10.0 and Strands 1.19.0 VercelModel. Optional
 framework dependencies are exact peers. The package imports no Station code.
+
+The public root also exports an agent-turn journal and recovery owner. Its
+separate `agent_steps_` namespace declares writer format `agent-steps/6` and
+leaves existing `runtime-model/1` records intact. An active conversation has
+one owner. Recovery requires a proven-dead owner and compares the complete
+observed fence inside the SQLite write transaction. A retained Station turn
+boundary grants no execution authority. Station boot calls this owner before
+ordinary interrupted-turn settlement. Station registers the actual VoltAgent and Strands stream entry points, tools,
+approval waits and provider transports. Disconnect transfers stream and native
+turn cleanup to the owner; explicit Stop records cancellation. Recovery waits
+for the original agent definition and Session, reauthorizes current access,
+then re-enters the framework with its retained history. Changed or unavailable
+configuration holds recovery. Only text turns are admitted by this preview.
+Writer 5 adds cancellation requests, terminal timestamps and retained transport
+frames. Writer 6 pins canonical Conversation affinity separately from the
+execution Session coordinate. It validates exact schemas from writers 1–5, preserves existing record
+bytes and adds new tables atomically. Legacy settled rows receive a migration
+observation timestamp rather than a reconstructed historical completion time.
+The prior writer refuses the new metadata; future writers refuse here too.
+
+`durableLanguageModel` journals calls made inside `AgentTurnLease.run` without
+replacing the framework loop. Its completed tapes replay; its committed partials
+remain aborted audit data after takeover and never become model context. A
+possibly dispatched call becomes indeterminate. A pinned, never-dispatched call
+can still run with identical input. Tool-enabling stream parts remain held
+until the complete model tape commits.
+
+`lease.tool({ id, input, replay }, execute)` commits intent and a one-use grant
+before entering a tool. Recovery replays completed results, retries an interrupted
+`safe` call once under the new owner, and returns an interrupted/indeterminate
+result for an interrupted `unsafe` call. Concurrent identical calls join the
+same local execution. Changed input or a stale owner refuses. Unknown tools
+must default to `unsafe` in the host; replay safety is a trusted declaration.
+
+`lease.approval(tool, timeoutMs, wait)` persists a pending request before asking
+the host. Its identity and absolute deadline survive takeover. The host receives
+that identity and the remaining time when it reinstalls the wait; it must never
+substitute an automatic approval. New identities bind the complete durable turn
+key and tool ID, because native tool-call IDs are not global. Existing approval
+IDs are recovered by their tool binding without rewriting the record.
+`createAgentRuntime`'s optional `approvalSettled(spec, approval)` callback runs
+after the recorded decision commits (or when replaying a committed decision).
+It receives detached data and does not grant tool entry. A decision compares the current owner fence
+and approval revision, commits once, and cannot grant permission after the
+deadline. Pending, denied and expired approvals block the tool execution grant.
+Duplicate local waits join one request. A failed decision commit leaves the
+request pending, and a dead owner's late answer cannot resolve its successor's
+request. Writer 3 adds this table through an explicit atomic migration from
+writers 1 and 2 without rewriting their turn or effect records.
+
+Writer 4 adds immutable provider-session identities, one per scope and
+conversation. Later turns and takeover retain the identity; forks and children
+use new conversation identities and receive fresh ones. The model wrapper's
+`affinity` callback maps this opaque identity to the provider's supported options
+before pinning the request. It is not an idempotency key and never authorizes
+redispatch. Cache-hit behavior still requires provider evidence.
+
+New admission and opening also select suspect active headers. A damaged active
+header cannot hide a live run from conversation occupancy. Liveness callbacks
+must not mutate the transaction, and participant callbacks cannot change another
+run's unresolved membership. `auditSqliteAgentJournal` is a separate, read-only
+whole-store diagnostic: it checks all turn/effect/approval records and references,
+including settled history, without initializing or migrating a database.
 
 The host supplies authorization/current implementation and writer-generation
 closures, real owner liveness, and the already-authorized source cutoff.
@@ -24,16 +88,20 @@ implicitly call it.
 
 The first `begin.execute` COMMIT acknowledgment permits one provider dispatch.
 An acknowledgment retry returns a receipt, never another dispatch grant.
-Recovery can resend and incur model billing again. Every visible prefix part
+After a committed dispatch grant, a lost outcome is indeterminate: recovery
+does not grant another dispatch without provider idempotency or result lookup,
+which this experimental runtime does not yet implement. A request pinned
+without a dispatch grant can still be dispatched after takeover. Every visible prefix part
 commits before projection. The ordered suffix beginning with a tool-enabling
 part or successful terminal remains held through EOF, strict tape validation,
 durable body put and complete COMMIT acknowledgment. Empty-prefix completion
 uses `lastPartialSequence: -1`; otherwise it is the last committed sequence.
 
-Actual tools refuse before their registered body and block the run, even when
+The legacy model-only consumers refuse tools before their registered body and block the run, even when
 the framework catches the refusal. Client-tool responses exercise the model
 commit barrier; they do not establish durable tools, results or approvals.
-There are no tool/approval commands, tool replay declarations or new agent loop.
+They do not supply the agent-turn tool protocol described above. No new agent
+loop is introduced; Station approval delivery remains an integration obligation.
 
 SQLite bodies are immutable, content-addressed BLOBs in the existing host
 connection's `agent_runtime_` namespace. Opening requires WAL, FULL synchronous
@@ -196,3 +264,10 @@ command/result variants and owning pin/attempt/tape links. Historical receipts
 remain valid across later ownership/revision changes, while settled full answers
 expire at the replay cutoff even when unacknowledged projections prevent
 compaction. Authorized projection draining remains available after that cutoff.
+
+Station consumes only the package root; `scripts/agent-runtime-import-boundary-gate.mjs`
+checks both directions. Scripted native conformance runs at the real Station
+adapters, including tool effect counts, approval recovery and conservative
+model dispatch. These tests establish local SQLite and framework behavior;
+they do not establish live provider idempotency, cache benefit, operating-system
+crash durability or a published runtime release.

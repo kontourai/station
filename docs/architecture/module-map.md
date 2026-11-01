@@ -21,6 +21,8 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 
 ## Index
 
+The optional [Durable Station Agent](#durable-station-agent) owner sits above the engine-neutral kernel.
+
 | Module | Intent | Primary source |
 | [WalkthroughService](#walkthroughservice) | Import a local recording into an immutable validated manifest and selected frames. | `src-server/services/walkthroughs/walkthrough-service.ts` |
 | --- | --- | --- |
@@ -132,6 +134,32 @@ and where to start reading; it is a pointer, not a reviewed interface contract.
 | `src-server/openapi/` | Builds the checked-in [OpenAPI subset](../reference/openapi.json) from route schemas; the documentation tests compare its output with the file | [Endpoint authorities](../reference/endpoints.md) |
 | `packages/basis-pane/` | First-party Basis Workspace Pane, answer-basis affordance and session inventory views | [Whole Task Basis collection](#whole-task-basis-collection), [README](../../packages/basis-pane/README.md) |
 | `packages/board-pane/` | The Console Board as an in-process Workspace Pane over published contracts | [README](../../packages/board-pane/README.md) |
+
+## Durable Station Agent
+
+The [runtime owner](../../src-server/runtime/agents/durable-agent-owner.ts)
+consumes `@kontourai/agent-runtime` through its public root. It is bound during
+[runtime initialization](../../src-server/runtime/bootstrap/runtime-initialize.ts)
+behind the off-by-default **Crash-durable Station Agent** preview. The private
+SQLite journal owns the conversation fence, tool/model receipts, approval
+revision and deadline, cancellation request, terminal timestamp and transport
+frames. Station retains current Session authorization and native output authority.
+
+[Recovery composition](../../src-server/runtime/agents/durable-agent-recovery.ts)
+waits for the original agent and Session, claims only a proven-dead owner, then
+re-enters the actual framework loop. Completed tapes replay, unsafe interrupted
+tools surface indeterminate results, and uncertain model dispatch never resends
+automatically. [Foreground handoff](../../src-server/runtime/agents/durable-agent-lifecycle.ts)
+retains delivery and cleanup across disconnect; explicit Stop cancels. Stable
+frame and invocation identities let publication reconcile after settlement.
+
+The native conformance suite is
+`src-server/runtime/agents/__tests__/durable-agent-conformance.test.ts`; the
+route-level disconnect control is
+`src-server/routes/chat/__tests__/chat-primary-stream.durable-disconnect.test.ts`.
+These use real framework loops and local SQLite with scripted model transport.
+See the [package contract](../../packages/agent-runtime/README.md) for supported
+forms and the separate provider, performance and release boundaries.
 
 ## Local speech and media tools
 

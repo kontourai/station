@@ -121,6 +121,8 @@ import { registerObservableGauges } from '../../telemetry/metrics.js';
 import { applyConfiguredLogLevel, type Logger } from '../../utils/logger.js';
 import type { VoiceSessionService } from '../../voice/voice-session.js';
 import type { AgentHooksDeps } from '../agents/agent-hooks.js';
+import { stationAgentRuntimeOwner } from '../agents/durable-agent-owner.js';
+import { configureDurableAgentRecovery } from '../agents/durable-agent-recovery.js';
 import type { StagedPreToolPolicyEvaluator } from '../agents/pre-tool-policy.js';
 import { initializeRuntimeAgents } from '../agents/runtime-agent-registry.js';
 import {
@@ -248,6 +250,7 @@ export interface InitializeRuntimeDeps {
   orchestrationEventStore: EventStore;
   /** The `chat-host-images` Feature Preview selector, passed to orchestration. */
   hostImagesPreview?: FeaturePreviewSelector;
+  durableAgentPreview?: FeaturePreviewSelector;
   credentialProfileRecoveryAdapter?: CredentialProfileRecoveryAdapter;
   usageAggregator?: UsageAggregator;
   /** archive#3245: lifetime analytics' read of the orchestration substrate. */
@@ -518,7 +521,40 @@ export async function initializeRuntime(
       revokeStationControlMcpToken(threadId, serverId),
   });
   let stationAgentsReady = false;
+  const durableOwner = stationAgentRuntimeOwner(
+    configLoader.getProjectHomeDir(),
+  );
   const stationAgentAdapter = new StationAgentAdapter({
+    durable: {
+      enabled: durableOwner.enabled,
+      owns: durableOwner.owns,
+      snapshot: (threadId, turnId) => {
+        const value = durableOwner.read(threadId, turnId);
+        return value && { ...value.turn, settledAt: value.settledAt };
+      },
+      frame: durableOwner.readFrame,
+      approval: (threadId, turnId, id) =>
+        durableOwner
+          .approvals(threadId, turnId)
+          .find((value) => value.id === id),
+      approvals: durableOwner.approvals,
+      publish: (event) =>
+        orchestrationService.publishDurableStationEvent(event),
+      cancel: (threadId, turnId) => durableOwner.cancel(threadId, turnId),
+      pause: () => durableOwner.pause(),
+      activeTurn: (threadId) =>
+        durableOwner
+          .list()
+          .find(
+            (value) =>
+              value.state === 'running' &&
+              value.spec.key.conversationId === threadId,
+          )?.spec.key.invocationId,
+      retained: (threadId) =>
+        durableOwner
+          .list()
+          .some((value) => value.spec.key.conversationId === threadId),
+    },
     apiBase: `http://127.0.0.1:${port}`,
     // archive#1049: the active set alone under-recognizes agents the real
     // chat route can still report on (a persisted agent whose model failed
@@ -635,6 +671,8 @@ export async function initializeRuntime(
     deps.environmentSecurityService,
   );
   const orchestrationService = new OrchestrationService({
+    recoverDurableTurn: (input) =>
+      stationAgentRuntimeOwner(configLoader.getProjectHomeDir()).recover(input),
     nativeForkStoredReadVerifier: nativeForkStoredReadDomain.verifyForService,
     ...(deps.hostImagesPreview
       ? { hostImagesPreview: deps.hostImagesPreview }
@@ -815,6 +853,21 @@ export async function initializeRuntime(
   )
     deps.skillService.enableExperienceExecution?.();
 
+  if (deps.durableAgentPreview)
+    configureDurableAgentRecovery({
+      owner: durableOwner,
+      adapter: stationAgentAdapter,
+      orchestration: orchestrationService,
+      preview: deps.durableAgentPreview,
+      conversationIdentity: (sessionId) =>
+        orchestrationEventStore.conversationForSession(sessionId)
+          ?.conversationId ?? sessionId,
+      approvalRegistry,
+      agentHooks: deps.agentHooksMap,
+      agentSpecs: deps.agentSpecs,
+      toolNameMapping,
+      logger,
+    });
   orchestrationService.initialize();
 
   // archive#1501, seam S5 (`docs/design/portable-project-identity.md`

@@ -60,7 +60,19 @@
 
     "src-server/providers/__tests__/claude-adapter-events.test.ts",
 
-    "src-server/routes/orchestration/__tests__/conversation-fork.qualification.test.ts"
+    "src-server/routes/orchestration/__tests__/conversation-fork.qualification.test.ts",
+
+    "src-server/runtime/agents/durable-agent-owner.ts",
+
+    "src-server/runtime/agents/durable-agent-recovery.ts",
+
+    "src-server/runtime/agents/durable-agent-lifecycle.ts",
+
+    "src-server/runtime/agents/__tests__/durable-agent-conformance.test.ts",
+
+    "src-server/routes/chat/__tests__/chat-primary-stream.durable-disconnect.test.ts",
+
+    "src-server/runtime/agents/__tests__/durable-agent-recovery.test.ts"
   ],
 
   "checks": [

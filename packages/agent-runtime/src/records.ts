@@ -51,6 +51,7 @@ const refused = z
       'stale',
       'busy',
       'unknown-owner',
+      'indeterminate',
       'conflict',
       'unavailable',
       'unsupported',

@@ -70,20 +70,47 @@ export function runtimeImportFindings(files, readText) {
   }
   return findings;
 }
+export function stationRuntimeImportFindings(files, readText) {
+  return files.flatMap((file) => {
+    if (!/\.[cm]?[jt]sx?$/.test(file)) return [];
+    return moduleReferences(file, readText(file)).flatMap((ref) => {
+      const name = ref.specifier;
+      if (typeof name !== 'string') return [];
+      const internal =
+        name.startsWith('@kontourai/agent-runtime/') ||
+        (name.startsWith('.') &&
+          resolveRelative(file, name).startsWith(`${root}/`));
+      return internal ? [`${file}:${ref.line} ${name}`] : [];
+    });
+  });
+}
 export function checkRuntimeImports() {
   const files = execFileSyncBounded(
     'git',
-    ['ls-files', '--cached', '--others', '--exclude-standard', '--', root],
+    [
+      'ls-files',
+      '--cached',
+      '--others',
+      '--exclude-standard',
+      '--',
+      root,
+      'src-server',
+    ],
     { encoding: 'utf8', windowsHide: true },
   )
     .trim()
     .split('\n');
   if (!files.some((f) => f.endsWith('.ts')))
     throw new Error('Runtime boundary found no source');
-  const links = files.filter((f) => lstatSync(f).isSymbolicLink());
+  const runtimeFiles = files.filter((f) => f.startsWith(`${root}/`));
+  const stationFiles = files.filter((f) => f.startsWith('src-server/'));
+  const links = runtimeFiles.filter((f) => lstatSync(f).isSymbolicLink());
   const findings = [
     ...links,
-    ...runtimeImportFindings(files, (f) => readFileSync(f, 'utf8')),
+    ...runtimeImportFindings(runtimeFiles, (f) => readFileSync(f, 'utf8')),
+    ...stationRuntimeImportFindings(stationFiles, (f) =>
+      readFileSync(f, 'utf8'),
+    ),
   ];
   if (findings.length)
     throw new Error(`Runtime import boundary:\n${findings.join('\n')}`);

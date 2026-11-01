@@ -232,6 +232,18 @@ load → MCP connect → ready → chat → reload
 4. **chat** — `POST /api/agents/:slug/chat` streams a response; the runtime creates an `InjectableStream` to interleave approval events with model output
 5. **reload** — `reloadAgents()` prepares the replacement connection set, publishes the new agents, and retires superseded connections without a full restart
 
+The **Crash-durable Station Agent** Feature Preview is off by default. When on,
+Station's VoltAgent and Strands adapters record text turns in the private
+`data/agent-runtime/steps.sqlite` journal through `@kontourai/agent-runtime`.
+Client disconnect transfers delivery and cleanup to the durable owner; explicit
+Stop records cancellation. Restart requires the original agent definition,
+current Session access and a proven-dead prior owner. A pending approval keeps
+its identity and absolute deadline and needs an explicit answer. Interrupted
+unsafe tools return an indeterminate result; only declared safe tools retry.
+A model request that might have been dispatched is never automatically resent.
+The preview refuses unsupported non-text inputs. External engines keep their
+existing lifecycle. See the [runtime contract](../../packages/agent-runtime/README.md).
+
 Read health through the Agent health endpoint. This guide does not promise a
 periodic `agent-health` event. The model-resolution owner is
 `src-server/runtime/plugins/runtime-provider-resolution.ts`.

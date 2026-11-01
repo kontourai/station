@@ -1,4 +1,9 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { FeaturePreviewRegistry } from '../../../services/feature-previews/feature-preview-registry.js';
+import { createLogger } from '../../../utils/logger.js';
+
+const temporaryHome = trackTempDirs();
 
 /**
  * #2443: a startup that fails AFTER route composition has built the device
@@ -84,13 +89,18 @@ function failingRuntime() {
     error() {},
     debug() {},
   };
+  const home = temporaryHome('runtime-initialize-failure-');
   // Only the lifecycle fields runInitialize and its cleanup read are
   // supplied; nothing here constructs production storage or listeners.
   Object.assign(runtime, {
     logger,
     // Route composition builds the operator-passkey service (#3319), which
     // reads the home but opens its store only on first use.
-    configLoader: { getProjectHomeDir: () => '/station-home-never-opened' },
+    configLoader: { getProjectHomeDir: () => home },
+    featurePreviews: new FeaturePreviewRegistry(
+      home,
+      createLogger({ name: 'failed-initialization-preview' }),
+    ),
     consentChannel: { trustedOrigin: null },
     port: 0,
     host: '127.0.0.1',

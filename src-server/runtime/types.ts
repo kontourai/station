@@ -83,6 +83,7 @@ export const TOOL_DENIED_FINISH_REASON = 'tool-denied';
 
 export interface ITool {
   name: string;
+  replay?: 'safe' | 'unsafe';
   id?: string;
   description?: string;
   parameters?: any;
@@ -192,6 +193,7 @@ export interface IAgent {
 
 export interface ToolCallContext {
   toolName: string;
+  replay?: 'safe' | 'unsafe';
   toolCallId: string;
   toolArgs: any;
   toolDescription?: string;
@@ -546,6 +548,7 @@ export interface IAgentFramework {
      * that pass `tools: []` may omit this.
      */
     hooks?: IAgentHooks;
+    durable?: { home: string; slug: string; definition: string };
   }): Promise<IAgent>;
 }
 

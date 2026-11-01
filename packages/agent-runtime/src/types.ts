@@ -77,6 +77,7 @@ export type Refused = {
     | 'stale'
     | 'busy'
     | 'unknown-owner'
+    | 'indeterminate'
     | 'conflict'
     | 'unavailable'
     | 'unsupported'

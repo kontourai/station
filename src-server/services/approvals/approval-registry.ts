@@ -296,6 +296,14 @@ export class ApprovalRegistry {
     return this.settle(approvalId, entry, approved, clientOrigin);
   }
 
+  isPendingForSession(approvalId: string, sessionId: string): boolean {
+    const entry = this.pending.get(approvalId);
+    return (
+      !!entry &&
+      (entry.binding?.sessionId ?? entry.metadata?.conversationId) === sessionId
+    );
+  }
+
   has(approvalId: string): boolean {
     return this.pending.has(approvalId);
   }

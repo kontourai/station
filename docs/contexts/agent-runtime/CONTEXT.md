@@ -110,8 +110,23 @@ followed by an irreversible expired-generation marker. Raw audit and BLOB rows r
 windows do not establish bounded disk usage. Current host authorization and
 callback quiescence still govern effects and explicit cancellation.
 
-Station's existing framework builder, `/chat`, FileMemory/history, approval
-registry, boot continuation and terminal writers have not adopted this package.
-Those current paths and capability disclosures retain their existing owners.
-Package fixtures do not establish Station restart recovery, durable tools or
-approvals, native Bedrock/stateful support, live provider fidelity or a release.
+Station also adopts the root's separately versioned agent-turn journal behind
+the off-by-default **Crash-durable Station Agent** preview. The
+[owner](../../../src-server/runtime/agents/durable-agent-owner.ts) fences
+recovery; [recovery composition](../../../src-server/runtime/agents/durable-agent-recovery.ts)
+reinstates current Session authorization, native authority, approval wait and
+stream projection around the actual framework loop. Both adapters journal tool
+intent and replay safety and consume completed model/tool tapes. Uncertain
+model dispatch blocks automatic resend. Disconnect hands delivery and cleanup
+to the owner; explicit Stop cancels. Terminal publication uses the recorded
+invocation and event identity, including a crash between settlement and
+publication. Approval deadlines remain absolute. New approval IDs include durable-turn
+scope; legacy IDs remain attached to their recorded tool. Registry replies and
+cancellations must match that pending Session. Publication consumes the actual
+committed decision identity, including when an older ID is restored.
+
+The package's older model-only consumer helpers retain their conservative
+tool refusal. The new Station adapter conformance exercises actual native loops
+with a scripted provider, separately from those helpers. It is not live-provider,
+physical-crash, cache-benefit or release qualification. Text input is the preview's
+supported admission form; unavailable configuration holds recovery.

@@ -1508,7 +1508,19 @@
 
     "src-server/services/terminal/terminal-tickets.ts",
 
-    "packages/sdk/src/client/terminal-session-store.ts"
+    "packages/sdk/src/client/terminal-session-store.ts",
+
+    "src-server/runtime/agents/durable-agent-owner.ts",
+
+    "src-server/runtime/agents/durable-agent-recovery.ts",
+
+    "src-server/runtime/agents/durable-agent-lifecycle.ts",
+
+    "src-server/runtime/agents/__tests__/durable-agent-conformance.test.ts",
+
+    "src-server/routes/chat/__tests__/chat-primary-stream.durable-disconnect.test.ts",
+
+    "src-server/runtime/agents/__tests__/durable-agent-recovery.test.ts"
   ],
 
   "checks": [

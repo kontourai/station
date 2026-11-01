@@ -1,7 +1,12 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
+const { MockLanguageModelV3 } = await vi.hoisted(() => import('ai/test'));
+
 const amazonBedrockLanguageModel = vi.hoisted(() =>
-  vi.fn((modelId: string) => ({ kind: 'ai-sdk-bedrock-model', modelId })),
+  vi.fn(
+    (modelId: string) =>
+      new MockLanguageModelV3({ modelId, provider: 'bedrock' }),
+  ),
 );
 const createAmazonBedrock = vi.hoisted(() =>
   vi.fn((..._args: unknown[]) => ({
@@ -16,19 +21,23 @@ vi.mock('@ai-sdk/openai-compatible', () => ({
 }));
 
 const bedrockModelCtor = vi.hoisted(() => vi.fn());
-vi.mock('@strands-agents/sdk', () => ({
-  BedrockModel: class {
-    constructor(options: unknown) {
-      bedrockModelCtor(options);
-    }
-  },
-}));
-vi.mock('@strands-agents/sdk/models/vercel', () => ({
-  VercelModel: class {},
-}));
+vi.mock('@strands-agents/sdk', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@strands-agents/sdk')>();
+  return {
+    ...actual,
+    BedrockModel: new Proxy(actual.BedrockModel, {
+      construct(target, args) {
+        bedrockModelCtor(args[0]);
+        return Reflect.construct(target, args);
+      },
+    }),
+  };
+});
 
 const createBedrockProvider = vi.hoisted(() =>
-  vi.fn(() => ({ kind: 'volt-bedrock' })),
+  vi.fn(
+    () => new MockLanguageModelV3({ provider: 'bedrock', modelId: 'fixture' }),
+  ),
 );
 vi.mock('../../../providers/llm/bedrock.js', () => ({ createBedrockProvider }));
 
@@ -222,7 +231,10 @@ describe('framework-model-factory — stream usage request scope (station#4197)'
   beforeEach(() => {
     compatFactory.mockReset();
     compatFactory.mockReturnValue({
-      chatModel: vi.fn().mockReturnValue({}),
+      chatModel: vi.fn(
+        (modelId: string) =>
+          new MockLanguageModelV3({ modelId, provider: 'openai-compat' }),
+      ),
     } as unknown as ReturnType<typeof createOpenAICompatible>);
   });
 
