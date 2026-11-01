@@ -12,7 +12,7 @@ import fs, {
 } from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
 import { join } from 'node:path';
-import { test } from 'vitest';
+import { test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
@@ -27,12 +27,13 @@ import {
   ProviderCredentialObservationError,
   type ProviderCredentialObservationSources,
   ProviderCredentialObservationStore,
+  readObservedSdkProviderCredential,
 } from '../provider-credential-observation.js';
 
 const makeTempDir = trackTempDirs();
 // Filesystem/durability cases only; actual-owner authorization cases live in
 // local-grant-observation-owner.test.ts. Mint stamps are owned fixture setup.
-async function setup() {
+async function setup(signal?: AbortSignal) {
   const home = realpathSync(makeTempDir('credential-observation-test-'));
   chmodSync(home, 0o700);
   const loader = new ConfigLoader({
@@ -63,6 +64,7 @@ async function setup() {
   });
   const request = new Request('http://127.0.0.1:43979/api/orchestration/chat', {
     method: 'POST',
+    ...(signal ? { signal } : {}),
   });
   setRuntimeAuthenticatedRequestPrincipal(request, {
     kind: 'credential',
@@ -345,3 +347,182 @@ test.each(['file', 'directory'] as const)(
     }
   },
 );
+
+test.each([
+  'source-key-change',
+  'same-bytes-replacement',
+  'adapter-parity',
+  'revoked-mid-read',
+  'expires-mid-read',
+  'clock-reverses-mid-read',
+] as const)(
+  'SDK credential observation refuses %s before returning a key',
+  async (fault) => {
+    const h = await setup();
+    let now = 1000;
+    const store = new ProviderCredentialObservationStore(
+      h.home,
+      h.sources,
+      () => now,
+    );
+    const credential = store.captureSdkCredential(h.request, 'selected', 100);
+    const records = readdirSync(h.directory).filter((name) =>
+      name.endsWith('.json'),
+    );
+    assert.equal(records.length, 1);
+    const recordName = records[0];
+    assert.ok(recordName);
+    const observationId = recordName.slice(0, -5);
+    const recordPath = join(h.directory, recordName);
+    assert.equal(
+      readFileSync(recordPath, 'utf8').includes('synthetic-selected-key'),
+      false,
+    );
+    const readCredential = () =>
+      readObservedSdkProviderCredential(credential, 'anthropic', h.request);
+    const value = readCredential();
+    assert.equal(value.apiKey, 'synthetic-selected-key');
+    assert.equal(
+      JSON.stringify(value).includes('synthetic-selected-key'),
+      false,
+    );
+    assert.equal(
+      readFileSync(recordPath, 'utf8').includes('synthetic-selected-key'),
+      false,
+    );
+    const list = h.adapter.listProviderConnections.bind(h.adapter);
+    let applied = false;
+    const observe = vi
+      .spyOn(h.adapter, 'listProviderConnections')
+      .mockImplementation(() => {
+        const rows = list();
+        if (applied) return rows;
+        applied = true;
+        if (fault === 'adapter-parity')
+          return rows.map((row) =>
+            row.id === 'other'
+              ? { ...row, name: 'unpersisted adapter row' }
+              : row,
+          );
+        if (
+          fault === 'source-key-change' ||
+          fault === 'same-bytes-replacement'
+        ) {
+          const replacement = `${h.path}.read-fault`;
+          const bytes =
+            fault === 'same-bytes-replacement'
+              ? readFileSync(h.path)
+              : JSON.stringify(
+                  rows.map((row) =>
+                    row.id === 'selected'
+                      ? {
+                          ...row,
+                          config: {
+                            ...row.config,
+                            apiKey: 'synthetic-changed-key',
+                          },
+                        }
+                      : row,
+                  ),
+                );
+          writeFileSync(replacement, bytes, { mode: 0o600 });
+          renameSync(replacement, h.path);
+        } else if (fault === 'revoked-mid-read') {
+          store.revoke(h.request, observationId);
+        } else if (fault === 'expires-mid-read') {
+          now = 1100;
+        } else if (fault === 'clock-reverses-mid-read') {
+          now = 999;
+        }
+        return rows;
+      });
+    try {
+      refuses(readCredential, 'observation_obsolete');
+      assert.equal(applied, true);
+      if (fault === 'revoked-mid-read')
+        assert.ok(
+          readdirSync(h.directory).includes(`${observationId}.revoked`),
+        );
+    } finally {
+      observe.mockRestore();
+    }
+    const fresh = store.captureSdkCredential(h.request, 'selected', 100);
+    assert.equal(
+      readObservedSdkProviderCredential(fresh, 'anthropic', h.request).apiKey,
+      fault === 'source-key-change'
+        ? 'synthetic-changed-key'
+        : 'synthetic-selected-key',
+    );
+  },
+);
+
+test.each([
+  'captured-foreign-url',
+  'changed-foreign-url',
+  'captured-baseURL-alias',
+] as const)(
+  'SDK credential source preserves refusal classification for %s',
+  async (fault) => {
+    const h = await setup();
+    const credential =
+      fault === 'changed-foreign-url'
+        ? h.store.captureSdkCredential(h.request, 'selected')
+        : undefined;
+    const selected = h.adapter.getProviderConnection('selected');
+    await h.adapter.saveProviderConnection({
+      ...selected,
+      config: {
+        ...selected.config,
+        ...(fault === 'captured-baseURL-alias'
+          ? { baseURL: 'https://api.anthropic.com/v1' }
+          : { baseUrl: 'https://foreign-provider.invalid/v1' }),
+      },
+    });
+    if (credential)
+      refuses(
+        () =>
+          readObservedSdkProviderCredential(credential, 'anthropic', h.request),
+        'observation_obsolete',
+      );
+    else
+      refuses(
+        () => h.store.captureSdkCredential(h.request, 'selected'),
+        'unsupported_source',
+      );
+  },
+);
+
+test('an SDK credential read refuses request abortion during its canonical source observation', async () => {
+  const abort = new AbortController();
+  const h = await setup(abort.signal);
+  const credential = h.store.captureSdkCredential(h.request, 'selected');
+  assert.equal(
+    readObservedSdkProviderCredential(credential, 'anthropic', h.request)
+      .apiKey,
+    'synthetic-selected-key',
+  );
+  const list = h.adapter.listProviderConnections.bind(h.adapter);
+  let applied = false;
+  const observe = vi
+    .spyOn(h.adapter, 'listProviderConnections')
+    .mockImplementation(() => {
+      const rows = list();
+      applied = true;
+      abort.abort('controlled source-read cancellation');
+      return rows;
+    });
+  try {
+    refuses(
+      () =>
+        readObservedSdkProviderCredential(credential, 'anthropic', h.request),
+      'authorization_unavailable',
+    );
+    assert.equal(applied, true);
+  } finally {
+    observe.mockRestore();
+  }
+  refuses(
+    () => readObservedSdkProviderCredential(credential, 'anthropic', h.request),
+    'authorization_unavailable',
+  );
+});

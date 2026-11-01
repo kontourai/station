@@ -70,6 +70,10 @@ export interface ProviderCredentialObservationSources {
   captureConfigurationFence(): () => void;
   captureRuntimeFence(): () => void;
 }
+type ProviderRow = ReturnType<
+  ProviderCredentialObservationSources['adapter']['listProviderConnections']
+>[number];
+
 export interface ProviderCredentialObservation {
   readonly observationId: string;
   readonly observedAtMs: number;
@@ -529,7 +533,11 @@ export class ProviderCredentialObservationStore {
       closeSync(fd);
     }
   }
-  #observe(connectionId: string): SourceWitness {
+  #observe(
+    connectionId: string,
+    expected?: SourceWitness,
+    select?: (row: ProviderRow) => void,
+  ): SourceWitness {
     this.#checkHome();
     const home = directory(this.#home, true);
     const config = directory(join(this.#home, 'config'), false);
@@ -547,6 +555,14 @@ export class ProviderCredentialObservationStore {
       sha(canonical(JSON.parse(file.bytes.toString('utf8'))))
     )
       fail('observation_obsolete');
+    const observed = { home, config, file: file.witness, ...selected };
+    if (expected && canonical(observed) !== canonical(expected))
+      fail('observation_obsolete');
+    if (select) {
+      const row = adapter.find((entry) => entry.id === connectionId);
+      if (!row) fail('observation_obsolete');
+      select(row);
+    }
     const confirmed = privateRegularFile(
       join(this.#home, 'config', 'providers.json'),
       MAX_BYTES,
@@ -560,7 +576,7 @@ export class ProviderCredentialObservationStore {
         canonical(directory(join(this.#home, 'config'), false))
     )
       fail('observation_obsolete');
-    return { home, config, file: file.witness, ...selected };
+    return observed;
   }
   #persist(name: string, value: unknown): void {
     this.#checkStore();
@@ -675,6 +691,14 @@ export class ProviderCredentialObservationStore {
     request: Request,
     observationId: string,
   ): ProviderCredentialObservation {
+    return this.#revalidate(request, observationId);
+  }
+
+  #revalidate(
+    request: Request,
+    observationId: string,
+    derive?: (row: ProviderRow, record: PrivateRecord) => void,
+  ): ProviderCredentialObservation {
     const authority = this.#authorization(request);
     try {
       const operation = this.#fences();
@@ -698,8 +722,13 @@ export class ProviderCredentialObservationStore {
       live?.configuration();
       live?.runtime();
       if (
-        canonical(this.#observe(record.connectionId)) !==
-        canonical(record.source)
+        canonical(
+          this.#observe(
+            record.connectionId,
+            record.source,
+            derive ? (row) => derive(row, record) : undefined,
+          ),
+        ) !== canonical(record.source)
       )
         fail('observation_obsolete');
       // Confirm no revocation/replacement became visible during the source read.
@@ -734,6 +763,9 @@ export class ProviderCredentialObservationStore {
       operation.configuration();
       operation.runtime();
       authority.assertCurrent();
+      const returnedAt = count(this.#now());
+      if (returnedAt < record.observedAtMs || returnedAt >= record.expiresAtMs)
+        fail('observation_obsolete');
       this.#liveFences.set(observationId, {
         ...(live ?? operation),
         durability,
@@ -766,41 +798,44 @@ export class ProviderCredentialObservationStore {
         : (check: () => SdkCredentialValue) =>
             sourceAuthority.withObservationScope(request, check))(() => {
         if (request.signal.aborted) fail('authorization_unavailable');
-        this.revalidate(request, observation.observationId);
-        const record = this.#record(observation.observationId);
-        const selected = this.#sources.adapter
-          .listProviderConnections()
-          .find((row) => row.id === record.connectionId);
-        if (
-          !selected ||
-          (selected.type !== 'anthropic' && selected.type !== 'google') ||
-          sha(canonical(selected)) !== record.source.selectedConnectionSha256
-        )
-          fail('observation_obsolete');
-        const baseUrl =
-          selected.type === 'anthropic'
-            ? 'https://api.anthropic.com/v1'
-            : 'https://generativelanguage.googleapis.com/v1beta';
-        if (
-          selected.config.baseUrl !== undefined &&
-          selected.config.baseUrl !== baseUrl
-        )
-          fail('unsupported_source');
-        if (selected.config.baseURL !== undefined) fail('unsupported_source');
-        const apiKey = string(selected.config.apiKey, 16384);
-        if (sha(apiKey) !== record.source.staticKeySha256)
-          fail('observation_obsolete');
-        const result: SdkCredentialValue = {
-          provider: selected.type,
-          connectionId: record.connectionId,
-          connectionRevision: record.source.selectedConnectionSha256,
-          credentialRevision: record.source.staticKeySha256,
-          hostContextId: record.hostContextId,
-          apiKey,
-        };
-        Object.defineProperty(result, 'apiKey', { enumerable: false });
-        Object.freeze(result);
-        this.revalidate(request, observation.observationId);
+        let result: SdkCredentialValue | undefined;
+        this.#revalidate(
+          request,
+          observation.observationId,
+          (selected, record) => {
+            if (
+              (selected.type !== 'anthropic' && selected.type !== 'google') ||
+              sha(canonical(selected)) !==
+                record.source.selectedConnectionSha256
+            )
+              fail('observation_obsolete');
+            const baseUrl =
+              selected.type === 'anthropic'
+                ? 'https://api.anthropic.com/v1'
+                : 'https://generativelanguage.googleapis.com/v1beta';
+            if (
+              selected.config.baseUrl !== undefined &&
+              selected.config.baseUrl !== baseUrl
+            )
+              fail('unsupported_source');
+            if (selected.config.baseURL !== undefined)
+              fail('unsupported_source');
+            const apiKey = string(selected.config.apiKey, 16384);
+            if (sha(apiKey) !== record.source.staticKeySha256)
+              fail('observation_obsolete');
+            result = {
+              provider: selected.type,
+              connectionId: record.connectionId,
+              connectionRevision: record.source.selectedConnectionSha256,
+              credentialRevision: record.source.staticKeySha256,
+              hostContextId: record.hostContextId,
+              apiKey,
+            };
+            Object.defineProperty(result, 'apiKey', { enumerable: false });
+            Object.freeze(result);
+          },
+        );
+        if (!result) fail('observation_unavailable');
         if (request.signal.aborted) fail('authorization_unavailable');
         return result;
       });

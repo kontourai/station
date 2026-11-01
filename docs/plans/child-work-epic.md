@@ -50,7 +50,8 @@ introduced. That diagnostic counted runtime constructions, not actual input
 invocations; its absence of a question or input error does not establish that the
 input runtime ran. The later committed cleanup change is not qualified by that
 older observation. Repeated full preparation/authority validation remains a
-separate measured cost lead, not a qualified performance improvement.
+separate cost lead; bounded per-read improvements do not establish end-to-end
+performance.
 
 The retention store and mounted-hook selection passes all 77 cases on the
 integrated source. Current browser/device observations, remaining group
@@ -3746,3 +3747,41 @@ the profiling deletion; no production speedup or journey completion is inferred.
 The handler-fetch fence, full factory qualification, remaining documentation truth, final deslop/visual and independent
 combined qualification remain open. Capabilities stay disabled and no PR follows
 from this checkpoint.
+
+## One canonical provider observation per SDK credential read
+
+The credential owner's previous SDK read performed two complete revalidations
+plus a separate adapter read. The first proposed count of two provider-file opens
+was a fixture error: it omitted the real adapter-parity read. That diagnostic is
+retained as such. The corrected control measures one real canonical observation
+(first file read, adapter comparison and confirming read) at three opens, then
+fails the unchanged SDK path at seven opens after its hold, registry and actual
+revocation controls. Fourteen other cases pass. The expanded pre-fix retention
+selection passes 29 cases and fails only that cost assertion.
+
+The private derive callback now copies SDK fields from the parity-checked
+adapter row before file and directory confirmation. Record preimage/revocation,
+durability, configuration/runtime fences and current authority still bracket the
+read; final expiry checks both the upper bound and clock reversal. The key stays
+in a local, frozen value with a non-enumerable property. No key is added to a
+source witness, persisted record or public DTO, and no source or authority cache
+is introduced across requests or awaits. Public signatures are unchanged.
+
+The strengthened owner and actual runtime-fenced credential selection passes all
+62 cases, with server-test types and scoped Biome passing. It covers source/key
+and same-byte inode replacement, nonselected adapter-row disagreement, actual
+mid-read revocation, expiry/clock reversal, URL refusal ordering, request abortion,
+private-key serialization and a fresh successful capture after refusal.
+Independent Opus implementation review found no blocking source issue; the early
+expected-witness comparison remains source-reviewed defense in depth rather than
+an independently isolated observable mutation. Five clean mutation controls and
+restored green runs remain pending.
+
+The full-caller purpose selection still fails both cases with the original
+budgets: HTTP reports Flow execution/cleanup failure; direct reports a numeric
+one-versus-two assertion. The stack location does not clearly identify which
+counter, so exact direct phase diagnosis remains open. The lower provider-file
+read count is not a request-latency or complete-journey claim. Handler-fetch
+adjacency, actual factory/auth and teardown, documentation truth, final combined
+deslop/visual and independent qualification remain open. Capabilities and
+finalizer guards stay false; no PR follows from this checkpoint.

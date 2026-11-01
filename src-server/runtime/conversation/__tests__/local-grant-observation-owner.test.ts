@@ -478,21 +478,26 @@ test('one current-grant validation shares one home hold and observes a later rev
   }
 });
 
-test('an observed SDK credential read shares one current home hold without caching later authority', async () => {
+test('an observed SDK credential read shares one current home hold and canonical provider observation without caching later authority', async () => {
   const h = await setup();
   const owner = await captureEnvironmentLocalGrantObservationOwner(
     h.request,
     h.environment,
     h.environment,
   );
-  const credential = h.store(owner).captureSdkCredential(h.request, 'selected');
+  const store = h.store(owner);
+  const reference = store.capture(h.request, 'selected');
+  const credential = store.captureSdkCredential(h.request, 'selected');
   const open = fs.openSync;
   let registryReads = 0;
+  let providerReads = 0;
   const read = vi
     .spyOn(fs, 'openSync')
     .mockImplementation((path, flags, mode) => {
       if (String(path) === join(h.home, 'security', 'paired-devices.json'))
         registryReads++;
+      if (String(path) === join(h.home, 'config', 'providers.json'))
+        providerReads++;
       return open(path, flags, mode);
     });
   const link = fs.linkSync;
@@ -504,6 +509,18 @@ test('an observed SDK credential read shares one current home hold without cachi
   });
   syncBuiltinESMExports();
   try {
+    h.environment.withCurrentAuthority(() =>
+      store.revalidate(h.request, reference.observationId),
+    );
+    const canonicalSourceReads = providerReads;
+    assert.equal(
+      canonicalSourceReads,
+      3,
+      'the canonical observation retains first, adapter-parity and confirming reads',
+    );
+    registryReads = 0;
+    providerReads = 0;
+    holds = 0;
     assert.equal(
       readObservedSdkProviderCredential(credential, 'anthropic', h.request)
         .connectionId,
@@ -511,12 +528,18 @@ test('an observed SDK credential read shares one current home hold without cachi
     );
     assert.equal(holds, 1);
     assert.equal(registryReads, 2);
+    const credentialSourceReads = providerReads;
     h.environment.devicePairing.revokeDevice(
       h.paired.device.id,
       'operator-credential',
     );
     denied(() =>
       readObservedSdkProviderCredential(credential, 'anthropic', h.request),
+    );
+    assert.equal(
+      credentialSourceReads,
+      canonicalSourceReads,
+      'one credential read must use one complete canonical provider observation',
     );
   } finally {
     observe.mockRestore();
