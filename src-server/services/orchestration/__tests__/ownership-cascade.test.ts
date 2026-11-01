@@ -114,6 +114,13 @@ test.each(['missing', 'dead', 'unavailable', 'reused'] as const)(
     try {
       service.initialize();
       await awaitSessionRecoveryCompleted(service);
+      store.upsertSession({
+        threadId: 'child',
+        provider: 'claude',
+        status: 'running',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      });
       if (condition !== 'missing') {
         const admission = store
           .sessionTurnBoundaryAuthority()
@@ -135,6 +142,7 @@ test.each(['missing', 'dead', 'unavailable', 'reused'] as const)(
       store.recordCascadeStopIntent('parent', 'child', 'terminal');
       await service.sweepIdleSessions();
       expect(stop).not.toHaveBeenCalled();
+      expect(store.readSessionByThread('child')?.status).toBe('running');
       expect(store.pendingCascadeStops()).toHaveLength(1);
       expect(
         db
