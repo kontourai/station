@@ -144,7 +144,8 @@ export interface TerminalSessionRecord {
 export interface TerminalSessionSocket extends EventTarget {
   readonly readyState: number;
   binaryType: string;
-  send(value: string | Uint8Array): void;
+  /** Frames are freshly encoded, so always backed by a plain ArrayBuffer. */
+  send(value: string | Uint8Array<ArrayBuffer>): void;
   close(code?: number, reason?: string): void;
 }
 
@@ -415,7 +416,7 @@ export class TerminalSessionStore {
   }
 
   /** @internal */
-  send(value: object | Uint8Array): boolean {
+  send(value: object | Uint8Array<ArrayBuffer>): boolean {
     const socket = this.socket;
     if (!socket || !this.authenticated || socket.readyState !== 1) return false;
     try {
@@ -570,8 +571,8 @@ export class TerminalSessionStore {
       );
       const socket = (
         this.options.createSocket ??
-        ((url, protocols) =>
-          new WebSocket(url, protocols) as unknown as TerminalSessionSocket)
+        ((url, protocols): TerminalSessionSocket =>
+          new WebSocket(url, protocols))
       )(this.socketURL, [
         TERMINAL_SOCKET_PROTOCOL,
         TERMINAL_TICKET_PROTOCOL_PREFIX + ticket,

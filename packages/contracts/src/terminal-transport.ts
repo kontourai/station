@@ -60,7 +60,7 @@ export function encodeTerminalFrame(
   channel: number,
   seq: number,
   data: Uint8Array,
-): Uint8Array {
+): Uint8Array<ArrayBuffer> {
   if (
     !Number.isInteger(channel) ||
     channel < 1 ||
