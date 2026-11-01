@@ -55,9 +55,7 @@ function fixture() {
     } as never,
     logger: { debug() {}, warn() {} },
   });
-  cleanups.push(() => {
-    service.shutdown();
-  });
+  cleanups.push(() => service.shutdown());
   const projection = new AttentionProjectionService(
     { list: () => [] } as never,
     service,

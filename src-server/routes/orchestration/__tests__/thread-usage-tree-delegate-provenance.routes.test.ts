@@ -259,6 +259,21 @@ async function fixture() {
   } as CanonicalRuntimeEvent);
   appendUsage(store, CONVERSATION, 10);
 
+  // The derived caller names this exact execution, distinct from its conversation.
+  store.appendEvent({
+    eventId: `${TENANT_CODEX_CALLER.sessionId}:start`,
+    threadId: TENANT_CODEX_CALLER.sessionId,
+    sessionId: TENANT_CODEX_CALLER.sessionId,
+    provider: 'codex',
+    method: 'session.started',
+    createdAt: '2026-10-01T00:00:00.000Z',
+    metadata: {
+      userId: TENANT,
+      agentSlug: 'planner',
+      conversationId: CONVERSATION,
+    },
+  });
+
   const { delegateTask, executeExecutionTargetMessage } = await import(
     '../../../tools/station-control-delegation.js'
   );
@@ -306,9 +321,8 @@ async function fixture() {
             ? TENANT_CODEX_CALLER
             : null,
         startedMetadata: (sessionId) =>
-          sessionId === TENANT_CODEX_CALLER.sessionId
-            ? { agentSlug: 'planner' }
-            : undefined,
+          store.latestEventByMethod(sessionId, 'session.started')?.payload
+            .metadata,
         sessionEngine: () => 'codex',
         loadAgentSpec: async () => PLANNER,
         isRegistryDefaultAgent: async () => false,
