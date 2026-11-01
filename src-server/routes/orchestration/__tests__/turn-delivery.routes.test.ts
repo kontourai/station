@@ -319,6 +319,19 @@ describe('foreground delivery lookup (GET /conversations/:id/turn-deliveries/:ke
         getUserId: () => caller,
         executeForegroundMessage: (input) =>
           executeForegroundMessage({ ...input, userId: OWNER }, deps),
+        continueForegroundMessage: (input) =>
+          executeForegroundMessage(
+            {
+              ...input,
+              target: { environment: { kind: 'current' }, agent: AGENT },
+              userId: OWNER,
+            },
+            deps,
+          ),
+        resolveRequestDelegation: async (_request, input) =>
+          input.delegation
+            ? { context: input.delegation, provenance: 'runtime-attested' }
+            : undefined,
       }),
     );
     const send = (
@@ -581,6 +594,54 @@ describe('foreground delivery lookup (GET /conversations/:id/turn-deliveries/:ke
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  test.each([
+    '/chat',
+    '/chat/background',
+    '/chat/delegated',
+    '/chat/:conversationId/continue',
+  ])('#3567: %s refuses changed input under the same key', async (route) => {
+    const { adapter, app, send } = station();
+    const conversationId = `conversation:route-${route.replaceAll('/', '-')}`;
+    if (route.includes(':conversationId')) {
+      const initial = await send(conversationId, 'initial-key', 'initial');
+      expect(initial.status, await initial.clone().text()).toBe(200);
+    }
+    const path = route.replace(
+      ':conversationId',
+      encodeURIComponent(conversationId),
+    );
+    const delegation = {
+      mode: 'isolated-child',
+      depth: 1,
+      maxDepth: 2,
+      parentAgentSlug: 'parent',
+      rootAgentSlug: 'root',
+    };
+    const body = {
+      conversationId,
+      clientTurnId: 'route-key',
+      message: 'A',
+      target: { environment: { kind: 'current' }, agent: AGENT },
+      ...(route === '/chat/delegated' ? { delegation } : {}),
+    };
+    const request = (message: string) =>
+      app.request(`/api/orchestration${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...body, message }),
+      });
+    const before = adapter.turns.length;
+    const first = await request('A');
+    expect(first.status, await first.clone().text()).toBe(200);
+    expect(adapter.turns).toHaveLength(before + 1);
+    const changed = await request('B');
+    expect(changed.status, await changed.clone().text()).toBe(409);
+    expect(await changed.json()).toMatchObject({
+      code: 'client_turn_input_conflict',
+    });
+    expect(adapter.turns).toHaveLength(before + 1);
   });
 
   test('#3567: concurrent changed intent conflicts while identical intent joins the one adapter invocation', async () => {
