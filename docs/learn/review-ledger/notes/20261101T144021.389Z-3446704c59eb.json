@@ -1,0 +1,7 @@
+{
+  "revision": "649f1cd372cace3dea1cfbb01b663459d700f01d",
+
+  "notes": [
+    {"path":"docs/guides/discord-gateway.md","note":"Reviewed the reply table against the gateway dispatch catch and its simulated gateway tests: indeterminate uses the existing uncertainty reply, refusal stays generic, and content is not echoed. Live Discord not verified.","inputs":["docs/guides/discord-gateway.md","src-server/services/discord/discord-gateway-service.ts"]}
+  ]
+}
