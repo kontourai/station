@@ -1112,18 +1112,18 @@ A client that folds raw events without the shared rule still sees it open.
 The remaining controls are defined by
 `src-server/routes/orchestration/orchestration.ts`:
 
-- `steerTurn`: `{ type: 'steerTurn', threadId, input, turnId?, clientInputId? }` sends steering
+- `steerTurn`: `{ type: 'steerTurn', threadId, input, turnId?, clientInputId }` sends steering
   input where the engine supports it. An ACP engine without a native steer
   method is steered by cancelling and re-prompting the running turn; that
   steer's `turn.started` carries `steerInterruptedRun: true`.
   On this server, a stable `clientInputId` makes acknowledgement retries safe: a durable claim
   precedes the adapter call, confirmed same-ID input returns its stored result,
-  and an unresolved or mismatched claim returns `outcome: 'indeterminate'`
-  without invoking the engine again. Retain the original `threadId`, `turnId`
+  and an unresolved claim returns `outcome: 'indeterminate'` without invoking
+  the engine again. Different input under the same key returns HTTP `409`
+  with `code: client_turn_input_conflict`. Retain the original `threadId`, `turnId`
   and input on retry. Never turn an indeterminate steer into an automatic new
   turn; retain it for review. The digest-only claim survives restart and is
-  removed with its Session. Calls without this optional ID retain the legacy
-  behavior and cannot claim transport idempotency.
+  removed with its Session. This server requires the key before dispatch.
 
 - `steerTurnOnce`: `{ type: 'steerTurnOnce', threadId, input, turnId?, clientInputId }`
   requires a stable ID and normalizes to the same internal `steerTurn` command
@@ -1139,8 +1139,9 @@ The remaining controls are defined by
   rechecked before dispatch. A missing or revoked authority is refused. The
   server requires durable storage and does not fall back to steering the parent.
   A stable `clientInputId` binds the parent, child, turn and input: an identical
-  confirmed retry returns its result without another engine call; a mismatched
-  or uncertain claim returns `indeterminate`. Deletion removes instruction text
+  confirmed retry returns its result without another engine call. Different
+  input under the same key returns HTTP `409` with
+  `code: client_turn_input_conflict`; an uncertain claim returns `indeterminate`. Deletion removes instruction text
   but retains a key tombstone so the ID cannot be reused for another Session.
   An acknowledgement timeout or lost acknowledgement is not proof of delivery;
   do not retry with a new ID automatically. Explicit `unsupported` and
