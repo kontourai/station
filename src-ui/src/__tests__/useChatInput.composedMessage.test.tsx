@@ -26,6 +26,7 @@ vi.mock('../contexts/ToastContext', () => ({
 }));
 vi.mock('@kontourai/station-sdk', () => ({
   useSkillsQuery: () => ({ data: [] }),
+  useFeaturePreviewsQuery: () => ({ data: [] }),
   useProviderCommandsQuery: () => ({ data: [] }),
   useRunSkill: () => ({ mutateAsync: vi.fn() }),
   useSkillDetailReader: () => vi.fn(),
