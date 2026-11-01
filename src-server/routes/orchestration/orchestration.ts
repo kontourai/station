@@ -2175,6 +2175,7 @@ export function createOrchestrationRoutes(
       | 'mayContinue'
       | 'mustQueue'
       | 'submit'
+      | 'submitSteer'
       | 'list'
       | 'entry'
       | 'cancel'
@@ -3535,6 +3536,66 @@ export function createOrchestrationRoutes(
       },
     });
   });
+
+  app.post(
+    '/conversations/:conversationId/inbox',
+    validate(
+      z.object({
+        kind: z.literal('steer'),
+        key: z.string().min(1).max(128),
+        message: z.string().min(1).max(CHAT_INPUT_MAX_CHARS),
+        expectedHead: z.number().int().nonnegative().safe(),
+      }),
+    ),
+    async (c) => {
+      const conversationId = param(c, 'conversationId');
+      const inbox = deps.threadInbox;
+      if (!inbox)
+        return c.json({ success: false, error: 'Inbox unavailable.' }, 404);
+      if (
+        conversationId.length > 512 ||
+        !(await orchestrationService.hasReadableSession(
+          conversationId,
+          readAuthorityFor(c),
+        ))
+      )
+        return c.json({ success: false, error: 'Conversation not found' }, 404);
+      const body = getBody(c);
+      const actor = resolveDispatchActor(deps, c);
+      const result = inbox.submitSteer({
+        conversationId,
+        clientTurnId: body.key,
+        expectedHead: body.expectedHead,
+        payload: {
+          message: body.message,
+          actor: {
+            userId: actor.userId,
+            ...(actor.principal ? { principal: actor.principal } : {}),
+            ...(actor.ownerAttribution
+              ? { ownerAttribution: actor.ownerAttribution }
+              : {}),
+          },
+          clientOrigin: resolveClientOriginForRequest(c.req.raw),
+        },
+      });
+      if (result.outcome === 'stale-head')
+        return c.json(
+          {
+            success: false,
+            code: 'inbox_stale_head',
+            currentHead: result.currentHead,
+          },
+          409,
+        );
+      if (result.outcome === 'not-permitted')
+        return c.json({ success: false, error: 'Conversation not found' }, 404);
+      if (result.outcome === 'conflict')
+        return c.json({ success: false, code: 'inbox_key_conflict' }, 409);
+      if (result.outcome === 'capacity')
+        return c.json({ success: false, code: 'conversation_inbox_full' }, 409);
+      return c.json({ success: true, data: result.entry }, 202);
+    },
+  );
 
   /**
    * A person's Continue after the conversation's engine was killed for

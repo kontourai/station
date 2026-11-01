@@ -22,6 +22,65 @@ import {
 describe('POST /chat whenBusy queue (#3568)', () => {
   const station = createInboxHarness();
 
+  test('steer admission rejects a stale head and leaves the inbox empty', async () => {
+    const world = station();
+    await world.busy();
+    const current = world.service.currentConversationSessionId(CONVERSATION);
+    const currentHead = world.store.readSessionInventoryHighWater(current);
+    expect(currentHead).toBeGreaterThan(0);
+    const response = await world.app.request(
+      `/api/orchestration/conversations/${encodeURIComponent(CONVERSATION)}/inbox`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          kind: 'steer',
+          key: 'stale-steer',
+          message: 'change direction',
+          expectedHead: 0,
+        }),
+      },
+    );
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      code: 'inbox_stale_head',
+      currentHead,
+    });
+    expect(world.inbox.list(CONVERSATION)).toEqual([]);
+  });
+
+  test('a steer is recorded with its head before any delivery', async () => {
+    const world = station();
+    await world.busy();
+    const current = world.service.currentConversationSessionId(CONVERSATION);
+    const expectedHead = world.store.readSessionInventoryHighWater(current);
+    const send = () =>
+      world.app.request(
+        `/api/orchestration/conversations/${encodeURIComponent(CONVERSATION)}/inbox`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            kind: 'steer',
+            key: 'steer-one',
+            message: 'change direction',
+            expectedHead,
+          }),
+        },
+      );
+    expect((await send()).status).toBe(202);
+    expect((await send()).status).toBe(202);
+    await world.inbox.idle();
+    expect(world.inbox.list(CONVERSATION)).toMatchObject([
+      { kind: 'steer', state: 'queued', message: 'change direction' },
+    ]);
+    const stored = world.store
+      .threadInboxStore()
+      .read(CONVERSATION, 'steer-one');
+    expect(JSON.parse(stored!.payload)).toMatchObject({ expectedHead });
+    expect(world.adapter.turns).toHaveLength(1);
+  });
+
   test.each([
     [false, false],
     [false, true],

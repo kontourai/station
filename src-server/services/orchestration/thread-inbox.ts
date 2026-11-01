@@ -398,6 +398,7 @@ export function createSqliteThreadInboxStore(
       clientTurnId: string;
       payload: ThreadInboxPayload;
       now: number;
+      kind?: 'follow-up' | 'steer';
       expectedHead?: number;
       readHead?: () => number;
     }): InboxSubmitResult | { kind: 'stale-head'; currentHead: number } {
@@ -405,7 +406,7 @@ export function createSqliteThreadInboxStore(
         type: 'inbox.submit',
         inboxId: input.conversationId,
         key: input.clientTurnId,
-        kind: 'follow-up',
+        kind: input.kind ?? 'follow-up',
         digest: threadInboxDigest(input.payload, input.expectedHead),
         payload: JSON.stringify({
           ...input.payload,
@@ -638,6 +639,21 @@ export interface ThreadInboxDeliveryPorts {
     inputDigest?: string,
     userId?: string,
   ): ConversationKeyInspection;
+  /** Read the durable receipt before deciding whether a steer may be handed off. */
+  inspectSteer?(input: {
+    readonly threadId: string;
+    readonly clientInputId: string;
+    readonly input: string;
+  }):
+    | { readonly outcome: 'steered'; readonly turnId: string }
+    | { readonly outcome: 'indeterminate' }
+    | undefined;
+  /** Hand a steer off as the recorded sender; errors may follow an effect. */
+  steer?(input: {
+    readonly threadId: string;
+    readonly clientInputId: string;
+    readonly payload: ThreadInboxPayload;
+  }): Promise<{ readonly outcome: string; readonly turnId?: string }>;
   /**
    * Continue the conversation with the entry's input, as its recorded actor.
    * Throws only when the start was refused before any effect; an uncertain
@@ -871,6 +887,19 @@ export class ThreadInboxDelivery {
   submit(
     input: ThreadInboxInput & { expectedHead?: number },
   ): ThreadInboxHeadSubmission {
+    return this.submitEntry(input, 'follow-up');
+  }
+
+  submitSteer(
+    input: ThreadInboxInput & { expectedHead: number },
+  ): ThreadInboxHeadSubmission {
+    return this.submitEntry(input, 'steer');
+  }
+
+  private submitEntry(
+    input: ThreadInboxInput & { expectedHead?: number },
+    kind: 'follow-up' | 'steer',
+  ): ThreadInboxHeadSubmission {
     // Only Station's own continuation may use its reserved key prefix: an
     // ordinary sender could otherwise pre-claim that key and turn Station's
     // continuation into a conflict.
@@ -899,6 +928,7 @@ export class ThreadInboxDelivery {
     const result = this.ports.store.submit({
       ...input,
       conversationId: inbox,
+      kind,
       now,
       readHead: () =>
         this.ports.headSequence(this.ports.currentSessionId(inbox)),
@@ -1302,6 +1332,8 @@ export class ThreadInboxDelivery {
       if (this.stopped) return;
       const head = inboxHead(store.list(conversationId));
       if (!head) return;
+      // Other kinds wait until their placement ports are wired.
+      if (head.kind !== 'follow-up') return;
       if (head.state === 'unconfirmed') {
         if (this.resolveAbandoned(conversationId, head)) continue;
         return;

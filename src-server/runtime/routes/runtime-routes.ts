@@ -6642,6 +6642,29 @@ export function configureRuntimeRoutes(
           inputDigest,
         );
       },
+      inspectSteer: (input) => eventStore.readSteerInput(input),
+      steer: stationServerEntry(
+        async ({ threadId, clientInputId, payload }) => {
+          const dispatched = await service.dispatchWithReceipt(
+            {
+              type: 'steerTurn',
+              threadId,
+              input: payload.message,
+              clientInputId,
+            },
+            {
+              userId: payload.actor.userId,
+              principal: payload.actor.principal,
+              ownerAttribution: payload.actor.ownerAttribution,
+              clientOrigin: payload.clientOrigin ?? UNKNOWN_CLIENT_ORIGIN,
+            },
+          );
+          const result = dispatched.result as
+            | { outcome: string; turnId?: string }
+            | undefined;
+          return result ?? { outcome: 'indeterminate' };
+        },
+      ),
       start: stationServerEntry(
         ({ conversationId, threadId, payload, clientTurnId }) =>
           continueAsRecordedActor(
