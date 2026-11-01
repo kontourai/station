@@ -354,25 +354,21 @@ describe('stale send-failure actions', () => {
   test('a failure is stale once a later message was accepted, not before', () => {
     const handler = vi.fn();
     expect([...staleSendFailureIds([retryFailure(handler)])]).toEqual([]);
-    expect([
-      ...staleSendFailureIds([
-        retryFailure(handler),
-        { role: 'user', content: 'Count to 40', timestamp: 3 },
-      ]),
-    ]).toEqual(['failure-2']);
+    const resent = { role: 'user', content: 'Count to 40', timestamp: 3 };
+    expect([...staleSendFailureIds([retryFailure(handler), resent])]).toEqual([
+      'failure-2',
+    ]);
   });
 
   test("a Station check-back turn does not retire the user's failed send", () => {
+    const checkBack = {
+      role: 'user',
+      content: 'check back',
+      timestamp: 3,
+      stationCheckBack: true,
+    };
     expect([
-      ...staleSendFailureIds([
-        retryFailure(vi.fn()),
-        {
-          role: 'user',
-          content: 'check back',
-          timestamp: 3,
-          stationCheckBack: true,
-        },
-      ]),
+      ...staleSendFailureIds([retryFailure(vi.fn()), checkBack]),
     ]).toEqual([]);
   });
 
