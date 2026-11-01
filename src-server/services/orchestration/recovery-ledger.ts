@@ -1,5 +1,13 @@
 import { randomUUID } from 'node:crypto';
-import { ownerLivenessFromProbe } from '@kontourai/monument';
+import {
+  decideRecoveryTransition,
+  ownerLivenessFromProbe,
+  type RecoveryTransition,
+  type RecoveryTransitionIntent,
+} from '@kontourai/monument';
+
+export type { RecoveryTransition } from '@kontourai/monument';
+
 import type {
   ConnectionRecoveryIntent,
   ConnectionRecoveryOutcome,
@@ -25,13 +33,6 @@ type RecoveryIntentRecord = ConnectionRecoveryIntent & {
   dispatchAttemptId?: string;
   recoveryCorrelationId?: string;
 };
-
-/** Every durable compare-and-set reports whether it changed storage. */
-export type RecoveryTransition =
-  | { kind: 'applied' }
-  | { kind: 'stale' }
-  | { kind: 'invalid' }
-  | { kind: 'unavailable' };
 
 /**
  * One startup obligation read. `available` with no obligations proves storage
@@ -373,11 +374,7 @@ export function createRecoveryLedger(options: {
         return { kind: 'unavailable' };
       }
       if (!claimed) return { kind: 'unavailable' };
-      let intent:
-        | { kind: 'release'; outcome: 'armed' | 'manual'; now: string }
-        | { kind: 'accept'; turnId: string; now: string }
-        | { kind: 'indeterminate'; now: string }
-        | undefined;
+      let intent: RecoveryTransitionIntent | undefined;
       let settled: RecoveryTransition | undefined;
       let credential:
         | { attemptId: string; now: string; linked: boolean }
@@ -386,9 +383,8 @@ export function createRecoveryLedger(options: {
         next: NonNullable<typeof intent>,
         apply: () => RecoveryTransition,
       ): RecoveryTransition => {
-        if (intent && JSON.stringify(intent) !== JSON.stringify(next))
-          return { kind: 'invalid' };
-        if (settled) return settled;
+        const decision = decideRecoveryTransition(intent, next, settled);
+        if (decision.kind === 'return') return decision.result;
         intent = next;
         try {
           const result = apply();

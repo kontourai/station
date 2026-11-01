@@ -21,6 +21,11 @@ export {
 } from './decisions/inbox.js';
 export { decideTurnBoundaryAcceptInvocation } from './decisions/invocation-terminal.js';
 export {
+  decideRecoveryTransition,
+  type RecoveryTransition,
+  type RecoveryTransitionIntent,
+} from './decisions/recovery.js';
+export {
   decideRequestKeyClaim,
   type RequestKeyClaimDecision,
   type RequestKeyClaimInputs,
