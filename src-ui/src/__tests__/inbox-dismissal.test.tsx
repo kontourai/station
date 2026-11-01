@@ -289,4 +289,27 @@ describe('inbox dismissal through the rendered panel', () => {
       write.mockRestore();
     }
   });
+
+  it('a toast that cannot show does not report a saved dismissal as failed', () => {
+    render(<Harness items={[thread]} />);
+    const show = vi.spyOn(toastStore, 'show').mockImplementation(() => {
+      throw new TypeError('crypto.randomUUID is not a function');
+    });
+    try {
+      dismiss();
+      expect(
+        screen.queryByRole('button', { name: 'Review the inbox, Station' }),
+      ).toBeNull();
+      expect(
+        screen.queryByText('Could not save dismissal. Try again.'),
+      ).toBeNull();
+      // Undo stays reachable without the toast.
+      fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
+      expect(
+        screen.getByRole('button', { name: 'Review the inbox, Station' }),
+      ).toBeTruthy();
+    } finally {
+      show.mockRestore();
+    }
+  });
 });
