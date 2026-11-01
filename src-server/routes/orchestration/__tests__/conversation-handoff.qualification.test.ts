@@ -1133,6 +1133,10 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
             expect(status?.nativeResumeIdentity).toBe('matched');
           });
           expect(adapter.turns.at(-1)?.ambientContext).toContain(missedMessage);
+          if (selected === source)
+            expect(adapter.turns.at(-1)?.ambientContext).not.toContain(
+              'Third turn stays on the target Agent.',
+            );
           expect(adapter.starts.at(-1)?.resumeCursor).toEqual({
             nativeSessionId: `${selected.provider}:native:${selected === source ? conversationId : handoffReceipt.data.sessionId}`,
           });
