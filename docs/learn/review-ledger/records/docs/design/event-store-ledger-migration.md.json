@@ -34,7 +34,15 @@
 
     "packages/monument/src/recovery-ledger.ts",
 
-    "src-server/services/orchestration/recovery-ledger-binding.ts"
+    "src-server/services/orchestration/recovery-ledger-binding.ts",
+
+    "packages/monument/src/sqlite-recovery.ts",
+
+    "packages/monument/src/memory-recovery.ts",
+
+    "packages/monument/src/decisions/recovery-storage.ts",
+
+    "packages/monument/src/testing/recovery-conformance.ts"
   ],
 
   "checks": [

@@ -86,7 +86,15 @@
 
     "packages/monument/src/recovery-ledger.ts",
 
-    "packages/monument/src/session-control.ts"
+    "packages/monument/src/session-control.ts",
+
+    "packages/monument/src/sqlite-recovery.ts",
+
+    "packages/monument/src/memory-recovery.ts",
+
+    "packages/monument/src/decisions/recovery-storage.ts",
+
+    "packages/monument/src/testing/recovery-conformance.ts"
   ],
 
   "checks": []

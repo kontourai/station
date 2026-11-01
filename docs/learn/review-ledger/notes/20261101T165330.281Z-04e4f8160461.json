@@ -1,0 +1,65 @@
+{
+  "revision": "81718ba55ec30ba4dce934b27ad58903c2fed929",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Checked the Agent Runtime and Operations context links and relationships against the recovery admission delta; their ownership remains unchanged.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT.md","note":"Checked its module-map and Session responsibility routing against the recovery relocation; the overview does not promise recovery admission behavior.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"README.md","note":"Checked the architecture reading-path link to the module map after its recovery source change; the entry point remains valid.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/README.md","note":"Checked the contributor route to the module map and guides after the recovery source move; the reading path remains valid.","inputs":["docs/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Checked the lifecycle authority and module-map references against the import-only boundary change; no lifecycle transition changed.","inputs":["docs/architecture/abstraction-review.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the recovery claim protocol, shared decisions and transactional memory/SQLite commands against the Station table binding, terminal predicate and 188 conformance tests. The tests simulate faults; physical power loss and providers remain unverified.","inputs":["docs/architecture/module-map.md","packages/monument/src/recovery-ledger.ts","src-server/services/orchestration/event-store.ts","packages/monument/src/sqlite-recovery.ts","packages/monument/src/memory-recovery.ts","packages/monument/src/decisions/recovery-storage.ts","packages/monument/src/testing/recovery-conformance.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Checked the module-map evidence route and receipt claims against the EventStore recovery composition delta; evidence ownership is unchanged.","inputs":["docs/contexts/evidence-governance/CONTEXT.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Checked the conversation-inbox and operations ownership claims against the EventStore recovery storage relocation; inbox behavior is unchanged.","inputs":["docs/contexts/operations/CONTEXT.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked inbox and connection-recovery presentation claims against EventStore recovery composition; no UI projection was changed or exercised.","inputs":["docs/design/chat-composer.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Reviewed the recovery storage relocation, Station table and terminal predicate, explicit nested transaction contract and adapter conformance; no schema migration was added and physical power loss was not exercised.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md","packages/monument/src/recovery-ledger.ts","src-server/services/orchestration/event-store.ts","packages/monument/src/sqlite-recovery.ts","packages/monument/src/memory-recovery.ts","packages/monument/src/decisions/recovery-storage.ts","packages/monument/src/testing/recovery-conformance.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Checked EventStore package-MCP admission and event stamping claims against the recovery storage relocation; those methods are unchanged.","inputs":["docs/design/mcp-ui-host.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Checked inbox placement and recovery-display references against the EventStore recovery storage relocation; no layout or UI behavior changed.","inputs":["docs/design/placement.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/project-task-room-history.md","note":"Checked the synchronous recovery-writer and room-worker boundary against the EventStore binding; SQLite recovery operations remain synchronous in Station.","inputs":["docs/design/project-task-room-history.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/revision-bound-evidence.md","note":"Checked revision receipt composition and EventStore close ownership against the recovery storage relocation; revision receipt methods are unchanged.","inputs":["docs/design/revision-bound-evidence.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/shared-working-state.md","note":"Checked shared working state recovery and its EventStore boundary against the recovery storage relocation; those runtime paths are unchanged.","inputs":["docs/design/shared-working-state.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/glossary.md","note":"Checked the module-map links and Session/inbox vocabulary against the recovery documentation change; no defined product term changed.","inputs":["docs/glossary.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"Checked durable inbox and recorded request-key references against the moved request-key protocol; the claim and replay behavior remains covered by focused SQLite tests.","inputs":["docs/guides/agent-efficiency.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Checked EventStore receipt and monitoring ownership references against the recovery storage relocation; monitoring storage methods are unchanged.","inputs":["docs/guides/monitoring.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked Session Control request-key retention and pinned-branch claims against the Monument protocol, Station SQLite binding, route import and focused tests; no live engine was exercised.","inputs":["docs/guides/self-configuring-agent.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Checked the module-map references against the recovery owner relocation; the identity inventory and its evidence status are unchanged.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/config.md","note":"Checked the EventStore attachment and configuration references against the recovery storage relocation; attachment storage and config schemas are unchanged.","inputs":["docs/reference/config.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Checked settings deep-link references against the module-map recovery source change; link routing and settings behavior are unchanged.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Checked the manual and generated MCP topic inputs against the revised module map and regenerated content; no provider or device behavior was exercised.","inputs":["docs/reference/station-docs.md","docs/architecture/module-map.md","src-server/tools/station-docs-content.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Checked the inbox and failed-read concepts against the module-map recovery change; UI state and copy were not changed or visually verified.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Checked the module-map and review-ledger export description against the updated source links; no external ingestion was run.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"Checked the agent-runtime conformance and Station adoption limits against the added recovery testing exports; agent-runtime behavior and evidence claims are unchanged.","inputs":["packages/agent-runtime/CONTEXT.md","packages/monument/src/testing/index.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Reviewed recovery command ownership, host table and event predicate binding, shared decisions, memory/SQLite conformance and simulated crash limits against the changed package source and Station tests.","inputs":["packages/monument/CONTEXT.md","packages/monument/src/recovery-ledger.ts","packages/monument/src/testing/index.ts","src-server/services/orchestration/event-store.ts","packages/monument/src/sqlite-recovery.ts","packages/monument/src/memory-recovery.ts","packages/monument/src/decisions/recovery-storage.ts","packages/monument/src/testing/recovery-conformance.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Reviewed recovery port lifecycle, WAL/FULL requirements, host transaction responsibility, Station table binding and conformance claims against source and focused tests; publication and physical crash proof remain unverified.","inputs":["packages/monument/README.md","packages/monument/src/recovery-ledger.ts","packages/monument/src/testing/index.ts","scripts/monument-pack-smoke.mjs","src-server/services/orchestration/event-store.ts","packages/monument/src/sqlite-recovery.ts","packages/monument/src/memory-recovery.ts","packages/monument/src/decisions/recovery-storage.ts","packages/monument/src/testing/recovery-conformance.ts"]},
+
+    {"path":"src-server/AGENTS.md","note":"Checked the server routing to module map and focused tests against the recovery source move; the server instructions remain applicable.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Checked the UI routing to the module map against the recovery-only source move; no UI behavior or instruction changed.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]}
+  ]
+}

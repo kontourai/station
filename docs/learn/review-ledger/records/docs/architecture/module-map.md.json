@@ -1514,7 +1514,15 @@
 
     "src-server/services/orchestration/recovery-ledger-binding.ts",
 
-    "src-server/services/orchestration/sqlite-session-control-request-keys.ts"
+    "src-server/services/orchestration/sqlite-session-control-request-keys.ts",
+
+    "packages/monument/src/sqlite-recovery.ts",
+
+    "packages/monument/src/memory-recovery.ts",
+
+    "packages/monument/src/decisions/recovery-storage.ts",
+
+    "packages/monument/src/testing/recovery-conformance.ts"
   ],
 
   "checks": [
