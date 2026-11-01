@@ -39,11 +39,28 @@ Among close matches, items you use often rank higher; **Reset command history**
 clears that. Choose
 **Workspace search (this Station)** at the top to switch to workspace search.
 
+A command row shows its current shortcut, if it has one, so the palette doubles
+as a way to learn them.
+
 Use the arrow keys to move, Return to run the highlighted item, and Escape or a
 click outside to close. Running an item usually closes the palette and returns
 focus to where you were. Some items keep it open, such as
 **Reset command history**, which shows whether the reset worked, and a message
 found on another Station, which explains that it cannot be opened here.
+
+## Shortcut list
+
+Press **⌘/** on macOS or **Ctrl+/** on Windows and Linux, or **?** when focus is
+not in a text field, to open the shortcut list. When two commands share a name and key and one always overrides the
+other, the list shows only the one that runs.
+
+## Editing chords stay with text
+
+While focus is in a text input, textarea, select, contenteditable editor or
+other text box, the editing chords (copy, cut, paste, undo, redo and select all) belong to that
+field: a Station command bound to the same chord does not run. Copy and cut
+also stay with any selected text elsewhere on the page, so copying part of a
+transcript does not cancel a running turn.
 
 ## Return in chat
 

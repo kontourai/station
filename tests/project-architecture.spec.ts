@@ -621,7 +621,9 @@ test.describe('Project Navigation', () => {
 
     await page.goto('/projects/new');
     await page.getByPlaceholder('My Project').fill('Delivery notes');
-    await page.getByPlaceholder('~/code/my-project').fill('/tmp/delivery-notes');
+    await page
+      .getByPlaceholder('~/code/my-project')
+      .fill('/tmp/delivery-notes');
     const browse = page.getByRole('button', { name: 'Browse all' });
     await browse.click();
     const browser = page.getByRole('dialog', {
@@ -689,7 +691,9 @@ test.describe('Project Navigation', () => {
 
     await page.goto('/projects/new');
     await page.getByPlaceholder('My Project').fill('New Project');
-    await page.getByPlaceholder('~/code/my-project').fill('/tmp/git-workspace/');
+    await page
+      .getByPlaceholder('~/code/my-project')
+      .fill('/tmp/git-workspace/');
     const identityIcon = page.getByRole('button', {
       name: 'Choose project icon',
     });

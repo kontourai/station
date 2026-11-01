@@ -28,8 +28,8 @@
   align-items: center;
   gap: 12px;
   padding: 8px 12px;
-  /* The dialog panel is --bg-secondary; rows sit one step off it. */
-  background: var(--bg-primary);
+  /* The dialog panel is --k-panel; rows sit one step off it. */
+  background: var(--k-bg);
   border-radius: 4px;
 }
 

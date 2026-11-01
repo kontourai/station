@@ -94,7 +94,7 @@
    the container and subtracts the `.xterm` element's padding, so the grid
    is fitted inside the inset instead of overflowing it. */
 .coding-terminal .xterm {
-  padding: var(--space-2, 8px) var(--space-3, 12px);
+  padding: var(--k-space-2) var(--k-space-3);
 }
 
 /* Terminal tabs */

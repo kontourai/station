@@ -239,7 +239,11 @@ describe('renderSettingRow', () => {
       (entry) => entry.key === 'defaultApprovalMode',
     )!;
     render(
-      renderSettingRow({ definition: def, value: undefined, onChange: vi.fn() }),
+      renderSettingRow({
+        definition: def,
+        value: undefined,
+        onChange: vi.fn(),
+      }),
     );
     const select = screen.getByLabelText(
       'Default approval mode',
@@ -264,7 +268,11 @@ describe('renderSettingRow', () => {
       (entry) => entry.key === 'defaultMaxTurns',
     )!;
     const { container } = render(
-      renderSettingRow({ definition: def, value: undefined, onChange: vi.fn() }),
+      renderSettingRow({
+        definition: def,
+        value: undefined,
+        onChange: vi.fn(),
+      }),
     );
     expect(container.textContent).not.toMatch(/VoltAgent|Strands/);
     expect(container.textContent).toContain('Station’s own engine');
