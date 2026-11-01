@@ -1,13 +1,14 @@
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { WebSocket, WebSocketServer } from 'ws';
+import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import { buildUiServerScript } from '../commands/lifecycle.js';
 
+const temp = trackTempDirs();
 const cleanups: (() => void)[] = [];
 afterEach(() => {
   for (const cleanup of cleanups.splice(0)) cleanup();
@@ -42,7 +43,7 @@ it('forwards only the terminal socket upgrade through the spawned UI proxy, stri
     upstream.close();
   });
 
-  const uiDir = mkdtempSync(join(tmpdir(), 'station-ui-upgrade-'));
+  const uiDir = temp('station-ui-upgrade-');
   writeFileSync(join(uiDir, 'index.html'), '<head></head><body>app</body>');
   const uiPort = 40600 + (process.pid % 400);
   const child = spawn(
@@ -58,10 +59,7 @@ it('forwards only the terminal socket upgrade through the spawned UI proxy, stri
   child.stderr?.on('data', (chunk) => {
     stderr += String(chunk);
   });
-  cleanups.push(() => {
-    child.kill('SIGKILL');
-    rmSync(uiDir, { recursive: true, force: true });
-  });
+  cleanups.push(() => child.kill('SIGKILL'));
   const deadline = Date.now() + 10_000;
   for (;;) {
     try {

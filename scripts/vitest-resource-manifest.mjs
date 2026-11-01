@@ -448,6 +448,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #3567: bounded CLI executable children send to a per-test loopback
   // fixture to verify lost-response JSON handles in both entry points.
   'packages/cli/src/__tests__/core-http.test.ts',
+  // #3994: spawns the generated UI server as a real `node -e` child and owns
+  // per-test loopback listeners (an upstream WebSocket server and the proxy).
+  'packages/cli/src/__tests__/ui-proxy-terminal-upgrade.test.ts',
   // Spawns the CLI entry point as bounded children against a per-test
   // loopback HTTP fixture to assert exit status and request shape.
   'packages/cli/src/__tests__/telemetry-producers-command.test.ts',
