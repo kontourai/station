@@ -1271,7 +1271,9 @@ describe('Home and the dock start the same way', () => {
       { target: { value: 'Go' } },
     );
     expect(
-      within(form).queryByRole('button', { name: 'Project: No project. Without a project' }),
+      within(form).queryByRole('button', {
+        name: 'Project: No project. Without a project',
+      }),
     ).toBeNull();
     const startButton = within(form).getByRole('button', {
       name: 'Start',

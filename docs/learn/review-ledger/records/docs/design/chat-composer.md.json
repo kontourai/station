@@ -216,7 +216,11 @@
 
     "src-server/routes/chat/conversation-work-state.ts",
 
-    "src-ui/src/components/chat-dock/mobile-activity-groups.ts"
+    "src-ui/src/components/chat-dock/mobile-activity-groups.ts",
+
+    "src-ui/src/components/ComposerChoice.tsx",
+
+    "src-ui/src/components/ComposerChoice.css"
   ],
 
   "checks": [
