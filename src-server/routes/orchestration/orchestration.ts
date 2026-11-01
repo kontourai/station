@@ -116,6 +116,10 @@ import {
   getRuntimeAuthenticatedRequestPrincipal,
   resolveClientOriginForRequest,
 } from '../../security/runtime-request-security.js';
+import {
+  stationControlRequestAuthority,
+  stationControlRequestCurrent,
+} from '../../security/station-control-request-authority.js';
 
 /** #3483: an authenticated request that is not a station-control (internal) call. */
 function isPersonRequest(request: Request): boolean {
@@ -123,7 +127,6 @@ function isPersonRequest(request: Request): boolean {
   return principal !== undefined && principal.kind !== 'internal';
 }
 
-import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
 import {
   AnswerAssessmentConflictError,
   AnswerAssessmentModule,
@@ -485,6 +488,15 @@ const steerTurnOnceCommandSchema = steerTurnCommandSchema.extend({
   clientInputId: z.string().min(1).max(128),
 });
 
+const steerChildWorkCommandSchema = z.object({
+  type: z.literal('steerChildWork'),
+  threadId: z.string().min(1).max(512),
+  childId: z.string().min(1).max(512),
+  turnId: z.string().min(1).max(512),
+  input: z.string().trim().min(1).max(CHAT_INPUT_MAX_CHARS),
+  clientInputId: z.string().min(1).max(128),
+});
+
 const experienceIdentitySchema = z
   .object({
     pluginId: z.string().min(1).max(128),
@@ -623,6 +635,7 @@ export const orchestrationCommandSchema = z.discriminatedUnion('type', [
   interruptTurnCommandSchema,
   steerTurnCommandSchema,
   steerTurnOnceCommandSchema,
+  steerChildWorkCommandSchema,
   inspectSteerInputCommandSchema,
   respondToRequestCommandSchema,
   stopSessionCommandSchema,
@@ -5748,6 +5761,48 @@ export function createOrchestrationRoutes(
       return unavailable();
     return c.json({ success: true, data: outcome.page });
   });
+  app.get('/sessions/:threadId/child-work/:childId/instructions', (c) => {
+    c.header('Cache-Control', 'private, no-store');
+    const unavailable = () =>
+      c.json({ success: false, error: 'Child instructions unavailable' }, 404);
+    const offsetText = c.req.query('offset') ?? '0';
+    const limitText = c.req.query('limit') ?? '10';
+    if (!/^\d{1,8}$/.test(offsetText) || !/^\d{1,2}$/.test(limitText))
+      return c.json({ success: false, error: 'Invalid instruction page' }, 400);
+    const offset = Number(offsetText);
+    const limit = Number(limitText);
+    if (limit < 1 || limit > 10 || offset > 1_000_000)
+      return c.json({ success: false, error: 'Invalid instruction page' }, 400);
+    const threadId = param(c, 'threadId');
+    const childId = param(c, 'childId');
+    const authority = readAuthorityFor(c);
+    if (
+      deps.isRequestPrincipalCurrent?.(c.req.raw) !== true ||
+      !orchestrationService.childWorkTranscripts.ownsChild({
+        threadId,
+        childId,
+        authority,
+      })
+    )
+      return unavailable();
+    const page = orchestrationService.readChildSteerInstructions(
+      threadId,
+      childId,
+      offset,
+      limit,
+    );
+    if (
+      !page ||
+      deps.isRequestPrincipalCurrent?.(c.req.raw) !== true ||
+      !orchestrationService.childWorkTranscripts.ownsChild({
+        threadId,
+        childId,
+        authority,
+      })
+    )
+      return unavailable();
+    return c.json({ success: true, data: page });
+  });
   const sessionInventoryUnavailable = (c: Context, status: 404 | 503 = 404) => {
     c.header('Cache-Control', 'private, no-store');
     return c.json(
@@ -6591,6 +6646,20 @@ export function createOrchestrationRoutes(
         getTenantRequestContext(c.req.raw),
         deps.hostedTenantRegistry,
       );
+      if (
+        command.type === 'steerChildWork' &&
+        (deps.isRequestPrincipalCurrent?.(c.req.raw) !== true ||
+          !orchestrationService.canUserReadSession(
+            command.threadId,
+            readAuthority,
+          ) ||
+          !orchestrationService.canUserMutateSession(
+            command.threadId,
+            actorUserId,
+            tenantExecutionContextForRequest(c.req.raw),
+          ))
+      )
+        return c.json({ success: false, error: 'Session not found' }, 404);
       const actionOperationActor = actionOperationActorForRequest(
         c.req.raw,
         readAuthority,
@@ -6663,6 +6732,22 @@ export function createOrchestrationRoutes(
             ? {
                 requestCurrent: () =>
                   deps.isRequestPrincipalCurrent?.(c.req.raw) === true,
+              }
+            : {}),
+          ...(command.type === 'steerChildWork'
+            ? {
+                requestCurrent: () =>
+                  deps.isRequestPrincipalCurrent?.(c.req.raw) === true &&
+                  stationControlRequestCurrent(c.req.raw) &&
+                  orchestrationService.canUserReadSession(
+                    command.threadId,
+                    readAuthority,
+                  ) &&
+                  orchestrationService.canUserMutateSession(
+                    command.threadId,
+                    actorUserId,
+                    tenantExecutionContextForRequest(c.req.raw),
+                  ),
               }
             : {}),
           // archive#4075 stage 2: this is the STEER path's attribution

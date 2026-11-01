@@ -32,6 +32,159 @@ describe('turn dedup over Station tables', () => {
     }
   };
 
+  test('child steer keys bind child, turn and input across store restart', () => {
+    const { store, file } = open();
+    const input = {
+      threadId: 'parent',
+      childId: 'child-a',
+      turnId: 'turn-a',
+      clientInputId: 'key',
+      input: 'hello',
+    };
+    expect(
+      store.claimChildSteerInput(input, {
+        createdAt: '2026-01-01T00:00:00.000Z',
+      }),
+    ).toBe(true);
+    store.close();
+    const reopened = new EventStore(file);
+    for (const other of [
+      input,
+      { ...input, childId: 'child-b' },
+      { ...input, turnId: 'turn-b' },
+      { ...input, input: 'different' },
+      { ...input, childId: undefined },
+    ]) {
+      expect(reopened.claimSteerInput(other)).toBe(false);
+      expect(reopened.readSteerInput(other)?.outcome).toBe('indeterminate');
+    }
+    reopened.confirmChildSteerInput(input);
+    expect(reopened.readSteerInput(input)).toMatchObject({
+      outcome: 'steered',
+      turnId: 'turn-a',
+    });
+    expect(
+      reopened.readSteerInput({ ...input, childId: 'child-b' })?.outcome,
+    ).toBe('indeterminate');
+    expect(
+      reopened.claimChildSteerInput(
+        { ...input, threadId: 'other-parent' },
+        { createdAt: '2026-01-01T00:00:00.000Z' },
+      ),
+    ).toBe(false);
+    expect(
+      reopened.readChildSteerInput({ ...input, threadId: 'other-parent' })
+        ?.outcome,
+    ).toBe('indeterminate');
+    reopened.close();
+  });
+
+  test('child instruction delivery and private content survive restart and delete with a replay tombstone', () => {
+    const { store, file } = open();
+    const input = {
+      threadId: 'parent',
+      childId: 'child',
+      turnId: 'turn',
+      clientInputId: 'journal-key',
+      input: 'private instruction',
+    };
+    const principal = {
+      id: 'human:local:tester',
+      kind: 'human' as const,
+      display: 'Tester',
+    };
+    expect(
+      store.claimChildSteerInput(input, {
+        createdAt: '2026-01-01T00:00:00.000Z',
+        principal,
+      }),
+    ).toBe(true);
+    store.close();
+    const reopened = new EventStore(file);
+    expect(
+      reopened.listChildSteerInstructions('parent', 'child', 0, 1).entries,
+    ).toMatchObject([
+      { text: input.input, delivery: 'indeterminate', principal },
+    ]);
+    expect(
+      reopened.claimChildSteerInput(input, {
+        createdAt: '2026-01-02T00:00:00.000Z',
+      }),
+    ).toBe(false);
+    expect(
+      reopened.listChildSteerInstructions('parent', 'other', 0, 1).entries,
+    ).toEqual([]);
+    reopened.confirmChildSteerInput(input);
+    expect(
+      reopened.listChildSteerInstructions('parent', 'child', 0, 1).entries,
+    ).toMatchObject([{ delivery: 'delivered' }]);
+    const next = {
+      ...input,
+      clientInputId: 'next-key',
+      input: 'second instruction',
+    };
+    expect(
+      reopened.claimChildSteerInput(next, {
+        createdAt: '2026-01-02T00:00:00.000Z',
+      }),
+    ).toBe(true);
+    expect(
+      reopened.listChildSteerInstructions('parent', 'child', 0, 1),
+    ).toMatchObject({ entries: [{ text: input.input }], nextOffset: 1 });
+    expect(
+      reopened.listChildSteerInstructions('parent', 'child', 1, 1),
+    ).toEqual({
+      entries: [
+        expect.objectContaining({
+          text: 'second instruction',
+          delivery: 'indeterminate',
+        }),
+      ],
+    });
+    reopened.deleteThread('parent');
+    expect(
+      reopened.listChildSteerInstructions('parent', 'child', 0, 1).entries,
+    ).toEqual([]);
+    expect(
+      reopened.claimChildSteerInput(
+        { ...input, threadId: 'other' },
+        { createdAt: '2026-01-03T00:00:00.000Z' },
+      ),
+    ).toBe(false);
+    reopened.close();
+  });
+
+  test('a failed journal confirmation rolls back the delivery receipt', () => {
+    const { store, file } = open();
+    const input = {
+      threadId: 'parent',
+      childId: 'child',
+      turnId: 'turn',
+      clientInputId: 'confirmation-key',
+      input: 'hello',
+    };
+    expect(
+      store.claimChildSteerInput(input, {
+        createdAt: '2026-01-01T00:00:00.000Z',
+      }),
+    ).toBe(true);
+    const db = new DatabaseSync(file);
+    db.exec(
+      "CREATE TRIGGER refuse_journal_confirmation BEFORE UPDATE ON orchestration_child_steer_instructions BEGIN SELECT RAISE(ABORT, 'injected confirmation failure'); END",
+    );
+    db.close();
+    expect(() => store.confirmChildSteerInput(input)).toThrow(
+      'injected confirmation failure',
+    );
+    expect(store.readChildSteerInput(input)).toMatchObject({
+      outcome: 'indeterminate',
+    });
+    expect(
+      store.listChildSteerInstructions('parent', 'child', 0, 1).entries,
+    ).toMatchObject([{ delivery: 'indeterminate' }]);
+    store.close();
+  });
+
   test('writes the owner under the name an older binary reads, with the invocation beside it', () => {
     const { store, file } = open();
     expect(store.claimChatTurn('turn-a')).toEqual({ claimed: true });

@@ -46,6 +46,7 @@ import { expectCanonicalSessionLifecycle } from './adapter-contract-test-utils.j
 import {
   CODEX_COLLAB_V1_CLIENT_INTERRUPT_UNBLOCKS_PARENT,
   CODEX_COLLAB_V1_PARENT_STOP_CASCADES_CHILDREN,
+  CODEX_COLLAB_V2_CLIENT_TURN_INTERRUPT,
   codexCaptureServerMessagesBeforeClientInterrupt,
 } from './codex-collab-fixtures.js';
 
@@ -2582,6 +2583,115 @@ describe('CodexAdapter', () => {
     const PARENT_TURN_ID = '00000000-0000-7000-8000-000000000002';
     const CHILD_ID = '00000000-0000-7000-8000-000000000004';
     const CHILD_TURN_ID = '00000000-0000-7000-8000-000000000005';
+
+    test('child steer targets only the owned active child and refuses stale or unknown targets', async () => {
+      processHandle = new FakeCodexProcess();
+      const adapter = new CodexAdapter({
+        processFactory: () => processHandle!,
+      });
+      const threadId = 'thread-child-steer';
+      await replayCodexCollabPrefix(
+        adapter,
+        threadId,
+        CODEX_COLLAB_V1_CLIENT_INTERRUPT_UNBLOCKS_PARENT,
+      );
+      const before = processHandle.stdin.lines.length;
+      expect(
+        await adapter.steerChildWork(
+          threadId,
+          'unknown-child',
+          CHILD_TURN_ID,
+          'hello',
+        ),
+      ).toEqual({ outcome: 'no-active-task' });
+      expect(
+        await adapter.steerChildWork(threadId, CHILD_ID, 'old-turn', 'hello'),
+      ).toEqual({ outcome: 'no-active-task' });
+      expect(processHandle.stdin.lines).toHaveLength(before);
+      const pending = adapter.steerChildWork(
+        threadId,
+        CHILD_ID,
+        CHILD_TURN_ID,
+        'hello child',
+      );
+      await respondToLatestPendingRequest(adapter, threadId, {
+        turnId: CHILD_TURN_ID,
+      });
+      expect(await pending).toEqual({
+        outcome: 'steered',
+        turnId: CHILD_TURN_ID,
+      });
+      const requests = processHandle.stdin.lines.slice(before).map(parseLine);
+      expect(requests).toHaveLength(1);
+      expect(requests[0]).toMatchObject({
+        method: 'turn/steer',
+        params: {
+          threadId: CHILD_ID,
+          expectedTurnId: CHILD_TURN_ID,
+          input: [{ type: 'text', text: 'hello child', text_elements: [] }],
+        },
+      });
+      await adapter.stopAll();
+    });
+
+    test('v2 child refuses direct steer without sending an RPC', async () => {
+      processHandle = new FakeCodexProcess();
+      const adapter = new CodexAdapter({
+        processFactory: () => processHandle!,
+      });
+      const threadId = 'thread-v2-child-steer';
+      await replayCodexCollabPrefix(
+        adapter,
+        threadId,
+        CODEX_COLLAB_V2_CLIENT_TURN_INTERRUPT,
+      );
+      const before = processHandle.stdin.lines.length;
+      expect(
+        await adapter.steerChildWork(
+          threadId,
+          CHILD_ID,
+          CHILD_TURN_ID,
+          'hello',
+        ),
+      ).toEqual({ outcome: 'unsupported' });
+      expect(processHandle.stdin.lines).toHaveLength(before);
+      await adapter.stopAll();
+    });
+
+    test('child steer reports an ended-turn rejection from Codex without retrying', async () => {
+      processHandle = new FakeCodexProcess();
+      const adapter = new CodexAdapter({
+        processFactory: () => processHandle!,
+      });
+      const threadId = 'thread-child-steer-race';
+      await replayCodexCollabPrefix(
+        adapter,
+        threadId,
+        CODEX_COLLAB_V1_CLIENT_INTERRUPT_UNBLOCKS_PARENT,
+      );
+      const before = processHandle.stdin.lines.length;
+      const pending = adapter.steerChildWork(
+        threadId,
+        CHILD_ID,
+        CHILD_TURN_ID,
+        'hello',
+      );
+      await flushIo();
+      const record = (adapter as any).transport.requireSession(threadId);
+      const id = [...record.pendingRpcRequests.keys()].at(-1);
+      writeServerMessage(adapter, threadId, {
+        id,
+        error: { code: -32600, message: 'no active turn' },
+      });
+      expect(await pending).toEqual({ outcome: 'no-active-task' });
+      expect(
+        processHandle.stdin.lines
+          .slice(before)
+          .map(parseLine)
+          .map((message) => message.method),
+      ).toEqual(['turn/steer']);
+      await adapter.stopAll();
+    });
     // codex-0.155.1-collab-v1-parent-stop-cascades-children.jsonl: same
     // parent ids, two children — registered in this order (004 spawned
     // before 006 in the capture's own collabAgentToolCall spawnAgent items).
@@ -5059,36 +5169,97 @@ describe('CodexAdapter', () => {
     await adapter.stopAll();
   });
 
-  test('an absent approvalMode omits approvalPolicy/sandbox so Codex config applies (station#1950)', async () => {
-    processHandle = new FakeCodexProcess();
-    const adapter = new CodexAdapter({ processFactory: () => processHandle! });
+  test.each([
+    { policy: undefined, sandbox: undefined, expected: 'connection-default' },
+    { policy: 'untrusted', sandbox: 'workspaceWrite', expected: 'ask' },
+    { policy: 'on-request', sandbox: 'workspaceWrite', expected: 'auto' },
+    { policy: 'never', sandbox: 'workspaceWrite', expected: 'never' },
+    { policy: 'never', sandbox: 'dangerFullAccess', expected: 'never' },
+    {
+      policy: 'on-request',
+      sandbox: 'externalSandbox',
+      expected: 'connection-default',
+      requested: 'auto',
+    },
+    { policy: 'never', sandbox: 'readOnly', expected: 'connection-default' },
+    {
+      policy: 'on-failure',
+      sandbox: 'workspaceWrite',
+      expected: 'connection-default',
+    },
+    {
+      policy: 'on-request',
+      sandbox: undefined,
+      expected: 'connection-default',
+    },
+    {
+      policy: { reject: { sandbox_approval: true } },
+      sandbox: 'workspaceWrite',
+      expected: 'connection-default',
+      requested: 'auto',
+    },
+  ])(
+    'reports Codex settings $policy/$sandbox as $expected without changing the startup request',
+    async ({ policy, sandbox, expected, requested }) => {
+      processHandle = new FakeCodexProcess();
+      const adapter = new CodexAdapter({
+        processFactory: () => processHandle!,
+      });
 
-    const sessionPromise = adapter.startSession({
-      provider: 'codex',
-      threadId: 'thread-inherit-default',
-      cwd: '/tmp/project',
-      modelId: 'gpt-5-codex',
-    });
-    await flushIo();
-    writeServerMessage(adapter, 'thread-inherit-default', {
-      id: '1',
-      result: { userAgent: 'test' },
-    });
-    await flushIo();
-    writeServerMessage(adapter, 'thread-inherit-default', {
-      id: '2',
-      result: { thread: { id: 'codex-thread-inherit' }, model: 'gpt-5-codex' },
-    });
-    await withTimeout(sessionPromise, 'startSession inherit default');
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      const sessionPromise = adapter.startSession({
+        provider: 'codex',
+        threadId: 'thread-inherit-default',
+        cwd: '/tmp/project',
+        modelId: 'gpt-5-codex',
+        ...(requested ? { modelOptions: { approvalMode: requested } } : {}),
+      });
+      await flushIo();
+      writeServerMessage(adapter, 'thread-inherit-default', {
+        id: '1',
+        result: { userAgent: 'test' },
+      });
+      await flushIo();
+      writeServerMessage(adapter, 'thread-inherit-default', {
+        id: '2',
+        result: {
+          thread: { id: 'codex-thread-inherit' },
+          model: 'gpt-5-codex',
+          ...(policy ? { approvalPolicy: policy } : {}),
+          ...(sandbox
+            ? {
+                sandbox:
+                  sandbox === 'externalSandbox'
+                    ? { type: sandbox, networkAccess: 'enabled' }
+                    : {
+                        type: sandbox,
+                        networkAccess: false,
+                        writableRoots: [],
+                        excludeTmpdirEnvVar: false,
+                        excludeSlashTmp: false,
+                      },
+              }
+            : {}),
+        },
+      });
+      await withTimeout(sessionPromise, 'startSession inherit default');
 
-    const threadStart = processHandle.stdin.lines
-      .map(parseLine)
-      .find((line) => line.method === 'thread/start');
-    expect(threadStart.params).not.toHaveProperty('approvalPolicy');
-    expect(threadStart.params).not.toHaveProperty('sandbox');
+      const threadStart = processHandle.stdin.lines
+        .map(parseLine)
+        .find((line) => line.method === 'thread/start');
+      expect(threadStart.params.approvalPolicy).toBe(
+        requested === 'auto' ? 'on-request' : undefined,
+      );
+      expect(threadStart.params).not.toHaveProperty('sandbox');
 
-    await adapter.stopAll();
-  });
+      await nextEvent(iterator, 'session.started');
+      const configured = await nextEvent(iterator, 'session.configured');
+      expect(configured.method).toBe('session.configured');
+      expect(configured.metadata?.approvalMode).toBe(expected);
+      expect(configured.metadata?.approvalPolicy).toEqual(policy);
+      await adapter.stopAll();
+    },
+  );
 
   test('native review isolation overrides writable approval modes on thread/start and every turn/start', async () => {
     processHandle = new FakeCodexProcess();
@@ -5173,6 +5344,7 @@ describe('CodexAdapter', () => {
       result: {
         thread: { id: 'codex-thread-applied-mode' },
         model: 'gpt-5-codex',
+        approvalPolicy: 'untrusted',
       },
     });
     await withTimeout(sessionPromise, 'startSession applied-mode');
@@ -5183,7 +5355,7 @@ describe('CodexAdapter', () => {
     const configured = await nextEvent(iterator, 'session.configured');
     expect(configured).toMatchObject({
       method: 'session.configured',
-      metadata: { approvalMode: 'auto' },
+      metadata: { approvalMode: 'ask' },
     });
 
     const turnPromise = adapter.sendTurn({
@@ -5607,7 +5779,7 @@ describe('CodexAdapter', () => {
       );
       expect(configured).toMatchObject({ approvalPolicy: 'never' });
       expect(configured).not.toHaveProperty('sandbox');
-      expect(configured).not.toHaveProperty('approvalMode');
+      expect(configured).toHaveProperty('approvalMode', 'connection-default');
     });
 
     test('R5: session.configured falls back to the requested pair only when Codex reported no sandbox', async () => {

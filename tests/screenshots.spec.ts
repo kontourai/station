@@ -1688,7 +1688,10 @@ async function chooseGalleryNewChatProject(
   await picker.getByRole('button', { name }).click();
   await expect(picker).toBeHidden();
   await expect(
-    draft.getByRole('button', { name: `Project: ${name}`, exact: true }),
+    draft.getByRole('button', {
+      name: `Project: ${name}`,
+      exact: true,
+    }),
   ).toBeVisible();
 }
 

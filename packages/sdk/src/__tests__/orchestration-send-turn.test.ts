@@ -1,13 +1,76 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
+  getChildWorkInstructions,
   getOrchestrationConversationEventWindow,
   getOrchestrationSessionDetailWindow,
   getOrchestrationSessionEventPage,
   interruptTurn,
+  steerChildWork,
 } from '../client/orchestration';
+
+const capability = vi.hoisted(() => vi.fn());
+vi.mock('../client/publicStationCapabilities', () => ({
+  fetchPublicStationCapabilities: capability,
+}));
 
 describe('orchestration lifecycle-control client', () => {
   afterEach(() => vi.unstubAllGlobals());
+
+  test('child command and history are gated by the host capability and retain the exact target', async () => {
+    capability.mockResolvedValue({
+      capabilities: { childWorkSteering: false },
+    });
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({ success: true, data: { outcome: 'steered' } }),
+          { headers: { 'content-type': 'application/json' } },
+        ),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    const input = {
+      threadId: 'parent',
+      childId: 'child',
+      turnId: 'turn',
+      input: 'hello',
+      clientInputId: 'key',
+    };
+    await expect(steerChildWork('http://station.test', input)).rejects.toThrow(
+      'does not support',
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+    capability.mockResolvedValue({ capabilities: { childWorkSteering: true } });
+    await steerChildWork('http://station.test', input);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://station.test/api/orchestration/commands',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ type: 'steerChildWork', ...input }),
+      }),
+    );
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          success: true,
+          data: { entries: [], nextOffset: 10 },
+        }),
+        { headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    expect(
+      await getChildWorkInstructions(
+        'http://station.test',
+        'parent/one',
+        'child/one',
+        { offset: 10, limit: 10 },
+      ),
+    ).toEqual({ entries: [], nextOffset: 10 });
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      'http://station.test/api/orchestration/sessions/parent%2Fone/child-work/child%2Fone/instructions?offset=10&limit=10',
+      expect.anything(),
+    );
+  });
 
   test('requests newest-first conversation hydration without decoding its opaque cursor', async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(

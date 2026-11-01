@@ -1,0 +1,7 @@
+{
+  "revision": "c067ba63cc1d53637e6e520ae9339211d95822fb",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed shared selector presentation and current mobile Inbox and start-draft descriptions against composer source and focused tests; real device layout and gallery verification remain separate.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/ComposerChoice.tsx","src-ui/src/components/ComposerChoice.css"]}
+  ]
+}

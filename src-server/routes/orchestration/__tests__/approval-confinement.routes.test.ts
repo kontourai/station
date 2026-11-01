@@ -1916,6 +1916,19 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
       outcome: 'confinement-changed',
       threadId,
     });
+    expect(
+      await f.service.dispatch(
+        {
+          type: 'steerChildWork',
+          threadId,
+          childId: 'child',
+          turnId: 'child-turn',
+          clientInputId: 'child-after-revocation',
+          input: 'after',
+        },
+        { requestCurrent: () => true },
+      ),
+    ).toEqual({ outcome: 'confinement-changed', threadId });
     expect(f.claude.steers).toHaveLength(1);
 
     // The unconfined turn ends; the next one runs confined and can be steered.

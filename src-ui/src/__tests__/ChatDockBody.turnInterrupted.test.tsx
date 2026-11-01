@@ -8,14 +8,56 @@
  * `ChatDockBody.terminalSessionMarker.test.tsx` — against a transcript
  * carrying the exact `[SYSTEM_EVENT] [TURN_INTERRUPTED]...` marker the
  * boot-time interrupted-turn consumer writes, and asserts the raw bracket
- * tag never reaches the user while the human-readable text does. Slice 1 is
- * needs-input-only: no resume/retry affordance is offered for this marker.
+ * tag never reaches the user while the human-readable text does. It offers
+ * no resend; Continue is offered only behind its preview (pinned below).
  */
 
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
-import { describe, expect, test, vi } from 'vitest';
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
+
+const previews = vi.hoisted(() => ({
+  current: [] as Array<{ id: string; enabled: boolean }>,
+}));
+vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
+  useFeaturePreviewsQuery: () => ({ data: previews.current }),
+}));
+
+const transcriptFailure = vi.hoisted(() => ({
+  current: '' as '' | 'error' | 'upgrade',
+}));
+vi.mock(
+  '../hooks/orchestration/useActiveChatTranscript',
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import('../hooks/orchestration/useActiveChatTranscript')
+      >();
+    return {
+      ...actual,
+      useActiveChatTranscript: (
+        ...args: Parameters<typeof actual.useActiveChatTranscript>
+      ) => {
+        const transcript = actual.useActiveChatTranscript(...args);
+        return transcriptFailure.current
+          ? {
+              ...transcript,
+              enabled: true,
+              settled: true,
+              catchingUp: false,
+              error:
+                transcriptFailure.current === 'error'
+                  ? new Error('History refresh failed')
+                  : undefined,
+              upgradeRequired: transcriptFailure.current === 'upgrade',
+            }
+          : transcript;
+      },
+    };
+  },
+);
 
 vi.mock('@kontourai/station-connect', () => ({
   useConnections: () => ({
@@ -134,6 +176,7 @@ function buildChatInput() {
     slashCommands: [],
     handleInputChange: vi.fn(),
     handleSend: vi.fn(async () => {}),
+    sendComposedMessage: vi.fn(async () => true),
     handleCancel: vi.fn(),
     handleClearInput: vi.fn(),
     handleAddAttachments: vi.fn(),
@@ -295,5 +338,191 @@ describe('ChatDockBody unacknowledged-decision notice (#2880)', () => {
   test('says nothing once every decision is acknowledged', () => {
     renderDock(buildSession({ unacknowledgedDecisions: [] }));
     expect(document.querySelector('[data-chat-decision-delivery]')).toBeNull();
+  });
+});
+
+/**
+ * Continue after a restart (`continue-interrupted-turn` preview): offered on
+ * the restart notice, or on the stopped row that says it in the notice's
+ * place, only while that interruption is the conversation's latest state.
+ */
+describe('ChatDockBody Continue after a restart', () => {
+  // Pinned literals, not the shared constants: a drift in either is a
+  // change in what the person's tap sends.
+  const PROMPT =
+    'Station restarted while you were working and your last turn was cut off. Continue from where you stopped; check what already finished before redoing anything.';
+  const BOUNDARY = 'turn-boundary:3f1c';
+  const banner = {
+    role: 'user',
+    content: `[SYSTEM_EVENT] [TURN_INTERRUPTED] ${BANNER_TEXT}`,
+    interruptedTurnBoundaryId: BOUNDARY,
+    timestamp: 2,
+  } as any;
+  const prompt = { role: 'user', content: 'do the thing', timestamp: 1 } as any;
+
+  function renderWith(
+    session: ChatSession,
+    sendComposedMessage: (...args: unknown[]) => Promise<unknown> = vi.fn(
+      async () => true,
+    ),
+  ) {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const chatInput = { ...buildChatInput(), sendComposedMessage };
+    const dock = (current: ChatSession) => (
+      <QueryClientProvider client={queryClient}>
+        <ChatDockBody
+          activeSession={current}
+          chatFontSize={14}
+          dockHeight={400}
+          showStatsPanel={false}
+          showReasoning={false}
+          showToolDetails={false}
+          modelSupportsAttachments={false}
+          fileAttachmentsSupported={false}
+          availableModels={[]}
+          chatInput={chatInput as any}
+          setShowStatsPanel={vi.fn()}
+        />
+      </QueryClientProvider>
+    );
+    const { rerender } = render(dock(session));
+    return Object.assign(chatInput, {
+      rerender: (next: ChatSession) => rerender(dock(next)),
+    });
+  }
+
+  beforeEach(() => {
+    transcriptFailure.current = '';
+    previews.current = [{ id: 'continue-interrupted-turn', enabled: true }];
+  });
+
+  test('sends the fixed prompt keyed on the interruption, once for a double tap', async () => {
+    let finish: () => void = () => {};
+    const sendComposed = vi.fn(
+      () => new Promise<void>((resolve) => (finish = resolve)),
+    );
+    const chatInput = renderWith(
+      buildSession({ messages: [prompt, banner] }),
+      sendComposed,
+    );
+
+    const action = await screen.findByRole('button', { name: 'Continue' });
+    fireEvent.click(action);
+    fireEvent.click(action);
+    expect(sendComposed).toHaveBeenCalledTimes(1);
+    expect(sendComposed).toHaveBeenCalledWith(
+      PROMPT,
+      `continue-interrupted:${BOUNDARY}`,
+    );
+    // Not the composer's send: the person's draft is not part of it.
+    expect(chatInput.handleSend).not.toHaveBeenCalled();
+    await act(async () => finish());
+  });
+
+  test('is offered under the stopped row that took the notice’s place', async () => {
+    const sendComposed = renderWith(
+      buildSession({
+        messages: [
+          prompt,
+          {
+            role: 'assistant',
+            content: '',
+            turnId: 'turn-1',
+            turnEnded: 'aborted',
+            turnStoppedBy: 'restart',
+            interruptedTurnBoundaryId: BOUNDARY,
+            timestamp: 2,
+          } as any,
+        ],
+      }),
+    ).sendComposedMessage;
+
+    expect(await screen.findByText('Station restarted mid-turn')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(sendComposed).toHaveBeenCalledWith(
+      PROMPT,
+      `continue-interrupted:${BOUNDARY}`,
+    );
+  });
+
+  test('is not offered once a newer message follows the interruption', async () => {
+    renderWith(
+      buildSession({
+        messages: [
+          prompt,
+          banner,
+          { role: 'user', content: 'what now?', timestamp: 3 } as any,
+        ],
+      }),
+    );
+    await screen.findByText(BANNER_TEXT);
+    expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
+  });
+
+  test.each(['error', 'upgrade'] as const)(
+    'hides Continue when a settled history refresh reports %s',
+    async (failure) => {
+      const session = buildSession({ messages: [prompt, banner] });
+      const { rerender } = renderWith(session);
+      await screen.findByRole('button', { name: 'Continue' });
+      transcriptFailure.current = failure;
+      rerender({ ...session });
+      expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
+      transcriptFailure.current = '';
+    },
+  );
+
+  test('is not offered while a turn is running', async () => {
+    renderWith(buildSession({ messages: [prompt, banner], status: 'sending' }));
+    await screen.findByText(BANNER_TEXT);
+    expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
+  });
+
+  test('stays offered when a refresh hands the list an equivalent copy of the rows', async () => {
+    const session = buildSession({ messages: [prompt, banner] });
+    const { rerender } = renderWith(session);
+    await screen.findByRole('button', { name: 'Continue' });
+    // A refetch: new row objects with the same content. The list keeps
+    // rendering the rows it already had.
+    rerender({
+      ...session,
+      messages: session.messages.map((message) => ({ ...message })),
+    });
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeTruthy();
+  });
+
+  test('is not offered while the conversation is still opening', async () => {
+    renderWith(
+      buildSession({
+        messages: [prompt, banner],
+        conversationOpenPending: true,
+      }),
+    );
+    await screen.findByText(BANNER_TEXT);
+    expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
+  });
+
+  test('is not offered while a message waits to send', async () => {
+    renderWith(
+      buildSession({ messages: [prompt, banner], queuedMessages: ['next'] }),
+    );
+    await screen.findByText(BANNER_TEXT);
+    expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
+  });
+
+  test('is not offered while the preview is off', async () => {
+    previews.current = [{ id: 'continue-interrupted-turn', enabled: false }];
+    renderWith(buildSession({ messages: [prompt, banner] }));
+    await screen.findByText(BANNER_TEXT);
+    expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
+  });
+
+  test('is not offered for a notice that names no interruption', async () => {
+    const { interruptedTurnBoundaryId: _id, ...unnamed } = banner;
+    renderWith(buildSession({ messages: [prompt, unnamed] }));
+    await screen.findByText(BANNER_TEXT);
+    expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
   });
 });

@@ -395,6 +395,11 @@ export type ProviderInterruptTurnResult =
   | { outcome: 'target-mismatch'; activeTurnId?: string }
   | { outcome: 'termination-unconfirmed'; turnId: string };
 
+export type ProviderChildSteerResult =
+  | { outcome: 'steered'; turnId: string }
+  | { outcome: 'unsupported' }
+  | { outcome: 'no-active-task' };
+
 /**
  * Provider adapters can arrive from runtime-loaded JavaScript plugins, where
  * the TypeScript contract is not enforcement. Keep the boundary check here so
@@ -482,6 +487,13 @@ export interface ProviderAdapterShape {
   ): Promise<ProviderInterruptTurnResult>;
   /** Present only when the adapter has a real additive-input channel for a running turn. */
   steerTurn?(threadId: string, input: string, turnId: string): Promise<void>;
+  /** Targets an observed child turn owned by this session, never the parent. */
+  steerChildWork?(
+    threadId: string,
+    childId: string,
+    turnId: string,
+    input: string,
+  ): Promise<ProviderChildSteerResult>;
   /**
    * Stop ONE provider-reported subagent, targeted rather than a blanket
    * turn interrupt.
