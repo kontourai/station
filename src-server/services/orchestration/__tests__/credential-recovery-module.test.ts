@@ -13,7 +13,7 @@ import {
 } from '../credential-recovery-module.js';
 import { EventStore } from '../event-store.js';
 import type { RecoveryDispatchAdapter } from '../recovery-dispatch-adapter.js';
-import type { RecoveryLedger } from '../recovery-ledger.js';
+import type { RecoveryLedger } from '../recovery-ledger-binding.js';
 
 function recoveryLedger(eventStore: EventStore) {
   return eventStore.createRecoveryLedger();
@@ -932,7 +932,7 @@ describe('CredentialRecoveryModule', () => {
         }),
         rollback,
         rollbackPending: vi
-          .fn(async () => {
+          .fn(async (): Promise<void> => {
             throw new Error('still unavailable');
           })
           .mockResolvedValueOnce(undefined),
@@ -1352,7 +1352,7 @@ describe('CredentialRecoveryModule', () => {
         }),
         rollback,
         rollbackPending: vi
-          .fn(async () => {
+          .fn(async (): Promise<void> => {
             throw new Error('compensation unavailable');
           })
           .mockResolvedValueOnce(undefined),
@@ -1497,7 +1497,7 @@ describe('CredentialRecoveryModule', () => {
         // candidate and therefore must never re-arm the recovery intent.
         stage: vi.fn(async () => ({ kind: 'indeterminate' as const })),
         rollbackPending: vi
-          .fn(async () => {
+          .fn(async (): Promise<void> => {
             throw new Error('scoped cleanup unavailable');
           })
           .mockResolvedValueOnce(undefined),

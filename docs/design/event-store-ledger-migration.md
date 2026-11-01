@@ -28,7 +28,7 @@ rather than creating a second Interface reference.
 | SessionTurnBoundaryAuthority | Boundary writes, listing and event-authoritative polling use Monument | Invocation reads validate the actual current boundary or same-audit witness against the complete canonical scope. Ordinary physical retirement writes that witness before deletion. Cleanup retries existing private transitions before selecting current targets; no target means no canonical payload collection. These steps join the owning transaction and propagate transaction loss before further SQL. Legacy projection and owner reconciliation retain their separate rules. See the [canonical boundary contract](../architecture/module-map.md#sessionturnboundaryauthority). |
 | Steer receipts | Portable Monument commands over the existing host table | Claim/read/confirm and explicit thread deletion retain the original digest and no-reclaim behavior. Host transactions own rollback; the package adds no durable steer placement or automatic resend. Station separately owns the child-instruction journal and target-bound keys; these are not Monument commands. |
 | AdoptionLedger | Completed | Reservation, ownership, legal transitions, and atomic commit moved out of EventStore forwarding methods. |
-| RecoveryLedger | Completed | Recovery arm/claim/terminal/compensation and startup reconciliation are one intent-shaped Interface. |
+| RecoveryLedger | Protocol in Monument; storage remains in EventStore | Recovery arm/claim/terminal/compensation and startup reconciliation use one intent-shaped Interface over Station's existing tables. The SQL transitions are not yet Monument storage commands. |
 | CredentialApplicationFactory/Handle | Completed, private | Exact stage/settle/ack evidence is composed with RecoveryLedger; raw attempt identities do not become a caller Interface. |
 | NativeInvocationRuns and VoiceTurnRuns | Completed, private | Direct `/invoke*` provider calls use a pre-effect claim; provider-correlated voice starts are already observed possible effects. EventStore composes both authorities and RunService reads only canonical `invoke:*` and `voice:*` projections. |
 | `/chat` turn dedup | Retained internal facade | Direct `/api/agents/:slug/chat` owns conversation-id replay over the shared SQLite primitive, whose resolved-row floor equals the soft cap shared with thread keys (2,000 rows by default). Unresolved rows remain unbounded and do not erode that replay budget. It is not a second TurnDeduplicator caller family or a generic ledger candidate. |
@@ -47,6 +47,11 @@ and redact dispatch attempt and correlation credentials. A claim is a
 claim-local capability: it can release only before invocation, accept provider
 evidence once, or become indeterminate; changed transition intent is invalid
 and an exact durable retry is idempotent.
+
+The portable protocol lives in `@kontourai/monument/recovery`. Station binds
+its connection recovery types and EventStore's existing SQLite operations to
+it. This is not yet adapter conformance for Monument recovery commands: the
+SQL transitions and host event-terminal fence remain in EventStore.
 
 Legal transitions are `armed|manual -> resumed/prepared`, then either
 `armed|manual` (pre-invocation release), `resumed/accepted`, or
@@ -71,10 +76,10 @@ Both startup reconciliation readers return a typed scan: `available` with the
 rows read, or `unavailable` when the coordinator read failed, so an empty
 result now establishes that recovery storage was read. CredentialRecoveryModule
 reports an unavailable scan as `unavailable` and keeps its startup pass
-eligible for retry instead of latching it.
-[#2823](https://github.com/kontourai/station/issues/2823) still tracks the
-caller's admission policy and the due-path sweep, which has no in-process
-retry.
+eligible for retry instead of latching it. An unavailable or indeterminate
+startup result blocks new automatic staging across connections. The due-path
+sweep retries in process and reports rows it fenced before a later scan fault;
+a write whose acknowledgement was lost remains uncertain.
 
 Ownership pairs an owner UUID with the shared process-identity birth
 fingerprint. A matching live PID is retained; a dead PID or mismatched birth is

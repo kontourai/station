@@ -1,3 +1,7 @@
+import type {
+  RecoveryClaim,
+  RecoveryTransition,
+} from '@kontourai/monument/recovery';
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
 import type {
   ConnectionRecoveryDecision,
@@ -28,11 +32,7 @@ import {
 import { type CredentialRecoveryModule } from './credential-recovery-module.js';
 import type { EventStore } from './event-store.js';
 import type { RecoveryDispatchAdapter } from './recovery-dispatch-adapter.js';
-import {
-  type RecoveryClaim,
-  type RecoveryLedger,
-  type RecoveryTransition,
-} from './recovery-ledger.js';
+import type { RecoveryLedger } from './recovery-ledger-binding.js';
 import type {
   UsageLimitResumeChoice,
   UsageLimitResumeChoices,

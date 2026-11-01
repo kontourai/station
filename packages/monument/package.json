@@ -13,6 +13,7 @@
     ".": "./src/index.ts",
     "./sqlite": "./src/sqlite.ts",
     "./session-control": "./src/session-control.ts",
+    "./recovery": "./src/recovery-ledger.ts",
     "./adapter": "./src/adapter.ts",
     "./testing": "./src/testing/index.ts"
   },
@@ -56,6 +57,10 @@
       "./session-control": {
         "types": "./dist/session-control.d.ts",
         "default": "./dist/session-control.js"
+      },
+      "./recovery": {
+        "types": "./dist/recovery-ledger.d.ts",
+        "default": "./dist/recovery-ledger.js"
       },
       "./adapter": {
         "types": "./dist/adapter.d.ts",

@@ -1213,7 +1213,7 @@ describe('SessionRecoveryCoordinator', () => {
         commit: vi.fn(async () => ({ kind: 'adopted' as const })),
         rollback,
         rollbackPending: vi
-          .fn(async () => {
+          .fn(async (): Promise<void> => {
             throw new Error('compensation unavailable during shutdown');
           })
           .mockResolvedValueOnce(undefined),

@@ -9,6 +9,13 @@ import { mkdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import type { SQLOutputValue } from 'node:sqlite';
+import {
+  createRecoveryLedger,
+  type RecoveryLedgerProcessIdentity,
+  type RecoveryOwner,
+  type RecoveryTransition,
+  releaseRecoveryLedgerOwner,
+} from '@kontourai/monument/recovery';
 import type { SessionControlRequestKeys } from '@kontourai/monument/session-control';
 import {
   openSqliteKernelStorage,
@@ -359,15 +366,11 @@ import {
   createProjectTaskRoomWorkingState,
   type ProjectTaskRoomWorkingState,
 } from './project-task-room-working-state.js';
-import {
-  createRecoveryLedger,
-  type RecoveryIntentInput,
-  type RecoveryLedger,
-  type RecoveryLedgerProcessIdentity,
-  type RecoveryOwner,
-  type RecoveryTransition,
-  releaseRecoveryLedgerOwner,
-} from './recovery-ledger.js';
+import type {
+  RecoveryIntentInput,
+  RecoveryLedger,
+  RecoveryLedgerCoordinator,
+} from './recovery-ledger-binding.js';
 import {
   SESSION_OWNER_ATTRIBUTION_METADATA_KEY,
   UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION,
@@ -15337,25 +15340,23 @@ export class EventStore {
           application: CredentialApplicationHandle;
           action: 'commit' | 'rollback';
         }): Promise<
-          import('./recovery-ledger.js').RecoveryCredentialReceiptOutcome
+          import('@kontourai/monument/recovery').RecoveryCredentialReceiptOutcome
         >;
         settle(input: {
           provider: string;
           application: CredentialApplicationHandle;
           action: 'commit' | 'rollback';
         }): Promise<
-          import('./recovery-ledger.js').RecoveryCredentialReceiptOutcome
+          import('@kontourai/monument/recovery').RecoveryCredentialReceiptOutcome
         >;
         acknowledge(input: {
           provider: string;
           application: CredentialApplicationHandle;
-        }): Promise<import('./recovery-ledger.js').RecoveryTransition>;
+        }): Promise<import('@kontourai/monument/recovery').RecoveryTransition>;
       };
     } = {},
   ): RecoveryLedger {
-    const coordinator: Parameters<
-      typeof createRecoveryLedger
-    >[0]['coordinator'] = {
+    const coordinator: RecoveryLedgerCoordinator = {
       arm: (input) => this.armRecoveryIntent(input),
       find: (fingerprint) => this.findRecoveryIntent(fingerprint),
       latestProjection: (threadId) => this.readRecoveryProjection(threadId),
@@ -15390,7 +15391,11 @@ export class EventStore {
       cancelShutdownRequested: (now) => this.cancelShutdownRecoveries(now),
     };
     const startup = options.credentialStartup;
-    return createRecoveryLedger({
+    return createRecoveryLedger<
+      ConnectionRecoveryIntent,
+      ConnectionRecoveryProjection,
+      ConnectionRecoveryOutcomeReason
+    >({
       coordinator,
       owner: this.recoveryLedgerOwner,
       processIdentity: this.recoveryProcessIdentity,

@@ -30,6 +30,7 @@ directory and checks all of this.
 | `@kontourai/monument` | The port (`KernelStorage`, `CommitParticipant`), commands and results, the pure decision functions (including `planTurnBoundaryReconcile`), owner liveness, message delivery decisions and sequencing, and the in-memory adapter | none |
 | `@kontourai/monument/adapter` | For adapter authors: `KernelTransaction`, `runKernelTransactionStep`, `isReadOnlyKernelCommand` | none |
 | `@kontourai/monument/sqlite` | The `node:sqlite` adapter, and the table bindings that let it run over a host's existing tables | Node 24 |
+| `@kontourai/monument/recovery` | Recovery claim and reconciliation protocol over host storage | Node 24 (`node:crypto`) |
 | `@kontourai/monument/session-control` | Request-key identity, digest and keyed execution | Node 24 (`node:crypto`) |
 | `@kontourai/monument/testing` | The conformance suite, the crash-point store, a fake process table, and the in-memory and `node:sqlite` harnesses | Node 24 (`node:assert`, `node:sqlite`) |
 

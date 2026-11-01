@@ -29,16 +29,16 @@ import {
   decideTurnBoundaryTransition,
 } from '@kontourai/monument';
 import { findInvocationTerminal } from '@kontourai/monument/adapter';
+import type {
+  RecoveryLedgerProcessIdentity,
+  RecoveryOwner,
+} from '@kontourai/monument/recovery';
 import {
   type CanonicalRuntimeEvent,
   isDeferredRetriableTurnError,
 } from '@kontourai/station-contracts/runtime-events';
 import { SessionStartRefusedError } from '../../providers/adapter-shape.js';
 import type { CapturedTurnIntent } from './prepared-turn-intent.js';
-import type {
-  RecoveryLedgerProcessIdentity,
-  RecoveryOwner,
-} from './recovery-ledger.js';
 import type { TurnClaim } from './turn-deduplicator.js';
 
 type BoundaryState =

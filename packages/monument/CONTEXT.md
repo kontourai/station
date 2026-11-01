@@ -113,7 +113,7 @@ names the package under any escape or case, refuses a module reference it
 cannot read. `scripts/monument-import-boundary-gate.mjs`
 enforces this in
 `ci:fast` and in `verify:static`. Station consumes the package only through
-its public entry points: `.`, `./sqlite`, `./adapter`, `./testing` and `./session-control`.
+its public entry points: `.`, `./sqlite`, `./adapter`, `./testing`, `./session-control` and `./recovery`.
 
 **Threat model** (owner decision): the gate stops *accidental* coupling
 between Station and Monument internals, the kind real code and agents

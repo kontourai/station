@@ -3,10 +3,10 @@ import { once } from 'node:events';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { RecoveryObligationScan } from '@kontourai/monument/recovery';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { EventStore } from '../event-store.js';
 import { createRecoveryDispatchAdapter } from '../recovery-dispatch-adapter.js';
-import type { RecoveryObligationScan } from '../recovery-ledger.js';
 
 /** These assertions are about rows read from healthy storage. */
 function available<T>(scan: RecoveryObligationScan<T>): T[] {
