@@ -52,7 +52,8 @@ to send on desktop and to insert a new line on touch devices. You can explicitly
 choose either behavior, including for an attached tablet keyboard. Shift+Return
 always inserts a line; Ctrl/Cmd+Return sends. Return never submits during IME
 composition. During a turn, the shortcut uses the composer's selected Queue or
-Steer mode. This preference is included in device-settings export/import.
+Steer mode. The same keys start a chat from the Home, Project page and New chat
+composers. This preference is included in device-settings export/import.
 
 ## Restore a dismissed conversation
 

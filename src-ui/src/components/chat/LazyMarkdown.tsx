@@ -48,7 +48,11 @@ function LazyMarkdownComponent({
   children,
   loadingProjection = children,
   ...options
-}: Options & { loadingProjection?: ReactNode; incremental?: boolean }) {
+}: Options & {
+  loadingProjection?: ReactNode;
+  incremental?: boolean;
+  softBreaks?: boolean;
+}) {
   // Cold chunk only: let a lazily-loaded PARENT commit its own content before
   // this nested renderer can suspend (otherwise React can hold the parent's
   // conversation-level fallback despite this local boundary). useLayoutEffect
