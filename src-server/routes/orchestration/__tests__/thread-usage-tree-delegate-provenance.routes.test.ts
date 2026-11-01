@@ -320,9 +320,15 @@ async function fixture() {
           request.headers.get(CALLER_HEADER) === TENANT_CODEX_CALLER.sessionId
             ? TENANT_CODEX_CALLER
             : null,
-        startedMetadata: (sessionId) =>
-          store.latestEventByMethod(sessionId, 'session.started')?.payload
-            .metadata,
+        startedMetadata: (sessionId) => {
+          const event = store.latestEventByMethod(
+            sessionId,
+            'session.started',
+          )?.payload;
+          return event?.method === 'session.started'
+            ? event.metadata
+            : undefined;
+        },
         sessionEngine: () => 'codex',
         loadAgentSpec: async () => PLANNER,
         isRegistryDefaultAgent: async () => false,

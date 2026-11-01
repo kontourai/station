@@ -260,6 +260,9 @@ function dispatchProjectedOrchestrationEvent(
     case 'session.exited':
       handleSessionExitedEvent(event);
       return;
+    case 'session.cancellation-requested':
+      // Intent is not a terminal outcome; settlement owns completion and queue handling.
+      return;
     case 'turn.started':
       if (chat.usageLimitStopped)
         activeChatsStore.updateChat(
