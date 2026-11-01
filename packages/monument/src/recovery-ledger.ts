@@ -7,7 +7,12 @@ import {
 
 export type { RecoveryTransition } from './decisions/recovery.js';
 export {
+  MemoryRecoveryVolume,
+  openMemoryRecoveryStorage,
+} from './memory-recovery.js';
+export {
   createSqliteRecoveryStorage,
+  type RecoveryExecuteOptions,
   type RecoverySqlIntent,
   type RecoveryStorageCommand,
   type RecoveryStoragePort,

@@ -21,6 +21,10 @@ import {
 import { EventStore } from '../event-store.js';
 import type { RecoveryDispatchAdapter } from '../recovery-dispatch-adapter.js';
 import { SessionRecoveryCoordinator as RuntimeSessionRecoveryCoordinator } from '../session-recovery-coordinator.js';
+import {
+  observeRecoveryFences,
+  observeRecoveryScans,
+} from './fixtures/recovery-scan-fault.js';
 
 function recoveryLedger(eventStore: EventStore) {
   return eventStore.createRecoveryLedger();
@@ -190,12 +194,7 @@ describe('SessionRecoveryCoordinator', () => {
       join(makeTempDir('recovery-readiness-'), 'events.sqlite'),
     );
     const now = new Date('2026-07-29T12:00:00.000Z');
-    const scan = vi.spyOn(
-      store as unknown as {
-        preparedRecoveryDispatches: (...args: unknown[]) => unknown;
-      },
-      'preparedRecoveryDispatches',
-    );
+    const scan = observeRecoveryScans(store);
     scan.mockImplementationOnce(() => {
       throw new Error('SQLITE_BUSY');
     });
@@ -2741,12 +2740,7 @@ describe('SessionRecoveryCoordinator', () => {
   test('#2823: startup records nothing when the due scan is unavailable', () => {
     const { path, fingerprint } = abandonedDueClaim();
     const store = new EventStore(path);
-    vi.spyOn(
-      store as unknown as {
-        preparedRecoveryDispatches: (...args: unknown[]) => unknown;
-      },
-      'preparedRecoveryDispatches',
-    ).mockImplementation(() => {
+    observeRecoveryScans(store).mockImplementation(() => {
       throw new Error('SQLITE_BUSY: database is locked');
     });
     const { coordinator, outcomes } = restartedCoordinator(store);
@@ -2767,12 +2761,7 @@ describe('SessionRecoveryCoordinator', () => {
     vi.useFakeTimers();
     const { path, fingerprint } = abandonedDueClaim();
     const store = new EventStore(path);
-    const scan = vi.spyOn(
-      store as unknown as {
-        preparedRecoveryDispatches: (...args: unknown[]) => unknown;
-      },
-      'preparedRecoveryDispatches',
-    );
+    const scan = observeRecoveryScans(store);
     scan.mockImplementationOnce(() => {
       throw new Error('SQLITE_BUSY');
     });
@@ -2816,15 +2805,9 @@ describe('SessionRecoveryCoordinator', () => {
     ).toBe('owner');
     previous.close();
     const store = new EventStore(path);
-    const target = store as unknown as {
-      indeterminatePreparedRecoveryDispatch: (...args: unknown[]) => unknown;
-    };
-    const transition = target.indeterminatePreparedRecoveryDispatch.bind(store);
-    const injected = vi.spyOn(target, 'indeterminatePreparedRecoveryDispatch');
     let calls = 0;
-    injected.mockImplementation((...args) => {
+    observeRecoveryFences(store).mockImplementation(() => {
       if (++calls === 2) throw new Error('SQLITE_BUSY');
-      return transition(...args);
     });
     const { coordinator, outcomes } = restartedCoordinator(store);
     coordinator.reconcile();

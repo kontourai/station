@@ -3,10 +3,20 @@ import { once } from 'node:events';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { RecoveryObligationScan } from '@kontourai/monument/recovery';
+import type {
+  RecoveryObligationScan,
+  RecoveryStorageCommand,
+  RecoveryStoragePort,
+} from '@kontourai/monument/recovery';
+import type {
+  ConnectionRecoveryIntent,
+  ConnectionRecoveryOutcomeReason,
+  ConnectionRecoveryProjection,
+} from '@kontourai/station-contracts/connection-recovery';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { EventStore } from '../event-store.js';
 import { createRecoveryDispatchAdapter } from '../recovery-dispatch-adapter.js';
+import { observeRecoveryScans } from './fixtures/recovery-scan-fault.js';
 
 /** These assertions are about rows read from healthy storage. */
 function available<T>(scan: RecoveryObligationScan<T>): T[] {
@@ -80,6 +90,35 @@ describe('RecoveryLedger', () => {
     eventStore.close();
   });
 
+  test('joins a host transaction only by explicit admission and its outer rollback wins', () => {
+    const { eventStore, ledger, intent } = fixture();
+    const host = eventStore as unknown as {
+      db: { exec(sql: string): void };
+      recoveryStorage(): RecoveryStoragePort<
+        ConnectionRecoveryIntent,
+        ConnectionRecoveryProjection,
+        ConnectionRecoveryOutcomeReason
+      >;
+    };
+    const storage = host.recoveryStorage();
+    const command: RecoveryStorageCommand<
+      ConnectionRecoveryIntent,
+      ConnectionRecoveryProjection,
+      ConnectionRecoveryOutcomeReason
+    > = {
+      type: 'armRecoveryIntent',
+      args: [{ ...intent, fingerprint: 'nested' }],
+    };
+    host.db.exec('BEGIN IMMEDIATE');
+    expect(() => storage.executeSync(command)).toThrow('existing transaction');
+    expect(
+      storage.executeSync(command, { withinHostTransaction: true }).fingerprint,
+    ).toBe('nested');
+    host.db.exec('ROLLBACK');
+    expect(ledger.find('nested')).toBeNull();
+    eventStore.close();
+  });
+
   test('#2823: a failed startup scan is unavailable, never an empty obligation list', () => {
     const { eventStore, ledger } = fixture();
     // Control: storage was read and holds no prepared obligation.
@@ -91,12 +130,7 @@ describe('RecoveryLedger', () => {
       ledger.reconcilePreparedCredentials('2026-08-13T00:00:01.000Z'),
     ).toEqual({ kind: 'available', obligations: [] });
 
-    vi.spyOn(
-      eventStore as unknown as {
-        preparedRecoveryDispatches: (...args: unknown[]) => unknown;
-      },
-      'preparedRecoveryDispatches',
-    ).mockImplementation(() => {
+    observeRecoveryScans(eventStore).mockImplementation(() => {
       throw new Error('SQLITE_BUSY: database is locked');
     });
     expect(ledger.reconcilePrepared('2026-08-13T00:00:02.000Z')).toEqual({

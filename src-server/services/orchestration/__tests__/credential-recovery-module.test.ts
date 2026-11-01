@@ -14,6 +14,7 @@ import {
 import { EventStore } from '../event-store.js';
 import type { RecoveryDispatchAdapter } from '../recovery-dispatch-adapter.js';
 import type { RecoveryLedger } from '../recovery-ledger-binding.js';
+import { observeRecoveryScans } from './fixtures/recovery-scan-fault.js';
 
 function recoveryLedger(eventStore: EventStore) {
   return eventStore.createRecoveryLedger();
@@ -509,18 +510,7 @@ describe('CredentialRecoveryModule', () => {
     return { databasePath, intent };
   }
 
-  /**
-   * The production coordinator's SQLite read behind both startup scans. A
-   * throw here is what SQLITE_BUSY at boot looks like to RecoveryLedger.
-   */
-  function preparedScan(eventStore: EventStore) {
-    return vi.spyOn(
-      eventStore as unknown as {
-        preparedRecoveryDispatches: (...args: unknown[]) => unknown;
-      },
-      'preparedRecoveryDispatches',
-    );
-  }
+  const preparedScan = observeRecoveryScans;
 
   const busy = () => {
     throw Object.assign(new Error('SQLITE_BUSY: database is locked'), {
@@ -738,18 +728,10 @@ describe('CredentialRecoveryModule', () => {
 
   test('#2823: a failed legacy-row scan alone keeps readiness unknown and suppresses the orphan sweep', async () => {
     const { eventStore } = fixture();
-    const store = eventStore as unknown as {
-      preparedRecoveryDispatches: (
-        kind?: 'due' | 'profile',
-        unlinkedOnly?: boolean,
-      ) => unknown;
-    };
-    const read = store.preparedRecoveryDispatches.bind(eventStore);
     let legacyFailures = 1;
     preparedScan(eventStore).mockImplementation((...args: unknown[]) => {
-      // Only the identity-free legacy read (`unlinkedOnly`) fails, once.
-      if (args[1] === true && legacyFailures-- > 0) busy();
-      return read(...(args as Parameters<typeof read>));
+      // The first bound SQL parameter selects the identity-free legacy rows.
+      if (args[0] === 1 && legacyFailures-- > 0) busy();
     });
     const rollbackPending = vi.fn(async () => undefined);
     const module = createCredentialRecoveryModuleForTest({

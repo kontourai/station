@@ -1,3 +1,9 @@
+import {
+  decideRecoveryArm,
+  decideRecoveryStorageGuard,
+  type RecoveryGuardRow,
+  recoveryGuardPlan,
+} from './decisions/recovery-storage.js';
 import type {
   RecoveryIntentInput,
   RecoveryIntentShape,
@@ -15,7 +21,11 @@ export interface RecoverySqlIntent extends RecoveryIntentShape {
   scope: string;
   decision: string;
   dueAt?: string;
+  attempts: number;
   maxAttempts: number;
+  dispatchKind?: 'due' | 'profile';
+  resumedTurnId?: string;
+  outcomeReason?: string;
   usageLimit?: true;
   createdAt: string;
   updatedAt: string;
@@ -65,6 +75,11 @@ export type RecoveryStorageResult<
   C extends RecoveryStorageCommand<I, P, Reason>,
 > = ReturnType<SqliteRecoveryStorage<I, P, Reason>[C['type']]>;
 
+export interface RecoveryExecuteOptions {
+  /** The host owns the outer commit and must delay effects until it commits. */
+  readonly withinHostTransaction?: boolean;
+}
+
 export interface RecoveryStoragePort<
   I extends RecoverySqlIntent,
   P,
@@ -72,6 +87,7 @@ export interface RecoveryStoragePort<
 > {
   executeSync<C extends RecoveryStorageCommand<I, P, Reason>>(
     command: C,
+    options?: RecoveryExecuteOptions,
   ): RecoveryStorageResult<I, P, Reason, C>;
   execute<C extends RecoveryStorageCommand<I, P, Reason>>(
     command: C,
@@ -100,19 +116,39 @@ class SqliteRecoveryStorage<
       /** Trusted host SQL over the `intent` alias, fixed at construction. */
       sourceTerminalSql: string;
       afterTerminalWrite?: () => void;
+      /** Optional synchronous host participant in this transaction. */
+      beforeCommit?: () => void;
     },
   ) {
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(options.table))
       throw new Error('Invalid recovery table name.');
+    const pragma = (name: string): unknown => {
+      const row = options.db.prepare(`PRAGMA ${name}`).get() as
+        | Record<string, unknown>
+        | undefined;
+      return row ? Object.values(row)[0] : undefined;
+    };
+    if (String(pragma('journal_mode')).toLowerCase() !== 'wal')
+      throw new Error('Recovery storage requires SQLite WAL mode.');
+    const busyTimeout = Number(pragma('busy_timeout'));
+    if (!Number.isSafeInteger(busyTimeout) || busyTimeout < 1)
+      throw new Error('Recovery storage requires a positive busy timeout.');
+    options.db.exec('PRAGMA synchronous = FULL');
+    if (Number(pragma('synchronous')) !== 2)
+      throw new Error('Recovery storage requires SQLite synchronous FULL.');
   }
 
   /** Execute one recovery command on the bound host connection. */
   executeSync<C extends RecoveryStorageCommand<I, P, Reason>>(
     command: C,
+    options: RecoveryExecuteOptions = {},
   ): RecoveryStorageResult<I, P, Reason, C> {
     if (!RECOVERY_OPERATIONS.includes(command.type))
       throw new Error('Unknown recovery storage command.');
-    if (this.inFlight || this.options.db.isTransaction)
+    if (this.inFlight)
+      throw new Error('Recovery storage cannot enter an existing transaction.');
+    const nested = this.options.db.isTransaction === true;
+    if (nested && !options.withinHostTransaction)
       throw new Error('Recovery storage cannot enter an existing transaction.');
     const readOnly = [
       'findRecoveryIntent',
@@ -122,83 +158,105 @@ class SqliteRecoveryStorage<
       'readRecoveryCompensationSnapshot',
       'preparedRecoveryDispatches',
     ].includes(command.type);
-    this.options.db.exec(`BEGIN ${readOnly ? 'DEFERRED' : 'IMMEDIATE'}`);
+    this.options.db.exec(
+      nested
+        ? 'SAVEPOINT monument_recovery'
+        : `BEGIN ${readOnly ? 'DEFERRED' : 'IMMEDIATE'}`,
+    );
     this.inFlight = true;
     try {
+      if (nested && !readOnly)
+        this.options.db
+          .prepare(
+            `UPDATE ${this.options.table} SET fingerprint = fingerprint WHERE 0`,
+          )
+          .run();
       let result: unknown;
-      switch (command.type) {
-        case 'armRecoveryIntent':
-          result = this.armRecoveryIntent(...command.args);
-          break;
-        case 'findRecoveryIntent':
-          result = this.findRecoveryIntent(...command.args);
-          break;
-        case 'readRecoveryProjection':
-          result = this.readRecoveryProjection(...command.args);
-          break;
-        case 'readPendingRecoveryIntents':
-          result = this.readPendingRecoveryIntents(...command.args);
-          break;
-        case 'readUsageLimitIntentsAwaitingUser':
-          result = this.readUsageLimitIntentsAwaitingUser(...command.args);
-          break;
-        case 'readRecoveryCompensationSnapshot':
-          result = this.readRecoveryCompensationSnapshot(...command.args);
-          break;
-        case 'claimRecoveryDispatch':
-          result = this.claimRecoveryDispatch(...command.args);
-          break;
-        case 'releaseRecoveryDispatch':
-          result = this.releaseRecoveryDispatch(...command.args);
-          break;
-        case 'acceptRecoveryDispatch':
-          result = this.acceptRecoveryDispatch(...command.args);
-          break;
-        case 'observeRecoveryDispatchCorrelation':
-          result = this.observeRecoveryDispatchCorrelation(...command.args);
-          break;
-        case 'markRecoveryDispatchIndeterminate':
-          result = this.markRecoveryDispatchIndeterminate(...command.args);
-          break;
-        case 'linkRecoveryCredentialAttempt':
-          result = this.linkRecoveryCredentialAttempt(...command.args);
-          break;
-        case 'preparedRecoveryDispatches':
-          result = this.preparedRecoveryDispatches(...command.args);
-          break;
-        case 'indeterminatePreparedRecoveryDispatch':
-          result = this.indeterminatePreparedRecoveryDispatch(...command.args);
-          break;
-        case 'recordRecoveryTerminal':
-          result = this.recordRecoveryTerminal(...command.args);
-          break;
-        case 'markRecoveryCompensation':
-          result = this.markRecoveryCompensation(...command.args);
-          break;
-        case 'resolveRecoveryCompensationRecord':
-          result = this.resolveRecoveryCompensationRecord(...command.args);
-          break;
-        case 'cancelRecovery':
-          result = this.cancelRecovery(...command.args);
-          break;
-        case 'retireWaitingRecovery':
-          result = this.retireWaitingRecovery(...command.args);
-          break;
-        case 'cancelSourceTerminatedRecoveries':
-          result = this.cancelSourceTerminatedRecoveries(...command.args);
-          break;
-        case 'cancelRecoveryIfSourceTerminated':
-          result = this.cancelRecoveryIfSourceTerminated(...command.args);
-          break;
-        case 'cancelShutdownRecoveries':
-          result = this.cancelShutdownRecoveries(...command.args);
-          break;
-      }
-      this.options.db.exec('COMMIT');
+      const guard = this.guard(command);
+      if (guard && !guard.allowed) {
+        result = guard.refused === 'null' ? null : { kind: 'stale' };
+      } else
+        switch (command.type) {
+          case 'armRecoveryIntent':
+            result = this.armRecoveryIntent(...command.args);
+            break;
+          case 'findRecoveryIntent':
+            result = this.findRecoveryIntent(...command.args);
+            break;
+          case 'readRecoveryProjection':
+            result = this.readRecoveryProjection(...command.args);
+            break;
+          case 'readPendingRecoveryIntents':
+            result = this.readPendingRecoveryIntents(...command.args);
+            break;
+          case 'readUsageLimitIntentsAwaitingUser':
+            result = this.readUsageLimitIntentsAwaitingUser(...command.args);
+            break;
+          case 'readRecoveryCompensationSnapshot':
+            result = this.readRecoveryCompensationSnapshot(...command.args);
+            break;
+          case 'claimRecoveryDispatch':
+            result = this.claimRecoveryDispatch(...command.args);
+            break;
+          case 'releaseRecoveryDispatch':
+            result = this.releaseRecoveryDispatch(...command.args);
+            break;
+          case 'acceptRecoveryDispatch':
+            result = this.acceptRecoveryDispatch(...command.args);
+            break;
+          case 'observeRecoveryDispatchCorrelation':
+            result = this.observeRecoveryDispatchCorrelation(...command.args);
+            break;
+          case 'markRecoveryDispatchIndeterminate':
+            result = this.markRecoveryDispatchIndeterminate(...command.args);
+            break;
+          case 'linkRecoveryCredentialAttempt':
+            result = this.linkRecoveryCredentialAttempt(...command.args);
+            break;
+          case 'preparedRecoveryDispatches':
+            result = this.preparedRecoveryDispatches(...command.args);
+            break;
+          case 'indeterminatePreparedRecoveryDispatch':
+            result = this.indeterminatePreparedRecoveryDispatch(
+              ...command.args,
+            );
+            break;
+          case 'recordRecoveryTerminal':
+            result = this.recordRecoveryTerminal(...command.args);
+            break;
+          case 'markRecoveryCompensation':
+            result = this.markRecoveryCompensation(...command.args);
+            break;
+          case 'resolveRecoveryCompensationRecord':
+            result = this.resolveRecoveryCompensationRecord(...command.args);
+            break;
+          case 'cancelRecovery':
+            result = this.cancelRecovery(...command.args);
+            break;
+          case 'retireWaitingRecovery':
+            result = this.retireWaitingRecovery(...command.args);
+            break;
+          case 'cancelSourceTerminatedRecoveries':
+            result = this.cancelSourceTerminatedRecoveries(...command.args);
+            break;
+          case 'cancelRecoveryIfSourceTerminated':
+            result = this.cancelRecoveryIfSourceTerminated(...command.args);
+            break;
+          case 'cancelShutdownRecoveries':
+            result = this.cancelShutdownRecoveries(...command.args);
+            break;
+        }
+      if (!readOnly) this.options.beforeCommit?.();
+      this.options.db.exec(
+        nested ? 'RELEASE SAVEPOINT monument_recovery' : 'COMMIT',
+      );
       return result as RecoveryStorageResult<I, P, Reason, C>;
     } catch (error) {
       try {
-        this.options.db.exec('ROLLBACK');
+        if (nested) {
+          this.options.db.exec('ROLLBACK TO SAVEPOINT monument_recovery');
+          this.options.db.exec('RELEASE SAVEPOINT monument_recovery');
+        } else this.options.db.exec('ROLLBACK');
       } catch {
         // The host connection may already have rolled back.
       }
@@ -214,7 +272,73 @@ class SqliteRecoveryStorage<
     return this.executeSync(command);
   }
 
+  private readGuardRows(
+    column?: 'fingerprint' | 'recovery_correlation_id',
+    key?: string,
+    source = false,
+  ): RecoveryGuardRow[] {
+    const terminal = source ? this.options.sourceTerminalSql : '0';
+    const where = column
+      ? `WHERE intent.${column} = ?`
+      : "WHERE intent.outcome IN ('armed', 'resumed', 'manual')";
+    const statement = this.options.db.prepare(`
+      SELECT outcome, attempts, max_attempts, due_at, usage_limit, decision,
+             dispatch_settlement, dispatch_kind, dispatch_attempt_id,
+             recovery_correlation_id, dispatch_owner_id, dispatch_owner_pid,
+             credential_attempt_id, CASE WHEN ${terminal} THEN 1 ELSE 0 END AS source_terminated
+      FROM ${this.options.table} AS intent ${where}
+    `);
+    const rows = column ? statement.all(key ?? '') : statement.all();
+    return rows.map((value) => {
+      const row = value as Record<string, unknown>;
+      const text = (field: string): string | null =>
+        typeof row[field] === 'string' ? row[field] : null;
+      return {
+        outcome: text('outcome') ?? '',
+        attempts: Number(row.attempts),
+        maxAttempts: Number(row.max_attempts),
+        dueAt: text('due_at'),
+        usageLimit: Number(row.usage_limit) === 1,
+        decision: text('decision') ?? '',
+        settlement: text('dispatch_settlement'),
+        kind: text('dispatch_kind'),
+        attemptId: text('dispatch_attempt_id'),
+        correlationId: text('recovery_correlation_id'),
+        ownerId: text('dispatch_owner_id'),
+        ownerPid:
+          row.dispatch_owner_pid == null
+            ? null
+            : Number(row.dispatch_owner_pid),
+        credentialAttemptId: text('credential_attempt_id'),
+        sourceTerminated: Number(row.source_terminated) === 1,
+      };
+    });
+  }
+
+  private guard(
+    command: RecoveryStorageCommand<I, P, Reason>,
+  ): { allowed: boolean; refused: 'null' | 'stale' } | undefined {
+    const plan = recoveryGuardPlan(command);
+    if (!plan) return undefined;
+    const rows = this.readGuardRows(
+      plan.key === undefined ? undefined : plan.column,
+      plan.key,
+      plan.source,
+    );
+    return {
+      allowed: rows.some((row) =>
+        decideRecoveryStorageGuard(plan.decision, row),
+      ),
+      refused: plan.refused,
+    };
+  }
+
   armRecoveryIntent(input: RecoveryIntentInput<I>): I {
+    const existing = this.findRecoveryIntent(input.fingerprint);
+    if (decideRecoveryArm(existing !== null) === 'existing') {
+      if (!existing) throw new Error('Recovery arm decision lost its record.');
+      return existing;
+    }
     this.options.db
       .prepare(
         `INSERT OR IGNORE INTO ${this.options.table}

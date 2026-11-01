@@ -15403,9 +15403,15 @@ export class EventStore {
           args: [input],
         }),
       reconcilePrepared: (kind, unlinkedOnly) =>
-        this.preparedRecoveryDispatches(kind, unlinkedOnly),
+        storage.executeSync({
+          type: 'preparedRecoveryDispatches',
+          args: [kind, unlinkedOnly],
+        }),
       indeterminatePrepared: (input) =>
-        this.indeterminatePreparedRecoveryDispatch(input),
+        storage.executeSync({
+          type: 'indeterminatePreparedRecoveryDispatch',
+          args: [input],
+        }),
       terminal: (fingerprint, outcome, now) =>
         storage.executeSync({
           type: 'recordRecoveryTerminal',
@@ -16286,24 +16292,6 @@ export class EventStore {
         afterTerminalWrite: () => this.faults.recoveryTransition?.(),
       });
     return this.recoverySql;
-  }
-
-  private preparedRecoveryDispatches(
-    ...args: Parameters<RecoveryLedgerCoordinator['reconcilePrepared']>
-  ) {
-    return this.recoveryStorage().executeSync({
-      type: 'preparedRecoveryDispatches',
-      args,
-    });
-  }
-
-  private indeterminatePreparedRecoveryDispatch(
-    ...args: Parameters<RecoveryLedgerCoordinator['indeterminatePrepared']>
-  ) {
-    return this.recoveryStorage().executeSync({
-      type: 'indeterminatePreparedRecoveryDispatch',
-      args,
-    });
   }
 
   /**
