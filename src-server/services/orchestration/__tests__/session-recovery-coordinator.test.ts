@@ -2793,6 +2793,55 @@ describe('SessionRecoveryCoordinator', () => {
     vi.useRealTimers();
   });
 
+  test('#2823: records due claims fenced before a mid-scan failure and retries the remainder', async () => {
+    vi.useFakeTimers();
+    const { path, fingerprint } = abandonedDueClaim();
+    const previous = new EventStore(path);
+    const ledger = recoveryLedger(previous);
+    const first = ledger.find(fingerprint);
+    if (!first) throw new Error('missing first intent');
+    const second = ledger.arm({
+      ...first,
+      fingerprint: 'second-due-claim',
+      threadId: 'second-thread',
+      sourceEventId: 'second-event',
+      outcome: 'armed',
+    });
+    expect(
+      ledger.claim({
+        fingerprint: second.fingerprint,
+        kind: 'due',
+        now: '2026-08-11T12:00:00.000Z',
+      }).kind,
+    ).toBe('owner');
+    previous.close();
+    const store = new EventStore(path);
+    const target = store as unknown as {
+      indeterminatePreparedRecoveryDispatch: (...args: unknown[]) => unknown;
+    };
+    const transition = target.indeterminatePreparedRecoveryDispatch.bind(store);
+    const injected = vi.spyOn(target, 'indeterminatePreparedRecoveryDispatch');
+    let calls = 0;
+    injected.mockImplementation((...args) => {
+      if (++calls === 2) throw new Error('SQLITE_BUSY');
+      return transition(...args);
+    });
+    const { coordinator, outcomes } = restartedCoordinator(store);
+    coordinator.reconcile();
+    expect(outcomes).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(outcomes).toHaveBeenCalledTimes(2);
+    expect(recoveryLedger(store).find(fingerprint)).toMatchObject({
+      outcome: 'indeterminate',
+    });
+    expect(recoveryLedger(store).find(second.fingerprint)).toMatchObject({
+      outcome: 'indeterminate',
+    });
+    await coordinator.dispose();
+    store.close();
+    vi.useRealTimers();
+  });
+
   test('refuses a re-entrant runtime error after dispose publishes its stopping gate', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'recovery-stopping-gate-'));
     dirs.push(dir);
