@@ -115,6 +115,7 @@ import {
   resolveExecutionTarget,
 } from '../services/execution-target/execution-target-resolver.js';
 import {
+  isCreateRequestHandle,
   markCreateRequestStarting,
   recordCreateRequestStartResult,
   runDelegationCreate,
@@ -2444,6 +2445,9 @@ async function postForegroundMessage(
   body: unknown,
   unavailableMessage: string,
 ): Promise<ForegroundMessageHandle> {
+  const conversationId = record(body).conversationId;
+  if (typeof conversationId === 'string')
+    await markCreateRequestStarting(conversationId);
   let response: Response;
   try {
     response = await stationFetch(target, `${target.apiBase}${path}`, {
@@ -2517,10 +2521,7 @@ async function postForegroundMessage(
       error.code = payload.code;
     throw error;
   }
-  if (
-    typeof payload.data.providerTurnId !== 'string' ||
-    !payload.data.providerTurnId
-  ) {
+  if (!isCreateRequestHandle(payload.data)) {
     throw new ForegroundMessageTurnIdentityUnavailableError(
       'Foreground message may have started but the target Station did not return a provider turn id',
     );

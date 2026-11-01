@@ -37,6 +37,16 @@ interface Claim {
   completedAt?: number;
   result?: CreateHandle;
 }
+function matchesClaimInput(claim: Claim, digest: string): boolean {
+  // Version 1 stored a second hash of the submission digest.
+  return (
+    claim.digest ===
+    (claim.legacyDigest
+      ? createHash('sha256').update(digest).digest('hex')
+      : digest)
+  );
+}
+
 interface Ledger {
   version: 2;
   claims: Record<string, Claim>;
@@ -204,7 +214,10 @@ export class CreateRequestClaims {
       migrated: value.version === 1,
     };
   }
-  async #update<T>(change: (ledger: Ledger) => T): Promise<T> {
+  async #update<T>(
+    change: (ledger: Ledger) => T,
+    publishResult = true,
+  ): Promise<T> {
     const release = await acquireFileMutationLockAsync(
       `${this.#file}.mutation`,
     );
@@ -220,12 +233,13 @@ export class CreateRequestClaims {
       const result = change(ledger);
       if (Buffer.byteLength(JSON.stringify(ledger) + '\n') > MAX_LEDGER_BYTES)
         throw new CreateRequestCapacityError('bytes');
-      await publishJsonFileWithOwnedLock(this.#file, ledger, {
-        maxBytes: MAX_LEDGER_BYTES,
-        label: 'Create request claims',
-        indent: null,
-        trailingNewline: true,
-      });
+      if (publishResult)
+        await publishJsonFileWithOwnedLock(this.#file, ledger, {
+          maxBytes: MAX_LEDGER_BYTES,
+          label: 'Create request claims',
+          indent: null,
+          trailingNewline: true,
+        });
       return result;
     } finally {
       await release();
@@ -272,6 +286,17 @@ export class CreateRequestClaims {
           .digest('hex')
       : legacyKey;
     const digest = chatTurnSubmissionDigest(input.intent);
+    // Reject changed input before waiting for the live request's ownership lock.
+    const known = await this.#update((ledger) => ledger.claims[key], false);
+    if (
+      known &&
+      (!known.result ||
+        known.completedAt === undefined ||
+        Date.now() - known.completedAt < COMPLETED_RETENTION_MS) &&
+      !matchesClaimInput(known, digest)
+    )
+      throw new CreateRequestConflictError();
+
     // A live owner retains its per-request lock; only a dead owner's reservation can be reclaimed.
     const release = await acquireFileMutationLockAsync(
       `${this.#file}.${key}.owner`,
@@ -290,12 +315,7 @@ export class CreateRequestClaims {
           throw new CreateRequestConflictError();
         const existing = ledger.claims[key];
         if (existing) {
-          if (
-            existing.digest !==
-            (existing.legacyDigest
-              ? createHash('sha256').update(digest).digest('hex')
-              : digest)
-          )
+          if (!matchesClaimInput(existing, digest))
             throw new CreateRequestConflictError();
           return { claim: existing, fresh: false };
         }

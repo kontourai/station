@@ -265,3 +265,31 @@ test('a completed create retires its async starting capability before later call
   await expect(late).resolves.toBeUndefined();
   expect(readFileSync(file, 'utf8')).toBe(before);
 });
+
+test('changed input conflicts while the original create is still running', async () => {
+  const { claims } = setup();
+  let entered!: () => void;
+  let finish!: () => void;
+  const ready = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const hold = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  const original = claims.run(input(), async (id) => {
+    entered();
+    await hold;
+    return handle(id);
+  });
+  await ready;
+  const other = vi.fn(async (id: string) => handle(id));
+  try {
+    await expect(
+      claims.run({ ...input(), intent: { message: 'different' } }, other),
+    ).rejects.toMatchObject({ code: 'create_request_conflict' });
+    expect(other).not.toHaveBeenCalled();
+  } finally {
+    finish();
+    await original;
+  }
+});

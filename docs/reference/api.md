@@ -2680,7 +2680,8 @@ returns HTTP `409` (`client_turn_input_conflict` for foreground,
 
 A live owner holds its request lock. After a crash, an unmarked claim with no
 Session can be reclaimed under the same key and input. Station durably marks
-`starting` immediately before session start or an initial turn. A marked but
+`starting` immediately before session start, an initial turn, or a forwarded
+create POST. A marked but
 unconfirmed create is indeterminate: inspect the returned Session reference and
 its turn delivery with the key, or ask the operator to reconcile it. A typed
 rejected start with no Session releases its claim. Unresolved claims never expire.

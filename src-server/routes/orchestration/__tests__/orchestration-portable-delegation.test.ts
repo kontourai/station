@@ -330,6 +330,7 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
   }): OrchestrationService {
     return {
       readSession: vi.fn(async () => null),
+      hasSessionStartRecord: vi.fn(() => false),
       getProviderAdapter: vi.fn(() => undefined),
       resolveStationDefaultWorkspaceIsolation: vi.fn(async () => undefined),
       startSessionInternal:
@@ -1345,9 +1346,11 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
     const PEER_API_FG = 'https://peer-fg.example';
     const PEER_ENV_FG = 'env-peer-fg';
     const peerPosts: Array<{ url: string; body: unknown }> = [];
+    let losePeerReceipt = false;
     let unwrapFetch: (() => void) | undefined;
     beforeEach(() => {
       peerPosts.length = 0;
+      losePeerReceipt = false;
       const inner = globalThis.fetch;
       const wrapped: typeof fetch = async (input, init) => {
         const url = input instanceof Request ? input.url : String(input);
@@ -1402,6 +1405,7 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
             url.startsWith(PEER_API_FG) &&
             url.includes('/api/orchestration/chat'),
           reply: (init) => {
+            if (losePeerReceipt) throw new Error('peer receipt lost');
             const request = JSON.parse(String(init?.body));
             return {
               success: true,
@@ -1424,7 +1428,7 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
 
     function foregroundApp() {
       return createOrchestrationRoutes(
-        {} as never,
+        { hasSessionStartRecord: () => false } as never,
         baseDeps({
           executeForegroundMessage: async (input: never) => {
             const { executeExecutionTargetMessage } = await import(
@@ -1456,6 +1460,33 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
         ),
       }) as Promise<Response>;
     }
+
+    test('a lost peer create response stays marked and retries never POST another conversation', async () => {
+      losePeerReceipt = true;
+      const app = foregroundApp();
+      const send = () =>
+        app.request('/chat', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            clientTurnId: 'lost-peer-create',
+            message: 'work once',
+            target: {
+              environment: { kind: 'saved', id: PEER_ENV_FG },
+              agent: 'planner',
+            },
+          }),
+        });
+      expect((await send()).status).toBe(409);
+      const retry = await send();
+      expect(retry.status).toBe(409);
+      expect(peerPosts).toHaveLength(1);
+      await expect(retry.json()).resolves.toMatchObject({
+        code: 'foreground_message_indeterminate',
+        sessionId: expect.stringMatching(/^conversation:/),
+        clientTurnId: 'lost-peer-create',
+      });
+    });
 
     test('a saved peer default resolving a sender Project slug refuses 403 with zero remote POST', async () => {
       const res = await postChat({

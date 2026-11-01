@@ -2218,7 +2218,7 @@ A repeated client message should join the same turn instead of invoking the engi
 Before a Session exists, [CreateRequestClaims](../../src-server/services/orchestration/create-request-claims.ts)
 binds request kind, authenticated user/tenant/principal, verified calling
 Session and key to input and the reserved reference. A per-request owner lock
-prevents concurrent reclaim. The start ports persist `starting` before their
+prevents concurrent reclaim. The start ports and peer POST boundary persist `starting` before their
 effect; an unmarked dead reservation with no Session is reclaimable. A typed
 rejected start with no Session releases it. Started/unconfirmed creates stay
 indeterminate with an inspection reference. Completed receipts replay for seven

@@ -24,7 +24,15 @@ test.each(['reserved', 'starting', 'rejected'])(
         home,
         cut,
       ],
-      { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] },
+      {
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: {
+          ...process.env,
+          STATION_HOME: home,
+          STATION_INSTANCE: 'create-claim-crash-fixture',
+        },
+      },
     );
     const exit = once(child, 'exit');
     let stderr = '';
