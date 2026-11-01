@@ -3062,8 +3062,8 @@ describe('DevicePairingService', () => {
  * here as `requesterPosition`).
  */
 describe('confirmRequest approval guard (station#1490)', () => {
-  test('account-bound access request is read-only at approval and exchange', () => {
-    const { service } = harness();
+  test('account-bound access request is read-only at approval and exchange', async () => {
+    const { service } = await harness();
     const access = service.requestAccess({
       endpoint: 'https://station.example.test',
       deviceName: 'Member browser',

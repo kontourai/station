@@ -147,10 +147,17 @@ describe('account-tied personal access tokens over the production composition', 
           warn() {},
           error() {},
         } as never);
+    const existingPreview = previews
+      .list()
+      .find((preview) => preview.id === MEMBER_PASSKEYS_PREVIEW_ID);
     const memberPasskeys = previews.bind({
       id: MEMBER_PASSKEYS_PREVIEW_ID,
-      label: 'Member passkeys',
-      description: 'Member passkeys under test.',
+      label: existingPreview?.label ?? 'Member passkeys',
+      description:
+        existingPreview?.description ?? 'Member passkeys under test.',
+      ...(existingPreview?.defaultEnabled === undefined
+        ? {}
+        : { defaultEnabled: existingPreview.defaultEnabled }),
     });
     await previews.setEnabled(MEMBER_PASSKEYS_PREVIEW_ID, true);
     const eventBus = new EventBus();

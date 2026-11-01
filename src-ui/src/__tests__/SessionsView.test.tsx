@@ -5050,7 +5050,7 @@ describe('Activity presentation (sessions moved under Home)', () => {
     ];
     renderView();
     const startedFrom = screen.getByLabelText(
-      'Started from',
+      'Recorded origin',
     ) as HTMLSelectElement;
     expect(
       Array.from(startedFrom.options).map((option) => option.textContent),
@@ -5088,7 +5088,7 @@ describe('Activity presentation (sessions moved under Home)', () => {
 
     // The unrecorded row is filed by what IS known (the attached engine),
     // never under a paired device the registry happens to hold.
-    fireEvent.change(screen.getByLabelText('Started from'), {
+    fireEvent.change(screen.getByLabelText('Recorded origin'), {
       target: { value: 'Started in Claude Code' },
     });
     expect(
@@ -5097,12 +5097,12 @@ describe('Activity presentation (sessions moved under Home)', () => {
       ),
     ).toEqual(['No provenance session']);
     expect(container.textContent).not.toContain('Casey’s Pixel');
-    fireEvent.change(screen.getByLabelText('Started from'), {
+    fireEvent.change(screen.getByLabelText('Recorded origin'), {
       target: { value: '' },
     });
     expect(
       container.querySelector('.split-pane__item [data-segment="origin"]')
         ?.textContent,
-    ).toBe('Browser and elsewhere');
+    ).toBe('Browser (reported) and elsewhere');
   });
 });
