@@ -254,7 +254,9 @@ export function pairingScopeSatisfiesHttpRoute(
         request.path.split('?')[0] ?? request.path,
       ) &&
       pairingScopeIncludes(grantedScope, PAIRING_SCOPE_ACCESS_MANAGE)) ||
-    (verifiedOperator &&
+    // The operator in person, as the sign-in handler and its view's
+    // `allowed.signIn` read it: either credential, never only one of them.
+    ((verifiedOperator || verifiedHomeOperator) &&
       requiredScope === PAIRING_SCOPE_ENGINE_LOGIN &&
       isEngineLoginLeaf(request)) ||
     (requiredScope === PAIRING_SCOPE_ACCESS_MANAGE &&

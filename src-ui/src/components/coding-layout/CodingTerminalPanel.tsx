@@ -1,3 +1,4 @@
+import { type ReactNode, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
 import { usePaneHeadSlots } from '../../workspace-panes/PaneHeadSlots';
@@ -33,6 +34,7 @@ export function CodingTerminalPanel({
   projectSlug,
   projectId,
   workingDir,
+  emptyStatus,
 }: {
   id?: string;
   role?: React.AriaRole;
@@ -64,6 +66,8 @@ export function CodingTerminalPanel({
   /** Absent while the Project is loading; terminals wait for it. */
   projectId?: string;
   workingDir: string;
+  /** Shown instead of the empty state while there are no tabs to show. */
+  emptyStatus?: ReactNode;
 }) {
   const moveFocus = (
     event: React.KeyboardEvent<HTMLButtonElement>,
@@ -98,11 +102,18 @@ export function CodingTerminalPanel({
   // whose strip holds one tab still shows it: the tab is where its rename,
   // its close and its mode toggle live.
   const headSlots = usePaneHeadSlots();
+  const tabsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    tabsRef.current
+      ?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')
+      ?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+  }, [activeTabId, tabs.length]);
   const bar = (
     <div
       className={`coding-layout__terminal-bar${headSlots ? ' coding-layout__terminal-bar--head' : ''}`}
     >
       <div
+        ref={tabsRef}
         className="coding-layout__terminal-tabs"
         role="tablist"
         aria-label="Terminal tabs"
@@ -183,19 +194,21 @@ export function CodingTerminalPanel({
             </div>
           );
         })}
-        {headSlots && tabs.length === 0 ? null : (
-          // In a host's head with no terminal yet, the empty state's own
-          // "New Terminal" says it; a second "+" would say it twice.
-          <button
-            type="button"
-            className="coding-layout__terminal-tab-add"
-            onClick={onOpenNewTerminal}
-            title="New terminal"
-          >
-            +
-          </button>
-        )}
       </div>
+      {headSlots && tabs.length === 0 ? null : (
+        // In a host's head with no terminal yet, the empty state's own
+        // "New Terminal" says it; a second "+" would say it twice. Outside
+        // the scrolling strip, so it stays in reach with many tabs.
+        <button
+          type="button"
+          className="coding-layout__terminal-tab-add"
+          onClick={onOpenNewTerminal}
+          title="New terminal"
+          aria-label="New terminal"
+        >
+          +
+        </button>
+      )}
       {presentation === 'layout' && (
         <button
           type="button"
@@ -264,7 +277,9 @@ export function CodingTerminalPanel({
         className="coding-layout__terminal-body"
         style={terminalOpen ? undefined : { display: 'none' }}
       >
-        {tabs.length === 0 ? (
+        {tabs.length === 0 && emptyStatus ? (
+          emptyStatus
+        ) : tabs.length === 0 ? (
           <div className="coding-layout__terminal-empty">
             <div className="coding-layout__terminal-empty-content">
               <span className="coding-layout__terminal-empty-icon">{'>_'}</span>
