@@ -3774,8 +3774,11 @@ mid-read revocation, expiry/clock reversal, URL refusal ordering, request aborti
 private-key serialization and a fresh successful capture after refusal.
 Independent Opus implementation review found no blocking source issue; the early
 expected-witness comparison remains source-reviewed defense in depth rather than
-an independently isolated observable mutation. Five clean mutation controls and
-restored green runs remain pending.
+an independently isolated observable mutation. At clean `734b80b32a6`, all five
+planned mutants fail their named controls: duplicate validation, source witness
+comparison, adapter parity, post-source record/revocation and final expiry.
+Each restoration is byte-exact and green; the final three-file selection passes
+all 62 cases with a clean tree.
 
 The full-caller purpose selection still fails both cases with the original
 budgets: HTTP reports Flow execution/cleanup failure; direct reports a numeric
@@ -3785,3 +3788,23 @@ read count is not a request-latency or complete-journey claim. Handler-fetch
 adjacency, actual factory/auth and teardown, documentation truth, final combined
 deslop/visual and independent qualification remain open. Capabilities and
 finalizer guards stay false; no PR follows from this checkpoint.
+
+## Full-caller failure diagnosis after credential qualification
+
+The five mutation receipts are retained in the ignored credential-mutations
+packet. They qualify that bounded credential change, not group completion.
+The next caller fixture change adds failure labels to ambiguous numeric counters
+and reports controlled-clock elapsed/remaining time without broad profiling.
+The lost-adoption injection now requires a newly appended `grant_adopted` for the
+actual `finish-input` operation, and a new assertion requires that the fault was
+reached. An unrelated earlier rejection cannot stand in for the commit-loss
+control. The original 121 assertion conditions and both 240/300-second test
+budgets remain; the additional assertion strengthens fixture fidelity. Product
+deadlines and guards are unchanged. The labeled selection fails both initial
+group returns at approximately 120 seconds. HTTP reports two provider fetches,
+two session starts and one input invocation; direct reports preparation
+unavailable at initial return. Adoption is not reached in that run. Types also
+caught that the prior transaction argument is already a journal; the injector now
+uses `previous.events` rather than `previous.journal.events`, and corrected
+server-test types pass. That later injection remains unexecuted in the failing
+journey. Prior failures and all broader qualification gaps remain open.

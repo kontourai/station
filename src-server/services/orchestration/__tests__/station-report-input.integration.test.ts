@@ -413,9 +413,10 @@ test('funded three-seat mixed-model report serves input, member results and acco
     input,
     options,
   ).catch((error: unknown) => {
-    failure = new Error('report create failed at runtime boundary', {
-      cause: runtimeFailure ?? error,
-    });
+    failure = new Error(
+      `report create failed at runtime boundary (elapsed=${Date.now() - NOW}ms; rawFetch=${h.rawFetch.mock.calls.length}; starts=${starts.mock.calls.length}; inputInvocations=${operation.inputInvocationCount()})`,
+      { cause: runtimeFailure ?? error },
+    );
     throw failure;
   });
   void running.catch(() => {});
@@ -609,7 +610,11 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
     content: { answer: 'Current source only' },
   });
   const result = await running;
-  assert.equal(failure, undefined);
+  assert.equal(
+    failure,
+    undefined,
+    `initial group return at ${Date.now() - NOW}ms`,
+  );
   assert.ok(result);
   const member = result.group.members.find(
     (member) => member.seatId === 'left',
@@ -662,9 +667,17 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
     action: 'accept',
     content: { answer: 'Current source only' },
   });
-  assert.equal(h.rawFetch.mock.calls.length, 2);
+  assert.equal(
+    h.rawFetch.mock.calls.length,
+    2,
+    `initial two-seat provider calls at ${Date.now() - NOW}ms`,
+  );
   assert.equal(relay.mock.calls.length, 0);
-  assert.equal(starts.mock.calls.length, 2);
+  assert.equal(
+    starts.mock.calls.length,
+    2,
+    `initial two-seat session starts at ${Date.now() - NOW}ms`,
+  );
   const publicResult = await runtime.result(
     h.f.context(requestFor(h)),
     result.group.groupId,
@@ -860,6 +873,7 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
     });
   onTestFinished(() => authorityObserver.mockRestore());
   let loseAdoption = true;
+  let adoptionFaultApplied = false;
   const rounds = StationDelegationPersistence.prototype.roundsStore;
   const lostAdoption = vi
     .spyOn(StationDelegationPersistence.prototype, 'roundsStore')
@@ -868,13 +882,19 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
       return {
         transact: async (id, body) => {
           const result = await store.transact(id, async (previous) => {
+            const previousRevision = previous?.events.length ?? 0;
             const next = await body(previous);
             await observeOwnership('group', 'body', args[2]);
+            const adoption = next.journal.events.at(-1);
             if (
               loseAdoption &&
-              next.journal.events.at(-1)?.kind === 'grant_adopted'
-            )
+              next.journal.events.length > previousRevision &&
+              adoption?.kind === 'grant_adopted' &&
+              adoption.command.operationKey === narrowCommand.operationKey
+            ) {
+              adoptionFaultApplied = true;
               throw Error('controlled lost adoption commit');
+            }
             return next;
           });
           await observeOwnership('group', 'return', args[2]);
@@ -891,13 +911,22 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
       options,
     ),
   );
+  assert.equal(
+    adoptionFaultApplied,
+    true,
+    `lost-adoption commit fault must be reached (elapsed=${Date.now() - NOW}ms; originalDeadlineRemaining=${input.deadlineAt - Date.now()}ms)`,
+  );
   loseAdoption = false;
   const held = await persistence.readReportExecution(
     result.group.groupId,
     result.group.groupId,
     () => undefined,
   );
-  assert.equal(held.authority?.epochs.length, 2);
+  assert.equal(
+    held.authority?.epochs.length,
+    2,
+    `authority epoch after controlled adoption loss at ${Date.now() - NOW}ms`,
+  );
   assert.equal(held.group?.grants.authority.authority_epoch, 1);
   assert.equal(h.rawFetch.mock.calls.length, 2);
   app = createApp(
@@ -936,7 +965,11 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
     ),
   );
   concurrent.mockRestore();
-  assert.equal(arrived, 2);
+  assert.equal(
+    arrived,
+    2,
+    'both concurrent narrow requests reached their load barrier',
+  );
   assert.equal(concurrentNarrowed.replayed, true);
   assert.equal(narrowed.replayed, true);
   const execution = await persistence.readReportExecution(
@@ -945,7 +978,11 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
     () => undefined,
   );
   assert.ok(execution.authority);
-  assert.equal(execution.authority.epochs.length, 2);
+  assert.equal(
+    execution.authority.epochs.length,
+    2,
+    'authority epoch after concurrent adoption replay',
+  );
   assert.equal(
     execution.authority.epochs[1].renewal?.command.schemaVersion,
     '3.1',
