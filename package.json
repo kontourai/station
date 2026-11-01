@@ -360,6 +360,7 @@
     "@kontourai/fieldwork": "0.15.0",
     "@kontourai/flow": "5.4.0",
     "@kontourai/flow-agents": "9.10.0",
+    "@kontourai/agent-runtime": "0.1.0",
     "@kontourai/monument": "^0.1.0",
     "@kontourai/relay": "0.7.1",
     "@kontourai/station-basis-pane": "^0.3.0",

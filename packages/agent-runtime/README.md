@@ -11,6 +11,15 @@ Node 24 `DatabaseSync`. `/ai-sdk`, `/voltagent` and `/strands` bind the pinned
 AI SDK v3 interface, VoltAgent 2.10.0 and Strands 1.19.0 VercelModel. Optional
 framework dependencies are exact peers. The package imports no Station code.
 
+The public root also exports an agent-turn journal and recovery owner. Its
+separate `agent_steps_` namespace declares writer format `agent-steps/1` and
+leaves existing `runtime-model/1` records intact. An active conversation has
+one owner. Recovery requires a proven-dead owner and compares the complete
+observed fence inside the SQLite write transaction. A retained Station turn
+boundary grants no execution authority. Station boot calls this owner before
+ordinary interrupted-turn settlement; foreground registration, tools and
+approvals are still required before this qualifies a resumed Station turn.
+
 The host supplies authorization/current implementation and writer-generation
 closures, real owner liveness, and the already-authorized source cutoff.
 `start` captures effective entry bytes before constructing a guarded native

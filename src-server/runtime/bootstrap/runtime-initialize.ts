@@ -121,6 +121,7 @@ import { registerObservableGauges } from '../../telemetry/metrics.js';
 import { applyConfiguredLogLevel, type Logger } from '../../utils/logger.js';
 import type { VoiceSessionService } from '../../voice/voice-session.js';
 import type { AgentHooksDeps } from '../agents/agent-hooks.js';
+import { stationAgentRuntimeOwner } from '../agents/durable-agent-owner.js';
 import type { StagedPreToolPolicyEvaluator } from '../agents/pre-tool-policy.js';
 import { initializeRuntimeAgents } from '../agents/runtime-agent-registry.js';
 import {
@@ -635,6 +636,8 @@ export async function initializeRuntime(
     deps.environmentSecurityService,
   );
   const orchestrationService = new OrchestrationService({
+    recoverDurableTurn: (input) =>
+      stationAgentRuntimeOwner(configLoader.getProjectHomeDir()).recover(input),
     nativeForkStoredReadVerifier: nativeForkStoredReadDomain.verifyForService,
     ...(deps.hostImagesPreview
       ? { hostImagesPreview: deps.hostImagesPreview }

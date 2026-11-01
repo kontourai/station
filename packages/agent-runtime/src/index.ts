@@ -13,4 +13,14 @@ export {
 } from './memory.js';
 export { drainModelOutbox } from './outbox.js';
 export { DEFAULT_MODEL_POLICY, type ModelPolicy } from './policy.js';
+export {
+  type AgentJournal,
+  type AgentJournalContext,
+  type AgentJournalParticipant,
+  type AgentJournalProtocol,
+  type AgentTurnRecord,
+  type AgentTurnSpec,
+  openSqliteAgentJournal,
+} from './turn-journal.js';
+export { type AgentTurnLease, createAgentRuntime } from './turn-runtime.js';
 export type * from './types.js';
