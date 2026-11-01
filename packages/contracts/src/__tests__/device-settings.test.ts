@@ -170,6 +170,7 @@ describe('DEVICE_SETTINGS_REGISTRY completeness', () => {
         'chatShowReasoning',
         'chatShowToolDetails',
         'chatFontSize',
+        'chatAnswerWidth',
         'dockSlotPlacement',
         // station#1954:
         'hapticsEnabled',
