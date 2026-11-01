@@ -1,0 +1,7 @@
+{
+  "revision": "d78b225f5394a5bc98efff510bd5c8eeff17f1b7",
+
+  "notes": [
+    {"path":"docs/reference/shared.md","note":"Searched this document for claims about the changed behavior Changed sources: the shared package adds a ./windows-system-utility export. No remaining claim here contradicts them.","inputs":["docs/reference/shared.md","packages/shared/package.json#/exports"]}
+  ]
+}
