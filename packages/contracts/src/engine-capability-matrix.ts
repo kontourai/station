@@ -338,6 +338,7 @@ export const EXTERNAL_ENGINE_DURABILITY: ProviderDurabilityProfile = {
   },
   contextCarriage: {
     state: 'emulated',
+    history: 'seed',
     detail:
       'Station can supply context as text; delivery is not acknowledged across restarts.',
   },
@@ -394,6 +395,7 @@ export const STATION_ENGINE_DURABILITY: ProviderDurabilityProfile = {
   },
   contextCarriage: {
     state: 'emulated',
+    history: 'station-memory',
     detail:
       'Station supplies conversation history; mid-turn recovery and delivery acknowledgement are unavailable.',
   },
@@ -414,8 +416,8 @@ export function resolveProviderDurabilityProfile(
     codex: STEERING_ENGINE_DURABILITY,
     acp: ACP_ENGINE_DURABILITY,
     muse: EXTERNAL_ENGINE_DURABILITY,
-    bedrock: EXTERNAL_ENGINE_DURABILITY,
-    ollama: EXTERNAL_ENGINE_DURABILITY,
+    bedrock: STATION_ENGINE_DURABILITY,
+    ollama: STATION_ENGINE_DURABILITY,
   };
   return Object.hasOwn(profiles, provider)
     ? profiles[provider]

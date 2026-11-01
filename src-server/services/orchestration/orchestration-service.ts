@@ -2779,10 +2779,17 @@ export class OrchestrationService {
       runtimeMessages: (id, scope) =>
         this.transcriptReads.readSessionMessages(id, scope),
       metadata: (id) => this.readLatestSessionStartMetadata(id),
-      nativeMemoryOwnsTranscript: (id, provider) =>
-        (provider ??
-          this.options.eventStore?.readSessionByThread(id)?.provider) ===
-          'station-agent' && this.supportsNativeMemoryContinuity(),
+      nativeMemoryOwnsTranscript: (id, provider) => {
+        const actual =
+          provider ??
+          this.options.eventStore?.readSessionByThread(id)?.provider;
+        return (
+          actual !== undefined &&
+          this.durabilityProfileForProvider(actual)?.contextCarriage.history ===
+            'station-memory' &&
+          this.supportsNativeMemoryContinuity()
+        );
+      },
       requiresNativeIdentity: (id) => {
         const provider =
           this.options.eventStore?.readSessionByThread(id)?.provider;
@@ -3220,7 +3227,8 @@ export class OrchestrationService {
         );
       },
       nativeMemoryOwnsTranscriptFor: (provider) =>
-        provider === 'station-agent' && this.supportsNativeMemoryContinuity(),
+        this.durabilityProfileForProvider(provider)?.contextCarriage.history ===
+          'station-memory' && this.supportsNativeMemoryContinuity(),
       nativeIdentityRequiredFor: (provider) =>
         options.adapterRegistry.get(provider)?.metadata.continuity
           ?.resumeIdentity === 'require-match',

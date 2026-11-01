@@ -21,6 +21,7 @@ test('detects provider comparisons, aliases, membership and switches in durabili
     function resume(engine) { return engine === PROVIDER_CODEX; }
     function cancelAgain(adapter) { const p = adapter['provider']; return Object.is(p, 'claude'); }
     function executeSwitch(provider) { switch (provider) { case 'codex': return resumeTurn(); } }
+    function history(engineId) { return (engineId) === 'station'; }
   `;
   expect(
     findDurabilityProviderBranches(source).map(
@@ -34,6 +35,7 @@ test('detects provider comparisons, aliases, membership and switches in durabili
     'engine === PROVIDER_CODEX',
     "Object.is(p, 'claude')",
     "case 'codex': return resumeTurn();",
+    "(engineId) === 'station'",
   ]);
 });
 
@@ -47,7 +49,7 @@ test('ignores protocol-only branches, profile reads and comment text', () => {
   expect(findDurabilityProviderBranches(source)).toEqual([]);
 });
 
-test('the executable gate permits unchanged legacy decisions and rejects a new one', () => {
+test('the executable gate rejects a durability decision even if committed into its baseline', () => {
   const root = makeTempDir('station-durability-branch-');
   const git = (args: string[]) =>
     execFileSync('git', args, { cwd: root, windowsHide: true });
@@ -55,7 +57,7 @@ test('the executable gate permits unchanged legacy decisions and rejects a new o
   mkdirSync(join(root, 'src-server'), { recursive: true });
   const file = join(root, 'src-server', 'service.ts');
   const old =
-    "function recover(provider: string) { return provider === 'claude'; }\n";
+    "function questionnaire(provider: string) { return provider === 'claude'; }\n";
   writeFileSync(file, old);
   git(['add', '.']);
   git([
@@ -82,4 +84,15 @@ test('the executable gate permits unchanged legacy decisions and rejects a new o
   const bad = run();
   expect(bad.status).toBe(1);
   expect(bad.stderr).toContain("provider === 'codex'");
+  git(['add', '.']);
+  git([
+    '-c',
+    'user.name=Fixture',
+    '-c',
+    'user.email=fixture@example.invalid',
+    'commit',
+    '-qm',
+    'bad baseline',
+  ]);
+  expect(run().status).toBe(1);
 });

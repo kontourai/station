@@ -259,8 +259,8 @@ export interface KernelTransaction {
     /** Insert, or replace the entry with the same inbox and key. */
     put(record: InboxEntryRecord): void;
     /**
-     * Delete the inbox's `placed`, `refused` and `cancelled` entries last
-     * updated before `cutoff`.
+     * Delete non-display `placed`, `refused` and `cancelled` entries last
+     * updated before `cutoff`. Display notes live until inbox deletion.
      */
     deleteSettledBefore(inboxId: string, cutoff: number): void;
     /** Delete every entry of the inbox; return how many there were. */

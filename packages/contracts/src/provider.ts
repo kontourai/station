@@ -52,7 +52,9 @@ export interface ProviderDurabilityProfile {
   crashContinuation: DurabilityCapability;
   toolReplay: DurabilityCapability;
   pendingApprovals: DurabilityCapability;
-  contextCarriage: DurabilityCapability;
+  contextCarriage: DurabilityCapability & {
+    history?: 'station-memory' | 'seed';
+  };
   fork: DurabilityCapability;
   /** State describes Station's recovery support; ownership is independent. */
   compaction: DurabilityCapability & {

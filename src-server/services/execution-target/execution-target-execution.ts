@@ -1131,7 +1131,9 @@ export async function executeForegroundMessage(
         : undefined;
   const sessionId = continuation?.sessionId ?? conversationId;
   const transcriptSeed =
-    resolved.provider === 'station-agent' && deps.nativeMemoryOwnsTranscript
+    deps.getProviderAdapter(resolved.provider)?.metadata.durability
+      ?.contextCarriage.history === 'station-memory' &&
+    deps.nativeMemoryOwnsTranscript
       ? undefined
       : continuation?.transcriptSeed;
   const sendClientTurnId =

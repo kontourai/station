@@ -4,9 +4,20 @@ import ts from 'typescript-api';
 import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
-const PROVIDERS = new Set(['claude', 'codex', 'acp', 'station-agent', 'muse']);
+const PROVIDERS = new Set([
+  'station',
+  'station-agent',
+  'claude',
+  'codex',
+  'acp',
+  'muse',
+  'bedrock',
+  'ollama',
+  'opencode',
+  'grok',
+]);
 const DURABILITY =
-  /steer|fork|resum|cancel|interrupt|recover|compac|continu|replay|transcript|turn.?boundary/i;
+  /steer|fork|resum|cancel|interrupt|recover|compac|continu|replay|transcript|turn.?boundary|history|durability/i;
 const CREDENTIAL = /credential|oauth|authentication/i;
 
 /** Find provider-specific decisions near a durability action, ignoring comments. */
@@ -56,15 +67,19 @@ export function findDurabilityProviderBranches(text, file = 'module.ts') {
   };
   collect(source);
   const provider = (node) =>
+    (ts.isParenthesizedExpression(node) && provider(node.expression)) ||
     (ts.isIdentifier(node) &&
       (aliases.has(node.text) || /provider|engine/i.test(node.text))) ||
     (ts.isPropertyAccessExpression(node) &&
       /provider|engine/i.test(node.name.text));
   const literal = (node) =>
+    (ts.isParenthesizedExpression(node) && literal(node.expression)) ||
     (ts.isStringLiteralLike(node) && PROVIDERS.has(node.text)) ||
     (ts.isIdentifier(node) &&
       (constants.has(node.text) ||
-        /^PROVIDER_(CLAUDE|CODEX|ACP|MUSE|STATION_AGENT)$/.test(node.text)));
+        /^PROVIDER_(CLAUDE|CODEX|ACP|MUSE|STATION_AGENT|STATION|BEDROCK|OLLAMA|OPENCODE|GROK)$/.test(
+          node.text,
+        )));
   const branchWords = (node) => {
     const words = [];
     const collectWords = (part) => {
@@ -165,34 +180,105 @@ function git(args) {
   return execFileSyncBounded('git', args, { encoding: 'utf8' });
 }
 
-function addedLines(diff) {
-  const lines = new Set();
-  let line = 0;
-  for (const part of diff.split('\n')) {
-    const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(part);
-    if (hunk) {
-      line = Number(hunk[1]);
-      continue;
-    }
-    if (part.startsWith('+++') || part.startsWith('---')) continue;
-    if (part.startsWith('+')) {
-      lines.add(line);
-      line += 1;
-    } else if (part.startsWith(' ')) line += 1;
-  }
-  return lines;
-}
+// Each retained identity check decodes a named protocol. Counts prevent a copied
+// expression from acquiring the same exception elsewhere in the file.
+const REVIEWED_PROTOCOL_BRANCHES = [
+  {
+    file: 'packages/sdk/src/device-code-login.ts',
+    expression: "value.engine !== 'codex'",
+    count: 1,
+    reason:
+      'Validates the two sign-in response wire formats; no conversation durability decision.',
+  },
+  {
+    file: 'packages/sdk/src/device-code-login.ts',
+    expression: "value.engine !== 'claude'",
+    count: 1,
+    reason:
+      'Validates the two sign-in response wire formats; no conversation durability decision.',
+  },
+  {
+    file: 'src-server/providers/sessions/grok-session-source.ts',
+    expression: "session.provider !== 'acp'",
+    count: 1,
+    reason:
+      'Decodes only the ACP-owned session cursor for this attached-session source.',
+  },
+  {
+    file: 'src-server/providers/sessions/opencode-session-source.ts',
+    expression: "session.provider !== 'acp'",
+    count: 1,
+    reason:
+      'Decodes only the ACP-owned session cursor for this attached-session source.',
+  },
+  {
+    file: 'src-server/routes/connections/app-home.ts',
+    expression: "target.engine.provider === 'claude'",
+    count: 1,
+    reason:
+      'Cancels the matching browser-code or device-code sign-in protocol.',
+  },
+  {
+    file: 'src-server/runtime/bootstrap/acp-resume-cursor-support.ts',
+    expression: "provider !== 'acp'",
+    count: 1,
+    reason:
+      'Reads the ACP initialize/loadSession handshake for that connection; not a fidelity default.',
+  },
+  {
+    file: 'src-server/services/orchestration/event-store.ts',
+    expression: "forkEvent.provider === 'station'",
+    count: 1,
+    reason:
+      'Validates that the fork provenance marker was authored by Station.',
+  },
+  {
+    file: 'src-server/services/orchestration/native-memory-continuity.ts',
+    expression: "value.provider !== 'station-agent'",
+    count: 1,
+    reason: 'Validates the Station relay-specific signed memory scope schema.',
+  },
+  {
+    file: 'src-server/services/orchestration/orchestration-service.ts',
+    expression: "current?.provider !== 'station-agent'",
+    count: 1,
+    reason:
+      'Constructs only the Station relay-specific memory binding schema; ownership selection uses the profile.',
+  },
+  {
+    file: 'src-server/services/orchestration/session-transcript-reads.ts',
+    expression: "event.provider === 'station-agent'",
+    count: 2,
+    reason:
+      'Recognizes usage mirrored by the private Station HTTP relay to avoid double accounting.',
+  },
+  {
+    file: 'src-server/services/orchestration/sqlite-session-turn-boundary.ts',
+    expression: "event.provider === 'codex'",
+    count: 1,
+    reason:
+      'Decodes Codex retriable runtime.error as advisory rather than a terminal; preserves the shared event protocol.',
+  },
+  {
+    file: 'src-ui/src/hooks/useChatInput.ts',
+    expression: "activeChatState?.provider === 'acp'",
+    count: 1,
+    reason:
+      'Applies ACP wire model-selection restrictions; not a durability capability or fallback.',
+  },
+];
+
+const signature = (file, expression) =>
+  `${file}:${expression.replace(/\s+/g, ' ').trim()}`;
 
 export function main() {
-  const base = process.env.STATION_CI_FAST_BASE || 'origin/main';
-  const mergeBase = git(['merge-base', base, 'HEAD']).trim();
-  const changed = git([
-    'diff',
-    '--name-only',
+  const tracked = git([
+    'ls-files',
     '-z',
-    mergeBase,
     '--',
     'src-server',
+    'src-ui/src',
+    'packages/sdk/src',
   ])
     .split('\0')
     .filter(Boolean);
@@ -203,11 +289,12 @@ export function main() {
     '-z',
     '--',
     'src-server',
+    'src-ui/src',
+    'packages/sdk/src',
   ])
     .split('\0')
     .filter(Boolean);
-  const untrackedSet = new Set(untracked);
-  const files = [...new Set([...changed, ...untracked])].filter(
+  const files = [...new Set([...tracked, ...untracked])].filter(
     (file) =>
       /\.(?:ts|tsx)$/.test(file) &&
       !/\.(?:test|spec)\.(?:ts|tsx)$/.test(file) &&
@@ -216,6 +303,13 @@ export function main() {
       !file.includes('/__fixtures__/'),
   );
   const violations = [];
+  const reviewed = new Map(
+    REVIEWED_PROTOCOL_BRANCHES.map((entry) => [
+      signature(entry.file, entry.expression),
+      entry,
+    ]),
+  );
+  const counts = new Map();
   for (const file of files) {
     let text;
     try {
@@ -224,30 +318,31 @@ export function main() {
       if (error?.code === 'ENOENT') continue;
       throw error;
     }
-    const added = untrackedSet.has(file)
-      ? undefined
-      : addedLines(
-          git(['diff', '--no-ext-diff', '--unified=0', mergeBase, '--', file]),
-        );
     for (const found of findDurabilityProviderBranches(text, file)) {
-      if (
-        added &&
-        ![...added].some(
-          (line) => line >= found.startLine && line <= found.endLine,
-        )
-      )
-        continue;
+      const key = signature(file, found.expression);
+      const count = (counts.get(key) ?? 0) + 1;
+      counts.set(key, count);
+      if (count <= (reviewed.get(key)?.count ?? 0)) continue;
       violations.push(`${file}:${found.startLine}: ${found.expression}`);
     }
   }
+  for (const entry of REVIEWED_PROTOCOL_BRANCHES) {
+    if (
+      files.includes(entry.file) &&
+      (counts.get(signature(entry.file, entry.expression)) ?? 0) < entry.count
+    )
+      violations.push(
+        `${entry.file}: obsolete protocol inventory: ${entry.expression}`,
+      );
+  }
   if (violations.length) {
     process.stderr.write(
-      `New provider-specific durability decisions:\n${violations.join('\n')}\n`,
+      `Unreviewed provider-specific durability decisions:\n${violations.join('\n')}\n`,
     );
     process.exitCode = 1;
   } else
     process.stdout.write(
-      `Durability provider branch backstop: ${files.length} changed server file(s), no new findings.\n`,
+      `Durability provider branch backstop: ${files.length} source file(s), ${[...counts.values()].reduce((sum, count) => sum + count, 0)} reviewed protocol check(s), no unreviewed findings.\n`,
     );
 }
 
