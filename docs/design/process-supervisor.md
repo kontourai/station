@@ -697,9 +697,8 @@ verification, and fault injection.
   ([`supervised-core.real.test.ts`](../../src-server/runtime/bootstrap/__tests__/supervised-core.real.test.ts))
   hands generation 1 to 2 under keep-alive, fresh-connection, and
   slow-header HTTP load (requests whose headers are still arriving when
-  generation 1 drains) with no refused or reset connection, on the same four
-  ports, and checks the terminal, voice, and consent listeners on the new
-  generation. It also checks that a parked generation leaves the home, the
+  generation 1 drains) with no refused or reset connection, on the same three
+  ports, and checks the voice and consent listeners on the new generation. It also checks that a parked generation leaves the home, the
   temp root, and the engine registry untouched, and that the supervisor
   keeps its socket, token, and lock through a home schema migration. These
   are the cases tested, not a guarantee for every request: one still running
