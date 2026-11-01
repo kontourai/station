@@ -33,10 +33,11 @@ directory and checks all of this.
 | `@kontourai/monument/testing` | The conformance suite, the crash-point store, a fake process table, and the in-memory and `node:sqlite` harnesses | Node 24 (`node:assert`, `node:sqlite`) |
 
 Adapter authors must implement
-`turnDedup.evictResolved({ maxEntries, minResolvedEntries }, now)` in
-`KernelTransaction`. It replaces `pruneResolved(maxEntries, now)`; an existing
-custom adapter must update its implementation. The storage commands and
-persisted row format are unchanged. This source compatibility change is
+`turnDedup.evictResolved({ maxEntries, minResolvedEntries, resolvedRetentionMs? }, now)`
+and accept the optional resolution time on `turnDedup.put` in
+`KernelTransaction`. Custom adapters must implement timed retention before
+enabling that limit. SQLite's owned schema adds `resolved_at`; a bound host
+supplies its own nullable column. This source compatibility change is
 separate from on-disk compatibility.
 
 ## Message delivery

@@ -287,6 +287,7 @@ Content-Type: application/json
     }
   },
   "message": "Inspect this change",
+  "clientTurnId": "unique-key-for-this-turn",
   "conversationId": "optional caller-chosen continuation id"
 }
 ```
@@ -2015,9 +2016,10 @@ wait_for_turn() {
   return 1
 }
 
-BODY=$(jq -n --arg agent "$STATION_AGENT_ID" --arg cwd "$STATION_SESSION_CWD" \
+FIRST_TURN_KEY=$(openssl rand -hex 16)
+BODY=$(jq -n --arg agent "$STATION_AGENT_ID" --arg cwd "$STATION_SESSION_CWD" --arg key "$FIRST_TURN_KEY" \
   --arg message "Read the file at $NONCE_FILE and reply with its exact contents." \
-  '{target:{environment:{kind:"current"},agent:$agent,workspace:{kind:"directory",cwd:$cwd}},message:$message}')
+  '{target:{environment:{kind:"current"},agent:$agent,workspace:{kind:"directory",cwd:$cwd}},message:$message,clientTurnId:$key}')
 FIRST=$(api -X POST "$BASE/api/orchestration/chat" -d "$BODY")
 CONVERSATION_ID=$(printf '%s' "$FIRST" | jq -er '.data.conversationId')
 SESSION_ID=$(printf '%s' "$FIRST" | jq -er '.data.sessionId')
@@ -2025,8 +2027,10 @@ TURN_ID=$(printf '%s' "$FIRST" | jq -er '.data.providerTurnId')
 wait_for_turn
 
 # Only continue after the first turn completed. A new Session may be returned.
+NEXT_TURN_KEY=$(openssl rand -hex 16)
+NEXT_BODY=$(jq -n --arg key "$NEXT_TURN_KEY" '{message:"Repeat the exact file contents from your previous answer.",clientTurnId:$key}')
 NEXT=$(api -X POST "$BASE/api/orchestration/chat/$CONVERSATION_ID/continue" \
-  -d '{"message":"Repeat the exact file contents from your previous answer."}')
+  -d "$NEXT_BODY")
 SESSION_ID=$(printf '%s' "$NEXT" | jq -er '.data.sessionId')
 TURN_ID=$(printf '%s' "$NEXT" | jq -er '.data.providerTurnId')
 wait_for_turn
