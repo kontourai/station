@@ -1,10 +1,13 @@
-import { REMOTE_AUTH_PROTOCOL_VERSION } from '@kontourai/station-contracts/environment-security';
 import {
   decodeTerminalFrame,
   TERMINAL_FRAME_HEADER_BYTES,
   TERMINAL_MAX_OUTSTANDING_OUTPUT_FRAMES,
   TERMINAL_OUTPUT,
   TERMINAL_SOCKET_PATH,
+  TERMINAL_SOCKET_PROTOCOL,
+  TERMINAL_TICKET_PATH,
+  TERMINAL_TICKET_PATTERN,
+  TERMINAL_TICKET_PROTOCOL_PREFIX,
   TERMINAL_WINDOW_BYTES,
 } from '@kontourai/station-contracts/terminal-transport';
 import { z } from 'zod';
@@ -13,7 +16,8 @@ import {
   assertClientRawEgressAllowed,
   type ClientCredential,
   type ClientCredentialResolver,
-  getJsonWithResolvedCredential,
+  postWithResolvedCredential,
+  readJsonBody,
   StationRawEgressUnavailableError,
   StationRequestAuthorityError,
   StationRequestTimeoutError,
@@ -109,7 +113,7 @@ export interface TerminalOutputSessionOptions {
   fromSeq?: number;
   resolveCredential: ClientCredentialResolver;
   requestScope?: ApiRequestScope;
-  createSocket?: (url: string) => TerminalOutputSocket;
+  createSocket?: (url: string, protocols: string[]) => TerminalOutputSocket;
   /** Resolves only after these bytes have been applied to the view. */
   onOutput(
     data: Uint8Array,
@@ -140,7 +144,8 @@ export function terminalOutputSocketURL(apiBase: string): string {
 
 /**
  * Observe one existing terminal; no open, input, resize or lifecycle command.
- * UNWIRED(#3994): renderer cutover and native socket transport remain separate.
+ * UNWIRED(#3994): no Station surface watches output-only yet; Coding operates
+ * terminals through `TerminalSessionStore`.
  */
 export class TerminalOutputSession {
   private readonly options: TerminalOutputSessionOptions;
@@ -289,11 +294,10 @@ export class TerminalOutputSession {
       );
       const configured = await this.options.resolveCredential();
       if (this.stopped || generation !== this.generation) return;
-      if (configured?.transport)
-        throw new TerminalOutputError('native-transport-unsupported');
-      if (!configured?.credential)
+      // A native shell's host transport owns its bearer: the ticket is
+      // minted through it, so the renderer never holds the credential.
+      if (!configured?.credential && !configured?.transport)
         throw new TerminalOutputError('credential-unavailable');
-      const credential = configured.credential;
       this.assertAuthority = this.credentialGuard(configured);
       this.assertAuthority();
       clearTimeout(this.timer);
@@ -317,18 +321,20 @@ export class TerminalOutputSession {
           },
         },
       };
-      // The existing authenticated route distinguishes an older host's 404
-      // from an access refusal before the WebSocket API hides HTTP status.
+      // The authenticated ticket mint distinguishes an older host's 404 from
+      // an access refusal before the WebSocket API hides HTTP status, and its
+      // single-use ticket admits the socket before the upgrade.
       let probe: Response;
       try {
-        probe = await getJsonWithResolvedCredential(
-          this.options.apiBase.replace(/\/$/, '') + TERMINAL_SOCKET_PATH,
+        probe = await postWithResolvedCredential(
+          this.options.apiBase.replace(/\/$/, '') + TERMINAL_TICKET_PATH,
           {
             authentication: 'required',
             requestScope: probeScope,
             redirect: 'error',
             signal: this.outputLifetime.signal,
             timeoutMs: 5000,
+            readOnly: true,
           },
           probeCredential,
         );
@@ -347,20 +353,32 @@ export class TerminalOutputSession {
         }
         throw error;
       }
-      await probe.body?.cancel();
+      if (probe.status !== 200) await probe.body?.cancel();
       if (this.stopped || generation !== this.generation) return;
       this.assertAuthority();
       if (probe.status === 404)
         throw new TerminalOutputError('unsupported-host');
-      if (probe.status !== 204)
+      if (probe.status !== 200)
         throw new TerminalOutputError('terminal-refused');
+      const minted = (await readJsonBody(probe)) as {
+        data?: { ticket?: unknown };
+      } | null;
+      const ticket = minted?.data?.ticket;
+      if (typeof ticket !== 'string' || !TERMINAL_TICKET_PATTERN.test(ticket))
+        throw new TerminalOutputError('protocol');
+      if (this.stopped || generation !== this.generation) return;
+      this.assertAuthority();
       this.timer = setTimeout(
         () => this.fail(new TerminalOutputError('connection-timeout')),
         5000,
       );
       const socket = (
-        this.options.createSocket ?? ((url) => new WebSocket(url))
-      )(this.socketURL);
+        this.options.createSocket ??
+        ((url, protocols) => new WebSocket(url, protocols))
+      )(this.socketURL, [
+        TERMINAL_SOCKET_PROTOCOL,
+        TERMINAL_TICKET_PROTOCOL_PREFIX + ticket,
+      ]);
       socket.binaryType = 'arraybuffer';
       this.socket = socket;
       const connection: TerminalOutputConnection = {
@@ -375,15 +393,10 @@ export class TerminalOutputSession {
       socket.addEventListener('open', () => {
         if (generation !== this.generation || this.stopped) return;
         try {
+          // The ticket admitted this socket before its upgrade; the server
+          // acknowledges with `authenticated` and no credential is sent.
           this.assertAuthority();
           this.setState('authenticating');
-          socket.send(
-            JSON.stringify({
-              type: 'auth',
-              protocolVersion: REMOTE_AUTH_PROTOCOL_VERSION,
-              credential,
-            }),
-          );
         } catch (error) {
           this.fail(
             new TerminalOutputError(

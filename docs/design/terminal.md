@@ -1,6 +1,6 @@
 # Integrated terminal
 
-Status: In progress under #3994. The scoped in-process foundation and personal-operator same-origin gateway are implemented. The SDK now has an output-only session reader; operating-session state, paired-device/remote admission, Coding cutover and Ghostty remain proposed.
+Status: In progress under #3994. The scoped in-process foundation, the same-origin gateway, operator-device ticket admission, the SDK session store and the Coding cutover (still rendered by xterm.js) are implemented. Supervisor workloads, Ghostty, the layout and removal of the legacy stack remain proposed.
 
 > **Reading status: proposal (2026-10-17).** Replaces the current terminal
 > stack end to end. The bounded implementation below precedes that replacement; the current Coding UI behavior is
@@ -105,9 +105,11 @@ phase 3; no interim TerminalView is introduced.
 Every connection, including loopback, must pass the existing first-frame auth
 protocol. The runtime sends its credential through the normal HTTP admission
 pipeline and retains that authenticated Request for per-operation checks.
-This tranche admits only the current personal operator in person, as part (a)
-does. Account, hosted, paired-device, agent and plugin admission stays refused.
-No request-supplied principal, cwd or executable is accepted.
+Part b1 admitted only the operator in person through a first-frame credential;
+part b2 (below) replaces that with ticket admission before the upgrade and
+admits the operator's own paired devices. Account, hosted, member, agent and
+plugin admission stays refused. No request-supplied principal, cwd or
+executable is accepted.
 
 [TerminalChannelConnection](../../src-server/services/terminal/terminal-channel-connection.ts)
 serializes open, attach, list, input, resize, close and detach. Only adjacent
@@ -116,7 +118,7 @@ Restart is refused until the session service owns explicit restart semantics.
 The [wire contract](../../packages/contracts/src/terminal-transport.ts) carries
 input/output as UTF-8 binary frames with a 13-byte header (one-byte kind,
 four-byte channel, eight-byte sequence, big-endian). JSON controls and the
-bounded credit protocol are described in the [API reference](../reference/api.md#terminal-socket-personal-operator-transport).
+bounded credit protocol are described in the [API reference](../reference/api.md#terminal-socket-operator-transport).
 
 The journal remains the single output source. Invalidation subscribes before
 attach reads, and reads serialize with appends/compaction. Gateway reads are
@@ -149,12 +151,65 @@ authentication, bounded PTY replay and first-frame refusal; its transport contro
 revocation and disposal. It does not open or operate a shell or replace the
 Coding view. See the [SDK contract](../reference/sdk.md#terminal-output-sessions).
 
-Part b2 still owns Project/principal
-admission for paired devices, remote relay/broker egress and its threat model,
-the SDK session store and public-entry proof, Coding's xterm adapter and saved
-terminal migration. The legacy listener, port discovery, Coding UI, saved tabs,
-process projections and close endpoint remain on TerminalService until that
-cutover. A Coding render before b2 can qualify only legacy compatibility.
+Part b2 below delivers device admission, the session store and the Coding
+cutover.
+
+## Operator devices and Coding cutover (#3994, part b2)
+
+Owner decision (2026-10-31): every one of the operator's own paired devices is
+the operator for terminals: a browser through a same-origin proxy, a tailnet
+name or the relay's HTTP route, and the Desktop, iOS and Android shells. A
+device tied to no person, not a delegation grant and not a personal token is
+the operator's own ([`isOperatorsOwnDevice`](../../src-server/security/coding-authority.ts));
+members stay refused. The [threat model](../security/remote-access-threat-model.md#terminal-socket-on-operator-devices-3994)
+records the admission and its residual risks.
+
+- **Ticket admission before upgrade.** `POST /api/terminal/tickets` mints a
+  [single-use 30-second ticket](../../src-server/services/terminal/terminal-tickets.ts)
+  through ordinary HTTP admission; the socket offers it as a subprotocol and
+  the [gateway](../../src-server/services/terminal/terminal-gateway.ts)
+  redeems it before allocating anything. The first-frame path and its pending
+  budget are gone, closing the slot-holding gap the previous section described.
+  Native shells mint through their host transport; no Rust WebSocket bridge.
+- **Fairness and liveness (#4077).** 64 sockets, eight per identity, eight
+  reserved for the operator in person; nothing keyed by address, so a shared
+  relay or proxy address cannot lock others out. Protocol ping/pong terminates
+  half-open peers, a socket lives at most an hour, and every capacity or
+  lifetime close falls back to terminate after one second.
+- **Server-resolved programs.** Socket `open` takes a launch profile name
+  (`shell`, or an `agent` connection and live mode) that the server resolves
+  from saved configuration, a `legacyTerminalId` for the one-time history
+  import, and nothing else. A missing PTY backend reports `pty-unavailable`
+  with the server's reason, so Coding falls back to `POST /api/coding/exec`.
+  A `cwd` operation (operate authority) feeds Send to chat.
+- **Legacy consumers re-pointed.** Engine sign-in starts a server-owned
+  launch in `TerminalSessions` under a scope no Project can take and the panel
+  attaches by id. `DELETE /api/projects/:slug/terminals/:id` and the
+  `/api/orchestration/processes/terminals*` projections accept socket session
+  ids under the caller's own terminal authority, keeping their shapes.
+- **SDK store.** [`TerminalSessionStore`](../../packages/sdk/src/client/terminal-session-store.ts)
+  multiplexes every session on one socket per Station, coalesces input per
+  frame, keeps resize latest-wins, buffers bounded output for late
+  subscribers, resumes each channel from its applied sequence with backoff and
+  wakes on `online` or visibility. Its `TerminalSession` interface is what a
+  renderer consumes; the later Ghostty view uses the same interface.
+- **Coding cutover.** [TerminalPanel](../../src-ui/src/components/coding-layout/TerminalPanel.tsx)
+  keeps xterm.js, the theme, selection hand-off and the mobile key toolbar on
+  the store. Tabs are keyed per Project and reconciled with the server's
+  session list, so a shell opened on one device appears on another. Saved
+  `coding-terminal-tabs` are migrated once into the first Project that opens:
+  labels kept, the old id named for history import, any stored program
+  dropped; unowned history falls back to a fresh shell. No group or split
+  record is added.
+
+The real-socket evidence is in the
+[admission suite](../../src-server/services/terminal/__tests__/terminal-gateway-admission.test.ts)
+(platform-independent, real sockets and the SDK store, scripted PTY) and the
+POSIX [real-PTY suite](../../src-server/services/terminal/__tests__/terminal-gateway.process.test.ts).
+Physical iOS, Android and Desktop devices, Windows/ConPTY and a browser broker
+(DataChannel) route are not qualified: the broker route has no socket path and
+stays refused at the client. The legacy listener, port discovery and
+`TerminalService` remain for older clients until the removal phase.
 
 ### Whole-store retention and process custody
 
@@ -211,24 +266,11 @@ remain terminal content. Scheme validation prevents active local/script links;
 visual spoofing remains the renderer's responsibility, so these values grant
 no Station or navigation authority.
 
-Pending authentication has its own 32-socket budget, separate from 64 authenticated
-connections, with eight pending sockets per exact source address. This is a
-bounded resource limit, not an availability guarantee: four IPv4 addresses or
-IPv6 addresses (including siblings in one /64) can occupy all pending slots and
-renew them by disconnecting before the five-second timeout. Eight sockets behind one relay address can block
-other users of that address, and timeout failures back off that shared address.
-Any peer that can reach the main API listener can hold pending slots, including
-clients without an Origin header. The in-person rule limits authentication,
-not who can hold slots, so this gap can lock the operator out today.
-Before b2 admits remote devices, it must provide:
-
-- credential- or ticket-bound admission before upgrade;
-- per-identity fairness, or reserved slots for loopback/the operator;
-- a relay/shared-address policy.
-
-An IPv6 /64 key alone would not solve the shared-address or multi-IPv4 case.
-Five-second auth timeouts count as failures; peers that ignore the close handshake
-are terminated after another 100 ms. Socket data pauses above 2 MiB of queued wire bytes and retries
+Part b1 let any reachable peer hold one of 32 pending first-frame slots, which
+could lock the operator out. Part b2 removed that path: admission is
+ticket-bound before upgrade, with per-identity fairness, reserved operator
+slots and no address-keyed state (see
+[part b2](#operator-devices-and-coding-cutover-3994-part-b2)). Socket data pauses above 2 MiB of queued wire bytes and retries
 on the heartbeat; cursor/filter state advances only after sending. Control
 replies have a separate 256 KiB reserve before close code 4429. Frame overhead
 therefore cannot close a client merely for using its channel credit.

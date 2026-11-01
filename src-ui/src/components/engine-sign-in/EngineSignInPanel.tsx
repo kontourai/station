@@ -104,13 +104,22 @@ function AttemptView({
         <>
           <span>Finish signing in in the terminal below.</span>
           <div className="engine-sign-in__terminal">
-            <TerminalPanel
-              projectSlug={attempt.terminal.projectSlug}
-              terminalId={attempt.terminal.terminalId}
-              workingDir="~"
-              attachOnly
-              isActive
-            />
+            {attempt.terminal.projectId && attempt.terminal.bindingKey ? (
+              // The server started this session; the view attaches by id.
+              <TerminalPanel
+                projectSlug={attempt.terminal.projectSlug}
+                target={{
+                  projectId: attempt.terminal.projectId,
+                  bindingKey: attempt.terminal.bindingKey,
+                }}
+                terminalId={attempt.terminal.terminalId}
+                workingDir="~"
+                attachOnly
+                isActive
+              />
+            ) : (
+              <p role="alert">Update this Station to sign in from here.</p>
+            )}
           </div>
         </>
       ) : (

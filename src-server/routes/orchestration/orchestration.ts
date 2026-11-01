@@ -1929,6 +1929,19 @@ export function createOrchestrationRoutes(
       close(sessionId: string): Promise<void>;
     };
     /**
+     * #3994: sessions the terminal socket owns, projected into the same
+     * process shapes. Each call is authorized as the caller (terminal
+     * observe to list or read, operate to close); refused ids read absent.
+     */
+    scopedTerminals?: {
+      list(request: Request): Promise<TerminalProcessSummary[]>;
+      read(
+        request: Request,
+        terminalId: string,
+      ): Promise<TerminalProcessDetail | null>;
+      close(request: Request, terminalId: string): Promise<boolean>;
+    };
+    /**
      * Station #90 lane D (B2): runtime-composed from server facts (the
      * verified station-control caller). See `resolveDispatchActor`.
      */
@@ -6506,7 +6519,10 @@ export function createOrchestrationRoutes(
     }
     return c.json({
       success: true,
-      data: deps.terminalService.listProcessSummaries(),
+      data: [
+        ...deps.terminalService.listProcessSummaries(),
+        ...((await deps.scopedTerminals?.list(c.req.raw)) ?? []),
+      ],
     });
   });
 
@@ -6520,7 +6536,10 @@ export function createOrchestrationRoutes(
         503,
       );
     }
-    const data = deps.terminalService.readProcess(param(c, 'sessionId'));
+    const data =
+      deps.terminalService.readProcess(param(c, 'sessionId')) ??
+      (await deps.scopedTerminals?.read(c.req.raw, param(c, 'sessionId'))) ??
+      null;
     if (!data) {
       return c.json({ success: false, error: 'Process not found' }, 404);
     }
@@ -6537,7 +6556,13 @@ export function createOrchestrationRoutes(
         503,
       );
     }
-    await deps.terminalService.close(param(c, 'sessionId'));
+    const sessionId = param(c, 'sessionId');
+    if (
+      !deps.terminalService.readProcess(sessionId) &&
+      (await deps.scopedTerminals?.close(c.req.raw, sessionId))
+    )
+      return c.json({ success: true, data: { sessionId } });
+    await deps.terminalService.close(sessionId);
     return c.json({
       success: true,
       data: { sessionId: param(c, 'sessionId') },

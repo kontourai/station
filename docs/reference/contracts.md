@@ -239,7 +239,7 @@ The `@kontourai/station-contracts/terminal-transport` subpath exports the
 terminal binary frame codec, limits and observe/operate scope predicate. The
 frame limit bounds unacknowledged output records independently of byte credit,
 including records sanitized to an empty payload. The
-[API reference](api.md#terminal-socket-personal-operator-transport) owns the
+[API reference](api.md#terminal-socket-operator-transport) owns the
 wire controls and the current personal-operator admission limit. The predicate
 is not Project membership or a credential verifier.
 

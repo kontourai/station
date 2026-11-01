@@ -15,6 +15,46 @@ export const TERMINAL_MIN_WINDOW_BYTES = 16 * 1024;
 export const TERMINAL_INPUT = 1;
 export const TERMINAL_OUTPUT = 2;
 
+/**
+ * Authenticated HTTP mint for a single-use socket ticket. Every client,
+ * including native shells whose bearer stays in the host transport, fetches
+ * one over its ordinary authenticated route and presents it in the upgrade.
+ */
+export const TERMINAL_TICKET_PATH = '/api/terminal/tickets';
+/** Lifetime of an unredeemed ticket; redemption is single-use. */
+export const TERMINAL_TICKET_TTL_MS = 30_000;
+/** Selected subprotocol: the version this socket speaks. */
+export const TERMINAL_SOCKET_PROTOCOL = 'station.terminal.v1';
+/**
+ * Subprotocol prefix carrying the ticket, so it never enters a URL, an
+ * access log or a referrer. The server never echoes it back.
+ */
+export const TERMINAL_TICKET_PROTOCOL_PREFIX = 'station.terminal.ticket.';
+/** 32 random bytes, base64url: valid subprotocol token characters. */
+export const TERMINAL_TICKET_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+
+export interface TerminalTicket {
+  ticket: string;
+  expiresAt: number;
+}
+
+/**
+ * Server-resolved programs a client may ask for by name. The server resolves
+ * the executable, arguments and working directory; a request never carries
+ * them. `agent` names a configured engine connection and one of its live modes.
+ */
+export type TerminalLaunchProfile =
+  | { kind: 'shell' }
+  | { kind: 'agent'; connectionId: string; mode: string };
+
+/** Close codes a client must not retry with the same authority. */
+export const TERMINAL_CLOSE = {
+  /** The connection outlived its maximum lifetime; reconnect with a new ticket. */
+  lifetime: 4000,
+  /** Capacity refusal after admission. */
+  capacity: 4429,
+} as const;
+
 export function encodeTerminalFrame(
   kind: typeof TERMINAL_INPUT | typeof TERMINAL_OUTPUT,
   channel: number,

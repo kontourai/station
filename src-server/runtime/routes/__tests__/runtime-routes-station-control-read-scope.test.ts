@@ -46,7 +46,6 @@ import { NodePtyAdapter } from '../../../adapters/node-pty-adapter.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { KnowledgeStoreProvider } from '../../../knowledge-store/knowledge-store-provider.js';
 import { UI_NAVIGATE_AUDIENCE_FIELD } from '../../../routes/projects/ui-commands.js';
-import { getRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
 import { __resetStationServerSelfAttestationForTests } from '../../../security/station-server-scope.js';
 import { deploymentAccountPrincipal } from '../../../services/identity/deployment-authentication-service.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
@@ -541,9 +540,23 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
     };
   }
 
+  /** The production ticket mint, through the real HTTP admission. */
+  async function mintTicket(base: string, credential: string) {
+    const response = await fetch(`${base}/api/terminal/tickets`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${credential}`, origin: base },
+    });
+    const body = response.ok
+      ? ((await response.json()) as { data: { ticket: string } })
+      : undefined;
+    return { status: response.status, ticket: body?.data.ticket };
+  }
   async function socket(base: string, credential: string, origin = base) {
+    const minted = await mintTicket(base, credential);
+    if (!minted.ticket) throw new Error(`ticket ${minted.status}`);
     const ws = new WebSocket(
       `${base.replace('http:', 'ws:')}/api/terminal/socket`,
+      ['station.terminal.v1', `station.terminal.ticket.${minted.ticket}`],
       { origin },
     );
     closers.unshift(() => ws.terminate());
@@ -562,40 +575,50 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
         );
     });
     await once(ws, 'open');
-    ws.send(JSON.stringify({ type: 'auth', protocolVersion: 1, credential }));
     return { ws, frames };
   }
 
   test.skipIf(process.platform === 'win32')(
-    'production terminal gateway authenticates through HTTP admission',
+    'production terminal gateway admits only a ticket minted through HTTP admission',
     async () => {
       const { base, security } = await setup(true);
-      await expect(
-        socket(base, OPERATOR_CREDENTIAL, 'http://foreign.invalid'),
-      ).rejects.toThrow('403');
-      const valid = await socket(base, OPERATOR_CREDENTIAL);
+      // No ticket: refused before any socket exists, even on loopback.
+      const bare = new WebSocket(
+        `${base.replace('http:', 'ws:')}/api/terminal/socket`,
+        ['station.terminal.v1'],
+      );
+      bare.on('error', () => undefined);
+      closers.unshift(() => bare.terminate());
+      const [, refused] = (await once(bare, 'unexpected-response')) as [
+        unknown,
+        { statusCode: number; resume(): void },
+      ];
+      refused.resume();
+      expect(refused.statusCode).toBe(401);
+      // The ticket carries the HTTP decision, so a WebView or tailnet Origin
+      // the allowlist does not know is admitted by the same rule.
+      const valid = await socket(
+        base,
+        OPERATOR_CREDENTIAL,
+        'capacitor://localhost',
+      );
       await expect
         .poll(
           () => valid.frames.some((frame) => frame.type === 'authenticated'),
           { timeout: 10000 },
         )
         .toBe(true);
+      expect(valid.ws.protocol).toBe('station.terminal.v1');
       const authorization = vi
         .spyOn(security, 'authorizeCredential')
         .mockReturnValue(false);
-      const denied = await socket(base, OPERATOR_CREDENTIAL);
-      let deniedCode = 0;
-      denied.ws.on('close', (value) => {
-        deniedCode = value;
-      });
-      await expect.poll(() => deniedCode, { timeout: 10000 }).toBe(4401);
+      expect((await mintTicket(base, OPERATOR_CREDENTIAL)).ticket).toBe(
+        undefined,
+      );
       authorization.mockRestore();
-      const invalid = await socket(base, 'wrong-operator-credential');
-      let code = 0;
-      invalid.ws.on('close', (value) => {
-        code = value;
-      });
-      await expect.poll(() => code, { timeout: 10000 }).toBe(4401);
+      expect((await mintTicket(base, 'wrong-operator-credential')).status).toBe(
+        401,
+      );
     },
   );
 
@@ -635,63 +658,51 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
     },
   );
 
-  test('production terminal gateway refuses paired remote devices until admission prerequisites exist', async () => {
-    const { base, security, app } = await setup(true);
-    vi.spyOn(security, 'verifyOperatorCredential').mockReturnValue(false);
-    vi.spyOn(security, 'identifyDevice').mockReturnValue({
-      id: 'remote-device',
-      kind: 'device',
-    });
-    vi.spyOn(security.devicePairing, 'identifyDevice').mockReturnValue({
-      id: 'remote-device',
-    });
-    // docs/design/terminal.md#replay-controls-before-ghostty requires admission
-    // before upgrade, identity fairness/operator slots, and a relay policy for b2.
-    const forwarded = vi.spyOn(app, 'fetch');
-    const client = await socket(base, OPERATOR_CREDENTIAL);
-    let code = 0;
-    client.ws.on('close', (value) => {
-      code = value;
-    });
-    await expect
-      .poll(
-        () =>
-          client.frames.some((frame) => frame.type === 'authenticated')
-            ? 'authenticated'
-            : code,
-        { timeout: 10000 },
-      )
-      .toBe(4401);
-    expect(client.frames.some((frame) => frame.type === 'authenticated')).toBe(
-      false,
-    );
-    expect(forwarded).toHaveBeenCalledOnce();
-    const request = forwarded.mock.calls[0]![0];
-    if (!(request instanceof Request))
-      throw new Error('Expected HTTP admission request');
-    expect(getRuntimeAuthenticatedRequestPrincipal(request)).toMatchObject({
-      authority: 'device-credential',
-      deviceId: 'remote-device',
-    });
-  });
+  // #3994 owner decision: the operator's own paired device (tied to no
+  // person) is the operator; the same device tied to a member is not.
+  test.each([
+    ["the operator's own", undefined, 200],
+    ["a member's", { kind: 'account' }, 'refused'],
+  ] as const)(
+    'production terminal ticket mint for %s paired device',
+    async (_name, principalBinding, status) => {
+      const { base, security } = await setup(true);
+      vi.spyOn(security, 'verifyOperatorCredential').mockReturnValue(false);
+      vi.spyOn(security, 'resolveGrantedScope').mockReturnValue(
+        'orchestration:read orchestration:operate terminal:operate',
+      );
+      const device = {
+        id: 'remote-device',
+        kind: 'device',
+        revokedAt: null,
+        ...(principalBinding && { principalBinding }),
+      };
+      vi.spyOn(security, 'identifyDevice').mockReturnValue(device as never);
+      vi.spyOn(security.devicePairing, 'identifyDevice').mockReturnValue({
+        id: 'remote-device',
+      } as never);
+      const minted = await mintTicket(base, OPERATOR_CREDENTIAL);
+      if (status === 200) expect(minted.status).toBe(200);
+      else {
+        // Refused at HTTP admission (account-bound) or by the operator gate.
+        expect([401, 403]).toContain(minted.status);
+        expect(minted.ticket).toBeUndefined();
+      }
+    },
+  );
 
   test.each(['account', 'personal-token'] as const)(
-    'production terminal socket refuses %s credentials before HTTP forwarding',
+    'production terminal ticket mint refuses %s credentials',
     async (kind) => {
-      const { base, security, app } = await setup(true);
+      const { base, security } = await setup(true);
       vi.spyOn(security, 'identifyDevice').mockReturnValue(
         kind === 'account'
           ? { principalBinding: { kind: 'account' } }
           : { credentialKind: 'personal-token' },
       );
-      const forwarded = vi.spyOn(app, 'fetch');
-      const client = await socket(base, OPERATOR_CREDENTIAL);
-      let code = 0;
-      client.ws.on('close', (value) => {
-        code = value;
-      });
-      await expect.poll(() => code, { timeout: 10000 }).toBe(4401);
-      expect(forwarded).not.toHaveBeenCalled();
+      const minted = await mintTicket(base, OPERATOR_CREDENTIAL);
+      expect(minted.ticket).toBeUndefined();
+      expect([401, 403]).toContain(minted.status);
     },
   );
 

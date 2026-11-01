@@ -1282,12 +1282,34 @@ export async function getJsonWithResolvedCredential(
   opts: ClientRequestOptions | undefined,
   configured: ClientCredential | undefined,
 ): Promise<Response> {
+  return sendWithResolvedCredential(url, 'GET', opts, configured);
+}
+
+/**
+ * A bodiless POST bound to the same captured credential owner, through the
+ * host transport when it owns the bearer. For a mint whose response is a
+ * capability for that owner (a terminal socket ticket).
+ */
+export async function postWithResolvedCredential(
+  url: string,
+  opts: ClientRequestOptions | undefined,
+  configured: ClientCredential | undefined,
+): Promise<Response> {
+  return sendWithResolvedCredential(url, 'POST', opts, configured);
+}
+
+async function sendWithResolvedCredential(
+  url: string,
+  method: 'GET' | 'POST',
+  opts: ClientRequestOptions | undefined,
+  configured: ClientCredential | undefined,
+): Promise<Response> {
   const requestOptions = snapshotRequestOptions(opts);
   const maximum = requestOptions?.maxResponseBytes;
   if (maximum !== undefined && (!Number.isSafeInteger(maximum) || maximum < 1))
     throw new Error('Invalid response byte limit');
   const init: RequestInit = {
-    method: 'GET',
+    method,
     ...(requestOptions?.redirect ? { redirect: requestOptions.redirect } : {}),
   };
   if (requestOptions?.signal) init.signal = requestOptions.signal;
