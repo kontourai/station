@@ -49,32 +49,13 @@ export function stationTurnDedupHost(
   };
 }
 
-/**
- * The legacy soft cap, retained for callers that report it. Station's timed
- * policy protects live retry windows even when this count is exceeded.
- */
-export const TURN_DEDUP_MAX_ENTRIES = 2000;
+/** Compatibility count hint; it does not bound retained retry windows. */
+export const TURN_DEDUP_LEGACY_COUNT_HINT = 2000;
 
 /** A resolved result remains replayable for seven days after resolution. */
 export const TURN_DEDUP_RESOLVED_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
-/**
- * archive#1224 (offline): folds `(threadId, clientTurnId)` into the
- * flat key the Monument `TurnIdempotencyStore`
- * deals in, so the same `clientTurnId` reused on two different threads never
- * collides.
- *
- * archive#1224 HIGH fix (independent review): a plain `${threadId}::${id}`
- * join is NOT collision-free -- `orchestration.ts`'s schema allows any
- * string for `threadId`, so `threadId = 'thread::evil'` with
- * `clientTurnId = 'id'` and `threadId = 'thread'` with
- * `clientTurnId = 'evil::id'` would both join to the literal string
- * `thread::evil::id`. Length-prefixing `threadId` makes the encoding
- * unambiguous regardless of what characters either part contains: the first
- * `threadId.length` characters after the length prefix ARE `threadId`, full
- * stop, so no content inside `threadId` (including `::` itself) can ever be
- * misread as the separator.
- */
+/** Length-prefix the thread id so embedded separators cannot collide across threads. */
 export function turnDedupKey(threadId: string, clientTurnId: string): string {
   return `${turnDedupThreadPrefix(threadId)}${clientTurnId}`;
 }

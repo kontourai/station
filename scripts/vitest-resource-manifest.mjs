@@ -508,6 +508,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'packages/monument/src/__tests__/sqlite-crash.process.test.ts',
   // #3566: SIGKILL a real prepared/begun Station caller and reopen its SQLite file.
   'src-server/services/orchestration/__tests__/prepared-turn-intent-crash.process.test.ts',
+  'src-server/services/orchestration/__tests__/create-request-claims.process.test.ts',
   // #3565: runs the monument import boundary gate as a child process against
   // throwaway git repositories. Single-shot spawns, no wall-clock assertion.
   'scripts/__tests__/monument-import-boundary-gate.test.ts',

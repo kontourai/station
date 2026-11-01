@@ -1,5 +1,6 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { vi as vitestConfigVi } from 'vitest';
+import { CreateRequestCapacityError } from '../../../services/orchestration/create-request-claims.js';
 
 // This file exercises REAL SQLite EventStores per test (one writes 401
 // 3KB rows synchronously). Under full-corpus worker contention the default
@@ -129,6 +130,39 @@ test.each([
   });
   expect(execute).not.toHaveBeenCalled();
 });
+
+test.each(['/chat', '/delegations'])(
+  '%s maps create storage refusal to HTTP 429 before invoking a sender',
+  async (path) => {
+    const refusal = async () => {
+      throw new CreateRequestCapacityError('records');
+    };
+    const app = createOrchestrationRoutes({} as never, {
+      eventBus: new EventBus(),
+      logger: { debug: vi.fn() },
+      getUserId: () => 'operator',
+      executeForegroundMessage: refusal,
+      delegateTask: refusal,
+    });
+    const response = await app.request(path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        clientTurnId: 'capacity-key',
+        ...(path === '/chat'
+          ? { conversationId: 'existing', message: 'hello' }
+          : { prompt: 'hello' }),
+        target: { environment: { kind: 'current' }, agent: 'station' },
+      }),
+    });
+    expect(response.status).toBe(429);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'create_request_capacity',
+      retryable: true,
+      limit: 'records',
+    });
+  },
+);
 
 describe('direct Basis response revocation fence', () => {
   test('withholds every pre-await Basis field when authority is revoked during assessment I/O', async () => {

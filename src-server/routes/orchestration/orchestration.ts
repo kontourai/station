@@ -1,3 +1,5 @@
+export { isCreateRequestHandle as isForegroundDispatchHandle } from '../../services/orchestration/create-request-claims.js';
+
 import { createHash, randomUUID } from 'node:crypto';
 import type { AgentDelegationContext } from '@kontourai/station-contracts/agent';
 import {
@@ -121,10 +123,13 @@ import {
   stationControlRequestCurrent,
 } from '../../security/station-control-request-authority.js';
 import {
-  DelegationCreateConflictError,
-  DelegationCreateIndeterminateError,
+  CreateRequestCapacityError,
+  CreateRequestConflictError,
+  CreateRequestIndeterminateError,
+  createRequestCallerSession,
+  isCreateRequestHandle,
   runForegroundCreateClaim,
-} from '../../services/orchestration/delegation-create-claims.js';
+} from '../../services/orchestration/create-request-claims.js';
 
 /** #3483: an authenticated request that is not a station-control (internal) call. */
 function isPersonRequest(request: Request): boolean {
@@ -380,27 +385,6 @@ const sessionInventoryPageQuerySchema = sessionInventoryQueryBaseSchema
       });
   });
 const sessionOutputInspectSchema = z.object({}).strict();
-
-/** Narrow, runtime-checked view of the `ForegroundMessageHandle` shape
- * `executeForegroundMessage` resolves (`execution-target-execution.ts`).
- * The route's own `deps.executeForegroundMessage` is typed `Promise<unknown>`
- * (a generic Hono DI boundary), so this is a real type GUARD, not a cast —
- * a caller-injected value missing `conversationId` is simply not bound. */
-export function isForegroundDispatchHandle(value: unknown): value is {
-  conversationId: string;
-  providerTurnId: string;
-  target?: { id?: unknown };
-} {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    typeof (value as { conversationId?: unknown }).conversationId ===
-      'string' &&
-    typeof (value as { providerTurnId?: unknown }).providerTurnId ===
-      'string' &&
-    (value as { providerTurnId: string }).providerTurnId.trim().length > 0
-  );
-}
 
 function errorCode(error: unknown): string | undefined {
   if (typeof error !== 'object' || error === null) return undefined;
@@ -3097,22 +3081,9 @@ export function createOrchestrationRoutes(
         body,
         (request) =>
           deps.executeForegroundMessage!(request as ForegroundMessageRequest),
+        async (id) => orchestrationService.hasSessionStartRecord(id),
+        await createRequestCallerSession(c.req.raw),
       );
-      if (!isForegroundDispatchHandle(data)) {
-        // The foreground Interface cannot honestly call this accepted without
-        // the exact provider turn identity needed for terminal settlement.
-        return c.json(
-          {
-            ...providerFailure('indeterminate', 'indeterminate'),
-            success: false,
-            error:
-              'Foreground Agent execution may have started but did not return a provider turn id',
-            code: FOREGROUND_MESSAGE_INDETERMINATE_CODE,
-            outcome: 'indeterminate',
-          },
-          409,
-        );
-      }
       if (stagedAttachments?.length && stagedBinding) {
         deps.acceptStagedAttachments?.(
           principal!,
@@ -3140,7 +3111,18 @@ export function createOrchestrationRoutes(
       }
       return c.json({ success: true, data });
     } catch (error) {
-      if (error instanceof DelegationCreateConflictError)
+      if (error instanceof CreateRequestCapacityError)
+        return c.json(
+          {
+            success: false,
+            error: errorMessage(error),
+            code: error.code,
+            retryable: error.retryable,
+            limit: error.limit,
+          },
+          429,
+        );
+      if (error instanceof CreateRequestConflictError)
         return c.json(
           {
             success: false,
@@ -3149,9 +3131,10 @@ export function createOrchestrationRoutes(
           },
           409,
         );
-      if (error instanceof DelegationCreateIndeterminateError)
+      if (error instanceof CreateRequestIndeterminateError)
         return c.json(
           {
+            ...providerFailure('indeterminate', 'indeterminate'),
             success: false,
             error: errorMessage(error),
             code: FOREGROUND_MESSAGE_INDETERMINATE_CODE,
@@ -3381,7 +3364,7 @@ export function createOrchestrationRoutes(
           fullAccessGrant,
           clientOrigin: resolveClientOriginForRequest(c.req.raw),
         });
-        if (!isForegroundDispatchHandle(data)) {
+        if (!isCreateRequestHandle(data)) {
           return c.json(
             {
               ...providerFailure('indeterminate', 'indeterminate'),
@@ -3924,7 +3907,7 @@ export function createOrchestrationRoutes(
           // Only the join wait a same-key retry may spend; never the send.
           joinWaitSignal: c.req.raw.signal,
         });
-        if (!isForegroundDispatchHandle(data)) {
+        if (!isCreateRequestHandle(data)) {
           return c.json(
             {
               ...providerFailure('indeterminate', 'indeterminate'),
@@ -4197,6 +4180,9 @@ export function createOrchestrationRoutes(
         return delegate({
           ...request,
           createRequestIntent: body,
+          createRequestCallerSessionId: await createRequestCallerSession(
+            c.req.raw,
+          ),
           ...(stagedFiles ? { stagedFiles } : {}),
           ...(roomAttachments ? { taskRoomAttachments: roomAttachments } : {}),
           ...(contextSnapshot
@@ -4438,19 +4424,30 @@ export function createOrchestrationRoutes(
             ? 409
             : 400,
         );
+      if (error instanceof CreateRequestCapacityError)
+        return c.json(
+          {
+            success: false,
+            error: errorMessage(error),
+            code: error.code,
+            retryable: error.retryable,
+            limit: error.limit,
+          },
+          429,
+        );
       const refused =
         delegationRefusal(c, error) ?? dispatchCwdRefusalFor(c, error);
       if (refused) return refused;
       if (
-        error instanceof DelegationCreateConflictError ||
-        error instanceof DelegationCreateIndeterminateError
+        error instanceof CreateRequestConflictError ||
+        error instanceof CreateRequestIndeterminateError
       )
         return c.json(
           {
             success: false,
             error: errorMessage(error),
             code: error.code,
-            ...(error instanceof DelegationCreateIndeterminateError
+            ...(error instanceof CreateRequestIndeterminateError
               ? {
                   outcome: error.outcome,
                   sessionId: error.sessionId,

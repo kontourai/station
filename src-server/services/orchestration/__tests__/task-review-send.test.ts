@@ -19,7 +19,7 @@ import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
 import { ACTIVE_TURN_FOLD_METHODS } from '../session-lifecycle-service.js';
-import { TURN_DEDUP_MAX_ENTRIES } from '../station-turn-dedup-bindings.js';
+import { TURN_DEDUP_LEGACY_COUNT_HINT } from '../station-turn-dedup-bindings.js';
 import { createTaskLeadReader } from '../task-question-wake.js';
 import { TaskReviewSend } from '../task-review-send.js';
 import { ThreadInboxDelivery } from '../thread-inbox.js';
@@ -58,7 +58,7 @@ interface World {
 const open: World[] = [];
 function boot(path: string, indeterminate: boolean | 'refused' = false): World {
   const identity = `review-boot-${++birth}`;
-  const store = new EventStore(path, TURN_DEDUP_MAX_ENTRIES, {
+  const store = new EventStore(path, TURN_DEDUP_LEGACY_COUNT_HINT, {
     exact: () => ({ pid: process.pid, start: identity }),
     probe: () => ({
       state: 'exact',

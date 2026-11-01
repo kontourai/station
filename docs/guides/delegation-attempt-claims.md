@@ -4,15 +4,19 @@ Opt-in durable duplicate suppression for portable delegation creates. Only the
 receiver side exists: the request claim and its lookup. There is no sender
 ledger, fence, cancel, UI or retention protocol yet.
 
-All current delegation creates also require `clientTurnId`. The separate
-[create ledger](../../src-server/services/orchestration/delegation-create-claims.ts)
-binds that key to authenticated caller scope and input for local and portable
-creates. A completed receipt replays its original handle; an unfinished create
-is indeterminate and never automatically resent. Completion requires the real
-provider turn ID. This general request-key contract does not broaden the peer
-identity, lookup authority or opt-in `attemptId` protocol described below. The
-SDK uses an existing `attemptId` as the default `clientTurnId`; an explicit key
-must be retained with the original input on retry.
+All delegation creates require `clientTurnId`. The separate
+[CreateRequestClaims owner](../../src-server/services/orchestration/create-request-claims.ts)
+binds authenticated user/tenant/principal and verified calling Session to the
+request kind, key and input. Each intended request needs a unique key. Completed
+receipts replay for seven wall-clock days, then expire. A dead unmarked claim
+with no Session can be reclaimed; a durable starting mark without confirmation
+is indeterminate. Typed rejected starts with no Session release their claim.
+Unresolved and legacy unknown-start claims never expire. Admission reserves
+receipt bytes before effects; 1,024 records or the 4 MiB budget produce a typed
+HTTP 429. The [API reference](../reference/api.md) explains the 3 KiB receipt
+bound, migration and clock limits. This general contract preserves the peer
+identity, lookup authority and opt-in `attemptId` protocol below. The SDK uses an
+existing `attemptId` as its default key; retain it with the original input.
 
 ## Opt-in field
 

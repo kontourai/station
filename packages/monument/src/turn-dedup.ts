@@ -393,10 +393,10 @@ export async function awaitTurnResolution(
 /**
  * Owns exactly one client turn per (threadId, clientTurnId). Claims are
  * idempotent per pair: known input digest mismatches conflict before any
- * replay or reclaim. Legacy input stays unknown. An unresolved claim is contended, a resolved claim is
- * replayable, and only the winning claim's opaque handle may resolve or
- * release it. SQLite updates are
- * atomic and persist across process restart; release returns the pair to the
+ * replay or reclaim. Legacy input stays unknown. An unresolved claim is
+ * contended, a resolved claim is replayable, and only the winning claim's
+ * opaque handle may resolve or release it. SQLite updates are atomic and
+ * persist across process restart; release returns the pair to the
  * unclaimed state so a failed or aborted request may retry.
  *
  * #3559: a claim whose owner process died is taken over only if that owner

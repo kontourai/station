@@ -1,3 +1,4 @@
+import * as roomInputContracts from '@kontourai/station-contracts/project-room';
 import { McpServer } from '@modelcontextprotocol/server';
 import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
@@ -8,10 +9,37 @@ import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { createSelectedStationControlMcpServer } from '../../../tools/station-control-mcp-server.js';
 import { configureRuntimeRoutes } from '../runtime-routes.js';
 
+const TARGET_FIELDS = [
+  'target',
+  'agent',
+  'threadId',
+  'sessionId',
+  'conversationId',
+  'taskId',
+  'expectedRoomId',
+];
+const TEXT_FIELDS = ['message', 'prompt', 'input', 'content'];
+const KEY_FIELDS = [
+  'clientTurnId',
+  'clientInputId',
+  'requestKey',
+  'operationId',
+  'idempotencyKey',
+  'invocationId',
+  'intentId',
+];
+const PROBE_UUID = '00000000-0000-4000-8000-000000000001';
+const textFields = (shape: Record<string, unknown>) => [
+  ...TEXT_FIELDS,
+  ...(shape.sessionId || shape.intentId ? ['text'] : []),
+];
+
 type Schema = z3.ZodTypeAny | z4.ZodType;
 const capture = vi.hoisted(() => ({
   validators: new WeakMap<object, unknown>(),
   preparedKeys: [] as unknown[],
+  inline: [] as unknown[],
+  checkingInline: false,
 }));
 vi.mock(
   '../../../routes/schemas/schema-validation.js',
@@ -177,30 +205,11 @@ function toolNeedsKey(value: unknown, name: string): boolean {
         fields.structureModel
       )
         return false;
-      const target = [
-        'target',
-        'agent',
-        'threadId',
-        'sessionId',
-        'conversationId',
-        'taskId',
-      ].some((key) => fields[key] !== undefined);
-      const text = [
-        'message',
-        'prompt',
-        'input',
-        ...(fields.sessionId ? ['text'] : []),
-      ].some((key) => fields[key] !== undefined);
+      const target = TARGET_FIELDS.some((key) => fields[key] !== undefined);
+      const text = textFields(fields).some((key) => fields[key] !== undefined);
       if (!target || !text) return false;
       const required = Array.isArray(node.required) ? node.required : [];
-      return ![
-        'clientTurnId',
-        'clientInputId',
-        'requestKey',
-        'operationId',
-        'idempotencyKey',
-        'invocationId',
-      ].some((key) => required.includes(key));
+      return !KEY_FIELDS.some((key) => required.includes(key));
     });
   }
   const shape: Record<string, z4.ZodType> = {};
@@ -239,40 +248,23 @@ function turnInput(shape: Record<string, Schema>, path: string): boolean {
   if (shape.cron || shape.schedule || shape.tools || shape.structureModel)
     return false;
   const target =
-    [
-      'target',
-      'agent',
-      'threadId',
-      'sessionId',
-      'conversationId',
-      'taskId',
-    ].some((name) => shape[name] !== undefined) ||
+    TARGET_FIELDS.some((name) => shape[name] !== undefined) ||
     /:(?:threadId|sessionId|conversationId|taskId)/.test(path) ||
     (shape.input !== undefined && shape.options !== undefined);
   if (!target) return false;
-  return [
-    'message',
-    'prompt',
-    'input',
-    ...(shape.sessionId ? ['text'] : []),
-  ].some((name) => {
+  return textFields(shape).some((name) => {
     const field = shape[name];
     return (
       field?.safeParse('registry input').success &&
-      (!field.safeParse(undefined).success || shape.target !== undefined)
+      (!field.safeParse(undefined).success ||
+        shape.target !== undefined ||
+        shape.intentId !== undefined)
     );
   });
 }
 
 function requiresKey(shape: Record<string, Schema>): boolean {
-  return [
-    'clientTurnId',
-    'clientInputId',
-    'requestKey',
-    'operationId',
-    'idempotencyKey',
-    'invocationId',
-  ].some((name) => {
+  return KEY_FIELDS.some((name) => {
     const field = shape[name];
     if (!field) return false;
     const absent = field.safeParse(undefined);
@@ -289,64 +281,166 @@ test('the composed HTTP and MCP registries admit no turn-input schema without a 
     runtime(app, makeTempDir('send-registry-')),
   );
   await configured.kitLifecycleReady;
-  const routes = app.routes.filter((route) => route.method === 'POST');
+  const routes = app.routes.filter((route) =>
+    ['POST', 'PUT', 'PATCH'].includes(route.method),
+  );
+  const parseObject = z3.ZodObject.prototype._parse;
+  vi.spyOn(z3.ZodObject.prototype, '_parse').mockImplementation(function (
+    this: z3.AnyZodObject,
+    input,
+  ) {
+    if (capture.checkingInline) capture.inline.push(this);
+    return Reflect.apply(parseObject, this, [input]);
+  });
   expect(routes.length).toBeGreaterThan(100);
   const inspected = new Set<string>();
   const missing: string[] = [];
+  const inlineInspected = new Set<string>();
+  const probeRoute = async (route: (typeof routes)[number], body: unknown) => {
+    const probe = new Hono();
+    for (const registered of routes.filter(
+      (candidate) =>
+        candidate.path === route.path && candidate.method === route.method,
+    ))
+      probe.on(registered.method, registered.path, registered.handler);
+    return probe.request(route.path.replace(/:[A-Za-z0-9_]+/g, 'station'), {
+      method: route.method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  };
+  const input = {
+    input: 'registry input',
+    message: 'registry input',
+    prompt: 'registry input',
+    content: 'registry input',
+    text: 'registry input',
+    target: { environment: { kind: 'current' }, agent: 'station' },
+    conversationId: 'registry-conversation',
+    threadId: 'registry-thread',
+    expectedRoomId: PROBE_UUID,
+    expectedProjectId: 'registry-project',
+    expectedActorId: 'registry-actor',
+    agentId: 'registry-agent',
+    delegation: {
+      mode: 'isolated-child',
+      depth: 1,
+      maxDepth: 2,
+      parentAgentSlug: 'registry-parent',
+      rootAgentSlug: 'registry-root',
+    },
+  };
+  const sample = (shape: Record<string, Schema>) =>
+    Object.fromEntries(
+      Object.entries(shape).flatMap(([key, field]) => {
+        if (KEY_FIELDS.includes(key)) return [];
+        const candidates = [
+          input[key as keyof typeof input],
+          undefined,
+          PROBE_UUID,
+          'registry input',
+          1,
+          true,
+          [],
+          {},
+        ];
+        for (const candidate of candidates) {
+          const parsed = field.safeParse(candidate);
+          if (parsed.success)
+            return parsed.data === undefined ? [] : [[key, parsed.data]];
+        }
+        return [[key, 'registry input']];
+      }),
+    );
   for (const route of routes) {
-    const schema = capture.validators.get(route.handler) as Schema | undefined;
-    if (!schema) continue;
-    for (const shape of objects(schema).filter((shape) =>
-      turnInput(shape, route.path),
-    )) {
-      inspected.add(route.path);
-      if (requiresKey(shape)) continue;
-      const before = capture.preparedKeys.length;
-      const probe = new Hono();
-      for (const registered of routes.filter(
-        (candidate) => candidate.path === route.path,
-      ))
-        probe.post(registered.path, registered.handler);
-      const response = await probe.request(
-        route.path.replace(/:[A-Za-z0-9_]+/g, 'station'),
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            input: 'registry input',
-            message: 'registry input',
-            prompt: 'registry input',
-            target: { environment: { kind: 'current' }, agent: 'station' },
-            conversationId: 'registry-conversation',
-            threadId: 'registry-thread',
-            delegation: {
-              mode: 'isolated-child',
-              depth: 1,
-              maxDepth: 2,
-              parentAgentSlug: 'registry-parent',
-              rootAgentSlug: 'registry-root',
-            },
-          }),
-        },
-      );
-      const body = await response.clone().json();
-      if (
-        response.status === 400 &&
-        body &&
-        typeof body === 'object' &&
-        'code' in body &&
-        body.code === 'client_turn_key_required'
-      )
-        continue;
-      const generated = response.headers.get('X-Station-Client-Turn-Id');
-      if (
-        !generated ||
-        capture.preparedKeys.length !== before + 1 ||
-        capture.preparedKeys[before] !== generated
-      )
-        missing.push(`POST ${route.path}`);
+    const registeredSchema = capture.validators.get(route.handler) as
+      | Schema
+      | undefined;
+    let schemas = registeredSchema ? [registeredSchema] : [];
+    if (
+      !registeredSchema &&
+      /\.(?:safeParse|parse)\(/.test(route.handler.toString())
+    ) {
+      capture.inline.length = 0;
+      capture.checkingInline = true;
+      try {
+        await probeRoute(route, input);
+      } finally {
+        capture.checkingInline = false;
+      }
+      schemas = [...capture.inline] as Schema[];
     }
+    for (const schema of schemas)
+      for (const shape of objects(schema).filter((shape) =>
+        turnInput(shape, route.path),
+      )) {
+        inspected.add(`${route.method} ${route.path}`);
+        if (requiresKey(shape)) continue;
+        const before = capture.preparedKeys.length;
+        capture.checkingInline = !registeredSchema;
+        let response: Response;
+        try {
+          response = await probeRoute(
+            route,
+            registeredSchema ? input : sample(shape),
+          );
+        } finally {
+          capture.checkingInline = false;
+        }
+        if (!registeredSchema)
+          inlineInspected.add(`${route.method} ${route.path}`);
+        const body = await response.clone().json();
+        if (!registeredSchema) {
+          const payload = Object.fromEntries(
+            Object.entries(sample(shape)).filter(
+              ([key]) => !key.startsWith('expected'),
+            ),
+          );
+          const boundParser = Object.entries(roomInputContracts).some(
+            ([name, parser]) => {
+              if (
+                typeof parser !== 'function' ||
+                !name.startsWith('parse') ||
+                !route.handler.toString().includes(name)
+              )
+                return false;
+              for (const key of KEY_FIELDS.filter((name) => shape[name])) {
+                try {
+                  Reflect.apply(parser, undefined, [
+                    { ...payload, [key]: PROBE_UUID },
+                  ]);
+                } catch {
+                  continue;
+                }
+                try {
+                  Reflect.apply(parser, undefined, [payload]);
+                } catch {
+                  return true;
+                }
+              }
+              return false;
+            },
+          );
+          if (boundParser) continue;
+        }
+        if (
+          response.status === 400 &&
+          body &&
+          typeof body === 'object' &&
+          'code' in body &&
+          body.code === 'client_turn_key_required'
+        )
+          continue;
+        const generated = response.headers.get('X-Station-Client-Turn-Id');
+        if (
+          !generated ||
+          capture.preparedKeys.length !== before + 1 ||
+          capture.preparedKeys[before] !== generated
+        )
+          missing.push(`${route.method} ${route.path}`);
+      }
   }
+  expect(inlineInspected.size).toBeGreaterThan(0);
   expect(inspected.size).toBeGreaterThan(6);
   const tools: Array<{ name: string; schema: unknown }> = [];
   const register = McpServer.prototype.registerTool;

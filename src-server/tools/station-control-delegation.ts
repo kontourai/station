@@ -115,6 +115,11 @@ import {
   resolveExecutionTarget,
 } from '../services/execution-target/execution-target-resolver.js';
 import {
+  markCreateRequestStarting,
+  recordCreateRequestStartResult,
+  runDelegationCreate,
+} from '../services/orchestration/create-request-claims.js';
+import {
   DelegationAttemptCapacityError,
   DelegationAttemptClaimStore,
   DelegationAttemptConflictError,
@@ -123,7 +128,6 @@ import {
   delegationAttemptClaimKey,
   delegationAttemptIntentDigest,
 } from '../services/orchestration/delegation-attempt-claim-store.js';
-import { runDelegationCreate } from '../services/orchestration/delegation-create-claims.js';
 import {
   type DelegationStagedFiles,
   materializeDelegationFiles,
@@ -408,6 +412,7 @@ export interface DelegateTaskInput {
   prompt: string;
   clientTurnId?: string;
   createRequestIntent?: unknown;
+  createRequestCallerSessionId?: string;
   /** Route-owned human message, before appending the Task brief. */
   title?: string;
   target: ExecutionTarget;
@@ -6198,6 +6203,7 @@ export async function delegateTask(
         attemptStartInvoked = true;
         // A thrown/indeterminate start may have spawned an engine that can read files.
         retainFiles = true;
+        await markCreateRequestStarting(sessionId);
         const started = await orchestrationService.startSessionInternal(
           {
             type: 'start-session',
@@ -6316,6 +6322,7 @@ export async function delegateTask(
               : {}),
           },
         );
+        await recordCreateRequestStartResult(sessionId, started.status);
         if (started.status === 'indeterminate') {
           if (input.stagedFiles)
             throw new DelegationFileRefusal('delegation_files_outcome_unknown');
@@ -6369,6 +6376,7 @@ export async function delegateTask(
       // claim to `accepted` with that turn recorded — never invented, never
       // a second dispatch for the same claim.
       retainFiles = true;
+      await markCreateRequestStarting(sessionId);
       const attemptTurnDispatch =
         await orchestrationService.dispatchWithReceipt(
           {
@@ -6514,6 +6522,7 @@ export async function delegateTask(
       readAuthority,
       attemptClaim?.taskId,
       create,
+      async (id) => orchestrationService.hasSessionStartRecord(id),
     );
   } catch (attemptError) {
     // This local service's rejection must identify this exact command/thread;
@@ -7278,6 +7287,7 @@ export async function executeExecutionTargetMessage(
             : {}),
         },
       );
+      await recordCreateRequestStartResult(startInput.threadId, started.status);
       if (started.status === 'indeterminate') {
         if (!started.session)
           throw new SessionStartIndeterminateError(started, started.message);

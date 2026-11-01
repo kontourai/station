@@ -2215,17 +2215,19 @@ Local begun/accepted identity, early-terminal memory, lifecycle anchors and work
 
 A repeated client message should join the same turn instead of invoking the engine again. The [deduplicator](../../packages/monument/src/turn-dedup.ts) maps a retained `(threadId, clientTurnId)` to its provider turn; the separate invocation boundary records whether a provider effect remains possible. A claim is per Session; a keyed continuation that may move to a new Session first reads the whole conversation's claims (`inspectTurnDelivery`, applied by `conversationKeyDecision`; see Held follow-ups under SessionMessageDelivery). `inspect` marks an unresolved claim that is `indeterminate` only by age (`ageOnly`: past the in-flight bound, owner alive or unknown); the lookup still answers it `indeterminate`, but that pre-check treats it as live. A live claim names its Session, and the continuation joins its turn through the same bounded wait a contended `sendTurn` claim uses (`OrchestrationService.awaitHeldTurnKey`, exposed as `joinHeldTurnKey`). A claim given up after a possible effect, a dead owner's unreclaimable claim, or an expired one is refused as indeterminate. A dead prepared linked claim is also refused conservatively without reclaiming it; explicit settlement has the separate typed refusal below. `client_turn_in_flight` answers `409` on `/chat` and `/chat/:id/continue`.
 
-Before a Session exists, [create claims](../../src-server/services/orchestration/delegation-create-claims.ts)
-reserve its reference under the authenticated user, tenant and principal, the
-request kind and key. Both delegation creates and foreground sends that omit a
-conversation use this boundary. A completed claim replays its stored handle;
-changed input conflicts, while an unfinished reservation stays indeterminate
-without automatic owner reclaim. The file-backed owner shares the portable
-attempt store's lock and atomic-publication primitives, but keeps its own
-ledger. It retains every reservation and refuses new creates at 1,024 records
-or 4 MiB. The [local delegation tests](../../src-server/tools/__tests__/station-control-delegation-attempts.test.ts)
-and [foreground route tests](../../src-server/routes/orchestration/__tests__/adopted-continuation-dock.routes.test.ts)
-count effects across replay, conflicts and unfinished creates.
+Before a Session exists, [CreateRequestClaims](../../src-server/services/orchestration/create-request-claims.ts)
+binds request kind, authenticated user/tenant/principal, verified calling
+Session and key to input and the reserved reference. A per-request owner lock
+prevents concurrent reclaim. The start ports persist `starting` before their
+effect; an unmarked dead reservation with no Session is reclaimable. A typed
+rejected start with no Session releases it. Started/unconfirmed creates stay
+indeterminate with an inspection reference. Completed receipts replay for seven
+wall-clock days, then expire; unresolved claims are retained. Before effects,
+the owner enforces 1,024 records and 4 MiB with 3 KiB reserved per pending receipt;
+capacity is a typed HTTP 429. Legacy unfinished claims remain indeterminate.
+Evidence: [claim lifecycle and capacity](../../src-server/services/orchestration/__tests__/create-request-claims.test.ts),
+[SIGKILL cuts](../../src-server/services/orchestration/__tests__/create-request-claims.process.test.ts),
+and the delegation/foreground start-port keepers.
 
 **Interface.** `claim({ threadId, clientTurnId, inputDigest? })` returns an opaque owner `TurnClaim`, `conflict`, `contended`, `indeterminate`, or `expired`; `awaitResolution` observes durable resolution, and returns nothing at its next poll once the claim is released or its owner in this process retains it; `givenUp({ threadId, clientTurnId })` says whether this process's owner still owns the unresolved claim and retained it (never another owner's claim of the key, however old); `inspect({ threadId, clientTurnId, inputDigest? })` is a read-only peek that answers what a claim would meet (`absent`, `resolved`, `in-flight`, `reclaimable`, `indeterminate`, `expired`) without claiming, reclaiming or touching retention. Only the owner capability can `beginInvocation()`, `resolve(turnId)`, `release()` or `retain()`.
 

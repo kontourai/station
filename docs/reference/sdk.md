@@ -4841,10 +4841,15 @@ For a new foreground conversation, retain the original input and key. A server
 containing the durable create-claim implementation reserves an implicit
 conversation allocation under the caller scope and key, replays its completed
 handle, and refuses changed input.
-An unfinished create claim is indeterminate even if no Session is visible;
-inspect its reserved reference instead of starting under a new key. Older
-hosts may allocate a fresh conversation per attempt, so choose and retain an
-explicit `conversationId` when their create-claim behavior is unknown.
+A dead unmarked create with no Session can be reclaimed under the same key and
+input. A durable starting mark without confirmation is indeterminate; inspect
+its reserved reference or ask the operator to reconcile it. Completed create
+receipts replay for seven wall-clock days, while unresolved claims are retained.
+Keys must be unique per intended request within the caller scope (including a
+verified calling Session). Capacity is a typed HTTP 429 before effects. See the
+[API limits](api.md) for receipt-size and migration semantics. Older hosts may
+allocate a fresh conversation per attempt, so retain an explicit
+`conversationId` when their create-claim behavior is unknown.
 
 When the input is a Station-fetched MCP prompt, `sendExecutionMessage` accepts
 `mcpPromptOrigin: { serverId, name, receipt }` alongside the unchanged rendered

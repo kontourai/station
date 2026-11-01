@@ -2671,16 +2671,32 @@ Legacy rows without input proof remain indeterminate. See
 [submission digest contract](../architecture/module-map.md#turndeduplicator).
 
 When a foreground send omits `conversationId`, or a delegation creates a new
-Session, Station reserves a durable create claim before starting it. Claims are
-scoped by request kind, authenticated user, tenant and principal, plus the
-request key. An identical retry returns the original handle; changed input
+Session, Station reserves a durable create claim. Scope includes request kind,
+authenticated user, tenant and principal, plus the verified calling agent Session
+when present. Use a unique key for each intended request. Within seven days of
+completion, identical retries replay the original receipt and changed input
 returns HTTP `409` (`client_turn_input_conflict` for foreground,
-`delegation_create_conflict` for delegation). An unfinished claim returns the
-reserved reference as indeterminate and never starts again automatically.
-This includes a crash before a Session record exists: missing evidence cannot
-prove the engine saw no effect. Create claims never expire or evict; their
-1,024-record and 4 MiB limits refuse new creates at capacity. This separate
-create ledger does not shorten the turn ledger's seven-day retry window.
+`create_request_conflict` for delegation).
+
+A live owner holds its request lock. After a crash, an unmarked claim with no
+Session can be reclaimed under the same key and input. Station durably marks
+`starting` immediately before session start or an initial turn. A marked but
+unconfirmed create is indeterminate: inspect the returned Session reference and
+its turn delivery with the key, or ask the operator to reconcile it. A typed
+rejected start with no Session releases its claim. Unresolved claims never expire.
+
+Completed receipts expire after seven wall-clock days; a later reuse is a new
+request, so retain the original Session reference and do not blindly retry after
+that window. Forward clock jumps can shorten elapsed retention. Existing legacy
+unresolved records remain indeterminate because they have no starting proof;
+legacy completed records receive a durable seven-day window at migration.
+Legacy unscoped keys fail closed for verified agent callers; reconcile their
+original Session instead of automatically sending under a new key.
+Claims retain at most 1,024 records in a 4 MiB ledger, reserving 3 KiB per pending
+receipt before any effect. Capacity refuses with HTTP `429`,
+`create_request_capacity`, and starts nothing. An oversized or invalid receipt
+leaves its started create indeterminate rather than overflowing storage. These
+limits are separate from the turn ledger's seven-day retention.
 
 An authorized delivery lookup for an explicitly settled prepared turn returns
 HTTP `409` with `code: client_turn_settled` and `disposition: cancelled` or

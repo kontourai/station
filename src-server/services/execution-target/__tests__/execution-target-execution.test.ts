@@ -1,6 +1,7 @@
 import {
   existsSync,
   mkdtempSync,
+  readFileSync,
   realpathSync,
   rmSync,
   writeFileSync,
@@ -12,9 +13,11 @@ import {
   engineConnectionId,
 } from '@kontourai/station-contracts/agent-identity';
 import { environmentId } from '@kontourai/station-contracts/execution-target';
+import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import type { WorktreeSessionMetadata } from '@kontourai/station-contracts/workspace-isolation';
 import { describe, expect, test, vi } from 'vitest';
 import { execGitSync } from '../../../utils/git-exec.js';
+import { CreateRequestClaims } from '../../orchestration/create-request-claims.js';
 import { WorktreeProvisioningService } from '../../projects/worktree-provisioning-service.js';
 import {
   createConversationHandoffIntent,
@@ -78,6 +81,57 @@ function dependencies(): ExecutionTargetExecutionDependencies {
 }
 
 describe('executeForegroundMessage', () => {
+  test('durably marks a claimed foreground create before the real session-start port', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'foreground-create-mark-'));
+    try {
+      const deps = dependencies();
+      deps.startSession = vi.fn(async (_access, start) => {
+        const rows = JSON.parse(
+          readFileSync(join(home, 'delegation-create-claims.json'), 'utf8'),
+        ).claims;
+        expect(Object.values(rows)).toEqual([
+          expect.objectContaining({
+            sessionId: start.threadId,
+            starting: true,
+          }),
+        ]);
+        return undefined;
+      });
+      const receipt = await new CreateRequestClaims(home).run(
+        {
+          kind: 'foreground',
+          principal: undefined,
+          authority: sessionReadAuthorityFromRequest(
+            'test-user',
+            undefined,
+            undefined,
+          ),
+          requestKey: 'first-key',
+          intent: { message: 'first' },
+          sessionExists: () => false,
+        },
+        (conversationId) =>
+          executeForegroundMessage(
+            {
+              userId: 'test-user',
+              conversationId,
+              clientTurnId: 'first-key',
+              message: 'first',
+              target: {
+                environment: { kind: 'current' },
+                agent: agentId('station'),
+              },
+            },
+            deps,
+          ),
+      );
+      expect(receipt).toMatchObject({ providerTurnId: 'provider-turn-1' });
+      expect(deps.startSession).toHaveBeenCalledTimes(1);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
   test('carries a prompt origin to the authorized local turn and refuses a remote target', async () => {
     const deps = dependencies();
     deps.readSessionBinding = vi.fn(async () => ({

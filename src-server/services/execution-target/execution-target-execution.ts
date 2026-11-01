@@ -49,6 +49,7 @@ import { createLogger } from '../../utils/logger.js';
 import { canonicalPath } from '../../utils/path-containment.js';
 import type { InitialConversationForkContext } from '../orchestration/conversation-fork-context.js';
 import type { ConversationContextSeedPin } from '../orchestration/conversation-handoff-module.js';
+import { markCreateRequestStarting } from '../orchestration/create-request-claims.js';
 import type { DispatchCwdAdmission } from '../orchestration/dispatch-cwd-admission.js';
 import type { StartOwnerAttribution } from '../orchestration/session-owner-attribution.js';
 import { ConversationTurnQueuedError } from '../orchestration/thread-inbox.js';
@@ -1428,6 +1429,7 @@ export async function executeForegroundMessage(
           ? { resourceAdmissionIntent: 'queued_background' as const }
           : {}),
       };
+      await markCreateRequestStarting(sessionId);
       const startReceipt = await (Object.keys(startContext).length > 0
         ? deps.startSession(resolved.access, sessionStartInput, {
             ...startContext,

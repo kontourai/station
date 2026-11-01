@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import { environmentId as toEnvironmentId } from '@kontourai/station-contracts/execution-target';
@@ -790,7 +789,7 @@ export function registerOperationsTools(
         const result = await executeExecutionTargetMessage({
           target,
           message,
-          clientTurnId: clientTurnId ?? randomUUID(),
+          clientTurnId,
           ...(conversationId ? { conversationId } : {}),
           // #2601: a claim only. Station's route derives the child context
           // from the verified caller, or keeps this one only when Station's own
@@ -1024,7 +1023,7 @@ export function registerOperationsTools(
         };
         const task = await delegateTask({
           prompt: input.prompt,
-          clientTurnId: input.clientTurnId ?? randomUUID(),
+          clientTurnId: input.clientTurnId,
           target,
           ...(input.sessionId ? { sessionId: input.sessionId } : {}),
           ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),

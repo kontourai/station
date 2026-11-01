@@ -2,9 +2,8 @@
 
 import { EventStore } from '../../services/orchestration/event-store.js';
 
-// Re-exported from the store that enforces it, so the bound cannot drift
-// between the facade and the pruner.
-export { TURN_DEDUP_MAX_ENTRIES as CHAT_TURN_DEDUP_MAX_ENTRIES } from '../../services/orchestration/event-store.js';
+// Compatibility count hint; resolved entries expire by time, independent of this count.
+export { TURN_DEDUP_LEGACY_COUNT_HINT as CHAT_TURN_DEDUP_LEGACY_COUNT_HINT } from '../../services/orchestration/event-store.js';
 export type ChatTurnDedupClaim =
   | { claimed: true }
   | { claimed: false; conversationId: string | null }
