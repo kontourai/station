@@ -61,6 +61,7 @@ import {
   principalKey,
   UnattendedGrantStore,
 } from '../../services/agents/unattended-grant-store.js';
+import type { FeaturePreviewRegistry } from '../../services/feature-previews/feature-preview-registry.js';
 import {
   type AccountSharingRecord,
   accountSharingSettingPath,
@@ -1523,6 +1524,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     const publicOrigin = `http://localhost:${TEST_PORT}`;
     type Internals = {
       localAccounts?: LoadedLocalAccounts;
+      featurePreviews: FeaturePreviewRegistry;
       deploymentAuthentication?: unknown;
       projectMembership?: {
         service: Pick<ProjectMembershipService, 'mayRegister'>;
@@ -1597,6 +1599,45 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
         (routeContext() as { accountSharingPreview?: unknown })
           .accountSharingPreview,
       ).toBeDefined();
+    });
+
+    it('stored sharing passes the live member-passkey preview into the actual account provider', async () => {
+      home = await createSchemaHome('station-sharing-member-passkeys-');
+      stageAccountSharingChange(home, { enabled: true, publicOrigin });
+      armStagedAccountSharingChange(home);
+      await boot();
+      const accounts = internals().localAccounts;
+      expect(accounts).toBeDefined();
+      if (!accounts) throw new Error('The account provider was not composed.');
+      const offered = () =>
+        accounts.service
+          .describe()
+          .endpoints.some(
+            (endpoint) => endpoint.operation === 'passkey-sign-in',
+          );
+      expect(offered()).toBe(false);
+      await internals().featurePreviews.setEnabled('member-passkeys', true);
+      expect(offered()).toBe(true);
+      const options = () =>
+        accounts.service.handle(
+          new Request(`${publicOrigin}/api/account-auth/passkey/sign-in`, {
+            method: 'POST',
+            headers: {
+              Origin: publicOrigin,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ step: 'options' }),
+          }),
+          '/passkey/sign-in',
+        );
+      const enabled = await options();
+      expect(enabled.status).toBe(200);
+      expect(await enabled.json()).toMatchObject({
+        data: { options: { rpId: 'localhost', challenge: expect.any(String) } },
+      });
+      await internals().featurePreviews.setEnabled('member-passkeys', false);
+      expect(offered()).toBe(false);
+      expect((await options()).status).toBe(404);
     });
 
     it('a staged choice that fails to load starts the Station with sharing off and rolls back', async () => {

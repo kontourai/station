@@ -399,6 +399,7 @@ import {
   createConversationReferenceReadRoutes,
 } from '../../routes/chat/conversation-reference-read.js';
 import { createConversationWorkSearchRoutes } from '../../routes/chat/conversation-work-search.js';
+import { createConversationWorkStateRoutes } from '../../routes/chat/conversation-work-state.js';
 import {
   createConversationRoutes,
   createGlobalConversationRoutes,
@@ -742,6 +743,7 @@ import {
   FileConversationAcknowledgementStore,
   ownerDevicePredicate,
 } from '../../services/orchestration/conversation-acknowledgement-store.js';
+import { ConversationWorkStateStore } from '../../services/orchestration/conversation-work-state-store.js';
 import {
   type CoordinatorWakeDelivery,
   coordinatorDeliveryPorts,
@@ -10761,6 +10763,33 @@ export function configureRuntimeRoutes(
           threadId,
           conversationReadAuthorityForRequest(request),
         ),
+    }),
+  );
+  const conversationResolutionPreview = context.featurePreviews.bind({
+    id: 'conversation-resolution',
+    label: 'Open and Settled inbox',
+    description:
+      'Keep conversations open until you settle them. Resolution syncs across your devices; no provider work.',
+  });
+  context.app.route(
+    '/api/conversations',
+    createConversationWorkStateRoutes({
+      store: new ConversationWorkStateStore(
+        context.configLoader.getProjectHomeDir(),
+      ),
+      preview: conversationResolutionPreview,
+      authorityFor: conversationReadAuthorityForRequest,
+      isOwnerDevice: ownerDevicePredicate(() =>
+        context.environmentSecurityService.devicePairing.listDevices(),
+      ),
+      canRead: async (id, authority) =>
+        Boolean(
+          await context.orchestrationService.resolveConversationOpen(
+            id,
+            authority,
+          ),
+        ),
+      current: isRequestPrincipalCurrent,
     }),
   );
   context.app.route(

@@ -73,6 +73,13 @@ export const NOTIFICATION_SOUND_VALUES = [
 export interface InboxSectionsState {
   snoozed: boolean;
   earlier: boolean;
+  needsYou?: boolean;
+  open?: boolean;
+  running?: boolean;
+  idle?: boolean;
+  settled?: boolean;
+  drafts?: boolean;
+  external?: boolean;
 }
 
 /**
@@ -328,6 +335,7 @@ export interface DeviceSettings {
    * URL param and was never persisted.
    */
   chatFontSize: number | null;
+  chatAnswerWidth: 'comfortable' | 'wide' | 'full';
   /** Return behavior for every keyboard on this device; auto follows the pointer type. */
   chatReturnBehavior: 'auto' | 'send' | 'newline';
   /**
@@ -844,9 +852,8 @@ export const DEVICE_SETTINGS_REGISTRY = [
     scope: 'device',
     descriptor: { kind: 'composite' },
     label: 'Chat dock inbox sections',
-    help: 'The snoozed and earlier inbox sections reopen collapsed or expanded as you left them.',
-    description:
-      'Collapsed/expanded state of the snoozed and earlier inbox sections.',
+    help: 'Inbox groups reopen collapsed or expanded as you left them.',
+    description: 'Collapsed/expanded state of the inbox groups.',
     priorStorageKey: 'station.inbox.sections',
     // Confirmed against ChatDockInboxPanel.tsx's DEFAULT_SECTION_STATE.
     defaultValue: DEFAULT_INBOX_SECTIONS,
@@ -970,6 +977,16 @@ export const DEVICE_SETTINGS_REGISTRY = [
     description:
       'Choose whether Return sends a message or inserts a new line on this device.',
     defaultValue: 'auto',
+  }),
+  defineDeviceSetting({
+    key: 'chatAnswerWidth',
+    scope: 'account',
+    descriptor: { kind: 'enum', values: ['comfortable', 'wide', 'full'] },
+    label: 'Answer width',
+    help: 'Choose how much horizontal space assistant answers use.',
+    description:
+      'Preferred assistant answer width. User message bubbles keep their own width.',
+    defaultValue: 'wide',
   }),
   defineDeviceSetting({
     key: 'chatFontSize',
@@ -1232,6 +1249,7 @@ export const PREFERENCE_DEVICE_KEYS = [
   'chatShowReasoning',
   'chatShowToolDetails',
   'chatFontSize',
+  'chatAnswerWidth',
   'chatReturnBehavior',
   'hapticsEnabled',
   'openLastStationOnLaunch',

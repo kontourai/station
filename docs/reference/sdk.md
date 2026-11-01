@@ -2881,6 +2881,18 @@ Station chooses provider/callback/return parameters from operator configuration;
 clients cannot supply arbitrary OAuth parameters. See the [deployment guide](../guides/deployment-authentication.md#optional-oidc-choices-with-local-accounts)
 for configuration, callback verification and the independent Device continuation.
 
+A descriptor may also declare `passkey-*` operations (see
+[member passkeys](../guides/deployment-authentication.md#member-passkeys-feature-preview)).
+The `passkey-sign-in`, `passkey-register`, `passkey-add` and `passkey-recover`
+ceremonies use two `runAccountOperation` calls to the same endpoint:
+`{ step: 'options' }` returns `{ options }` for the browser's WebAuthn call,
+then `{ step: 'verify', response }` sends its result. Registration also needs
+`username` in the options body and the invitation as the fourth argument on
+both calls; recovery includes `token` in both bodies. Keep the cookies the
+first call sets; they bind the second call to its challenge. The management
+operations are single calls: `passkey-list` accepts `{}`, and `passkey-remove`
+accepts `{ id }`.
+
 The same account-authentication entry exports `getProjectInvitationPreview(apiBase,
 token)`. It uses a POST body, validates the minimal Project/inviter/role projection,
 and rejects incompatible role/action combinations. Keep the proof out of query
@@ -6301,6 +6313,19 @@ preserves the preview refusal's code and Settings link; a 404 from an older
 host reports the unsupported capability. No mutation or agent invocation is
 performed. See [Automation intake](../design/automations.md#observe-only-github-preview).
 
+### Personal conversation resolution and turn directory
+
+`getConversationWorkState` and `setConversationWorkState` in the SDK client
+read or change explicit personal settlement under the `conversation-resolution`
+Feature Preview. State is separate from turn completion and dismissal. Reads
+return `null` on a 404 (unsupported host or disabled preview); mutations preserve
+a refusal with an update/preview remedy. Requests accept `ClientRequestOptions`
+for authority and cancellation.
+
+`getConversationTurnDirectory` reads paginated, indexed turn metadata from the
+existing Session digest under `session-cli-reads`; it returns `null` when that
+host route is unavailable. It fetches no transcript bodies. The UI's history
+owner loads bounded body pages only after a turn is selected.
 
 ## Reviewed Project context and learning
 

@@ -1,0 +1,7 @@
+{
+  "revision": "5979983d802e19a268dce3d5cb64cb933ad0b910",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed smoke-live manifest membership and exact suite assertion including member passkeys; coverage tiers remain targets and no live execution is implied.","inputs":["docs/guides/e2e-coverage-matrix.md","scripts/__tests__/e2e-manifest.test.ts"]}
+  ]
+}

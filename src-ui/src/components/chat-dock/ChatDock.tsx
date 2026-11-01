@@ -167,7 +167,6 @@ import { ChatDockContentArea } from './ChatDockContentArea';
 import { ChatDockHeader } from './ChatDockHeader';
 import type { DockMoreAction } from './ChatDockHeaderMoreMenu';
 import { ChatDockMobileHeader } from './ChatDockMobileHeader';
-import { ChatDockProjectContext } from './ChatDockProjectContext';
 import {
   ChatPaneFileDropBoundary,
   isChatPaneFileDropEnabled,
@@ -1408,16 +1407,6 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     sessionProjectSlug: sessionSourceProjectSlug,
     sessionProjectName,
   });
-  // Where New starts a chat, for the destination's tooltip: the bound
-  // project's own folder. Not the session's `cwd` — the destination names
-  // where the NEXT chat runs, and the chat on screen has its own Workspace
-  // row in the session context card. A chat-scope filter names a project
-  // without claiming its folder (station#1146/#4525).
-  const dockDestinationDirectory =
-    !scopedProjectSlug && dockProjectSlug
-      ? (projects.find((project) => project.slug === dockProjectSlug)
-          ?.workingDirectory ?? null)
-      : null;
   const attachmentCapabilities = useMemo(
     () => ({
       images: modelSupportsAttachments,
@@ -3469,35 +3458,6 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                     routeLabel={activeOrchestrationSession?.modelRoute?.label}
                     inputOrigin={activeOrchestrationSession?.inputOrigin}
                     onClose={removeSession}
-                  />
-                ) : null
-              }
-              projectContext={
-                // station#1803 (part 3): the row (and its picker) renders
-                // whenever the dock has a project surface at all, project
-                // bound or not — a chat with no project is exactly the one
-                // that most needs the picker reachable, not the one it gets
-                // hidden for. `ChatDockProjectContext` itself renders "No
-                // project" and keeps the badge switchable when
-                // `dockProjectSlug` is null.
-                !isMobile && !showNewChatModal ? (
-                  <ChatDockProjectContext
-                    projectSlug={dockProjectSlug}
-                    projectName={dockBadgeProjectName}
-                    // New's destination (the split button's second half):
-                    // the bound project and its own folder, never the chat
-                    // on screen — that chat's project, directory and branch
-                    // are the session context card's (#4525 HIGH-2 still
-                    // holds there: they never gate on this binding).
-                    workingDirectory={dockDestinationDirectory}
-                    projects={projects}
-                    onSelectProject={handleSelectProject}
-                    onSwitchProject={handleSwitchProject}
-                    onClearProjectScope={
-                      scopedProjectSlug && !hasImmutableProjectScope
-                        ? () => setProjectFilter(null)
-                        : undefined
-                    }
                   />
                 ) : null
               }

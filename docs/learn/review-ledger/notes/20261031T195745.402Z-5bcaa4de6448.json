@@ -1,0 +1,9 @@
+{
+  "revision": "2ee574d8b8d55957023eaa05f5bd3d3147dea000",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Reviewed the merge with main's bounded agent-work/repair routes. The personal work-state GET/PUT section and its exact preview guards remain separate from the upstream repair API. Preserved both source lists, unchanged human classification/limits and existing upstream evidence; this is not new live repair or provider qualification.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/reference/sdk.md","note":"Resolved the append conflict by retaining both Personal conversation resolution and turn directory and upstream Reviewed Project context and learning. Preserved both source lists and unchanged human classification/limits. The metadata-only directory and personal settlement helpers keep their own preview and authority boundaries; upstream learning hooks remain Project-scoped. No new whole-SDK/provider qualification is claimed.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

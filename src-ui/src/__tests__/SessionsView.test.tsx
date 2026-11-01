@@ -4091,7 +4091,7 @@ describe('SessionsView', () => {
           'Blocked',
         ],
         Running: ['Running'],
-        Idle: ['Idle', 'Elsewhere'],
+        Idle: ['Idle', 'Read only'],
         'Just finished': FINISHED,
         Earlier: FINISHED,
       };
@@ -4221,7 +4221,7 @@ describe('SessionsView', () => {
       expect(rowText('Attached but idle')).toContain('Idle');
       expect(rowText('Review pending mid-turn')).toContain('Needs approval');
       expect(rowText('Closed mid-run')).toContain('Done');
-      expect(rowText('Stranded request')).toContain('Elsewhere');
+      expect(rowText('Stranded request')).toContain('Read only');
       // The explicit stopped outcome must not fold into the successful word.
       expect(rowText('Canceled run')).toContain('Stopped');
     });

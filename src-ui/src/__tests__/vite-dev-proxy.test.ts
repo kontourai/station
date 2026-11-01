@@ -149,6 +149,61 @@ describe('station dev-mode Vite proxy (#3254)', () => {
     }
   });
 
+  test('backend restart reports unavailability and reconnects with the existing cookie', async () => {
+    const backend = createHttpServer((request, response) => {
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({ cookie: request.headers.cookie }));
+    });
+    await new Promise<void>((resolve) =>
+      backend.listen(0, '127.0.0.1', resolve),
+    );
+    const address = backend.address();
+    if (!address || typeof address === 'string')
+      throw new Error('no backend port');
+    const makeTempDir = trackTempDirs();
+    const dev = await createServer({
+      root: makeTempDir('station-proxy-restart-'),
+      optimizeDeps: { noDiscovery: true, include: [] },
+      configFile: false,
+      logLevel: 'silent',
+      server: {
+        host: '127.0.0.1',
+        port: 0,
+        proxy: stationDevProxy({ STATION_DEV_API_PORT: String(address.port) }),
+      },
+    });
+    try {
+      await dev.listen();
+      const ui = dev.httpServer?.address();
+      if (!ui || typeof ui === 'string') throw new Error('no Vite port');
+      const url = `http://127.0.0.1:${ui.port}/api/system/identity`;
+      await new Promise<void>((resolve, reject) =>
+        backend.close((error) => (error ? reject(error) : resolve())),
+      );
+      const away = await fetch(url);
+      expect(away.status).toBe(503);
+      expect(await away.json()).toEqual({
+        ready: false,
+        status: 'unavailable',
+      });
+      expect(away.headers.get('set-cookie')).toBeNull();
+      await new Promise<void>((resolve) =>
+        backend.listen(address.port, '127.0.0.1', resolve),
+      );
+      const back = await fetch(url, {
+        headers: { cookie: 'station-session=existing' },
+      });
+      expect(back.status).toBe(200);
+      expect(await back.json()).toEqual({ cookie: 'station-session=existing' });
+    } finally {
+      await dev.close();
+      if (backend.listening)
+        await new Promise<void>((resolve, reject) =>
+          backend.close((error) => (error ? reject(error) : resolve())),
+        );
+    }
+  });
+
   test('attests as the production listener does: remote caller, own token, no client-supplied attestation', () => {
     const out = recorder();
     for (const name of DEV_PROXY_ATTESTATION_HEADERS)

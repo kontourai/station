@@ -212,7 +212,7 @@ export function ChatDockMobileHeader({
             <ArrowDownGlyph />
           </button>
         ) : null}
-        {projectSwitcher && (
+        {projectSwitcher && !agentIdentity && (
           <button
             ref={projectTriggerRef}
             type="button"
