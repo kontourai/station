@@ -1433,7 +1433,7 @@ async function setupReturnFixture(page: Page, chrome: NewChatChrome = 'wide') {
     .fill(SETUP_RETURN_DRAFT);
   await chooseProject(page, modal, 'setup-beta');
   await expect(
-    modal.getByRole('button', { name: 'Project: Setup Beta. in Setup Beta' }),
+    modal.getByRole('button', { name: 'Project: Setup Beta' }),
   ).toBeVisible();
   return {
     modal,
@@ -1488,7 +1488,7 @@ for (const viewport of [
     ).toHaveValue(SETUP_RETURN_DRAFT);
     await expect(
       fixture.modal.getByRole('button', {
-        name: 'Project: Setup Beta. in Setup Beta',
+        name: 'Project: Setup Beta',
       }),
     ).toBeVisible();
     const agentChip = fixture.modal.getByRole('button', { name: /^Agent: / });
@@ -1523,7 +1523,7 @@ test('New Chat setup return supports Back, cancellation and deleted Project disc
   await expect(draft()).toHaveValue(SETUP_RETURN_DRAFT);
   await expect(
     fixture.modal.getByRole('button', {
-      name: 'Project: Setup Beta. in Setup Beta',
+      name: 'Project: Setup Beta',
     }),
   ).toBeVisible();
   // The project is deleted while setup is away: the return says so and
@@ -1543,7 +1543,7 @@ test('New Chat setup return supports Back, cancellation and deleted Project disc
   await expect(draft()).toHaveValue(SETUP_RETURN_DRAFT);
   await expect(
     fixture.modal.getByRole('button', {
-      name: 'Project: Setup Beta. in Setup Beta',
+      name: 'Project: Setup Beta',
     }),
   ).toHaveCount(0);
   // Choosing again works; then Cancel return ends the journey and the
@@ -1566,7 +1566,7 @@ test('New Chat setup return supports Back, cancellation and deleted Project disc
   await expect(draft()).toHaveValue('');
   await expect(
     fixture.modal.getByRole('button', {
-      name: 'Project: Setup Alpha. in Setup Alpha',
+      name: 'Project: Setup Alpha',
     }),
   ).toBeVisible();
 });

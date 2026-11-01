@@ -291,9 +291,7 @@ test.describe('New Chat mobile project picker (390x844)', () => {
     // Picking closes the sheet and updates the chip.
     await matches.click();
     await expect(sheet).toBeHidden();
-    await expect(projectChip(modal)).toHaveAccessibleName(
-      'Project: Project 3. in Project 3',
-    );
+    await expect(projectChip(modal)).toHaveAccessibleName('Project: Project 3');
   });
 
   test('dismisses on outside tap and on Escape without picking anything', async ({

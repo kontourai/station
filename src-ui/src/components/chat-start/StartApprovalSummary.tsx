@@ -97,9 +97,9 @@ export function StartApprovalSummary({
     return (
       <ComposerChoice
         className="start-composer__chip"
-        caption="Approval"
+        caption="Permissions"
         value={label}
-        aria-label={`${visible}. ${title} Approval ${label}`}
+        aria-label={`${visible}. ${title}`}
         title={title}
         disabled
       />
@@ -111,10 +111,10 @@ export function StartApprovalSummary({
         className="start-composer__chip start-composer__chip--approval"
         aria-haspopup="dialog"
         aria-expanded={isSheetOpen}
-        aria-label={`${visible}. ${title} Approval ${label}`}
+        aria-label={`${visible}. ${title}`}
         title={title}
         onClick={() => setIsSheetOpen((open) => !open)}
-        caption="Approval"
+        caption="Permissions"
         value={label}
       />
       {isSheetOpen && (

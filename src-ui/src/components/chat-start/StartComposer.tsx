@@ -335,7 +335,7 @@ export function StartComposer({
           type="button"
           className={`choice-trigger start-composer__project${draft ? ' start-composer__chip' : ''}`}
           aria-haspopup={projectFixed ? undefined : 'dialog'}
-          aria-label={`Project: ${project.label}. ${project.isGlobal ? NO_PROJECT_PHRASE : `in ${project.label}`}`}
+          aria-label={`Project: ${project.label}`}
           title={project.folder}
           disabled={projectFixed}
           onClick={(event) => onOpenProject(event.currentTarget)}
@@ -347,9 +347,7 @@ export function StartComposer({
               accent={project.accent}
             />
           )}
-          <span>
-            {project.isGlobal ? NO_PROJECT_PHRASE : `in ${project.label}`}
-          </span>
+          <span>{project.label}</span>
           {!projectFixed && <ArrowDownGlyph className="choice-caret" />}
         </button>
       )}
@@ -494,7 +492,7 @@ export function StartComposer({
               <ComposerChoice
                 className={`start-composer__chip start-composer__chip--agent${agent.needsSetup ? ' start-composer__chip--attention' : ''}`}
                 aria-haspopup="dialog"
-                aria-label={`Agent: ${startAgentChipText(agent)}${agent.needsSetup ? ', needs setup' : ''}${!onOpenModel && agent.status === 'ready' && agent.modelNote ? `. ${agent.modelNote}` : ''}. Agent ${agentText}`}
+                aria-label={`Agent: ${startAgentChipText(agent)}${agent.needsSetup ? ', needs setup' : ''}${!onOpenModel && agent.status === 'ready' && agent.modelNote ? `. ${agent.modelNote}` : ''}`}
                 title={
                   !onOpenModel && agent.status === 'ready'
                     ? agent.modelNote
@@ -512,7 +510,7 @@ export function StartComposer({
               <ComposerChoice
                 className="start-composer__chip start-composer__chip--model"
                 aria-haspopup="dialog"
-                aria-label={`Model: ${agent.modelLabel && agent.modelLabel !== MODEL_NOT_REPORTED ? agent.modelLabel : 'Model'}${agent.modelNote ? `. ${agent.modelNote}` : ''}. Model ${agent.modelLabel && agent.modelLabel !== MODEL_NOT_REPORTED ? agent.modelLabel : 'Model'}`}
+                aria-label={`Model: ${agent.modelLabel && agent.modelLabel !== MODEL_NOT_REPORTED ? agent.modelLabel : 'Model'}${agent.modelNote ? `. ${agent.modelNote}` : ''}`}
                 title={agent.modelNote}
                 disabled={!agent.agent}
                 onClick={(event) => onOpenModel(event.currentTarget)}

@@ -754,12 +754,12 @@ async function openProjectDraft(page: Page) {
   const opened = await openNewChatDraft(page);
   await expect(
     opened.draft.getByRole('button', {
-      name: 'Project: No project. Without a project',
+      name: 'Project: No project',
     }),
   ).toBeVisible();
   await chooseProject(page, opened.draft, 'station');
   await expect(
-    opened.draft.getByRole('button', { name: 'Project: Station. in Station' }),
+    opened.draft.getByRole('button', { name: 'Project: Station' }),
   ).toBeVisible();
   return opened;
 }
@@ -1058,7 +1058,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
     // Both chips name what Start uses: the bound project and its default.
     await expect(
       form.getByRole('button', {
-        name: 'Project: Station. in Station',
+        name: 'Project: Station',
         exact: true,
       }),
     ).toBeVisible();
@@ -1130,7 +1130,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
     const { dialog: newChat } = await openNewChatDraft(page);
     await expect(
       newChat.getByRole('button', {
-        name: 'Project: No project. Without a project',
+        name: 'Project: No project',
       }),
     ).toBeVisible();
     await newChat.press('Escape');
@@ -1404,7 +1404,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
     await expect(advertised).toBeVisible();
     await expect(
       homeComposer.getByRole('button', {
-        name: 'Project: Station. in Station',
+        name: 'Project: Station',
         exact: true,
       }),
     ).toBeVisible();
@@ -1417,7 +1417,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
     ).toBeVisible();
     await expect(
       draft.getByRole('button', {
-        name: 'Project: Station. in Station',
+        name: 'Project: Station',
         exact: true,
       }),
     ).toBeVisible();
@@ -1487,7 +1487,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
     const opened = await openNewChatDraft(page);
     await expect(
       opened.draft.getByRole('button', {
-        name: 'Project: No project. Without a project',
+        name: 'Project: No project',
       }),
     ).toBeVisible();
     await sendDraft(opened, 'Start a direct chat.');

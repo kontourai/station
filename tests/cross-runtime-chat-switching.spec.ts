@@ -1450,7 +1450,7 @@ test.describe('P1-G5 cross-runtime chat switching proof', () => {
     const alphaAgents = await openNewChatModal(page);
     await expect(
       dockComposer(page).getByRole('button', {
-        name: 'Project: Alpha Project. in Alpha Project',
+        name: 'Project: Alpha Project',
         exact: true,
       }),
     ).toBeVisible();
@@ -1486,7 +1486,7 @@ test.describe('P1-G5 cross-runtime chat switching proof', () => {
       .click();
     await expect(
       dockComposer(page).getByRole('button', {
-        name: 'Project: Beta Project. in Beta Project',
+        name: 'Project: Beta Project',
         exact: true,
       }),
     ).toBeVisible();
@@ -1539,7 +1539,7 @@ test.describe('P1-G5 cross-runtime chat switching proof', () => {
     const reopenedDraft = await openNewChatDraft(page);
     await expect(
       dockComposer(page).getByRole('button', {
-        name: 'Project: Beta Project. in Beta Project',
+        name: 'Project: Beta Project',
         exact: true,
       }),
     ).toBeVisible();
@@ -1697,7 +1697,7 @@ test.describe('chat-dock project selection (kontourai/station#793)', () => {
     const draft = await openNewChatDraft(page);
     await dockComposer(page)
       .getByRole('button', {
-        name: 'Project: Alpha Project. in Alpha Project',
+        name: 'Project: Alpha Project',
         exact: true,
       })
       .click();
@@ -1713,7 +1713,7 @@ test.describe('chat-dock project selection (kontourai/station#793)', () => {
     await expect(chooser).toBeHidden();
     await expect(
       dockComposer(page).getByRole('button', {
-        name: 'Project: Beta Project. in Beta Project',
+        name: 'Project: Beta Project',
         exact: true,
       }),
     ).toBeVisible();
@@ -1737,7 +1737,7 @@ test.describe('chat-dock project selection (kontourai/station#793)', () => {
     const unboundDraft = await openNewChatDraft(page);
     await expect(
       dockComposer(page).getByRole('button', {
-        name: 'Project: Beta Project. in Beta Project',
+        name: 'Project: Beta Project',
         exact: true,
       }),
     ).toBeVisible();
@@ -1751,14 +1751,14 @@ test.describe('chat-dock project selection (kontourai/station#793)', () => {
     const nextDraft = await openNewChatDraft(page);
     await dockComposer(page)
       .getByRole('button', {
-        name: 'Project: Beta Project. in Beta Project',
+        name: 'Project: Beta Project',
         exact: true,
       })
       .click();
     await chooser.getByRole('button', { name: 'Alpha Project' }).click();
     await expect(
       dockComposer(page).getByRole('button', {
-        name: 'Project: Alpha Project. in Alpha Project',
+        name: 'Project: Alpha Project',
         exact: true,
       }),
     ).toBeVisible();
@@ -1925,7 +1925,7 @@ test.describe('chat-dock project selection (kontourai/station#793)', () => {
       await expect(chooser).toBeHidden();
       await expect(
         dockComposer(page).getByRole('button', {
-          name: 'Project: Beta Project. in Beta Project',
+          name: 'Project: Beta Project',
           exact: true,
         }),
       ).toBeVisible();
