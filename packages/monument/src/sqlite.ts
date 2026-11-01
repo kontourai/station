@@ -1299,7 +1299,7 @@ function decodeInboxEntry(row: Record<string, unknown>): InboxEntryRecord {
   if (!INBOX_STATES.has(state))
     throw new Error(`Invalid monument inbox state: ${state}`);
   const kind = String(row.kind);
-  if (kind !== 'follow-up')
+  if (kind !== 'follow-up' && kind !== 'steer' && kind !== 'display')
     throw new Error(`Invalid monument inbox kind: ${kind}`);
   return {
     inboxId: String(row.inbox_id),

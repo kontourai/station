@@ -1698,8 +1698,8 @@ export interface ConversationInboxEntry {
    * send answers or Station restarts).
    */
   clientTurnId?: string;
-  /** Only follow-ups today; steer and display-only kinds may follow. */
-  kind: 'follow-up';
+  /** How the message is placed in the conversation. */
+  kind: 'follow-up' | 'steer' | 'display';
   state: ConversationInboxEntryState;
   /** 1 for the next to be sent, among entries still waiting; absent once settled. */
   position?: number;

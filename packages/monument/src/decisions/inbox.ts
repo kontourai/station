@@ -68,7 +68,10 @@ export function decideInboxSubmit(
   command: InboxSubmitCommand,
 ): InboxDecision<InboxSubmitResult> {
   const { existing } = inputs;
-  if (existing && existing.digest !== command.digest)
+  if (
+    existing &&
+    (existing.digest !== command.digest || existing.kind !== command.kind)
+  )
     return { result: { kind: 'conflict' } };
   const requeue =
     existing?.state === 'refused' || existing?.state === 'cancelled';

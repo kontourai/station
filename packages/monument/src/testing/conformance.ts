@@ -2598,6 +2598,30 @@ function claimedKey(result: KernelResult<KernelCommand>): string {
 
 const inbox: KernelConformanceCase[] = [
   {
+    name: 'inbox: steer and display entries survive reopening without duplication',
+    areas: ['inbox'],
+    run: (harness) =>
+      withSession(harness, async (session) => {
+        for (const kind of ['steer', 'display'] as const) {
+          const command = { ...submit(kind), kind };
+          assert.equal((await session.run(command)).kind, 'accepted');
+        }
+        await session.store.reopen();
+        for (const kind of ['steer', 'display'] as const) {
+          const command = { ...submit(kind), kind };
+          assert.equal((await session.run(command)).kind, 'existing');
+        }
+        assert.deepEqual(
+          await session.run({ ...submit('steer'), kind: 'display' }),
+          { kind: 'conflict' },
+        );
+        assert.deepEqual(
+          (await inboxEntries(session)).map((entry) => entry.kind),
+          ['steer', 'display'],
+        );
+      }),
+  },
+  {
     name: 'inbox: a submission is idempotent by key, and a different digest conflicts',
     areas: ['inbox'],
     run: (harness) =>
