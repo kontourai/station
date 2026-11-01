@@ -830,7 +830,11 @@ responses. A missing declaration is unknown; the client does not infer it from
 provider names. ACP's cancel-and-reprompt extension does not become an additive
 native composer action. Profile observations are not persisted in browser session
 state. After post-tool injection the entry remains claimed until model dispatch,
-memory storage and the canonical steer event have been acknowledged.
+memory storage and the canonical steer event have been acknowledged. A request
+error or the turn ending first surfaces **May have been sent** immediately;
+reviewing and dismissing it releases following input without a restart. Its
+position stays after the triggering tool result and before later model replies,
+rather than moving to the newest position on every step.
 
 Named-conversation steers first save text, the observed `expectedHead` and an
 authority-scoped key in IndexedDB, then submit to the server inbox. Missing

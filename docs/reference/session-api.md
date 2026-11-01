@@ -665,6 +665,11 @@ HTTP409 `inbox_stale_head` and `currentHead`, without a write.
   claimed. It becomes sent only after the carrying model request returns and
   its user message and steer event are recorded durably. A crash before that
   acknowledgement remains unknown; a failed placement-policy check is refused.
+  A request error or a turn ending before acknowledgement also becomes
+  `unconfirmed` immediately. It can be reviewed and dismissed without a restart;
+  follow-ups resume after that review barrier and the turn's terminal.
+  Later model steps retain the steer after its tool-result boundary and before
+  the model's response to it, including when earlier history is compacted.
 - **Follow-up:** waits for the current turn's terminal, then starts the next
   turn through the conversation's recorded binding.
 - **Display:** appears immediately as a server inbox note and is never model

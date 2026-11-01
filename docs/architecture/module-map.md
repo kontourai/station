@@ -1794,7 +1794,11 @@ through VoltAgent's prepareStep after tools settle. The
 refuses ambiguous runtime ownership without aborting the turn and unregisters
 on stop. Prompt preparation leaves the claim in flight; the carrying model
 request must return before memory, the canonical steer event and receipt are
-recorded and the entry is settled. Prior compaction cannot drop retained input.
+recorded and the entry is settled. Tool-call IDs anchor the input before its
+later model responses, even when earlier history is compacted. A request error
+or an owning turn ending without acknowledgement settles the claim unconfirmed;
+late callbacks cannot record it into a successor turn. The existing explicit
+review/dismiss barrier then releases following input without a restart.
 Delivery rechecks sender/placement policy and current turn confinement before
 injecting the text, retains it in later model steps and records the acknowledgement. Other loops use the terminal boundary.
 The UI renders server entries and an explicit Review and resend action.
