@@ -1481,8 +1481,9 @@ export function ChatDockBody({
     (msg: ChatMessage, idx: number): React.ReactNode | null => {
       if (msg.ephemeral) {
         const messageId = (msg as any).id || `ephemeral-${idx}`;
-        if (staleSendFailures.has(messageId) && (msg as any).action) {
-          const { action: _staleAction, ...settled } = msg as any;
+        if (staleSendFailures.has(messageId) && 'action' in msg && msg.action) {
+          // The message stays readable; only its Retry goes (#4400).
+          const settled = { ...msg, action: undefined };
           return (
             <EphemeralMessage
               key={messageId}
