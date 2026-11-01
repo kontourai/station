@@ -407,6 +407,7 @@ import {
 import { HostImageTurnCapture } from './host-image-turn-capture.js';
 import { InternalStopSuppression } from './internal-stop-suppression.js';
 import {
+  type DurableTurnHandoff,
   type InterruptedTurnMemoryAdapter,
   InterruptedTurnRecovery,
 } from './interrupted-turn-recovery.js';
@@ -962,6 +963,7 @@ export type SessionReadScope = SessionReadAuthority | InternalSessionReadScope;
 export type { InterruptedTurnMemoryAdapter };
 
 interface OrchestrationServiceOptions {
+  recoverDurableTurn?: DurableTurnHandoff;
   nativeForkStoredReadVerifier?: import('../../security/native-fork-read-admission.js').NativeForkReadAdmissionDomain['verifyForService'];
   adapterRegistry: IProviderAdapterRegistry;
   monitoringEmitter?: MonitoringEmitter;
@@ -3433,6 +3435,7 @@ export class OrchestrationService {
         this.options.memoryAdapters?.get(agentSlug),
       // Boolean, NOT void: the module's M4 refusal branch reads it.
       publishEvent: (event) => this.projectAndPublishEvent(event),
+      recoverDurableTurn: options.recoverDurableTurn,
       logger: this.options.logger,
     });
     this.turnProvenance = new TurnProvenanceSidecar({
