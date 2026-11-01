@@ -1142,8 +1142,11 @@ Engines run as commands (the `/acp/connections/:id/sign-in*` and
 `/credentials/:name` leaves, [acp-sign-in.ts](../../src-server/routes/connections/acp-sign-in.ts))
 have no profiles: their sign-in acts on the engine's own login on the host.
 Starting, reading or cancelling one, and storing or removing an engine key, are
-`engine:login` leaves with the same operator exception; a request that may be
-an agent's is refused. A terminal sign-in runs the connection's own program
+`engine:login` leaves whose exception is the operator in person: the operator
+credential or a home-possession credential (the host browser's sign-in link,
+the desktop app), as the handler and its view's `allowed.signIn` read it. The
+profile leaves above keep the verified-operator exception. A request that may
+be an agent's is refused. A terminal sign-in runs the connection's own program
 with arguments taken only from the engine's live handshake, never from the
 request, so a paired device also needs both `coding:exec` and
 `terminal:operate` to start it. Since #3994 b2 it is a server-owned
