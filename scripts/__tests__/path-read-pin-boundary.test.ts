@@ -214,6 +214,10 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   // inside the fake `opencode` scripts it writes and spawns. Its import of
   // opencode-model-capabilities.ts selects it for source changes.
   'src-server/services/acp/__tests__/opencode-model-capabilities.test.ts',
+  // Same shape: its module-anchored read is the fake workload host under
+  // __fixtures__/, and its only readFileSync is that host's pid file in the
+  // temp home it spawns into. No repository source to pin.
+  'packages/supervisor/src/__tests__/workloads.test.ts',
   // Device hosts: these read only their own fixtures (real OpenSSH
   // transcripts, anchored to the test file) or, for the resolver, walk the
   // server source tree to prove a structural rule. Neither names a source
