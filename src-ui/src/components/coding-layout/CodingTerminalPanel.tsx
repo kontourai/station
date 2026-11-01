@@ -106,6 +106,7 @@ export function CodingTerminalPanel({
   useEffect(() => {
     tabsRef.current
       ?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')
+      ?.closest('.coding-layout__terminal-tab-item')
       ?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
   }, [activeTabId, tabs.length]);
   const bar = (
