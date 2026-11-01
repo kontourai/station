@@ -276,7 +276,6 @@ import type {
   FlowRunStatus,
 } from '../flow/flow-run-service.js';
 import { type SessionFlowBinding } from '../flow/orchestration-flow-gate.js';
-import { ownedProcessEvidenceFor } from '../infra/process-utils.js';
 import { receiptBus } from '../infra/receipt-bus.js';
 import {
   admitEngineStartForIntent,
@@ -2564,6 +2563,10 @@ export class OrchestrationService {
     this.nativeForkStoredReadVerifier = options.nativeForkStoredReadVerifier;
     // All delete paths converge here, including Draft discard and attached alias cleanup.
     this.stopSessionDeletionNotifications = options.eventStore?.observeCommits({
+      sessionHasBinding: (threadId) =>
+        this.sessionAdapters.has(threadId) ||
+        this.cascadeStopAdapters.has(threadId) ||
+        this.startingSessionThreads.has(threadId),
       threadDeleting: (threadId) => {
         const audience = new Set(
           [...this.sessionDeletionReaders].filter((scope) =>
@@ -4329,23 +4332,22 @@ export class OrchestrationService {
     this.nativeOutputGrants.dispose();
     this.stationControlPullRequests?.dispose();
     this.nativeTurnGenerations.clear();
-    // Capture retirement custody before cascade delivery can yield and let a
-    // successful retirement disappear from the live map.
+    // Both reads happen at THIS synchronous tick with no await between
+    // them: inserting one changes which adapters the second arm
+    // double-stops. Pinned by a source invariant.
     const retiringAdapters = this.adapterRetirement.retiringAdapters();
     const retirementResults = Promise.allSettled(
       this.adapterRetirement.shutdownRetirementTasks(),
     );
     const cascadeReconciliation = this.cascadeStopReconciliation;
-    const cascadeResults = await Promise.allSettled(
-      cascadeReconciliation
-        ? [
-            this.adapterRetirement.runCleanupWithinDeadline(
-              () => cascadeReconciliation,
-              'Cascade stop delivery shutdown',
-            ),
-          ]
-        : [],
-    );
+    const cascadeResults = cascadeReconciliation
+      ? await Promise.allSettled([
+          this.adapterRetirement.runCleanupWithinDeadline(
+            () => cascadeReconciliation,
+            'Cascade stop delivery shutdown',
+          ),
+        ])
+      : [];
     // Preserve only resumable idle room Sessions, under their lifecycle lock.
     // An unavailable binding is a parking failure; all other teardown still runs.
     const roomParkingResults = await Promise.allSettled(
@@ -11433,7 +11435,6 @@ export class OrchestrationService {
         )
           live.push(member);
       }
-      // From here the members' events are dropped (see the gate), and a send
       for (const member of started()) {
         if (!eventStore.ownedStopTargets(member).length) continue;
         await this.requestOwnedCascade(member, 'stop');
@@ -11897,7 +11898,10 @@ export class OrchestrationService {
     if (
       store
         .pendingCascadeStops()
-        .some((intent) => intent.terminalId === terminalId)
+        .some(
+          (intent) =>
+            intent.terminalId === terminalId && intent.childId === threadId,
+        )
     )
       throw new Error(`Owned Session stops remain pending: ${threadId}`);
     return store.readCascadeInterruptResult(threadId, terminalId);
@@ -11919,36 +11923,70 @@ export class OrchestrationService {
     const reconcile = async () => {
       do {
         this.cascadeStopReconcileAgain = false;
-        for (const intent of store.pendingCascadeStops()) {
-          if (
-            store.hasPendingCascadeDescendant(intent.childId, intent.terminalId)
-          )
-            continue;
+        const intents = store.pendingCascadeStops();
+        const owners = new Map<
+          string,
+          ReturnType<EventStore['cascadeStopOwner']>
+        >();
+        for (const intent of intents) {
           const retained = this.cascadeStopAdapters.get(intent.childId);
-          const owner = store.cascadeStopOwner(
-            intent.childId,
-            this.sessionAdapters.has(intent.childId) || retained !== undefined,
-          );
-          const evidence = {
-            ...owner,
-            registeredEnginePids: owner.owner
-              ? ownedProcessEvidenceFor(owner.owner)
-              : null,
-          };
+          let adapter = this.sessionAdapters.get(intent.childId) ?? retained;
+          let held = retained !== undefined;
+          let unavailable = false;
+          try {
+            adapter ??= this.options.adapterRegistry.get(
+              store.readSessionByThread(intent.childId)?.provider ?? '',
+            );
+            held ||=
+              adapter !== undefined &&
+              (await adapter.hasSession(intent.childId));
+          } catch {
+            unavailable = true;
+          }
+          let owner = unavailable
+            ? { custody: 'unknown' as const, reason: 'binding-unavailable' }
+            : store.cascadeStopOwner(
+                intent.childId,
+                held || this.startingSessionThreads.has(intent.childId),
+              );
+          if (
+            owner.custody === 'local' &&
+            !held &&
+            !this.materializingSessions.has(intent.childId) &&
+            !this.startingSessionThreads.has(intent.childId)
+          )
+            owner = {
+              ...owner,
+              custody: 'unknown',
+              reason: 'local-owner-unbound',
+            };
+          owners.set(intent.childId, owner);
+          if (owner.custody === 'settled') {
+            store.completeCascadeStop(intent.childId, intent.terminalId);
+            continue;
+          }
           const changed = store.recordCascadeStopCustody(
             intent.childId,
             intent.terminalId,
             owner.custody,
-            evidence,
+            owner.reason,
           );
-          if (owner.custody !== 'local') {
-            if (changed && owner.custody === 'unknown')
-              this.options.logger.warn(
-                'Cascade stop custody is unknown; retaining pending intent',
-                { ...intent, ...evidence },
-              );
+          if (changed && owner.custody === 'unknown')
+            this.options.logger.warn(
+              'Cascade stop custody is unknown; retaining pending intent',
+              { ...intent, ...owner },
+            );
+          if (owner.custody === 'local' && held && adapter)
+            this.cascadeStopAdapters.set(intent.childId, adapter);
+        }
+        for (const intent of intents) {
+          const owner = owners.get(intent.childId)!;
+          if (
+            owner.custody !== 'local' ||
+            store.hasPendingCascadeDescendant(intent.childId, intent.terminalId)
+          )
             continue;
-          }
+          const retained = this.cascadeStopAdapters.get(intent.childId);
           try {
             const adapter =
               this.sessionAdapters.get(intent.childId) ?? retained;
@@ -14266,7 +14304,7 @@ export class OrchestrationService {
 
   /** Owned execution activity for summaries and idle parking. */
   private readonly readOwnedWork = (threadId: string) =>
-    this.options.eventStore?.ownedSessionActivity(threadId);
+    this.options.eventStore?.ownedSessionActivities([threadId]).get(threadId);
 
   /** Read-only quiescence seam for derived projections that must not race a turn. */
   hasActiveTurn(threadId: string): boolean {
@@ -14735,6 +14773,7 @@ export class OrchestrationService {
       (event.method === 'session.state-changed' &&
         event.sessionState === 'canceled') ||
       event.method === 'turn.started' ||
+      event.method === 'turn.completed' ||
       event.method === 'turn.aborted' ||
       event.method === 'session.exited'
     )

@@ -755,8 +755,12 @@ that could adopt it. See the
    A parent Session's aggregate lifecycle stays running while owned work or
    stop obligations remain live; `ownedWork.ownLifecycleState` retains its own
    fold. Another live process picks up its pending child stop through existing
-   reconciliation. Unknown custody or unconfirmed shutdown stays pending and
-   is reported for inspection. Reopening resumes recorded obligations, and
+   reconciliation, including turn completion when idle parking is disabled.
+   A terminal child with no live binding or newer admission is already settled.
+   Unknown child custody stays pending for inspection but does not prevent the
+   parent stopping itself. `ownedWork.state` and `pendingStops` distinguish
+   stopping locally, waiting on a peer, and unknown cleanup from running work.
+   Reopening resumes recorded obligations, and
    repeated delivery is harmless at the adapter. New result request IDs derive
    from the child execution Session and its terminal event. Historical stored
    delivery IDs remain stable across upgrade and retry.

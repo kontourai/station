@@ -3,8 +3,116 @@ import { DatabaseSync } from 'node:sqlite';
 import { expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { EventStore } from '../event-store.js';
+import { captureTurnIntent } from '../prepared-turn-intent.js';
+import { createSqliteSessionTurnBoundaryCoordinator } from '../sqlite-session-turn-boundary.js';
 
 const makeTempDir = trackTempDirs();
+
+test.each(['begin', 'resume'] as const)(
+  'a fence refuses an otherwise eligible prepared claim at %s',
+  (transition) => {
+    const path = join(makeTempDir('cascade-prepared-fence-'), 'events.sqlite');
+    const store = new EventStore(path);
+    const db = new DatabaseSync(path);
+    const now = '2026-01-01T00:00:00.000Z';
+    const owner = {
+      id: 'prepared-owner',
+      pid: 616161,
+      birth: 'old-birth',
+      identityKind: 'exact' as const,
+    };
+    const coordinator = createSqliteSessionTurnBoundaryCoordinator({
+      db,
+      head: () => 0,
+      reconcileTerminals() {},
+      retiredBoundaryIds: () => [],
+      transactionLost: (cause) => new Error('Lost transaction', { cause }),
+      preparedClaims: {
+        owner,
+        liveness: () => 'dead',
+        adopt: () => {
+          throw new Error('No linked dedup');
+        },
+      },
+    });
+    try {
+      for (const threadId of ['control', 'fenced']) {
+        const boundaryId = `prepared-${threadId}`;
+        const capture = captureTurnIntent(
+          { threadId, input: 'prepared work' },
+          { binding: {}, requiresFreshCompanions: false },
+        );
+        expect(
+          coordinator.create({
+            boundaryId,
+            threadId,
+            state: 'reserved',
+            ownerId: owner.id,
+            ownerPid: owner.pid,
+            ownerIdentityKind: owner.identityKind,
+            ownerBirth: owner.birth,
+            createdAt: now,
+            updatedAt: now,
+          }).kind,
+        ).toBe('applied');
+        expect(
+          coordinator.prepareIntent!({
+            boundaryId,
+            ownerId: owner.id,
+            capture,
+            now,
+          }).kind,
+        ).toBe('applied');
+        if (threadId === 'fenced') {
+          store.appendEvent({
+            eventId: 'cancel-parent',
+            threadId: 'parent',
+            sessionId: 'parent',
+            provider: 'claude',
+            method: 'session.exited',
+            reason: 'stopped',
+            createdAt: now,
+          });
+          store.recordCascadeStopIntent('parent', threadId, 'cancel-parent');
+        }
+        const result =
+          transition === 'begin'
+            ? coordinator.beginPrepared!({
+                boundaryId,
+                ownerId: owner.id,
+                capture,
+                now,
+                current: () => true,
+              })
+            : coordinator.resumePrepared!({
+                capture,
+                owner: {
+                  id: 'resumed-owner',
+                  pid: process.pid,
+                  identityKind: 'exact',
+                  birth: 'new-birth',
+                },
+                now,
+                current: () => true,
+              });
+        if (threadId === 'control') expect(result.kind).toBe('applied');
+        else {
+          expect(result.kind).not.toBe('applied');
+          expect(
+            db
+              .prepare(
+                'SELECT state FROM orchestration_turn_boundaries WHERE boundary_id = ?',
+              )
+              .get(boundaryId),
+          ).toEqual({ state: 'prepared' });
+        }
+      }
+    } finally {
+      db.close();
+      store.close();
+    }
+  },
+);
 
 test('a stale cancellation target cannot commit a request or subtree stop intents', () => {
   const store = new EventStore(

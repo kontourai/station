@@ -236,7 +236,13 @@ test('open derives the pending stop and admission fence from an unprojected lega
   const reopened = new EventStore(path);
   try {
     expect(reopened.pendingCascadeStops()).toEqual([
-      { parentId: 'parent', childId: 'child', terminalId: 'legacy-terminal' },
+      {
+        parentId: 'parent',
+        childId: 'child',
+        terminalId: 'legacy-terminal',
+        custody: 'unknown',
+        reason: 'unobserved',
+      },
     ]);
     expect(
       reopened.sessionTurnBoundaryAuthority().claim('child', at).kind,

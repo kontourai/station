@@ -256,6 +256,7 @@ export function writeTransaction<T>(
   db: TransactionalSqliteDatabase,
   savepoint: string,
   run: () => T,
+  mode: 'immediate' | 'deferred' = 'immediate',
 ): T {
   if (db.isTransaction) {
     db.exec(`SAVEPOINT ${savepoint}`);
@@ -273,7 +274,7 @@ export function writeTransaction<T>(
       throw error;
     }
   }
-  db.exec('BEGIN IMMEDIATE');
+  db.exec(mode === 'immediate' ? 'BEGIN IMMEDIATE' : 'BEGIN');
   try {
     const value = run();
     db.exec('COMMIT');

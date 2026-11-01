@@ -7,6 +7,7 @@ import type {
   OrchestrationSessionEventPage,
   OrchestrationSessionEventWindow,
   OrchestrationSessionSummary,
+  OwnedSessionActivity,
 } from '@kontourai/station-contracts/orchestration';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
@@ -77,9 +78,7 @@ interface SessionEventReadsDeps {
     threadId: string,
     provider: string | undefined,
   ) => ChildWorkSessionView | undefined;
-  readOwnedWork?: (
-    threadId: string,
-  ) => { runningChildCount: number; pendingStopCount: number } | undefined;
+  readOwnedWork?: (threadId: string) => OwnedSessionActivity | undefined;
   /** #2309: the conversation activity projection's read for a thread. */
   readConversationActivity?: (
     threadId: string,

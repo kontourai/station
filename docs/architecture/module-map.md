@@ -2200,19 +2200,26 @@ canonical exits, aborts and cancelled lifecycle transitions also derive child
 obligations. Targeted cancellation validates the committed event prefix under
 the writer lock. The request records intention; adapter terminal and settlement
 events determine execution outcomes. A fence that wins admission refuses the
-new turn inside that same writer transaction. An admitted child goes through
-its own stop path, deepest first; an unfinished deeper stop holds its ancestors.
+new turn inside that same writer transaction. Previously prepared claims also
+check the fence before begin or resume, inside their writer transaction.
+Available children stop deepest first. A pending local or peer stop holds its
+ancestors; unknown child custody never holds an ancestor's own Stop.
 
 `OrchestrationService` consumes pending stops through startup, committed-event
-observation, adapter binding and its existing idle reconciliation. A locally
-held binding delivers; a live peer requires matching process PID and birth and
-keeps its intent pending for that owner. The [process registry](../../src-server/services/infra/process-utils.ts)
-corroborates process identity, but its records do not map Sessions to engines.
-Missing, dead or unverifiable custody is retained and reported. Delivery is at
+observation (including provider turn completion), adapter binding and existing
+reconciliation, independently of idle parking. A held binding delivers locally;
+a live peer requires matching PID and birth. This process is never its own peer.
+An unbound local claim is surfaced instead of silently waiting on itself.
+The process registry has no Session-to-engine mapping and cannot authorize a
+guessed stop. Missing, dead or unverifiable child custody stays pending and is
+reported while the ancestor proceeds. Delivery is at
 least once, and adapters make repeated stops harmless. Muse serve retains its
 Session and original host when termination is unconfirmed; a retry does not
 signal a departed leader or turn its departure into confirmation. Pending cleanup also
-prevents deletion of its evidence.
+prevents deletion of its evidence. A current terminal Session with no live
+binding or newer admission has nothing left to stop: its intent completes, and
+it does not prevent parent deletion. Delivery and deletion share this rule.
+A terminal from an older execution cannot settle a newer start or admission.
 
 Open reconstructs edges through the naming index and derives stop obligations
 from retained request and terminal events. Completed, permanently fenced
@@ -2222,6 +2229,11 @@ Ownership candidate and activity reads use one SQLite snapshot. Inventory and co
 summaries report `running` while verified owned descendants run or stop
 obligations remain pending, retaining the own fold in `ownedWork`. Turn
 coordination continues to describe the parent's own turn.
+`ownedWork.pendingStops` exposes grouped custody, reason and count;
+`ownedWork.state` distinguishes `running`, `stopping`, `waiting-on-peer` and
+`unknown`. UI consumers should show these states rather than presenting pending
+cleanup as ordinary running work. Inbox/live-chat integration belongs to its
+status owner; this change exposes the wire contract without changing those views.
 Lifecycle transition validation and the completed-session send guard use the
 own fold, preserving those execution boundaries while the aggregate is busy.
 

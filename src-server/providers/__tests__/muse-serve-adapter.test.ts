@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 /**
  * #2452: the `muse serve` (MSP) path of the Muse adapter, driven by REAL
  * captures from Muse Code 1.3.0-R3401.1 (`fixtures/muse-serve-1.3.0-*.jsonl`)
@@ -28,11 +29,15 @@ import {
 } from '@kontourai/station-contracts/runtime-events';
 import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
 import { afterEach, describe, expect, test } from 'vitest';
+import { GateTestAdapter } from '../../__test-utils__/orchestration-gate-test-harness.js';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import {
   installSessionTmpDirPolicy,
   sessionTmpDirPath,
 } from '../../services/infra/session-tmpdir.js';
+import { EventBus } from '../../services/orchestration/event-bus.js';
+import { EventStore } from '../../services/orchestration/event-store.js';
+import { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
 import { ProviderTurnInProgressError } from '../adapter-shape.js';
 import {
   buildMuseServeArgs,
@@ -67,6 +72,7 @@ interface Harness {
 }
 
 const adapters: MuseAdapter[] = [];
+const makeCascadeHome = trackTempDirs();
 
 afterEach(async () => {
   for (const adapter of adapters.splice(0)) await adapter.stopAll();
@@ -74,6 +80,7 @@ afterEach(async () => {
 
 function harness(
   options: {
+    collectEvents?: boolean;
     approvalTimeoutMs?: number;
     approvalEscalationMs?: number;
     spawnHost?: (args: string[], index: number) => FakeMuseServeHost;
@@ -120,9 +127,10 @@ function harness(
     logger: { warn: () => {}, info: () => {} },
   });
   adapters.push(adapter);
-  void (async () => {
-    for await (const event of adapter.streamEvents()) events.push(event);
-  })();
+  if (options.collectEvents !== false)
+    void (async () => {
+      for await (const event of adapter.streamEvents()) events.push(event);
+    })();
   return { adapter, hosts, events, execSpawns, hostTmpDirs };
 }
 
@@ -2052,3 +2060,115 @@ describe('#2452 delta review: escalation only acts on the question it belongs to
     expect(of(h.events, 'request.opened')).toHaveLength(1);
   });
 });
+
+// Cascade owns the delivery debt; Muse must not turn an unconfirmed retry into settlement.
+test.each(['live', 'departed'] as const)(
+  'cascade keeps an unconfirmed Muse child pending across repeated delivery: %s leader',
+  async (leader) => {
+    let unconfirmed = true;
+    let attempts = 0;
+    const h = harness({
+      collectEvents: false,
+      terminateHost: async (host) => {
+        attempts++;
+        if (unconfirmed)
+          throw new Error('Injected unconfirmed host termination');
+        host.exit(0);
+      },
+      spawnHost: (args) => {
+        const host = new FakeMuseServeHost(args);
+        host.stdin.end = () => {
+          host.stdinEnded = true;
+        };
+        return host;
+      },
+    });
+    const host = await upToFirstDecide(h);
+    const store = new EventStore(
+      join(makeCascadeHome('cascade-muse-'), 'events.sqlite'),
+    );
+    const parent = new GateTestAdapter();
+    const service = new OrchestrationService({
+      eventStore: store,
+      eventBus: new EventBus(),
+      idleSessionParkAfterMs: 0,
+      adapterRegistry: {
+        register() {},
+        list: () => [parent, h.adapter],
+        get: (provider) =>
+          provider === 'muse'
+            ? h.adapter
+            : provider === 'claude'
+              ? parent
+              : undefined,
+      },
+      logger: { debug() {}, warn() {} },
+    });
+    try {
+      for (const id of ['parent', THREAD])
+        store.appendEvent({
+          eventId: `${id}:start`,
+          threadId: id,
+          sessionId: id,
+          provider: id === THREAD ? 'muse' : 'claude',
+          method: 'session.started',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          metadata:
+            id === THREAD
+              ? {
+                  stationDelegationProvenance: 'caller-derived',
+                  delegation: {
+                    parentSessionId: 'parent',
+                    parentConversationId: 'parent',
+                  },
+                }
+              : {},
+        });
+      service.initialize();
+      await service.whenSessionRecoveryCompleted();
+      service.seedSessionRecord({
+        threadId: THREAD,
+        provider: 'muse',
+        status: 'running',
+      });
+      store.appendEvent({
+        eventId: 'parent:end',
+        threadId: 'parent',
+        sessionId: 'parent',
+        provider: 'claude',
+        method: 'session.exited',
+        reason: 'stopped',
+        createdAt: '2026-01-01T00:00:01.000Z',
+      });
+      await service.sweepIdleSessions();
+      expect(store.pendingCascadeStops()).toEqual([
+        expect.objectContaining({ childId: THREAD }),
+      ]);
+      const before = attempts;
+      if (leader === 'departed') host.exit(0);
+      await service.sweepIdleSessions();
+      expect(store.pendingCascadeStops()).toEqual([
+        expect.objectContaining({ childId: THREAD }),
+      ]);
+      expect(await h.adapter.hasSession(THREAD)).toBe(true);
+      expect(
+        store.latestEventByMethod(THREAD, 'session.exited'),
+      ).toBeUndefined();
+      if (leader === 'departed') expect(attempts).toBe(before);
+      else {
+        unconfirmed = false;
+        await service.sweepIdleSessions();
+        expect(store.pendingCascadeStops()).toEqual([]);
+      }
+    } finally {
+      unconfirmed = false;
+      if (leader === 'departed') {
+        await expect(service.shutdown()).rejects.toThrow(
+          'Provider adapter shutdown failed',
+        );
+        adapters.splice(adapters.indexOf(h.adapter), 1);
+      } else await service.shutdown();
+      store.close();
+    }
+  },
+);

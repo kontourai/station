@@ -586,44 +586,6 @@ export function forgetOwnedProcess(
   rmSync(recordFilePath(registryDir, enginePid), { force: true });
 }
 
-/** Registry evidence corroborates a process owner, never a Session-to-engine mapping. */
-export function ownedProcessEvidenceFor(owner: {
-  pid: number;
-  birth?: string;
-}): number[] | null {
-  const registryDir = ownedProcessRegistryDir();
-  if (!registryDirIsTrustworthy(registryDir, () => {})) return null;
-  try {
-    return readdirSync(registryDir).flatMap((entry) => {
-      if (!/^engine-\d+\.json$/.test(entry)) return [];
-      const record: unknown = JSON.parse(
-        readFileSync(join(registryDir, entry), 'utf8'),
-      );
-      if (
-        !record ||
-        typeof record !== 'object' ||
-        !('schemaVersion' in record) ||
-        record.schemaVersion !== 1 ||
-        !('enginePid' in record) ||
-        !isKillableEnginePid(record.enginePid) ||
-        !('owner' in record) ||
-        !record.owner ||
-        typeof record.owner !== 'object' ||
-        !('pid' in record.owner) ||
-        !('birth' in record.owner)
-      )
-        return [];
-      return owner.birth &&
-        record.owner.pid === owner.pid &&
-        record.owner.birth === owner.birth
-        ? [record.enginePid]
-        : [];
-    });
-  } catch {
-    return null;
-  }
-}
-
 /**
  * A `probeExactProcessIdentity`-shaped function. Extracted as a type alias so
  * the sweep can accept a test seam (archive#1863 fix round 3) without changing

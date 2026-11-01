@@ -1,3 +1,4 @@
+import type { KernelCommand } from '@kontourai/monument';
 import type { InterruptTurnResult } from '@kontourai/station-contracts/orchestration';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { z } from 'zod';
@@ -5,7 +6,12 @@ import {
   type TransactionalSqliteDatabase,
   writeTransaction,
 } from './delegation-result-delivery.js';
-import { ownedDescendantsBottomUp } from './ownership-tree.js';
+import {
+  CASCADE_TRIGGER_METHODS,
+  cascadeTriggerSql,
+  ownedDescendantsBottomUp,
+  SESSION_ACTIVITY_METHODS,
+} from './ownership-tree.js';
 import {
   ACTIVE_TURN_FOLD_METHODS,
   interruptibleTurnIdForEvents,
@@ -75,8 +81,6 @@ export function readCascadeInterruptResult(
     );
   if (!row) return undefined;
   const result = interruptResult.parse(JSON.parse(row.result_json));
-  if (result.threadId !== childId)
-    throw new Error('Cascade interruption result has a different target.');
   return result;
 }
 
@@ -113,36 +117,36 @@ export function recordCascadeStopIntent(
   childId: string,
   terminalId: string,
 ): boolean {
-  return writeTransaction(db, 'cascade_stop_intent', () => {
-    // A nested caller may have opened a deferred transaction; take its writer
-    // reservation before reading any authority or admission state.
-    db.prepare(
-      'UPDATE orchestration_stream_identity SET high_water = high_water WHERE singleton = 1',
-    ).run();
-    const terminal = db
-      .prepare(
-        "SELECT 1 FROM orchestration_events WHERE id = ? AND thread_id = ? AND (method IN ('session.exited', 'turn.aborted', 'session.cancellation-requested') OR (method = 'session.state-changed' AND session_state = 'canceled'))",
-      )
-      .get(terminalId, parentId);
-    if (!terminal) throw new Error('Cascade parent terminal is unavailable.');
-    const existing = db
-      .prepare(
-        'SELECT parent_session_id, state FROM orchestration_cascade_stop_intents WHERE child_session_id = ? AND terminal_event_id = ?',
-      )
-      .get(childId, terminalId) as
-      | { parent_session_id: string; state: string }
-      | undefined;
-    if (existing && existing.parent_session_id !== parentId)
-      throw new Error('Cascade intent parent conflict.');
-    db.prepare(
-      'INSERT OR IGNORE INTO orchestration_cascade_stop_intents VALUES (?, ?, ?, ?)',
-    ).run(parentId, childId, terminalId, 'pending');
-    if (parentId === childId && existing?.state === 'completed') return false;
-    db.prepare(
-      'INSERT OR IGNORE INTO orchestration_cancellation_fences VALUES (?, ?)',
-    ).run(childId, terminalId);
-    return existing === undefined;
-  });
+  return writeTransaction(
+    db,
+    'cascade_stop_intent',
+    () => {
+      const terminal = db
+        .prepare(
+          `SELECT 1 FROM orchestration_events e WHERE id = ? AND thread_id = ? AND ${cascadeTriggerSql('e')}`,
+        )
+        .get(terminalId, parentId);
+      if (!terminal) throw new Error('Cascade parent terminal is unavailable.');
+      const existing = db
+        .prepare(
+          'SELECT parent_session_id, state FROM orchestration_cascade_stop_intents WHERE child_session_id = ? AND terminal_event_id = ?',
+        )
+        .get(childId, terminalId) as
+        | { parent_session_id: string; state: string }
+        | undefined;
+      if (existing && existing.parent_session_id !== parentId)
+        throw new Error('Cascade intent parent conflict.');
+      db.prepare(
+        'INSERT OR IGNORE INTO orchestration_cascade_stop_intents VALUES (?, ?, ?, ?)',
+      ).run(parentId, childId, terminalId, 'pending');
+      if (parentId === childId && existing?.state === 'completed') return false;
+      db.prepare(
+        'INSERT OR IGNORE INTO orchestration_cancellation_fences VALUES (?, ?)',
+      ).run(childId, terminalId);
+      return existing === undefined;
+    },
+    'immediate',
+  );
 }
 
 export function deriveCascadeStopIntents(
@@ -155,6 +159,7 @@ export function deriveCascadeStopIntents(
     turnId?: string;
   },
   sequence: number,
+  settled: (childId: string) => boolean,
 ): void {
   const requested = event.method === 'session.cancellation-requested';
   if (requested && event.turnId) {
@@ -177,9 +182,7 @@ export function deriveCascadeStopIntents(
       );
   }
   if (
-    !requested &&
-    event.method !== 'session.exited' &&
-    event.method !== 'turn.aborted' &&
+    !CASCADE_TRIGGER_METHODS.includes(event.method) &&
     !(
       event.method === 'session.state-changed' &&
       event.sessionState === 'canceled'
@@ -194,34 +197,95 @@ export function deriveCascadeStopIntents(
       .prepare(`SELECT 1 FROM orchestration_events r WHERE r.thread_id = ?
     AND r.method = 'session.cancellation-requested' AND r.global_sequence < ?
     AND r.global_sequence > COALESCE((SELECT MAX(global_sequence) FROM orchestration_events
-      WHERE thread_id = r.thread_id AND global_sequence < ? AND method IN ('turn.started', 'session.started')), 0) LIMIT 1`)
+      WHERE thread_id = r.thread_id AND global_sequence < ? AND method IN (${SESSION_ACTIVITY_METHODS.map((method) => `'${method}'`).join(', ')})), 0) LIMIT 1`)
       .get(event.threadId, sequence, sequence)
   )
     return;
   const descendants = ownedDescendantsBottomUp(db, event.threadId, sequence);
   for (const childId of descendants)
-    if (!isCascadeStopSettled(db, childId))
+    if (!settled(childId))
       recordCascadeStopIntent(db, event.threadId, childId, event.eventId);
   if (requested)
     recordCascadeStopIntent(db, event.threadId, event.threadId, event.eventId);
 }
 
-/** A retained cancellation fence keeps a confirmed stopped child outside new turn admission. */
-export function isCascadeStopSettled(
+const cascadeFactsRows = z.array(
+  z.object({
+    child_id: z.string(),
+    confirmed_stop: z.number(),
+    terminal: z.number(),
+    active: z.number(),
+    owner_json: z.string().nullable(),
+  }),
+);
+const boundaryOwner = z.object({
+  id: z.string(),
+  pid: z.number(),
+  birth: z.string().nullable(),
+  identityKind: z.string(),
+});
+export interface CascadeSessionFacts {
+  childId: string;
+  confirmedStop: boolean;
+  terminal: boolean;
+  active: boolean;
+  owner?: z.infer<typeof boundaryOwner>;
+}
+
+export function readCascadeSessionFacts(
   db: SqliteDatabase,
-  childId: string,
+  childIds: readonly string[],
+): Map<string, CascadeSessionFacts> {
+  const result = new Map<string, CascadeSessionFacts>();
+  const unique = [...new Set(childIds)];
+  for (let offset = 0; offset < unique.length; offset += 500) {
+    const chunk = unique.slice(offset, offset + 500);
+    const rows = cascadeFactsRows.parse(
+      db
+        .prepare(`WITH requested(child_id) AS (VALUES ${chunk.map(() => '(?)').join(', ')})
+      SELECT r.child_id,
+        EXISTS (SELECT 1 FROM orchestration_cascade_stop_intents i
+          JOIN orchestration_cancellation_fences f ON f.thread_id = i.child_session_id AND f.terminal_event_id = i.terminal_event_id
+          WHERE i.child_session_id = r.child_id AND i.state = 'completed') AS confirmed_stop,
+        EXISTS (SELECT 1 FROM orchestration_events e WHERE e.thread_id = r.child_id AND (e.method = 'session.exited' OR EXISTS (SELECT 1 FROM orchestration_cascade_stop_intents done WHERE done.child_session_id = r.child_id AND done.terminal_event_id = e.id AND done.state = 'completed'))
+          AND e.global_sequence > MAX(
+            COALESCE((SELECT MAX(global_sequence) FROM orchestration_events WHERE thread_id = r.child_id AND method IN (${SESSION_ACTIVITY_METHODS.map((method) => `'${method}'`).join(', ')})), 0),
+            COALESCE(b.created_sequence, 0),
+            COALESCE((SELECT created_head FROM orchestration_ownership_starts WHERE child_session_id = r.child_id), 0)
+          )) AS terminal,
+        (s.status = 'running' OR b.state IN ('prepared', 'invoking', 'accepted', 'indeterminate')
+          OR EXISTS (SELECT 1 FROM orchestration_ownership_starts WHERE child_session_id = r.child_id)) IS TRUE AS active,
+        CASE WHEN b.boundary_id IS NULL THEN NULL ELSE json_object('id', b.owner_id, 'pid', b.owner_pid,
+          'birth', b.owner_birth, 'identityKind', b.owner_identity_kind) END AS owner_json
+      FROM requested r LEFT JOIN orchestration_turn_boundaries b ON b.thread_id = r.child_id
+      LEFT JOIN provider_session_state s ON s.thread_id = r.child_id`)
+        .all(...chunk),
+    );
+    for (const row of rows)
+      result.set(row.child_id, {
+        childId: row.child_id,
+        confirmedStop: Boolean(row.confirmed_stop),
+        terminal: Boolean(row.terminal),
+        active: Boolean(row.active),
+        ...(row.owner_json === null
+          ? {}
+          : { owner: boundaryOwner.parse(JSON.parse(row.owner_json)) }),
+      });
+  }
+  return result;
+}
+
+/** A current terminal ends its old owner claim; a held binding still requires teardown. */
+export function isCascadeStopSettled(
+  facts: CascadeSessionFacts,
+  locallyHeld: boolean,
 ): boolean {
-  return Boolean(
-    db
-      .prepare(`SELECT 1 FROM orchestration_cascade_stop_intents i
-    JOIN orchestration_cancellation_fences f ON f.thread_id = i.child_session_id AND f.terminal_event_id = i.terminal_event_id
-    WHERE i.child_session_id = ? AND i.state = 'completed' LIMIT 1`)
-      .get(childId),
-  );
+  return facts.confirmedStop || (facts.terminal && !locallyHeld);
 }
 
 export function backfillCascadeStopIntents(
   db: TransactionalSqliteDatabase,
+  settled: (childId: string) => boolean,
 ): void {
   writeTransaction(db, 'cascade_recovery', () => {
     const rows = z
@@ -238,9 +302,8 @@ export function backfillCascadeStopIntents(
       .parse(
         db
           .prepare(`
-      SELECT id, thread_id, method, global_sequence, session_state, turn_id FROM orchestration_events
-      WHERE method IN ('session.exited', 'turn.aborted', 'session.cancellation-requested')
-        OR (method = 'session.state-changed' AND session_state = 'canceled') ORDER BY global_sequence`)
+      SELECT id, thread_id, method, global_sequence, session_state, turn_id FROM orchestration_events e
+      WHERE ${cascadeTriggerSql('e')} ORDER BY global_sequence`)
           .all(),
       );
     for (const row of rows)
@@ -254,6 +317,7 @@ export function backfillCascadeStopIntents(
           ...(row.turn_id ? { turnId: row.turn_id } : {}),
         },
         row.global_sequence,
+        settled,
       );
   });
 }
@@ -269,5 +333,37 @@ export function isCancellationFenced(
         'SELECT 1 FROM orchestration_cancellation_fences WHERE thread_id = ? LIMIT 1',
       )
       .get(threadId),
+  );
+}
+
+export function isCancellationAdmissionBlocked(
+  db: SqliteDatabase,
+  command: KernelCommand,
+): boolean {
+  if (command.type === 'turnBoundary.create')
+    return (
+      command.state !== 'lifecycle' &&
+      isCancellationFenced(db, command.threadId)
+    );
+  if (
+    command.type !== 'turnBoundary.beginInvocation' &&
+    command.type !== 'turnBoundary.resumePrepared' &&
+    !(command.type === 'turnBoundary.transition' && command.to === 'invoking')
+  )
+    return false;
+  const row = z
+    .object({ thread_id: z.string(), state: z.string() })
+    .optional()
+    .parse(
+      db
+        .prepare(
+          'SELECT thread_id, state FROM orchestration_turn_boundaries WHERE boundary_id = ?',
+        )
+        .get(command.boundaryId),
+    );
+  return (
+    row !== undefined &&
+    row.state !== 'lifecycle' &&
+    isCancellationFenced(db, row.thread_id)
   );
 }

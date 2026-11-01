@@ -926,9 +926,9 @@ export class MuseServeSession {
   private handleHostClose(epoch: number, info: MuseServeCloseInfo): void {
     const host = this.host;
     if (!host || host.epoch !== epoch) return;
-    if (host.closing || this.stopped) return;
     this.host = undefined;
     host.spawned.release?.();
+    if (host.closing || this.stopped) return;
     const stderr = redactSecrets(info.stderrTail.trim());
     const message = `Muse's host process exited${
       info.code === null ? '' : ` with code ${info.code}`

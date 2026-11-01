@@ -171,11 +171,14 @@ test.each(['idle', 'completed'] as const)(
         limit: 5,
         authority: INTERNAL_SESSION_READ_SCOPE,
       });
-      return [
-        detail?.session.lifecycleState,
-        listed?.lifecycleState,
-        page?.session.lifecycleState,
-      ];
+      return {
+        lifecycle: [
+          detail?.session.lifecycleState,
+          listed?.lifecycleState,
+          page?.session.lifecycleState,
+        ],
+        ownedState: detail?.session.ownedWork?.state,
+      };
     };
     try {
       service.initialize();
@@ -222,7 +225,10 @@ test.each(['idle', 'completed'] as const)(
         finishReason: 'stop',
         createdAt: '2026-01-01T00:00:01.000Z',
       });
-      expect(await readStates()).toEqual(['running', 'running', 'running']);
+      expect(await readStates()).toEqual({
+        lifecycle: ['running', 'running', 'running'],
+        ownedState: 'running',
+      });
       if (ownState === 'completed') {
         await service.sessionLifecycles.transition({
           threadId: 'parent',
@@ -254,11 +260,17 @@ test.each(['idle', 'completed'] as const)(
       stop = service.dispatch({ type: 'stopSession', threadId: 'parent' });
       await stoppingChild;
       expect(running.has('child')).toBe(true);
-      expect(await readStates()).toEqual(['running', 'running', 'running']);
+      expect(await readStates()).toEqual({
+        lifecycle: ['running', 'running', 'running'],
+        ownedState: 'stopping',
+      });
       release();
       await stop;
       expect(running.has('child')).toBe(false);
-      expect(await readStates()).toEqual([ownState, ownState, ownState]);
+      expect(await readStates()).toEqual({
+        lifecycle: [ownState, ownState, ownState],
+        ownedState: undefined,
+      });
     } finally {
       release();
       await stop;

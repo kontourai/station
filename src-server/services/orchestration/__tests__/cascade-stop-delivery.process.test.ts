@@ -1,6 +1,7 @@
 import { type ChildProcess, spawn } from 'node:child_process';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import { expect, test, vi } from 'vitest';
 import {
   executeOwnedProcess,
@@ -32,7 +33,7 @@ let effects = 0;
 adapter.stopSession = async () => { stops++; effects = 1; };
 adapter.hasSession = async () => effects === 0;
 const service = new OrchestrationService({ adapterRegistry: createGateTestRegistry(adapter),
-  eventStore: store, eventBus: new EventBus(), logger: { debug() {}, warn() {} } });
+  eventStore: store, eventBus: new EventBus(), idleSessionParkAfterMs: 0, logger: { debug() {}, warn() {} } });
 service.initialize();
 await service.whenSessionRecoveryCompleted();
 service.seedSessionRecord({ threadId: 'child', provider: 'claude', status: 'running' });
@@ -43,9 +44,13 @@ const admission = store.sessionTurnBoundaryAuthority().claim('child', '2026-01-0
 if (admission.kind !== 'owner') throw new Error('No child admission');
 admission.claim.beginInvocation('2026-01-01T00:00:00.000Z');
 admission.claim.accepted('child-turn', '2026-01-01T00:00:00.000Z');
-process.on('message', async () => {
+store.appendEvent({ eventId: 'child-turn-started', provider: 'claude', threadId: 'child', method: 'turn.started', turnId: 'child-turn', createdAt: '2026-01-01T00:00:00.000Z' });
+process.on('message', async (command) => {
   try {
-    await service.sweepIdleSessions();
+    if (command === 'complete') {
+      adapter.events.push({ eventId: 'child-turn-completed', provider: 'claude', threadId: 'child', method: 'turn.completed', turnId: 'child-turn', finishReason: 'stop', createdAt: '2026-01-01T00:00:02.000Z' });
+      await new Promise(resolve => setImmediate(resolve));
+    } else await service.sweepIdleSessions();
     process.send({ stops, effects, pending: store.pendingCascadeStops().length });
   } catch (error) { process.send({ error: String(error) }); }
 });
@@ -77,6 +82,7 @@ function message(child: ChildProcess): Promise<unknown> {
 
 test.each([
   'normal',
+  'parking-disabled-terminal-pickup',
   'requester-crash-before-delivery',
   'reopen-after-delivery-before-ack',
 ] as const)(
@@ -87,6 +93,13 @@ test.each([
   async (mode) => {
     const path = join(makeTempDir('cascade-peer-'), 'events.sqlite');
     const seed = new EventStore(path);
+    seed.upsertSession({
+      threadId: 'parent',
+      provider: 'claude',
+      status: 'closed',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    });
     seed.appendEvent({
       eventId: 'parent-started',
       threadId: 'parent',
@@ -169,6 +182,13 @@ test.each([
       } finally {
         db.close();
       }
+      expect(
+        (await service.readSession('parent', INTERNAL_SESSION_READ_SCOPE))
+          ?.session.ownedWork,
+      ).toMatchObject({
+        state: 'waiting-on-peer',
+        pendingStops: [expect.objectContaining({ custody: 'peer', count: 1 })],
+      });
       const delivered = message(execution.child);
       if (mode === 'reopen-after-delivery-before-ack') {
         const fault = new DatabaseSync(path);
@@ -177,7 +197,9 @@ test.each([
         );
         fault.close();
       }
-      execution.child.send('reconcile');
+      execution.child.send(
+        mode === 'parking-disabled-terminal-pickup' ? 'complete' : 'reconcile',
+      );
       expect(await delivered).toEqual({
         stops: 1,
         effects: 1,

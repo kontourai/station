@@ -737,13 +737,11 @@ async function terminateMuseServeHost(
   const processHandle = spawned.process;
   if (processHandle.exitCode === null && processHandle.signalCode === null) {
     await new Promise<void>((resolve) => {
-      const exited = () => {
+      const timer = setTimeout(resolve, 2_000);
+      processHandle.once('exit', () => {
         clearTimeout(timer);
-        processHandle.removeListener('exit', exited);
         resolve();
-      };
-      const timer = setTimeout(exited, 2_000);
-      processHandle.once('exit', exited);
+      });
     });
   }
   await terminateProcessTree(processHandle, {

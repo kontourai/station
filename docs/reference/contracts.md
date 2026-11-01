@@ -51,7 +51,11 @@ subtree from its parent's cascade. See [Session lifecycle](../architecture/modul
 with the requested turn when one is known. Adapter terminal and settlement
 events carry the execution outcome. `OrchestrationSessionSummary.ownedWork`
 reports `runningChildCount`, `pendingStopCount` and `ownLifecycleState` while
-aggregate owned work keeps the parent running. The counts cover verified,
+aggregate owned work keeps the parent busy. `pendingStops` groups pending
+custody (`local`, `peer`, `unknown`), reason and count without exposing child IDs.
+`state` is `running`, `stopping`, `waiting-on-peer` or `unknown`; status views
+should prefer it when cleanup is pending. Unknown cleanup stays visible after
+an ancestor's own Stop completes. The counts cover verified,
 non-background descendants and pending stop obligations.
 
 New delegated-result request IDs are `dr-` followed by the first 40 hexadecimal
