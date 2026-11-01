@@ -1,0 +1,9 @@
+{
+  "revision": "0064df077bad83cfde0ae3248fba306cfc2d0695",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"ProjectLayoutRenderer.tsx now passes its project slug to useDockedCodingTerminal, which reads the dock binding as chatDockProjectSlug else the route's Project (useDockProject's rule) instead of running useDockProject's project queries. The added lower-panel sentence still holds; checked against the hook and its new test.","inputs":["docs/design/placement.md","src-ui/src/app-shell/ProjectLayoutRenderer.tsx"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"ProjectLayoutRenderer.tsx only changed the argument it passes to useDockedCodingTerminal (project slug); the settings claims cited from it are unchanged. No prose change.","inputs":["docs/design/settings-architecture.md","src-ui/src/app-shell/ProjectLayoutRenderer.tsx"]}
+  ]
+}

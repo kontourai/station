@@ -107,7 +107,8 @@ async function fixture(extraConnections: ACPConnectionConfig[] = []) {
     homeDir: join(root, 'security-home'),
   });
   const operator = await security.initialize();
-  const pair = (name: string) => {
+  /** `hostBrowser`: minted as the sign-in link mints a same-machine browser. */
+  const pair = (name: string, hostBrowser = false) => {
     const offer = security.devicePairing.createOffer({
       endpoint: 'https://station.example.test',
       scope: pairingScopePresetString('standard'),
@@ -118,13 +119,18 @@ async function fixture(extraConnections: ACPConnectionConfig[] = []) {
       proof: offer.challenge,
       deviceName: name,
     });
-    security.devicePairing.confirmRequest(requested.requestId, {
-      kind: 'presented-credential',
-    });
+    security.devicePairing.confirmRequest(
+      requested.requestId,
+      hostBrowser ? { kind: 'ui-bootstrap' } : { kind: 'presented-credential' },
+    );
     return security.devicePairing.exchange({
       offerId: offer.offerId,
       proof: offer.challenge,
       requestId: requested.requestId,
+      ...(hostBrowser && {
+        locality: 'home-possession' as const,
+        mintKind: 'ui-bootstrap' as const,
+      }),
     });
   };
   const grant = (
@@ -336,6 +342,38 @@ describe.runIf(posix)('engine sign-in route authority', () => {
     const f = await fixture();
     const res = await f.call(f.operator.credential, 'GET', 'pi/sign-in');
     expect(res.body.data.allowed).toEqual({ signIn: true, terminal: true });
+  });
+
+  test("the operator's own browser on this computer signs in as its view says it may", async () => {
+    const f = await fixture();
+    const browser = f.pair('This computer', true);
+    const view = await f.call(browser.credential, 'GET', 'droid/sign-in');
+    expect(view.body.data.allowed.signIn).toBe(true);
+
+    const idle = await f.call(
+      browser.credential,
+      'GET',
+      'droid/sign-in/attempt',
+    );
+    expect(idle.status).toBe(200);
+    expect(idle.body.data).toBeNull();
+    const start = await f.call(
+      browser.credential,
+      'POST',
+      'droid/sign-in/start',
+      {
+        methodId: 'device-pairing',
+      },
+    );
+    expect(start.status).toBe(200);
+    expect(start.body.data).toMatchObject({ kind: 'agent' });
+    const key = await f.call(
+      browser.credential,
+      'PUT',
+      'droid/credentials/FACTORY_API_KEY',
+      { value: SECRET },
+    );
+    expect(key.status).toBe(200);
   });
 });
 
