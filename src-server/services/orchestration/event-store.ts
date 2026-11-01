@@ -2570,7 +2570,8 @@ export class EventStore {
     ReturnType<EventStore['db']['prepare']>
   >();
 
-  private readonly cachesDisabled = process.env.STATION_DISABLE_EVENT_STORE_CACHES === '1';
+  private readonly cachesDisabled =
+    process.env.STATION_DISABLE_EVENT_STORE_CACHES === '1';
 
   private readStatement(sql: string) {
     if (this.cachesDisabled) return this.db.prepare(sql);
@@ -3486,7 +3487,9 @@ export class EventStore {
         WHERE thread_id = ? AND sequence = ?`,
     ).get(threadId, highWater) as { global_sequence?: number } | undefined;
     const key = `${threadId}\u0000${highWater}\u0000${head?.global_sequence ?? 'none'}`;
-    const cached = this.cachesDisabled ? undefined : this.standingUnresolvedCache.get(key);
+    const cached = this.cachesDisabled
+      ? undefined
+      : this.standingUnresolvedCache.get(key);
     if (cached) {
       this.standingUnresolvedCache.delete(key);
       this.standingUnresolvedCache.set(key, cached);
@@ -5071,7 +5074,8 @@ export class EventStore {
         this.db.exec('RELEASE SAVEPOINT append_event_history');
         replayedSequence = Number(existing.sequence);
       } else {
-        const highWaterSql = 'UPDATE orchestration_stream_identity SET high_water = ? WHERE singleton = 1';
+        const highWaterSql =
+          'UPDATE orchestration_stream_identity SET high_water = ? WHERE singleton = 1';
         const highWaterUpdate = this.cachesDisabled
           ? this.db.prepare(highWaterSql)
           : (this.appendEventHighWaterUpdate ??= this.db.prepare(highWaterSql));
