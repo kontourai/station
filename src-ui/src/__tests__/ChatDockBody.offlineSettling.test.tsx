@@ -311,13 +311,13 @@ describe('the outbox facts the pending list reads', () => {
       heldElsewhere: true as const,
       heldByClosedWindow: true as const,
     };
-    const running = {
+    const running: ChatSession = {
       ...session(0),
-      status: 'running',
+      status: 'sending',
       orchestrationTurnOpen: true,
       queuedMessages: [],
       outboundQueuedTurns: [closed],
-    } as ChatSession;
+    };
     try {
       outboxProps.mockClear();
       updateChatSpy.mockClear();
