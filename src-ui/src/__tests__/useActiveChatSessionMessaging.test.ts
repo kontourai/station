@@ -3239,7 +3239,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     );
   });
 
-  it.each(['claude', 'codex'] as const)(
+  it.each(['claude', 'codex', 'station-agent'] as const)(
     'hands a %s steer to the server inbox with a durable claim',
     async (provider) => {
       enableSteerOutbox();

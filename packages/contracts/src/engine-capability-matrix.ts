@@ -380,6 +380,12 @@ export const ACP_ENGINE_DURABILITY: ProviderDurabilityProfile = {
 
 export const STATION_ENGINE_DURABILITY: ProviderDurabilityProfile = {
   ...EXTERNAL_ENGINE_DURABILITY,
+  steerPlacement: {
+    state: 'emulated',
+    boundary: 'station-observed',
+    detail:
+      'Held until Station observes a post-tool boundary, otherwise the next turn boundary.',
+  },
   compaction: {
     state: 'none',
     owner: 'station',
@@ -397,6 +403,24 @@ export const STATION_ENGINE_DURABILITY: ProviderDurabilityProfile = {
       'A new conversation receives replayed history rather than a native fork.',
   },
 };
+
+/** Provider wire identities resolve to their declared profile; this table owns the alias. */
+export function resolveProviderDurabilityProfile(
+  provider: string,
+): ProviderDurabilityProfile {
+  const profiles: Readonly<Record<string, ProviderDurabilityProfile>> = {
+    'station-agent': STATION_ENGINE_DURABILITY,
+    claude: STEERING_ENGINE_DURABILITY,
+    codex: STEERING_ENGINE_DURABILITY,
+    acp: ACP_ENGINE_DURABILITY,
+    muse: EXTERNAL_ENGINE_DURABILITY,
+    bedrock: EXTERNAL_ENGINE_DURABILITY,
+    ollama: EXTERNAL_ENGINE_DURABILITY,
+  };
+  return Object.hasOwn(profiles, provider)
+    ? profiles[provider]
+    : UNKNOWN_ENGINE_DURABILITY;
+}
 
 export const UNKNOWN_ENGINE_DURABILITY: ProviderDurabilityProfile = {
   ...EXTERNAL_ENGINE_DURABILITY,

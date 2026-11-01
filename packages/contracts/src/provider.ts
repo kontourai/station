@@ -46,7 +46,9 @@ export interface DurabilityCapability {
 
 /** Every capability is explicit; an omitted cell is an invalid declaration. */
 export interface ProviderDurabilityProfile {
-  steerPlacement: DurabilityCapability;
+  steerPlacement: DurabilityCapability & {
+    boundary?: 'engine-defined' | 'station-observed';
+  };
   crashContinuation: DurabilityCapability;
   toolReplay: DurabilityCapability;
   pendingApprovals: DurabilityCapability;

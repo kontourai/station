@@ -92,6 +92,7 @@ import {
 } from '@kontourai/station-contracts/provider';
 import { SESSION_ENDED_REJECTION_CODE } from '@kontourai/station-contracts/session-lifecycle';
 import { ClientTurnInputConflictError } from '../../providers/adapter-shape.js';
+import { registerPostToolInbox } from './post-tool-inbox.js';
 import {
   activeTurnIdForEvents,
   turnIdentityAnchorForEvents,
@@ -811,6 +812,7 @@ export class ThreadInboxDelivery {
   private readonly startsInProgress = new Map<string, Set<string>>();
   private unsubscribe: (() => void) | undefined;
   private stopped = false;
+  private unregisterPostTool: (() => void) | undefined;
 
   constructor(private readonly ports: ThreadInboxDeliveryPorts) {}
 
@@ -825,6 +827,19 @@ export class ThreadInboxDelivery {
 
   /** Follow persisted events from now on. */
   start(): void {
+    this.unregisterPostTool ??= registerPostToolInbox({
+      owns: (threadId, turnId) => {
+        const inbox = this.inboxOf(threadId);
+        return (
+          this.ports.currentSessionId(inbox) === threadId &&
+          activeTurnIdForEvents(
+            this.ports.foldEvents(threadId).map(({ event }) => event),
+          ) === turnId
+        );
+      },
+      deliver: (threadId, turnId, inject) =>
+        this.deliverPostTool(threadId, turnId, inject),
+    });
     this.unsubscribe ??= this.ports.subscribe(({ threadId, method }) => {
       if (!TRIGGER_METHODS.has(method)) return;
       try {
@@ -839,11 +854,74 @@ export class ThreadInboxDelivery {
 
   stop(): void {
     this.stopped = true;
+    this.unregisterPostTool?.();
+    this.unregisterPostTool = undefined;
     this.unsubscribe?.();
     this.unsubscribe = undefined;
     for (const { timer } of this.retries.values())
       if (timer) clearTimeout(timer);
     this.retries.clear();
+  }
+
+  private deliverPostTool(
+    threadId: string,
+    turnId: string,
+    inject: (text: string) => void,
+  ): void {
+    const conversationId = this.inboxOf(threadId);
+    for (;;) {
+      const head = inboxHead(this.ports.store.list(conversationId));
+      if (this.stopped || head?.kind !== 'steer' || head.state !== 'queued')
+        return;
+      const claimed = this.ports.store.claimNext(
+        conversationId,
+        JSON.stringify({ threadId, turnId, boundary: 'post-tool' }),
+        this.now(),
+      );
+      if (claimed.kind !== 'claimed') return;
+      const payload = decodePayload(claimed.entry.payload);
+      const refusal = payload
+        ? this.refusalFor(conversationId, payload, claimed.entry.createdAt)
+        : {
+            reasonCode: 'unreadable_entry',
+            reason: 'Station could not read this steer.',
+          };
+      if (refusal || !payload) {
+        this.ports.store.settle(claimed.entry, 'refused', refusal!, this.now());
+        continue;
+      }
+      try {
+        const policy = this.ports.placementRefusal?.({
+          conversationId,
+          clientTurnId: head.key,
+          payload,
+          queuedAt: head.createdAt,
+        });
+        if (policy) {
+          this.ports.store.settle(claimed.entry, 'refused', policy, this.now());
+          continue;
+        }
+        inject(payload.message);
+        this.ports.store.settle(
+          claimed.entry,
+          'placed',
+          { sessionId: threadId, turnId },
+          this.now(),
+        );
+      } catch (error) {
+        this.ports.logger.warn('post-tool steer handoff is unknown', {
+          conversationId,
+          error: errorText(error),
+        });
+        this.ports.store.settle(
+          claimed.entry,
+          'unconfirmed',
+          { reasonCode: 'may_have_been_sent' },
+          this.now(),
+        );
+        return;
+      }
+    }
   }
 
   /** Every drive in flight has finished (tests and orderly shutdown). */

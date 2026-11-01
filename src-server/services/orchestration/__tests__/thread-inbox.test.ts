@@ -13,6 +13,7 @@
 import { appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import type { LanguageModelV3StreamPart } from '@ai-sdk/provider';
 import { coordinatorWakeClientTurnId } from '@kontourai/station-contracts/coordinator';
 import {
   EXTERNAL_ENGINE_DURABILITY,
@@ -20,6 +21,8 @@ import {
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
+import { simulateReadableStream } from 'ai';
+import { MockLanguageModelV3 } from 'ai/test';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { GateTestAdapter } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -30,6 +33,8 @@ import type {
   ProviderTurnStartResult,
 } from '../../../providers/adapter-shape.js';
 import { isForegroundIndeterminateShape } from '../../../routes/orchestration/orchestration.js';
+import { runWithAuthorizedTurnCorrelation } from '../../../runtime/conversation/authorized-turn-correlation.js';
+import { VoltAgentFramework } from '../../../runtime/frameworks/voltagent-adapter.js';
 import { CoordinatorWakeDelivery } from '../coordinator-session.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
@@ -519,6 +524,126 @@ describe('thread inbox (#3568)', () => {
       world.inbox.submit({ ...input, expectedHead: `${expectedHead}-changed` }),
     ).toEqual({ outcome: 'conflict' });
     expect(world.inbox.list(THREAD)).toHaveLength(1);
+  });
+
+  test('the Station-owned tool loop consumes a durable steer after tools and retains it in later model steps', async () => {
+    const file = path();
+    const world = boot(file, { steerFidelity: () => 'emulated' });
+    await runningFirstTurn(world);
+    let calls = 0;
+    const usage = {
+      inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+      outputTokens: { total: 1, text: 0, reasoning: 0 },
+    };
+    const model = new MockLanguageModelV3({
+      doStream: async () => {
+        const round = calls++;
+        return {
+          stream: simulateReadableStream<LanguageModelV3StreamPart>({
+            chunks:
+              round < 2
+                ? [
+                    {
+                      type: 'tool-call' as const,
+                      toolCallId: `tool-${round}`,
+                      toolName: 'inspect',
+                      input: '{}',
+                    },
+                    {
+                      type: 'finish' as const,
+                      finishReason: {
+                        unified: 'tool-calls' as const,
+                        raw: 'tool_calls',
+                      },
+                      usage,
+                    },
+                  ]
+                : [
+                    { type: 'text-start' as const, id: 'answer' },
+                    {
+                      type: 'text-delta' as const,
+                      id: 'answer',
+                      delta: 'done',
+                    },
+                    { type: 'text-end' as const, id: 'answer' },
+                    {
+                      type: 'finish' as const,
+                      finishReason: { unified: 'stop' as const, raw: 'stop' },
+                      usage,
+                    },
+                  ],
+          }),
+        };
+      },
+    });
+    let tools = 0;
+    const agent = await new VoltAgentFramework().createTempAgent({
+      name: 'inbox-proof',
+      hooks: { beforeToolCall: async () => true },
+      instructions: 'Use inspect.',
+      model,
+      maxSteps: 3,
+      tools: [
+        {
+          name: 'inspect',
+          description: 'Inspect',
+          parameters: { type: 'object', properties: {} },
+          execute: async () => {
+            if (tools++ === 0) {
+              world.inbox.submitSteer({
+                conversationId: THREAD,
+                clientTurnId: 'post-tool',
+                payload,
+                expectedHead: world.inbox.currentHead(THREAD),
+              });
+              await world.inbox.idle();
+              expect(world.inbox.list(THREAD)).toMatchObject([
+                { state: 'queued' },
+              ]);
+            }
+            return 'result';
+          },
+        },
+      ],
+    });
+    await runWithAuthorizedTurnCorrelation(
+      {
+        accountId: OWNER,
+        sessionId: THREAD,
+        turnId: 'turn-1',
+        correlationId: 'post-tool-proof',
+      },
+      async () => {
+        const result = await agent.streamText('read the file', {
+          conversationId: THREAD,
+          userId: OWNER,
+        });
+        for await (const _chunk of result.fullStream) {
+          /* Drain the real loop. */
+        }
+      },
+    );
+    expect(calls).toBe(3);
+    for (const call of model.doStreamCalls.slice(1)) {
+      expect(
+        call.prompt.filter(
+          (message) =>
+            message.role === 'user' &&
+            message.content.some(
+              (part) => part.type === 'text' && part.text === FOLLOW_UP,
+            ),
+        ),
+      ).toHaveLength(1);
+    }
+    expect(world.inbox.list(THREAD)).toMatchObject([
+      { state: 'sent', turnId: 'turn-1' },
+    ]);
+    expect(world.adapter.steers).toEqual([]);
+    await crash(world);
+    const second = boot(file, { steerFidelity: () => 'emulated' });
+    await second.inbox.reconcile();
+    expect(second.inbox.list(THREAD)).toMatchObject([{ state: 'sent' }]);
+    expect(followUpSends()).toEqual([]);
   });
 
   test.each(['before-claim', 'after-claim'] as const)(

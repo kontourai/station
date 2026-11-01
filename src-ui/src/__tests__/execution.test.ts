@@ -1241,7 +1241,7 @@ describe('execution utils', () => {
     ).toMatchObject({ id: 'session-model', source: 'session override' });
   });
 
-  test('sessionAdapterSupportsSteering requires native fidelity, not a connection capabilities flag', () => {
+  test('sessionAdapterSupportsSteering requires native fidelity or a Station-observed boundary', () => {
     const connections: ConnectionConfig[] = [
       {
         id: 'claude-runtime',
@@ -1329,7 +1329,7 @@ describe('execution utils', () => {
     expect(
       sessionAdapterSupportsSteering('steering-preview-runtime', connections),
     ).toBe(false);
-    expect(sessionAdapterSupportsSteering(undefined, connections)).toBe(false);
+    expect(sessionAdapterSupportsSteering(undefined, connections)).toBe(true);
     expect(sessionAdapterSupportsSteering('unknown-runtime', connections)).toBe(
       false,
     );

@@ -91,6 +91,7 @@ import {
   isSessionExecutionActive,
   isTurnStreamLive,
   sessionAdapterSupportsSteering,
+  sessionSteeringPlacement,
 } from '../../utils/execution';
 import type {
   ModelProviderOption,
@@ -1132,11 +1133,12 @@ export function ChatDockBody({
       queueOnBusy: true,
     });
   }, [getComposedContext, chatInput]);
-  const nativeSteering = sessionAdapterSupportsSteering(
-    activeSession.agentConnectionId,
-    [],
-    activeSession.orchestrationProvider,
-  );
+  const nativeSteering =
+    sessionSteeringPlacement(
+      activeSession.agentConnectionId,
+      [],
+      activeSession.orchestrationProvider,
+    ).state === 'native';
   const busyFollowUp =
     isTurnInFlight(activeSession) && chatInput.attachments.length === 0
       ? 'steer'
