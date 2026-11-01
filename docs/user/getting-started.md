@@ -203,8 +203,8 @@ choices follow the same signed-in person across devices connected to this
 Station. They are saved as you change them, and other clients refresh on focus
 or reconnect. **Import previous preferences** brings over this browser's older
 portable choices without replacing settings your account already has. **Use
-default** removes a personal display choice; **Use inherited default** returns
-new-chat approvals to the Agent, Station or engine setting.
+default** removes a personal display choice; choosing **Default** for a
+new-chat approval mode returns it to the Agent, Station or engine setting.
 
 While offline, changes wait on this page and are not saved yet. Keep the page
 open until saving finishes. If another device changed a composite preference,
