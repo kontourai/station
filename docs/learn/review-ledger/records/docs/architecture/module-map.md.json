@@ -1478,6 +1478,10 @@
 
     "src-server/services/automation/github-workflow-run.ts",
 
+    "src-server/runtime/routes/project-sharing-step-up.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-project-sharing-step-up.test.ts",
+
     "packages/contracts/src/isolated-repair.ts",
 
     "packages/contracts/src/qualification-repair-policy.mjs",

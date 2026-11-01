@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { ArrowDownGlyph } from '../icons/Glyph';
+import { ComposerChoice } from '../ComposerChoice';
 import { LazyBoundary } from '../LazyBoundary';
 import '../chat/chat.css';
 
@@ -38,26 +38,18 @@ export function EngineApprovalDisclosureChip({
   const summary = `${subject} decides which of its actions ask before they run.`;
   return (
     <>
-      <button
+      <ComposerChoice
         ref={triggerRef}
-        type="button"
-        className="choice-trigger chat-input__approval-chip chat-input__approval-chip--default"
+        className="chat-input__approval-chip chat-input__approval-chip--default"
         aria-haspopup="dialog"
         aria-expanded={isSheetOpen}
         aria-label={`Approval: ${ENGINE_APPROVAL_CHIP_LABEL}. ${summary}`}
         title={`Approval: ${summary}`}
         onClick={() => setIsSheetOpen((open) => !open)}
-      >
-        <span className="chat-input__chip-stack">
-          <span className="chat-input__chip-caption" aria-hidden="true">
-            Approval
-          </span>
-          <span className="chat-input__approval-chip-label" aria-hidden="true">
-            {ENGINE_APPROVAL_CHIP_LABEL}
-          </span>
-        </span>
-        <ArrowDownGlyph className="choice-caret" />
-      </button>
+        caption="Approval"
+        value={ENGINE_APPROVAL_CHIP_LABEL}
+        valueClassName="chat-input__approval-chip-label"
+      />
       {isSheetOpen && (
         <LazyBoundary
           load={loadSheet}

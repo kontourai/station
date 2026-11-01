@@ -97,7 +97,7 @@ describe('ApprovalModeChip', () => {
     const { rerender } = render(
       <ApprovalModeChip engineConnectionId="codex" onChange={vi.fn()} />,
     );
-    expect(chipValue()).toBe('Engine default');
+    expect(chipValue()).toBe('Default');
     rerender(
       <ApprovalModeChip
         engineConnectionId="codex"
@@ -293,7 +293,7 @@ describe('ApprovalModeChip', () => {
 
     expect(
       screen.getByRole('button', {
-        name: /^Approval mode: Engine default — Codex's own settings\./,
+        name: /^Approval mode: Default — Codex's own settings\./,
       }),
     ).toBeTruthy();
     await openSheet();
@@ -731,11 +731,11 @@ describe('ApprovalModeChip', () => {
 
     const chip = screen.getByRole('button', { name: /^Approval mode:/ });
     expect(chip.getAttribute('aria-label')).toContain(
-      'Approval mode: Engine default — Connection default. Engine approval control.',
+      'Approval mode: Default — Connection default. Engine approval control.',
     );
     expect(
       chip.querySelector('.chat-input__approval-chip-label')?.textContent,
-    ).toBe('Engine default');
+    ).toBe('Default');
   });
 
   // WCAG 2.5.3 Label in Name: a speech-input user says what they see, so the

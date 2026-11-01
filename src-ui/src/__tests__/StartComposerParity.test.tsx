@@ -446,9 +446,7 @@ describe('a Project’s new-chat defaults preselect the composer', () => {
       'The model your last chat in this project started with.',
     );
     // The Project layer replaces the account default (Full access here).
-    expect(
-      within(formOf(dock)).getByText('Permissions: Auto · last used here'),
-    ).toBeTruthy();
+    expect(within(formOf(dock)).getByText('Auto')).toBeTruthy();
     startInDock(dock);
     expect(ui.dockSelect).toHaveBeenCalledTimes(1);
     expect(ui.dockSelect.mock.calls[0][1]).toBe('station');
@@ -466,9 +464,7 @@ describe('a Project’s new-chat defaults preselect the composer', () => {
       name: /^Model: Opus/,
     });
     expect(model.getAttribute('title')).toBeNull();
-    expect(
-      within(formOf(dock)).getByText('Permissions: Full access · your default'),
-    ).toBeTruthy();
+    expect(within(formOf(dock)).getByText('Full access')).toBeTruthy();
     startInDock(dock);
     expect(ui.dockSelect.mock.calls[0][4]).toBe('opus');
     ui.cleanupListener();
@@ -480,9 +476,7 @@ describe('a Project’s new-chat defaults preselect the composer', () => {
     state.chatDefaults = { station: null };
     const ui = renderBoth();
     expect(
-      await within(formOf(ui.dock())).findByText(
-        'Permissions: Full access · your default',
-      ),
+      await within(formOf(ui.dock())).findByText('Full access'),
     ).toBeTruthy();
     ui.cleanupListener();
     cleanup();
@@ -490,9 +484,7 @@ describe('a Project’s new-chat defaults preselect the composer', () => {
     state.chatDefaults = {};
     const unread = renderBoth();
     expect(
-      await within(formOf(unread.dock())).findByText(
-        'Permissions: Set when the chat starts',
-      ),
+      await within(formOf(unread.dock())).findByText('Set at start'),
     ).toBeTruthy();
     unread.cleanupListener();
   });
@@ -543,13 +535,11 @@ describe('Home and the dock start the same way', () => {
     const ui = renderBoth();
     expect(
       await within(formOf(screen.getByTestId('home'))).findByText(
-        'Permissions: Full access · your default',
+        'Full access',
       ),
     ).toBeTruthy();
     expect(
-      await within(formOf(ui.dock())).findByText(
-        'Permissions: Full access · your default',
-      ),
+      await within(formOf(ui.dock())).findByText('Full access'),
     ).toBeTruthy();
   });
 
@@ -610,6 +600,26 @@ describe('Home and the dock start the same way', () => {
       approvalMode: 'ask',
     });
 
+    // Default delegates to engine settings and explains the unknown startup mode.
+    fireEvent.click(
+      within(formOf(home)).getByRole('button', { name: /^Permissions: Ask/ }),
+    );
+    fireEvent.click(
+      await screen.findByRole('radio', { name: /^Connection default/ }),
+    );
+    const engineDefault = await within(formOf(home)).findByRole('button', {
+      name: /^Permissions: Default/,
+    });
+    expect(within(engineDefault).getByText('Permissions')).toBeTruthy();
+    expect(within(engineDefault).getByText('Default')).toBeTruthy();
+    fireEvent.click(engineDefault);
+    expect(
+      await screen.findByText(
+        'Uses the engine’s saved permissions; confirmed after startup.',
+      ),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Close mode picker' }));
+
     // The dock: full access takes its confirmation, then reaches onSelect.
     fireEvent.click(
       within(formOf(ui.dock())).getByRole('button', {
@@ -643,7 +653,9 @@ describe('Home and the dock start the same way', () => {
       'Project: No project',
     );
     expect(
-      within(formOf(home)).getByRole('button', { name: 'Model: Opus' }),
+      within(formOf(home)).getByRole('button', {
+        name: 'Model: Opus',
+      }),
     ).toBeTruthy();
     fireEvent.change(
       within(formOf(home)).getByRole('textbox', {
@@ -1261,7 +1273,9 @@ describe('Home and the dock start the same way', () => {
       { target: { value: 'Go' } },
     );
     expect(
-      within(form).queryByRole('button', { name: 'Project: No project' }),
+      within(form).queryByRole('button', {
+        name: 'Project: No project',
+      }),
     ).toBeNull();
     const startButton = within(form).getByRole('button', {
       name: 'Start',

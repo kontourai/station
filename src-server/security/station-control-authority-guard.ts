@@ -61,7 +61,10 @@ import {
   getRuntimeAuthenticatedRequestPrincipal,
   withdrawInternalHomePossession,
 } from './runtime-request-security.js';
-import { bindStationControlRequestAuthority } from './station-control-request-authority.js';
+import {
+  bindStationControlRequestAuthority,
+  bindStationControlRequestCurrent,
+} from './station-control-request-authority.js';
 import {
   enableStationServerSelfAttestation,
   INTERNAL_SERVER_SELF_HEADER,
@@ -486,6 +489,30 @@ export function createStationControlAuthorityGuard(
       }
     }
     if (!refusal) {
+      if (
+        method === 'POST' &&
+        path === '/api/orchestration/commands' &&
+        (body as { type?: unknown } | undefined)?.type === 'steerChildWork'
+      ) {
+        const original = JSON.stringify(caller);
+        bindStationControlRequestCurrent(request, () => {
+          try {
+            const fresh = options.resolveCaller(request);
+            return (
+              fresh !== null &&
+              JSON.stringify(fresh) === original &&
+              !authorizeStationControlRequest(method, path, {
+                caller: fresh,
+                isOperatorPrincipal: options.isOperatorPrincipal,
+                body,
+                commandThread: commandThread(options, method, path, body),
+              })
+            );
+          } catch {
+            return false;
+          }
+        });
+      }
       await next();
       // Slice B: a request that acts for no principal (caller-less, or a
       // session with no recorded owner) may still reach a leaf whose route

@@ -1,0 +1,7 @@
+{
+  "revision": "45b48e68f080e07fb5c19a19802fa252fd91c255",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Reviewed the inline child-card placement, transcript access and controls against SubagentTranscriptCard and ChildWorkInstructionPanel: opening the provider transcript now puts delivered Station instruction copies behind named disclosures, leaving engine prompts and unconfirmed instructions visible. Placement and stop controls are unchanged. Focused React tests passed; no new native or device evidence.","inputs":["docs/design/placement.md","src-ui/src/components/chat/SubagentTranscriptCard.tsx"]}
+  ]
+}

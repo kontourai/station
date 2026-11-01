@@ -116,7 +116,14 @@ again from the composer or the queue. A non-inbox send refused because the engin
 busy can join that queue with its own key and copy, and the queue's drain writes
 the same before-the-request row as a composer send. Sends with attachments or
 a visual skill are not written to the queue (their draft is kept until
-Station answers, as before).
+Station answers, as before). A message Station composes for the person (the
+chat's Continue after a restart) gets the same before-the-request row under its
+own derived key, and every send under that key (a Retry or a replay as much as
+the first) leaves the composer out: it carries none of the composer's files, a refusal hands nothing back to the composer, and while a
+turn is running it is not sent, steered or queued under a new key. A busy
+refusal before Station began sending holds it in the queue under the same key,
+like any send; a refusal after it began spends the key, so that Continue can
+only report the refusal.
 
 Configuration edits are excluded from the outbound chat queue by default. Station has no single
 configuration-mutation protocol: agent, connection, plugin, and system edits

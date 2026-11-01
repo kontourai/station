@@ -1,0 +1,47 @@
+{
+  "revision": "d8724a4de7a2c73060e5e860672fcda572b17d1b",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked consent transaction, paired Device binding and live session claims against the final Project membership guard and operator session service; focused server tests cover refusal, not live devices.","inputs":["docs/architecture/module-map.md","src-server/services/identity/operator-sessions.ts","src-server/services/projects/project-membership-service.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Checked S3 session and S4 per-action assertions against session resolution and the added approving-passkey currentness check; no device journey was rerun.","inputs":["docs/design/operator-device-access.md","src-server/services/identity/operator-sessions.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"Checked the Project membership and device authority separation against enable, reviewed owner and the synchronous final guard; existing design scope remains unchanged.","inputs":["docs/design/project-membership.md","src-server/services/projects/project-membership-service.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Checked the account-resolved owner and paired-browser sharing steps against current owner revalidation and the last-write guard; the provider race is exercised in a fixture, not a live provider.","inputs":["docs/guides/deployment-authentication.md","src-server/services/projects/project-membership-service.ts"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Checked the local account and Project membership separation against the enable service; the guard changes no lab setup or invitation flow.","inputs":["docs/guides/local-collaboration-lab.md","src-server/services/projects/project-membership-service.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Checked the Project sharing relationship and membership/transport separation against enable and its new commit guard; no peer or physical Device run.","inputs":["docs/guides/machine-relationships.md","src-server/services/projects/project-membership-service.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"Checked paired-browser sharing, per-action confirmation and revoked passkey/session refusal against consent commit and the final membership guard; software authenticator tests do not qualify a physical passkey.","inputs":["docs/guides/operator-passkeys.md","src-server/services/identity/operator-sessions.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked operator session and step-up API descriptions against the session and consent paths; this guard adds no request or response shape.","inputs":["docs/reference/api.md","src-server/services/identity/operator-sessions.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Checked paired-browser sign-in and per-action review description against operator session currentness; no connection setup or visible flow changed.","inputs":["docs/reference/connect.md","src-server/services/identity/operator-sessions.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked the documented contract boundaries against the internal passkey-currentness method; no public contract or exports changed.","inputs":["docs/reference/contracts.md","src-server/services/identity/operator-sessions.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Checked trusted consent origin and RP description against the new active passkey origin and RP check; configuration and defaults are unchanged.","inputs":["docs/reference/env-vars.md","src-server/services/identity/operator-sessions.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked Project sharing enable and step-up result against the route and mutation guard; no SDK response shape or client behavior changed.","inputs":["docs/reference/sdk.md","src-server/services/projects/project-membership-service.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Checked Project sharing owner, session, Device and passkey revalidation against the route and synchronous final membership guard; tests cover software passkeys and a fixture account provider, not hosted or physical devices.","inputs":["docs/security/remote-access-threat-model.md","src-server/services/identity/operator-sessions.ts","src-server/services/projects/project-membership-service.ts"]},
+
+    {"path":"docs/learn/media/operator-s3-paired-before-sign-in.png","note":"Checked the paired view before sign-in capture's documented scenario against the session source delta: the added Project sharing commit check does not change this view. Existing capture evidence remains historical; no new visual or physical-device verification.","inputs":["docs/learn/media/operator-s3-paired-before-sign-in.png","src-server/services/identity/operator-sessions.ts"]},
+
+    {"path":"docs/learn/media/operator-s3-consent-sign-in.png","note":"Checked the consent sign-in view capture's documented scenario against the session source delta: the added Project sharing commit check does not change this view. Existing capture evidence remains historical; no new visual or physical-device verification.","inputs":["docs/learn/media/operator-s3-consent-sign-in.png","src-server/services/identity/operator-sessions.ts"]},
+
+    {"path":"docs/learn/media/operator-s3-paired-after-sign-in.png","note":"Checked the paired view after sign-in capture's documented scenario against the session source delta: the added Project sharing commit check does not change this view. Existing capture evidence remains historical; no new visual or physical-device verification.","inputs":["docs/learn/media/operator-s3-paired-after-sign-in.png","src-server/services/identity/operator-sessions.ts"]},
+
+    {"path":"docs/learn/media/operator-s3-other-browser-refused.png","note":"Checked the other-browser refusal capture's documented scenario against the session source delta: the added Project sharing commit check does not change this view. Existing capture evidence remains historical; no new visual or physical-device verification.","inputs":["docs/learn/media/operator-s3-other-browser-refused.png","src-server/services/identity/operator-sessions.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"Checked the device access before sign-in capture's documented scenario against the session source delta: the added Project sharing commit check does not change this view. Existing capture evidence remains historical; no new visual or physical-device verification.","inputs":["docs/learn/media/operator-s4-before-sign-in.png","src-server/services/identity/operator-sessions.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"Checked the device access after sign-in capture's documented scenario against the session source delta: the added Project sharing commit check does not change this view. Existing capture evidence remains historical; no new visual or physical-device verification.","inputs":["docs/learn/media/operator-s4-after-sign-in.png","src-server/services/identity/operator-sessions.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"Checked the device access step-up review capture's documented scenario against the session source delta: the added Project sharing commit check does not change this view. Existing capture evidence remains historical; no new visual or physical-device verification.","inputs":["docs/learn/media/operator-s4-step-up-review.png","src-server/services/identity/operator-sessions.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"Checked the device access after step-up capture's documented scenario against the session source delta: the added Project sharing commit check does not change this view. Existing capture evidence remains historical; no new visual or physical-device verification.","inputs":["docs/learn/media/operator-s4-after-step-up.png","src-server/services/identity/operator-sessions.ts"]}
+  ]
+}

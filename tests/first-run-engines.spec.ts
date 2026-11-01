@@ -1487,7 +1487,9 @@ for (const viewport of [
       fixture.modal.getByRole('textbox', { name: 'What would you like done?' }),
     ).toHaveValue(SETUP_RETURN_DRAFT);
     await expect(
-      fixture.modal.getByRole('button', { name: 'Project: Setup Beta' }),
+      fixture.modal.getByRole('button', {
+        name: 'Project: Setup Beta',
+      }),
     ).toBeVisible();
     const agentChip = fixture.modal.getByRole('button', { name: /^Agent: / });
     await expect(agentChip).toHaveAttribute('aria-label', /Setup Assistant/);
@@ -1520,7 +1522,9 @@ test('New Chat setup return supports Back, cancellation and deleted Project disc
   await expect(fixture.modal).toBeVisible();
   await expect(draft()).toHaveValue(SETUP_RETURN_DRAFT);
   await expect(
-    fixture.modal.getByRole('button', { name: 'Project: Setup Beta' }),
+    fixture.modal.getByRole('button', {
+      name: 'Project: Setup Beta',
+    }),
   ).toBeVisible();
   // The project is deleted while setup is away: the return says so and
   // keeps the message rather than choosing a substitute.
@@ -1538,7 +1542,9 @@ test('New Chat setup return supports Back, cancellation and deleted Project disc
   ).toContainText('workspace you selected is no longer available');
   await expect(draft()).toHaveValue(SETUP_RETURN_DRAFT);
   await expect(
-    fixture.modal.getByRole('button', { name: 'Project: Setup Beta' }),
+    fixture.modal.getByRole('button', {
+      name: 'Project: Setup Beta',
+    }),
   ).toHaveCount(0);
   // Choosing again works; then Cancel return ends the journey and the
   // choices with it.
@@ -1559,6 +1565,8 @@ test('New Chat setup return supports Back, cancellation and deleted Project disc
   // chip is the dock's remembered project for new chats (owner, 2026-10).
   await expect(draft()).toHaveValue('');
   await expect(
-    fixture.modal.getByRole('button', { name: 'Project: Setup Alpha' }),
+    fixture.modal.getByRole('button', {
+      name: 'Project: Setup Alpha',
+    }),
   ).toBeVisible();
 });

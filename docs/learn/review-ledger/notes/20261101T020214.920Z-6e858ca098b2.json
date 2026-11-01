@@ -1,0 +1,7 @@
+{
+  "revision": "a330a996130c93784f712dfd0bdf6ad5973e41b0",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed anchored subagent grouping against the interrupted-card test delta and SubagentTranscriptCard: the test adds providers and cleanup while retaining interruption assertions; the grouping explanation is unchanged. Focused suite passed; no browser qualification claimed.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/SubagentTranscriptCard.interrupted.test.tsx"]}
+  ]
+}
