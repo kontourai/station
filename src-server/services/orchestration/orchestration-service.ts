@@ -4332,7 +4332,9 @@ export class OrchestrationService {
     // Capture retirement custody before cascade delivery can yield and let a
     // successful retirement disappear from the live map.
     const retiringAdapters = this.adapterRetirement.retiringAdapters();
-    const retirementTasks = this.adapterRetirement.shutdownRetirementTasks();
+    const retirementResults = Promise.allSettled(
+      this.adapterRetirement.shutdownRetirementTasks(),
+    );
     const cascadeReconciliation = this.cascadeStopReconciliation;
     const cascadeResults = await Promise.allSettled(
       cascadeReconciliation
@@ -4399,7 +4401,6 @@ export class OrchestrationService {
             }),
           ]
         : []),
-      ...retirementTasks,
       ...currentAdapters
         .filter((adapter) => !retiringAdapters.has(adapter))
         .map((adapter) =>
@@ -4416,6 +4417,7 @@ export class OrchestrationService {
     this.activeEventAdapters.clear();
     this.adoption.unregisterOwner();
     const failures = [
+      ...(await retirementResults),
       ...cascadeResults,
       ...roomParkingResults,
       ...recoveryResults,
