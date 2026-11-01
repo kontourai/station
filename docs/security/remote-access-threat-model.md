@@ -176,6 +176,30 @@ issuer and subject before committing the still-pending request. There is no step
 inventory refreshes never extend the operator session. Token secrets exist only
 in the initiating commit response, never in the transaction record or later reads.
 
+Turning on Project sharing (#4306) uses the same S4 transaction.
+`POST /api/projects/:slug/access/enable` still commits directly only for the
+operator credential or a `home-possession` grant. A paired Device that ordinary
+admission lets post that leaf, and that presents an operator session bound to
+the same Device, receives `202` and a `project-sharing-enable` transaction
+instead. Its fingerprint pins the slug, the local Project id and the owner, the
+principal that Device resolves to. The review names that owner. The S4 rules
+apply unchanged: one fresh UV assertion on the consent origin, a one-use render
+nonce, the owning session alone, and no step-up window. At commit Station
+rechecks the reviewed owner, the Device credential and the live session (bound
+Device, passkey, credential epoch, expiry). It checks the session again inside
+the Project lease, where the membership service calls `operator()`. A Project
+owner or admin without a session, a different Device carrying the session
+cookie, an agent-originated request and a delegation grant keep the existing
+`403`. `GET /api/projects/:slug/access/enablement` reports which path applies
+to the caller and reads no Project data. A committed enable writes
+`station.project_sharing.enabled` (actor, local Project id, transaction id)
+through the runtime logger, like `station.device_access.changed`. It adds no
+usage-telemetry event. Two residual risks: app-origin plugin code can open such
+a review, as with other S4 requests, but cannot approve it; and the owner is
+the Device's resolved principal. Behind Tailscale Serve with WhoIs that is the
+tailnet person; a Device with no person binding owns as itself, so revoking
+that Device leaves the Project without a reachable owner.
+
 Sign-out remains on the consent origin with its own one-use page nonce and exact
 Origin/Fetch Metadata checks. Remote revoke-all is a follow-up; both API DELETE
 spellings remain refused. The host can revoke a bound Device or rotate the
@@ -990,6 +1014,16 @@ Ordinary GET/HEAD routes require `orchestration:read` and ordinary mutating
 methods require `orchestration:operate`; explicit family and leaf rules can
 require a different tier. All `/api/registry/sources` methods require
 `access:manage` plus a separate Station operator principal check in the handlers.
+Child-work instruction history inherits `orchestration:read`, but the bounded,
+separately paged read also checks current principal and Session/child ownership
+before and after reading; unavailable ownership returns 404 with no-store.
+The `steerChildWork` command requires current Session read and mutation authority.
+For forwarded Station-control callers, the ingress guard re-resolves and
+re-authorizes the caller after asynchronous adapter resolution and before
+dispatch. A claimed instruction with an uncertain acknowledgement stays
+indeterminate instead of being sent again. The Station-owned journal is deleted
+with the Session while client-input key tombstones prevent cross-Session reuse.
+These are source boundaries, not native-device or hosted journey qualification.
 The #3994 socket at `/api/terminal/socket` uses the main API listener. Since
 part b2 it is admitted before its upgrade by a single-use ticket minted by
 `POST /api/terminal/tickets` through the ordinary HTTP admission pipeline (see

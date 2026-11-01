@@ -256,7 +256,7 @@ across the desktop inbox, the collapsed dock bar (icon only) and
 the open, empty dock. The mobile bar composes the same conversation-plus glyph
 with its toolbar button styles. Both forms retain a 44px minimum target and
 an accessible name. It opens the start composer, in the dock as a draft in the
-dock body (full screen on a phone). Its chips (in the dock's draft also the
+dock body (full screen on a phone). New-chat and running-chat selectors share [ComposerChoice](../../src-ui/src/components/ComposerChoice.tsx) for their presentation. Its chips (in the dock's draft also the
 Project control, and **Run a task…** when there is more than one Station) wrap
 rather than overflow, and attach, mic and the overflow sit with Start, so a
 phone gets the chips first and [attach mic ⋯ … Start] on the next row with no

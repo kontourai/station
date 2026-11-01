@@ -74,6 +74,7 @@ import {
   type ProviderAdapterModelCatalog,
   type ProviderAdapterShape,
   type ProviderAdoptionHooks,
+  type ProviderChildSteerResult,
   type ProviderDiscardSessionRecovery,
   type ProviderInterruptTurnResult,
   type ProviderNativeSessionIdentity,
@@ -122,6 +123,7 @@ import {
   mergeCapabilityDeliveryMetadata,
 } from './capability-delivery-metadata.js';
 import {
+  codexChildSteerTarget,
   codexRunningChildTurnId,
   codexRunningChildTurns,
   requestStop as requestCodexChildStop,
@@ -2180,6 +2182,9 @@ export class CodexAdapter implements ProviderAdapterShape {
       const reportedSandbox = readCodexSandboxPolicy(
         (result as { sandbox?: unknown } | undefined)?.sandbox,
       );
+      const reportedApprovalPolicy = (
+        result as { approvalPolicy?: unknown } | undefined
+      )?.approvalPolicy;
       // #2494: the confinement record comes from Codex's response, never
       // from the sandbox Station sent. A start whose policy requires
       // confinement and whose engine does not report it applied is refused
@@ -2189,7 +2194,7 @@ export class CodexAdapter implements ProviderAdapterShape {
       // configuration, when Station sent no knobs) requires confinement too.
       const plan = requiredByReportedPolicy(
         input.confinementPlan,
-        (result as { approvalPolicy?: unknown } | undefined)?.approvalPolicy,
+        reportedApprovalPolicy,
       );
       const reportedProfile = readActivePermissionProfileId(result);
       const sandboxEvidence = {
@@ -2263,6 +2268,10 @@ export class CodexAdapter implements ProviderAdapterShape {
       const configuredSandbox = reportedSandbox
         ? codexSandboxModeOfPolicy(reportedSandbox)
         : approvalKnobs?.sandbox;
+      const configuredApprovalPolicy =
+        reportedApprovalPolicy === undefined
+          ? approvalKnobs?.approvalPolicy
+          : reportedApprovalPolicy;
       record.session = {
         ...record.session,
         modelRoute: connectionLaunch.route,
@@ -2330,20 +2339,18 @@ export class CodexAdapter implements ProviderAdapterShape {
         ...reportedModelMetadata(reportedModelFromInit),
         reasoningEffort: mapReasoningEffort(modelOptions),
         fastMode: modelOptions.fastMode ?? false,
-        ...(approvalKnobs
+        approvalMode: configuredSandbox
+          ? mapCodexKnobsToApprovalMode({
+              approvalPolicy: configuredApprovalPolicy,
+              sandbox: configuredSandbox,
+            })
+          : 'connection-default',
+        ...(configuredApprovalPolicy
           ? {
-              approvalPolicy: approvalKnobs.approvalPolicy,
+              approvalPolicy: configuredApprovalPolicy,
               ...(configuredSandbox
                 ? {
                     sandbox: configuredSandbox,
-                    // Resolved approvalMode alongside the raw knobs, so the
-                    // client can track a durable lastAppliedApprovalMode
-                    // baseline at session start (archive#727 review round
-                    // 3, item 1), derived from the applied pair.
-                    approvalMode: mapCodexKnobsToApprovalMode({
-                      approvalPolicy: approvalKnobs.approvalPolicy,
-                      sandbox: configuredSandbox,
-                    }),
                   }
                 : {}),
               // #2493: the pair alone no longer says whether `never` is
@@ -3041,6 +3048,43 @@ export class CodexAdapter implements ProviderAdapterShape {
       prompt: text,
       inputKind: 'steer',
     });
+  }
+
+  async steerChildWork(
+    threadId: string,
+    childId: string,
+    turnId: string,
+    input: string,
+  ): Promise<ProviderChildSteerResult> {
+    const record = this.transport.requireSession(threadId);
+    const target = codexChildSteerTarget(record, childId, turnId);
+    if (target !== 'ready') return { outcome: target };
+    const text = input.trim();
+    if (!text) throw new Error('Steer input is empty.');
+    try {
+      const result = await this.transport.sendRequest(record, 'turn/steer', {
+        threadId: childId,
+        input: [{ type: 'text', text, text_elements: [] }],
+        expectedTurnId: turnId,
+      });
+      if (extractStringField(result, 'turnId') !== turnId)
+        throw new Error('Codex returned an unexpected child steer turn id.');
+    } catch (error) {
+      const message = errorMessage(error).toLowerCase();
+      if (
+        message.includes(
+          'direct app-server input is not allowed for multi-agent v2',
+        )
+      )
+        return { outcome: 'unsupported' };
+      if (
+        message.includes('no active turn') ||
+        message.includes('cannot accept same-turn steering')
+      )
+        return { outcome: 'no-active-task' };
+      throw error;
+    }
+    return { outcome: 'steered', turnId };
   }
 
   async interruptTurn(threadId: string, turnId?: string) {

@@ -85,6 +85,14 @@ export class FeaturePreviewRegistry {
       description:
         'Review Task plans, outputs and Screens with anchored comments and send them to the lead agent.',
     });
+    // Chat-only: Continue is an ordinary send through the chat's own send
+    // path, so no server branch reads this choice.
+    this.rememberConsumer({
+      id: 'continue-interrupted-turn',
+      label: 'Continue after restart',
+      description:
+        'Offer Continue on a chat turn a Station restart cut off. It sends the agent a short note to pick up where it stopped.',
+    });
     this.rememberConsumer({
       id: 'task-collaboration',
       label: 'Task collaboration',

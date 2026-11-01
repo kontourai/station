@@ -1,0 +1,7 @@
+{
+  "revision": "f0f106971a474fba14956ab42f3cd10ebf91b44c",
+
+  "notes": [
+    {"path":"docs/testing/browser-smoke.md","note":"Reviewed the smoke manifest and cross-runtime browser journey: isolated smoke still exercises provider continuity and mobile Inbox at 320, 390 and 412. Local focused smoke passed; hosted and live provider evidence are separate.","inputs":["docs/testing/browser-smoke.md","tests/cross-runtime-chat-switching.spec.ts"]}
+  ]
+}

@@ -1206,6 +1206,8 @@ export interface EnvironmentSecurityRecord {
  * or the service.
  */
 export interface StationCapabilityFlags {
+  /** Child steering and its separately paged instruction history. */
+  childWorkSteering?: boolean;
   /** Consented private terminal outcome reads. */
   privateOperationalOutcomes?: boolean;
   /**

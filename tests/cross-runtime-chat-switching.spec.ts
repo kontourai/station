@@ -1696,7 +1696,10 @@ test.describe('chat-dock project selection (kontourai/station#793)', () => {
     expect(activeBefore).toBeTruthy();
     const draft = await openNewChatDraft(page);
     await dockComposer(page)
-      .getByRole('button', { name: 'Project: Alpha Project', exact: true })
+      .getByRole('button', {
+        name: 'Project: Alpha Project',
+        exact: true,
+      })
       .click();
     const chooser = page.getByRole('dialog', {
       name: 'Choose project',
@@ -1747,7 +1750,10 @@ test.describe('chat-dock project selection (kontourai/station#793)', () => {
     });
     const nextDraft = await openNewChatDraft(page);
     await dockComposer(page)
-      .getByRole('button', { name: 'Project: Beta Project', exact: true })
+      .getByRole('button', {
+        name: 'Project: Beta Project',
+        exact: true,
+      })
       .click();
     await chooser.getByRole('button', { name: 'Alpha Project' }).click();
     await expect(

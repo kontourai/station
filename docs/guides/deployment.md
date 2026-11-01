@@ -792,9 +792,9 @@ behavior is unchanged. The origin is never added to `ALLOWED_ORIGINS`.
 With this origin set, a paired browser can enroll an operator passkey and sign
 in; see [Operator passkeys](operator-passkeys.md). The host-scoped session
 cookie also reaches the same-host app origin. It admits the documented reads
-and requests for per-action review; a fresh passkey confirmation on the consent
-origin is required before a reviewed change commits. No passkey ceremony runs
-on the app origin.
+and requests for per-action review, including turning on Project sharing; a fresh
+passkey confirmation on the consent origin is required before a reviewed change
+commits. No passkey ceremony runs on the app origin.
 
 #### Troubleshooting the pairing path
 

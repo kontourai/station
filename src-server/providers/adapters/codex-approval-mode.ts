@@ -86,8 +86,7 @@ export function resolveCodexExecutionKnobs(
 }
 
 /**
- * Reverse mapping used only to tell the client which Station-level
- * `ApprovalMode` a knob pair Station sent corresponds to, so durable events
+ * Maps a reported or applied knob pair to Station's `ApprovalMode`, so durable events
  * (`session.configured`, `turn.started`) can carry the actually-applied
  * `approvalMode` alongside the raw Codex knobs (archive#727).
  *
@@ -97,11 +96,13 @@ export function resolveCodexExecutionKnobs(
  * `never`. The pair therefore says nothing about confinement; the session's
  * confinement is reported beside it and restored from its start stamp, never
  * from this mapping. The review-isolation pair (`never` + `read-only`) and
- * any pair Station never sends report `connection-default`.
+ * any unrecognized pair report `connection-default`.
  */
-export function mapCodexKnobsToApprovalMode(
-  knobs: CodexApprovalKnobs,
-): ApprovalMode {
+export function mapCodexKnobsToApprovalMode(knobs: {
+  approvalPolicy: unknown;
+  sandbox: CodexSandboxMode;
+}): ApprovalMode {
+  if (typeof knobs.approvalPolicy !== 'string') return 'connection-default';
   switch (`${knobs.approvalPolicy}:${knobs.sandbox}`) {
     case 'untrusted:workspace-write':
       return 'ask';

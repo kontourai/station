@@ -49,6 +49,7 @@ for (const forge of ['github', 'gitlab'] as const)
     test('reads only the named forge and refuses a diff whose head changed mid-read', async () => {
       let reads = 0;
       const run = vi.fn(async (args: string[]) => {
+        if (args.includes('--jq')) return json({ head, base });
         if (args[1] === 'view')
           return json(raw(forge, ++reads === 1 ? head : changed));
         if (args[1].includes('notes?')) return json([]);
@@ -75,6 +76,7 @@ for (const forge of ['github', 'gitlab'] as const)
       // Each forge delivers its discussion newest-first; the snapshot reads
       // oldest-first across comments and reviews.
       const run = vi.fn(async (args: string[]) => {
+        if (args.includes('--jq')) return json({ head, base });
         if (args[1] === 'view')
           return json(
             forge === 'github'
@@ -173,9 +175,11 @@ for (const forge of ['github', 'gitlab'] as const)
     test('changed revision refuses before any provider write', async () => {
       const run = vi.fn(async (args: string[]) =>
         json(
-          args[1] === 'user'
-            ? { id: 7, login: 'operator', username: 'operator' }
-            : raw(forge, changed),
+          args.includes('--jq')
+            ? { head: changed, base }
+            : args[1] === 'user'
+              ? { id: 7, login: 'operator', username: 'operator' }
+              : raw(forge, changed),
         ),
       );
       await expect(
@@ -197,6 +201,7 @@ for (const forge of ['github', 'gitlab'] as const)
     });
     test('approval binds the provider write to the inspected SHA and verifies the actor', async () => {
       const run = vi.fn(async (args: string[]) => {
+        if (args.includes('--jq')) return json({ head, base });
         if (args[1] === 'user')
           return json({ id: 7, login: 'operator', username: 'operator' });
         if (args[1] === 'view') return json(raw(forge));
@@ -234,6 +239,7 @@ for (const forge of ['github', 'gitlab'] as const)
     test('lost acknowledgement and wrong actor remain indeterminate', async () => {
       for (const failure of ['lost', 'actor']) {
         const run = vi.fn(async (args: string[]) => {
+          if (args.includes('--jq')) return json({ head, base });
           if (args[1] === 'user')
             return json({ id: 7, login: 'operator', username: 'operator' });
           if (args[1] === 'view') return json(raw(forge));
@@ -298,6 +304,7 @@ test('a lost revision-bound merge acknowledgement is not reported as refusal or 
     GitLabPullRequestProvider,
   ]) {
     const run = vi.fn(async (args: string[]) => {
+      if (args.includes('--jq')) return json({ head, base });
       if (args[1] === 'merge') throw Error('connection lost');
       return { stdout: '' };
     });
@@ -316,6 +323,7 @@ test.each(['github', 'gitlab'] as const)(
   '%s rechecks Station authority before crossing the review effect boundary',
   async (forge) => {
     const run = vi.fn(async (args: string[]) => {
+      if (args.includes('--jq')) return json({ head, base });
       if (args[1] === 'user')
         return json({ id: 7, login: 'operator', username: 'operator' });
       if (args[1] === 'view') return json(raw(forge));
@@ -418,8 +426,11 @@ describe('checks and inline review comments', () => {
 
   function githubRun(extra: Record<string, unknown> = {}) {
     return vi.fn(async (args: string[]) => {
+      if (args.includes('--jq')) return json({ head, base });
       if (args[1] === 'view') {
         const fields = args[args.indexOf('--json') + 1] ?? '';
+        if (fields.split(',').includes('baseRefOid'))
+          throw new Error('Unknown JSON field: baseRefOid');
         return json({
           ...raw('github'),
           ...(fields.includes('statusCheckRollup')
@@ -442,6 +453,7 @@ describe('checks and inline review comments', () => {
       run,
       () => normalized,
     );
+    expect(result).toMatchObject({ headSha: head, baseSha: base });
     expect(result.checks).toEqual({
       state: 'available',
       partial: false,
@@ -535,6 +547,7 @@ describe('checks and inline review comments', () => {
 
   test('a failed comments read is unavailable while the review still loads', async () => {
     const run = vi.fn(async (args: string[]) => {
+      if (args.includes('--jq')) return json({ head, base });
       if (args[1] === 'view') return json(raw('github'));
       if (args[1].includes('/comments?')) throw new Error('HTTP 502');
       return { stdout: PATCH };
@@ -578,6 +591,7 @@ describe('checks and inline review comments', () => {
   function failingChecksRead(stderr: string) {
     const views: string[] = [];
     const run = vi.fn(async (args: string[]) => {
+      if (args.includes('--jq')) return json({ head, base });
       if (args[1] === 'view') {
         const fields = args[args.indexOf('--json') + 1] ?? '';
         views.push(fields);
@@ -701,6 +715,7 @@ describe('checks and inline review comments', () => {
 
   function githubCommentsRun(comments: unknown[]) {
     return vi.fn(async (args: string[]) => {
+      if (args.includes('--jq')) return json({ head, base });
       if (args[1] === 'view') return json(raw('github'));
       if (args[1].includes('/comments?')) return json(comments);
       return { stdout: PATCH };
@@ -838,6 +853,7 @@ describe('checks and inline review comments', () => {
 
   function gitlabRun(pipeline: unknown, discussions: unknown) {
     return vi.fn(async (args: string[]) => {
+      if (args.includes('--jq')) return json({ head, base });
       if (args[1] === 'view')
         return json({ ...raw('gitlab'), head_pipeline: pipeline });
       if (args[1].includes('notes?')) return json([]);

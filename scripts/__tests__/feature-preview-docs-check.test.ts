@@ -13,6 +13,7 @@ const makeTempDir = trackTempDirs();
 const registryOffered = [
   'integration-content-trust',
   'task-review',
+  'continue-interrupted-turn',
   'task-collaboration',
   'chat-apps',
   'visual-skills',

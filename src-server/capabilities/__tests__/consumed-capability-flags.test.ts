@@ -70,6 +70,19 @@ const CONSUMED_FLAGS: Record<
   string,
   (deployment: Deployment) => Promise<boolean>
 > = {
+  childWorkSteering: async (deployment) => {
+    const routes = orchestrationRoutes(deployment, {
+      childWorkTranscripts: { ownsChild: () => true },
+      readChildSteerInstructions: () => ({ entries: [] }),
+    });
+    return (
+      (
+        await routes.request(
+          '/sessions/session-a/child-work/child-a/instructions',
+        )
+      ).status === 200
+    );
+  },
   privateOperationalOutcomes: async ({ hosted }) => {
     const actor: EnrollmentActor = {
       sourceStationId: 'receiver',
@@ -389,6 +402,7 @@ describe('consumed capability flags match what their routes serve', () => {
   // together (withdrawing a flag everywhere, or serving hosted reads without
   // a tenant reader) still reds.
   const EXPECTED: Record<string, Record<'personal' | 'hosted', boolean>> = {
+    childWorkSteering: { personal: true, hosted: true },
     privateOperationalOutcomes: { personal: true, hosted: true },
     scheduledConversationTarget: { personal: true, hosted: false },
     sessionEventWindow: { personal: true, hosted: true },

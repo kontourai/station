@@ -315,7 +315,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/project` | Project config and metadata, and `projectIconProblem`: the one rule for a stored project icon (a short glyph, or a PNG/JPEG/WebP/ICO data URL of at most 128 KiB whose bytes match its type) that the create and update routes, the icon pickers and the renderer share |
 | `@kontourai/station-contracts/project-checkout-freshness` | How far a Project's checkout is behind its upstream, from local git refs: the `GET /api/projects/:slug/checkout-freshness` view (`stale`, `not-stale` or `unknown` with a reason), the default thresholds, `resolveProjectCheckoutStaleThresholds` and `projectCheckoutStaleReasons` |
 | `@kontourai/station-contracts/project-chat-defaults` | How a Project's new chat picks its model and approval mode (`fixed` or `last-used`), the `GET /api/projects/:slug/chat-defaults` view, and `resolveProjectChatApprovalDefault`, the one resolution the session start and that view share |
-| `@kontourai/station-contracts/project-membership` | Exact Station/local/portable Project scope, member roles/actions, single-use or verified-email invitations, administration projections and the sharing state a refused administration read discloses (`ProjectAccessRefusalDetails`) |
+| `@kontourai/station-contracts/project-membership` | Exact Station/local/portable Project scope, member roles/actions, invitations, administration projections, sharing enablement and refusal details |
 | `@kontourai/station-contracts/provider` | Provider kinds and provider-facing contract enums/types |
 | `@kontourai/station-contracts/runtime` | Session metadata, workflow metadata, runtime responses |
 | `@kontourai/station-contracts/runtime-events` | Runtime event stream payloads |
@@ -1686,6 +1686,18 @@ handoff whose session never started ran nothing and is not listed. Both fields
 are absent from older hosts. See the
 [lifecycle fold](../../src-server/services/orchestration/session-lifecycle-service.ts)
 and the [inventory projection](../../src-server/services/orchestration/conversation-history-read-service.ts).
+
+### Child work steering
+
+Child-work items may expose `controls.steer.turnId` only for a running child
+with a bounded valid turn identity; settlement or a missing snapshot removes the
+steer control. The distinct `steerChildWork` command carries the parent Session,
+child, turn, input and required client input ID. `ChildWorkInstructionPage`
+contains Station-owned instructions and their delivery states, separately from
+the provider transcript. The optional `childWorkSteering` host flag advertises
+the command and page, not a guarantee that a particular provider accepts a child
+steer. See the [Session API](session-api.md#lifecycle-control-commands) for
+authority, replay and provider limits.
 
 ### Conversation titles
 
