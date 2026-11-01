@@ -682,13 +682,13 @@ describe('handoff requests', () => {
 describe('handoff events (protocol 1.2)', () => {
   afterEach(() => installListenerLink(null));
 
-  it('announces handoff-events when it parks', async () => {
+  it('announces handoff-events (and, protocol 1.3, workloads) when it parks', async () => {
     const channel = new FakeChannel();
     await promoted(channel);
     expect(channel.sent[0]?.message).toEqual({
       type: 'parked',
       adoptsConnections: true,
-      capabilities: ['handoff-events'],
+      capabilities: ['handoff-events', 'workloads'],
     });
   });
 

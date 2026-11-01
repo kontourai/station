@@ -1,0 +1,7 @@
+{
+  "revision": "e2262367422d4f2b49c7f077ef69f6236783a592",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Rechecked after path-read-pin-boundary.test.ts recorded the supervisor workloads suite as hand-checked; the guide's path-read pin guidance is unchanged.","inputs":["docs/guides/testing.md","scripts/__tests__/path-read-pin-boundary.test.ts"]}
+  ]
+}

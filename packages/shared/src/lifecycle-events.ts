@@ -70,9 +70,20 @@ export type StopIntent =
   | 'recovery'
   | 'rollback';
 
+/**
+ * Written by a core server generation running under the process supervisor.
+ * The instance record names the supervisor, which outlives generations, so a
+ * generation's events name it here: they belong to the instance whose pid is
+ * `pid`, while the event's own `pid` (and, after a handoff into a new build,
+ * its `sha`) is the generation's. Events without it, from a direct start or
+ * an older server, match by their own pid and sha as before.
+ */
+export type LifecycleSupervisor = { pid: number; generation: number };
+
 export type LifecycleEvent = LifecycleIdentity & {
   version: 1;
   eventId?: string;
+  supervisor?: LifecycleSupervisor;
   timestamp: string;
   type:
     | 'started'
@@ -175,6 +186,17 @@ export function parseLifecycleEvent(value: unknown): LifecycleEvent {
   }
   if (event.sender !== undefined && event.sender !== 'unknown')
     throw new Error('unsupported lifecycle sender identity');
+  if (
+    event.supervisor !== undefined &&
+    (typeof event.supervisor !== 'object' ||
+      event.supervisor === null ||
+      !Number.isInteger(event.supervisor.pid) ||
+      event.supervisor.pid < 1 ||
+      !Number.isInteger(event.supervisor.generation) ||
+      event.supervisor.generation < 1)
+  ) {
+    throw new Error('invalid lifecycle supervisor identity');
+  }
   return event;
 }
 
@@ -1171,14 +1193,32 @@ export function readLifecycleEvents(
 }
 
 function sameIdentity(
-  event: LifecycleIdentity,
+  event: LifecycleEvent,
   identity: LifecycleIdentity,
 ): boolean {
-  return (
-    event.instanceId === identity.instanceId &&
-    event.sha === identity.sha &&
-    event.bootId === identity.bootId &&
-    event.pid === identity.pid
+  if (
+    event.instanceId !== identity.instanceId ||
+    event.bootId !== identity.bootId
+  )
+    return false;
+  // A supervised generation's own pid and build change at each handoff; it
+  // belongs to the instance its supervisor runs (see LifecycleSupervisor).
+  if (event.supervisor) return event.supervisor.pid === identity.pid;
+  return event.sha === identity.sha && event.pid === identity.pid;
+}
+
+/**
+ * The events that speak for how the instance ended. Under the supervisor
+ * every generation before the newest one drained for a handoff (or crashed
+ * and was restarted): its exit is not the instance's. Events the CLI wrote
+ * (start, stop intents and results) carry no generation and always count.
+ */
+function instanceEvents(matching: LifecycleEvent[]): LifecycleEvent[] {
+  let newest = 0;
+  for (const event of matching)
+    newest = Math.max(newest, event.supervisor?.generation ?? 0);
+  return matching.filter(
+    (event) => !event.supervisor || event.supervisor.generation === newest,
   );
 }
 
@@ -1191,7 +1231,9 @@ export function classifyLifecycleExit(
   intent: StopIntent | null;
   sender: 'unknown';
 } {
-  const matching = events.filter((event) => sameIdentity(event, identity));
+  const matching = instanceEvents(
+    events.filter((event) => sameIdentity(event, identity)),
+  );
   const intentEvent = [...matching]
     .reverse()
     .find((event) => event.type === 'stop_intent');
