@@ -1252,21 +1252,21 @@ export function LayoutStackHost({
               renderPanes,
               instance.instanceId,
               terminalInstance?.instanceId ?? null,
-            )
-              ? instance.instanceId === terminalInstance?.instanceId &&
-                dockedTerminal.docked
-                ? (
-                    <Empty
-                      label="Terminal is open in the dock"
-                      action={
-                        <Button size="sm" onClick={dockedTerminal.undock}>
-                          Move here
-                        </Button>
-                      }
-                    />
-                  )
-                : renderCodingPane(instance, presentation)
-              : null
+            ) ? (
+              instance.instanceId === terminalInstance?.instanceId &&
+              dockedTerminal.docked ? (
+                <Empty
+                  label="Terminal is open in the dock"
+                  action={
+                    <Button size="sm" onClick={dockedTerminal.undock}>
+                      Move here
+                    </Button>
+                  }
+                />
+              ) : (
+                renderCodingPane(instance, presentation)
+              )
+            ) : null
           }
         />
       ) : null}

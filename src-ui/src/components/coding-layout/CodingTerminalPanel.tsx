@@ -105,10 +105,10 @@ export function CodingTerminalPanel({
   const tabsRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     tabsRef.current
-      ?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')
+      ?.querySelector(`[data-terminal-tab-id="${activeTabId}"]`)
       ?.closest('.coding-layout__terminal-tab-item')
       ?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
-  }, [activeTabId, tabs.length]);
+  }, [activeTabId]);
   const bar = (
     <div
       className={`coding-layout__terminal-bar${headSlots ? ' coding-layout__terminal-bar--head' : ''}`}

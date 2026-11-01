@@ -177,7 +177,10 @@ function isEngineLoginLeaf(request: { method: string; path: string }): boolean {
  * the operator in person, by the operator credential or a home-possession
  * credential, so this table admits both too.
  */
-function isEngineSignInLeaf(request: { method: string; path: string }): boolean {
+function isEngineSignInLeaf(request: {
+  method: string;
+  path: string;
+}): boolean {
   const path = request.path.split('?')[0] ?? request.path;
   return (
     (request.method === 'POST' &&

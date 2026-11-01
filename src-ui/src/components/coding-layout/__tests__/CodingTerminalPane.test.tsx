@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
 
+import { randomUUID } from 'node:crypto';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
@@ -10,7 +11,6 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
-import { randomUUID } from 'node:crypto';
 import type { ReactNode } from 'react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { CodingTerminalPane } from '../CodingTerminalPane';
@@ -80,7 +80,6 @@ vi.mock('../TerminalPanel', async () => {
       onOpened?: (terminalId: string) => void;
     }) => {
       const projectId = target?.projectId;
-      // biome-ignore lint/correctness/useExhaustiveDependencies: once per view, as the renderer
       useEffect(() => {
         if (!projectId) return;
         if (terminalId) {

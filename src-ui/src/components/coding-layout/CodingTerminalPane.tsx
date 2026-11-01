@@ -389,8 +389,7 @@ export function CodingTerminalPane({
   const shellOpened = useRef(false);
   const open = placement === 'pane' ? true : terminalOpen;
   useEffect(() => {
-    if (shellOpened.current || !open || !shellIsTheOnlyKind || !listed)
-      return;
+    if (shellOpened.current || !open || !shellIsTheOnlyKind || !listed) return;
     shellOpened.current = true;
     // "The reader closed the last terminal" is remembered in the browser
     // tab's session storage, keyed by Project, so a remount — a reload, a
@@ -416,7 +415,9 @@ export function CodingTerminalPane({
       );
       void queryClient.invalidateQueries({ queryKey: sessionsKey });
     }
-    setLocalTabs((local) => local.filter((candidate) => candidate.id !== tab.id));
+    setLocalTabs((local) =>
+      local.filter((candidate) => candidate.id !== tab.id),
+    );
     if (remaining.length === 0) {
       setActiveTabId('');
       writeClosedLastTerminal(projectSlug, true);
@@ -479,7 +480,7 @@ export function CodingTerminalPane({
 
   const toggleTabMode = (tabId: string) => {
     const tab = tabs.find((candidate) => candidate.id === tabId);
-    if (!tab || tab.type !== 'agent') return;
+    if (tab?.type !== 'agent') return;
     // The terminal mode names the connection and mode; the server resolves
     // its program and arguments (#3994). An open session is kept, and
     // reattached when the tab returns to its terminal.

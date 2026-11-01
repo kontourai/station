@@ -350,12 +350,21 @@ describe.runIf(posix)('engine sign-in route authority', () => {
     const view = await f.call(browser.credential, 'GET', 'droid/sign-in');
     expect(view.body.data.allowed.signIn).toBe(true);
 
-    const idle = await f.call(browser.credential, 'GET', 'droid/sign-in/attempt');
+    const idle = await f.call(
+      browser.credential,
+      'GET',
+      'droid/sign-in/attempt',
+    );
     expect(idle.status).toBe(200);
     expect(idle.body.data).toBeNull();
-    const start = await f.call(browser.credential, 'POST', 'droid/sign-in/start', {
-      methodId: 'device-pairing',
-    });
+    const start = await f.call(
+      browser.credential,
+      'POST',
+      'droid/sign-in/start',
+      {
+        methodId: 'device-pairing',
+      },
+    );
     expect(start.status).toBe(200);
     expect(start.body.data).toMatchObject({ kind: 'agent' });
     const key = await f.call(
