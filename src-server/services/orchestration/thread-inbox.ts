@@ -48,7 +48,10 @@ import {
 } from '@kontourai/station-contracts/provider';
 import { SESSION_ENDED_REJECTION_CODE } from '@kontourai/station-contracts/session-lifecycle';
 import { ClientTurnInputConflictError } from '../../providers/adapter-shape.js';
-import { registerPostToolInbox } from './post-tool-inbox.js';
+import {
+  type PostToolSteerInput,
+  registerPostToolInbox,
+} from './post-tool-inbox.js';
 import {
   activeTurnIdForEvents,
   turnIdentityAnchorForEvents,
@@ -275,7 +278,7 @@ const PUBLIC_STATE: Record<
 
 function decodeSteerPlacement(
   value: string | null,
-): { threadId: string; turnId: string } | undefined {
+): { threadId: string; turnId: string; boundary?: 'post-tool' } | undefined {
   if (!value) return undefined;
   try {
     const parsed: unknown = JSON.parse(value);
@@ -287,7 +290,13 @@ function decodeSteerPlacement(
       typeof parsed.threadId === 'string' &&
       typeof parsed.turnId === 'string'
     )
-      return { threadId: parsed.threadId, turnId: parsed.turnId };
+      return {
+        threadId: parsed.threadId,
+        turnId: parsed.turnId,
+        ...('boundary' in parsed && parsed.boundary === 'post-tool'
+          ? { boundary: 'post-tool' as const }
+          : {}),
+      };
   } catch {
     /* A corrupt placement cannot establish a handoff target. */
   }
@@ -822,15 +831,7 @@ export class ThreadInboxDelivery {
   /** Follow persisted events from now on. */
   start(): void {
     this.unregisterPostTool ??= registerPostToolInbox({
-      owns: (threadId, turnId) => {
-        const inbox = this.inboxOf(threadId);
-        return (
-          this.ports.currentSessionId(inbox) === threadId &&
-          activeTurnIdForEvents(
-            this.ports.foldEvents(threadId).map(({ event }) => event),
-          ) === turnId
-        );
-      },
+      owns: (threadId, turnId) => this.ownsPostToolTurn(threadId, turnId),
       deliver: (threadId, turnId, inject) =>
         this.deliverPostTool(threadId, turnId, inject),
     });
@@ -857,19 +858,29 @@ export class ThreadInboxDelivery {
     this.retries.clear();
   }
 
+  private ownsPostToolTurn(threadId: string, turnId: string): boolean {
+    return (
+      this.ports.currentSessionId(this.inboxOf(threadId)) === threadId &&
+      activeTurnIdForEvents(
+        this.ports.foldEvents(threadId).map(({ event }) => event),
+      ) === turnId
+    );
+  }
+
   private deliverPostTool(
     threadId: string,
     turnId: string,
-    inject: (input: import('./post-tool-inbox.js').PostToolSteerInput) => void,
+    inject: (input: PostToolSteerInput) => void,
   ): void {
     const conversationId = this.inboxOf(threadId);
     for (;;) {
       const head = inboxHead(this.ports.store.list(conversationId));
       if (this.stopped || head?.kind !== 'steer' || head.state !== 'queued')
         return;
+      const recordPostToolSteer = this.ports.recordPostToolSteer;
       if (
         this.ports.postToolMaySteer?.(threadId, turnId) !== true ||
-        !this.ports.recordPostToolSteer
+        !recordPostToolSteer
       )
         return;
       const claimed = this.ports.store.claimNext(
@@ -932,14 +943,36 @@ export class ThreadInboxDelivery {
           );
           continue;
         }
+        const onUnconfirmed = () => {
+          if (!this.stopped)
+            this.ports.store.settle(
+              claimed.entry,
+              'unconfirmed',
+              { reasonCode: 'may_have_been_sent' },
+              this.now(),
+            );
+        };
+        const stillClaimed = () =>
+          !this.stopped &&
+          this.ports.store.read(conversationId, head.key)?.state === 'placing';
         inject({
           key: head.key,
+          onUnconfirmed,
           text: payload.message,
           onDispatched: async (persistMemory) => {
-            if (this.stopped) return;
+            if (!stillClaimed()) return;
             try {
+              if (!this.ownsPostToolTurn(threadId, turnId)) {
+                onUnconfirmed();
+                return;
+              }
               await persistMemory();
-              this.ports.recordPostToolSteer!({
+              if (!stillClaimed()) return;
+              if (!this.ownsPostToolTurn(threadId, turnId)) {
+                onUnconfirmed();
+                return;
+              }
+              recordPostToolSteer({
                 threadId,
                 turnId,
                 clientInputId: head.key,
@@ -956,12 +989,7 @@ export class ThreadInboxDelivery {
                 'post-tool steer dispatch recording failed',
                 { error: errorText(error) },
               );
-              this.ports.store.settle(
-                claimed.entry,
-                'unconfirmed',
-                { reasonCode: 'may_have_been_sent' },
-                this.now(),
-              );
+              onUnconfirmed();
             }
           },
         });
@@ -1729,8 +1757,20 @@ export class ThreadInboxDelivery {
       const current = this.ports.currentSessionId(conversationId);
       if (head.kind === 'steer') {
         if (head.state === 'placing' && head.placement?.startsWith('{')) {
-          if (!redrive) return;
           const pinned = decodeSteerPlacement(head.placement);
+          if (
+            pinned?.boundary === 'post-tool' &&
+            !this.ownsPostToolTurn(pinned.threadId, pinned.turnId)
+          ) {
+            store.settle(
+              head,
+              'unconfirmed',
+              { reasonCode: 'may_have_been_sent' },
+              this.now(),
+            );
+            continue;
+          }
+          if (!redrive) return;
           if (!pinned) {
             store.settle(
               head,

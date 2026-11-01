@@ -2801,8 +2801,7 @@ export class OrchestrationService {
       },
     });
     this.sessionEventReads = new SessionEventReads({
-      readDurabilityProfile: (provider) =>
-        provider ? this.durabilityProfileForProvider(provider) : undefined,
+      readDurabilityProfile: this.durabilityProfileForProvider,
       ...(options.eventStore ? { eventStore: options.eventStore } : {}),
       logger: options.logger,
       listSessions: (authority) => this.listSessions(authority),
@@ -3008,8 +3007,7 @@ export class OrchestrationService {
           ? this.options.eventStore?.conversationDraftFacts(summaryThreadId)
           : undefined;
         const session = buildOrchestrationSessionSummary({
-          readDurabilityProfile: (provider) =>
-            provider ? this.durabilityProfileForProvider(provider) : undefined,
+          readDurabilityProfile: this.durabilityProfileForProvider,
           persisted,
           loaded,
           events: [...events],
@@ -3157,8 +3155,7 @@ export class OrchestrationService {
     );
     if (options.eventStore) {
       this.conversationHistoryReader = new ConversationHistoryReadService({
-        readDurabilityProfile: (provider) =>
-          provider ? this.durabilityProfileForProvider(provider) : undefined,
+        readDurabilityProfile: this.durabilityProfileForProvider,
         eventStore: options.eventStore,
         canReadSession: (threadId, authority) =>
           this.sessionAuthz.canReadSession(threadId, authority),
@@ -4927,8 +4924,7 @@ export class OrchestrationService {
         const conversationDraftFacts =
           conversationDraftFactsByThread?.get(threadId);
         const summary = buildOrchestrationSessionSummary({
-          readDurabilityProfile: (provider) =>
-            provider ? this.durabilityProfileForProvider(provider) : undefined,
+          readDurabilityProfile: this.durabilityProfileForProvider,
           persisted,
           loaded,
           events: events.map((event) => event.payload),
@@ -5389,11 +5385,12 @@ export class OrchestrationService {
     );
   }
 
-  durabilityProfileForProvider(
-    provider: string,
-  ): ProviderDurabilityProfile | undefined {
-    return this.options.adapterRegistry.get(provider)?.metadata.durability;
-  }
+  readonly durabilityProfileForProvider = (
+    provider: string | undefined,
+  ): ProviderDurabilityProfile | undefined =>
+    provider === undefined
+      ? undefined
+      : this.options.adapterRegistry.get(provider)?.metadata.durability;
 
   recordPostToolSteer(input: {
     threadId: string;
@@ -5510,8 +5507,7 @@ export class OrchestrationService {
       this.options.eventStore?.conversationDraftFacts(threadId);
     return {
       session: buildOrchestrationSessionSummary({
-        readDurabilityProfile: (provider) =>
-          provider ? this.durabilityProfileForProvider(provider) : undefined,
+        readDurabilityProfile: this.durabilityProfileForProvider,
         persisted,
         loaded,
         events: summaryEvents,
@@ -6029,8 +6025,7 @@ export class OrchestrationService {
     // required member working as designed — every construction site is
     // enumerated, and an internal one costs two map lookups.
     const summary = buildOrchestrationSessionSummary({
-      readDurabilityProfile: (provider) =>
-        provider ? this.durabilityProfileForProvider(provider) : undefined,
+      readDurabilityProfile: this.durabilityProfileForProvider,
       persisted,
       loaded,
       events,
@@ -6083,8 +6078,7 @@ export class OrchestrationService {
       )
         return unavailable();
       const summary = buildOrchestrationSessionSummary({
-        readDurabilityProfile: (provider) =>
-          provider ? this.durabilityProfileForProvider(provider) : undefined,
+        readDurabilityProfile: this.durabilityProfileForProvider,
         persisted,
         loaded,
         events:
@@ -6874,10 +6868,7 @@ export class OrchestrationService {
           if (!persisted && !loaded) return undefined;
           const provider = (loaded ?? persisted)?.provider;
           const summary = buildOrchestrationSessionSummary({
-            readDurabilityProfile: (provider) =>
-              provider
-                ? this.durabilityProfileForProvider(provider)
-                : undefined,
+            readDurabilityProfile: this.durabilityProfileForProvider,
             persisted,
             loaded,
             events: eventStore
@@ -15407,8 +15398,7 @@ export class OrchestrationService {
         .listSessionProjectionEvents(id)
         .map((event) => event.payload);
       const session = buildOrchestrationSessionSummary({
-        readDurabilityProfile: (provider) =>
-          provider ? this.durabilityProfileForProvider(provider) : undefined,
+        readDurabilityProfile: this.durabilityProfileForProvider,
         persisted,
         loaded,
         events,

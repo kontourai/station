@@ -13,7 +13,11 @@
 import { appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { APICallError, type LanguageModelV3StreamPart } from '@ai-sdk/provider';
+import {
+  APICallError,
+  type LanguageModelV3,
+  type LanguageModelV3StreamPart,
+} from '@ai-sdk/provider';
 import { coordinatorWakeClientTurnId } from '@kontourai/station-contracts/coordinator';
 import {
   EXTERNAL_ENGINE_DURABILITY,
@@ -22,6 +26,7 @@ import {
 import type { ProviderDurabilityProfile } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
+import { Memory } from '@voltagent/core';
 import type { PrepareStepFunction } from 'ai';
 import { simulateReadableStream } from 'ai';
 import { MockLanguageModelV3 } from 'ai/test';
@@ -38,6 +43,7 @@ import type {
 import { ClientTurnInputConflictError } from '../../../providers/adapter-shape.js';
 import { isForegroundIndeterminateShape } from '../../../routes/orchestration/orchestration.js';
 import { runWithAuthorizedTurnCorrelation } from '../../../runtime/conversation/authorized-turn-correlation.js';
+import { createInboxStepPreparation } from '../../../runtime/conversation/inbox-model-step.js';
 import { VoltAgentFramework } from '../../../runtime/frameworks/voltagent-adapter.js';
 import { CoordinatorWakeDelivery } from '../coordinator-session.js';
 import { EventBus } from '../event-bus.js';
@@ -547,14 +553,18 @@ describe('thread inbox (#3568)', () => {
     'wrong-turn',
     'ambiguous',
     'policy-throw',
-    'crash',
+    'dispatch-error',
+    'turn-end',
+    'compacted',
+    'duplicate',
   ] as const)(
     'the Station post-tool loop applies the durable steer decision %s',
     async (mode) => {
       const conflict = mode === 'conflict';
       const held = ['hold', 'wrong-turn', 'ambiguous'].includes(mode);
       const refused = mode === 'policy-throw';
-      const crashed = mode === 'crash';
+      const requestFailed = mode === 'dispatch-error';
+      const ended = mode === 'turn-end';
       const file = path();
       let receiptReads = 0;
       const world = boot(file, {
@@ -573,7 +583,7 @@ describe('thread inbox (#3568)', () => {
           return undefined;
         },
       });
-      await runningFirstTurn(world);
+      const owner = await runningFirstTurn(world);
       const other =
         mode === 'ambiguous'
           ? boot(path(), { steerFidelity: () => 'emulated' })
@@ -581,6 +591,21 @@ describe('thread inbox (#3568)', () => {
       if (other) await runningFirstTurn(other);
       const memoryHome = makeTempDir('station-inbox-memory-');
       const memory = new FileMemoryAdapter({ projectHomeDir: memoryHome });
+      const acknowledgementMemory =
+        mode === 'duplicate' ? new Memory({ storage: memory }) : undefined;
+      const memoryWrites = acknowledgementMemory
+        ? vi.spyOn(acknowledgementMemory, 'addMessages')
+        : undefined;
+      let nestedPreparation: PrepareStepFunction | undefined;
+      let repeatedModel: LanguageModelV3 | undefined;
+      let entered!: () => void;
+      let resume!: () => void;
+      const requestEntered = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const requestResumed = new Promise<void>((resolve) => {
+        resume = resolve;
+      });
       let calls = 0;
       const usage = {
         inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
@@ -593,9 +618,13 @@ describe('thread inbox (#3568)', () => {
             expect(world.inbox.list(THREAD)).toMatchObject([
               { state: 'sending' },
             ]);
-            if (crashed)
+            if (ended) {
+              entered();
+              await requestResumed;
+            }
+            if (requestFailed)
               throw new APICallError({
-                message: 'power lost before model dispatch acknowledgement',
+                message: 'model request failed before acknowledgement',
                 url: 'https://model.fixture',
                 requestBodyValues: {},
                 isRetryable: true,
@@ -681,35 +710,126 @@ describe('thread inbox (#3568)', () => {
           const result = await agent.streamText('read the file', {
             conversationId: THREAD,
             userId: OWNER,
-            prepareStep: ((step) =>
-              step.stepNumber >= 2
-                ? {
-                    messages: step.messages.filter(
-                      (message) => message.role !== 'user',
+            prepareStep: (async (step) => {
+              if (mode === 'duplicate') {
+                nestedPreparation ??= createInboxStepPreparation(undefined, {
+                  memory: acknowledgementMemory,
+                  userId: OWNER,
+                  conversationId: THREAD,
+                });
+                const prepared = await nestedPreparation(step);
+                const candidate = prepared?.model;
+                if (
+                  candidate &&
+                  typeof candidate !== 'string' &&
+                  candidate.specificationVersion === 'v3'
+                )
+                  repeatedModel ??= candidate;
+                return prepared;
+              }
+              if (mode === 'compacted' && step.stepNumber >= 2) {
+                const reply = step.messages.findIndex(
+                  (message) =>
+                    message.role === 'assistant' &&
+                    Array.isArray(message.content) &&
+                    message.content.some(
+                      (part) =>
+                        part.type === 'tool-call' &&
+                        part.toolCallId === 'tool-1',
                     ),
-                  }
-                : undefined) satisfies PrepareStepFunction,
+                );
+                if (reply < 0)
+                  throw new Error(
+                    'The compaction fixture has no later model reply.',
+                  );
+                return {
+                  messages: [
+                    ...step.messages.filter(
+                      (message) => message.role === 'system',
+                    ),
+                    ...step.messages.slice(reply),
+                  ],
+                };
+              }
+              return undefined;
+            }) satisfies PrepareStepFunction,
           });
           for await (const _chunk of result.fullStream) {
             /* Drain the real loop. */
           }
         },
       );
-      await run;
+      if (ended) {
+        await requestEntered;
+        try {
+          await emit(
+            world,
+            'turn.completed',
+            {
+              turnId: 'turn-1',
+              outputText: 'ended before dispatch acknowledgement',
+            },
+            owner,
+          );
+          await world.inbox.idle();
+          expect(world.inbox.list(THREAD)).toMatchObject([
+            { state: 'unconfirmed' },
+          ]);
+        } finally {
+          resume();
+          await run;
+        }
+      } else await run;
       other?.inbox.stop();
-      if (crashed) {
-        expect(calls).toBe(2);
-        expect(world.inbox.list(THREAD)).toMatchObject([{ state: 'sending' }]);
-        await crash(world);
-        const recovered = boot(file, { steerFidelity: () => 'emulated' });
-        await recovered.inbox.reconcile();
-        expect(recovered.inbox.list(THREAD)).toMatchObject([
-          { state: 'unconfirmed' },
+      if (requestFailed || ended) {
+        expect(calls).toBe(requestFailed ? 2 : 3);
+        expect(world.inbox.list(THREAD)).toMatchObject([
+          { state: 'unconfirmed', reasonCode: 'may_have_been_sent' },
         ]);
+        expect(
+          world.store
+            .listEventPayloads(THREAD, ['turn.started'])
+            .filter(
+              (event) =>
+                event.method === 'turn.started' && event.inputKind === 'steer',
+            ),
+        ).toEqual([]);
+        world.inbox.submit({
+          conversationId: THREAD,
+          clientTurnId: 'F2',
+          payload: { ...payload, message: 'follow-up F2' },
+        });
+        if (!ended)
+          await emit(
+            world,
+            'turn.completed',
+            { turnId: 'turn-1', outputText: 'model request failed' },
+            owner,
+          );
+        await world.inbox.idle();
         expect(followUpSends()).toEqual([]);
+        expect(world.inbox.cancel(THREAD, 'post-tool', OWNER).kind).toBe(
+          'cancelled',
+        );
+        await settle(world);
+        expect(sends).toEqual(['read the file', 'follow-up F2']);
+        expect(world.inbox.list(THREAD)).toContainEqual(
+          expect.objectContaining({ clientTurnId: 'F2', state: 'sent' }),
+        );
         return;
       }
       expect(calls).toBe(3);
+      if (mode === 'duplicate') {
+        if (!repeatedModel)
+          throw new Error(
+            'The fixture did not capture a carrying model request.',
+          );
+        await expect(
+          repeatedModel.doStream(model.doStreamCalls[1]),
+        ).rejects.toThrow('already attempted');
+        expect(model.doStreamCalls).toHaveLength(3);
+        expect(memoryWrites).toHaveBeenCalledTimes(1);
+      }
       if (!held && !conflict && !refused) {
         expect(
           world.store.listEventPayloads(THREAD, ['turn.started']),
@@ -733,6 +853,34 @@ describe('thread inbox (#3568)', () => {
               ),
           ),
         ).toHaveLength(conflict || held || refused ? 0 : 1);
+        if (!conflict && !held && !refused) {
+          const steer = call.prompt.findIndex(
+            (message) =>
+              message.role === 'user' &&
+              message.content.some(
+                (part) => part.type === 'text' && part.text === FOLLOW_UP,
+              ),
+          );
+          const anchor = call.prompt.findIndex(
+            (message) =>
+              message.role === 'tool' &&
+              message.content.some(
+                (part) =>
+                  part.type === 'tool-result' && part.toolCallId === 'tool-0',
+              ),
+          );
+          const reply = call.prompt.findIndex(
+            (message) =>
+              message.role === 'assistant' &&
+              message.content.some(
+                (part) =>
+                  part.type === 'tool-call' && part.toolCallId === 'tool-1',
+              ),
+          );
+          if (anchor >= 0) expect(steer).toBe(anchor + 1);
+          else expect(mode).toBe('compacted');
+          if (reply >= 0) expect(steer).toBeLessThan(reply);
+        }
       }
       expect(world.inbox.list(THREAD)).toMatchObject([
         held
