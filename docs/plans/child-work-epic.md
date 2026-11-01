@@ -22,10 +22,14 @@ One live input ledger spans each invocation; its individual transactions use
 fresh Home scopes. MCP sends retain the runtime effect while releasing Home
 before asynchronous work. Input cleanup is registered with the publication, so
 failed transport close retains custody through publication return and runtime
-shutdown until cleanup can retry. Nine fixed-MCP lifecycle cases and scoped
-server-test types pass, including Home availability while a question awaits an
-answer. These constructor-level publication controls do not qualify initialized
-storage teardown or the actual multi-seat report caller.
+shutdown until cleanup can retry. The initial fixed-MCP candidate passed nine cases and
+scoped server-test types, including Home availability while a question awaits an
+answer. From clean `889b995f86d`, removing only cleanup registration failed the
+intended close-failure control with eight other passes. Exact restoration passed
+that control again, but the full restored selection failed two earlier form-open
+deadlines with seven passes. No restoration-wide green result is claimed. These
+constructor-level controls do not qualify initialized storage teardown or the
+actual multi-seat report caller.
 
 Both actual report-input callers still fail before canonical input. At the latest
 60-second observation, the HTTP case had no live acquisition; the direct case
@@ -3573,5 +3577,16 @@ show a sub-second held scope and waiter at the direct deadline. Historical
 profiles count 110,017 authority and 1,577 preparation checks with overlapping
 ~45s/~32s inclusive durations; those predate this input candidate and cannot be
 attributed to its added metadata calls. Both actual caller tests remain red, and
-renewal/adoption have not reached their intended assertions. Publication cleanup
-mutation proof and final delta review remain required. No feature is enabled.
+renewal/adoption have not reached their intended assertions. A clean-commit
+mutation at `889b995f86d` subsequently removed only input cleanup registration and
+failed the intended close-failure control with eight other passes. The original
+source was restored byte-for-byte and the tree was clean. The named cleanup
+control passed again, but two other cases then timed out before canonical forms
+with no invocation error; the restored selection is seven passes and two failures.
+Those failures are preserved, with no unproven host-load attribution or deadline
+change. Final delta review and a fully passing selection remain required.
+
+The clean-tree readiness run also remains failed on required documentation truth.
+It selected no changed source nodes and did not run connected-agent tests; its
+root lint/governance/hygiene results are not combined-branch qualification.
+No feature is enabled and no PR is open.
