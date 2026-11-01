@@ -3239,9 +3239,12 @@ so only the changed table was formatted through stdin without weakening policy.
 Bounded independent source review found no demonstrated actionable defect. It
 identified useful additional controls for multiple consent-bearing configured
 records and explicit credential/Agent metadata overlay; these remain coverage
-limits rather than executed acceptance. Clean committed mutation/restoration remains open for this increment. The
-new readiness run passes the connected-agent lane; accumulated documentation
-freshness is still its required failure. The
+limits rather than executed acceptance. The candidate is preserved at `844abbf3c3b`. Removing only the recovery
+fallback from its clean tree reproduced the same four positive refusals, with
+619 other cases passing. Byte-exact restoration returned all 623 cases to green
+and the worktree/index to clean state. The owned mutation receipt preserves the
+source hashes and terminal logs. The new readiness run passes the connected-agent
+lane; accumulated documentation freshness is still its required failure. The
 previous failed runs remain retained evidence. This does not qualify live
 provider/native/device behavior, complete remaining controller adoption, enable
 report groups/finalizers or make the epic ready for a PR.
