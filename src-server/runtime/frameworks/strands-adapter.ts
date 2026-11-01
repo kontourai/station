@@ -5,6 +5,7 @@ import {
   runtimeAgentKey,
 } from '../../services/agents/runtime-agent-identity.js';
 import { addAgentTools } from '../tools/agent-tool-view.js';
+
 /**
  * Strands Agents SDK adapter — maps Strands API to the framework-agnostic interfaces.
  *
@@ -20,17 +21,27 @@ import { addAgentTools } from '../tools/agent-tool-view.js';
  *   modelMetadataEvent                                                        → (usage tracking)
  */
 
+import { currentAgentTurn } from '@kontourai/agent-runtime';
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import {
   AfterInvocationEvent,
   type AgentResult,
   type McpClient,
-  type Message,
+  Message,
   Agent as StrandsAgent,
 } from '@strands-agents/sdk';
 import type { StorageAdapter } from '@voltagent/core';
 import { excludeChatErrorMarkers } from '../../adapters/file/memory-adapter-prompt-view.js';
 import { createLogger } from '../../utils/logger.js';
+import {
+  bindDurableAgent,
+  durableAgentDefinition,
+} from '../agents/durable-agent-invocation.js';
+import {
+  durableAgentMemory,
+  noteDurableModelInput,
+} from '../agents/durable-agent-memory.js';
+import { durableAgentHooks } from '../agents/durable-agent-tools.js';
 import {
   currentUnattendedPrincipal,
   currentUnattendedRunId,
@@ -380,7 +391,32 @@ class StrandsAgentWrapper implements IAgent {
 
         const _emittedStart = false;
         let emittedTextStart = false;
-        const stream = agent.stream(modelInput, invokeOptions);
+        let retainedInput = modelInput;
+        const lease = currentAgentTurn();
+        if (lease) {
+          const entry = await lease.entry('native-entry:strands', {
+            input: modelInput,
+            messages: agent.messages.map((message) => message.toJSON()),
+          });
+          if (
+            !entry ||
+            typeof entry !== 'object' ||
+            !('input' in entry) ||
+            typeof entry.input !== 'string' ||
+            !('messages' in entry) ||
+            !Array.isArray(entry.messages)
+          )
+            throw new Error('Durable Strands history is damaged');
+          retainedInput = entry.input;
+          noteDurableModelInput(lease, retainedInput);
+          agent.messages.splice(
+            0,
+            agent.messages.length,
+            ...entry.messages.map((message) => Message.fromJSON(message)),
+          );
+          bindStrandsNativeHistory(agent, agent.messages);
+        }
+        const stream = agent.stream(retainedInput, invokeOptions);
 
         self._lastStreamUsage = null;
 
@@ -604,7 +640,7 @@ export class StrandsFramework {
         slug,
         slug,
         model,
-        opts.memoryAdapter as unknown as IMemory,
+        durableAgentMemory(opts.memoryAdapter) as unknown as IMemory,
         invocationCtx,
         viewTools,
         {
@@ -639,7 +675,9 @@ export class StrandsFramework {
         bindStrandsNativeHistory(strandsAgent, strandsAgent.messages);
       wireStrandsAgentHooks({
         strandsAgent,
-        hooks: conformAgentHooks('strands', config.hooks),
+        hooks: conformAgentHooks('strands', durableAgentHooks(config.hooks)),
+        findToolReplay: (name) =>
+          viewTools.find((tool) => tool.name === name)?.replay ?? 'unsafe',
         deniedToolCalls,
         invocationCtx,
         purposeEnabledToolNames,
@@ -649,7 +687,9 @@ export class StrandsFramework {
             ? getBuiltinVendedToolIdentity(candidates[0])
             : undefined;
         },
-        memoryAdapter: opts.memoryAdapter as unknown as IMemory,
+        memoryAdapter: durableAgentMemory(
+          opts.memoryAdapter,
+        ) as unknown as IMemory,
         logger: opts.logger,
         resolvedModel,
         getLastStreamUsage: () => wrapper._lastStreamUsage,
@@ -660,7 +700,18 @@ export class StrandsFramework {
             .find((provenance) => provenance !== undefined),
       });
 
-      return wrapper;
+      return !history
+        ? bindDurableAgent(wrapper, {
+            home: config.projectHomeDir,
+            memory: opts.memoryAdapter,
+            slug,
+            definition: durableAgentDefinition({
+              framework: 'strands',
+              spec,
+              model: resolvedModel,
+            }),
+          })
+        : wrapper;
     };
     const wrapper = makeWrapper();
 
@@ -725,6 +776,7 @@ export class StrandsFramework {
     maxSteps?: number;
     memoryAdapter?: StorageAdapter;
     hooks?: IAgentHooks;
+    durable?: { home: string; slug: string; definition: string };
   }): Promise<IAgent> {
     const resolved =
       typeof opts.instructions === 'function'
@@ -772,7 +824,9 @@ export class StrandsFramework {
       // owned by StrandsAgentWrapper below.
       wireStrandsToolGate({
         strandsAgent: agent,
-        hooks: conformAgentHooks('strands', opts.hooks),
+        hooks: conformAgentHooks('strands', durableAgentHooks(opts.hooks)),
+        findToolReplay: (name) =>
+          viewTools.find((tool) => tool.name === name)?.replay ?? 'unsafe',
         deniedToolCalls,
         invocationCtx,
         purposeEnabledToolNames,
@@ -791,7 +845,9 @@ export class StrandsFramework {
         opts.name,
         opts.name,
         opts.model,
-        (opts.memoryAdapter as unknown as IMemory) ?? null,
+        opts.memoryAdapter
+          ? (durableAgentMemory(opts.memoryAdapter) as unknown as IMemory)
+          : null,
         invocationCtx,
         viewTools,
         {
@@ -829,14 +885,19 @@ export class StrandsFramework {
             agent,
             agentMessages: agent.messages,
             invocation,
-            memoryAdapter: opts.memoryAdapter!,
+            memoryAdapter: durableAgentMemory(opts.memoryAdapter!),
             logger: createLogger({ name: 'strands-native-memory' }),
             resolvedModel:
               typeof opts.model?.modelId === 'string' ? opts.model.modelId : '',
           });
         });
       }
-      return wrapper;
+      return !history && opts.durable
+        ? bindDurableAgent(wrapper, {
+            ...opts.durable,
+            memory: opts.memoryAdapter,
+          })
+        : wrapper;
     };
     return makeWrapper();
   }

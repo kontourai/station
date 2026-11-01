@@ -6,6 +6,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { currentAgentTurn } from '@kontourai/agent-runtime';
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import type {
   MCPConnection,
@@ -34,6 +35,17 @@ import type { ApprovalRegistry } from '../../services/approvals/approval-registr
 import type { MCPToolProvenanceGeneration } from '../../services/orchestration/mcp-tool-provenance.js';
 import type { IntegrationSecretResolver } from '../../services/secrets/secret-binding-administration.js';
 import { stationDenial } from '../agents/denial-message.js';
+import {
+  bindDurableAgent,
+  durableAgentDefinition,
+} from '../agents/durable-agent-invocation.js';
+import { durableAgentMemory } from '../agents/durable-agent-memory.js';
+import {
+  durableAgentHooks,
+  durableToolReplay,
+  executeDurableTool,
+  rememberDurableToolReplay,
+} from '../agents/durable-agent-tools.js';
 import {
   currentUnattendedPrincipal,
   currentUnattendedRunId,
@@ -79,7 +91,11 @@ import {
   TOOL_DENIED_FINISH_REASON,
 } from '../types.js';
 import { conformAgentHooks } from './conduit-framework-adapter.js';
-import { createVoltAgentManagedModel } from './framework-model-factory.js';
+import {
+  createVoltAgentManagedModel,
+  durableModelBinding,
+  durableStationLanguageModel,
+} from './framework-model-factory.js';
 import {
   modelConnectionConfigurationDigest,
   modelGenerationIdentity,
@@ -710,6 +726,7 @@ const purposeEnabledVoltTools = new WeakSet<object>();
  * (e.g. `render_component`) were silently dropped from the model request.
  */
 export function toVoltAgentTool(tool: ITool): Tool<any> {
+  rememberDurableToolReplay(tool, tool.replay ?? 'unsafe');
   const t = tool as ITool & { type?: string };
   if (t.type === 'user-defined' || t.type === 'provider') {
     // Provider/MCP tools are already real VoltAgent Tools and must retain
@@ -724,23 +741,35 @@ export function toVoltAgentTool(tool: ITool): Tool<any> {
           input: unknown,
           options: { toolContext?: { callId?: unknown } },
         ) => {
-          if (t.name === NATIVE_OUTPUT_DECLARATION_TOOL) {
-            const declarationInput = parseNativeOutputDeclarationInput(input);
-            if (!declarationInput) return invalidNativeOutputDeclarationInput();
-            const result = await runWithCurrentNativeOutputCall(
-              options?.toolContext?.callId,
-              () => Reflect.apply(original, t, [declarationInput, options]),
-            );
-            return publicNativeOutputDeclarationResult(
-              declarationInput,
-              result,
-            );
-          }
-          const result = await runWithCurrentNativeOutputCall(
-            options?.toolContext?.callId,
-            () => Reflect.apply(original, t, [input, options]),
+          return executeDurableTool(
+            {
+              name: t.name,
+              id: options?.toolContext?.callId,
+              args: input,
+              replay: t.replay,
+            },
+            async () => {
+              if (t.name === NATIVE_OUTPUT_DECLARATION_TOOL) {
+                const declarationInput =
+                  parseNativeOutputDeclarationInput(input);
+                if (!declarationInput)
+                  return invalidNativeOutputDeclarationInput();
+                const result = await runWithCurrentNativeOutputCall(
+                  options?.toolContext?.callId,
+                  () => Reflect.apply(original, t, [declarationInput, options]),
+                );
+                return publicNativeOutputDeclarationResult(
+                  declarationInput,
+                  result,
+                );
+              }
+              const result = await runWithCurrentNativeOutputCall(
+                options?.toolContext?.callId,
+                () => Reflect.apply(original, t, [input, options]),
+              );
+              return result;
+            },
           );
-          return result;
         };
         try {
           Object.defineProperty(t, 'execute', {
@@ -775,28 +804,40 @@ export function toVoltAgentTool(tool: ITool): Tool<any> {
           input: unknown,
           options: { toolContext?: { callId?: unknown } },
         ) => {
-          // VoltAgent's execute options are the sole trusted source here.
-          // No argument, MCP, or SSE fallback may mint native provenance.
-          if (tool.name === NATIVE_OUTPUT_DECLARATION_TOOL) {
-            const declarationInput = parseNativeOutputDeclarationInput(input);
-            if (!declarationInput) return invalidNativeOutputDeclarationInput();
-            const result = await runWithCurrentNativeOutputCall(
-              options?.toolContext?.callId,
-              () => tool.execute!(declarationInput, options),
-            );
-            return publicNativeOutputDeclarationResult(
-              declarationInput,
-              result,
-            );
-          }
-          const purposeful = purposeEnabled
-            ? extractToolPurpose(input)
-            : { input };
-          const result = await runWithCurrentNativeOutputCall(
-            options?.toolContext?.callId,
-            () => tool.execute!(purposeful.input, options),
+          return executeDurableTool(
+            {
+              name: tool.name,
+              id: options?.toolContext?.callId,
+              args: purposeEnabled ? extractToolPurpose(input).input : input,
+              replay: tool.replay,
+            },
+            async () => {
+              // VoltAgent's execute options are the sole trusted source here.
+              // No argument, MCP, or SSE fallback may mint native provenance.
+              if (tool.name === NATIVE_OUTPUT_DECLARATION_TOOL) {
+                const declarationInput =
+                  parseNativeOutputDeclarationInput(input);
+                if (!declarationInput)
+                  return invalidNativeOutputDeclarationInput();
+                const result = await runWithCurrentNativeOutputCall(
+                  options?.toolContext?.callId,
+                  () => tool.execute!(declarationInput, options),
+                );
+                return publicNativeOutputDeclarationResult(
+                  declarationInput,
+                  result,
+                );
+              }
+              const purposeful = purposeEnabled
+                ? extractToolPurpose(input)
+                : { input };
+              const result = await runWithCurrentNativeOutputCall(
+                options?.toolContext?.callId,
+                () => tool.execute!(purposeful.input, options),
+              );
+              return result;
+            },
           );
-          return result;
         }
       : undefined;
   const adapted = copyLoadedMCPToolProvenance(
@@ -809,6 +850,7 @@ export function toVoltAgentTool(tool: ITool): Tool<any> {
       ...(execute ? { execute: execute as never } : {}),
     }) as unknown as Tool<any>,
   );
+  rememberDurableToolReplay(adapted, tool.replay ?? 'unsafe');
   copyBuiltinVendedToolIdentity(tool, adapted);
   if (purposeEnabled) purposeEnabledVoltTools.add(adapted);
   return adapted;
@@ -907,6 +949,7 @@ export function createVoltAgentLifecycleHooks(
         : { input: args, purpose: undefined };
       const toolCall: ToolCallContext = {
         toolName: tool.name,
+        replay: durableToolReplay(tool),
         toolCallId,
         toolArgs: purposeful.input,
         purpose: purposeful.purpose,
@@ -1127,6 +1170,25 @@ export function createVoltAgentLifecycleHooks(
   });
 }
 
+function withDurableVoltEntry(hooks: AgentHooks): AgentHooks {
+  const prepareMessages = hooks.onPrepareMessages;
+  return {
+    ...hooks,
+    onPrepareMessages: async (input) => {
+      const prepared = await prepareMessages?.(input);
+      const lease = currentAgentTurn();
+      if (!lease) return prepared ?? { messages: input.messages };
+      const messages = await lease.entry(
+        'native-entry:voltagent',
+        prepared?.messages ?? input.messages,
+      );
+      if (!Array.isArray(messages))
+        throw new Error('Durable VoltAgent history is damaged');
+      return { messages };
+    },
+  };
+}
+
 export class VoltAgentFramework {
   async createAgent(
     slug: string,
@@ -1134,7 +1196,11 @@ export class VoltAgentFramework {
     config: AgentCreationConfig,
     opts: CreateAgentOptions,
   ): Promise<AgentBundle> {
-    const model = await this.createModel(spec, config);
+    const selectedModel = await this.createModel(spec, config);
+    const model =
+      selectedModel?.specificationVersion === 'v3'
+        ? durableStationLanguageModel(selectedModel)
+        : selectedModel;
 
     // Create memory. `createPromptOnlyMemoryView` filters the
     // `[CHAT_ERROR]` failed-turn marker out of this Memory instance's
@@ -1143,7 +1209,9 @@ export class VoltAgentFramework {
     // the raw, unwrapped adapter, so the marker still renders on
     // reload. See `memory-adapter-prompt-view.ts` for the full trace.
     const memory = new Memory({
-      storage: createPromptOnlyMemoryView(opts.memoryAdapter, slug),
+      storage: durableAgentMemory(
+        createPromptOnlyMemoryView(opts.memoryAdapter, slug),
+      ),
     });
 
     // Load tools
@@ -1166,9 +1234,14 @@ export class VoltAgentFramework {
     // VoltAgent needs createHooks() for its internal lifecycle, but the
     // afterInvocation business logic (stats, cost, enrichment) comes from
     // the shared hooks passed via config.hooks.
-    const sharedHooks = conformAgentHooks('voltagent', config.hooks);
+    const sharedHooks = conformAgentHooks(
+      'voltagent',
+      durableAgentHooks(config.hooks),
+    );
     const _autoApprove = spec.tools?.autoApprove || [];
-    const hooks = createVoltAgentLifecycleHooks(slug, sharedHooks);
+    const hooks = withDurableVoltEntry(
+      createVoltAgentLifecycleHooks(slug, sharedHooks),
+    );
 
     // Build agent
     const createToolView = (viewTools: ITool[]): IAgent => {
@@ -1205,6 +1278,18 @@ export class VoltAgentFramework {
           ? { maxOutputTokens: config.appConfig.defaultMaxOutputTokens }
           : {}),
       });
+      bindDurableAgent(agent, {
+        home: config.projectHomeDir,
+        memory: opts.memoryAdapter,
+        slug,
+        definition: durableAgentDefinition({
+          framework: 'voltagent',
+          spec,
+          model: model.modelId,
+          provider: model.provider,
+          binding: durableModelBinding(model),
+        }),
+      });
       // #323 review: when both guardrails are set, temperature wins, which is
       // what @ai-sdk/anthropic already does for Claude. Some providers forward
       // both (Bedrock), and newer Claude models reject a request that carries
@@ -1220,7 +1305,7 @@ export class VoltAgentFramework {
         bindDefaultTopP(agent, topP);
       }
 
-      return new VoltAgentWrapper(
+      const wrapper = new VoltAgentWrapper(
         agent,
         purposeEnabledToolNames,
         opts.processedPrompt,
@@ -1230,6 +1315,18 @@ export class VoltAgentFramework {
           return createToolView(addAgentTools(tools, additions));
         },
       );
+      return bindDurableAgent(wrapper, {
+        home: config.projectHomeDir,
+        memory: opts.memoryAdapter,
+        slug,
+        definition: durableAgentDefinition({
+          framework: 'voltagent',
+          spec,
+          model: model.modelId,
+          provider: model.provider,
+          binding: durableModelBinding(model),
+        }),
+      });
     };
     const wrapper = createToolView(tools);
 
@@ -1323,6 +1420,7 @@ export class VoltAgentFramework {
     maxSteps?: number;
     memoryAdapter?: StorageAdapter;
     hooks?: IAgentHooks;
+    durable?: { home: string; slug: string; definition: string };
   }): Promise<IAgent> {
     // archive#914: without a memory the framework falls back to its own in-process
     // `InMemoryStorageAdapter`, so the agent reads a conversation history that
@@ -1340,7 +1438,10 @@ export class VoltAgentFramework {
       const agent = new Agent({
         name: opts.name,
         instructions: opts.instructions,
-        model: opts.model,
+        model:
+          opts.model?.specificationVersion === 'v3'
+            ? durableStationLanguageModel(opts.model)
+            : opts.model,
         // Temp/default agents bypass persisted-agent loading, but must still
         // register hand-rolled Station tools as real Volt tools.
         tools: normalizedTools,
@@ -1349,28 +1450,32 @@ export class VoltAgentFramework {
         // default agent (and every scheduler//invoke/CLI call riding it)
         // executed tools without ever evaluating beforeToolCall. Wired exactly
         // as `createAgent` does when the caller supplies hooks.
-        ...(opts.hooks
-          ? {
-              hooks: createVoltAgentLifecycleHooks(
+        hooks: withDurableVoltEntry(
+          opts.hooks
+            ? createVoltAgentLifecycleHooks(
                 opts.agentId
                   ? runtimeAgentKey(publicAgentIdFromRuntimeKey(opts.agentId))
                   : opts.name,
-                conformAgentHooks('voltagent', opts.hooks),
-              ),
-            }
-          : {}),
+                conformAgentHooks('voltagent', durableAgentHooks(opts.hooks)),
+              )
+            : {},
+        ),
         ...(opts.memoryAdapter
           ? {
               memory: new Memory({
-                storage: createPromptOnlyMemoryView(
-                  opts.memoryAdapter,
-                  opts.agentId,
+                storage: durableAgentMemory(
+                  createPromptOnlyMemoryView(opts.memoryAdapter, opts.agentId),
                 ),
               }),
             }
           : {}),
       });
-      return new VoltAgentWrapper(
+      if (opts.durable)
+        bindDurableAgent(agent, {
+          ...opts.durable,
+          memory: opts.memoryAdapter,
+        });
+      const wrapper = new VoltAgentWrapper(
         agent,
         purposeEnabledToolNames,
         opts.instructions,
@@ -1380,6 +1485,12 @@ export class VoltAgentFramework {
           return createToolView(addAgentTools(opts.tools ?? [], additions));
         },
       );
+      return opts.durable
+        ? bindDurableAgent(wrapper, {
+            ...opts.durable,
+            memory: opts.memoryAdapter,
+          })
+        : wrapper;
     };
     return createToolView(opts.tools ?? []);
   }

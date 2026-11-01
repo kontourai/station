@@ -4286,6 +4286,12 @@ export class StationRuntime {
           onACPConnectionsReady: () => this.reloadDefaultAgent(),
           orchestrationEventStore: this.orchestrationEventStore,
           hostImagesPreview: this.chatHostImagesPreview,
+          durableAgentPreview: this.featurePreviews.bind({
+            id: 'durable-station-agent',
+            label: 'Crash-durable Station Agent',
+            description:
+              'Keep Station Agent text turns running after disconnect and resume recorded model and tool steps after restart. Stop still cancels.',
+          }),
           credentialProfileRecoveryAdapter:
             this.connectionService.createCredentialProfileRecoveryAdapter(
               credentialRecoveryRuntimeConnectionId,

@@ -26,6 +26,7 @@ import {
 import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
 import { outwardTransportError } from '../../utils/outward-error.js';
 import { parseToolName } from '../../utils/tool-name-normalizer.js';
+import { waitDurableToolApproval } from '../agents/durable-agent-tools.js';
 import { CompletionHandler } from '../streaming/handlers/CompletionHandler.js';
 import { MetadataHandler } from '../streaming/handlers/MetadataHandler.js';
 import { ReasoningHandler } from '../streaming/handlers/ReasoningHandler.js';
@@ -213,51 +214,58 @@ export function createElicitationCallback(
 
       // Parse tool name for UI display
       const { server, tool } = parseToolName(toolName);
+      return waitDurableToolApproval(
+        approvalId,
+        MS_PER_MINUTE,
+        (approvalId, timeoutMs) => {
+          logger.info(
+            '[Elicitation] NOT auto-approved, injecting approval request',
+            {
+              approvalId,
+              toolName,
+              originalName: toolMapping?.original,
+              autoApproveList: autoApprove,
+            },
+          );
 
-      logger.info(
-        '[Elicitation] NOT auto-approved, injecting approval request',
-        {
-          approvalId,
-          toolName,
-          originalName: toolMapping?.original,
-          autoApproveList: autoApprove,
+          // Inject event (will appear at next chunk boundary)
+          injectableStream.inject({
+            type: 'tool-approval-request',
+            approvalId,
+            toolName,
+            server,
+            tool,
+            toolDescription: request.toolDescription,
+            toolArgs: request.toolArgs,
+            purpose: request.purpose,
+          } as unknown as any);
+
+          // Wait for user approval
+          const conversationId = getConversationId();
+          return approvalRegistry.register(approvalId, {
+            timeoutMs,
+            metadata: {
+              agentName: agentSpec.name,
+              conversationId,
+              // Only for the relayed conversation itself.
+              ...(orchestrationThreadId &&
+              orchestrationThreadId === conversationId
+                ? { orchestrationThreadId }
+                : {}),
+              description:
+                typeof request.toolDescription === 'string'
+                  ? request.toolDescription
+                  : undefined,
+              server,
+              source: 'runtime',
+              title: toolMapping?.original || toolName,
+              tool,
+              toolName,
+              purpose: request.purpose,
+            },
+          });
         },
       );
-
-      // Inject event (will appear at next chunk boundary)
-      injectableStream.inject({
-        type: 'tool-approval-request',
-        approvalId,
-        toolName,
-        server,
-        tool,
-        toolDescription: request.toolDescription,
-        toolArgs: request.toolArgs,
-        purpose: request.purpose,
-      } as unknown as any);
-
-      // Wait for user approval
-      const conversationId = getConversationId();
-      return approvalRegistry.register(approvalId, {
-        metadata: {
-          agentName: agentSpec.name,
-          conversationId,
-          // Only for the relayed conversation itself.
-          ...(orchestrationThreadId && orchestrationThreadId === conversationId
-            ? { orchestrationThreadId }
-            : {}),
-          description:
-            typeof request.toolDescription === 'string'
-              ? request.toolDescription
-              : undefined,
-          server,
-          source: 'runtime',
-          title: toolMapping?.original || toolName,
-          tool,
-          toolName,
-          purpose: request.purpose,
-        },
-      });
     }
     return false;
   };

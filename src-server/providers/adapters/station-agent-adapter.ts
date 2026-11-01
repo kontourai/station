@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import type { AgentFrame, DurableApproval } from '@kontourai/agent-runtime';
 import type { AgentDelegationContext } from '@kontourai/station-contracts/agent';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
@@ -24,6 +25,14 @@ import {
   type TurnProvenanceContextInjection,
 } from '@kontourai/station-contracts/turn-provenance-context';
 import { readInputRequestForm } from '@kontourai/station-shared/input-request';
+import {
+  type DurableFrameMarker,
+  decodeDurableAgentFrame,
+} from '../../runtime/agents/durable-agent-lifecycle.js';
+import {
+  forgetDurableInvocationIdentity,
+  retainDurableInvocationIdentity,
+} from '../../runtime/agents/durable-invocation-identity.js';
 import {
   currentAuthorizedTurnCorrelation,
   currentMcpPromptOrigin,
@@ -215,6 +224,32 @@ interface StationAgentSessionRecord {
 }
 
 interface StationAgentAdapterOptions {
+  durable?: {
+    enabled(): boolean;
+    owns(threadId: string, turnId: string): boolean;
+    snapshot(
+      threadId: string,
+      turnId: string,
+    ):
+      | {
+          state: 'running' | 'completed' | 'cancelled' | 'blocked';
+          settledAt: number | null;
+          cancelRequested?: boolean;
+          cancelRequestedAt?: number;
+        }
+      | undefined;
+    frame(threadId: string, turnId: string, id: string): AgentFrame | undefined;
+    approval(
+      threadId: string,
+      turnId: string,
+      id: string,
+    ): DurableApproval | undefined;
+    approvals(threadId: string, turnId: string): readonly DurableApproval[];
+    publish(event: CanonicalRuntimeEvent): boolean;
+    cancel(threadId: string, turnId?: string): void | Promise<void>;
+    pause(): Promise<void>;
+    retained(threadId: string): boolean;
+  };
   apiBase: string;
   /**
    * Must recognize any agent the `/api/agents/:slug/chat` route can serve —
@@ -889,6 +924,273 @@ export class StationAgentAdapter implements ProviderAdapterShape {
   private readonly events = new AsyncEventQueue<CanonicalRuntimeEvent>();
   private readonly sessions = new Map<string, StationAgentSessionRecord>();
   private readonly resolutionOverrides = new Map<string, ApprovalStatus>();
+  private readonly durableStreams = new Map<
+    string,
+    {
+      seen: Set<string>;
+      pendingIdless: PendingIdlessToolCall[];
+      contextInjection?: TurnProvenanceContextInjection;
+      finishReason: ReturnType<typeof finishReason>;
+    }
+  >();
+  private durableKey(threadId: string, turnId: string) {
+    return JSON.stringify([threadId, turnId]);
+  }
+  private durableEventId(threadId: string, turnId: string, category: string) {
+    return `agent-runtime:${crypto
+      .createHash('sha256')
+      .update(JSON.stringify([threadId, turnId, category]))
+      .digest('hex')}`;
+  }
+
+  canRecoverDurableTurn(threadId: string, turnId: string): boolean {
+    const record = this.sessions.get(threadId);
+    return (
+      !!record &&
+      (!record.activeTurnId || record.activeTurnId === turnId) &&
+      this.agentRegistryReady()
+    );
+  }
+  beginDurableRecovery(
+    threadId: string,
+    turnId: string,
+    invocationId?: string,
+  ): void {
+    const record = this.requireSession(threadId);
+    if (record.activeTurnId && record.activeTurnId !== turnId)
+      throw new Error('Another turn owns this Session.');
+    record.activeTurnId = turnId;
+    record.activeController ??= new AbortController();
+    record.activeOrigin = invocationId ? { invocationId } : {};
+    record.abortPublished = false;
+    beginNativeKnowledgeTurn(threadId, turnId, record.activeController.signal);
+  }
+  private consumeDurableFrame(
+    record: StationAgentSessionRecord,
+    turnId: string,
+    origin: TurnOrigin,
+    marker: DurableFrameMarker,
+    line: string,
+    event: Record<string, unknown>,
+  ) {
+    const durable = this.options.durable;
+    const frame = durable?.frame(record.session.threadId, turnId, marker.id);
+    if (
+      !durable ||
+      marker.turnId !== turnId ||
+      !frame ||
+      marker.digest !== frame.digest ||
+      marker.createdAt !== frame.createdAt ||
+      frame.wire.split('\n').find((value) => value.startsWith('data: ')) !==
+        line
+    )
+      throw new Error('The durable frame has no matching journal receipt.');
+    const key = this.durableKey(record.session.threadId, turnId);
+    let stream = this.durableStreams.get(key);
+    if (!stream) {
+      stream = { seen: new Set(), pendingIdless: [], finishReason: 'other' };
+      this.durableStreams.set(key, stream);
+    }
+    if (stream.seen.has(marker.id)) return {};
+    const mapped = mapStationAgentStreamEvent({
+      event,
+      threadId: record.session.threadId,
+      turnId,
+      ...origin,
+      pendingIdlessToolCalls: stream.pendingIdless,
+      now: () => new Date(frame.createdAt),
+      publish: (next) => {
+        const category = JSON.stringify([
+          frame.id,
+          next.method,
+          'itemId' in next ? next.itemId : '',
+          'requestId' in next ? next.requestId : '',
+        ]);
+        if (
+          !durable.publish({
+            ...next,
+            eventId: this.durableEventId(
+              record.session.threadId,
+              turnId,
+              category,
+            ),
+          })
+        )
+          throw new Error('The durable frame was not persisted by Station.');
+      },
+    });
+    stream.seen.add(marker.id);
+    if (mapped.finishReason) stream.finishReason = mapped.finishReason;
+    if (mapped.contextInjection)
+      stream.contextInjection = mapped.contextInjection;
+    return mapped;
+  }
+  observeDurableWire(
+    threadId: string,
+    turnId: string,
+    wire: string,
+    invocationId?: string,
+  ): void {
+    const record = this.requireSession(threadId);
+    const origin =
+      record.activeOrigin ?? (invocationId ? { invocationId } : {});
+    let marker: DurableFrameMarker | undefined;
+    for (const line of wire.split('\n')) {
+      if (line.startsWith('id: agent-runtime-v1:')) {
+        marker = decodeDurableAgentFrame(line);
+        if (!marker || marker.turnId !== turnId)
+          throw new Error('Invalid durable frame identity');
+        continue;
+      }
+      if (!line.startsWith('data: ')) continue;
+      const encoded = line.slice(6);
+      if (encoded === '[DONE]') {
+        this.reconcileDurableTerminal(threadId, turnId, invocationId);
+        continue;
+      }
+      if (!marker) throw new Error('The durable frame identity is missing.');
+      const event: unknown = JSON.parse(encoded);
+      if (!event || typeof event !== 'object' || Array.isArray(event))
+        throw new Error('The durable frame payload is invalid.');
+      const mapped = this.consumeDurableFrame(
+        record,
+        turnId,
+        origin,
+        marker,
+        line,
+        Object.fromEntries(Object.entries(event)),
+      );
+      if (mapped.approvalOpened)
+        this.trackApproval(record, turnId, origin, mapped.approvalOpened);
+      if (mapped.toolOpened)
+        record.openToolCalls.set(mapped.toolOpened.toolCallId, {
+          toolName: mapped.toolOpened.toolName,
+          turnId,
+          origin,
+        });
+      if (mapped.toolSettled)
+        record.openToolCalls.delete(mapped.toolSettled.toolCallId);
+      marker = undefined;
+    }
+  }
+  reconcileDurableApproval(
+    threadId: string,
+    turnId: string,
+    requestId: string,
+    invocationId?: string,
+  ): void {
+    const durable = this.options.durable;
+    const decision = durable?.approval(threadId, turnId, requestId);
+    const parent = durable?.snapshot(threadId, turnId);
+    if (!durable || !decision || !parent)
+      throw new Error('The durable approval receipt is unavailable.');
+    const status: ApprovalStatus | undefined =
+      decision.state === 'pending'
+        ? parent.cancelRequested
+          ? 'cancelled'
+          : undefined
+        : decision.state;
+    if (!status) return;
+    const record = this.requireSession(threadId);
+    const pending = record.pendingRequests.get(requestId);
+    if (!pending) {
+      this.rememberResolvedApproval(record, requestId, status);
+      return;
+    }
+    const at = decision.decisionAt ?? parent.cancelRequestedAt;
+    const event: CanonicalRuntimeEvent = {
+      eventId: this.durableEventId(threadId, turnId, `approval:${requestId}`),
+      provider: this.provider,
+      threadId,
+      turnId,
+      ...(invocationId ? { invocationId } : pending.origin),
+      createdAt: at ? new Date(at).toISOString() : this.now().toISOString(),
+      method: 'request.resolved',
+      requestId,
+      status,
+      acknowledgement: this.metadata.approvalAcknowledgement,
+    };
+    if (!durable.publish(event))
+      throw new Error('Station did not persist the durable approval decision.');
+    record.pendingRequests.delete(requestId);
+  }
+  reconcileDurableTerminal(
+    threadId: string,
+    turnId: string,
+    invocationId?: string,
+  ): void {
+    const durable = this.options.durable;
+    const snapshot = durable?.snapshot(threadId, turnId);
+    if (
+      !durable ||
+      !snapshot ||
+      snapshot.state === 'running' ||
+      snapshot.settledAt === null
+    )
+      return;
+    const record = this.requireSession(threadId);
+    const origin = invocationId
+      ? { invocationId }
+      : (record.activeOrigin ?? {});
+    for (const approval of durable.approvals(threadId, turnId))
+      this.reconcileDurableApproval(
+        threadId,
+        turnId,
+        approval.id,
+        origin.invocationId,
+      );
+    const base = {
+      eventId: this.durableEventId(threadId, turnId, 'terminal'),
+      provider: this.provider,
+      threadId,
+      turnId,
+      ...origin,
+      createdAt: new Date(snapshot.settledAt).toISOString(),
+    };
+    const stream = this.durableStreams.get(this.durableKey(threadId, turnId));
+    const event: CanonicalRuntimeEvent =
+      snapshot.state === 'completed'
+        ? {
+            ...base,
+            method: 'turn.completed',
+            finishReason: stream?.finishReason ?? 'stop',
+            metadata: {
+              ...effectiveModelMetadata(record.session.model),
+              ...(stream?.contextInjection
+                ? { [CONTEXT_INJECTION_METADATA_KEY]: stream.contextInjection }
+                : {}),
+            },
+          }
+        : snapshot.state === 'cancelled'
+          ? { ...base, method: 'turn.aborted', reason: 'cancelled' }
+          : {
+              ...base,
+              method: 'runtime.error',
+              ...providerFailure('provider_error'),
+              severity: 'error',
+              message:
+                'Station could not establish a complete outcome for this turn. Review its recorded state before retrying.',
+              code: 'station_agent_step_indeterminate',
+              retriable: false,
+            };
+    if (!durable.publish(event))
+      throw new Error('Station did not persist the durable terminal receipt.');
+    finishNativeKnowledgeTurn(threadId, turnId);
+    if (record.activeTurnId === turnId) {
+      record.activeTurnId = undefined;
+      record.activeController = undefined;
+      record.activeOrigin = undefined;
+    }
+    this.updateSession(
+      record,
+      snapshot.state === 'completed'
+        ? 'ready'
+        : snapshot.state === 'cancelled'
+          ? 'ready'
+          : 'error',
+    );
+    this.durableStreams.delete(this.durableKey(threadId, turnId));
+  }
 
   constructor(private readonly options: StationAgentAdapterOptions) {
     options.eventBus.subscribe((event) => this.handleApprovalEvent(event));
@@ -1073,7 +1375,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     // concurrent turn on this session were to change the model before
     // the stream settles.
     const modelMetadata = effectiveModelMetadata(modelId, input.modelOptions);
-    this.publish({
+    const startedEvent = {
       eventId: crypto.randomUUID(),
       provider: this.provider,
       threadId: input.threadId,
@@ -1084,7 +1386,17 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       // Transcript-facing: the typed text, never the composed model input.
       prompt: input.displayInput ?? input.input,
       metadata: modelMetadata,
-    });
+    } satisfies CanonicalRuntimeEvent;
+    if (
+      this.options.durable?.enabled() &&
+      turnCorrelation &&
+      origin.invocationId
+    )
+      retainDurableInvocationIdentity(turnCorrelation, origin.invocationId, {
+        ...startedEvent,
+        invocationId: origin.invocationId,
+      });
+    this.publish(startedEvent);
 
     let response: Response;
     let rejectionReason: string | undefined;
@@ -1243,6 +1555,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       }
     } catch (error) {
       nativeForeground?.refuse();
+      if (turnCorrelation) forgetDurableInvocationIdentity(turnCorrelation);
       this.failTurn(record, turnId, controller, origin, rejectionReason);
       throw error;
     }
@@ -1256,6 +1569,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       modelMetadata,
     )
       .catch((error) => {
+        if (this.options.durable?.owns(record.session.threadId, turnId)) return;
         this.failTurn(
           record,
           turnId,
@@ -1388,6 +1702,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       await knowledgeCleanup;
       return;
     }
+    await this.options.durable?.cancel(threadId, record.activeTurnId);
     this.cancelPendingApprovals(record);
     record.activeController?.abort('session stopped');
     this.sessions.delete(threadId);
@@ -1454,8 +1769,11 @@ export class StationAgentAdapter implements ProviderAdapterShape {
 
   async stopAll(): Promise<void> {
     try {
+      await this.options.durable?.pause();
       await Promise.all(
-        [...this.sessions.keys()].map((threadId) => this.stopSession(threadId)),
+        [...this.sessions.keys()]
+          .filter((threadId) => !this.options.durable?.retained(threadId))
+          .map((threadId) => this.stopSession(threadId)),
       );
     } finally {
       this.events.close();
@@ -1483,6 +1801,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     const reader = response.body!.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
+    let durableMarker: DurableFrameMarker | undefined;
     let outputText = '';
     let resolvedFinishReason: ReturnType<typeof finishReason> = 'stop';
     let failed = false;
@@ -1509,6 +1828,12 @@ export class StationAgentAdapter implements ProviderAdapterShape {
         const lines = buffer.split('\n');
         buffer = lines.pop() ?? '';
         for (const line of lines) {
+          if (line.startsWith('id: agent-runtime-v1:')) {
+            durableMarker = decodeDurableAgentFrame(line);
+            if (!durableMarker || durableMarker.turnId !== turnId)
+              throw new Error('Invalid durable frame identity');
+            continue;
+          }
           if (!line.startsWith('data: ')) continue;
           const encoded = line.slice(6);
           if (encoded === '[DONE]') continue;
@@ -1518,15 +1843,26 @@ export class StationAgentAdapter implements ProviderAdapterShape {
           } catch {
             continue;
           }
-          const mapped = mapStationAgentStreamEvent({
-            event,
-            threadId: record.session.threadId,
-            turnId,
-            ...origin,
-            publish: (next) => this.publish(next),
-            now: this.options.now,
-            pendingIdlessToolCalls,
-          });
+          const marker = durableMarker;
+          durableMarker = undefined;
+          const mapped = marker
+            ? this.consumeDurableFrame(
+                record,
+                turnId,
+                origin,
+                marker,
+                line,
+                event,
+              )
+            : mapStationAgentStreamEvent({
+                event,
+                threadId: record.session.threadId,
+                turnId,
+                ...origin,
+                publish: (next) => this.publish(next),
+                now: this.options.now,
+                pendingIdlessToolCalls,
+              });
           if (mapped.approvalOpened) {
             this.trackApproval(record, turnId, origin, mapped.approvalOpened);
           }
@@ -1579,7 +1915,8 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     if (controller.signal.aborted) {
       if (
         record.activeTurnId === turnId &&
-        record.activeController === controller
+        record.activeController === controller &&
+        !this.options.durable?.owns(record.session.threadId, turnId)
       ) {
         finishNativeKnowledgeTurn(record.session.threadId, turnId);
         record.activeTurnId = undefined;
@@ -1592,6 +1929,14 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       record.activeTurnId !== turnId ||
       record.activeController !== controller
     ) {
+      return;
+    }
+    if (this.options.durable?.snapshot(record.session.threadId, turnId)) {
+      this.reconcileDurableTerminal(
+        record.session.threadId,
+        turnId,
+        origin.invocationId,
+      );
       return;
     }
     if (!failed) {
@@ -1735,6 +2080,26 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     origin: TurnOrigin,
     approval: { requestId: string; toolName?: string; elicitation?: true },
   ): void {
+    if (
+      this.options.durable?.approval(
+        record.session.threadId,
+        turnId,
+        approval.requestId,
+      )
+    ) {
+      record.pendingRequests.set(approval.requestId, {
+        turnId,
+        origin,
+        ...(approval.toolName ? { toolName: approval.toolName } : {}),
+      });
+      this.reconcileDurableApproval(
+        record.session.threadId,
+        turnId,
+        approval.requestId,
+        origin.invocationId,
+      );
+      return;
+    }
     const resolvedStatus = record.resolvedBeforeOpen.get(approval.requestId);
     if (resolvedStatus) {
       record.resolvedBeforeOpen.delete(approval.requestId);
@@ -1773,6 +2138,21 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     for (const record of this.sessions.values()) {
       const pending = record.pendingRequests.get(requestId);
       if (!pending) continue;
+      if (
+        this.options.durable?.approval(
+          record.session.threadId,
+          pending.turnId,
+          requestId,
+        )
+      ) {
+        this.reconcileDurableApproval(
+          record.session.threadId,
+          pending.turnId,
+          requestId,
+          pending.origin.invocationId,
+        );
+        return;
+      }
       record.pendingRequests.delete(requestId);
       this.publishResolvedApproval(
         record,

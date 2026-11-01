@@ -208,7 +208,11 @@ import {
 } from '../../runtime/frameworks/runtime-adapter-readiness.js';
 import { revokeStationControlMcpToken } from '../../runtime/mcp/station-control-mcp-token.js';
 import { createNativeOutputDeclarationOperation } from '../../runtime/native-output-declaration.js';
-import type { NativeOutputCallFacts } from '../../runtime/native-output-turn-grant.js';
+import type {
+  DurableNativeOutputFacts,
+  NativeOutputCallFacts,
+  NativeOutputTurnContext,
+} from '../../runtime/native-output-turn-grant.js';
 import {
   createNativeOutputGrantAuthority,
   createNativeOutputRelayCompanion,
@@ -11617,6 +11621,77 @@ export class OrchestrationService {
     if (current !== recorded) throw dispatchCwdMovedError(recorded, current);
   }
 
+  /** A continuing native turn obtains fresh authority from current Session policy. */
+  async authorizeDurableStationTurn(input: {
+    threadId: string;
+    turnId: string;
+    userId: string;
+    workspaceRoot?: string;
+  }): Promise<void> {
+    const session = this.options.eventStore?.readSessionByThread(
+      input.threadId,
+    );
+    if (
+      !session ||
+      session.provider !== 'station-agent' ||
+      session.status === 'closed' ||
+      this.quarantinedThreads.has(input.threadId)
+    )
+      throw new Error('The durable turn Session is no longer available.');
+    this.sessionAuthz.hydratePersistedTenantContexts([session]);
+    if (
+      !this.sessionAuthz.canReadSessionForCommand(
+        input.threadId,
+        input.userId,
+        this.sessionAuthz.tenantContextFor(input.threadId),
+      )
+    )
+      throw new Error('The durable turn is no longer authorized.');
+    const workspace = await this.authorizedConversationWorkspace(
+      input.threadId,
+    );
+    const current = workspace?.cwd ?? session.cwd;
+    if (input.workspaceRoot !== undefined && input.workspaceRoot !== current)
+      throw new Error('The durable turn workspace changed.');
+    await this.assertMandatoryTaskContextAtProviderTurn(input.threadId);
+  }
+
+  async recoverDurableNativeOutput(input: {
+    facts: DurableNativeOutputFacts;
+    userId: string;
+    configurationLease: unknown;
+    current: () => boolean;
+  }): Promise<NativeOutputTurnContext> {
+    await this.authorizeDurableStationTurn({
+      threadId: input.facts.threadId,
+      turnId: input.facts.turnId,
+      userId: input.userId,
+      workspaceRoot: input.facts.workspaceRoot,
+    });
+    const grant = this.nativeOutputGrants.issue(
+      { ...input.facts, configurationLease: input.configurationLease },
+      {
+        isCurrent: () =>
+          input.current() &&
+          !this.quarantinedThreads.has(input.facts.threadId) &&
+          this.sessionAuthz.canReadSessionForCommand(
+            input.facts.threadId,
+            input.userId,
+            this.sessionAuthz.tenantContextFor(input.facts.threadId),
+          ),
+      },
+    );
+    if (!grant)
+      throw new Error(
+        'The durable native turn authority could not be recovered.',
+      );
+    return {
+      grant,
+      authority: this.nativeOutputGrants,
+      declarationOperation: this.nativeOutputDeclarations,
+    };
+  }
+
   /** Reauthorize the durable conversation coordinate, never a caller-supplied cwd. */
   async authorizedConversationWorkspace(
     threadId: string,
@@ -14062,6 +14137,19 @@ export class OrchestrationService {
    * an approval or a turn boundary can never overtake the text that preceded
    * it.
    */
+  /** A journaled native frame needs a persistence receipt before acknowledgement. */
+  publishDurableStationEvent(event: CanonicalRuntimeEvent): boolean {
+    const store = this.options.eventStore;
+    if (!store || event.provider !== 'station-agent') return false;
+    if (store.hasEventId(event.eventId)) return true;
+    const admitted = this.admitEventForPublication(event);
+    if (!admitted || !this.deltaCoalescer.flushThread(event.threadId))
+      return false;
+    return (
+      this.publishCanonicalEvent(admitted) && store.hasEventId(admitted.eventId)
+    );
+  }
+
   private projectAndPublishEvent(event: CanonicalRuntimeEvent): boolean {
     const admitted = this.admitEventForPublication(event);
     if (!admitted) return true;
