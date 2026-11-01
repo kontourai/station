@@ -15036,6 +15036,30 @@ export class EventStore {
     return recordCascadeStopIntent(this.db, parentId, childId, terminalId);
   }
 
+  pendingCascadeStops(): Array<{
+    parentId: string;
+    childId: string;
+    terminalId: string;
+  }> {
+    return this.db
+      .prepare(
+        "SELECT parent_session_id AS parentId, child_session_id AS childId, terminal_event_id AS terminalId FROM orchestration_cascade_stop_intents WHERE state = 'pending'",
+      )
+      .all() as Array<{
+      parentId: string;
+      childId: string;
+      terminalId: string;
+    }>;
+  }
+
+  completeCascadeStop(childId: string, terminalId: string): void {
+    this.db
+      .prepare(
+        "UPDATE orchestration_cascade_stop_intents SET state = 'completed' WHERE child_session_id = ? AND terminal_event_id = ?",
+      )
+      .run(childId, terminalId);
+  }
+
   readInputlessTurnDisposition(threadId: string) {
     return this.sessionTurnBoundaries.readInputlessTurnDisposition(threadId);
   }

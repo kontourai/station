@@ -11787,6 +11787,26 @@ export class OrchestrationService {
    * The `stopSession` command's teardown, shared with `discardDraft` (#2312),
    * which must end whatever engine a Draft holds before deleting it.
    */
+  private cascadeStopReconciliation?: Promise<void>;
+
+  private reconcileCascadeStops(): Promise<void> {
+    if (this.cascadeStopReconciliation) return this.cascadeStopReconciliation;
+    const store = this.options.eventStore;
+    if (!store) return Promise.resolve();
+    const reconcile = async () => {
+      for (const intent of store.pendingCascadeStops()) {
+        // Only the process holding the adapter may deliver this stop.
+        if (!this.sessionAdapters.has(intent.childId)) continue;
+        await this.stopSessionNow(intent.childId);
+        store.completeCascadeStop(intent.childId, intent.terminalId);
+      }
+    };
+    this.cascadeStopReconciliation = reconcile().finally(() => {
+      this.cascadeStopReconciliation = undefined;
+    });
+    return this.cascadeStopReconciliation;
+  }
+
   private async stopSessionNow(threadId: string): Promise<void> {
     // archive#3493 residual 1: a Stop that lands mid-materialisation
     // must tear down the engine that is starting, not report success
@@ -14575,6 +14595,7 @@ export class OrchestrationService {
    * holds more than one. Returns the parked thread ids.
    */
   async sweepIdleSessions(now = Date.now()): Promise<string[]> {
+    await this.reconcileCascadeStops();
     const parkAfterMs =
       this.options.idleSessionParkAfterMs ?? IDLE_SESSION_PARK_AFTER_MS;
     if (parkAfterMs <= 0) return [];
