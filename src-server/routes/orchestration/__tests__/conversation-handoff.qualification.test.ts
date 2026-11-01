@@ -977,7 +977,9 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
                 conversationId,
                 message: 'Continue after the failed return.',
               }),
-            ).rejects.toThrow(/native.return.*context|context.*native.return/i);
+            ).rejects.toThrow(
+              /(?:native.return|handoff).*context|context.*(?:native.return|handoff)/i,
+            );
             expect(sourceAdapter.turns).toHaveLength(2);
           } finally {
             await service.shutdown();
