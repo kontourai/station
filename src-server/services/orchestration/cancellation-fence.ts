@@ -15,6 +15,13 @@ CREATE TABLE IF NOT EXISTS orchestration_cascade_stop_intents (
   terminal_event_id TEXT NOT NULL,
   state TEXT NOT NULL CHECK (state IN ('pending', 'completed')),
   PRIMARY KEY (child_session_id, terminal_event_id)
+) ;
+CREATE TABLE IF NOT EXISTS orchestration_cascade_stop_custody (
+  child_session_id TEXT NOT NULL,
+  terminal_event_id TEXT NOT NULL,
+  custody TEXT NOT NULL CHECK (custody IN ('local', 'peer', 'unknown')),
+  evidence_json TEXT NOT NULL,
+  PRIMARY KEY (child_session_id, terminal_event_id)
 )`;
 
 export function recordCascadeStopIntent(

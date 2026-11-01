@@ -276,6 +276,7 @@ import type {
   FlowRunStatus,
 } from '../flow/flow-run-service.js';
 import { type SessionFlowBinding } from '../flow/orchestration-flow-gate.js';
+import { ownedProcessEvidenceFor } from '../infra/process-utils.js';
 import { receiptBus } from '../infra/receipt-bus.js';
 import {
   admitEngineStartForIntent,
@@ -3613,6 +3614,10 @@ export class OrchestrationService {
     void this.adoption
       .startReconciliation()
       .then(() => this.recoverSessions())
+      .then(async (observation) => {
+        await this.reconcileCascadeStops();
+        return observation;
+      })
       .then((observation) => {
         this.attachedSubjectRecovery = observation.scanObserved
           ? { outcome: 'observed', observation }
@@ -11795,16 +11800,55 @@ export class OrchestrationService {
     if (!store) return Promise.resolve();
     const reconcile = async () => {
       for (const intent of store.pendingCascadeStops()) {
-        // Only the process holding the adapter may deliver this stop.
-        if (!this.sessionAdapters.has(intent.childId)) continue;
-        await this.stopSessionNow(intent.childId);
-        store.completeCascadeStop(intent.childId, intent.terminalId);
+        const owner = store.cascadeStopOwner(
+          intent.childId,
+          this.sessionAdapters.has(intent.childId),
+        );
+        const evidence = {
+          ...owner,
+          registeredEnginePids: owner.owner
+            ? ownedProcessEvidenceFor(owner.owner)
+            : null,
+        };
+        const changed = store.recordCascadeStopCustody(
+          intent.childId,
+          intent.terminalId,
+          owner.custody,
+          evidence,
+        );
+        if (owner.custody !== 'local') {
+          if (changed && owner.custody === 'unknown')
+            this.options.logger.warn(
+              'Cascade stop custody is unknown; retaining pending intent',
+              { ...intent, ...evidence },
+            );
+          continue;
+        }
+        try {
+          await this.stopSessionNow(intent.childId);
+          store.completeCascadeStop(intent.childId, intent.terminalId);
+        } catch (error) {
+          this.options.logger.warn('Cascade stop remains pending', {
+            ...intent,
+            error: errorMessage(error),
+          });
+        }
       }
     };
-    this.cascadeStopReconciliation = reconcile().finally(() => {
-      this.cascadeStopReconciliation = undefined;
-    });
+    this.cascadeStopReconciliation = Promise.resolve()
+      .then(reconcile)
+      .finally(() => {
+        this.cascadeStopReconciliation = undefined;
+      });
     return this.cascadeStopReconciliation;
+  }
+
+  private observeCascadeStops(): void {
+    void this.reconcileCascadeStops().catch((error) => {
+      this.options.logger.warn('Cascade stop reconciliation failed', {
+        error: errorMessage(error),
+      });
+    });
   }
 
   private async stopSessionNow(threadId: string): Promise<void> {
@@ -14504,6 +14548,12 @@ export class OrchestrationService {
     quarantined: boolean,
   ): CanonicalRuntimeEvent {
     const { projectedEvent, session } = committed;
+    if (
+      event.method === 'turn.started' ||
+      event.method === 'turn.aborted' ||
+      event.method === 'session.exited'
+    )
+      this.observeCascadeStops();
     if (committed.providerTurn)
       this.reportProviderTurnBoundary(
         projectedEvent,

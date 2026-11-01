@@ -15052,6 +15052,68 @@ export class EventStore {
     }>;
   }
 
+  cascadeStopOwner(
+    childId: string,
+    locallyHeld: boolean,
+  ): {
+    custody: 'local' | 'peer' | 'unknown';
+    reason: string;
+    owner?: { pid: number; birth?: string };
+  } {
+    const row = this.db
+      .prepare(
+        'SELECT owner_id, owner_pid, owner_birth, owner_identity_kind FROM orchestration_turn_boundaries WHERE thread_id = ?',
+      )
+      .get(childId);
+    if (!row)
+      return {
+        custody: locallyHeld ? 'local' : 'unknown',
+        reason: locallyHeld ? 'local-adapter' : 'no-session-owner',
+      };
+    if (typeof row.owner_pid !== 'number' || typeof row.owner_id !== 'string')
+      return { custody: 'unknown', reason: 'invalid-boundary-owner' };
+    const owner = {
+      pid: row.owner_pid,
+      ...(typeof row.owner_birth === 'string'
+        ? { birth: row.owner_birth }
+        : {}),
+    };
+    if (row.owner_id === this.recoveryLedgerOwner.id && locallyHeld)
+      return { custody: 'local', reason: 'local-boundary-and-adapter', owner };
+    const observed = this.recoveryProcessIdentity.probe(owner.pid);
+    if (
+      row.owner_identity_kind === 'exact' &&
+      owner.birth &&
+      observed.state === 'exact' &&
+      observed.identity.start === owner.birth
+    )
+      return { custody: 'peer', reason: 'live-exact-boundary-owner', owner };
+    return {
+      custody: 'unknown',
+      reason: observed.state === 'dead' ? 'dead-owner' : 'unverified-owner',
+      owner,
+    };
+  }
+
+  recordCascadeStopCustody(
+    childId: string,
+    terminalId: string,
+    custody: 'local' | 'peer' | 'unknown',
+    evidence: unknown,
+  ): boolean {
+    return (
+      Number(
+        this.db
+          .prepare(
+            `INSERT INTO orchestration_cascade_stop_custody VALUES (?, ?, ?, ?)
+       ON CONFLICT(child_session_id, terminal_event_id) DO UPDATE SET custody = excluded.custody, evidence_json = excluded.evidence_json
+       WHERE custody != excluded.custody OR evidence_json != excluded.evidence_json`,
+          )
+          .run(childId, terminalId, custody, JSON.stringify(evidence)).changes,
+      ) > 0
+    );
+  }
+
   completeCascadeStop(childId: string, terminalId: string): void {
     this.db
       .prepare(
