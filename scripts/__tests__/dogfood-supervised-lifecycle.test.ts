@@ -143,7 +143,7 @@ describe('e2e daemon identity under the supervisor', () => {
       instance: 'e2e',
       serverPort: 1,
       uiPort: 2,
-      bootstrapAuthority: { registry, operatorCredential: 'token' },
+      bootstrapAuthority: { registry, operatorCredential: 'a'.repeat(43) },
       fetchImpl,
       processIdentityFn,
       readSupervisorStatus: () => status,
