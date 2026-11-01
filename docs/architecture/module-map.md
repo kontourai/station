@@ -6266,7 +6266,12 @@ They do not qualify a real Chromium or provider run.
 [TerminalSessions](../../src-server/services/terminal/terminal-sessions.ts) owns
 instance UUIDs, durable Project/binding records, cwd confinement and operation
 authority. [ShellHost](../../src-server/services/terminal/shell-host.ts) supplies
-a replaceable process handle; the in-process implementation uses node-pty.
+a replaceable process handle. The in-process implementation uses node-pty;
+[SupervisorShellHost](../../src-server/services/terminal/supervisor-shell-host.ts)
+is used instead when the process supervisor grants `workloads`. Then the shell and
+its journal live in the supervisor's workload host
+([PtyWorkloadHost](../../src-server/services/terminal/pty-workload-host.ts), built as
+`station-pty-host.js`), and a running session is reattached after a core restart.
 [TerminalJournal](../../src-server/services/terminal/terminal-journal.ts) owns
 serialized sanitized records, bounded memory and append-only disk segments.
 The [operator control routes](../../src-server/routes/projects/terminal-session-routes.ts)
@@ -6278,8 +6283,7 @@ Project terminal close and the process projections reach TerminalSessions for
 socket session ids; the legacy listener keeps its own sessions until removal.
 
 The [design boundary](../design/terminal.md#first-implementation-boundary-3994-part-a)
-separates this foundation from supervisor survival, retention Settings and
-Ghostty. The
+separates this foundation from retention Settings and Ghostty. The
 [same-origin gateway](../../src-server/services/terminal/terminal-gateway.ts)
 mounts on the API listener through the Station Hono provider and redeems a
 single-use [ticket](../../src-server/services/terminal/terminal-tickets.ts)

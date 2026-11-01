@@ -1,5 +1,5 @@
 /**
- * Station supervisor protocol, version 1 (minor 2).
+ * Station supervisor protocol, version 1 (minor 3).
  *
  * Two channels share these definitions:
  *
@@ -26,7 +26,7 @@ import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { posix, win32 } from 'node:path';
 
-export const SUPERVISOR_PROTOCOL = Object.freeze({ major: 1, minor: 2 });
+export const SUPERVISOR_PROTOCOL = Object.freeze({ major: 1, minor: 3 });
 
 export interface ProtocolVersion {
   major: number;
@@ -213,6 +213,15 @@ export interface SupervisorStatus {
   trial: GenerationStatus | null;
   listeners: ListenerStatus[];
   restarts: { consecutiveFailures: number; lastBackoffMs: number | null };
+  /** Protocol 1.3: workloads this supervisor's workload host runs or ran. */
+  workloads?: WorkloadStatus[];
+}
+
+export interface WorkloadStatus {
+  workloadId: string;
+  kind: WorkloadKind;
+  pid: number;
+  state: WorkloadInfo['state'];
 }
 
 export interface StatusResult {
@@ -335,9 +344,15 @@ export interface ListenerListeningMessage {
  * - `handoff-events`: `handoff.progress` for a handoff this core asked for,
  *   and `handoff.outcome` once this core is the generation a handoff left
  *   serving.
+ * - `workloads` (protocol 1.3): this core runs terminals as supervisor
+ *   workloads. A supervisor that can grants it in `promote`; only then does
+ *   the core send `workload.request`, and only then is it sent
+ *   `workload.event`. A core that is not granted it keeps its terminals in
+ *   process, as before.
  */
 export const GENERATION_CAPABILITIES = Object.freeze([
   'handoff-events',
+  'workloads',
 ] as const);
 
 /** Code is loaded; the home has not been touched. */
@@ -379,6 +394,14 @@ export interface CoreHandoffRequestMessage {
   drainDeadlineMs?: number;
 }
 
+/** Protocol 1.3, `workloads`: one workload operation; answered by `workload.response`. */
+export interface WorkloadRequestMessage {
+  type: 'workload.request';
+  /** Unique among this sender's requests still unanswered. */
+  id: string;
+  request: WorkloadRequest;
+}
+
 export type CoreToSupervisorMessage =
   | ListenerBoundMessage
   | ListenerSpareMessage
@@ -387,7 +410,8 @@ export type CoreToSupervisorMessage =
   | ReadyMessage
   | DrainProgressMessage
   | DrainedMessage
-  | CoreHandoffRequestMessage;
+  | CoreHandoffRequestMessage
+  | WorkloadRequestMessage;
 
 // ---------------------------------------------------------------------------
 // Generation IPC: supervisor -> core. A handle accompanies `listener.adopt`
@@ -401,6 +425,11 @@ export type CoreToSupervisorMessage =
 export interface PromoteMessage {
   type: 'promote';
   listeners: string[];
+  /**
+   * Protocol 1.3: the generation capabilities this supervisor grants, from
+   * those the core announced in `parked`. Absent from a 1.2 supervisor.
+   */
+  capabilities?: string[];
 }
 
 export interface ListenerAdoptMessage {
@@ -507,7 +536,185 @@ export type SupervisorToCoreMessage =
   | DrainMessage
   | CoreHandoffRefusedMessage
   | CoreHandoffProgressMessage
-  | CoreHandoffOutcomeMessage;
+  | CoreHandoffOutcomeMessage
+  | WorkloadResponseMessage
+  | WorkloadEventMessage;
+
+// ---------------------------------------------------------------------------
+// Workloads (protocol 1.3, `workloads`)
+//
+// A workload is a process the supervisor owns, so it outlives core
+// generations: today a terminal. The supervisor runs them in a workload host,
+// a child process started from the build root (it needs node-pty, a native
+// addon this bundle cannot carry), and relays these messages between the
+// host and the generation that is promoted or serving. The host speaks the
+// same `workload.request`, `workload.response` and `workload.event` messages
+// on its own IPC channel, plus `host.ready` and `host.stop`.
+//
+// The host owns each workload's PTY or pipes and its journal: output is
+// sanitized and numbered there, and a core reads it with `read` from any
+// sequence, so output produced while no generation is attached is not lost.
+// Bytes are JSON strings (terminal output is UTF-8 text); no descriptor is
+// passed, so a host could later live on another machine.
+
+/**
+ * `interactive` runs in a PTY (user shells). `command` runs without one, its
+ * stdout and stderr journaled together up to an output cap, after which the
+ * workload is ended.
+ */
+export type WorkloadKind = 'interactive' | 'command';
+
+/** Where a workload's journal lives and its limits (the core's journal options). */
+export interface WorkloadJournalSpec {
+  directory: string;
+  options?: Record<string, number | boolean>;
+}
+
+export interface WorkloadSpawnRequest {
+  op: 'spawn';
+  workloadId: string;
+  kind: WorkloadKind;
+  /** Tried in order; only a missing executable moves on to the next. */
+  candidates: { command: string; args: string[] }[];
+  cwd: string;
+  env: Record<string, string>;
+  cols: number;
+  rows: number;
+  journal: WorkloadJournalSpec;
+  /** `command` only: journaled output beyond this ends the workload. */
+  outputCapBytes?: number;
+}
+
+/** Signals a workload's process; `terminate` ends its whole tree instead. */
+export type WorkloadSignal = 'SIGINT' | 'SIGTERM' | 'SIGHUP' | 'SIGKILL';
+
+export type WorkloadRequest =
+  | WorkloadSpawnRequest
+  | { op: 'write'; workloadId: string; data: string }
+  | { op: 'resize'; workloadId: string; cols: number; rows: number }
+  | { op: 'signal'; workloadId: string; signal: WorkloadSignal }
+  /**
+   * Ends the workload and every process it started: process groups on
+   * POSIX, `taskkill /T` on Windows, escalating to a forced kill. Answers
+   * once the workload has exited.
+   */
+  | { op: 'terminate'; workloadId: string }
+  | { op: 'list' }
+  /** The workload's state and last journal sequence. */
+  | { op: 'attach'; workloadId: string }
+  /** Journal records after `fromSeq`, at most `maxBytes` of output. */
+  | { op: 'read'; workloadId: string; fromSeq: number; maxBytes: number }
+  /** Resolves once every output received so far is journaled. */
+  | { op: 'flush'; workloadId: string };
+
+export interface WorkloadExit {
+  exitCode: number;
+  signal: number | null;
+  /** Some output may not have been journaled (delivery was paused, or the host died). */
+  outputIncomplete: boolean;
+  /** The journal failed; its directory is not a complete record. */
+  journalFailed: boolean;
+}
+
+export interface WorkloadInfo {
+  workloadId: string;
+  kind: WorkloadKind;
+  pid: number;
+  cols: number;
+  rows: number;
+  /** The last journaled sequence, 0 before any output. */
+  lastSeq: number;
+  state: 'running' | 'exited';
+  exit?: WorkloadExit;
+}
+
+/** `read`'s result: the journal's own read result. */
+export interface WorkloadReadResult {
+  firstSeq: number;
+  lastSeq: number;
+  /** `fromSeq` is older than retained output; replace any replay with `records`. */
+  reset: boolean;
+  records: { seq: number; data: string }[];
+}
+
+export type WorkloadErrorCode =
+  | 'bad-request'
+  | 'not-found'
+  | 'exists'
+  /** No workload host runs, or it went away. */
+  | 'unavailable'
+  | 'failed';
+
+export type WorkloadResponseMessage =
+  | { type: 'workload.response'; id: string; ok: true; result: unknown }
+  | {
+      type: 'workload.response';
+      id: string;
+      ok: false;
+      code: WorkloadErrorCode;
+      message: string;
+    };
+
+/**
+ * `output`: records up to `lastSeq` are journaled and readable. `exit`: the
+ * workload ended and its journal is flushed and closed; read it from disk.
+ */
+export type WorkloadEventMessage =
+  | {
+      type: 'workload.event';
+      workloadId: string;
+      event: 'output';
+      lastSeq: number;
+    }
+  | {
+      type: 'workload.event';
+      workloadId: string;
+      event: 'exit';
+      exit: WorkloadExit;
+    };
+
+/** Whether an IPC message is a well-formed `workload.event`. */
+export function isWorkloadEventMessage(
+  value: unknown,
+): value is WorkloadEventMessage {
+  if (typeof value !== 'object' || value === null) return false;
+  const message = value as Record<string, unknown>;
+  if (
+    message.type !== 'workload.event' ||
+    typeof message.workloadId !== 'string'
+  )
+    return false;
+  if (message.event === 'output') return typeof message.lastSeq === 'number';
+  if (message.event !== 'exit') return false;
+  const exit = message.exit as Record<string, unknown> | null | undefined;
+  return (
+    typeof exit === 'object' &&
+    exit !== null &&
+    typeof exit.exitCode === 'number' &&
+    (exit.signal === null || typeof exit.signal === 'number') &&
+    typeof exit.outputIncomplete === 'boolean' &&
+    typeof exit.journalFailed === 'boolean'
+  );
+}
+
+/** Workload host -> supervisor, once it can take requests. */
+export interface HostReadyMessage {
+  type: 'host.ready';
+}
+
+/** Supervisor -> workload host: end every workload and exit. */
+export interface HostStopMessage {
+  type: 'host.stop';
+}
+
+/**
+ * The workload host bundle's file name in a server build directory. The
+ * supervisor runs the one beside its initial entry unless told otherwise.
+ */
+export const WORKLOAD_HOST_BUNDLE_NAME = 'station-pty-host.js';
+
+/** Longest a workload `read` may ask for. */
+export const WORKLOAD_MAX_READ_BYTES = 1024 * 1024;
 
 // ---------------------------------------------------------------------------
 // Control endpoint derivation

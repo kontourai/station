@@ -26,6 +26,15 @@ everything that starts through it; `STATION_DIRECT_LAUNCH=1` opts out.
 by running the bundle as a client (`--request`). Desktop still runs its own
 sidecar; see the [design](../../docs/design/process-supervisor.md).
 
+**Phase 2: terminal workloads (protocol 1.3).** A core that announces the
+`workloads` capability runs its terminals in the supervisor's workload host,
+a child process (`station-pty-host.js`, beside the core entry or named with
+`--workload-host`). The host owns each shell's PTY and journal, so a shell
+keeps its pid and output across a core handoff or restart and ends with the
+supervisor. The relay is [`workload-host.ts`](src/workload-host.ts). The
+host is built from the core server's tree, because it needs node-pty, which
+this bundle cannot carry.
+
 - Design and phases: [Station process supervisor](../../docs/design/process-supervisor.md)
 - Ownership decision: [process supervisor decision](../../docs/decisions/process-supervisor.md)
 - Wire protocol: [`./protocol`](src/protocol.ts), exported as

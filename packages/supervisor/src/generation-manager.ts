@@ -28,7 +28,9 @@ import {
   type SupervisorEvent,
   type SupervisorState,
   type SupervisorToCoreMessage,
+  type WorkloadEventMessage,
 } from './protocol.ts';
+import type { WorkloadReply } from './workload-host.ts';
 
 export interface Clock {
   now(): number;
@@ -130,6 +132,15 @@ export interface GenerationManagerOptions {
    * leave connections to the kernel backlog.
    */
   catchConnections?: { spares: number; createCatcher: CatcherFactory };
+  /**
+   * Protocol 1.3: the workload host. A generation that announces `workloads`
+   * is granted it in `promote` while the host is available, and its
+   * `workload.request` messages are relayed here.
+   */
+  workloads?: {
+    readonly available: boolean;
+    request(request: unknown, reply: (reply: WorkloadReply) => void): void;
+  };
 }
 
 /** How long a handoff waits for the draining generation's `listener.spare` answers. */
@@ -183,6 +194,10 @@ interface Generation {
   adoptsConnections: boolean;
   /** It announced `handoff-events` when parked (protocol 1.2). */
   handoffEvents: boolean;
+  /** It announced `workloads` when parked (protocol 1.3). */
+  workloads: boolean;
+  /** `promote` granted it `workloads`. */
+  workloadsGranted: boolean;
   /** Held listeners it listens on: bound itself, or reported listening. */
   listening: Set<string>;
   /** A failed trial being ended: it gets no held connections. */
@@ -592,6 +607,8 @@ export class GenerationManager {
       exitCode: null,
       adoptsConnections: false,
       handoffEvents: false,
+      workloads: false,
+      workloadsGranted: false,
       listening: new Set(),
       retiring: false,
       notify: new Set(),
@@ -677,6 +694,9 @@ export class GenerationManager {
           gen.handoffEvents =
             Array.isArray(message.capabilities) &&
             message.capabilities.includes('handoff-events');
+          gen.workloads =
+            Array.isArray(message.capabilities) &&
+            message.capabilities.includes('workloads');
           this.setGenerationState(gen, 'parked');
         }
         return;
@@ -732,8 +752,65 @@ export class GenerationManager {
         );
         return;
       }
+      case 'workload.request':
+        this.onWorkloadRequest(gen, message);
+        return;
       default:
       // Minor versions may add messages; ignore what this version does not know.
+    }
+  }
+
+  /** Protocol 1.3: relays a granted generation's workload request to the host. */
+  private onWorkloadRequest(
+    gen: Generation,
+    message: Record<string, unknown>,
+  ): void {
+    if (typeof message.id !== 'string') return;
+    const id = message.id;
+    const answer = (reply: WorkloadReply) => {
+      if (gen.state !== 'exited') {
+        gen.proc.send({ type: 'workload.response', id, ...reply });
+      }
+    };
+    const host = this.options.workloads;
+    if (!host || !gen.workloadsGranted) {
+      answer({
+        ok: false,
+        code: 'bad-request',
+        message: 'workloads were not granted to this generation',
+      });
+      return;
+    }
+    // A draining generation still finishes in-flight terminal requests and
+    // flushes its journals as it detaches.
+    if (
+      gen.state !== 'promoted' &&
+      gen.state !== 'serving' &&
+      gen.state !== 'draining'
+    ) {
+      answer({
+        ok: false,
+        code: 'unavailable',
+        message: `generation ${gen.id} is ${gen.state}`,
+      });
+      return;
+    }
+    host.request(message.request, answer);
+  }
+
+  /**
+   * Protocol 1.3: a workload event goes to every granted generation that is
+   * promoted or serving. One that is parked or draining reads the journal
+   * once it attaches, so it misses nothing.
+   */
+  sendWorkloadEvent(event: WorkloadEventMessage): void {
+    for (const gen of [this.active, this.trial]) {
+      if (
+        gen?.workloadsGranted &&
+        (gen.state === 'promoted' || gen.state === 'serving')
+      ) {
+        gen.proc.send(event);
+      }
     }
   }
 
@@ -809,7 +886,13 @@ export class GenerationManager {
 
   private promote(gen: Generation): void {
     const names = [...this.listeners.keys()];
-    gen.proc.send({ type: 'promote', listeners: names });
+    gen.workloadsGranted =
+      gen.workloads && this.options.workloads?.available === true;
+    gen.proc.send({
+      type: 'promote',
+      listeners: names,
+      ...(gen.workloadsGranted ? { capabilities: ['workloads'] } : {}),
+    });
     for (const [name, { handle }] of this.listeners) {
       gen.proc.send({ type: 'listener.adopt', name }, handle);
     }

@@ -951,7 +951,11 @@ transcript durability suite, and the Windows process identity probe run
 against real processes. The durability suite is here because torn-tail repair
 truncates through a non-append descriptor, which Windows requires. The probe
 test is the one test of that PowerShell probe that does not fake it (skipped
-off Windows). Full Windows Vitest parity
+off Windows). The supervisor's terminal workload tests run there too: the
+workload host with real ConPTY shells, and a journey whose shell keeps its pid
+and journal across a handoff of built supervisor and workload host bundles. A
+ConPTY cannot change parents, so Windows is where that design is load-bearing.
+Full Windows Vitest parity
 remains failing closed under issue #1420; do not add exclusions or
 `continue-on-error` to relabel that gap green.
 

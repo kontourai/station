@@ -37,6 +37,7 @@ import {
   partitionAccountDependentSpecs,
   renderAccountDisabledMarkdown,
 } from './lib/account-requirement.mjs';
+import { spawnSyncBounded } from './lib/bounded-capture.mjs';
 import { copyBoundedE2EEvidence } from './lib/e2e-latest-evidence.mjs';
 import {
   resolveE2ERunnerSelection,
@@ -808,6 +809,29 @@ function readE2EBootstrapAuthority(root, instance) {
   };
 }
 
+/**
+ * What the supervisor of a supervised E2E instance reports through its
+ * control channel (`station supervisor status --json`).
+ */
+export function readE2ESupervisorStatus(instance, run = spawnSyncBounded) {
+  const result = run(
+    './station',
+    ['supervisor', 'status', `--instance=${instance}`, '--json'],
+    {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 30_000,
+      windowsHide: true,
+    },
+  );
+  if (result.error || result.status !== 0) {
+    throw new Error(
+      `station supervisor status failed: ${String(result.error ?? result.stderr).trim()}`,
+    );
+  }
+  return JSON.parse(result.stdout);
+}
+
 export async function discoverE2EDaemon({
   root,
   instance,
@@ -818,6 +842,7 @@ export async function discoverE2EDaemon({
   readRegistry = (path) => JSON.parse(readFileSync(path, 'utf8')),
   readOperatorCredential = readE2EOperatorCredential,
   processIdentityFn = processIdentity,
+  readSupervisorStatus = readE2ESupervisorStatus,
 } = {}) {
   if (process.platform === 'win32')
     throw new Error('cannot prove exact E2E daemon identity on Windows');
@@ -864,9 +889,27 @@ export async function discoverE2EDaemon({
   const ui = processIdentityFn(registry.uiPid);
   if (!server?.processStart || !server.pgid || !ui?.processStart || !ui.pgid)
     throw new Error('cannot prove exact E2E daemon process identities');
+  // A supervised instance records its supervisor; the core it serves through
+  // is a generation in its own process group. Name both, so teardown proves
+  // the generation is gone too, not only the supervisor.
+  let generation = null;
+  if (registry.supervised === true) {
+    const status = readSupervisorStatus(instance);
+    if (
+      status?.supervisor?.pid !== registry.serverPid ||
+      status?.supervisor?.instance !== instance ||
+      status?.state !== 'serving' ||
+      !Number.isInteger(status?.active?.pid)
+    )
+      throw new Error('Station supervisor identity differs from the registry');
+    generation = processIdentityFn(status.active.pid);
+    if (!generation?.processStart || !generation.pgid)
+      throw new Error('cannot prove the E2E core generation identity');
+  }
   return {
     server: { ...server, fingerprint: registry.serverFingerprint },
     ui: { ...ui, fingerprint: registry.uiFingerprint },
+    ...(generation ? { generation } : {}),
     instanceId: instance,
     bootId: registry.bootId,
   };
@@ -882,30 +925,32 @@ export function daemonIsLive(
   { platform = process.platform } = {},
 ) {
   if (platform === 'win32' || !daemon?.server || !daemon?.ui) return true;
-  return [daemon.server, daemon.ui].some((expected) => {
-    const actual = processIdentityFn(expected.pid);
-    if (sameProcessIdentity(expected, actual)) return true;
-    // A lease written by a pre-#2325 runner recorded an lstart-shaped
-    // processStart. On Linux, `processIdentityFn` now always reports the
-    // /proc birth token for a live pid, which can never equal that legacy
-    // string — reading the mismatch as "dead" let the output sweep remove a
-    // live daemon's dist-*-e2e-* outputs during an upgrade window (#2332
-    // item 3). Re-probe once through the lstart-only lens the legacy lease
-    // was written with (forcing a non-linux platform skips the birth read
-    // entirely in `processIdentity`); never persisted, only used to confirm
-    // liveness.
-    if (
-      platform === 'linux' &&
-      typeof expected?.processStart === 'string' &&
-      !expected.processStart.startsWith('linux:')
-    ) {
-      const legacy = processIdentityFn(expected.pid, undefined, {
-        platform: 'darwin',
-      });
-      if (sameProcessIdentity(expected, legacy)) return true;
-    }
-    return false;
-  });
+  return [daemon.server, daemon.ui, daemon.generation]
+    .filter(Boolean)
+    .some((expected) => {
+      const actual = processIdentityFn(expected.pid);
+      if (sameProcessIdentity(expected, actual)) return true;
+      // A lease written by a pre-#2325 runner recorded an lstart-shaped
+      // processStart. On Linux, `processIdentityFn` now always reports the
+      // /proc birth token for a live pid, which can never equal that legacy
+      // string — reading the mismatch as "dead" let the output sweep remove a
+      // live daemon's dist-*-e2e-* outputs during an upgrade window (#2332
+      // item 3). Re-probe once through the lstart-only lens the legacy lease
+      // was written with (forcing a non-linux platform skips the birth read
+      // entirely in `processIdentity`); never persisted, only used to confirm
+      // liveness.
+      if (
+        platform === 'linux' &&
+        typeof expected?.processStart === 'string' &&
+        !expected.processStart.startsWith('linux:')
+      ) {
+        const legacy = processIdentityFn(expected.pid, undefined, {
+          platform: 'darwin',
+        });
+        if (sameProcessIdentity(expected, legacy)) return true;
+      }
+      return false;
+    });
 }
 
 export function canReclaimE2ELease(
