@@ -38,8 +38,15 @@ describe('protected browser stream inventory', () => {
     const streamSource = read(
       'src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts',
     );
-    expect(streamSource).toContain(
-      "'X-Station-Client-Session': CLIENT_DOCUMENT_SESSION_ID",
+    // Both requests send it: the orchestration stream and, since #4370 moved
+    // it here, the legacy general `/events` stream.
+    expect(
+      streamSource.match(
+        /'X-Station-Client-Session': CLIENT_DOCUMENT_SESSION_ID/g,
+      ),
+    ).toHaveLength(2);
+    expect(streamSource).toMatch(
+      /fetchSSE\(`\$\{apiBase\}\/events`,\s*\{[^}]*?headers:\s*\{\s*'X-Station-Client-Session': CLIENT_DOCUMENT_SESSION_ID/,
     );
     expect(streamSource).not.toContain('sessionStorage.');
     expect(streamSource).not.toContain('crypto.randomUUID()');

@@ -111,6 +111,9 @@ test('mobile swipes reveal existing actions without opening or stopping a conver
       .map((path) => resolveCssImports(resolve(path)))
       .join('\n');
     await page.addStyleTag({ content: css });
+    // A plain-HTTP LAN origin: the dismissal toast must work without Web
+    // Crypto's secure-context-only randomUUID.
+    expect(await page.evaluate(() => isSecureContext)).toBe(false);
     const cdp = await page.context().newCDPSession(page);
     await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true });
     await mount(page, true);

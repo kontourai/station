@@ -83,10 +83,10 @@ export const SCOPE_SENTINELS = [
 
 /**
  * A bare `crypto.randomUUID(` or `globalThis.crypto.randomUUID(` call.
- * Excludes optional-chained (`crypto?.randomUUID?.()`) and `typeof`-guarded
- * lines — the two shapes already used, independently, before
- * `randomCorrelationId()` existed — by checking the matched line's full text
- * for `?.` or `typeof` rather than trying to parse control flow.
+ * An optional-chained call (`crypto?.randomUUID?.()`, `randomUUID?.()`) does
+ * not match the pattern itself. `typeof`-guarded lines are excluded by text
+ * rather than by parsing control flow. An unrelated `?.` elsewhere on the
+ * line (`existing?.id ?? crypto.randomUUID()`) is no guard and is counted.
  */
 export const BARE_RANDOM_UUID = /(?:globalThis\.)?crypto\.randomUUID\s*\(/g;
 
@@ -116,7 +116,7 @@ export function countBareRandomUUIDCalls(
     let count = 0;
     const hits = [];
     lines.forEach((line, index) => {
-      if (line.includes('?.') || line.includes('typeof')) return;
+      if (line.includes('typeof')) return;
       const matches = line.match(BARE_RANDOM_UUID);
       if (matches) {
         count += matches.length;
