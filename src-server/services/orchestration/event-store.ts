@@ -247,6 +247,7 @@ import {
   backfillCascadeStopIntents,
   CANCELLATION_FENCE_SCHEMA,
   deriveCascadeStopIntents,
+  isCascadeStopSettled,
   recordCascadeStopIntent,
 } from './cancellation-fence.js';
 import {
@@ -343,7 +344,6 @@ import {
   backfillSessionOwnership,
   OWNERSHIP_TREE_SCHEMA,
   ownedDescendantsBottomUp,
-  readSessionOwnership,
   recordSessionOwnership,
   reserveOwnershipStart,
 } from './ownership-tree.js';
@@ -15052,12 +15052,14 @@ export class EventStore {
     return recordCascadeStopIntent(this.db, parentId, childId, terminalId);
   }
 
-  sessionOwnershipEdges(parentId?: string) {
-    return readSessionOwnership(this.db, parentId);
-  }
-
   ownedDescendantsBottomUp(parentId: string) {
     return ownedDescendantsBottomUp(this.db, parentId);
+  }
+
+  ownedStopTargets(parentId: string) {
+    return ownedDescendantsBottomUp(this.db, parentId).filter(
+      (id) => !isCascadeStopSettled(this.db, id),
+    );
   }
 
   ownedSessionActivity(parentId: string): {
@@ -17017,6 +17019,56 @@ export class EventStore {
     this.db.exec('BEGIN IMMEDIATE');
     try {
       this.createSkillExperienceSnapshots().deleteThread(threadId);
+      const owned = new Set([
+        threadId,
+        ...this.ownedDescendantsBottomUp(threadId),
+      ]);
+      if (
+        this.pendingCascadeStops().some(
+          (intent) => owned.has(intent.childId) || intent.parentId === threadId,
+        )
+      )
+        throw new Error(
+          'Cannot delete a Session with pending ownership cleanup.',
+        );
+      for (const childId of owned) {
+        if (childId === threadId) continue;
+        if (
+          !this.db
+            .prepare(`SELECT 1 FROM orchestration_cascade_stop_intents i
+          JOIN orchestration_cancellation_fences f ON f.thread_id = i.child_session_id AND f.terminal_event_id = i.terminal_event_id
+          WHERE i.child_session_id = ? AND i.state = 'completed' LIMIT 1`)
+            .get(childId)
+        )
+          throw new Error(
+            'Cannot delete a Session before owned child cleanup is confirmed.',
+          );
+      }
+      this.db
+        .prepare(
+          'DELETE FROM orchestration_session_ownership WHERE child_session_id = ? OR parent_session_id = ?',
+        )
+        .run(threadId, threadId);
+      this.db
+        .prepare(
+          'DELETE FROM orchestration_ownership_starts WHERE child_session_id = ? OR parent_session_id = ?',
+        )
+        .run(threadId, threadId);
+      this.db
+        .prepare(
+          'DELETE FROM orchestration_cascade_stop_custody WHERE child_session_id = ?',
+        )
+        .run(threadId);
+      this.db
+        .prepare(
+          'DELETE FROM orchestration_cascade_stop_intents WHERE child_session_id = ?',
+        )
+        .run(threadId);
+      this.db
+        .prepare(
+          'DELETE FROM orchestration_cancellation_fences WHERE thread_id = ?',
+        )
+        .run(threadId);
       // A deleted conversation is no one's coordinator any more.
       coordinator.forgetConversation(threadId);
       this.db

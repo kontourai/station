@@ -226,7 +226,7 @@ export function backfillSessionOwnership(
   });
 }
 
-export function readSessionOwnership(
+function readSessionOwnership(
   db: SqliteDatabase,
   parentId?: string,
 ): SessionOwnershipEdge[] {
@@ -257,41 +257,40 @@ export function ownedDescendantsBottomUp(
   parentId: string,
   before = Number.MAX_SAFE_INTEGER,
 ): string[] {
-  const byParent = new Map<string, string[]>();
-  for (const edge of readSessionOwnership(db)) {
-    if (
-      edge.binding !== 'verified' ||
-      edge.backgroundBoundary ||
-      (edge.createdSequence >= before &&
-        db
-          .prepare(`SELECT 1 FROM orchestration_events WHERE thread_id = ?
-        AND global_sequence > ? AND global_sequence < ? AND method IN ('turn.started', 'session.started') LIMIT 1`)
-          .get(edge.parentId, before, edge.createdSequence))
-    )
-      continue;
-    const children = byParent.get(edge.parentId) ?? [];
-    children.push(edge.childId);
-    byParent.set(edge.parentId, children);
-  }
-  const starts = z
-    .array(
-      z.object({
-        child_session_id: z.string(),
-        parent_session_id: z.string(),
-        created_head: z.number(),
-      }),
-    )
-    .parse(db.prepare('SELECT * FROM orchestration_ownership_starts').all());
-  for (const start of starts) {
-    if (start.created_head >= before) continue;
-    const children = byParent.get(start.parent_session_id) ?? [];
-    children.push(start.child_session_id);
-    byParent.set(start.parent_session_id, children);
-  }
   const seen = new Set<string>([parentId]);
   const ordered: string[] = [];
   const visit = (parent: string) => {
-    for (const child of byParent.get(parent) ?? []) {
+    const children = readSessionOwnership(db, parent)
+      .filter(
+        (edge) =>
+          edge.binding === 'verified' &&
+          !edge.backgroundBoundary &&
+          !(
+            edge.createdSequence >= before &&
+            db
+              .prepare(`SELECT 1 FROM orchestration_events WHERE thread_id = ?
+        AND global_sequence > ? AND global_sequence < ? AND method IN ('turn.started', 'session.started') LIMIT 1`)
+              .get(parent, before, edge.createdSequence)
+          ),
+      )
+      .map((edge) => edge.childId);
+    const starts = z
+      .array(
+        z.object({ child_session_id: z.string(), created_head: z.number() }),
+      )
+      .parse(
+        db
+          .prepare(
+            'SELECT child_session_id, created_head FROM orchestration_ownership_starts WHERE parent_session_id = ?',
+          )
+          .all(parent),
+      );
+    children.push(
+      ...starts
+        .filter((start) => start.created_head < before)
+        .map((start) => start.child_session_id),
+    );
+    for (const child of children) {
       if (seen.has(child)) continue;
       seen.add(child);
       visit(child);

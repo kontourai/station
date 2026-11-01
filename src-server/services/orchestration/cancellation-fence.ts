@@ -99,9 +99,24 @@ export function deriveCascadeStopIntents(
     return;
   const descendants = ownedDescendantsBottomUp(db, event.threadId, sequence);
   for (const childId of descendants)
-    recordCascadeStopIntent(db, event.threadId, childId, event.eventId);
+    if (!isCascadeStopSettled(db, childId))
+      recordCascadeStopIntent(db, event.threadId, childId, event.eventId);
   if (requested)
     recordCascadeStopIntent(db, event.threadId, event.threadId, event.eventId);
+}
+
+/** A retained cancellation fence keeps a confirmed stopped child outside new turn admission. */
+export function isCascadeStopSettled(
+  db: SqliteDatabase,
+  childId: string,
+): boolean {
+  return Boolean(
+    db
+      .prepare(`SELECT 1 FROM orchestration_cascade_stop_intents i
+    JOIN orchestration_cancellation_fences f ON f.thread_id = i.child_session_id AND f.terminal_event_id = i.terminal_event_id
+    WHERE i.child_session_id = ? AND i.state = 'completed' LIMIT 1`)
+      .get(childId),
+  );
 }
 
 export function backfillCascadeStopIntents(

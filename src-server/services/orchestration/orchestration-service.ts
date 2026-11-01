@@ -4309,6 +4309,7 @@ export class OrchestrationService {
   }
 
   async shutdown(): Promise<void> {
+    this.cascadeDeliveryStopped = true;
     this.stopSessionDeletionNotifications?.();
     // #3562: boot recovery retries on a backoff; none of it may publish once
     // the publish path below starts coming down. Its rows stay for next boot.
@@ -4328,6 +4329,17 @@ export class OrchestrationService {
     this.nativeOutputGrants.dispose();
     this.stationControlPullRequests?.dispose();
     this.nativeTurnGenerations.clear();
+    const cascadeReconciliation = this.cascadeStopReconciliation;
+    const cascadeResults = await Promise.allSettled(
+      cascadeReconciliation
+        ? [
+            this.adapterRetirement.runCleanupWithinDeadline(
+              () => cascadeReconciliation,
+              'Cascade stop delivery shutdown',
+            ),
+          ]
+        : [],
+    );
     // Preserve only resumable idle room Sessions, under their lifecycle lock.
     // An unavailable binding is a parking failure; all other teardown still runs.
     const roomParkingResults = await Promise.allSettled(
@@ -4404,6 +4416,7 @@ export class OrchestrationService {
     this.activeEventAdapters.clear();
     this.adoption.unregisterOwner();
     const failures = [
+      ...cascadeResults,
       ...roomParkingResults,
       ...recoveryResults,
       ...cleanupResults,
@@ -9986,8 +9999,7 @@ export class OrchestrationService {
         }
         case 'interruptTurn': {
           if (
-            this.options.eventStore?.ownedDescendantsBottomUp(command.threadId)
-              .length
+            this.options.eventStore?.ownedStopTargets(command.threadId).length
           ) {
             const result = await this.requestOwnedCascade(
               command.threadId,
@@ -11408,7 +11420,7 @@ export class OrchestrationService {
       }
       // From here the members' events are dropped (see the gate), and a send
       for (const member of started()) {
-        if (!eventStore.ownedDescendantsBottomUp(member).length) continue;
+        if (!eventStore.ownedStopTargets(member).length) continue;
         await this.requestOwnedCascade(member, 'stop');
         const index = live.indexOf(member);
         if (index !== -1) live.splice(index, 1);
@@ -11829,6 +11841,7 @@ export class OrchestrationService {
    * which must end whatever engine a Draft holds before deleting it.
    */
   private cascadeStopReconciliation?: Promise<void>;
+  private cascadeDeliveryStopped = false;
   private cascadeStopReconcileAgain = false;
   private readonly cascadeStopAdapters = new Map<
     string,
@@ -11880,6 +11893,8 @@ export class OrchestrationService {
   }
 
   private reconcileCascadeStops(): Promise<void> {
+    if (this.cascadeDeliveryStopped)
+      return this.cascadeStopReconciliation ?? Promise.resolve();
     if (this.cascadeStopReconciliation) {
       this.cascadeStopReconcileAgain = true;
       return this.cascadeStopReconciliation;
@@ -11984,10 +11999,7 @@ export class OrchestrationService {
     threadId: string,
     cascade = true,
   ): Promise<void> {
-    if (
-      cascade &&
-      this.options.eventStore?.ownedDescendantsBottomUp(threadId).length
-    ) {
+    if (cascade && this.options.eventStore?.ownedStopTargets(threadId).length) {
       await this.requestOwnedCascade(threadId, 'stop');
       return;
     }

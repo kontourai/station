@@ -14,6 +14,27 @@ import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
 
 const makeTempDir = trackTempDirs();
+function readEdges(path: string) {
+  const db = new DatabaseSync(path);
+  try {
+    return db
+      .prepare(
+        'SELECT * FROM orchestration_session_ownership ORDER BY created_seq',
+      )
+      .all()
+      .map((row) => ({
+        childId: row.child_session_id,
+        parentId: row.parent_session_id,
+        binding: row.binding,
+        createdSequence: row.created_seq,
+        eventId: row.event_id,
+        backgroundBoundary: row.background_boundary === 1,
+      }));
+  } finally {
+    db.close();
+  }
+}
+
 const at = '2026-01-01T00:00:00.000Z';
 function start(
   threadId: string,
@@ -32,7 +53,8 @@ function start(
 
 test('the start path strips a forged provenance but commits an internally derived exact edge', async () => {
   const root = makeTempDir('ownership-start-');
-  const store = new EventStore(join(root, 'events.sqlite'));
+  const path = join(root, 'events.sqlite');
+  const store = new EventStore(path);
   const adapter = new GateTestAdapter();
   const original = adapter.startSession.bind(adapter);
   adapter.startSession = async (input) => {
@@ -82,9 +104,9 @@ test('the start path strips a forged provenance but commits an internally derive
       );
       expect(outcome.status).toBe('accepted');
     }
-    await expect.poll(() => store.sessionOwnershipEdges().length).toBe(2);
+    await expect.poll(() => readEdges(path).length).toBe(2);
     expect(
-      store.sessionOwnershipEdges().map(({ childId, parentId, binding }) => ({
+      readEdges(path).map(({ childId, parentId, binding }) => ({
         childId,
         parentId,
         binding,
@@ -123,10 +145,10 @@ test('ownership shares the start append transaction and its allocated global seq
     );
     expect(() => store.appendEvent(event)).toThrow('injected edge failure');
     expect(store.listEvents('child')).toEqual([]);
-    expect(store.sessionOwnershipEdges()).toEqual([]);
+    expect(readEdges(path)).toEqual([]);
     db.exec('DROP TRIGGER fail_edge');
     store.appendEvent(event);
-    expect(store.sessionOwnershipEdges()).toEqual([
+    expect(readEdges(path)).toEqual([
       {
         childId: 'child',
         parentId: 'parent',
@@ -161,14 +183,14 @@ test('open reconstructs ownership from the naming index without promoting histor
       stationDelegationProvenance: 'caller-derived',
     }),
   );
-  const expected = store.sessionOwnershipEdges();
+  const expected = readEdges(path);
   store.close();
   const db = new DatabaseSync(path);
   db.exec('DELETE FROM orchestration_session_ownership');
   db.close();
   const reopened = new EventStore(path);
   try {
-    expect(reopened.sessionOwnershipEdges()).toEqual(expected);
+    expect(readEdges(path)).toEqual(expected);
     expect(
       expected.map(({ childId, binding }) => ({ childId, binding })),
     ).toEqual([
@@ -226,7 +248,8 @@ test('open derives the pending stop and admission fence from an unprojected lega
 
 test('a child still in provider start is enrolled before cancellation and stopped when its adapter binds', async () => {
   const root = makeTempDir('cascade-starting-');
-  const store = new EventStore(join(root, 'events.sqlite'));
+  const path = join(root, 'events.sqlite');
+  const store = new EventStore(path);
   const engine = new GateTestAdapter();
   let entered!: () => void;
   const starting = new Promise<void>((resolve) => {

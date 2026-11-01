@@ -129,9 +129,8 @@ test('parent summaries remain running until the owned child stop settles', async
 });
 
 test('Stop traverses verified descendants bottom-up and excludes claimed and background boundaries', async () => {
-  const store = new EventStore(
-    join(makeTempDir('cascade-tree-'), 'events.sqlite'),
-  );
+  const path = join(makeTempDir('cascade-tree-'), 'events.sqlite');
+  const store = new EventStore(path);
   const engine = new GateTestAdapter();
   const adapter: ProviderAdapterShape = engine;
   const running = new Set([
@@ -193,6 +192,27 @@ test('Stop traverses verified descendants bottom-up and excludes claimed and bac
     expect(order).toEqual(['grandchild', 'child', 'parent']);
     expect([...running]).toEqual(['claimed', 'background']);
     expect(store.pendingCascadeStops()).toEqual([]);
+    await service.dispatch({ type: 'stopSession', threadId: 'parent' });
+    expect(order).toEqual(['grandchild', 'child', 'parent']);
+    const reopened = new EventStore(path);
+    try {
+      const nextParentTurn = reopened
+        .sessionTurnBoundaryAuthority()
+        .claim('parent', '2026-01-01T00:00:02.000Z');
+      expect(nextParentTurn.kind).toBe('owner');
+      if (nextParentTurn.kind !== 'owner')
+        throw new Error('Root admission remained fenced');
+      nextParentTurn.claim.notInvoked();
+      expect(
+        reopened
+          .sessionTurnBoundaryAuthority()
+          .claim('child', '2026-01-01T00:00:02.000Z').kind,
+      ).not.toBe('owner');
+    } finally {
+      reopened.close();
+    }
+    store.deleteThread('parent');
+    expect(store.ownedDescendantsBottomUp('parent')).toEqual([]);
   } finally {
     await service.shutdown();
     store.close();
@@ -258,6 +278,12 @@ test.each(['missing', 'dead', 'unavailable', 'reused'] as const)(
       expect(stop).not.toHaveBeenCalled();
       expect(store.readSessionByThread('child')?.status).toBe('running');
       expect(store.pendingCascadeStops()).toHaveLength(1);
+      expect(() => store.deleteThread('parent')).toThrow(
+        'pending ownership cleanup',
+      );
+      expect(store.eventById('parent', 'terminal')?.payload.method).toBe(
+        'session.exited',
+      );
       expect(
         db
           .prepare('SELECT custody FROM orchestration_cascade_stop_custody')
