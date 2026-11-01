@@ -402,8 +402,10 @@ may refuse a retry with `client_turn_in_flight` before this comparison; that
 transient refusal accepts, queues and replays nothing. The legacy handoff marker
 alone binds prepared effects, including trimmed text; it cannot establish the original raw input. Legacy rows
 without original digest proof remain unknown, and older binaries cannot enforce
-these conflicts. Keys remain optional outside surfaces that already require
-one. See [TurnDeduplicator](../architecture/module-map.md#turndeduplicator) for
+these conflicts. Foreground, delegated, background and continuation sends
+require `clientTurnId`; a missing key is refused before dispatch with
+`client_turn_key_required`. Other surfaces retain their own key contracts.
+See [TurnDeduplicator](../architecture/module-map.md#turndeduplicator) for
 the exact submission scope, unsupported-input refusal and mixed-version limits.
 
 A send that names its own idempotency key (`clientTurnId`, up to 200
@@ -714,7 +716,7 @@ POST /api/orchestration/chat/<conversationId>/continue
   "message": "Continue",
   "ambientContext": "optional, max 4000 chars",
   "attachments": "optional ChatAttachmentInput[], max 5",
-  "clientTurnId": "optional idempotency key"
+  "clientTurnId": "required idempotency key"
 }
 ```
 

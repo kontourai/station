@@ -2711,6 +2711,15 @@ export function createOrchestrationRoutes(
         automaticBackground?: true;
         whenBusy?: 'queue';
       };
+      if (!body.clientTurnId)
+        return c.json(
+          {
+            success: false,
+            code: 'client_turn_key_required',
+            error: 'A client turn key is required.',
+          },
+          400,
+        );
       let verifiedMcpPromptOrigin:
         | import('@kontourai/station-contracts/mcp-prompts').VerifiedMcpPromptOrigin
         | undefined;
@@ -3786,6 +3795,15 @@ export function createOrchestrationRoutes(
       }
       try {
         const body = getBody(c);
+        if (!body.clientTurnId)
+          return c.json(
+            {
+              success: false,
+              code: 'client_turn_key_required',
+              error: 'A client turn key is required.',
+            },
+            400,
+          );
         // #2377 slice C3b: an agent continues without an approval posture.
         const postureRefused = refuseCarriedPosture(c, [
           {

@@ -413,11 +413,13 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
           message: string;
           conversationId?: string;
           idempotencyKey?: string;
+          clientTurnId?: string;
         },
       ) =>
         executeForegroundMessage(
           {
             message: input.message,
+            ...(input.clientTurnId ? { clientTurnId: input.clientTurnId } : {}),
             ...(input.conversationId
               ? { conversationId: input.conversationId }
               : {}),
@@ -464,6 +466,7 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
             execute(target, {
               message: input.message,
               conversationId: input.conversationId,
+              clientTurnId: input.clientTurnId,
             }),
         });
         const app = new Hono();
@@ -480,6 +483,7 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
 
       if (preserveProfile) {
         const refused = await post('/api/orchestration/chat', {
+          clientTurnId: 'refused-override',
           message: 'An authored Agent is not an engine selector.',
           target: {
             environment: { kind: 'current' },
@@ -500,6 +504,7 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
       }
 
       const started = await post('/api/orchestration/chat', {
+        clientTurnId: 'initial-send',
         message: `Remember ${CONTEXT_TOKEN}.`,
         target: { environment: { kind: 'current' }, agent: source.agent },
       });
@@ -716,6 +721,7 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
       );
 
       const directSwitch = await post('/api/orchestration/chat', {
+        clientTurnId: 'direct-switch',
         conversationId,
         message: 'Illegally switch back through ordinary chat.',
         target: { environment: { kind: 'current' }, agent: source.agent },
@@ -733,6 +739,7 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
       const ordinary = await post(
         `/api/orchestration/chat/${encodeURIComponent(conversationId)}/continue`,
         {
+          clientTurnId: 'ordinary-followup',
           message: oversizedCatchup
             ? 'x'.repeat(40_000)
             : 'Third turn stays on the target Agent.',
@@ -791,6 +798,7 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
 
       if (preserveProfile) {
         const fresh = await post('/api/orchestration/chat', {
+          clientTurnId: 'fresh-override',
           conversationId: `${conversationId}:fresh-override`,
           message: 'Start directly on my chosen engine.',
           target: { environment: { kind: 'current' }, agent: targetRef },
