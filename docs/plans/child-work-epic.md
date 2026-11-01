@@ -3629,3 +3629,55 @@ recorded inputs changed. Those receipts therefore remain historical native proof
 not current combined-source native qualification. Full source, runtime, device,
 documentation and final review obligations remain open; no PR or feature
 enablement follows from these diagnostics.
+
+## Owned input lifecycle and single authority span
+
+The fixture now observes the actual canonical question or owned operation refusal
+instead of imposing a separate 60-second polling deadline. The product deadline
+stays 120 seconds and the test budgets stay 240/300 seconds. The baseline reached
+real input and a retained answer in the direct case, then failed its expected two
+provider calls with only one observed; the HTTP case refused preparation before
+a question. Neither renewal/adoption nor the whole journey is qualified.
+
+An observation-only SDK get/events prototype was compiled and tested, not adopted.
+The full selection passed 12 cases and failed both input callers plus the Flow
+execution case; five Home-exclusion and seven other execution cases passed. Its
+production patch, hashes and logs are retained in the ignored discarded-prototype
+packet. All three production files were restored byte-for-byte to `afac521386f`;
+no lighter source-read contract remains enabled.
+
+The component diagnostic separates nested instrumented work. In its HTTP case,
+SDK witness checks used about 41 ms, credential reads about 24.8s exclusive, direct
+Flow source checks about 19.3s exclusive and host signing about 3.2s. Exclusive
+means only that other instrumented components were subtracted; these are not
+exclusive CPU measurements or an unbiased speed comparison. This shifted attention
+away from witness stamping and the unqualified role split.
+
+A smaller owner-composition repair removes one redundant Home wrapper:
+`EnvironmentSecurityService.withCurrentAuthority` delegates initialized checks to
+`DevicePairingService.withCurrentRegistry`, which already owns the same canonical
+home's pre/post span and registry revision. The pre-initialization Home fallback
+and the HomeWriter implementation are unchanged. No authority data or decision is
+cached. The new filesystem-read control failed before the repair with five Home
+identity probes versus three through the pairing owner. Afterward all 60 owner,
+security and race cases pass, including physical exclusion, credential rotation,
+directory replacement, thenable rejection and late-async borrowing refusal.
+The saved server-test typecheck log has no terminal status, so that artifact does
+not independently establish PASS. Bounded Opus source review found no blocker;
+it did not execute checks. Clean mutation proof remains open.
+
+The adjacent HTTP boundary selection passes 224 cases; both actual group callers
+still fail their product budgets. That run records 97% CPU pressure and managed
+×4 liveness scaling, which does not change the product deadline. No causal host-load
+or end-to-end speedup claim follows. These failures remain acceptance blockers.
+Three input hardening follow-ups, remaining group/continuation qualification,
+semantic documentation freshness, the final combined deslop/visual pass and
+independent qualification remain open. No PR or capability enablement is claimed.
+
+Readiness for this five-file checkpoint passed the connected-agent selection and
+lint checks, but failed documentation foundations: 248 cases passed and two
+failed because scoped recorded reviews remain stale. This is a real review
+obligation, not an admission-only failure. No ledger coverage was fabricated or
+advanced. The SSE ADR review additionally found that the documented missing-stream-
+acknowledgement fallback is absent in the current UI stream owner; it remains
+unresolved pending a caller control and repair.

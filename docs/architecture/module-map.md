@@ -465,7 +465,10 @@ ten-second lock-wait budget, with the remaining budget passed to physical
 acquisition. Filesystem calls themselves remain synchronous.
 
 Complete synchronous authority checks share a validated pairing-registry snapshot
-under that home hold. The outer check re-reads its retained bytes before returning;
+under that home hold. Environment composition delegates to the pairing owner's
+Home span directly, rather than adding a second wrapper over the same home;
+before pairing exists it retains the prepared Home-owner fallback. The outer
+check re-reads its retained bytes before returning;
 changed or corrupt bytes refuse. Nested checks use the same snapshot, while a later
 check loads current state again. Registry mutations still validate their preimage
 before publication, and successful mutations update the held snapshot.

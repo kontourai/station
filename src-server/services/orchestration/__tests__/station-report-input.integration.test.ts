@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { flowRunHead, flowTransitionRef, loadRun } from '@kontourai/flow';
+import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import {
   continueReportGroupReport,
@@ -21,6 +22,9 @@ import { StationAgentAdapter } from '../../../providers/adapters/station-agent-a
 import { createReportGroupRoutes } from '../../../routes/orchestration/report-groups.js';
 import { isRuntimePublicationParticipant } from '../../../runtime/bootstrap/runtime-publication-participant.js';
 import { StationRuntime } from '../../../runtime/bootstrap/station-runtime.js';
+import { AnthropicSealedPreparation } from '../../../runtime/conversation/anthropic-sealed-preparation.js';
+import { GoogleSealedPreparation } from '../../../runtime/conversation/google-sealed-preparation.js';
+import * as sdkCredentials from '../../../runtime/conversation/provider-credential-observation.js';
 import * as inputRuntimeOwner from '../../../runtime/mcp/report-input-runtime.js';
 import {
   bindRuntimeLocalOperator,
@@ -36,6 +40,7 @@ import {
   HomeWriterUnavailableError,
 } from '../../ssh/home-writer-owner.js';
 import { StationDelegationPersistence } from '../delegation-group-persistence.js';
+import { LocalSourceAdmissionOwner } from '../delegation-group-source-admission.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
@@ -80,6 +85,77 @@ function useAdvancingHistoricalClock(startAt: number) {
   );
 }
 
+type CanonicalInputOpened = Extract<
+  ReturnType<EventStore['listEvents']>[number]['payload'],
+  { method: 'request.opened' }
+>;
+
+function watchCanonicalInput(
+  bus: EventBus,
+  store: EventStore,
+  threads: () => readonly string[],
+  inputFailure: () => unknown,
+  diagnostic: () => unknown,
+) {
+  let resolve!: (event: CanonicalInputOpened) => void;
+  let reject!: (error: unknown) => void;
+  let observed = false;
+  const opened = new Promise<CanonicalInputOpened>((yes, no) => {
+    resolve = yes;
+    reject = no;
+  });
+  void opened.catch(() => {});
+  const inspect = () => {
+    if (observed) return;
+    const events = threads().flatMap((threadId) => store.listEvents(threadId));
+    const failure = events.find(
+      ({ payload }) => payload.method === 'runtime.error',
+    )?.payload;
+    if (failure?.method === 'runtime.error') {
+      observed = true;
+      reject(
+        new Error(
+          `Owned member refused before input (${failure.code ?? 'unclassified'}): ${failure.message}`,
+          { cause: inputFailure() },
+        ),
+      );
+      return;
+    }
+    const event = events.find(
+      ({ payload }) => payload.method === 'request.opened',
+    )?.payload;
+    if (event?.method === 'request.opened') {
+      observed = true;
+      resolve(event);
+    }
+  };
+  const stop = bus.subscribe(({ event }) => {
+    if (event === SERVER_EVENTS.ORCHESTRATION_EVENT) inspect();
+  });
+  onTestFinished(stop);
+  return async <Value>(running: Promise<Value>, failure: () => unknown) => {
+    inspect();
+    try {
+      return await Promise.race([
+        opened,
+        running.then(() => {
+          throw (
+            failure() ??
+            new Error('Report returned before opening its question')
+          );
+        }),
+      ]);
+    } catch (error) {
+      throw new Error(
+        `Owned report did not open canonical input: ${JSON.stringify(diagnostic())}`,
+        { cause: error },
+      );
+    } finally {
+      stop();
+    }
+  };
+}
+
 function publicationFor(h: Awaited<ReturnType<typeof setup>>) {
   const runtime = new StationRuntime({ projectHomeDir: h.f.home });
   const participant = Reflect.get(runtime, 'runtimePublicationParticipant');
@@ -96,6 +172,74 @@ function publicationFor(h: Awaited<ReturnType<typeof setup>>) {
     reason?: string;
     lease?: HomeWriterLease;
   };
+  const components = {
+    witness: { calls: 0, inclusiveMs: 0, exclusiveMs: 0, maxMs: 0 },
+    credentialRead: { calls: 0, inclusiveMs: 0, exclusiveMs: 0, maxMs: 0 },
+    flowDirect: { calls: 0, inclusiveMs: 0, exclusiveMs: 0, maxMs: 0 },
+    hostHmac: { calls: 0, inclusiveMs: 0, exclusiveMs: 0, maxMs: 0 },
+  };
+  const componentStack: Array<{ began: number; childrenMs: number }> = [];
+  const measure = <Value>(
+    kind: keyof typeof components,
+    work: () => Value,
+  ): Value => {
+    const frame = { began: performance.now(), childrenMs: 0 };
+    componentStack.push(frame);
+    const cost = components[kind];
+    cost.calls++;
+    try {
+      return work();
+    } finally {
+      const elapsed = performance.now() - frame.began;
+      componentStack.pop();
+      const parent = componentStack.at(-1);
+      if (parent) parent.childrenMs += elapsed;
+      cost.inclusiveMs += elapsed;
+      cost.exclusiveMs += elapsed - frame.childrenMs;
+      cost.maxMs = Math.max(cost.maxMs, elapsed);
+    }
+  };
+  const anthropicWitness = AnthropicSealedPreparation.prototype.assertCurrent;
+  const anthropicObserver = vi
+    .spyOn(AnthropicSealedPreparation.prototype, 'assertCurrent')
+    .mockImplementation(function (this: AnthropicSealedPreparation) {
+      return measure('witness', () => anthropicWitness.call(this));
+    });
+  const googleWitness = GoogleSealedPreparation.prototype.assertCurrent;
+  const googleObserver = vi
+    .spyOn(GoogleSealedPreparation.prototype, 'assertCurrent')
+    .mockImplementation(function (this: GoogleSealedPreparation) {
+      return measure('witness', () => googleWitness.call(this));
+    });
+  const credentialRead = sdkCredentials.readObservedSdkProviderCredential;
+  const credentialObserver = vi
+    .spyOn(sdkCredentials, 'readObservedSdkProviderCredential')
+    .mockImplementation((...args) =>
+      measure('credentialRead', () => credentialRead(...args)),
+    );
+  const sign =
+    EnvironmentSecurityService.prototype.signRevisionEvidenceAuthorityBinding;
+  const signingObserver = vi
+    .spyOn(
+      EnvironmentSecurityService.prototype,
+      'signRevisionEvidenceAuthorityBinding',
+    )
+    .mockImplementation(function (this: EnvironmentSecurityService, ...args) {
+      return measure('hostHmac', () => sign.apply(this, args));
+    });
+  const prepareFlow = LocalSourceAdmissionOwner.prototype.prepareFlowSnapshot;
+  const flowObserver = vi
+    .spyOn(LocalSourceAdmissionOwner.prototype, 'prepareFlowSnapshot')
+    .mockImplementation(async function (
+      this: LocalSourceAdmissionOwner,
+      ...args
+    ) {
+      const owner = await prepareFlow.apply(this, args);
+      return Object.freeze({
+        ...owner,
+        assertCurrent: () => measure('flowDirect', () => owner.assertCurrent()),
+      });
+    });
   const authorityCost = { calls: 0, depth: 0, outerMs: 0, maxMs: 0 };
   const preparationCost = { calls: 0, depth: 0, outerMs: 0, maxMs: 0 };
   const authorityByAdmission: Record<
@@ -294,6 +438,11 @@ function publicationFor(h: Awaited<ReturnType<typeof setup>>) {
     } finally {
       if (timer) clearTimeout(timer);
       inputObserver.mockRestore();
+      flowObserver.mockRestore();
+      signingObserver.mockRestore();
+      credentialObserver.mockRestore();
+      googleObserver.mockRestore();
+      anthropicObserver.mockRestore();
       acquisitionObserver.mockRestore();
       preparationObserver.mockRestore();
       authorityObserver.mockRestore();
@@ -316,6 +465,8 @@ function publicationFor(h: Awaited<ReturnType<typeof setup>>) {
     home: () => ({
       counts,
       cost: {
+        components,
+        componentExclusiveExcludesOnlyOtherInstrumentedComponents: true,
         authority: authorityCost,
         preparation: preparationCost,
         authorityByAdmission,
@@ -522,6 +673,19 @@ test('funded three-seat mixed-model report serves input, member results and acco
     headers: { 'X-Test-Operator': 'yes' },
   };
   let failure: unknown;
+  const waitForInput = watchCanonicalInput(
+    bus,
+    eventStore,
+    () => starts.mock.calls.map(([entry]) => entry.threadId),
+    operation.inputFailure,
+    () => ({
+      starts: starts.mock.calls.length,
+      rawFetch: h.rawFetch.mock.calls.length,
+      home: operation.home(),
+      inputRuntimesConstructed: operation.inputRuntimesConstructed(),
+      inputInvocations: operation.inputInvocationCount(),
+    }),
+  );
   const running = createReportGroup(
     'http://report-control.test',
     input,
@@ -534,55 +698,7 @@ test('funded three-seat mixed-model report serves input, member results and acco
   });
   void running.catch(() => {});
   operation.track(running);
-  let inputFailure: unknown;
-  let opened:
-    | Extract<
-        ReturnType<EventStore['listEvents']>[number]['payload'],
-        { method: 'request.opened' }
-      >
-    | undefined;
-  await vi.waitFor(
-    () => {
-      if (failure) {
-        inputFailure = failure;
-        return;
-      }
-      const observed = starts.mock.calls.flatMap(([entry]) =>
-        eventStore.listEvents(entry.threadId),
-      );
-      const rejected = observed.find(
-        ({ payload }) => payload.method === 'runtime.error',
-      )?.payload;
-      if (rejected?.method === 'runtime.error') {
-        inputFailure = Error(
-          `Input runtime refused (${rejected.code ?? 'unclassified'}): ${rejected.message}`,
-          { cause: operation.inputFailure() },
-        );
-        return;
-      }
-      const event = observed.find(
-        ({ payload }) => payload.method === 'request.opened',
-      )?.payload;
-      if (event?.method !== 'request.opened')
-        throw Error(
-          `No canonical input: ${JSON.stringify({
-            starts: starts.mock.calls.length,
-            rawFetch: h.rawFetch.mock.calls.length,
-            home: operation.home(),
-            inputRuntimesConstructed: operation.inputRuntimesConstructed(),
-            inputInvocations: operation.inputInvocationCount(),
-            events: starts.mock.calls
-              .flatMap(([entry]) => eventStore.listEvents(entry.threadId))
-              .slice(-12)
-              .map(({ payload }) => payload.method),
-          })}`,
-        );
-      opened = event;
-    },
-    { timeout: 60000 },
-  );
-  if (inputFailure) throw inputFailure;
-  assert.ok(opened);
+  const opened = await waitForInput(running, () => failure);
   await orchestration.dispatch({
     type: 'respondToRequest',
     threadId: opened.threadId,
@@ -742,71 +858,27 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
     /report_input_continuation_required/,
   );
   let failure: unknown;
-  let settled: Awaited<ReturnType<typeof runtime.create>> | undefined;
+  const waitForInput = watchCanonicalInput(
+    bus,
+    eventStore,
+    () => starts.mock.calls.map(([entry]) => entry.threadId),
+    operation.inputFailure,
+    () => ({
+      starts: starts.mock.calls.length,
+      rawFetch: h.rawFetch.mock.calls.length,
+      home: operation.home(),
+      inputRuntimesConstructed: operation.inputRuntimesConstructed(),
+      inputInvocations: operation.inputInvocationCount(),
+    }),
+  );
   const running = runtime
     .create(operation.context(), input)
-    .then((value) => {
-      settled = value;
-      return value;
-    })
     .catch((error: unknown) => {
       failure = error;
       return null;
     });
   operation.track(running);
-  let inputFailure: unknown;
-  let opened:
-    | Extract<
-        ReturnType<EventStore['listEvents']>[number]['payload'],
-        { method: 'request.opened' }
-      >
-    | undefined;
-  await vi.waitFor(
-    () => {
-      if (failure) {
-        inputFailure = failure;
-        return;
-      }
-      if (settled) {
-        inputFailure = Error('Report returned before opening its question');
-        return;
-      }
-      const observed = starts.mock.calls.flatMap(([entry]) =>
-        eventStore.listEvents(entry.threadId),
-      );
-      const rejected = observed.find(
-        ({ payload }) => payload.method === 'runtime.error',
-      )?.payload;
-      if (rejected?.method === 'runtime.error') {
-        inputFailure = Error(
-          `Input runtime refused (${rejected.code ?? 'unclassified'}): ${rejected.message}`,
-          { cause: operation.inputFailure() },
-        );
-        return;
-      }
-      const event = observed.find(
-        ({ payload }) => payload.method === 'request.opened',
-      )?.payload;
-      if (event?.method !== 'request.opened')
-        throw Error(
-          `No canonical input: ${JSON.stringify({
-            starts: starts.mock.calls.length,
-            rawFetch: h.rawFetch.mock.calls.length,
-            home: operation.home(),
-            inputRuntimesConstructed: operation.inputRuntimesConstructed(),
-            inputInvocations: operation.inputInvocationCount(),
-            events: starts.mock.calls
-              .flatMap(([entry]) => eventStore.listEvents(entry.threadId))
-              .slice(-12)
-              .map(({ payload }) => payload.method),
-          })}`,
-        );
-      opened = event;
-    },
-    { timeout: 60000 },
-  );
-  if (inputFailure) throw inputFailure;
-  assert.ok(opened);
+  const opened = await waitForInput(running, () => failure);
   await orchestration.dispatch({
     type: 'respondToRequest',
     threadId: opened.threadId,

@@ -500,11 +500,10 @@ export class EnvironmentSecurityService {
   withCurrentAuthority<T>(check: () => T): T {
     if (!this.#homeWriter)
       throw new HomeWriterUnavailableError('identity-unavailable');
-    return this.#homeWriter.runSynchronous(() =>
-      this.#devicePairingService
-        ? this.#devicePairingService.withCurrentRegistry(check)
-        : check(),
-    );
+    // Pairing already owns this home's pre/post span and registry revision.
+    if (this.#devicePairingService)
+      return this.#devicePairingService.withCurrentRegistry(check);
+    return this.#homeWriter.runSynchronous(check);
   }
 
   readCurrentUnboundLocalGrantScope(candidate: string): string | undefined {
