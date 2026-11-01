@@ -1,0 +1,7 @@
+{
+  "revision": "f70b1b1e8b34eb485099c293b2cd2fbdfbe2dac1",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Refs #3568 and #3575. Re-read the integration guide, especially the public API/SDK/contracts routing table, explicit error and retry evidence requirements, and hosted delivery limits. The linked contracts change adds the existing inbox_key_conflict diagnostic as nonretryable conflict; it adds no API entry point, tenant grant, database adapter or deployment capability. Integration callers still inspect outcome and request any retry explicitly. AWS architecture, sizing, pricing and managed-offering text remains qualified design/history; this source-delta review adds no deployment or live-provider evidence.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]}
+  ]
+}
