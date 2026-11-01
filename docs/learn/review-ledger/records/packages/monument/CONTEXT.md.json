@@ -50,13 +50,9 @@
 
     "packages/monument/src/decisions/prepared-settlement.ts",
 
-    "src-server/services/turn-idempotency.ts",
-
     "src-server/services/orchestration/session-turn-boundary.ts",
 
     "src-server/services/orchestration/sqlite-session-turn-boundary.ts",
-
-    "src-server/services/orchestration/sqlite-turn-dedup-persistence.ts",
 
     "src-server/services/orchestration/event-store.ts",
 
@@ -82,7 +78,11 @@
 
     "packages/monument/src/memory.ts",
 
-    "packages/monument/src/__tests__/sqlite-bound-tables.test.ts"
+    "packages/monument/src/__tests__/sqlite-bound-tables.test.ts",
+
+    "packages/monument/src/turn-dedup.ts",
+
+    "src-server/services/orchestration/station-turn-dedup-bindings.ts"
   ],
 
   "checks": []

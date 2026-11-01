@@ -90,8 +90,6 @@
 
     "src-server/services/orchestration/__tests__/attached-session-initial-anchor.test.ts",
 
-    "src-server/services/turn-idempotency.ts",
-
     "src-server/services/orchestration/orchestration-service.ts",
 
     "src-server/services/orchestration/conversation-lineage.ts",
@@ -150,7 +148,11 @@
 
     "src-server/routes/orchestration/events.ts",
 
-    "src-server/routes/orchestration/session-goals.ts"
+    "src-server/routes/orchestration/session-goals.ts",
+
+    "packages/monument/src/turn-dedup.ts",
+
+    "src-server/services/orchestration/station-turn-dedup-bindings.ts"
   ],
 
   "checks": [

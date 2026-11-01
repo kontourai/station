@@ -662,11 +662,7 @@
 
     "src-server/services/orchestration/sqlite-revision-evidence-persistence.ts",
 
-    "src-server/services/orchestration/sqlite-turn-dedup-persistence.ts",
-
     "src-server/services/orchestration/transcript-search-queries.ts",
-
-    "src-server/services/orchestration/turn-deduplicator.ts",
 
     "src-server/services/orchestration/voice-turn-runs.ts",
 
@@ -791,8 +787,6 @@
     "src-server/services/ssh/native-device-proof-binding-service.ts",
 
     "src-server/services/starter-work/starter-registry.ts",
-
-    "src-server/services/turn-idempotency.ts",
 
     "src-server/services/usage-telemetry-service.ts",
 
@@ -1508,7 +1502,11 @@
 
     "src-server/services/terminal/terminal-tickets.ts",
 
-    "packages/sdk/src/client/terminal-session-store.ts"
+    "packages/sdk/src/client/terminal-session-store.ts",
+
+    "packages/monument/src/turn-dedup.ts",
+
+    "src-server/services/orchestration/station-turn-dedup-bindings.ts"
   ],
 
   "checks": [
