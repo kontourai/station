@@ -1,0 +1,13 @@
+{
+  "revision": "9f96fd4a3530e256d7acd1aebb9244e31db92947",
+
+  "notes": [
+    {"path":"docs/design/pnpm-workspace-installation.md","note":"Reviewed verification identity against performance-only test selection; package installation and dependency evidence behavior do not change.","inputs":["docs/design/pnpm-workspace-installation.md","scripts/__tests__/verification-receipt.test.ts","scripts/lib/test-reliability.mjs"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed receipt identity and dependency verification scope; the test-only selection toggle cannot reuse an ordinary receipt.","inputs":["docs/guides/dependency-security.md","scripts/lib/test-reliability.mjs"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Reviewed both cache diagnostic toggles against the test marker and receipt allowlist; performance-only selects the cache-reuse test in that file.","inputs":["docs/reference/env-vars.md"]},
+
+    {"path":"docs/reference/verification-receipts.md","note":"Reviewed environment digest against the performance-only toggle and regression test; distinct selection has a distinct receipt identity.","inputs":["docs/reference/verification-receipts.md","scripts/lib/test-reliability.mjs"]}
+  ]
+}
