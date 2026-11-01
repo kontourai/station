@@ -5238,11 +5238,13 @@ export async function start(opts: StartOptions = {}): Promise<void> {
             (fsConstants.O_NOFOLLOW ?? 0),
         )
       : null;
-    uiProc = spawn(
-      watchPlan?.ui.command ?? process.execPath,
-      watchPlan?.ui.args ?? [
-        '-e',
-        buildUiServerScript({
+    // The production listener reads its source from stdin (`node -`), not
+    // `-e`: the serialized script is ~32k characters, and Windows refuses a
+    // command line over 32,767 (CreateProcess -> `spawn ENAMETOOLONG`) once
+    // the install path is longer than a few dozen characters.
+    const uiScript = watchPlan
+      ? null
+      : buildUiServerScript({
           uiDir: join(CWD, buildPaths.ui),
           apiBaseOverride,
           upstreamPort: serverPort,
@@ -5259,15 +5261,17 @@ export async function start(opts: StartOptions = {}): Promise<void> {
           hostedTenantAuthorities: hostedTenantRegistry
             ? { ...hostedTenantRegistry.authorityToTenant }
             : undefined,
-        }),
-      ],
+        });
+    uiProc = spawn(
+      watchPlan?.ui.command ?? process.execPath,
+      watchPlan?.ui.args ?? ['-'],
       {
         cwd: CWD,
         // Vite's log (HMR updates, proxy errors) is the dev loop's feedback;
         // the production UI listener has none and stays silent.
         stdio: withLauncherChannel(
           uiLogDescriptor === null
-            ? 'ignore'
+            ? ['pipe', 'ignore', 'ignore']
             : ['ignore', uiLogDescriptor, uiLogDescriptor],
         ),
         detached: true,
@@ -5297,6 +5301,11 @@ export async function start(opts: StartOptions = {}): Promise<void> {
       },
     );
     if (uiLogDescriptor !== null) closeSync(uiLogDescriptor);
+    if (uiScript !== null && uiProc.stdin) {
+      // A listener that dies before reading surfaces through readiness.
+      uiProc.stdin.on('error', () => {});
+      uiProc.stdin.end(uiScript);
+    }
     uiProc.unref();
     uiProc.channel?.unref();
 

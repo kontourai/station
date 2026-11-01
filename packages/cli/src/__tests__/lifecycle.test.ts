@@ -2114,6 +2114,58 @@ describe('lifecycle instance state', () => {
     }
   });
 
+  it('hands the production UI listener its script on stdin, not the command line', async () => {
+    // Windows refuses a command line over 32,767 characters with
+    // `spawn ENAMETOOLONG`; the ~32k-character listener script passed via
+    // `-e` crossed it once the install path exceeded a few dozen characters.
+    ensureDir(TEST_CWD);
+    ensureBuildOutputs('ui-stdin');
+    ensureDir(TEST_ALT_HOME);
+    const end = vi.fn();
+    const spawn = vi
+      .fn()
+      .mockReturnValueOnce({ pid: 43511, unref: vi.fn() })
+      .mockReturnValueOnce({
+        pid: 43512,
+        unref: vi.fn(),
+        stdin: { on: vi.fn(), end },
+      });
+    const killSpy = vi.spyOn(process, 'kill').mockImplementation(((
+      pid: number,
+    ) => {
+      if (pid === 43511 || pid === 43512) return true;
+      throw new Error(`unexpected process.kill(${pid})`);
+    }) as typeof process.kill);
+    vi.stubGlobal('fetch', vi.fn(readyLifecycleFetch));
+    const { lifecycle } = await loadLifecycleModule({
+      childProcessMock: { execSync: vi.fn(), spawn },
+      platformOverrides: { sleepSync: vi.fn() },
+    });
+    try {
+      await lifecycle.start({
+        baseDir: TEST_ALT_HOME,
+        instanceName: 'ui-stdin',
+        serverPort: 3272,
+        uiPort: 5302,
+      });
+      const [command, args, options] = spawn.mock.calls[1] as [
+        string,
+        string[],
+        { stdio: unknown[] },
+      ];
+      expect(command).toBe(process.execPath);
+      expect(args).toEqual(['-']);
+      expect(options.stdio[0]).toBe('pipe');
+      expect(end).toHaveBeenCalledTimes(1);
+      const script = String(end.mock.calls[0]?.[0]);
+      // The real listener source, far beyond a short command line.
+      expect(script.length).toBeGreaterThan(20_000);
+      expect(script).toContain('__station/identity');
+    } finally {
+      killSpy.mockRestore();
+    }
+  });
+
   it('recognizes and cleans up stale prior PID files', async () => {
     ensureDir(TEST_CWD);
     writeFileSync(TEST_PIDFILE, '99999');
@@ -8434,10 +8486,15 @@ describe('lifecycle build + restart ergonomics', () => {
     ensureDir(TEST_CWD);
     ensureDir(TEST_ALT_HOME);
     writeBuildManifest('loopback');
+    const uiStdinEnd = vi.fn();
     const spawn = vi
       .fn()
       .mockReturnValueOnce({ pid: 41001, unref: vi.fn() })
-      .mockReturnValueOnce({ pid: 41002, unref: vi.fn() });
+      .mockReturnValueOnce({
+        pid: 41002,
+        unref: vi.fn(),
+        stdin: { on: vi.fn(), end: uiStdinEnd },
+      });
     const killSpy = vi
       .spyOn(process, 'kill')
       .mockImplementation((() => true) as typeof process.kill);
@@ -8477,7 +8534,7 @@ describe('lifecycle build + restart ergonomics', () => {
           STATION_LOG_FILE: canonicalLogFile,
         }),
       );
-      expect(String(spawn.mock.calls[1][1]?.[1])).toContain(
+      expect(String(uiStdinEnd.mock.calls[0]?.[0])).toContain(
         'listen(5274,"127.0.0.1")',
       );
       expect(fetchMock).toHaveBeenCalledWith(
