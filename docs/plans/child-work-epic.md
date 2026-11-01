@@ -3365,7 +3365,8 @@ the funded mixed-family input/context journey, main integration, current browser
 and physical-device qualification and documentation freshness remain open. B10 appeared in a fresh physical-device inventory, but no Station
 journey was performed on it. Activity's observed selection reset remains disclosed;
 its existing one-shot surface-intent contract is distinct from the passing task-fact
-reload observations. Groups and finalizers remain disabled. No push or PR exists.
+reload observations. Full group capability advertisement remains false; personal report routes are
+mounted. Continuation finalization remains unavailable. No push or PR exists.
 
 
 The working-tree readiness run for this checkpoint passes repository governance,
@@ -3376,3 +3377,77 @@ Canonical MCP equality now passes for all 132 generated topics. This does not ma
 the branch ready. The source is preserved locally so clean-tree adverse mutations
 can be run; no review record is refreshed merely to clear the gate, and no push,
 PR or feature enablement follows from this checkpoint.
+
+
+## Publication mutation qualification at `c9c28e35534`
+
+The continuation and active-cancellation checkpoint now has clean-source mutation
+proofs. Every fault was applied separately from a verified clean tree and index,
+with recorded source/test hashes, then restored byte-for-byte before its keeper
+and the next fault. Failed runs remain evidence rather than being replaced.
+
+- Removing the owned stop coalescing fence failed the replacement-turn and
+  replacement-invocation controls, with 36 other passes. Removing the initial
+  missing/mismatched-target refusal independently failed those two entry controls.
+  Removing the observed-termination preservation policy failed its three controls,
+  with 35 other passes. Each restoration passed all 38 stop-owner cases.
+- Returning-caller mutations independently removed group-store lease binding,
+  authority-store lease binding and the controller transaction owner. Each failed
+  four controls with four other passes. The binding faults reached their exact
+  lease assertions; the owner fault let an independent physical probe acquire
+  Home during the store body. Physical exclusion and explicit binding are distinct.
+- Removing the retained Session persistence guard produced a stale signed turn row
+  despite the later send refusal, with seven other cases passing. Collapsing
+  returned-cleanup uncertainty to publication uncertainty failed the committed-sync
+  status assertion. Reintroducing the old final-disposal wait failed the known
+  cleanup diagnostic: the caller stayed pending while the owned reader was held.
+- Omitting actual interrupt admission produced three failures with five other
+  passes. Under contention the first request refused, its same-key retry returned
+  `pending`, no adapter ran and no ACK was retained. Both held-reply controls also
+  observed shutdown complete before the reply was released. The following
+  maintenance assertion was not reached in those mutant runs.
+
+Each of those seven returning-caller mutations was followed by all eight cases
+passing after exact restoration. These are controlled SDK and local resource
+observations, not evidence of provider termination or full-boot storage retention.
+
+Initial execution has separate lookup and authorization controls. Omitting the
+publication argument at each boundary separately failed its matching retirement
+fault case, with four other passes and no engine work. Each restoration passed
+all five Home-exclusion cases. These controls cover the internal create entry;
+they do not qualify the HTTP wrapper's earlier authorization or final response
+check, which remain part of the public-lifetime audit.
+
+Independent source review verified the current published SDK only reaches scoped
+recipient resolution and discards that runtime, while actual launches use the base
+host. A proposed dispatch-barrier negative would refuse for another reason even
+with its target guard removed. No copied-prompt or phase-sensitive test was added
+merely to make a guard mutation fail. Scoped `runtime.invoke` and `invokeFenced`
+refusals remain inspected defenses without independent mutation proof. Revisit that
+bounded claim when the dependency or caller changes.
+
+Production composition is already present: personal hosts construct the report
+runtime from their actual configuration, security, orchestration and publication
+owners and mount its routes. `delegationGroups: false` withholds the full-support
+handshake advertisement; it is not a universal route-disable switch. The stale
+source comment and this checkpoint's earlier blanket disabled wording are corrected.
+Existing authorized advisory serving is preserved. Continuation finalization still
+refuses under its unqualified-publication guard. Neither flag was enabled.
+
+Renewal, continuation-parent ownership, checkpoint/accounting and HTTP response
+lifetimes, initialized report/storage composition, the funded mixed-family
+input/context journey, main integration, current browser/device observations,
+semantic documentation freshness and final combined review remain open. There is
+still no push, PR, provider/native/hosted acceptance or whole-epic readiness claim.
+
+
+The follow-up working-tree readiness passes all 1593 connected-agent cases,
+governance, style, hygiene, component style and verification policy. Documentation
+truth still fails only the recorded-review freshness case (249 foundation passes).
+A separate routed static-gate run is red in nine branch-level checks: responsive
+action contracts, Coding composition inventory, shell headers, state primitives,
+random IDs, unsaved-state declarations, stored-path expansion, action-row counts
+and copy length. These are additional push blockers, not covered by the narrower
+readiness result. They require owning code/contract repairs without increasing
+baselines or adding unreasoned exceptions. The red static report is retained; this
+checkpoint remains unready for a push or PR.

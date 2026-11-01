@@ -478,6 +478,10 @@ without retaining a stale continuation-turn row. Context acknowledgement remains
 exact-byte agreement, not evidence that a model remembers the supplied context.
 Scoped runtime facades can resolve metadata, but their provider invocation hooks
 refuse; actual dispatch uses the operation's separately admitted effect path.
+The pinned Flow Agents 9.11.0 controller uses the scoped host for recipient
+identity and discards its runtime; paid and sync launches use the base facade.
+The additional scoped invocation refusals are inspected defenses, not independently
+mutation-proven behavior against a different SDK or a deliberately misusing caller.
 
 Active cancellation publishes its signed intent and acknowledgement in separate
 short home scopes. The final interrupt and forced-stop admissions recheck authority
@@ -558,8 +562,9 @@ distinguishes matching terminals, missing terminals, replacement invocations and
 same-target coalescing; [sync recovery](../../src-server/services/orchestration/__tests__/station-report-sync-recovery.test.ts)
 owns sync-finalization controls. Renewal adoption, continuation finalization,
 authenticated public-parent borrowing, the funded input/context journey, full-boot
-storage retention, final device/native and hosted evidence remain separate. Report capabilities stay
-disabled pending that combined qualification. [Persistence-fault tests](../../src-server/services/ssh/__tests__/device-pairing-persistence-fault.test.ts)
+storage retention, final device/native and hosted evidence remain separate. Full
+group capability advertisement stays false pending that combined qualification;
+personal report routes remain mounted for authorized bounded reports. [Persistence-fault tests](../../src-server/services/ssh/__tests__/device-pairing-persistence-fault.test.ts)
 exercise publication and replay fences. Personal-token mint, revoke and clear acquire
 the same home hold; reset explicitly lends its live lease to both clears. Token
 lookup uses a synchronous best-effort activity touch and leaves no deferred writer.

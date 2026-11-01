@@ -19,7 +19,8 @@
 import type { StationCapabilityFlags } from '@kontourai/station-contracts';
 
 export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
-  // UNWIRED(#91): group routes and actual host/physical composition are not mounted.
+  // UNWIRED(#91): full group qualification remains open; personal report routes are mounted.
+  // Keep this advertisement false until the remaining ownership and journey checks pass.
   delegationGroups: false,
   privateOperationalOutcomes: true,
   // Automation targets: src-server/routes/operations/scheduler.ts accepts a
