@@ -17,8 +17,8 @@ import type { InboxEntryRecord, InboxEntryState } from '../records.js';
  * host places one at a time, each at a turn boundary of the host's choosing.
  *
  * - A submission is idempotent by key: the same digest answers the stored
- *   entry, a different digest is a conflict. A key whose entry was refused or
- *   cancelled had no effect, so submitting it again queues it again.
+ *   entry, a different digest is a conflict. A refused or never-placed
+ *   cancelled entry can be queued again; dismissing an unknown effect cannot.
  * - The head is the oldest unsettled entry. A `placing` head is in flight and
  *   is never claimed afresh; the host re-drives it under the same key. An
  *   `unconfirmed` head may have had its effect: it blocks the inbox until the
@@ -74,7 +74,8 @@ export function decideInboxSubmit(
   )
     return { result: { kind: 'conflict' } };
   const requeue =
-    existing?.state === 'refused' || existing?.state === 'cancelled';
+    existing?.state === 'refused' ||
+    (existing?.state === 'cancelled' && existing.placement === null);
   if (existing && !requeue)
     return { result: { kind: 'existing', entry: existing } };
   const unsettled = inputs.entries.filter(inboxEntryIsUnsettled).length;

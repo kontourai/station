@@ -2788,6 +2788,28 @@ const inbox: KernelConformanceCase[] = [
       }),
   },
   {
+    name: 'inbox: dismissing an unknown effect does not make its key sendable again',
+    areas: ['inbox'],
+    run: (harness) =>
+      withSession(harness, async (session) => {
+        await session.run(submit('uncertain'));
+        await session.run(claimNext());
+        await session.run(settle('uncertain', 'unconfirmed'));
+        await session.run({
+          type: 'inbox.cancel',
+          inboxId: 'conversation',
+          key: 'uncertain',
+          now: 4,
+        });
+        await session.store.reopen();
+        assert.equal(
+          claimedKey(await session.run(submit('uncertain', { now: 5 }))),
+          'existing:uncertain:cancelled',
+        );
+        assert.deepEqual(await session.run(claimNext()), { kind: 'empty' });
+      }),
+  },
+  {
     name: 'inbox: a refused or cancelled key submitted again is queued again at the tail',
     areas: ['inbox'],
     run: (harness) =>

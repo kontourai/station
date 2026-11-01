@@ -435,7 +435,7 @@ export function createSqliteThreadInboxStore(
         const replaysExisting =
           prior.kind === 'found' &&
           prior.entry.state !== 'refused' &&
-          prior.entry.state !== 'cancelled';
+          (prior.entry.state !== 'cancelled' || prior.entry.placement !== null);
         result =
           replaysExisting || currentHead === input.expectedHead
             ? run(command, true)
