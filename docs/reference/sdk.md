@@ -49,7 +49,9 @@ starting a second shell. Errors are `TerminalSessionError` with a `code`:
 `unsupported-host` (the host lacks the ticket route; update it), `refused`,
 `credential-unavailable`, `raw-egress-unavailable` (a browser broker route),
 `pty-unavailable` (the host's PTY backend is missing; its `message` is the
-server's reason), `connection-lost` and `protocol`. See the
+server's reason), `connection-lost` and `protocol`. A refused ticket
+(`refused`, `credential-unavailable`) keeps the host's response as `cause`, a
+`StationHttpError` with its status, code and details, and uses its message. See the
 [socket protocol](api.md#terminal-socket-operator-transport).
 
 ## Terminal output sessions
