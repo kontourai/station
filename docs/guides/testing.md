@@ -947,11 +947,14 @@ stay in every clone's history after the pull request merges.
 The Windows portable floor is deliberately not named or treated as
 `test:full`. It combines the physically proven pre-push tier with the portable
 OpenSSH argv, cleanup, and broken-pipe contracts, the file-memory
-transcript durability suite, and the Windows process identity probe run
-against real processes. The durability suite is here because torn-tail repair
-truncates through a non-append descriptor, which Windows requires. The probe
-test is the one test of that PowerShell probe that does not fake it (skipped
-off Windows). Full Windows Vitest parity
+transcript durability suite, the Windows process identity probe run
+against real processes, and the Windows owned-process registry suite. The
+durability suite is here because torn-tail repair truncates through a
+non-append descriptor, which Windows requires. The probe test is the one test
+of that PowerShell probe that does not fake it (skipped off Windows). It also
+compiles the archive's process-birth helper and proves the helper prints the
+probe's birth (#2805). The registry suite kills a real owner and proves the
+startup sweep reaps its orphaned engine and grandchild (#3873). Full Windows Vitest parity
 remains failing closed under issue #1420; do not add exclusions or
 `continue-on-error` to relabel that gap green.
 
