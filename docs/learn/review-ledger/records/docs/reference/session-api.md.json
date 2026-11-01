@@ -150,7 +150,11 @@
 
     "src-server/routes/orchestration/events.ts",
 
-    "src-server/routes/orchestration/session-goals.ts"
+    "src-server/routes/orchestration/session-goals.ts",
+
+    "src-server/services/orchestration/post-tool-inbox.ts",
+
+    "src-server/runtime/conversation/inbox-model-step.ts"
   ],
 
   "checks": [

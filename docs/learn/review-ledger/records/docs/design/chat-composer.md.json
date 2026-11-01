@@ -224,7 +224,11 @@
 
     "src-ui/src/components/ComposerChoice.tsx",
 
-    "src-ui/src/components/ComposerChoice.css"
+    "src-ui/src/components/ComposerChoice.css",
+
+    "src-ui/src/components/chat/ConversationInboxMessages.css",
+
+    "src-ui/src/__tests__/ConversationInboxMessages.geometry.test.tsx"
   ],
 
   "checks": [
