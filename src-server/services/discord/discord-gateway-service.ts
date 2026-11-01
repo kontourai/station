@@ -7,6 +7,7 @@ import type {
   DiscordChannelSessionBinding,
   DiscordGatewayConfiguration,
 } from '@kontourai/station-contracts/discord';
+import { FOREGROUND_MESSAGE_INDETERMINATE_CODE } from '@kontourai/station-contracts/orchestration';
 import {
   type CanonicalRuntimeEvent,
   SERVER_EVENTS,
@@ -528,16 +529,22 @@ export class DiscordGatewayService {
         externalMessageId: payload.id,
       });
       recordGatewayEvent('turn_started');
-    } catch {
+    } catch (error) {
       // Keep an unknown dispatch pending. A rejection need not prove the
       // provider saw no effect, so this path must never invite automatic replay.
       // The real orchestration seam owns detailed receipts. Do not echo a
       // provider error or inbound content into Discord or logs.
-      recordGatewayEvent('turn_refused');
+      const indeterminate =
+        isRecord(error) &&
+        error.code === FOREGROUND_MESSAGE_INDETERMINATE_CODE &&
+        error.outcome === 'indeterminate';
+      recordGatewayEvent(indeterminate ? 'turn_indeterminate' : 'turn_refused');
       await this.deliverAcknowledgement(
         payload.guild_id,
         payload.channel_id,
-        'Station could not start this turn.',
+        indeterminate
+          ? 'Station could not confirm that this turn started. Do not retry automatically.'
+          : 'Station could not start this turn.',
       );
     } finally {
       this.dispatchingSessions.delete(binding.sessionId);
