@@ -1356,11 +1356,14 @@ describe('#2452 fix round: the walk answers only what the user saw', () => {
 });
 
 describe('#2452 fix round: host ownership and data home', () => {
-  test('E4: unconfirmed host termination still completes teardown: session.exited, warning, record deleted, ownership kept', async () => {
+  test('E4: unconfirmed host stop retains the session and retries the original live host', async () => {
     const released: FakeMuseServeHost[] = [];
+    let unconfirmed = true;
     const h = harness({
-      terminateHost: async () => {
-        throw new Error('Process tree did not confirm exit after SIGKILL.');
+      terminateHost: async (host) => {
+        if (unconfirmed)
+          throw new Error('Process tree did not confirm exit after SIGKILL.');
+        host.exit(0);
       },
       onRelease: (host) => released.push(host),
       spawnHost: (args) => {
@@ -1372,37 +1375,44 @@ describe('#2452 fix round: host ownership and data home', () => {
       },
     });
     const host = await upToFirstDecide(h);
-
-    await expect(h.adapter.stopSession(THREAD)).resolves.toBeUndefined();
-    await settle();
-
-    const exited = of(h.events, 'session.exited');
-    expect(exited).toEqual([
-      expect.objectContaining({ threadId: THREAD, sessionId: THREAD }),
-    ]);
-    const warning = of(h.events, 'runtime.warning').find(
-      (event) => event.code === MUSE_SERVE_STOP_UNCONFIRMED_CODE,
-    );
-    expect(warning).toEqual(expect.objectContaining({ threadId: THREAD }));
-    expect(h.events.indexOf(exited[0])).toBeLessThan(
-      h.events.indexOf(warning!),
-    );
-    expect(
-      (await h.adapter.listSessions()).map((session) => session.threadId),
-    ).not.toContain(THREAD);
-    expect(released).toEqual([]);
-
-    host.exit(0);
+    try {
+      await expect(h.adapter.stopSession(THREAD)).rejects.toThrow(
+        'could not confirm host termination',
+      );
+      await expect(h.adapter.stopSession(THREAD)).rejects.toThrow(
+        'could not confirm host termination',
+      );
+      await settle();
+      expect(of(h.events, 'session.exited')).toEqual([]);
+      expect(await h.adapter.hasSession(THREAD)).toBe(true);
+      expect(released).toEqual([]);
+      expect(
+        of(h.events, 'runtime.warning').some(
+          (event) => event.code === MUSE_SERVE_STOP_UNCONFIRMED_CODE,
+        ),
+      ).toBe(true);
+      unconfirmed = false;
+      await expect(h.adapter.stopSession(THREAD)).resolves.toBeUndefined();
+      await expect(h.adapter.stopSession(THREAD)).resolves.toBeUndefined();
+      await settle();
+      expect(of(h.events, 'session.exited')).toHaveLength(1);
+      expect(await h.adapter.hasSession(THREAD)).toBe(false);
+      expect(released).toEqual([host]);
+    } finally {
+      unconfirmed = false;
+      await h.adapter.stopAll();
+    }
   });
 
-  test('R5: a host Station could not confirm stopped keeps its ownership record until it exits', async () => {
+  test('R5: an unconfirmed stop never treats leader exit as group settlement or signals that departed leader again', async () => {
     const released: FakeMuseServeHost[] = [];
+    let attempts = 0;
     const h = harness({
       terminateHost: async () => {
+        attempts++;
         throw new Error('Process tree did not confirm exit after SIGKILL.');
       },
       onRelease: (host) => released.push(host),
-      // A host that survives stdin EOF (the fake otherwise exits on it).
       spawnHost: (args) => {
         const host = new FakeMuseServeHost(args);
         host.stdin.end = () => {
@@ -1412,22 +1422,30 @@ describe('#2452 fix round: host ownership and data home', () => {
       },
     });
     const host = await upToFirstDecide(h);
-    await expect(h.adapter.stopSession(THREAD)).resolves.toBeUndefined();
-    // E4: the teardown still completed: the session exited and is gone,
-    // with the unconfirmed process announced.
-    await settle();
-    expect(of(h.events, 'session.exited')).toHaveLength(1);
-    expect(await h.adapter.hasSession(THREAD)).toBe(false);
-    expect(
-      of(h.events, 'runtime.warning').some(
-        (event) => event.code === MUSE_SERVE_STOP_UNCONFIRMED_CODE,
-      ),
-    ).toBe(true);
-    // stdin was closed, but this host has not exited: the record stays.
-    expect(released).toEqual([]);
-    host.exit(0);
-    await settle();
-    expect(released).toEqual([host]);
+    try {
+      await expect(h.adapter.stopSession(THREAD)).rejects.toThrow(
+        'could not confirm host termination',
+      );
+      host.exit(0);
+      await settle();
+      await expect(h.adapter.stopSession(THREAD)).rejects.toThrow(
+        'could not confirm host termination',
+      );
+      expect(attempts).toBe(1);
+      expect(await h.adapter.hasSession(THREAD)).toBe(true);
+      expect(of(h.events, 'session.exited')).toEqual([]);
+      expect(released).toEqual([]);
+    } finally {
+      // This stream double has no OS process; assert the unresolved cleanup and close its stream.
+      if (await h.adapter.hasSession(THREAD)) {
+        await expect(h.adapter.stopAll()).rejects.toThrow(
+          'could not confirm host termination',
+        );
+      } else {
+        await h.adapter.stopAll();
+      }
+      adapters.splice(adapters.indexOf(h.adapter), 1);
+    }
   });
 
   test('R6: the serve host env moves XDG_DATA_HOME only for an explicit data home', () => {
