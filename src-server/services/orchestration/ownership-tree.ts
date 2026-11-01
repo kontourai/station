@@ -18,7 +18,7 @@ export const SESSION_ACTIVITY_METHODS = [
 export function cascadeTriggerSql(alias: string): string {
   return `(${alias}.method IN (${CASCADE_TRIGGER_METHODS.map((method) => `'${method}'`).join(', ')}) OR (${alias}.method = 'session.state-changed' AND ${alias}.session_state = 'canceled'))`;
 }
-export function hasStarted(
+function hasStarted(
   db: SqliteDatabase,
   threadId: string,
   before = Number.MAX_SAFE_INTEGER,
