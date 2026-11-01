@@ -38,8 +38,6 @@ incoming claims, and uses it only to retain bounded App envelopes in history
 windows. It grants no resource or execution authority. Older readers ignore the
 field; see [transcript previews](../design/mcp-ui-host.md#transcript-previews).
 
-### Delegation file refusals
-
 ### Delegated execution ownership
 
 `AgentDelegationContext.parentSessionId` identifies the initiating execution
