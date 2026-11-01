@@ -290,6 +290,8 @@ export class GenerationManager {
   >();
   private failures: number[] = [];
   private consecutiveFailures = 0;
+  /** Failures since a generation last reached `serving`. */
+  private unservedFailures = 0;
   private lastBackoffMs: number | null = null;
   private stableTimer: unknown = null;
   private stopping = false;
@@ -425,9 +427,9 @@ export class GenerationManager {
     this.trial = trial;
     progress('trial-started', trial.id);
 
-    const parked = await this.waitForState(
+    const parked = await this.waitForDeadline(
       trial,
-      ['parked'],
+      'parked',
       this.handoffConfig.parkTimeoutMs,
     );
     if (parked !== 'ok' || this.stopping) {
@@ -464,9 +466,9 @@ export class GenerationManager {
 
     this.promote(trial);
     progress('promoted', trial.id);
-    const ready = await this.waitForState(
+    const ready = await this.waitForDeadline(
       trial,
-      ['serving'],
+      'serving',
       readinessTimeoutMs,
     );
     if (ready !== 'ok' || this.stopping) {
@@ -901,6 +903,7 @@ export class GenerationManager {
 
   private commitActive(gen: Generation): void {
     this.active = gen;
+    this.unservedFailures = 0;
     this.setState('serving');
     this.clearStableTimer();
     this.stableTimer = this.clock.setTimeout(() => {
@@ -925,16 +928,16 @@ export class GenerationManager {
   private async launchActive(entry: string): Promise<Generation | null> {
     const gen = this.launch(entry);
     this.trial = gen;
-    const parked = await this.waitForState(
+    const parked = await this.waitForDeadline(
       gen,
-      ['parked'],
-      this.handoffConfig.parkTimeoutMs,
+      'parked',
+      this.handoffConfig.bootParkTimeoutMs,
     );
     if (parked === 'ok' && !this.stopping) {
       this.promote(gen);
-      const ready = await this.waitForState(
+      const ready = await this.waitForDeadline(
         gen,
-        ['serving'],
+        'serving',
         this.handoffConfig.readinessTimeoutMs,
       );
       if (ready === 'ok' && !this.stopping) {
@@ -973,8 +976,12 @@ export class GenerationManager {
     }
   }
 
-  /** Counts a failure; waits out the backoff. False when giving up or stopping. */
-  /** Counts one failure; false when that exhausts the failure budget. */
+  /**
+   * Counts one failure; false when that exhausts the failure budget. Failures
+   * with no generation serving between them count even when long boot
+   * deadlines spread them past the window, so a core that never comes up
+   * still gives up.
+   */
   private noteFailure(): boolean {
     const now = this.clock.now();
     this.failures = this.failures.filter(
@@ -982,8 +989,10 @@ export class GenerationManager {
     );
     this.failures.push(now);
     this.consecutiveFailures += 1;
-    if (this.failures.length >= this.restartConfig.maxFailures) {
-      this.giveUp();
+    this.unservedFailures += 1;
+    const failures = Math.max(this.failures.length, this.unservedFailures);
+    if (failures >= this.restartConfig.maxFailures) {
+      this.giveUp(failures);
       return false;
     }
     return true;
@@ -1005,10 +1014,9 @@ export class GenerationManager {
     return !this.stopping;
   }
 
-  private giveUp(): void {
+  private giveUp(failures: number): void {
     if (this.gaveUp) return;
     this.gaveUp = true;
-    const failures = this.failures.length;
     this.log(`giving up after ${failures} failures`);
     this.emit({ type: 'gave-up', failures });
     this.options.onGiveUp?.(failures);
@@ -1382,6 +1390,23 @@ export class GenerationManager {
     return this.waitForState(gen, ['exited'], timeoutMs).then(
       (result) => result !== 'timeout',
     );
+  }
+
+  /** Waits for `target`, logging a missed deadline; the caller ends the generation. */
+  private async waitForDeadline(
+    gen: Generation,
+    target: 'parked' | 'serving',
+    timeoutMs: number,
+  ): Promise<WaitResult> {
+    const result = await this.waitForState(gen, [target], timeoutMs);
+    if (result === 'timeout') {
+      const missed =
+        target === 'parked'
+          ? `did not park within ${timeoutMs}ms (park deadline)`
+          : `was not ready within ${timeoutMs}ms (readiness deadline)`;
+      this.log(`generation ${gen.id} ${missed}; ending it`);
+    }
+    return result;
   }
 
   private waitForState(
