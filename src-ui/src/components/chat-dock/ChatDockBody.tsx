@@ -448,6 +448,45 @@ export function latestSendFailureLine(
 }
 
 /**
+ * Send-failure notices whose action is stale (#4400): a LATER message was
+ * accepted after them, by the same rule `latestSendFailureLine` uses. A Retry
+ * there would send again a message the user has since sent and had answered,
+ * so such a card keeps its text but loses its action. A Station check-back or
+ * memory continuation is not the user's send and does not retire a failure.
+ * Terminal-session notices own their own "New chat" action and are left alone.
+ */
+export function staleSendFailureIds(
+  messages: readonly {
+    role: string;
+    ephemeral?: boolean;
+    sendFailure?: boolean;
+    terminalSession?: boolean;
+    stationCheckBack?: boolean;
+    stationMemoryContinuation?: boolean;
+    id?: string;
+  }[],
+): ReadonlySet<string> {
+  const stale = new Set<string>();
+  let failures: string[] = [];
+  for (const message of messages) {
+    if (message.ephemeral) {
+      if (message.sendFailure && !message.terminalSession && message.id)
+        failures.push(message.id);
+      continue;
+    }
+    if (
+      message.role === 'user' &&
+      !message.stationCheckBack &&
+      !message.stationMemoryContinuation
+    ) {
+      for (const id of failures) stale.add(id);
+      failures = [];
+    }
+  }
+  return stale;
+}
+
+/**
  * The newest "queued to retry" notice, for the composer to carry while a short
  * dock hides the transcript that holds it. It is a queued send, not a failure,
  * so `latestSendFailureLine` never repeats it; its action (Discard) is what the
@@ -1130,6 +1169,7 @@ export function ChatDockBody({
   );
   const ephemeralMessages = activeSession.messages.filter((m) => m.ephemeral);
   const sendFailureNotice = latestSendFailureLine(activeSession.messages);
+  const staleSendFailures = staleSendFailureIds(activeSession.messages);
   const queuedRetry = latestQueuedRetryNotice(
     activeSession.messages,
     activeSession.status === 'queued',
@@ -1364,6 +1404,19 @@ export function ChatDockBody({
     (msg: ChatMessage, idx: number): React.ReactNode | null => {
       if (msg.ephemeral) {
         const messageId = (msg as any).id || `ephemeral-${idx}`;
+        if (staleSendFailures.has(messageId) && (msg as any).action) {
+          const { action: _staleAction, ...settled } = msg as any;
+          return (
+            <EphemeralMessage
+              key={messageId}
+              idx={idx}
+              fontSize={chatFontSize}
+              isRemoving={removingMessages.has(messageId)}
+              onDismiss={() => handleDismissEphemeral(messageId)}
+              msg={settled}
+            />
+          );
+        }
         return (
           <EphemeralMessage
             key={messageId}
@@ -1587,6 +1640,7 @@ export function ChatDockBody({
     [
       chatFontSize,
       removingMessages,
+      staleSendFailures,
       activeSession.id,
       activeSession.replay,
       activeSession.agentConnectionId,
