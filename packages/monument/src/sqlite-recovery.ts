@@ -21,6 +21,63 @@ export interface RecoverySqlIntent extends RecoveryIntentShape {
   updatedAt: string;
 }
 
+const RECOVERY_OPERATIONS = [
+  'armRecoveryIntent',
+  'findRecoveryIntent',
+  'readRecoveryProjection',
+  'readPendingRecoveryIntents',
+  'readUsageLimitIntentsAwaitingUser',
+  'readRecoveryCompensationSnapshot',
+  'claimRecoveryDispatch',
+  'releaseRecoveryDispatch',
+  'acceptRecoveryDispatch',
+  'observeRecoveryDispatchCorrelation',
+  'markRecoveryDispatchIndeterminate',
+  'linkRecoveryCredentialAttempt',
+  'preparedRecoveryDispatches',
+  'indeterminatePreparedRecoveryDispatch',
+  'recordRecoveryTerminal',
+  'markRecoveryCompensation',
+  'resolveRecoveryCompensationRecord',
+  'cancelRecovery',
+  'retireWaitingRecovery',
+  'cancelSourceTerminatedRecoveries',
+  'cancelRecoveryIfSourceTerminated',
+  'cancelShutdownRecoveries',
+] as const;
+type RecoveryOperation = (typeof RECOVERY_OPERATIONS)[number];
+
+export type RecoveryStorageCommand<
+  I extends RecoverySqlIntent,
+  P,
+  Reason extends string,
+> = {
+  [K in RecoveryOperation]: {
+    readonly type: K;
+    readonly args: Parameters<SqliteRecoveryStorage<I, P, Reason>[K]>;
+  };
+}[RecoveryOperation];
+
+export type RecoveryStorageResult<
+  I extends RecoverySqlIntent,
+  P,
+  Reason extends string,
+  C extends RecoveryStorageCommand<I, P, Reason>,
+> = ReturnType<SqliteRecoveryStorage<I, P, Reason>[C['type']]>;
+
+export interface RecoveryStoragePort<
+  I extends RecoverySqlIntent,
+  P,
+  Reason extends string,
+> {
+  executeSync<C extends RecoveryStorageCommand<I, P, Reason>>(
+    command: C,
+  ): RecoveryStorageResult<I, P, Reason, C>;
+  execute<C extends RecoveryStorageCommand<I, P, Reason>>(
+    command: C,
+  ): Promise<RecoveryStorageResult<I, P, Reason, C>>;
+}
+
 function recoveryTransition(result: {
   changes: number | bigint;
 }): RecoveryTransition {
@@ -28,11 +85,12 @@ function recoveryTransition(result: {
 }
 
 /** Bound to a host-owned connection and table; no schema is created here. */
-export class SqliteRecoveryStorage<
+class SqliteRecoveryStorage<
   I extends RecoverySqlIntent,
   P,
   Reason extends string,
 > {
+  private inFlight = false;
   constructor(
     private readonly options: {
       db: SqliteKernelDatabase;
@@ -46,6 +104,114 @@ export class SqliteRecoveryStorage<
   ) {
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(options.table))
       throw new Error('Invalid recovery table name.');
+  }
+
+  /** Execute one recovery command on the bound host connection. */
+  executeSync<C extends RecoveryStorageCommand<I, P, Reason>>(
+    command: C,
+  ): RecoveryStorageResult<I, P, Reason, C> {
+    if (!RECOVERY_OPERATIONS.includes(command.type))
+      throw new Error('Unknown recovery storage command.');
+    if (this.inFlight || this.options.db.isTransaction)
+      throw new Error('Recovery storage cannot enter an existing transaction.');
+    const readOnly = [
+      'findRecoveryIntent',
+      'readRecoveryProjection',
+      'readPendingRecoveryIntents',
+      'readUsageLimitIntentsAwaitingUser',
+      'readRecoveryCompensationSnapshot',
+      'preparedRecoveryDispatches',
+    ].includes(command.type);
+    this.options.db.exec(`BEGIN ${readOnly ? 'DEFERRED' : 'IMMEDIATE'}`);
+    this.inFlight = true;
+    try {
+      let result: unknown;
+      switch (command.type) {
+        case 'armRecoveryIntent':
+          result = this.armRecoveryIntent(...command.args);
+          break;
+        case 'findRecoveryIntent':
+          result = this.findRecoveryIntent(...command.args);
+          break;
+        case 'readRecoveryProjection':
+          result = this.readRecoveryProjection(...command.args);
+          break;
+        case 'readPendingRecoveryIntents':
+          result = this.readPendingRecoveryIntents(...command.args);
+          break;
+        case 'readUsageLimitIntentsAwaitingUser':
+          result = this.readUsageLimitIntentsAwaitingUser(...command.args);
+          break;
+        case 'readRecoveryCompensationSnapshot':
+          result = this.readRecoveryCompensationSnapshot(...command.args);
+          break;
+        case 'claimRecoveryDispatch':
+          result = this.claimRecoveryDispatch(...command.args);
+          break;
+        case 'releaseRecoveryDispatch':
+          result = this.releaseRecoveryDispatch(...command.args);
+          break;
+        case 'acceptRecoveryDispatch':
+          result = this.acceptRecoveryDispatch(...command.args);
+          break;
+        case 'observeRecoveryDispatchCorrelation':
+          result = this.observeRecoveryDispatchCorrelation(...command.args);
+          break;
+        case 'markRecoveryDispatchIndeterminate':
+          result = this.markRecoveryDispatchIndeterminate(...command.args);
+          break;
+        case 'linkRecoveryCredentialAttempt':
+          result = this.linkRecoveryCredentialAttempt(...command.args);
+          break;
+        case 'preparedRecoveryDispatches':
+          result = this.preparedRecoveryDispatches(...command.args);
+          break;
+        case 'indeterminatePreparedRecoveryDispatch':
+          result = this.indeterminatePreparedRecoveryDispatch(...command.args);
+          break;
+        case 'recordRecoveryTerminal':
+          result = this.recordRecoveryTerminal(...command.args);
+          break;
+        case 'markRecoveryCompensation':
+          result = this.markRecoveryCompensation(...command.args);
+          break;
+        case 'resolveRecoveryCompensationRecord':
+          result = this.resolveRecoveryCompensationRecord(...command.args);
+          break;
+        case 'cancelRecovery':
+          result = this.cancelRecovery(...command.args);
+          break;
+        case 'retireWaitingRecovery':
+          result = this.retireWaitingRecovery(...command.args);
+          break;
+        case 'cancelSourceTerminatedRecoveries':
+          result = this.cancelSourceTerminatedRecoveries(...command.args);
+          break;
+        case 'cancelRecoveryIfSourceTerminated':
+          result = this.cancelRecoveryIfSourceTerminated(...command.args);
+          break;
+        case 'cancelShutdownRecoveries':
+          result = this.cancelShutdownRecoveries(...command.args);
+          break;
+      }
+      this.options.db.exec('COMMIT');
+      return result as RecoveryStorageResult<I, P, Reason, C>;
+    } catch (error) {
+      try {
+        this.options.db.exec('ROLLBACK');
+      } catch {
+        // The host connection may already have rolled back.
+      }
+      throw error;
+    } finally {
+      this.inFlight = false;
+    }
+  }
+
+  async execute<C extends RecoveryStorageCommand<I, P, Reason>>(
+    command: C,
+  ): Promise<RecoveryStorageResult<I, P, Reason, C>> {
+    return this.executeSync(command);
   }
 
   armRecoveryIntent(input: RecoveryIntentInput<I>): I {
@@ -577,4 +743,19 @@ export class SqliteRecoveryStorage<
       .run(now, now) as { changes: number | bigint };
     return recoveryTransition(result);
   }
+}
+
+/** Bind recovery commands to an existing host table without creating schema. */
+export function createSqliteRecoveryStorage<
+  I extends RecoverySqlIntent,
+  P,
+  Reason extends string,
+>(
+  options: ConstructorParameters<typeof SqliteRecoveryStorage<I, P, Reason>>[0],
+): RecoveryStoragePort<I, P, Reason> {
+  const storage = new SqliteRecoveryStorage<I, P, Reason>(options);
+  return Object.freeze({
+    executeSync: storage.executeSync.bind(storage),
+    execute: storage.execute.bind(storage),
+  });
 }

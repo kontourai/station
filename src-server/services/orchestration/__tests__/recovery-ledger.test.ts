@@ -63,6 +63,23 @@ describe('RecoveryLedger', () => {
     eventStore.close();
   });
 
+  test('rolls back a recovery command when its commit fails before acknowledgement', () => {
+    const { eventStore, ledger, intent } = fixture();
+    const db = (eventStore as unknown as { db: { exec(sql: string): void } })
+      .db;
+    const execute = db.exec.bind(db);
+    const fault = vi.spyOn(db, 'exec').mockImplementation((sql) => {
+      if (sql === 'COMMIT') throw new Error('injected commit failure');
+      return execute(sql);
+    });
+    expect(() =>
+      ledger.arm({ ...intent, fingerprint: 'commit-failure' }),
+    ).toThrow('injected commit failure');
+    fault.mockRestore();
+    expect(ledger.find('commit-failure')).toBeNull();
+    eventStore.close();
+  });
+
   test('#2823: a failed startup scan is unavailable, never an empty obligation list', () => {
     const { eventStore, ledger } = fixture();
     // Control: storage was read and holds no prepared obligation.

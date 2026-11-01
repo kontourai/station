@@ -11,10 +11,11 @@ import { dirname, join } from 'node:path';
 import type { SQLOutputValue } from 'node:sqlite';
 import {
   createRecoveryLedger,
+  createSqliteRecoveryStorage,
   type RecoveryLedgerProcessIdentity,
   type RecoveryOwner,
+  type RecoveryStoragePort,
   releaseRecoveryLedgerOwner,
-  SqliteRecoveryStorage,
 } from '@kontourai/monument/recovery';
 import type { SessionControlRequestKeys } from '@kontourai/monument/session-control';
 import {
@@ -2643,7 +2644,7 @@ export class EventStore {
   private skillExperienceSnapshots?: SkillExperienceSnapshots;
   private registryTrustPolicyDecisions?: RegistryTrustPolicyDecisions;
   private sessionControlKeys?: SessionControlRequestKeys;
-  private recoverySql?: SqliteRecoveryStorage<
+  private recoverySql?: RecoveryStoragePort<
     ConnectionRecoveryIntent,
     ConnectionRecoveryProjection,
     ConnectionRecoveryOutcomeReason
@@ -15361,38 +15362,89 @@ export class EventStore {
   ): RecoveryLedger {
     const storage = this.recoveryStorage();
     const coordinator: RecoveryLedgerCoordinator = {
-      arm: (input) => storage.armRecoveryIntent(input),
-      find: (fingerprint) => storage.findRecoveryIntent(fingerprint),
-      latestProjection: (threadId) => storage.readRecoveryProjection(threadId),
-      pending: () => storage.readPendingRecoveryIntents(),
-      compensationSnapshot: () => storage.readRecoveryCompensationSnapshot(),
-      claim: (input) => storage.claimRecoveryDispatch(input),
-      release: (input) => storage.releaseRecoveryDispatch(input),
-      accept: (input) => storage.acceptRecoveryDispatch(input),
+      arm: (input) =>
+        storage.executeSync({ type: 'armRecoveryIntent', args: [input] }),
+      find: (fingerprint) =>
+        storage.executeSync({
+          type: 'findRecoveryIntent',
+          args: [fingerprint],
+        }),
+      latestProjection: (threadId) =>
+        storage.executeSync({
+          type: 'readRecoveryProjection',
+          args: [threadId],
+        }),
+      pending: () =>
+        storage.executeSync({ type: 'readPendingRecoveryIntents', args: [] }),
+      compensationSnapshot: () =>
+        storage.executeSync({
+          type: 'readRecoveryCompensationSnapshot',
+          args: [],
+        }),
+      claim: (input) =>
+        storage.executeSync({ type: 'claimRecoveryDispatch', args: [input] }),
+      release: (input) =>
+        storage.executeSync({ type: 'releaseRecoveryDispatch', args: [input] }),
+      accept: (input) =>
+        storage.executeSync({ type: 'acceptRecoveryDispatch', args: [input] }),
       observe: (correlationId, turnId, now) =>
-        storage.observeRecoveryDispatchCorrelation(correlationId, turnId, now),
+        storage.executeSync({
+          type: 'observeRecoveryDispatchCorrelation',
+          args: [correlationId, turnId, now],
+        }),
       indeterminate: (fingerprint, attemptId, now) =>
-        storage.markRecoveryDispatchIndeterminate(fingerprint, attemptId, now),
-      linkCredential: (input) => storage.linkRecoveryCredentialAttempt(input),
+        storage.executeSync({
+          type: 'markRecoveryDispatchIndeterminate',
+          args: [fingerprint, attemptId, now],
+        }),
+      linkCredential: (input) =>
+        storage.executeSync({
+          type: 'linkRecoveryCredentialAttempt',
+          args: [input],
+        }),
       reconcilePrepared: (kind, unlinkedOnly) =>
         this.preparedRecoveryDispatches(kind, unlinkedOnly),
       indeterminatePrepared: (input) =>
         this.indeterminatePreparedRecoveryDispatch(input),
       terminal: (fingerprint, outcome, now) =>
-        storage.recordRecoveryTerminal(fingerprint, outcome, now),
+        storage.executeSync({
+          type: 'recordRecoveryTerminal',
+          args: [fingerprint, outcome, now],
+        }),
       compensationRequired: (fingerprint, now, expectedOutcome) =>
-        storage.markRecoveryCompensation(fingerprint, now, expectedOutcome),
+        storage.executeSync({
+          type: 'markRecoveryCompensation',
+          args: [fingerprint, now, expectedOutcome],
+        }),
       resolveCompensation: (fingerprint, now) =>
-        storage.resolveRecoveryCompensationRecord(fingerprint, now),
+        storage.executeSync({
+          type: 'resolveRecoveryCompensationRecord',
+          args: [fingerprint, now],
+        }),
       cancel: (fingerprint, now, reason) =>
-        storage.cancelRecovery(fingerprint, now, reason),
-      retireWaiting: (input) => storage.retireWaitingRecovery(input),
-      awaitingUser: () => storage.readUsageLimitIntentsAwaitingUser(),
+        storage.executeSync({
+          type: 'cancelRecovery',
+          args: [fingerprint, now, reason],
+        }),
+      retireWaiting: (input) =>
+        storage.executeSync({ type: 'retireWaitingRecovery', args: [input] }),
+      awaitingUser: () =>
+        storage.executeSync({
+          type: 'readUsageLimitIntentsAwaitingUser',
+          args: [],
+        }),
       cancelSourceTerminated: (now) =>
-        storage.cancelSourceTerminatedRecoveries(now),
+        storage.executeSync({
+          type: 'cancelSourceTerminatedRecoveries',
+          args: [now],
+        }),
       cancelIfSourceTerminated: (fingerprint, now) =>
-        storage.cancelRecoveryIfSourceTerminated(fingerprint, now),
-      cancelShutdownRequested: (now) => storage.cancelShutdownRecoveries(now),
+        storage.executeSync({
+          type: 'cancelRecoveryIfSourceTerminated',
+          args: [fingerprint, now],
+        }),
+      cancelShutdownRequested: (now) =>
+        storage.executeSync({ type: 'cancelShutdownRecoveries', args: [now] }),
     };
     const startup = options.credentialStartup;
     return createRecoveryLedger<
@@ -16206,13 +16258,13 @@ export class EventStore {
     return rows.map((row: any) => mapCommandReceiptRow(row));
   }
 
-  private recoveryStorage(): SqliteRecoveryStorage<
+  private recoveryStorage(): RecoveryStoragePort<
     ConnectionRecoveryIntent,
     ConnectionRecoveryProjection,
     ConnectionRecoveryOutcomeReason
   > {
     if (!this.recoverySql)
-      this.recoverySql = new SqliteRecoveryStorage({
+      this.recoverySql = createSqliteRecoveryStorage({
         db: this.db,
         table: 'orchestration_recovery_intents',
         mapRecord: (row) => mapRecoveryIntentRow(row as RecoveryIntentRow),
@@ -16237,29 +16289,21 @@ export class EventStore {
   }
 
   private preparedRecoveryDispatches(
-    ...args: Parameters<
-      SqliteRecoveryStorage<
-        ConnectionRecoveryIntent,
-        ConnectionRecoveryProjection,
-        ConnectionRecoveryOutcomeReason
-      >['preparedRecoveryDispatches']
-    >
+    ...args: Parameters<RecoveryLedgerCoordinator['reconcilePrepared']>
   ) {
-    return this.recoveryStorage().preparedRecoveryDispatches(...args);
+    return this.recoveryStorage().executeSync({
+      type: 'preparedRecoveryDispatches',
+      args,
+    });
   }
 
   private indeterminatePreparedRecoveryDispatch(
-    ...args: Parameters<
-      SqliteRecoveryStorage<
-        ConnectionRecoveryIntent,
-        ConnectionRecoveryProjection,
-        ConnectionRecoveryOutcomeReason
-      >['indeterminatePreparedRecoveryDispatch']
-    >
+    ...args: Parameters<RecoveryLedgerCoordinator['indeterminatePrepared']>
   ) {
-    return this.recoveryStorage().indeterminatePreparedRecoveryDispatch(
-      ...args,
-    );
+    return this.recoveryStorage().executeSync({
+      type: 'indeterminatePreparedRecoveryDispatch',
+      args,
+    });
   }
 
   /**

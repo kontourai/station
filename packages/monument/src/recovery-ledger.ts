@@ -6,7 +6,13 @@ import {
 } from './decisions/recovery.js';
 
 export type { RecoveryTransition } from './decisions/recovery.js';
-export { SqliteRecoveryStorage } from './sqlite-recovery.js';
+export {
+  createSqliteRecoveryStorage,
+  type RecoverySqlIntent,
+  type RecoveryStorageCommand,
+  type RecoveryStoragePort,
+  type RecoveryStorageResult,
+} from './sqlite-recovery.js';
 
 import { ownerLivenessFromProbe } from './owner.js';
 
