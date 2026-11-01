@@ -12,13 +12,30 @@ AI SDK v3 interface, VoltAgent 2.10.0 and Strands 1.19.0 VercelModel. Optional
 framework dependencies are exact peers. The package imports no Station code.
 
 The public root also exports an agent-turn journal and recovery owner. Its
-separate `agent_steps_` namespace declares writer format `agent-steps/1` and
+separate `agent_steps_` namespace declares writer format `agent-steps/2` and
 leaves existing `runtime-model/1` records intact. An active conversation has
 one owner. Recovery requires a proven-dead owner and compares the complete
 observed fence inside the SQLite write transaction. A retained Station turn
 boundary grants no execution authority. Station boot calls this owner before
-ordinary interrupted-turn settlement; foreground registration, tools and
+ordinary interrupted-turn settlement. Foreground registration and durable
 approvals are still required before this qualifies a resumed Station turn.
+The explicit ownership-writer migration validates the old namespace and every
+old turn, preserves their record bytes, then adds the effect table atomically.
+The prior writer refuses the new metadata; future writers refuse here too.
+
+`durableLanguageModel` journals calls made inside `AgentTurnLease.run` without
+replacing the framework loop. Its completed tapes replay; its committed partials
+remain aborted audit data after takeover and never become model context. A
+possibly dispatched call becomes indeterminate. A pinned, never-dispatched call
+can still run with identical input. Tool-enabling stream parts remain held
+until the complete model tape commits.
+
+`lease.tool({ id, input, replay }, execute)` commits intent and a one-use grant
+before entering a tool. Recovery replays completed results, retries an interrupted
+`safe` call once under the new owner, and returns an interrupted/indeterminate
+result for an interrupted `unsafe` call. Concurrent identical calls join the
+same local execution. Changed input or a stale owner refuses. Unknown tools
+must default to `unsafe` in the host; replay safety is a trusted declaration.
 
 The host supplies authorization/current implementation and writer-generation
 closures, real owner liveness, and the already-authorized source cutoff.
@@ -42,10 +59,11 @@ part or successful terminal remains held through EOF, strict tape validation,
 durable body put and complete COMMIT acknowledgment. Empty-prefix completion
 uses `lastPartialSequence: -1`; otherwise it is the last committed sequence.
 
-Actual tools refuse before their registered body and block the run, even when
+The legacy model-only consumers refuse tools before their registered body and block the run, even when
 the framework catches the refusal. Client-tool responses exercise the model
 commit barrier; they do not establish durable tools, results or approvals.
-There are no tool/approval commands, tool replay declarations or new agent loop.
+They do not supply the agent-turn tool protocol described above. No new agent
+loop is introduced; approvals remain a separate integration obligation.
 
 SQLite bodies are immutable, content-addressed BLOBs in the existing host
 connection's `agent_runtime_` namespace. Opening requires WAL, FULL synchronous

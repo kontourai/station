@@ -7,6 +7,16 @@ import type {
 } from '@kontourai/monument/testing';
 import { z } from 'zod';
 import { canonical, fence, hash, owner, runKey, text } from './encoding.js';
+import {
+  decideAgentEffect,
+  type EffectCommand,
+  type EffectResult,
+  effectCommands,
+  effectsDefinition,
+  readAgentEffect,
+  takeOverAgentEffects,
+  validateAgentEffects,
+} from './turn-effects.js';
 import type { Fence, RunKey } from './types.js';
 
 export interface AgentTurnSpec {
@@ -33,6 +43,7 @@ const turnSchema = z
   .strict();
 export type AgentTurnRecord = z.infer<typeof turnSchema>;
 export type AgentJournalResult =
+  | EffectResult
   | { readonly kind: 'owned'; readonly turn: AgentTurnRecord }
   | { readonly kind: 'absent' }
   | {
@@ -45,7 +56,13 @@ export type AgentJournalResult =
         | 'settled';
     };
 type Owned = { readonly key: RunKey; readonly expected: Fence };
-export type AgentJournalProtocol = {
+type EffectProtocol = {
+  [K in EffectCommand['type']]: {
+    command: Extract<EffectCommand, { type: K }>;
+    result: AgentJournalResult;
+  };
+};
+export type AgentJournalProtocol = EffectProtocol & {
   open: {
     command: {
       readonly type: 'open';
@@ -81,6 +98,7 @@ export type AgentJournalParticipant = AtomicParticipant<
 >;
 const ownedFields = { key: runKey, expected: fence };
 const commandSchema = z.discriminatedUnion('type', [
+  ...effectCommands,
   z.object({ type: z.literal('open'), spec, owner }).strict(),
   z.object({ type: z.literal('read'), key: runKey }).strict(),
   z.object({ type: z.literal('claim'), ...ownedFields, owner }).strict(),
@@ -93,9 +111,10 @@ const commandSchema = z.discriminatedUnion('type', [
     .strict(),
 ]);
 const definitions = [
-  "CREATE TABLE agent_steps_meta(id INTEGER PRIMARY KEY CHECK(id=1), writer_format TEXT NOT NULL CHECK(writer_format='agent-steps/1')) STRICT",
+  "CREATE TABLE agent_steps_meta(id INTEGER PRIMARY KEY CHECK(id=1), writer_format TEXT NOT NULL CHECK(writer_format='agent-steps/2')) STRICT",
   'CREATE TABLE agent_steps_turns(id TEXT PRIMARY KEY, scope TEXT NOT NULL, conversation TEXT NOT NULL, active INTEGER NOT NULL CHECK(active IN (0,1)), record TEXT NOT NULL) STRICT',
   'CREATE UNIQUE INDEX agent_steps_active_conversation ON agent_steps_turns(scope,conversation) WHERE active=1',
+  effectsDefinition,
 ] as const;
 const idOf = (key: RunKey) => canonical(key);
 function validateRow(row: Record<string, unknown>): AgentTurnRecord {
@@ -143,7 +162,7 @@ export function openSqliteAgentJournal(options: {
         ?.n !== 1 ||
       database
         .prepare('SELECT writer_format FROM agent_steps_meta WHERE id=1')
-        .get()?.writer_format !== 'agent-steps/1'
+        .get()?.writer_format !== 'agent-steps/2'
     )
       throw new Error('DURABLE_AGENT_WRITER_UNSUPPORTED');
   };
@@ -163,7 +182,48 @@ export function openSqliteAgentJournal(options: {
     database.exec('BEGIN IMMEDIATE');
     try {
       for (const sql of definitions) database.exec(sql);
-      database.exec("INSERT INTO agent_steps_meta VALUES(1,'agent-steps/1')");
+      database.exec("INSERT INTO agent_steps_meta VALUES(1,'agent-steps/2')");
+      database.exec('COMMIT');
+    } catch (error) {
+      if (database.isTransaction) database.exec('ROLLBACK');
+      throw error;
+    }
+  }
+  const legacy =
+    database
+      .prepare('SELECT writer_format FROM main.agent_steps_meta WHERE id=1')
+      .get()?.writer_format === 'agent-steps/1';
+  if (legacy) {
+    const actual = database
+      .prepare(
+        "SELECT sql FROM main.sqlite_schema WHERE (lower(name) GLOB 'agent_steps_*' OR lower(tbl_name) GLOB 'agent_steps_*') AND sql IS NOT NULL",
+      )
+      .all()
+      .map((r) => r.sql)
+      .sort();
+    const expected = definitions
+      .slice(0, 3)
+      .map((sql) => sql.replace('agent-steps/2', 'agent-steps/1'))
+      .sort();
+    if (
+      canonical(actual) !== canonical(expected) ||
+      database
+        .prepare(
+          "SELECT 1 FROM temp.sqlite_schema WHERE lower(name) GLOB 'agent_steps_*' OR lower(tbl_name) GLOB 'agent_steps_*'",
+        )
+        .get()
+    )
+      throw new Error('DURABLE_AGENT_MIGRATION_REFUSED');
+    database.exec('BEGIN IMMEDIATE');
+    try {
+      for (const row of database
+        .prepare('SELECT * FROM main.agent_steps_turns')
+        .all())
+        validateRow(row);
+      database.exec('DROP TABLE agent_steps_meta');
+      database.exec(definitions[0]);
+      database.exec("INSERT INTO agent_steps_meta VALUES(1,'agent-steps/2')");
+      database.exec(effectsDefinition);
       database.exec('COMMIT');
     } catch (error) {
       if (database.isTransaction) database.exec('ROLLBACK');
@@ -174,12 +234,15 @@ export function openSqliteAgentJournal(options: {
   for (const row of database
     .prepare('SELECT * FROM agent_steps_turns WHERE active=1')
     .all())
-    validateRow(row);
+    validateAgentEffects(database, idOf(validateRow(row).spec.key));
   const read = (key: RunKey) => {
     const row = database
       .prepare('SELECT * FROM agent_steps_turns WHERE id=?')
       .get(idOf(key));
-    return row ? validateRow(row) : undefined;
+    if (!row) return undefined;
+    const turn = validateRow(row);
+    validateAgentEffects(database, idOf(key));
+    return turn;
   };
   const write = (turn: AgentTurnRecord) => {
     turnSchema.parse(turn);
@@ -254,6 +317,16 @@ export function openSqliteAgentJournal(options: {
             )
               return { kind: 'refused', reason: 'conflict' };
             turn.fence.owner = command.owner;
+            takeOverAgentEffects(database, idOf(key));
+          } else if (
+            command.type === 'effectPlan' ||
+            command.type === 'effectBegin' ||
+            command.type === 'effectPartial' ||
+            command.type === 'effectComplete'
+          ) {
+            if (context.liveness(structuredClone(turn.fence.owner)) !== 'live')
+              return { kind: 'refused', reason: 'unknown-owner' };
+            return decideAgentEffect(database, idOf(key), command);
           } else {
             if (context.liveness(turn.fence.owner) !== 'live')
               return { kind: 'refused', reason: 'unknown-owner' };
@@ -264,7 +337,10 @@ export function openSqliteAgentJournal(options: {
           return { kind: 'owned', turn };
         };
         const answer = decide();
-        if (command.type !== 'read' && answer.kind === 'owned') {
+        if (
+          command.type !== 'read' &&
+          (answer.kind === 'owned' || answer.kind === 'effect')
+        ) {
           for (const participant of participants) {
             const returned: unknown = participant.commit?.(
               {
@@ -281,6 +357,17 @@ export function openSqliteAgentJournal(options: {
         if (
           answer.kind === 'owned' &&
           canonical(read(answer.turn.spec.key)) !== canonical(answer.turn)
+        )
+          throw new Error('DURABLE_AGENT_PARTICIPANT_CHANGED_STATE');
+        if (
+          answer.kind === 'effect' &&
+          canonical(
+            readAgentEffect(
+              database,
+              idOf(command.type === 'open' ? command.spec.key : command.key),
+              answer.effect.intent.id,
+            ),
+          ) !== canonical(answer.effect)
         )
           throw new Error('DURABLE_AGENT_PARTICIPANT_CHANGED_STATE');
         database.exec('COMMIT');

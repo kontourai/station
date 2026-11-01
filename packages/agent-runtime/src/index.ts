@@ -22,5 +22,13 @@ export {
   type AgentTurnSpec,
   openSqliteAgentJournal,
 } from './turn-journal.js';
-export { type AgentTurnLease, createAgentRuntime } from './turn-runtime.js';
+export { durableLanguageModel } from './turn-model.js';
+export {
+  type AgentTurnLease,
+  createAgentRuntime,
+  currentAgentTurn,
+  type InterruptedToolResult,
+  runWithAgentTurn,
+} from './turn-runtime.js';
+export { agentWire, readAgentWire } from './turn-wire.js';
 export type * from './types.js';
