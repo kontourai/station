@@ -160,7 +160,7 @@ const ENGINE_MODE_DESCRIPTIONS: Partial<
     // project runs in the home folder (`resolveStartSessionCwd`), so the copy
     // names that case instead of implying a narrower bound.
     codex:
-      'Your Codex settings apply until you pick a mode. If unset, no command uses the network or writes outside this chat’s working folder and temp unasked. A chat with no project works in your home folder.',
+      'Codex settings apply until you pick one. If unset, it asks to go online or write outside temp and the chat folder (home if no project).',
   },
   ask: {
     codex:
