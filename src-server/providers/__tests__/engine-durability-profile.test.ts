@@ -48,6 +48,23 @@ const fields = {
 
 describe('built-in adapter durability conformance', () => {
   test.each(adapters)(
+    '$provider has an executable proof for every native durability claim',
+    (adapter) => {
+      // The native steer claims are exercised through the scripted SDK input
+      // and app-server RPC in claude-adapter.test and codex-adapter.test.
+      // Any additional native cell needs its own executable proof first.
+      const claims = Object.entries(adapter.metadata.durability ?? {})
+        .filter(([, cell]) => cell.state === 'native')
+        .map(([key]) => key)
+        .sort();
+      expect(claims).toEqual(
+        adapter.provider === 'claude' || adapter.provider === 'codex'
+          ? ['steerPlacement']
+          : [],
+      );
+    },
+  );
+  test.each(adapters)(
     '$provider declares the complete profile with disclosed limits',
     (adapter) => {
       const profile = adapter.metadata.durability;

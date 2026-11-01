@@ -50,6 +50,7 @@ const support = vi.hoisted(() => ({
   busy: new Set<string>(),
   /** The steer dispatch throws (after, possibly, being accepted). */
   steerThrows: false,
+  inboxNativeSteer: false,
   /** What the conversation's turn ledger answers for a key (#3568 D1). */
   inspect: undefined as
     | ((conversationId: string, clientTurnId: string) => unknown)
@@ -220,6 +221,8 @@ async function composeOver(
       readSessionByThread: () => undefined,
       sessionControlRequestKeys: () => store.sessionControlRequestKeys(),
       threadInboxStore: () => store.threadInboxStore(),
+      readSteerInput: (input: Parameters<EventStore['readSteerInput']>[0]) =>
+        store.readSteerInput(input),
     }),
     orchestrationService: deepStub({
       resolveSessionActingPrincipal: () => ({
@@ -233,12 +236,31 @@ async function composeOver(
       inspectTurnDelivery: (conversationId: string, clientTurnId: string) =>
         support.inspect?.(conversationId, clientTurnId),
       hasActiveTurn: (threadId: string) => support.busy.has(threadId),
+      steerFidelityForThread: () =>
+        support.inboxNativeSteer ? 'native' : 'none',
       dispatchWithReceipt: async (
         command: Record<string, unknown>,
         dispatchContext: Record<string, unknown>,
       ) => {
         support.commands.push({ ...command, context: dispatchContext });
         if (support.steerThrows) throw new Error('receipt lost');
+        if (support.inboxNativeSteer) {
+          const input = {
+            threadId: String(command.threadId),
+            clientInputId: String(command.clientInputId),
+            input: String(command.input),
+            turnId: String(command.turnId),
+          };
+          if (store.claimSteerInput(input))
+            store.confirmSteerInput(input, input.turnId);
+          return {
+            result: {
+              outcome: 'steered',
+              threadId: input.threadId,
+              turnId: input.turnId,
+            },
+          };
+        }
         return {
           result: {
             outcome: 'unsupported-engine',
@@ -318,6 +340,7 @@ describe('configureRuntimeRoutes: delegated result delivery wiring (#3158)', () 
     support.commands.length = 0;
     support.busy.clear();
     support.steerThrows = false;
+    support.inboxNativeSteer = false;
     support.inspect = undefined;
     support.devices.clear();
     for (const close of closers.splice(0)) await close();
@@ -561,6 +584,9 @@ describe('configureRuntimeRoutes: conversation inbox wiring (#3568)', () => {
   const closers: Array<() => Promise<void> | void> = [];
   afterEach(async () => {
     support.continued.length = 0;
+    support.commands.length = 0;
+    support.busy.clear();
+    support.inboxNativeSteer = false;
     support.inspect = undefined;
     support.devices.clear();
     for (const close of closers.splice(0)) await close();
@@ -608,6 +634,52 @@ describe('configureRuntimeRoutes: conversation inbox wiring (#3568)', () => {
     await vi.waitFor(() =>
       expect(store.threadInboxStore().list(PARENT)[0]?.state).toBe('placed'),
     );
+  });
+
+  test('startup hands a steer to the production dispatch binding with its recorded actor', async () => {
+    support.inboxNativeSteer = true;
+    support.busy.add(PARENT);
+    const { store } = await compose((store) => {
+      store.appendEvent(
+        event(PARENT, 'turn.started', {
+          turnId: 'active-turn',
+          prompt: 'working',
+        }),
+      );
+      store.threadInboxStore().submit({
+        conversationId: PARENT,
+        clientTurnId: 'native-steer',
+        kind: 'steer',
+        payload: {
+          message: 'change course',
+          actor: { userId: LOCAL_OPERATOR_PRINCIPAL_ID },
+        },
+        now: Date.now(),
+      });
+    });
+    await vi.waitFor(() =>
+      expect(store.threadInboxStore().list(PARENT)[0]?.state).toBe('placed'),
+    );
+    expect(support.commands).toEqual([
+      expect.objectContaining({
+        type: 'steerTurn',
+        threadId: PARENT,
+        turnId: 'active-turn',
+        clientInputId: 'native-steer',
+        input: 'change course',
+        context: expect.objectContaining({
+          userId: LOCAL_OPERATOR_PRINCIPAL_ID,
+        }),
+      }),
+    ]);
+    expect(
+      store.readSteerInput({
+        threadId: PARENT,
+        clientInputId: 'native-steer',
+        input: 'change course',
+        turnId: 'active-turn',
+      }),
+    ).toMatchObject({ outcome: 'steered' });
   });
 
   test('a real durable boundary holds a queued follow-up until its exact uninvoked owner releases it', async () => {

@@ -14,13 +14,19 @@ import { appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { coordinatorWakeClientTurnId } from '@kontourai/station-contracts/coordinator';
+import {
+  EXTERNAL_ENGINE_DURABILITY,
+  STEERING_ENGINE_DURABILITY,
+} from '@kontourai/station-contracts/engine-capability-matrix';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { GateTestAdapter } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type {
+  ProviderAdapterMetadata,
   ProviderSendTurnInput,
+  ProviderSessionStartInput,
   ProviderTurnStartResult,
 } from '../../../providers/adapter-shape.js';
 import { isForegroundIndeterminateShape } from '../../../routes/orchestration/orchestration.js';
@@ -61,7 +67,30 @@ type OwningTurn = Readonly<{
   request: Readonly<ProviderSendTurnInput>;
 }>;
 class CountingAdapter extends GateTestAdapter {
+  override readonly metadata: ProviderAdapterMetadata = {
+    displayName: 'Scripted Claude',
+    description: 'Scripted native steer for inbox delivery',
+    capabilities: ['agent-runtime'],
+    durability: STEERING_ENGINE_DURABILITY,
+  };
   readonly entered: OwningTurn[] = [];
+  private readonly liveSessions = new Set<string>();
+  override async startSession(input: ProviderSessionStartInput) {
+    const session = await super.startSession(input);
+    this.liveSessions.add(input.threadId);
+    return session;
+  }
+  override async hasSession(threadId?: string): Promise<boolean> {
+    return threadId !== undefined && this.liveSessions.has(threadId);
+  }
+  readonly steers: string[] = [];
+  async steerTurn(
+    _threadId: string,
+    input: string,
+    _turnId: string,
+  ): Promise<void> {
+    this.steers.push(input);
+  }
   override async sendTurn(
     input: ProviderSendTurnInput,
   ): Promise<ProviderTurnStartResult> {
@@ -352,6 +381,70 @@ afterEach(async () => {
 
 describe('thread inbox (#3568)', () => {
   const path = () => join(makeTempDir('thread-inbox-'), 'orchestration.sqlite');
+
+  test('steer dispatch refuses a profile that declares no steering even for a native-named provider', async () => {
+    const world = boot(path());
+    await runningFirstTurn(world);
+    world.adapter.metadata.durability = EXTERNAL_ENGINE_DURABILITY;
+    const result = await world.service.dispatchWithReceipt({
+      type: 'steerTurn',
+      threadId: THREAD,
+      turnId: 'turn-1',
+      input: 'must not steer',
+      clientInputId: 'profile-none',
+    });
+    expect(result.result).toMatchObject({ outcome: 'unsupported-engine' });
+    expect(world.adapter.steers).toEqual([]);
+  });
+
+  test('the inbox drives a scripted adapter through the real receipted orchestration dispatch', async () => {
+    const file = path();
+    let world: World;
+    const ports: Partial<ThreadInboxDeliveryPorts> = {
+      steerFidelity: (threadId) =>
+        world.service.steerFidelityForThread(threadId),
+      inspectSteer: (input) => world.store.readSteerInput(input),
+      steer: async ({ threadId, turnId, clientInputId, payload }) => {
+        const dispatched = await world.service.dispatchWithReceipt(
+          {
+            type: 'steerTurn',
+            threadId,
+            turnId,
+            clientInputId,
+            input: payload.message,
+          },
+          { userId: payload.actor.userId },
+        );
+        return dispatched.result as { outcome: string; turnId?: string };
+      },
+    };
+    world = boot(file, ports);
+    await runningFirstTurn(world);
+    const expectedHead = world.inbox.currentHead(THREAD);
+    const input = {
+      conversationId: THREAD,
+      clientTurnId: 'real-dispatch-steer',
+      payload,
+      expectedHead,
+    };
+    expect(world.inbox.submitSteer(input).outcome).toBe('queued');
+    await world.inbox.idle();
+    expect(world.adapter.steers).toEqual([FOLLOW_UP]);
+    expect(
+      world.store.readSteerInput({
+        threadId: THREAD,
+        clientInputId: input.clientTurnId,
+        input: FOLLOW_UP,
+        turnId: 'turn-1',
+      }),
+    ).toMatchObject({ outcome: 'steered' });
+    await crash(world);
+    world = boot(file, ports);
+    await world.inbox.reconcile();
+    expect(world.inbox.submitSteer(input).outcome).toBe('queued');
+    await world.inbox.idle();
+    expect(world.adapter.steers).toEqual([]);
+  });
 
   test('rejects a stale expected head without writing an inbox entry', async () => {
     const world = boot(path());

@@ -10352,7 +10352,11 @@ export class OrchestrationService {
           steerMetricEngine = engineId;
           const engineName =
             engineDisplayLabel(engineId) ?? adapter.metadata.displayName;
-          if (!matrix?.midTurnSteer || !adapter.steerTurn) {
+          if (
+            !adapter.metadata.durability ||
+            adapter.metadata.durability.steerPlacement.state === 'none' ||
+            !adapter.steerTurn
+          ) {
             const result: SteerTurnResult = {
               outcome: 'unsupported-engine',
               threadId: command.threadId,
