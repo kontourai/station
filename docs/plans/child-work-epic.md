@@ -3279,8 +3279,21 @@ acquisition. The resulting three-file keeper passes all 14 cases, with scoped
 server-test types and Biome passing. Raw outputs are not reinvoked and the public
 context receipt remains incomplete rather than inventing an acknowledgement.
 
-Clean-commit mutation qualification and a queued real-credential revocation
-control remain open. Continuation, continuation finalization, renewal adoption,
+From clean checkpoint `e0d8e136a33`, removing only the group-store lease binding
+produced the intended failure with five other cases passing. Exact restoration
+and a clean tree preceded a separate authority-store binding removal, which also
+produced its intended failure with five other passes. Byte-exact restoration
+returned all six cases to green. These controls distinguish explicit store
+binding from a physical lock held elsewhere.
+
+A separate real paired grant is now revoked while its actual transaction
+admission waits behind an independent HomeWriter lease, after initial inspection.
+The caller refuses before entering the group transaction body. Initial and final
+inspection are also observed under physical exclusion. The expanded six-case
+selection and scoped server-test types pass. Transaction-owner removal and
+final-inspection publication removal mutations remain open.
+
+Continuation, continuation finalization, renewal adoption,
 authenticated public-parent borrowing, active cancellation/ACK and the funded
 input/context journey still need their own qualification. Accumulated review
 freshness and generated MCP equality remain separate documentation obligations.

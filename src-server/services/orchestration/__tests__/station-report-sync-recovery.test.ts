@@ -39,7 +39,11 @@ import {
 import { StationReportGroupCustody } from '../station-report-group-custody.js';
 import { StationReportGroupRuntime } from '../station-report-group-runtime.js';
 import { createReportFlow } from './delegation-source-fixtures/flow.js';
-import { requestFor, setup } from './delegation-source-fixtures/report.js';
+import {
+  newGrant,
+  requestFor,
+  setup,
+} from './delegation-source-fixtures/report.js';
 
 const temporary = trackTempDirs();
 
@@ -370,6 +374,24 @@ test('sync finalization refuses an absent receipt and recovers a lost result wit
             },
           };
         });
+      let observeInspection = true;
+      let metadataReads = 0;
+      const readExecution =
+        StationDelegationPersistence.prototype.readReportExecution;
+      const inspectionObserver = vi
+        .spyOn(StationDelegationPersistence.prototype, 'readReportExecution')
+        .mockImplementation(async function (
+          this: StationDelegationPersistence,
+          ...args
+        ) {
+          if (observeInspection) await checkHeld();
+          const value = await readExecution.apply(this, args);
+          if (observeInspection) {
+            await checkHeld();
+            metadataReads++;
+          }
+          return value;
+        });
       const roundsStore = StationDelegationPersistence.prototype.roundsStore;
       const observer = vi
         .spyOn(StationDelegationPersistence.prototype, 'roundsStore')
@@ -420,6 +442,70 @@ test('sync finalization refuses an absent receipt and recovers a lost result wit
           };
         });
       try {
+        const grant = newGrant(h);
+        const queuedRequest = requestFor(h, 'POST', grant.credential);
+        const acquire = HomeWriterOwner.prototype.acquire;
+        let acquisitions = 0;
+        let admissionBlocker:
+          | Awaited<ReturnType<HomeWriterOwner['acquire']>>
+          | undefined;
+        let entered!: () => void;
+        const queued = new Promise<void>((resolve) => {
+          entered = resolve;
+        });
+        const admissionObserver = vi
+          .spyOn(HomeWriterOwner.prototype, 'acquire')
+          .mockImplementation(async function (this: HomeWriterOwner, signal) {
+            if (signal !== queuedRequest.signal || ++acquisitions !== 2)
+              return acquire.call(this, signal);
+            admissionBlocker = await acquire.call(this);
+            const waiting = acquire.call(this, signal);
+            entered();
+            return waiting;
+          });
+        const queuedFinalization = report.finalizeSync(
+          h.f.context(queuedRequest),
+          groupId,
+          command,
+        );
+        const queuedOutcome = queuedFinalization.then(
+          () => ({ rejected: false }),
+          () => ({ rejected: true }),
+        );
+        try {
+          await Promise.race([
+            queued,
+            queuedOutcome.then(() => {
+              throw Error('finalization settled before transaction admission');
+            }),
+          ]);
+          assert.ok(admissionBlocker);
+          const priorBodies = bodies;
+          writer.runWithLease(admissionBlocker, () => {
+            h.f.environment.devicePairing.revokeDevice(
+              grant.device.id,
+              'operator-credential',
+            );
+          });
+          await admissionBlocker.release();
+          admissionBlocker = undefined;
+          assert.equal((await queuedOutcome).rejected, true);
+          assert.equal(
+            bodies,
+            priorBodies,
+            'revoked queued request never enters group body',
+          );
+          assert.equal(
+            acquisitions,
+            2,
+            'revocation follows initial snapshot and precedes transaction',
+          );
+          await checkReleased();
+        } finally {
+          admissionObserver.mockRestore();
+          await admissionBlocker?.release();
+          await queuedOutcome;
+        }
         const abort = new AbortController();
         const originalRequest = requestFor(h, 'POST');
         const abortedRequest = new Request(originalRequest, {
@@ -442,11 +528,16 @@ test('sync finalization refuses an absent receipt and recovers a lost result wit
           'abort reached the real transaction body',
         );
         await checkReleased();
-        assert.equal(
-          (await reader.inspect(h.f.context(requestFor(h)), groupId))?.group
-            ?.revision,
-          held.revision,
-        );
+        observeInspection = false;
+        try {
+          assert.equal(
+            (await reader.inspect(h.f.context(requestFor(h)), groupId))?.group
+              ?.revision,
+            held.revision,
+          );
+        } finally {
+          observeInspection = true;
+        }
         const finished = await report.finalizeSync(
           h.f.context(requestFor(h, 'POST')),
           groupId,
@@ -464,6 +555,10 @@ test('sync finalization refuses an absent receipt and recovers a lost result wit
         await checkReleased();
         assert.ok(bodies > 0);
         assert.ok(authorityReads > 0);
+        assert.ok(
+          metadataReads >= 6,
+          'initial and final inspections retain home custody',
+        );
         assert.equal(returns, bodies);
         for (const late of retiredBindings) {
           assert.throws(late, {
@@ -495,6 +590,7 @@ test('sync finalization refuses an absent receipt and recovers a lost result wit
       } finally {
         releaseFault?.mockRestore();
         syncBuiltinESMExports();
+        inspectionObserver.mockRestore();
         authorityObserver.mockRestore();
         observer.mockRestore();
         await probe.close();
