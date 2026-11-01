@@ -45,6 +45,85 @@ test('one canonical home excludes independent writes while explicit synchronous 
   expect(other.runSynchronous(() => ++writes)).toBe(2);
 });
 
+test('nested synchronous admission adds no identity probes beyond explicit same-lease admission', async () => {
+  const path = home();
+  const owner = await HomeWriterOwner.forHome(path);
+  const lease = await owner.acquire();
+  const realpath = fs.realpathSync;
+  let reads = 0;
+  let explicitReads = 0;
+  let nestedReads = 0;
+  const observe = vi.spyOn(fs, 'realpathSync').mockImplementation((...args) => {
+    if (args[0] === path) reads++;
+    return realpath(...args);
+  });
+  syncBuiltinESMExports();
+  try {
+    owner.runWithLease(lease, () => {
+      reads = 0;
+      expect(owner.runWithLease(lease, () => 'current')).toBe('current');
+      explicitReads = reads;
+      reads = 0;
+      expect(owner.runSynchronous(() => 'current')).toBe('current');
+      nestedReads = reads;
+    });
+    lease.assertCurrent();
+  } finally {
+    observe.mockRestore();
+    syncBuiltinESMExports();
+    await lease.release();
+  }
+  expect(owner.runSynchronous(() => 'released')).toBe('released');
+  expect(explicitReads).toBeGreaterThan(0);
+  expect(nestedReads).toBe(explicitReads);
+});
+
+test.skipIf(process.platform === 'win32')(
+  'a replaced Home refuses a nested callback before it can run even when the Home is restored before outer return',
+  async () => {
+    const path = home();
+    const movedPath = `${path}-held`;
+    const owner = await HomeWriterOwner.forHome(path);
+    const lease = await owner.acquire();
+    let moved = false;
+    let entered = false;
+    let refusal: unknown;
+    try {
+      owner.runWithLease(lease, () => {
+        renameSync(path, movedPath);
+        moved = true;
+        try {
+          mkdirSync(path, { mode: 0o700 });
+          try {
+            owner.runSynchronous(() => {
+              entered = true;
+            });
+          } catch (error) {
+            refusal = error;
+          }
+        } finally {
+          fs.rmSync(path, { recursive: true, force: true });
+          renameSync(movedPath, path);
+          moved = false;
+        }
+      });
+      expect(entered).toBe(false);
+      expect(refusal).toMatchObject({
+        reason: 'identity-unavailable',
+        operationRan: false,
+      });
+      expect(owner.runWithLease(lease, () => 'restored')).toBe('restored');
+    } finally {
+      if (moved) {
+        fs.rmSync(path, { recursive: true, force: true });
+        renameSync(movedPath, path);
+      }
+      await lease.release();
+    }
+    expect(owner.runSynchronous(() => 'released')).toBe('released');
+  },
+);
+
 test('a queued asynchronous writer cannot be overtaken by an independent synchronous write', async () => {
   const owner = await HomeWriterOwner.forHome(home());
   const unrelated = await HomeWriterOwner.forHome(home());
@@ -162,6 +241,19 @@ test('explicit async lifetime borrows the exact lease and expires for late desce
       await expect(lateNested).rejects.toMatchObject({
         reason: 'borrow-unavailable',
       });
+      let spanDescendant!: Promise<unknown>;
+      let spanDescendantEntered = false;
+      owner.runWithLease(lease, () => {
+        spanDescendant = Promise.resolve().then(() =>
+          owner.runSynchronous(() => {
+            spanDescendantEntered = true;
+          }),
+        );
+      });
+      await expect(spanDescendant).rejects.toMatchObject({
+        reason: 'borrow-unavailable',
+      });
+      expect(spanDescendantEntered).toBe(false);
       expect(owner.runSynchronous(() => 'parent current')).toBe(
         'parent current',
       );

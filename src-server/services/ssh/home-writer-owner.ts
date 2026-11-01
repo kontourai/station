@@ -281,13 +281,10 @@ export class HomeWriterOwner {
   }
 
   runSynchronous<T>(body: () => T): T {
-    this.assertCurrent();
     const inherited = spans.getStore()?.get(this.#core);
-    if (inherited) {
-      if (!inherited.active)
-        throw new HomeWriterUnavailableError('borrow-unavailable');
-      return this.#span(inherited.lease, body);
-    }
+    if (inherited?.active) return this.#span(inherited.lease, body);
+    this.assertCurrent();
+    if (inherited) throw new HomeWriterUnavailableError('borrow-unavailable');
     const lifetime = lifetimes.getStore()?.get(this.#core);
     if (lifetime) {
       if (!lifetime.active)

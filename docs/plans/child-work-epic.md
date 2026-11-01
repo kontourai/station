@@ -3808,3 +3808,34 @@ caught that the prior transaction argument is already a journal; the injector no
 uses `previous.events` rather than `previous.journal.events`, and corrected
 server-test types pass. That later injection remains unexecuted in the failing
 journey. Prior failures and all broader qualification gaps remain open.
+
+
+## Active Home span precheck
+
+The Home owner called its identity check twice before an already-active nested
+synchronous callback: once in runSynchronous and again in the delegated #span.
+The pre-fix control measures two probes against one through explicit admission
+on the same real held lease; 22 other cases pass. The added Home-replacement
+control refuses before callback entry even when the original Home is restored
+before the outer return, so the outer post-check cannot hide a missing precheck.
+The existing async-lifetime case now also covers an expired synchronous span
+inside a still-active explicit lifetime. Directory renaming is skipped on Windows.
+
+The active branch now goes straight to #span, which retains the latest calling
+owner Home check and actual physical lease check before the body. Inactive-span
+identity/refusal order, explicit lifetime, idle acquisition, queue fairness,
+thenable handling and post-checks remain unchanged. No authority or filesystem
+result cache or new loan is introduced. The Home/adjacent-authority selection
+passes 41 cases and server-test types pass. Opus source reasoning accepts the
+minimal change as written, with the inactive-span refusal retained. Clean mutation
+proof remains pending.
+
+The full-caller run still fails both cases. HTTP has two starts, two provider
+fetches and one input invocation at its 120-second deadline; the join seat has
+not run. Direct passes its initial result/receipt and replay checks, but the
+controlled adoption-loss callback is not reached before the original deadline
+expires (89 ms past at the assertion). That is not evidence of a lost adoption
+commit. The managed runner reports 99% CPU pressure and liveness scaling by four;
+the product deadline remains 120 seconds. No cause or speedup is inferred from
+that load signal or from the lower identity-probe count. All broader qualification
+and the final deslop/visual pass remain open, flags stay false, and no PR is opened.
