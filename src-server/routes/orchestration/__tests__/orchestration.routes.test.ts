@@ -32,7 +32,10 @@ import { readJson } from '../../../__test-utils__/read-json.js';
 import { readStreamUntil } from '../../../__test-utils__/sse-helpers.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ORCHESTRATION_STREAM_RESUME_GAP_THRESHOLD } from '../../../constants.js';
-import type { ProviderAdapterModelCatalog } from '../../../providers/adapter-shape.js';
+import type {
+  ProviderAdapterMetadata,
+  ProviderAdapterModelCatalog,
+} from '../../../providers/adapter-shape.js';
 import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.js';
 import { createHostedTenantMiddleware } from '../../../runtime/bootstrap/runtime-tenant-context.js';
 import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
@@ -616,7 +619,7 @@ describe('Orchestration Routes', () => {
     steerFixtureStores.push(eventStore);
     const eventBus = new EventBus();
     class SteerAdapter extends GateTestAdapter {
-      override readonly metadata = {
+      override readonly metadata: ProviderAdapterMetadata = {
         displayName: 'Scripted native steer',
         description: 'Receipted live steer fixture',
         capabilities: ['agent-runtime'],
