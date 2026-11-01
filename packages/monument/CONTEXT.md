@@ -133,8 +133,10 @@ vite or vitest configs are accepted limits, left to review.
   replayable for that wall-clock duration after resolution and older rows expire
   on a later write, regardless of the count cap. Unknown legacy resolution
   times start their window on first observation. Station uses seven days;
-  live windows and unresolved rows can grow without bound. Older writers can
-  evict below this window or the floor; only writers with
+  live windows and unresolved rows can grow without bound. A host must fence
+  older writers to enforce this window; Station blocks legacy resolved-row
+  deletion using transaction-scoped permits. Arbitrary older writes are not
+  generally fenced; only writers with
   tombstone support (#3559 and later) leave expired-key tombstones. An unresolved
   claim is never evicted.
   An evicted key leaves a tombstone, which holds only the key and the time

@@ -162,12 +162,15 @@ omitting it preserves the original all-row policy. A host may instead set
 `turnDedupResolvedRetentionMs` to retain each resolved row for that wall-clock
 duration after resolution, regardless of count. Legacy rows without a resolution
 time start a fresh window on first observation. Station uses seven days; live
-windows and unresolved rows can grow without bound. An older writer can evict
-below the window or floor. Writers with tombstone support still leave expired-key
+windows and unresolved rows can grow without bound. An older writer may evict below the window or floor unless the host fences
+its deletes. Station fences legacy resolved-row deletion with transaction-scoped
+permits; arbitrary older writes are not generally fenced. Writers with tombstone support still leave expired-key
 tombstones under their retention rules; writers from before #3559 may not.
 For timed retention, a SQLite host binding must supply a nullable
 `resolvedAtColumn`. The host must clear it when an older writer changes the
-row without updating the timestamp. A forward wall-clock step can shorten the
+row without updating the timestamp. A host that fences resolved-row deletes
+can bind a distinct `deletionPermitTable` with a `dedup_key` primary key;
+the kernel uses it only within the deletion transaction. A forward wall-clock step can shorten the
 elapsed window; this policy is not a trusted-clock guarantee.
 
 Read-only commands (`turnDedup.read`, `turnBoundary.list`,

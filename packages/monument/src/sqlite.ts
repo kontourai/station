@@ -82,6 +82,8 @@ export interface SqliteTurnDedupTables {
   readonly inputDigestColumn?: string;
   /** Host-owned nullable resolution time in milliseconds. */
   readonly resolvedAtColumn?: string;
+  /** Optional host-owned permit table used by its resolved-row deletion fence. */
+  readonly deletionPermitTable?: string;
   /**
    * Thrown, as is, for any `owner_json` the adapter refuses, in place of the
    * detailed reason. The host's callers may already match on it.
@@ -476,6 +478,16 @@ function resolveTables(configuredTables?: SqliteKernelTables): ResolvedTables {
         'The resolution time must have its own dedup column.',
       );
   }
+  if (
+    dedup &&
+    dedup !== 'unused' &&
+    dedup.deletionPermitTable &&
+    [dedup.table, dedup.tombstoneTable].some(
+      (table) =>
+        table.toLowerCase() === dedup.deletionPermitTable!.toLowerCase(),
+    )
+  )
+    throw new TypeError('The dedup deletion permit table must be distinct.');
   const boundary = tables.turnBoundary;
   let invocationTerminals: SqliteInvocationTerminalFacts | undefined;
   if (
@@ -571,6 +583,9 @@ function resolveTables(configuredTables?: SqliteKernelTables): ResolvedTables {
                 : {}),
               ...(dedup.resolvedAtColumn
                 ? { resolvedAtColumn: identifier(dedup.resolvedAtColumn) }
+                : {}),
+              ...(dedup.deletionPermitTable
+                ? { deletionPermitTable: identifier(dedup.deletionPermitTable) }
                 : {}),
               table: identifier(dedup.table),
               tombstoneTable: identifier(dedup.tombstoneTable),
@@ -791,6 +806,8 @@ function migrate(db: SqliteKernelDatabase, tables: ResolvedTables): void {
         'dedup_key',
         'expired_at',
       ]);
+      if (tables.turnDedup.deletionPermitTable)
+        requireColumns(db, tables.turnDedup.deletionPermitTable, ['dedup_key']);
     }
     if (tables.requestKeys !== 'unused' && !tables.requestKeys.owned)
       requireColumns(db, tables.requestKeys.table, [
@@ -1427,6 +1444,25 @@ function sqliteTransaction(
 
   const count = (sql: string, ...values: Array<string | number | null>) =>
     Number((one(sql, ...values) as { total: number }).total);
+  const removeDedupSelection = (
+    selection: string,
+    ...values: Array<string | number | null>
+  ) => {
+    if (dedup.deletionPermitTable) {
+      run(`DELETE FROM ${dedup.deletionPermitTable}`);
+      run(
+        `INSERT INTO ${dedup.deletionPermitTable} (dedup_key) SELECT dedup_key FROM (${selection})`,
+        ...values,
+      );
+    }
+    const removed = run(
+      `DELETE FROM ${dedup.table} WHERE dedup_key IN (${selection})`,
+      ...values,
+    );
+    if (dedup.deletionPermitTable)
+      run(`DELETE FROM ${dedup.deletionPermitTable}`);
+    return removed;
+  };
   return {
     turnDedup: {
       get: (key) => {
@@ -1457,15 +1493,16 @@ function sqliteTransaction(
       // an exact prefix match with no wildcard semantics, unaffected by NUL
       // (where text `length()` stops), by characters outside the BMP, or by a
       // host database that stores UTF-16.
-      deletePrefix: (prefix) =>
-        run(
-          `DELETE FROM ${dedup.table} WHERE substr(CAST(dedup_key AS BLOB), 1, length(CAST(?1 AS BLOB))) = CAST(?1 AS BLOB)`,
-          prefix,
-        ) +
-        run(
-          `DELETE FROM ${dedup.tombstoneTable} WHERE substr(CAST(dedup_key AS BLOB), 1, length(CAST(?1 AS BLOB))) = CAST(?1 AS BLOB)`,
-          prefix,
-        ),
+      deletePrefix: (prefix) => {
+        const selected = `SELECT dedup_key FROM ${dedup.table} WHERE substr(CAST(dedup_key AS BLOB), 1, length(CAST(?1 AS BLOB))) = CAST(?1 AS BLOB)`;
+        return (
+          removeDedupSelection(selected, prefix) +
+          run(
+            `DELETE FROM ${dedup.tombstoneTable} WHERE substr(CAST(dedup_key AS BLOB), 1, length(CAST(?1 AS BLOB))) = CAST(?1 AS BLOB)`,
+            prefix,
+          )
+        );
+      },
       evictResolved: (
         { maxEntries, minResolvedEntries, resolvedRetentionMs },
         now,
@@ -1487,10 +1524,7 @@ function sqliteTransaction(
             now,
             now - resolvedRetentionMs,
           );
-          run(
-            `DELETE FROM ${dedup.table} WHERE dedup_key IN (${expired})`,
-            now - resolvedRetentionMs,
-          );
+          removeDedupSelection(expired, now - resolvedRetentionMs);
           return;
         }
         // Both statements pick the same overflow: nothing writes the table
@@ -1507,11 +1541,7 @@ function sqliteTransaction(
           maxEntries,
           minResolvedEntries,
         );
-        run(
-          `DELETE FROM ${dedup.table} WHERE dedup_key IN (${overflow})`,
-          maxEntries,
-          minResolvedEntries,
-        );
+        removeDedupSelection(overflow, maxEntries, minResolvedEntries);
       },
       expiredAt: (key) => {
         const row = one(

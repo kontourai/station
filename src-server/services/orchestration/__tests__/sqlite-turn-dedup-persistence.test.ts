@@ -161,6 +161,130 @@ describe('turn dedup over Station tables', () => {
     }
   });
 
+  test('an older writer cannot delete a resolved key, while explicit thread deletion can', () => {
+    const file = join(
+      makeTempDir('turn-window-delete-fence-'),
+      'orchestration.sqlite',
+    );
+    const store = new EventStore(file, 2);
+    try {
+      const dedup = store.createTurnDeduplicator();
+      const claim = dedup.claim({ threadId: 'A', clientTurnId: 'key' });
+      if (claim.kind !== 'owner') throw new Error('expected owner');
+      claim.claim.resolve('turn-A');
+      const older = new DatabaseSync(file);
+      try {
+        expect(() =>
+          older
+            .prepare('DELETE FROM orchestration_turn_dedup WHERE dedup_key = ?')
+            .run(turnDedupKey('A', 'key')),
+        ).toThrow();
+      } finally {
+        older.close();
+      }
+      expect(dedup.claim({ threadId: 'A', clientTurnId: 'key' })).toEqual({
+        kind: 'contended',
+        turnId: 'turn-A',
+      });
+      store.deleteThread('A');
+      expect(dedup.claim({ threadId: 'A', clientTurnId: 'key' }).kind).toBe(
+        'owner',
+      );
+    } finally {
+      store.close();
+    }
+  });
+
+  test('reopening clears a stale deletion permit before admitting writers', () => {
+    const file = join(
+      makeTempDir('turn-window-stale-permit-'),
+      'orchestration.sqlite',
+    );
+    let store = new EventStore(file, 2);
+    try {
+      const claim = store
+        .createTurnDeduplicator()
+        .claim({ threadId: 'A', clientTurnId: 'key' });
+      if (claim.kind !== 'owner') throw new Error('expected owner');
+      claim.claim.resolve('turn-A');
+      store.close();
+      const db = new DatabaseSync(file);
+      db.prepare(
+        'INSERT INTO orchestration_turn_dedup_delete_permits (dedup_key) VALUES (?)',
+      ).run(turnDedupKey('A', 'key'));
+      db.close();
+      store = new EventStore(file, 2);
+      const older = new DatabaseSync(file);
+      try {
+        expect(() =>
+          older
+            .prepare('DELETE FROM orchestration_turn_dedup WHERE dedup_key = ?')
+            .run(turnDedupKey('A', 'key')),
+        ).toThrow();
+      } finally {
+        older.close();
+      }
+      expect(
+        store
+          .createTurnDeduplicator()
+          .claim({ threadId: 'A', clientTurnId: 'key' }),
+      ).toEqual({ kind: 'contended', turnId: 'turn-A' });
+    } finally {
+      store.close();
+    }
+  });
+
+  test('failed expiry rolls back its permit and all claim changes', () => {
+    const file = join(
+      makeTempDir('turn-window-permit-rollback-'),
+      'orchestration.sqlite',
+    );
+    const store = new EventStore(file, 2);
+    try {
+      const dedup = store.createTurnDeduplicator();
+      const claim = dedup.claim({ threadId: 'A', clientTurnId: 'key' });
+      if (claim.kind !== 'owner') throw new Error('expected owner');
+      claim.claim.resolve('turn-A');
+      const db = new DatabaseSync(file);
+      try {
+        db.prepare(
+          'UPDATE orchestration_turn_dedup SET resolved_at = ? WHERE dedup_key = ?',
+        ).run(0, turnDedupKey('A', 'key'));
+        db.exec(
+          "CREATE TRIGGER fail_window_delete BEFORE DELETE ON orchestration_turn_dedup BEGIN SELECT RAISE(ABORT, 'injected expiry failure'); END",
+        );
+        expect(() =>
+          dedup.claim({ threadId: 'B', clientTurnId: 'new' }),
+        ).toThrow('injected expiry failure');
+        expect(
+          db
+            .prepare(
+              'SELECT count(*) AS count FROM orchestration_turn_dedup_delete_permits',
+            )
+            .get(),
+        ).toEqual({ count: 0 });
+        expect(dedup.inspect({ threadId: 'A', clientTurnId: 'key' })).toEqual({
+          state: 'resolved',
+          value: 'turn-A',
+        });
+        expect(dedup.inspect({ threadId: 'B', clientTurnId: 'new' })).toEqual({
+          state: 'absent',
+        });
+        db.exec('DROP TRIGGER fail_window_delete');
+      } finally {
+        db.close();
+      }
+      expect(dedup.claim({ threadId: 'B', clientTurnId: 'new' }).kind).toBe(
+        'owner',
+      );
+      expect(dedup.claim({ threadId: 'A', clientTurnId: 'key' }).kind).toBe(
+        'expired',
+      );
+    } finally {
+      store.close();
+    }
+  });
+
   test('malformed resolution times cannot expire a resolved key', () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));

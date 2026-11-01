@@ -76,6 +76,7 @@ export const STATION_TURN_DEDUP_KERNEL_TABLES: SqliteKernelTables = {
     ownerIdField: 'token',
     inputDigestColumn: 'input_digest',
     resolvedAtColumn: 'resolved_at',
+    deletionPermitTable: 'orchestration_turn_dedup_delete_permits',
     ownerErrorMessage: 'Invalid orchestration turn claim owner_json',
     legacyUntrackedKeyPrefixes: [CHAT_KEY_PREFIX],
   },
