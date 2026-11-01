@@ -359,7 +359,6 @@
         "match": {
           "artifacts": [
             "src-server/services/orchestration/session-lifecycle-module.ts",
-            "src-server/services/orchestration/session-turn-boundary.ts",
             "src-server/services/orchestration/session-turn-boundary-binding.ts",
             "packages/monument/src/session-boundary.ts",
             "src-server/services/orchestration/conversation-session-lineage.ts",
