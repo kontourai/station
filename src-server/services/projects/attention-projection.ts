@@ -1108,8 +1108,10 @@ export class AttentionProjectionService {
    * `list()` takes for hosted reads.
    */
   /**
-   * #1536 D8: Station's own Agent cannot run — no model connection resolves
-   * for it, so every chat that would use the managed engine refuses. The
+   * #1536 D8: a Station-engine Agent the person authored cannot run — no
+   * model connection resolves for it, so every chat that would use it
+   * refuses. The optional built-in Station Agent is excluded upstream
+   * (#4388, `readStationSetupRequirement`). The
    * inbox used to read "Nothing needs you right now" in exactly that state.
    *
    * The fact is the injected resolver's, not this projection's; all that

@@ -429,8 +429,10 @@ export interface DevicePairingAttentionItem extends AttentionItemBase {
 }
 
 /**
- * Station's own Agent cannot run at all — the managed engine resolves no model
- * connection (#1536 D8).
+ * An Agent the person authored on Station's own engine cannot run at all — the
+ * managed engine resolves no model connection (#1536 D8). The optional
+ * built-in Station Agent never projects this item (#4388): without a provider
+ * it is informational on the Agents page and in the picker, not attention.
  *
  * Notifications said "All caught up · Nothing needs you right now" on a fresh
  * home whose New Chat picker, one surface away, marked the Station row
