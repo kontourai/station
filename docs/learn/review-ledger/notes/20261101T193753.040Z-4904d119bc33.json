@@ -1,0 +1,7 @@
+{
+  "revision": "56c9e430fdbd3d8b9877fd26183aa870a0f3c4b8",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the audit corpus and per-shard deadlines against run-vitest-corpus.mjs: completed test totals are now retained, while cancelled output remains partial and does not establish completion. No selection or timeout policy changed.","inputs":["docs/guides/testing.md","scripts/__tests__/run-vitest-corpus.test.ts","scripts/run-vitest-corpus.mjs"]}
+  ]
+}
