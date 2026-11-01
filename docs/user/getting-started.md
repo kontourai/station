@@ -216,7 +216,7 @@ remain local. Different Stations keep separate account preferences.
 
 The approval chip shows the known mode, including **Full access**, **Auto** or
 **Ask**. **Engine default** means the engine's active mode has not been confirmed.
-For Codex the picker says what that is: your own Codex settings. If you set
+For Codex, inherited settings resolve to a supported mode when the reported approval policy and sandbox match. Otherwise, the picker describes the engine default as your own Codex settings. If you set
 none, no command Codex runs uses the network or writes outside the chat's
 folder and temporary directories without asking; it may ask before other
 writes too. Codex's web search and MCP tools are not commands and are not
@@ -550,10 +550,10 @@ Project's model or the usual default applies and the Model chip's tooltip says
 why. The approval mode can be set for the Project (Ask first, Auto or full
 access) or follow your last chat there. It applies below the Agent's own mode
 and replaces your personal default for that engine, and full access is only
-reused when you can grant it. **Permissions** on the composer names where its
-mode came from, and opens the approval picker to choose this chat's mode
-before you start; picking **Default** there uses the Agent's, then the
-Station's default instead.
+reused when you can grant it. The composer's permissions button shows the
+requested mode. Open it to see where the mode came from or choose this chat's
+mode before you start. **Default** uses the engine's saved permissions;
+the active mode is confirmed after startup.
 
 Until Station has loaded your projects, the chips show placeholders and
 **Start** waits, so a start never runs in a project Station has guessed. If

@@ -1,0 +1,7 @@
+{
+  "revision": "f0f106971a474fba14956ab42f3cd10ebf91b44c",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed composer interaction and navigation against StartComposer and cross-runtime journey changes: exact project names now include visible text; mobile inbox and project picker remain covered at 320, 390 and 412. The focused PR smoke passed locally; live device and provider behavior were not assessed.","inputs":["docs/design/chat-composer.md","tests/cross-runtime-chat-switching.spec.ts"]}
+  ]
+}

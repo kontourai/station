@@ -1,0 +1,9 @@
+{
+  "revision": "daa7af7f788766fa34fea96e440c75caa7e546db",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed ComposerChoice caption and value separator against the shared selector and focused UI tests. The separator fixes accessible label matching and does not change composer behavior; targeted gallery audit passed.","inputs":["docs/design/chat-composer.md","src-ui/src/components/ComposerChoice.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed ComposerChoice caption and value separator against the shared selector and focused UI tests. The separator fixes accessible label matching and does not change composer behavior; targeted gallery audit passed.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/ComposerChoice.tsx"]}
+  ]
+}

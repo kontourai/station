@@ -11,8 +11,7 @@
       "axe:label-content-name-mismatch:button.split-pane__item[Station]"
     ],
     "command-palette-empty": [
-      "axe:aria-valid-attr-value:input.command-palette__input[type=text][Search commands and indexed conversation messages]",
-      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]"
+      "axe:aria-valid-attr-value:input.command-palette__input[type=text][Search commands and indexed conversation messages]"
     ],
     "connections-tools": [
       "axe:label-content-name-mismatch:button.split-pane__item[Station Control]",
@@ -22,9 +21,6 @@
     "desktop-conversation-resync": [
       "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B]",
       "axe:label-content-name-mismatch:button.chat-status-pill[Status unavailable — resync this conversation]",
-      "axe:label-content-name-mismatch:button.choice-trigger[Agent: demo-agent. Change Agent]",
-      "axe:label-content-name-mismatch:button.choice-trigger[Engine & model: Claude Code — Model & effort]",
-      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Last known: Waiting on you, Background tasks]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Open project — Project B]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Pull requests unavailable — open chat details]",
@@ -34,84 +30,49 @@
       "hit-target:overlap:button.sidebar__project-btn[Open Project A workspace] / button.sidebar__reorder-handle[Reorder Project A]",
       "hit-target:overlap:button.sidebar__project-btn[Open Project B workspace] / button.sidebar__reorder-handle[Reorder Project B]"
     ],
-    "home": [
-      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]"
-    ],
     "inventory-drilldown-older-host-dark-desktop": [
       "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Inventory demo chat, No project]",
-      "axe:label-content-name-mismatch:button.choice-trigger[Agent: demo-agent. Change Agent]",
-      "axe:label-content-name-mismatch:button.choice-trigger[Approval mode: Engine default — Connection default. Engine approval control. Station approval coverage unknown. Station ]",
-      "axe:label-content-name-mismatch:button.choice-trigger[Engine & model: Claude Code Claude Code — Test Model (reported by app) Unavailable: You can’t change the model for this ]",
-      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Pull requests unavailable — open chat details]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Waiting on you, Background tasks]",
       "axe:label:input.attachment-input[type=file]"
     ],
     "inventory-drilldown-older-host-dark-mobile": [
       "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Inventory demo chat, No project]",
-      "axe:label-content-name-mismatch:button.choice-trigger[Agent: demo-agent. Change Agent]",
-      "axe:label-content-name-mismatch:button.choice-trigger[Approval mode: Engine default — Connection default. Engine approval control. Station approval coverage unknown. Station ]",
-      "axe:label-content-name-mismatch:button.choice-trigger[Engine & model: Claude Code Claude Code — Test Model (reported by app) Unavailable: You can’t change the model for this ]",
-      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
       "axe:label:input.attachment-input[type=file]",
       "hit-target:small:input.attachment-input[type=file]"
     ],
     "inventory-drilldown-older-host-light-desktop": [
       "axe:color-contrast:span.sidebar__project-name",
       "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Inventory demo chat, No project]",
-      "axe:label-content-name-mismatch:button.choice-trigger[Agent: demo-agent. Change Agent]",
-      "axe:label-content-name-mismatch:button.choice-trigger[Approval mode: Engine default — Connection default. Engine approval control. Station approval coverage unknown. Station ]",
-      "axe:label-content-name-mismatch:button.choice-trigger[Engine & model: Claude Code Claude Code — Test Model (reported by app) Unavailable: You can’t change the model for this ]",
-      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Pull requests unavailable — open chat details]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Waiting on you, Background tasks]",
       "axe:label:input.attachment-input[type=file]"
     ],
     "inventory-drilldown-older-host-light-mobile": [
       "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Inventory demo chat, No project]",
-      "axe:label-content-name-mismatch:button.choice-trigger[Agent: demo-agent. Change Agent]",
-      "axe:label-content-name-mismatch:button.choice-trigger[Approval mode: Engine default — Connection default. Engine approval control. Station approval coverage unknown. Station ]",
-      "axe:label-content-name-mismatch:button.choice-trigger[Engine & model: Claude Code Claude Code — Test Model (reported by app) Unavailable: You can’t change the model for this ]",
-      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
       "axe:label:input.attachment-input[type=file]",
       "hit-target:small:input.attachment-input[type=file]"
     ],
     "inventory-drilldown-read-dark-desktop": [
       "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Inventory demo chat, No project]",
-      "axe:label-content-name-mismatch:button.choice-trigger[Agent: demo-agent. Change Agent]",
-      "axe:label-content-name-mismatch:button.choice-trigger[Approval mode: Engine default — Connection default. Engine approval control. Station approval coverage unknown. Station ]",
-      "axe:label-content-name-mismatch:button.choice-trigger[Engine & model: Claude Code Claude Code — Test Model (reported by app) Unavailable: You can’t change the model for this ]",
-      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Pull requests unavailable — open chat details]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Waiting on you, Background tasks]",
       "axe:label:input.attachment-input[type=file]"
     ],
     "inventory-drilldown-read-dark-mobile": [
       "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Inventory demo chat, No project]",
-      "axe:label-content-name-mismatch:button.choice-trigger[Agent: demo-agent. Change Agent]",
-      "axe:label-content-name-mismatch:button.choice-trigger[Approval mode: Engine default — Connection default. Engine approval control. Station approval coverage unknown. Station ]",
-      "axe:label-content-name-mismatch:button.choice-trigger[Engine & model: Claude Code Claude Code — Test Model (reported by app) Unavailable: You can’t change the model for this ]",
-      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
       "axe:label:input.attachment-input[type=file]",
       "hit-target:small:input.attachment-input[type=file]"
     ],
     "inventory-drilldown-read-light-desktop": [
       "axe:color-contrast:span.sidebar__project-name",
       "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Inventory demo chat, No project]",
-      "axe:label-content-name-mismatch:button.choice-trigger[Agent: demo-agent. Change Agent]",
-      "axe:label-content-name-mismatch:button.choice-trigger[Approval mode: Engine default — Connection default. Engine approval control. Station approval coverage unknown. Station ]",
-      "axe:label-content-name-mismatch:button.choice-trigger[Engine & model: Claude Code Claude Code — Test Model (reported by app) Unavailable: You can’t change the model for this ]",
-      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Pull requests unavailable — open chat details]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Waiting on you, Background tasks]",
       "axe:label:input.attachment-input[type=file]"
     ],
     "inventory-drilldown-read-light-mobile": [
       "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Inventory demo chat, No project]",
-      "axe:label-content-name-mismatch:button.choice-trigger[Agent: demo-agent. Change Agent]",
-      "axe:label-content-name-mismatch:button.choice-trigger[Approval mode: Engine default — Connection default. Engine approval control. Station approval coverage unknown. Station ]",
-      "axe:label-content-name-mismatch:button.choice-trigger[Engine & model: Claude Code Claude Code — Test Model (reported by app) Unavailable: You can’t change the model for this ]",
-      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
       "axe:label:input.attachment-input[type=file]",
       "hit-target:small:input.attachment-input[type=file]"
     ],
@@ -171,23 +132,16 @@
       "axe:label-content-name-mismatch:button.split-pane__item[Station]"
     ],
     "mobile-chat-dock-header-320": [
-      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
       "hit-target:small:input.attachment-input[type=file]"
     ],
     "mobile-conversation-resync": [
       "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B]",
       "axe:label-content-name-mismatch:button.chat-status-pill[Status unavailable — resync this conversation]",
-      "axe:label-content-name-mismatch:button.choice-trigger[Agent: demo-agent. Change Agent]",
-      "axe:label-content-name-mismatch:button.choice-trigger[Engine & model: Claude Code — Model & effort]",
-      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
       "axe:label:input.attachment-input[type=file]",
       "axe:scrollable-region-focusable:div.chat-messages[role=status]",
       "hit-target:small:input.attachment-input[type=file]"
     ],
-    "mobile-home": [
-      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
-      "hit-target:small:input.attachment-input[type=file]"
-    ],
+    "mobile-home": ["hit-target:small:input.attachment-input[type=file]"],
     "mobile-http-consent-320": [
       "axe:select-name:div.settings__var-row select",
       "hit-target:small:[data-testid=notification-delivery] input[type=checkbox][Hide content]",
@@ -218,7 +172,6 @@
       "hit-target:small:summary[Details]"
     ],
     "mobile-onboarding-setup": [
-      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
       "hit-target:small:input.attachment-input[type=file]"
     ],
     "mobile-settings-overview": [
@@ -236,20 +189,13 @@
       "hit-target:small:summary[Details]"
     ],
     "motion-reduced-mobile-chat": [
-      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
       "hit-target:small:input.attachment-input[type=file]"
     ],
     "motion-reduced-navigation": [
       "axe:label-content-name-mismatch:button.split-pane__item[Station]"
     ],
-    "motion-reduced-notification": [
-      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]"
-    ],
     "overlay-agent-actions-menu": [
       "axe:label-content-name-mismatch:button.split-pane__item[Support Agent]"
-    ],
-    "overlay-command-palette-results": [
-      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]"
     ],
     "overlay-confirm-dialog": [
       "axe:aria-conditional-attr:[data-testid=job-row-gallery-demo-job]"
@@ -268,15 +214,9 @@
       "hit-target:small:summary[Build details]",
       "hit-target:small:summary[Details]"
     ],
-    "overlay-dock-project-bound": [
-      "axe:label-content-name-mismatch:button.choice-trigger[Project: Demo Project]"
-    ],
     "overlay-dock-project-mismatch": [
       "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B]",
       "axe:label-content-name-mismatch:button.chat-status-pill[Status unavailable — resync this conversation]",
-      "axe:label-content-name-mismatch:button.choice-trigger[Agent: demo-agent. Change Agent]",
-      "axe:label-content-name-mismatch:button.choice-trigger[Engine & model: Claude Code — Model & effort]",
-      "axe:label-content-name-mismatch:button.choice-trigger[Project: Project A]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Last known: Waiting on you, Background tasks]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Open project — Project B]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Pull requests unavailable — open chat details]",
@@ -289,35 +229,20 @@
       "hit-target:overlap:button.sidebar__project-btn[Open Project B workspace] / button.sidebar__reorder-handle[Reorder Project B]"
     ],
     "overlay-mobile-sheet": [
-      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
       "hit-target:small:input.attachment-input[type=file]"
     ],
     "overlay-new-project-modal": [
       "axe:label-content-name-mismatch:button.new-project-modal__identity-icon[Choose project icon]"
     ],
-    "overlay-project-switcher-populated": [
-      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]"
-    ],
     "overlay-region-chooser-from-toggle": [
-      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
       "axe:label-content-name-mismatch:button.menu-row[Chat Move here from Bottom]",
       "axe:label-content-name-mismatch:button.menu-row[Diff Choose a project for this dock before opening that pane.]",
       "axe:label-content-name-mismatch:button.menu-row[Files Choose a project for this dock before opening that pane.]",
       "axe:label-content-name-mismatch:button.menu-row[Terminal Choose a project for this dock before opening that pane.]"
     ],
-    "overlay-toast": [
-      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]"
-    ],
-    "overlay-toast-action": [
-      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
-      "axe:nested-interactive:[data-testid=toast-card]"
-    ],
-    "sessions": [
-      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]"
-    ],
+    "overlay-toast-action": ["axe:nested-interactive:[data-testid=toast-card]"],
     "sessions-filtered-empty": [
       "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Claude Code session, No project]",
-      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
       "hit-target:overlap:[data-testid=inbox-row] button.chat-dock-inbox__item[Claude Code session, No project] / [data-testid=inbox-row] button.chat-dock-inbox__row-action[Snooze Claude Code session]"
     ],
     "settings": ["axe:select-name:div.settings__var-row select"],
@@ -335,22 +260,13 @@
       "axe:label-content-name-mismatch:button.split-pane__item[search-first]",
       "hit-target:overlap:button.split-pane__item[design-probe] / button.split-pane__add-btn[Commands only]"
     ],
-    "station-switcher-dark-desktop": [
-      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]"
-    ],
     "station-switcher-dark-mobile": [
-      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
       "hit-target:small:input.attachment-input[type=file]"
     ],
-    "station-switcher-forget-dark-desktop": [
-      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]"
-    ],
     "station-switcher-light-desktop": [
-      "axe:color-contrast:span.sidebar__project-name",
-      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]"
+      "axe:color-contrast:span.sidebar__project-name"
     ],
     "station-switcher-light-mobile": [
-      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
       "hit-target:small:input.attachment-input[type=file]"
     ],
     "telemetry-dialog-default-mobile": [

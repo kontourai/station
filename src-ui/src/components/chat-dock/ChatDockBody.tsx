@@ -127,6 +127,7 @@ import {
   ConversationStats,
 } from '../conversation-stats/ConversationStats';
 import ProgressSilenceObservation from '../home/ProgressSilenceObservation';
+import { AgentIcon } from '../icons/AgentIcon';
 import { LazyBoundary } from '../LazyBoundary';
 import { resolveNewChatAgentEnable } from '../modals/new-chat-agent-enable';
 import { SessionFailureAlert } from '../session-failure/SessionFailureAlert';
@@ -2763,6 +2764,7 @@ export function ChatDockBody({
                 ? undefined
                 : secondaryActions
             }
+            agentIcon={agent && <AgentIcon agent={agent} size="small" />}
             agentLabel={
               agent?.name ?? activeSession.agentName ?? activeSession.agentSlug
             }
