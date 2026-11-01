@@ -1,10 +1,6 @@
 import { createHash } from 'node:crypto';
 import { realpathSync, statSync } from 'node:fs';
 import type { ConversationCompactionView } from '@kontourai/station-contracts/conversation-context-boundary';
-import {
-  ENGINE_CAPABILITY_MATRICES,
-  resolveEngineCapabilityMatrix,
-} from '@kontourai/station-contracts/engine-capability-matrix';
 import type { LaunchableModelInventory } from '@kontourai/station-contracts/model-inventory';
 import {
   foldedSessionLifecycleState,
@@ -413,12 +409,9 @@ export function composeContextEfficiencyRuntime(
           )) &&
         !service.hasActiveTurn(current),
       approvalPending: (detail.session.openRequestIds?.length ?? 0) > 0,
-      compactionOwner: (detail.session.provider === 'station-agent'
-        ? ENGINE_CAPABILITY_MATRICES.station!
-        : resolveEngineCapabilityMatrix(detail.session.provider, {
-            type: detail.session.provider,
-          })
-      ).durability.compaction.owner,
+      compactionOwner:
+        service.durabilityProfileForProvider(detail.session.provider)
+          ?.compaction.owner ?? 'unknown',
     };
     const measured = generationObservations
       .get(events)

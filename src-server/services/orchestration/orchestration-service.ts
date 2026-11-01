@@ -73,6 +73,7 @@ import type {
   ApprovalMode,
   DelegationProvenance,
   EngineId,
+  ProviderDurabilityProfile,
   ProviderSendTurnInput,
   ProviderSession,
   StationConfinement,
@@ -5369,6 +5370,12 @@ export class OrchestrationService {
       Boolean(persisted || loaded) &&
       this.sessionAuthz.canReadSession(threadId, authority)
     );
+  }
+
+  durabilityProfileForProvider(
+    provider: string,
+  ): ProviderDurabilityProfile | undefined {
+    return this.options.adapterRegistry.get(provider)?.metadata.durability;
   }
 
   async steerFidelityForThread(
