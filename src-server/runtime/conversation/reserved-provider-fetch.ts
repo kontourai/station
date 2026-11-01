@@ -1,5 +1,6 @@
 // UNWIRED #91: boot issuance, provider qualification and exact ledger settlement remain required.
 import {
+  type FinalFetchCheck,
   FinalFetchLaunchFence,
   type ReservedFinalFetchOwners,
   type ReservedWireBinding,
@@ -154,23 +155,27 @@ export class ReservedProviderFetch {
           fetch: (
             input: Parameters<typeof fetch>[0],
             init?: Parameters<typeof fetch>[1],
+            check?: FinalFetchCheck,
           ) => {
-            const current = quoteBoundedApiProviderAttempt(
-              owners.contract,
-              {
-                ...wire,
-                headers: Object.fromEntries(wire.headers),
-                redirect: 'error',
-                requestOrdinal: 1,
-              },
-              { ...reservation.allocation, currency: 'USD' },
-              owners.now(),
-            );
-            if (JSON.stringify(current) !== JSON.stringify(quote))
-              return fail();
-            assertSynchronous(launch.finalizeCurrent);
-            signal.throwIfAborted();
-            return launch.fetch(input, init);
+            const validate = () => {
+              const current = quoteBoundedApiProviderAttempt(
+                owners.contract,
+                {
+                  ...wire,
+                  headers: Object.fromEntries(wire.headers),
+                  redirect: 'error',
+                  requestOrdinal: 1,
+                },
+                { ...reservation.allocation, currency: 'USD' },
+                owners.now(),
+              );
+              if (JSON.stringify(current) !== JSON.stringify(quote)) fail();
+              assertSynchronous(launch.finalizeCurrent);
+              signal.throwIfAborted();
+            };
+            if (check) check(validate);
+            else validate();
+            return launch.fetch(input, init, check);
           },
         };
         const fence =

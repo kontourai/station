@@ -27,6 +27,8 @@ import {
   disposeSdkSourceWire,
   enterFinalFetch,
   inspectSdkSourceWire,
+  refuseSdkResponse,
+  retireSdkSourceWire,
   SdkSourceRefusal,
   sdkDisposalPromise,
   sdkResultPromise,
@@ -1422,6 +1424,134 @@ test('SDK prepare release cannot resurrect capability; started disposal waits fo
   await sdkDisposalPromise(g.sdkOwner, prepared.sdkHandle);
   assert.equal(disposed, true);
 });
+
+test.each(['success', 'failure', 'body', 'locked-body'] as const)(
+  'SDK refusal settles its waiter and retains pending raw transport until %s',
+  async (outcome) => {
+    let finish!: (response: Response) => void;
+    let reject!: (error: Error) => void;
+    const pending = new Promise<Response>((resolve, refuse) => {
+      finish = resolve;
+      reject = refuse;
+    });
+    let finishCancellation!: () => void;
+    const cancellation = new Promise<void>((resolve) => {
+      finishCancellation = resolve;
+    });
+    let bodyCancellations = 0;
+    const body =
+      outcome === 'body' || outcome === 'locked-body'
+        ? new ReadableStream<Uint8Array>({
+            cancel() {
+              bodyCancellations++;
+              return cancellation;
+            },
+          })
+        : undefined;
+    const bodyResponse = body ? new Response(body) : undefined;
+    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+    if (outcome === 'locked-body') {
+      assert.ok(body);
+      reader = body.getReader();
+    }
+    const f = await sdkFixture(
+      'google',
+      '/api/orchestration/chat',
+      () => pending,
+    );
+    let rawSignal: AbortSignal | undefined;
+    const owner = createPreparedSdkSourceWireOwner({
+      ...f.configuration,
+      rawFetch: (input, init) => {
+        rawSignal = init?.signal ?? undefined;
+        return f.configuration.rawFetch(input, init);
+      },
+    });
+    const prepared = await f.owner.prepareSdkSnapshot(
+      f.context(),
+      subject,
+      f.sealed.capability,
+      owner,
+    );
+    const { wire } = inspectSdkSourceWire(owner, prepared.sdkHandle);
+    let sdkState = 'pending';
+    const result = sdkResultPromise(owner, prepared.sdkHandle).then(
+      () => {
+        sdkState = 'returned';
+      },
+      () => {
+        sdkState = 'refused';
+      },
+    );
+    let disposed = false;
+    const disposal = sdkDisposalPromise(owner, prepared.sdkHandle).then(() => {
+      disposed = true;
+    });
+    const raw = enterFinalFetch(owner, prepared.sdkHandle, wire.url, {
+      method: 'POST',
+      headers: Object.fromEntries(wire.headers),
+      body: wire.body,
+      redirect: 'error',
+    });
+    void raw.catch(() => {});
+    try {
+      assert.equal(f.starts, 1);
+      refuseSdkResponse(owner, prepared.sdkHandle);
+      disposeSdkSourceWire(owner, prepared.sdkHandle);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      assert.equal(sdkState, 'refused');
+      assert.equal(rawSignal?.aborted, true);
+      assert.equal(disposed, false, 'pending raw transport cannot be retired');
+      if (outcome === 'failure')
+        reject(Error('controlled raw failure after SDK refusal'));
+      else finish(bodyResponse ?? mockResponse('google'));
+      await raw.catch(() => {});
+      if (outcome === 'locked-body') {
+        await assert.rejects(
+          retireSdkSourceWire(owner, prepared.sdkHandle),
+          sdkCode('sdk_body_cleanup_unconfirmed'),
+        );
+        assert.equal(disposed, false);
+        assert.equal(bodyCancellations, 0, 'a foreign reader cannot be stolen');
+        assert.ok(body?.locked);
+        reader?.releaseLock();
+        reader = undefined;
+        finishCancellation();
+        await retireSdkSourceWire(owner, prepared.sdkHandle);
+      } else if (body) {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        assert.equal(
+          bodyCancellations,
+          1,
+          'refusal must retire its late raw body',
+        );
+        assert.equal(disposed, false, 'body cancellation must be joined');
+        finishCancellation();
+      }
+      await result;
+      await disposal;
+      assert.equal(disposed, true);
+      if (body) assert.equal(body.locked, false);
+      assert.equal(f.starts, 1, 'refusal and cleanup cannot resend transport');
+    } finally {
+      finish(mockResponse('google'));
+      await raw.catch(() => {});
+      reader?.releaseLock();
+      reader = undefined;
+      finishCancellation();
+      if (body && !body.locked) await body.cancel();
+      try {
+        refuseSdkResponse(owner, prepared.sdkHandle);
+      } catch (error) {
+        assert.ok(sdkCode('sdk_response_unavailable')(error));
+      }
+      disposeSdkSourceWire(owner, prepared.sdkHandle);
+      await retireSdkSourceWire(owner, prepared.sdkHandle);
+      await result;
+      await disposal;
+    }
+  },
+);
 
 test('public final fence revocation during intent wait prevents actual SDK HTTP and retains no replay path', async () => {
   const f = await sdkFixture('google');

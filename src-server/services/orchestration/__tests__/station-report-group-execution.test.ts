@@ -4,6 +4,7 @@ import { syncBuiltinESMExports } from 'node:module';
 import { join } from 'node:path';
 import { inspect } from 'node:util';
 import { type FlowMultiCursorClaimEvent, loadRun } from '@kontourai/flow';
+import { DelegationRoundsTransactionUncertainError } from '@kontourai/flow-agents/delegation-group-rounds';
 import {
   createReportGroup,
   finalizeReportGroupCancel,
@@ -37,6 +38,7 @@ import { ApprovalRegistry } from '../../approvals/approval-registry.js';
 import { HomeWriterOwner } from '../../ssh/home-writer-owner.js';
 import { RoundsFinalFetchLaunchFence } from '../delegation-group-launch-fence.js';
 import { StationDelegationPersistence } from '../delegation-group-persistence.js';
+import * as sdkSource from '../delegation-group-sdk-source-wire-owner.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
@@ -65,13 +67,19 @@ test.each([
   'revoked-before-claim',
   'metadata-release-fault',
   'publication-release-fault',
+  'launch-release-fault',
+  'launch-body-release-fault',
 ] as const)(
   'report HTTP owner qualifies %s source custody and truthful accounting',
   async (scenario) => {
     const revokeBeforeClaim = scenario === 'revoked-before-claim';
     const metadataReleaseFault = scenario === 'metadata-release-fault';
     const publicationReleaseFault = scenario === 'publication-release-fault';
-    const retirementFault = metadataReleaseFault || publicationReleaseFault;
+    const bodyReleaseFault = scenario === 'launch-body-release-fault';
+    const launchReleaseFault =
+      scenario === 'launch-release-fault' || bodyReleaseFault;
+    const retirementFault =
+      metadataReleaseFault || publicationReleaseFault || launchReleaseFault;
     const mode =
       scenario === 'flow' || scenario === 'mixed' ? scenario : 'independent';
     const wallNow = Date.now;
@@ -119,10 +127,31 @@ test.each([
     >();
     const responseTimers = new Set<ReturnType<typeof setTimeout>>();
     let returnedBeforeResponse = 0;
+    let failedLaunchRetirements = 0;
     const start = RoundsFinalFetchLaunchFence.prototype.start;
     vi.spyOn(RoundsFinalFetchLaunchFence.prototype, 'start').mockImplementation(
       async function (this: RoundsFinalFetchLaunchFence, ...args) {
-        const result = await start.apply(this, args);
+        let result: Awaited<ReturnType<typeof start>>;
+        try {
+          result = await start.apply(this, args);
+        } catch (error) {
+          const held = launchReleaseFault
+            ? heldResponses.get(args[1].body)
+            : undefined;
+          if (held) {
+            try {
+              assert.equal(held.forced, false);
+              assert.ok(
+                error instanceof DelegationRoundsTransactionUncertainError,
+              );
+              assert.equal(error.status, 'returned-cleanup-unknown');
+              failedLaunchRetirements++;
+            } finally {
+              held.release();
+            }
+          }
+          throw error;
+        }
         const gate = heldResponses.get(args[1].body);
         assert.ok(gate, 'actual provider request reached its response hold');
         let settled = false;
@@ -151,7 +180,20 @@ test.each([
       },
     );
     const requestWriter = await HomeWriterOwner.forHome(h.f.home);
+    let bodyReader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+    let cleaningUp = false;
+    const refusedWires = new Map<object, object>();
+    if (bodyReleaseFault) {
+      const refuseResponse = sdkSource.refuseSdkResponse;
+      vi.spyOn(sdkSource, 'refuseSdkResponse').mockImplementation(
+        (owner, handle) => {
+          refusedWires.set(handle, owner);
+          return refuseResponse(owner, handle);
+        },
+      );
+    }
     let releaseFault: { mockRestore(): void } | undefined;
+    let failedRetirementAttempts = 0;
     let completedPublishCallbacks = 0;
     const installReleaseFault = () => {
       assert.equal(releaseFault, undefined);
@@ -163,8 +205,10 @@ test.each([
             String(path).startsWith(
               join(h.f.home, 'security', '.home-writer.mutation.guard.stale-'),
             )
-          )
+          ) {
+            failedRetirementAttempts++;
             throw Error('controlled report home retirement failure');
+          }
           return remove(path, options);
         });
       syncBuiltinESMExports();
@@ -300,22 +344,29 @@ test.each([
     const physicalHomeProbe = await prepareFileMutationOwner(
       join(h.f.home, 'security', '.home-writer.mutation'),
     );
-    const assertPhysicalHomeHeld = async () => {
+    const assertPhysicalHomeHeld = async (boundary = 'publication') => {
       const attempt = physicalHomeProbe.tryAcquire();
       if (attempt.kind === 'acquired') await attempt.lease.release();
       assert.equal(
         attempt.kind,
         'busy',
-        'publication must retain the physical home lock',
+        `${boundary} must retain the physical home lock`,
       );
       assert.throws(
         () => requestWriter.runSynchronous(() => undefined),
         { name: 'HomeWriterUnavailableError', reason: 'busy' },
-        'publication must not lend ambient home authority to a sibling',
+        `${boundary} must not lend ambient home authority to a sibling`,
       );
     };
+    const transportOwnershipFailures: unknown[] = [];
     const reportText = 'Controlled report '.repeat(1200);
     h.rawFetch.mockImplementation(async (url, init) => {
+      try {
+        await assertPhysicalHomeHeld('provider transport');
+      } catch (error) {
+        transportOwnershipFailures.push(error);
+        throw error;
+      }
       const body = init?.body;
       assert.ok(typeof body === 'string');
       assert.equal(heldResponses.has(body), false);
@@ -335,8 +386,9 @@ test.each([
         release();
       };
       heldResponses.set(body, gate);
+      if (launchReleaseFault) installReleaseFault();
       await held;
-      return String(url).startsWith(
+      const response = String(url).startsWith(
         'https://generativelanguage.googleapis.com/',
       )
         ? controlledTextStream('google', 'gemini-2.5-flash-lite', reportText, {
@@ -353,6 +405,13 @@ test.each([
             cache_read_input_tokens: 0,
             cache_creation_input_tokens: 0,
           });
+      if (bodyReleaseFault && !cleaningUp) {
+        assert.ok(response.body);
+        assert.equal(bodyReader, undefined);
+        bodyReader = response.body.getReader();
+        void bodyReader.closed.catch(() => {});
+      }
+      return response;
     });
     const input = {
       ...h.input,
@@ -615,6 +674,8 @@ test.each([
         journalPhases: mode === 'flow' ? journalPhases : undefined,
         flowDiagnostic,
       });
+      if (transportOwnershipFailures.length)
+        throw transportOwnershipFailures[0];
       if (!revokeBeforeClaim && !retirementFault)
         assert.equal(
           response.status,
@@ -628,20 +689,36 @@ test.each([
       await queuedExecutionWitness;
       if (retirementFault) {
         assert.equal(response.status, 503, JSON.stringify(body));
-        assert.ok(
-          releaseFault,
-          'actual metadata/publication retirement fault was installed',
-        );
+        assert.ok(releaseFault, 'actual owned retirement fault was installed');
         const providerCalls = h.rawFetch.mock.calls.length;
         const publisherCalls = completedPublishCallbacks;
         if (metadataReleaseFault) {
           assert.equal(providerCalls, 0);
           assert.equal(publisherCalls, 0);
           assert.deepEqual(protectedPublications, []);
+        } else if (launchReleaseFault) {
+          assert.equal(providerCalls, 1);
+          assert.equal(publisherCalls, 0);
+          assert.equal(failedLaunchRetirements, 1);
+          assert.ok(failedRetirementAttempts > 0);
+          assert.deepEqual(protectedPublications, []);
         } else {
           assert.ok(providerCalls > 0);
           assert.equal(publisherCalls, 1);
           assert.ok(protectedPublications.includes('turn.completed'));
+        }
+        if (bodyReleaseFault) {
+          assert.ok(
+            bodyReader,
+            'actual returned raw body has its owned reader',
+          );
+          assert.ok(refusedWires.size > 0);
+          releaseFault.mockRestore();
+          releaseFault = undefined;
+          syncBuiltinESMExports();
+          await requestWriter.settlePendingCleanup();
+          const entrant = await requestWriter.acquire();
+          await entrant.release();
         }
         await assert.rejects(runtimeOwner.shutdown(), {
           code: 'runtime_publication_pending',
@@ -650,7 +727,9 @@ test.each([
           () => acquireStationHomeMaintenanceLease(h.f.home),
           StationHomeActiveError,
         );
-        releaseFault.mockRestore();
+        bodyReader?.releaseLock();
+        bodyReader = undefined;
+        releaseFault?.mockRestore();
         releaseFault = undefined;
         syncBuiltinESMExports();
         await runtimeOwner.shutdown();
@@ -1186,12 +1265,17 @@ test.each([
         503,
       );
     } finally {
+      cleaningUp = true;
       releaseFault?.mockRestore();
       syncBuiltinESMExports();
       for (const gate of heldResponses.values()) gate.release();
+      bodyReader?.releaseLock();
+      bodyReader = undefined;
       for (const timer of responseTimers) clearTimeout(timer);
       if (watchdog) clearTimeout(watchdog);
       abort.abort();
+      for (const [handle, owner] of refusedWires)
+        await sdkSource.retireSdkSourceWire(owner, handle);
       await queuedExecutionWitness?.catch(() => {});
       await orchestration.shutdown();
       stopPublicationObservation();

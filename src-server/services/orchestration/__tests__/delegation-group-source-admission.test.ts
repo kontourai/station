@@ -716,16 +716,24 @@ test('source-owned Flow launch admits a renewed active claim and refuses removed
   const pending = deferred<Response>();
   const homeOwner = await HomeWriterOwner.forHome(f.home);
   const heldHome = await homeOwner.acquire();
-  const scoped = await flow.withCurrentClaim(
-    claimed.claim,
-    () => {
-      homeOwner.assertSynchronous();
-      return { value: 'scoped' };
-    },
-    { owner: homeOwner, lease: heldHome },
-  );
-  assert.equal(scoped.value, 'scoped');
-  await heldHome.release();
+  try {
+    const scoped = await flow.withCurrentClaim(
+      claimed.claim,
+      () => {
+        assert.throws(
+          () => homeOwner.runSynchronous(() => undefined),
+          { name: 'HomeWriterUnavailableError', reason: 'busy' },
+          'Flow launch cannot lend its home authority to the callback',
+        );
+        homeOwner.runWithLease(heldHome, () => homeOwner.assertSynchronous());
+        return { value: 'scoped' };
+      },
+      { owner: homeOwner, lease: heldHome },
+    );
+    assert.equal(scoped.value, 'scoped');
+  } finally {
+    await heldHome.release();
+  }
   await assert.rejects(
     flow.withCurrentClaim(claimed.claim, () => ({ value: ++launches }), {
       owner: homeOwner,

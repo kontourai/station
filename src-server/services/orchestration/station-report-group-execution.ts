@@ -21,11 +21,14 @@ import type { reservedStationTurnResult } from '../../runtime/conversation/reser
 import type { DelegatedTaskHandle } from '../../tools/station-control-delegation.js';
 import type { EnvironmentSecurityService } from '../ssh/environment-security-service.js';
 import { HomeWriterOwner } from '../ssh/home-writer-owner.js';
-import type { PreparedReservedFinalFetchOwners } from './delegation-group-launch-fence.js';
+import type {
+  PreparedReservedFinalFetchOwners,
+  RoundsFinalFetchOwners,
+} from './delegation-group-launch-fence.js';
 import type { StationDelegationPersistence } from './delegation-group-persistence.js';
 import {
   inspectSdkSourceWire,
-  sdkDisposalPromise,
+  retireSdkSourceWire,
 } from './delegation-group-sdk-source-wire-owner.js';
 import type { RuntimeSourceRequestContext } from './delegation-group-source-admission.js';
 import type { FileFinalWireIntentStore } from './delegation-group-wire-intent-store.js';
@@ -255,6 +258,28 @@ export class StationReportGroupExecution {
             preparationCurrent,
             ...(publication
               ? {
+                  retainCleanup: publication.retainCleanup,
+                  withFinalFetchScope: <Value>(
+                    body: (
+                      scope: ReportRoundsScope,
+                      facades: Pick<
+                        RoundsFinalFetchOwners,
+                        'groups' | 'authorities' | 'host'
+                      >,
+                    ) => Promise<Value>,
+                  ): Promise<Value> =>
+                    publication.withHome(
+                      { owner: requestWriter, current: sourceCurrent },
+                      (scope): Promise<Value> => {
+                        const scoped: PreparedReservedFinalFetchOwners =
+                          build(scope).launch;
+                        return body(scope, {
+                          groups: scoped.groups,
+                          authorities: scoped.authorities,
+                          host: scoped.host,
+                        });
+                      },
+                    ),
                   withHome: <Value>(
                     guard: () => undefined,
                     body: (
@@ -333,37 +358,44 @@ export class StationReportGroupExecution {
                   return { selected, sdk, captured };
                 });
                 const started = Date.now();
-                const dispatched = await preparation.dispatch(
-                  handle,
-                  context,
-                  seat.seatId,
-                  {
-                    persistence,
-                    transport: {
-                      launch,
-                      reservation: {
-                        groupId,
-                        controller: prepared.spec.controller,
-                        seatId: seat.seatId,
-                        authority: prepared.spec.rootAuthorityRef,
-                        envelope: seat.envelope,
-                        invocationId: selected.id,
-                        effect: seat.effect,
-                        allocation: seat.allocation,
+                let dispatched: Awaited<
+                  ReturnType<StationReportGroupPreparation['dispatch']>
+                >;
+                let attempt: AttemptResult;
+                try {
+                  dispatched = await preparation.dispatch(
+                    handle,
+                    context,
+                    seat.seatId,
+                    {
+                      persistence,
+                      transport: {
+                        launch,
+                        reservation: {
+                          groupId,
+                          controller: prepared.spec.controller,
+                          seatId: seat.seatId,
+                          authority: prepared.spec.rootAuthorityRef,
+                          envelope: seat.envelope,
+                          invocationId: selected.id,
+                          effect: seat.effect,
+                          allocation: seat.allocation,
+                        },
+                        contract: captured.contract,
+                        provider: member.provider,
+                        signal: options?.signal
+                          ? AbortSignal.any([signal, options.signal])
+                          : signal,
+                        now: Date.now,
+                        maxResponseBytes: 1024 * 1024,
                       },
-                      contract: captured.contract,
-                      provider: member.provider,
-                      signal: options?.signal
-                        ? AbortSignal.any([signal, options.signal])
-                        : signal,
-                      now: Date.now,
-                      maxResponseBytes: 1024 * 1024,
                     },
-                  },
-                  orchestration,
-                );
-                const attempt = await dispatched.result;
-                await sdkDisposalPromise(sdk.owner, sdk.sdkHandle);
+                    orchestration,
+                  );
+                  attempt = await dispatched.result;
+                } finally {
+                  await retireSdkSourceWire(sdk.owner, sdk.sdkHandle);
+                }
                 await checkAsync(() => {
                   current();
                   retained.set(selected.id, {

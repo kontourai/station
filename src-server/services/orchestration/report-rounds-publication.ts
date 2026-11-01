@@ -33,6 +33,7 @@ export interface ReportRoundsScope {
 
 export interface ReportRoundsPublication {
   assertCurrent(): undefined;
+  retainCleanup(cleanup: () => Promise<void>): () => Promise<void>;
   withHome<T>(
     input: HomeScopeInput,
     body: (scope: ReportRoundsScope) => Promise<T>,
@@ -139,6 +140,19 @@ export async function withReportRoundsPublication<T>(
   };
   const publication: ReportRoundsPublication = Object.freeze({
     assertCurrent: current,
+    retainCleanup: (cleanup: () => Promise<void>) => {
+      current();
+      const child = parent.borrow();
+      const retire: () => Promise<void> = participant.retainCleanup(
+        async () => {
+          await cleanup();
+          child.release();
+          retiredScopes.delete(retire);
+        },
+      );
+      retiredScopes.add(retire);
+      return retire;
+    },
     withHome: async <Value>(
       options: HomeScopeInput,
       work: (scope: ReportRoundsScope) => Promise<Value>,

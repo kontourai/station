@@ -464,16 +464,31 @@ separate short admissions. A pending execution owns its result before queued
 claim admission; duplicate execution refuses, and result readers join that promise
 outside home custody. Stream/completion checks borrow synchronously while actual
 event publication runs outside the borrowed async context. Completion admission
-settles before the reserved result resolves. Runtime home binding and child
-currentness share one compound proof check; source checks retain their own
+settles before the reserved result resolves. Initial report final-fetch operations
+also build their store and host callbacks from the exact held lease. Pricing,
+source and one-shot checks borrow synchronously; actual raw transport runs outside
+that span, and the owner returns before awaiting its response. Flow launch
+callbacks receive no implicit home borrow.
+
+Explicit SDK refusal settles the SDK waiter and requests cancellation of that
+handle. A late response body remains owned until its reader cancellation joins;
+a held foreign reader is not stolen. The final disposal promise remains pending
+through cleanup uncertainty, while a separate retirement attempt can fail and
+retry. A runtime child retains this cleanup without holding a HomeWriter lease.
+Shutdown cannot release the runtime home until that child retires. These are local
+stream and runtime-custody guarantees, not proof of provider termination.
+
+Runtime home binding and child currentness share one compound proof check;
+source checks retain their own
 request/credential validation without a duplicate runtime check in that checkpoint.
 This neither caches authority across awaits nor changes the underlying process
 identity probe. Cleanup retains exact handles; explicit pending
 cleanup retires only failed/inactive holders, preserving active siblings.
 A runtime parent joins its retired children before release, without replaying
-an operation callback. The HTTP boundary
-returns 503 before callback admission or 409 when an operation outcome is
-unconfirmed. Registry publication uncertainty fences that service instance;
+an operation callback. Uncaught HomeWriter errors return 503 before callback
+admission or 409 when an operation outcome is unconfirmed. Report-group routes
+instead retain generic 503 responses for admission and cleanup failures.
+Registry publication uncertainty fences that service instance;
 reconstruction is required before further registry use. Committed access and
 retirement notifications wait for confirmed release and run outside the writer's
 async context, so scheduled publisher work cannot inherit an expired grant.

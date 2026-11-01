@@ -91,12 +91,17 @@ type State = {
   captured: ReturnType<typeof deferred<void>>;
   response: ReturnType<typeof deferred<Response>> | undefined;
   disposed: ReturnType<typeof deferred<void>>;
+  cleanupFailure: ReturnType<typeof deferred<never>>;
   controller: AbortController;
   wire?: Readonly<FinalWire>;
   quote?: BoundedApiAttemptQuote;
   contract?: ResolvedBoundedApiProviderContract;
   result: Promise<SdkResult>;
   rawResponse?: Promise<Response>;
+  rawValue?: Response;
+  refused: boolean;
+  bodyRetirement: 'unseen' | 'pending' | 'retired' | 'failed';
+  bodyCancelFailure?: { error: unknown };
   taken: boolean;
   delivered: boolean;
   started: boolean;
@@ -137,14 +142,77 @@ function optionsFor(owner: object) {
 }
 function finishDisposal(s: State) {
   if (!s.settled || !s.release || (s.started && !s.rawSettled)) return;
+  if (s.refused && s.bodyRetirement !== 'retired') return;
   s.wire = undefined;
   s.quote = undefined;
   s.response = undefined;
   s.onTextDelta = undefined;
   s.admission = undefined;
   s.rawResponse = undefined;
+  s.rawValue = undefined;
   clearTimeout(s.deadline);
   s.disposed.resolve();
+}
+
+async function cancelRefusedBody(s: State): Promise<void> {
+  const body = s.rawValue?.body;
+  if (!body) return;
+  const reader = body.getReader();
+  const terminal = { closed: false, errored: false };
+  void reader.closed.then(
+    () => {
+      terminal.closed = true;
+    },
+    () => {
+      terminal.errored = true;
+    },
+  );
+  try {
+    await Promise.resolve();
+    if (terminal.errored) return;
+    if (terminal.closed) {
+      if (s.bodyCancelFailure) throw s.bodyCancelFailure.error;
+      return;
+    }
+    try {
+      await reader.cancel(new SdkSourceRefusal('sdk_response_unavailable'));
+    } catch (error) {
+      await Promise.resolve();
+      if (terminal.errored && !s.bodyCancelFailure) return;
+      s.bodyCancelFailure = { error };
+      throw error;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+function retireRefusedBody(s: State, retry = false): void {
+  if (
+    !s.refused ||
+    !s.rawSettled ||
+    s.bodyRetirement === 'pending' ||
+    s.bodyRetirement === 'retired'
+  )
+    return;
+  if (s.bodyRetirement === 'failed') {
+    if (!retry) return;
+    s.cleanupFailure = deferred<never>();
+  }
+  s.bodyRetirement = 'pending';
+  void cancelRefusedBody(s).then(
+    () => {
+      s.bodyRetirement = 'retired';
+      s.bodyCancelFailure = undefined;
+      finishDisposal(s);
+    },
+    () => {
+      s.bodyRetirement = 'failed';
+      s.cleanupFailure.reject(
+        new SdkSourceRefusal('sdk_body_cleanup_unconfirmed'),
+      );
+    },
+  );
 }
 /** Boot-only raw fetch and qualified contract dependencies. No route DTO, source grant issuer,
  * caller validation callback, provider options object, or global fetch/config mutation. */
@@ -341,12 +409,15 @@ export function beginSdkSourceWire(owner: object, leaseToken: object): object {
     captured,
     response,
     disposed,
+    cleanupFailure: deferred<never>(),
     controller,
     result: Promise.reject(new Error('sdk_not_started')),
     taken: false,
     delivered: false,
     started: false,
     rawSettled: false,
+    refused: false,
+    bodyRetirement: 'unseen',
     abandoned: false,
     settled: false,
     release: false,
@@ -648,62 +719,74 @@ export function enterFinalFetch(
   handle: object,
   input: Parameters<typeof fetch>[0],
   init?: RequestInit,
+  check?: SdkSourceCheck,
 ): Promise<Response> {
   const s = stateFor(owner, handle),
     o = optionsFor(owner);
   if (s.started) fail('sdk_wire_unavailable');
   let ownsStart = false;
   try {
-    assertSdkSourceWireCurrentSync(owner, handle);
-    o.signal.throwIfAborted();
-    init?.signal?.throwIfAborted();
-    if (
-      input instanceof Request ||
-      init?.method !== 'POST' ||
-      typeof init.body !== 'string' ||
-      init.redirect !== 'error'
-    )
-      fail('sdk_final_wire_unsupported');
-    const wire = snapshotFinalWire({
-      url: String(input),
-      method: 'POST',
-      headers: [...new Headers(init.headers).entries()],
-      body: init.body,
-    });
-    if (
-      !s.wire ||
-      wireIdentityDigest(wire) !== wireIdentityDigest(s.wire) ||
-      !isDeepStrictEqual(wire, s.wire)
-    )
-      fail('sdk_final_wire_changed');
-    if (!s.contract) fail('sdk_wire_unavailable');
-    const contract = s.contract;
-    const lease = claimSdkSourceLease(s.lease),
-      digest = wireIdentityDigest(wire);
-    const rawFetch = o.rawFetch,
-      url = wire.url;
-    const requestInit: RequestInit = {
-      method: wire.method,
-      headers: wire.headers.map(([k, v]) => [k, v]),
-      body: wire.body,
-      redirect: 'error',
-      signal: init.signal,
+    const prepare = () => {
+      assertSdkSourceWireCurrentSync(owner, handle);
+      o.signal.throwIfAborted();
+      init?.signal?.throwIfAborted();
+      if (
+        input instanceof Request ||
+        init?.method !== 'POST' ||
+        typeof init.body !== 'string' ||
+        init.redirect !== 'error'
+      )
+        fail('sdk_final_wire_unsupported');
+      const wire = snapshotFinalWire({
+        url: String(input),
+        method: 'POST',
+        headers: [...new Headers(init.headers).entries()],
+        body: init.body,
+      });
+      if (
+        !s.wire ||
+        wireIdentityDigest(wire) !== wireIdentityDigest(s.wire) ||
+        !isDeepStrictEqual(wire, s.wire)
+      )
+        fail('sdk_final_wire_changed');
+      if (!s.contract) fail('sdk_wire_unavailable');
+      const contract = s.contract;
+      const lease = claimSdkSourceLease(s.lease),
+        digest = wireIdentityDigest(wire);
+      const rawFetch = o.rawFetch,
+        url = wire.url;
+      const requestInit: RequestInit = {
+        method: wire.method,
+        headers: wire.headers.map(([k, v]) => [k, v]),
+        body: wire.body,
+        redirect: 'error',
+        signal: AbortSignal.any([
+          o.signal,
+          s.controller.signal,
+          ...(init.signal ? [init.signal] : []),
+        ]),
+      };
+      assertCredentialWire(o, wire, contract);
+      s.started = true;
+      ownsStart = true;
+      lease.consumeExactSync(owner, handle, digest);
+      assertCredentialWire(o, wire, contract);
+      return { rawFetch, url, requestInit };
     };
-    assertCredentialWire(o, wire, contract);
-    s.started = true;
-    ownsStart = true;
-    lease.consumeExactSync(owner, handle, digest);
-    assertCredentialWire(o, wire, contract);
+    const { rawFetch, url, requestInit } = check ? check(prepare) : prepare();
     const response = rawFetch(url, requestInit);
     s.rawResponse = Promise.resolve(response).then(
       (value) => {
+        s.rawValue = value;
         s.rawSettled = true;
+        retireRefusedBody(s);
         finishDisposal(s);
         return value;
       },
       () => {
         const error = new SdkSourceRefusal('sdk_http_failed');
         s.rawSettled = true;
+        retireRefusedBody(s);
         s.response?.reject(error);
         finishDisposal(s);
         throw error;
@@ -750,14 +833,18 @@ export function deliverSdkResponse(
   s.delivered = true;
   s.response.resolve(response);
 }
-/** The bounded response observer may refuse a completed HTTP response before SDK delivery. */
+/** Refuse SDK delivery after launch or response failure; raw transport retirement stays separate. */
 export function refuseSdkResponse(owner: object, handle: object): void {
   const s = stateFor(owner, handle);
-  if (!s.started || !s.rawSettled || s.delivered || !s.response)
+  if (!s.started || s.delivered || !s.response)
     fail('sdk_response_unavailable');
   s.delivered = true;
-  s.response.reject(new SdkSourceRefusal('sdk_response_unavailable'));
+  s.refused = true;
   s.release = true;
+  const error = new SdkSourceRefusal('sdk_response_unavailable');
+  s.response.reject(error);
+  s.controller.abort(error);
+  retireRefusedBody(s);
   finishDisposal(s);
 }
 export function sdkResultPromise(
@@ -781,6 +868,15 @@ export function sdkResultPromise(
 export function sdkDisposalPromise(owner: object, handle: object) {
   return stateFor(owner, handle).disposed.promise;
 }
+/** Join one cleanup attempt without replacing the final source-retirement proof. */
+export function retireSdkSourceWire(
+  owner: object,
+  handle: object,
+): Promise<void> {
+  disposeSdkSourceWire(owner, handle);
+  const s = stateFor(owner, handle);
+  return Promise.race([s.disposed.promise, s.cleanupFailure.promise]);
+}
 export function disposeSdkSourceWire(owner: object, handle: object) {
   const s = stateFor(owner, handle);
   s.release = true;
@@ -790,5 +886,6 @@ export function disposeSdkSourceWire(owner: object, handle: object) {
     s.captured.reject(new SdkSourceRefusal('sdk_abandoned'));
     s.response?.reject(new SdkSourceRefusal('sdk_abandoned'));
   }
+  retireRefusedBody(s, true);
   finishDisposal(s);
 }

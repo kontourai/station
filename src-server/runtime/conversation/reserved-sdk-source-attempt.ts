@@ -8,6 +8,7 @@ import {
   enterFinalFetch,
   inspectSdkSourceWire,
   refuseSdkResponse,
+  retireSdkSourceWire,
   type SdkSourceAdmission,
   type SdkSourceCheck,
   sdkResultPromise,
@@ -54,6 +55,7 @@ export async function runReservedSdkSourceAttempt(input: {
         ? input.transport.launch.reportHome
         : undefined;
     const withHome = reportHome?.withHome;
+    reportHome?.retainCleanup?.(() => retireSdkSourceWire(sdkOwner, sdkHandle));
     const invokeCurrent = reportHome?.invokeCurrent;
     const admissionCurrent = reportHome?.current;
     const admission: SdkSourceAdmission | undefined =
@@ -98,8 +100,8 @@ export async function runReservedSdkSourceAttempt(input: {
       launch: {
         ...input.transport.launch,
         finalizeCurrent: assertFetchCurrent,
-        fetch: (request, init) =>
-          enterFinalFetch(sdkOwner, sdkHandle, request, init),
+        fetch: (request, init, check) =>
+          enterFinalFetch(sdkOwner, sdkHandle, request, init, check),
       },
     });
     const response = await transport.fetch(wire.url, {
@@ -172,7 +174,7 @@ export async function runReservedSdkSourceAttempt(input: {
       accounting,
     });
   } catch {
-    // A completed HTTP response rejected by the raw observer must also terminate the waiting SDK.
+    // Launch retirement may fail while raw transport still owns an unresolved response.
     try {
       refuseSdkResponse(sdkOwner, sdkHandle);
     } catch {

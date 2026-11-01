@@ -3126,3 +3126,77 @@ funded input/context journeys and final combined/native/device/hosted/documentat
 qualification remain open. B10 is now paired and available in the Device panel;
 no Station app state or physical acceptance was changed by that connection.
 Report groups and finalizer remain disabled. No Station PR or push exists.
+
+
+### Initial final-fetch and refused-response ownership candidate
+
+The initial report final-fetch path now uses the report operation's runtime
+publication admission. Each short final-fetch scope builds the actual group
+store, authority store and host callbacks from its exact HomeWriter lease; the
+lease remains owned through full durable store return and release. It does not
+wrap asynchronous constructor-host calls in borrowed Promise boxes. Existing
+pricing, source, credential, session, ancestry, wire and one-shot checks still
+run synchronously under the supplied check. Actual raw transport runs outside
+the borrowed context, and the final-fetch owner returns before its controlled
+response is released. Flow claim/head launch callbacks no longer lend ambient
+home authority; callers may explicitly borrow their own authenticated lease.
+
+The real HTTP/SDK caller exposed the original ambient loan: independent, Flow
+and mixed positive modes each failed the sibling HomeWriter exclusion assertion
+inside actual raw transport while the physical home lock remained held. That
+pre-fix failure is retained. The repaired caller passes all eight cases, keeping
+journal-body/full-store-return, pending-reader, duplicate, queued revocation,
+accounting, historical replay and cancellation controls. The additional cases
+cover metadata, completion-publication and final-fetch retirement failures, plus
+a refused response body that cannot yet be closed.
+
+Independent source review then identified two further local lifecycle defects.
+Explicit refusal previously required the raw response to have settled, leaving
+the SDK's response waiter pending after a failed launch. Two new real-SDK owner
+controls reached that refusal failure before the fix. Refusal now rejects that
+waiter immediately and requests cancellation of the handle's own raw request;
+raw settlement is still observed independently. A second control exposed an
+uncancelled late response body. Refused bodies now retain their actual response,
+obtain only their own reader, await cancellation acknowledgement and release
+that reader. A held foreign reader produces cleanup uncertainty rather than
+being stolen. An underlying cancellation failure is not reclassified as success
+merely because cancellation closed the local stream.
+
+The final SDK disposal promise stays stable and pending until cleanup is
+confirmed, preserving the source owner's existing retirement subscription.
+A separate retirement attempt reports cleanup uncertainty and permits an
+explicit retry. Initial execution joins retirement even when dispatch or its
+result fails. Before paid transport, the operation registers the exact SDK
+cleanup with an authentic runtime child; failed cleanup keeps that child and
+its dependencies for shutdown retry. Body waiting holds no HomeWriter lease.
+Ordinary started disposal can still finish valid delivery, and duplicate entry
+cannot poison the original pending attempt.
+
+Current controlled evidence is 80 passing SDK-owner cases and eight passing
+actual HTTP/SDK caller cases, with scoped server-test types and Biome passing.
+All 29 runtime/publication/home companion controls also pass on this source.
+The body-fault caller restores the filesystem release fault and confirms that
+an independent HomeWriter can acquire and release, while runtime shutdown and
+maintenance remain excluded by the SDK resource. Releasing only the fixture's
+reader permits cleanup retry without another transport call or publication.
+A fixture failure that constructed a Response from an already-locked stream is
+retained separately; constructing the Response before locking its body corrected
+that setup, with production bytes unchanged. Fresh independent source review
+finds no new P1/P2 issue in this bounded increment. Its conclusion covers local
+stream ownership and runtime custody, not native or provider termination.
+
+The latest Flow caller returned in 196.9 seconds under the unchanged 240-second
+request deadline. Earlier deadline failures, the historical 146-second unknown,
+and prior failed qualification reports remain evidence; no general performance
+resolution is claimed. The fixture's separately composed event store still does
+not prove storage-dependency retention. Already-errored bodies and underlying
+post-cancellation rejection were source-reviewed, not newly executed platform
+controls. Clean committed mutation/restoration, documentation freshness and
+readiness remain to be completed for this increment.
+
+The other four controller constructions, active cancellation intent/ACK writers,
+authentic continuation-parent mapping, funded input/context journeys, portable
+receiver positives and final combined browser/native/device/hosted qualification
+remain open. B10 was paired in the earlier checkpoint but is currently absent
+from device discovery; no physical Station journey is qualified. Report groups
+and finalizer remain disabled. No Station PR or push exists.

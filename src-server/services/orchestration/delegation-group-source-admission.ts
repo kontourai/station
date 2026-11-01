@@ -1731,9 +1731,7 @@ export class LocalSourceAdmissionOwner {
               if (flowRunHead(current.state) !== expectedHead)
                 refuse('flow_head_changed');
               scopedCurrent();
-              return scope
-                ? scope.owner.runWithLease(scope.lease, launch)
-                : launch();
+              return launch();
             }),
           scopedCurrent,
         );
@@ -1787,9 +1785,7 @@ export class LocalSourceAdmissionOwner {
               )
                 refuse('flow_claim_binding_changed');
               scopedCurrent();
-              return scope
-                ? scope.owner.runWithLease(scope.lease, launch)
-                : launch();
+              return launch();
             }),
           scopedCurrent,
         );

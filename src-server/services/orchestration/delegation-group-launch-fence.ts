@@ -97,11 +97,16 @@ export function snapshotFinalWire(input: FinalWire): FinalWire {
   };
 }
 
+export type FinalFetchCheck = ReportRoundsScope['check'];
 type LaunchOwners = {
   host: DelegationAuthorityHost;
   intents: FileFinalWireIntentStore;
   finalizeCurrent: WireFinalizer;
-  fetch: typeof globalThis.fetch;
+  fetch(
+    input: Parameters<typeof fetch>[0],
+    init?: Parameters<typeof fetch>[1],
+    check?: FinalFetchCheck,
+  ): Promise<Response>;
 };
 export type LegacyFinalFetchOwners = LaunchOwners & {
   protocol?: 'group-v2';
@@ -119,6 +124,16 @@ export type RoundsFinalFetchOwners = LaunchOwners & {
     persistence: StationDelegationPersistence;
     current: WireFinalizer;
     preparationCurrent: WireFinalizer;
+    retainCleanup?(cleanup: () => Promise<void>): () => Promise<void>;
+    withFinalFetchScope?<Value>(
+      body: (
+        scope: ReportRoundsScope,
+        facades: Pick<
+          RoundsFinalFetchOwners,
+          'groups' | 'authorities' | 'host'
+        >,
+      ) => Promise<Value>,
+    ): Promise<Value>;
     withHome?<Value>(
       current: WireFinalizer,
       body: (
@@ -527,6 +542,36 @@ export class RoundsFinalFetchLaunchFence {
     const binding = structuredClone(bindingInput);
     signal.throwIfAborted();
     const reportHome = this.owners.reportHome;
+    if (reportHome?.withFinalFetchScope) {
+      return reportHome.withFinalFetchScope((scope, facades) => {
+        const owners = this.owners;
+        const transport = 'fetch' in owners ? owners.fetch : undefined;
+        const scoped = {
+          ...owners,
+          ...facades,
+          reportHome: undefined,
+          flowScope: { owner: scope.owner, lease: scope.lease },
+          finalizeCurrent: (): undefined =>
+            scope.check(() => {
+              assertSynchronous(owners.finalizeCurrent);
+              return undefined;
+            }),
+          ...(transport
+            ? {
+                fetch: (
+                  request: Parameters<typeof fetch>[0],
+                  init?: Parameters<typeof fetch>[1],
+                ) => transport(request, init, scope.check),
+              }
+            : {}),
+        };
+        return new RoundsFinalFetchLaunchFence(scoped).#withCurrentReservation(
+          binding,
+          signal,
+          work,
+        );
+      });
+    }
     if (reportHome) {
       return reportHome.owner.runOwnedLease(signal, (lease) => {
         const within = <R>(body: () => R): R =>
