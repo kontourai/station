@@ -434,6 +434,16 @@ export function shouldIgnoreShortcut(
   const ownerDocument = targetElement?.ownerDocument ?? document;
   if (isModalDialogOpen(ownerDocument)) return true;
   if (editingChordOwnsKey(shortcut, targetElement, ownerDocument)) return true;
+  // A chord with no Cmd/Ctrl/Alt on a printable key (`?`) is a character the
+  // user is typing whenever a text field has focus (#4407).
+  if (
+    shortcut.key.length === 1 &&
+    !shortcut.modifiers.some(
+      (m) => m === 'cmd' || m === 'ctrl' || m === 'alt',
+    ) &&
+    isTextEntryTarget(targetElement)
+  )
+    return true;
   if (shortcut.key.toLowerCase() === 'escape') {
     if (ownerDocument.querySelector('[data-escape-owner]')) return true;
     return Boolean(

@@ -122,6 +122,49 @@ describe('a configured editing chord inside a text field', () => {
   });
 });
 
+// #4407: `?` opens the shortcut list — but only outside a text field, where
+// it is a character being typed.
+describe('a printable-key shortcut', () => {
+  function pressQuestionMark(target: EventTarget) {
+    const event = new KeyboardEvent('keydown', {
+      key: '?',
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    act(() => {
+      target.dispatchEvent(event);
+    });
+    return event;
+  }
+
+  test('fires from the page and not from a text field', () => {
+    const onHelp = vi.fn();
+    renderHook(
+      () =>
+        useKeyboardShortcut(
+          'app.shortcutsHelp',
+          '?',
+          ['shift'],
+          'Keyboard shortcuts help',
+          onHelp,
+        ),
+      { wrapper },
+    );
+    const composer = document.createElement('textarea');
+    document.body.append(composer);
+    composer.focus();
+
+    const typed = pressQuestionMark(composer);
+    expect(onHelp).not.toHaveBeenCalled();
+    expect(typed.defaultPrevented).toBe(false);
+
+    composer.blur();
+    pressQuestionMark(document.body);
+    expect(onHelp).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('shortcut list spelling and duplicates', () => {
   test('named keys use keycap spelling, not the shouted event name', () => {
     expect(formatShortcutChord([], 'Escape', false)).toBe('Esc');
