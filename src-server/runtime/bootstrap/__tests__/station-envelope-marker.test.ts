@@ -115,7 +115,7 @@ describe("#2842: the marker on Station's own answers", () => {
       (response.headers.get('Access-Control-Expose-Headers') ?? '')
         .split(',')
         .map((name) => name.trim().toLowerCase()),
-    ).toContain(MARKER);
+    ).toEqual(expect.arrayContaining([MARKER, 'x-station-client-turn-id']));
   });
 
   test('without the security chain, a cross-origin client may still read it', async () => {
@@ -131,7 +131,7 @@ describe("#2842: the marker on Station's own answers", () => {
       (response.headers.get('Access-Control-Expose-Headers') ?? '')
         .split(',')
         .map((name) => name.trim().toLowerCase()),
-    ).toContain(MARKER);
+    ).toEqual(expect.arrayContaining([MARKER, 'x-station-client-turn-id']));
   });
 
   test.each([

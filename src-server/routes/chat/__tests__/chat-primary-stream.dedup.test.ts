@@ -179,6 +179,7 @@ describe('streamPrimaryAgentChat client-turn dedup (station#1224 offline slice 2
     const first = await app.request('/chat?clientTurnId=client-turn-1', {
       method: 'POST',
     });
+    expect(memoryAdapter.createConversation).not.toHaveBeenCalled();
     const firstBody = await first.text();
     const firstEvents = readSSEEvents(firstBody);
     const firstConversationId = firstEvents.find(

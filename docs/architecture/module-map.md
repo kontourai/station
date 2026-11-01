@@ -2244,6 +2244,9 @@ Legacy rows without original digest proof remain unknown, even after reclaim: a 
 
 **Direct chat claim lifecycle.** `/chat` claims are tracked like thread claims
 ([#3581](https://github.com/kontourai/station/issues/3581)).
+The route generates a key when omitted and returns it in the exposed
+`X-Station-Client-Turn-Id` header. The stream flushes headers before creating
+the conversation or invoking the Agent.
 [`streamPrimaryAgentChat`](../../src-server/routes/chat/chat-primary-stream.ts)
 claims the key through the
 [`/chat` facade](../../src-server/routes/chat/chat-turn-dedup.ts) before the

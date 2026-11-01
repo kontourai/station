@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { NativeMemoryContinuityUnavailableError } from '../../services/orchestration/native-memory-continuity.js';
 import { projectToolContext } from './project-tool-context.js';
 /**
@@ -219,6 +220,20 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
         projectSlug,
       } = getBody(c);
       const { clientTurnId: _key, ...digestOptions } = rawOptions;
+      if (
+        _key !== undefined &&
+        (typeof _key !== 'string' || !_key.trim() || _key.length > 200)
+      )
+        return c.json(
+          {
+            success: false,
+            error:
+              'clientTurnId must be a non-empty string of at most 200 characters.',
+          },
+          400,
+        );
+      const clientTurnId = _key ?? randomUUID();
+      c.header('X-Station-Client-Turn-Id', clientTurnId);
       const submissionDigest = chatTurnSubmissionDigest({
         slug,
         plugin,
@@ -234,7 +249,7 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
         options: rawOptions,
         ambientContext,
       });
-      const optionsForPreparation = { ...rawOptions };
+      const optionsForPreparation = { ...rawOptions, clientTurnId };
       delete optionsForPreparation[WORKSPACE_PANE_HOST_ACTION_METADATA_KEY];
       const configurationLease = captureRuntimeConfigurationLease(ctx);
       requireCurrentRuntimeConfiguration(ctx, configurationLease);

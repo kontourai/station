@@ -302,8 +302,8 @@ export function streamPrimaryAgentChat({
     let isNewConversation = false;
     let releaseApprovalRequester = () => {};
     // archive#1224 (offline) — see chat-turn-dedup.ts.
-    let clientTurnId: string | undefined;
-    let ownsClientTurnClaim = false;
+    const clientTurnId = requestedClientTurnId;
+    let ownsClientTurnClaim = initialClaim?.claimed === true;
     let agentInvoked = false;
     let streamDrained = false;
     let dedupShortCircuited = false;
@@ -343,6 +343,9 @@ export function streamPrimaryAgentChat({
     }> = [];
 
     try {
+      // Flush the response headers carrying the key before creating a
+      // conversation or invoking an Agent.
+      if (clientTurnId) await streamWriter.write(': turn-key\n\n');
       const injectableStream = new InjectableStream();
       const agentSpec = ctx.agentSpecs.get(slug);
       const elicitation = StreamOrchestrator.createElicitationCallback(
@@ -369,7 +372,6 @@ export function streamPrimaryAgentChat({
       // assigned (its `fetch` could have failed locally before that SSE
       // frame arrived), so a duplicate request would otherwise mint a
       // SECOND, unrelated conversation instead of recognizing the original.
-      clientTurnId = requestedClientTurnId;
       if (clientTurnId) {
         const claim = initialClaim;
         if (claim && !('outcome' in claim)) {

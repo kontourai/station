@@ -1191,7 +1191,11 @@ not create an arbitrary model binding. The response is SSE; failures before
 stream creation use HTTP errors, while failures during a stream must be handled
 as stream outcomes.
 
-`options.clientTurnId` is an optional retry key. A resolved key replays
+`options.clientTurnId` is a retry key. When omitted, Station generates one
+and returns it in the `X-Station-Client-Turn-Id` response header; cross-origin
+clients can read that header. Station flushes the response before creating the
+conversation or invoking the Agent. Reuse that key to retry the same request.
+A resolved key replays
 `conversation-started` with the original conversation ID and a `finish`
 frame whose `finishReason` is `completed`, without running the Agent or
 replaying its output. Read the conversation for the answer. Station resolves
