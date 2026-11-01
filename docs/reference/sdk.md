@@ -2181,6 +2181,18 @@ Imperative API calls — use in event handlers, slash commands, or anywhere hook
 
 ### Turn steering and acknowledgement retries
 
+`steerChildWork(apiBase, { threadId, childId, turnId, input, clientInputId })`
+uses a distinct child-only command; `getChildWorkInstructions` reads its
+separately paged Station-attributed history. Both require the host's
+`childWorkSteering` capability. React clients can use
+`useSteerChildWorkMutation` and `useChildWorkInstructionsQuery`. Retain the
+same target, text and key when checking an uncertain delivery; a confirmed
+receipt does not send it again. The mutation does not retry automatically. The
+host capability establishes the API surface, not permission or provider support:
+read and operate authority are checked separately, and Codex v2 can refuse direct
+input even when v1 accepts it. An older host rejects the distinct command rather
+than steering the parent.
+
 `steerOrchestrationTurn({ threadId, text, turnId?, clientInputId?, apiBase? })`
 sends input to an open turn. With an ID it uses the protected `steerTurnOnce`
 wire command, which older servers reject before invocation. Without an ID it
@@ -2820,7 +2832,14 @@ exact Station/local/portable Project scope, members and invitations. Commands
 enable sharing, invite or revoke invitations, change a member, or transfer
 ownership. Capture the returned scope and member revision for writes; do not
 reconstruct authority from a slug or email. Enabling requires the expected local
-Project ID and current Station operator authority.
+Project ID and current Station operator authority. For a paired Device with an
+operator passkey session, `changeProjectAccess` returns
+`{ kind: 'step-up-required', transaction }` instead (#4306). Nothing has changed
+until the passkey confirmation on the consent origin, whose HTTPS review URL must
+share the API base's host name. `getProjectSharingEnablement` reports how the
+caller may enable (`direct`, `operator-passkey`, `operator-sign-in` or
+`unavailable`), and `getProjectSharingStepUpStatus` reads the pending review.
+A host older than #4306 fails the enablement read.
 
 When the read is refused with 403 `project_access_forbidden`,
 `projectAccessRefusal(error)` returns the server's
@@ -2832,7 +2851,8 @@ whether the Project is shared). It returns `undefined` for any other error,
 including an older Station that sends no details.
 
 `@kontourai/station-sdk/project-access` also exports `useProjectAccess(slug,
-requestScope)`. Its query keys include the selected Station and authority, and
+requestScope)` and `useProjectSharingEnablement(slug, requestScope, enabled)`.
+Their query keys include the selected Station and authority, and
 its mutations capture that scope before asynchronous work. Do not persist
 administrative projections or invitation tokens in application caches. Project
 administration grants no Station settings, device or compute authority.

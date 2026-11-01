@@ -1,0 +1,19 @@
+{
+  "revision": "b9425d0aa149134c9a244c50acbc94f182eec63e",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed restart Continue eligibility, failed history observation, boundary-derived key and composer isolation against ChatDockBody, interruption selector and messaging tests after the main merge. Focused tests passed; real restart and cross-device journeys were not exercised.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDockBody.tsx","src-ui/src/components/chat-dock/interruptedTurnContinue.ts"]},
+
+    {"path":"docs/design/offline-outbound-queue.md","note":"Reviewed the composed Continue and outbox wording against useActiveChatSessionMessaging and its delivery tests: replay retains the key, excludes composer files and does not restore its draft. Focused tests passed; no real offline device journey was exercised.","inputs":["docs/design/offline-outbound-queue.md"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Reviewed the UI-only consumer guidance and settings table against FeaturePreviewRegistry and the merged visual-skills and continue-interrupted-turn entries; the preview documentation check passed.","inputs":["docs/guides/feature-previews.md","docs/user/settings.md"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed the ChatDockBody delta for configuration effects: the restart Continue visibility guard reads existing transcript and preview state and adds no configuration key or default. No configuration reference change needed.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDockBody.tsx"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the ChatDockBody delta against the documented contracts: the restart Continue uses the existing chat send and boundary-derived client turn key; it adds no provider, route or wire contract. Focused UI and server tests passed; no live provider journey was exercised.","inputs":["docs/reference/contracts.md","src-ui/src/components/chat-dock/ChatDockBody.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"Reviewed the session and turn concepts against the restart Continue path: a tap sends an ordinary new turn in the existing conversation, without changing the concept definitions. Focused tests passed; live recovery was not exercised.","inputs":["docs/user/concepts.md","src-ui/src/components/chat-dock/ChatDockBody.tsx"]},
+
+    {"path":"docs/user/settings.md","note":"Reviewed both merged Feature Preview rows and the Continue after restart explanation against registry, transcript eligibility and composed send. Preview documentation check and focused tests passed; full real-device recovery remains unverified.","inputs":["docs/user/settings.md"]}
+  ]
+}

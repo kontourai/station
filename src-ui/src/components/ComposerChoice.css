@@ -1,0 +1,76 @@
+.composer-choices {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--k-space-2);
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.composer-choices > .choice-trigger.composer-choice {
+  flex: 0 1 auto;
+  min-width: 88px;
+  max-width: 40%;
+}
+
+.composer-choices
+  > .composer-choice:has(.composer-choice__icon, .chat-input__model-name) {
+  min-width: 112px;
+}
+
+.composer-choices > .composer-choice:has(.chat-input__engine-moved--short) {
+  min-width: 144px;
+}
+
+@supports (animation-timeline: scroll()) {
+  .composer-choices {
+    animation: chat-markdown-table-edge var(--ease-linear) both;
+    animation-timeline: scroll(self inline);
+  }
+}
+
+.choice-trigger.composer-choice {
+  min-height: 44px;
+  gap: var(--k-space-2);
+  padding-inline: var(--k-space-2);
+  font-size: var(--k-text-sm);
+  text-align: start;
+}
+
+.composer-choice__icon {
+  display: flex;
+  flex: none;
+  align-items: center;
+}
+
+.chat-input__chip-stack {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  line-height: 1.1;
+}
+
+.chat-input__chip-stack > * {
+  max-width: 100%;
+}
+
+.chat-input__chip-caption {
+  display: flex;
+  overflow: hidden;
+  white-space: nowrap;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.composer-choice__value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

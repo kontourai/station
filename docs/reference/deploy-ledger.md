@@ -28,6 +28,9 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-01T02:30:44Z | nightly-desktop | 0.1.11-nightly.2496 | `2b49d99` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/41261236636) |
+| 2026-11-01T02:30:40Z | nightly-android | 0.1.11-nightly.2496 | `2b49d99` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/41261236636) |
+| 2026-11-01T01:42:05Z | nightly-npm | 0.11.0-nightly.2496.41261236636 | `2b49d99` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/41261236636) |
 | 2026-10-31T22:08:50Z | nightly-npm | 0.11.0-nightly.2495.41245722791 | `4037fad` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/41245722791) |
 | 2026-10-31T14:45:15Z | nightly-desktop | 0.1.11-nightly.2495.1 | `ee3a07d` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/41207606546) |
 | 2026-10-31T14:45:12Z | nightly-android | 0.1.11-nightly.2495.1 | `ee3a07d` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/41207606546) |
@@ -391,6 +394,90 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-01T02:30:44Z · nightly-desktop · 0.1.11-nightly.2496
+
+- Ship SHA: `2b49d99ec926c52d85779b0e60b1d25d72430b4a`
+- Artifact built at: `2026-11-01T01:41:03.032Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 41261236636)
+
+### Changelog
+
+Commits since `ee3a07d` ([full sha](https://github.com/kontourai/station/commit/ee3a07d023d4919c48a3ae65e3918d41135024a6)):
+
+**Features**
+
+- [#4309](https://github.com/kontourai/station/pull/4309) feat(access): turn on Project sharing remotely with an operator passkey step-up (#4306)
+- [#4325](https://github.com/kontourai/station/pull/4325) feat(identity): passkeys for invited local-account members
+- [#4377](https://github.com/kontourai/station/pull/4377) feat(chat): simplify inbox, composer and conversation navigation
+- [#4321](https://github.com/kontourai/station/pull/4321) feat(settings): turn on Project sharing with local accounts from Settings
+- [#4372](https://github.com/kontourai/station/pull/4372) feat(efficiency): bound agent work, learning and isolated repairs
+
+**Fixes**
+
+- [#4410](https://github.com/kontourai/station/pull/4410) fix(ci): avoid reserved ports in portable smoke
+- [#4333](https://github.com/kontourai/station/pull/4333) fix(pairing): approve account-bound browsers with passkey consent
+- [#4409](https://github.com/kontourai/station/pull/4409) fix: validate shard suite coverage
+- [#4374](https://github.com/kontourai/station/pull/4374) fix(chat): send busy composer follow-ups to the durable inbox
+
+**Other**
+
+- [#4378](https://github.com/kontourai/station/pull/4378) test(chat-dock): pin that opening an existing conversation keeps the new-chat Project
+- [#4373](https://github.com/kontourai/station/pull/4373) build(deps-dev): bump glob from 13.0.6 to 14.0.2
+
+## 2026-11-01T02:30:40Z · nightly-android · 0.1.11-nightly.2496
+
+- Ship SHA: `2b49d99ec926c52d85779b0e60b1d25d72430b4a`
+- Artifact built at: `2026-11-01T01:40:43.487Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 41261236636)
+
+### Changelog
+
+Commits since `ee3a07d` ([full sha](https://github.com/kontourai/station/commit/ee3a07d023d4919c48a3ae65e3918d41135024a6)):
+
+**Features**
+
+- [#4309](https://github.com/kontourai/station/pull/4309) feat(access): turn on Project sharing remotely with an operator passkey step-up (#4306)
+- [#4325](https://github.com/kontourai/station/pull/4325) feat(identity): passkeys for invited local-account members
+- [#4377](https://github.com/kontourai/station/pull/4377) feat(chat): simplify inbox, composer and conversation navigation
+- [#4321](https://github.com/kontourai/station/pull/4321) feat(settings): turn on Project sharing with local accounts from Settings
+- [#4372](https://github.com/kontourai/station/pull/4372) feat(efficiency): bound agent work, learning and isolated repairs
+
+**Fixes**
+
+- [#4410](https://github.com/kontourai/station/pull/4410) fix(ci): avoid reserved ports in portable smoke
+- [#4333](https://github.com/kontourai/station/pull/4333) fix(pairing): approve account-bound browsers with passkey consent
+- [#4409](https://github.com/kontourai/station/pull/4409) fix: validate shard suite coverage
+- [#4374](https://github.com/kontourai/station/pull/4374) fix(chat): send busy composer follow-ups to the durable inbox
+
+**Other**
+
+- [#4378](https://github.com/kontourai/station/pull/4378) test(chat-dock): pin that opening an existing conversation keeps the new-chat Project
+- [#4373](https://github.com/kontourai/station/pull/4373) build(deps-dev): bump glob from 13.0.6 to 14.0.2
+
+## 2026-11-01T01:42:05Z · nightly-npm · 0.11.0-nightly.2496.41261236636
+
+- Ship SHA: `2b49d99ec926c52d85779b0e60b1d25d72430b4a`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.11.0-nightly.2496.41261236636 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `4037fad` ([full sha](https://github.com/kontourai/station/commit/4037fadb92bf4fd7257237b3f5ed3d2ce97af782)):
+
+**Features**
+
+- [#4309](https://github.com/kontourai/station/pull/4309) feat(access): turn on Project sharing remotely with an operator passkey step-up (#4306)
+- [#4325](https://github.com/kontourai/station/pull/4325) feat(identity): passkeys for invited local-account members
+- [#4377](https://github.com/kontourai/station/pull/4377) feat(chat): simplify inbox, composer and conversation navigation
+
+**Fixes**
+
+- [#4410](https://github.com/kontourai/station/pull/4410) fix(ci): avoid reserved ports in portable smoke
+- [#4333](https://github.com/kontourai/station/pull/4333) fix(pairing): approve account-bound browsers with passkey consent
 
 ## 2026-10-31T22:08:50Z · nightly-npm · 0.11.0-nightly.2495.41245722791
 

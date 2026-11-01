@@ -1487,6 +1487,13 @@
   .related-pane-strip .button.button {
     min-height: 44px;
   }
+
+  /* A system notice's recovery action and the Continue under a row a
+     restart stopped. */
+  .system-event__action.system-event__action,
+  .interrupted-turn-continue .button.button {
+    min-height: 44px;
+  }
   /* Qualified to outrank the base rule, which comes later in this file. */
   .station-switcher__item .station-switcher__remove {
     min-width: 44px;
@@ -1779,37 +1786,6 @@
   color: white;
 }
 
-.chat-input__chip-stack {
-  display: flex;
-  min-width: 0;
-  flex: 1;
-  flex-direction: column;
-  justify-content: center;
-  align-items: flex-start;
-  gap: 0;
-  line-height: 1.1;
-}
-
-/* A column flex item is sized to its content, not to the stack, so without
-   this a name wider than its shrunken chip ran on under the caret instead of
-   truncating (seen at 320px on three chips, and at 375px once ACP engines
-   gained a fourth, #3290). Bounding each line lets its ellipsis apply. */
-.chat-input__chip-stack > * {
-  max-width: 100%;
-}
-
-.chat-input__chip-caption {
-  display: flex;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text-muted);
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-}
-
 /* The caption's parts in priority order: the engine name (and an override
    marker) shrink to an ellipsis first; the move hint keeps its width, since a
    flex item's default `min-width: auto` will not go below its unwrapped text. */
@@ -1847,18 +1823,6 @@
 .chat-input__next-turn-destination {
   color: var(--k-text);
   font-weight: 600;
-}
-
-.chat-input__agent-name,
-.chat-input__model-name {
-  min-width: 0;
-  /* The stack aligns its lines to the start, which sizes each to its own
-     unwrapped text; without this cap a long name ran out of the chip and
-     under its caret instead of ending in an ellipsis. */
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .chat-error-details {
@@ -1939,21 +1903,6 @@
   color: var(--accent-yellow-text);
   font-weight: 600;
   background: color-mix(in srgb, var(--accent-yellow) 12%, transparent);
-}
-
-.chat-input__meta .chat-input__approval-chip {
-  flex: 0 0 auto;
-  white-space: nowrap;
-}
-
-.chat-input__approval-chip-label {
-  /* A flex child's default `min-width: auto` refuses to shrink below its
-     content size, which silently disables `text-overflow: ellipsis` — the
-     chip would just grow the row instead of truncating. */
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 @media (max-width: 480px) {
@@ -2376,6 +2325,11 @@
 .system-event__action:hover {
   color: var(--text-primary);
   border-color: var(--accent-primary);
+}
+
+.interrupted-turn-continue {
+  display: flex;
+  margin: var(--k-space-1) 0 var(--k-space-2);
 }
 
 /* One quiet meta row under a settled answer (archive#2652 redesign): the
@@ -3307,51 +3261,8 @@
     flex: 0 0 auto;
     min-width: 0;
   }
-  /* These carry the `.chat-input__meta` scope so they still WIN against the
-     desktop pill rules above, which had to be raised to (0,2,0) to escape
-     `.chat-input button`'s clobber. Dropping the scope here would silently
-     hand the 44px touch floor back to a 24px desktop value on a phone. */
-  .chat-input__meta .chat-input__model-btn {
-    flex: 0 1 auto;
-    /* Pinned for the same reason as the approval chip below: this scoped rule
-       (0,2,0) outranks `.chat-input button`'s (0,1,1) touch floor, so a bare
-       `min-width: 0` silently removes it. #3290 raised it from 44px to keep a
-       readable model name when four chips share the rail (it shrank to 72px
-       and read "Open…"); the rail scrolls past the edge instead. */
-    min-width: 112px;
-    max-width: 100%;
-  }
-  .chat-input__meta .chat-input__agent-btn {
-    flex: 0 1 auto;
-    max-width: 35%;
-  }
-  .chat-input__meta .chat-input__approval-chip {
-    flex: 0 0 auto;
-    max-width: 40%;
-  }
-  .chat-input__meta .chat-input__agent-btn {
-    /* #3290: 88px, not the 44px touch floor alone, keeps a readable name
-       ("OpenCo…", not "O…") once four chips share a phone rail; the rail
-       scrolls past its faded edge instead. */
-    min-width: 88px;
-    min-height: 44px;
-  }
-  .chat-input__meta .chat-input__approval-chip {
-    /* 44px, not 0. The old `min-width: 0` was harmless only because the long
-       label made the chip 152px wide anyway; with the short label it measures
-       40px, and this scoped rule now outranks the `.chat-input button` touch
-       floor that used to guarantee the width. Both dimensions are pinned here
-       so the floor cannot be lost again. */
-    min-width: 44px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    min-height: 44px;
-  }
   .chat-input .chat-input__send-btn,
   .chat-input__cancel-btn {
-    min-height: 44px;
-  }
-  .chat-input__meta .chat-input__model-btn {
     min-height: 44px;
   }
   .chat-input__meta .chat-input__model-reset {
@@ -3402,24 +3313,7 @@
 }
 
 .chat-input__settings {
-  display: flex;
   flex: 1 1 auto;
-  align-items: center;
-  gap: var(--k-space-2);
-  min-width: 0;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-/* #3290: the same scroll cue as an answer's wide table (index.css
-   `chat-markdown-table-edge`): while the chip rail can still scroll right,
-   its trailing edge fades; the fade is gone at the end of the scroll, and a
-   rail that fits has no active timeline, so it never fades. */
-@supports (animation-timeline: scroll()) {
-  .chat-input__settings {
-    animation: chat-markdown-table-edge var(--ease-linear) both;
-    animation-timeline: scroll(self inline);
-  }
 }
 
 .chat-input__activity {

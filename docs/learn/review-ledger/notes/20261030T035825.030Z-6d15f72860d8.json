@@ -1,0 +1,35 @@
+{
+  "revision": "d297b75ac5d5e156419c457b81b93f7e82947252",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Reviewed context relationships against the module map changes: Station-owned child instruction receipts do not bind a Flow run or turn Session completion into a gate verdict; feature-preview registry remains Operations. No prose change; source and document review only.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT.md","note":"Reviewed work/execution and evidence boundaries against the module map child journal and feature-preview changes. A Session still has event history, and an instruction acknowledgement is not a review or gate verdict. The map remains the implementation route. No prose change; no runtime qualification.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"README.md","note":"Reviewed product overview and contributor links against the module map changes. Child instructions preserve the distinction between work receipts and passed reviews; the feature-preview registry description does not change supported-engine or setup claims. No prose change; no release or device evidence inferred.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/README.md","note":"Reviewed documentation map authority and Feature previews link against the module map and feature-preview guide. The guide states a rule for new unfinished features; the registry inventory no longer implies every existing preview is opt-in. The navigation and source-evidence distinction remain accurate. No prose change.","inputs":["docs/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Reviewed settings architecture and its cited config reference against the titleModel change. Background bounded text generation and hosted refusal change neither settings scope nor the five separately default-off device developer switches described here. No prose change; no settings UI verification.","inputs":["docs/design/settings-architecture.md","docs/reference/config.md"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed Session, turn, agent and receipt vocabulary against the module map child journal and contracts child-work control/page additions. A child instruction and its delivery state do not redefine a Session, a turn or a gate verdict; capability is not provider acceptance. No prose change; source/document review only.","inputs":["docs/glossary.md","docs/architecture/module-map.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed public-contract routing and hosted target qualifications against contracts childWorkSteering, command and instruction-page claims. These additions grant no tenant authority or deployed multi-tenant guarantee; the guide still requires separate authorization, retry and real hosted evidence. No prose change; source/document review only.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed Station Control scope and child command guidance against the module map journal description, commandThread policy, authority guard and service recheck. Parent thread remains the scoped Session; a child target adds neither a tool grant nor a broader Project/host scope. No prose change; no live provider or deployment claim.","inputs":["docs/guides/self-configuring-agent.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Reviewed completed agent identity removal record against module map preview and child journal additions. Those additions do not introduce synthetic Agent IDs, alias promotion or change the executable inventory classification. Preserve its completed historical record; no prose change and inventory not rerun.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed Session API child command and journal against merged self-configuring-agent guidance and the scoped command policy, authority guard and route recheck. Both scope to the parent Session and retain child/turn identity and current caller authority; journal acknowledgement and provider support remain separate. No prose change; source review only.","inputs":["docs/reference/session-api.md","docs/guides/self-configuring-agent.md"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Reviewed settings route and Developer previews claims against the module map registry clarification. The five listed device developer previews remain independently default-off and are distinct from Station-wide host image preview defaults; no deep-link identity changes. No prose change; no browser execution.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Reviewed graph export source and evidence limits against the edited module map: the journal paragraph is an attributed source excerpt and registry wording changes input bytes, not exporter authority, inferred call graphs or test results. No prose change; no graph import or live Station execution.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Reviewed contracts scope instructions against the added child work command/page and capability documentation. They remain domain-subpath shapes and pure reducers; they add no service implementation or authority, and compatibility changes still need focused consumer tests. No instruction or governance change.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed server routing instructions against the module map child journal and registry updates. Route validation, service ownership, capability advertisement and source-linked module review remain appropriate; the child instruction route and flag follow those distinct seams. No instruction or governance change; no new test claim.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed UI routing instructions against the module map child journal and feature-preview description. A journal or capability flag does not itself prove rendered state; canonical contract-driven data and actual viewport evidence remain required. No instruction or governance change; concurrent UI not reviewed.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]}
+  ]
+}

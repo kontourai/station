@@ -1,0 +1,7 @@
+{
+  "revision": "fda32c6a5807e4e1322870199e94f1caf3984b2a",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed the approval mode and new-chat selection explanation against StartApprovalSummary, StartComposer and parity tests; focused UI tests passed, with live provider and device behavior unverified.","inputs":["docs/user/getting-started.md","src-ui/src/__tests__/StartComposerParity.test.tsx"]}
+  ]
+}

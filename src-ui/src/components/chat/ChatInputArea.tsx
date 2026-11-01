@@ -42,6 +42,7 @@ import {
 import { Button } from '../Button';
 import { ApprovalModeChip } from '../badges/ApprovalModeChip';
 import { EngineApprovalDisclosureChip } from '../badges/EngineApprovalDisclosureChip';
+import { ComposerChoice } from '../ComposerChoice';
 import {
   ComposerActionsMenu,
   type ComposerActionsMenuProps,
@@ -370,6 +371,7 @@ interface ChatInputAreaProps {
   secondaryActions?: ComposerActionsMenuProps;
   /** The visible, context-preserving Agent handoff entry point. */
   agentLabel?: string;
+  agentIcon?: React.ReactNode;
   /**
    * How the Agent is reached ("via model-proxy (home-server)"), when it is
    * not direct. Kept apart from the name so a narrow composer drops it first
@@ -551,6 +553,7 @@ export function ChatInputArea({
   onVoiceStop,
   secondaryActions,
   agentLabel,
+  agentIcon,
   agentRoute,
   onOpenAgentHandoff,
   agentHandoffTriggerRef,
@@ -718,6 +721,8 @@ export function ChatInputArea({
   const modelAccessibleLabel = [
     'Engine & model:',
     executionEngineLabel,
+    modelLabel,
+    `${executionEngineLabel ?? 'Engine & model'} ${modelLabel}`,
     agentEngineMove
       ? agentEngineMove.nextTurn
         ? `This conversation's ${executionEngineLabel ?? 'engine'} session has ended; its next turn starts on ${agentEngineMove.to}, where its Agent now points.`
@@ -1118,23 +1123,21 @@ export function ChatInputArea({
             </span>
           </p>
         )}
-        <div className="chat-input__settings">
+        <div className="composer-choices chat-input__settings">
           {onOpenAgentHandoff && (
-            <button
+            <ComposerChoice
               ref={agentHandoffTriggerRef}
-              type="button"
-              className="choice-trigger chat-input__agent-btn"
+              className="chat-input__agent-btn"
               onClick={agentHandoffDisabled ? undefined : onOpenAgentHandoff}
               aria-disabled={agentHandoffDisabled}
               aria-haspopup="dialog"
               aria-label={agentAccessibleLabel}
               title={agentAccessibleLabel}
-            >
-              <span className="chat-input__chip-stack">
-                <span className="chat-input__chip-caption" aria-hidden="true">
-                  Agent
-                </span>
-                <span className="chat-input__agent-name">
+              caption="Agent"
+              icon={agentIcon}
+              valueClassName="chat-input__agent-name"
+              value={
+                <>
                   {agentLabel ?? 'Current Agent'}
                   {agentRoute && (
                     <span className="chat-input__agent-route">
@@ -1142,24 +1145,21 @@ export function ChatInputArea({
                       {agentRoute}
                     </span>
                   )}
-                </span>
-              </span>
-              <ArrowDownGlyph className="choice-caret" />
-            </button>
+                </>
+              }
+            />
           )}
-          <button
+          <ComposerChoice
             ref={modelButtonRef}
-            type="button"
             onClick={canModelSelect ? onModelOpen : undefined}
             aria-disabled={!canModelSelect}
-            className={`choice-trigger chat-input__model-btn ${isOverride ? 'chat-input__model-btn--override' : 'chat-input__model-btn--default'}`}
+            className={`chat-input__model-btn ${isOverride ? 'chat-input__model-btn--override' : 'chat-input__model-btn--default'}`}
             aria-haspopup="dialog"
             aria-expanded={modelQuery !== null && !input.startsWith('/model ')}
             aria-label={modelAccessibleLabel}
             title={modelAccessibleLabel}
-          >
-            <span className="chat-input__chip-stack">
-              <span className="chat-input__chip-caption" aria-hidden="true">
+            caption={
+              <>
                 {/* The engine name gives way first, so a narrow chip keeps
                     the move hint rather than cutting it to an ellipsis. */}
                 <span className="chat-input__chip-caption-engine">
@@ -1187,13 +1187,11 @@ export function ChatInputArea({
                     {' · Conversation override'}
                   </span>
                 ) : null}
-              </span>
-              <span className="chat-input__model-name" aria-hidden="true">
-                {modelLabel}
-              </span>
-            </span>
-            <ArrowDownGlyph className="choice-caret" />
-          </button>
+              </>
+            }
+            value={modelLabel}
+            valueClassName="chat-input__model-name"
+          />
           {/* A reset the conversation cannot take at all is not offered. While
               the reset is only temporarily blocked (any shared handoff reason:
               a turn running, queued or offline messages unresolved, or their
