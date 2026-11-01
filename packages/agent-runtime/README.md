@@ -12,13 +12,13 @@ AI SDK v3 interface, VoltAgent 2.10.0 and Strands 1.19.0 VercelModel. Optional
 framework dependencies are exact peers. The package imports no Station code.
 
 The public root also exports an agent-turn journal and recovery owner. Its
-separate `agent_steps_` namespace declares writer format `agent-steps/2` and
+separate `agent_steps_` namespace declares writer format `agent-steps/3` and
 leaves existing `runtime-model/1` records intact. An active conversation has
 one owner. Recovery requires a proven-dead owner and compares the complete
 observed fence inside the SQLite write transaction. A retained Station turn
 boundary grants no execution authority. Station boot calls this owner before
-ordinary interrupted-turn settlement. Foreground registration and durable
-approvals are still required before this qualifies a resumed Station turn.
+ordinary interrupted-turn settlement. Foreground registration and Station's
+approval delivery integration are still required before this qualifies a resumed Station turn.
 The explicit ownership-writer migration validates the old namespace and every
 old turn, preserves their record bytes, then adds the effect table atomically.
 The prior writer refuses the new metadata; future writers refuse here too.
@@ -36,6 +36,17 @@ before entering a tool. Recovery replays completed results, retries an interrupt
 result for an interrupted `unsafe` call. Concurrent identical calls join the
 same local execution. Changed input or a stale owner refuses. Unknown tools
 must default to `unsafe` in the host; replay safety is a trusted declaration.
+
+`lease.approval(tool, timeoutMs, wait)` persists a pending request before asking
+the host. Its identity and absolute deadline survive takeover. The host receives
+that identity and the remaining time when it reinstalls the wait; it must never
+substitute an automatic approval. A decision compares the current owner fence
+and approval revision, commits once, and cannot grant permission after the
+deadline. Pending, denied and expired approvals block the tool execution grant.
+Duplicate local waits join one request. A failed decision commit leaves the
+request pending, and a dead owner's late answer cannot resolve its successor's
+request. Writer 3 adds this table through an explicit atomic migration from
+writers 1 and 2 without rewriting their turn or effect records.
 
 The host supplies authorization/current implementation and writer-generation
 closures, real owner liveness, and the already-authorized source cutoff.
@@ -63,7 +74,7 @@ The legacy model-only consumers refuse tools before their registered body and bl
 the framework catches the refusal. Client-tool responses exercise the model
 commit barrier; they do not establish durable tools, results or approvals.
 They do not supply the agent-turn tool protocol described above. No new agent
-loop is introduced; approvals remain a separate integration obligation.
+loop is introduced; Station approval delivery remains an integration obligation.
 
 SQLite bodies are immutable, content-addressed BLOBs in the existing host
 connection's `agent_runtime_` namespace. Opening requires WAL, FULL synchronous

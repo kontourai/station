@@ -13,7 +13,7 @@ it('migration from the ownership writer preserves original turn bytes and future
     .prepare('SELECT record FROM agent_steps_turns')
     .get()?.record;
   f.database.exec(
-    "DROP TABLE agent_steps_effects; DROP TABLE agent_steps_meta; CREATE TABLE agent_steps_meta(id INTEGER PRIMARY KEY CHECK(id=1), writer_format TEXT NOT NULL CHECK(writer_format='agent-steps/1')) STRICT; INSERT INTO agent_steps_meta VALUES(1,'agent-steps/1');",
+    "DROP TABLE agent_steps_approvals; DROP TABLE agent_steps_effects; DROP TABLE agent_steps_meta; CREATE TABLE agent_steps_meta(id INTEGER PRIMARY KEY CHECK(id=1), writer_format TEXT NOT NULL CHECK(writer_format='agent-steps/1')) STRICT; INSERT INTO agent_steps_meta VALUES(1,'agent-steps/1');",
   );
   await f.crash.reopen();
   expect(
@@ -22,7 +22,7 @@ it('migration from the ownership writer preserves original turn bytes and future
   expect(
     f.database.prepare('SELECT writer_format FROM agent_steps_meta').get()
       ?.writer_format,
-  ).toBe('agent-steps/2');
+  ).toBe('agent-steps/3');
   f.database.exec(
     "DROP TABLE agent_steps_meta; CREATE TABLE agent_steps_meta(id INTEGER PRIMARY KEY, writer_format TEXT NOT NULL) STRICT; INSERT INTO agent_steps_meta VALUES(1,'agent-steps/99');",
   );

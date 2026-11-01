@@ -165,6 +165,7 @@ export function decideAgentEffect(
   database: DatabaseSync,
   turnId: string,
   command: EffectCommand,
+  now: number,
 ):
   | EffectResult
   | { readonly kind: 'refused'; readonly reason: 'conflict' | 'busy' } {
@@ -197,6 +198,14 @@ export function decideAgentEffect(
   }
   if (!effect) return { kind: 'refused', reason: 'conflict' };
   if (command.type === 'effectBegin') {
+    const approval = database
+      .prepare(
+        'SELECT record FROM agent_steps_approvals WHERE turn_id=? AND tool_id=?',
+      )
+      .get(turnId, id);
+    const decision = approval && JSON.parse(String(approval.record));
+    if (decision && (decision.state !== 'approved' || now >= decision.deadline))
+      return { kind: 'refused', reason: 'busy' };
     if (effect.state !== 'planned')
       return { kind: 'effect', effect, execute: false };
     effect.state = 'running';

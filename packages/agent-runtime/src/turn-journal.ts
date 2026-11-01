@@ -8,6 +8,15 @@ import type {
 import { z } from 'zod';
 import { canonical, fence, hash, owner, runKey, text } from './encoding.js';
 import {
+  type ApprovalCommand,
+  type ApprovalResult,
+  approvalCommands,
+  approvalsDefinition,
+  decideAgentApproval,
+  readAgentApproval,
+  validateAgentApprovals,
+} from './turn-approvals.js';
+import {
   decideAgentEffect,
   type EffectCommand,
   type EffectResult,
@@ -43,6 +52,7 @@ const turnSchema = z
   .strict();
 export type AgentTurnRecord = z.infer<typeof turnSchema>;
 export type AgentJournalResult =
+  | ApprovalResult
   | EffectResult
   | { readonly kind: 'owned'; readonly turn: AgentTurnRecord }
   | { readonly kind: 'absent' }
@@ -56,9 +66,10 @@ export type AgentJournalResult =
         | 'settled';
     };
 type Owned = { readonly key: RunKey; readonly expected: Fence };
+type StepCommand = EffectCommand | ApprovalCommand;
 type EffectProtocol = {
-  [K in EffectCommand['type']]: {
-    command: Extract<EffectCommand, { type: K }>;
+  [K in StepCommand['type']]: {
+    command: Extract<StepCommand, { type: K }>;
     result: AgentJournalResult;
   };
 };
@@ -87,7 +98,10 @@ export type AgentJournalProtocol = EffectProtocol & {
     result: AgentJournalResult;
   };
 };
-export type AgentJournalContext = { readonly liveness: OwnerLiveness };
+export type AgentJournalContext = {
+  readonly liveness: OwnerLiveness;
+  readonly now?: () => number;
+};
 export type AgentJournal = AtomicPort<
   AgentJournalProtocol,
   AgentJournalContext
@@ -99,6 +113,7 @@ export type AgentJournalParticipant = AtomicParticipant<
 const ownedFields = { key: runKey, expected: fence };
 const commandSchema = z.discriminatedUnion('type', [
   ...effectCommands,
+  ...approvalCommands,
   z.object({ type: z.literal('open'), spec, owner }).strict(),
   z.object({ type: z.literal('read'), key: runKey }).strict(),
   z.object({ type: z.literal('claim'), ...ownedFields, owner }).strict(),
@@ -111,10 +126,11 @@ const commandSchema = z.discriminatedUnion('type', [
     .strict(),
 ]);
 const definitions = [
-  "CREATE TABLE agent_steps_meta(id INTEGER PRIMARY KEY CHECK(id=1), writer_format TEXT NOT NULL CHECK(writer_format='agent-steps/2')) STRICT",
+  "CREATE TABLE agent_steps_meta(id INTEGER PRIMARY KEY CHECK(id=1), writer_format TEXT NOT NULL CHECK(writer_format='agent-steps/3')) STRICT",
   'CREATE TABLE agent_steps_turns(id TEXT PRIMARY KEY, scope TEXT NOT NULL, conversation TEXT NOT NULL, active INTEGER NOT NULL CHECK(active IN (0,1)), record TEXT NOT NULL) STRICT',
   'CREATE UNIQUE INDEX agent_steps_active_conversation ON agent_steps_turns(scope,conversation) WHERE active=1',
   effectsDefinition,
+  approvalsDefinition,
 ] as const;
 const idOf = (key: RunKey) => canonical(key);
 function validateRow(row: Record<string, unknown>): AgentTurnRecord {
@@ -162,7 +178,7 @@ export function openSqliteAgentJournal(options: {
         ?.n !== 1 ||
       database
         .prepare('SELECT writer_format FROM agent_steps_meta WHERE id=1')
-        .get()?.writer_format !== 'agent-steps/2'
+        .get()?.writer_format !== 'agent-steps/3'
     )
       throw new Error('DURABLE_AGENT_WRITER_UNSUPPORTED');
   };
@@ -182,18 +198,17 @@ export function openSqliteAgentJournal(options: {
     database.exec('BEGIN IMMEDIATE');
     try {
       for (const sql of definitions) database.exec(sql);
-      database.exec("INSERT INTO agent_steps_meta VALUES(1,'agent-steps/2')");
+      database.exec("INSERT INTO agent_steps_meta VALUES(1,'agent-steps/3')");
       database.exec('COMMIT');
     } catch (error) {
       if (database.isTransaction) database.exec('ROLLBACK');
       throw error;
     }
   }
-  const legacy =
-    database
-      .prepare('SELECT writer_format FROM main.agent_steps_meta WHERE id=1')
-      .get()?.writer_format === 'agent-steps/1';
-  if (legacy) {
+  const priorWriter = database
+    .prepare('SELECT writer_format FROM main.agent_steps_meta WHERE id=1')
+    .get()?.writer_format;
+  if (priorWriter === 'agent-steps/1' || priorWriter === 'agent-steps/2') {
     const actual = database
       .prepare(
         "SELECT sql FROM main.sqlite_schema WHERE (lower(name) GLOB 'agent_steps_*' OR lower(tbl_name) GLOB 'agent_steps_*') AND sql IS NOT NULL",
@@ -202,8 +217,8 @@ export function openSqliteAgentJournal(options: {
       .map((r) => r.sql)
       .sort();
     const expected = definitions
-      .slice(0, 3)
-      .map((sql) => sql.replace('agent-steps/2', 'agent-steps/1'))
+      .slice(0, priorWriter === 'agent-steps/1' ? 3 : 4)
+      .map((sql) => sql.replace('agent-steps/3', priorWriter))
       .sort();
     if (
       canonical(actual) !== canonical(expected) ||
@@ -222,8 +237,14 @@ export function openSqliteAgentJournal(options: {
         validateRow(row);
       database.exec('DROP TABLE agent_steps_meta');
       database.exec(definitions[0]);
-      database.exec("INSERT INTO agent_steps_meta VALUES(1,'agent-steps/2')");
-      database.exec(effectsDefinition);
+      database.exec("INSERT INTO agent_steps_meta VALUES(1,'agent-steps/3')");
+      if (priorWriter === 'agent-steps/1') database.exec(effectsDefinition);
+      else
+        for (const row of database
+          .prepare('SELECT id FROM main.agent_steps_turns')
+          .all())
+          validateAgentEffects(database, String(row.id));
+      database.exec(approvalsDefinition);
       database.exec('COMMIT');
     } catch (error) {
       if (database.isTransaction) database.exec('ROLLBACK');
@@ -233,8 +254,11 @@ export function openSqliteAgentJournal(options: {
   validateSchema();
   for (const row of database
     .prepare('SELECT * FROM agent_steps_turns WHERE active=1')
-    .all())
-    validateAgentEffects(database, idOf(validateRow(row).spec.key));
+    .all()) {
+    const id = idOf(validateRow(row).spec.key);
+    validateAgentEffects(database, id);
+    validateAgentApprovals(database, id);
+  }
   const read = (key: RunKey) => {
     const row = database
       .prepare('SELECT * FROM agent_steps_turns WHERE id=?')
@@ -242,6 +266,7 @@ export function openSqliteAgentJournal(options: {
     if (!row) return undefined;
     const turn = validateRow(row);
     validateAgentEffects(database, idOf(key));
+    validateAgentApprovals(database, idOf(key));
     return turn;
   };
   const write = (turn: AgentTurnRecord) => {
@@ -326,7 +351,24 @@ export function openSqliteAgentJournal(options: {
           ) {
             if (context.liveness(structuredClone(turn.fence.owner)) !== 'live')
               return { kind: 'refused', reason: 'unknown-owner' };
-            return decideAgentEffect(database, idOf(key), command);
+            return decideAgentEffect(
+              database,
+              idOf(key),
+              command,
+              context.now?.() ?? Date.now(),
+            );
+          } else if (
+            command.type === 'approvalPlan' ||
+            command.type === 'approvalResolve'
+          ) {
+            if (context.liveness(structuredClone(turn.fence.owner)) !== 'live')
+              return { kind: 'refused', reason: 'unknown-owner' };
+            return decideAgentApproval(
+              database,
+              idOf(key),
+              command,
+              context.now?.() ?? Date.now(),
+            );
           } else {
             if (context.liveness(turn.fence.owner) !== 'live')
               return { kind: 'refused', reason: 'unknown-owner' };
@@ -339,7 +381,9 @@ export function openSqliteAgentJournal(options: {
         const answer = decide();
         if (
           command.type !== 'read' &&
-          (answer.kind === 'owned' || answer.kind === 'effect')
+          (answer.kind === 'owned' ||
+            answer.kind === 'effect' ||
+            answer.kind === 'approval')
         ) {
           for (const participant of participants) {
             const returned: unknown = participant.commit?.(
@@ -357,6 +401,17 @@ export function openSqliteAgentJournal(options: {
         if (
           answer.kind === 'owned' &&
           canonical(read(answer.turn.spec.key)) !== canonical(answer.turn)
+        )
+          throw new Error('DURABLE_AGENT_PARTICIPANT_CHANGED_STATE');
+        if (
+          answer.kind === 'approval' &&
+          canonical(
+            readAgentApproval(
+              database,
+              idOf(command.type === 'open' ? command.spec.key : command.key),
+              answer.approval.id,
+            ),
+          ) !== canonical(answer.approval)
         )
           throw new Error('DURABLE_AGENT_PARTICIPANT_CHANGED_STATE');
         if (

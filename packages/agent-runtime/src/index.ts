@@ -24,6 +24,7 @@ export {
 } from './turn-journal.js';
 export { durableLanguageModel } from './turn-model.js';
 export {
+  type AgentToolIntent,
   type AgentTurnLease,
   createAgentRuntime,
   currentAgentTurn,

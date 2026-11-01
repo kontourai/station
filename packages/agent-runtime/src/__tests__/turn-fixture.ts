@@ -39,6 +39,7 @@ export async function turnFixture() {
     async dispose() {},
   });
   let dead = false;
+  let now = 1_000;
   const liveness = (candidate: { id: string }) =>
     dead && candidate.id === owner.id ? ('dead' as const) : ('live' as const);
   const runtime = createAgentRuntime({
@@ -46,6 +47,7 @@ export async function turnFixture() {
     owner,
     liveness,
     implementation: 'station-agent/1',
+    now: () => now,
   });
   const lease = await runtime.start({
     key,
@@ -56,6 +58,7 @@ export async function turnFixture() {
     journal: crash.storage,
     owner: nextOwner,
     liveness,
+    now: () => now,
     implementation: 'station-agent/1',
   });
   return {
@@ -64,6 +67,9 @@ export async function turnFixture() {
     crash,
     lease,
     liveness,
+    advance: (milliseconds: number) => {
+      now += milliseconds;
+    },
     async recover(): Promise<AgentTurnLease> {
       dead = true;
       await crash.reopen();

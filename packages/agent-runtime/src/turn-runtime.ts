@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import type { OwnerIdentity, OwnerLiveness } from '@kontourai/monument';
 import { canonical } from './encoding.js';
+import type { ApprovalCommand, ApprovalResult } from './turn-approvals.js';
 import type {
   EffectCommand,
   EffectIntent,
@@ -17,6 +18,14 @@ import type { RunKey } from './types.js';
 type EffectOperation<C = EffectCommand> = C extends EffectCommand
   ? Omit<C, 'key' | 'expected'>
   : never;
+type ApprovalOperation<C = ApprovalCommand> = C extends ApprovalCommand
+  ? Omit<C, 'key' | 'expected'>
+  : never;
+export interface AgentToolIntent {
+  readonly id: string;
+  readonly input: unknown;
+  readonly replay: 'safe' | 'unsafe';
+}
 export interface AgentTurnLease {
   readonly key: RunKey;
   readonly input: string;
@@ -26,6 +35,16 @@ export interface AgentTurnLease {
   cancel(): void;
   readonly signal: AbortSignal;
   effect(command: EffectOperation): Promise<EffectResult>;
+  approvalCommand(command: ApprovalOperation): Promise<ApprovalResult>;
+  approval(
+    tool: AgentToolIntent,
+    timeoutMs: number,
+    wait: (pending: {
+      id: string;
+      deadline: number;
+      remainingMs: number;
+    }) => Promise<boolean>,
+  ): Promise<boolean>;
   tool(
     intent: {
       readonly id: string;
@@ -56,8 +75,10 @@ export function createAgentRuntime(options: {
   readonly owner: OwnerIdentity;
   readonly liveness: OwnerLiveness;
   readonly implementation: string;
+  readonly now?: () => number;
 }) {
-  const context = { liveness: options.liveness };
+  const now = options.now ?? Date.now;
+  const context = { liveness: options.liveness, now };
   const leases = new Map<string, AgentTurnLease>();
   const mint = (record: AgentTurnRecord): AgentTurnLease => {
     const controller = new AbortController();
@@ -67,10 +88,76 @@ export function createAgentRuntime(options: {
       string,
       { input: string; result: Promise<unknown> }
     >();
+    const approvalWaits = new Map<
+      string,
+      { input: string; result: Promise<boolean> }
+    >();
     const lease: AgentTurnLease = {
       key: structuredClone(record.spec.key),
       input: record.spec.input,
       signal: controller.signal,
+      async approvalCommand(command) {
+        const result = await options.journal.execute(
+          { ...command, key: turn.spec.key, expected: turn.fence },
+          context,
+        );
+        if (result.kind !== 'approval')
+          throw new Error(
+            `DURABLE_AGENT_APPROVAL_${result.kind === 'refused' ? result.reason.toUpperCase() : 'UNAVAILABLE'}`,
+          );
+        return result;
+      },
+      async approval(tool, timeoutMs, wait) {
+        if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1)
+          throw new Error('DURABLE_AGENT_APPROVAL_TIMEOUT_INVALID');
+        const input = agentWire(tool.input);
+        const identity = agentWire({ input: tool.input, replay: tool.replay });
+        const prior = approvalWaits.get(tool.id);
+        if (prior) {
+          if (prior.input !== identity)
+            throw new Error('DURABLE_AGENT_APPROVAL_CHANGED');
+          return prior.result;
+        }
+        const pending = (async () => {
+          await lease.effect({
+            type: 'effectPlan',
+            intent: { id: tool.id, kind: 'tool', replay: tool.replay, input },
+          });
+          const { approval } = await lease.approvalCommand({
+            type: 'approvalPlan',
+            id: `approval:${tool.id}`,
+            toolId: tool.id,
+            input,
+            deadline: now() + timeoutMs,
+          });
+          if (approval.state !== 'pending')
+            return approval.state === 'approved' && now() < approval.deadline;
+          await lease.assertCurrent();
+          const decision =
+            now() >= approval.deadline
+              ? 'expired'
+              : (await wait({
+                    id: approval.id,
+                    deadline: approval.deadline,
+                    remainingMs: approval.deadline - now(),
+                  })) === true && !lease.signal.aborted
+                ? 'approved'
+                : 'denied';
+          const resolved = await lease.approvalCommand({
+            type: 'approvalResolve',
+            id: approval.id,
+            expectedRevision: approval.revision,
+            decision,
+          });
+          return resolved.approval.state === 'approved';
+        })();
+        approvalWaits.set(tool.id, { input: identity, result: pending });
+        void pending.catch(() => {
+          if (approvalWaits.get(tool.id)?.result === pending)
+            approvalWaits.delete(tool.id);
+        });
+        return pending;
+      },
       async effect(command) {
         const result = await options.journal.execute(
           { ...command, key: turn.spec.key, expected: turn.fence },
@@ -119,6 +206,10 @@ export function createAgentRuntime(options: {
           return output;
         })();
         toolCalls.set(intent.id, { input, result });
+        void result.catch(() => {
+          if (toolCalls.get(intent.id)?.result === result)
+            toolCalls.delete(intent.id);
+        });
         return result;
       },
       async assertCurrent() {
