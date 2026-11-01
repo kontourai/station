@@ -568,6 +568,9 @@ export function buildOrchestrationSessionSummary(options: {
     threadId: string,
     provider: string | undefined,
   ) => ChildWorkSessionView | undefined;
+  readOwnedWork?: (
+    threadId: string,
+  ) => { runningChildCount: number; pendingStopCount: number } | undefined;
   /**
    * The CONVERSATION's first prompted turn, supplied only when this thread is a
    * continuation child (`EventStore.conversationRootFirstPromptedTurn`).
@@ -793,6 +796,17 @@ export function buildOrchestrationSessionSummary(options: {
     hasActiveTurn: hasOpenTurn(events),
     ...(draft !== undefined ? { draft } : {}),
   };
+  const ownedWork = options.readOwnedWork?.(base.threadId);
+  if (
+    ownedWork &&
+    (ownedWork.runningChildCount > 0 || ownedWork.pendingStopCount > 0)
+  ) {
+    summary.ownedWork = {
+      ...ownedWork,
+      ownLifecycleState: lifecycle.lifecycleState,
+    };
+    summary.lifecycleState = 'running';
+  }
   // #2456: a delegated session, as its parent's child work. Derived from the
   // summary's own folds (delegation + open turn + lifecycle), so it can never
   // disagree with the members it is computed from.

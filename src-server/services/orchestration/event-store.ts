@@ -15060,6 +15060,35 @@ export class EventStore {
     return ownedDescendantsBottomUp(this.db, parentId);
   }
 
+  ownedSessionActivity(parentId: string): {
+    runningChildCount: number;
+    pendingStopCount: number;
+  } {
+    const children = ownedDescendantsBottomUp(this.db, parentId);
+    const owned = new Set([parentId, ...children]);
+    const pendingStopCount = this.pendingCascadeStops().filter((intent) =>
+      owned.has(intent.childId),
+    ).length;
+    let runningChildCount = 0;
+    for (const childId of children) {
+      const stoppedAndFenced = this.db
+        .prepare(`SELECT 1 FROM orchestration_cascade_stop_intents i
+        JOIN orchestration_cancellation_fences f ON f.thread_id = i.child_session_id AND f.terminal_event_id = i.terminal_event_id
+        WHERE i.child_session_id = ? AND i.state = 'completed' LIMIT 1`)
+        .get(childId);
+      if (stoppedAndFenced) continue;
+      if (
+        this.db
+          .prepare(`SELECT 1 FROM provider_session_state WHERE thread_id = ? AND status = 'running'
+        UNION ALL SELECT 1 FROM orchestration_turn_boundaries WHERE thread_id = ? AND state IN ('prepared', 'invoking', 'accepted', 'indeterminate')
+        UNION ALL SELECT 1 FROM orchestration_ownership_starts WHERE child_session_id = ? LIMIT 1`)
+          .get(childId, childId, childId)
+      )
+        runningChildCount++;
+    }
+    return { runningChildCount, pendingStopCount };
+  }
+
   reserveOwnershipStart(childId: string, metadata?: Record<string, unknown>) {
     reserveOwnershipStart(this.db, childId, metadata);
   }

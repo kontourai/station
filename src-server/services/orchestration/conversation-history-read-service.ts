@@ -139,6 +139,8 @@ export class ConversationHistoryReadService {
           1_000,
         );
         const summary = buildOrchestrationSessionSummary({
+          readOwnedWork: (threadId) =>
+            this.options.eventStore.ownedSessionActivity(threadId),
           persisted,
           loaded,
           events: events.map((event) => event.payload),

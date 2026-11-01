@@ -2794,6 +2794,7 @@ export class OrchestrationService {
       },
     });
     this.sessionEventReads = new SessionEventReads({
+      readOwnedWork: this.readOwnedWork,
       ...(options.eventStore ? { eventStore: options.eventStore } : {}),
       logger: options.logger,
       listSessions: (authority) => this.listSessions(authority),
@@ -2999,6 +3000,7 @@ export class OrchestrationService {
           ? this.options.eventStore?.conversationDraftFacts(summaryThreadId)
           : undefined;
         const session = buildOrchestrationSessionSummary({
+          readOwnedWork: this.readOwnedWork,
           persisted,
           loaded,
           events: [...events],
@@ -4916,6 +4918,7 @@ export class OrchestrationService {
         const conversationDraftFacts =
           conversationDraftFactsByThread?.get(threadId);
         const summary = buildOrchestrationSessionSummary({
+          readOwnedWork: this.readOwnedWork,
           persisted,
           loaded,
           events: events.map((event) => event.payload),
@@ -5436,6 +5439,7 @@ export class OrchestrationService {
       this.options.eventStore?.conversationDraftFacts(threadId);
     return {
       session: buildOrchestrationSessionSummary({
+        readOwnedWork: this.readOwnedWork,
         persisted,
         loaded,
         events: summaryEvents,
@@ -5953,6 +5957,7 @@ export class OrchestrationService {
     // required member working as designed — every construction site is
     // enumerated, and an internal one costs two map lookups.
     const summary = buildOrchestrationSessionSummary({
+      readOwnedWork: this.readOwnedWork,
       persisted,
       loaded,
       events,
@@ -6005,6 +6010,7 @@ export class OrchestrationService {
       )
         return unavailable();
       const summary = buildOrchestrationSessionSummary({
+        readOwnedWork: this.readOwnedWork,
         persisted,
         loaded,
         events:
@@ -6794,6 +6800,7 @@ export class OrchestrationService {
           if (!persisted && !loaded) return undefined;
           const provider = (loaded ?? persisted)?.provider;
           const summary = buildOrchestrationSessionSummary({
+            readOwnedWork: this.readOwnedWork,
             persisted,
             loaded,
             events: eventStore
@@ -14226,8 +14233,17 @@ export class OrchestrationService {
   }
 
   /** Read-only quiescence seam for derived projections that must not race a turn. */
+  private readonly readOwnedWork = (threadId: string) =>
+    this.options.eventStore?.ownedSessionActivity(threadId);
+
   hasActiveTurn(threadId: string): boolean {
-    return this.sessionExecutionCoordinator.hasActiveTurn(threadId);
+    const owned = this.readOwnedWork(threadId);
+    return (
+      this.sessionExecutionCoordinator.hasActiveTurn(threadId) ||
+      Boolean(
+        owned && (owned.runningChildCount > 0 || owned.pendingStopCount > 0),
+      )
+    );
   }
 
   /**
@@ -14812,6 +14828,9 @@ export class OrchestrationService {
     now: number,
     parkAfterMs: number,
   ): boolean {
+    const owned = this.readOwnedWork(threadId);
+    if (owned && (owned.runningChildCount > 0 || owned.pendingStopCount > 0))
+      return false;
     if (
       this.parkingThreads.has(threadId) ||
       this.materializingSessions.has(threadId) ||
@@ -15527,6 +15546,7 @@ export class OrchestrationService {
         .listSessionProjectionEvents(id)
         .map((event) => event.payload);
       const session = buildOrchestrationSessionSummary({
+        readOwnedWork: this.readOwnedWork,
         persisted,
         loaded,
         events,

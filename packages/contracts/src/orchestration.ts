@@ -1142,6 +1142,12 @@ export interface TerminalAttribution {
 }
 
 export interface OrchestrationSessionSummary extends ProviderSession {
+  /** Aggregate owned execution activity; the parent's own event fold is retained. */
+  ownedWork?: {
+    runningChildCount: number;
+    pendingStopCount: number;
+    ownLifecycleState: SessionLifecycleState;
+  };
   controlMode: SessionControlMode;
   /**
    * REQUIRED, and that is the point (ADR 0012 / archive#1778). The consumer
