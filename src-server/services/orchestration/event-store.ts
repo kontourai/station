@@ -243,6 +243,7 @@ import {
   attachmentBlobRefFor,
   isAttachmentBlobRef,
 } from './attachment-blob-store.js';
+import { CANCELLATION_FENCE_SCHEMA } from './cancellation-fence.js';
 import {
   CANONICAL_TERMINAL_EVENT_SQL,
   canonicalTerminalOutcome,
@@ -2860,6 +2861,7 @@ export class EventStore {
     applyWalJournalMode(this.db, { store: 'orchestration event store' });
     try {
       this.db.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
+      this.db.exec(CANCELLATION_FENCE_SCHEMA);
       this.db.exec(`CREATE TABLE IF NOT EXISTS orchestration_steer_inputs (
         thread_id TEXT NOT NULL,
         client_input_id TEXT NOT NULL,
