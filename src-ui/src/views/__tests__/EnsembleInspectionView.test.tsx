@@ -58,9 +58,6 @@ vi.mock('../../components/SplitPaneLayout', () => ({
     <div>{children}</div>
   ),
 }));
-vi.mock('../../components/page-frame/PageFrame', () => ({
-  PageFrame: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-}));
 vi.mock('../../app-shell/RouteViewBoundary', () => ({
   RouteViewBoundary: ({ children }: { children: ReactNode }) => (
     <Suspense fallback="Loading">{children}</Suspense>
@@ -484,7 +481,6 @@ test('preset creation saves exact scoped bindings without starting engines; expl
   expect(input.operationId).toMatch(/^[0-9a-f-]{36}$/);
   expect(input.deadlineAt).toBeGreaterThan(Date.now());
   expect(input.bindings.lead.target.model).toBeUndefined();
-  expect(screen.getByText('No engines started by this form.')).toBeDefined();
   fireEvent.click(screen.getByRole('button', { name: 'Run session group' }));
   await waitFor(() => expect(finishRun).toBeDefined());
   fireEvent.click(screen.getByRole('button', { name: 'Cancel session group' }));

@@ -13,6 +13,11 @@
   max-width: 100%;
   gap: var(--k-space-4);
 }
+.ensemble-inspection summary {
+  min-height: 44px;
+  align-content: center;
+  cursor: pointer;
+}
 .ensemble-inspection input,
 .ensemble-inspection textarea {
   min-height: 44px;

@@ -3,6 +3,7 @@ import { useInspectEnsemble } from '@kontourai/station-sdk';
 import { StationHttpError } from '@kontourai/station-sdk/client';
 import { useState } from 'react';
 import { Button } from '../components/Button';
+import { usePageHeader } from '../components/page-frame';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import { useNavigationActions } from '../contexts/NavigationContext';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
@@ -14,6 +15,7 @@ import { ReportGroupsPanel } from './ReportGroupsPanel';
 import './EnsembleInspectionView.css';
 
 export function EnsembleInspectionView() {
+  usePageHeader({ title: 'Inspect an Ensemble' });
   const scope = useHostRequestAuthorityScope();
   const { navigate } = useNavigationActions();
   return (
@@ -24,7 +26,6 @@ export function EnsembleInspectionView() {
       >
         Agents
       </Button>
-      <h1>Inspect an Ensemble</h1>
       <p>
         Read configuration from a preset on This Station. Inspection does not
         authenticate, discover models or launch members.

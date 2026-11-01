@@ -6,7 +6,7 @@ import {
 import { useEffect, useRef } from 'react';
 import { Button } from '../../components/Button';
 import { LazyMarkdown } from '../../components/chat/LazyMarkdown';
-import { SkeletonBlock } from '../../components/state';
+import { Empty, SkeletonBlock } from '../../components/state';
 import './ChildWorkTranscript.css';
 
 /**
@@ -78,7 +78,10 @@ function EntryLine({ entry }: { entry: ChildWorkTranscriptEntry }) {
               {cut}
             </code>
           ) : (
-            <p className="child-work-transcript__text">No text output.</p>
+            <Empty
+              className="child-work-transcript__text"
+              label="Text output unavailable"
+            />
           )}
         </li>
       );

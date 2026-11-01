@@ -3451,3 +3451,45 @@ and copy length. These are additional push blockers, not covered by the narrower
 readiness result. They require owning code/contract repairs without increasing
 baselines or adding unreasoned exceptions. The red static report is retained; this
 checkpoint remains unready for a push or PR.
+
+## UI static repair and input-fixture requalification
+
+The follow-up UI candidate replaces direct UUID calls with the shared portable
+correlation-ID owner, uses the shared loading/empty/retry primitives, places the
+CLI inventory actions in ActionRow, and registers the three existing dirty-state
+editors with the unsaved-state inventory. The inspector uses the shared page
+header. Shorter copy preserves the paid-work, authority, unknown-outcome and
+unassessed-result boundaries, with longer explanations in native disclosures.
+
+An independent controlled-component browser pass found four disclosures with
+15.5px targets at phone width. The two scoped stylesheet owners now provide
+44px native summary targets without replacing their disclosure semantics. The
+recheck inspected the CLI panel, Ensemble form/inspection and report create/sync
+forms at 390px and 1440px in both themes, plus the report-panel entry. Measured
+containment and mobile targets pass; keyboard disclosure focus is visible. These
+are synthetic component/SDK observations, not an initialized Station or provider
+journey. The responsive action inventory records that bounded scope. The initial
+failure is retained, and the verifier closed its tabs, restored the viewport and
+stopped its owned server.
+
+All branch static gates now pass without raising their ceilings. The Coding
+inventory's SDK hit was the word “decoding” in a byte-limit comment; a more precise
+comment removes that false semantic anchor. The stored-path inventory explicitly
+classifies a non-I/O Project revision/presence check; the later filesystem lookup
+still expands and resolves the stored directory. UI types, read-only lint and all
+53 selected UI cases pass. The retention store/selector selection separately
+passes 77 cases. These results do not clear documentation-review freshness.
+
+The input integration fixture had not supplied the authentic runtime publication
+participant required by the current production entry. Its initial two failures
+were fixture failures, not renewal proof. A test-only candidate now supplies the
+actual participant, owns request cancellation and observes physical Home custody
+and exact store bindings around renewal/adoption. It has not reached those new
+assertions: both input cases stall earlier, so neither is an intended renewal red.
+The direct case's bounded trace observes a final-fetch Home scope held while SDK
+stream publication waits for a fresh invocation-current admission. The HTTP case
+also fails before canonical input, but its final trace has no live Home acquisition
+and must not be assigned the same cause without evidence. Shutdown retention is
+reported rather than suppressed. Historical failures remain available; no renewal
+implementation repair, finalizer enablement, runtime/provider/device qualification,
+push or PR follows from this checkpoint.

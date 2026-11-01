@@ -6,7 +6,9 @@ import { surfaceDeepLink } from '@kontourai/station-contracts/surface-deep-link'
 import { useCliSessionGroupsQuery } from '@kontourai/station-sdk';
 import type { ApiRequestScope } from '@kontourai/station-sdk/client';
 import { useId, useState } from 'react';
+import { ActionRow } from '../components/ActionRow';
 import { Button } from '../components/Button';
+import { Empty, ErrorState, SkeletonList } from '../components/state';
 import { useNavigationActions } from '../contexts/NavigationContext';
 import './CliSessionGroupsPanel.css';
 
@@ -74,10 +76,12 @@ function GroupTopology({ group }: { group: CliSessionGroupView }) {
       <figcaption>
         Dependency graph · Revision {group.revision}
         <p>
-          Arrows show declared prerequisites → dependent seats. Positions do not
-          imply execution order. States are last observed; work acceptance is
-          not assessed. Exact session and turn identities are in the table
-          below.
+          Arrows show declared prerequisites → dependent seats; positions do not
+          imply execution order.
+        </p>
+        <p>
+          States are last observed; work acceptance is unassessed. Exact
+          identities are in the table.
         </p>
       </figcaption>
       <section
@@ -171,11 +175,12 @@ export function CliSessionGroupsPanel({
   return (
     <section className="cli-session-groups" aria-label="Live session groups">
       <h2>Session groups</h2>
-      <p>
-        Inspect actual members and Flow dependencies. Station session
-        permissions apply; portable lineage is incomplete and hard dollar, token
-        and physical attempt caps are unavailable.
-      </p>
+      <p>Inspect member Sessions and Flow dependencies.</p>
+      <details>
+        <summary>Current limits</summary>
+        <p>Session permissions apply; portable lineage remains incomplete.</p>
+        <p>Hard dollar, token and physical-attempt caps are unavailable.</p>
+      </details>
       <Button
         variant="secondary"
         aria-expanded={expanded}
@@ -190,14 +195,28 @@ export function CliSessionGroupsPanel({
             <p role="alert">Station authority changed. Reopen this view.</p>
           )}
           {current && groups.isPending && (
-            <p role="status">Loading session groups…</p>
+            <SkeletonList count={3} label="Loading session groups" />
           )}
           {current && groups.isError && (
-            <p role="alert">
-              Session groups are unavailable for the current Station authority.
-            </p>
+            <ErrorState
+              variant="compact"
+              title="Session groups are unavailable for the current Station authority."
+              action={
+                <Button
+                  variant="secondary"
+                  disabled={!current || groups.isFetching}
+                  onClick={() => {
+                    void groups.refetch();
+                  }}
+                >
+                  Retry session groups
+                </Button>
+              }
+            />
           )}
-          {page && !page.groups.length && <p>No visible session groups.</p>}
+          {page && !page.groups.length && (
+            <Empty variant="compact" label="Nothing on this page" />
+          )}
           {page?.groups.map((group) => (
             <article
               key={group.groupId}
@@ -350,39 +369,46 @@ export function CliSessionGroupsPanel({
               </section>
             </article>
           ))}
-          <div className="cli-session-groups__actions">
-            <Button
-              variant="secondary"
-              disabled={!current || groups.isFetching || cursors.length === 1}
-              onClick={() => setCursors((value) => value.slice(0, -1))}
-            >
-              Previous groups
-            </Button>
-            <Button
-              variant="secondary"
-              disabled={
-                !current ||
-                groups.isFetching ||
-                !page?.hasMore ||
-                !page.nextGroupId
-              }
-              onClick={() => {
-                if (page?.nextGroupId)
-                  setCursors((value) => [...value, page.nextGroupId!]);
-              }}
-            >
-              More groups
-            </Button>
-            <Button
-              variant="secondary"
-              disabled={!current || groups.isFetching}
-              onClick={() => {
-                void groups.refetch();
-              }}
-            >
-              Refresh groups
-            </Button>
-          </div>
+          <ActionRow
+            className="cli-session-groups__actions"
+            overflowLabel="More session group actions"
+            secondary={
+              <Button
+                variant="secondary"
+                disabled={!current || groups.isFetching || cursors.length === 1}
+                onClick={() => setCursors((value) => value.slice(0, -1))}
+              >
+                Previous groups
+              </Button>
+            }
+            primary={
+              <Button
+                variant="secondary"
+                disabled={
+                  !current ||
+                  groups.isFetching ||
+                  !page?.hasMore ||
+                  !page.nextGroupId
+                }
+                onClick={() => {
+                  if (page?.nextGroupId)
+                    setCursors((value) => [...value, page.nextGroupId!]);
+                }}
+              >
+                More groups
+              </Button>
+            }
+            overflow={[
+              {
+                key: 'refresh',
+                label: 'Refresh groups',
+                disabled: !current || groups.isFetching,
+                onSelect: () => {
+                  void groups.refetch();
+                },
+              },
+            ]}
+          />
         </>
       )}
     </section>

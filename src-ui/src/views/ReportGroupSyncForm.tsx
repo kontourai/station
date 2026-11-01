@@ -8,6 +8,7 @@ import {
   type ApiRequestScope,
   parseReportGroupContextSyncInput,
 } from '@kontourai/station-sdk/client';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useState } from 'react';
 import { Button } from '../components/Button';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
@@ -68,7 +69,7 @@ function Receipt({
             finalize.mutate({
               groupId: group.groupId,
               command: {
-                operationKey: `sync-receipt:${crypto.randomUUID()}`,
+                operationKey: `sync-receipt:${randomCorrelationId()}`,
                 expectedRevision: group.revision,
                 syncOperationKey: sync.operationKey,
                 preparedDigest: sync.preparedDigest!,
@@ -109,7 +110,7 @@ export function ReportGroupSyncForm({
   const [opened, setOpened] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [invalid, setInvalid] = useState(false);
-  const [operationKey] = useState(() => `context:${crypto.randomUUID()}`);
+  const [operationKey] = useState(() => `context:${randomCorrelationId()}`);
   const { DiscardModal } = useUnsavedGuard(dirty && sync.isIdle);
   const current = scope.isCurrent();
   const allowance = group.contextSyncAllowance;
@@ -193,13 +194,21 @@ export function ReportGroupSyncForm({
               }}
             >
               <p>
-                This is paid work in the existing report Session. It uses the
-                group's remaining limits. The server may refuse stale source,
-                authority, checkpoint or unavailable continuation. An ACK does
-                not establish understanding or acceptance. Closing this view
-                stops waiting; it does not confirm provider termination or
-                refunds.
+                Paid context work uses the existing report Session and remaining
+                group limits.
               </p>
+              <details>
+                <summary>Admission and outcomes</summary>
+                <p>
+                  Stale source, authority or checkpoints and unavailable
+                  continuation may refuse.
+                </p>
+                <p>An ACK does not establish understanding or acceptance.</p>
+                <p>
+                  Closing stops waiting; it does not confirm provider
+                  termination or refunds.
+                </p>
+              </details>
               <p>
                 Operation key: <code>{operationKey}</code> · Displayed revision{' '}
                 {group.revision}
@@ -289,8 +298,8 @@ export function ReportGroupSyncForm({
               )}
               {current && sync.isError && (
                 <p role="alert">
-                  Context outcome unknown. Retain the operation key and read the
-                  latest group state. This request will not be resent.
+                  Context outcome unknown. Keep the operation key and inspect
+                  the latest group; this request is not retried.
                 </p>
               )}
               {!current && (

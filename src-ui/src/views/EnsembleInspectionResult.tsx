@@ -103,11 +103,19 @@ export function EnsembleInspectionResult({
       {geometry && (
         <figure>
           <figcaption>
-            Configuration diagram. Plain lines connect members to inspected
-            settings. Arrows show declared prerequisites, not live routing,
-            readiness or work acceptance. The table contains every value and
-            owner link.
+            Configuration relationships and declared prerequisites; execution
+            and acceptance remain unassessed.
           </figcaption>
+          <details>
+            <summary>Diagram meaning</summary>
+            <p>
+              Lines link inspected settings; arrows show declared prerequisites.
+            </p>
+            <p>
+              These relationships establish neither live routing nor readiness.
+              Values and owner links are in the table.
+            </p>
+          </details>
           <div className="ensemble-inspection__diagram">
             {/* biome-ignore lint/a11y/useSemanticElements: Interactive SVG has no HTML group equivalent. */}
             <svg

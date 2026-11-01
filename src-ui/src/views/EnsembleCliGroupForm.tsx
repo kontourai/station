@@ -13,6 +13,7 @@ import {
   type ApiRequestScope,
   parseEnsembleCliSessionGroupInput,
 } from '@kontourai/station-sdk/client';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useState } from 'react';
 import { Button } from '../components/Button';
 import { EnsembleInspectionResult } from './EnsembleInspectionResult';
@@ -54,7 +55,7 @@ export function EnsembleCliGroupForm({
       }
     >
   >({});
-  const [operationId] = useState(() => crypto.randomUUID());
+  const [operationId] = useState(() => randomCorrelationId());
   const [inputError, setInputError] = useState(false);
   const current = scope.isCurrent();
   const saved = current ? create.data : undefined;
@@ -82,12 +83,20 @@ export function EnsembleCliGroupForm({
       {expanded && (
         <>
           <p>
-            Save this roster and brief as a group. Engines start only when the
-            group is run. Dollar, token and physical attempt caps are
-            unavailable. The deadline begins when the group is saved. Directory
-            bindings name only a path. Project bindings use the selected Project
-            workspace and defaults; they grant no additional permissions.
+            Save this roster and brief; run the group explicitly to start
+            engines.
           </p>
+          <details>
+            <summary>Limits and workspace</summary>
+            <p>
+              Dollar, token and physical-attempt caps are unavailable. The
+              deadline begins when saved.
+            </p>
+            <p>
+              Directory bindings name a path; Project bindings use its workspace
+              and defaults without adding permissions.
+            </p>
+          </details>
           <form
             onChange={() => inspection.reset()}
             onSubmit={(event) => {
@@ -354,9 +363,6 @@ export function EnsembleCliGroupForm({
               >
                 Cancel session group
               </Button>
-              {run.isIdle && cancel.isIdle && (
-                <p>No engines started by this form.</p>
-              )}
               {run.data && current && (
                 <p role="status">
                   Flow: {run.data.flow?.status ?? 'unavailable'}. Work
@@ -396,9 +402,8 @@ export function EnsembleCliGroupForm({
           )}
           {create.isError && current && (
             <p role="alert">
-              Group creation was not confirmed. Check the session-group
-              inventory before creating another group. Operation{' '}
-              <code>{operationId}</code>.
+              Creation unconfirmed. Check the inventory before another group;
+              operation <code>{operationId}</code>.
             </p>
           )}
           {!current && (

@@ -4,6 +4,7 @@ import {
   type ApiRequestScope,
   parseReportGroupInput,
 } from '@kontourai/station-sdk/client';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useState } from 'react';
 import { Button } from '../components/Button';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
@@ -19,7 +20,7 @@ export function ReportGroupCreateForm({
   const [members, setMembers] = useState(1);
   const [flowEnabled, setFlowEnabled] = useState(false);
   const [continuationEnabled, setContinuationEnabled] = useState(false);
-  const [operationId] = useState(() => crypto.randomUUID());
+  const [operationId] = useState(() => randomCorrelationId());
   const [invalid, setInvalid] = useState(false);
   const { DiscardModal } = useUnsavedGuard(dirty && create.isIdle);
   const current = scope.isCurrent();
@@ -98,13 +99,20 @@ export function ReportGroupCreateForm({
           }}
         >
           <p>
-            Submitting starts paid reports using configured Agents. Without
-            Flow, members are independent advisory work. Each member receives
-            its own brief and the selected Project source. Aggregate token and
-            inference-cost limits are required. Returned reports remain
-            unassessed. Closing this view stops waiting; it does not prove
-            physical termination or refunds.
+            Run paid, unassessed reports with configured Agents and aggregate
+            token and inference-cost limits.
           </p>
+          <details>
+            <summary>Source and outcomes</summary>
+            <p>
+              Each member receives its own brief and Project source. Members
+              without Flow are independent advisory work.
+            </p>
+            <p>
+              Closing stops waiting; it does not confirm physical termination or
+              refunds.
+            </p>
+          </details>
           <p>
             Operation ID: <code>{operationId}</code>
           </p>
@@ -221,9 +229,8 @@ export function ReportGroupCreateForm({
               Reserve continuation for this Flow group
             </label>
             <p>
-              These are immutable lifetime limits, not a grant to launch more
-              work. Returning-session serving qualification is still open; the
-              server may refuse this candidate path.
+              Lifetime limits cannot expand. Returning-session qualification
+              remains open; the server may refuse this path.
             </p>
           </fieldset>
           <fieldset
@@ -366,9 +373,8 @@ export function ReportGroupCreateForm({
           )}
           {current && create.isError && (
             <p role="alert">
-              Report outcome unknown. Retain the operation ID and inspect
-              retained groups before starting any new work. This request will
-              not be resent.
+              Report outcome unknown. Keep the operation ID and inspect retained
+              groups before new work; this request is not retried.
             </p>
           )}
           {current && create.isSuccess && (

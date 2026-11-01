@@ -239,7 +239,7 @@ test('explicit inspection uses real SDK inventory, shows actual dependencies and
   expect(screen.queryByText('Work accepted')).toBeNull();
   expect(
     screen.getByText(
-      /hard dollar, token and physical attempt caps are unavailable/,
+      /Hard dollar, token and physical-attempt caps are unavailable/,
     ),
   ).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Open first session' }));
@@ -371,7 +371,10 @@ test('an authority refusal on refresh hides an earlier successful group observat
   fireEvent.click(screen.getByRole('button', { name: 'Show session groups' }));
   await screen.findByRole('table');
   allowed = false;
-  fireEvent.click(screen.getByRole('button', { name: 'Refresh groups' }));
+  fireEvent.click(
+    screen.getByRole('button', { name: 'More session group actions' }),
+  );
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Refresh groups' }));
   await screen.findByRole('alert');
   expect(screen.queryByRole('table')).toBeNull();
   expect(

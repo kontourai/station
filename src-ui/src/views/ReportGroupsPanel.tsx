@@ -6,8 +6,15 @@ import {
   useReportGroupsQuery,
 } from '@kontourai/station-sdk';
 import type { ApiRequestScope } from '@kontourai/station-sdk/client';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useState } from 'react';
 import { Button } from '../components/Button';
+import {
+  Empty,
+  ErrorState,
+  SkeletonBlock,
+  SkeletonList,
+} from '../components/state';
 import { ReportGroupCreateForm } from './ReportGroupCreateForm';
 import { ReportGroupSyncForm } from './ReportGroupSyncForm';
 import './CliSessionGroupsPanel.css';
@@ -37,7 +44,8 @@ function Report({
     return (
       <p role="alert">Report unavailable for the current Station authority.</p>
     );
-  if (result.isPending) return <p role="status">Reading report…</p>;
+  if (result.isPending)
+    return <SkeletonBlock count={2} label="Reading report" />;
   if (result.data?.kind === 'failure')
     return <p>The attempt did not retain a report.</p>;
   return result.data ? (
@@ -75,7 +83,7 @@ function Group({ scope, group }: { scope: Scope; group: ReportGroupView }) {
           cancel.mutate({
             groupId: group.groupId,
             expectedRevision: group.revision,
-            operationKey: `cancel:${crypto.randomUUID()}`,
+            operationKey: `cancel:${randomCorrelationId()}`,
           })
         }
       >
@@ -103,7 +111,7 @@ function Group({ scope, group }: { scope: Scope; group: ReportGroupView }) {
             finalize.mutate({
               groupId: group.groupId,
               expectedRevision: group.revision,
-              operationKey: `finalize:${crypto.randomUUID()}`,
+              operationKey: `finalize:${randomCorrelationId()}`,
               cancelOperationKey:
                 cancelKey ?? cancel.variables?.operationKey ?? '',
             });
@@ -134,7 +142,10 @@ function Group({ scope, group }: { scope: Scope; group: ReportGroupView }) {
             Check cancellation receipts
           </Button>
           {finalize.isPending && (
-            <p role="status">Checking retained cancellation receipts…</p>
+            <SkeletonBlock
+              count={1}
+              label="Checking retained cancellation receipts"
+            />
           )}
           {finalize.isSuccess && (
             <p role="status">
@@ -186,7 +197,7 @@ function Group({ scope, group }: { scope: Scope; group: ReportGroupView }) {
           <li key={member.seatId}>
             <strong>{member.seatId}</strong> · Agent {member.agentId} ·
             Requested model {member.requestedModelId}
-            {!member.attempts.length && <p>No invocation recorded.</p>}
+            {!member.attempts.length && <p>Invocation unrecorded.</p>}
             {member.attempts.map((attempt) => (
               <section
                 key={attempt.invocationId}
@@ -205,9 +216,7 @@ function Group({ scope, group }: { scope: Scope; group: ReportGroupView }) {
                     ? 'Terminal receipt retained'
                     : 'Termination unconfirmed'}
                 </p>
-                {!attempt.allocation && (
-                  <p>No accounting reservation confirmed.</p>
-                )}
+                {!attempt.allocation && <p>Reservation unconfirmed.</p>}
                 {attempt.allocation && (
                   <p>
                     Reserved: {attempt.allocation.inputTokens} input tokens,{' '}
@@ -272,11 +281,15 @@ export function ReportGroupsPanel({ scope }: { scope: Scope }) {
     >
       <h2>Report groups</h2>
       <ReportGroupCreateForm scope={scope} />
-      <p>
-        Observe retained advisory reports and inference accounting. These groups
-        require a locally granted operator on a personal Station. Execution
-        completion does not establish acceptance, physical stop or refunds.
-      </p>
+      <p>Retained advisory reports and inference accounting.</p>
+      <details>
+        <summary>Access and outcomes</summary>
+        <p>A locally granted operator on a personal Station is required.</p>
+        <p>
+          Execution completion establishes neither acceptance, physical stop nor
+          refunds.
+        </p>
+      </details>
       <Button
         variant="secondary"
         aria-expanded={expanded}
@@ -291,14 +304,28 @@ export function ReportGroupsPanel({ scope }: { scope: Scope }) {
             <p role="alert">Station authority changed. Reopen this view.</p>
           )}
           {current && groups.isPending && (
-            <p role="status">Loading report groups…</p>
+            <SkeletonList count={3} label="Loading report groups" />
           )}
           {current && groups.isError && (
-            <p role="alert">
-              Report groups are unavailable for the current Station authority.
-            </p>
+            <ErrorState
+              variant="compact"
+              title="Report groups are unavailable for the current Station authority."
+              action={
+                <Button
+                  variant="secondary"
+                  disabled={!current || groups.isFetching}
+                  onClick={() => {
+                    void groups.refetch();
+                  }}
+                >
+                  Retry report groups
+                </Button>
+              }
+            />
           )}
-          {page && !page.groups.length && <p>No retained report groups.</p>}
+          {page && !page.groups.length && (
+            <Empty variant="compact" label="Nothing on this page" />
+          )}
           {page?.groups.map((group) => (
             <Group key={group.groupId} scope={scope} group={group} />
           ))}

@@ -37,6 +37,15 @@
 .cli-session-groups button {
   min-height: 44px;
 }
+.cli-session-groups summary {
+  min-height: 44px;
+  align-content: center;
+  cursor: pointer;
+}
+.cli-session-groups summary:focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 2px;
+}
 
 .cli-session-groups__member-name {
   border-inline-start: 3px solid;

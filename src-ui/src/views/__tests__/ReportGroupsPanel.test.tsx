@@ -102,8 +102,9 @@ afterEach(() => {
 });
 
 test.each(['independent', 'flow'] as const)(
-  'operator reads %s reports through scoped SDK queries without promoting unknown accounting or executing work',
+  'operator reads %s reports with crypto unavailable and preserves unknown accounting without executing work',
   async (mode) => {
+    vi.stubGlobal('crypto', {});
     const displayedGroup: ReportGroupView = {
       ...group,
       topology:
@@ -160,7 +161,12 @@ test.each(['independent', 'flow'] as const)(
       '/api/orchestration/report-groups/group-a/members/reviewer/results/invocation-one?afterOffset=1',
     ]);
     fireEvent.click(screen.getByRole('button', { name: 'Next report groups' }));
-    await screen.findByText('No retained report groups.');
+    await waitFor(() => {
+      expect(screen.queryByText('operator-report')).toBeNull();
+      expect(
+        screen.getByRole('button', { name: 'Next report groups' }),
+      ).toHaveProperty('disabled', true);
+    });
     expect(requests.at(-1)).toBe(
       '/api/orchestration/report-groups?afterGroupId=group-a',
     );
@@ -210,9 +216,7 @@ test.each([false, true])(
       expect(
         screen.getByText(/Accounting terminal recorded; usage unknown/),
       ).toBeTruthy();
-    expect(
-      screen.getByText(/No accounting reservation confirmed/),
-    ).toBeTruthy();
+    expect(screen.getByText(/Reservation unconfirmed/)).toBeTruthy();
     expect(screen.queryByText(/reservation retained/)).toBeNull();
     fireEvent.click(
       screen.getByRole('button', { name: 'Read report for reviewer' }),

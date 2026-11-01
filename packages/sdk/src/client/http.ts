@@ -1829,7 +1829,7 @@ async function consumeSseResponse(
         buffer = frames.pop() ?? '';
         for (const frame of frames) dispatch(frame);
       } else {
-        // Scan wire bytes before decoding or accumulating an unterminated frame.
+        // Enforce the wire-byte limit before UTF-8 conversion or frame accumulation.
         const bytes = chunk.value ?? new Uint8Array();
         for (const byte of bytes) {
           frameBytes++;
