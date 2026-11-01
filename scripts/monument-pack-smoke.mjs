@@ -9,12 +9,12 @@
  *
  *   1. lists the tarball and refuses anything but `dist/*.js`, `dist/*.d.ts`
  *      and the manifest and docs (so no tests, sources, maps or configs);
- *   2. installs it with npm, then checks the installed manifest: the six
+ *   2. installs it with npm, then checks the installed manifest: the seven
  *      entry points, each with `types` before `default`, each target present,
  *      none a `.ts` source file, and no Station dependency;
  *   3. reads every shipped module and refuses any specifier that is not a
  *      `node:` builtin or a file inside `dist/` (no Station import can ship);
- *   4. runs a plain `node` script that imports all six entry points, opens a
+ *   4. runs a plain `node` script that imports all seven entry points, opens a
  *      memory store and a `node:sqlite` store and runs a command on each.
  *      Node does not strip types under `node_modules`, so an `exports` map
  *      that still points at `src/*.ts` fails here with
@@ -76,6 +76,7 @@ export const ENTRY_POINTS = Object.freeze([
   './sqlite',
   './session-control',
   './recovery',
+  './session-boundary',
   './adapter',
   './testing',
 ]);
@@ -101,6 +102,7 @@ import * as sqlite from '@kontourai/monument/sqlite';
 import * as testing from '@kontourai/monument/testing';
 import * as sessionControl from '@kontourai/monument/session-control';
 import * as recovery from '@kontourai/monument/recovery';
+import * as sessionBoundary from '@kontourai/monument/session-boundary';
 
 // A publish job's credentials must not reach the packed code.
 for (const name of Object.keys(process.env))
@@ -117,6 +119,7 @@ for (const specifier of [
   '@kontourai/monument/testing',
   '@kontourai/monument/session-control',
   '@kontourai/monument/recovery',
+  '@kontourai/monument/session-boundary',
 ]) {
   const resolved = import.meta.resolve(specifier);
   assert.match(resolved, /\\/node_modules\\/@kontourai\\/monument\\/dist\\/.+\\.js$/, resolved);
@@ -129,6 +132,7 @@ assert.equal(typeof sessionControl.runWithSessionControlKey, 'function');
 assert.equal(typeof recovery.createRecoveryLedger, 'function');
 assert.equal(typeof recovery.createSqliteRecoveryStorage, 'function');
 assert.equal(typeof recovery.openMemoryRecoveryStorage, 'function');
+assert.equal(typeof sessionBoundary.createSessionTurnBoundaryAuthority, 'function');
 
 const recoveryVolume = new recovery.MemoryRecoveryVolume();
 const recoveryStore = recovery.openMemoryRecoveryStorage({
@@ -186,6 +190,7 @@ import { openSqliteKernelStorage } from '@kontourai/monument/sqlite';
 import { registerKernelConformance } from '@kontourai/monument/testing';
 import { sessionControlRequestDigest } from '@kontourai/monument/session-control';
 import { createRecoveryLedger } from '@kontourai/monument/recovery';
+import { createSessionTurnBoundaryAuthority } from '@kontourai/monument/session-boundary';
 
 const owner: OwnerIdentity = { id: 'a', pid: 1, identityKind: 'unverified' };
 const storage: KernelStorage = openMemoryKernelStorage();
@@ -201,7 +206,7 @@ if (result.kind === 'claimed') {
 // @ts-expect-error a volume must be a MemoryKernelVolume
 openMemoryKernelStorage({ volume: 5 });
 export type { KernelTransaction };
-export { openSqliteKernelStorage, registerKernelConformance, runKernelTransactionStep, sessionControlRequestDigest, createRecoveryLedger };
+export { openSqliteKernelStorage, registerKernelConformance, runKernelTransactionStep, sessionControlRequestDigest, createRecoveryLedger, createSessionTurnBoundaryAuthority };
 `;
 
 function tail(text, lines = 12) {
@@ -376,7 +381,7 @@ export function checkTarballListing(paths) {
 }
 
 /**
- * Failures for a manifest as a consumer sees it: six entry points, each
+ * Failures for a manifest as a consumer sees it: seven entry points, each
  * `{ types, default }` in that order, naming compiled files that exist.
  */
 export function checkConsumerManifest(manifest, exists) {

@@ -4,6 +4,10 @@ import { isAbsolute, relative, resolve } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import type { FlowEvidenceEntry } from '@kontourai/flow';
 import {
+  ORCHESTRATION_SHUTDOWN_EXIT_REASON,
+  type SessionTurnBoundaryTransition,
+} from '@kontourai/monument/session-boundary';
+import {
   type AgentExecutionConfig,
   type AgentSpec,
   isSupportedAgentIconToken,
@@ -518,11 +522,9 @@ import {
 import { SessionTranscriptReads } from './session-transcript-reads.js';
 import {
   createInMemorySessionTurnBoundaryAuthority,
-  ORCHESTRATION_SHUTDOWN_EXIT_REASON,
   runSessionStartWithBoundary,
   type SessionTurnBoundaryAuthority,
-  type SessionTurnBoundaryTransition,
-} from './session-turn-boundary.js';
+} from './session-turn-boundary-binding.js';
 import {
   SkillExperienceRuntime,
   type SkillExperienceSource,

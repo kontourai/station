@@ -26,7 +26,7 @@ import {
   trackOrchestrationSession,
 } from '../orchestration-session-state.js';
 import { createSessionAgentResolver } from '../session-agent-resolution.js';
-import { SessionStartIndeterminateError } from '../session-turn-boundary.js';
+import { SessionStartIndeterminateError } from '../session-turn-boundary-binding.js';
 
 /**
  * archive#3476: the engine-start half of recovery, which boot no longer runs.

@@ -17,6 +17,12 @@ import {
   type RecoveryStoragePort,
   releaseRecoveryLedgerOwner,
 } from '@kontourai/monument/recovery';
+import {
+  ORCHESTRATION_SHUTDOWN_EXIT_REASON,
+  releaseSessionTurnBoundaryOwner,
+  type SessionTurnBoundaryRecord,
+  SHUTDOWN_RETAINED_BOUNDARIES,
+} from '@kontourai/monument/session-boundary';
 import type { SessionControlRequestKeys } from '@kontourai/monument/session-control';
 import {
   openSqliteKernelStorage,
@@ -380,13 +386,9 @@ import type {
 } from './session-query-module.js';
 import {
   createSessionTurnBoundaryAuthority,
-  ORCHESTRATION_SHUTDOWN_EXIT_REASON,
-  releaseSessionTurnBoundaryOwner,
   SESSION_START_INDETERMINATE_CODE,
   type SessionTurnBoundaryAuthority,
-  type SessionTurnBoundaryRecord,
-  SHUTDOWN_RETAINED_BOUNDARIES,
-} from './session-turn-boundary.js';
+} from './session-turn-boundary-binding.js';
 import {
   createSessionWorkItemAdmissionRegistry,
   type SessionWorkItemAdmissionClaim,

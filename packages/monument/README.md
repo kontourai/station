@@ -31,6 +31,7 @@ directory and checks all of this.
 | `@kontourai/monument/adapter` | For adapter authors: `KernelTransaction`, `runKernelTransactionStep`, `isReadOnlyKernelCommand` | none |
 | `@kontourai/monument/sqlite` | The `node:sqlite` adapter, and the table bindings that let it run over a host's existing tables | Node 24 |
 | `@kontourai/monument/recovery` | Recovery claim protocol, commands, and memory/SQLite adapters | Node 24 (`node:crypto`) |
+| `@kontourai/monument/session-boundary` | Host-bound turn authority and claims | Node 24 (`node:crypto`, `node:util`) |
 | `@kontourai/monument/session-control` | Request-key identity, digest and keyed execution | Node 24 (`node:crypto`) |
 | `@kontourai/monument/testing` | The conformance suite, the crash-point store, a fake process table, and the in-memory and `node:sqlite` harnesses | Node 24 (`node:assert`, `node:sqlite`) |
 

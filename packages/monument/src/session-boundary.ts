@@ -1,23 +1,6 @@
-import {
-  PROVIDER_FAILURE_RETRYABLE,
-  type ProviderFailure,
-  SESSION_START_INDETERMINATE_CODE,
-} from '@kontourai/station-contracts/provider-failure';
-
-export { SESSION_START_INDETERMINATE_CODE } from '@kontourai/station-contracts/provider-failure';
-
 import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
-import type {
-  InvocationTerminalFact,
-  InvocationTerminalRead,
-  InvocationTerminalRetirement,
-  OwnerIdentity,
-  PreparedTurnIntent,
-  PreparedTurnSettlement,
-  TurnBoundaryRecord,
-  TurnDedupRecord,
-} from '@kontourai/monument';
+import { findInvocationTerminal } from './adapter.js';
 import {
   decidePreparedTurnSettlement,
   decideTurnBoundaryAcceptInvocation,
@@ -27,19 +10,25 @@ import {
   decideTurnBoundaryRecordAccepted,
   decideTurnBoundaryRemove,
   decideTurnBoundaryTransition,
-} from '@kontourai/monument';
-import { findInvocationTerminal } from '@kontourai/monument/adapter';
+  type InvocationTerminalFact,
+  type InvocationTerminalRead,
+  type InvocationTerminalRetirement,
+  type OwnerIdentity,
+  type PreparedTurnIntent,
+  type PreparedTurnSettlement,
+  type TurnBoundaryRecord,
+  type TurnDedupRecord,
+} from './index.js';
 import type {
   RecoveryLedgerProcessIdentity,
   RecoveryOwner,
-} from '@kontourai/monument/recovery';
-import {
-  type CanonicalRuntimeEvent,
-  isDeferredRetriableTurnError,
-} from '@kontourai/station-contracts/runtime-events';
-import { SessionStartRefusedError } from '../../providers/adapter-shape.js';
-import type { CapturedTurnIntent } from './prepared-turn-intent.js';
-import type { TurnClaim } from './turn-deduplicator.js';
+} from './recovery-ledger.js';
+
+/** Host-owned captured payload, retained and passed back without interpretation. */
+export interface BoundaryCapture {
+  readonly threadId: string;
+  readonly intent: PreparedTurnIntent;
+}
 
 type BoundaryState =
   | 'lifecycle'
@@ -135,10 +124,10 @@ export type InputlessTurnDisposition =
   | { kind: 'inputless' }
   | { kind: 'unknown' };
 
-export interface SessionTurnBoundaryCoordinator {
+export interface SessionTurnBoundaryCoordinator<C extends BoundaryCapture, T> {
   readInputlessTurnDisposition?(threadId: string): InputlessTurnDisposition;
   resumePrepared?(input: {
-    capture: CapturedTurnIntent;
+    capture: C;
     owner: OwnerIdentity;
     now: string;
     current: () => boolean;
@@ -146,7 +135,7 @@ export interface SessionTurnBoundaryCoordinator {
     | {
         kind: 'applied';
         record: SessionTurnBoundaryRecord;
-        turnClaim?: TurnClaim;
+        turnClaim?: T;
       }
     | { kind: 'stale' | 'unavailable' };
   create(
@@ -157,8 +146,8 @@ export interface SessionTurnBoundaryCoordinator {
   prepareIntent?(input: {
     boundaryId: string;
     ownerId: string;
-    capture: CapturedTurnIntent;
-    claim?: TurnClaim;
+    capture: C;
+    claim?: T;
     now: string;
   }): SessionTurnBoundaryTransition;
   acceptInvocation?(
@@ -170,8 +159,8 @@ export interface SessionTurnBoundaryCoordinator {
   beginPrepared?(input: {
     boundaryId: string;
     ownerId: string;
-    capture: CapturedTurnIntent;
-    claim?: TurnClaim;
+    capture: C;
+    claim?: T;
     now: string;
     current?: () => boolean;
   }): SessionTurnBoundaryTransition & { begun?: InvocationAcceptanceSnapshot };
@@ -179,8 +168,8 @@ export interface SessionTurnBoundaryCoordinator {
     boundaryId: string;
     boundary: { owner: OwnerIdentity; createdAt: string; updatedAt: string };
     preparedAt: string;
-    capture: CapturedTurnIntent;
-    claim?: TurnClaim;
+    capture: C;
+    claim?: T;
     settlementId: string;
     now: string;
   }): SessionTurnBoundaryTransition;
@@ -232,6 +221,10 @@ export interface SessionTurnBoundaryCoordinator {
   ): SessionTurnBoundaryTransition;
 }
 
+export type BoundaryTerminal = Parameters<
+  SessionTurnBoundaryCoordinator<BoundaryCapture, unknown>['removeTerminal']
+>[0];
+
 const activeOwners = new Set<string>();
 const releasedOwners = new Set<string>();
 
@@ -258,10 +251,10 @@ function ownerIsLive(
   );
 }
 
-export interface SessionTurnBoundaryClaim {
+export interface SessionTurnBoundaryClaim<C extends BoundaryCapture, T> {
   prepareIntent?(
-    capture: CapturedTurnIntent,
-    claim: TurnClaim | undefined,
+    capture: C,
+    claim: T | undefined,
     now: string,
   ): SessionTurnBoundaryTransition;
   beginInvocation(now: string): SessionTurnBoundaryTransition;
@@ -288,79 +281,6 @@ export interface SessionStartBoundaryClaim {
   refused?(): SessionTurnBoundaryTransition;
 }
 
-/** Terminate an engine message so the explanation that follows reads as its own sentence. */
-function sentence(message: string): string {
-  const trimmed = message.trim();
-  if (!trimmed) return '';
-  return /[.!?]$/.test(trimmed) ? `${trimmed} ` : `${trimmed}. `;
-}
-
-export class SessionStartIndeterminateError
-  extends Error
-  implements ProviderFailure
-{
-  readonly kind = 'indeterminate';
-  readonly failurePhase = 'indeterminate';
-  get retryable(): boolean {
-    return PROVIDER_FAILURE_RETRYABLE[this.kind];
-  }
-  readonly code = SESSION_START_INDETERMINATE_CODE;
-  constructor(cause?: unknown, reportedMessage?: string) {
-    super(
-      reportedMessage ??
-        `${cause instanceof Error ? sentence(cause.message) : ''}Provider session creation may have completed. Inspect the session before retrying.`,
-      { cause },
-    );
-    this.name = 'SessionStartIndeterminateError';
-  }
-}
-
-/** Invoke only after policy/resource admission; retain uncertainty across restart. */
-export async function runSessionStartWithBoundary<T>(
-  authority: SessionTurnBoundaryAuthority,
-  threadId: string,
-  invoke: () => Promise<T>,
-  admission?: SessionStartBoundaryClaim,
-): Promise<T> {
-  if (admission && admission.threadId !== threadId)
-    throw new Error(
-      'Session start admission does not match the requested session.',
-    );
-  const owned = admission
-    ? { kind: 'owner' as const, claim: admission }
-    : authority.claimSessionStart(threadId, new Date().toISOString());
-  if (owned.kind !== 'owner')
-    throw new Error(
-      'Session start admission is unavailable; no provider call was made.',
-    );
-  if (
-    owned.claim.beginInvocation(new Date().toISOString()).kind !== 'applied'
-  ) {
-    owned.claim.indeterminate(new Date().toISOString());
-    throw new Error(
-      'Session start admission is unavailable; no provider call was made.',
-    );
-  }
-  let result: T;
-  try {
-    result = await invoke();
-  } catch (error) {
-    // A definitive refusal settles the start: the thread is not fenced behind
-    // an inspection that has nothing to find. Anything the claim cannot confirm
-    // releasing stays the conservative indeterminate start.
-    if (
-      error instanceof SessionStartRefusedError &&
-      owned.claim.refused?.().kind === 'applied'
-    )
-      throw error;
-    owned.claim.indeterminate(new Date().toISOString());
-    throw new SessionStartIndeterminateError(error);
-  }
-  if (owned.claim.started().kind !== 'applied')
-    throw new SessionStartIndeterminateError();
-  return result;
-}
-
 export interface TaskDispatchBoundaryClaim {
   beginEffects(now: string): SessionTurnBoundaryTransition;
   settled(): SessionTurnBoundaryTransition;
@@ -369,13 +289,13 @@ export interface TaskDispatchBoundaryClaim {
   readonly sessionStart: SessionStartBoundaryClaim;
 }
 
-export interface SessionTurnBoundaryAuthority {
+export interface SessionTurnBoundaryAuthority<C extends BoundaryCapture, T, E> {
   resumePrepared?(
-    capture: CapturedTurnIntent,
+    capture: C,
     now: string,
     current: () => boolean,
   ):
-    | { kind: 'owner'; claim: SessionTurnBoundaryClaim; turnClaim?: TurnClaim }
+    | { kind: 'owner'; claim: SessionTurnBoundaryClaim<C, T>; turnClaim?: T }
     | { kind: 'stale' | 'unavailable' };
   /** Boot composition supplies proof from graph, provider and publication owners. */
   recoverCompletedDispatch(
@@ -400,14 +320,14 @@ export interface SessionTurnBoundaryAuthority {
     threadId: string,
     now: string,
   ):
-    | { kind: 'owner'; claim: SessionTurnBoundaryClaim }
+    | { kind: 'owner'; claim: SessionTurnBoundaryClaim<C, T> }
     | { kind: 'busy' }
     | { kind: 'unavailable' };
   /** Production sends reserve exclusivity until their final input is captured. */
   reserve?(
     threadId: string,
     now: string,
-  ): ReturnType<SessionTurnBoundaryAuthority['claim']>;
+  ): ReturnType<SessionTurnBoundaryAuthority<C, T, E>['claim']>;
   claimLifecycle(
     threadId: string,
     now: string,
@@ -426,7 +346,7 @@ export interface SessionTurnBoundaryAuthority {
     invocationId: string,
     providerTurnId?: string,
   ): InvocationTerminalRead;
-  observe(event: CanonicalRuntimeEvent): SessionTurnBoundaryTransition;
+  observe(event: E): SessionTurnBoundaryTransition;
   /**
    * #2324: the durable row for a turn the engine opened on its own. Retired
    * by that turn's terminal like any accepted turn; left behind by a crash,
@@ -469,11 +389,16 @@ export interface SessionTurnBoundaryAuthority {
  * makes the pre-effect/invoking/accepted transitions one-way; lifecycle code
  * receives only a read capability and can never manufacture settlement.
  */
-export function createSessionTurnBoundaryAuthority(options: {
-  coordinator: SessionTurnBoundaryCoordinator;
+export function createSessionTurnBoundaryAuthority<
+  C extends BoundaryCapture,
+  T,
+  E,
+>(options: {
+  coordinator: SessionTurnBoundaryCoordinator<C, T>;
+  terminalFromEvent: (event: E) => BoundaryTerminal | undefined;
   owner: RecoveryOwner;
   processIdentity: RecoveryLedgerProcessIdentity;
-}): SessionTurnBoundaryAuthority {
+}): SessionTurnBoundaryAuthority<C, T, E> {
   activeOwners.add(options.owner.id);
 
   const pendingTransitions = new Map<
@@ -617,7 +542,7 @@ export function createSessionTurnBoundaryAuthority(options: {
     threadId: string,
     now: string,
     purpose?: 'task-dispatch',
-  ): ReturnType<SessionTurnBoundaryAuthority['claimSessionStart']> => {
+  ): ReturnType<SessionTurnBoundaryAuthority<C, T, E>['claimSessionStart']> => {
     const record = {
       ...preparedRecord(threadId, now, purpose ?? 'session-start-boundary'),
       ...(purpose ? { purpose } : {}),
@@ -706,11 +631,11 @@ export function createSessionTurnBoundaryAuthority(options: {
     reserve = false,
     adopted?: {
       record: SessionTurnBoundaryRecord;
-      capture: CapturedTurnIntent;
-      turnClaim?: TurnClaim;
+      capture: C;
+      turnClaim?: T;
       current?: () => boolean;
     },
-  ): ReturnType<SessionTurnBoundaryAuthority['claim']> => {
+  ): ReturnType<SessionTurnBoundaryAuthority<C, T, E>['claim']> => {
     const freshRecord = {
       ...preparedRecord(threadId, now, TURN_BOUNDARY_KIND),
       state:
@@ -736,8 +661,8 @@ export function createSessionTurnBoundaryAuthority(options: {
     let invocationAttempted = false;
     let prepared:
       | {
-          capture: CapturedTurnIntent;
-          claim?: TurnClaim;
+          capture: C;
+          claim?: T;
           preparedAt: string;
           current?: () => boolean;
         }
@@ -777,11 +702,7 @@ export function createSessionTurnBoundaryAuthority(options: {
       claim: Object.freeze({
         ...(reserve && options.coordinator.prepareIntent
           ? {
-              prepareIntent(
-                capture: CapturedTurnIntent,
-                claim: TurnClaim | undefined,
-                at: string,
-              ) {
+              prepareIntent(capture: C, claim: T | undefined, at: string) {
                 if (invocationAttempted || prepared)
                   return { kind: 'stale' } as const;
                 const result = options.coordinator.prepareIntent!({
@@ -977,11 +898,7 @@ export function createSessionTurnBoundaryAuthority(options: {
   return {
     ...(options.coordinator.resumePrepared
       ? {
-          resumePrepared(
-            capture: CapturedTurnIntent,
-            now: string,
-            current: () => boolean,
-          ) {
+          resumePrepared(capture: C, now: string, current: () => boolean) {
             const owner: OwnerIdentity =
               options.owner.identityKind === 'exact'
                 ? {
@@ -1188,44 +1105,10 @@ export function createSessionTurnBoundaryAuthority(options: {
     },
     observe(event) {
       retryPendingTransitions();
-      if (
-        event.method !== 'turn.completed' &&
-        event.method !== 'turn.aborted' &&
-        event.method !== 'runtime.error' &&
-        event.method !== 'session.exited'
-      ) {
-        return { kind: 'applied' };
-      }
-      const retire = !(
-        (event.method === 'runtime.error' &&
-          (event.code === SESSION_START_INDETERMINATE_CODE ||
-            isDeferredRetriableTurnError(event))) ||
-        (event.method === 'turn.aborted' && event.recoveryTerminal === true)
-      );
-      if (!retire && event.invocationId === undefined)
-        return { kind: 'applied' };
-      const turnId = 'turnId' in event ? event.turnId : undefined;
-      return options.coordinator.removeTerminal({
-        threadId: event.threadId,
-        retire,
-        ...(typeof turnId === 'string' ? { providerTurnId: turnId } : {}),
-        ...(event.invocationId === undefined
-          ? {}
-          : { invocationId: event.invocationId }),
-        sessionTerminal:
-          event.method === 'session.exited' ||
-          (event.method === 'runtime.error' &&
-            typeof turnId !== 'string' &&
-            event.invocationId === undefined),
-        terminalCreatedAt: event.createdAt,
-        terminalEventId: event.eventId,
-        // Station's own shutdown closes the session, not the turn in it: the
-        // next boot's recovery needs the turn row (see the constant).
-        ...(event.method === 'session.exited' &&
-        event.reason === ORCHESTRATION_SHUTDOWN_EXIT_REASON
-          ? { retain: SHUTDOWN_RETAINED_BOUNDARIES }
-          : {}),
-      });
+      const terminal = options.terminalFromEvent(event);
+      return terminal
+        ? options.coordinator.removeTerminal(terminal)
+        : { kind: 'applied' };
     },
     prepareProviderTurn,
     reconcile(now) {
@@ -1239,7 +1122,13 @@ export function createSessionTurnBoundaryAuthority(options: {
 }
 
 /** Test/embedded fallback with the same opaque Interface but no restart claim. */
-export function createInMemorySessionTurnBoundaryAuthority(): SessionTurnBoundaryAuthority {
+export function createInMemorySessionTurnBoundaryAuthority<
+  C extends BoundaryCapture,
+  T,
+  E,
+>(
+  terminalFromEvent: (event: E) => BoundaryTerminal | undefined,
+): SessionTurnBoundaryAuthority<C, T, E> {
   const records = new Map<string, SessionTurnBoundaryRecord>();
   let ordinal = 0;
   const terminalSequences = new Map<string, number>();
@@ -1297,7 +1186,7 @@ export function createInMemorySessionTurnBoundaryAuthority(): SessionTurnBoundar
     });
   };
   const terminalTurnIds = new Map<string, Set<string>>();
-  const coordinator: SessionTurnBoundaryCoordinator = {
+  const coordinator: SessionTurnBoundaryCoordinator<C, T> = {
     create(record) {
       const threadRecords = [...records.values()].filter(
         (candidate) =>
@@ -1580,6 +1469,7 @@ export function createInMemorySessionTurnBoundaryAuthority(): SessionTurnBoundar
   };
   return createSessionTurnBoundaryAuthority({
     coordinator,
+    terminalFromEvent,
     owner: {
       id: randomUUID(),
       pid: process.pid,

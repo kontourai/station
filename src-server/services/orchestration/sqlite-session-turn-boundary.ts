@@ -13,6 +13,11 @@ import {
   findInvocationTerminal,
 } from '@kontourai/monument/adapter';
 import {
+  type InvocationAcceptanceSnapshot,
+  SESSION_TURN_ACCEPTED_CAPACITY,
+  type SessionTurnBoundaryRecord,
+} from '@kontourai/monument/session-boundary';
+import {
   openSqliteKernelStorage,
   type SqliteInvocationTerminalFacts,
 } from '@kontourai/monument/sqlite';
@@ -24,12 +29,9 @@ import {
 } from './prepared-turn-intent.js';
 import { isProjectTaskRoomExecutionSealed } from './project-task-room-source-seal.js';
 import {
-  type InvocationAcceptanceSnapshot,
   SESSION_START_INDETERMINATE_CODE,
-  SESSION_TURN_ACCEPTED_CAPACITY,
   type SessionTurnBoundaryCoordinator,
-  type SessionTurnBoundaryRecord,
-} from './session-turn-boundary.js';
+} from './session-turn-boundary-binding.js';
 import type { SqliteDatabase } from './sqlite-database.js';
 import {
   STATION_TURN_DEDUP_KERNEL_TABLES,
