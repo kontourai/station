@@ -21,6 +21,7 @@ import {
   openSync,
   readdirSync,
   readFileSync,
+  readSync,
   realpathSync,
   renameSync,
   rmSync,
@@ -4500,6 +4501,96 @@ export async function awaitReadiness(
 }
 
 /**
+ * A connect failure as text. Connecting to `localhost` tries every address it
+ * resolves to (Node's happy-eyeballs), and when all of them refuse the error
+ * is an AggregateError whose own message is empty — which printed as `()`
+ * (#4382). Name the inner failures, or at least the code, instead.
+ */
+export function describeSocketError(error: unknown): string {
+  if (!(error instanceof Error)) return String(error) || 'connection failed';
+  if (error.message) return error.message;
+  if (error instanceof AggregateError) {
+    const inner = [
+      ...new Set(
+        error.errors
+          .map((cause) =>
+            cause instanceof Error
+              ? cause.message || (cause as NodeJS.ErrnoException).code
+              : String(cause),
+          )
+          .filter(Boolean),
+      ),
+    ];
+    if (inner.length > 0) return inner.join('; ');
+  }
+  return (error as NodeJS.ErrnoException).code ?? 'connection failed';
+}
+
+/** How much of a server log's end `lastFatalServerLogLine` reads. */
+const FATAL_LOG_TAIL_BYTES = 64 * 1024;
+const LIFECYCLE_START_HEADER = /^--- \S+ station lifecycle start /;
+// `Error: STATION_HOME_RESET_REQUIRED: …`, `Error: listen EADDRINUSE …`,
+// `TypeError: …`: the first line of an uncaught error a failed boot prints.
+const FATAL_LOG_LINE =
+  /^(?:Uncaught )?(?:[A-Za-z]*Error|[A-Z][A-Z0-9_]{3,}): \S/;
+const LOG_LEVEL_FATAL_LINE = /\b(?:FATAL|ERROR)\b.*\(station\)/;
+/** ANSI colour codes (ESC [ … m) the server's pretty logger writes. */
+const ANSI_ESCAPE = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g');
+
+/**
+ * The last fatal-looking line the managed server wrote to `logFile` since this
+ * start's header, or null when there is none or the log is unreadable. A
+ * server that exits before it listens leaves its cause only there, and the
+ * start failure used to say nothing about it (#4382).
+ */
+export function lastFatalServerLogLine(logFile: string): string | null {
+  let text: string;
+  try {
+    const fd = openSync(logFile, fsConstants.O_RDONLY);
+    try {
+      const { size } = fstatSync(fd);
+      const length = Math.min(size, FATAL_LOG_TAIL_BYTES);
+      const buffer = Buffer.alloc(length);
+      readSync(fd, buffer, 0, length, size - length);
+      text = buffer.toString('utf8');
+    } finally {
+      closeSync(fd);
+    }
+  } catch {
+    return null;
+  }
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.replace(ANSI_ESCAPE, ''));
+  let from = 0;
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    if (LIFECYCLE_START_HEADER.test(lines[index])) {
+      from = index + 1;
+      break;
+    }
+  }
+  for (let index = lines.length - 1; index >= from; index -= 1) {
+    const line = lines[index].trim();
+    if (FATAL_LOG_LINE.test(line) || LOG_LEVEL_FATAL_LINE.test(line)) {
+      return line.length > 500 ? `${line.slice(0, 500)}…` : line;
+    }
+  }
+  return null;
+}
+
+/**
+ * What a failed start adds after its own message: the server's last fatal
+ * log line, when there is one, and where the log is (#4382).
+ */
+export function serverStartFailureContext(logFile: string): string[] {
+  const fatal = lastFatalServerLogLine(logFile);
+  return [
+    ...(fatal ? [`Last server error: ${fatal}`] : []),
+    `Server log: ${logFile}`,
+  ];
+}
+
+/**
  * Waits for a TCP listener the managed server opens beside its API port (the
  * terminal and voice sockets). With `childAlive` it takes the same bounded
  * slow-boot extension as `waitForIdentity` (#2964): while the server is alive
@@ -4555,7 +4646,7 @@ export async function waitForTcpOk(
         socket.once('connect', () => finish({ ok: true }));
         socket.once('timeout', () => finish({ ok: false, failure: 'timeout' }));
         socket.once('error', (error) =>
-          finish({ ok: false, failure: error.message }),
+          finish({ ok: false, failure: describeSocketError(error) }),
         );
       },
     );
@@ -5312,7 +5403,10 @@ export async function start(opts: StartOptions = {}): Promise<void> {
     // tense is true when it prints.
     warnOnSharedHome(instanceId, projectHome);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = [
+      error instanceof Error ? error.message : String(error),
+      ...serverStartFailureContext(logFile),
+    ].join('\n');
     try {
       stop({ generation });
     } catch (cleanupError) {
