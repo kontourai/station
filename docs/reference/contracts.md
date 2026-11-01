@@ -1687,6 +1687,18 @@ are absent from older hosts. See the
 [lifecycle fold](../../src-server/services/orchestration/session-lifecycle-service.ts)
 and the [inventory projection](../../src-server/services/orchestration/conversation-history-read-service.ts).
 
+### Child work steering
+
+Child-work items may expose `controls.steer.turnId` only for a running child
+with a bounded valid turn identity; settlement or a missing snapshot removes the
+steer control. The distinct `steerChildWork` command carries the parent Session,
+child, turn, input and required client input ID. `ChildWorkInstructionPage`
+contains Station-owned instructions and their delivery states, separately from
+the provider transcript. The optional `childWorkSteering` host flag advertises
+the command and page, not a guarantee that a particular provider accepts a child
+steer. See the [Session API](session-api.md#lifecycle-control-commands) for
+authority, replay and provider limits.
+
 ### Conversation titles
 
 `@kontourai/station-contracts/conversation-title` exports `isLowContentPrompt`,

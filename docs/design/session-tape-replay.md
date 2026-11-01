@@ -143,6 +143,9 @@ to a typed Station event. There is no in-product “accept unique” workflow.
 
 ## Queue vs steer
 
+This section describes steering the parent turn. The separate child-targeted
+command and Station instruction journal are documented in the [Session API](../reference/session-api.md#lifecycle-control-commands); they do not change the parent transcript fold described here.
+
 Two Station nouns. The composer distinguishes native steering from safe stop-and-send;
 the adapter mechanisms below do not by themselves establish the dock capability:
 

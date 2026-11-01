@@ -504,8 +504,20 @@ function ChatMessageListComponent({
   );
 
   const uiBlockActions = useMemo(
-    () => ({ submitForm, formScope, readOnly: Boolean(activeSession.replay) }),
-    [submitForm, formScope, activeSession.replay],
+    () => ({
+      submitForm,
+      formScope,
+      readOnly: Boolean(activeSession.replay),
+      canSendChildInstruction:
+        !activeSession.replay &&
+        activeSession.conversationOpenState?.callerAccess?.continue === true,
+    }),
+    [
+      submitForm,
+      formScope,
+      activeSession.replay,
+      activeSession.conversationOpenState?.callerAccess?.continue,
+    ],
   );
 
   const messages = useMemo(() => {

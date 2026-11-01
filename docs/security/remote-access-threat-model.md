@@ -1013,6 +1013,16 @@ Ordinary GET/HEAD routes require `orchestration:read` and ordinary mutating
 methods require `orchestration:operate`; explicit family and leaf rules can
 require a different tier. All `/api/registry/sources` methods require
 `access:manage` plus a separate Station operator principal check in the handlers.
+Child-work instruction history inherits `orchestration:read`, but the bounded,
+separately paged read also checks current principal and Session/child ownership
+before and after reading; unavailable ownership returns 404 with no-store.
+The `steerChildWork` command requires current Session read and mutation authority.
+For forwarded Station-control callers, the ingress guard re-resolves and
+re-authorizes the caller after asynchronous adapter resolution and before
+dispatch. A claimed instruction with an uncertain acknowledgement stays
+indeterminate instead of being sent again. The Station-owned journal is deleted
+with the Session while client-input key tombstones prevent cross-Session reuse.
+These are source boundaries, not native-device or hosted journey qualification.
 The additive #3994 b1 socket at `/api/terminal/socket` uses the main API
 listener with first-frame credentials and the HTTP admission pipeline. It
 requires the personal operator in person even on loopback. Project/binding

@@ -2181,6 +2181,18 @@ Imperative API calls — use in event handlers, slash commands, or anywhere hook
 
 ### Turn steering and acknowledgement retries
 
+`steerChildWork(apiBase, { threadId, childId, turnId, input, clientInputId })`
+uses a distinct child-only command; `getChildWorkInstructions` reads its
+separately paged Station-attributed history. Both require the host's
+`childWorkSteering` capability. React clients can use
+`useSteerChildWorkMutation` and `useChildWorkInstructionsQuery`. Retain the
+same target, text and key when checking an uncertain delivery; a confirmed
+receipt does not send it again. The mutation does not retry automatically. The
+host capability establishes the API surface, not permission or provider support:
+read and operate authority are checked separately, and Codex v2 can refuse direct
+input even when v1 accepts it. An older host rejects the distinct command rather
+than steering the parent.
+
 `steerOrchestrationTurn({ threadId, text, turnId?, clientInputId?, apiBase? })`
 sends input to an open turn. With an ID it uses the protected `steerTurnOnce`
 wire command, which older servers reject before invocation. Without an ID it
