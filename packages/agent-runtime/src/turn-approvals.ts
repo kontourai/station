@@ -108,6 +108,15 @@ export function decideAgentApproval(
     } {
   let approval = readAgentApproval(database, turnId, command.id);
   if (command.type === 'approvalPlan') {
+    if (!approval) {
+      const existing = database
+        .prepare(
+          'SELECT id FROM agent_steps_approvals WHERE turn_id=? AND tool_id=?',
+        )
+        .get(turnId, command.toolId);
+      if (existing)
+        approval = readAgentApproval(database, turnId, String(existing.id));
+    }
     if (approval)
       return approval.toolId === command.toolId &&
         approval.input === command.input

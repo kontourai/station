@@ -1,7 +1,11 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import type { OwnerIdentity, OwnerLiveness } from '@kontourai/monument';
-import { canonical } from './encoding.js';
-import type { ApprovalCommand, ApprovalResult } from './turn-approvals.js';
+import { canonical, hash } from './encoding.js';
+import type {
+  ApprovalCommand,
+  ApprovalResult,
+  DurableApproval,
+} from './turn-approvals.js';
 import type {
   EffectCommand,
   EffectIntent,
@@ -102,6 +106,10 @@ export function createAgentRuntime(options: {
   readonly implementation: string;
   readonly now?: () => number;
   readonly authorize?: (spec: AgentTurnSpec) => void | Promise<void>;
+  readonly approvalSettled?: (
+    spec: AgentTurnSpec,
+    approval: DurableApproval,
+  ) => void | Promise<void>;
 }) {
   const now = options.now ?? Date.now;
   const context = { liveness: options.liveness, now };
@@ -204,13 +212,18 @@ export function createAgentRuntime(options: {
           });
           const { approval } = await lease.approvalCommand({
             type: 'approvalPlan',
-            id: `approval:${tool.id}`,
+            id: `approval:${hash({ key: turn.spec.key, toolId: tool.id })}`,
             toolId: tool.id,
             input,
             deadline: now() + timeoutMs,
           });
-          if (approval.state !== 'pending')
+          if (approval.state !== 'pending') {
+            await options.approvalSettled?.(
+              structuredClone(turn.spec),
+              structuredClone(approval),
+            );
             return approval.state === 'approved' && now() < approval.deadline;
+          }
           await lease.assertCurrent();
           const decision =
             now() >= approval.deadline
@@ -228,6 +241,10 @@ export function createAgentRuntime(options: {
             expectedRevision: approval.revision,
             decision,
           });
+          await options.approvalSettled?.(
+            structuredClone(turn.spec),
+            structuredClone(resolved.approval),
+          );
           return resolved.approval.state === 'approved';
         })();
         approvalWaits.set(tool.id, { input: identity, result: pending });

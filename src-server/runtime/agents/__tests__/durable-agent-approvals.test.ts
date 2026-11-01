@@ -95,7 +95,7 @@ it('identical native tool IDs in different turns cannot share or overwrite a reg
     firstAsked.resolve();
     return registry.register(pending.id, {
       timeoutMs: pending.remainingMs,
-      metadata: { conversationId: 'A' },
+      metadata: { conversationId: 'A', source: 'runtime', title: 'probe' },
     });
   });
   const second = b.approval(tool, 60_000, async (pending) => {
@@ -103,7 +103,7 @@ it('identical native tool IDs in different turns cannot share or overwrite a reg
     secondAsked.resolve();
     return registry.register(pending.id, {
       timeoutMs: pending.remainingMs,
-      metadata: { conversationId: 'B' },
+      metadata: { conversationId: 'B', source: 'runtime', title: 'probe' },
     });
   });
   void first.catch(() => {});
@@ -111,6 +111,8 @@ it('identical native tool IDs in different turns cannot share or overwrite a reg
   try {
     await Promise.all([firstAsked.promise, secondAsked.promise]);
     expect(requested[0]!.id).not.toBe(requested[1]!.id);
+    expect(registry.isPendingForSession(requested[0]!.id, 'A')).toBe(true);
+    expect(registry.isPendingForSession(requested[0]!.id, 'B')).toBe(false);
     expect(registry.resolve(requested[0]!.id, true)).toBe(true);
     expect(await first).toBe(true);
     expect(
@@ -134,7 +136,7 @@ it('identical native tool IDs in different turns cannot share or overwrite a reg
       thirdAsked.resolve();
       return registry.register(pending.id, {
         timeoutMs: pending.remainingMs,
-        metadata: { conversationId: 'A' },
+        metadata: { conversationId: 'A', source: 'runtime', title: 'probe' },
       });
     });
     await thirdAsked.promise;

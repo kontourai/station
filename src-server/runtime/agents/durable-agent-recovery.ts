@@ -30,7 +30,6 @@ import {
   encodeDurableAgentFrame,
 } from './durable-agent-lifecycle.js';
 import type { stationAgentRuntimeOwner } from './durable-agent-owner.js';
-import { bindDurableApprovalObserver } from './durable-agent-tools.js';
 
 /** Rebuilds host scopes around the existing framework loop after a fenced takeover. */
 export function configureDurableAgentRecovery(options: {
@@ -171,14 +170,6 @@ export function configureDurableAgentRecovery(options: {
         workspace.close();
         if (nativeOutput) closeNativeOutputTurnContext(nativeOutput);
       });
-      bindDurableApprovalObserver(lease, (id) =>
-        adapter.reconcileDurableApproval(
-          conversationId,
-          turnId,
-          id,
-          input.kernelInvocationId,
-        ),
-      );
       for (const frame of owner.frames(conversationId, turnId))
         adapter.observeDurableWire(
           conversationId,

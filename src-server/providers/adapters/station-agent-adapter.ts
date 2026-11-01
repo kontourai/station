@@ -268,7 +268,8 @@ interface StationAgentAdapterOptions {
   hasAgent(agentId: string): boolean | Promise<boolean>;
   /** Recovery starts before the runtime has finished populating activeAgents. */
   isAgentRegistryReady?: () => boolean;
-  approvalRegistry: Pick<ApprovalRegistry, 'has' | 'resolve'>;
+  approvalRegistry: Pick<ApprovalRegistry, 'has' | 'resolve'> &
+    Partial<Pick<ApprovalRegistry, 'isPendingForSession'>>;
   eventBus: Pick<EventBus, 'subscribe'>;
   fetch?: typeof fetch;
   now?: () => Date;
@@ -1673,6 +1674,11 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     if (!pending) {
       throw new Error(`Unknown Station agent approval request: ${requestId}`);
     }
+    if (
+      this.options.durable?.approval(threadId, pending.turnId, requestId) &&
+      !this.options.approvalRegistry.isPendingForSession?.(requestId, threadId)
+    )
+      throw new Error('The durable approval is not waiting for this Session.');
     // #3284: a form's answer is the person's own action, carried whole. The
     // orchestration command already validated accepted content against the
     // form; the tool wrapper re-checks it before the server sees it.
@@ -2231,6 +2237,21 @@ export class StationAgentAdapter implements ProviderAdapterShape {
 
   private cancelPendingApprovals(record: StationAgentSessionRecord): void {
     for (const requestId of [...record.pendingRequests.keys()]) {
+      const pending = record.pendingRequests.get(requestId)!;
+      if (
+        this.options.durable?.approval(
+          record.session.threadId,
+          pending.turnId,
+          requestId,
+        ) &&
+        !this.options.approvalRegistry.isPendingForSession?.(
+          requestId,
+          record.session.threadId,
+        )
+      ) {
+        record.pendingRequests.delete(requestId);
+        continue;
+      }
       this.resolutionOverrides.set(requestId, 'cancelled');
       if (!this.options.approvalRegistry.resolve(requestId, false)) {
         record.pendingRequests.delete(requestId);

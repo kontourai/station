@@ -1,3 +1,4 @@
+import { currentAgentTurn } from '@kontourai/agent-runtime';
 import {
   mcpToolApprovalKey,
   resolveAuthoredToolApproval,
@@ -218,6 +219,10 @@ export function createElicitationCallback(
         approvalId,
         MS_PER_MINUTE,
         (approvalId, timeoutMs) => {
+          if (currentAgentTurn() && approvalRegistry.has(approvalId))
+            throw new Error(
+              'This durable approval already has a pending registry wait.',
+            );
           logger.info(
             '[Elicitation] NOT auto-approved, injecting approval request',
             {

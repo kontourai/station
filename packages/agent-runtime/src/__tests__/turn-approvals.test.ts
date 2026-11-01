@@ -1,4 +1,5 @@
 import { afterEach, expect, it } from 'vitest';
+import { agentWire } from '../index.js';
 import { gate, turnFixture } from './turn-fixture.js';
 
 const cleanup: (() => Promise<void>)[] = [];
@@ -13,6 +14,23 @@ const tool = {
 it('pending approval survives a crash with its original deadline and resolves once before tool execution', async () => {
   const f = await turnFixture();
   cleanup.push(() => f.close());
+  // Earlier writers used this unscoped identity; recovery must preserve it.
+  await f.lease.effect({
+    type: 'effectPlan',
+    intent: {
+      id: tool.id,
+      kind: 'tool',
+      replay: tool.replay,
+      input: agentWire(tool.input),
+    },
+  });
+  await f.lease.approvalCommand({
+    type: 'approvalPlan',
+    id: 'approval:tool:delete',
+    toolId: tool.id,
+    input: agentWire(tool.input),
+    deadline: 1_100,
+  });
   const firstAsked = gate();
   const firstAnswer = gate<boolean>();
   const old = f.lease.approval(tool, 100, async (pending) => {
@@ -28,7 +46,14 @@ it('pending approval survives a crash with its original deadline and resolves on
     firstAnswer.resolve(true);
     expect((await oldFailure)?.message).toContain('STALE');
   });
-  await firstAsked.promise;
+  await Promise.race([
+    firstAsked.promise,
+    oldFailure.then((error) => {
+      throw new Error('Legacy approval wait ended before delivery', {
+        cause: error,
+      });
+    }),
+  ]);
   f.advance(40);
   const restored = await f.recover();
   let effects = 0;

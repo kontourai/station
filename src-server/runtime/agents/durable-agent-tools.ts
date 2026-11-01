@@ -12,16 +12,6 @@ import type { IAgentHooks, ToolCallContext } from '../types.js';
 const callingTool = new AsyncLocalStorage<AgentToolIntent>();
 const replayDeclarations = new WeakMap<object, 'safe' | 'unsafe'>();
 const invocationFinalizers = new WeakMap<AgentTurnLease, () => Promise<void>>();
-const approvalObservers = new WeakMap<
-  AgentTurnLease,
-  (id: string) => void | Promise<void>
->();
-export function bindDurableApprovalObserver(
-  lease: AgentTurnLease,
-  observe: (id: string) => void | Promise<void>,
-) {
-  approvalObservers.set(lease, observe);
-}
 export async function finishDurableAgentHooks(
   lease: AgentTurnLease,
 ): Promise<void> {
@@ -133,12 +123,7 @@ export function waitDurableToolApproval(
   const lease = currentAgentTurn();
   const tool = callingTool.getStore();
   if (!lease || !tool) return wait(fallbackId, timeoutMs);
-  return lease
-    .approval(tool, timeoutMs, (pending) =>
-      raceWithSignal(wait(pending.id, pending.remainingMs), lease.signal),
-    )
-    .then(async (approved) => {
-      await approvalObservers.get(lease)?.(`approval:${tool.id}`);
-      return approved;
-    });
+  return lease.approval(tool, timeoutMs, (pending) =>
+    raceWithSignal(wait(pending.id, pending.remainingMs), lease.signal),
+  );
 }

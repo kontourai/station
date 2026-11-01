@@ -51,10 +51,7 @@ import {
   flushDurableAgentMemory,
   persistDurableAuthoredMessage,
 } from './durable-agent-memory.js';
-import {
-  bindDurableApprovalObserver,
-  finishDurableAgentHooks,
-} from './durable-agent-tools.js';
+import { finishDurableAgentHooks } from './durable-agent-tools.js';
 import type { DurableNativeStart } from './durable-invocation-identity.js';
 import { captureDurableInvocationIdentity } from './durable-invocation-identity.js';
 
@@ -233,6 +230,9 @@ function createStationOwner(home: string) {
     owner,
     liveness,
     implementation: 'station-agent/1',
+    approvalSettled: async (spec, approval) => {
+      if (onApproval) await onApproval(descriptor(spec.input), approval.id);
+    },
     authorize: async (spec) => {
       const input = descriptor(spec.input);
       if (!enabled() || agents.get(input.slug)?.definition !== input.definition)
@@ -522,7 +522,6 @@ function createStationOwner(home: string) {
             : {}),
           implementation: 'station-agent/1',
         });
-        bindDurableApprovalObserver(lease, (id) => onApproval?.(captured, id));
         resolveLease(lease);
         if (pendingPause) lease.pause();
         else if (pendingCancel) await lease.cancel();
