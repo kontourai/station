@@ -39,6 +39,7 @@ import {
 } from '../agents/durable-agent-invocation.js';
 import {
   durableAgentMemory,
+  durableStationMemory,
   noteDurableModelInput,
 } from '../agents/durable-agent-memory.js';
 import { durableAgentHooks } from '../agents/durable-agent-tools.js';
@@ -640,7 +641,7 @@ export class StrandsFramework {
         slug,
         slug,
         model,
-        durableAgentMemory(opts.memoryAdapter) as unknown as IMemory,
+        durableStationMemory(opts.memoryAdapter),
         invocationCtx,
         viewTools,
         {
@@ -687,9 +688,7 @@ export class StrandsFramework {
             ? getBuiltinVendedToolIdentity(candidates[0])
             : undefined;
         },
-        memoryAdapter: durableAgentMemory(
-          opts.memoryAdapter,
-        ) as unknown as IMemory,
+        memoryAdapter: durableStationMemory(opts.memoryAdapter),
         logger: opts.logger,
         resolvedModel,
         getLastStreamUsage: () => wrapper._lastStreamUsage,
@@ -845,9 +844,7 @@ export class StrandsFramework {
         opts.name,
         opts.name,
         opts.model,
-        opts.memoryAdapter
-          ? (durableAgentMemory(opts.memoryAdapter) as unknown as IMemory)
-          : null,
+        opts.memoryAdapter ? durableStationMemory(opts.memoryAdapter) : null,
         invocationCtx,
         viewTools,
         {

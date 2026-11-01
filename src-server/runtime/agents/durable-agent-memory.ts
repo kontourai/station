@@ -3,6 +3,8 @@ import {
   type AgentTurnLease,
   currentAgentTurn,
 } from '@kontourai/agent-runtime';
+import type { StorageAdapter } from '@voltagent/core';
+import type { IMemory } from '../types.js';
 
 const authored = new WeakMap<
   AgentTurnLease,
@@ -194,4 +196,28 @@ export async function flushDurableAgentMemory(
     await write.apply();
   }
   writes.delete(lease);
+}
+
+/** Adapt the framework store to Station's smaller memory contract explicitly. */
+export function durableStationMemory(storage: StorageAdapter): IMemory {
+  const memory = durableAgentMemory(storage);
+  return {
+    getConversation: (id) => memory.getConversation(id),
+    createConversation: (input) =>
+      memory.createConversation({
+        ...input,
+        title: input.title ?? 'New Conversation',
+        metadata: input.metadata ?? {},
+      }),
+    getConversations: (resourceId) => memory.getConversations(resourceId),
+    getMessages: (userId, conversationId) =>
+      memory.getMessages(userId, conversationId),
+    addMessage: (message, userId, conversationId, metadata) =>
+      memory.addMessage(message, userId, conversationId, metadata),
+    updateConversation: async (id, updates) => {
+      await memory.updateConversation(id, updates);
+    },
+    clearMessages: (userId, conversationId) =>
+      memory.clearMessages(userId, conversationId),
+  };
 }
