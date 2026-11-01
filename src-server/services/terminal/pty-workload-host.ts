@@ -104,19 +104,12 @@ class CommandProcess implements IPtyProcess {
 export interface PtyWorkloadHostOptions {
   pty: IPtyAdapter;
   emit: (event: WorkloadEventMessage) => void;
-  killGraceMs?: number;
-  platform?: NodeJS.Platform;
 }
 
 export class PtyWorkloadHost {
   private readonly workloads = new Map<string, Workload>();
-  private readonly killGraceMs: number;
-  private readonly platform: NodeJS.Platform;
 
-  constructor(private readonly options: PtyWorkloadHostOptions) {
-    this.killGraceMs = options.killGraceMs ?? KILL_GRACE_MS;
-    this.platform = options.platform ?? process.platform;
-  }
+  constructor(private readonly options: PtyWorkloadHostOptions) {}
 
   async handle(request: WorkloadRequest): Promise<unknown> {
     if (request.op === 'list')
@@ -291,7 +284,7 @@ export class PtyWorkloadHost {
       env,
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
-      detached: this.platform !== 'win32',
+      detached: process.platform !== 'win32',
     });
     if (child.pid === undefined) {
       throw new WorkloadFailure(
@@ -312,7 +305,7 @@ export class PtyWorkloadHost {
   private async terminate(workload: Workload): Promise<void> {
     if (workload.info.state === 'running') {
       const pid = workload.info.pid;
-      if (this.platform === 'win32') {
+      if (process.platform === 'win32') {
         spawnSync('taskkill', ['/T', '/F', '/PID', String(pid)], {
           stdio: 'ignore',
           windowsHide: true,
@@ -322,7 +315,7 @@ export class PtyWorkloadHost {
         // attach to a console that is gone, so only one still running.
         const ended = await Promise.race([
           workload.exited.then(() => true),
-          this.delay(this.killGraceMs).then(() => false),
+          this.delay(KILL_GRACE_MS).then(() => false),
         ]);
         if (!ended) this.quietly(() => workload.process.kill());
       } else if (workload.process.terminate) {
@@ -333,7 +326,7 @@ export class PtyWorkloadHost {
         this.signalGroup(workload, 'SIGTERM');
         const escalation = setTimeout(
           () => this.signalGroup(workload, 'SIGKILL'),
-          this.killGraceMs,
+          KILL_GRACE_MS,
         );
         await Promise.race([workload.exited, this.delay(KILL_DEADLINE_MS)]);
         clearTimeout(escalation);

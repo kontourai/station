@@ -294,6 +294,7 @@ export class TerminalSessionStore {
   private readonly sessions = new Set<StoreSession>();
   private readonly channels = new Map<number, StoreSession>();
   private readonly pending = new Map<string, Pending>();
+  private queued: (() => void)[] = [];
   private disposed = false;
   private fatal: TerminalSessionError | undefined;
   private readonly unwatch: () => void;
@@ -455,7 +456,6 @@ export class TerminalSessionStore {
       }
     });
   }
-  private queued: (() => void)[] = [];
 
   /** @internal */
   bind(session: StoreSession): void {
@@ -584,8 +584,8 @@ export class TerminalSessionStore {
         if (this.socket !== socket) return;
         try {
           this.receive('data' in event ? event.data : undefined);
-        } catch (error) {
-          this.protocolFailure(socket, error);
+        } catch {
+          this.protocolFailure(socket);
         }
       });
       socket.addEventListener('close', (event) => {
@@ -614,7 +614,7 @@ export class TerminalSessionStore {
     }
   }
 
-  private protocolFailure(socket: TerminalSessionSocket, _error: unknown) {
+  private protocolFailure(socket: TerminalSessionSocket) {
     if (this.socket !== socket) return;
     socket.close(4400, 'terminal_protocol');
     this.dropped(4400);
