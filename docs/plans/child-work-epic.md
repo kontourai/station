@@ -3290,8 +3290,14 @@ A separate real paired grant is now revoked while its actual transaction
 admission waits behind an independent HomeWriter lease, after initial inspection.
 The caller refuses before entering the group transaction body. Initial and final
 inspection are also observed under physical exclusion. The expanded six-case
-selection and scoped server-test types pass. Transaction-owner removal and
-final-inspection publication removal mutations remain open.
+selection and scoped server-test types pass. From clean checkpoint
+`a0ffeadb6bf`, removing the transaction owner failed the required transaction
+admission barrier, with five other cases passing. After exact restoration and a
+clean tree, removing only publication from final inspection let the independent
+physical lock acquire during that read, again with five other passes. Byte-exact
+restoration returned all 14 caller/home/runtime keeper cases to green. These
+mutation receipts close the named sync-finalization oracle gaps; they do not
+qualify the remaining writers or whole epic.
 
 Continuation, continuation finalization, renewal adoption,
 authenticated public-parent borrowing, active cancellation/ACK and the funded
