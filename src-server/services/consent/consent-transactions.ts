@@ -469,6 +469,7 @@ export class ConsentTransactionStore {
         'person-group-change',
         'person-token-change',
         'operator-passkey-revocation',
+        'project-sharing-enable',
         'outside-agent-approval',
         'outside-agent-denial',
         'outside-agent-grant-change',

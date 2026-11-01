@@ -248,6 +248,7 @@ import {
 import { createProjectRoomAccess } from './project-room-access.js';
 import { projectRoomAgentExecution } from './project-room-agent-runtime.js';
 import { createProjectRoomTaskContext } from './project-room-task-context.js';
+import { createProjectSharingStepUp } from './project-sharing-step-up.js';
 import { runtimeToolLibraryDependencies } from './tool-library-runtime.js';
 
 export {
@@ -7587,6 +7588,8 @@ export function configureRuntimeRoutes(
           ),
         };
       }
+      if (account?.kind === 'unavailable')
+        throw new ProjectMembershipRefusal('unavailable');
       if (account && account.kind !== 'absent')
         throw new ProjectMembershipRefusal('forbidden');
       const principal = roomRequestPrincipals.get(request);
@@ -7909,34 +7912,50 @@ export function configureRuntimeRoutes(
     );
     await next();
   });
+  const mayPostProjectSharingEnable = (request: Request, slug: string) => {
+    const route = {
+      method: 'POST',
+      path: `/api/projects/${encodeURIComponent(slug)}/access/enable`,
+    };
+    const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+    const binding =
+      principal?.authority === 'device-credential'
+        ? context.environmentSecurityService.identifyDevice(
+            principal.credential,
+          )?.principalBinding
+        : undefined;
+    return (
+      runtimeRequestPrincipalMayAccessHttpRoute(
+        request,
+        context.environmentSecurityService,
+        route,
+      ) &&
+      (!(binding && 'kind' in binding && binding.kind === 'account') ||
+        accountBoundProjectRouteMayPass(route.method, route.path))
+    );
+  };
   context.app.route(
     '/api/projects',
     createProjectMembershipRoutes(
       context.projectMembership,
       projectMembershipAuthority,
       context.deploymentAuthentication?.publicOrigin,
-      (request, slug) => {
-        const route = {
-          method: 'POST',
-          path: `/api/projects/${slug}/access/enable`,
-        };
-        const principal = getRuntimeAuthenticatedRequestPrincipal(request);
-        const binding =
-          principal?.authority === 'device-credential'
-            ? context.environmentSecurityService.identifyDevice(
-                principal.credential,
-              )?.principalBinding
-            : undefined;
-        return (
-          runtimeRequestPrincipalMayAccessHttpRoute(
+      // #4306: an operator passkey session enables sharing remotely, one
+      // fresh consent-origin passkey confirmation per enable.
+      createProjectSharingStepUp({
+        membership: context.projectMembership,
+        authority: projectMembershipAuthority,
+        consentChannel: context.consentChannel,
+        operatorSessions: context.operatorSessions,
+        isPrincipalCurrent: (request) =>
+          isRuntimeRequestPrincipalCurrent(
             request,
             context.environmentSecurityService,
-            route,
-          ) &&
-          (!(binding && 'kind' in binding && binding.kind === 'account') ||
-            accountBoundProjectRouteMayPass(route.method, route.path))
-        );
-      },
+          ),
+        mayPostEnable: mayPostProjectSharingEnable,
+        logger: context.logger,
+      }),
+      mayPostProjectSharingEnable,
     ),
   );
   // #90 Browser pane: personal hosts only (same gate as the device routes),
