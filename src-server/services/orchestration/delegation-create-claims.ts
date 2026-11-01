@@ -27,6 +27,36 @@ interface Claim {
   sessionId: string;
   result?: CreateHandle;
 }
+function completedResult(
+  value: CreateHandle,
+  claim: Pick<Claim, 'kind' | 'sessionId'>,
+): boolean {
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    value.conversationId !== claim.sessionId ||
+    typeof value.sessionId !== 'string' ||
+    !value.sessionId ||
+    !value.target ||
+    value.target.kind !== 'agent' ||
+    typeof value.target.id !== 'string' ||
+    !value.resolution ||
+    typeof value.resolution !== 'object' ||
+    Array.isArray(value.resolution)
+  )
+    return false;
+  return claim.kind === 'foreground'
+    ? 'providerTurnId' in value &&
+        typeof value.providerTurnId === 'string' &&
+        value.providerTurnId.length > 0
+    : 'turnId' in value &&
+        typeof value.turnId === 'string' &&
+        value.turnId.length > 0 &&
+        value.status === 'dispatched' &&
+        value.taskId === claim.sessionId &&
+        value.currentSessionId === value.sessionId;
+}
+
 interface Ledger {
   version: 1;
   claims: Record<string, Claim>;
@@ -80,17 +110,7 @@ export class DelegationCreateClaims {
         typeof claim.sessionId !== 'string' ||
         claim.sessionId.length === 0 ||
         (claim.kind !== 'delegation' && claim.kind !== 'foreground') ||
-        (claim.result !== undefined &&
-          (claim.result.conversationId !== claim.sessionId ||
-            !claim.result.sessionId ||
-            !claim.result.target ||
-            !claim.result.resolution ||
-            (claim.kind === 'foreground'
-              ? !(
-                  'providerTurnId' in claim.result &&
-                  claim.result.providerTurnId
-                )
-              : !('turnId' in claim.result && claim.result.turnId))))
+        (claim.result !== undefined && !completedResult(claim.result, claim))
       )
         throw new Error('Malformed delegation create claim');
     }
@@ -172,6 +192,11 @@ export class DelegationCreateClaims {
       );
     }
     const result = await effect(claimed.claim.sessionId);
+    if (!completedResult(result, claimed.claim))
+      throw new DelegationCreateIndeterminateError(
+        claimed.claim.sessionId,
+        input.requestKey,
+      );
     await this.#update((ledger) => {
       ledger.claims[key].result = result;
     });

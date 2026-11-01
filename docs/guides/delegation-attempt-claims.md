@@ -4,6 +4,16 @@ Opt-in durable duplicate suppression for portable delegation creates. Only the
 receiver side exists: the request claim and its lookup. There is no sender
 ledger, fence, cancel, UI or retention protocol yet.
 
+All current delegation creates also require `clientTurnId`. The separate
+[create ledger](../../src-server/services/orchestration/delegation-create-claims.ts)
+binds that key to authenticated caller scope and input for local and portable
+creates. A completed receipt replays its original handle; an unfinished create
+is indeterminate and never automatically resent. Completion requires the real
+provider turn ID. This general request-key contract does not broaden the peer
+identity, lookup authority or opt-in `attemptId` protocol described below. The
+SDK uses an existing `attemptId` as the default `clientTurnId`; an explicit key
+must be retained with the original input on retry.
+
 ## Opt-in field
 
 `POST /api/orchestration/delegations` accepts an optional `attemptId`

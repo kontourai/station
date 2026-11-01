@@ -877,6 +877,23 @@ describe('ordinary local create request claims', () => {
     expect(service.dispatchWithReceipt).toHaveBeenCalledTimes(1);
   });
 
+  test('a create without its provider turn receipt stays indeterminate and never resends', async () => {
+    const { delegateTask } = await import('../station-control-delegation.js');
+    const service = localService();
+    service.dispatchWithReceipt.mockResolvedValueOnce({
+      receipt: { commandId: 'missing-turn', status: 'accepted' },
+      result: {},
+    });
+    await expect(
+      delegateTask(localInput(), service as never),
+    ).rejects.toMatchObject({ outcome: 'indeterminate' });
+    await expect(
+      delegateTask(localInput(), service as never),
+    ).rejects.toMatchObject({ outcome: 'indeterminate' });
+    expect(service.startSessionInternal).toHaveBeenCalledTimes(1);
+    expect(service.dispatchWithReceipt).toHaveBeenCalledTimes(1);
+  });
+
   test('a failed owner before session creation leaves a stable indeterminate reference and never creates on retry', async () => {
     const { delegateTask } = await import('../station-control-delegation.js');
     const service = localService();
