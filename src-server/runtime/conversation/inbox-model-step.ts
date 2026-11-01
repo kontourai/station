@@ -42,7 +42,6 @@ export function createInboxStepPreparation(
       );
     }
     if (!inserted.length) return prepared;
-    let attempted = false;
     return {
       ...prepared,
       messages: [...(prepared?.messages ?? step.messages), ...inserted],
@@ -55,11 +54,6 @@ export function createInboxStepPreparation(
               middleware: {
                 specificationVersion: 'v3',
                 wrapStream: async ({ doStream }) => {
-                  if (attempted)
-                    throw new Error(
-                      'The model request carrying this steer was already attempted.',
-                    );
-                  attempted = true;
                   const result = await doStream();
                   for (const input of pending)
                     await input.onDispatched(async () => {
