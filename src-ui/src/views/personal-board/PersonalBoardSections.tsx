@@ -12,6 +12,7 @@ import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { useScopedProjectsQuery } from '../../contexts/ProjectsContext';
 import { isPlainLeftClick } from '../../utils/attentionOpen';
+import { latestSessionPerConversation } from '../sessions/conversation-groups';
 
 function StationLink({
   href,
@@ -159,13 +160,14 @@ function RecentSection({
 }) {
   const scope = useHostRequestAuthorityScope();
   const query = useBoardRecentWorkQuery(scope);
-  const rows = (query.data ?? [])
-    .filter(
+  // #4386: one row per conversation — a continuation's engine session
+  // (`<root>:session:<uuid>`) is the same chat as its root, not a second one.
+  const rows = latestSessionPerConversation(
+    (query.data ?? []).filter(
       (session) =>
         !section.projectSlug || session.projectSlug === section.projectSlug,
-    )
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-    .slice(0, section.limit);
+    ),
+  ).slice(0, section.limit);
   return (
     <ReadState query={query} empty={!rows.length}>
       <ul className="personal-board__rows">

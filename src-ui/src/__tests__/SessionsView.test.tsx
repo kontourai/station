@@ -1160,6 +1160,34 @@ describe('SessionsView', () => {
     ).toMatch(/ · 1$/);
   });
 
+  test('#4386: opening a folded conversation row does not list the conversation twice', () => {
+    const base = {
+      ...sessions[0],
+      delegation: undefined,
+      lifecycleState: 'completed',
+      displayTitle: 'Say hi in 5 words',
+      projectSlug: undefined,
+    };
+    sessions = [
+      {
+        ...base,
+        threadId: 'conv-1:session:2',
+        conversationId: 'conv-1',
+        updatedAt: '2026-06-28T00:20:00.000Z',
+      },
+      {
+        ...base,
+        threadId: 'conv-1',
+        updatedAt: '2026-06-28T00:10:00.000Z',
+      },
+    ];
+    const { container } = renderView();
+
+    fireEvent.click(screen.getByRole('button', { name: /Say hi in 5 words/ }));
+
+    expect(container.querySelectorAll('.split-pane__item')).toHaveLength(1);
+  });
+
   test('a successor Session shows its conversation’s linked pull requests, not its own thread’s', async () => {
     // A context reset or handoff child is not a conversation id: the server
     // refuses it ("Conversation unavailable"), so the panel must be handed
