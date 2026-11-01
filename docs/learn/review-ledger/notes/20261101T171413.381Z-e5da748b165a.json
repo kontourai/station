@@ -1,0 +1,7 @@
+{
+  "revision": "a8ce35c6d1aaf2ed2ce1d7c0f201fca2eac1b292",
+
+  "notes": [
+    {"path":"docs/guides/keyboard-shortcuts.md","note":"Undo in the toast and Cmd/Ctrl+Z still restore a dismissal; Cmd/Ctrl+Z now also works when the toast cannot show, which the new inbox-dismissal test pins.","inputs":["docs/guides/keyboard-shortcuts.md","src-ui/src/__tests__/inbox-dismissal.test.tsx","src-ui/src/components/chat-dock/inbox-dismissals.tsx"]}
+  ]
+}

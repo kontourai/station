@@ -198,6 +198,8 @@ describe('DEVICE_SETTINGS_REGISTRY completeness', () => {
         // #3051 — the Coding layout's panels, per session.
         'layoutPanels',
         'chatReturnBehavior',
+        // #4377 — assistant answer width, synced per account.
+        'chatAnswerWidth',
         // Named color themes (docs/decisions/user-color-themes.md).
         'colorTheme',
         'colorThemeFlavor',
