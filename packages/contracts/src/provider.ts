@@ -1000,9 +1000,20 @@ export const CLIENT_TURN_IN_FLIGHT_CODE = 'client_turn_in_flight';
 export const CLIENT_TURN_INPUT_CONFLICT_CODE = 'client_turn_input_conflict';
 
 /** A steer request with this refusal did not acquire a new input claim. */
+export const INBOX_KEY_CONFLICT_CODE = 'inbox_key_conflict';
+
+export function errorCodeOf(error: unknown): string | undefined {
+  return typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    typeof error.code === 'string'
+    ? error.code
+    : undefined;
+}
+
 export function isSteerConflictCode(code: unknown): boolean {
   return (
-    code === CLIENT_TURN_INPUT_CONFLICT_CODE || code === 'inbox_key_conflict'
+    code === CLIENT_TURN_INPUT_CONFLICT_CODE || code === INBOX_KEY_CONFLICT_CODE
   );
 }
 

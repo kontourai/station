@@ -11,6 +11,7 @@ import type {
   ConversationOpenResolution,
   ConversationTurnActivity,
 } from '@kontourai/station-contracts/orchestration';
+import type { ProviderDurabilityProfile } from '@kontourai/station-contracts/provider';
 import {
   type ApprovalMode,
   type EngineId,
@@ -618,6 +619,7 @@ export type ChatUIState = {
   approvalPostureSequence?: number;
   orchestrationSessionStarted?: boolean;
   orchestrationProvider?: EngineId;
+  orchestrationDurability?: ProviderDurabilityProfile;
   orchestrationModel?: string;
   orchestrationStatus?: string;
   /**

@@ -2608,7 +2608,7 @@ const inbox: KernelConformanceCase[] = [
           kind: 'display',
         });
         assert.equal(claimedKey(display), 'accepted:note:placed');
-        await session.run(submit('later', { now: 30 * 24 * 60 * 60 * 1000 }));
+        await session.run(submit('later', { now: 4 }));
         await session.store.reopen();
         assert.equal(
           claimedKey(await session.run({ ...submit('note'), kind: 'display' })),
@@ -2621,7 +2621,7 @@ const inbox: KernelConformanceCase[] = [
       }),
   },
   {
-    name: 'inbox: steer and display entries survive reopening without duplication',
+    name: 'inbox: steer fences survive retention while display entries expire',
     areas: ['inbox'],
     run: (harness) =>
       withSession(harness, async (session) => {
@@ -2636,17 +2636,25 @@ const inbox: KernelConformanceCase[] = [
           kind: 'display',
         });
         await session.store.reopen();
-        for (const kind of ['steer', 'display'] as const) {
-          const command = { ...submit(kind), kind };
-          assert.equal((await session.run(command)).kind, 'existing');
-        }
+        assert.equal(
+          (await session.run({ ...submit('steer'), kind: 'steer' })).kind,
+          'existing',
+        );
+        assert.deepEqual(
+          await session.run({
+            type: 'inbox.read',
+            inboxId: 'conversation',
+            key: 'display',
+          }),
+          { kind: 'absent' },
+        );
         assert.deepEqual(
           await session.run({ ...submit('steer'), kind: 'display' }),
           { kind: 'conflict' },
         );
         assert.deepEqual(
           (await inboxEntries(session)).map((entry) => entry.kind),
-          ['steer', 'display', 'display'],
+          ['steer', 'display'],
         );
       }),
   },
@@ -2905,6 +2913,58 @@ const inbox: KernelConformanceCase[] = [
           assert.equal((await inboxEntries(session)).length, 3);
         },
         { limits: { inboxMaxUnsettled: 2 } },
+      ),
+  },
+  {
+    name: 'inbox: display capacity rejects new notes and retention reopens capacity',
+    areas: ['inbox'],
+    run: (harness) =>
+      withSession(
+        harness,
+        async (session) => {
+          await session.run({
+            ...submit('note-1', { now: 0 }),
+            kind: 'display',
+          });
+          await session.run({
+            ...submit('note-2', { now: 0 }),
+            kind: 'display',
+          });
+          assert.equal(
+            (
+              await session.run({
+                ...submit('note-1', { now: 1 }),
+                kind: 'display',
+              })
+            ).kind,
+            'existing',
+          );
+          assert.deepEqual(
+            await session.run({
+              ...submit('full', { now: 1 }),
+              kind: 'display',
+            }),
+            { kind: 'capacity', limit: 2 },
+          );
+          assert.equal(
+            (await session.run(submit('follow-up', { now: 1 }))).kind,
+            'accepted',
+          );
+          assert.equal(
+            (
+              await session.run({
+                ...submit('note-3', { now: 20 }),
+                kind: 'display',
+              })
+            ).kind,
+            'accepted',
+          );
+          assert.deepEqual(
+            (await inboxEntries(session)).map((entry) => entry.key),
+            ['follow-up', 'note-3'],
+          );
+        },
+        { limits: { inboxMaxDisplay: 2, inboxSettledRetentionMs: 10 } },
       ),
   },
   {

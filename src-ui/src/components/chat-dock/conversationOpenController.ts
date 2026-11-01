@@ -169,6 +169,7 @@ export function conversationOpenPatch(
             : undefined,
         provider: native ? nativeProvider : execution.provider,
         orchestrationProvider: execution.provider,
+        orchestrationDurability: execution.durability,
         executionMode:
           execution.provider === 'station-agent'
             ? EXECUTION_MODE.STATION
@@ -261,6 +262,7 @@ export function conversationOpenPatch(
           agentName: 'Unknown Agent',
           provider: undefined,
           orchestrationProvider: undefined,
+          orchestrationDurability: undefined,
           agentConnectionId: undefined,
           agentConnectionObservedFor: undefined,
           executionMode: undefined,

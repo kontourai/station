@@ -61,6 +61,7 @@ import {
   CLIENT_TURN_IN_FLIGHT_CODE,
   CLIENT_TURN_INPUT_CONFLICT_CODE,
   type DelegationProvenance,
+  INBOX_KEY_CONFLICT_CODE,
   isSteerConflictCode,
   MEMORY_CONTINUATION_CLIENT_TURN_PREFIX,
   PROVIDER_SESSION_STARTING_CODE,
@@ -2651,7 +2652,7 @@ export function createOrchestrationRoutes(
           success: false,
           error:
             'This message key was already used for a different queued message.',
-          code: 'inbox_key_conflict',
+          code: INBOX_KEY_CONFLICT_CODE,
         },
         409,
       );
@@ -3633,7 +3634,7 @@ export function createOrchestrationRoutes(
       if (result.outcome === 'not-permitted')
         return c.json({ success: false, error: 'Conversation not found' }, 404);
       if (result.outcome === 'conflict')
-        return c.json({ success: false, code: 'inbox_key_conflict' }, 409);
+        return c.json({ success: false, code: INBOX_KEY_CONFLICT_CODE }, 409);
       if (result.outcome === 'capacity')
         return c.json({ success: false, code: 'conversation_inbox_full' }, 409);
       return c.json({ success: true, data: result.entry }, 202);

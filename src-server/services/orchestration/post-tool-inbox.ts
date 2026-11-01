@@ -1,9 +1,15 @@
+export interface PostToolSteerInput {
+  readonly key: string;
+  readonly text: string;
+  readonly onDispatched: (persistMemory: () => Promise<void>) => Promise<void>;
+}
+
 interface PostToolInbox {
   owns(sessionId: string, turnId: string): boolean;
   deliver(
     sessionId: string,
     turnId: string,
-    inject: (text: string) => void,
+    inject: (input: PostToolSteerInput) => void,
   ): void;
 }
 
@@ -20,10 +26,9 @@ export function registerPostToolInbox(inbox: PostToolInbox): () => void {
 export function deliverPostToolInbox(
   sessionId: string,
   turnId: string,
-  inject: (text: string) => void,
+  inject: (input: PostToolSteerInput) => void,
 ): void {
   const owners = [...inboxes].filter((inbox) => inbox.owns(sessionId, turnId));
-  if (owners.length > 1)
-    throw new Error('Post-tool inbox ownership is ambiguous.');
+  if (owners.length !== 1) return;
   owners[0]?.deliver(sessionId, turnId, inject);
 }

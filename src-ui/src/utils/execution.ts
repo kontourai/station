@@ -1,12 +1,14 @@
 import type { AgentExecutionConfig } from '@kontourai/station-contracts/agent';
 import {
   type ModelImageSupport,
-  resolveEngineCapabilityMatrix,
-  resolveProviderDurabilityProfile,
+  UNKNOWN_ENGINE_DURABILITY,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type { ConversationOpenResolution } from '@kontourai/station-contracts/orchestration';
-import type { EngineId } from '@kontourai/station-contracts/provider';
+import type {
+  EngineId,
+  ProviderDurabilityProfile,
+} from '@kontourai/station-contracts/provider';
 import {
   isSessionLifecycleStateStopped,
   SESSION_LIFECYCLE_STATES,
@@ -706,30 +708,14 @@ type SessionExecutionActivity = SessionExecutionSummary & {
  * cancel and reprompt, so it cannot promise an additive live input channel.
  * Station-owned placement is held for an observed boundary.
  */
-export function sessionSteeringPlacement(
-  agentConnectionId?: string | null,
-  agentConnections: ConnectionConfig[] = [],
-  orchestrationProvider?: string | null,
-) {
-  const connection = agentConnectionId
-    ? agentConnections.find((candidate) => candidate.id === agentConnectionId)
-    : undefined;
-  return orchestrationProvider
-    ? resolveProviderDurabilityProfile(orchestrationProvider).steerPlacement
-    : resolveEngineCapabilityMatrix(agentConnectionId, connection).durability
-        .steerPlacement;
+export function sessionSteeringPlacement(profile?: ProviderDurabilityProfile) {
+  return (profile ?? UNKNOWN_ENGINE_DURABILITY).steerPlacement;
 }
 
 export function sessionAdapterSupportsSteering(
-  agentConnectionId?: string | null,
-  agentConnections: ConnectionConfig[] = [],
-  orchestrationProvider?: string | null,
+  profile?: ProviderDurabilityProfile,
 ): boolean {
-  const placement = sessionSteeringPlacement(
-    agentConnectionId,
-    agentConnections,
-    orchestrationProvider,
-  );
+  const placement = sessionSteeringPlacement(profile);
   return (
     placement.state === 'native' || placement.boundary === 'station-observed'
   );

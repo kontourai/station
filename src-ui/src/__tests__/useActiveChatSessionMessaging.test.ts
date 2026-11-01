@@ -1,3 +1,4 @@
+import { STEERING_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
 /** @vitest-environment jsdom */
 
 import { readFileSync } from 'node:fs';
@@ -2900,6 +2901,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     activeChatsStore.updateChat(sessionId, {
       status: 'sending',
       orchestrationProvider: 'claude',
+      orchestrationDurability: STEERING_ENGINE_DURABILITY,
       currentSessionId: 'exec-claude-1',
       openTurnId: 'turn-open',
     });
@@ -2935,6 +2937,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     activeChatsStore.updateChat(sessionId, {
       status: 'sending',
       orchestrationProvider: 'claude',
+      orchestrationDurability: STEERING_ENGINE_DURABILITY,
       currentSessionId: 'exec-claude-1',
       conversationId: 'conversation-p',
       conversationActivity: {
@@ -3065,6 +3068,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     activeChatsStore.updateChat(sessionId, {
       status: 'sending',
       orchestrationProvider: 'claude',
+      orchestrationDurability: STEERING_ENGINE_DURABILITY,
       openTurnId: 'turn-open',
       conversationId: sessionId,
     });
@@ -3155,6 +3159,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       activeChatsStore.updateChat(sessionId, {
         status: 'sending',
         orchestrationProvider: provider,
+        orchestrationDurability: STEERING_ENGINE_DURABILITY,
         openTurnId: 'turn-open',
         conversationId: sessionId,
         streamingMessage: { role: 'assistant', content: 'partial answer' },
@@ -3205,6 +3210,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     activeChatsStore.updateChat(sessionId, {
       status: 'sending',
       orchestrationProvider: 'claude',
+      orchestrationDurability: STEERING_ENGINE_DURABILITY,
       openTurnId: 'turn-open',
       conversationId: undefined,
       input: 'keep until identified',
@@ -3234,6 +3240,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     activeChatsStore.updateChat(sessionId, {
       status: 'sending',
       orchestrationProvider: 'claude',
+      orchestrationDurability: STEERING_ENGINE_DURABILITY,
       openTurnId: 'turn-open',
       conversationId: sessionId,
     });
@@ -3281,6 +3288,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     activeChatsStore.updateChat(sessionId, {
       status: 'sending',
       orchestrationProvider: 'claude',
+      orchestrationDurability: STEERING_ENGINE_DURABILITY,
       openTurnId: 'turn-open',
       conversationId: sessionId,
       input: 'offline steer',
@@ -3325,6 +3333,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     activeChatsStore.updateChat(sessionId, {
       status: 'sending',
       orchestrationProvider: 'claude',
+      orchestrationDurability: STEERING_ENGINE_DURABILITY,
       openTurnId: 'turn-open',
       conversationId: sessionId,
       input: 'offline steer',
@@ -3357,6 +3366,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     activeChatsStore.updateChat(sessionId, {
       status: 'sending',
       orchestrationProvider: 'claude',
+      orchestrationDurability: STEERING_ENGINE_DURABILITY,
       openTurnId: 'turn-open',
       conversationId: sessionId,
       input: 'keep this',
@@ -3392,6 +3402,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     activeChatsStore.updateChat(sessionId, {
       status: 'sending',
       orchestrationProvider: 'claude',
+      orchestrationDurability: STEERING_ENGINE_DURABILITY,
       openTurnId: 'turn-open',
       conversationId: sessionId,
       input: 'keep this draft',
@@ -3415,6 +3426,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     activeChatsStore.updateChat(sessionId, {
       status: 'sending',
       orchestrationProvider: 'claude',
+      orchestrationDurability: STEERING_ENGINE_DURABILITY,
       openTurnId: 'turn-open',
       conversationId: sessionId,
       input: 'review this',
@@ -3493,6 +3505,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     activeChatsStore.updateChat(sessionId, {
       status: 'sending',
       orchestrationProvider: 'claude',
+      orchestrationDurability: STEERING_ENGINE_DURABILITY,
       openTurnId: 'turn-open',
     });
     const { result } = renderHook(() => useSendMessage('http://api.test'));
@@ -3764,6 +3777,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     activeChatsStore.updateChat(sessionId, {
       status: 'sending',
       orchestrationProvider: 'claude',
+      orchestrationDurability: STEERING_ENGINE_DURABILITY,
       openTurnId: 'turn-open',
     });
     const { result } = renderHook(() => useSendMessage('http://api.test'));
@@ -3806,6 +3820,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       activeChatsStore.updateChat(sessionId, {
         status: 'idle',
         orchestrationProvider: 'claude',
+        orchestrationDurability: STEERING_ENGINE_DURABILITY,
         conversationId: conv,
         currentSessionId: 'stale-root',
         openTurnId: 'stale-local-turn',
@@ -3834,6 +3849,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       activeChatsStore.updateChat(sessionId, {
         status: 'idle',
         orchestrationProvider: 'claude',
+        orchestrationDurability: STEERING_ENGINE_DURABILITY,
         conversationId: conv,
         conversationActivity: openRecord(conv),
       });
@@ -3863,6 +3879,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       activeChatsStore.updateChat(sessionId, {
         status: 'sending',
         orchestrationProvider: 'claude',
+        orchestrationDurability: STEERING_ENGINE_DURABILITY,
         conversationId: conv,
         conversationActivity: { conversationId: conv, asOfSequence: 20 },
       });
@@ -3890,6 +3907,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       activeChatsStore.updateChat(sessionId, {
         status: 'idle',
         orchestrationProvider: 'claude',
+        orchestrationDurability: STEERING_ENGINE_DURABILITY,
         conversationId: conv,
         conversationActivity: { conversationId: conv, asOfSequence: 30 },
       });
@@ -3932,6 +3950,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       activeChatsStore.updateChat(sessionId, {
         status: 'idle',
         orchestrationProvider: 'claude',
+        orchestrationDurability: STEERING_ENGINE_DURABILITY,
         conversationId: conv,
         conversationActivity: openRecord(conv, 'T1'),
         stopSettledTurnId: 'T1',

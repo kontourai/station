@@ -51,6 +51,9 @@ function conversationDraftFactsOption(
 }
 
 interface SessionEventReadsDeps {
+  readDurabilityProfile?: Parameters<
+    typeof buildOrchestrationSessionSummary
+  >[0]['readDurabilityProfile'];
   eventStore?: EventStore;
   logger: { warn(message: string, meta?: Record<string, unknown>): void };
 
@@ -212,6 +215,7 @@ export class SessionEventReads {
     return {
       session: eventWindowSessionSummary(
         buildOrchestrationSessionSummary({
+          readDurabilityProfile: this.deps.readDurabilityProfile,
           persisted,
           loaded,
           events: projectionEvents.map((event) => event.payload),
@@ -329,6 +333,7 @@ export class SessionEventReads {
       }) ?? [];
     options.signal?.throwIfAborted();
     const fullSession = buildOrchestrationSessionSummary({
+      readDurabilityProfile: this.deps.readDurabilityProfile,
       persisted,
       loaded,
       events: projectionEvents.map((event) => event.payload),

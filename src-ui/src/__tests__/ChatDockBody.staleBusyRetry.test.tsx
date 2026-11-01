@@ -1,3 +1,4 @@
+import { STEERING_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
 /**
  * @vitest-environment jsdom
  *
@@ -351,6 +352,7 @@ describe('ChatDockBody stale busy wait', () => {
           queuedMessageMetadata: [{ id: 'steer-1', mode: 'steer' }],
           status: 'sending',
           orchestrationProvider: 'claude',
+          orchestrationDurability: STEERING_ENGINE_DURABILITY,
           orchestrationSessionStarted: true,
           orchestrationTurnOpen: true,
         } as Partial<ChatSession>),
@@ -405,6 +407,7 @@ describe('ChatDockBody stale busy wait', () => {
         queuedMessageMetadata: metadata,
         status: 'sending',
         orchestrationProvider: 'claude',
+        orchestrationDurability: STEERING_ENGINE_DURABILITY,
         orchestrationSessionStarted: true,
         orchestrationTurnOpen: true,
       } as Partial<ChatSession>),
@@ -459,6 +462,7 @@ describe('ChatDockBody stale busy wait', () => {
         queuedMessageMetadata: metadata,
         status: 'sending',
         orchestrationProvider: 'claude',
+        orchestrationDurability: STEERING_ENGINE_DURABILITY,
         orchestrationSessionStarted: true,
         orchestrationTurnOpen: true,
       } as Partial<ChatSession>),

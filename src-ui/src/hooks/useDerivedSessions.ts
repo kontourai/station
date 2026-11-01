@@ -332,6 +332,7 @@ function deriveSession(
     providerId: chatState.providerId,
     defaultProviderId: chatState.defaultProviderId,
     orchestrationProvider: chatState.orchestrationProvider,
+    orchestrationDurability: chatState.orchestrationDurability,
     orchestrationModel: chatState.orchestrationModel,
     orchestrationStatus: chatState.orchestrationStatus,
     orchestrationSessionStarted: chatState.orchestrationSessionStarted,

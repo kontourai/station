@@ -637,6 +637,7 @@ function dispatch(
           existing: tx.inbox.get(command.inboxId, command.key),
           entries: tx.inbox.listInbox(command.inboxId),
           maxUnsettled: limits.inboxMaxUnsettled,
+          maxDisplay: limits.inboxMaxDisplay,
         },
         command,
       );

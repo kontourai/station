@@ -1,3 +1,4 @@
+import type { ProviderDurabilityProfile } from '@kontourai/station-contracts/provider';
 import { SESSION_RECOVERY_FAILED_CODE } from '@kontourai/station-contracts/provider-failure';
 import type { ProviderRuntimeErrorEvent } from '@kontourai/station-contracts/runtime-events';
 import { providerFailure } from '../../providers/provider-failure.js';
@@ -530,6 +531,9 @@ export function deriveReadModelSession(options: {
 }
 
 export function buildOrchestrationSessionSummary(options: {
+  readDurabilityProfile?: (
+    provider: string | undefined,
+  ) => ProviderDurabilityProfile | undefined;
   persisted?: ProviderSession;
   loaded?: ProviderSession;
   events?: CanonicalRuntimeEvent[];
@@ -696,6 +700,7 @@ export function buildOrchestrationSessionSummary(options: {
     (id) => !settledRequestIds.has(id),
   );
   const summary: OrchestrationSessionSummary = {
+    durability: options.readDurabilityProfile?.(base.provider),
     provider: base.provider,
     threadId: base.threadId,
     status: base.status,

@@ -406,24 +406,6 @@ export const STATION_ENGINE_DURABILITY: ProviderDurabilityProfile = {
   },
 };
 
-/** Provider wire identities resolve to their declared profile; this table owns the alias. */
-export function resolveProviderDurabilityProfile(
-  provider: string,
-): ProviderDurabilityProfile {
-  const profiles: Readonly<Record<string, ProviderDurabilityProfile>> = {
-    'station-agent': STATION_ENGINE_DURABILITY,
-    claude: STEERING_ENGINE_DURABILITY,
-    codex: STEERING_ENGINE_DURABILITY,
-    acp: ACP_ENGINE_DURABILITY,
-    muse: EXTERNAL_ENGINE_DURABILITY,
-    bedrock: STATION_ENGINE_DURABILITY,
-    ollama: STATION_ENGINE_DURABILITY,
-  };
-  return Object.prototype.hasOwnProperty.call(profiles, provider)
-    ? profiles[provider]
-    : UNKNOWN_ENGINE_DURABILITY;
-}
-
 export const UNKNOWN_ENGINE_DURABILITY: ProviderDurabilityProfile = {
   ...EXTERNAL_ENGINE_DURABILITY,
   compaction: {

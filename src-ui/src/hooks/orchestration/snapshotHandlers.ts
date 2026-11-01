@@ -460,6 +460,7 @@ function planSnapshot(
               }
             : {}),
           orchestrationProvider: session.provider,
+          orchestrationDurability: session.durability,
           orchestrationModel:
             session.reportedModel ?? session.effectiveModel ?? session.model,
           orchestrationSessionStarted: true,

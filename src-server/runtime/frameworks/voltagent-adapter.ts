@@ -538,6 +538,8 @@ function bindModelInputComposition(agent: Agent): void {
       input: string | ModelInputMessage[],
       options?: {
         composeModelInput?: ModelInputComposer;
+        userId?: string;
+        conversationId?: string;
         prepareStep?: PrepareStepFunction;
         hooks?: AgentHooks;
         [key: string]: unknown;
@@ -558,6 +560,11 @@ function bindModelInputComposition(agent: Agent): void {
           ...invokeOptions,
           prepareStep: createInboxStepPreparation(
             invokeOptions.prepareStep ?? agent.prepareStep,
+            {
+              memory: agent.getMemory(),
+              userId: invokeOptions.userId,
+              conversationId: invokeOptions.conversationId,
+            },
           ),
           // #3112: VoltAgent persists (and titles from) the input it is handed,
           // so it is handed the authored turn and the context joins only the

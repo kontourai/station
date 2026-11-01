@@ -1134,11 +1134,8 @@ export function ChatDockBody({
     });
   }, [getComposedContext, chatInput]);
   const nativeSteering =
-    sessionSteeringPlacement(
-      activeSession.agentConnectionId,
-      [],
-      activeSession.orchestrationProvider,
-    ).state === 'native';
+    sessionSteeringPlacement(activeSession.orchestrationDurability).state ===
+    'native';
   const busyFollowUp =
     isTurnInFlight(activeSession) && chatInput.attachments.length === 0
       ? 'steer'
@@ -2129,9 +2126,7 @@ export function ChatDockBody({
                   ),
               ) &&
               sessionAdapterSupportsSteering(
-                activeSession.agentConnectionId,
-                [],
-                activeSession.orchestrationProvider,
+                activeSession.orchestrationDurability,
               ),
             onPendingSettled: () => {
               const latest = activeChatsStore.getSnapshot()[activeSession.id];

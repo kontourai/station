@@ -9,6 +9,7 @@ import type {
   ApprovalMode,
   AttachedSessionSourceMetadata,
   ModelLaunchPlan,
+  ProviderDurabilityProfile,
   ProviderSendTurnInput,
   ProviderSession,
   ProviderSessionStartInput,
@@ -1142,6 +1143,8 @@ export interface TerminalAttribution {
 }
 
 export interface OrchestrationSessionSummary extends ProviderSession {
+  /** Current adapter declaration, projected at read time. */
+  durability?: ProviderDurabilityProfile;
   controlMode: SessionControlMode;
   /**
    * REQUIRED, and that is the point (ADR 0012 / archive#1778). The consumer
@@ -1981,6 +1984,7 @@ export interface ConversationListItem {
  */
 /** Execution facts from the same authorized current-child read, never Agent defaults. */
 export interface ConversationOpenExecution {
+  durability?: ProviderDurabilityProfile;
   sessionId: string;
   /** Present only when this receiver verified the persisted execution owner as itself. */
   environment?: { kind: 'current' };

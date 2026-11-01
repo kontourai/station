@@ -6643,6 +6643,7 @@ export function configureRuntimeRoutes(
           inputDigest,
         );
       },
+      recordPostToolSteer: (input) => service.recordPostToolSteer(input),
       postToolMaySteer: (threadId, turnId) =>
         service.canSteerAtPostToolBoundary(threadId, turnId),
       steerFidelity: (threadId) => service.steerFidelityForThread(threadId),

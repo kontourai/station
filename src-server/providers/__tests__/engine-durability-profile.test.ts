@@ -1,6 +1,5 @@
 import {
   ENGINE_CAPABILITY_MATRICES,
-  resolveProviderDurabilityProfile,
   UNKNOWN_EXTERNAL_ENGINE_MATRIX,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import type { ProviderDurabilityProfile } from '@kontourai/station-contracts/provider';
@@ -70,9 +69,6 @@ describe('built-in adapter durability conformance', () => {
     (adapter) => {
       const profile = adapter.metadata.durability;
       expect(profile).toBeDefined();
-      expect(resolveProviderDurabilityProfile(adapter.provider)).toEqual(
-        profile,
-      );
       expect(Object.keys(profile ?? {}).sort()).toEqual(
         Object.keys(fields).sort(),
       );

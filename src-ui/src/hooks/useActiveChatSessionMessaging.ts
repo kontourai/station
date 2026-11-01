@@ -6,6 +6,7 @@ import type {
 import {
   ACP_APPROVAL_GOVERNANCE_REFUSED_CODE,
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
+  errorCodeOf,
   isSteerConflictCode,
   MODEL_NOT_ADVERTISED_CODE,
 } from '@kontourai/station-contracts/provider';
@@ -634,9 +635,7 @@ export function useSendMessage(
           !currentState.queueDrainSettling &&
           currentState.conversationActivity?.openTurn?.trigger !== 'provider' &&
           sessionAdapterSupportsSteering(
-            currentState.agentConnectionId,
-            agentConnections,
-            currentState.orchestrationProvider,
+            currentState.orchestrationDurability,
           ) &&
           !(attachments && attachments.length > 0);
         if (!steeringCapable) {
@@ -684,6 +683,13 @@ export function useSendMessage(
         }
       }
 
+      const notifyAdmission = () => {
+        try {
+          options?.onAdmission?.('accepted');
+        } catch {
+          /* Observers cannot undo durable admission. */
+        }
+      };
       if (steerOpenTurn && currentState) {
         const clientInputId = randomCorrelationId();
         const claimState = activeChatsStore.getSnapshot()[sessionId];
@@ -804,11 +810,7 @@ export function useSendMessage(
           }
           if (authorityRef.current.status !== 'verified') {
             await liveSteer.unanswered();
-            try {
-              options?.onAdmission?.('accepted');
-            } catch {
-              /* Already recorded. */
-            }
+            notifyAdmission();
             return true;
           }
           const accepted = await submitConversationSteer(
@@ -822,26 +824,18 @@ export function useSendMessage(
               'Station reports this key was dismissed.',
               { listed: true },
             );
-            try {
-              options?.onAdmission?.('accepted');
-            } catch {
-              /* Already recorded. */
-            }
+            notifyAdmission();
             return true;
           }
           await liveSteer.accepted();
           invalidate(['conversation-inbox']);
-          try {
-            options?.onAdmission?.('accepted');
-          } catch {
-            /* Already recorded. */
-          }
+          notifyAdmission();
           return true;
         } catch (error) {
           if (liveSteer) {
             if (
-              ((error as { code?: unknown })?.code === 'inbox_stale_head' ||
-                isSteerConflictCode((error as { code?: unknown })?.code)) &&
+              (errorCodeOf(error) === 'inbox_stale_head' ||
+                isSteerConflictCode(errorCodeOf(error))) &&
               stationAnswered(error)
             ) {
               await liveSteer.refused();
@@ -856,11 +850,7 @@ export function useSendMessage(
                 content:
                   'Steering was not confirmed. Station will be checked before retrying.',
               });
-              try {
-                options?.onAdmission?.('accepted');
-              } catch {
-                /* Already recorded. */
-              }
+              notifyAdmission();
               return true;
             }
           }

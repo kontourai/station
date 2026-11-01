@@ -64,6 +64,7 @@ export function decideInboxSubmit(
     /** Every retained entry of the inbox, after retention ran. */
     readonly entries: readonly InboxEntryRecord[];
     readonly maxUnsettled: number;
+    readonly maxDisplay: number;
   },
   command: InboxSubmitCommand,
 ): InboxDecision<InboxSubmitResult> {
@@ -78,6 +79,11 @@ export function decideInboxSubmit(
     (existing?.state === 'cancelled' && existing.placement === null);
   if (existing && !requeue)
     return { result: { kind: 'existing', entry: existing } };
+  const displayCount = inputs.entries.filter(
+    (entry) => entry.kind === 'display',
+  ).length;
+  if (command.kind === 'display' && displayCount >= inputs.maxDisplay)
+    return { result: { kind: 'capacity', limit: inputs.maxDisplay } };
   const unsettled = inputs.entries.filter(inboxEntryIsUnsettled).length;
   if (command.kind !== 'display' && unsettled >= inputs.maxUnsettled)
     return { result: { kind: 'capacity', limit: inputs.maxUnsettled } };

@@ -19,13 +19,16 @@ import {
   EXTERNAL_ENGINE_DURABILITY,
   STEERING_ENGINE_DURABILITY,
 } from '@kontourai/station-contracts/engine-capability-matrix';
+import type { ProviderDurabilityProfile } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
+import type { PrepareStepFunction } from 'ai';
 import { simulateReadableStream } from 'ai';
 import { MockLanguageModelV3 } from 'ai/test';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { GateTestAdapter } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { FileMemoryAdapter } from '../../../adapters/file/memory-adapter.js';
 import type {
   ProviderAdapterMetadata,
   ProviderSendTurnInput,
@@ -79,6 +82,12 @@ class CountingAdapter extends GateTestAdapter {
     capabilities: ['agent-runtime'],
     durability: STEERING_ENGINE_DURABILITY,
   };
+  constructor(
+    durability: ProviderDurabilityProfile = STEERING_ENGINE_DURABILITY,
+  ) {
+    super();
+    this.metadata = { ...this.metadata, durability };
+  }
   readonly entered: OwningTurn[] = [];
   private readonly liveSessions = new Set<string>();
   override async startSession(input: ProviderSessionStartInput) {
@@ -133,6 +142,7 @@ function boot(
   path: string,
   ports: Partial<ThreadInboxDeliveryPorts> = {},
   wrapStore?: (store: ThreadInboxStore) => ThreadInboxStore,
+  suppliedAdapter?: CountingAdapter,
 ) {
   incarnation += 1;
   const birth = `boot-${incarnation}`;
@@ -144,7 +154,7 @@ function boot(
     }),
   });
   const bus = new EventBus();
-  const adapter = new CountingAdapter();
+  const adapter = suppliedAdapter ?? new CountingAdapter();
   const service = new OrchestrationService({
     adapterRegistry: {
       register() {},
@@ -214,6 +224,7 @@ function boot(
     // The production schedule, scaled down: a busy flag that outlives its
     // terminal is looked at again.
     retryDelaysMs: [5, 10, 20, 40],
+    recordPostToolSteer: (input) => service.recordPostToolSteer(input),
     postToolMaySteer: (threadId, turnId) =>
       service.canSteerAtPostToolBoundary(threadId, turnId),
     ...ports,
@@ -529,16 +540,33 @@ describe('thread inbox (#3568)', () => {
     expect(world.inbox.list(THREAD)).toHaveLength(1);
   });
 
-  test.each(['deliver', 'conflict', 'hold'] as const)(
+  test.each([
+    'deliver',
+    'conflict',
+    'hold',
+    'wrong-turn',
+    'ambiguous',
+    'policy-throw',
+    'crash',
+  ] as const)(
     'the Station post-tool loop applies the durable steer decision %s',
     async (mode) => {
       const conflict = mode === 'conflict';
-      const held = mode === 'hold';
+      const held = ['hold', 'wrong-turn', 'ambiguous'].includes(mode);
+      const refused = mode === 'policy-throw';
+      const crashed = mode === 'crash';
       const file = path();
       let receiptReads = 0;
       const world = boot(file, {
         steerFidelity: () => 'emulated',
-        ...(held ? { postToolMaySteer: () => false } : {}),
+        ...(mode === 'hold' ? { postToolMaySteer: () => false } : {}),
+        ...(refused
+          ? {
+              placementRefusal: () => {
+                throw new Error('policy unavailable');
+              },
+            }
+          : {}),
         inspectSteer: () => {
           if (conflict && ++receiptReads > 1)
             throw new ClientTurnInputConflictError();
@@ -546,6 +574,13 @@ describe('thread inbox (#3568)', () => {
         },
       });
       await runningFirstTurn(world);
+      const other =
+        mode === 'ambiguous'
+          ? boot(path(), { steerFidelity: () => 'emulated' })
+          : undefined;
+      if (other) await runningFirstTurn(other);
+      const memoryHome = makeTempDir('station-inbox-memory-');
+      const memory = new FileMemoryAdapter({ projectHomeDir: memoryHome });
       let calls = 0;
       const usage = {
         inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
@@ -554,6 +589,15 @@ describe('thread inbox (#3568)', () => {
       const model = new MockLanguageModelV3({
         doStream: async () => {
           const round = calls++;
+          if (round === 1 && !held && !conflict && !refused) {
+            expect(world.inbox.list(THREAD)).toMatchObject([
+              { state: 'sending' },
+            ]);
+            if (crashed)
+              throw new Error(
+                'power lost before model dispatch acknowledgement',
+              );
+          }
           return {
             stream: simulateReadableStream<LanguageModelV3StreamPart>({
               chunks:
@@ -595,6 +639,7 @@ describe('thread inbox (#3568)', () => {
       let tools = 0;
       const agent = await new VoltAgentFramework().createTempAgent({
         name: 'inbox-proof',
+        memoryAdapter: memory,
         hooks: { beforeToolCall: async () => true },
         instructions: 'Use inspect.',
         model,
@@ -622,24 +667,58 @@ describe('thread inbox (#3568)', () => {
           },
         ],
       });
-      await runWithAuthorizedTurnCorrelation(
+      const run = runWithAuthorizedTurnCorrelation(
         {
           accountId: OWNER,
           sessionId: THREAD,
-          turnId: 'turn-1',
+          turnId: mode === 'wrong-turn' ? 'old-turn' : 'turn-1',
           correlationId: 'post-tool-proof',
         },
         async () => {
           const result = await agent.streamText('read the file', {
             conversationId: THREAD,
             userId: OWNER,
+            prepareStep: ((step) =>
+              step.stepNumber >= 2
+                ? {
+                    messages: step.messages.filter(
+                      (message) => message.role !== 'user',
+                    ),
+                  }
+                : undefined) satisfies PrepareStepFunction,
           });
           for await (const _chunk of result.fullStream) {
             /* Drain the real loop. */
           }
         },
       );
+      await run;
+      other?.inbox.stop();
+      if (crashed) {
+        expect(world.inbox.list(THREAD)).toMatchObject([{ state: 'sending' }]);
+        await crash(world);
+        const recovered = boot(file, { steerFidelity: () => 'emulated' });
+        await recovered.inbox.reconcile();
+        expect(recovered.inbox.list(THREAD)).toMatchObject([
+          { state: 'unconfirmed' },
+        ]);
+        expect(followUpSends()).toEqual([]);
+        return;
+      }
       expect(calls).toBe(3);
+      if (!held && !conflict && !refused) {
+        expect(
+          world.store.listEventPayloads(THREAD, ['turn.started']),
+        ).toContainEqual(
+          expect.objectContaining({ inputKind: 'steer', prompt: FOLLOW_UP }),
+        );
+        expect(await memory.getMessages(OWNER, THREAD)).toContainEqual(
+          expect.objectContaining({
+            role: 'user',
+            parts: [{ type: 'text', text: FOLLOW_UP }],
+          }),
+        );
+      }
       for (const call of model.doStreamCalls.slice(1)) {
         expect(
           call.prompt.filter(
@@ -649,22 +728,46 @@ describe('thread inbox (#3568)', () => {
                 (part) => part.type === 'text' && part.text === FOLLOW_UP,
               ),
           ),
-        ).toHaveLength(conflict || held ? 0 : 1);
+        ).toHaveLength(conflict || held || refused ? 0 : 1);
       }
       expect(world.inbox.list(THREAD)).toMatchObject([
         held
           ? { state: 'queued' }
           : conflict
             ? { state: 'refused', reasonCode: 'client_turn_input_conflict' }
-            : { state: 'sent', turnId: 'turn-1' },
+            : refused
+              ? { state: 'refused', reasonCode: 'placement_policy_failed' }
+              : { state: 'sent', turnId: 'turn-1' },
       ]);
       expect(world.adapter.steers).toEqual([]);
       await crash(world);
       const second = boot(file, { steerFidelity: () => 'emulated' });
       await second.inbox.reconcile();
       expect(second.inbox.list(THREAD)).toMatchObject([
-        { state: held ? 'queued' : conflict ? 'refused' : 'sent' },
+        { state: held ? 'queued' : conflict || refused ? 'refused' : 'sent' },
       ]);
+      if (!held && !conflict && !refused) {
+        const later = await new VoltAgentFramework().createTempAgent({
+          name: 'inbox-proof',
+          instructions: 'Reply.',
+          model,
+          maxSteps: 1,
+          memoryAdapter: new FileMemoryAdapter({ projectHomeDir: memoryHome }),
+        });
+        const response = await later.streamText('next turn', {
+          conversationId: THREAD,
+          userId: OWNER,
+        });
+        for await (const _chunk of response.fullStream) {
+          /* Drain the next memory-backed request. */
+        }
+        expect(model.doStreamCalls.at(-1)?.prompt).toContainEqual(
+          expect.objectContaining({
+            role: 'user',
+            content: [{ type: 'text', text: FOLLOW_UP }],
+          }),
+        );
+      }
       if (held) {
         await startSession(second);
         await settle(second);
@@ -722,6 +825,68 @@ describe('thread inbox (#3568)', () => {
       expect(steer).toHaveBeenCalledTimes(phase === 'native-race' ? 1 : 0);
     },
   );
+
+  test('session reads project the registered adapter declaration without a provider-name default', async () => {
+    const declaration: ProviderDurabilityProfile = {
+      ...STEERING_ENGINE_DURABILITY,
+      steerPlacement: {
+        state: 'none',
+        detail: 'This registered adapter cannot steer.',
+      },
+    };
+    const world = boot(path(), {}, undefined, new CountingAdapter(declaration));
+    await runningFirstTurn(world);
+    const sessions = await world.service.listSessionReadModel(
+      INTERNAL_SESSION_READ_SCOPE,
+    );
+    expect(sessions).toContainEqual(
+      expect.objectContaining({ provider: 'claude', durability: declaration }),
+    );
+    expect(
+      (await world.service.readSession(THREAD, INTERNAL_SESSION_READ_SCOPE))
+        ?.session.durability,
+    ).toEqual(declaration);
+  });
+
+  test('cancelling steer S during fidelity resolution cannot steer following F', async () => {
+    let resolveFidelity!: (value: 'native') => void;
+    const fidelity = new Promise<'native'>((resolve) => {
+      resolveFidelity = resolve;
+    });
+    const steer = vi.fn(async () => ({ outcome: 'steered', turnId: 'turn-1' }));
+    let observed!: () => void;
+    const reading = new Promise<void>((resolve) => {
+      observed = resolve;
+    });
+    const world = boot(path(), {
+      steerFidelity: () => {
+        observed();
+        return fidelity;
+      },
+      inspectSteer: () => undefined,
+      steer,
+    });
+    await runningFirstTurn(world);
+    world.inbox.submitSteer({
+      conversationId: THREAD,
+      clientTurnId: 'S',
+      payload,
+      expectedHead: world.inbox.currentHead(THREAD),
+    });
+    await reading;
+    world.inbox.cancel(THREAD, 'S', OWNER);
+    queueFollowUp(world, 'F');
+    resolveFidelity('native');
+    await world.inbox.idle();
+    expect(steer).not.toHaveBeenCalled();
+    expect(world.inbox.list(THREAD)).toContainEqual(
+      expect.objectContaining({
+        clientTurnId: 'F',
+        state: 'queued',
+        kind: 'follow-up',
+      }),
+    );
+  });
 
   test.each(['before-claim', 'after-claim'] as const)(
     'native steer restart at %s preserves text and head without replaying a claim',

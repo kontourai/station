@@ -57,6 +57,7 @@ export interface KernelLimits {
    * hold. A submission past it is refused, never truncated.
    */
   readonly inboxMaxUnsettled: number;
+  readonly inboxMaxDisplay: number;
   /** A settled follow-up without an uncertain claim older than this is forgotten on the inbox's next submit. */
   readonly inboxSettledRetentionMs: number;
 }
@@ -70,6 +71,7 @@ export const DEFAULT_KERNEL_LIMITS: KernelLimits = Object.freeze({
   requestKeyMaxRowsPerCaller: 300,
   requestKeyMaxRows: 10_000,
   inboxMaxUnsettled: 50,
+  inboxMaxDisplay: 50,
   inboxSettledRetentionMs: 7 * 24 * 60 * 60 * 1000,
 });
 

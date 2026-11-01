@@ -1,7 +1,8 @@
+import { STATION_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
 /** @vitest-environment jsdom */
 
 import { agentId } from '@kontourai/station-contracts/agent-identity';
-import { ENGINE_CAPABILITY_MATRICES } from '@kontourai/station-contracts/engine-capability-matrix';
+import { STEERING_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import { type ReactNode, useEffect, useState } from 'react';
@@ -187,6 +188,7 @@ function session(revision: number): ChatSession {
     updatedAt: revision,
     messages: [],
     orchestrationSessionStarted: true,
+    orchestrationDurability: STATION_ENGINE_DURABILITY,
     orchestrationHistoryRevision: revision,
     outboundQueuedTurns: [
       {
@@ -532,6 +534,7 @@ describe('ChatDockBody offline settling (station#2605)', () => {
     // ChatDockBody derivation, not just the row component's prop handling.
     const idle = session(0);
     idle.orchestrationProvider = 'claude';
+    idle.orchestrationDurability = STEERING_ENGINE_DURABILITY;
     idle.queuedMessages = ['queued steer'];
     const view = render(dock(idle));
     // Wait for the ASSERTION, not merely for the first call: the derivation
@@ -549,6 +552,7 @@ describe('ChatDockBody offline settling (station#2605)', () => {
     queuedMessagesProps.mockClear();
     const active = session(0);
     active.orchestrationProvider = 'claude';
+    active.orchestrationDurability = STEERING_ENGINE_DURABILITY;
     active.queuedMessages = ['queued steer'];
     active.status = 'sending';
     view.rerender(dock(active));
@@ -558,24 +562,25 @@ describe('ChatDockBody offline settling (station#2605)', () => {
       ),
     );
 
-    const profile = ENGINE_CAPABILITY_MATRICES.claude.durability;
-    const originalSteering = profile.steerPlacement;
-    try {
-      for (const state of ['emulated', 'none'] as const) {
-        profile.steerPlacement = {
-          state,
-          detail: 'Native steering is unavailable for this connection.',
-        };
-        queuedMessagesProps.mockClear();
-        view.rerender(dock({ ...active }));
-        await waitFor(() =>
-          expect(queuedMessagesProps).toHaveBeenLastCalledWith(
-            expect.objectContaining({ canSteer: false }),
-          ),
-        );
-      }
-    } finally {
-      profile.steerPlacement = originalSteering;
+    for (const state of ['emulated', 'none'] as const) {
+      queuedMessagesProps.mockClear();
+      view.rerender(
+        dock({
+          ...active,
+          orchestrationDurability: {
+            ...STEERING_ENGINE_DURABILITY,
+            steerPlacement: {
+              state,
+              detail: 'The server reports no native steering channel.',
+            },
+          },
+        }),
+      );
+      await waitFor(() =>
+        expect(queuedMessagesProps).toHaveBeenLastCalledWith(
+          expect.objectContaining({ canSteer: false }),
+        ),
+      );
     }
   });
 });
