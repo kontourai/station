@@ -22953,20 +22953,39 @@ describe('OrchestrationService', () => {
     expect(eventStore.readSessions()).toEqual([]);
   });
 
-  test.each(['absent', 'active', 'unknown'] as const)(
-    'preserves a failed smoke only when released adapter ownership is confirmed (%s)',
-    async (ownership) => {
+  test.each(
+    (['absent', 'active', 'unknown'] as const).flatMap((ownership) =>
+      [
+        { releasedDuringStop: false, startupRejected: false },
+        { releasedDuringStop: true, startupRejected: false },
+        { releasedDuringStop: false, startupRejected: true },
+      ].map((scenario) => ({ ownership, ...scenario })),
+    ),
+  )(
+    'preserves a failed smoke only when released adapter ownership is confirmed ($ownership, releasedDuringStop=$releasedDuringStop, startupRejected=$startupRejected)',
+    async ({ ownership, releasedDuringStop, startupRejected }) => {
+      let bound = releasedDuringStop;
+      const failureReason = startupRejected
+        ? 'smoke provider disconnected before acknowledging session'
+        : 'smoke provider disconnected before acknowledging turn';
       const dispatch = vi
         .fn<OrchestrationService['dispatch']>()
-        .mockResolvedValueOnce(undefined)
-        .mockRejectedValueOnce(
-          new Error('smoke provider disconnected before acknowledging turn'),
-        )
-        .mockRejectedValue(new Error('No provider session for smoke thread'));
+        .mockImplementationOnce(async () => {
+          if (startupRejected) throw new Error(failureReason);
+          return undefined;
+        })
+        .mockRejectedValueOnce(new Error(failureReason))
+        .mockImplementation(async () => {
+          bound = false;
+          throw new Error('No provider session for smoke thread');
+        });
       vi.spyOn(claude, 'hasSession').mockImplementation(async () => {
         if (ownership === 'unknown') throw new Error('ownership unavailable');
         return ownership === 'active';
       });
+      if (startupRejected) {
+        claude.stopSession.mockRejectedValueOnce(new Error('stop failed'));
+      }
       const deleteThread = vi.fn();
       const smoke = new ConnectionSmoke({
         dispatch,
@@ -22980,7 +22999,7 @@ describe('OrchestrationService', () => {
           await operation;
         },
         adapterFor: () => claude,
-        hasThreadProvider: () => false,
+        hasThreadProvider: () => bound,
         armInternalStop: vi.fn(),
         deleteThread,
         invalidateSessionOwner: vi.fn(),
@@ -22996,14 +23015,23 @@ describe('OrchestrationService', () => {
         expect(result).toMatchObject({
           ok: false,
           reasonCode: 'start-failed',
-          reason: 'smoke provider disconnected before acknowledging turn',
+          reason: failureReason,
         });
         expect(deleteThread).toHaveBeenCalledOnce();
-        expect(dispatch).toHaveBeenCalledTimes(2);
+        expect(dispatch).toHaveBeenCalledTimes(
+          startupRejected ? 1 : releasedDuringStop ? 3 : 2,
+        );
       } else {
-        expect(result).toMatchObject({ ok: false, reasonCode: 'cleanup-failed' });
+        expect(result).toMatchObject({
+          ok: false,
+          reasonCode: 'cleanup-failed',
+          reason: expect.stringContaining(failureReason),
+        });
         expect(deleteThread).not.toHaveBeenCalled();
       }
+      expect(claude.stopSession).toHaveBeenCalledTimes(
+        startupRejected && ownership === 'active' ? 1 : 0,
+      );
     },
   );
 
