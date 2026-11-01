@@ -7,7 +7,7 @@ normally before publication. Open one PR when the combined work is ready.
 
 ## Current delivery state
 
-Main is integrated through `518ac0045e8` by normal merge `afe092aede1`.
+Main is integrated through `b3515bec387` by normal merge `44365fc9ec9`.
 The branch has no remote head or pull request at this checkpoint and is not ready
 to land. Master consolidation #3991 remains separately owned.
 
@@ -34,9 +34,11 @@ cases: cleanup registration precedes the durable claim, retirement aborts an
 unfinished question, and failed close retries through actual runtime shutdown.
 Normal parsed protocol results close without being aborted before ledger finish.
 Its new controls pin the controlled registration error and refuse a late answer
-after retirement. Server-test types and scoped Biome pass; clean-commit mutation
-qualification of the conditional abort remains pending. The handler-delivery
-fence after an awaited currentness check remains separately open.
+after retirement. Server-test types and scoped Biome pass. At clean `31f1af041f0`,
+separate mutations of the conditional abort and durable-begin ordering each
+produced ten passes and one intended failure; byte-exact restoration passed all
+11 cases after each mutation. The handler-delivery fence after an awaited
+currentness check remains separately open.
 
 Both actual report-input callers failed before canonical input in the recorded
 uncommitted candidate preceding `889b995f86d`. At its 60-second observation, the
@@ -3711,7 +3713,36 @@ physical-close retry through StationRuntime.shutdown. Server-test types and
 scoped Biome pass. Independent Opus source review found no blocker and disclosed
 low residuals, including close-error masking if registration and physical close
 both fail. That construction has no connected transport; broader cleanup and
-factory claims are not inferred from it. Clean-commit abort mutation remains
-pending, and the awaited handler-fetch fence remains open. Actual multi-seat
+factory claims are not inferred from it. Both clean-commit mutations now have
+intended failures and byte-exact restored 11-case passes at `31f1af041f0`; the
+awaited handler-fetch fence remains open. Actual multi-seat
 caller receipts remain FAIL; flags stay disabled and no PR or aggregate epic
 acceptance follows from this bounded repair.
+
+## Main integration and unprofiled caller check
+
+Normal merge `44365fc9ec9` integrates main through `b3515bec387` (five commits
+beyond the prior integrated base). The privacy-template conflict preserves both
+the reserved-report/private-context disclosure and main's member-passkey
+disclosure. All 30 privacy inventory cases pass, including exact generated
+artifact consistency. Neither disclosure publishes a policy or certifies a
+complete data-flow inventory.
+
+The full input fixture's temporary component/Home profiling was archived and
+removed before the next purpose check. This removes 279 net diagnostic lines,
+not production validation. A parser comparison preserves all 121 assertion
+calls, both test declarations and their 240/300-second budgets. The product
+request deadline remains 120 seconds. The real publication lifetime, abort/join
+cleanup, canonical input observation and cheap input-invocation/error observer
+remain. The prior instrumented failure logs and measurements are retained;
+removing observation overhead alone makes no causal production speedup claim.
+The new full-caller selection failed both cases at the unchanged 120-second
+deadline. Both passed canonical-question observation and answer dispatch before
+failure at group return; this does not establish durable answer/result retention.
+The HTTP failure reports Flow host execution/cleanup errors (including failure
+retention unavailable and aborts); the direct case reports preparation unavailable.
+Server-test types and scoped Biome pass. Independent review found no blocker for
+the profiling deletion; no production speedup or journey completion is inferred.
+The handler-fetch fence, full factory qualification, remaining documentation truth, final deslop/visual and independent
+combined qualification remain open. Capabilities stay disabled and no PR follows
+from this checkpoint.

@@ -22,9 +22,6 @@ import { StationAgentAdapter } from '../../../providers/adapters/station-agent-a
 import { createReportGroupRoutes } from '../../../routes/orchestration/report-groups.js';
 import { isRuntimePublicationParticipant } from '../../../runtime/bootstrap/runtime-publication-participant.js';
 import { StationRuntime } from '../../../runtime/bootstrap/station-runtime.js';
-import { AnthropicSealedPreparation } from '../../../runtime/conversation/anthropic-sealed-preparation.js';
-import { GoogleSealedPreparation } from '../../../runtime/conversation/google-sealed-preparation.js';
-import * as sdkCredentials from '../../../runtime/conversation/provider-credential-observation.js';
 import * as inputRuntimeOwner from '../../../runtime/mcp/report-input-runtime.js';
 import {
   bindRuntimeLocalOperator,
@@ -33,21 +30,14 @@ import {
 } from '../../../security/runtime-request-security.js';
 import { createLogger } from '../../../utils/logger.js';
 import { ApprovalRegistry } from '../../approvals/approval-registry.js';
-import { EnvironmentSecurityService } from '../../ssh/environment-security-service.js';
-import {
-  type HomeWriterLease,
-  HomeWriterOwner,
-  HomeWriterUnavailableError,
-} from '../../ssh/home-writer-owner.js';
+import { HomeWriterOwner } from '../../ssh/home-writer-owner.js';
 import { StationDelegationPersistence } from '../delegation-group-persistence.js';
-import { LocalSourceAdmissionOwner } from '../delegation-group-source-admission.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
 import { createSessionAgentResolver } from '../session-agent-resolution.js';
 import { reportAdmissionSignature } from '../station-report-group-admission.js';
 import { StationReportGroupCustody } from '../station-report-group-custody.js';
-import { StationReportGroupPreparation } from '../station-report-group-preparation.js';
 import { StationReportGroupRuntime } from '../station-report-group-runtime.js';
 import { createReportFlow } from './delegation-source-fixtures/flow.js';
 import {
@@ -163,241 +153,6 @@ function publicationFor(h: Awaited<ReturnType<typeof setup>>) {
   const abort = new AbortController();
   const operations: Promise<unknown>[] = [];
   const inputErrors: unknown[] = [];
-  type Acquisition = {
-    id: number;
-    stack: string[];
-    phase: 'waiting' | 'acquired' | 'rejected';
-    requestedAt: number;
-    settledAt?: number;
-    reason?: string;
-    lease?: HomeWriterLease;
-  };
-  const components = {
-    witness: { calls: 0, inclusiveMs: 0, exclusiveMs: 0, maxMs: 0 },
-    credentialRead: { calls: 0, inclusiveMs: 0, exclusiveMs: 0, maxMs: 0 },
-    flowDirect: { calls: 0, inclusiveMs: 0, exclusiveMs: 0, maxMs: 0 },
-    hostHmac: { calls: 0, inclusiveMs: 0, exclusiveMs: 0, maxMs: 0 },
-  };
-  const componentStack: Array<{ began: number; childrenMs: number }> = [];
-  const measure = <Value>(
-    kind: keyof typeof components,
-    work: () => Value,
-  ): Value => {
-    const frame = { began: performance.now(), childrenMs: 0 };
-    componentStack.push(frame);
-    const cost = components[kind];
-    cost.calls++;
-    try {
-      return work();
-    } finally {
-      const elapsed = performance.now() - frame.began;
-      componentStack.pop();
-      const parent = componentStack.at(-1);
-      if (parent) parent.childrenMs += elapsed;
-      cost.inclusiveMs += elapsed;
-      cost.exclusiveMs += elapsed - frame.childrenMs;
-      cost.maxMs = Math.max(cost.maxMs, elapsed);
-    }
-  };
-  const anthropicWitness = AnthropicSealedPreparation.prototype.assertCurrent;
-  const anthropicObserver = vi
-    .spyOn(AnthropicSealedPreparation.prototype, 'assertCurrent')
-    .mockImplementation(function (this: AnthropicSealedPreparation) {
-      return measure('witness', () => anthropicWitness.call(this));
-    });
-  const googleWitness = GoogleSealedPreparation.prototype.assertCurrent;
-  const googleObserver = vi
-    .spyOn(GoogleSealedPreparation.prototype, 'assertCurrent')
-    .mockImplementation(function (this: GoogleSealedPreparation) {
-      return measure('witness', () => googleWitness.call(this));
-    });
-  const credentialRead = sdkCredentials.readObservedSdkProviderCredential;
-  const credentialObserver = vi
-    .spyOn(sdkCredentials, 'readObservedSdkProviderCredential')
-    .mockImplementation((...args) =>
-      measure('credentialRead', () => credentialRead(...args)),
-    );
-  const sign =
-    EnvironmentSecurityService.prototype.signRevisionEvidenceAuthorityBinding;
-  const signingObserver = vi
-    .spyOn(
-      EnvironmentSecurityService.prototype,
-      'signRevisionEvidenceAuthorityBinding',
-    )
-    .mockImplementation(function (this: EnvironmentSecurityService, ...args) {
-      return measure('hostHmac', () => sign.apply(this, args));
-    });
-  const prepareFlow = LocalSourceAdmissionOwner.prototype.prepareFlowSnapshot;
-  const flowObserver = vi
-    .spyOn(LocalSourceAdmissionOwner.prototype, 'prepareFlowSnapshot')
-    .mockImplementation(async function (
-      this: LocalSourceAdmissionOwner,
-      ...args
-    ) {
-      const owner = await prepareFlow.apply(this, args);
-      return Object.freeze({
-        ...owner,
-        assertCurrent: () => measure('flowDirect', () => owner.assertCurrent()),
-      });
-    });
-  const authorityCost = { calls: 0, depth: 0, outerMs: 0, maxMs: 0 };
-  const preparationCost = { calls: 0, depth: 0, outerMs: 0, maxMs: 0 };
-  const authorityByAdmission: Record<
-    string,
-    { calls: number; outerMs: number; maxMs: number }
-  > = {};
-  const leaseEntries = new WeakMap<HomeWriterLease, Acquisition>();
-  let activeAcquisition: Acquisition | undefined;
-  const runWithLease = HomeWriterOwner.prototype.runWithLease;
-  const scopeObserver = vi
-    .spyOn(HomeWriterOwner.prototype, 'runWithLease')
-    .mockImplementation(function (this: HomeWriterOwner, lease, body) {
-      const previous = activeAcquisition;
-      activeAcquisition = leaseEntries.get(lease) ?? previous;
-      try {
-        return runWithLease.call(this, lease, body);
-      } finally {
-        activeAcquisition = previous;
-      }
-    });
-  const authority = EnvironmentSecurityService.prototype.withCurrentAuthority;
-  const authorityObserver = vi
-    .spyOn(EnvironmentSecurityService.prototype, 'withCurrentAuthority')
-    .mockImplementation(function (this: EnvironmentSecurityService, check) {
-      const began = performance.now();
-      const outer = authorityCost.depth++ === 0;
-      const label =
-        activeAcquisition?.stack.slice(3, 5).join('\n') ??
-        'outside observed Home acquisition';
-      authorityCost.calls++;
-      try {
-        return authority.call(this, check);
-      } finally {
-        authorityCost.depth--;
-        if (outer) {
-          const elapsed = performance.now() - began;
-          authorityCost.outerMs += elapsed;
-          authorityCost.maxMs = Math.max(authorityCost.maxMs, elapsed);
-          let item = authorityByAdmission[label];
-          if (!item) {
-            item = { calls: 0, outerMs: 0, maxMs: 0 };
-            authorityByAdmission[label] = item;
-          }
-          item.calls++;
-          item.outerMs += elapsed;
-          item.maxMs = Math.max(item.maxMs, elapsed);
-        }
-      }
-    });
-  const preparation = StationReportGroupPreparation.prototype.assertCurrent;
-  const preparationObserver = vi
-    .spyOn(StationReportGroupPreparation.prototype, 'assertCurrent')
-    .mockImplementation(function (
-      this: StationReportGroupPreparation,
-      ...args
-    ) {
-      const began = performance.now();
-      const outer = preparationCost.depth++ === 0;
-      preparationCost.calls++;
-      try {
-        return preparation.apply(this, args);
-      } finally {
-        preparationCost.depth--;
-        if (outer) {
-          const elapsed = performance.now() - began;
-          preparationCost.outerMs += elapsed;
-          preparationCost.maxMs = Math.max(preparationCost.maxMs, elapsed);
-        }
-      }
-    });
-  const recent: Acquisition[] = [];
-  const live = new Map<number, Acquisition>();
-  const counts = { requested: 0, acquired: 0, rejected: 0, untracked: 0 };
-  const rejections: Record<string, number> = {};
-  const start = performance.now();
-  const samples: Array<{
-    elapsedMs: number;
-    requested: number;
-    acquired: number;
-    rejected: number;
-    live: Array<{ id: number; phase: string; ageMs: number; stack: string[] }>;
-  }> = [];
-  const sample = () => {
-    const now = performance.now();
-    const observed = [...live.values()].flatMap((entry) => {
-      if (entry.phase === 'acquired' && entry.lease) {
-        try {
-          entry.lease.assertCurrent();
-        } catch (error) {
-          if (
-            error instanceof HomeWriterUnavailableError &&
-            error.reason === 'borrow-unavailable'
-          ) {
-            live.delete(entry.id);
-            return [];
-          }
-          return [
-            {
-              id: entry.id,
-              phase: 'currentness-error',
-              ageMs: now - entry.requestedAt,
-              stack: entry.stack,
-            },
-          ];
-        }
-      }
-      return [
-        {
-          id: entry.id,
-          phase: entry.phase,
-          ageMs: now - entry.requestedAt,
-          stack: entry.stack,
-        },
-      ];
-    });
-    samples.push({
-      elapsedMs: now - start,
-      ...counts,
-      live: observed.slice(0, 16),
-    });
-    if (samples.length > 8) samples.shift();
-  };
-  const sampleTimer = setInterval(sample, 10000);
-  sampleTimer.unref();
-  const acquire = HomeWriterOwner.prototype.acquire;
-  const acquisitionObserver = vi
-    .spyOn(HomeWriterOwner.prototype, 'acquire')
-    .mockImplementation(async function (this: HomeWriterOwner, ...args) {
-      const entry: Acquisition = {
-        id: ++counts.requested,
-        stack: new Error().stack?.split('\n').slice(2, 10) ?? [],
-        phase: 'waiting',
-        requestedAt: performance.now(),
-      };
-      recent.push(entry);
-      if (recent.length > 128) recent.shift();
-      if (live.size >= 512) sample();
-      if (live.size < 512) live.set(entry.id, entry);
-      else counts.untracked++;
-      try {
-        const lease = await acquire.apply(this, args);
-        entry.phase = 'acquired';
-        entry.settledAt = performance.now();
-        entry.lease = lease;
-        leaseEntries.set(lease, entry);
-        counts.acquired++;
-        return lease;
-      } catch (error) {
-        entry.phase = 'rejected';
-        entry.settledAt = performance.now();
-        entry.reason =
-          error instanceof HomeWriterUnavailableError ? error.reason : 'other';
-        counts.rejected++;
-        rejections[entry.reason] = (rejections[entry.reason] ?? 0) + 1;
-        live.delete(entry.id);
-        throw error;
-      }
-    });
   let inputInvocations = 0;
   const createInput = inputRuntimeOwner.createReportInputRuntime;
   const inputObserver = vi
@@ -418,7 +173,6 @@ function publicationFor(h: Awaited<ReturnType<typeof setup>>) {
     });
 
   onTestFinished(async () => {
-    clearInterval(sampleTimer);
     abort.abort();
     const failures: unknown[] = [];
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -438,15 +192,6 @@ function publicationFor(h: Awaited<ReturnType<typeof setup>>) {
     } finally {
       if (timer) clearTimeout(timer);
       inputObserver.mockRestore();
-      flowObserver.mockRestore();
-      signingObserver.mockRestore();
-      credentialObserver.mockRestore();
-      googleObserver.mockRestore();
-      anthropicObserver.mockRestore();
-      acquisitionObserver.mockRestore();
-      preparationObserver.mockRestore();
-      authorityObserver.mockRestore();
-      scopeObserver.mockRestore();
     }
     try {
       await runtime.shutdown();
@@ -462,28 +207,6 @@ function publicationFor(h: Awaited<ReturnType<typeof setup>>) {
   return {
     participant,
     inputFailure: () => inputErrors[0],
-    home: () => ({
-      counts,
-      cost: {
-        components,
-        componentExclusiveExcludesOnlyOtherInstrumentedComponents: true,
-        authority: authorityCost,
-        preparation: preparationCost,
-        authorityByAdmission,
-        durationsOverlap: true,
-      },
-      rejections,
-      samples,
-      recent: recent
-        .slice(-8)
-        .map(({ id, phase, reason, requestedAt, settledAt, stack }) => ({
-          id,
-          phase,
-          reason,
-          elapsedMs: (settledAt ?? performance.now()) - requestedAt,
-          stack,
-        })),
-    }),
     inputRuntimesConstructed: () => inputObserver.mock.calls.length,
     inputInvocationCount: () => inputInvocations,
     signal: abort.signal,
@@ -681,7 +404,6 @@ test('funded three-seat mixed-model report serves input, member results and acco
     () => ({
       starts: starts.mock.calls.length,
       rawFetch: h.rawFetch.mock.calls.length,
-      home: operation.home(),
       inputRuntimesConstructed: operation.inputRuntimesConstructed(),
       inputInvocations: operation.inputInvocationCount(),
     }),
@@ -866,7 +588,6 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
     () => ({
       starts: starts.mock.calls.length,
       rawFetch: h.rawFetch.mock.calls.length,
-      home: operation.home(),
       inputRuntimesConstructed: operation.inputRuntimesConstructed(),
       inputInvocations: operation.inputInvocationCount(),
     }),
