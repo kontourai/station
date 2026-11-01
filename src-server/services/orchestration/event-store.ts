@@ -243,7 +243,10 @@ import {
   attachmentBlobRefFor,
   isAttachmentBlobRef,
 } from './attachment-blob-store.js';
-import { CANCELLATION_FENCE_SCHEMA } from './cancellation-fence.js';
+import {
+  CANCELLATION_FENCE_SCHEMA,
+  recordCascadeStopIntent,
+} from './cancellation-fence.js';
 import {
   CANONICAL_TERMINAL_EVENT_SQL,
   canonicalTerminalOutcome,
@@ -15023,6 +15026,14 @@ export class EventStore {
   /** Private runtime composition for session turn provider boundaries. */
   sessionTurnBoundaryAuthority(): SessionTurnBoundaryAuthority {
     return this.sessionTurnBoundaries;
+  }
+
+  recordCascadeStopIntent(
+    parentId: string,
+    childId: string,
+    terminalId: string,
+  ): boolean {
+    return recordCascadeStopIntent(this.db, parentId, childId, terminalId);
   }
 
   readInputlessTurnDisposition(threadId: string) {
