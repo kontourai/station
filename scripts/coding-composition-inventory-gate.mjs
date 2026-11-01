@@ -43,6 +43,7 @@ const expectedDependencies = new Map(
       'workspace-composition',
     'packages/sdk/src/index.ts': 'sdk-export',
     'packages/sdk/src/queries.ts': 'sdk-export',
+    'packages/sdk/src/terminal-view/index.ts': 'sdk-export',
     'packages/sdk/src/query-domains/chatRuntimeCoding.ts': 'sdk-route-adapter',
     'packages/sdk/src/query-domains/chatRuntime.ts': 'sdk-export',
     'packages/sdk/src/query-domains/projectData.ts': 'sdk-route-adapter',

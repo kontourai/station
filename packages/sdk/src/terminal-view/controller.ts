@@ -30,7 +30,8 @@ import { observeThemeChanges, readTerminalTheme } from './theme';
 
 export interface ControllerSnapshot {
   status: 'loading' | 'ready' | 'error';
-  error: string | null;
+  /** Why the engine could not start or stopped; shown with a retry. */
+  failure: string | null;
   session: TerminalViewSessionState | 'none';
   title: string;
   hasSelection: boolean;
@@ -77,7 +78,7 @@ const BLINK_MS = 600;
 export class TerminalController {
   private snapshot: ControllerSnapshot = {
     status: 'loading',
-    error: null,
+    failure: null,
     session: 'none',
     title: '',
     hasSelection: false,
@@ -155,7 +156,7 @@ export class TerminalController {
   // ─── lifecycle ───────────────────────────────────────────────────────────
 
   async start(): Promise<void> {
-    this.update({ status: 'loading', error: null });
+    this.update({ status: 'loading', failure: null });
     try {
       const module = await loadGhosttyVt(this.options.wasmUrl);
       if (this.disposed) return;
@@ -189,7 +190,7 @@ export class TerminalController {
           this.update({ title: clean });
           this.options.onTitle?.(clean);
         },
-        error: (message) => this.update({ status: 'error', error: message }),
+        error: (message) => this.update({ status: 'error', failure: message }),
       });
       this.engine.send({
         type: 'init',
@@ -204,7 +205,7 @@ export class TerminalController {
     } catch (error) {
       this.update({
         status: 'error',
-        error:
+        failure:
           error instanceof Error
             ? error.message
             : 'The terminal could not start.',

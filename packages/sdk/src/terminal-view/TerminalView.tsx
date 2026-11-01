@@ -470,7 +470,7 @@ export function TerminalView({
           <div className="station-terminal__overlay">
             <ErrorState
               title="The terminal could not start"
-              description={snapshot?.error ?? undefined}
+              description={snapshot?.failure ?? undefined}
               action={
                 <ActionControl
                   type="button"
