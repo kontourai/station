@@ -216,11 +216,9 @@ export class SessionRecoveryCoordinator {
       this.now().toISOString(),
       'due',
     );
-    if (unsettled.kind === 'available') {
-      for (const intent of unsettled.obligations)
-        this.recordIntentOutcome(intent, 'indeterminate');
-      return;
-    }
+    for (const intent of unsettled.obligations ?? [])
+      this.recordIntentOutcome(intent, 'indeterminate');
+    if (unsettled.kind === 'available') return;
     if (this.dueScanRetry) return;
     this.dueScanRetry = setTimeout(() => {
       this.dueScanRetry = undefined;

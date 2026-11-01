@@ -38,12 +38,12 @@ export type RecoveryTransition =
  * holds none; `unavailable` proves nothing, so a caller must never treat it as
  * an empty sweep (#2823). For the two credential scans, rows already fenced
  * before a mid-scan failure stay durable and are read again by the next scan.
- * The due scan selects only still-prepared rows, so a due row fenced before
- * the failure is not returned again.
+ * A partial scan carries any already-fenced due rows so their outcomes can be
+ * recorded even though the remainder must be retried.
  */
 export type RecoveryObligationScan<T> =
   | { kind: 'available'; obligations: T[] }
-  | { kind: 'unavailable' };
+  | { kind: 'unavailable'; obligations?: T[] };
 
 /**
  * The recovery state machine at the orchestration Seam.
@@ -491,8 +491,8 @@ export function createRecoveryLedger(options: {
       }
     },
     reconcilePrepared: (now, kind, unlinkedOnly = false) => {
+      const reconciled: RecoveryIntentSnapshot[] = [];
       try {
-        const reconciled: RecoveryIntentSnapshot[] = [];
         for (const prepared of options.coordinator.reconcilePrepared(
           kind,
           unlinkedOnly,
@@ -530,7 +530,10 @@ export function createRecoveryLedger(options: {
         }
         return { kind: 'available', obligations: reconciled };
       } catch {
-        return { kind: 'unavailable' };
+        return {
+          kind: 'unavailable',
+          ...(reconciled.length ? { obligations: reconciled } : {}),
+        };
       }
     },
     reconcilePreparedCredentials: (now) => {
