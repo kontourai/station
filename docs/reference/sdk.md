@@ -12,6 +12,48 @@ entry point. Exports select TypeScript/TSX source and host components may also
 need CSS, React and a Query Client. See the [package README](../../packages/sdk/README.md)
 for source distribution and a checked authoring example.
 
+## Terminal sessions
+
+`TerminalSessionStore` (from `@kontourai/station-sdk` and
+`@kontourai/station-sdk/client`) operates every terminal on one Station over a
+single multiplexed socket on the API listener, so a proxy path prefix, a tailnet
+name and a native shell all work. Create one per Station with `{apiBase}`;
+optional `requestScope` pins the host authority, `resolveCredential` captures a
+credential owner (otherwise the installed SDK resolver is used, including a
+native shell's host-owned transport), and `requestTicket`, `createSocket` and
+`scheduleFrame` replace the transport for tests.
+
+- `open(target, {cols, rows, launch?, legacyTerminalId?})` asks the server for a
+  new session in `target` (`{projectId, bindingKey}`). `launch` names a
+  server-resolved program (`{kind: 'shell'}` or `{kind: 'agent', connectionId,
+  mode}`); no executable, argument or directory is sent. `legacyTerminalId`
+  imports a pre-socket Coding terminal's owned history once.
+- `attach(target, terminalId)` views an existing session; repeated calls share
+  one view until it is detached.
+- `list(target)` returns the binding's session records, oldest first.
+- `failure`/`restart()` expose and clear a refusal that stopped every session;
+  `dispose()` ends the store.
+
+Both return a `TerminalSession`, the narrow interface a renderer consumes:
+`terminalId`, `state` (`connecting`, `replaying`, `ready`, `reconnecting`,
+`failed`, `detached`), `status`, `readOnly`, `error`; `subscribe({output,
+reset, change})`, `write(data)`, `resize(cols, rows)`, `cwd()`, `close()` and
+`detach()`. A new subscriber first receives the retained output (256 KiB per
+session by default), then live output; `reset` means earlier output is gone.
+Input is coalesced per animation frame and held until replay is acknowledged;
+resize is latest-wins. After a dropped socket the store reconnects with backoff
+(sooner on `online` or when the page becomes visible), fetches a new ticket and
+resumes each session from its last applied sequence. Input already sent is
+never resent, and an `open` whose acknowledgement was lost fails instead of
+starting a second shell. Errors are `TerminalSessionError` with a `code`:
+`unsupported-host` (the host lacks the ticket route; update it), `refused`,
+`credential-unavailable`, `raw-egress-unavailable` (a browser broker route),
+`pty-unavailable` (the host's PTY backend is missing; its `message` is the
+server's reason), `connection-lost` and `protocol`. A refused ticket
+(`refused`, `credential-unavailable`) keeps the host's response as `cause`, a
+`StationHttpError` with its status, code and details, and uses its message. See the
+[socket protocol](api.md#terminal-socket-operator-transport).
+
 ## Terminal output sessions
 
 `TerminalOutputSession` from `@kontourai/station-sdk/client` observes an existing
@@ -19,13 +61,14 @@ terminal through the Station API listener. Pass its `apiBase`, `projectId`,
 `bindingKey`, UUID `terminalId`, a `resolveCredential` callback returning a
 `ClientCredential`, and `onOutput`/`onReset` callbacks. Call `connect()` and
 `dispose()` to own the connection lifetime. An optional `requestScope` pins the
-selected host authority; broker routes and credential-less native transports
-are refused. Both the HTTP probe and socket require a terminal-operate
-credential; output-only describes the commands this client sends, not an
-observe-scope credential.
+selected host authority; broker routes are refused. A native shell's host
+transport mints the socket ticket, so the renderer never holds its bearer. The
+ticket mint requires `terminal:observe` or `terminal:operate`.
 
-An authenticated HTTP probe distinguishes an older host's 404 and reports
-`unsupported-host`, suggesting a host update before any socket is attempted.
+The authenticated ticket mint (`POST /api/terminal/tickets`) distinguishes an
+older host's 404 and reports `unsupported-host`, suggesting a host update before
+any socket is attempted. Its single-use ticket admits the socket before the
+upgrade; no credential frame is sent.
 After attachment, the SDK also requires the server's advertised, enforced
 128-frame outstanding output bound. Hosts without it return `unsupported-host`
 and need an update; older clients can ignore the additive field.
@@ -41,10 +84,8 @@ Callbacks receive an abort
 signal for disposal or failure. Rejected credentials, expired authority and
 protocol errors settle `connect()` and are reported through `onError`.
 
-This read-only client sends no shell input or terminal lifecycle commands. It
-does not replace the Coding terminal view, choose an emulator, or qualify paired
-devices, native transports, provider execution or installed reconnection. Those
-remain part of #3994.
+This read-only client sends no shell input or terminal lifecycle commands; use
+`TerminalSessionStore` to operate a terminal.
 
 ## Local speech and media tools
 

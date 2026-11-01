@@ -10,6 +10,7 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
+import type { TerminalLaunchProfile } from '@kontourai/station-contracts/terminal-transport';
 import { z } from 'zod/v3';
 import { FileTerminalHistoryStore } from '../../adapters/file-terminal-history-store.js';
 import type { IPtyProcess } from '../../domain/pty-adapter.js';
@@ -19,6 +20,7 @@ import {
   isHostedShellProcess,
   type ShellHost,
   type ShellJournalSpec,
+  type ShellLaunch,
 } from './shell-host.js';
 import {
   resolveTerminalJournalOptions,
@@ -60,6 +62,21 @@ const recordSchema = scopeSchema
     status: z.enum(['starting', 'running', 'exited', 'failed']),
     journalUnavailable: z.boolean().default(false),
     createdAt: z.number(),
+    /** The named program, for presentation; never a stored executable. */
+    launch: z
+      .discriminatedUnion('kind', [
+        z.object({ kind: z.literal('shell') }).strict(),
+        z
+          .object({
+            kind: z.literal('agent'),
+            connectionId: z.string(),
+            mode: z.string(),
+          })
+          .strict(),
+        z.object({ kind: z.literal('server') }).strict(),
+      ])
+      .optional(),
+    exitCode: z.number().int().nullable().optional(),
     legacy: z
       .object({
         projectSlug: z.string(),
@@ -74,6 +91,7 @@ type LiveSession = {
   process: IPtyProcess;
   exit: Promise<void>;
 };
+type TerminalExit = { exitCode: number | null };
 type SessionJournal = Pick<
   TerminalJournal,
   'read' | 'flush' | 'discard' | 'seal' | 'append' | 'backpressured' | 'drained'
@@ -88,6 +106,17 @@ interface TerminalSessionAuthority<Principal> {
     operation: 'observe' | 'operate',
   ): boolean | Promise<boolean>;
   resolveRoot(
+    principal: Principal,
+    scope: TerminalSessionScope,
+  ): Promise<string>;
+  /** Resolves a named program; refuses (throws) one this caller may not run. */
+  resolveLaunch?(
+    principal: Principal,
+    scope: TerminalSessionScope,
+    profile: Exclude<TerminalLaunchProfile, { kind: 'shell' }>,
+  ): Promise<ShellLaunch>;
+  /** The Project slug legacy history was written under. */
+  legacyProjectSlug?(
     principal: Principal,
     scope: TerminalSessionScope,
   ): Promise<string>;
@@ -106,6 +135,7 @@ export class TerminalSessions<Principal> {
   private readonly capacity: number;
   private readonly journalOptions: TerminalJournalOptions;
   private readonly listeners = new Set<(terminalId: string) => void>();
+  private readonly exits = new Map<string, (exit: TerminalExit) => void>();
 
   constructor(
     private readonly home: string,
@@ -143,6 +173,9 @@ export class TerminalSessions<Principal> {
       rows: number;
       subdirectory?: string;
       legacy?: { projectSlug: string; terminalId: string };
+      /** Socket form of `legacy`: the slug is resolved by the server. */
+      legacyTerminalId?: string;
+      launch?: TerminalLaunchProfile;
     },
   ) {
     return this.serialize(async () => {
@@ -150,6 +183,27 @@ export class TerminalSessions<Principal> {
       await this.ready;
       if (this.disposed)
         throw new TerminalSessionRefusal('Terminal sessions stopped');
+      if (input.legacyTerminalId !== undefined && !input.legacy) {
+        if (!this.authority.legacyProjectSlug)
+          throw new TerminalSessionRefusal('Legacy terminals unavailable');
+        input = {
+          ...input,
+          legacy: {
+            projectSlug: await this.authority.legacyProjectSlug(
+              principal,
+              scope,
+            ),
+            terminalId: input.legacyTerminalId,
+          },
+        };
+      }
+      const profile = input.launch;
+      let launch: ShellLaunch | undefined;
+      if (profile && profile.kind !== 'shell') {
+        if (!this.authority.resolveLaunch)
+          throw new TerminalSessionRefusal('Launch profile unavailable');
+        launch = await this.authority.resolveLaunch(principal, scope, profile);
+      }
       const root = await realpath(
         await this.authority.resolveRoot(principal, scope),
       );
@@ -212,6 +266,7 @@ export class TerminalSessions<Principal> {
         rows: input.rows,
         status: 'starting',
         createdAt: Date.now(),
+        ...(profile && { launch: profile }),
         ...(input.legacy && { legacy: { ...input.legacy, imported: false } }),
       });
       await this.makeRoom(1, principal);
@@ -244,6 +299,7 @@ export class TerminalSessions<Principal> {
           cols: record.cols,
           rows: record.rows,
           journal: this.journalSpec(record.terminalId),
+          ...(launch && { launch }),
         });
         this.track(record, proc, journal);
         record.status = 'running';
@@ -255,6 +311,79 @@ export class TerminalSessions<Principal> {
         await this.persist();
         throw error;
       }
+    });
+  }
+
+  /**
+   * Server-owned launch (engine sign-in): Station chose the program, its
+   * arguments and directory, so no principal authorizes them. Clients attach
+   * by id under `scope`, through the ordinary observe/operate checks.
+   */
+  openInternal(
+    scope: TerminalSessionScope,
+    input: { cwd: string; cols: number; rows: number; launch: ShellLaunch },
+  ): Promise<{ terminalId: string; exited: Promise<TerminalExit> }> {
+    return this.serialize(async () => {
+      await this.ready;
+      if (this.disposed)
+        throw new TerminalSessionRefusal('Terminal sessions stopped');
+      const cwd = await realpath(input.cwd);
+      const record = recordSchema.parse({
+        ...scopeSchema.parse(scope),
+        terminalId: randomUUID(),
+        cwd,
+        cols: input.cols,
+        rows: input.rows,
+        status: 'starting',
+        createdAt: Date.now(),
+        launch: { kind: 'server' },
+      });
+      await this.makeRoom(1);
+      this.records.set(record.terminalId, record);
+      await this.persist();
+      const exited = new Promise<TerminalExit>((done) =>
+        this.exits.set(record.terminalId, done),
+      );
+      try {
+        const journal = await this.journal(record);
+        await journal.flush();
+        const proc = await this.host.spawn({
+          terminalId: record.terminalId,
+          cwd,
+          cols: record.cols,
+          rows: record.rows,
+          journal: this.journalSpec(record.terminalId),
+          launch: input.launch,
+        });
+        this.track(record, proc, journal);
+        record.status = 'running';
+        await this.persist();
+      } catch (error) {
+        this.exits.delete(record.terminalId);
+        await this.stop(record.terminalId);
+        record.status = 'failed';
+        await this.persist();
+        throw error;
+      }
+      return { terminalId: record.terminalId, exited };
+    });
+  }
+
+  /** Ends a server-owned launch; refuses an id outside `scope`. */
+  closeInternal(scope: TerminalSessionScope, terminalId: string) {
+    return this.serialize(async () => {
+      await this.ready;
+      const record = this.records.get(terminalId);
+      if (
+        !record ||
+        record.projectId !== scope.projectId ||
+        record.bindingKey !== scope.bindingKey
+      )
+        throw new TerminalSessionRefusal('Terminal not found');
+      await this.stop(terminalId);
+      if (record.status !== 'failed') record.status = 'exited';
+      await (await this.journal(record)).flush();
+      await this.persist();
     });
   }
 
@@ -329,11 +458,14 @@ export class TerminalSessions<Principal> {
         });
       }
       if (record.status !== 'failed') record.status = 'exited';
+      record.exitCode = event.outputIncomplete ? null : event.exitCode;
       this.live.delete(record.terminalId);
       this.changed(record.terminalId);
       unsubscribeData();
       unsubscribeExit();
       exit();
+      this.exits.get(record.terminalId)?.({ exitCode: record.exitCode });
+      this.exits.delete(record.terminalId);
       void this.persist().catch((error: unknown) =>
         logger.error('Terminal exit persistence failed', { error }),
       );
@@ -398,6 +530,34 @@ export class TerminalSessions<Principal> {
     );
     await this.check(principal, record, 'observe');
     return allowed;
+  }
+
+  /** The shell's current directory: a host path, so operate authority only. */
+  async cwd(
+    principal: Principal,
+    scope: TerminalSessionScope,
+    terminalId: string,
+  ): Promise<string | null> {
+    await this.find(principal, scope, terminalId, 'operate');
+    const cwd = await this.live.get(terminalId)?.process.getCwd?.();
+    await this.find(principal, scope, terminalId, 'operate');
+    return cwd || null;
+  }
+
+  /** Every record the caller may observe, across Projects and bindings. */
+  async listObservable(principal: Principal) {
+    await this.ready;
+    const visible: (SessionRecord & { pid: number | null })[] = [];
+    for (const record of [...this.records.values()]) {
+      if (!(await this.authority.authorize(principal, record, 'observe')))
+        continue;
+      visible.push({
+        ...record,
+        legacy: record.legacy && { ...record.legacy },
+        pid: this.live.get(record.terminalId)?.process.pid ?? null,
+      });
+    }
+    return visible;
   }
 
   write(

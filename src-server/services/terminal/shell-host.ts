@@ -10,6 +10,14 @@ export interface ShellJournalSpec {
   options: Record<string, number | boolean>;
 }
 
+/** A program the server resolved; never taken from a request. */
+export interface ShellLaunch {
+  file: string;
+  args: readonly string[];
+  /** Added to the scrubbed child environment. */
+  env?: Readonly<Record<string, string>>;
+}
+
 /** Handles may be local PTYs or proxies to supervisor-owned workloads. */
 export interface ShellHost {
   spawn(input: {
@@ -18,6 +26,8 @@ export interface ShellHost {
     cols: number;
     rows: number;
     journal: ShellJournalSpec;
+    /** Absent: the configured interactive shell. */
+    launch?: ShellLaunch;
   }): Promise<IPtyProcess>;
   /**
    * A shell this host kept running while the core restarted, or null when it
@@ -85,10 +95,32 @@ export async function spawnFirstShell(
   throw new Error('No terminal shell is installed');
 }
 
-export function terminalShellEnvironment(): NodeJS.ProcessEnv {
+export function terminalShellEnvironment(
+  extra?: Readonly<Record<string, string>>,
+): NodeJS.ProcessEnv {
   return childProcessEnvironment({
+    ...extra,
     TERM: 'xterm-256color',
     COLORTERM: 'truecolor',
+  });
+}
+
+/**
+ * The programs a host may start for a spawn: a named launch has exactly one,
+ * with no fallback, so a missing executable is reported instead of another
+ * program starting in its place.
+ */
+export async function shellCandidates(
+  launch: ShellLaunch | undefined,
+  configuredShell:
+    | (() => string | undefined | Promise<string | undefined>)
+    | undefined,
+): Promise<{ shell: string; args?: string[] }[]> {
+  if (launch) return [{ shell: launch.file, args: [...launch.args] }];
+  return resolveTerminalShellCandidates({
+    configuredShell: await configuredShell?.(),
+    platform: process.platform,
+    env: process.env,
   });
 }
 
@@ -102,16 +134,15 @@ export class InProcessShellHost implements ShellHost {
   ) {}
 
   async spawn(input: Parameters<ShellHost['spawn']>[0]): Promise<IPtyProcess> {
-    const candidates = resolveTerminalShellCandidates({
-      configuredShell: await this.configuredShell?.(),
-      platform: process.platform,
-      env: process.env,
-    });
-    return spawnFirstShell(this.pty, candidates, {
-      cwd: input.cwd,
-      cols: input.cols,
-      rows: input.rows,
-      env: terminalShellEnvironment(),
-    });
+    return spawnFirstShell(
+      this.pty,
+      await shellCandidates(input.launch, this.configuredShell),
+      {
+        cwd: input.cwd,
+        cols: input.cols,
+        rows: input.rows,
+        env: terminalShellEnvironment(input.launch?.env),
+      },
+    );
   }
 }

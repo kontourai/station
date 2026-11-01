@@ -18,10 +18,10 @@ import {
   InProcessShellHost,
   type ShellHost,
   type ShellJournalSpec,
+  shellCandidates,
   terminalShellEnvironment,
 } from './shell-host.js';
 import { TerminalJournal } from './terminal-journal.js';
-import { resolveTerminalShellCandidates } from './terminal-shells.js';
 
 const logger = createLogger({ name: 'supervisor-shell-host' });
 
@@ -227,13 +227,16 @@ export class SupervisorShellHost implements ShellHost {
   ) {}
 
   async spawn(input: Parameters<ShellHost['spawn']>[0]): Promise<IPtyProcess> {
-    const candidates = resolveTerminalShellCandidates({
-      configuredShell: await this.configuredShell?.(),
-      platform: process.platform,
-      env: process.env,
-    });
+    // A named launch (an agent CLI, an engine sign-in) runs as the workload
+    // itself, never replaced by a fallback shell.
+    const candidates = await shellCandidates(
+      input.launch,
+      this.configuredShell,
+    );
     const env: Record<string, string> = {};
-    for (const [key, value] of Object.entries(terminalShellEnvironment()))
+    for (const [key, value] of Object.entries(
+      terminalShellEnvironment(input.launch?.env),
+    ))
       if (value !== undefined) env[key] = value;
     const info = (await this.channel.requestWorkload({
       op: 'spawn',

@@ -1,0 +1,7 @@
+{
+  "revision": "9f7d3387a831aaa86fe9534bab2f9120d9ef4edd",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Checked: terminal-transport.ts changed only the declared return type of encodeTerminalFrame (ArrayBuffer-backed Uint8Array); the 13-byte header, frame kinds, sequence rules and ticket constants documented in the terminal socket section are unchanged.","inputs":["docs/reference/api.md","packages/contracts/src/terminal-transport.ts"]}
+  ]
+}

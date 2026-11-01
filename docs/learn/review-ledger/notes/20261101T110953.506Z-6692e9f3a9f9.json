@@ -1,0 +1,7 @@
+{
+  "revision": "9f7d3387a831aaa86fe9534bab2f9120d9ef4edd",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Checked: the terminal-transport module's exports are unchanged; encodeTerminalFrame now declares an ArrayBuffer-backed Uint8Array return, which callers already received. The page's pointer to the API reference for the protocol remains accurate.","inputs":["docs/reference/contracts.md","packages/contracts/src/terminal-transport.ts"]}
+  ]
+}

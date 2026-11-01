@@ -20,6 +20,7 @@ import {
   TerminalGateway,
 } from '../../../services/terminal/terminal-gateway.js';
 import { TerminalSessions } from '../../../services/terminal/terminal-sessions.js';
+import { TerminalTickets } from '../../../services/terminal/terminal-tickets.js';
 import {
   DIRECT_LISTENER_LINK,
   type ListenerLink,
@@ -117,13 +118,11 @@ describe('stationHonoServer', () => {
     );
     cleanups.push(() => sessions.dispose());
     const { link } = recordingLink();
-    const gateway = new TerminalGateway({
+    const tickets = new TerminalTickets<Request>();
+    const gateway = new TerminalGateway<Request>({
       sessions,
-      allowedOrigins: [],
-      authenticate: async (credential) =>
-        credential === 'owned-token'
-          ? new Request('http://station.test')
-          : undefined,
+      tickets,
+      reserved: () => true,
     });
     const provider = stationHonoServer(
       config({
@@ -140,17 +139,14 @@ describe('stationHonoServer', () => {
     expect(await (await fetch(`http://127.0.0.1:${port}/probe`)).text()).toBe(
       'API',
     );
-    const ws = new WebSocket(`ws://127.0.0.1:${port}/api/terminal/socket`);
+    const ticket = tickets.mint(new Request('http://station.test'), 'owner');
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/api/terminal/socket`, [
+      'station.terminal.v1',
+      `station.terminal.ticket.${ticket!.ticket}`,
+    ]);
     cleanups.push(() => ws.terminate());
-    await once(ws, 'open');
     const authenticated = once(ws, 'message');
-    ws.send(
-      JSON.stringify({
-        type: 'auth',
-        protocolVersion: 1,
-        credential: 'owned-token',
-      }),
-    );
+    await once(ws, 'open');
     expect(JSON.parse((await authenticated)[0].toString())).toMatchObject({
       type: 'authenticated',
     });

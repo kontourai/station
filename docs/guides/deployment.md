@@ -95,8 +95,10 @@ and historical qualifications below are not current image or cloud proof.
 
 The default Compose mapping exposes port 3000. The lifecycle UI proxy serves
 the UI, HTTP API, event streams, identity and Device pairing through that origin.
-Dedicated terminal and voice listeners are separate; this proxy has no WebSocket
-upgrade bridge to them, and the default mapping does not publish their ports.
+The Coding terminal's ticket-admitted `/api/terminal/socket` upgrade is
+forwarded through this proxy to the API listener. The dedicated voice and legacy
+terminal listeners are separate; this proxy has no upgrade bridge to them, and
+the default mapping does not publish their ports.
 The image runs as Node's unprivileged UID/GID `1000` and persists its home
 in the `station-data` volume.
 

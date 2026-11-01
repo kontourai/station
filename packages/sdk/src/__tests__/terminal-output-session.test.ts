@@ -14,9 +14,17 @@ import {
 } from '../client/terminal-output-session';
 
 const id = '62b97fa1-b690-4d77-82b1-747dc86d3c11';
+const TICKET = 'T'.repeat(43);
+/** The host's ticket mint: one single-use ticket per authenticated POST. */
+const ticketed = () =>
+  new Response(
+    JSON.stringify({ success: true, data: { ticket: TICKET, expiresAt: 1 } }),
+    { status: 200, headers: { 'content-type': 'application/json' } },
+  );
 const sessions: TerminalOutputSession[] = [];
 class Socket extends EventTarget {
   readyState = 0;
+  protocols: string[] = [];
   binaryType = 'arraybuffer';
   sent: Record<string, unknown>[] = [];
   send(value: string) {
@@ -77,8 +85,9 @@ function fixture(
     terminalId: id,
     requestScope: { apiBase: 'http://127.0.0.1:4198', authorityKey: 'owner-1' },
     resolveCredential: resolver,
-    createSocket: () => {
+    createSocket: (_url, protocols) => {
       const socket = new Socket();
+      socket.protocols = protocols;
       sockets.push(socket);
       return socket;
     },
@@ -132,7 +141,7 @@ async function ready(socket: Socket, sequence = 0) {
 beforeEach(() => {
   vi.stubGlobal(
     'fetch',
-    vi.fn(async () => new Response(null, { status: 204 })),
+    vi.fn(async () => ticketed()),
   );
 });
 afterEach(() => {
@@ -163,22 +172,42 @@ describe('terminal output session', () => {
     expect(f.sockets).toHaveLength(0);
   });
 
-  test('a native HTTP transport cannot silently fall back to a raw credential socket', async () => {
+  test('a native HTTP transport mints the ticket; the socket never carries its bearer', async () => {
     vi.useFakeTimers();
-    const transport = vi.fn(async () => new Response());
+    const transport = vi.fn(async (_input: unknown, init?: RequestInit) => {
+      expect(init?.method).toBe('POST');
+      return ticketed();
+    });
     const f = fixture({
       resolveCredential: () => ({
-        credential: 'not-a-raw-fallback',
         origin: 'http://127.0.0.1:4198',
         transport,
+        requestAuthority: {
+          apiBase: 'http://127.0.0.1:4198',
+          authorityKey: 'owner-1',
+          isCurrent: () => true,
+        },
       }),
     });
-    await expect(f.session.connect()).rejects.toMatchObject({
-      code: 'native-transport-unsupported',
-    });
-    expect(transport).not.toHaveBeenCalled();
+    const connected = f.session.connect();
+    await flush();
+    expect(transport).toHaveBeenCalledTimes(1);
+    expect(String(transport.mock.calls[0]![0])).toBe(
+      'http://127.0.0.1:4198/api/terminal/tickets',
+    );
     expect(fetch).not.toHaveBeenCalled();
-    expect(f.sockets).toHaveLength(0);
+    expect(f.sockets).toHaveLength(1);
+    expect(f.sockets[0].protocols).toEqual([
+      'station.terminal.v1',
+      `station.terminal.ticket.${TICKET}`,
+    ]);
+    await authenticate(f.sockets[0]);
+    await ready(f.sockets[0]);
+    await connected;
+    expect(f.sockets[0].sent.map((item) => item.type)).toEqual([
+      'attach',
+      'ack',
+    ]);
   });
 
   test('a state-notification failure settles its caller without leaving a connection timer', async () => {
@@ -239,20 +268,23 @@ describe('terminal output session', () => {
       expect(() => terminalOutputSocketURL(base)).toThrow();
   });
 
-  test('loopback authenticates before attaching and sends only read/replay controls', async () => {
+  test('a ticket admits the socket before attaching; only read/replay controls follow', async () => {
     vi.useFakeTimers();
     const f = fixture();
     const connected = f.session.connect();
     await flush();
     const socket = f.sockets[0];
+    expect(socket.protocols).toEqual([
+      'station.terminal.v1',
+      `station.terminal.ticket.${TICKET}`,
+    ]);
     socket.open();
     await flush();
-    expect(socket.sent).toEqual([
-      { type: 'auth', protocolVersion: 1, credential: 'test-operator' },
-    ]);
+    // No credential frame: the bearer stayed on the authenticated mint.
+    expect(socket.sent).toEqual([]);
     socket.message({ type: 'authenticated', protocolVersion: 1 });
     await flush();
-    expect(socket.sent[1]).toMatchObject({
+    expect(socket.sent[0]).toMatchObject({
       type: 'attach',
       channel: 1,
       terminalId: id,
@@ -263,7 +295,7 @@ describe('terminal output session', () => {
     socket.message({
       type: 'attached',
       channel: 1,
-      requestId: socket.sent[1].requestId,
+      requestId: socket.sent[0].requestId,
       terminalId: id,
       replayThrough: 0,
       maxOutstandingOutputFrames: TERMINAL_MAX_OUTSTANDING_OUTPUT_FRAMES,
@@ -271,11 +303,8 @@ describe('terminal output session', () => {
     await ready(socket);
     await connected;
     expect(f.states[f.states.length - 1]).toBe('ready');
-    expect(socket.sent.map((item) => item.type)).toEqual([
-      'auth',
-      'attach',
-      'ack',
-    ]);
+    expect(socket.sent.map((item) => item.type)).toEqual(['attach', 'ack']);
+    expect(JSON.stringify(socket.sent)).not.toContain('test-operator');
   });
 
   test('credits only applied output and reconnects from that cursor without duplicate rendering', async () => {
@@ -313,8 +342,7 @@ describe('terminal output session', () => {
     await vi.advanceTimersByTimeAsync(250);
     expect(f.sockets).toHaveLength(2);
     await authenticate(f.sockets[1]);
-    expect(f.sockets[1].sent[0]).toMatchObject({ type: 'auth' });
-    expect(f.sockets[1].sent[1]).toMatchObject({
+    expect(f.sockets[1].sent[0]).toMatchObject({
       type: 'attach',
       terminalId: id,
       fromSeq: 1,
@@ -389,7 +417,7 @@ describe('terminal output session', () => {
     socket.message({
       type: 'attached',
       channel: 1,
-      requestId: socket.sent[1].requestId,
+      requestId: socket.sent[0].requestId,
       terminalId: id,
       replayThrough: 0,
     });

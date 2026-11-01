@@ -1,11 +1,12 @@
+import type { TerminalLaunchProfile } from '@kontourai/station-contracts/terminal-transport';
 import {
-  assertClientRawEgressAllowed,
   executeCodingCommand,
-  fetchTerminalPort,
+  type TerminalSession,
+  type TerminalSessionTarget,
 } from '@kontourai/station-sdk';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal } from '@xterm/xterm';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import '@xterm/xterm/css/xterm.css';
 import {
   activeChatsStore,
@@ -18,59 +19,57 @@ import { MOBILE_MEDIA_QUERY, useIsMobile } from '../../hooks/useIsMobile';
 import { copyToClipboard } from '../../lib/clipboard';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
 import { observeRootTheme } from '../../lib/root-theme';
-import {
-  BrowserWebSocketAuthGate,
-  isRemoteEndpoint,
-  websocketCloseError,
-} from '../../utils/browserWebSocketAuth';
 import { activeTerminalWriter } from './activeTerminal';
 import {
   buildTerminalSelectionHandoff,
   selectionContainsCredential,
 } from './terminalSelectionHandoff';
+import { useTerminalSessionStore } from './terminalSessionStore';
 import { readTerminalTheme } from './terminalTheme';
 
-/** Server events that belong to one terminal session (`TerminalEvent`). */
-const SESSION_EVENT_TYPES = new Set(['data', 'started', 'exited', 'activity']);
-
+/**
+ * One terminal view on the shared SDK session store: the same-origin socket
+ * every operator device reaches (#3994). The server decides the program and
+ * working directory; this view names a session, or asks for a new one.
+ */
 export function TerminalPanel({
   projectSlug,
   workingDir,
-  terminalId = 'default',
-  shell,
-  shellArgs,
+  target,
+  terminalId,
+  viewKey,
+  launch,
+  legacyTerminalId,
+  onOpened,
   isActive = false,
   attachOnly = false,
 }: {
   projectSlug: string;
   workingDir: string;
+  /** The session scope; absent while the Project is still loading. */
+  target: TerminalSessionTarget | undefined;
+  /** An existing session to attach to. */
   terminalId?: string;
-  shell?: string;
-  shellArgs?: string[];
+  /** Stable identity of this view (a tab id); a change starts a new view. */
+  viewKey?: string;
+  /** For a new session: a server-resolved program by name. */
+  launch?: TerminalLaunchProfile;
+  /** For a new session: import this pre-socket terminal's history once. */
+  legacyTerminalId?: string;
+  /** The server accepted a new session under this id. */
+  onOpened?: (terminalId: string) => void;
   /** Join a session the server started; never start a shell in its place. */
   attachOnly?: boolean;
   /** True when this is the visible terminal tab; only then does it accept
    * externally-injected input (e.g. "Send to terminal" from the file tree). */
   isActive?: boolean;
 }) {
-  const {
-    apiBase,
-    connectionId,
-    credentialProvider: liveCredentials,
-  } = useApiBase();
-  const credential = liveCredentials.getCredential();
-  const protocolVersion = liveCredentials.getProtocolVersion();
-  const credentialProvider = useMemo(
-    () => ({
-      getCredential: () => credential,
-      getProtocolVersion: () => protocolVersion,
-    }),
-    [credential, protocolVersion],
-  );
+  const store = useTerminalSessionStore();
   const activeChat = useNavigation((state) => state.activeChat);
   const { getDraft, setDraft, updateChat } = useActiveChatActions();
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
+  const sessionRef = useRef<TerminalSession | null>(null);
   const [wsError, setWsError] = useState<string | null>(null);
   const [connectionAttempt, setConnectionAttempt] = useState(0);
   const [connected, setConnected] = useState(false);
@@ -83,9 +82,12 @@ export function TerminalPanel({
   );
   const [selection, setSelection] = useState('');
   const [handoffError, setHandoffError] = useState<string | null>(null);
-  // Populated by the WS effect; sends text to the PTY as if typed.
-  const sendTextRef = useRef<((text: string) => boolean) | null>(null);
-  const getLiveCwdRef = useRef<(() => Promise<string | null>) | null>(null);
+  // The newest open options; a view does not restart when they change.
+  const intentRef = useRef({ terminalId, launch, legacyTerminalId, onOpened });
+  intentRef.current = { terminalId, launch, legacyTerminalId, onOpened };
+  const projectId = target?.projectId;
+  const bindingKey = target?.bindingKey;
+  const key = viewKey ?? terminalId;
 
   // The canvas cannot follow the cascade: re-read the terminal variables
   // after any light/dark, palette, accent or branding change on the root.
@@ -100,9 +102,9 @@ export function TerminalPanel({
     [],
   );
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: An explicit reconnect restarts this socket with the same terminal identity.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: An explicit reconnect restarts this view with the same terminal identity.
   useEffect(() => {
-    if (!containerRef.current) return;
+    if (!containerRef.current || !projectId || !bindingKey) return;
     setUnavailableReason(null);
     setWsError(null);
     setConnected(false);
@@ -124,279 +126,119 @@ export function TerminalPanel({
       theme: readTerminalTheme(containerRef.current),
     });
     terminalRef.current = terminal;
-
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
     terminal.open(containerRef.current);
     fitAddon.fit();
 
-    let ws: WebSocket | null = null;
-    let sessionId: string | null = null;
-    let disposed = false;
+    const scope = { projectId, bindingKey };
+    const intent = intentRef.current;
+    if (store.failure) store.restart();
+    let session: TerminalSession | null = null;
+    let unsubscribe: (() => void) | undefined;
+    let reported = intent.terminalId;
     let exited = false;
-    let cwdRequest = 0;
-    let resizeFrame: number | null = null;
-    let lastSize = { cols: terminal.cols, rows: terminal.rows };
-    const cwdRequests = new Map<string, (cwd: string | null) => void>();
-
-    const ensureTerminalSocketAllowed = (): boolean => {
-      try {
-        assertClientRawEgressAllowed(apiBase, 'terminal', connectionId);
-        return true;
-      } catch (error) {
-        ws?.close();
-        if (!disposed)
-          setUnavailableReason(
-            error instanceof Error
-              ? error.message
-              : 'Terminal connections are unavailable for the selected Station.',
-          );
-        return false;
-      }
+    const begin = (importHistory: boolean) => {
+      unsubscribe?.();
+      session = intent.terminalId
+        ? store.attach(scope, intent.terminalId)
+        : attachOnly
+          ? null
+          : store.open(scope, {
+              cols: terminal.cols,
+              rows: terminal.rows,
+              ...(intent.launch && { launch: intent.launch }),
+              ...(importHistory &&
+                intent.legacyTerminalId && {
+                  legacyTerminalId: intent.legacyTerminalId,
+                }),
+            });
+      sessionRef.current = session;
+      unsubscribe = session?.subscribe({
+        output: (data) => terminal.write(data),
+        reset: () => terminal.reset(),
+        change: render,
+      });
+      if (session) render(session);
+      else setWsError('This terminal session is unavailable.');
     };
-
-    const connectWs = async () => {
-      if (!ensureTerminalSocketAllowed()) return;
-      let port: number;
-      try {
-        port = await fetchTerminalPort(apiBase);
-      } catch {
-        if (!disposed) setWsError('Terminal unavailable.');
+    const render = (current: TerminalSession) => {
+      if (current !== session) return;
+      if (current.terminalId && current.terminalId !== reported) {
+        reported = current.terminalId;
+        intentRef.current.onOpened?.(current.terminalId);
+      }
+      setConnected(current.state === 'ready');
+      if (current.state === 'failed') {
+        // Saved history nobody can prove this Project owns stays on disk;
+        // the tab still gets a fresh shell rather than a refusal.
+        if (
+          current.error?.code === 'refused' &&
+          !current.terminalId &&
+          intent.legacyTerminalId &&
+          !intent.terminalId
+        ) {
+          intent.legacyTerminalId = undefined;
+          queueMicrotask(() => begin(false));
+          return;
+        }
+        if (current.error?.code === 'pty-unavailable')
+          setUnavailableReason(current.error.message);
+        else setWsError(current.error?.message ?? 'Terminal unavailable.');
         return;
       }
-      if (disposed) return;
-      // Port discovery may await a routed application request. Recheck the
-      // selected binding directly before opening the raw WebSocket.
-      if (!ensureTerminalSocketAllowed()) return;
-
-      // Connect to the host the app was loaded from (e.g. the LAN IP on a
-      // phone), not `localhost` — on a remote device localhost is the device
-      // itself and never reaches the terminal server. The WS server binds
-      // 0.0.0.0, so the LAN host resolves correctly.
-      const base = new URL(apiBase, window.location.href);
-      const wsProto = base.protocol === 'https:' ? 'wss:' : 'ws:';
-      ws = new WebSocket(`${wsProto}//${base.hostname}:${port}`);
-
-      const sendOpen = () => {
-        if (
-          !ensureTerminalSocketAllowed() ||
-          !ws ||
-          ws.readyState !== WebSocket.OPEN
-        )
-          return;
-        lastSize = { cols: terminal.cols, rows: terminal.rows };
-        ws.send(
-          JSON.stringify({
-            type: 'open',
-            projectSlug,
-            terminalId,
-            cwd: workingDir,
-            ...(shell && { shell }),
-            ...(shellArgs && { shellArgs }),
-            ...(attachOnly && { attachOnly: true }),
-            cols: terminal.cols,
-            rows: terminal.rows,
-          }),
-        );
-      };
-      const authGate = new BrowserWebSocketAuthGate(
-        isRemoteEndpoint(apiBase, window.location.href),
-        credentialProvider,
-        sendOpen,
-        (message) => {
-          if (!disposed) setWsError(message);
-          ws?.close();
-        },
+      if (current.status === 'exited' || current.status === 'failed') {
+        if (!exited) terminal.write('\r\n[terminal exited]\r\n');
+        exited = true;
+        setWsError('The shell has exited.');
+        return;
+      }
+      setWsError(
+        current.state === 'reconnecting' ? 'Terminal reconnecting…' : null,
       );
-
-      ws.onopen = () => {
-        if (!ensureTerminalSocketAllowed()) return;
-        authGate.open(ws!);
-      };
-
-      ws.onmessage = (event) => {
-        if (disposed) return;
-        if (!ensureTerminalSocketAllowed()) return;
-        if (authGate.consume(event.data as string)) return;
-        try {
-          const msg = JSON.parse(event.data as string);
-          // Defense in depth: session events for any other session (or before
-          // this panel's snapshot names its own) never reach this terminal.
-          if (
-            SESSION_EVENT_TYPES.has(msg.type) &&
-            (!sessionId || msg.sessionId !== sessionId)
-          )
-            return;
-          if (msg.type === 'snapshot') {
-            sessionId = msg.sessionId;
-            scheduleResize();
-            setConnected(true);
-            if (msg.history) terminal.write(msg.history);
-          } else if (msg.type === 'data') {
-            terminal.write(msg.data);
-          } else if (msg.type === 'cwd') {
-            const resolve = cwdRequests.get(msg.requestId);
-            if (resolve) {
-              cwdRequests.delete(msg.requestId);
-              resolve(typeof msg.cwd === 'string' ? msg.cwd : null);
-            }
-          } else if (msg.type === 'exited') {
-            exited = true;
-            setConnected(false);
-            setWsError('The shell has exited.');
-            terminal.write('\r\n[terminal exited]\r\n');
-          } else if (
-            msg.type === 'error' &&
-            msg.code === 'terminal-unavailable' &&
-            typeof msg.message === 'string'
-          ) {
-            // The server's PTY backend (node-pty) is unavailable (#1244).
-            // Surface the server's actionable reason and swap to the
-            // command-executor fallback, which runs without a PTY.
-            setUnavailableReason(msg.message);
-          }
-        } catch {
-          /* ignore malformed */
-        }
-      };
-
-      ws.onerror = () => {
-        if (!disposed) {
-          setConnected(false);
-          setWsError('Terminal disconnected.');
-        }
-      };
-      ws.onclose = (event) => {
-        if (!disposed && !exited) {
-          console.warn(`[Terminal] ${websocketCloseError(event.code)}`);
-          setConnected(false);
-          setWsError(websocketCloseError(event.code));
-        }
-      };
     };
-
-    connectWs();
+    begin(true);
 
     const dataDispose = terminal.onData((data) => {
-      if (
-        ensureTerminalSocketAllowed() &&
-        ws?.readyState === WebSocket.OPEN &&
-        sessionId
-      ) {
-        ws.send(JSON.stringify({ type: 'data', sessionId, data }));
-      }
+      session?.write(data);
     });
-
-    // Expose a way to inject text into this PTY (read ws/sessionId at call time).
-    // Refuse once the PTY has exited so callers don't write into a dead shell.
-    sendTextRef.current = (text: string) => {
-      if (
-        ensureTerminalSocketAllowed() &&
-        !exited &&
-        ws?.readyState === WebSocket.OPEN &&
-        sessionId
-      ) {
-        ws.send(JSON.stringify({ type: 'data', sessionId, data: text }));
-        return true;
-      }
-      return false;
-    };
-
-    getLiveCwdRef.current = () => {
-      if (
-        !ensureTerminalSocketAllowed() ||
-        !ws ||
-        ws.readyState !== WebSocket.OPEN ||
-        !sessionId ||
-        exited
-      ) {
-        return Promise.resolve(null);
-      }
-      const requestId = `${terminalId}:cwd:${cwdRequest++}`;
-      return new Promise((resolve) => {
-        const timeout = setTimeout(() => {
-          cwdRequests.delete(requestId);
-          resolve(null);
-        }, 1_000);
-        cwdRequests.set(requestId, (cwd) => {
-          clearTimeout(timeout);
-          resolve(cwd);
-        });
-        ws!.send(JSON.stringify({ type: 'cwd', sessionId, requestId }));
-      });
-    };
-
     const selectionDispose = terminal.onSelectionChange(() => {
       setSelection(terminal.hasSelection() ? terminal.getSelection() : '');
       setHandoffError(null);
     });
-
+    let resizeFrame: number | null = null;
     const scheduleResize = () => {
-      if (disposed || resizeFrame !== null) return;
+      if (resizeFrame !== null) return;
       resizeFrame = requestAnimationFrame(() => {
         resizeFrame = null;
-        if (disposed) return;
         const proposed = fitAddon.proposeDimensions();
         if (!proposed) return;
         if (proposed.cols !== terminal.cols || proposed.rows !== terminal.rows)
           fitAddon.fit();
-        if (terminal.cols === lastSize.cols && terminal.rows === lastSize.rows)
-          return;
-        if (
-          ensureTerminalSocketAllowed() &&
-          ws?.readyState === WebSocket.OPEN &&
-          sessionId
-        ) {
-          ws.send(
-            JSON.stringify({
-              type: 'resize',
-              sessionId,
-              cols: terminal.cols,
-              rows: terminal.rows,
-            }),
-          );
-          lastSize = { cols: terminal.cols, rows: terminal.rows };
-        }
+        // Latest size wins in the store; it is sent once the session is ready.
+        session?.resize(terminal.cols, terminal.rows);
       });
     };
     const observer = new ResizeObserver(scheduleResize);
-    if (containerRef.current) observer.observe(containerRef.current);
+    observer.observe(containerRef.current);
 
     return () => {
-      disposed = true;
+      unsubscribe?.();
       dataDispose.dispose();
       selectionDispose.dispose();
-      for (const resolve of cwdRequests.values()) resolve(null);
-      cwdRequests.clear();
       observer.disconnect();
       if (resizeFrame !== null) cancelAnimationFrame(resizeFrame);
-      // Unmounting is presentation lifecycle, not terminal lifecycle. The
-      // server retains an unowned session briefly so the same identity can
-      // reconnect after a host tab switch, move, or layout navigation.
+      // Unmounting is presentation lifecycle, not terminal lifecycle: the
+      // shell keeps running and the next view resumes its output.
+      session?.detach();
+      sessionRef.current = null;
       terminal.dispose();
       terminalRef.current = null;
-      ws?.close();
-      sendTextRef.current = null;
-      getLiveCwdRef.current = null;
     };
-  }, [
-    apiBase,
-    connectionId,
-    credentialProvider,
-    projectSlug,
-    workingDir,
-    terminalId,
-    shell,
-    shellArgs,
-    connectionAttempt,
-  ]);
+  }, [store, projectId, bindingKey, key, attachOnly, connectionAttempt]);
 
-  useEffect(() => {
-    if (!wsError) return;
-    const reconnect = () => setConnectionAttempt((attempt) => attempt + 1);
-    window.addEventListener('online', reconnect);
-    return () => window.removeEventListener('online', reconnect);
-  }, [wsError]);
+  const sendText = (text: string): boolean =>
+    sessionRef.current?.write(text) ?? false;
 
   const sendSelectionToChat = async () => {
     // Read from xterm at the hand-off, rather than from selection state: this
@@ -414,7 +256,7 @@ export function TerminalPanel({
       setHandoffError('Open a chat before sending terminal output to it.');
       return;
     }
-    const cwd = await getLiveCwdRef.current?.();
+    const cwd = await sessionRef.current?.cwd().catch(() => null);
     if (!cwd) {
       setHandoffError(
         'The terminal working directory is unavailable; output was not added to chat.',
@@ -451,13 +293,14 @@ export function TerminalPanel({
 
   // Register as the active terminal writer only while this tab is visible, so
   // injected input always lands in the terminal the user is looking at.
+  const writerKey = key ?? 'terminal';
   useEffect(() => {
     if (!isActive) return;
-    activeTerminalWriter.setActive(terminalId, (text) =>
-      sendTextRef.current ? sendTextRef.current(text) : false,
+    activeTerminalWriter.setActive(writerKey, (text) =>
+      sessionRef.current ? sessionRef.current.write(text) : false,
     );
-    return () => activeTerminalWriter.clearActive(terminalId);
-  }, [isActive, terminalId]);
+    return () => activeTerminalWriter.clearActive(writerKey);
+  }, [isActive, writerKey]);
 
   if (unavailableReason) {
     // Loud degradation (#1244): name the reason, then keep the user working
@@ -528,7 +371,7 @@ export function TerminalPanel({
               disabled={!connected}
               onPointerDown={(event) => event.preventDefault()}
               onClick={() => {
-                sendTextRef.current?.(input);
+                sendText(input!);
                 terminalRef.current?.focus();
               }}
             >

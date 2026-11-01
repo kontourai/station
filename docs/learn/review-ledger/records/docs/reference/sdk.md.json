@@ -832,7 +832,9 @@
 
     "src-ui/src/views/learning-review/__tests__/LearningRecordActions.test.tsx",
 
-    "src-server/services/identity/local-account-passkeys.ts"
+    "src-server/services/identity/local-account-passkeys.ts",
+
+    "packages/sdk/src/client/terminal-session-store.ts"
   ],
 
   "checks": [

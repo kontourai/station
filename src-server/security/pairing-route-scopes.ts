@@ -1615,6 +1615,19 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     origin: 'explicit',
     personalTokens: 'refused',
   },
+  // #3994: the single-use socket ticket. Minting admits a socket that can
+  // only watch until each operation's own observe/operate check passes, so
+  // the floor is observe; the route also requires the operator (in person
+  // or one of their own devices).
+  {
+    id: '/api/terminal/tickets:terminal-observe',
+    method: 'POST',
+    prefix: '/api/terminal/tickets',
+    exact: true,
+    scope: PAIRING_SCOPE_TERMINAL_OBSERVE,
+    origin: 'explicit',
+    personalTokens: 'refused',
+  },
   {
     id: '/api/pairing:manage',
     method: '*',
@@ -2426,7 +2439,12 @@ export interface PairingScopeCredentialResolver {
  * session runs outside the HTTP gates (no account check, Project membership
  * or Agent audience), so admitting either would bypass them.
  */
-function refusedOnWebSocket(
+/**
+ * Credentials no terminal or voice socket admits, whatever their scope: a
+ * personal access token and an account-bound Device (#3586). The terminal
+ * socket ticket mint applies the same refusal on every check (#3994).
+ */
+export function refusedOnWebSocket(
   device: ReturnType<PairingScopeCredentialResolver['identifyDevice']>,
 ): boolean {
   if (!device) return false;

@@ -5528,12 +5528,14 @@ framework. It is not an inventory of external engines.
 `GET /api/system/skills` returns `{success: true, data}` from SkillService, or an
 empty list when that service is not supplied to this handler.
 
-### Scoped terminal sessions (personal operator foundation)
+### Scoped terminal sessions (personal operator)
 
 [`/api/projects/:slug/terminal-sessions`](../../src-server/routes/projects/terminal-session-routes.ts) is the #3994 part (a) control seam.
-It is mounted only on personal hosts and requires a current operator acting in
-person. Paired devices, accounts, agents and plugins cannot use it. This is not
-the replacement SDK socket, and the Coding UI still uses the legacy terminal.
+It is mounted only on personal hosts and requires a current operator: in
+person, or through one of the operator's own paired devices (a device tied to
+no person, not a delegation grant or personal token). Members' devices,
+accounts, agents and plugins cannot use it. The Coding UI uses the
+[terminal socket](#terminal-socket-operator-transport) instead.
 
 - `POST` creates a session with `{cols, rows, bindingKey?, subdirectory?,
   legacyTerminalId?}`. `bindingKey` defaults to `project`; `thread:<id>` resolves
@@ -5560,9 +5562,9 @@ the replacement SDK socket, and the Coding UI still uses the legacy terminal.
 Ingress explicitly requires `terminal:observe` for GET/HEAD list and journal
 reads, and `terminal:operate` for POST/DELETE operations. Operate also satisfies
 observe without changing its stored grant. Generic Project read/operate grants
-cannot pass these leaves. The handler's personal-operator restriction remains
-additional; this does not enable paired-device access. The observe token is
-explicit promotion only and joins no preset or default grant.
+cannot pass these leaves. The handler's operator restriction remains
+additional. The observe token is explicit promotion only and joins no preset
+or default grant.
 
 Responses use `{success: true, data?}`. Invalid shapes return 400, access/scope
 refusals return a generic 403, over-bound journal reads return 413, and
@@ -5574,7 +5576,7 @@ supervisor's workload host instead. A session recorded as running is reattached,
 with the same pid and its whole journal, by the next core generation after a
 restart or handoff (see [Shell host](../design/terminal.md#shell-host)). Journal persistence and
 line/byte retention are configured at service construction. Settings and age-based
-retention, live observer/device admission and the SDK store remain pending. See the
+retention remain pending. See the
 [implementation boundary](../design/terminal.md#first-implementation-boundary-3994-part-a).
 
 Core session retention also has whole-store constructor budgets: 1 GiB disk,
@@ -5587,25 +5589,37 @@ The scoped service's POSIX node-pty close terminates discovered owned process gr
 not merely send HUP to the shell pid. See the
 [retention and custody limits](../design/terminal.md#whole-store-retention-and-process-custody).
 
-### Terminal socket (personal operator transport)
+### Terminal socket (operator transport)
 
-`/api/terminal/socket` upgrades on the main API listener. Only the current
-personal operator acting in person can authenticate in this tranche. Browser
-Origin headers must name a configured Station origin; query strings and unknown
-upgrade paths are refused. An ordinary authenticated `GET` is a 204 admission
-probe, not a stream. Send the existing `{type: "auth", protocolVersion: 1,
-credential}` first frame, including on loopback; wait for `authenticated` before
-commands. Authentication times out after five seconds and timeouts count as
-failures. There are at most 64 authenticated connections and a separate budget
-of 32 pending sockets, with eight pending authentications per peer and the
-existing auth failure limiter. Any peer that can reach the main API listener
-can hold pending slots before authentication, including clients without an
-Origin header, and can exhaust them to lock the operator out. The in-person
-rule limits who can authenticate, not who can hold slots. See the
-[remote-admission prerequisites](../design/terminal.md#replay-controls-before-ghostty)
-before admitting remote devices. Personal tokens and account-bound Devices are
-refused before HTTP forwarding regardless of scope. Credentials never appear
-in output or error frames.
+`/api/terminal/socket` upgrades on the main API listener, so a same-origin
+reverse proxy (including a path prefix), a tailnet name and the relay's direct
+route reach it like any other API request; there is no second port. It is
+admitted before the upgrade:
+
+1. `POST /api/terminal/tickets` (no body) through the ordinary authenticated
+   transport, including a native shell's host-owned transport. It requires the
+   operator in person or one of the operator's own paired devices, a current
+   principal and `terminal:observe` or `terminal:operate`; personal access
+   tokens and account-bound Devices are refused. It returns `{success: true,
+   data: {ticket, expiresAt}}` with `Cache-Control: no-store`: a 43-character
+   base64url ticket valid for 30 seconds and redeemable once. An older host
+   answers 404 (treat as unsupported); refusal is 403; more than eight
+   unredeemed tickets per identity is 429.
+2. Open the socket offering two subprotocols, `station.terminal.v1` and
+   `station.terminal.ticket.<ticket>`. The server selects only
+   `station.terminal.v1` and sends `{type: "authenticated", protocolVersion: 1}`.
+   A missing, reused, expired or malformed ticket gets HTTP 401 before any
+   socket exists; the browser Origin allowlist is not consulted, because the
+   ticket carries the HTTP admission decision. Query strings and unknown paths
+   are refused.
+
+There are at most 64 sockets, eight per identity (device or credential) and
+eight reserved for the operator in person; beyond them the upgrade gets 429.
+Nothing is keyed by network address, so devices sharing a relay or proxy
+address do not affect one another. The server pings every 15 seconds and
+terminates a peer that missed a pong; a socket closes with `4000` after one
+hour (reconnect with a new ticket). The `GET` on the same path remains a 204
+admission probe. Credentials and tickets never appear in output or error frames.
 
 Controls are strict JSON objects. Every command except `ack` requires a
 `requestId` string (1–64 characters). Every channel id is an integer from 1 to
@@ -5614,7 +5628,18 @@ ids consumed per socket. All commands retain the authenticated caller's
 Project/binding authority through TerminalSessions.
 
 - `open`: `{type, requestId, channel, projectId, bindingKey, cols, rows,
-  fromSeq?: 0, windowBytes?}`. Opens a server-owned session and attaches it.
+  fromSeq?: 0, windowBytes?, launch?, legacyTerminalId?}`. Opens a
+  server-owned session and attaches it. `launch` names a program the server
+  resolves: `{kind: "shell"}` (the default configured shell) or `{kind:
+  "agent", connectionId, mode}`, a saved, enabled engine connection with an
+  interactive command and one of its live modes; anything else is refused. No
+  executable, argument or directory is ever taken from the request.
+  `legacyTerminalId` (`[A-Za-z0-9_-]{1,128}`) imports the Project binding's
+  provenance-bound pre-socket history once, as the HTTP route does; unowned
+  history is refused and no shell starts. A missing PTY backend returns
+  `error` with code `pty-unavailable` and the server's reason in `message`,
+  distinct from `terminal-refused`; `POST /api/coding/exec` remains the
+  fallback.
 - `attach`: `{type, requestId, channel, projectId, bindingKey, terminalId,
   fromSeq?, windowBytes?}`. `fromSeq` is the last consumed output sequence,
   default zero. Unknown ids and mismatched Projects/bindings are refused.
@@ -5626,6 +5651,9 @@ Project/binding authority through TerminalSessions.
   and `detach` take `{type, requestId, channel}`. They return `done`; an adjacent
   queued resize replaced by a newer resize returns `superseded`. Close ends
   the shell; detach and socket loss leave it running. Restart is not admitted.
+- `cwd`: `{type, requestId, channel}` returns `{type: "cwd", requestId,
+  channel, cwd}` with the shell's current directory, or `null` when the host
+  cannot tell. It requires operate authority.
 - `ack`: `{type, channel, seq}` cumulatively acknowledges consumed output.
   It must name the current acknowledgement or an actually sent record.
   Future, backward and unsent acknowledgements return `invalid-ack`.
@@ -5662,19 +5690,21 @@ progress notification reports the current `lastSeq`. Acknowledging through repla
 must keep emulator reply writers detached during replay.
 
 The command queue refuses capacity beyond 128 pending commands or 256 KiB of
-serialized work with close code 4429. Data sends pause above 2 MiB of socket
+serialized work with close code 4429; a peer that ignores that close is
+terminated after one second. Data sends pause above 2 MiB of socket
 backlog and retry on the heartbeat without advancing journal/filter state.
 Control replies have a further 256 KiB reserve before close code 4429. Quiet channels recheck authority at least once per
 one-second heartbeat, subject to service I/O; every output read rechecks
 before publication. Invalid frames return `invalid-frame`, authority/session
 refusals return generic `terminal-refused`, without exception details.
 
-`@kontourai/station-contracts/terminal-transport` exports the binary codec and
-scope predicate. `terminal:observe` is explicitly promotable and read-only;
-existing scopes/defaults/presets are unchanged. Live observer/device admission,
-relay/broker transport, the SDK store/public-entry test and Coding migration
-remain part b2. The legacy endpoint remains available; see the
-[transport implementation boundary](../design/terminal.md#transport-implementation-boundary-3994-part-b1).
+`@kontourai/station-contracts/terminal-transport` exports the binary codec, the
+ticket and subprotocol constants, launch profiles and the scope predicate.
+`terminal:observe` is explicitly promotable and read-only; existing
+scopes/defaults/presets are unchanged. The SDK's `TerminalSessionStore` is the
+client for this protocol. A browser broker (DataChannel) route has no socket
+path yet. The legacy endpoint remains available for older clients; see the
+[operator devices boundary](../design/terminal.md#operator-devices-and-coding-cutover-3994-part-b2).
 
 ### Get Terminal Port
 

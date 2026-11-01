@@ -31,6 +31,10 @@ import {
 } from '../../analytics/source-grant-store.js';
 import { ProjectFileTransactions } from '../../domain/project-file-transactions.js';
 import { parseProjectPortableIdentity } from '../../domain/project-identity-record.js';
+import {
+  findCliBinaryAsync,
+  resolveAugmentedPath,
+} from '../../providers/auth/cli-auth.js';
 import { createBrowserRoutes } from '../../routes/browser.js';
 import { createBrowserAgentRoutes } from '../../routes/browser-agent.js';
 import { createDeviceAgentRoutes } from '../../routes/device-agent.js';
@@ -74,6 +78,7 @@ import { createWalkthroughRoutes } from '../../routes/walkthroughs.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import {
   isOperatorInPersonNotAgent,
+  isTerminalOperator,
   mayRunCommandsOnHostCurrently,
   requestMayBeAnAgent,
 } from '../../security/coding-authority.js';
@@ -295,7 +300,6 @@ import {
   PAIRING_SCOPE_DESCRIPTIONS,
   PAIRING_SCOPE_ORCHESTRATION_READ,
   PAIRING_SCOPE_PRESETS,
-  PAIRING_SCOPE_TERMINAL_OPERATE,
   PAIRING_SCOPES,
   type PairedDevice,
   type PairingScope,
@@ -321,6 +325,7 @@ import type {
 } from '@kontourai/station-contracts/execution-target';
 import type { IEmbeddingProvider } from '@kontourai/station-contracts/knowledge-index';
 import type { LaunchableModelInventory } from '@kontourai/station-contracts/model-inventory';
+import type { TerminalProcessSummary } from '@kontourai/station-contracts/orchestration';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import type { SchedulerJob } from '@kontourai/station-contracts/scheduler';
@@ -338,6 +343,7 @@ import {
 } from '@kontourai/station-contracts/tenancy';
 import {
   TERMINAL_SOCKET_PATH,
+  TERMINAL_TICKET_PATH,
   terminalScopeAllows,
 } from '@kontourai/station-contracts/terminal-transport';
 import { workItemRefKey } from '@kontourai/station-contracts/work-item-provider';
@@ -594,9 +600,9 @@ import {
   type PairingFailureState,
 } from '../../security/pairing-failure-limiter.js';
 import {
-  credentialAuthorizedForScope,
   grantedPairingScope,
   type PairingScopeContextStore,
+  refusedOnWebSocket,
 } from '../../security/pairing-route-scopes.js';
 import {
   attestedBrowserVisibleHost,
@@ -628,6 +634,7 @@ import {
 import { StationGroupsError } from '../../services/access/station-groups-service.js';
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
 import {
+  ENGINE_SIGN_IN_TERMINAL_SCOPE,
   EngineSignInService,
   registerEngineSignIn,
 } from '../../services/acp/engine-sign-in.js';
@@ -906,6 +913,7 @@ import {
   TerminalSessionRefusal,
   TerminalSessions,
 } from '../../services/terminal/terminal-sessions.js';
+import { TerminalTickets } from '../../services/terminal/terminal-tickets.js';
 import type { UsageTelemetryService } from '../../services/usage-telemetry-service.js';
 import { InboundWebhookConfigurationStore } from '../../services/webhooks/inbound-webhook-store.js';
 import { FlowAgentsWorkItemProvider } from '../../services/work-item-providers/flow-agents-work-item-provider.js';
@@ -6976,6 +6984,46 @@ export function configureRuntimeRoutes(
     }),
   );
   let generalEventProducer: ReturnType<typeof createEventStreamProducer>;
+  // #3994: the TerminalSessions store, composed further down on personal
+  // hosts only. Engine sign-in, the process routes and the Project terminal
+  // close read it per request.
+  const scopedTerminals: {
+    sessions?: TerminalSessions<Request>;
+  } = {};
+  const scopedTerminalRefused = (error: unknown) => {
+    if (error instanceof TerminalSessionRefusal) return true;
+    throw error;
+  };
+  // The existing process projection, kept for scoped sessions (#3994).
+  const scopedTerminalSummary = (record: {
+    terminalId: string;
+    projectId: string;
+    cwd: string;
+    status: string;
+    pid: number | null;
+    exitCode?: number | null;
+    cols: number;
+    rows: number;
+  }): TerminalProcessSummary => ({
+    kind: 'terminal',
+    sessionId: record.terminalId,
+    projectSlug:
+      context.storageAdapter
+        .listProjects()
+        .find((project) => project.id === record.projectId)?.slug ??
+      record.projectId,
+    terminalId: record.terminalId,
+    cwd: record.cwd,
+    status:
+      record.status === 'starting' || record.status === 'running'
+        ? record.status
+        : 'exited',
+    pid: record.pid,
+    exitCode: record.exitCode ?? null,
+    hasRunningSubprocess: false,
+    cols: record.cols,
+    rows: record.rows,
+  });
   context.app.route(
     '/api/orchestration',
     createOrchestrationRoutes(context.orchestrationService, {
@@ -6988,6 +7036,48 @@ export function configureRuntimeRoutes(
       logger: context.logger,
       actionOperations,
       terminalService: context.terminalService,
+      scopedTerminals: {
+        list: async (request) =>
+          ((await scopedTerminals.sessions?.listObservable(request)) ?? []).map(
+            scopedTerminalSummary,
+          ),
+        read: async (request, terminalId) => {
+          const sessions = scopedTerminals.sessions;
+          const record = (await sessions?.listObservable(request))?.find(
+            (candidate) => candidate.terminalId === terminalId,
+          );
+          if (!sessions || !record) return null;
+          try {
+            const read = await sessions.read(
+              request,
+              record,
+              terminalId,
+              0,
+              64 * 1024,
+            );
+            return {
+              process: scopedTerminalSummary({ ...record, pid: read.pid }),
+              history: read.journal.records.map((entry) => entry.data).join(''),
+            };
+          } catch (error) {
+            scopedTerminalRefused(error);
+            return null;
+          }
+        },
+        close: async (request, terminalId) => {
+          const sessions = scopedTerminals.sessions;
+          const record = (await sessions?.listObservable(request))?.find(
+            (candidate) => candidate.terminalId === terminalId,
+          );
+          if (!sessions || !record) return false;
+          try {
+            await sessions.close(request, record, terminalId);
+            return true;
+          } catch (error) {
+            return !scopedTerminalRefused(error);
+          }
+        },
+      },
       resolvePrincipal: resolveOrchestrationRequestPrincipal,
       // Station #90 lane D (B2): an agent tool's dispatch acts for its
       // verified session's owner, or is marked unattributed; never silently
@@ -7481,8 +7571,25 @@ export function configureRuntimeRoutes(
       ),
     }),
   );
+  // Sign-in terminals are server-owned TerminalSessions launches.
   const engineSignInService = new EngineSignInService({
-    terminal: context.terminalService,
+    terminal: isPersonalHost
+      ? {
+          open: (input) => {
+            if (!scopedTerminals.sessions)
+              throw new Error('Terminal sessions unavailable');
+            return scopedTerminals.sessions.openInternal(
+              ENGINE_SIGN_IN_TERMINAL_SCOPE,
+              input,
+            );
+          },
+          close: async (terminalId) =>
+            scopedTerminals.sessions?.closeInternal(
+              ENGINE_SIGN_IN_TERMINAL_SCOPE,
+              terminalId,
+            ),
+        }
+      : null,
   });
   registerEngineSignIn(engineSignInService);
   context.app.route(
@@ -9046,11 +9153,31 @@ export function configureRuntimeRoutes(
     authorityFor: conversationReadAuthorityForRequest,
     projects: context.projectService,
   });
-  // Part (a) exposes the storage/host seam only to the personal operator.
-  // Account, hosted, device and plugin admission belongs to #3994(b).
+  // Terminals belong to the operator on a personal host: in person, or
+  // through one of their own paired devices (#3994 owner decision,
+  // 2026-10-31). Members, agents, plugins and hosted tenants are refused.
   if (isPersonalHost) {
-    const authorizeTerminalRequest = (request: Request) =>
-      isOperatorInPersonNotAgent(request) && isRequestPrincipalCurrent(request);
+    const identifyDevice = (credential: string) =>
+      context.environmentSecurityService.identifyDevice(credential);
+    const authorizeTerminalRequest = (request: Request) => {
+      const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+      return (
+        !!principal &&
+        // Personal tokens and account-bound Devices never reach a terminal
+        // socket (#3586), even when the credential also reads as operator.
+        !refusedOnWebSocket(identifyDevice(principal.credential)) &&
+        isTerminalOperator(request, identifyDevice) &&
+        isRequestPrincipalCurrent(request)
+      );
+    };
+    const terminalScopeFor = (request: Request) => {
+      const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+      return principal
+        ? (context.environmentSecurityService.resolveGrantedScope(
+            principal.credential,
+          ) ?? '')
+        : '';
+    };
     const terminalSessions = new TerminalSessions<Request>(
       context.configLoader.getProjectHomeDir(),
       createTerminalShellHost(
@@ -9059,18 +9186,43 @@ export function configureRuntimeRoutes(
         async () => (await context.configLoader.loadAppConfig()).terminalShell,
       ),
       {
-        authorize: (request, _scope, operation) => {
-          const principal = getRuntimeAuthenticatedRequestPrincipal(request);
-          return (
-            authorizeTerminalRequest(request) &&
-            !!principal &&
-            terminalScopeAllows(
-              context.environmentSecurityService.resolveGrantedScope(
-                principal.credential,
-              ) ?? '',
-              operation,
-            )
+        authorize: (request, _scope, operation) =>
+          authorizeTerminalRequest(request) &&
+          terminalScopeAllows(terminalScopeFor(request), operation),
+        legacyProjectSlug: async (_request, scope) => {
+          const project = context.storageAdapter
+            .listProjects()
+            .find((item) => item.id === scope.projectId);
+          if (!project) throw new TerminalSessionRefusal('Project not found');
+          return project.slug;
+        },
+        // An agent tab names a configured connection and one of its live
+        // modes; the program and arguments come from the saved connection.
+        resolveLaunch: async (_request, _scope, profile) => {
+          const connection = (
+            await context.configLoader.loadACPConfig()
+          ).connections.find(
+            (candidate) =>
+              candidate.id === profile.connectionId && candidate.enabled,
           );
+          const live = context.acpBridge
+            .getStatus()
+            .connections.find((status) => status.id === profile.connectionId);
+          if (
+            !connection?.interactive?.args ||
+            !live?.modes.includes(profile.mode)
+          )
+            throw new TerminalSessionRefusal('Launch profile unavailable');
+          const file = await findCliBinaryAsync(connection.command);
+          if (!file)
+            throw new TerminalSessionRefusal('Launch profile unavailable');
+          return {
+            file,
+            args: connection.interactive.args.map((arg) =>
+              arg === '{agent}' ? profile.mode : arg,
+            ),
+            env: { PATH: await resolveAugmentedPath() },
+          };
         },
         resolveRoot: async (request, scope) => {
           const project = context.storageAdapter
@@ -9096,43 +9248,53 @@ export function configureRuntimeRoutes(
       },
     );
     context.terminalService.scopedSessions = terminalSessions;
-    context.app.get('/api/terminal/socket', (c) =>
+    scopedTerminals.sessions = terminalSessions;
+    context.app.get(TERMINAL_SOCKET_PATH, (c) =>
       authorizeTerminalRequest(c.req.raw)
         ? c.body(null, 204)
         : c.json({ success: false, error: 'Terminal access refused' }, 403),
     );
+    // The socket is admitted before its upgrade by a single-use ticket that
+    // this ordinary authenticated route mints, so a browser, a proxy prefix,
+    // a tailnet name and a native shell's host-owned transport all reach it
+    // through the same HTTP admission. The ticket keeps this Request as the
+    // socket's principal; every later operation re-checks it as current.
+    const terminalTickets = new TerminalTickets<Request>();
+    const terminalIdentity = (request: Request) => {
+      const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+      return principal?.deviceId
+        ? `device:${principal.deviceId}`
+        : `credential:${createHash('sha256')
+            .update(principal?.credential ?? '')
+            .digest('hex')}`;
+    };
+    context.app.post(TERMINAL_TICKET_PATH, (c) => {
+      const request = c.req.raw;
+      c.header('Cache-Control', 'no-store');
+      if (
+        !authorizeTerminalRequest(request) ||
+        !terminalScopeAllows(terminalScopeFor(request), 'observe')
+      )
+        return c.json(
+          { success: false, error: 'Terminal access refused' },
+          403,
+        );
+      const ticket = terminalTickets.mint(request, terminalIdentity(request));
+      return ticket
+        ? c.json({ success: true, data: ticket })
+        : c.json(
+            { success: false, error: 'Too many pending terminal tickets' },
+            429,
+          );
+    });
     registerTerminalGateway(
       context.app,
       new TerminalGateway({
         sessions: terminalSessions,
-        allowedOrigins: resolveConfiguredRuntimeOrigins(context),
-        authenticate: async (credential, incoming) => {
-          if (
-            !(await credentialAuthorizedForScope(
-              context.environmentSecurityService,
-              PAIRING_SCOPE_TERMINAL_OPERATE,
-              credential,
-            ))
-          )
-            return undefined;
-          const request = new Request(
-            `http://localhost:${context.port}${TERMINAL_SOCKET_PATH}`,
-            {
-              headers: {
-                authorization: `Bearer ${credential}`,
-                ...(incoming.headers.origin && {
-                  origin: incoming.headers.origin,
-                }),
-              },
-            },
-          );
-          // Run the real HTTP admission pipeline; never synthesize a principal
-          // from a token or forward caller-controlled internal proxy headers.
-          const response = await context.app.fetch(request, { incoming });
-          return response.status === 204 && authorizeTerminalRequest(request)
-            ? request
-            : undefined;
-        },
+        tickets: terminalTickets,
+        // The operator in person keeps reserved slots even when their own
+        // devices, or a flood of them, fill the shared capacity.
+        reserved: (request) => isOperatorInPersonNotAgent(request),
       }),
     );
     context.app.route(
@@ -9206,6 +9368,20 @@ export function configureRuntimeRoutes(
         layoutCatalog,
         kitObservabilityRegistry,
         terminalService: context.terminalService,
+        closeScopedTerminal: async (request, projectId, terminalId) => {
+          const sessions = scopedTerminals.sessions;
+          if (!sessions) return false;
+          try {
+            await sessions.close(
+              request,
+              { projectId, bindingKey: 'project' },
+              terminalId,
+            );
+            return true;
+          } catch (error) {
+            return !scopedTerminalRefused(error);
+          }
+        },
         visualFileFrameOrigin: () => context.getMcpUiFrameOrigin?.(),
         sessionWorkspaceDirectory: (routeContext, projectSlug, thread) =>
           sessionWorkspaceDirectory(routeContext.req.raw, projectSlug, thread),

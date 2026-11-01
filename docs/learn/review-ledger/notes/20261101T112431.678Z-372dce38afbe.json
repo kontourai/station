@@ -1,0 +1,7 @@
+{
+  "revision": "0c7d6ae56aca1eb4cde6a90a1aefce55eecd10fc",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Checked: sdk.md changed only by the terminal error paragraph (refusals keep the host response as cause). This guide's pointers into the SDK reference name sections that still exist with the same purpose.","inputs":["docs/guides/integrating-station.md","docs/reference/sdk.md"]}
+  ]
+}
