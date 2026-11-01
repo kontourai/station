@@ -16,6 +16,7 @@ const approvalSchema = z
     deadline: z.number().int().positive().safe(),
     revision: z.enum(['0', '1']),
     state: z.enum(['pending', 'approved', 'denied', 'expired']),
+    decisionAt: z.number().int().positive().safe().nullable().optional(),
   })
   .strict();
 export type DurableApproval = z.infer<typeof approvalSchema>;
@@ -138,6 +139,7 @@ export function decideAgentApproval(
       deadline: command.deadline,
       revision: '0',
       state: 'pending',
+      decisionAt: null,
     };
     database
       .prepare('INSERT INTO agent_steps_approvals VALUES(?,?,?,?)')
@@ -154,6 +156,7 @@ export function decideAgentApproval(
       return { kind: 'refused', reason: 'conflict' };
     approval.state = now >= approval.deadline ? 'expired' : command.decision;
     approval.revision = '1';
+    approval.decisionAt = now;
     database
       .prepare(
         'UPDATE agent_steps_approvals SET record=? WHERE turn_id=? AND id=?',

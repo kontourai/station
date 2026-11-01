@@ -8,9 +8,10 @@ const payload = z.string().max(32 * 1024 * 1024);
 export const effectIntentSchema = z
   .object({
     id: text,
-    kind: z.enum(['model', 'tool']),
+    kind: z.enum(['model', 'provider', 'tool', 'entry']),
     input: payload,
     replay: z.enum(['safe', 'unsafe']),
+    codec: z.literal('strands-native/1').optional(),
   })
   .strict();
 export type EffectIntent = z.infer<typeof effectIntentSchema>;
@@ -42,6 +43,7 @@ export type EffectResult = {
 };
 type OwnedEffect = { readonly key: RunKey; readonly expected: Fence };
 export type EffectCommand =
+  | (OwnedEffect & { readonly type: 'effectRead'; readonly id: string })
   | (OwnedEffect & {
       readonly type: 'effectPlan';
       readonly intent: EffectIntent;
@@ -59,6 +61,7 @@ export type EffectCommand =
     });
 const owned = { key: runKey, expected: fence };
 export const effectCommands = [
+  z.object({ type: z.literal('effectRead'), ...owned, id: text }).strict(),
   z
     .object({
       type: z.literal('effectPlan'),
@@ -93,11 +96,24 @@ function validate(record: EffectRecord) {
   for (const attempt of effect.attempts) {
     for (const part of attempt.partials) readAgentWire(part);
     if (attempt.output !== null) {
-      const output = readAgentWire(attempt.output);
+      const decoded = readAgentWire(attempt.output);
+      const output =
+        effect.intent.codec === 'strands-native/1' &&
+        decoded &&
+        typeof decoded === 'object' &&
+        'events' in decoded
+          ? decoded.events
+          : decoded;
       if (
-        effect.intent.kind === 'model' &&
+        (effect.intent.kind === 'model' || effect.intent.kind === 'provider') &&
         (!Array.isArray(output) ||
-          !output.some((part) => part?.type === 'finish') ||
+          !output.some((part) =>
+            effect.intent.codec === 'strands-native/1'
+              ? part?.type === 'modelMessageStopEvent' &&
+                typeof part.stopReason === 'string' &&
+                part.stopReason.length > 0
+              : part?.type === 'finish',
+          ) ||
           output.some((part) => part?.type === 'error') ||
           attempt.partials.some(
             (part, index) => part !== agentWire(output[index]),
@@ -108,7 +124,8 @@ function validate(record: EffectRecord) {
   }
   if (
     effect.inputDigest !== hash(effect.intent.input) ||
-    (effect.intent.kind === 'model' && effect.intent.replay !== 'unsafe') ||
+    ((effect.intent.kind === 'model' || effect.intent.kind === 'provider') &&
+      effect.intent.replay !== 'unsafe') ||
     (effect.state === 'running' && last?.state !== 'running') ||
     (effect.state === 'completed' &&
       (last?.state !== 'completed' || last.output === null)) ||
@@ -168,14 +185,29 @@ export function decideAgentEffect(
   now: number,
 ):
   | EffectResult
+  | { readonly kind: 'absent' }
   | { readonly kind: 'refused'; readonly reason: 'conflict' | 'busy' } {
   const id = command.type === 'effectPlan' ? command.intent.id : command.id;
   let effect = readAgentEffect(database, turnId, id);
+  if (command.type === 'effectRead')
+    return effect
+      ? { kind: 'effect', effect, execute: false }
+      : { kind: 'absent' };
   if (command.type === 'effectPlan') {
     if (effect)
       return canonical(effect.intent) === canonical(command.intent)
         ? { kind: 'effect', effect, execute: false }
         : { kind: 'refused', reason: 'conflict' };
+    if (
+      (command.intent.kind === 'model' || command.intent.kind === 'provider') &&
+      validateAgentEffects(database, turnId).some(
+        (previous) =>
+          (previous.intent.kind === command.intent.kind ||
+            previous.intent.kind === 'provider') &&
+          previous.state !== 'completed',
+      )
+    )
+      return { kind: 'refused', reason: 'busy' };
     if (
       Number(
         database
@@ -198,6 +230,8 @@ export function decideAgentEffect(
   }
   if (!effect) return { kind: 'refused', reason: 'conflict' };
   if (command.type === 'effectBegin') {
+    if (effect.intent.kind === 'entry')
+      return { kind: 'refused', reason: 'conflict' };
     const approval = database
       .prepare(
         'SELECT record FROM agent_steps_approvals WHERE turn_id=? AND tool_id=?',
@@ -227,7 +261,7 @@ export function decideAgentEffect(
     return { kind: 'refused', reason: 'conflict' };
   if (command.type === 'effectPartial') {
     if (
-      effect.intent.kind !== 'model' ||
+      (effect.intent.kind !== 'model' && effect.intent.kind !== 'provider') ||
       attempt.partials.reduce(
         (n, part) => n + Buffer.byteLength(part),
         Buffer.byteLength(command.part),

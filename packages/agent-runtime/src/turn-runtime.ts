@@ -12,6 +12,7 @@ import type {
   AgentTurnRecord,
   AgentTurnSpec,
 } from './turn-journal.js';
+import type { AgentFrame } from './turn-projection.js';
 import { agentWire, readAgentWire } from './turn-wire.js';
 import type { RunKey } from './types.js';
 
@@ -30,10 +31,17 @@ export interface AgentTurnLease {
   readonly key: RunKey;
   readonly input: string;
   readonly providerSessionId: string;
+  readonly settlement: {
+    readonly state: 'completed' | 'blocked' | 'cancelled';
+    readonly at: number;
+  } | null;
+  entry(id: string, value: unknown): Promise<unknown>;
+  frame(id: string, wire: string): Promise<AgentFrame>;
+  pause(): void;
   assertCurrent(): Promise<void>;
   /** Exactly one foreground execution per committed ownership claim. */
   run(work: () => Promise<void>): Promise<void>;
-  cancel(): void;
+  cancel(): Promise<void>;
   readonly signal: AbortSignal;
   effect(command: EffectOperation): Promise<EffectResult>;
   approvalCommand(command: ApprovalOperation): Promise<ApprovalResult>;
@@ -67,6 +75,22 @@ const interruptedTool = (): InterruptedToolResult => ({
     'This tool may have run before Station stopped. Its outcome is unknown; it was not run again.',
 });
 const activeTurn = new AsyncLocalStorage<AgentTurnLease>();
+const providerParents = new AsyncLocalStorage<string>();
+const providerOrdinals = new WeakMap<AgentTurnLease, Map<string, number>>();
+export function runWithProviderParent<T>(id: string, operation: () => T): T {
+  return providerParents.run(id, operation);
+}
+export function nextProviderCallId(lease: AgentTurnLease): string {
+  const parent = providerParents.getStore() ?? 'native';
+  let ordinals = providerOrdinals.get(lease);
+  if (!ordinals) {
+    ordinals = new Map();
+    providerOrdinals.set(lease, ordinals);
+  }
+  const ordinal = ordinals.get(parent) ?? 0;
+  ordinals.set(parent, ordinal + 1);
+  return `provider:${parent}:${ordinal}`;
+}
 export const currentAgentTurn = () => activeTurn.getStore();
 export function runWithAgentTurn<T>(lease: AgentTurnLease, work: () => T): T {
   return activeTurn.run(lease, work);
@@ -77,6 +101,7 @@ export function createAgentRuntime(options: {
   readonly liveness: OwnerLiveness;
   readonly implementation: string;
   readonly now?: () => number;
+  readonly authorize?: (spec: AgentTurnSpec) => void | Promise<void>;
 }) {
   const now = options.now ?? Date.now;
   const context = { liveness: options.liveness, now };
@@ -87,6 +112,10 @@ export function createAgentRuntime(options: {
   ): AgentTurnLease => {
     const controller = new AbortController();
     let consumed = false;
+    let paused = false;
+    let cancellationRequested = record.cancelRequested === true;
+    let quiesced = false;
+    let settlement: AgentTurnLease['settlement'] = null;
     let turn = record;
     const toolCalls = new Map<
       string,
@@ -97,9 +126,54 @@ export function createAgentRuntime(options: {
       { input: string; result: Promise<boolean> }
     >();
     const lease: AgentTurnLease = {
-      key: structuredClone(record.spec.key),
+      key: Object.freeze(structuredClone(record.spec.key)),
       input: record.spec.input,
       providerSessionId,
+      async frame(id, wire) {
+        const answer = await options.journal.execute(
+          {
+            type: 'projectFrame',
+            key: turn.spec.key,
+            expected: turn.fence,
+            id,
+            wire,
+          },
+          context,
+        );
+        if (answer.kind !== 'frame')
+          throw new Error('DURABLE_AGENT_PROJECTION_REFUSED');
+        return answer.frame;
+      },
+      get settlement() {
+        return settlement;
+      },
+      pause() {
+        paused = true;
+        controller.abort('host-shutdown');
+      },
+      async entry(id, value) {
+        const read = await options.journal.execute(
+          { type: 'effectRead', key: turn.spec.key, expected: turn.fence, id },
+          context,
+        );
+        if (read.kind === 'effect') {
+          if (read.effect.intent.kind !== 'entry')
+            throw new Error('DURABLE_AGENT_ENTRY_CHANGED');
+          return readAgentWire(read.effect.intent.input);
+        }
+        if (read.kind !== 'absent')
+          throw new Error('DURABLE_AGENT_ENTRY_UNAVAILABLE');
+        const planned = await lease.effect({
+          type: 'effectPlan',
+          intent: {
+            id,
+            kind: 'entry',
+            replay: 'safe',
+            input: agentWire(value),
+          },
+        });
+        return readAgentWire(planned.effect.intent.input);
+      },
       signal: controller.signal,
       async approvalCommand(command) {
         const result = await options.journal.execute(
@@ -220,6 +294,7 @@ export function createAgentRuntime(options: {
       async assertCurrent() {
         if (controller.signal.aborted)
           throw new Error('DURABLE_AGENT_CANCELLED');
+        await options.authorize?.(structuredClone(turn.spec));
         const current = await options.journal.execute(
           { type: 'read', key: turn.spec.key },
           context,
@@ -232,20 +307,32 @@ export function createAgentRuntime(options: {
           options.liveness(turn.fence.owner) !== 'live'
         )
           throw new Error('DURABLE_AGENT_STALE_OWNER');
+        if (current.turn.cancelRequested) {
+          cancellationRequested = true;
+          controller.abort('explicit-stop');
+          throw new Error('DURABLE_AGENT_CANCELLED');
+        }
       },
       async run(work) {
         if (consumed) throw new Error('DURABLE_AGENT_DUPLICATE_CONSUMER');
         consumed = true;
-        await lease.assertCurrent();
         let state: 'completed' | 'blocked' | 'cancelled' = 'completed';
         let failure: { error: unknown } | undefined;
         try {
+          await lease.assertCurrent();
           await runWithAgentTurn(lease, work);
         } catch (error) {
           state = controller.signal.aborted ? 'cancelled' : 'blocked';
           failure = { error };
         }
-        if (controller.signal.aborted) state = 'cancelled';
+        quiesced = true;
+        if (controller.signal.aborted || cancellationRequested)
+          state = 'cancelled';
+        if (paused && !cancellationRequested) {
+          leases.delete(canonical(turn.spec.key));
+          if (failure) throw failure.error;
+          return;
+        }
         const result = await options.journal.execute(
           { type: 'settle', key: turn.spec.key, expected: turn.fence, state },
           context,
@@ -255,17 +342,72 @@ export function createAgentRuntime(options: {
             cause: failure?.error,
           });
         turn = result.turn;
+        if (result.settledAt === null)
+          throw new Error('DURABLE_AGENT_TERMINAL_MISSING');
+        if (result.turn.state === 'running')
+          throw new Error('DURABLE_AGENT_TERMINAL_MISSING');
+        settlement = { state: result.turn.state, at: result.settledAt };
         leases.delete(canonical(turn.spec.key));
         if (failure) throw failure.error;
       },
-      cancel() {
-        controller.abort();
+      async cancel() {
+        const answer = await options.journal.execute(
+          {
+            type: 'requestCancel',
+            key: turn.spec.key,
+            inputDigest: turn.inputDigest,
+          },
+          context,
+        );
+        if (answer.kind !== 'owned')
+          throw new Error('DURABLE_AGENT_CANCELLATION_UNKNOWN');
+        if (answer.turn.cancelRequested) {
+          cancellationRequested = true;
+          controller.abort('explicit-stop');
+          if (quiesced && !settlement) {
+            const cancelled = await options.journal.execute(
+              {
+                type: 'settle',
+                key: turn.spec.key,
+                expected: turn.fence,
+                state: 'cancelled',
+              },
+              context,
+            );
+            if (
+              cancelled.kind === 'owned' &&
+              cancelled.turn.state === 'cancelled' &&
+              cancelled.settledAt !== null
+            ) {
+              turn = cancelled.turn;
+              settlement = { state: 'cancelled', at: cancelled.settledAt };
+              leases.delete(canonical(turn.spec.key));
+            }
+          }
+        }
       },
     };
+    if (cancellationRequested) controller.abort('explicit-stop');
+    Object.freeze(lease);
     leases.set(canonical(record.spec.key), lease);
     return lease;
   };
   return {
+    async cancel(conversationId: string, invocationId?: string) {
+      const pending: Promise<void>[] = [];
+      for (const [key, lease] of leases) {
+        const current: RunKey = JSON.parse(key);
+        if (
+          current.conversationId === conversationId &&
+          (!invocationId || current.invocationId === invocationId)
+        )
+          pending.push(lease.cancel());
+      }
+      await Promise.all(pending);
+    },
+    pause() {
+      for (const lease of leases.values()) lease.pause();
+    },
     async start(spec: AgentTurnSpec) {
       if (spec.implementation !== options.implementation)
         throw new Error('DURABLE_AGENT_IMPLEMENTATION_CHANGED');

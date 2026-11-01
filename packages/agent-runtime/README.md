@@ -3,7 +3,8 @@
 `@kontourai/agent-runtime` retains model requests and completed native streams
 for an authorized generation. The existing VoltAgent or Strands loop continues
 to choose model calls. This private workspace package is experimental Tier 1;
-it is not a released package or Station restart integration.
+it is not a released package. Station adopts its agent-turn protocol behind
+the **Crash-durable Station Agent** Feature Preview (off by default).
 
 The root entry exports the twelve model commands, coordinator, staged memory
 adapter, fixed policy and ordered outbox drain. `/sqlite` uses a host-supplied
@@ -12,15 +13,21 @@ AI SDK v3 interface, VoltAgent 2.10.0 and Strands 1.19.0 VercelModel. Optional
 framework dependencies are exact peers. The package imports no Station code.
 
 The public root also exports an agent-turn journal and recovery owner. Its
-separate `agent_steps_` namespace declares writer format `agent-steps/4` and
+separate `agent_steps_` namespace declares writer format `agent-steps/5` and
 leaves existing `runtime-model/1` records intact. An active conversation has
 one owner. Recovery requires a proven-dead owner and compares the complete
 observed fence inside the SQLite write transaction. A retained Station turn
 boundary grants no execution authority. Station boot calls this owner before
-ordinary interrupted-turn settlement. Foreground registration and Station's
-approval delivery integration are still required before this qualifies a resumed Station turn.
-The explicit ownership-writer migration validates the old namespace and every
-old turn, preserves their record bytes, then adds the effect table atomically.
+ordinary interrupted-turn settlement. Station registers the actual VoltAgent and Strands stream entry points, tools,
+approval waits and provider transports. Disconnect transfers stream and native
+turn cleanup to the owner; explicit Stop records cancellation. Recovery waits
+for the original agent definition and Session, reauthorizes current access,
+then re-enters the framework with its retained history. Changed or unavailable
+configuration holds recovery. Only text turns are admitted by this preview.
+Writer 5 adds cancellation requests, terminal timestamps and retained transport
+frames. It validates exact schemas from writers 1–4, preserves existing record
+bytes and adds new tables atomically. Legacy settled rows receive a migration
+observation timestamp rather than a reconstructed historical completion time.
 The prior writer refuses the new metadata; future writers refuse here too.
 
 `durableLanguageModel` journals calls made inside `AgentTurnLease.run` without
@@ -251,3 +258,10 @@ command/result variants and owning pin/attempt/tape links. Historical receipts
 remain valid across later ownership/revision changes, while settled full answers
 expire at the replay cutoff even when unacknowledged projections prevent
 compaction. Authorized projection draining remains available after that cutoff.
+
+Station consumes only the package root; `scripts/agent-runtime-import-boundary-gate.mjs`
+checks both directions. Scripted native conformance runs at the real Station
+adapters, including tool effect counts, approval recovery and conservative
+model dispatch. These tests establish local SQLite and framework behavior;
+they do not establish live provider idempotency, cache benefit, operating-system
+crash durability or a published runtime release.

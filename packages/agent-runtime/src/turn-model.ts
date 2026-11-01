@@ -2,22 +2,39 @@ import type {
   LanguageModelV3,
   LanguageModelV3StreamPart,
 } from '@ai-sdk/provider';
-import { currentAgentTurn } from './turn-runtime.js';
+import { z } from 'zod';
+import { schemaData } from './codecs.js';
+import {
+  currentAgentTurn,
+  nextProviderCallId,
+  runWithProviderParent,
+} from './turn-runtime.js';
 import { agentWire, readAgentWire } from './turn-wire.js';
+
+const providerLayer = Symbol('agent-runtime.provider-layer');
 
 /** Instruments the provider boundary; each framework retains its native loop. */
 export function durableLanguageModel(
   model: LanguageModelV3,
   options: {
+    readonly layer?: 'provider';
     readonly affinity?: (
       providerSessionId: string,
-    ) => NonNullable<
-      Parameters<LanguageModelV3['doStream']>[0]['providerOptions']
-    >;
+      current: Parameters<LanguageModelV3['doStream']>[0]['providerOptions'],
+    ) =>
+      | NonNullable<
+          Parameters<LanguageModelV3['doStream']>[0]['providerOptions']
+        >
+      | undefined;
   } = {},
 ): LanguageModelV3 {
+  if (
+    options.layer === 'provider' &&
+    Reflect.get(model, providerLayer) === true
+  )
+    return model;
   const ordinals = new WeakMap<object, number>();
-  return {
+  const guarded: LanguageModelV3 = {
     specificationVersion: 'v3',
     provider: model.provider,
     modelId: model.modelId,
@@ -30,7 +47,10 @@ export function durableLanguageModel(
     async doStream(callOptions) {
       const turn = currentAgentTurn();
       if (!turn) return model.doStream(callOptions);
-      const affinity = options.affinity?.(turn.providerSessionId);
+      const affinity = options.affinity?.(
+        turn.providerSessionId,
+        callOptions.providerOptions,
+      );
       const optionsWithAffinity = affinity
         ? {
             ...callOptions,
@@ -39,22 +59,44 @@ export function durableLanguageModel(
         : callOptions;
       const ordinal = ordinals.get(turn) ?? 0;
       ordinals.set(turn, ordinal + 1);
-      const id = `model:${ordinal}`;
+      const id =
+        options.layer === 'provider'
+          ? nextProviderCallId(turn)
+          : `model:${ordinal}`;
       const {
         abortSignal: _signal,
         headers: _headers,
         ...request
       } = optionsWithAffinity;
+      const pinnedRequest = {
+        ...request,
+        ...(request.tools
+          ? {
+              tools: request.tools.map((tool) => {
+                if (tool.type !== 'function')
+                  throw new Error('DURABLE_AGENT_PROVIDER_TOOLS_UNSUPPORTED');
+                return {
+                  ...tool,
+                  inputSchema: schemaData(
+                    tool.inputSchema instanceof z.ZodType
+                      ? z.toJSONSchema(tool.inputSchema)
+                      : tool.inputSchema,
+                  ),
+                };
+              }),
+            }
+          : {}),
+      };
       const planned = await turn.effect({
         type: 'effectPlan',
         intent: {
           id,
-          kind: 'model',
+          kind: options.layer === 'provider' ? 'provider' : 'model',
           replay: 'unsafe',
           input: agentWire({
             provider: model.provider,
             model: model.modelId,
-            request,
+            request: pinnedRequest,
           }),
         },
       });
@@ -86,10 +128,15 @@ export function durableLanguageModel(
       const begun = await turn.effect({ type: 'effectBegin', id });
       if (!begun.execute) throw new Error('DURABLE_AGENT_MODEL_INDETERMINATE');
       await turn.assertCurrent();
-      const response = await model.doStream({
-        ...optionsWithAffinity,
-        abortSignal: turn.signal,
-      });
+      const invoke = () =>
+        model.doStream({
+          ...pinnedRequest,
+          headers: optionsWithAffinity.headers,
+          abortSignal: turn.signal,
+        });
+      const response = await (options.layer === 'provider'
+        ? invoke()
+        : runWithProviderParent(id, invoke));
       const reader = response.stream.getReader();
       const parts: LanguageModelV3StreamPart[] = [];
       const held: LanguageModelV3StreamPart[] = [];
@@ -139,4 +186,7 @@ export function durableLanguageModel(
       return { ...response, stream };
     },
   };
+  if (options.layer === 'provider')
+    Object.defineProperty(guarded, providerLayer, { value: true });
+  return guarded;
 }
