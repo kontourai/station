@@ -25,8 +25,8 @@ import {
   useQueryClient,
 } from '@kontourai/station-sdk';
 import type { ApiRequestScope } from '@kontourai/station-sdk/client';
+import { turnInterruptedContinueBoundaryId } from '@kontourai/station-shared/conversation-message';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
-import { turnInterruptedContinueBoundaryId } from '@kontourai/station-shared/runtime-event-projection';
 import {
   skillExperienceAttachmentInputs,
   skillExperienceInputErrors,

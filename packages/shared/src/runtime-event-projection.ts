@@ -130,33 +130,10 @@ export const TURN_INTERRUPTED_MESSAGE =
 export const TURN_INTERRUPTED_CONTINUE_PROMPT =
   'Station restarted while you were working and your last turn was cut off. Continue from where you stopped; check what already finished before redoing anything.';
 
-const TURN_INTERRUPTED_CONTINUE_KEY_PREFIX = 'continue-interrupted:';
-
-/**
- * The send key of Continue for one interrupted turn, derived from its
- * boundary so every tap, on any device, names the same turn and the
- * server's turn deduplication admits it once.
- */
-export function turnInterruptedContinueClientTurnId(
-  boundaryId: string,
-): string {
-  return `${TURN_INTERRUPTED_CONTINUE_KEY_PREFIX}${boundaryId}`;
-}
-
-/**
- * The boundary a Continue send key names, or undefined for any other key:
- * the inverse of `turnInterruptedContinueClientTurnId`.
- */
-export function turnInterruptedContinueBoundaryId(
-  clientTurnId: string | undefined,
-): string | undefined {
-  if (!clientTurnId?.startsWith(TURN_INTERRUPTED_CONTINUE_KEY_PREFIX))
-    return undefined;
-  const boundaryId = clientTurnId.slice(
-    TURN_INTERRUPTED_CONTINUE_KEY_PREFIX.length,
-  );
-  return boundaryId || undefined;
-}
+export {
+  turnInterruptedContinueBoundaryId,
+  turnInterruptedContinueClientTurnId,
+} from './conversation-message.js';
 
 /**
  * The `turn.aborted` reasons a forced Stop writes (cooperative-stop.ts),

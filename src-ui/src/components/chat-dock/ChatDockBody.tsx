@@ -1615,11 +1615,11 @@ export function ChatDockBody({
                             : undefined
                           : callerMayContinue
                             ? {
-                              // Not a resend: Station's continuation, whose
-                              // model input carries the recovery note.
-                              label: 'Continue',
-                              onClick: () => void continueAfterMemoryKill(),
-                            }
+                                // Not a resend: Station's continuation, whose
+                                // model input carries the recovery note.
+                                label: 'Continue',
+                                onClick: () => void continueAfterMemoryKill(),
+                              }
                             : undefined
                         : translation?.retryable === false &&
                             chatErrorCode !==
