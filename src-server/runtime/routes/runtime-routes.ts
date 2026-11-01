@@ -600,8 +600,8 @@ import {
 } from '../../security/pairing-failure-limiter.js';
 import {
   grantedPairingScope,
-  refusedOnWebSocket,
   type PairingScopeContextStore,
+  refusedOnWebSocket,
 } from '../../security/pairing-route-scopes.js';
 import {
   attestedBrowserVisibleHost,
