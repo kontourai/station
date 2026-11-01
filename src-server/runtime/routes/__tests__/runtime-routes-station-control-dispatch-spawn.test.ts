@@ -684,6 +684,7 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
     'POST /chat': (workspace?: Record<string, unknown>) => ({
       path: '/api/orchestration/chat',
       body: {
+        clientTurnId: randomUUID(),
         message: 'go',
         target: {
           environment: { kind: 'current' },

@@ -308,6 +308,7 @@ async function createHarness(roots: string[], stationDefault?: ApprovalMode) {
   };
   const execute = (input: {
     message: string;
+    clientTurnId?: string;
     conversationId?: string;
     model?: { options?: Record<string, unknown> };
     setApprovalMode?: ApprovalMode;
@@ -318,6 +319,7 @@ async function createHarness(roots: string[], stationDefault?: ApprovalMode) {
     executeForegroundMessage(
       {
         message: input.message,
+        ...(input.clientTurnId ? { clientTurnId: input.clientTurnId } : {}),
         ...(input.conversationId
           ? { conversationId: input.conversationId }
           : {}),
@@ -348,6 +350,7 @@ async function createHarness(roots: string[], stationDefault?: ApprovalMode) {
       execute({
         message: input.message,
         conversationId: input.conversationId,
+        clientTurnId: input.clientTurnId,
         ...(input.fullAccessGrant
           ? { fullAccessGrant: input.fullAccessGrant }
           : {}),
@@ -410,6 +413,8 @@ async function createHarness(roots: string[], stationDefault?: ApprovalMode) {
    * phone's decisions (the probes model it missing them).
    */
   let seen: number | null = null;
+  let turnNumber = 0;
+  const nextTurnKey = () => `approval-fixture-${++turnNumber}`;
   const composerSend = async (
     body: Record<string, unknown>,
     carried?: ApprovalMode,
@@ -417,6 +422,7 @@ async function createHarness(roots: string[], stationDefault?: ApprovalMode) {
   ) => {
     const response = await post('/api/orchestration/chat', {
       ...body,
+      clientTurnId: body.clientTurnId ?? nextTurnKey(),
       target: {
         environment: { kind: 'current' },
         agent: 'claude',
@@ -464,7 +470,7 @@ async function createHarness(roots: string[], stationDefault?: ApprovalMode) {
     async continueWithoutPosture() {
       const response = await post(
         `/api/orchestration/chat/${encodeURIComponent(CONVERSATION)}/continue`,
-        { message: 'reply' },
+        { message: 'reply', clientTurnId: nextTurnKey() },
       );
       expect(response.status, await response.text()).toBe(200);
       await turnsSettled();
