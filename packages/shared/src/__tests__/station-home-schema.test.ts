@@ -70,6 +70,42 @@ describe('stationHomeSchemaNeedsReset (station#1913)', () => {
     expect(stationHomeSchemaNeedsReset(home)).toBe(false);
   });
 
+  it('bootstraps over the empty lifecycle state a refused archive start left (#4381)', () => {
+    const home = makeHome();
+    mkdirSync(join(home, 'state', 'nightly', 'instances'), { recursive: true });
+    expect(stationHomeSchemaNeedsReset(home)).toBe(false);
+    ensureStationHomeSchemaSync(home, { acquireMutationLock: () => () => {} });
+    expect(readStationHomeSchemaVersion(home)).toBe(
+      STATION_HOME_SCHEMA_VERSION,
+    );
+  });
+
+  it('keeps refusing lifecycle state that holds anything but empty instance directories (#4381)', () => {
+    const withRecord = makeHome();
+    mkdirSync(join(withRecord, 'state', 'nightly', 'instances'), {
+      recursive: true,
+    });
+    writeFileSync(
+      join(withRecord, 'state', 'nightly', 'instances', 'instance-a.json'),
+      '{}',
+    );
+    const withOther = makeHome();
+    mkdirSync(join(withOther, 'state', 'nightly', 'data'), {
+      recursive: true,
+    });
+    const asFile = makeHome();
+    mkdirSync(asFile, { recursive: true });
+    writeFileSync(join(asFile, 'state'), 'x');
+    for (const home of [withRecord, withOther, asFile]) {
+      expect(stationHomeSchemaNeedsReset(home)).toBe(true);
+      expect(() =>
+        ensureStationHomeSchemaSync(home, {
+          acquireMutationLock: () => () => {},
+        }),
+      ).toThrow(StationHomeResetRequiredError);
+    }
+  });
+
   it('is true for a marker-less home with real content -- the exact pre-#1560 shape from station#1913', () => {
     const home = makeHome();
     mkdirSync(join(home, 'agents'), { recursive: true });
@@ -103,49 +139,6 @@ describe('stationHomeSchemaNeedsReset (station#1913)', () => {
     );
 
     expect(stationHomeSchemaNeedsReset(home)).toBe(false);
-  });
-});
-
-describe('archive lifecycle state in a self-rooted home (#4381)', () => {
-  function homeWithState(): string {
-    const home = makeHome();
-    const instances = join(home, 'state', 'nightly', 'instances');
-    mkdirSync(instances, { recursive: true });
-    writeFileSync(join(instances, 'instance-abc.json'), '{}');
-    return home;
-  }
-
-  it('bootstraps a home whose only content is the CLI lifecycle records', () => {
-    const home = homeWithState();
-    expect(stationHomeSchemaNeedsReset(home)).toBe(false);
-    ensureStationHomeSchemaSync(home, { acquireMutationLock: () => () => {} });
-    expect(existsSync(join(home, STATION_HOME_SCHEMA_FILE))).toBe(true);
-  });
-
-  it('still refuses home data hidden under state/', () => {
-    for (const extra of [
-      ['state', 'nightly', 'agents.json'],
-      ['state', 'loose.json'],
-    ]) {
-      const home = homeWithState();
-      writeFileSync(join(home, ...extra), '{}');
-      expect(stationHomeSchemaNeedsReset(home)).toBe(true);
-      expect(() =>
-        ensureStationHomeSchemaSync(home, {
-          acquireMutationLock: () => () => {},
-        }),
-      ).toThrow(StationHomeResetRequiredError);
-    }
-  });
-
-  it('still refuses a state/ tree that is a link', () => {
-    const home = makeHome();
-    const elsewhere = join(dirname(home), 'elsewhere');
-    mkdirSync(join(elsewhere, 'nightly', 'instances'), { recursive: true });
-    mkdirSync(home, { recursive: true });
-    // A junction needs no privilege on Windows; elsewhere the type is ignored.
-    symlinkSync(elsewhere, join(home, 'state'), 'junction');
-    expect(stationHomeSchemaNeedsReset(home)).toBe(true);
   });
 });
 

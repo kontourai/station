@@ -149,6 +149,7 @@ import {
   ephemeralAfterQueueDiscard,
   latestQueuedRetryNotice,
   latestSendFailureLine,
+  staleSendFailureIds,
 } from '../components/chat-dock/ChatDockBody';
 import type { ChatSession } from '../types';
 
@@ -335,6 +336,72 @@ describe('ChatDockBody send-failure notice', () => {
     );
     await screen.findByTestId('chat-input-area');
     expect(notice()).toBeNull();
+  });
+});
+
+// #4400 (A23): Retry on an old failure card sent a prompt again that the user
+// had since sent by hand and had answered, spending a second model call.
+const retryFailure = (handler: () => void, timestamp = 2) => ({
+  ...failure(
+    '**Session is already starting**\n\nRetrying may help.',
+    timestamp,
+  ),
+  id: `failure-${timestamp}`,
+  action: { label: 'Retry', handler },
+});
+
+describe('stale send-failure actions', () => {
+  test('a failure is stale once a later message was accepted, not before', () => {
+    const handler = vi.fn();
+    expect([...staleSendFailureIds([retryFailure(handler)])]).toEqual([]);
+    const resent = { role: 'user', content: 'Count to 40', timestamp: 3 };
+    expect([...staleSendFailureIds([retryFailure(handler), resent])]).toEqual([
+      'failure-2',
+    ]);
+  });
+
+  test("a Station check-back turn does not retire the user's failed send", () => {
+    const checkBack = {
+      role: 'user',
+      content: 'check back',
+      timestamp: 3,
+      stationCheckBack: true,
+    };
+    expect([
+      ...staleSendFailureIds([retryFailure(vi.fn()), checkBack]),
+    ]).toEqual([]);
+  });
+
+  test('the card keeps Retry while it is the latest word, and loses it after a later send', async () => {
+    const handler = vi.fn();
+    clearEphemeralMessagesSpy.mockClear();
+    const view = renderDock(
+      buildSession({
+        messages: [
+          { role: 'user', content: 'Count to 40', timestamp: 1 },
+          retryFailure(handler),
+        ],
+      } as Partial<ChatSession>),
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry' }));
+    expect(handler).toHaveBeenCalledTimes(1);
+    view.unmount();
+
+    handler.mockClear();
+    renderDock(
+      buildSession({
+        messages: [
+          retryFailure(handler),
+          { role: 'user', content: 'Count to 40', timestamp: 3 },
+          { role: 'assistant', content: '1\n2\n3', timestamp: 4 },
+        ],
+      } as Partial<ChatSession>),
+    );
+    await screen.findByTestId('chat-input-area');
+    // The failure text stays as history; only its action is withdrawn.
+    expect(screen.getByText(/Session is already starting/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(handler).not.toHaveBeenCalled();
   });
 });
 

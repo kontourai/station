@@ -6,6 +6,7 @@ import {
   approvalModeChipLabel,
   approvalModeDescription,
   approvalModeKnobSupported,
+  approvalModeSourceNote,
   foldApprovalPosture,
   resolveEffectiveApprovalMode,
   sessionApprovalOverride,
@@ -324,14 +325,14 @@ describe('resolveEffectiveApprovalMode', () => {
       resolveEffectiveApprovalMode({ engineConnectionId: 'codex' }),
     ).toEqual({
       mode: 'connection-default',
-      label: 'Connection default',
+      label: 'Default',
       source: 'adapter default',
     });
     expect(
       resolveEffectiveApprovalMode({ engineConnectionId: 'claude' }),
     ).toEqual({
       mode: 'connection-default',
-      label: 'Connection default',
+      label: 'Default',
       source: 'adapter default',
     });
   });
@@ -339,13 +340,13 @@ describe('resolveEffectiveApprovalMode', () => {
   test('a no-knob/unrecognized runtime has no adapter default to fall back to, so it resolves to the connection-default placeholder itself', () => {
     expect(resolveEffectiveApprovalMode({})).toEqual({
       mode: 'connection-default',
-      label: 'Connection default',
+      label: 'Default',
       source: 'adapter default',
     });
     expect(resolveEffectiveApprovalMode({ engineConnectionId: 'acp' })).toEqual(
       {
         mode: 'connection-default',
-        label: 'Connection default',
+        label: 'Default',
         source: 'adapter default',
       },
     );
@@ -409,7 +410,7 @@ describe('resolveEffectiveApprovalMode', () => {
         }),
       ).toEqual({
         mode: 'connection-default',
-        label: 'Connection default',
+        label: 'Default',
         source: 'adapter default',
       });
       // The same value on a supporting engine DOES resolve — without this
@@ -431,7 +432,7 @@ describe('resolveEffectiveApprovalMode', () => {
         }),
       ).toEqual({
         mode: 'connection-default',
-        label: 'Connection default',
+        label: 'Default',
         source: 'adapter default',
       });
     });
@@ -455,7 +456,7 @@ describe('resolveEffectiveApprovalMode', () => {
       }),
     ).toEqual({
       mode: 'connection-default',
-      label: 'Connection default',
+      label: 'Default',
       source: 'adapter default',
     });
   });
@@ -526,5 +527,35 @@ describe('sessionApprovalOverride: a pick the engine could not take (#3290)', ()
       mode: 'ask',
       state: 'requested',
     });
+  });
+});
+
+describe('#4390: one name for the inherited default, no raw ids', () => {
+  test('the inherited default is called Default', () => {
+    expect(
+      APPROVAL_MODE_OPTIONS.find((o) => o.value === 'connection-default')
+        ?.label,
+    ).toBe('Default');
+  });
+
+  test('every resolution source reads as words, never its internal id', () => {
+    const sources = [
+      'session override',
+      'agent default',
+      'project default',
+      'project last used',
+      'project unavailable',
+      'account default',
+      'station default',
+      'adapter default',
+    ] as const;
+    for (const source of sources) {
+      const note = approvalModeSourceNote(source);
+      expect(note).toBeTruthy();
+      expect(note).not.toContain(source);
+    }
+    expect(approvalModeSourceNote('adapter default')).toBe(
+      'Default: the engine’s own settings',
+    );
   });
 });

@@ -129,9 +129,42 @@ const HighlightedCode = memo(function HighlightedCode({
   return <CodeBlockFrame lang={lang} code={code} html={html} />;
 });
 
+type HastChild = {
+  type: string;
+  tagName?: string;
+  properties?: { className?: unknown };
+};
+
+/** A fenced block with a language: `HighlightedCode` renders its own frame. */
+function isFramedFence(node?: { children?: HastChild[] }): boolean {
+  const code = node?.children?.find((child) => child.type === 'element');
+  if (code?.tagName !== 'code') return false;
+  const className = code.properties?.className;
+  const classes = Array.isArray(className) ? className : [className];
+  return classes.some((name) => extractLang(String(name ?? '')) !== undefined);
+}
+
+/**
+ * A language fence renders as `CodeBlockFrame`, a block of chrome around its
+ * own <pre>. Markdown's <pre> would wrap that frame in a second, styled <pre>
+ * (#4393: `pre > div.code-block-frame > … > pre`), which is invalid content
+ * and doubles the box. A fence without a language keeps the plain <pre>.
+ */
+function MarkdownPre({
+  node,
+  children,
+  ...props
+}: React.ComponentPropsWithoutRef<'pre'> & {
+  node?: { children?: HastChild[] };
+}) {
+  if (isFramedFence(node)) return <>{children}</>;
+  return <pre {...props}>{children}</pre>;
+}
+
 /**
  * ReactMarkdown components override — pass to `components` prop.
  */
 export const markdownCodeComponents = {
   code: HighlightedCode,
+  pre: MarkdownPre,
 };

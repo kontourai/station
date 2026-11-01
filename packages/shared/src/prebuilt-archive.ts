@@ -125,27 +125,30 @@ export const PREBUILT_ARCHIVE_MARKER_FILENAME = '.station-prebuilt-archive';
 export const PREBUILT_ARCHIVE_MARKER_CONTENT = 'station-prebuilt-archive-v1\n';
 
 /**
- * Whether `root` holds a git checkout: a `.git` gitfile (a linked worktree or
- * submodule) or a `.git` directory with a `HEAD`. A bare directory named
- * `.git` is not one. Something running in an installed archive can leave an
- * empty `.git/` placeholder in its root, and reading that as a checkout made
- * `start` try to build an archive that carries no sources (#4380).
+ * Whether `root` holds a git checkout: a `.git` directory git can open (it
+ * has a `HEAD`), or a worktree's `.git` file pointing at one.
+ *
+ * Mere presence is not enough (#4380). An engine sandbox started in an
+ * archive root creates empty `.git` and `.agents` placeholders to protect
+ * them, and an empty `.git` directory must not turn a signed archive into a
+ * "source checkout" that `start` then tries to build without sources.
  */
 function holdsGitCheckout(root: string): boolean {
-  const gitPath = join(root, '.git');
-  let stats: ReturnType<typeof lstatSync>;
+  const git = join(root, '.git');
   try {
-    stats = lstatSync(gitPath);
+    const info = lstatSync(git);
+    if (info.isFile()) return readFileSync(git, 'utf-8').startsWith('gitdir:');
+    return info.isDirectory() && existsSync(join(git, 'HEAD'));
   } catch {
     return false;
   }
-  if (!stats.isDirectory()) return true;
-  return existsSync(join(gitPath, 'HEAD'));
 }
 
 /**
  * The release provenance of a prebuilt archive root, or null for anything
- * else: marker, valid release provenance, and no checkout.
+ * else: marker, valid release provenance, and no git checkout. The checkout
+ * veto keeps a developer's repository that happens to carry a copied marker
+ * a source tree; a stray, empty `.git` does not veto (#4380).
  */
 export function readPrebuiltArchiveRelease(
   root: string,
@@ -168,7 +171,7 @@ export function readPrebuiltArchiveRelease(
   }
 }
 
-/** A prebuilt archive: marker, valid release provenance, and no checkout. */
+/** A prebuilt archive: marker, valid release provenance, and no git checkout. */
 export function isPrebuiltArchiveRoot(root: string): boolean {
   return readPrebuiltArchiveRelease(root) !== null;
 }

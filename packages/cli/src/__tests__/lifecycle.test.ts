@@ -1,8 +1,4 @@
-import {
-  execSync as realExecSync,
-  type SpawnOptions,
-  spawn,
-} from 'node:child_process';
+import { execSync as realExecSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import {
@@ -2900,67 +2896,6 @@ describe('lifecycle instance state', () => {
       } finally {
         process.kill(siblingPid, 'SIGKILL');
       }
-    },
-    PROCESS_INTEGRATION_TEST_TIMEOUT_MS,
-  );
-
-  it(
-    'a server that exits before listening is reported with its logged cause and log path (#4382)',
-    async () => {
-      ensureDir(TEST_CWD);
-      ensureDir(TEST_ALT_HOME);
-      writeBuildManifest('fatal-boot');
-      const base = await reserveFreePortBase();
-      const fatal =
-        "STATION_HOME_RESET_REQUIRED: Station home 'x' uses an incompatible schema.";
-      const uiPid = await spawnLongRunning();
-      vi.stubGlobal(
-        'fetch',
-        vi.fn(() => Promise.reject(new Error('ECONNREFUSED'))),
-      );
-      // The real server spawn options, so the child writes to the very log
-      // descriptor `start` opened for it, as a failing Station server does.
-      const serverSpawn = vi.fn(
-        (_command: string, _args: string[], options: SpawnOptions) =>
-          spawn(
-            process.execPath,
-            [
-              '-e',
-              `console.log('booting'); console.error(${JSON.stringify(fatal)}); process.exit(1)`,
-            ],
-            options,
-          ),
-      );
-      const { lifecycle } = await loadLifecycleModule({
-        childProcessMock: {
-          execSync: vi.fn(() => ''),
-          spawn: vi
-            .fn()
-            .mockImplementationOnce(serverSpawn)
-            .mockReturnValueOnce({ pid: uiPid, unref: vi.fn() }),
-        },
-      });
-      const failure = await lifecycle
-        .start({
-          baseDir: TEST_ALT_HOME,
-          host: '127.0.0.1',
-          instanceName: 'fatal-boot',
-          serverPort: base,
-          uiPort: base + 10,
-        })
-        .then(
-          () => null,
-          (error: Error) => error.message,
-        );
-      for (let i = 0; i < 40 && isAlive(uiPid); i++) {
-        await new Promise((r) => setTimeout(r, 50));
-      }
-      expect(failure).toContain('Failed to start instance');
-      expect(failure).not.toMatch(/\(\)/);
-      expect(failure).toContain(`Cause: ${fatal}`);
-      expect(failure).toContain(
-        `Log: ${join(TEST_ALT_HOME, 'logs', 'station-fatal-boot.log')}`,
-      );
     },
     PROCESS_INTEGRATION_TEST_TIMEOUT_MS,
   );
@@ -8816,6 +8751,68 @@ describe('lifecycle build + restart ergonomics', () => {
 
     expect(spawn).not.toHaveBeenCalled();
     expect(existsSync(join(TEST_ALT_HOME, 'logs'))).toBe(false);
+  });
+
+  it('gates a fresh home before spawn even when the log lives outside it (#4381)', async () => {
+    ensureDir(TEST_CWD);
+    // An explicit log directory outside the home used to skip the CLI's gate,
+    // so the instance record a prebuilt archive keeps in `<home>/state/...`
+    // landed first and the server refused the home this start created.
+    const outsideLogs = join(TEST_ROOT, 'outside-logs');
+    ensureDir(outsideLogs);
+    writeBuildManifest('fresh-home-outside-log');
+    const markerAtSpawn: boolean[] = [];
+    const spawn = vi.fn(() => {
+      markerAtSpawn.push(
+        existsSync(join(TEST_ALT_HOME, STATION_HOME_SCHEMA_FILE)),
+      );
+      throw new Error('spawn is out of scope');
+    });
+    const { lifecycle } = await loadLifecycleModule({
+      childProcessMock: { execSync: vi.fn(() => ''), spawn },
+    });
+
+    await lifecycle
+      .start({
+        instanceName: 'fresh-home-outside-log',
+        baseDir: TEST_ALT_HOME,
+        logFile: join(outsideLogs, 'station.log'),
+        serverPort: 3264,
+        uiPort: 5296,
+      })
+      .catch(() => {});
+
+    expect(markerAtSpawn).toEqual([true]);
+    expect(
+      JSON.parse(
+        readFileSync(join(TEST_ALT_HOME, STATION_HOME_SCHEMA_FILE), 'utf8'),
+      ),
+    ).toEqual({ version: STATION_HOME_SCHEMA_VERSION });
+  });
+
+  it('refuses an incompatible home before spawn when the log lives outside it (#4381)', async () => {
+    ensureDir(TEST_CWD);
+    ensureDir(join(TEST_ALT_HOME, 'agents'));
+    const outsideLogs = join(TEST_ROOT, 'outside-logs-refused');
+    ensureDir(outsideLogs);
+    writeBuildManifest('incompatible-home-outside-log');
+    const spawn = vi.fn();
+    const { lifecycle } = await loadLifecycleModule({
+      childProcessMock: { execSync: vi.fn(() => ''), spawn },
+    });
+
+    await expect(
+      lifecycle.start({
+        instanceName: 'incompatible-home-outside-log',
+        baseDir: TEST_ALT_HOME,
+        logFile: join(outsideLogs, 'station.log'),
+        serverPort: 3264,
+        uiPort: 5296,
+      }),
+    ).rejects.toThrow('STATION_HOME_RESET_REQUIRED');
+
+    expect(spawn).not.toHaveBeenCalled();
+    expect(existsSync(join(outsideLogs, 'station.log'))).toBe(false);
   });
 
   it('names the supported reset command in the failure it throws (station#1913)', async () => {

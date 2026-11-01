@@ -4521,6 +4521,96 @@ export async function awaitReadiness(
 }
 
 /**
+ * A connect failure as text. Connecting to `localhost` tries every address it
+ * resolves to (Node's happy-eyeballs), and when all of them refuse the error
+ * is an AggregateError whose own message is empty — which printed as `()`
+ * (#4382). Name the inner failures, or at least the code, instead.
+ */
+export function describeSocketError(error: unknown): string {
+  if (!(error instanceof Error)) return String(error) || 'connection failed';
+  if (error.message) return error.message;
+  if (error instanceof AggregateError) {
+    const inner = [
+      ...new Set(
+        error.errors
+          .map((cause) =>
+            cause instanceof Error
+              ? cause.message || (cause as NodeJS.ErrnoException).code
+              : String(cause),
+          )
+          .filter(Boolean),
+      ),
+    ];
+    if (inner.length > 0) return inner.join('; ');
+  }
+  return (error as NodeJS.ErrnoException).code ?? 'connection failed';
+}
+
+/** How much of a server log's end `lastFatalServerLogLine` reads. */
+const FATAL_LOG_TAIL_BYTES = 64 * 1024;
+const LIFECYCLE_START_HEADER = /^--- \S+ station lifecycle start /;
+// `Error: STATION_HOME_RESET_REQUIRED: …`, `Error: listen EADDRINUSE …`,
+// `TypeError: …`: the first line of an uncaught error a failed boot prints.
+const FATAL_LOG_LINE =
+  /^(?:Uncaught )?(?:[A-Za-z]*Error|[A-Z][A-Z0-9_]{3,}): \S/;
+const LOG_LEVEL_FATAL_LINE = /\b(?:FATAL|ERROR)\b.*\(station\)/;
+/** ANSI colour codes (ESC [ … m) the server's pretty logger writes. */
+const ANSI_ESCAPE = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g');
+
+/**
+ * The last fatal-looking line the managed server wrote to `logFile` since this
+ * start's header, or null when there is none or the log is unreadable. A
+ * server that exits before it listens leaves its cause only there, and the
+ * start failure used to say nothing about it (#4382).
+ */
+export function lastFatalServerLogLine(logFile: string): string | null {
+  let text: string;
+  try {
+    const fd = openSync(logFile, fsConstants.O_RDONLY);
+    try {
+      const { size } = fstatSync(fd);
+      const length = Math.min(size, FATAL_LOG_TAIL_BYTES);
+      const buffer = Buffer.alloc(length);
+      readSync(fd, buffer, 0, length, size - length);
+      text = buffer.toString('utf8');
+    } finally {
+      closeSync(fd);
+    }
+  } catch {
+    return null;
+  }
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.replace(ANSI_ESCAPE, ''));
+  let from = 0;
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    if (LIFECYCLE_START_HEADER.test(lines[index])) {
+      from = index + 1;
+      break;
+    }
+  }
+  for (let index = lines.length - 1; index >= from; index -= 1) {
+    const line = lines[index].trim();
+    if (FATAL_LOG_LINE.test(line) || LOG_LEVEL_FATAL_LINE.test(line)) {
+      return line.length > 500 ? `${line.slice(0, 500)}…` : line;
+    }
+  }
+  return null;
+}
+
+/**
+ * What a failed start adds after its own message: the server's last fatal
+ * log line, when there is one, and where the log is (#4382).
+ */
+export function serverStartFailureContext(logFile: string): string[] {
+  const fatal = lastFatalServerLogLine(logFile);
+  return [
+    ...(fatal ? [`Last server error: ${fatal}`] : []),
+    `Server log: ${logFile}`,
+  ];
+}
+
+/**
  * Waits for a TCP listener the managed server opens beside its API port (the
  * terminal and voice sockets). With `childAlive` it takes the same bounded
  * slow-boot extension as `waitForIdentity` (#2964): while the server is alive
@@ -4575,13 +4665,8 @@ export async function waitForTcpOk(
         socket.setTimeout(Math.min(1_000, Math.max(1, deadline - Date.now())));
         socket.once('connect', () => finish({ ok: true }));
         socket.once('timeout', () => finish({ ok: false, failure: 'timeout' }));
-        // A refused connection to a dual-stack name is an AggregateError
-        // with an empty message; report its code rather than `()` (#4382).
-        socket.once('error', (error: NodeJS.ErrnoException) =>
-          finish({
-            ok: false,
-            failure: error.message || error.code || error.name,
-          }),
+        socket.once('error', (error) =>
+          finish({ ok: false, failure: describeSocketError(error) }),
         );
       },
     );
@@ -4674,10 +4759,11 @@ export async function start(opts: StartOptions = {}): Promise<void> {
     stopRecord(runningMatch, false, 'recovery');
     runningMatch = null;
   }
-  // The home schema gate runs in the logDirectoryIsInsideHome block below —
-  // after the recursive mkdir, because the gate requires the home's parent to
-  // exist and a custom --base path may have a multi-level missing ancestor
-  // chain (#1570 review; supersedes the earlier pre-mkdir call from #1567).
+  // The home schema gate runs below, before the log directory and the
+  // instance record are written — after the recursive mkdir, because the
+  // gate requires the home's parent to exist and a custom --base path may
+  // have a multi-level missing ancestor chain (#1570 review; supersedes the
+  // earlier pre-mkdir call from #1567).
   const buildPaths = resolveBuildPaths(instanceId);
   const needsBuild = !watch && (Boolean(build) || !isInstalled(instanceId));
   const warnStale = () => {
@@ -4759,9 +4845,6 @@ export async function start(opts: StartOptions = {}): Promise<void> {
 
   let serverStdio: any = 'ignore';
   let logDescriptor: number | null = null;
-  // Where this start's output begins in the (appended) log, so a failure can
-  // quote what this server printed and not an earlier run's (#4382).
-  let logStartOffset = 0;
   const requestedLogDirectory = dirname(logFile);
   const homeRelation = relative(resolve(projectHome), requestedLogDirectory);
   const logDirectoryIsInsideHome =
@@ -4774,18 +4857,22 @@ export async function start(opts: StartOptions = {}): Promise<void> {
     );
   }
 
+  // An empty home directory is gate-safe scaffolding, and the recursive
+  // mkdir must come first: the gate requires the home's parent to exist, and
+  // a custom --base path may have a multi-level missing ancestor chain.
+  mkdirSync(projectHome, { recursive: true, mode: 0o700 });
+  // Writing logs/ into a home the server has not gated yet would make a
+  // brand-new home fail the #1560 schema gate on first boot (#1570). So would
+  // the instance record a prebuilt archive keeps in `<home>/state/<channel>`
+  // for a home that is its own Station root (`--temp-home`, `--home=<dir>`),
+  // whatever the log location (#4381). The CLI ships in lockstep with the
+  // server, so running the same gate here either bootstraps the marker or
+  // fails closed with the server's exact error — before anything is written
+  // or spawned.
+  ensureStationHomeSchemaSync(projectHome);
+
   let logDirectory = requestedLogDirectory;
   if (logDirectoryIsInsideHome) {
-    // An empty home directory is gate-safe scaffolding, and the recursive
-    // mkdir must come first: the gate requires the home's parent to exist,
-    // and a custom --base path may have a multi-level missing ancestor chain.
-    mkdirSync(projectHome, { recursive: true, mode: 0o700 });
-    // Writing logs/ into a home the server has not gated yet would make a
-    // brand-new home fail the #1560 schema gate on first boot (#1570). The
-    // CLI ships in lockstep with the server, so running the same gate here
-    // either bootstraps the marker or fails closed with the server's exact
-    // error — before anything is written or spawned.
-    ensureStationHomeSchemaSync(projectHome);
     let current = resolve(projectHome);
     for (const segment of homeRelation.split(/[\\/]+/).filter(Boolean)) {
       current = join(current, segment);
@@ -4851,7 +4938,6 @@ export async function start(opts: StartOptions = {}): Promise<void> {
       0o600,
     );
     const openedInfo = fstatSync(logDescriptor);
-    logStartOffset = openedInfo.size;
     if (!openedInfo.isFile()) {
       closeSync(logDescriptor);
       logDescriptor = null;
@@ -5347,7 +5433,10 @@ export async function start(opts: StartOptions = {}): Promise<void> {
     // tense is true when it prints.
     warnOnSharedHome(instanceId, projectHome);
   } catch (error) {
-    const message = `${error instanceof Error ? error.message : String(error)}${describeStartFailureLog(logFile, logStartOffset)}`;
+    const message = [
+      error instanceof Error ? error.message : String(error),
+      ...serverStartFailureContext(logFile),
+    ].join('\n');
     try {
       stop({ generation });
     } catch (cleanupError) {
@@ -5364,48 +5453,6 @@ export async function start(opts: StartOptions = {}): Promise<void> {
       cause: error,
     });
   }
-}
-
-/** How much of the log's end a start failure reads for its cause. */
-const START_FAILURE_LOG_TAIL_BYTES = 64 * 1024;
-const START_FAILURE_CAUSE_PATTERN =
-  /\b(?:STATION_[A-Z_]+|[A-Z][A-Za-z]*Error|FATAL|Fatal|fatal)\b/;
-
-/**
- * The cause and the log path a failed start prints (#4382). A server that
- * exits before listening states why only in its log, so quote the last line
- * there that reads like a fatal error, from this start's output only, and say
- * where the rest is. Best effort: an unreadable log still names its path.
- */
-function describeStartFailureLog(logFile: string, startOffset: number): string {
-  let cause: string | undefined;
-  try {
-    const descriptor = openSync(
-      logFile,
-      fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0),
-    );
-    try {
-      const size = fstatSync(descriptor).size;
-      const from = Math.max(startOffset, size - START_FAILURE_LOG_TAIL_BYTES);
-      const buffer = Buffer.alloc(Math.max(0, size - from));
-      const read = readSync(descriptor, buffer, 0, buffer.length, from);
-      const lines = buffer
-        .subarray(0, read)
-        .toString('utf8')
-        .split(/\r?\n/)
-        .map((line) => line.trim())
-        .filter(Boolean);
-      cause = lines
-        .reverse()
-        .find((line) => START_FAILURE_CAUSE_PATTERN.test(line));
-    } finally {
-      closeSync(descriptor);
-    }
-  } catch {
-    // The path below is still the place to look.
-  }
-  const shown = cause && cause.length > 500 ? `${cause.slice(0, 500)}…` : cause;
-  return `${shown ? `\n  Cause: ${shown}` : ''}\n  Log: ${logFile}`;
 }
 
 function loadHostedTenantRegistryForLifecycle():

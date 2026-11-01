@@ -431,31 +431,37 @@ function migrateStationHome(
   }
 }
 
-function isRealDirectory(path: string): boolean {
-  const stats = lstatSync(path);
-  return stats.isDirectory() && !stats.isSymbolicLink();
-}
+/**
+ * A prebuilt archive's CLI keeps instance records in `<root>/state/<channel>/
+ * instances` of the Station root a home belongs to, and a home outside
+ * `<root>/instances/` (`--temp-home`, `--home=<dir>`) is its own root
+ * (packages/cli/src/commands/lifecycle-code-root.ts).
+ */
+const LIFECYCLE_STATE_DIRECTORY = 'state';
 
 /**
- * A prebuilt archive's CLI keeps the lifecycle records of an instance whose
- * home is its own Station root in `<home>/state/<channel>/instances/`
- * (packages/cli/src/commands/lifecycle-code-root.ts), and it can write them
- * before the server's first boot gates the home. They describe processes, not
- * home data, so a home holding only them is still a fresh home (#4381).
- * Anything else under `state/`, or a link anywhere in it, is not.
+ * `<home>/state` holding only empty `<channel>/instances` directories: what a
+ * refused or cleaned-up archive start leaves once its record is gone (#4381).
+ * A record, any other entry, a file or a link is data the gate keeps refusing
+ * to bootstrap over.
  */
-function isLifecycleStateScaffolding(stateDir: string): boolean {
-  if (!isRealDirectory(stateDir)) return false;
+function isEmptyLifecycleStateScaffolding(stateDir: string): boolean {
+  const isPlainDirectory = (path: string) => {
+    const stats = lstatSync(path);
+    return stats.isDirectory() && !stats.isSymbolicLink();
+  };
+  if (!isPlainDirectory(stateDir)) return false;
   for (const channel of readdirSync(stateDir)) {
     const channelDir = join(stateDir, channel);
-    if (!isRealDirectory(channelDir)) return false;
-    for (const entry of readdirSync(channelDir)) {
-      if (entry !== 'instances') return false;
-      const instancesDir = join(channelDir, entry);
-      if (!isRealDirectory(instancesDir)) return false;
-      for (const record of readdirSync(instancesDir)) {
-        if (lstatSync(join(instancesDir, record)).isSymbolicLink())
-          return false;
+    if (!isPlainDirectory(channelDir)) return false;
+    for (const child of readdirSync(channelDir)) {
+      const instancesDir = join(channelDir, child);
+      if (
+        child !== 'instances' ||
+        !isPlainDirectory(instancesDir) ||
+        readdirSync(instancesDir).length > 0
+      ) {
+        return false;
       }
     }
   }
@@ -488,8 +494,8 @@ function isBootstrapScaffolding(homeDir: string): boolean {
       }
       return false;
     }
-    if (entry === 'state') {
-      if (isLifecycleStateScaffolding(join(homeDir, entry))) continue;
+    if (entry === LIFECYCLE_STATE_DIRECTORY) {
+      if (isEmptyLifecycleStateScaffolding(join(homeDir, entry))) continue;
       return false;
     }
     if (entry !== 'config') return false;

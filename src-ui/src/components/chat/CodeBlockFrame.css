@@ -42,3 +42,6 @@
 .code-block-actions .button {
   flex-shrink: 0;
 }
+.code-block-actions--footer {
+  justify-content: flex-end;
+}
