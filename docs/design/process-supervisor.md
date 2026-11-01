@@ -744,7 +744,7 @@ verification, and fault injection.
   over a fake IPC channel, not through a real pull and build. The journey
   runs on Windows too, except the SIGSTOP cases; no Linux host ran it.
 - **Dogfood and e2e (#4135).** Both start Station with `--lifecycle-journal`,
-  which now runs supervised like any other start. A supervised generation
+  which runs supervised like any other start. A supervised generation
   stamps its lifecycle events with `supervisor: { pid, generation }` and
   records its own `started` event. The events then belong to the instance
   whose recorded pid is the supervisor's, and its own pid and build may

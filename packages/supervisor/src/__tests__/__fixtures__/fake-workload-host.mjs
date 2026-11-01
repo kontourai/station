@@ -36,8 +36,10 @@ function send(message) {
 /** @type {Map<string, Workload>} */
 const workloads = new Map();
 
-/** Kills a workload's whole tree, as the real host does. */
-/** @param {Workload} workload */
+/**
+ * Kills a workload's whole tree, as the real host does.
+ * @param {Workload} workload
+ */
 function killTree(workload) {
   const pid = workload.info.pid;
   if (process.platform === 'win32') {

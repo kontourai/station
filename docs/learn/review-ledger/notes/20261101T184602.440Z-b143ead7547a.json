@@ -1,0 +1,7 @@
+{
+  "revision": "1389a2d72d36b16dbd1ad6ae74299fc6521b2338",
+
+  "notes": [
+    {"path":"docs/design/process-supervisor.md","note":"Rechecked against the cleanup commit: process-supervisor.md changes \"now runs supervised\" to \"runs supervised\"; meaning unchanged. Reread the edited lines in context against their sources; no claim changed.","inputs":["docs/design/process-supervisor.md"]}
+  ]
+}

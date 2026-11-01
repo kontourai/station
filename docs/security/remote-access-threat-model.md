@@ -1070,7 +1070,7 @@ non-operator members is a separate program and is not widened here.
   enters a URL, access log or referrer, and only its SHA-256 digest is kept.
   Redemption consumes it whether or not the upgrade then succeeds. An upgrade
   without exactly one valid ticket gets `401` before any socket, parser or
-  timer exists, so an unauthenticated peer can no longer hold pending slots.
+  timer exists, so an unauthenticated peer cannot hold a pending slot.
 - **Not a credential.** The ticket is not an operator or Device credential: it
   authorizes one upgrade for 30 seconds and carries the minting Request as the
   socket principal. Every later operation re-checks that principal as current
@@ -1107,7 +1107,7 @@ non-operator members is a separate program and is not widened here.
 - **Broker routes.** A browser broker route (WebRTC DataChannel) has no
   WebSocket path to Station; the client refuses raw terminal egress there
   before minting a ticket. That egress stays closed until a broker transport
-  for the socket exists and this model is updated again.
+  for the socket exists and this model is updated.
 
 The voice WebSocket requires `orchestration:operate` and refuses an
 account-bound device and any personal access token whatever its scope (#3586). The terminal socket ticket
