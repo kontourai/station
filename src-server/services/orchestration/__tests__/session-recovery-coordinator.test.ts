@@ -184,6 +184,72 @@ describe('SessionRecoveryCoordinator', () => {
       .forEach((dir) => rmSync(dir, { recursive: true, force: true })),
   );
 
+  test('#2823: retries profile recovery after startup storage becomes readable', async () => {
+    vi.useFakeTimers();
+    const store = new EventStore(
+      join(makeTempDir('recovery-readiness-'), 'events.sqlite'),
+    );
+    const now = new Date('2026-07-29T12:00:00.000Z');
+    const scan = vi.spyOn(
+      store as unknown as {
+        preparedRecoveryDispatches: (...args: unknown[]) => unknown;
+      },
+      'preparedRecoveryDispatches',
+    );
+    scan.mockImplementationOnce(() => {
+      throw new Error('SQLITE_BUSY');
+    });
+    const stage = vi.fn(async () => ({
+      candidateProfileRef: 'backup',
+      capability: 'restart_resume' as const,
+    }));
+    const restartResume = vi.fn(async () => ({ turnId: 'profile-turn' }));
+    const sendTurn = vi.fn(async () => ({ turnId: 'ordinary-turn' }));
+    const coordinator = new SessionRecoveryCoordinator({
+      eventStore: store,
+      adapterForProvider: () =>
+        ({
+          metadata: {
+            recovery: { sameSession: true, application: 'restart_resume' },
+          },
+        }) as any,
+      credentialRecoveryAdapter: { stage },
+      restartResume,
+      sendTurn,
+      now: () => now,
+    });
+    store.appendEvent({
+      eventId: 'started',
+      provider: 'claude',
+      threadId: 'thread',
+      turnId: 'turn',
+      createdAt: now.toISOString(),
+      method: 'turn.started',
+      prompt: 'input',
+    });
+    coordinator.observe({
+      eventId: 'exhausted',
+      provider: 'claude',
+      threadId: 'thread',
+      turnId: 'turn',
+      createdAt: now.toISOString(),
+      method: 'runtime.error',
+      severity: 'error',
+      message: 'account capacity exhausted',
+      details: { scope: 'account', retryAfterMs: 0 },
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(stage).not.toHaveBeenCalled();
+    expect(sendTurn).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(stage).toHaveBeenCalledOnce();
+    expect(restartResume).toHaveBeenCalledOnce();
+    expect(sendTurn).not.toHaveBeenCalled();
+    await coordinator.dispose();
+    store.close();
+    vi.useRealTimers();
+  });
+
   test('restarts a staged credential profile and commits only its matching completion without recording the ref', async () => {
     vi.useFakeTimers();
     const dir = mkdtempSync(join(tmpdir(), 'recovery-coordinator-'));
