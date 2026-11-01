@@ -1,0 +1,7 @@
+{
+  "revision": "7a2b4de76dcf0bb8ab56daeefb37d0ac6003a604",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"Only ci-fast-checks-job-graph.test.ts changed, to pin #4365's third PR shard slot; landing/verification guidance unaffected.","inputs":["docs/guides/development.md","scripts/__tests__/ci-fast-checks-job-graph.test.ts"]}
+  ]
+}

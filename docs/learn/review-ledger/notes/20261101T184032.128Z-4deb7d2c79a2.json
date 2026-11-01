@@ -1,0 +1,7 @@
+{
+  "revision": "1389a2d72d36b16dbd1ad6ae74299fc6521b2338",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Rechecked against the cleanup commit: pairing-route-scopes.ts only merges two stacked JSDoc blocks on refusedOnWebSocket; no route rule, scope or refusal logic changed; terminal-session-store.ts drops an unused protocolFailure parameter and moves the queued field into the field list; no behavior or public API changed. This document's claims do not depend on the changed lines and remain accurate.","inputs":["docs/architecture/module-map.md","packages/sdk/src/client/terminal-session-store.ts","src-server/security/pairing-route-scopes.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "7a2b4de76dcf0bb8ab56daeefb37d0ac6003a604",
+
+  "notes": [
+    {"path":"docs/privacy-policy.md","note":"The renderer now emits the Member passkeys sentence #4325 added to this page, so the generated artifact and the inventory agree byte-for-byte; page text unchanged.","inputs":["docs/privacy-policy.md","src-server/services/privacy-inventory.ts"]}
+  ]
+}

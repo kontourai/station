@@ -37,7 +37,7 @@ Node loader, bundler or alternate runtime.
 The `/terminal-transport` subpath owns the numbered binary frame codec and
 observe/operate scope predicate. The [terminal API](../../docs/reference/api.md#terminal-socket-operator-transport)
 explains controls, bounds and the current personal-operator admission limit.
-It is not the SDK session store, which remains follow-up work under #3994.
+It is not a client; the SDK's `TerminalSessionStore` speaks this protocol.
 
 ## Usage
 

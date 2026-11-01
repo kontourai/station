@@ -1,0 +1,7 @@
+{
+  "revision": "7a2b4de76dcf0bb8ab56daeefb37d0ac6003a604",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"inbox-swipe browser test now renders the toast host and clicks Undo in the toast, matching this page's 'Choose Undo in the toast' dismissal guidance.","inputs":["docs/user/getting-started.md","src-ui/src/__tests__/inbox-swipe.browser.test.tsx"]}
+  ]
+}

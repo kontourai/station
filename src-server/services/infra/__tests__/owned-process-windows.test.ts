@@ -24,10 +24,9 @@ import {
 /**
  * #3873: the owned-process registry on Windows. Node reports synthetic POSIX
  * modes there (a writable directory reads 0o666), so the POSIX trust rule
- * refused every Windows registry and no engine orphan was ever recorded or
- * swept. Windows now trusts a real directory inside the user's %LOCALAPPDATA%,
- * records and forgets engines, and reaps an orphaned engine together with only
- * the descendants provably its own.
+ * would refuse every Windows registry. Windows trusts a real directory inside
+ * the user's %LOCALAPPDATA%, records and forgets engines, and reaps an
+ * orphaned engine together with only the descendants provably its own.
  */
 
 const tempDir = trackTempDirs();

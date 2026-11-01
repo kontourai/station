@@ -348,7 +348,7 @@ export interface ListenerListeningMessage {
  *   workloads. A supervisor that can grants it in `promote`; only then does
  *   the core send `workload.request`, and only then is it sent
  *   `workload.event`. A core that is not granted it keeps its terminals in
- *   process, as before.
+ *   process.
  */
 export const GENERATION_CAPABILITIES = Object.freeze([
   'handoff-events',
@@ -712,9 +712,6 @@ export interface HostStopMessage {
  * supervisor runs the one beside its initial entry unless told otherwise.
  */
 export const WORKLOAD_HOST_BUNDLE_NAME = 'station-pty-host.js';
-
-/** Longest a workload `read` may ask for. */
-export const WORKLOAD_MAX_READ_BYTES = 1024 * 1024;
 
 // ---------------------------------------------------------------------------
 // Control endpoint derivation

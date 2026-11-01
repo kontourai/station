@@ -1,0 +1,7 @@
+{
+  "revision": "a8ce35c6d1aaf2ed2ce1d7c0f201fca2eac1b292",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"inbox-dismissals now separates the saved dismissal from its toast; the page's composer dismissal claims concern drafts and are unaffected.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/inbox-dismissals.tsx"]}
+  ]
+}

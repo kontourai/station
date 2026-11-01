@@ -813,7 +813,7 @@ function readE2EBootstrapAuthority(root, instance) {
  * What the supervisor of a supervised E2E instance reports through its
  * control channel (`station supervisor status --json`).
  */
-export function readE2ESupervisorStatus(instance, run = spawnSyncBounded) {
+function readE2ESupervisorStatus(instance, run = spawnSyncBounded) {
   const result = run(
     './station',
     ['supervisor', 'status', `--instance=${instance}`, '--json'],

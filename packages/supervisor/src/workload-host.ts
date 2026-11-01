@@ -137,6 +137,7 @@ export class WorkloadHost {
       reply(failure('unavailable', String(error))),
     );
   }
+
   /** Ends every workload and the host. Idempotent. */
   async stop(): Promise<void> {
     this.stopped = true;

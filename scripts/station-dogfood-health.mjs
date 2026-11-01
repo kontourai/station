@@ -359,12 +359,6 @@ function hasOwnersForAllPorts(owners, ports) {
 }
 
 /**
- * Exported for the contract test that proves a non-authoritative observation
- * cannot satisfy health even when every expected port looks correctly owned
- * (station#3754 review). Production callers use it through
- * {@link probeDogfoodHealth}.
- */
-/**
  * The parent pid of `pid`, or null when it cannot be read. `ps` runs with a
  * pinned locale; only the number is read.
  */
@@ -399,6 +393,12 @@ function ownsListener(owners, expectedPid, supervised, parentOf) {
   return parentOf(generation) === expectedPid;
 }
 
+/**
+ * Exported for the contract test that proves a non-authoritative observation
+ * cannot satisfy health even when every expected port looks correctly owned
+ * (station#3754 review). Production callers use it through
+ * {@link probeDogfoodHealth}.
+ */
 export function assertListenerOwnership(
   record,
   deadline,

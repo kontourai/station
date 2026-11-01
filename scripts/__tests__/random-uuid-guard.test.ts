@@ -23,6 +23,8 @@ describe('random-uuid guard source matching', () => {
     'const requestId = crypto.randomUUID();',
     'const id = { operationId: input.operationId ?? crypto.randomUUID() };',
     'const instanceId = globalThis.crypto.randomUUID();',
+    // An unrelated optional chain on the line does not guard the call.
+    'const id = existing?.id ?? options.id ?? crypto.randomUUID();',
   ])('catches the bare call: %s', (source) => {
     expect(count(source)).toBe(1);
   });
@@ -46,6 +48,7 @@ describe('random-uuid guard source matching', () => {
     expect(
       count('const id = globalThis.crypto?.randomUUID?.() ?? fallbackId();'),
     ).toBe(0);
+    expect(count('const id = crypto.randomUUID?.() ?? fallbackId();')).toBe(0);
   });
 
   test('does not flag an already-guarded typeof-checked call', () => {

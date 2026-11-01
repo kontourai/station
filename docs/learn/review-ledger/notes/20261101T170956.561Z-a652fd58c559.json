@@ -1,0 +1,7 @@
+{
+  "revision": "7a2b4de76dcf0bb8ab56daeefb37d0ac6003a604",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"The handoff dialog's client idempotency key now comes from randomCorrelationId (UUID when available); the documented handoff:<idempotencyKey> contract is unchanged.","inputs":["docs/reference/session-api.md","src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx"]}
+  ]
+}

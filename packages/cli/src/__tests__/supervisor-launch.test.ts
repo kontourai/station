@@ -93,7 +93,7 @@ describe('planServerLaunch', () => {
 
   it('supervises a start that keeps a lifecycle journal (dogfood and e2e)', () => {
     // Each generation's journal events name the supervisor the instance
-    // record names, so the journal no longer needs a direct start (#4135).
+    // record names (#4135).
     const build = codeRootWithBuild();
     expect(plan({ lifecycleJournal: '/journals/work.ndjson' }, build)).toEqual(
       plan({}, build),
