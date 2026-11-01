@@ -1777,6 +1777,11 @@ per conversation.** Below the fold nothing above changes.
   drill-in from below it, a reload on one) opens it below and clears the
   side. It is mounted on first open and hidden (collapsed to no height,
   inert) after, and unmounted below the fold where the pane host owns it.
+  While a shown dock region holds this Project's `coding:terminal`, the lower
+  panel is not drawn (below the fold the drill-in offers **Move here**);
+  opening it from the rail takes the Terminal out of the dock, hiding a
+  region that leaves empty, as a placement does
+  ([useDockedCodingTerminal](../../src-ui/src/app-shell/useDockedCodingTerminal.ts)).
 - **Panel memory is a generic device setting** (`layoutPanels`,
   [device-settings.ts](../../packages/contracts/src/device-settings.ts);
   record logic in [layout-panels-record.ts](../../src-ui/src/lib/layout-panels-record.ts),
