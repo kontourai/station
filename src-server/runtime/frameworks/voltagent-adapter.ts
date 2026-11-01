@@ -949,7 +949,7 @@ export function createVoltAgentLifecycleHooks(
         : { input: args, purpose: undefined };
       const toolCall: ToolCallContext = {
         toolName: tool.name,
-        replay: durableToolReplay(tool),
+        ...(currentAgentTurn() ? { replay: durableToolReplay(tool) } : {}),
         toolCallId,
         toolArgs: purposeful.input,
         purpose: purposeful.purpose,

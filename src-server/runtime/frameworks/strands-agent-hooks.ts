@@ -1,3 +1,4 @@
+import { currentAgentTurn } from '@kontourai/agent-runtime';
 import {
   AfterInvocationEvent,
   AfterToolCallEvent,
@@ -105,7 +106,9 @@ export function wireStrandsToolGate(options: {
     const approved = await hooks.beforeToolCall!(
       {
         toolName: event.toolUse.name,
-        replay: options.findToolReplay?.(event.toolUse.name) ?? 'unsafe',
+        ...(currentAgentTurn()
+          ? { replay: options.findToolReplay?.(event.toolUse.name) ?? 'unsafe' }
+          : {}),
         toolCallId: event.toolUse.toolUseId,
         toolArgs: purposeful.input,
         purpose: purposeful.purpose,

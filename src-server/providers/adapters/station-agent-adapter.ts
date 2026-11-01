@@ -1165,7 +1165,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
           }
         : snapshot.state === 'cancelled'
           ? { ...base, method: 'turn.aborted', reason: 'cancelled' }
-          : {
+          : ({
               ...base,
               method: 'runtime.error',
               ...providerFailure('provider_error'),
@@ -1174,7 +1174,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
                 'Station could not establish a complete outcome for this turn. Review its recorded state before retrying.',
               code: 'station_agent_step_indeterminate',
               retriable: false,
-            };
+            } satisfies ProviderRuntimeErrorEvent);
     if (!durable.publish(event))
       throw new Error('Station did not persist the durable terminal receipt.');
     finishNativeKnowledgeTurn(threadId, turnId);
