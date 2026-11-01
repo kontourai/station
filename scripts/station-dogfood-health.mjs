@@ -368,7 +368,7 @@ function hasOwnersForAllPorts(owners, ports) {
  * The parent pid of `pid`, or null when it cannot be read. `ps` runs with a
  * pinned locale; only the number is read.
  */
-export function parentPidOf(pid, deadline, runSync = execFileSync) {
+function parentPidOf(pid, deadline, runSync = execFileSync) {
   try {
     const output = runSync('ps', ['-o', 'ppid=', '-p', String(pid)], {
       encoding: 'utf8',
