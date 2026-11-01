@@ -712,6 +712,11 @@ PUT    /acp/connections/:id/credentials/:name  Store a key for one of the engine
 DELETE /acp/connections/:id/credentials/:name  Remove it (engine:login)
 ```
 
+The operator in person (the operator credential, or a credential minted by
+proving possession of this Station's home, such as the host browser's sign-in
+link) needs no `engine:login` grant for these routes, as the view's
+`allowed.signIn` reports.
+
 Creating a connection, or changing its `command`, `args` or `cwd`, chooses a
 command for Station to run, so a paired device needs the operator's
 `coding:exec` grant (the operator in person never does); otherwise the route

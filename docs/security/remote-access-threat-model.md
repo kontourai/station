@@ -1070,7 +1070,7 @@ non-operator members is a separate program and is not widened here.
   enters a URL, access log or referrer, and only its SHA-256 digest is kept.
   Redemption consumes it whether or not the upgrade then succeeds. An upgrade
   without exactly one valid ticket gets `401` before any socket, parser or
-  timer exists, so an unauthenticated peer can no longer hold pending slots.
+  timer exists, so an unauthenticated peer cannot hold a pending slot.
 - **Not a credential.** The ticket is not an operator or Device credential: it
   authorizes one upgrade for 30 seconds and carries the minting Request as the
   socket principal. Every later operation re-checks that principal as current
@@ -1107,7 +1107,7 @@ non-operator members is a separate program and is not widened here.
 - **Broker routes.** A browser broker route (WebRTC DataChannel) has no
   WebSocket path to Station; the client refuses raw terminal egress there
   before minting a ticket. That egress stays closed until a broker transport
-  for the socket exists and this model is updated again.
+  for the socket exists and this model is updated.
 
 The legacy terminal WebSocket requires `terminal:operate`, and the voice WebSocket
 requires `orchestration:operate`; both refuse an account-bound device and any
@@ -1144,8 +1144,11 @@ Engines run as commands (the `/acp/connections/:id/sign-in*` and
 `/credentials/:name` leaves, [acp-sign-in.ts](../../src-server/routes/connections/acp-sign-in.ts))
 have no profiles: their sign-in acts on the engine's own login on the host.
 Starting, reading or cancelling one, and storing or removing an engine key, are
-`engine:login` leaves with the same operator exception; a request that may be
-an agent's is refused. A terminal sign-in runs the connection's own program
+`engine:login` leaves whose exception is the operator in person: the operator
+credential or a home-possession credential (the host browser's sign-in link,
+the desktop app), as the handler and its view's `allowed.signIn` read it. The
+profile leaves above keep the verified-operator exception. A request that may
+be an agent's is refused. A terminal sign-in runs the connection's own program
 with arguments taken only from the engine's live handshake, never from the
 request, so a paired device also needs both `coding:exec` and
 `terminal:operate` to start it. Since #3994 b2 it is a server-owned
