@@ -437,6 +437,18 @@ describe('shutdown and the native-engine adoption window (station#1815)', () => 
       'lease-released',
     ]);
   });
+
+  test('disposes the terminal sessions the routes composed', async () => {
+    const { runtime } = shutdownDouble();
+    runtime.nativeEngineAdoptionSettled = Promise.resolve();
+    runtime.nativeEngineAdoptionSettleBudgetMs = () => 25;
+    const dispose = vi.fn(async () => {});
+    runtime.scopedTerminals.sessions = { dispose };
+
+    await runtime.shutdown();
+
+    expect(dispose).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('EventStore closure and the Station home lease', () => {
