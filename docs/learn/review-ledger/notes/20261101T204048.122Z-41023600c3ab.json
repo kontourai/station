@@ -1,0 +1,21 @@
+{
+  "revision": "d0b25216340a0b96f1aa0434c7dc44135d91ac27",
+
+  "notes": [
+    {"path":"README.md","note":"The deployment guide now calls API + 1 a reserved slot that an older supervisor may still hold; this document makes no claim about the dogfood port reservation, so it stays accurate.","inputs":["README.md","docs/guides/deployment.md"]},
+
+    {"path":"deployment/telemetry/README.md","note":"The deployment guide now calls API + 1 a reserved slot that an older supervisor may still hold; this document makes no claim about the dogfood port reservation, so it stays accurate.","inputs":["deployment/telemetry/README.md","docs/guides/deployment.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"The deployment guide now calls API + 1 a reserved slot that an older supervisor may still hold; this document makes no claim about the dogfood port reservation, so it stays accurate.","inputs":["docs/architecture/abstraction-review.md","docs/guides/deployment.md"]},
+
+    {"path":"docs/design/automations.md","note":"The deployment guide now calls API + 1 a reserved slot that an older supervisor may still hold; this document makes no claim about the dogfood port reservation, so it stays accurate.","inputs":["docs/design/automations.md","docs/guides/deployment.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"The deployment guide now calls API + 1 a reserved slot that an older supervisor may still hold; this document makes no claim about the dogfood port reservation, so it stays accurate.","inputs":["docs/guides/integrating-station.md","docs/guides/deployment.md"]},
+
+    {"path":"docs/guides/deployment.md","note":"The installer's five distinct ports now name API + 1 as a reserved slot rather than the terminal listener; checked reservedPorts in station-dogfood-reconcile.mjs, which still includes serverPort + 1 and refuses a UI port there.","inputs":["docs/guides/deployment.md","scripts/station-dogfood-reconcile.mjs"]},
+
+    {"path":"deploy/public-ingress/README.md","note":"The reconciler change only restores the API + 1 reservation in its config validation; this ingress guide's proxy and port claims are unaffected.","inputs":["deploy/public-ingress/README.md","scripts/station-dogfood-reconcile.mjs"]},
+
+    {"path":"scripts/__tests__/station-dogfood-reconcile/README.md","note":"The parity ratchet changed for a scenario removal (the missing-terminal-listener case, gone with its health check), which this README already names as a legitimate reason to update scenario-names.json.","inputs":["scripts/__tests__/station-dogfood-reconcile/README.md","scripts/__tests__/dogfood-reconcile-scenario-parity.test.ts"]}
+  ]
+}
