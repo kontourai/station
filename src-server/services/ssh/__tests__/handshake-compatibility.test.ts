@@ -103,6 +103,7 @@ describe('public handshake capability flags (station#1095)', () => {
     expect(handshake.capabilities).toEqual({
       childWorkSteering: true,
       privateOperationalOutcomes: true,
+      scheduledConversationTarget: true,
       sshEnvironments: true,
       webPushNotifications: true,
       eventStreamResume: true,
@@ -144,6 +145,7 @@ describe('public handshake capability flags (station#1095)', () => {
     expect(body.capabilities).toEqual({
       childWorkSteering: true,
       privateOperationalOutcomes: true,
+      scheduledConversationTarget: true,
       sshEnvironments: true,
       webPushNotifications: true,
       eventStreamResume: true,

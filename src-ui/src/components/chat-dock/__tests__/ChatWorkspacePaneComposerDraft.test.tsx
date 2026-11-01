@@ -13,12 +13,18 @@
  * `ChatPaneFileDropBoundary`.
  *
  * Docked inside the real `DockShell`, it also owns the project-binding wiring
- * (archive#4525/#4524): which Project the header badge names, what the
- * switcher does, and which Project the New Chat picker defaults to. The pure
+ * (archive#4525/#4524): which Project the start composer defaults to and
+ * how a changed future-Project binding reaches it without changing a chat. The pure
  * resolvers are table-tested in `chat-dock-utils.test.ts`; these tests pin
  * that the pane hands their results to the right surfaces.
  */
-import { orchestrationQueries } from '@kontourai/station-sdk';
+import { agentId } from '@kontourai/station-contracts/agent-identity';
+import type { ConversationOpenResolution } from '@kontourai/station-contracts/orchestration';
+import {
+  type ConversationListItem,
+  conversationQueries,
+  orchestrationQueries,
+} from '@kontourai/station-sdk';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
@@ -27,6 +33,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeAll, expect, test, vi } from 'vitest';
@@ -34,7 +41,10 @@ import { ActiveChatsProvider } from '../../../contexts/ActiveChatsContext';
 import { activeChatsStore } from '../../../contexts/active-chats-store';
 import { ConversationsProvider } from '../../../contexts/ConversationsContext';
 import { KeyboardShortcutsProvider } from '../../../contexts/KeyboardShortcutsContext';
-import { NavigationProvider } from '../../../contexts/NavigationContext';
+import {
+  NavigationProvider,
+  useNavigation,
+} from '../../../contexts/NavigationContext';
 import { navigationStore } from '../../../contexts/navigation-store';
 import { openChatsStore } from '../../../contexts/open-chats-store';
 import {
@@ -50,6 +60,7 @@ import {
 import { ToastProvider, toastStore } from '../../../contexts/ToastContext';
 import { useShowSurface } from '../../../contexts/useShowSurface';
 import { isChatInForeground } from '../../../hooks/orchestration/chatForeground';
+import type { useOpenConversation } from '../../../hooks/useActiveChatSessionLifecycle';
 import { deviceSettingsStore } from '../../../lib/device-settings-store';
 import { dispatchNewChatIntent } from '../../../lib/newChatIntent';
 import {
@@ -68,8 +79,12 @@ const {
   autoStarts,
   dockProbe,
   sendAdmission,
+  openConversationAction,
 } = vi.hoisted(() => ({
   sendAdmission: {} as { onActiveSessionChange?: (id: string) => void },
+  openConversationAction: vi
+    .fn<ReturnType<typeof useOpenConversation>>()
+    .mockResolvedValue(null),
   createChatSession: vi.fn(() => 'new-session'),
   sendMessage: vi.fn(),
   updateChat: vi.fn(),
@@ -80,6 +95,7 @@ const {
   autoStarts: [] as (string | undefined)[],
   dockProbe: {
     mobile: false,
+    agentsLoaded: true,
     sessions: [] as Record<string, any>[],
     agents: [{ slug: 'assistant', name: 'Assistant' }],
   },
@@ -128,12 +144,12 @@ vi.mock('../ChatDockMobileHeader', () => ({
     activeCount,
     projectSwitcher,
     sessionProjectMismatchLabel,
-    onOpenTaskSwitcher,
+    onToggleInbox,
   }: {
     activeCount: number;
     projectSwitcher?: { projectName: string } | null;
     sessionProjectMismatchLabel?: string;
-    onOpenTaskSwitcher?: () => void;
+    onToggleInbox?: () => void;
   }) => (
     <>
       <div data-testid="mobile-dock-work-badge">{activeCount}</div>
@@ -143,7 +159,7 @@ vi.mock('../ChatDockMobileHeader', () => ({
       <div data-testid="mobile-dock-mismatch">
         {sessionProjectMismatchLabel}
       </div>
-      <button type="button" onClick={onOpenTaskSwitcher}>
+      <button type="button" onClick={onToggleInbox}>
         Open task switcher
       </button>
     </>
@@ -196,7 +212,7 @@ vi.mock('../../../hooks/useActiveChatSessions', async (importOriginal) => ({
   },
   useCancelMessage: () => vi.fn(),
   useRehydrateSessions: () => vi.fn(),
-  useOpenConversation: () => vi.fn(),
+  useOpenConversation: () => openConversationAction,
 }));
 vi.mock('../../../contexts/ActiveChatsContext', async (importOriginal) => ({
   ...(await importOriginal<object>()),
@@ -231,7 +247,7 @@ vi.mock('../../../contexts/ProjectsContext', async (importOriginal) => ({
 vi.mock('../../../contexts/AgentsContext', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   useAgents: () => dockProbe.agents,
-  useAgentsLoaded: () => true,
+  useAgentsLoaded: () => dockProbe.agentsLoaded,
 }));
 
 // The active chat's transcript and composer are stood in for: the file-drop
@@ -253,6 +269,7 @@ vi.mock('../ChatDockBody', async () => {
       }, [onComposerEnabledChange]);
       return (
         <div data-testid="active-chat-body">
+          <p data-testid="answer-selection">Ready for review.</p>
           <textarea aria-label="Chat composer" ref={composer} />
         </div>
       );
@@ -314,10 +331,13 @@ afterEach(async () => {
   sendMessage.mockClear();
   updateChat.mockClear();
   dockProbe.mobile = false;
+  dockProbe.agentsLoaded = true;
   dockProbe.sessions = [];
   dockProbe.agents = [{ slug: 'assistant', name: 'Assistant' }];
   acknowledgeCalls.length = 0;
   activeChatsStore.removeChat('chat-a');
+  activeChatsStore.removeChat('chat-b');
+  openConversationAction.mockReset().mockResolvedValue(null);
   showSurface = undefined;
   deviceSettingsStore.reset('chatDockProjectSlug');
   navigationStore.navigate('/', { chat: null, dock: null });
@@ -344,6 +364,19 @@ function renderPane(projectSlug: string) {
       projectSlug={projectSlug}
       layoutSlug="coding"
     />,
+  );
+}
+
+function RouteScopedChatPane() {
+  const { selectedProject, selectedProjectLayout } = useNavigation();
+  if (!selectedProject || !selectedProjectLayout) return null;
+  return (
+    <ChatWorkspacePane
+      key={`${selectedProject}:${selectedProjectLayout}`}
+      placement="fullscreen"
+      projectSlug={selectedProject}
+      layoutSlug={selectedProjectLayout}
+    />
   );
 }
 
@@ -611,10 +644,9 @@ test('file drops follow the pane’s attachment owner: none without an active ch
 });
 
 /**
- * The dock is bound to Pulse while the chat on screen belongs to Other: the
- * badge keeps naming the binding, and the chat's own Project and directory
- * are reported beside it rather than dropped (archive#4525 review HIGH-2,
- * MED-1).
+ * The dock is bound to Pulse while the active chat belongs to Other.
+ * Starting a draft must use Pulse without changing the active chat's context
+ * (archive#4525 review HIGH-2, MED-1).
  */
 function openForeignChatInPulseBoundDock() {
   deviceSettingsStore.set('chatDockProjectSlug', 'pulse');
@@ -625,35 +657,27 @@ function openForeignChatInPulseBoundDock() {
   renderDockedPane();
 }
 
-test('the docked destination names the bound Project, never the foreign chat on screen', async () => {
+function clickDockedNewChat() {
+  fireEvent.click(
+    within(
+      screen.getByRole('complementary', { name: 'Inbox chats' }),
+    ).getByRole('button', { name: 'New chat' }),
+  );
+}
+
+test('the docked start composer defaults to the bound Project, never the foreign chat on screen', async () => {
   openForeignChatInPulseBoundDock();
   await act(async () => {});
-
-  // New's destination: the bound Project. Its tooltip is where a NEW chat
-  // runs, not the foreign chat's directory, and the bar prints no "This
-  // chat" contrast beside it (the chat's own project is its context card).
-  const badge = screen.getByRole('button', { name: 'New chats: Pulse' });
-  expect(badge.getAttribute('title')).not.toContain('/work/other');
-  expect(document.querySelector('.chat-dock__project-session-name')).toBeNull();
-
-  // The switcher marks the bound Project as current.
-  fireEvent.click(badge);
-  await screen.findByRole('dialog', { name: 'Projects' });
-  expect(
-    screen
-      .getByRole('button', { name: 'Switch to Pulse' })
-      .closest('li')
-      ?.getAttribute('aria-current'),
-  ).toBe('true');
-  expect(
-    screen
-      .getByRole('button', { name: 'Switch to Other' })
-      .closest('li')
-      ?.getAttribute('aria-current'),
-  ).toBeNull();
+  expect(screen.queryByRole('button', { name: /^New chats:/ })).toBeNull();
+  expect(screen.getByTestId('active-chat-body')).toBeTruthy();
+  clickDockedNewChat();
+  await screen.findByRole('region', { name: 'New chat picker' });
+  expect(pickerProps.at(-1)!.activeProjectSlug).toBe('pulse');
+  expect(pickerProps.at(-1)!.projectBindable).toBe(true);
+  expect(createChatSession).not.toHaveBeenCalled();
 });
 
-test('a foreign chat’s code layout is its own Project’s, not the badge’s (archive#4525 review HIGH-2)', async () => {
+test('a foreign chat’s code layout is its own Project’s, not the future default’s (archive#4525 review HIGH-2)', async () => {
   openForeignChatInPulseBoundDock();
   await act(async () => {});
 
@@ -672,7 +696,7 @@ test('a foreign chat’s code layout is its own Project’s, not the badge’s (
   );
 });
 
-test('the mobile header names the same bound Project as the desktop badge', async () => {
+test('the mobile header receives the dock’s future Project binding', async () => {
   dockProbe.mobile = true;
   openForeignChatInPulseBoundDock();
   expect(
@@ -680,20 +704,25 @@ test('the mobile header names the same bound Project as the desktop badge', asyn
   ).toBe('Pulse');
 });
 
-test('switching Project rebinds the dock and opens no New Chat picker (archive#4524)', async () => {
+test('a changed future Project binding preserves the active chat and supplies the next draft', async () => {
   openForeignChatInPulseBoundDock();
   await act(async () => {});
-
-  fireEvent.click(screen.getByRole('button', { name: 'New chats: Pulse' }));
-  fireEvent.click(
-    await screen.findByRole('button', { name: 'Switch to Other' }),
-  );
+  const selectedChat = navigationStore.getSnapshot().activeChat;
+  expect(selectedChat).toBe('chat-a');
+  const writesBefore = updateChat.mock.calls.length;
+  // The picker’s UI owns selection; this parent seam observes its persisted binding.
+  act(() => deviceSettingsStore.set('chatDockProjectSlug', 'other'));
   await act(async () => {});
-
-  expect(deviceSettingsStore.get('chatDockProjectSlug')).toBe('other');
-  expect(screen.getByRole('button', { name: 'New chats: Other' })).toBeTruthy();
+  expect(navigationStore.getSnapshot().activeChat).toBe(selectedChat);
+  expect(updateChat).toHaveBeenCalledTimes(writesBefore);
   expect(screen.queryByRole('region', { name: 'New chat picker' })).toBeNull();
   expect(pickerProps).toHaveLength(0);
+  expect(screen.getByTestId('active-chat-body')).toBeTruthy();
+  expect(createChatSession).not.toHaveBeenCalled();
+  clickDockedNewChat();
+  await screen.findByRole('region', { name: 'New chat picker' });
+  expect(pickerProps.at(-1)!.activeProjectSlug).toBe('other');
+  expect(updateChat).toHaveBeenCalledTimes(writesBefore);
   expect(createChatSession).not.toHaveBeenCalled();
 });
 
@@ -703,7 +732,7 @@ test('the docked New chat button opens a draft in the bound Project with one rea
   renderDockedPane();
   await act(async () => {});
 
-  fireEvent.click(screen.getByTitle('New chat (Ctrl+T)'));
+  clickDockedNewChat();
   await screen.findByRole('region', { name: 'New chat picker' });
   expect(pickerProps.at(-1)!.activeProjectSlug).toBe('pulse');
   expect(pickerProps.at(-1)!.startSurface).toBe(true);
@@ -718,7 +747,7 @@ test('the dock reads run locations only while the start composer is open, and ha
   // Nothing reads run locations while the dock shows no start composer.
   expect(runLocationReads).toEqual([]);
 
-  fireEvent.click(screen.getByTitle('New chat (Ctrl+T)'));
+  clickDockedNewChat();
   await screen.findByRole('region', { name: 'New chat picker' });
 
   expect(runLocationReads.length).toBeGreaterThan(0);
@@ -731,7 +760,7 @@ test('the dock hands the start composer the sidebar’s project icons', async ()
   renderDockedPane();
   await act(async () => {});
 
-  fireEvent.click(screen.getByTitle('New chat (Ctrl+T)'));
+  clickDockedNewChat();
   await screen.findByRole('region', { name: 'New chat picker' });
   const icons = pickerProps.at(-1)!.projectIconBySlug as ReadonlyMap<
     string,
@@ -753,7 +782,7 @@ test('the docked New Chat picker defaults to the dock’s bound Project', async 
   await act(async () => {});
 
   // New chat retains the bound Project with multiple Agents too.
-  fireEvent.click(screen.getByTitle('New chat (Ctrl+T)'));
+  clickDockedNewChat();
   await screen.findByRole('region', { name: 'New chat picker' });
   expect(pickerProps.at(-1)!.activeProjectSlug).toBe('pulse');
   expect(createChatSession).not.toHaveBeenCalled();
@@ -777,6 +806,39 @@ test('the open pane records the chat on screen as viewed (#4266)', async () => {
   await act(async () => {});
   expect(screen.getByTestId('active-chat-body')).toBeTruthy();
   expect(acknowledgeCalls.at(-1)).toEqual({ id: 'chat-a', visible: true });
+});
+
+test('a phone opens its dock at the inbox without adding a modal layer', async () => {
+  dockProbe.mobile = true;
+  openChatA();
+  navigationStore.navigate('/', { dock: 'open' });
+  renderDockedPane();
+  const inbox = await screen.findByRole('region', { name: 'Inbox' });
+  expect(inbox.closest('.chat-dock__workspace')).not.toBeNull();
+  expect(screen.queryByRole('dialog', { name: 'Chats and tasks' })).toBeNull();
+  expect(
+    screen.getByRole('button', { name: 'Pulse chat, pulse' }),
+  ).toBeTruthy();
+});
+
+test('returning to the inbox keeps the reader mounted and preserves its unsent text', async () => {
+  dockProbe.mobile = true;
+  openChatA();
+  navigationStore.navigate('/', { chat: 'chat-a', dock: 'open' });
+  renderDockedPane();
+  const composer = await screen.findByRole('textbox', {
+    name: 'Chat composer',
+  });
+  fireEvent.change(composer, { target: { value: 'Keep this draft' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Open task switcher' }));
+  const inbox = await screen.findByRole('region', { name: 'Inbox' });
+  expect(composer.isConnected).toBe(true);
+  expect(composer.closest('[hidden]')).not.toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Open task switcher' }));
+  expect(screen.queryByRole('region', { name: 'Inbox' })).toBeNull();
+  expect(inbox.isConnected).toBe(true);
+  expect(screen.getByRole('textbox', { name: 'Chat composer' })).toBe(composer);
+  expect((composer as HTMLTextAreaElement).value).toBe('Keep this draft');
 });
 
 test('the phone’s task switcher covers the chat, so it stops counting as viewed (#4266)', async () => {
@@ -1093,35 +1155,46 @@ test('the dock moving to another chat by any route dismisses the draft with its 
 
 // A bare New chat (header, Cmd+T, the palette) while a draft is open keeps
 // that draft and focuses it; a request carrying something replaces it.
-test('a plain New chat keeps the open draft and focuses it; one with a prompt replaces it', async () => {
-  navigationStore.navigate('/', { dock: 'open' });
-  renderDockedPane();
-  await act(async () => {});
-  const onClosed = vi.fn();
-  act(() => {
-    dispatchNewChatIntent({ initialPrompt: 'Mine', onClosed });
-  });
-  await screen.findByRole('region', { name: 'New chat picker' });
-  const mounts = pickerMounts.length;
+test.each([false, true])(
+  'a plain New chat keeps the open draft and focuses it (mobile=%s); one with a prompt replaces it',
+  async (mobile) => {
+    dockProbe.mobile = mobile;
+    navigationStore.navigate('/', { dock: 'open' });
+    renderDockedPane();
+    await act(async () => {});
+    const onClosed = vi.fn();
+    act(() => {
+      dispatchNewChatIntent({ initialPrompt: 'Mine', onClosed });
+    });
+    await screen.findByRole('region', { name: 'New chat picker' });
+    const mounts = pickerMounts.length;
+    if (mobile) {
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Open task switcher' }),
+      );
+      await screen.findByRole('region', { name: 'Inbox' });
+      expect(pickerProps.at(-1)!.historyActive).toBe(false);
+    }
 
-  act(() => {
-    dispatchNewChatIntent({});
-  });
-  await waitFor(() =>
-    expect(document.activeElement).toBe(
-      screen.getByRole('textbox', { name: 'Draft text' }),
-    ),
-  );
-  expect(pickerMounts).toHaveLength(mounts);
-  expect(onClosed).not.toHaveBeenCalled();
+    act(() => {
+      dispatchNewChatIntent({});
+    });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole('textbox', { name: 'Draft text' }),
+      ),
+    );
+    expect(pickerMounts).toHaveLength(mounts);
+    expect(onClosed).not.toHaveBeenCalled();
 
-  act(() => {
-    dispatchNewChatIntent({ initialPrompt: 'Something else' });
-  });
-  await waitFor(() => expect(pickerMounts).toHaveLength(mounts + 1));
-  expect(pickerProps.at(-1)!.initialPrompt).toBe('Something else');
-  expect(onClosed).toHaveBeenCalledExactlyOnceWith('dismissed', undefined);
-});
+    act(() => {
+      dispatchNewChatIntent({ initialPrompt: 'Something else' });
+    });
+    await waitFor(() => expect(pickerMounts).toHaveLength(mounts + 1));
+    expect(pickerProps.at(-1)!.initialPrompt).toBe('Something else');
+    expect(onClosed).toHaveBeenCalledExactlyOnceWith('dismissed', undefined);
+  },
+);
 
 // Collapsing the dock (as a phone's setup journey does) keeps the draft
 // mounted, hidden: its whole state survives, and an automatic start that
@@ -1248,6 +1321,445 @@ test('the chat a draft covers is not foreground while the draft is open', async 
   await waitFor(() => expect(isChatInForeground(ids)).toBe(true));
 });
 
+test('the ambient Inbox revokes foreground ownership and clears covered answer selection', async () => {
+  dockProbe.mobile = true;
+  openChatA();
+  navigationStore.navigate('/', { dock: 'open', chat: 'chat-a' });
+  renderDockedPane();
+  const answer = await screen.findByTestId('answer-selection');
+  const selection = window.getSelection()!;
+  const range = document.createRange();
+  range.selectNodeContents(answer);
+  selection.removeAllRanges();
+  selection.addRange(range);
+  const ids = { chatKey: 'chat-a', threadId: 'chat-a' };
+  expect(isChatInForeground(ids)).toBe(true);
+  expect(selection.toString()).toBe('Ready for review.');
+  fireEvent.click(screen.getByRole('button', { name: 'Open task switcher' }));
+  await screen.findByRole('region', { name: 'Inbox' });
+  expect(isChatInForeground(ids)).toBe(false);
+  expect(selection.isCollapsed).toBe(true);
+  fireEvent.click(screen.getByRole('button', { name: 'Open task switcher' }));
+  expect(isChatInForeground(ids)).toBe(true);
+});
+
+test('the Inbox does not accept a drop for the hidden chat or retain its drag affordance', async () => {
+  dockProbe.mobile = true;
+  openChatA();
+  navigationStore.navigate('/', { dock: 'open', chat: 'chat-a' });
+  renderDockedPane();
+  await act(async () => {});
+  expect(dragFileOverPane()).toBe(true);
+  fireEvent.click(screen.getByRole('button', { name: 'Open task switcher' }));
+  await screen.findByRole('region', { name: 'Inbox' });
+  expect(dragFileOverPane()).toBe(false);
+  expect(screen.queryByTestId('chat-pane-file-drop-overlay')).toBeNull();
+});
+
+function addSavedConversation() {
+  paneQueryClient!.setQueryData(orchestrationQueries.sessions().queryKey, [
+    {
+      threadId: 'saved-thread',
+      conversationId: 'saved-conversation',
+      assignedAgentSlug: 'assistant',
+      displayTitle: 'Saved conversation',
+      projectSlug: 'pulse',
+      provider: 'claude',
+      status: 'idle',
+      controlMode: 'station-owned',
+      answerability: { answerable: true },
+      isLoaded: true,
+      isPersisted: true,
+      eventCount: 1,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+  ]);
+}
+
+test('a real failed history open stays at Inbox instead of falling back to the imported reader', async () => {
+  dockProbe.mobile = true;
+  openChatA();
+  navigationStore.navigate('/', { dock: 'open', chat: 'chat-a' });
+  renderDockedPane();
+  await act(async () => {});
+  act(addSavedConversation);
+  fireEvent.click(screen.getByRole('button', { name: 'Open task switcher' }));
+  const saved = await screen.findByRole('button', {
+    name: 'Saved conversation, pulse',
+  });
+  fireEvent.click(saved);
+  await act(async () => {});
+  expect(openConversationAction).toHaveBeenCalledOnce();
+  expect(screen.getByRole('region', { name: 'Inbox' })).toBeTruthy();
+  expect(navigationStore.getSnapshot().activeChat).toBe('chat-a');
+});
+
+test.each([false, true])(
+  'the global picker routes only a current selection; a routed open keeps the new-chat Project (deferred: %s)',
+  async (deferred) => {
+    openChatA();
+    const conversation: ConversationListItem = {
+      id: 'other-conversation',
+      source: 'runtime',
+      agentSlug: agentId('assistant'),
+      title: 'Other Project conversation',
+      projectSlug: 'other',
+      mutable: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      messageCount: 2,
+      answerability: { answerable: true },
+    };
+    const resolution: ConversationOpenResolution = {
+      status: 'resolved',
+      conversation,
+      currentSessionId: conversation.id,
+      transcript: { available: true, owner: 'runtime', messageCount: 2 },
+      canContinue: true,
+      answerability: { answerable: true },
+      recoveryActions: [],
+    };
+    dockProbe.sessions.push({
+      ...chatSession('chat-b'),
+      conversationId: conversation.id,
+      projectSlug: 'other',
+      title: conversation.title,
+    });
+    activeChatsStore.initChat('chat-b', {
+      agentSlug: agentId('assistant'),
+      agentName: 'Assistant',
+      title: conversation.title,
+      projectSlug: 'other',
+      conversationId: conversation.id,
+    });
+    let resolveOpen: (() => void) | undefined;
+    const fetchBefore = globalThis.fetch;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url =
+          typeof input === 'string'
+            ? input
+            : input instanceof URL
+              ? input.href
+              : input.url;
+        if (url.endsWith('/api/conversations/other-conversation/open')) {
+          if (deferred)
+            await new Promise<void>((resolve) => {
+              resolveOpen = resolve;
+            });
+          return Response.json({ success: true, data: resolution });
+        }
+        return fetchBefore(input, init);
+      }),
+    );
+    try {
+      navigationStore.setLayout('pulse', 'coding');
+      navigationStore.setActiveChat('chat-a');
+      // Entering Pulse's workspace chose Pulse for new chats.
+      expect(deviceSettingsStore.get('chatDockProjectSlug')).toBe('pulse');
+      renderInProviders(<RouteScopedChatPane />);
+      await act(async () => {});
+      act(() =>
+        paneQueryClient!.setQueryData(
+          conversationQueries.inventory().queryKey,
+          {
+            pages: [{ items: [conversation], hasMore: false }],
+            pageParams: [undefined],
+          },
+        ),
+      );
+      fireEvent.click(
+        screen.getByRole('button', { name: 'More dock actions' }),
+      );
+      fireEvent.click(
+        await screen.findByRole('menuitem', { name: /^Open chat/ }),
+      );
+      await screen.findByRole('dialog', { name: 'Open chat' });
+      fireEvent.click(
+        screen.getByRole('button', { name: /Other Project conversation/ }),
+      );
+      if (deferred) {
+        await waitFor(() => expect(resolveOpen).toBeDefined());
+        fireEvent.keyDown(document, { key: 'Escape' });
+        await waitFor(() =>
+          expect(
+            screen.queryByRole('dialog', { name: 'Open chat' }),
+          ).toBeNull(),
+        );
+        act(() => dispatchNewChatIntent({}));
+        await screen.findByRole('region', { name: 'New chat picker' });
+        await act(async () => resolveOpen!());
+        expect(navigationStore.getSnapshot().activeChat).toBe('chat-a');
+        expect(navigationStore.getSnapshot().pathname).toContain(
+          '/projects/pulse/',
+        );
+        expect(
+          screen.getByRole('region', { name: 'New chat picker' }),
+        ).toBeTruthy();
+        return;
+      }
+      await waitFor(() =>
+        expect(navigationStore.getSnapshot().pathname).toContain(
+          '/projects/other/',
+        ),
+      );
+      await waitFor(() =>
+        expect(navigationStore.getSnapshot().activeChat).toBe(conversation.id),
+      );
+      expect(navigationStore.getSnapshot().pathname).toContain(
+        '/projects/other/',
+      );
+      // Opening an existing conversation routes to its own Project without
+      // replacing the Project chosen for new chats.
+      expect(deviceSettingsStore.get('chatDockProjectSlug')).toBe('pulse');
+      expect(openConversationAction).not.toHaveBeenCalled();
+    } finally {
+      vi.stubGlobal('fetch', fetchBefore);
+    }
+  },
+);
+
+test.each(['another-chat', 'new-chat', 'same-loading-chat'] as const)(
+  'a delayed saved open preserves healthy hydration after selecting %s',
+  async (next) => {
+    dockProbe.mobile = true;
+    openChatA();
+    dockProbe.sessions.push({
+      ...chatSession('chat-b'),
+      title: 'Later conversation',
+    });
+    activeChatsStore.initChat('chat-b', {
+      agentSlug: 'assistant',
+      agentName: 'Assistant',
+      title: 'Later conversation',
+      projectSlug: 'pulse',
+    } as Parameters<typeof activeChatsStore.initChat>[1]);
+    let finishOpen: ((id: string) => void) | undefined;
+    let hydration: Parameters<ReturnType<typeof useOpenConversation>>[8];
+    openConversationAction.mockImplementationOnce((...args) => {
+      hydration = args[8];
+      hydration!.initialized('late-saved-tab');
+      return new Promise<string>((resolve) => {
+        finishOpen = resolve;
+      });
+    });
+    navigationStore.navigate('/', { dock: 'open', chat: 'chat-a' });
+    renderDockedPane();
+    await act(async () => {});
+    act(addSavedConversation);
+    fireEvent.click(screen.getByRole('button', { name: 'Open task switcher' }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Saved conversation, pulse' }),
+    );
+    expect(finishOpen).toBeDefined();
+    if (next === 'same-loading-chat') {
+      dockProbe.sessions.push({
+        ...chatSession('late-saved-tab'),
+        conversationId: 'saved-conversation',
+        title: 'Loading saved chat',
+      });
+      activeChatsStore.initChat('late-saved-tab', {
+        title: 'Loading saved chat',
+        agentSlug: agentId('assistant'),
+        agentName: 'Assistant',
+        conversationId: 'saved-conversation',
+        projectSlug: 'pulse',
+      });
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Open task switcher' }),
+      );
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Open task switcher' }),
+      );
+      act(() => openChatsStore.focus({ sessionId: 'late-saved-tab' }));
+    } else if (next === 'another-chat')
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Later conversation, pulse' }),
+      );
+    else act(() => dispatchNewChatIntent({}));
+    if (next === 'another-chat')
+      expect(navigationStore.getSnapshot().activeChat).toBe('chat-b');
+    else if (next === 'new-chat')
+      await screen.findByRole('region', { name: 'New chat picker' });
+    else
+      expect(navigationStore.getSnapshot().activeChat).toBe(
+        'saved-conversation',
+      );
+    expect(hydration!.current()).toBe(true);
+    await act(async () => finishOpen!('late-saved-tab'));
+    if (next === 'another-chat')
+      expect(navigationStore.getSnapshot().activeChat).toBe('chat-b');
+    else if (next === 'same-loading-chat')
+      expect(navigationStore.getSnapshot().activeChat).toBe(
+        'saved-conversation',
+      );
+    else {
+      expect(
+        screen.getByRole('region', { name: 'New chat picker' }),
+      ).toBeTruthy();
+      expect(navigationStore.getSnapshot().activeChat).toBe('chat-a');
+    }
+  },
+);
+
+test.each(['external-history', 'url-lookup', 'url-history'] as const)(
+  'a pending %s open cannot replace a later New chat draft',
+  async (entry) => {
+    dockProbe.mobile = true;
+    openChatA();
+    let finishHistory: ((id: string) => void) | undefined;
+    let finishLookup: (() => void) | undefined;
+    openConversationAction.mockImplementationOnce(
+      () =>
+        new Promise<string>((resolve) => {
+          finishHistory = resolve;
+        }),
+    );
+    const fetchBefore = globalThis.fetch;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url =
+          typeof input === 'string'
+            ? input
+            : input instanceof URL
+              ? input.href
+              : input.url;
+        if (url.endsWith('/api/conversations/cold-conversation')) {
+          if (entry === 'url-lookup')
+            await new Promise<void>((resolve) => {
+              finishLookup = resolve;
+            });
+          return Response.json({
+            success: true,
+            data: {
+              id: 'cold-conversation',
+              agentSlug: 'assistant',
+              projectSlug: 'other',
+            },
+          });
+        }
+        return fetchBefore(input, init);
+      }),
+    );
+    try {
+      navigationStore.navigate('/', {
+        dock: 'open',
+        chat: entry === 'external-history' ? 'chat-a' : 'cold-conversation',
+      });
+      renderDockedPane();
+      await act(async () => {});
+      if (entry === 'external-history')
+        act(() =>
+          openChatsStore.focus({
+            conversationId: 'cold-conversation',
+            agentSlug: 'assistant',
+            projectSlug: 'other',
+            threadId: 'cold-thread',
+          }),
+        );
+      await waitFor(() =>
+        expect(
+          entry === 'url-lookup' ? finishLookup : finishHistory,
+        ).toBeDefined(),
+      );
+      act(() => dispatchNewChatIntent({}));
+      await screen.findByRole('region', { name: 'New chat picker' });
+      await act(async () => {
+        if (entry === 'url-lookup') finishLookup!();
+        else finishHistory!('late-cold-tab');
+      });
+      expect(
+        screen.getByRole('region', { name: 'New chat picker' }),
+      ).toBeTruthy();
+      expect(navigationStore.getSnapshot().activeChat).toBe(
+        entry === 'external-history' ? 'chat-a' : 'cold-conversation',
+      );
+      expect(navigationStore.getSnapshot().pathname).toBe('/');
+      if (entry === 'url-lookup')
+        expect(openConversationAction).not.toHaveBeenCalled();
+    } finally {
+      vi.stubGlobal('fetch', fetchBefore);
+    }
+  },
+);
+
+test.each(['timer', 'catalog'] as const)(
+  'a cold URL %s retry cannot renew selection after New chat',
+  async (retry) => {
+    dockProbe.mobile = true;
+    dockProbe.agentsLoaded = retry !== 'catalog';
+    openChatA();
+    let releaseLookup: (() => void) | undefined;
+    let lookupCount = 0;
+    const fetchBefore = globalThis.fetch;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url =
+          typeof input === 'string'
+            ? input
+            : input instanceof URL
+              ? input.href
+              : input.url;
+        if (url.endsWith('/api/conversations/cold-conversation')) {
+          lookupCount += 1;
+          if (lookupCount === 1) {
+            await new Promise<void>((resolve) => {
+              releaseLookup = resolve;
+            });
+            if (retry === 'timer')
+              return Response.json(
+                { success: false, error: 'Temporary failure' },
+                { status: 503 },
+              );
+          }
+          return Response.json({
+            success: true,
+            data: {
+              id: 'cold-conversation',
+              agentSlug: 'assistant',
+              projectSlug: 'other',
+            },
+          });
+        }
+        return fetchBefore(input, init);
+      }),
+    );
+    try {
+      navigationStore.navigate('/', {
+        dock: 'open',
+        chat: 'cold-conversation',
+      });
+      renderDockedPane();
+      await waitFor(() => expect(releaseLookup).toBeDefined());
+      await act(async () => releaseLookup!());
+      act(() => {
+        dispatchNewChatIntent({});
+        dockProbe.agentsLoaded = true;
+      });
+      await screen.findByRole('region', { name: 'New chat picker' });
+      if (retry === 'timer')
+        await act(
+          async () => new Promise((resolve) => setTimeout(resolve, 350)),
+        );
+      await act(async () => {});
+      expect(lookupCount).toBe(1);
+      expect(openConversationAction).not.toHaveBeenCalled();
+      expect(navigationStore.getSnapshot().activeChat).toBe(
+        'cold-conversation',
+      );
+      expect(
+        screen.getByRole('region', { name: 'New chat picker' }),
+      ).toBeTruthy();
+    } finally {
+      vi.stubGlobal('fetch', fetchBefore);
+    }
+  },
+);
+
 // The draft owns a file dropped on it; the chat it covers must not take it.
 test('the covered chat does not take file drops while a draft is open', async () => {
   dockProbe.sessions = [chatSession('chat-a')];
@@ -1304,14 +1816,25 @@ test('the header shows no project destination while a draft is open', async () =
   navigationStore.navigate('/', { dock: 'open' });
   renderDockedPane();
   await act(async () => {});
-  expect(screen.getByRole('button', { name: 'New chats: Pulse' })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: /^New chats:/ })).toBeNull();
+  expect(
+    within(
+      screen.getByRole('complementary', { name: 'Inbox chats' }),
+    ).getByRole('button', { name: 'New chat' }),
+  ).toBeTruthy();
   act(() => {
     dispatchNewChatIntent({});
   });
   await screen.findByRole('region', { name: 'New chat picker' });
   expect(screen.queryByRole('button', { name: /^New chats:/ })).toBeNull();
   act(() => pickerProps.at(-1)!.onClose());
-  await screen.findByRole('button', { name: 'New chats: Pulse' });
+  await waitFor(() =>
+    expect(
+      screen.queryByRole('region', { name: 'New chat picker' }),
+    ).toBeNull(),
+  );
+  expect(screen.queryByRole('button', { name: /^New chats:/ })).toBeNull();
+  expect(deviceSettingsStore.get('chatDockProjectSlug')).toBe('pulse');
   cleanup();
 
   dockProbe.mobile = true;

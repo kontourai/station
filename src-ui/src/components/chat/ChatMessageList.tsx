@@ -13,9 +13,11 @@ import { useApiBase } from '../../contexts/ApiBaseContext';
 import type { ChatContentPart } from '../../contexts/active-chats-state';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { chatFormDraftsStore } from '../../contexts/chat-form-drafts-store';
+import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
 import { unansweredApprovalRequests } from '../../hooks/orchestration/pendingRequestRows';
 import { useSendMessage } from '../../hooks/useActiveChatSessions';
 import { useCopyToClipboardToast } from '../../hooks/useCopyToClipboardToast';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { useToolApproval } from '../../hooks/useToolApproval';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
 import type { ChatMessage, ChatSession } from '../../types';
@@ -28,6 +30,7 @@ import {
   requestsWaitingOnUser,
 } from '../../utils/waiting-approvals';
 import { AgentIcon } from '../icons/AgentIcon';
+import { LazyBoundary } from '../LazyBoundary';
 import { LoadingDots } from '../LoadingDots';
 import {
   REVEAL_APPROVAL_EVENT,
@@ -74,6 +77,7 @@ import {
   TranscriptChildrenContext,
   TranscriptTurnContext,
 } from './transcript-child-work';
+import { BROWSE_TURNS_EVENT } from './transcript-turn-browser-events';
 import {
   markTranscriptPhase,
   noteTranscriptProgrammaticScroll,
@@ -92,6 +96,11 @@ import {
   UIBlockActionsContext,
   type UIBlockFormSubmission,
 } from './UIBlockActionsContext';
+
+const loadTurnBrowser = () =>
+  import('./TranscriptTurnBrowser').then((module) => ({
+    default: module.TranscriptTurnBrowser,
+  }));
 
 interface ChatMessageListProps {
   activeSession: ChatSession;
@@ -123,6 +132,7 @@ interface ChatMessageListProps {
    */
   progressSilenceShownElsewhere?: boolean;
   onLoadOlder?: () => Promise<void>;
+  onLoadTurn?: (turnId: string, signal?: AbortSignal) => Promise<boolean>;
   /**
    * archive#1301: when provided, the background-tasks banner below
    * becomes a real tap target opening the Background tasks sheet instead of
@@ -254,6 +264,7 @@ function ChatMessageListComponent({
   statusShownElsewhere,
   progressSilenceShownElsewhere,
   onLoadOlder,
+  onLoadTurn,
   onOpenBackgroundTasks,
   liveStatusUnavailable = false,
   owner,
@@ -266,6 +277,26 @@ function ChatMessageListComponent({
   approvalEventsSettled,
 }: ChatMessageListProps) {
   const agents = useAgents();
+  const isMobile = useIsMobile();
+  const [turnBrowserOpen, setTurnBrowserOpen] = useState(false);
+  const [pendingTurnJump, setPendingTurnJump] = useState<string | null>(null);
+  useEffect(() => {
+    const browse = (event: Event) => {
+      if (
+        (event as CustomEvent<{ chatStoreId: string }>).detail?.chatStoreId ===
+        activeSession.id
+      )
+        setTurnBrowserOpen(true);
+    };
+    window.addEventListener(BROWSE_TURNS_EVENT, browse);
+    return () => window.removeEventListener(BROWSE_TURNS_EVENT, browse);
+  }, [activeSession.id]);
+  useEffect(() => {
+    void activeSession.id;
+    setTurnBrowserOpen(false);
+    setPendingTurnJump(null);
+  }, [activeSession.id]);
+  const { chatAnswerWidth } = useDeviceSettings();
   const { apiBase } = useApiBase();
   const handleCopy = useCopyToClipboardToast();
   const handleToolApproval = useToolApproval(apiBase);
@@ -1321,6 +1352,16 @@ function ChatMessageListComponent({
     },
     [writeProgrammaticScroll, clearMessageRevealHash],
   );
+  useEffect(() => {
+    if (!pendingTurnJump) return;
+    const index = turnLandmarks.findIndex(
+      (turn) => turn.turnId === pendingTurnJump,
+    );
+    if (index >= 0) {
+      jumpToTurn(index);
+      setPendingTurnJump(null);
+    }
+  }, [pendingTurnJump, turnLandmarks, jumpToTurn]);
   const previousTurn = turnStepTarget(turnViewport, -1, turnLandmarks.length);
   const nextTurn = turnStepTarget(turnViewport, 1, turnLandmarks.length);
   // A step keeps focus on itself, so where it landed is said aloud: the
@@ -1658,12 +1699,13 @@ function ChatMessageListComponent({
   // the same place: stepping keeps focus on the Previous button as the
   // group grows to its away-from-the-end form.
   const latestTurnStep =
+    !isMobile &&
     !scrollToBottomControl &&
     turnNavigation &&
     !turnRailAvailable &&
     Boolean(scrollControlsTarget);
   const scrollControls =
-    scrollToBottomControl && turnNavigation ? (
+    scrollToBottomControl && turnNavigation && !isMobile ? (
       <TranscriptTurnActions
         previousTurn={previousTurn}
         nextTurn={nextTurn}
@@ -1750,6 +1792,7 @@ function ChatMessageListComponent({
           />
           <div
             className="chat-messages"
+            data-answer-width={chatAnswerWidth}
             ref={messagesContainerRef}
             role="log"
             tabIndex={-1}
@@ -1938,6 +1981,25 @@ function ChatMessageListComponent({
               />
             )}
           </div>
+          {turnBrowserOpen && (
+            <LazyBoundary
+              load={loadTurnBrowser}
+              pending={null}
+              componentProps={{
+                conversationId: activeSession.conversationId,
+                landmarks: turnLandmarks,
+                onJumpLoaded: jumpToTurn,
+                onLoadTurn: onLoadTurn
+                  ? async (turnId: string, signal: AbortSignal) => {
+                      const found = await onLoadTurn(turnId, signal);
+                      if (found && !signal.aborted) setPendingTurnJump(turnId);
+                      return found;
+                    }
+                  : undefined,
+                onClose: () => setTurnBrowserOpen(false),
+              }}
+            />
+          )}
           {turnNavigation && (
             <TranscriptTurnRail
               // A chat switch starts the rail over: a hover or a dismissed

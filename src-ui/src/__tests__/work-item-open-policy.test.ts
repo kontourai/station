@@ -282,6 +282,24 @@ describe('openWorkItem', () => {
     expect(onOpenSession).toHaveBeenCalledWith('thread-1');
   });
 
+  it.each(['unavailable', 'cancelled'] as const)(
+    'keeps %s opens distinct from the deleted-agent fallback',
+    async (result) => {
+      const onOpenSession = vi.fn();
+      const outcome = await openWorkItem(
+        baseItem({ orchestrationThreadId: 'saved', agentSlug: 'claude-code' }),
+        {
+          onFocusChat: vi.fn(),
+          onOpenConversation: vi.fn().mockResolvedValue(result),
+          onOpenSession,
+          agentsLoaded: true,
+        },
+      );
+      expect(outcome).toBe(result);
+      expect(onOpenSession).not.toHaveBeenCalled();
+    },
+  );
+
   // archive#3687 seam 1: `false` from openConversation means "agent deleted"
   // ONLY once the catalog has answered. While it is pending or failed, every
   // rehydrate resolves false — and this used to bounce EVERY inbox click to

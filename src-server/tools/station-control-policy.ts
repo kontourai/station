@@ -139,12 +139,18 @@ export type StationControlHttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
  *   conversation, or a cancel of a wake-up recorded for another (or for
  *   none Station can read), is refused whoever asks (the guard reads the
  *   wake-up store, `wakeUpConversation`).
+ * - `automation-target-stays-in-own-conversation`: an automation that runs
+ *   in a conversation sends a turn there on every run, as its creator. An
+ *   agent's job may target only the agent's own conversation; a body that
+ *   names another, or a dedicated conversation of its own, is refused
+ *   whoever asks. A body with no `target` is not constrained by this rule.
  */
 export type StationControlRouteRule =
   | 'approval-commands-need-bound-operator'
   | 'thread-commands-stay-in-scope'
   | 'retarget-of-granted-job-is-person-only'
-  | 'wake-up-stays-in-own-conversation';
+  | 'wake-up-stays-in-own-conversation'
+  | 'automation-target-stays-in-own-conversation';
 
 export interface StationControlRoute {
   readonly method: StationControlHttpMethod;
@@ -351,6 +357,7 @@ export const STATION_CONTROL_TOOL_POLICY = {
   device_list: DEVICE_AGENT,
   device_open: DEVICE_AGENT,
   device_screenshot: DEVICE_AGENT,
+  device_capture_to_task: DEVICE_AGENT,
   device_snapshot: DEVICE_AGENT,
   device_input: DEVICE_AGENT,
   device_close: DEVICE_AGENT,
@@ -537,14 +544,24 @@ export const STATION_CONTROL_TOOL_POLICY = {
   },
 
   // ── operations: scheduler ──────────────────────────────────────────────
-  list_jobs: { ...READ, routes: [get('/scheduler/jobs')] },
+  list_jobs: {
+    ...READ,
+    routes: [
+      get('/scheduler/jobs'),
+      get('/api/runs'),
+      get('/api/runs/:runId'),
+      post('/api/runs/output'),
+    ],
+  },
   add_job: {
     ...OPERATOR_MUTATION,
     // Decision 1: a job that runs with every tool trusted runs host code
     // unattended, so asking for it is a person's step.
     personOnly: 'when-trust-all-tools',
     refusalHint: SCHEDULING_HINT,
-    routes: [post('/scheduler/jobs')],
+    routes: [
+      post('/scheduler/jobs', 'automation-target-stays-in-own-conversation'),
+    ],
   },
   // Self-scoped scheduling for any verified caller: the routes read the
   // caller's own conversation from the verified credential, never the body
@@ -577,7 +594,10 @@ export const STATION_CONTROL_TOOL_POLICY = {
   },
   list_wake_ups: {
     ...SELF_READ,
-    routes: [get('/api/orchestration/station-control/wake-ups')],
+    routes: [
+      get('/api/orchestration/station-control/wake-ups'),
+      get('/api/orchestration/agent-schedule/:conversationId'),
+    ],
   },
   cancel_wake_up: {
     assurance: 'any',
@@ -607,10 +627,9 @@ export const STATION_CONTROL_TOOL_POLICY = {
     ...READ,
     routes: [get('/scheduler/jobs/preview-schedule')],
   },
-  // Decision 2: scheduled jobs are the operator's Station-wide work (no job
-  // records a person), so their run output is an operator-wide read.
+  // The route admits each receipt against the target recorded at claim.
   get_job_logs: {
-    ...OPERATOR_READ,
+    ...READ,
     routes: [get('/scheduler/jobs/:target/logs')],
   },
   update_job: {
@@ -619,7 +638,11 @@ export const STATION_CONTROL_TOOL_POLICY = {
     // ordinary job and then update it to trust every tool.
     personOnly: 'when-trust-all-tools',
     routes: [
-      put('/scheduler/jobs/:target', 'retarget-of-granted-job-is-person-only'),
+      put(
+        '/scheduler/jobs/:target',
+        'retarget-of-granted-job-is-person-only',
+        'automation-target-stays-in-own-conversation',
+      ),
     ],
   },
   run_job: {
@@ -675,7 +698,10 @@ export const STATION_CONTROL_TOOL_POLICY = {
     // Its leaf is also shared with dispatch (slice C), which reaches it with
     // any verified caller and so is only as strict as dispatch until then.
     tightenedBy: ['C'],
-    routes: [get('/api/projects/:slug')],
+    routes: [
+      get('/api/projects/:slug'),
+      get('/api/projects/:slug/checkout-freshness'),
+    ],
   },
   list_project_layouts: {
     ...SELF_READ,
@@ -1496,6 +1522,12 @@ export interface StationControlPolicyContext {
    * `null` when it names a wake-up Station cannot find, which refuses.
    */
   readonly wakeUpConversationId?: string | null;
+  /**
+   * For `automation-target-stays-in-own-conversation`: the conversation a
+   * job body's `target` names. `undefined` when the body has no target;
+   * `null` when it names none an agent may use (a dedicated conversation).
+   */
+  readonly automationTargetConversationId?: string | null;
 }
 
 const ASSURANCE_RANK = {
@@ -1861,7 +1893,22 @@ const ROUTE_RULE_REFUSALS: Record<
       ? stationControlRefusal('station_control_person_only')
       : undefined,
   'wake-up-stays-in-own-conversation': wakeUpConversationRefusal,
+  'automation-target-stays-in-own-conversation': automationTargetRefusal,
 };
+
+/** `automation-target-stays-in-own-conversation`. */
+function automationTargetRefusal(
+  context: StationControlPolicyContext,
+): StationControlRefusal | undefined {
+  const named = context.automationTargetConversationId;
+  if (named === undefined) return undefined;
+  const caller = context.caller;
+  if (!caller) return stationControlRefusal('station_control_caller_required');
+  const own = caller.conversationId ?? caller.sessionId;
+  return named === own
+    ? undefined
+    : stationControlOutOfScopeRefusal('other-conversation');
+}
 
 /** `wake-up-stays-in-own-conversation`. */
 function wakeUpConversationRefusal(

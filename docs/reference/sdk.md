@@ -224,6 +224,35 @@ Both mutations also accept `requestScope` in their input.
 disconnects the authenticated caller's selected account and refreshes account and
 integration queries. It does not delete the integration or disconnect other people.
 
+
+`IntegrationViewModel.engineCoverage` says, per external engine, whether
+Station applies the untrusted-content permission to its calls to that server
+(`station-gated`), the engine reaches the server itself (`engine-direct`), or
+Station does not deliver it (`not-delivered`); older hosts omit it.
+`trustReview` lists legacy trust settings waiting for a person; offer
+`useDecideIntegrationTrustReviewMutation({ id, decision: "keep" | "reset" })`
+only for an integration whose `trustReview` this host returned. It
+invalidates the integrations queries.
+
+## Integration capability status and Task write-back
+
+The SDK root exports `fetchIntegrationStatus(apiBase, options?)` and
+`useIntegrationStatusQuery(apiBase, config?)`, plus
+`fetchTaskWriteBack(apiBase, taskId, options?)` and
+`useTaskWriteBackQuery(apiBase, taskId, config?)`. Pass the captured
+`requestScope`; queries partition by Station and authority, discard unused
+cache data, refresh on mount, do not retain previous results, and do not retry
+automatically. The Task query also partitions by Task ID and may be disabled
+until the history is opened.
+
+Both readers validate the bounded response and reject malformed data. The
+status reader throws `IntegrationStatusUnsupportedError` on 404; the Task
+reader's 404 can mean a refused or absent Task, or an older host. Neither
+reader substitutes an empty or working result for a failure. These exports
+require an SDK version and Station host containing them. See the
+[API](api.md#integration-capability-status-and-task-write-back) for authority,
+probe limits and the current lack of outbound producers.
+
 ## Project tool library
 
 `@kontourai/station-sdk/tool-library` exposes `ToolLibraryClient` with explicit
@@ -301,9 +330,11 @@ once its minimum wait has elapsed. Those signals are coalesced per wait and
 spread reconnects by 100–999 ms, within the existing retry deadline. Explicit
 `retry()` and cancellation remain immediate; cursor and authorization handling
 are unchanged.
-Streams reconnect after
-75 seconds without body bytes by default; Station writes keepalives every
-30 seconds (Task rooms use 15 seconds). `stallTimeoutMs` overrides the deadline;
+Streams reconnect after 75 seconds without body bytes by default. Station's
+common event streams use a 30-second keepalive; Task rooms and direct-chat streams
+use 15 seconds, and Shared Project rooms use a 20-second heartbeat. Other stream
+contracts may differ. These are configured cadences, not delivery guarantees.
+`stallTimeoutMs` overrides the deadline;
 `null` explicitly disables it for a server without heartbeats. Any bytes count,
 including comments. Hidden pages defer the check until visible, focus or online
 signals; this is transport recovery, not physical-device qualification.
@@ -590,6 +621,13 @@ legacy unscoped callers keep their existing behavior. See the
 idempotency, compatibility and the meaning of reviewer acceptance.
 
 ### Task room attachments
+
+Account-bound Devices admitted to a shared Task room can use the existing room
+reads, messages and presence calls subject to their Device scope and current
+membership. The account-bound allowlist does not admit the attachment routes,
+document batch settlement or agent-request routes in this slice; discovery
+reports document writing unavailable. See the [Task room API](api.md#account-bound-task-room-access)
+for the exact leaves and action mapping.
 
 `@kontourai/station-sdk/project-task-rooms` exports
 `uploadTaskRoomAttachments(apiBase, taskId, taskCreatedAt, attachments, options?)`
@@ -1086,7 +1124,9 @@ The writable payload stays on the existing editable fields (`name`, `enabled`, `
 
 Returns the core text-model catalog as `SDKModel[]`, with `id`, `name`,
 `originalId`, and optional inference-profile metadata. The core filters out
-models without text output, disambiguates duplicate names and sorts by name.
+models without text output and sorts by name. Duplicate names gain an ID suffix
+only when the final colon-separated segment is nonempty and nonnumeric; labels
+can still be duplicated.
 Use `useModelsQuery()` for the raw catalog and loading/error state.
 
 #### `useAvailableModels()`
@@ -1301,7 +1341,7 @@ const result = useShortcut({
 });
 ```
 
-`id` is 1-64 letters, digits, `-` or `_`; Station lists it as
+`id` is 1-64 letters, digits, `-` or `_`, starting with a letter or digit; Station lists it as
 `plugin.<plugin>.<id>`, with the installed plugin's name percent-encoded. The
 result is `{ ok: true, registryId }` or `{ ok: false, reason, message }`, with
 `reason` one of `'unbound'`, `'reserved'`, `'invalid-id'`, `'invalid-keys'` or
@@ -1314,8 +1354,10 @@ result is `{ ok: true, registryId }` or `{ ok: false, reason, message }`, with
   (⌘/), and the text-editing chords ⌘C, ⌘V, ⌘X, ⌘Z, ⇧⌘Z and ⌘A (Ctrl off a
   Mac), and Ctrl+Y. Station never lets a plugin shortcut fire on them.
 
-Plugin shortcuts rank below Station's own: a Station shortcut on the same
-chord wins whichever registered first. See
+Plugin shortcuts use priority -1, below Station shortcuts at the normal
+priority 0, regardless of registration order. Deliberately yielding route
+fallbacks, such as Escape-up at priority -100, run after plugins. Reserved
+kernel and editing chords remain unavailable to plugins. See
 [plugin shortcuts](../guides/keyboard-shortcuts.md#plugin-shortcuts).
 
 A `when` string is a host context key (`'composerFocused'`,
@@ -1325,8 +1367,9 @@ names; combine them with `{ not }`, `{ and: [] }` and `{ or: [] }`.
 #### `useShortcutScope(name: string, active = true): void`
 
 Turns on one of your plugin's scopes while mounted and `active`. A scope is
-visible only to your plugin's shortcuts. A host context key, an invalid name
-or a pane without a verified plugin identity throws.
+visible only to your plugin's shortcuts. Its name follows the same 1-64
+character rule as a shortcut ID, starting with a letter or digit. A host
+context key, an invalid name or a pane without a verified plugin identity throws.
 
 ```tsx
 const [editing, setEditing] = useState(false);
@@ -1354,8 +1397,9 @@ it.
 
 #### `useHost(): SDKHost`
 
-Requests Station carries out with its own chrome and platform plumbing. None of
-the promises rejects.
+Requests Station carries out with its own chrome and platform plumbing.
+Ordinary refusals use the results described below. Native-adapter loading or
+initialization can still reject, so callers must handle rejected promises.
 
 ```tsx
 const host = useHost();
@@ -1366,7 +1410,8 @@ const decision = await host.confirm({ title: 'Delete?', message: 'This cannot be
 ```
 
 - `clipboard.writeText` resolves `true` only for a write the platform
-  accepted. Over plain `http://` there is no clipboard, so it resolves `false`.
+  accepted. A missing Clipboard API, an insecure context or a refused write
+  resolves `false`. Loopback HTTP can still be a secure context.
 - `openExternal` opens `http:` and `https:` URLs in the desktop app's system
   opener or a new browser tab, so the Station app is never replaced. It hands
   on the parsed, normalised URL. Any other scheme, or a URL with a user name or
@@ -1681,6 +1726,21 @@ prefix. Station reads it through `ProjectsContext`'s
 `useScopedProjectChatDefaultsQuery` (`staleTime: 0`, `refetchOnMount: true`)
 in the start composers, a chat that has not started, and Project settings.
 
+### `useProjectCheckoutFreshnessQuery(slug, config?)`
+
+Fetches `GET /api/projects/:slug/checkout-freshness` through
+`getProjectCheckoutFreshness`: how far the Project's checkout is behind its
+upstream ([Project checkout freshness](api.md#project-checkout-freshness)), or
+`null` when the route answers 404 or 501 (the Stale checkout warning preview is
+off, an older Station, a shared member, or no such Project); other failures
+throw. Scoped like `useProjectChatDefaultsQuery`, under
+`[PROJECT_CHECKOUT_FRESHNESS_QUERY_KEY_PREFIX, apiBase, identity, slug]`
+(`'project-checkout-freshness'`), outside the persisted `'projects'` prefix.
+Disabled without a slug. Station reads it through `ProjectsContext`'s
+`useScopedProjectCheckoutFreshnessQuery` (`staleTime: 10_000`, refetching on
+mount and window focus, since a pull happens outside Station) in Project
+settings, enabled only while the preview is on.
+
 ### `useProjectRunLocationsQuery(config?)`
 
 Fetches `GET /api/projects/run-locations` through `listProjectRunLocations`:
@@ -1982,8 +2042,9 @@ repository without branches.
 Discovers the git repositories under a folder through `/api/coding/repos` and
 returns `ReposResult`: `{ workspace, workspaceIsRepo, repos }`, where each
 `DiscoveredRepo` carries its symlink-resolved `root`, `name`, `relativePath`
-and current `branch` (`''` for a detached HEAD or a repository the Project does
-not own). Discovery is bounded: the walk stops at 24 repositories and skips
+and the current `branch` reported by Git (which can be `HEAD` when detached),
+or an empty string when the branch read fails or the repository is not owned by
+the Project. Discovery is bounded: the walk stops at 24 repositories and skips
 heavy directories, so an over-broad folder is sampled rather than exhaustively
 enumerated, and identical concurrent asks share one scan. `location` is a
 `ReposLocation`, `{ projectSlug?, workingDir }`: the
@@ -2771,7 +2832,14 @@ exact Station/local/portable Project scope, members and invitations. Commands
 enable sharing, invite or revoke invitations, change a member, or transfer
 ownership. Capture the returned scope and member revision for writes; do not
 reconstruct authority from a slug or email. Enabling requires the expected local
-Project ID and current Station operator authority.
+Project ID and current Station operator authority. For a paired Device with an
+operator passkey session, `changeProjectAccess` returns
+`{ kind: 'step-up-required', transaction }` instead (#4306). Nothing has changed
+until the passkey confirmation on the consent origin, whose HTTPS review URL must
+share the API base's host name. `getProjectSharingEnablement` reports how the
+caller may enable (`direct`, `operator-passkey`, `operator-sign-in` or
+`unavailable`), and `getProjectSharingStepUpStatus` reads the pending review.
+A host older than #4306 fails the enablement read.
 
 When the read is refused with 403 `project_access_forbidden`,
 `projectAccessRefusal(error)` returns the server's
@@ -2783,7 +2851,8 @@ whether the Project is shared). It returns `undefined` for any other error,
 including an older Station that sends no details.
 
 `@kontourai/station-sdk/project-access` also exports `useProjectAccess(slug,
-requestScope)`. Its query keys include the selected Station and authority, and
+requestScope)` and `useProjectSharingEnablement(slug, requestScope, enabled)`.
+Their query keys include the selected Station and authority, and
 its mutations capture that scope before asynchronous work. Do not persist
 administrative projections or invitation tokens in application caches. Project
 administration grants no Station settings, device or compute authority.
@@ -2824,6 +2893,18 @@ Station chooses provider/callback/return parameters from operator configuration;
 clients cannot supply arbitrary OAuth parameters. See the [deployment guide](../guides/deployment-authentication.md#optional-oidc-choices-with-local-accounts)
 for configuration, callback verification and the independent Device continuation.
 
+A descriptor may also declare `passkey-*` operations (see
+[member passkeys](../guides/deployment-authentication.md#member-passkeys-feature-preview)).
+The `passkey-sign-in`, `passkey-register`, `passkey-add` and `passkey-recover`
+ceremonies use two `runAccountOperation` calls to the same endpoint:
+`{ step: 'options' }` returns `{ options }` for the browser's WebAuthn call,
+then `{ step: 'verify', response }` sends its result. Registration also needs
+`username` in the options body and the invitation as the fourth argument on
+both calls; recovery includes `token` in both bodies. Keep the cookies the
+first call sets; they bind the second call to its challenge. The management
+operations are single calls: `passkey-list` accepts `{}`, and `passkey-remove`
+accepts `{ id }`.
+
 The same account-authentication entry exports `getProjectInvitationPreview(apiBase,
 token)`. It uses a POST body, validates the minimal Project/inviter/role projection,
 and rejects incompatible role/action combinations. Keep the proof out of query
@@ -2841,6 +2922,15 @@ Station operators. Actions disable/enable sign-in, revoke sessions or create a
 one-time recovery link. Capture the selected Station request scope, require
 explicit confirmation and keep recovery links out of persisted caches. External
 providers return a guidance projection instead of local account controls.
+
+The same subpath exports `getAccountSharingSetting(apiBase, options)` and
+`applyAccountSharingSetting(apiBase, choice, options)` for the operator-only
+[Project sharing setting](../guides/deployment-authentication.md#turn-it-on-from-settings).
+The read reports who decides (the stored setting or the deployment), what is
+active, any unresolved pending choice, and the sign-in origins the operator may
+choose. A changed apply returns a transaction and separate review URL. The
+operator confirms there; read the setting again for the restart outcome. Older
+servers can return a direct `restarting` result.
 
 `@kontourai/station-sdk/authority-observation` exports
 `getAuthorityObservation(apiBase, options)` for the closed, credential-bound
@@ -4174,24 +4264,25 @@ are also exported from `@kontourai/station-sdk/client`.
 They reopen the exact authored prompt and attachment metadata through
 `GET /api/orchestration/sessions/:sessionId/inputs/:eventId?turnId=...`.
 The route uses the existing input owner, refuses mismatched identities or
-revoked authority, caps its JSON result at 256 KiB, and sends private/no-store.
+revoked authority, caps the serialized data object at 256 KiB, and sends private/no-store.
 Hosted mode is unavailable until a tenant-scoped input owner exists. The hook
 partitions by captured authority, reauthorizes when mounted and tombstones the
 selected input on access refusal. It does not hydrate a whole transcript.
-Before reading, the hook checks the host's public handshake for the
+For automatic reads, the hook checks the host's public handshake for the
 `sessionInventoryInputRead` capability (`fetchSessionInventoryInputCapability`)
 and returns `hostSupport`: `checking`, `supported`, `unsupported` (an older host
-without the route, or a hosted deployment, which does not advertise it; no read
-is sent) or `unknown` (the handshake could not be
-read; the read is still attempted). `recheckHost()` drops that host's cached
-handshake and asks again, for after the host is updated; it keeps one identity
-across renders and resolves when the host has answered. `hostRecheck` reports
-that press: `idle`, `checking` while the host is asked again, or
-`still-unsupported` when it answered and still does not serve the read (an
-older host, or a deployment that never serves it). A read whose prompt is
-empty or whitespace with no attachments is refused (status 200), by the same
-`isAuthoredInputContent` rule (`@kontourai/station-shared/authored-input`) the
-server uses to list and read inputs.
+without the route, or a hosted deployment that does not advertise it; automatic
+reads are disabled) or `unknown` (the handshake could not be read; an automatic
+read is still attempted). An explicit `query.refetch()` can call the route even
+when automatic reads are disabled. `recheckHost()` drops that host's cached
+handshake and asks again after an update; it keeps one identity across renders
+and resolves when the host has answered. `hostRecheck` reports that press:
+`idle`, `checking` while the host is asked again, or `still-unsupported` when it
+answered and still does not serve the read. The server treats an empty or
+whitespace-only prompt without attachments as not found, using
+`isAuthoredInputContent` (`@kontourai/station-shared/authored-input`). The SDK also
+refuses malformed successful responses, including those with no authored
+content, while retaining the observed HTTP status (usually 200).
 
 - `useSessionInventoryQuery` returns the same captured current-answer Basis
   projection when that scope is selected. Consumers render its standing from
@@ -4632,6 +4723,20 @@ Some family subclasses are `StationHttpError`s too. The scheduler's
 `SchedulerRunFailedError`, `SchedulerRunRefusedError`) are built from the
 error the envelope helper made of the response, so they keep its status,
 `details` and `Retry-After`; a run error's `code` stays its own fixed value.
+`useScheduledConversationTargetCapability()` reads the host's public
+handshake: `true` when it advertises `scheduledConversationTarget`, so a job
+may carry a `target` that runs in a conversation on any engine, `false` when
+it does not, and `null` when the handshake could not be read. Offer other
+engines only on `true`.
+While observed in a foreground client, the hook reads a fresh descriptor every
+10 seconds; Station also invalidates it after reconnect and a recorded host
+boot change. A failed read returns `null` rather than assuming support.
+Scheduler list, statistics and status results are scoped to the caller.
+Job logs and scheduled run output use each run's recorded target; a retargeted
+job does not transfer its earlier conversation's history to the new target.
+Older runs without a recorded target require the creator and current-target
+read access, except creatorless, untargeted jobs remain readable by the local
+operator. An agent can read only its own conversation's runs.
 `PluginCollectionHttpError` is built the same way: it keeps the envelope's
 `code` on the error and on its `envelope`, and keeps the refusal's `details`
 and `Retry-After`.
@@ -4663,6 +4768,41 @@ For new integrations, use `sendExecutionMessage` from
 the [Session API](session-api.md). The legacy `streamConversationTurn` export
 targets Station's private compatibility route, `/api/agents/:slug/chat`.
 
+`sendExecutionMessage` (including `sendExecutionMessageWithInventory`),
+`continueExecutionMessage` and `sendOrchestrationTurn` choose one `clientTurnId`
+per call before asynchronous work. Pass `clientTurnId` to retain a caller-owned
+key; omission generates one. A supplied key must be a nonblank string of at
+most 200 UTF-16 code units, and invalid values fail before any request, including
+visual-skill inventory reads. These calls send the key and return it on a
+`KeyedForegroundMessageReceipt`; the SDK attaches it even when the server's
+receipt does not echo it. The base `ForegroundMessageReceipt` remains usable by
+other receipt producers without claiming a key they do not return.
+
+A foreground failure after key selection is associated with that key through
+`sentTurnKey(error)`, including typed queued or indeterminate outcomes,
+transport errors and preflight refusals. Preserve the original input with the
+key for inspection or a deliberate retry. The SDK never retries automatically.
+Server digest enforcement and replay retention remain separate contracts; key
+custody alone does not establish a minimum retry window. The fixed automatic
+background route uses the same key custody.
+
+For a new foreground conversation, choose `conversationId` before the first send
+and retain it with the key. When it is omitted, the current server allocates a
+fresh conversation per attempt; the same turn key alone cannot recover or
+replay that allocation after a lost response. Inspect the conversation list
+before another attempt. This server admission gap remains separate from SDK
+key custody; never automatically retry that start.
+
+When the input is a Station-fetched MCP prompt, `sendExecutionMessage` accepts
+`mcpPromptOrigin: { serverId, name, receipt }` alongside the unchanged rendered
+message. Carry the receipt returned by the prompt run; it binds the source,
+text and observed classification for ten minutes and expires on server restart.
+Station's own engine uses it to apply
+the source's content classification before the turn's first tool. Prompt sends
+to an external engine or another Station are refused until that origin can be
+carried there. A client should refuse to send when the prompt response lacks
+`turnOriginSupported: true`, because an older Station may ignore the field.
+
 `streamConversationTurn` chooses one `clientTurnId` per call. Pass
 `chatOptions.clientTurnId` to reuse a caller-owned key; an omitted key is generated
 with the shared correlation-ID helper. A supplied key must be a nonblank string of
@@ -4672,7 +4812,8 @@ The returned result includes `clientTurnId`, including when an active stream is
 aborted. Aborting consumption does not prove that server execution stopped.
 
 `sentTurnKey(error)`, exported by the root SDK and the React-free `/client`
-entry, retrieves the chosen key from an object thrown by this direct chat call.
+entry, retrieves the chosen key from an object thrown by one of these keyed foreground
+calls or by `streamConversationTurn`.
 The SDK rethrows the same object; its class, fields and identity are preserved,
 including for transport failures, aborts and stalls. If the same object is
 thrown for different keys, the accessor returns `undefined` permanently for
@@ -4680,16 +4821,17 @@ that object; it never substitutes another turn's key. Repeated use with the same
 key keeps the association. Primitive throws cannot carry this association.
 Retain a caller-owned key separately when reusing an abort signal or error.
 Invalid-key validation happens before a key is chosen.
-The accessor does not prove dispatch, acceptance or completion, and other SDK
-send functions do not yet register their errors with it.
+The accessor does not prove dispatch, acceptance or completion. Queue, handoff,
+steer, delegation, answer, invoke and raw framework helpers do not yet register
+their errors with it.
 
 Retain the key and the original input when inspecting an uncertain outcome.
 The SDK does not retry automatically. A `SyntaxError` can come from parsing a
 response after dispatch; `isProvablyNotSent` therefore does not classify that
 error class as proof of no send, even when its message contains a connection
-refusal word. Errors recorded by the keyed direct-chat helper also remain
+refusal word. Errors recorded by the keyed foreground and direct-chat helpers also remain
 uncertain regardless of their message, including after their key association
-becomes ambiguous and for a read-only refusal before network dispatch. This
+becomes ambiguous and for a read-only or preflight refusal before network dispatch. This
 conservative classification does not override the refusal or issue a request.
 An unregistered fetch-time `SyntaxError` now becomes
 `ScheduledCheckStarterResponseError` in `launchScheduledCheckStarter`, keeping
@@ -4707,7 +4849,8 @@ fails, is cancelled or loses its client. A claim released before Agent
 invocation allows a same-key retry. Stable request IDs do not establish
 transcript uniqueness or a minimum replay window.
 
-The direct chat stream (`streamConversationTurn`) can refuse a retried
+On servers with that lifecycle change, the direct chat stream
+(`streamConversationTurn`) can refuse a retried
 `clientTurnId` that may already have reached the Agent, or whose result
 Station no longer keeps, with a `ChatHttpError` whose `code` is
 `foreground_message_indeterminate` and whose `outcome` is `'indeterminate'`.
@@ -5881,10 +6024,13 @@ The React-free client entry exports `getAccountPreferences(apiBase, options)`
 and `patchAccountPreferences(apiBase, patch, options, onlyMissing?)` for
 `/api/me/preferences`. Use captured request authority in `options.requestScope`.
 The server derives the owner; callers never supply an account or tenant id.
-The returned `revision` is supplied as `If-Match` when replacing model-picker
-preferences. A stale composite update returns 409. Omitted fields stay unchanged; null resets a field. Engine defaults merge by
-engine, and null for one engine removes only that engine's default. Import uses
-`onlyMissing: true` (the fourth argument) to fill unset fields atomically.
+Send the returned `revision` as `If-Match` when replacing
+`modelPickerPreferences`; a stale replacement returns 409. Omitted fields stay
+unchanged and null resets a field. `interactiveApprovalModes` merges by supported
+engine (`codex`, `claude`, `muse`); null removes only that engine's mode. Import
+passes `onlyMissing: true` as the fourth argument to fill absent fields under
+each backing document's lock. Main and appearance files are updated separately;
+a patch spanning them is not one atomic transaction.
 
 These preferences follow one person across devices connected to the same
 Station. They grant no execution permissions and do not provide cross-Station
@@ -6103,6 +6249,16 @@ must revoke it. Content stays Task-scoped, uses authenticated fetch and throws
 `TaskReviewCreateCaptureRequest` and `TaskCaptureBrowserSession` are exported
 from both the root and query barrels.
 
+For Task-bound Browser clips, `fetchTaskWalkthroughPage(taskId, requestScope,
+cursor?, signal?)` reads at most five validated manifests. `useTaskWalkthroughsQuery`
+accepts `{requestScope, taskCreatedAt}` and exposes additional pages on request.
+`useTaskWalkthroughVideoQuery(taskId, clip, scope)` reads one bounded video;
+mount it only for an open player. The hooks partition by Station, authority and
+Task incarnation, and remove the video's cached bytes after the player unmounts.
+Pass the captured `ApiRequestScope`; the SDK checks it against the active
+credential on request and body reads. Callers own and must revoke object URLs.
+These are Task Review reads, separate from the Project import fetchers above.
+
 `useSendReviewThreadsMutation(taskId)` takes the shared `TaskReviewSendRequest`
 `{threadIds, operationId, mode}`, where `mode` is `send` or `send-and-resolve`. It returns `{deliveryKey, status,
 threads, reason?}` and invalidates the review list and thread detail queries.
@@ -6168,3 +6324,44 @@ management caller. It returns `AutomationDeliveryPage` with `deliveries` and
 preserves the preview refusal's code and Settings link; a 404 from an older
 host reports the unsupported capability. No mutation or agent invocation is
 performed. See [Automation intake](../design/automations.md#observe-only-github-preview).
+
+### Personal conversation resolution and turn directory
+
+`getConversationWorkState` and `setConversationWorkState` in the SDK client
+read or change explicit personal settlement under the `conversation-resolution`
+Feature Preview. State is separate from turn completion and dismissal. Reads
+return `null` on a 404 (unsupported host or disabled preview); mutations preserve
+a refusal with an update/preview remedy. Requests accept `ClientRequestOptions`
+for authority and cancellation.
+
+`getConversationTurnDirectory` reads paginated, indexed turn metadata from the
+existing Session digest under `session-cli-reads`; it returns `null` when that
+host route is unavailable. It fetches no transcript bodies. The UI's history
+owner loads bounded body pages only after a turn is selected.
+
+## Reviewed Project context and learning
+
+`@kontourai/station-sdk/client/project-working-configuration` exposes bounded
+repository discovery and exact-revision apply. Pass the current host request
+scope and immutable Project identity. A 404/501 is unavailable/update guidance;
+a preview refusal does not enable the feature. Apply saves defaults only.
+
+`@kontourai/station-sdk/client/learning-review` exports
+`fetchProjectLearning`, `fetchProjectLearningDetail`, `proposeProjectLearning`
+and `applyProjectLearningIntent`. Every options object carries `requestScope`
+and `projectId`; the latter is a currentness precondition. The response parser
+keeps stage gaps distinct and requires exact receipt references.
+
+`@kontourai/station-sdk/learning-review-query` exposes the corresponding
+Project index, detail, proposal and intent hooks. Query identity includes host
+base, authority key, immutable Project, slug, learning id and comparison id.
+Changed authority or a reused slug cannot display or mutate an older Project's
+cached learning. Classified parent/evidence/source read refusal clears protected
+scope queries, closes an open inspector or copied proposal, and requires a fresh
+authoritative read before reopening. An initial unsupported-host read preserves
+its update guidance. Mutations route to the Knowledge Kit owner and retain its
+revision conflict/unsupported/unavailable result. A transport success does not
+establish activation or an observed effect.
+
+See [bounded agent work](../guides/agent-efficiency.md) for the mounted operator
+flow and the separate setup, provider and release boundaries.

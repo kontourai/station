@@ -14,6 +14,11 @@ import { FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY } from '@kontourai/statio
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { builtinStationControlServerPath } from '../../runtime/bootstrap/station-control-runtime-env.js';
+import {
+  mintStationControlMcpHeaderAuth,
+  revokeStationControlMcpToken,
+  verifyStationControlMcpToken,
+} from '../../runtime/mcp/station-control-mcp-token.js';
 import { EventBus } from '../../services/orchestration/event-bus.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
@@ -5951,10 +5956,7 @@ describe('CodexAdapter', () => {
           CODEX_HOME: profileHome,
           STATION_WORKLOAD_SESSION_ID: 'thread-profile-with-tools',
         },
-        [
-          '-c',
-          `mcp_servers.station-control.url="http://127.0.0.1:3141/mcp/station-control?token=${token}"`,
-        ],
+        undefined,
       );
       const events = [
         await nextEvent(iterator, 'session.started'),
@@ -6650,7 +6652,7 @@ describe('station#1195: toolServers wire delivery (mcp_servers -c config args)',
     await adapter.stopAll();
   });
 
-  test('SECURITY: delivers the built-in station-control server as a -c mcp_servers.station-control.url override with the minted per-session URL, never via env', async () => {
+  test('SECURITY: delivers the built-in Station credential through private thread config, never argv or env', async () => {
     const processHandle = new FakeCodexProcess();
     let capturedArgs: string[] | undefined;
     const mintStationControlMcpAuth = vi.fn(
@@ -6704,14 +6706,18 @@ describe('station#1195: toolServers wire delivery (mcp_servers -c config args)',
     expect(mintStationControlMcpAuth).toHaveBeenCalledWith(
       'thread-station-control',
     );
-    expect(capturedArgs).toEqual([
-      '-c',
-      'mcp_servers.station-control.url="http://127.0.0.1:3141/mcp/station-control?token=minted-for-thread-station-control"',
-    ]);
+    expect(capturedArgs).toBeUndefined();
+    const configuredRequest = processHandle.stdin.lines
+      .map(parseLine)
+      .find((line) => line.method === 'thread/start');
+    expect(configuredRequest.params.config).toEqual({
+      'mcp_servers.station-control.url':
+        'http://127.0.0.1:3141/mcp/station-control?token=minted-for-thread-station-control',
+    });
     // The exact env-never-crosses assertion: nothing in the spawn argv
     // (or anywhere else reachable from the adapter's call) carries the
     // real INTERNAL_API_TOKEN env-var name or an `env` key at all.
-    expect(JSON.stringify(capturedArgs)).not.toContain(
+    expect(JSON.stringify(capturedArgs ?? [])).not.toContain(
       'STATION_INTERNAL_API_TOKEN',
     );
 
@@ -6850,4 +6856,172 @@ test('external adoption forks the native thread and records its distinct child b
   });
   process.stdout.write(`${JSON.stringify({ id: '3', result: {} })}\n`);
   await cleanup;
+});
+
+test.each(['start', 'resume', 'fork'] as const)(
+  'private Station MCP header configuration reaches Codex %s over stdin and is revoked on stop',
+  async (mode) => {
+    const process = new FakeCodexProcess();
+    const token = `private-${mode}-credential`;
+    const revoke = vi.fn();
+    let spawnArgs: string[] | undefined;
+    let spawnEnv: Record<string, string> | undefined;
+    const adapter = new CodexAdapter({
+      processFactory: (env, args) => {
+        spawnEnv = env;
+        spawnArgs = args;
+        return process;
+      },
+      resolveSourceHome: () => '/fixture/codex-home',
+      mintStationControlMcpAuth: () => ({
+        url: 'http://127.0.0.1:41031/mcp/station-control',
+        token,
+      }),
+      revokeStationControlMcpAuth: revoke,
+    });
+    const sourceId = '0199a001-0000-7000-8000-000000000001';
+    const childId = '0199a001-0000-7000-8000-000000000002';
+    const input = {
+      provider: 'codex',
+      threadId: `private-${mode}`,
+      cwd: '/fixture/project',
+      agent: {
+        slug: 'agent',
+        toolServers: [
+          {
+            id: 'station-control',
+            transport: 'stdio' as const,
+            command: 'node',
+            args: [builtinStationControlServerPath()],
+          },
+        ],
+      },
+    };
+    const pending =
+      mode === 'fork'
+        ? adapter.adoptSession(
+            {
+              ...input,
+              sourceSessionId: sourceId,
+              sourceKind: 'codex-rollout',
+              sourceAffinity: {
+                kind: 'codex-config-home',
+                ref: 'a'.repeat(64),
+              },
+              sourceBoundary: {
+                kind: 'completed-turn',
+                providerTurnId: 'completed-one',
+                observedEventId: 'observed-one',
+              },
+            },
+            {
+              onProviderChildCreated: () => {},
+              onProviderChildCreationStarted: () => {},
+            },
+          )
+        : adapter.startSession({
+            ...input,
+            ...(mode === 'resume'
+              ? { resumeCursor: { codexThreadId: sourceId } }
+              : {}),
+          });
+    await flushIo();
+    process.stdout.write(
+      `${JSON.stringify({ id: '1', result: { userAgent: 'fixture' } })}\n`,
+    );
+    await flushIo();
+    const request = process.stdin.lines
+      .map(parseLine)
+      .find((line) => line.method === `thread/${mode}`);
+    expect(request.params.config).toEqual({
+      'mcp_servers.station-control.url':
+        'http://127.0.0.1:41031/mcp/station-control',
+      'mcp_servers.station-control.http_headers': {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    expect(JSON.stringify(spawnArgs)).not.toContain(token);
+    expect(JSON.stringify(spawnEnv)).not.toContain(token);
+    process.stdout.write(
+      `${JSON.stringify({
+        id: '2',
+        result: {
+          thread: {
+            id: childId,
+            ...(mode === 'fork'
+              ? {
+                  forkedFromId: sourceId,
+                  threadSource: `station-adoption:${input.threadId}`,
+                  turns: [
+                    { id: 'completed-one', status: 'completed', items: [] },
+                  ],
+                }
+              : {}),
+          },
+          model: 'gpt-test',
+          cwd: '/fixture/project',
+          approvalPolicy: 'on-request',
+          sandbox: { type: 'workspaceWrite' },
+        },
+      })}\n`,
+    );
+    await pending;
+    await adapter.stopSession(input.threadId);
+    expect(revoke).toHaveBeenCalledWith(input.threadId);
+  },
+);
+
+test('cancelled Codex startup revokes the real private credential and a later start gets a fresh incarnation', async () => {
+  const processes: FakeCodexProcess[] = [];
+  const credentials: string[] = [];
+  const adapter = new CodexAdapter({
+    processFactory: () => {
+      const process = new FakeCodexProcess();
+      processes.push(process);
+      return process;
+    },
+    mintStationControlMcpAuth: (threadId) => {
+      const auth = mintStationControlMcpHeaderAuth(41031, threadId);
+      credentials.push(auth.token);
+      return auth;
+    },
+    revokeStationControlMcpAuth: revokeStationControlMcpToken,
+  });
+  const input = {
+    provider: 'codex',
+    threadId: 'private-rotation',
+    cwd: '/fixture/project',
+    agent: {
+      slug: 'agent',
+      toolServers: [
+        {
+          id: 'station-control',
+          transport: 'stdio' as const,
+          command: 'node',
+          args: [builtinStationControlServerPath()],
+        },
+      ],
+    },
+  };
+  const cancelled = adapter.startSession(input);
+  const rejection = expect(cancelled).rejects.toThrow();
+  await flushIo();
+  expect(verifyStationControlMcpToken(credentials[0])).toBeDefined();
+  await adapter.stopSession(input.threadId);
+  await rejection;
+  expect(verifyStationControlMcpToken(credentials[0])).toBeUndefined();
+  const restarted = adapter.startSession(input);
+  await flushIo();
+  expect(credentials[1]).not.toBe(credentials[0]);
+  expect(verifyStationControlMcpToken(credentials[1])).toBeDefined();
+  processes[1]!.stdout.write(
+    `${JSON.stringify({ id: '1', result: { userAgent: 'fixture' } })}\n`,
+  );
+  await flushIo();
+  processes[1]!.stdout.write(
+    `${JSON.stringify({ id: '2', result: { thread: { id: 'restarted' }, model: 'gpt-test' } })}\n`,
+  );
+  await restarted;
+  await adapter.stopSession(input.threadId);
+  expect(verifyStationControlMcpToken(credentials[1])).toBeUndefined();
 });

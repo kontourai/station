@@ -54,6 +54,7 @@ import {
   type StationControlRefusal,
   stationControlRefusal,
   stationControlRefusalBody,
+  stationControlToolPolicy,
 } from '../tools/station-control-policy.js';
 import type { StationControlCaller } from '../tools/station-control-shared.js';
 import {
@@ -141,6 +142,16 @@ export interface StationControlAuthorityGuardOptions {
    * cancel naming it is refused (fail closed).
    */
   wakeUpConversation?(wakeUpId: string): string | undefined;
+  /**
+   * #3483: for a call by a tool that sends or changes things, the reason it
+   * may not run because its conversation read untrusted content, or
+   * `undefined` when it may. Absent: no untrusted-content gate. A throw
+   * refuses.
+   */
+  untrustedContentGate?(input: {
+    conversationIds: readonly (string | undefined)[];
+    toolNames: readonly string[];
+  }): Promise<string | undefined>;
   /** Called once per refusal, for the operator's logs. */
   onRefusal?(
     refusal: StationControlRefusal,
@@ -149,13 +160,53 @@ export interface StationControlAuthorityGuardOptions {
   ): void;
 }
 
-async function requestBody(request: Request): Promise<unknown> {
+const AUTHORITY_BODY_MAX_BYTES = 1_048_576;
+
+async function requestBody(
+  request: Request,
+): Promise<
+  { status: 'ok'; body: unknown } | { status: 'too-large' | 'invalid' }
+> {
+  if (!request.body) return { status: 'ok', body: undefined };
+  const declared = request.headers.get('content-length');
+  if (
+    declared !== null &&
+    (!/^\d+$/.test(declared) || Number(declared) > AUTHORITY_BODY_MAX_BYTES)
+  ) {
+    await request.body.cancel().catch(() => {});
+    return { status: 'too-large' };
+  }
+  const reader = request.clone().body!.getReader();
+  const decoder = new TextDecoder('utf-8', { fatal: true });
+  let bytes = 0;
+  let text = '';
+  async function refuse(status: 'too-large' | 'invalid') {
+    // A clone is a tee: either cancellation alone can wait for the other
+    // branch. Cancel both before awaiting either, and never reach the leaf.
+    const cloneCancellation = reader.cancel().catch(() => {});
+    const originalCancellation = request.body!.cancel().catch(() => {});
+    await Promise.all([cloneCancellation, originalCancellation]);
+    return { status };
+  }
   try {
-    return await request.clone().json();
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      bytes += chunk.value.byteLength;
+      if (bytes > AUTHORITY_BODY_MAX_BYTES) return await refuse('too-large');
+      text += decoder.decode(chunk.value, { stream: true });
+    }
+    text += decoder.decode();
+    if (bytes === 0) return { status: 'ok', body: undefined };
+    try {
+      return { status: 'ok', body: JSON.parse(text) };
+    } catch {
+      return await refuse('invalid');
+    }
   } catch {
-    // An unreadable body cannot ask for anything; the route's own validation
-    // answers it.
-    return undefined;
+    return await refuse('invalid');
+  } finally {
+    reader.releaseLock();
   }
 }
 
@@ -175,7 +226,14 @@ function needsBody(method: string, path: string): boolean {
  * `agentId`, `projectId` and `target` choose the work a monitor dispatch runs
  * under the job's scheduled-job principal (and so the job's grants).
  */
-const JOB_TARGET_FIELDS = ['prompt', 'agent', 'provider', 'monitor'] as const;
+const JOB_TARGET_FIELDS = [
+  'prompt',
+  'agent',
+  'provider',
+  'monitor',
+  // Where its runs land, and so whose conversation the grants act in.
+  'target',
+] as const;
 
 /**
  * The fields of an edit body that could change what a job runs; the grant
@@ -276,6 +334,46 @@ function wakeUpConversationId(
   return typeof named === 'string' ? named : undefined;
 }
 
+/**
+ * For `automation-target-stays-in-own-conversation`: the conversation a job
+ * body's `target` names, `null` for a target that names no conversation an
+ * agent may use (a dedicated one, or an unreadable shape), or `undefined`
+ * when the body sets no target (`null` removes one, which runs nowhere).
+ */
+function automationTargetConversationId(
+  method: string,
+  path: string,
+  body: unknown,
+): string | null | undefined {
+  if (
+    !matchStationControlRoute(method, path)?.rules.includes(
+      'automation-target-stays-in-own-conversation',
+    )
+  )
+    return undefined;
+  if (!body || typeof body !== 'object') return undefined;
+  const target = (body as { target?: unknown }).target;
+  if (target === undefined || target === null) return undefined;
+  const record = target as { kind?: unknown; conversationId?: unknown };
+  return record.kind === 'conversation' &&
+    typeof record.conversationId === 'string'
+    ? record.conversationId
+    : null;
+}
+
+/**
+ * #3483: the tools that reach this leaf and are not read-only. A leaf with
+ * none (every tool that reaches it reads) is not gated.
+ */
+function untrustedContentGatedTools(method: string, path: string): string[] {
+  const match = matchStationControlRoute(method, path);
+  if (!match) return [];
+  return match.owners.filter((owner) => {
+    const policy = stationControlToolPolicy(owner);
+    return policy !== undefined && policy.toolClass !== 'read-only';
+  });
+}
+
 /** The thread a scoped command's body names, if it is one. */
 function scopedCommandThreadId(body: unknown): string | undefined {
   if (!body || typeof body !== 'object') return undefined;
@@ -332,9 +430,22 @@ export function createStationControlAuthorityGuard(
         : { kind: 'caller-less' },
     );
     if (!boundOperator) withdrawInternalHomePossession(request);
-    const body = needsBody(method, path)
+    const bodyRead = needsBody(method, path)
       ? await requestBody(request)
-      : undefined;
+      : { status: 'ok' as const, body: undefined };
+    if (bodyRead.status !== 'ok')
+      return c.json(
+        {
+          success: false,
+          code: 'station_control_request_body_refused',
+          error:
+            bodyRead.status === 'too-large'
+              ? 'Request body exceeds the authority inspection limit.'
+              : 'Request body is invalid.',
+        },
+        bodyRead.status === 'too-large' ? 413 : 400,
+      );
+    const body = bodyRead.body;
     const refusal = authorizeStationControlRequest(method, path, {
       caller,
       isOperatorPrincipal: options.isOperatorPrincipal,
@@ -347,7 +458,36 @@ export function createStationControlAuthorityGuard(
       ),
       commandThread: commandThread(options, method, path, body),
       wakeUpConversationId: wakeUpConversationId(options, method, path, body),
+      automationTargetConversationId: automationTargetConversationId(
+        method,
+        path,
+        body,
+      ),
     });
+    if (!refusal && caller && options.untrustedContentGate) {
+      const toolNames = untrustedContentGatedTools(method, path);
+      if (toolNames.length > 0) {
+        let reason: string | undefined;
+        try {
+          reason = await options.untrustedContentGate({
+            conversationIds: [caller.conversationId, caller.sessionId],
+            toolNames,
+          });
+        } catch {
+          reason =
+            "Station could not check this tool's untrusted-content permission.";
+        }
+        if (reason)
+          return c.json(
+            {
+              success: false,
+              code: 'station_control_untrusted_content',
+              error: reason,
+            },
+            403,
+          );
+      }
+    }
     if (!refusal) {
       if (
         method === 'POST' &&

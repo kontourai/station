@@ -20,8 +20,6 @@
 
     "src-ui/src/lib/foregroundMessageDispatch.ts",
 
-    "src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx",
-
     "src-ui/src/components/chat-dock/ChatDockProjectSwitcherSheet.tsx",
 
     "src-ui/src/components/chat-dock/ChatDockProjectContext.tsx",
@@ -194,7 +192,31 @@
 
     "src-ui/src/components/chat/ToolCallBatch.tsx",
 
-    "src-ui/src/__tests__/ToolCallBatch.test.tsx"
+    "src-ui/src/__tests__/ToolCallBatch.test.tsx",
+
+    "src-ui/src/components/chat-dock/MobileInboxPanel.tsx",
+
+    "src-ui/src/components/chat-dock/useChatDockActiveChatSync.ts",
+
+    "src-ui/src/__tests__/MessageBubble.basisChipFit.test.tsx",
+
+    "src-ui/src/__tests__/SubagentTranscriptCard.interrupted.test.tsx",
+
+    "src-ui/src/components/chat/TranscriptTurnBrowser.tsx",
+
+    "src-ui/src/components/chat-dock/useConversationWorkState.ts",
+
+    "src-ui/src/components/chat-dock/inbox-dismissals.tsx",
+
+    "src-ui/src/__tests__/conversation-resolution.test.tsx",
+
+    "src-ui/src/__tests__/TranscriptTurnBrowser.test.tsx",
+
+    "src-ui/src/__tests__/transcript-turn-rail.browser.test.tsx",
+
+    "src-server/routes/chat/conversation-work-state.ts",
+
+    "src-ui/src/components/chat-dock/mobile-activity-groups.ts"
   ],
 
   "checks": [

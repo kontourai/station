@@ -90,6 +90,7 @@ import {
 } from '../../services/connections/virtual-application.js';
 import { guardAccountResponse } from '../../services/identity/account-response-guard.js';
 import {
+  isAccountBindingConsentLeaf,
   isOperatorSessionLeaf,
   isOperatorSessionRead,
   OPERATOR_SESSION_COOKIE,
@@ -436,7 +437,7 @@ export function configureRuntimeHttp({
     const ordinaryCors = cors({
       origin: resolveRuntimeCorsOrigin,
       credentials: true,
-      exposeHeaders: [STATION_ENVELOPE_HEADER],
+      exposeHeaders: [STATION_ENVELOPE_HEADER, 'X-Station-General-Stream'],
     });
     app.use('*', (c, next) =>
       outsideProtocolOwnsAdmission(c) ? next() : ordinaryCors(c, next),
@@ -922,7 +923,7 @@ function configureRuntimeSecurity(
       c.header('Access-Control-Allow-Origin', origin);
       c.header(
         'Access-Control-Expose-Headers',
-        `${ACCOUNT_AUTHENTICATION_FAILURE_HEADER}, Retry-After, ${STATION_ENVELOPE_HEADER}`,
+        `${ACCOUNT_AUTHENTICATION_FAILURE_HEADER}, Retry-After, ${STATION_ENVELOPE_HEADER}, X-Station-General-Stream`,
       );
       c.header('Vary', 'Origin');
       c.header('Access-Control-Allow-Credentials', 'true');
@@ -1257,7 +1258,8 @@ function configureRuntimeSecurity(
           c.req.path,
         )) ||
       (c.req.method === 'POST' &&
-        /^\/api\/pairing\/requests\/[^/]+\/confirm$/.test(c.req.path))
+        /^\/api\/pairing\/requests\/[^/]+\/confirm$/.test(c.req.path)) ||
+      isAccountBindingConsentLeaf(c.req.method, c.req.path)
         ? security.operatorSessions?.signInUrl
         : null;
     const hasQueryCredential = hasCredentialQuery(c.req.url);
@@ -1458,6 +1460,19 @@ function configureRuntimeSecurity(
           {
             error: { code: 'insufficient_scope' },
             ...(inventorySignIn ? { signInUrl: inventorySignIn } : {}),
+          },
+          403,
+        );
+      }
+      if (isAccountBindingConsentLeaf(c.req.method, c.req.path)) {
+        const sessionResponse = await admitOperatorSession(
+          authority === 'device-credential',
+        );
+        if (sessionResponse) return sessionResponse;
+        return c.json(
+          {
+            error: { code: 'operator_session_required' },
+            signInUrl: security.operatorSessions?.signInUrl ?? null,
           },
           403,
         );

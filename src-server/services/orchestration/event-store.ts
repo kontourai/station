@@ -42,6 +42,7 @@ import type {
 } from '@kontourai/station-contracts/connection-recovery';
 import { isLowContentPrompt } from '@kontourai/station-contracts/conversation-title';
 import { parseMcpToolRef } from '@kontourai/station-contracts/layout';
+import { parseLearningContextContributions } from '@kontourai/station-contracts/learning-review';
 import type {
   ConversationHandoffProjection,
   OrchestrationCommandReceipt,
@@ -54,6 +55,7 @@ import {
   SESSION_AGENT_DISPLAY_NAME_MAX_LENGTH,
   SESSION_AGENT_DISPLAY_NAME_METADATA_KEY,
   SESSION_AGENT_ICON_METADATA_KEY,
+  TASK_LEARNING_CONTRIBUTIONS_METADATA_KEY,
 } from '@kontourai/station-contracts/provider';
 import type { RunSummary } from '@kontourai/station-contracts/runs';
 import {
@@ -160,6 +162,8 @@ import {
 } from '../../domain/migrations/024-event-content.js';
 import { ensureProjectTaskRoomRevisionFreezeColumn } from '../../domain/migrations/024-project-task-room-revision-freeze.js';
 import { ensureConversationHistoryTitleSourceColumn } from '../../domain/migrations/025-conversation-history-title-source.js';
+import { migrateContextSummaryBoundaries } from '../../domain/migrations/026-context-summary-boundaries.js';
+import { TASK_WRITE_BACK_MIGRATION } from '../../domain/migrations/026-task-write-back.js';
 import {
   type CanonicalProposedChangeLookup,
   type RevisionAttributionAuthority,
@@ -244,6 +248,7 @@ import {
   canonicalTerminalOutcome,
   terminalEngineFamily,
 } from './canonical-terminal-outcome.js';
+import { createSqliteContextCompactionStore } from './context-compaction.js';
 import {
   ConversationContextBoundaryConflictError,
   type ConversationContextBoundaryMarker,
@@ -328,6 +333,7 @@ import {
   projectionFactKeysForEvent,
 } from './orchestration-session-state.js';
 import { decodeTurnIntent } from './prepared-turn-intent.js';
+import { createSqliteProjectSupervisionStore } from './project-supervision.js';
 import {
   PROJECT_TASK_ROOM_APPEND_RECEIPT_COLUMNS,
   type ProjectTaskRoomAppendReceiptReadResult,
@@ -411,6 +417,10 @@ import {
   createSqliteTaskReviewStore,
   type TaskReviewStore,
 } from './task-review-store.js';
+import {
+  createSqliteTaskWriteBackStore,
+  type TaskWriteBackStore,
+} from './task-write-back-store.js';
 import {
   createSqliteThreadInboxStore,
   type ThreadInboxStore,
@@ -2636,6 +2646,7 @@ export class EventStore {
   private threadInbox?: ThreadInboxStore;
   private taskMemory?: TaskMemoryStore;
   private taskReview?: TaskReviewStore;
+  private taskWriteBack?: TaskWriteBackStore;
   private agentSchedule?: AgentScheduleStore;
   private coordinator?: CoordinatorStore;
   private resumeChoices?: UsageLimitResumeChoices;
@@ -2895,6 +2906,7 @@ export class EventStore {
       ensureConversationHandoffContextSeedColumn(this.db);
       this.db.exec(CONVERSATION_CONTEXT_BOUNDARY_MIGRATION);
       ensureConversationContextBoundaryColumns(this.db);
+      migrateContextSummaryBoundaries(this.db);
       this.db.exec(SESSION_WORK_ITEM_ASSOCIATIONS_MIGRATION);
       // #3413 B: the claims agents declare on their work.
       this.db.exec(WORK_CLAIMS_SCHEMA);
@@ -2974,6 +2986,7 @@ export class EventStore {
       this.db.exec(TASK_LEARNING_PROMOTIONS_MIGRATION);
       ensureUsageExportInvalidations(this.db);
       this.db.exec(TASK_REVIEW_MIGRATION);
+      this.db.exec(TASK_WRITE_BACK_MIGRATION);
       this.db.exec(EVENT_CONTENT_MIGRATION);
       this.sweepOrphanedEventContent();
       this.db
@@ -3731,6 +3744,40 @@ export class EventStore {
     }
   }
 
+  /** Canonical first-turn composition receipts, bounded to the latest 100 Task turns. */
+  readRecentTaskLearningContributions(projectIds: readonly string[]) {
+    if (projectIds.length < 1 || projectIds.length > 2)
+      throw new Error('Invalid Project identity set');
+    const placeholders = projectIds.map(() => '?').join(',');
+    const rows = this.db
+      .prepare(`SELECT id, thread_id, turn_id,
+      json_extract(payload, '$.metadata.${TASK_LEARNING_CONTRIBUTIONS_METADATA_KEY}') AS contributions
+      FROM orchestration_events WHERE method='turn.started' AND turn_id IS NOT NULL AND json_valid(payload)
+      AND thread_id IN (SELECT session_id FROM project_task_room_execution_bindings WHERE project_id IN (${placeholders}))
+      ORDER BY global_sequence DESC LIMIT 100`)
+      .all(...projectIds) as Array<{
+      id: string;
+      thread_id: string;
+      turn_id: string;
+      contributions: string | null;
+    }>;
+    return rows.flatMap((row) => {
+      if (!row.contributions) return [];
+      const refs = parseLearningContextContributions(
+        JSON.parse(row.contributions),
+      );
+      if (!refs) return [];
+      return [
+        {
+          eventId: row.id,
+          sessionId: row.thread_id,
+          turnId: row.turn_id,
+          contributions: refs,
+        },
+      ];
+    });
+  }
+
   /** Immutable server-owned scope for provider admission; never inferred from metadata. */
   readProjectTaskRoomExecutionBinding(
     sessionId: string,
@@ -3741,6 +3788,24 @@ export class EventStore {
       )
       .get(sessionId) as { projectId: string; taskId: string } | undefined;
     return row ? { ...row } : undefined;
+  }
+  /** Immutable original event for replaying a server-projected input receipt. */
+  readPersistedTurnStartMetadata(
+    threadId: string,
+    eventId: string,
+    invocationId: string,
+  ): Record<string, unknown> | undefined {
+    const row = this.db
+      .prepare(
+        "SELECT json_extract(payload,'$.metadata') AS metadata FROM orchestration_events WHERE thread_id=? AND id=? AND method='turn.started' AND json_extract(payload,'$.invocationId')=?",
+      )
+      .get(threadId, eventId, invocationId) as
+      | { metadata: string | null }
+      | undefined;
+    const value = row?.metadata ? JSON.parse(row.metadata) : undefined;
+    return value && typeof value === 'object' && !Array.isArray(value)
+      ? value
+      : undefined;
   }
 
   async bindProjectTaskRoomExecution(input: {
@@ -10420,6 +10485,7 @@ export class EventStore {
     methods: readonly string[],
     limit: number,
     invocationId?: string,
+    afterSequence = 0,
   ): PersistedRuntimeEvent[] {
     if (methods.length === 0) {
       throw new Error('An event-method query requires at least one method');
@@ -10427,13 +10493,16 @@ export class EventStore {
     if (!Number.isInteger(limit) || limit < 1 || limit > 5_000) {
       throw new Error('A turn event read limit must be between 1 and 5000');
     }
+    if (!Number.isInteger(afterSequence) || afterSequence < 0) {
+      throw new Error('A turn event cursor must be a non-negative integer');
+    }
     const placeholders = methods.map(() => '?').join(', ');
     return (
       this.db
         .prepare(
           `SELECT id, provider, thread_id, turn_id, method, payload, created_at, sequence, global_sequence
            FROM orchestration_events
-           WHERE thread_id = ? AND turn_id = ? AND method IN (${placeholders})
+           WHERE thread_id = ? AND turn_id = ? AND sequence > ? AND method IN (${placeholders})
              ${invocationId === undefined ? '' : "AND json_extract(payload, '$.invocationId') = ?"}
            ORDER BY sequence ASC
            LIMIT ?`,
@@ -10441,6 +10510,7 @@ export class EventStore {
         .all(
           threadId,
           turnId,
+          afterSequence,
           ...methods,
           ...(invocationId === undefined ? [] : [invocationId]),
           limit,
@@ -13567,6 +13637,13 @@ export class EventStore {
     return this.conversationContextBoundaries.reserve(input);
   }
 
+  contextCompactionStore() {
+    return createSqliteContextCompactionStore(this.db);
+  }
+  projectSupervisionStore() {
+    return createSqliteProjectSupervisionStore(this.db);
+  }
+
   conversationContextBoundaryForSuccessor(sessionId: string) {
     return this.conversationContextBoundaries.forSuccessor(sessionId);
   }
@@ -14281,9 +14358,10 @@ export class EventStore {
       ...(row.claimed_at ? { claimedAt: row.claimed_at } : {}),
       ...(row.start_command_id ? { startCommandId: row.start_command_id } : {}),
       ...(row.consumed_at ? { consumedAt: row.consumed_at } : {}),
+      ...(row.seed_json ? { seed: JSON.parse(row.seed_json) } : {}),
     });
     const columns =
-      'boundary_id, conversation_id, predecessor_session_id, successor_session_id, idempotency_key, policy, status, actor_id, client_origin, created_at, claimed_at, start_command_id, consumed_at';
+      'boundary_id, conversation_id, predecessor_session_id, successor_session_id, idempotency_key, policy, status, actor_id, client_origin, created_at, claimed_at, start_command_id, consumed_at, seed_json';
     const byKey = this.db.prepare(
       `SELECT ${columns} FROM orchestration_conversation_context_boundaries WHERE conversation_id = ? AND idempotency_key = ?`,
     );
@@ -14303,7 +14381,7 @@ export class EventStore {
       'INSERT INTO orchestration_conversation_sessions (conversation_id, session_id, ordinal, predecessor_session_id, created_at) VALUES (?, ?, ?, ?, ?)',
     );
     const insert = this.db.prepare(
-      `INSERT INTO orchestration_conversation_context_boundaries (${columns}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO orchestration_conversation_context_boundaries (${columns}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     return createConversationContextBoundaryModule({
       persistence: {
@@ -14316,7 +14394,9 @@ export class EventStore {
               if (
                 existing.policy !== input.policy ||
                 existing.predecessorSessionId !== input.predecessorSessionId ||
-                existing.actorId !== input.actorId
+                existing.actorId !== input.actorId ||
+                JSON.stringify(existing.seed ?? null) !==
+                  JSON.stringify(input.seed ?? null)
               )
                 throw new ConversationContextBoundaryConflictError(
                   'idempotency_mismatch',
@@ -14367,6 +14447,7 @@ export class EventStore {
               null,
               null,
               null,
+              input.seed ? JSON.stringify(input.seed) : null,
             );
             this.db.exec('COMMIT');
             return { marker: input, outcome: 'created' as const };
@@ -15733,6 +15814,11 @@ export class EventStore {
   taskMemoryStore(): TaskMemoryStore {
     this.taskMemory ??= createSqliteTaskMemoryStore(this.db);
     return this.taskMemory;
+  }
+
+  taskWriteBackStore(): TaskWriteBackStore {
+    this.taskWriteBack ??= createSqliteTaskWriteBackStore(this.db);
+    return this.taskWriteBack;
   }
 
   taskReviewStore(): TaskReviewStore {

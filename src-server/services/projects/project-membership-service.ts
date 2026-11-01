@@ -54,8 +54,18 @@ export interface ProjectMembershipMutationIntent {
   expectedActorId?: string;
 }
 
+export interface ProjectMembershipChange {
+  readonly projectId: string;
+  readonly principalId: string;
+  readonly revision: number;
+}
+
 /** Couples membership transactions to the selected Project's current incarnation. */
 export class ProjectMembershipService {
+  private readonly listeners = new Set<
+    (change: ProjectMembershipChange) => void
+  >();
+
   constructor(
     private readonly stationId: string,
     private readonly storage: IStorageAdapter,
@@ -64,10 +74,27 @@ export class ProjectMembershipService {
     private readonly members: ProjectMembershipStore,
   ) {}
 
+  subscribe(listener: (change: ProjectMembershipChange) => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  private emitChange(projectId: string, principalId: string, revision: number) {
+    const change = { projectId, principalId, revision };
+    for (const listener of [...this.listeners]) {
+      try {
+        listener(change);
+      } catch {
+        /* A listener cannot undo a committed mutation. */
+      }
+    }
+  }
+
   async enable(
     slug: string,
     expectedLocalId: string,
     authority: ProjectMembershipAuthority,
+    assertLiveAuthority?: () => void,
   ) {
     await authority.operator();
     const initial = await authority.current();
@@ -79,8 +106,12 @@ export class ProjectMembershipService {
         const actor = await this.currentActor(authority, initial.principal.id);
         if (scope.localProjectId !== expectedLocalId)
           throw new ProjectMembershipRefusal('conflict');
-        this.members.enable(scope, actor.principal);
-        return this.members.administration(scope, actor.principal);
+        assertLiveAuthority?.();
+        const revision = this.members.enable(scope, actor.principal);
+        if (revision !== undefined)
+          this.emitChange(scope.localProjectId, actor.principal.id, revision);
+        const view = this.members.administration(scope, actor.principal);
+        return view;
       },
       async (localId) => {
         await authority.operator();
@@ -117,25 +148,30 @@ export class ProjectMembershipService {
 
   /**
    * What a forbidden `administration` read may tell its caller. The caller
-   * must first pass the checks `enable` makes before its transaction
-   * (operator authority and a human principal). Only then is the sharing
-   * state read. Anyone else gets `undisclosed`.
+   * must be human and pass the current enable admission callback immediately
+   * before the synchronous sharing-state read. Others get `undisclosed`.
    */
   async accessRefusal(
     slug: string,
     authority: ProjectMembershipAuthority,
-    mayEnableRoute: () => boolean,
+    mayEnableRoute: (operator: boolean) => boolean,
   ): Promise<ProjectAccessRefusalDetails> {
     const undisclosed = { sharing: 'undisclosed', canEnable: false } as const;
+    let operator = false;
     try {
       await authority.operator();
+      operator = true;
+    } catch (error) {
+      if (!(error instanceof ProjectMembershipRefusal)) throw error;
+    }
+    try {
       if ((await authority.current()).principal.kind !== 'human')
         return undisclosed;
     } catch (error) {
       if (error instanceof ProjectMembershipRefusal) return undisclosed;
       throw error;
     }
-    if (!mayEnableRoute()) return undisclosed;
+    if (!mayEnableRoute(operator)) return undisclosed;
     return this.members.isSharedSlug(slug)
       ? { sharing: 'on', canEnable: false }
       : { sharing: 'off', canEnable: true };
@@ -219,6 +255,14 @@ export class ProjectMembershipService {
     principalId: string,
   ): readonly { scope: ProjectMembershipScope; member: ProjectMemberView }[] {
     return this.members.readableProjectAdmissionsForPrincipalId(principalId);
+  }
+
+  /** Only for attribution after the caller has authorized this exact scope. */
+  memberDisplayName(
+    scope: ProjectMembershipScope,
+    principalId: string,
+  ): string | undefined {
+    return this.members.memberDisplayName(scope, principalId);
   }
 
   async requireProjectRead(
@@ -349,7 +393,17 @@ export class ProjectMembershipService {
     const scope = this.members.invitationScope(token);
     return this.withProject(scope.localProjectSlug, scope, async () => {
       const actor = await this.currentActor(authority, initial.principal.id);
-      return this.members.accept(token, actor.principal, actor.verifiedEmails);
+      const accepted = this.members.accept(
+        token,
+        actor.principal,
+        actor.verifiedEmails,
+      );
+      this.emitChange(
+        scope.localProjectId,
+        actor.principal.id,
+        accepted.revision,
+      );
+      return accepted.scope;
     });
   }
 
@@ -397,6 +451,7 @@ export class ProjectMembershipService {
           revision,
           capturedChange,
         );
+        this.emitChange(capturedScope.localProjectId, targetId, revision + 1);
         return { changed: true as const };
       },
       capturedIntent,
@@ -415,11 +470,17 @@ export class ProjectMembershipService {
       capturedScope,
       authority,
       (actor) => {
-        this.members.transferOwnership(
+        const changes = this.members.transferOwnership(
           capturedScope,
           actor.principal,
           recipientId,
         );
+        for (const change of changes)
+          this.emitChange(
+            capturedScope.localProjectId,
+            change.principalId,
+            change.revision,
+          );
         return { changed: true as const };
       },
       capturedIntent,

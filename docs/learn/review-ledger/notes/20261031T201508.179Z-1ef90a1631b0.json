@@ -1,0 +1,7 @@
+{
+  "revision": "292bb328da15806ce17991a164555e411ee3c2f2",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"Reviewed verification and code health guidance against shard coverage change; quality and lane boundaries remain accurate.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]}
+  ]
+}

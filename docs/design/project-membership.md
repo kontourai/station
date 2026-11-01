@@ -17,8 +17,9 @@
 > Implementation update: local username/password enrollment and manually shared,
 > single-use invitation links are the first account path. No mail service is
 > required. The membership store/service, operator/admin controls and standalone
-> account entry implement these boundaries; shared-resource admission and real
-> two-human/device acceptance remain incomplete. See the
+> account entry implement these boundaries. The personal Task room also admits
+> members to individually shared Task incarnations as described below; complete
+> shared-resource admission and real two-human/device acceptance remain incomplete. See the
 > [deployment authentication guide](../guides/deployment-authentication.md).
 > An optional email restriction still requires provider-verified contact evidence.
 > Possession of a general link is an explicit invitation capability, never a
@@ -77,7 +78,7 @@ operator authority, then device identity. Consequently, the same device can
 resolve to a tailnet principal on one route and a device principal on another.
 For the exact account, pairing and membership surfaces listed in the
 [deployment authentication guide](../guides/deployment-authentication.md), a
-current local-account session names the person; Serve WhoIs remains ingress
+current local-account cookie session names the person; Serve WhoIs remains ingress
 provenance and an accompanying Device must be bound to that account. It does
 not grant membership or operator authority. A device principal
 is useful attribution but is not evidence that several devices belong to one
@@ -178,11 +179,28 @@ operator authority, separate from any membership. Until then, the
 administration read `GET .../access` is refused with `403
 project_access_forbidden`, as it is for a non-manager. That refusal carries
 `ProjectAccessRefusalDetails` (#4302). The service reads the sharing state only
-after the caller passes operator and human authority checks and the HTTP
-admission for `POST .../access/enable`, including the pairing scope and
-account-bound Device gate. That caller learns `off` (and that it can enable)
+after the caller has human authority and current operator credentials or a
+Device-bound operator passkey session, and passes HTTP admission for
+`POST .../access/enable`, including pairing scope and the account-bound Device gate. That caller learns `off` (and that it can enable)
 or `on`. Everyone else gets `undisclosed`, the same for a shared, unshared or
 missing Project.
+
+For a personal Station Task room, the
+[member admission](../../src-server/runtime/routes/task-member-admission.ts)
+composes the current account-bound Device and Project membership with the exact
+Task incarnation, share and portable Project identity. `view` admits discovery,
+history, document and presence reads; `discuss` admits messages; `edit` admits
+edit planning. The account-bound route inventory does not admit batch settlement,
+attachments, Task memory, review or agent requests in this slice. The member's
+revision is captured and rechecked, including on delivery. The service notifies
+in-process subscribers synchronously after a committed membership change, with
+the Project, principal and committed revision. Listener errors are isolated;
+notifications are not durable across a process failure. A stream whose captured
+admission is no longer current closes, with a 15-second idle recheck as a
+fallback. A missing or
+unshared Task is not found. Membership grants no host execution or private
+Session access. Local account and route tests exercise two principals; the
+real two-person/device journey remains unverified.
 
 Private Sessions remain private by default. New Project work must explicitly
 record whether it is Project-shared. Sharing existing work requires a review

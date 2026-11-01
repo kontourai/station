@@ -42,7 +42,19 @@
 
     "src-server/services/walkthroughs/__tests__/walkthrough-media-regressions.integration.test.ts",
 
-    "src-server/runtime/frameworks/__tests__/http-receive.integration.test.ts"
+    "src-server/runtime/frameworks/__tests__/http-receive.integration.test.ts",
+
+    "src-server/services/projects/task-browser-recording.ts",
+
+    "src-server/services/walkthroughs/task-walkthrough-store.ts",
+
+    "src-server/routes/orchestration/task-review-captures.ts",
+
+    "src-server/routes/__tests__/browser-agent-capture.test.ts",
+
+    "src-ui/src/views/task-workspace/review/TaskReviewClips.tsx",
+
+    "packages/sdk/src/query-domains/taskReview.ts"
   ],
 
   "checks": [

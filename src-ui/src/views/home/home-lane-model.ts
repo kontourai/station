@@ -168,6 +168,8 @@ interface LaneInputs<T extends HomeWorkItem = HomeLaneItem> {
   /** item id -> epoch ms at which a live snooze lapses. */
   snoozedUntil: ReadonlyMap<string, number>;
   workFacts?: WorkFactsById;
+  /** Explicit personal resolution, when the Open/Settled preview is enabled. */
+  resolution?: ReadonlySet<string>;
 }
 
 interface LanePartition<T extends HomeWorkItem = HomeLaneItem> {
@@ -195,6 +197,7 @@ export function partitionHomeWorkItems<T extends HomeWorkItem>({
   now,
   snoozedUntil,
   workFacts,
+  resolution,
 }: LaneInputs<T>): LanePartition<T> {
   const live: Record<LiveLaneId, T[]> = {
     needsYou: [],
@@ -227,6 +230,14 @@ export function partitionHomeWorkItems<T extends HomeWorkItem>({
     }
     if (lane === 'drafts') {
       drafts.push(item);
+      continue;
+    }
+    if (resolution && lane !== 'needsYou' && lane !== 'running') {
+      const resolved =
+        item.kind === 'task'
+          ? lane === 'finished'
+          : resolution.has(item.conversationId ?? item.id);
+      (resolved ? settled : live.idle).push(item);
       continue;
     }
     if (lane === 'finished') {

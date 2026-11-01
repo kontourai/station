@@ -1,0 +1,7 @@
+{
+  "revision": "b0e460ae543f535e0546a2e40035f961903e9acb",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"Bounded review of the added cold-start member-passkey selector test. It boots the existing Settings account-sharing composition and exercises the provider descriptor/options with mocked network surfaces; it changes no telemetry producer, publication destination, identifier, tier, notice, startup metadata or sharing/focus behavior. Existing telemetry-specific cases in the same test file remain intact. This is a no-prose-impact source-dependency review, not live telemetry or whole-inventory qualification.","inputs":["docs/reference/usage-telemetry.md","src-server/runtime/__tests__/runtime-cold-start-custom-agent.test.ts"]}
+  ]
+}

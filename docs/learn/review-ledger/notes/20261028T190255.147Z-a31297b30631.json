@@ -1,0 +1,7 @@
+{
+  "revision": "6895629f64e98a9f910f73e7a9584e47eac88968",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"Review round inputs: runtime-routes.ts (tool routes get resolveRequestPrincipalId), config-loader.ts (integration writes keep/append untrusted-content receipts), mcp-service.ts (attribution passthrough), registry/untrusted-content modules. Grepped this document for integration writes, integration.json, receipts, read-only hints, subregistry, private addresses and request-principal claims: its 'untrusted' mentions concern other inputs (LAN hints, publisher metadata, transcripts) and no claim depends on these changes.","inputs":["docs/reference/usage-telemetry.md","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

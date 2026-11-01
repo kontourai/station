@@ -1,5 +1,340 @@
 [
   {
+    "timestampUtc": "2026-11-01T01:42:05Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.2496.41261236636",
+    "sha": "2b49d99ec926c52d85779b0e60b1d25d72430b4a",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/41261236636",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.2496.41261236636 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "4037fadb92bf4fd7257237b3f5ed3d2ce97af782",
+      "groups": {
+        "feat": [
+          "[#4309](https://github.com/kontourai/station/pull/4309) feat(access): turn on Project sharing remotely with an operator passkey step-up (#4306)",
+          "[#4325](https://github.com/kontourai/station/pull/4325) feat(identity): passkeys for invited local-account members",
+          "[#4377](https://github.com/kontourai/station/pull/4377) feat(chat): simplify inbox, composer and conversation navigation"
+        ],
+        "fix": [
+          "[#4410](https://github.com/kontourai/station/pull/4410) fix(ci): avoid reserved ports in portable smoke",
+          "[#4333](https://github.com/kontourai/station/pull/4333) fix(pairing): approve account-bound browsers with passkey consent"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 5
+    }
+  },
+  {
+    "timestampUtc": "2026-10-31T22:08:50Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.2495.41245722791",
+    "sha": "4037fadb92bf4fd7257237b3f5ed3d2ce97af782",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/41245722791",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.2495.41245722791 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "ee3a07d023d4919c48a3ae65e3918d41135024a6",
+      "groups": {
+        "feat": [
+          "[#4321](https://github.com/kontourai/station/pull/4321) feat(settings): turn on Project sharing with local accounts from Settings",
+          "[#4372](https://github.com/kontourai/station/pull/4372) feat(efficiency): bound agent work, learning and isolated repairs"
+        ],
+        "fix": [
+          "[#4409](https://github.com/kontourai/station/pull/4409) fix: validate shard suite coverage",
+          "[#4374](https://github.com/kontourai/station/pull/4374) fix(chat): send busy composer follow-ups to the durable inbox"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4378](https://github.com/kontourai/station/pull/4378) test(chat-dock): pin that opening an existing conversation keeps the new-chat Project",
+          "[#4373](https://github.com/kontourai/station/pull/4373) build(deps-dev): bump glob from 13.0.6 to 14.0.2"
+        ]
+      },
+      "note": null,
+      "commitCount": 6
+    }
+  },
+  {
+    "timestampUtc": "2026-10-31T14:45:15Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2495.1",
+    "sha": "ee3a07d023d4919c48a3ae65e3918d41135024a6",
+    "artifactBuiltAt": "2026-10-31T14:03:17.749Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/41207606546",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 41207606546)"
+    ],
+    "changelog": {
+      "previousSha": "0dda10432fe6e4f594936ac6787f8758e2eb7364",
+      "groups": {
+        "feat": [
+          "[#4316](https://github.com/kontourai/station/pull/4316) feat(projects): warn when a Project's checkout is far behind its upstream",
+          "[#4216](https://github.com/kontourai/station/pull/4216) feat(sdk): preserve foreground turn keys across uncertain sends",
+          "[#4371](https://github.com/kontourai/station/pull/4371) feat(chat): make Inbox the mobile dock home",
+          "[#4351](https://github.com/kontourai/station/pull/4351) feat: surface integration status and task write-back history",
+          "[#4347](https://github.com/kontourai/station/pull/4347) feat(review): record and play task walkthrough clips",
+          "[#4289](https://github.com/kontourai/station/pull/4289) feat(automations): run scheduled work in a conversation on any engine",
+          "[#4343](https://github.com/kontourai/station/pull/4343) feat(rooms): deliver compact documents with member admission",
+          "[#4334](https://github.com/kontourai/station/pull/4334) feat(task): add overview timeline and device capture",
+          "[#4280](https://github.com/kontourai/station/pull/4280) feat(registry): curated MCP subregistry and ask-by-default after untrusted content"
+        ],
+        "fix": [
+          "[#4368](https://github.com/kontourai/station/pull/4368) fix: protect plugin approvals, account reads and command admission",
+          "[#4370](https://github.com/kontourai/station/pull/4370) fix: share general and orchestration event streams"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4349](https://github.com/kontourai/station/pull/4349) build(deps): consolidate Dependabot updates and migrate ACP SDK 2"
+        ]
+      },
+      "note": null,
+      "commitCount": 12
+    }
+  },
+  {
+    "timestampUtc": "2026-10-31T14:45:12Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2495.1",
+    "sha": "ee3a07d023d4919c48a3ae65e3918d41135024a6",
+    "artifactBuiltAt": "2026-10-31T14:03:13.734Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/41207606546",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 41207606546)"
+    ],
+    "changelog": {
+      "previousSha": "0dda10432fe6e4f594936ac6787f8758e2eb7364",
+      "groups": {
+        "feat": [
+          "[#4316](https://github.com/kontourai/station/pull/4316) feat(projects): warn when a Project's checkout is far behind its upstream",
+          "[#4216](https://github.com/kontourai/station/pull/4216) feat(sdk): preserve foreground turn keys across uncertain sends",
+          "[#4371](https://github.com/kontourai/station/pull/4371) feat(chat): make Inbox the mobile dock home",
+          "[#4351](https://github.com/kontourai/station/pull/4351) feat: surface integration status and task write-back history",
+          "[#4347](https://github.com/kontourai/station/pull/4347) feat(review): record and play task walkthrough clips",
+          "[#4289](https://github.com/kontourai/station/pull/4289) feat(automations): run scheduled work in a conversation on any engine",
+          "[#4343](https://github.com/kontourai/station/pull/4343) feat(rooms): deliver compact documents with member admission",
+          "[#4334](https://github.com/kontourai/station/pull/4334) feat(task): add overview timeline and device capture",
+          "[#4280](https://github.com/kontourai/station/pull/4280) feat(registry): curated MCP subregistry and ask-by-default after untrusted content"
+        ],
+        "fix": [
+          "[#4368](https://github.com/kontourai/station/pull/4368) fix: protect plugin approvals, account reads and command admission",
+          "[#4370](https://github.com/kontourai/station/pull/4370) fix: share general and orchestration event streams"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4349](https://github.com/kontourai/station/pull/4349) build(deps): consolidate Dependabot updates and migrate ACP SDK 2"
+        ]
+      },
+      "note": null,
+      "commitCount": 12
+    }
+  },
+  {
+    "timestampUtc": "2026-10-31T14:04:47Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.2495.41207606546",
+    "sha": "ee3a07d023d4919c48a3ae65e3918d41135024a6",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/41207606546",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.2495.41207606546 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "4ff64b5492f1d4e8604c9f4f9f4a408648d8dea2",
+      "groups": {
+        "feat": [
+          "[#4316](https://github.com/kontourai/station/pull/4316) feat(projects): warn when a Project's checkout is far behind its upstream",
+          "[#4216](https://github.com/kontourai/station/pull/4216) feat(sdk): preserve foreground turn keys across uncertain sends",
+          "[#4371](https://github.com/kontourai/station/pull/4371) feat(chat): make Inbox the mobile dock home"
+        ],
+        "fix": [
+          "[#4368](https://github.com/kontourai/station/pull/4368) fix: protect plugin approvals, account reads and command admission",
+          "[#4370](https://github.com/kontourai/station/pull/4370) fix: share general and orchestration event streams"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 5
+    }
+  },
+  {
+    "timestampUtc": "2026-10-31T07:43:13Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.2495.41180842651",
+    "sha": "4ff64b5492f1d4e8604c9f4f9f4a408648d8dea2",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/41180842651",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.2495.41180842651 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "0dda10432fe6e4f594936ac6787f8758e2eb7364",
+      "groups": {
+        "feat": [
+          "[#4351](https://github.com/kontourai/station/pull/4351) feat: surface integration status and task write-back history",
+          "[#4347](https://github.com/kontourai/station/pull/4347) feat(review): record and play task walkthrough clips",
+          "[#4289](https://github.com/kontourai/station/pull/4289) feat(automations): run scheduled work in a conversation on any engine",
+          "[#4343](https://github.com/kontourai/station/pull/4343) feat(rooms): deliver compact documents with member admission",
+          "[#4334](https://github.com/kontourai/station/pull/4334) feat(task): add overview timeline and device capture",
+          "[#4280](https://github.com/kontourai/station/pull/4280) feat(registry): curated MCP subregistry and ask-by-default after untrusted content"
+        ],
+        "fix": [],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4349](https://github.com/kontourai/station/pull/4349) build(deps): consolidate Dependabot updates and migrate ACP SDK 2"
+        ]
+      },
+      "note": null,
+      "commitCount": 7
+    }
+  },
+  {
+    "timestampUtc": "2026-10-30T22:00:11Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2494.1",
+    "sha": "0dda10432fe6e4f594936ac6787f8758e2eb7364",
+    "artifactBuiltAt": "2026-10-30T21:16:03.218Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/41128097521",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 41128097521)"
+    ],
+    "changelog": {
+      "previousSha": "d2ec5eefa1641207252376b70e361f5695572d42",
+      "groups": {
+        "feat": [
+          "[#4363](https://github.com/kontourai/station/pull/4363) feat: expose Knowledge search health and paused Session Goal capabilities",
+          "[#4292](https://github.com/kontourai/station/pull/4292) feat(coordinator): Houston, a personal coordinator Session woken on attention states (#3628)",
+          "[#4307](https://github.com/kontourai/station/pull/4307) feat(chat): open New chat as a draft in the chat dock, not a dialog"
+        ],
+        "fix": [
+          "[#4367](https://github.com/kontourai/station/pull/4367) fix(station): repair pairing, Windows startup, and diagnostics"
+        ],
+        "ci": [
+          "[#4369](https://github.com/kontourai/station/pull/4369) ci: stage nonqualifying conflict signer diagnostic"
+        ],
+        "docs": [],
+        "other": [
+          "[#4365](https://github.com/kontourai/station/pull/4365) perf(ci): relieve PR shard backlog and ledger reads"
+        ]
+      },
+      "note": null,
+      "commitCount": 6
+    }
+  },
+  {
+    "timestampUtc": "2026-10-30T22:00:08Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2494.1",
+    "sha": "0dda10432fe6e4f594936ac6787f8758e2eb7364",
+    "artifactBuiltAt": "2026-10-30T21:15:05.946Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/41128097521",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 41128097521)"
+    ],
+    "changelog": {
+      "previousSha": "d2ec5eefa1641207252376b70e361f5695572d42",
+      "groups": {
+        "feat": [
+          "[#4363](https://github.com/kontourai/station/pull/4363) feat: expose Knowledge search health and paused Session Goal capabilities",
+          "[#4292](https://github.com/kontourai/station/pull/4292) feat(coordinator): Houston, a personal coordinator Session woken on attention states (#3628)",
+          "[#4307](https://github.com/kontourai/station/pull/4307) feat(chat): open New chat as a draft in the chat dock, not a dialog"
+        ],
+        "fix": [
+          "[#4367](https://github.com/kontourai/station/pull/4367) fix(station): repair pairing, Windows startup, and diagnostics"
+        ],
+        "ci": [
+          "[#4369](https://github.com/kontourai/station/pull/4369) ci: stage nonqualifying conflict signer diagnostic"
+        ],
+        "docs": [],
+        "other": [
+          "[#4365](https://github.com/kontourai/station/pull/4365) perf(ci): relieve PR shard backlog and ledger reads"
+        ]
+      },
+      "note": null,
+      "commitCount": 6
+    }
+  },
+  {
+    "timestampUtc": "2026-10-30T21:16:18Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.2494.41128097521",
+    "sha": "0dda10432fe6e4f594936ac6787f8758e2eb7364",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/41128097521",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.2494.41128097521 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "d2ec5eefa1641207252376b70e361f5695572d42",
+      "groups": {
+        "feat": [
+          "[#4363](https://github.com/kontourai/station/pull/4363) feat: expose Knowledge search health and paused Session Goal capabilities",
+          "[#4292](https://github.com/kontourai/station/pull/4292) feat(coordinator): Houston, a personal coordinator Session woken on attention states (#3628)",
+          "[#4307](https://github.com/kontourai/station/pull/4307) feat(chat): open New chat as a draft in the chat dock, not a dialog"
+        ],
+        "fix": [
+          "[#4367](https://github.com/kontourai/station/pull/4367) fix(station): repair pairing, Windows startup, and diagnostics"
+        ],
+        "ci": [
+          "[#4369](https://github.com/kontourai/station/pull/4369) ci: stage nonqualifying conflict signer diagnostic"
+        ],
+        "docs": [],
+        "other": [
+          "[#4365](https://github.com/kontourai/station/pull/4365) perf(ci): relieve PR shard backlog and ledger reads"
+        ]
+      },
+      "note": null,
+      "commitCount": 6
+    }
+  },
+  {
     "timestampUtc": "2026-10-30T10:44:49Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2494",

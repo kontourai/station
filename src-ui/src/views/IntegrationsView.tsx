@@ -2,6 +2,7 @@ import {
   type IntegrationViewModel,
   useApplyIntegrationToolsMutation,
   useDeleteIntegrationMutation,
+  useFeaturePreviewsQuery,
   useIntegrationQuery,
   useIntegrationsQuery,
   useReconnectIntegrationMutation,
@@ -53,6 +54,9 @@ function integrationDraftSignature(form: IntegrationDef | null): string {
     secretEnv,
     removeSecretEnvKeys,
     secretEnvKeys,
+    contentTrust,
+    trustReadOnlyHints,
+    untrustedContentPermissions,
   } = form;
   return JSON.stringify({
     id,
@@ -68,6 +72,9 @@ function integrationDraftSignature(form: IntegrationDef | null): string {
     secretEnv,
     removeSecretEnvKeys,
     secretEnvKeys,
+    contentTrust,
+    trustReadOnlyHints,
+    untrustedContentPermissions,
   });
 }
 
@@ -107,6 +114,12 @@ export function IntegrationsView({
     error: integrationsError,
     refetch: refetchIntegrations,
   } = useIntegrationsQuery();
+  const previews = useFeaturePreviewsQuery();
+  const trustControlsEnabled =
+    previews.data?.some(
+      (preview) =>
+        preview.id === 'integration-content-trust' && preview.enabled,
+    ) === true;
   const [search, setSearch] = useState('');
   const [message, setMessage] = useState<{
     type: 'success' | 'warning' | 'error';
@@ -376,12 +389,26 @@ export function IntegrationsView({
             }
             onReconnect={() => reconnectMutation.mutate(renderedEditForm.id)}
             onDelete={() => setDeleteConfirm(true)}
-            onSave={() =>
-              saveMutation.mutate({
+            onSave={() => {
+              const submission = {
                 ...renderedEditForm,
                 isNew: selectedId === 'new',
-              })
-            }
+              };
+              if (!submission.isNew && detailData) {
+                for (const field of [
+                  'contentTrust',
+                  'trustReadOnlyHints',
+                  'untrustedContentPermissions',
+                ] as const) {
+                  if (
+                    JSON.stringify(submission[field]) ===
+                    JSON.stringify(detailData[field])
+                  )
+                    delete submission[field];
+                }
+              }
+              saveMutation.mutate(submission);
+            }}
             onSwitchToForm={switchToForm}
             onSwitchToRaw={switchToRaw}
             onRawJsonChange={(value) => {
@@ -392,6 +419,7 @@ export function IntegrationsView({
               setEditForm((form) => (form ? updater(form) : form))
             }
             onUnlock={() => setIsLocked(false)}
+            trustControlsEnabled={trustControlsEnabled}
           />
         )}
       </SplitPaneLayout>

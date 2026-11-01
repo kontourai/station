@@ -285,15 +285,21 @@ export function LocalUiSessionGate({
     const resume = () => {
       if (document.visibilityState === 'visible') recheckSession();
     };
+    // A host restart is not an authentication refusal. Retry while visible
+    // so a dev reload reconnects without another pairing or a manual refresh.
+    const retry = checkingRecovery
+      ? undefined
+      : window.setTimeout(resume, 2000);
     window.addEventListener('online', resume);
     window.addEventListener('focus', resume);
     document.addEventListener('visibilitychange', resume);
     return () => {
+      window.clearTimeout(retry);
       window.removeEventListener('online', resume);
       window.removeEventListener('focus', resume);
       document.removeEventListener('visibilitychange', resume);
     };
-  }, [effectiveResolution?.kind, recheckSession]);
+  }, [effectiveResolution?.kind, recheckSession, checkingRecovery]);
 
   // No session: the connect screen is this device's, not the account's whose
   // appearance the startup path painted from its cache (lib/appearance-cache.ts).
@@ -401,7 +407,9 @@ export function LocalUiSessionGate({
       <main className="local-ui-session-recovery" aria-live="polite">
         <StartupHandoff recovery />
         <h1>Reconnecting to this Station</h1>
-        <p role="alert">Keep Station running on your computer, then retry.</p>
+        <p role="alert">
+          Station is temporarily unavailable. Reconnecting automatically.
+        </p>
         <Button onClick={() => recheckSession()} disabled={checkingRecovery}>
           Try again
         </Button>

@@ -100,7 +100,11 @@
 
     "src-ui/src/hooks/useServerEvents.ts",
 
-    "packages/sdk/src/query-domains/workspaceConnections.ts"
+    "packages/sdk/src/query-domains/workspaceConnections.ts",
+
+    "src-ui/src/hooks/useServerEventsListener.ts",
+
+    "src-ui/src/hooks/ServerEventsMount.tsx"
   ],
 
   "checks": [

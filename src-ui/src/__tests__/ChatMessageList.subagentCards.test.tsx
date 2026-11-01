@@ -709,7 +709,7 @@ describe('subagent transcript cards', () => {
       );
       const card = await findCard();
       expect(screen.getAllByTestId('subagent-card')).toHaveLength(1);
-      expect(within(card).getByText('Completed')).toBeTruthy();
+      expect(within(card).getByText('Run finished')).toBeTruthy();
       expect(within(card).getByText('done')).toBeTruthy();
       expect(
         within(card).getByText(index === 0 ? '0:05' : '0:04'),
@@ -893,7 +893,7 @@ describe('subagent transcript cards', () => {
       };
       view.rerender(settledSession);
       const settledCard = await assertCard();
-      expect(within(settledCard).getByText('Completed')).toBeTruthy();
+      expect(within(settledCard).getByText('Run finished')).toBeTruthy();
       const rowId = settledCard
         .closest('.chat-message-anchor')
         ?.getAttribute('data-chat-message-key');
@@ -1237,7 +1237,7 @@ describe('subagent transcript cards', () => {
     ];
     view.rerender();
     const card = await findCard();
-    await within(card).findByText('Completed');
+    await within(card).findByText('Run finished');
     expect(card.querySelector('.child-work-activity')).toBeNull();
     expect(within(card).queryByText('Running')).toBeNull();
     // The first settle's reported end (17m 04s after the reported start).
@@ -1274,7 +1274,7 @@ describe('subagent transcript cards', () => {
     renderTranscript();
     const card = await findCard();
     expect(screen.getAllByTestId('subagent-card')).toHaveLength(1);
-    expect(within(card).getByText('Completed')).toBeTruthy();
+    expect(within(card).getByText('Run finished')).toBeTruthy();
     expect(
       within(card).getByText('Result retained in terminal history'),
     ).toBeTruthy();
@@ -1291,7 +1291,7 @@ describe('subagent transcript cards', () => {
     renderTranscript();
     const card = await findCard();
     await within(card).findByText('No result');
-    expect(within(card).queryByText('Completed')).toBeNull();
+    expect(within(card).queryByText('Run finished')).toBeNull();
     expect(within(card).queryByText('Running')).toBeNull();
   });
 });

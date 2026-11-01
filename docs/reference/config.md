@@ -64,6 +64,8 @@ additional first-run, workspace, approval, contribution, and preview settings.
 | field | type | default | description |
 |---|---|---|---|
 | `defaultMaxTurns` | positive integer | `200` | VoltAgent step cap after `guardrails.maxSteps` and top-level Agent `maxSteps`. Missing/zero values fall through in the resolver, but the settings write interface requires a positive integer. This is a finite cap, not unlimited execution; the Strands adapter does not apply this setting. |
+| `checkoutStaleAfterCommits` | positive integer | `50` | Commits behind its upstream branch at which a Project's checkout reads as stale for the `stale-project-checkout` preview ([Project checkout freshness](api.md#project-checkout-freshness)). |
+| `checkoutStaleAfterDays` | positive integer | `3` | Days a Project's checkout may lack a commit on its upstream branch, or go without a fetch, before it reads as stale for the same preview. |
 | `defaultMaxOutputTokens` | positive integer | no Station-applied cap | Output-token cap passed by Station's framework adapters when an Agent has no `guardrails.maxTokens`. Provider/model limits still apply. |
 | `systemPrompt` | string | [seeded Station prompt](../../src-server/domain/app-config-seed.ts) | Prepended to Agent instructions by Station's engine. An absent or empty value is reseeded on load. |
 | `templateVariables` | array | seeded `AGENT_NAME=Station` on a new home | Named replacements used by Station's prompt processing; built-in date/time and user variables are separate. |
@@ -218,6 +220,12 @@ event-loop delays; foreground config reads still check the current signature.
 
 Station's server logger (`src-server/utils/logger.ts`) writes structured trace/debug/info/warn/error/fatal lines to stdout and, once boot has installed the sink, to a durable NDJSON store under `<STATION_HOME>/logs/server/server-YYYY-MM-DD.ndjson` (one file per UTC day). Retention mirrors the runtime event log: age- and size-bounded, with the active day always protected.
 
+**Upgrade note for Automations.** Previously written server logs may still
+contain automation names and engine errors. Upgrading does not rewrite or
+redact those files. Review access to retained files and copies at external
+collectors. The retention settings below remove older, inactive day files;
+the active UTC day is retained even when a lower limit is configured.
+
 The local store batches pending lines for 10 ms, draining earlier at 64 KiB.
 The actual batch write is synchronous; this removes the syscall per line but
 can still block briefly on slow storage. Day rollover, sink replacement, close,
@@ -255,7 +263,8 @@ The internal server token starts with home-possession, but the
 [station-control authority guard](../../src-server/security/station-control-authority-guard.ts)
 withdraws it from ordinary tool requests unless their caller is a bound
 operator. A tool's use of a local HTTP hop does not by itself guarantee
-unredacted logs. The [mint routes](../../src-server/runtime/routes/runtime-routes.ts)
+unredacted logs. Agent access additionally requires the session-specific grant
+described below. The [mint routes](../../src-server/runtime/routes/runtime-routes.ts)
 and [diagnostics handler](../../src-server/routes/system/diagnostics.ts) show the
 issuance and read boundaries.
 
@@ -316,9 +325,21 @@ for per-message limits and Task incarnation binding.
 
 The write side above has a matching self-read path — Station can answer "what did you just log" without an operator tailing a file by hand.
 
-- **`GET /api/diagnostics/logs`** — query params `level` (minimum severity floor, `trace`..`fatal`; invalid values 400 naming the accepted list), `since`/`until` (inclusive bounds; send ISO 8601 timestamps, although the current route accepts any string `Date.parse` can parse and returns 400 only when parsing fails), `q` (case-insensitive substring matched against the rendering **the caller will actually receive**, never the other one — a remote caller can only search what a remote caller could see; `q=[REDACTED]` matches any redacted-path entry that had a field redacted), `limit` (default 200, hard cap 1000, clamped rather than rejected). Scans the daily files newest-first, reading each one backward in bounded chunks (never a whole-file load), and returns the **last N matches found in its bounded backward scan, ordered by parsed timestamp** (it does not scan the entire history to prove the globally newest timestamps), stopping early once `limit` is satisfied or a 32 MiB per-query scan budget (`DEFAULT_SERVER_LOG_SCAN_BUDGET_BYTES`) is spent. Response: `{ entries, truncated, scannedFiles, unreadableFiles, oldestScannedDay, skippedMalformedLines, scanBudgetExhausted }` — the reader is explicit about what it actually covered: an unopenable day file counts in `unreadableFiles` (and forces `truncated: true`) rather than silently shrinking coverage (a successfully-opened but 0-byte day file yields no lines and is excluded from `scannedFiles`/`oldestScannedDay`; content coverage is unaffected), and `scanBudgetExhausted` names the I/O cap specifically when it's the reason for truncation. Gated at the same pairing-scope tier as `GET /api/diagnostics/bundle` (`src-server/security/pairing-route-scopes.ts`). Locality does not change who may hit the route; it changes whether the body is redacted.
+- **`GET /api/diagnostics/logs`** — query params `level` (minimum severity floor, `trace`..`fatal`; invalid values 400 naming the accepted list), `since`/`until` (inclusive bounds; send ISO 8601 timestamps, although the current route accepts any string `Date.parse` can parse and returns 400 only when parsing fails), `q` (case-insensitive substring matched against the rendering **the caller will actually receive**, never the other one — a remote caller can only search what a remote caller could see; `q=[REDACTED]` matches any redacted-path entry that had a field redacted), `limit` (default 200, hard cap 1000, clamped rather than rejected). Scans the daily files newest-first, reading each one backward in bounded chunks (never a whole-file load), and returns the **last N matches found in its bounded backward scan, ordered by parsed timestamp** (it does not scan the entire history to prove the globally newest timestamps), stopping early once `limit` is satisfied or a 32 MiB per-query scan budget (`DEFAULT_SERVER_LOG_SCAN_BUDGET_BYTES`) is spent. Response: `{ entries, truncated, scannedFiles, unreadableFiles, oldestScannedDay, skippedMalformedLines, scanBudgetExhausted }` — the reader is explicit about what it actually covered: an unopenable day file counts in `unreadableFiles` (and forces `truncated: true`) rather than silently shrinking coverage (a successfully-opened but 0-byte day file yields no lines and is excluded from `scannedFiles`/`oldestScannedDay`; content coverage is unaffected), and `scanBudgetExhausted` names the I/O cap specifically when it's the reason for truncation. Gated at the same pairing-scope tier as `GET /api/diagnostics/bundle` (`src-server/security/pairing-route-scopes.ts`). The pairing-scope gate still applies; agent callers also need the grant below.
 - **`read_logs`** MCP tool (station-control) — calls the same HTTP handler. Its caller binding determines redaction; the internal hop alone is insufficient. Its tool schema accepts integer limits 1–1000, while the HTTP route clamps an out-of-range value.
 - **Redaction on egress:** without bound home-possession, the reader applies `redactDeep` to secret-named fields and secret-pattern redaction to string leaves, including message and error text. Both filtering and output use this rendering. With bound home-possession, the reader uses the unredacted stored entry. This differs from stdout, where write-time redaction remains in place.
+
+Agent log reads are denied by default, including calls made with the internal
+token and no verified caller. An operator may grant one verified **bound**
+session through `POST /api/agents/unattended-grants` with an operator credential
+and `access:manage`. Use `toolName: "station-control:read_logs"` and a
+`principalKey` that is the JSON string for
+`{"kind":"diagnostics-session","sessionId":"<session-id>"}`. Revoke the
+same pair through `POST /api/agents/unattended-grants/revoke`. This grant can
+expose unrelated conversation content; it is not a conversation-scoped read.
+An agent cannot grant itself access, and caller-less, delegated-custody and
+bearer-exposed calls remain denied even if a session has a grant. A failed or
+revoked grant lookup denies the read.
 
 ### Correlating `read_logs` output with monitoring events (station#1897)
 
@@ -341,11 +362,12 @@ retain it.
 | Station user id | `station.user.id` | `station.user.id` | `POST /api/orchestration/chat` |
 
 [Scheduler attempts](../../src-server/services/scheduling/builtin-scheduler.ts)
-bind `station.scheduler.job_name` and `station.scheduler.job_run_id`. These are
-scheduler-local keys: a run ID is not a conversation ID. The
+bind `station.scheduler.job_run_id`, an opaque job id and target kind for
+all jobs. Job names and engine errors remain in admitted run records. These are scheduler-local keys: a run ID is not a conversation ID. The
 [execution owner](../../src-server/services/scheduling/builtin-scheduler-execution.ts)
-invokes the scheduled-turn adapter after durable admission; monitor actions
-have their own Task dispatch path. Use the job's receipts when following an
+invokes the scheduled-turn adapter after durable admission; a job with a
+`target` uses the conversation runner instead, whose turn carries the key
+`scheduler:<runId>`; monitor actions have their own Task dispatch path. Use the job's receipts when following an
 attempt into any resulting session, rather than assuming the IDs match.
 
 ---
@@ -533,7 +555,7 @@ external-engine approval are separate; see the [Agent guide](../guides/agent-con
 | `mcpMode` | `add` / `replace` | Preserve harness MCP integrations or replace their configured list. Omission retains legacy engine behavior. Harness built-in tools remain. |
 | `mcpLoading` | `on-demand` / `always` | Claude native tool-search setting; omission preserves the harness default. |
 | `available` | string[] | Loaded-tool filter. Omitted or `["*"]` includes all loaded tools; `[]` includes none. The VoltAgent loader matches runtime/original MCP names through its mapping; Strands matches runtime/mapped original names and trailing-`*` prefixes. |
-| `autoApprove` | string[] | Tool-name grants that skip interactive confirmation after stale-generation, delegation, and config-protection checks. The Station-engine hook matches runtime names and exact loader-qualified `mcp/<server>/<action>` keys; external-engine approval is separate. A grant covers plain calls only, never an escalation or a plan exit, even for `*` (see [what autoApprove never covers](../guides/agent-configuration.md#what-autoapprove-never-covers)) |
+| `autoApprove` | string[] | Tool-name grants that skip interactive confirmation after stale-generation, delegation, and config-protection checks, and on the Station engine after the untrusted-content permission ([connections](../guides/connections.md#tools-after-untrusted-content)). The Station-engine hook matches runtime names and exact loader-qualified `mcp/<server>/<action>` keys; external-engine approval is separate. A grant covers plain calls only, never an escalation or a plan exit, even for `*` (see [what autoApprove never covers](../guides/agent-configuration.md#what-autoapprove-never-covers)) |
 | `askBeforeUse` | string[] | Tool-name patterns requiring approval on Station and Claude. Source-qualified exact choices override wildcard defaults; Ask wins equally specific conflicts. Legacy flattened Always grants cannot override a source-qualified Ask default. Session grants, guardian allows and unattended grants cannot bypass an effective Ask. Earlier refusals still apply. Other engines refuse startup when this list is nonempty. |
 | `unattendedAutoApprove` | string[] | Explicit opt-in: tools that may run with nobody to confirm (scheduled jobs, `/invoke`, CLI, delegated children) on Station's engine. Same patterns as `autoApprove`. Earlier policy checks and existing grants run first. For calls reaching this opt-in, an enabled guardian in enforce mode blocks deny/defer (including error fallback); review mode does not block the opt-in. See [Unattended runs](../guides/agent-configuration.md#unattended-runs) |
 
@@ -629,3 +651,22 @@ above; they do not currently appear as buttons.
 | Logs | [Logger](../../src-server/utils/logger.ts), [store](../../src-server/services/infra/server-log-store.ts), [reader](../../src-server/services/infra/server-log-reader.ts), [diagnostics route](../../src-server/routes/system/diagnostics.ts) |
 | Attachments | [Blob store](../../src-server/services/orchestration/attachment-blob-store.ts), [event store and bindings](../../src-server/services/orchestration/event-store.ts), [authorized read route](../../src-server/routes/orchestration/attachments.ts) |
 | Personal conversation roots | [Bootstrap predicate and creation](../../src-server/knowledge-store/conversation-root-bootstrap.ts), [runtime caller](../../src-server/runtime/bootstrap/station-runtime.ts) |
+
+
+## Isolated repair profiles and retained runs
+
+The personal operator repair preview stores redacted-by-API metadata in private
+`<STATION_HOME>/security/repair-profiles.json` and run records/evidence under
+`<STATION_HOME>/automation/repairs/`. Profile files hold parsed Datum references,
+never materialized provider/App secrets. Execution and publisher profiles have
+separate revisions and start disabled; source/rule enablement has its own
+configuration fingerprint. Use the [operator API](api.md#isolated-github-repair-preview)
+instead of editing custody or grant records by hand.
+
+Unarchived and archived run ceilings are sixteen and 128 respectively. An
+indeterminate run remains unknown after explicit admission release; consumed
+grants and its episode replay fence stay retained. Both paths fall under the
+existing home-store registry's `security`/`automation` state roots. Mutable source
+workspaces are separate owned temporary directories and are removed only after
+verified worker stop. See [setup and recovery](../guides/agent-efficiency.md#run-an-isolated-github-repair)
+for costs, budgets, cancellation and export/retention boundaries.

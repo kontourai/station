@@ -10,6 +10,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
+import { useClientBootstrapReadiness } from '../../contexts/AuthorityPersistenceContext';
 import { stitchWindowWithLiveEvents } from './conversationTranscriptParts';
 import { ensureOrchestrationEventStream } from './ensureOrchestrationEventStream';
 import {
@@ -46,10 +47,24 @@ export function useSessionTranscriptEvents(
   // being mounted: ensure it here (deduplicated per apiBase; the returned
   // release drops only this registration).
   const queryClient = useQueryClient();
-  useEffect(
-    () => ensureOrchestrationEventStream(apiBase, queryClient),
-    [apiBase, queryClient],
-  );
+  const bootstrap = useClientBootstrapReadiness();
+  const streamAuthorityKey = bootstrap.authorityKey;
+  useEffect(() => {
+    if (bootstrap.status !== 'settled') return;
+    return ensureOrchestrationEventStream(
+      apiBase,
+      queryClient,
+      streamAuthorityKey,
+      false,
+      bootstrap.sharedRealtime,
+    );
+  }, [
+    apiBase,
+    queryClient,
+    streamAuthorityKey,
+    bootstrap.status,
+    bootstrap.sharedRealtime,
+  ]);
 
   const [revision, setRevision] = useState(0);
   const wasStreaming = useRef(isStreaming);

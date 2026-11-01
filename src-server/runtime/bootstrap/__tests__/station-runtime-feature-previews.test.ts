@@ -61,10 +61,11 @@ test('Fleet consumer probes toggle the actual runtime consuming path', async () 
     expect.arrayContaining([
       expect.objectContaining({ id: 'fleet-consumer-probes', enabled: false }),
       expect.objectContaining({ id: 'task-review', enabled: false }),
+      expect.objectContaining({ id: 'task-collaboration', enabled: false }),
+      expect.objectContaining({ id: 'chat-apps', enabled: false }),
       expect.objectContaining({ id: 'visual-skills', enabled: false }),
     ]),
   );
-  expect(registry.list()).toHaveLength(3);
   expect(runtime.fleetProbes()).toBeUndefined();
   await registry.setEnabled('fleet-consumer-probes', true);
 

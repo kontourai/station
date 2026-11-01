@@ -37,6 +37,10 @@ import {
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type { FullAccessRevocationReport } from '@kontourai/station-contracts/environment-security';
 import { STATION_CONFINEMENT_RECORD_METADATA_KEY } from '@kontourai/station-contracts/execution-confinement';
+import {
+  type LearningReviewRevisionRef,
+  parseLearningContextContributions,
+} from '@kontourai/station-contracts/learning-review';
 import type {
   AgentRunSummary,
   ConversationHandoffStatusProjection,
@@ -98,6 +102,7 @@ import {
   stripReservedOrchestrationMetadata,
   TASK_BRIEF_COMPOSED_METADATA_KEY,
   TASK_BRIEF_METADATA_KEY,
+  TASK_LEARNING_CONTRIBUTIONS_METADATA_KEY,
   unsupportedModelOptionError,
   unsupportedModelOptionKeys,
   WORKSPACE_PANE_HOST_ACTION_METADATA_KEY,
@@ -279,6 +284,7 @@ import {
 } from '../infra/resource-posture.js';
 import { workloadBudgetEngineContext } from '../infra/workload-budget.js';
 import { withEngineMcpAccountOwner } from '../plugins/engine-mcp-oauth.js';
+import { recordPersonApprovedExternalTool } from '../plugins/mediated-untrusted-content-gate.js';
 import {
   isPersonChatStart,
   type ProjectChatDefaultsService,
@@ -568,12 +574,14 @@ function telemetryEngine(
  * from an HTTP route.
  */
 interface OrchestrationDispatchInternalOptions {
+  mcpPromptOrigin?: import('@kontourai/station-contracts/mcp-prompts').VerifiedMcpPromptOrigin;
   /** Original intent proof; null preserves unknown legacy inbox input. */
   submissionDigest?: string | null;
   skillExperience?: SkillExperienceStartInputV1;
   /** Request authority forwarded only by the server-owned foreground resolver. */
   nativeMemoryReadAuthority?: SessionReadAuthority;
   sessionStartAdmission?: SessionCommandInternalOptions['sessionStartAdmission'];
+  beforeProviderStart?: SessionCommandInternalOptions['beforeProviderStart'];
   /** Exact server-owned Task reservation scope; never read from public metadata. */
   roomExecutionBinding?: SessionCommandInternalOptions['roomExecutionBinding'];
   /** Epic #4003: see `SessionCommandInternalOptions.taskBrief`. */
@@ -1455,11 +1463,22 @@ function pendingFirstTurnInstructions(
   return firstTurnInstructions;
 }
 
-function taskBriefStartRecord(brief: { digest: string; text: string }) {
+function taskBriefStartRecord(brief: {
+  digest: string;
+  text: string;
+  mandatoryContextDigest?: string;
+  learningContributions?: readonly LearningReviewRevisionRef[];
+  retainedByBoundary?: boolean;
+}) {
   return {
     version: TASK_BRIEF_VERSION,
     digest: brief.digest,
     text: brief.text,
+    learningContributions: brief.learningContributions ?? [],
+    ...(brief.retainedByBoundary ? { retainedByBoundary: true } : {}),
+    ...(brief.mandatoryContextDigest
+      ? { mandatoryContextDigest: brief.mandatoryContextDigest }
+      : {}),
   };
 }
 
@@ -1476,11 +1495,27 @@ function isGenuineFirstTurn(events: readonly { method?: unknown }[]): boolean {
  */
 function pendingTaskBrief(
   events: readonly { method?: unknown; metadata?: unknown }[],
-): { digest: string; text: string } | undefined {
+):
+  | {
+      digest: string;
+      text: string;
+      learningContributions: readonly LearningReviewRevisionRef[];
+      retainedByBoundary: boolean;
+      mandatoryContextDigest?: string;
+    }
+  | undefined {
   if (events.some((event) => event.method === 'turn.started')) {
     return undefined;
   }
-  let brief: { digest: string; text: string } | undefined;
+  let brief:
+    | {
+        digest: string;
+        text: string;
+        learningContributions: readonly LearningReviewRevisionRef[];
+        retainedByBoundary: boolean;
+        mandatoryContextDigest?: string;
+      }
+    | undefined;
   for (const event of events) {
     if (
       event.method !== 'session.started' &&
@@ -1500,8 +1535,31 @@ function pendingTaskBrief(
       typeof text === 'string' &&
       text.length > 0 &&
       text.length <= TASK_BRIEF_MAX_CHARS
-    )
-      brief = { digest, text };
+    ) {
+      const refs = (record as Record<string, unknown>).learningContributions;
+      const learningContributions =
+        refs === undefined ? [] : parseLearningContextContributions(refs);
+      if (!learningContributions)
+        throw new Error('Stored Task learning contributions are invalid');
+      const mandatoryContextDigest = (record as Record<string, unknown>)
+        .mandatoryContextDigest;
+      if (
+        mandatoryContextDigest !== undefined &&
+        (typeof mandatoryContextDigest !== 'string' ||
+          !/^[a-f0-9]{64}$/.test(mandatoryContextDigest))
+      )
+        throw new Error('Stored mandatory Task context digest is invalid');
+      brief = {
+        ...(typeof mandatoryContextDigest === 'string'
+          ? { mandatoryContextDigest }
+          : {}),
+        digest,
+        text,
+        learningContributions,
+        retainedByBoundary:
+          (record as Record<string, unknown>).retainedByBoundary === true,
+      };
+    }
   }
   return brief;
 }
@@ -1993,6 +2051,98 @@ async function resolveStartSessionCwd(
 }
 
 export class OrchestrationService {
+  private taskSourceVerifier?: (sessionId: string) => Promise<void>;
+  bindTaskSourceVerifier(verifier: (sessionId: string) => Promise<void>): void {
+    this.taskSourceVerifier = verifier;
+  }
+  private retainedTaskStateVerifier?: (
+    sessionId: string,
+    seed: import('@kontourai/station-contracts/conversation-context-boundary').ConversationContextBoundarySeed,
+  ) => Promise<void>;
+  bindRetainedTaskStateVerifier(
+    verifier: NonNullable<OrchestrationService['retainedTaskStateVerifier']>,
+  ): void {
+    this.retainedTaskStateVerifier = verifier;
+  }
+  private mandatoryTaskContextVerifier?: (
+    sessionId: string,
+    expectedDigest: string,
+  ) => Promise<void>;
+  /** Trusted startup composition; the persisted digest remains authoritative across restart. */
+  bindMandatoryTaskContextVerifier(
+    verifier: (sessionId: string, expectedDigest: string) => Promise<void>,
+  ): void {
+    this.mandatoryTaskContextVerifier = verifier;
+  }
+  private async assertMandatoryTaskContextAtProviderTurn(
+    threadId: string,
+  ): Promise<void> {
+    const assertSource = async () => {
+      if (
+        !this.options.eventStore?.readProjectTaskRoomExecutionBinding(
+          threadId,
+        ) ||
+        !this.taskSourceVerifier
+      )
+        return;
+      try {
+        await this.taskSourceVerifier(threadId);
+      } catch {
+        throw new ConversationSeedTurnRefusedError(
+          'Task source access or current execution role changed before provider placement.',
+        );
+      }
+    };
+    await assertSource();
+    const state =
+      this.options.eventStore?.conversationContextBoundaryForSuccessor(
+        threadId,
+      )?.seed;
+    if (
+      state?.kind === 'task-state' &&
+      !this.options.eventStore?.latestEventByMethod(threadId, 'turn.started')
+    ) {
+      if (!this.retainedTaskStateVerifier)
+        throw new ConversationSeedTurnRefusedError(
+          'Retained Task state admission is unavailable.',
+        );
+      try {
+        await this.retainedTaskStateVerifier(threadId, state);
+      } catch {
+        throw new ConversationSeedTurnRefusedError(
+          'Retained Task state changed before provider placement. Refresh the Task context.',
+        );
+      }
+    }
+    const brief =
+      this.firstStartedMetadataOfThread(threadId)?.[TASK_BRIEF_METADATA_KEY];
+    if (
+      !brief ||
+      typeof brief !== 'object' ||
+      !('mandatoryContextDigest' in brief)
+    ) {
+      await assertSource();
+      return;
+    }
+    const digest = (brief as { mandatoryContextDigest?: unknown })
+      .mandatoryContextDigest;
+    if (
+      typeof digest !== 'string' ||
+      !/^[a-f0-9]{64}$/.test(digest) ||
+      !this.mandatoryTaskContextVerifier
+    )
+      throw new ConversationSeedTurnRefusedError(
+        'Mandatory Task context admission is unavailable. Refresh the Task execution.',
+      );
+    try {
+      await this.mandatoryTaskContextVerifier(threadId, digest);
+    } catch {
+      throw new ConversationSeedTurnRefusedError(
+        'Required Task context changed before provider dispatch. Refresh the Task execution.',
+      );
+    }
+    await assertSource();
+  }
   /** Shared receiver-local path observation used by target planning and start admission. */
   readonly resolveProjectSessionDirectory?: (
     slug: string,
@@ -7317,14 +7467,27 @@ export class OrchestrationService {
             throw new Error(
               'Credential profile selection is reserved for Station-managed recovery.',
             );
-          if (internal?.roomExecutionBinding) {
+          const lineage = this.options.eventStore?.conversationForSession(
+            input.threadId,
+          );
+          const inheritedBinding =
+            lineage?.predecessorSessionId &&
+            internal?.conversationIdentity?.conversationId ===
+              lineage.conversationId
+              ? this.options.eventStore?.readProjectTaskRoomExecutionBinding(
+                  lineage.predecessorSessionId,
+                )
+              : undefined;
+          const roomBinding =
+            internal?.roomExecutionBinding ?? inheritedBinding;
+          if (roomBinding) {
             if (this.options.requireTenantExecutionContext?.())
               throw new Error(
                 'Room execution binding is unavailable in hosted mode.',
               );
             const bound =
               await this.options.eventStore?.bindProjectTaskRoomExecution({
-                ...internal.roomExecutionBinding,
+                ...roomBinding,
                 sessionId: input.threadId,
               });
             if (this.options.requireTenantExecutionContext?.())
@@ -7678,14 +7841,53 @@ export class OrchestrationService {
           // Epic #4003: the dispatch-built Task brief, stamped after the
           // reserved-key strip removed any caller-supplied value, for the
           // first turn to compose (`pendingTaskBrief`).
-          if (internal?.taskBrief) {
+          const retainedSeed =
+            this.options.eventStore?.conversationContextBoundaryForSuccessor(
+              startInput.threadId,
+            )?.seed;
+          const retainedBrief =
+            retainedSeed?.kind === 'task-state' &&
+            retainedSeed.taskBriefDigest &&
+            retainedSeed.mandatoryContextDigest
+              ? {
+                  digest: retainedSeed.taskBriefDigest,
+                  text: retainedSeed.text,
+                  mandatoryContextDigest: retainedSeed.mandatoryContextDigest,
+                  learningContributions:
+                    retainedSeed.learningContributions ?? [],
+                  retainedByBoundary: true,
+                }
+              : undefined;
+          if (retainedSeed?.kind === 'task-state' && !retainedBrief)
+            throw new ConversationSeedTurnRefusedError(
+              'The retained Task state lacks trusted context provenance.',
+            );
+          const lineage = this.options.eventStore?.conversationForSession(
+            startInput.threadId,
+          );
+          const predecessorMetadata =
+            lineage?.predecessorSessionId &&
+            internal?.conversationIdentity?.conversationId ===
+              lineage.conversationId &&
+            this.options.eventStore?.readProjectTaskRoomExecutionBinding(
+              startInput.threadId,
+            )
+              ? this.firstStartedMetadataOfThread(lineage.predecessorSessionId)
+              : undefined;
+          const carriedBrief = predecessorMetadata
+            ? pendingTaskBrief([
+                { method: 'session.started', metadata: predecessorMetadata },
+              ])
+            : undefined;
+          const admittedTaskBrief =
+            internal?.taskBrief ?? retainedBrief ?? carriedBrief;
+          if (admittedTaskBrief) {
             startInput = {
               ...startInput,
               metadata: {
                 ...startInput.metadata,
-                [TASK_BRIEF_METADATA_KEY]: taskBriefStartRecord(
-                  internal.taskBrief,
-                ),
+                [TASK_BRIEF_METADATA_KEY]:
+                  taskBriefStartRecord(admittedTaskBrief),
               },
             };
           }
@@ -7830,6 +8032,7 @@ export class OrchestrationService {
                             input,
                             internal?.forkContextRequester ?? context,
                           );
+                          internal?.beforeProviderStart?.(input.threadId);
                           return adapter.startSession(input);
                         },
                       ),
@@ -8261,6 +8464,13 @@ export class OrchestrationService {
        * `accept`.
        */
       approvalModeAuthority?: true;
+      /**
+       * #3483: set by the orchestration command route for an answer from an
+       * authenticated person (not a station-control call acting for its
+       * session's owner). Only such an approval admits an MCP call the
+       * untrusted-content permission asks about at a Station seam.
+       */
+      personAnswer?: true;
     },
     internal?: OrchestrationDispatchInternalOptions,
   ): Promise<
@@ -8546,7 +8756,7 @@ export class OrchestrationService {
           const firstTurnContext = [
             ...stationContext,
             pendingPrompt,
-            pendingBrief?.text,
+            pendingBrief?.retainedByBoundary ? undefined : pendingBrief?.text,
             pendingHostImageGuide,
             publicTurnInput.ambientContext?.trim()
               ? publicTurnInput.ambientContext
@@ -8618,7 +8828,11 @@ export class OrchestrationService {
                 ? { [FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY]: true }
                 : {}),
               ...(pendingBrief
-                ? { [TASK_BRIEF_COMPOSED_METADATA_KEY]: pendingBrief.digest }
+                ? {
+                    [TASK_BRIEF_COMPOSED_METADATA_KEY]: pendingBrief.digest,
+                    [TASK_LEARNING_CONTRIBUTIONS_METADATA_KEY]:
+                      pendingBrief.learningContributions,
+                  }
                 : {}),
             },
           };
@@ -8990,6 +9204,15 @@ export class OrchestrationService {
                                   : {}),
                               })
                             : undefined;
+                        if (
+                          internal?.mcpPromptOrigin &&
+                          (!turnCorrelation ||
+                            adapter.provider !== 'station-agent')
+                        ) {
+                          throw new Error(
+                            'This engine cannot safely carry MCP prompt origin into the turn.',
+                          );
+                        }
                         // The native-output companion is composed only after the
                         // command's normal read authorization gate above. Its
                         // PrincipalRef is attribution; this live lease repeats
@@ -9123,6 +9346,12 @@ export class OrchestrationService {
                               );
                             assertInputRequestCurrent();
                             this.assertAdapterCurrent(adapter);
+                            await this.assertMandatoryTaskContextAtProviderTurn(
+                              turnInput.threadId,
+                            );
+                            assertInputRequestCurrent();
+                            this.assertAdapterCurrent(adapter);
+                            this.assertTurnAdmitted(turnInput.threadId);
                             this.assertForkContextAtProviderTurn(
                               turnInput,
                               context,
@@ -9194,6 +9423,7 @@ export class OrchestrationService {
                                   send,
                                   nativeMemory,
                                   experienceContext,
+                                  internal?.mcpPromptOrigin,
                                 )
                               : send();
                           };
@@ -9264,6 +9494,8 @@ export class OrchestrationService {
                                         )
                                       : sendAdapter(),
                                   nativeMemory,
+                                  undefined,
+                                  internal?.mcpPromptOrigin,
                                 )
                               : sendAdapter(),
                         );
@@ -10625,6 +10857,23 @@ export class OrchestrationService {
                   decision,
                 );
           };
+          // #3483: recorded before the engine hears the answer, so its next
+          // call through a Station seam finds the approval.
+          if (
+            context?.personAnswer === true &&
+            (decision === 'accept' || decision === 'acceptForSession') &&
+            currentQuestionRequest?.state === 'found'
+          ) {
+            const opened = currentQuestionRequest.event.payload as {
+              requestType?: unknown;
+              payload?: { toolName?: unknown };
+            };
+            if (opened.requestType === 'approval')
+              recordPersonApprovedExternalTool(
+                command.threadId,
+                opened.payload?.toolName,
+              );
+          }
           if (
             command.expectedSkillExperience &&
             (decision === 'accept' || decision === 'acceptForSession')
@@ -12417,6 +12666,7 @@ export class OrchestrationService {
         provider: event.provider,
         model,
         observedAt: new Date().toISOString(),
+        route: event.servingRoute,
       });
       return snapshot ? { ...event, pricingSnapshot: snapshot } : event;
     } catch (error) {
@@ -13833,6 +14083,48 @@ export class OrchestrationService {
     const originEvent = this.clientOriginTurns.apply(event);
     if (!originEvent) return undefined;
     event = originEvent;
+    if (event.method === 'turn.started') {
+      const metadata = { ...event.metadata };
+      let projected =
+        Object.hasOwn(metadata, TASK_BRIEF_COMPOSED_METADATA_KEY) ||
+        Object.hasOwn(metadata, TASK_LEARNING_CONTRIBUTIONS_METADATA_KEY);
+      delete metadata[TASK_BRIEF_COMPOSED_METADATA_KEY];
+      delete metadata[TASK_LEARNING_CONTRIBUTIONS_METADATA_KEY];
+      if (event.invocationId) {
+        const stored = this.options.eventStore?.readPreparedTurnIntent(
+          event.threadId,
+          event.invocationId,
+        );
+        const input = stored?.capture.adapterInput.metadata;
+        const digest = input?.[TASK_BRIEF_COMPOSED_METADATA_KEY];
+        const refs = parseLearningContextContributions(
+          input?.[TASK_LEARNING_CONTRIBUTIONS_METADATA_KEY],
+        );
+        const replay = this.options.eventStore?.readPersistedTurnStartMetadata(
+          event.threadId,
+          event.eventId,
+          event.invocationId,
+        );
+        const witnessed =
+          stored &&
+          (stored.state === 'invoking' ||
+            stored.state === 'accepted' ||
+            (replay?.[TASK_BRIEF_COMPOSED_METADATA_KEY] === digest &&
+              JSON.stringify(
+                replay?.[TASK_LEARNING_CONTRIBUTIONS_METADATA_KEY],
+              ) === JSON.stringify(refs)));
+        if (
+          witnessed &&
+          typeof digest === 'string' &&
+          /^[a-f0-9]{64}$/.test(digest)
+        ) {
+          metadata[TASK_BRIEF_COMPOSED_METADATA_KEY] = digest;
+          if (refs) metadata[TASK_LEARNING_CONTRIBUTIONS_METADATA_KEY] = refs;
+          projected = true;
+        }
+      }
+      if (projected) event = { ...event, metadata };
+    }
     // Progress is a fact about the ENGINE producing output, not about what we
     // chose to publish. The turn-stall watchdog (archive#2959) observes here,
     // so it must see every raw delta as it arrives -- batching them for
@@ -14912,6 +15204,8 @@ export class OrchestrationService {
       threadId,
       async () => {
         if (!current()) throw unavailable();
+        await this.assertMandatoryTaskContextAtProviderTurn(threadId);
+        if (!current()) throw unavailable();
         this.assertForkContextAtProviderTurn(stored.capture.adapterInput);
         const owned = this.sessionStartBoundaries.resumePrepared?.(
           stored.capture,
@@ -15065,6 +15359,12 @@ export class OrchestrationService {
     );
     return createNativeMemoryHistoryCompanion({
       binding,
+      taskBriefBounded: Boolean(
+        store.readProjectTaskRoomExecutionBinding(threadId) &&
+          this.firstStartedMetadataOfThread(threadId)?.[
+            TASK_BRIEF_METADATA_KEY
+          ],
+      ),
       allowMissingCurrentRecord,
       readCanonicalSession: async (id) => {
         if (!this.sessionAuthz.canReadSession(id, authority))

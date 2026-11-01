@@ -55,6 +55,10 @@ import {
   copyLoadedMCPToolProvenance,
   getLoadedMCPToolProvenance,
 } from '../tools/mcp-tool-names.js';
+import {
+  copyBuiltinVendedToolIdentity,
+  getBuiltinVendedToolIdentity,
+} from '../tools/vended-tool-compat.js';
 import type {
   AgentCreationConfig,
   IAgent,
@@ -76,6 +80,11 @@ import {
 } from '../types.js';
 import { conformAgentHooks } from './conduit-framework-adapter.js';
 import { createVoltAgentManagedModel } from './framework-model-factory.js';
+import {
+  modelConnectionConfigurationDigest,
+  modelGenerationIdentity,
+  observeDirectModelIdentity,
+} from './model-generation-identity.js';
 import {
   extractToolPurpose,
   rememberToolPurpose,
@@ -800,6 +809,7 @@ export function toVoltAgentTool(tool: ITool): Tool<any> {
       ...(execute ? { execute: execute as never } : {}),
     }) as unknown as Tool<any>,
   );
+  copyBuiltinVendedToolIdentity(tool, adapted);
   if (purposeEnabled) purposeEnabledVoltTools.add(adapted);
   return adapted;
 }
@@ -858,6 +868,35 @@ export function createVoltAgentLifecycleHooks(
   >();
 
   return createHooks({
+    onStepFinish: async ({ context, step, agent }) => {
+      const actualModel = agent.model;
+      const usage = step?.usage;
+      const inputTokens = usage?.inputTokens ?? usage?.promptTokens;
+      const outputTokens = usage?.outputTokens ?? usage?.completionTokens;
+      const modelId = step?.response?.modelId;
+      if (
+        typeof modelId !== 'string' ||
+        !modelId ||
+        !Number.isSafeInteger(inputTokens) ||
+        inputTokens < 0 ||
+        !Number.isSafeInteger(outputTokens) ||
+        outputTokens < 0
+      )
+        return;
+      const invocation = voltAgentInvocationContext(
+        slug,
+        context as typeof context & { traceId?: string },
+      );
+      await sharedHooks?.afterModelGeneration?.({
+        ...modelGenerationIdentity(actualModel, invocation, step?.response),
+        invocation,
+        modelId,
+        source: 'voltagent-step',
+        inputTokenAccounting: 'total',
+        inputTokens,
+        outputTokens,
+      });
+    },
     onToolStart: async ({ tool, context, args, options }) => {
       const currentCount =
         (context.context.get('toolCallCount') as number) || 0;
@@ -871,6 +910,13 @@ export function createVoltAgentLifecycleHooks(
         toolCallId,
         toolArgs: purposeful.input,
         purpose: purposeful.purpose,
+        ...(getBuiltinVendedToolIdentity(tool)
+          ? {
+              builtin: Object.freeze({
+                integrationId: getBuiltinVendedToolIdentity(tool)!,
+              }),
+            }
+          : {}),
         ...(getLoadedMCPToolProvenance(tool)
           ? {
               mcp: Object.freeze({
@@ -1027,6 +1073,17 @@ export function createVoltAgentLifecycleHooks(
     },
     onEnd: async ({ context, output }) => {
       try {
+        // Abort and error arrive here with no output; the turn still ends.
+        try {
+          sharedHooks?.endInvocation?.(
+            voltAgentInvocationContext(
+              slug,
+              context as typeof context & { traceId?: string },
+            ),
+          );
+        } catch {
+          /* Releasing turn state never fails the invocation. */
+        }
         if (!context.conversationId || !output) return;
         const usage = 'usage' in output ? output.usage : undefined;
         const toolCallCount =
@@ -1239,12 +1296,22 @@ export class VoltAgentFramework {
       binding,
     );
     if (dispatchModel) return dispatchModel;
-    return createVoltAgentManagedModel({
+    const model = await createVoltAgentManagedModel({
       providerConnection: binding.providerConnection,
       modelId: binding.modelId,
       spec,
       appConfig: config.appConfig,
     });
+    if (typeof model === 'object' && model !== null)
+      return observeDirectModelIdentity(model, {
+        connectionId: binding.providerConnection.id,
+        modelId: binding.modelId,
+        providerType: binding.providerConnection.type,
+        configurationDigest: modelConnectionConfigurationDigest(
+          binding.providerConnection,
+        ),
+      });
+    return model;
   }
 
   async createTempAgent(opts: {

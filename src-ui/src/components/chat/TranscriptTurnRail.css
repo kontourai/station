@@ -243,3 +243,16 @@
   .transcript-turn-actions {
   display: none;
 }
+
+/* Turn markers form a map beside the independent native scrollbar. */
+.transcript-turn-rail__tick {
+  border-radius: var(--k-radius-sm);
+  height: 4px;
+}
+.transcript-turn-rail__tick[aria-current="location"] {
+  height: 6px;
+  width: 14px;
+}
+.transcript-turn-rail::before {
+  background: transparent;
+}

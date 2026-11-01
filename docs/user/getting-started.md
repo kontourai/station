@@ -67,8 +67,7 @@ Existing installations retain their choice and previously imported history.
 
 ## Inspect what a chat used
 
-Choose **Inventory** in the chat header on desktop, or **⋯** then **Chat
-inventory** in the phone chat header. Pick a group,
+Choose **⋯** then **Chat inventory** in the chat header. Pick a group,
 then **View details** on an item to read the authored message, attachment
 metadata, or recorded tool result. **Recorded origin** identifies the Session,
 turn and event; **Open session** opens the surrounding work. Output rows keep
@@ -77,7 +76,7 @@ state rather than an empty result. The answer's **Basis** chip still opens
 inspection scoped to that answer.
 
 To see how much of the model's context window a chat has used, read the meter
-beside the model under the message box, or choose **⋯** then **Conversation
+beside Send under the message box, or choose **⋯** then **Conversation
 stats** in the phone chat header, which names the share used. Either opens the
 chat's stats.
 
@@ -580,7 +579,7 @@ as you left it in the dock, the same way as a draft from setup (below). If no
 chat dock is open to take it, Home keeps the message and says so.
 
 In the chat dock, the **New chat** button (the conversation-plus icon on the collapsed bar),
-**⌘T**, and **New chat** in **Chats and tasks** open the same composer.
+**⌘T**, and the phone header's compose icon open the same composer.
 **Explore agents** remains available for deliberate customization.
 
 Setup from Home continues in the chat dock. When you choose **Connect**,
@@ -636,9 +635,12 @@ the dock’s chat list.
 At the end of first-run setup, **Take the tour** and **Connect another device**
 are optional alternatives to **Start your first chat**. Both save the same selected answers before opening their next step.
 
-On a phone, use the compose button at the right of the chat bar, or tap the
-current chat title to open **Chats and tasks** and choose **New chat** at the
-lower right. The three-dot menu holds chat actions, including **This chat**:
+On a phone, the dock starts at **Inbox** unless you open a specific
+conversation. Its Inbox icon returns to the work list; the chat title stays
+as context. Search opens from the magnifier. Your search, list position and
+unsent message stay in place when switching back to a conversation. Collapse
+and reopen restore the last view. Use the compose icon at the right of the
+chat bar for **New chat**. The three-dot menu holds chat actions, including **This chat**:
 the chat's workspace, branch and changed files, status, background tasks and
 linked pull requests, each opening its own view. On a computer, a wide dock
 shows the same panel beside the transcript, and a narrower one puts it behind
@@ -646,7 +648,7 @@ a chip in the dock header. Connection health remains in the app header. In fulls
 management remains in the chat actions menu. **Projects** has the same add control
 for creating a project, including a short first-project prompt when empty.
 
-In **Chats and tasks**, delegated work folds under its recorded parent.
+In **Inbox**, delegated work folds under its recorded parent.
 Expand the subtask count to read the children; children that need you stay
 visible. Task-owned chats appear under their Task as sessions. **Show work**
 filters by project or Station and stays selected on this device. If work needs
@@ -657,10 +659,18 @@ from inbox**. On mobile, use the row’s Details menu; with **Sheet gestures
 preview** enabled in Settings → Advanced → Developer tools, swipe left to
 reveal the clock and × controls. The clock opens Snooze duration choices; ×
 dismisses the conversation. Dismissal leaves running work and history intact.
-Choose **Undo**, or expand **Dismissed** and choose **Restore to inbox**.
+Choose **Undo** in the toast, press **⌘Z** / **Ctrl+Z** outside an editor,
+or expand **Dismissed** and choose **Restore to inbox**.
 Dismissal is saved on this browser/device, like Snooze. A changed status, a
 changed attention kind, or newer activity outside a running turn brings the
 conversation back; streaming progress during the same running turn does not.
+
+With **Open and Settled inbox** enabled in Feature previews, unfinished
+conversations stay **Open** after an Agent finishes a turn. Choose **Settle**
+when the conversation's work is done, or **Reopen** to bring it back. Closed
+Tasks follow their existing close-on-merge setting; standalone linked PRs do
+not settle a conversation automatically. Settlement syncs across your devices
+and is separate from dismissal or deletion. Each inbox group can collapse.
 
 The workspace map lists Projects and their named Layouts, followed by your
 **Personal Boards**. Its **+** creates a Board and lets you name it, even
@@ -672,16 +682,13 @@ The dashboard icon below projects opens your Personal Boards and their add
 button. Escape closes either popup and returns focus to its icon.
 The footer puts live work beside your initials, which open a summary of your
 access with **My access**, **Profile**, **Ask Station for help** and **Open
-settings**; Schedule, Customize and Settings sit on the row below. The collapsed rail stacks live work and your initials above
+settings**; Automations, Customize and Settings sit on the row below. The collapsed rail stacks live work and your initials above
 Sidebar utilities. Conversations and composer drafts stay in the chat dock and
 its inbox (⌘D).
 
 Selecting a project in the sidebar opens its workspace and makes it the default
-for new chats. An existing chat stays with its original project. On a computer,
-the project beside **New** in the dock header shows that default; choose it to
-pick another without leaving the workspace. On a phone, the chat bar's **New
-chats** value does the same, and with a long chat title it shows only a folder
-icon.
+for new chats. An existing chat stays with its original project. Choose a
+different Project in the new-chat composer before starting a conversation.
 The next sidebar project selection updates that default again.
 
 To give a project an icon, open its settings and choose the icon beside its
@@ -827,17 +834,22 @@ Keep typing during a turn. **Send** defaults to **Queue**, which delivers after
 the turn finishes; its dropdown offers **Steer**. Claude Code and Codex can take
 native steering. Other engines hold steering until a safe boundary can be proven;
 currently they wait until the turn finishes. Each pending row shows its mode.
-**Send now** deliberately stops the active turn immediately and sends the
-selected message after Station confirms the stop. **Stop** remains separate.
+For a locally queued message, **Send now** stops the active turn and sends the
+selected message after Station confirms the stop. Messages held by Station can
+be removed when permitted, but cannot be edited or sent now from the list. **Stop** remains separate.
 Steer and Queue carry text only. You can still attach files or dictate during a
 turn: files wait in the draft, which says why, until you send it after the turn
 ends.
 
-A text message is saved on this device before it is sent. If the app closes or
+The app attempts to save a text message on this device before sending it. If
+the write fails or times out, it sends without that saved row and keeps the
+saved draft. If the app closes or
 the connection drops before Station answers, the app asks Station what happened
 at its next launch or reconnect: a message Station never received is sent once,
 with the same identity, and one Station may have started is kept and marked,
-never sent twice. A message with attachments or a visual skill keeps its draft
+never sent twice. If Station accepts the reconnect send into its inbox, the local outbox
+settles that row. If a later delivery lookup finds it queued, the local row
+remains for inspection. A message with attachments or a visual skill keeps its draft
 until Station answers instead.
 
 Once Station confirms a turn started, a late network error does not queue that
@@ -1168,10 +1180,12 @@ configured Projects.
 
 ## Run A Scheduled Readiness Check
 
-To create an ordinary scheduled job, use an agent with a model connection
-(Station's engine). AI app agents cannot run scheduled jobs. If none is ready,
-the job form offers **Set up a scheduled-job agent** to open agent creation;
-choose **Use a model connection** there.
+An automation that runs in a chat can use any agent, including AI app agents
+such as Claude Code or Codex, when your Station supports it (see
+[Automations](https://github.com/kontourai/station/blob/main/docs/user/automations.md)). The older output-file run needs an agent with
+a model connection (Station's engine); if none is ready, the form offers **Set
+up a scheduled-job agent** to open agent creation; choose **Use a model
+connection** there.
 
 Home can create **station-starter-check** and run it once. Its daily schedule
 stays disabled until you enable it. Open the receipt to read the findings;

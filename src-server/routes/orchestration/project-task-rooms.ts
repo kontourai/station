@@ -751,10 +751,10 @@ function browserDiscovery(value: any) {
     assurance: value.assurance,
     capabilities: {
       historyRead: true,
-      messageWrite: true,
+      messageWrite: value.roomCapabilities?.messageWrite ?? true,
       live: true,
       documentRead: true,
-      documentWrite: true,
+      documentWrite: value.roomCapabilities?.documentWrite ?? true,
       revisionLinks: value.revisionLinksAvailable === true,
     },
   });

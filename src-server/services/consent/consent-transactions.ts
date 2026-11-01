@@ -98,6 +98,7 @@ export interface ConsentDescription {
   readonly title: string;
   readonly summary: string;
   readonly items: readonly ConsentDescriptionItem[];
+  readonly details?: readonly ConsentDescriptionItem[];
   readonly warning?: string;
   readonly warnings?: readonly string[];
   readonly comparisonCode?: string;
@@ -468,6 +469,7 @@ export class ConsentTransactionStore {
         'person-group-change',
         'person-token-change',
         'operator-passkey-revocation',
+        'project-sharing-enable',
         'outside-agent-approval',
         'outside-agent-denial',
         'outside-agent-grant-change',

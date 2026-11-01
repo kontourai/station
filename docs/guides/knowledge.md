@@ -873,3 +873,13 @@ Those require their own configured service or device observation.
   sqlite-vec was chosen as the built-in index, and the evaluation of the runner-up (real LanceDB).
 - [docs/design/knowledge-foundation.md](../design/knowledge-foundation.md) — the full
   `KnowledgeStoreProvider`/`KnowledgeIndexProvider` interface contracts and landed file references.
+
+
+## Reviewed learning lifecycle
+
+Project Sources also offers the **Learning lifecycle review** preview. It uses
+Knowledge Kit's public lifecycle API rather than interpreting a raw record's
+`active` status as approved guidance. Sources, evaluation, decision, activation,
+effects and retirement retain distinct owner receipts. See
+[bounded agent work](agent-efficiency.md#review-and-use-a-learning) for the
+operator flow, current consumer and platform limits.

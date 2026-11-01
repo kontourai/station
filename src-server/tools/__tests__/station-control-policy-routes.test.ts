@@ -166,6 +166,7 @@ const ARGS: Record<string, Record<string, unknown>> = {
   write_pull_request_guides: { targets: [GUIDE_TARGET] },
   device_open: { platform: 'android', deviceId: 'emulator-5554' },
   device_screenshot: { deviceSessionId: 'device-session' },
+  device_capture_to_task: { deviceSessionId: 'device-session' },
   device_snapshot: { deviceSessionId: 'device-session' },
   device_input: {
     deviceSessionId: 'device-session',

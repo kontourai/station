@@ -1,0 +1,7 @@
+{
+  "revision": "65cb0062bf40afee47fb9669b299f49ba1e0bbed",
+
+  "notes": [
+    {"path":"docs/patterns/frontend.md","note":"Checked engine and connection query invalidation in the extracted listener and its exported hook, including authority fencing and startup retry boundary.","inputs":["docs/patterns/frontend.md","src-ui/src/hooks/useServerEvents.ts"]}
+  ]
+}

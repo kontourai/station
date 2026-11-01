@@ -1,0 +1,7 @@
+{
+  "revision": "292bb328da15806ce17991a164555e411ee3c2f2",
+
+  "notes": [
+    {"path":"scripts/__tests__/fixtures/changed-verification/README.md","note":"Reviewed selector fixture and representative demo ownership; shard report validation does not alter fixture boundary or timing claim.","inputs":["scripts/__tests__/fixtures/changed-verification/README.md","scripts/run-changed-verification.mjs"]}
+  ]
+}

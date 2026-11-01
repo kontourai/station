@@ -176,7 +176,15 @@
 
     "src-server/adapters/pty-process-groups.ts",
 
-    "src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts"
+    "src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts",
+
+    "src-server/routes/orchestration/task-review-captures.ts",
+
+    "src-server/services/projects/task-browser-recording.ts",
+
+    "src-server/services/walkthroughs/task-walkthrough-store.ts",
+
+    "src-server/routes/__tests__/browser-agent-capture.test.ts"
   ],
 
   "checks": [

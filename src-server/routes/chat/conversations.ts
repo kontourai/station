@@ -10,6 +10,7 @@ import {
 } from '@kontourai/ferry';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { AppConfig } from '@kontourai/station-contracts/config';
+import type { ConversationContextBoundaryPolicy } from '@kontourai/station-contracts/conversation-context-boundary';
 import { CONVERSATION_INTENT_SUMMARY_MAX_ITEMS } from '@kontourai/station-contracts/conversation-intent-summary';
 import type {
   ConversationListItem,
@@ -412,7 +413,7 @@ interface SessionMessageReader {
     contextBoundaries?: readonly {
       boundaryId: string;
       successorSessionId: string;
-      policy: 'continue-from-history' | 'empty-next-cold-start';
+      policy: ConversationContextBoundaryPolicy;
       priorTranscriptInjected: boolean;
     }[];
   } | null>;
@@ -781,7 +782,7 @@ export function createConversationRoutes(
       contextBoundaries?: readonly {
         boundaryId: string;
         successorSessionId: string;
-        policy: 'continue-from-history' | 'empty-next-cold-start';
+        policy: ConversationContextBoundaryPolicy;
         priorTranscriptInjected: boolean;
       }[];
     } | null,

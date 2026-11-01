@@ -263,6 +263,8 @@ describe('ChatDockBody history-failure notice (station#3427)', () => {
       ...transcriptStateMock.current,
       error: transcriptStateMock.current.error ?? undefined,
       watermark: 0,
+      partialTurnStartEventIds: new Set<string>(),
+      loadTurn: vi.fn(async () => false),
       handoffs: [],
       contextBoundaries: [],
       settled: true,

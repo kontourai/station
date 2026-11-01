@@ -24,6 +24,12 @@ import {
 } from './account-entry-continuation';
 import './account-entry.css';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
+import { MemberPasskeys } from './MemberPasskeys';
+import {
+  passkeyFailureMessage,
+  passkeysSupported,
+  runPasskeyCeremony,
+} from './member-passkeys';
 
 // Read once so React StrictMode cannot consume the URL proof twice.
 const browserFlow = readAccountEntryContinuation();
@@ -121,13 +127,64 @@ export function AccountEntryView({
     }) =>
       runAccountOperation(apiBase, input.path, input.body, input.invitation),
   });
-  const busy = mutation.isPending;
+  const passkey = useMutation({ gcTime: 0, mutationFn: runPasskeyCeremony });
+  const busy = mutation.isPending || passkey.isPending;
   const login = descriptor.data?.login;
   const endpoint = (operation: string) =>
     descriptor.data?.endpoints.find(
       (candidate) =>
         candidate.operation === operation && candidate.methods.includes('POST'),
     )?.path;
+  const passkeyPath = (operation: string) =>
+    passkeysSupported() ? endpoint(operation) : undefined;
+
+  async function passkeyEntry(kind: 'sign-in' | 'register' | 'recover') {
+    setError(undefined);
+    setNotice(undefined);
+    try {
+      if (kind === 'sign-in') {
+        await passkey.mutateAsync({
+          apiBase,
+          path: passkeyPath('passkey-sign-in')!,
+          kind: 'authenticate',
+        });
+      } else if (kind === 'register') {
+        if (!invitation)
+          throw new Error('Open your Project invitation to create an account.');
+        if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]{2,31}$/.test(email))
+          throw new Error(
+            'Choose a username: 3 to 32 letters, digits, dots, dashes or underscores.',
+          );
+        await passkey.mutateAsync({
+          apiBase,
+          path: passkeyPath('passkey-register')!,
+          kind: 'register',
+          options: { username: email },
+          invitation,
+        });
+        // Signed in already; signing out later returns to sign-in, not here.
+        setMode('sign-in');
+      } else {
+        const token = initialFlow.resetToken;
+        if (!token)
+          throw new Error('Open the recovery link from the operator again.');
+        await passkey.mutateAsync({
+          apiBase,
+          path: passkeyPath('passkey-recover')!,
+          kind: 'register',
+          options: { token },
+          verify: { token },
+        });
+        setMode('sign-in');
+        setNotice('Passkey added. You are signed in.');
+      }
+      await client.resetQueries({ queryKey: ['account', apiBase, 'session'] });
+    } catch (cause) {
+      setError(passkeyFailureMessage(cause) ?? userFacingErrorMessage(cause));
+    } finally {
+      passkey.reset();
+    }
+  }
   function changeMode(next: typeof mode) {
     setMode(next);
     setPassword('');
@@ -295,6 +352,34 @@ export function AccountEntryView({
         ))
       : undefined;
 
+  const passkeyPanel =
+    session.data && endpoint('passkey-list') ? (
+      <MemberPasskeys
+        key={`${apiBase}:${session.data.principal.id}:passkeys`}
+        apiBase={apiBase}
+        principalId={session.data.principal.id}
+        paths={{
+          list: endpoint('passkey-list')!,
+          add: endpoint('passkey-add'),
+          remove: endpoint('passkey-remove'),
+        }}
+      />
+    ) : undefined;
+  const passkeyChoice =
+    mode === 'sign-in' && passkeyPath('passkey-sign-in') ? (
+      <Button disabled={busy} onClick={() => void passkeyEntry('sign-in')}>
+        Sign in with a passkey
+      </Button>
+    ) : mode === 'register' && invitation && passkeyPath('passkey-register') ? (
+      <Button disabled={busy} onClick={() => void passkeyEntry('register')}>
+        Create account with a passkey
+      </Button>
+    ) : mode === 'reset' && passkeyPath('passkey-recover') ? (
+      <Button disabled={busy} onClick={() => void passkeyEntry('recover')}>
+        Add a passkey instead
+      </Button>
+    ) : undefined;
+
   // The joined shared-Project home (project detail plus People and
   // access) renders inside this same card: give it desktop width while the
   // sign-in, invitation-accept, and recovery flows keep the compact form.
@@ -316,7 +401,9 @@ export function AccountEntryView({
             title: joined
               ? 'You joined the Project'
               : mode === 'reset'
-                ? 'Choose a new password'
+                ? endpoint('passkey-recover')
+                  ? 'Recover your account'
+                  : 'Choose a new password'
                 : invitation
                   ? invitationView
                     ? `Join ${invitationView.projectName}`
@@ -399,6 +486,7 @@ export function AccountEntryView({
                   <SkeletonList count={2} label="Opening Device onboarding" />
                 }
               />
+              {passkeyPanel}
               {endpoint('logout') && (
                 <Button disabled={busy} onClick={() => void signOut()}>
                   Sign out
@@ -452,6 +540,7 @@ export function AccountEntryView({
                   }
                 />
               )}
+              {passkeyPanel}
               {endpoint('logout') && (
                 <Button disabled={busy} onClick={() => void signOut()}>
                   Sign out
@@ -548,6 +637,11 @@ export function AccountEntryView({
                         : 'Sign in'}
                 </Button>
               </form>
+              {passkeyChoice && (
+                <div className="account-entry__alternative">
+                  {passkeyChoice}
+                </div>
+              )}
               <div className="account-entry__links">
                 {login.kind === 'username-password' && mode === 'sign-in' && (
                   <p>

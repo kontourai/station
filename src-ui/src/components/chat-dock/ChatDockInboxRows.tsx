@@ -30,12 +30,14 @@ import { Button } from '../Button';
 import { DisclosureToggle } from '../DisclosureToggle';
 import { DiscardDraftButton } from '../drafts/DiscardDraftButton';
 import {
+  CheckGlyph,
   CloseGlyph,
   DiscardGlyph,
   EditGlyph,
   FolderGlyph,
   InfoGlyph,
   MoreGlyph,
+  RefreshGlyph,
   ReturnGlyph,
   TimeGlyph,
 } from '../icons/Glyph';
@@ -55,12 +57,14 @@ import {
   ResponsiveDialogHeader,
   ResponsiveDialogSurface,
 } from '../ResponsiveDialogSurface';
+import { ErrorState } from '../state';
 import type { MobileActivityGroup } from './mobile-activity-groups';
 import {
   SNOOZE_OPTIONS,
   type SnoozeOption,
   snoozeWakeAt,
 } from './mobile-activity-groups';
+import { useConversationWorkState } from './useConversationWorkState';
 import './ChatDockInboxPanel.css';
 import {
   endConversationReferenceDrag,
@@ -78,10 +82,9 @@ const SETTLED_PAGE_SIZE = 20;
  *
  * Row and group anatomy is defined here once and consumed by every inbox
  * surface: the desktop dock panel (`ChatDockInboxPanel`), the mobile
- * portaled sheet (`MobileTaskSwitcher`), Home's work lanes (`HomeWorkRow`)
- * and the project sidebar's open chats. Only the chrome stays host-owned —
- * panel scroll/footer vs sheet portal, focus trap, sticky header, and
- * visual-viewport sizing (the #1051 fixes live in the sheet).
+ * embedded Inbox (`MobileInboxPanel`), Home's work lanes (`HomeWorkRow`)
+ * and the project sidebar's open chats. Scroll, header and responsive layout
+ * stay host-owned; work grouping and status remain shared.
  *
  * THE ROW (#3043) has a fixed line budget: a meta line (agent mark, agent
  * and project, time), the title, ONE status line chosen by the status ladder
@@ -167,16 +170,18 @@ function ProjectAccentSwatch({
   accent,
   icon,
   name,
+  size = 12,
 }: {
   accent: string | undefined;
   icon: string | undefined;
   name: string;
+  size?: number;
 }) {
   return (
     <ProjectIcon
       project={{ name, icon }}
       accent={accent}
-      size={12}
+      size={size}
       className="inbox-row__project-accent"
     />
   );
@@ -369,6 +374,7 @@ interface InboxRowProps {
   onCloseChat?: (sessionId: string, action: HTMLButtonElement) => void;
   onDismiss?: (item: HomeWorkItem, action: HTMLButtonElement) => void;
   onRestore?: (item: HomeWorkItem, action: HTMLButtonElement) => void;
+  resolution?: { settled: boolean; pending: boolean; onChange: () => void };
   isDismissed?: boolean;
   swipeActions?: boolean;
   /**
@@ -482,6 +488,7 @@ export function InboxRow({
   onCloseChat,
   onDismiss,
   onRestore,
+  resolution,
   isDismissed = false,
   swipeActions = false,
   onDraftDiscarded,
@@ -521,8 +528,7 @@ export function InboxRow({
   const status = useObservedWorkStatus(item, now, facts);
   const claims = useSessionWorkClaims(item);
   const chips = inboxRowChips(item, { isWoken, claims });
-  // An attached transcript's meta line names the app it lives in; the
-  // status word ("Elsewhere") says this Station cannot answer there.
+  // Provider identity does not establish which app originated a transcript.
   const agentText = item.agentLabel;
   const hasTime = item.updatedAt > 0;
   const closable =
@@ -539,7 +545,12 @@ export function InboxRow({
   // A host that offers nothing (the sidebar's open chats) gets no slot and
   // no extra tab stop: the row is already its own open control.
   const hasActions = Boolean(
-    details || onSnoozeWake || discardThreadId || closable || restorable,
+    details ||
+      onSnoozeWake ||
+      discardThreadId ||
+      closable ||
+      restorable ||
+      resolution,
   );
   // TOUCH CHROME shows Details and at most ONE direct action, so a phone
   // row keeps its title: Discard on a Draft (it is what a Draft row is for),
@@ -566,6 +577,13 @@ export function InboxRow({
   const fromSheet = (action: (trigger: HTMLButtonElement) => void) => {
     setDetailsOpen(false);
     if (detailsTriggerRef.current) action(detailsTriggerRef.current);
+  };
+  const changeResolution = (action: HTMLButtonElement) => {
+    action
+      .closest('.inbox-row')
+      ?.querySelector<HTMLButtonElement>('.inbox-row__open')
+      ?.focus();
+    resolution?.onChange();
   };
   // The actions that are not beside the row, as the sheet's menu list: the
   // shared menu primitive's groups and rows (`.menu-group`, `.menu-row`), an
@@ -602,11 +620,22 @@ export function InboxRow({
     sheetClose ||
     restorable ||
     sheetDiscard ||
-    composerDraftSessionId ? (
+    composerDraftSessionId ||
+    resolution ? (
       <div
         className="menu-surface chat-dock-inbox-details__menu"
         data-testid="inbox-row-details-actions"
       >
+        {resolution && (
+          <Button
+            variant="ghost"
+            className="menu-row"
+            disabled={resolution.pending}
+            onClick={() => fromSheet(changeResolution)}
+          >
+            {resolution.settled ? 'Reopen conversation' : 'Settle conversation'}
+          </Button>
+        )}
         {sheetSnoozePresets && (
           <fieldset className="menu-group">
             <legend className="menu-group__label">Snooze</legend>
@@ -816,7 +845,7 @@ export function InboxRow({
       <button
         type="button"
         className="chat-dock-inbox__item inbox-row__open"
-        aria-label={`${item.title}, ${item.projectLabel}${item.controlMode === 'read-only-attached' ? `, started in ${item.agentLabel}` : ''}${hasUnsentDraft ? ', unsent draft' : ''}`}
+        aria-label={`${item.title}, ${item.projectLabel}${item.controlMode === 'read-only-attached' ? `, ${item.agentLabel}, read only` : ''}${hasUnsentDraft ? ', unsent draft' : ''}`}
         // The accessible name is the explicit label above, so the status
         // (word, and any reason, in full) is offered as the description;
         // otherwise a screen reader would never hear what state the row is
@@ -925,16 +954,7 @@ export function InboxRow({
             >
               {item.title}
             </strong>
-            <InboxRowStatusLine
-              id={statusId}
-              status={status}
-              now={now}
-              // The picker hides the time slot (its status sits there), so
-              // the time trails the status line instead.
-              lastActivityAt={
-                actionsInDetails && hasTime ? item.updatedAt : undefined
-              }
-            />
+            <InboxRowStatusLine id={statusId} status={status} now={now} />
             {actionsInDetails && (
               <span className="inbox-row__project-context">
                 {/* One project mark: its own icon when it has one, else the
@@ -942,6 +962,7 @@ export function InboxRow({
                     separator ("[folder] • name"). */}
                 {displayableProjectIcon(projectIcon) ? (
                   <ProjectAccentSwatch
+                    size={24}
                     accent={projectAccent}
                     icon={projectIcon}
                     name={item.projectLabel}
@@ -974,6 +995,24 @@ export function InboxRow({
             >
               {actionsInDetails ? <MoreGlyph /> : <InfoGlyph />}
             </button>
+          )}
+          {resolution && !details && (
+            <Button
+              variant="ghost"
+              className="inbox-row__action"
+              disabled={resolution.pending}
+              title={
+                resolution.settled
+                  ? 'Reopen conversation'
+                  : 'Settle conversation'
+              }
+              aria-label={`${resolution.settled ? 'Reopen' : 'Settle'} ${item.title}`}
+              onClick={(event) => changeResolution(event.currentTarget)}
+            >
+              <span aria-hidden="true">
+                {resolution.settled ? <RefreshGlyph /> : <CheckGlyph />}
+              </span>
+            </Button>
           )}
           {beside('snooze') && onSnoozeWake && (
             <SnoozeActions
@@ -1049,7 +1088,10 @@ export function InboxRow({
   );
 }
 
-export type CollapsibleInboxSectionId = 'snoozed' | 'earlier';
+export type CollapsibleInboxSectionId = Exclude<
+  MobileActivityGroup['id'],
+  'dismissed'
+>;
 
 export interface InboxGroupListProps {
   groups: MobileActivityGroup[];
@@ -1063,7 +1105,7 @@ export interface InboxGroupListProps {
    * by the host. Absent (sheet chrome) renders plain labeled groups.
    */
   collapsible?: {
-    sections: Record<CollapsibleInboxSectionId, boolean>;
+    sections: Partial<Record<CollapsibleInboxSectionId, boolean>>;
     onToggle: (id: CollapsibleInboxSectionId) => void;
   };
   /** Sheet chrome: each group label says how many ("Needs you · 2"). */
@@ -1136,6 +1178,7 @@ export function InboxGroupList({
     new Set(),
   );
   const [dismissedOpen, setDismissedOpen] = useState(false);
+  const resolutionState = useConversationWorkState();
   const [olderDraftsOpen, setOlderDraftsOpen] = useState(false);
   const [settledVisibleCount, setSettledVisibleCount] =
     useState(SETTLED_PAGE_SIZE);
@@ -1150,10 +1193,10 @@ export function InboxGroupList({
   const renderedItems = (group: MobileActivityGroup): HomeWorkItem[] => {
     const collapsed =
       collapsible &&
-      (group.id === 'snoozed' || group.id === 'earlier') &&
-      !collapsible.sections[group.id];
+      group.id !== 'dismissed' &&
+      collapsible.sections[group.id] === false;
     if (collapsed || (group.id === 'dismissed' && !dismissedOpen)) return [];
-    if (group.id === 'earlier')
+    if (group.id === 'earlier' || group.id === 'settled')
       return group.items.filter(
         (item, index) =>
           index < settledVisibleCount ||
@@ -1197,6 +1240,30 @@ export function InboxGroupList({
       onDismiss={onDismiss}
       onRestore={onRestore}
       isDismissed={group.id === 'dismissed'}
+      resolution={
+        resolutionState.supported &&
+        item.kind !== 'task' &&
+        item.kind !== 'remote-session' &&
+        item.controlMode !== 'read-only-attached' &&
+        item.conversationId &&
+        !['Running', 'Needs attention', 'Draft'].includes(item.lifecycleLabel)
+          ? {
+              settled: Object.hasOwn(
+                resolutionState.settled,
+                item.conversationId,
+              ),
+              pending: resolutionState.change.isPending,
+              onChange: () =>
+                resolutionState.change.mutate({
+                  conversationId: item.conversationId!,
+                  settled: !Object.hasOwn(
+                    resolutionState.settled,
+                    item.conversationId!,
+                  ),
+                }),
+            }
+          : undefined
+      }
       swipeActions={swipeActions}
       onDraftDiscarded={onDraftDiscarded}
       agents={agents}
@@ -1263,24 +1330,37 @@ export function InboxGroupList({
   };
   return (
     <>
+      {resolutionState.query.isError && (
+        <ErrorState
+          variant="compact"
+          title="Conversation resolution unavailable"
+          action={
+            <Button
+              variant="secondary"
+              onClick={() => void resolutionState.query.refetch()}
+            >
+              Retry
+            </Button>
+          }
+        />
+      )}
       {groups.map((group) => {
         const collapsibleId: CollapsibleInboxSectionId | null =
-          collapsible && (group.id === 'snoozed' || group.id === 'earlier')
-            ? group.id
-            : null;
+          collapsible && group.id !== 'dismissed' ? group.id : null;
         const isExpanded =
           group.id === 'dismissed'
             ? dismissedOpen
             : collapsibleId
-              ? collapsible!.sections[collapsibleId]
+              ? collapsible!.sections[collapsibleId] !== false
               : true;
         // Whether a count shows is this host's choice (`showGroupCounts`, and
         // a collapsed Snoozed always says how many it hides); how it reads is
         // the shared label's: "Snoozed · 2", visible text, never a badge.
         const count =
           group.id === 'dismissed' ||
+          resolutionState.supported ||
           (collapsible && group.id === 'snoozed') ||
-          (!collapsibleId && showGroupCounts)
+          showGroupCounts
             ? group.id === 'needsYou'
               ? workAttentionCount(group.items, now, group.childrenById)
               : group.items.length
@@ -1318,7 +1398,7 @@ export function InboxGroupList({
                 ? renderDraftRows(group)
                 : renderedItems(group).map((item) => renderRow(group, item)))}
             {isExpanded &&
-              group.id === 'earlier' &&
+              (group.id === 'earlier' || group.id === 'settled') &&
               settledVisibleCount < group.items.length && (
                 <Button
                   variant="ghost"

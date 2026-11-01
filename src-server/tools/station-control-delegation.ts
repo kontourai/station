@@ -3990,8 +3990,8 @@ function optionalNumber(value: unknown): number | undefined {
 /**
  * #225: the usage fields a delegated-task event carries, keyed by the
  * canonical `TokenUsageUpdatedEvent` so a field added to the contract is a
- * compile error here instead of a silent drop. Two fields are excluded on
- * purpose: `pricingSnapshot` is ingestion-time catalog provenance, and
+ * compile error here instead of a silent drop. Pricing snapshots and serving
+ * routes stay on the canonical receipt; this projection carries token counters.
  * `reportedCostUsd` has a per-provider scope (per-turn versus cumulative)
  * that this per-event projection cannot state.
  */
@@ -4000,6 +4000,7 @@ type DelegatedUsageField = Exclude<
   | keyof CanonicalRuntimeEventBase
   | 'method'
   | 'pricingSnapshot'
+  | 'servingRoute'
   | 'reportedCostUsd'
 >;
 
@@ -4010,6 +4011,7 @@ const DELEGATED_USAGE_FIELD_PROJECTORS: {
 } = {
   promptTokens: optionalNumber,
   completionTokens: optionalNumber,
+  reasoningTokens: optionalNumber,
   totalTokens: optionalNumber,
   cacheReadTokens: optionalNumber,
   cacheWriteTokens: optionalNumber,
@@ -7321,6 +7323,9 @@ export async function executeExecutionTargetMessage(
               ...(context?.submissionDigest !== undefined
                 ? { submissionDigest: context.submissionDigest }
                 : {}),
+              ...(context?.mcpPromptOrigin
+                ? { mcpPromptOrigin: context.mcpPromptOrigin }
+                : {}),
               ...(input.skillExperience
                 ? { skillExperience: input.skillExperience }
                 : {}),
@@ -7347,6 +7352,9 @@ export async function executeExecutionTargetMessage(
                 : {}),
               ...(context?.submissionDigest !== undefined
                 ? { submissionDigest: context.submissionDigest }
+                : {}),
+              ...(context?.mcpPromptOrigin
+                ? { mcpPromptOrigin: context.mcpPromptOrigin }
                 : {}),
               ...(input.skillExperience
                 ? { skillExperience: input.skillExperience }
