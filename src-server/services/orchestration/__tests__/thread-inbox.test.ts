@@ -462,28 +462,33 @@ describe('thread inbox (#3568)', () => {
     expect(world.inbox.list(THREAD)).toEqual([]);
   });
 
-  test('a successor with the same sequence cannot reuse the predecessor head', async () => {
-    let current = THREAD;
-    const world = boot(path(), {
-      currentSessionId: () => current,
-      headSequence: () => 1,
-    });
-    await runningFirstTurn(world);
-    const expectedHead = world.inbox.currentHead(THREAD);
-    current = 'successor-session';
-    expect(
-      world.inbox.submitSteer({
-        conversationId: THREAD,
-        clientTurnId: 'old-session-head',
-        payload,
-        expectedHead,
-      }),
-    ).toEqual({
-      outcome: 'stale-head',
-      currentHead: world.inbox.currentHead(THREAD),
-    });
-    expect(world.inbox.list(THREAD)).toEqual([]);
-  });
+  test.each(['steer', 'follow-up'] as const)(
+    '%s cannot reuse a predecessor head with the same sequence',
+    async (kind) => {
+      let current = THREAD;
+      const world = boot(path(), {
+        currentSessionId: () => current,
+        headSequence: () => 1,
+      });
+      await runningFirstTurn(world);
+      const expectedHead = world.inbox.currentHead(THREAD);
+      current = 'successor-session';
+      expect(
+        (kind === 'steer'
+          ? world.inbox.submitSteer.bind(world.inbox)
+          : world.inbox.submit.bind(world.inbox))({
+          conversationId: THREAD,
+          clientTurnId: 'old-session-head',
+          payload,
+          expectedHead,
+        }),
+      ).toEqual({
+        outcome: 'stale-head',
+        currentHead: world.inbox.currentHead(THREAD),
+      });
+      expect(world.inbox.list(THREAD)).toEqual([]);
+    },
+  );
 
   test('replays the same keyed submission after the conversation head advances', async () => {
     const world = boot(path());

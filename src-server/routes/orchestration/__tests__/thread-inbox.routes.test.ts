@@ -32,63 +32,69 @@ describe('POST /chat whenBusy queue (#3568)', () => {
     });
   });
 
-  test('steer admission rejects a stale head and leaves the inbox empty', async () => {
-    const world = station();
-    await world.busy();
-    const current = world.service.currentConversationSessionId(CONVERSATION);
-    const currentHead = world.inbox.currentHead(CONVERSATION);
-    expect(currentHead).not.toBe(JSON.stringify([current, 0]));
-    const response = await world.app.request(
-      `/api/orchestration/conversations/${encodeURIComponent(CONVERSATION)}/inbox`,
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          kind: 'steer',
-          key: 'stale-steer',
-          message: 'change direction',
-          expectedHead: JSON.stringify([current, 0]),
-        }),
-      },
-    );
-    expect(response.status).toBe(409);
-    expect(await response.json()).toMatchObject({
-      code: 'inbox_stale_head',
-      currentHead,
-    });
-    expect(world.inbox.list(CONVERSATION)).toEqual([]);
-  });
-
-  test('a steer is recorded with its head before any delivery', async () => {
-    const world = station();
-    await world.busy();
-    const expectedHead = world.inbox.currentHead(CONVERSATION);
-    const send = () =>
-      world.app.request(
+  test.each(['steer', 'follow-up'] as const)(
+    '%s admission rejects a stale head and leaves the inbox empty',
+    async (kind) => {
+      const world = station();
+      await world.busy();
+      const current = world.service.currentConversationSessionId(CONVERSATION);
+      const currentHead = world.inbox.currentHead(CONVERSATION);
+      expect(currentHead).not.toBe(JSON.stringify([current, 0]));
+      const response = await world.app.request(
         `/api/orchestration/conversations/${encodeURIComponent(CONVERSATION)}/inbox`,
         {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
-            kind: 'steer',
-            key: 'steer-one',
+            kind,
+            key: 'stale-steer',
             message: 'change direction',
-            expectedHead,
+            expectedHead: JSON.stringify([current, 0]),
           }),
         },
       );
-    expect((await send()).status).toBe(202);
-    expect((await send()).status).toBe(202);
-    await world.inbox.idle();
-    expect(world.inbox.list(CONVERSATION)).toMatchObject([
-      { kind: 'steer', state: 'queued', message: 'change direction' },
-    ]);
-    const stored = world.store
-      .threadInboxStore()
-      .read(CONVERSATION, 'steer-one');
-    expect(JSON.parse(stored!.payload)).toMatchObject({ expectedHead });
-    expect(world.adapter.turns).toHaveLength(1);
-  });
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({
+        code: 'inbox_stale_head',
+        currentHead,
+      });
+      expect(world.inbox.list(CONVERSATION)).toEqual([]);
+    },
+  );
+
+  test.each(['steer', 'follow-up'] as const)(
+    '%s is recorded with its head before any delivery',
+    async (kind) => {
+      const world = station();
+      await world.busy();
+      const expectedHead = world.inbox.currentHead(CONVERSATION);
+      const send = () =>
+        world.app.request(
+          `/api/orchestration/conversations/${encodeURIComponent(CONVERSATION)}/inbox`,
+          {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              kind,
+              key: 'steer-one',
+              message: 'change direction',
+              expectedHead,
+            }),
+          },
+        );
+      expect((await send()).status).toBe(202);
+      expect((await send()).status).toBe(202);
+      await world.inbox.idle();
+      expect(world.inbox.list(CONVERSATION)).toMatchObject([
+        { kind, state: 'queued', message: 'change direction' },
+      ]);
+      const stored = world.store
+        .threadInboxStore()
+        .read(CONVERSATION, 'steer-one');
+      expect(JSON.parse(stored!.payload)).toMatchObject({ expectedHead });
+      expect(world.adapter.turns).toHaveLength(1);
+    },
+  );
 
   test('a display entry is visible immediately to another reader without starting a turn', async () => {
     const world = station();

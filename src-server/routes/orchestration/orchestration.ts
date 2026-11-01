@@ -3551,6 +3551,12 @@ export function createOrchestrationRoutes(
           expectedHead: z.string().min(1).max(4096),
         }),
         z.object({
+          kind: z.literal('follow-up'),
+          key: z.string().min(1).max(128),
+          message: z.string().min(1).max(CHAT_INPUT_MAX_CHARS),
+          expectedHead: z.string().min(1).max(4096).optional(),
+        }),
+        z.object({
           kind: z.literal('display'),
           key: z.string().min(1).max(128),
           message: z.string().min(1).max(CHAT_INPUT_MAX_CHARS),
@@ -3592,7 +3598,9 @@ export function createOrchestrationRoutes(
       const result =
         body.kind === 'steer'
           ? inbox.submitSteer({ ...input, expectedHead: body.expectedHead })
-          : inbox.submitDisplay(input);
+          : body.kind === 'follow-up'
+            ? inbox.submit(input)
+            : inbox.submitDisplay(input);
       if (result.outcome === 'stale-head')
         return c.json(
           {
