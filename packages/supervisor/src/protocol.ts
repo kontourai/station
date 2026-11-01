@@ -673,6 +673,30 @@ export type WorkloadEventMessage =
       exit: WorkloadExit;
     };
 
+/** Whether an IPC message is a well-formed `workload.event`. */
+export function isWorkloadEventMessage(
+  value: unknown,
+): value is WorkloadEventMessage {
+  if (typeof value !== 'object' || value === null) return false;
+  const message = value as Record<string, unknown>;
+  if (
+    message.type !== 'workload.event' ||
+    typeof message.workloadId !== 'string'
+  )
+    return false;
+  if (message.event === 'output') return typeof message.lastSeq === 'number';
+  if (message.event !== 'exit') return false;
+  const exit = message.exit as Record<string, unknown> | null | undefined;
+  return (
+    typeof exit === 'object' &&
+    exit !== null &&
+    typeof exit.exitCode === 'number' &&
+    (exit.signal === null || typeof exit.signal === 'number') &&
+    typeof exit.outputIncomplete === 'boolean' &&
+    typeof exit.journalFailed === 'boolean'
+  );
+}
+
 /** Workload host -> supervisor, once it can take requests. */
 export interface HostReadyMessage {
   type: 'host.ready';

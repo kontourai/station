@@ -32,6 +32,7 @@ import {
   type CoreToSupervisorMessage,
   GENERATION_CAPABILITIES,
   type HandoffPhase,
+  isWorkloadEventMessage,
   MAX_LISTENER_SPARES,
   SUPERVISOR_ENV,
   type WorkloadEventMessage,
@@ -643,8 +644,8 @@ export class SupervisorLink implements ListenerLink {
   }
 
   private onWorkloadEventMessage(message: Record<string, unknown>): void {
-    if (typeof message.workloadId !== 'string') return;
-    this.workloadEvents.push(message as unknown as WorkloadEventMessage);
+    if (!isWorkloadEventMessage(message)) return;
+    this.workloadEvents.push(message);
     if (this.workloadEvents.length > 1) return;
     setImmediate(() => {
       const events = this.workloadEvents;

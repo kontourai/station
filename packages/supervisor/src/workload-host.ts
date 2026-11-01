@@ -10,13 +10,14 @@
  * ends its workloads and exits when its IPC channel closes.
  */
 import { type ChildProcess, fork } from 'node:child_process';
-import type {
-  WorkloadErrorCode,
-  WorkloadEventMessage,
-  WorkloadExit,
-  WorkloadInfo,
-  WorkloadResponseMessage,
-  WorkloadStatus,
+import {
+  isWorkloadEventMessage,
+  type WorkloadErrorCode,
+  type WorkloadEventMessage,
+  type WorkloadExit,
+  type WorkloadInfo,
+  type WorkloadResponseMessage,
+  type WorkloadStatus,
 } from './protocol.ts';
 
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown
@@ -204,13 +205,9 @@ export class WorkloadHost {
       settle(reply as WorkloadReply);
       return;
     }
-    if (
-      message.type === 'workload.event' &&
-      typeof message.workloadId === 'string'
-    ) {
-      const event = message as unknown as WorkloadEventMessage;
-      if (event.event === 'exit') this.markExited(event.workloadId);
-      this.options.onEvent(event);
+    if (isWorkloadEventMessage(message)) {
+      if (message.event === 'exit') this.markExited(message.workloadId);
+      this.options.onEvent(message);
     }
   }
 
