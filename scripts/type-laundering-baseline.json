@@ -1277,20 +1277,20 @@
     {
       "file": "src-server/runtime/frameworks/strands-adapter.ts",
       "rule": "as-unknown",
-      "fingerprint": "6e135f96d0411f11190cae75f1b6da8239ca2546199a4b8fe8c8b871cc0bc26c",
-      "reason": "Existing StorageAdapter to IMemory bridge; durableAgentMemory preserves the input type and method surface. Native Strands conformance and memory-history suites exercise the same bridge."
+      "fingerprint": "ef0bd1eea28107a583c47a1dcd95b353afbcc45a33f5987b8d39bbcdb2831c32",
+      "reason": "legacy-cast"
     },
     {
       "file": "src-server/runtime/frameworks/strands-adapter.ts",
       "rule": "as-unknown",
-      "fingerprint": "913a54aa6bc4d1c82d3cda906e9b34c7e4ef762efb9b088518f2177faedc26ff",
-      "reason": "Existing StorageAdapter to IMemory bridge; durableAgentMemory preserves the input type and method surface. Native Strands conformance and memory-history suites exercise the same bridge."
+      "fingerprint": "72b7c769ca655b34263fcba78b69a6ad230146ea8af91731a05bd7247a82b2eb",
+      "reason": "legacy-cast"
     },
     {
       "file": "src-server/runtime/frameworks/strands-adapter.ts",
       "rule": "as-unknown",
-      "fingerprint": "5d0236380c5798d63034b847c9e55c3a7ec621ba32e3a09d5e884771b9d73498",
-      "reason": "Existing StorageAdapter to IMemory bridge; durableAgentMemory preserves the input type and method surface. Native Strands conformance and memory-history suites exercise the same bridge."
+      "fingerprint": "d3a5f83c67cec0148e40d7ee7868844e47ad2d80d3e84497e17b4f9323035218",
+      "reason": "legacy-cast"
     },
     {
       "file": "src-server/runtime/frameworks/strands-agent-hooks.ts",
