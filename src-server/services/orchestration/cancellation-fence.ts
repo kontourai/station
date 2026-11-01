@@ -1,9 +1,15 @@
+import type { InterruptTurnResult } from '@kontourai/station-contracts/orchestration';
+import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { z } from 'zod';
 import {
   type TransactionalSqliteDatabase,
   writeTransaction,
 } from './delegation-result-delivery.js';
 import { ownedDescendantsBottomUp } from './ownership-tree.js';
+import {
+  ACTIVE_TURN_FOLD_METHODS,
+  interruptibleTurnIdForEvents,
+} from './session-lifecycle-service.js';
 import type { SqliteDatabase } from './sqlite-database.js';
 
 export const CANCELLATION_FENCE_SCHEMA = `CREATE TABLE IF NOT EXISTS orchestration_cancellation_fences (
@@ -24,7 +30,82 @@ CREATE TABLE IF NOT EXISTS orchestration_cascade_stop_custody (
   custody TEXT NOT NULL CHECK (custody IN ('local', 'peer', 'unknown')),
   evidence_json TEXT NOT NULL,
   PRIMARY KEY (child_session_id, terminal_event_id)
+) ;
+CREATE TABLE IF NOT EXISTS orchestration_cascade_stop_results (
+  child_session_id TEXT NOT NULL,
+  terminal_event_id TEXT NOT NULL,
+  result_json TEXT NOT NULL,
+  PRIMARY KEY (child_session_id, terminal_event_id)
 )`;
+
+const interruptResult = z.discriminatedUnion('outcome', [
+  z.object({
+    outcome: z.literal('cooperative'),
+    threadId: z.string(),
+    turnId: z.string(),
+  }),
+  z.object({
+    outcome: z.literal('forced'),
+    threadId: z.string(),
+    turnId: z.string(),
+  }),
+  z.object({
+    outcome: z.literal('turn-completed'),
+    threadId: z.string(),
+    turnId: z.string(),
+  }),
+  z.object({ outcome: z.literal('pending-turn-start'), threadId: z.string() }),
+  z.object({ outcome: z.literal('no-active-turn'), threadId: z.string() }),
+]);
+
+export function readCascadeInterruptResult(
+  db: SqliteDatabase,
+  childId: string,
+  terminalId: string,
+): InterruptTurnResult | undefined {
+  const row = z
+    .object({ result_json: z.string() })
+    .optional()
+    .parse(
+      db
+        .prepare(
+          'SELECT result_json FROM orchestration_cascade_stop_results WHERE child_session_id = ? AND terminal_event_id = ?',
+        )
+        .get(childId, terminalId),
+    );
+  if (!row) return undefined;
+  const result = interruptResult.parse(JSON.parse(row.result_json));
+  if (result.threadId !== childId)
+    throw new Error('Cascade interruption result has a different target.');
+  return result;
+}
+
+export function completeCascadeStop(
+  db: TransactionalSqliteDatabase,
+  childId: string,
+  terminalId: string,
+  result?: InterruptTurnResult,
+): void {
+  writeTransaction(db, 'complete_cascade_stop', () => {
+    if (result && result.threadId !== childId)
+      throw new Error('Cascade interruption result has a different target.');
+    if (result)
+      db.prepare(
+        'INSERT OR IGNORE INTO orchestration_cascade_stop_results VALUES (?, ?, ?)',
+      ).run(childId, terminalId, JSON.stringify(result));
+    db.prepare(
+      "UPDATE orchestration_cascade_stop_intents SET state = 'completed' WHERE child_session_id = ? AND terminal_event_id = ?",
+    ).run(childId, terminalId);
+    db.prepare(`DELETE FROM orchestration_cancellation_fences WHERE thread_id = ? AND terminal_event_id = ?
+      AND EXISTS (SELECT 1 FROM orchestration_cascade_stop_intents WHERE child_session_id = ? AND parent_session_id = ? AND terminal_event_id = ? AND state = 'completed')`).run(
+      childId,
+      terminalId,
+      childId,
+      childId,
+      terminalId,
+    );
+  });
+}
 
 export function recordCascadeStopIntent(
   db: TransactionalSqliteDatabase,
@@ -71,10 +152,30 @@ export function deriveCascadeStopIntents(
     eventId: string;
     threadId: string;
     sessionState?: string;
+    turnId?: string;
   },
   sequence: number,
 ): void {
   const requested = event.method === 'session.cancellation-requested';
+  if (requested && event.turnId) {
+    // Validate the committed prefix under the writer lock, including on replay.
+    const prefix = z.array(z.object({ payload: z.string() })).parse(
+      db
+        .prepare(`SELECT payload FROM orchestration_events
+      WHERE thread_id = ? AND global_sequence < ? AND method IN (${ACTIVE_TURN_FOLD_METHODS.map(() => '?').join(',')}) ORDER BY global_sequence`)
+        .all(event.threadId, sequence, ...ACTIVE_TURN_FOLD_METHODS),
+    );
+    if (
+      interruptibleTurnIdForEvents(
+        prefix.map(
+          ({ payload }) => JSON.parse(payload) as CanonicalRuntimeEvent,
+        ),
+      ) !== event.turnId
+    )
+      throw new Error(
+        'Cascade interrupt target is no longer active; no child stop was recorded.',
+      );
+  }
   if (
     !requested &&
     event.method !== 'session.exited' &&
@@ -131,12 +232,13 @@ export function backfillCascadeStopIntents(
           method: z.string(),
           global_sequence: z.number().int(),
           session_state: z.string().nullable(),
+          turn_id: z.string().nullable(),
         }),
       )
       .parse(
         db
           .prepare(`
-      SELECT id, thread_id, method, global_sequence, session_state FROM orchestration_events
+      SELECT id, thread_id, method, global_sequence, session_state, turn_id FROM orchestration_events
       WHERE method IN ('session.exited', 'turn.aborted', 'session.cancellation-requested')
         OR (method = 'session.state-changed' AND session_state = 'canceled') ORDER BY global_sequence`)
           .all(),
@@ -149,6 +251,7 @@ export function backfillCascadeStopIntents(
           eventId: row.id,
           threadId: row.thread_id,
           ...(row.session_state ? { sessionState: row.session_state } : {}),
+          ...(row.turn_id ? { turnId: row.turn_id } : {}),
         },
         row.global_sequence,
       );

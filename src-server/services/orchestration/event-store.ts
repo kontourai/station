@@ -246,8 +246,10 @@ import {
 import {
   backfillCascadeStopIntents,
   CANCELLATION_FENCE_SCHEMA,
+  completeCascadeStop,
   deriveCascadeStopIntents,
   isCascadeStopSettled,
+  readCascadeInterruptResult,
   recordCascadeStopIntent,
 } from './cancellation-fence.js';
 import {
@@ -315,7 +317,6 @@ import {
   createSqliteDelegationResultStore,
   type DelegationResultStore,
   migrateDelegationResultSchema,
-  writeTransaction,
 } from './delegation-result-delivery.js';
 import {
   MAX_EVENT_CONTENT_BYTES,
@@ -15190,18 +15191,16 @@ export class EventStore {
     return Number(result.changes) > 0;
   }
 
-  completeCascadeStop(childId: string, terminalId: string): void {
-    writeTransaction(this.db, 'complete_cascade_stop', () => {
-      this.db
-        .prepare(
-          "UPDATE orchestration_cascade_stop_intents SET state = 'completed' WHERE child_session_id = ? AND terminal_event_id = ?",
-        )
-        .run(childId, terminalId);
-      this.db
-        .prepare(`DELETE FROM orchestration_cancellation_fences WHERE thread_id = ? AND terminal_event_id = ?
-        AND EXISTS (SELECT 1 FROM orchestration_cascade_stop_intents WHERE child_session_id = ? AND parent_session_id = ? AND terminal_event_id = ? AND state = 'completed')`)
-        .run(childId, terminalId, childId, childId, terminalId);
-    });
+  completeCascadeStop(
+    childId: string,
+    terminalId: string,
+    result?: import('@kontourai/station-contracts/orchestration').InterruptTurnResult,
+  ): void {
+    completeCascadeStop(this.db, childId, terminalId, result);
+  }
+
+  readCascadeInterruptResult(childId: string, terminalId: string) {
+    return readCascadeInterruptResult(this.db, childId, terminalId);
   }
 
   readInputlessTurnDisposition(threadId: string) {
@@ -17057,6 +17056,11 @@ export class EventStore {
       this.db
         .prepare(
           'DELETE FROM orchestration_cascade_stop_custody WHERE child_session_id = ?',
+        )
+        .run(threadId);
+      this.db
+        .prepare(
+          'DELETE FROM orchestration_cascade_stop_results WHERE child_session_id = ?',
         )
         .run(threadId);
       this.db

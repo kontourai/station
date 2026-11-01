@@ -6,6 +6,80 @@ import { EventStore } from '../event-store.js';
 
 const makeTempDir = trackTempDirs();
 
+test('a stale cancellation target cannot commit a request or subtree stop intents', () => {
+  const store = new EventStore(
+    join(makeTempDir('cascade-stale-target-'), 'events.sqlite'),
+  );
+  const at = '2026-01-01T00:00:00.000Z';
+  try {
+    for (const id of ['parent', 'child'])
+      store.appendEvent({
+        eventId: `${id}-start`,
+        threadId: id,
+        sessionId: id,
+        provider: 'codex',
+        method: 'session.started',
+        createdAt: at,
+        metadata:
+          id === 'child'
+            ? {
+                delegation: {
+                  parentSessionId: 'parent',
+                  parentConversationId: 'parent',
+                },
+                stationDelegationProvenance: 'caller-derived',
+              }
+            : {},
+      });
+    store.appendEvent({
+      eventId: 'old-start',
+      provider: 'codex',
+      threadId: 'parent',
+      method: 'turn.started',
+      turnId: 'old',
+      createdAt: at,
+    });
+    store.appendEvent({
+      eventId: 'old-end',
+      provider: 'codex',
+      threadId: 'parent',
+      method: 'turn.completed',
+      turnId: 'old',
+      finishReason: 'stop',
+      createdAt: at,
+    });
+    store.appendEvent({
+      eventId: 'current-start',
+      provider: 'codex',
+      threadId: 'parent',
+      method: 'turn.started',
+      turnId: 'current',
+      createdAt: at,
+    });
+    expect(() =>
+      store.appendEvent({
+        eventId: 'stale-cancel',
+        provider: 'codex',
+        threadId: 'parent',
+        sessionId: 'parent',
+        method: 'session.cancellation-requested',
+        action: 'cancel',
+        turnId: 'old',
+        createdAt: at,
+      }),
+    ).toThrow('target is no longer active');
+    expect(store.eventById('parent', 'stale-cancel')).toBeUndefined();
+    expect(store.pendingCascadeStops()).toEqual([]);
+    const child = store.sessionTurnBoundaryAuthority().claim('child', at);
+    expect(child.kind).toBe('owner');
+    if (child.kind !== 'owner')
+      throw new Error('Stale cancellation fenced the child');
+    child.claim.notInvoked();
+  } finally {
+    store.close();
+  }
+});
+
 test('a durable parent terminal records one child stop intent and fence across reopen', () => {
   const path = join(makeTempDir('cascade-intent-'), 'events.sqlite');
   const store = new EventStore(path);

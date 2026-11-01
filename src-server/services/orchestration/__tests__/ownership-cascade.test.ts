@@ -15,6 +15,115 @@ import { OrchestrationService } from '../orchestration-service.js';
 
 const makeTempDir = trackTempDirs();
 
+test('targeted cancellation leaves children alone for a stale turn and cascades for the active turn', async () => {
+  const path = join(makeTempDir('cascade-cancel-target-'), 'events.sqlite');
+  const store = new EventStore(path);
+  const engine = new GateTestAdapter();
+  const adapter: ProviderAdapterShape = engine;
+  const running = new Set(['parent', 'child']);
+  const actions: string[] = [];
+  const warnings = vi.fn();
+  adapter.hasSession = async (id) => running.has(id);
+  adapter.stopSession = async (id) => {
+    actions.push(`stop:${id}`);
+    running.delete(id);
+  };
+  adapter.interruptTurn = async (_id, turnId) => {
+    if (!turnId)
+      throw new Error(
+        'The cancellation adapter requires its named active turn',
+      );
+    actions.push(`interrupt:${turnId}`);
+    return { outcome: 'cancelled', turnId };
+  };
+  const service = new OrchestrationService({
+    adapterRegistry: createGateTestRegistry(adapter),
+    eventStore: store,
+    eventBus: new EventBus(),
+    logger: { debug() {}, warn: warnings },
+  });
+  try {
+    service.initialize();
+    await awaitSessionRecoveryCompleted(service);
+    for (const id of ['parent', 'child']) {
+      store.appendEvent({
+        eventId: `${id}-started`,
+        threadId: id,
+        sessionId: id,
+        provider: 'claude',
+        method: 'session.started',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        metadata:
+          id === 'child'
+            ? {
+                delegation: {
+                  parentSessionId: 'parent',
+                  parentConversationId: 'parent',
+                },
+                stationDelegationProvenance: 'caller-derived',
+              }
+            : {},
+      });
+      service.seedSessionRecord({
+        threadId: id,
+        provider: 'claude',
+        status: 'running',
+      });
+    }
+    store.appendEvent({
+      eventId: 'parent-turn',
+      provider: 'claude',
+      threadId: 'parent',
+      method: 'turn.started',
+      turnId: 'active-turn',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+    expect(
+      await service.dispatch({
+        type: 'interruptTurn',
+        threadId: 'parent',
+        turnId: 'stale-turn',
+      }),
+    ).toEqual({ outcome: 'no-active-turn', threadId: 'parent' });
+    expect(actions).toEqual([]);
+    expect(store.pendingCascadeStops()).toEqual([]);
+    const cancel = {
+      type: 'interruptTurn',
+      threadId: 'parent',
+      turnId: 'active-turn',
+    } as const;
+    const outcomes = await Promise.all([
+      service.dispatch(cancel),
+      service.dispatch(cancel),
+    ]);
+    expect(outcomes).toEqual([
+      { outcome: 'cooperative', threadId: 'parent', turnId: 'active-turn' },
+      { outcome: 'cooperative', threadId: 'parent', turnId: 'active-turn' },
+    ]);
+    expect(warnings).not.toHaveBeenCalled();
+    expect(actions).toEqual(['stop:child', 'interrupt:active-turn']);
+    expect(running.has('child')).toBe(false);
+    const request = store.latestEventByMethod(
+      'parent',
+      'session.cancellation-requested',
+    )?.payload;
+    if (!request) throw new Error('Durable cancellation request is missing');
+    expect(request.turnId).toBe('active-turn');
+    const reopened = new EventStore(path);
+    try {
+      expect(reopened.pendingCascadeStops()).toEqual([]);
+      expect(
+        reopened.readCascadeInterruptResult('parent', request.eventId),
+      ).toEqual(outcomes[0]);
+    } finally {
+      reopened.close();
+    }
+  } finally {
+    await service.shutdown();
+    store.close();
+  }
+});
+
 test('parent summaries remain running until the owned child stop settles', async () => {
   const store = new EventStore(
     join(makeTempDir('cascade-idle-'), 'events.sqlite'),

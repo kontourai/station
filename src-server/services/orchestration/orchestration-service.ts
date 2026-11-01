@@ -10001,9 +10001,19 @@ export class OrchestrationService {
           if (
             this.options.eventStore?.ownedStopTargets(command.threadId).length
           ) {
+            const activeTurnId = this.activeTurnIdOfThread(command.threadId);
+            if (command.turnId && command.turnId !== activeTurnId) {
+              const result: InterruptTurnResult = {
+                outcome: 'no-active-turn',
+                threadId: command.threadId,
+              };
+              this.persistReceipt(receipt);
+              return { receipt, result };
+            }
             const result = await this.requestOwnedCascade(
               command.threadId,
               'cancel',
+              command.turnId ?? activeTurnId,
             );
             if (!result)
               throw new Error(
@@ -11847,14 +11857,11 @@ export class OrchestrationService {
     string,
     ProviderAdapterShape
   >();
-  private readonly cascadeInterruptResults = new Map<
-    string,
-    InterruptTurnResult
-  >();
 
   private async requestOwnedCascade(
     threadId: string,
     action: 'stop' | 'cancel',
+    turnId?: string,
   ): Promise<InterruptTurnResult | undefined> {
     const store = this.options.eventStore;
     if (!store) throw new Error('Cascade event store is unavailable.');
@@ -11878,6 +11885,7 @@ export class OrchestrationService {
         createdAt: new Date().toISOString(),
         method: 'session.cancellation-requested',
         action,
+        ...(turnId ? { turnId } : {}),
       });
     }
     await this.reconcileCascadeStops();
@@ -11887,17 +11895,19 @@ export class OrchestrationService {
         .some((intent) => intent.terminalId === terminalId)
     )
       throw new Error(`Owned Session stops remain pending: ${threadId}`);
-    const result = this.cascadeInterruptResults.get(terminalId);
-    this.cascadeInterruptResults.delete(terminalId);
-    return result;
+    return store.readCascadeInterruptResult(threadId, terminalId);
   }
 
-  private reconcileCascadeStops(): Promise<void> {
+  private async reconcileCascadeStops(): Promise<void> {
     if (this.cascadeDeliveryStopped)
       return this.cascadeStopReconciliation ?? Promise.resolve();
     if (this.cascadeStopReconciliation) {
       this.cascadeStopReconcileAgain = true;
-      return this.cascadeStopReconciliation;
+      await this.cascadeStopReconciliation;
+      // A wake can arrive after the last snapshot, before the tail settles.
+      if (this.cascadeStopReconcileAgain && !this.cascadeDeliveryStopped)
+        await this.reconcileCascadeStops();
+      return;
     }
     const store = this.options.eventStore;
     if (!store) return Promise.resolve();
@@ -11943,18 +11953,18 @@ export class OrchestrationService {
               intent.parentId,
               intent.terminalId,
             )?.payload;
+            let interruptResult: InterruptTurnResult | undefined;
             if (
               intent.childId === intent.parentId &&
               trigger?.method === 'session.cancellation-requested' &&
               trigger.action === 'cancel'
             ) {
-              const result =
+              interruptResult =
                 await this.cooperativeStop.interruptUserTurnCooperatively(
                   adapter,
                   intent.childId,
                   trigger.turnId,
                 );
-              this.cascadeInterruptResults.set(intent.terminalId, result);
             } else if (this.sessionAdapters.has(intent.childId)) {
               await this.stopSessionNow(intent.childId, false);
             } else {
@@ -11963,7 +11973,11 @@ export class OrchestrationService {
                 intent.childId,
               );
             }
-            store.completeCascadeStop(intent.childId, intent.terminalId);
+            store.completeCascadeStop(
+              intent.childId,
+              intent.terminalId,
+              interruptResult,
+            );
             if (
               !store
                 .pendingCascadeStops()
@@ -14244,18 +14258,13 @@ export class OrchestrationService {
     return this.turnProvenance.replaySidecarFor(event);
   }
 
-  /** Read-only quiescence seam for derived projections that must not race a turn. */
+  /** Owned execution activity for summaries and idle parking. */
   private readonly readOwnedWork = (threadId: string) =>
     this.options.eventStore?.ownedSessionActivity(threadId);
 
+  /** Read-only quiescence seam for derived projections that must not race a turn. */
   hasActiveTurn(threadId: string): boolean {
-    const owned = this.readOwnedWork(threadId);
-    return (
-      this.sessionExecutionCoordinator.hasActiveTurn(threadId) ||
-      Boolean(
-        owned && (owned.runningChildCount > 0 || owned.pendingStopCount > 0),
-      )
-    );
+    return this.sessionExecutionCoordinator.hasActiveTurn(threadId);
   }
 
   /**
