@@ -653,7 +653,9 @@ describe('Home and the dock start the same way', () => {
       'Project: No project. Without a project',
     );
     expect(
-      within(formOf(home)).getByRole('button', { name: 'Model: Opus' }),
+      within(formOf(home)).getByRole('button', {
+        name: 'Model: Opus. Model Opus',
+      }),
     ).toBeTruthy();
     fireEvent.change(
       within(formOf(home)).getByRole('textbox', {
@@ -737,7 +739,7 @@ describe('Home and the dock start the same way', () => {
       agentChip(dock).getAttribute('aria-label'),
     );
     expect(agentChip(home).getAttribute('aria-label')).toBe(
-      'Agent: Claude · Opus',
+      'Agent: Claude · Opus. Agent Claude',
     );
     expect(projectChip(home).getAttribute('aria-label')).toBe(
       projectChip(dock).getAttribute('aria-label'),
@@ -778,7 +780,7 @@ describe('Home and the dock start the same way', () => {
     // Home re-derives from the remembered choice while it stays mounted.
     await waitFor(() =>
       expect(agentChip(home).getAttribute('aria-label')).toBe(
-        'Agent: Codex · gpt-5.4',
+        'Agent: Codex · gpt-5.4. Agent Codex',
       ),
     );
     fireEvent.change(
@@ -814,7 +816,7 @@ describe('Home and the dock start the same way', () => {
     );
     await waitFor(() =>
       expect(agentChip(ui.dock()).getAttribute('aria-label')).toBe(
-        'Agent: Codex · gpt-5.4',
+        'Agent: Codex · gpt-5.4. Agent Codex',
       ),
     );
     const dock = ui.dock();
@@ -859,11 +861,11 @@ describe('Home and the dock start the same way', () => {
     await pick(ui.dock(), 'claude');
     await waitFor(() =>
       expect(agentChip(home).getAttribute('aria-label')).toBe(
-        'Agent: Claude · Opus',
+        'Agent: Claude · Opus. Agent Claude',
       ),
     );
     expect(agentChip(ui.dock()).getAttribute('aria-label')).toBe(
-      'Agent: Claude · Opus',
+      'Agent: Claude · Opus. Agent Claude',
     );
     ui.cleanupListener();
   }, 30_000);
@@ -887,11 +889,11 @@ describe('Home and the dock start the same way', () => {
     );
     await waitFor(() =>
       expect(agentChip(home).getAttribute('aria-label')).toMatch(
-        /^Agent: Claude · [Ss]onnet$/,
+        /^Agent: Claude · [Ss]onnet\. Agent Claude$/,
       ),
     );
     expect(agentChip(ui.dock()).getAttribute('aria-label')).toMatch(
-      /^Agent: Claude · [Ss]onnet$/,
+      /^Agent: Claude · [Ss]onnet\. Agent Claude$/,
     );
     ui.cleanupListener();
   }, 30_000);
@@ -922,18 +924,18 @@ describe('Home and the dock start the same way', () => {
     fireEvent.click(await openModelPicker(home));
     await waitFor(() =>
       expect(agentChip(ui.dock()).getAttribute('aria-label')).toBe(
-        'Agent: Claude · Sonnet',
+        'Agent: Claude · Sonnet. Agent Claude',
       ),
     );
     await openModelPicker(ui.dock());
     fireEvent.click(screen.getByRole('button', { name: 'Use default' }));
     await waitFor(() =>
       expect(agentChip(home).getAttribute('aria-label')).toBe(
-        'Agent: Claude · Opus',
+        'Agent: Claude · Opus. Agent Claude',
       ),
     );
     expect(agentChip(ui.dock()).getAttribute('aria-label')).toBe(
-      'Agent: Claude · Opus',
+      'Agent: Claude · Opus. Agent Claude',
     );
     ui.cleanupListener();
   }, 30_000);
@@ -974,17 +976,17 @@ describe('Home and the dock start the same way', () => {
     fireEvent.click(await openModelPicker(ui.dock()));
     await waitFor(() =>
       expect(agentChip(home).getAttribute('aria-label')).toBe(
-        'Agent: Claude · Sonnet',
+        'Agent: Claude · Sonnet. Agent Claude',
       ),
     );
     act(() =>
       trackLastChosenModel(buildLastChosenModelBindingKey(CLAUDE), 'opus'),
     );
     expect(agentChip(home).getAttribute('aria-label')).toBe(
-      'Agent: Claude · Sonnet',
+      'Agent: Claude · Sonnet. Agent Claude',
     );
     expect(agentChip(ui.dock()).getAttribute('aria-label')).toBe(
-      'Agent: Claude · Sonnet',
+      'Agent: Claude · Sonnet. Agent Claude',
     );
     ui.cleanupListener();
   }, 30_000);

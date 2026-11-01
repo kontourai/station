@@ -494,7 +494,7 @@ export function StartComposer({
               <ComposerChoice
                 className={`start-composer__chip start-composer__chip--agent${agent.needsSetup ? ' start-composer__chip--attention' : ''}`}
                 aria-haspopup="dialog"
-                aria-label={`Agent: ${startAgentChipText(agent)}${agent.needsSetup ? ', needs setup' : ''}${!onOpenModel && agent.status === 'ready' && agent.modelNote ? `. ${agent.modelNote}` : ''}`}
+                aria-label={`Agent: ${startAgentChipText(agent)}${agent.needsSetup ? ', needs setup' : ''}${!onOpenModel && agent.status === 'ready' && agent.modelNote ? `. ${agent.modelNote}` : ''}. Agent ${agentText}`}
                 title={
                   !onOpenModel && agent.status === 'ready'
                     ? agent.modelNote
@@ -512,7 +512,7 @@ export function StartComposer({
               <ComposerChoice
                 className="start-composer__chip start-composer__chip--model"
                 aria-haspopup="dialog"
-                aria-label={`Model: ${agent.modelLabel && agent.modelLabel !== MODEL_NOT_REPORTED ? agent.modelLabel : 'Model'}${agent.modelNote ? `. ${agent.modelNote}` : ''}`}
+                aria-label={`Model: ${agent.modelLabel && agent.modelLabel !== MODEL_NOT_REPORTED ? agent.modelLabel : 'Model'}${agent.modelNote ? `. ${agent.modelNote}` : ''}. Model ${agent.modelLabel && agent.modelLabel !== MODEL_NOT_REPORTED ? agent.modelLabel : 'Model'}`}
                 title={agent.modelNote}
                 disabled={!agent.agent}
                 onClick={(event) => onOpenModel(event.currentTarget)}

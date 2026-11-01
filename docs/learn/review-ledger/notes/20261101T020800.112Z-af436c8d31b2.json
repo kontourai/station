@@ -1,0 +1,7 @@
+{
+  "revision": "fda32c6a5807e4e1322870199e94f1caf3984b2a",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the merged composer selection and approval descriptions against StartComposer and parity tests, including accessible project labels; focused UI tests passed, with gallery and live-device evidence separate.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/StartComposerParity.test.tsx"]}
+  ]
+}

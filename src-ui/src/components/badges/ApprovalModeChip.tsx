@@ -283,8 +283,8 @@ export function ApprovalModeChip({
           isPendingApply
             ? `Approval mode: ${chipText} — takes effect next turn. Engine approval control. ${policyDisclosure}`
             : `Approval mode: ${isPendingRestrict || isRefused ? `${chipText} — ${pendingNote}` : accessibleLabel}. Engine approval control. ${policyDisclosure}`
-        }${reviewerDisclosure}`}
-        title={`Approval mode: ${selectedLabel}. ${policyDisclosure}${reviewerDisclosure}`}
+        }${reviewerDisclosure} Approval ${chipText}`}
+        title={`Approval mode: ${selectedLabel}. ${policyDisclosure}${reviewerDisclosure} Approval ${chipText}`}
         onClick={() => setIsSheetOpen((open) => !open)}
         caption="Approval"
         value={chipText}

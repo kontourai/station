@@ -722,6 +722,7 @@ export function ChatInputArea({
     'Engine & model:',
     executionEngineLabel,
     modelLabel,
+    `${executionEngineLabel ?? 'Engine & model'} ${modelLabel}`,
     agentEngineMove
       ? agentEngineMove.nextTurn
         ? `This conversation's ${executionEngineLabel ?? 'engine'} session has ended; its next turn starts on ${agentEngineMove.to}, where its Agent now points.`
