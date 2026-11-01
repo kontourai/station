@@ -1559,7 +1559,14 @@ export class ThreadInboxDelivery {
       receipt = this.ports.inspectSteer(receiptInput);
     } catch (error) {
       if (!isSteerInputConflict(error)) throw error;
-      store.settle(entry, 'refused', steerConflictOutcome(), this.now());
+      store.settle(
+        entry,
+        recovering ? 'unconfirmed' : 'refused',
+        recovering
+          ? { reasonCode: 'may_have_been_sent' }
+          : steerConflictOutcome(),
+        this.now(),
+      );
       return;
     }
     if (receipt?.outcome === 'steered') {

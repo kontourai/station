@@ -900,9 +900,16 @@ describe('thread inbox (#3568)', () => {
     expect(handoffs).toBe(1);
   });
 
-  test.each([false, true])(
-    'a confirmed steer receipt settles interrupted placement (already surfaced=%s)',
-    async (surfaced) => {
+  test.each(
+    [false, true].flatMap((surfaced) =>
+      (['confirmed', 'conflict'] as const).map((receiptOutcome) => ({
+        surfaced,
+        receiptOutcome,
+      })),
+    ),
+  )(
+    'interrupted steer placement with $receiptOutcome receipt (already surfaced=$surfaced)',
+    async ({ surfaced, receiptOutcome }) => {
       const file = path();
       const first = boot(file, { steerFidelity: () => 'emulated' });
       await runningFirstTurn(first);
@@ -930,7 +937,8 @@ describe('thread inbox (#3568)', () => {
           ).kind,
       ).toBe('claimed');
       expect(first.store.claimSteerInput(receipt)).toBe(true);
-      first.store.confirmSteerInput(receipt, 'turn-1');
+      if (receiptOutcome === 'confirmed')
+        first.store.confirmSteerInput(receipt, 'turn-1');
       if (surfaced) {
         const entry = first.store
           .threadInboxStore()
@@ -952,13 +960,19 @@ describe('thread inbox (#3568)', () => {
       }));
       second = boot(file, {
         steerFidelity: () => 'native',
-        inspectSteer: (input) => second.store.readSteerInput(input),
+        inspectSteer: (input) => {
+          if (receiptOutcome === 'conflict')
+            throw new ClientTurnInputConflictError();
+          return second.store.readSteerInput(input);
+        },
         steer,
       });
       await second.inbox.reconcile();
       expect(steer).not.toHaveBeenCalled();
       expect(second.inbox.list(THREAD)).toMatchObject([
-        { state: 'sent', turnId: 'turn-1' },
+        receiptOutcome === 'confirmed'
+          ? { state: 'sent', turnId: 'turn-1' }
+          : { state: 'unconfirmed', reasonCode: 'may_have_been_sent' },
       ]);
     },
   );
