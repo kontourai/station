@@ -5,7 +5,6 @@ import { describe, expect, it } from 'vitest';
 const PROTECTED_STREAM_CONSUMERS = [
   'src-ui/src/contexts/MonitoringContext.tsx',
   'src-ui/src/hooks/useScheduler.ts',
-  'src-ui/src/hooks/useServerEvents.ts',
   'src-ui/src/hooks/orchestration/useSessionEventStream.ts',
   'src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts',
   // #90: a binary frame stream, not SSE, but the same auth boundary rule.
@@ -36,18 +35,28 @@ describe('protected browser stream inventory', () => {
     expect(idModule).toContain(
       'export const CLIENT_DOCUMENT_SESSION_ID = randomCorrelationId()',
     );
-    for (const streamPath of [
-      'src-ui/src/hooks/useServerEvents.ts',
+    const streamSource = read(
       'src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts',
-    ]) {
-      const source = read(streamPath);
-      expect(source).toContain(
-        "'X-Station-Client-Session': CLIENT_DOCUMENT_SESSION_ID",
-      );
-      expect(source).not.toContain('sessionStorage.');
-      expect(source).not.toContain('crypto.randomUUID()');
-    }
+    );
+    expect(streamSource).toContain(
+      "'X-Station-Client-Session': CLIENT_DOCUMENT_SESSION_ID",
+    );
+    expect(streamSource).not.toContain('sessionStorage.');
+    expect(streamSource).not.toContain('crypto.randomUUID()');
     expect(idModule).not.toContain('sessionStorage.');
     expect(idModule).not.toContain('crypto.randomUUID()');
+  });
+
+  it('opens the general event stream only through the shared orchestration stream', () => {
+    // #4370: the general and orchestration streams share one authenticated
+    // transport, so the general mount must not open a stream of its own.
+    const read = (relativePath: string) =>
+      readFileSync(resolve(process.cwd(), relativePath), 'utf8');
+    const mount = read('src-ui/src/hooks/ServerEventsMount.tsx');
+    expect(mount).toContain('return ensureOrchestrationEventStream(');
+    expect(mount).not.toMatch(/new\s+EventSource\s*\(|fetchSse|fetch\(/);
+    expect(read('src-ui/src/hooks/useServerEvents.ts')).toContain(
+      'useServerEventsTransport();',
+    );
   });
 });

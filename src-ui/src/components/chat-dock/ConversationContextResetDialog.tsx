@@ -1,3 +1,4 @@
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import {
   type ConversationContextBoundaryPolicy,
   type ConversationContextBoundaryProjection,
@@ -124,7 +125,7 @@ export function ConversationContextResetDialog({
     setPending(true);
     setError(undefined);
     try {
-      const idempotencyKey = stored?.idempotencyKey ?? crypto.randomUUID();
+      const idempotencyKey = stored?.idempotencyKey ?? randomCorrelationId();
       const result = await reserveConversationContextBoundary(
         apiBase,
         conversationId,
@@ -177,7 +178,7 @@ export function ConversationContextResetDialog({
         );
         return;
       }
-      const idempotencyKey = stored?.idempotencyKey ?? crypto.randomUUID();
+      const idempotencyKey = stored?.idempotencyKey ?? randomCorrelationId();
       const result = await reserveConversationContextBoundary(
         apiBase,
         conversationId,

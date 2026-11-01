@@ -1,3 +1,4 @@
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import {
   agentId,
   engineConnectionId,
@@ -230,7 +231,7 @@ export function ConversationHandoffDialog({
       : undefined,
   );
   const idempotencyKey = useRef(
-    restoredIntent?.idempotencyKey ?? crypto.randomUUID(),
+    restoredIntent?.idempotencyKey ?? randomCorrelationId(),
   );
   const mutationLocked = state === 'pending' || state === 'indeterminate';
   const closeLocked = state === 'pending';
