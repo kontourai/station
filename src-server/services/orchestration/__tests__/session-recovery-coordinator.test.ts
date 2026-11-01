@@ -1148,7 +1148,7 @@ describe('SessionRecoveryCoordinator', () => {
         rollback,
         rollbackPending: vi.fn(async () => {
           throw new Error('compensation unavailable during shutdown');
-        }),
+        }).mockResolvedValueOnce(undefined),
       },
       now: () => now,
     });
@@ -2693,6 +2693,26 @@ describe('SessionRecoveryCoordinator', () => {
       dispatchSettlement: 'prepared',
     });
     store.close();
+  });
+
+  test('#2823: retries an unavailable due scan in the same process', async () => {
+    vi.useFakeTimers();
+    const { path, fingerprint } = abandonedDueClaim();
+    const store = new EventStore(path);
+    const scan = vi.spyOn(
+      store as unknown as { preparedRecoveryDispatches: (...args: unknown[]) => unknown },
+      'preparedRecoveryDispatches',
+    );
+    scan.mockImplementationOnce(() => { throw new Error('SQLITE_BUSY'); });
+    const { coordinator, outcomes } = restartedCoordinator(store);
+    coordinator.reconcile();
+    expect(outcomes).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(recoveryLedger(store).find(fingerprint)).toMatchObject({ outcome: 'indeterminate' });
+    expect(outcomes).toHaveBeenCalledWith({ failureKind: 'capacity', decision: 'retry-now', outcome: 'indeterminate' });
+    await coordinator.dispose();
+    store.close();
+    vi.useRealTimers();
   });
 
   test('refuses a re-entrant runtime error after dispose publishes its stopping gate', async () => {
