@@ -13,8 +13,9 @@ only product consumer. Its versioning is experimental until a second consumer ex
 
 The kernel is the lower layer. The private experimental
 [`@kontourai/agent-runtime`](../agent-runtime/README.md) package now consumes its
-public contracts for model-only Cut 0/1 of #3573. Durable tools, approvals and
-Station chat/boot adoption remain later work. This Station-owned workspace
+public contracts for the model journal and agent-turn journal of #3573.
+Station adopts tool replay safety, approvals and fenced recovery behind its
+off-by-default Crash-durable Station Agent preview. This Station-owned workspace
 consumer does not qualify a second independent product or a Tier 2 extraction.
 The kernel takes no model dependency; the upper package binds the existing
 native framework loops.

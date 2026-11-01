@@ -119,3 +119,11 @@ operationally unavailable SQL and incomplete enumeration. These are local owner
 checks at their source pins; independent delta review and workload admission
 remain separate. Strict new admission parses all selected active payloads;
 these checks establish no active-set cost or physical table-page I/O proof.
+
+The agent-turn writer is `agent-steps/5`. It adds cancellation requests,
+terminal timestamps and journaled transport frames without replacing the older
+model journal. Station's off-by-default durable preview consumes the public root
+at its real framework/model/tool/approval boundaries. Its native adapter suite
+is `src-server/runtime/agents/__tests__/durable-agent-conformance.test.ts`;
+`chat-primary-stream.durable-disconnect.test.ts` owns the route handoff control.
+These local scripted boundaries do not establish provider or release qualification.
