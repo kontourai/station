@@ -66,6 +66,7 @@ export async function turnFixture() {
     database,
     crash,
     lease,
+    runtime,
     liveness,
     advance: (milliseconds: number) => {
       now += milliseconds;

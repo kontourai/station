@@ -20,6 +20,7 @@ export {
   type AgentJournalProtocol,
   type AgentTurnRecord,
   type AgentTurnSpec,
+  auditSqliteAgentJournal,
   openSqliteAgentJournal,
 } from './turn-journal.js';
 export { durableLanguageModel } from './turn-model.js';

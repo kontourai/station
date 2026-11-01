@@ -6,7 +6,16 @@ import { currentAgentTurn } from './turn-runtime.js';
 import { agentWire, readAgentWire } from './turn-wire.js';
 
 /** Instruments the provider boundary; each framework retains its native loop. */
-export function durableLanguageModel(model: LanguageModelV3): LanguageModelV3 {
+export function durableLanguageModel(
+  model: LanguageModelV3,
+  options: {
+    readonly affinity?: (
+      providerSessionId: string,
+    ) => NonNullable<
+      Parameters<LanguageModelV3['doStream']>[0]['providerOptions']
+    >;
+  } = {},
+): LanguageModelV3 {
   const ordinals = new WeakMap<object, number>();
   return {
     specificationVersion: 'v3',
@@ -18,13 +27,24 @@ export function durableLanguageModel(model: LanguageModelV3): LanguageModelV3 {
         throw new Error('DURABLE_AGENT_GENERATE_UNSUPPORTED');
       return model.doGenerate(options);
     },
-    async doStream(options) {
+    async doStream(callOptions) {
       const turn = currentAgentTurn();
-      if (!turn) return model.doStream(options);
+      if (!turn) return model.doStream(callOptions);
+      const affinity = options.affinity?.(turn.providerSessionId);
+      const optionsWithAffinity = affinity
+        ? {
+            ...callOptions,
+            providerOptions: { ...callOptions.providerOptions, ...affinity },
+          }
+        : callOptions;
       const ordinal = ordinals.get(turn) ?? 0;
       ordinals.set(turn, ordinal + 1);
       const id = `model:${ordinal}`;
-      const { abortSignal: _signal, headers: _headers, ...request } = options;
+      const {
+        abortSignal: _signal,
+        headers: _headers,
+        ...request
+      } = optionsWithAffinity;
       const planned = await turn.effect({
         type: 'effectPlan',
         intent: {
@@ -67,7 +87,7 @@ export function durableLanguageModel(model: LanguageModelV3): LanguageModelV3 {
       if (!begun.execute) throw new Error('DURABLE_AGENT_MODEL_INDETERMINATE');
       await turn.assertCurrent();
       const response = await model.doStream({
-        ...options,
+        ...optionsWithAffinity,
         abortSignal: turn.signal,
       });
       const reader = response.stream.getReader();

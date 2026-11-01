@@ -29,6 +29,7 @@ export interface AgentToolIntent {
 export interface AgentTurnLease {
   readonly key: RunKey;
   readonly input: string;
+  readonly providerSessionId: string;
   assertCurrent(): Promise<void>;
   /** Exactly one foreground execution per committed ownership claim. */
   run(work: () => Promise<void>): Promise<void>;
@@ -80,7 +81,10 @@ export function createAgentRuntime(options: {
   const now = options.now ?? Date.now;
   const context = { liveness: options.liveness, now };
   const leases = new Map<string, AgentTurnLease>();
-  const mint = (record: AgentTurnRecord): AgentTurnLease => {
+  const mint = (
+    record: AgentTurnRecord,
+    providerSessionId: string,
+  ): AgentTurnLease => {
     const controller = new AbortController();
     let consumed = false;
     let turn = record;
@@ -95,6 +99,7 @@ export function createAgentRuntime(options: {
     const lease: AgentTurnLease = {
       key: structuredClone(record.spec.key),
       input: record.spec.input,
+      providerSessionId,
       signal: controller.signal,
       async approvalCommand(command) {
         const result = await options.journal.execute(
@@ -222,6 +227,7 @@ export function createAgentRuntime(options: {
         if (
           current.kind !== 'owned' ||
           current.turn.state !== 'running' ||
+          current.providerSessionId !== providerSessionId ||
           canonical(current.turn.fence) !== canonical(turn.fence) ||
           options.liveness(turn.fence.owner) !== 'live'
         )
@@ -271,7 +277,7 @@ export function createAgentRuntime(options: {
         throw new Error(
           `DURABLE_AGENT_${answer.kind === 'refused' ? answer.reason.toUpperCase() : 'ABSENT'}`,
         );
-      return mint(answer.turn);
+      return mint(answer.turn, answer.providerSessionId);
     },
     async recover(
       key: RunKey,
@@ -298,7 +304,9 @@ export function createAgentRuntime(options: {
         { type: 'claim', key, expected: read.turn.fence, owner: options.owner },
         context,
       );
-      return claimed.kind === 'owned' ? mint(claimed.turn) : 'retry';
+      return claimed.kind === 'owned'
+        ? mint(claimed.turn, claimed.providerSessionId)
+        : 'retry';
     },
   };
 }

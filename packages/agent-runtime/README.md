@@ -12,7 +12,7 @@ AI SDK v3 interface, VoltAgent 2.10.0 and Strands 1.19.0 VercelModel. Optional
 framework dependencies are exact peers. The package imports no Station code.
 
 The public root also exports an agent-turn journal and recovery owner. Its
-separate `agent_steps_` namespace declares writer format `agent-steps/3` and
+separate `agent_steps_` namespace declares writer format `agent-steps/4` and
 leaves existing `runtime-model/1` records intact. An active conversation has
 one owner. Recovery requires a proven-dead owner and compares the complete
 observed fence inside the SQLite write transaction. A retained Station turn
@@ -47,6 +47,20 @@ Duplicate local waits join one request. A failed decision commit leaves the
 request pending, and a dead owner's late answer cannot resolve its successor's
 request. Writer 3 adds this table through an explicit atomic migration from
 writers 1 and 2 without rewriting their turn or effect records.
+
+Writer 4 adds immutable provider-session identities, one per scope and
+conversation. Later turns and takeover retain the identity; forks and children
+use new conversation identities and receive fresh ones. The model wrapper's
+`affinity` callback maps this opaque identity to the provider's supported options
+before pinning the request. It is not an idempotency key and never authorizes
+redispatch. Cache-hit behavior still requires provider evidence.
+
+New admission and opening also select suspect active headers. A damaged active
+header cannot hide a live run from conversation occupancy. Liveness callbacks
+must not mutate the transaction, and participant callbacks cannot change another
+run's unresolved membership. `auditSqliteAgentJournal` is a separate, read-only
+whole-store diagnostic: it checks all turn/effect/approval records and references,
+including settled history, without initializing or migrating a database.
 
 The host supplies authorization/current implementation and writer-generation
 closures, real owner liveness, and the already-authorized source cutoff.
