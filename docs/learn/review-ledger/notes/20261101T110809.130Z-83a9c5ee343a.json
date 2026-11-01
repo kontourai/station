@@ -1,0 +1,7 @@
+{
+  "revision": "9f7d3387a831aaa86fe9534bab2f9120d9ef4edd",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"Re-checked the part b2 section against the follow-up commits: terminal-transport.ts only narrows encodeTerminalFrame's return type to an ArrayBuffer-backed Uint8Array (frame bytes unchanged); the store keeps host refusals as cause and drops an unneeded socket cast; the output session's comment wording changed; the admission suite gained the byte-exact replay/resume and early-input tests the section's evidence sentence names. No claim changes.","inputs":["docs/design/terminal.md","packages/contracts/src/terminal-transport.ts","packages/sdk/src/client/terminal-output-session.ts","packages/sdk/src/client/terminal-session-store.ts","src-server/services/terminal/__tests__/terminal-gateway-admission.test.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "9f7d3387a831aaa86fe9534bab2f9120d9ef4edd",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"Checked: the vitest-resource-manifest.mjs change is an ordinary classification of a new child-process test as process-heavy, exactly the explicit-classification rule this file states; no instruction changes.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

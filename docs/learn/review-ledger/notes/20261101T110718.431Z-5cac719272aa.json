@@ -1,0 +1,7 @@
+{
+  "revision": "9f7d3387a831aaa86fe9534bab2f9120d9ef4edd",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Checked the SDK terminal section against terminal-session-store.ts after the CI fixes: added that refused/credential-unavailable ticket errors keep the host's StationHttpError as cause and use its message (envelopeError); the public error property is now a getter over the internal failure field with the same type; the socket send interface now names ArrayBuffer-backed frames, matching encodeTerminalFrame. terminal-output-session.ts only rewords an internal comment. Every listed method, state and code still matches.","inputs":["docs/reference/sdk.md","packages/sdk/src/client/terminal-output-session.ts","packages/sdk/src/client/terminal-session-store.ts"]}
+  ]
+}

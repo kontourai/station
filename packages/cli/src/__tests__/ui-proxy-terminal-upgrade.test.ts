@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
+import { createServer as createTcpServer } from 'node:net';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { WebSocket, WebSocketServer } from 'ws';
@@ -13,6 +14,65 @@ const cleanups: (() => void)[] = [];
 afterEach(() => {
   for (const cleanup of cleanups.splice(0)) cleanup();
 });
+
+/** An OS-assigned port, so parallel files spawning UI servers never collide. */
+async function freePort(): Promise<number> {
+  const probe = createTcpServer();
+  probe.listen(0, '127.0.0.1');
+  await once(probe, 'listening');
+  const address = probe.address();
+  const port = typeof address === 'object' && address ? address.port : 0;
+  await new Promise<void>((resolve) => probe.close(() => resolve()));
+  return port;
+}
+
+/** Spawns the generated UI server as the real `node -e` child. */
+async function spawnUiServer(upstreamPort: number) {
+  const uiDir = temp('station-ui-upgrade-');
+  writeFileSync(join(uiDir, 'index.html'), '<head></head><body>app</body>');
+  const uiPort = await freePort();
+  const child = spawn(
+    process.execPath,
+    ['-e', buildUiServerScript({ uiDir, upstreamPort, uiPort })],
+    {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+      env: { ...process.env, STATION_INTERNAL_API_TOKEN: 'test-only-token' },
+    },
+  );
+  const state = { stderr: '', exited: false };
+  child.stderr?.on('data', (chunk) => {
+    state.stderr += String(chunk);
+  });
+  child.once('exit', () => {
+    state.exited = true;
+  });
+  cleanups.push(() => child.kill('SIGKILL'));
+  const deadline = Date.now() + 10_000;
+  for (;;) {
+    try {
+      if ((await fetch(`http://127.0.0.1:${uiPort}/`)).ok) break;
+    } catch {
+      /* not listening yet */
+    }
+    if (Date.now() > deadline)
+      throw new Error(`UI proxy did not start ${state.stderr}`);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return { uiPort, state };
+}
+
+/** Opens a socket through the proxy and waits for it to end, whatever way. */
+async function attemptUpgrade(uiPort: number) {
+  const client = new WebSocket(`ws://127.0.0.1:${uiPort}/api/terminal/socket`, [
+    'station.terminal.v1',
+    `station.terminal.ticket.${'T'.repeat(43)}`,
+  ]);
+  client.on('error', () => undefined);
+  cleanups.push(() => client.terminate());
+  // events.once would reject on the expected 'error'; wait for close itself.
+  await new Promise<void>((resolve) => client.once('close', () => resolve()));
+}
 
 // #3994: the phone reaches Station through this UI proxy (tailnet name,
 // reverse proxy). Without upgrade forwarding the same-origin terminal socket
@@ -42,35 +102,7 @@ it('forwards only the terminal socket upgrade through the spawned UI proxy, stri
     wss.close();
     upstream.close();
   });
-
-  const uiDir = temp('station-ui-upgrade-');
-  writeFileSync(join(uiDir, 'index.html'), '<head></head><body>app</body>');
-  const uiPort = 40600 + (process.pid % 400);
-  const child = spawn(
-    process.execPath,
-    ['-e', buildUiServerScript({ uiDir, upstreamPort, uiPort })],
-    {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      windowsHide: true,
-      env: { ...process.env, STATION_INTERNAL_API_TOKEN: 'test-only-token' },
-    },
-  );
-  let stderr = '';
-  child.stderr?.on('data', (chunk) => {
-    stderr += String(chunk);
-  });
-  cleanups.push(() => child.kill('SIGKILL'));
-  const deadline = Date.now() + 10_000;
-  for (;;) {
-    try {
-      if ((await fetch(`http://127.0.0.1:${uiPort}/`)).ok) break;
-    } catch {
-      /* not listening yet */
-    }
-    if (Date.now() > deadline)
-      throw new Error(`UI proxy did not start ${stderr}`);
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
+  const { uiPort } = await spawnUiServer(upstreamPort);
 
   const ticket = `station.terminal.ticket.${'T'.repeat(43)}`;
   const client = new WebSocket(
@@ -109,7 +141,36 @@ it('forwards only the terminal socket upgrade through the spawned UI proxy, stri
   const other = new WebSocket(`ws://127.0.0.1:${uiPort}/api/voice`);
   other.on('error', () => undefined);
   cleanups.push(() => other.terminate());
-  // events.once would reject on the expected 'error'; wait for close itself.
   await new Promise<void>((resolve) => other.once('close', () => resolve()));
   expect(seen).toHaveLength(1);
 }, 30_000);
+
+// A refused or reset API listener (a restart, a crash) must end only that
+// socket: an unhandled socket 'error' would take the whole UI server down.
+it('survives a refused and a reset upstream, ending only the terminal socket', async () => {
+  // Refused: nothing listens on the upstream port.
+  const refused = await spawnUiServer(await freePort());
+  await attemptUpgrade(refused.uiPort);
+  await attemptUpgrade(refused.uiPort);
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  expect(refused.state.exited).toBe(false);
+  expect(refused.state.stderr).toBe('');
+  expect((await fetch(`http://127.0.0.1:${refused.uiPort}/`)).ok).toBe(true);
+
+  // Reset: the upstream accepts and then destroys the connection.
+  const resetting = createTcpServer((socket) => {
+    socket.once('data', () => socket.resetAndDestroy());
+  });
+  resetting.listen(0, '127.0.0.1');
+  await once(resetting, 'listening');
+  cleanups.push(() => resetting.close());
+  const address = resetting.address();
+  const reset = await spawnUiServer(
+    typeof address === 'object' && address ? address.port : 0,
+  );
+  await attemptUpgrade(reset.uiPort);
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  expect(reset.state.exited).toBe(false);
+  expect(reset.state.stderr).toBe('');
+  expect((await fetch(`http://127.0.0.1:${reset.uiPort}/`)).ok).toBe(true);
+}, 60_000);

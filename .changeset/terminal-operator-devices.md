@@ -25,4 +25,4 @@ reached Station through the UI port or a tailnet name opens the socket too.
 The contracts add the ticket path, lifetime and subprotocol constants,
 `TerminalTicket`, `TerminalLaunchProfile` and `TERMINAL_CLOSE` to
 `terminal-transport`, and optional `projectId`/`bindingKey` on an engine sign-in
-attempt's `terminal`, naming the socket scope to attach under.
+attempt's `terminal`, naming the socket scope to attach under. The SDK's engine sign-in attempt parser accepts those two fields.
