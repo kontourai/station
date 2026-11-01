@@ -164,6 +164,11 @@ the operator's own ([`isOperatorsOwnDevice`](../../src-server/security/coding-au
 members stay refused. The [threat model](../security/remote-access-threat-model.md#terminal-socket-on-operator-devices-3994)
 records the admission and its residual risks.
 
+- **Through the UI server.** The CLI's [UI server](../../packages/cli/src/commands/lifecycle.ts)
+  forwards only the `/api/terminal/socket` upgrade to the API listener and
+  strips every `x-station-*`, `tailscale-*` and forwarding header, so a phone
+  that reached Station through the UI port or a tailnet name opens the same
+  socket. Other upgrades are dropped.
 - **Ticket admission before upgrade.** `POST /api/terminal/tickets` mints a
   [single-use 30-second ticket](../../src-server/services/terminal/terminal-tickets.ts)
   through ordinary HTTP admission; the socket offers it as a subprotocol and

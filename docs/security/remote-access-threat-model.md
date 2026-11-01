@@ -1100,6 +1100,10 @@ non-operator members is a separate program and is not widened here.
 - **Liveness.** The server pings every 15 seconds and terminates a peer that
   missed the previous pong. Every capacity or lifetime close terminates a peer
   that ignores the close handshake after one second.
+- **UI server hop.** The CLI's UI server forwards only the
+  `/api/terminal/socket` upgrade to the loopback API listener and strips every
+  `x-station-*`, `tailscale-*` and forwarding header; it attests nothing. The
+  ticket is the only admission, so a forged proxy header gains no authority.
 - **Broker routes.** A browser broker route (WebRTC DataChannel) has no
   WebSocket path to Station; the client refuses raw terminal egress there
   before minting a ticket. That egress stays closed until a broker transport

@@ -1,6 +1,7 @@
 ---
 '@kontourai/station-contracts': minor
 '@kontourai/station-sdk': minor
+'@kontourai/station-cli': patch
 ---
 
 Terminals for every operator device (#3994). The SDK adds
@@ -16,6 +17,10 @@ authenticated transport, including a native shell's host transport.
 credential frame and accepts a native host transport. It needs a host with the
 ticket route; an older host reports `unsupported-host`. Its `createSocket`
 callback receives the offered subprotocols as a second argument.
+
+The CLI's UI server now forwards the terminal socket's WebSocket upgrade (that
+path only, attestation headers stripped) to the API listener, so a browser that
+reached Station through the UI port or a tailnet name opens the socket too.
 
 The contracts add the ticket path, lifetime and subprotocol constants,
 `TerminalTicket`, `TerminalLaunchProfile` and `TERMINAL_CLOSE` to

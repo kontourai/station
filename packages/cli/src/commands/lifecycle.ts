@@ -1312,6 +1312,72 @@ export function buildUiBootstrapScript(opts: {
 }
 
 /**
+ * #3994: forward the terminal socket's WebSocket upgrade through the UI
+ * server to the API listener, so a browser that reached Station through this
+ * proxy (a tailnet name, a reverse proxy, a phone) opens the same-origin
+ * socket. Only that exact path is forwarded; every other upgrade is dropped.
+ * The socket is admitted by the single-use ticket the gateway redeems, never
+ * by this hop, so every `x-station-*`, `tailscale-*` and forwarding header is
+ * stripped rather than attested. Self-contained: it is serialized into the
+ * spawned server with `Function.prototype.toString`.
+ */
+export function configureTerminalUpgrade(
+  server: {
+    on(
+      event: 'upgrade',
+      listener: (
+        request: import('node:http').IncomingMessage,
+        socket: import('node:stream').Duplex,
+        head: Buffer,
+      ) => void,
+    ): unknown;
+  },
+  net: { connect(port: number, host: string): import('node:net').Socket },
+  upstreamPort: number,
+): void {
+  const terminalSocketPath = '/api/terminal/socket';
+  server.on('upgrade', (request, socket, head) => {
+    if (
+      request.url !== terminalSocketPath ||
+      String(request.headers.upgrade ?? '').toLowerCase() !== 'websocket'
+    ) {
+      socket.destroy();
+      return;
+    }
+    const lines = [`GET ${terminalSocketPath} HTTP/1.1`];
+    for (let index = 0; index < request.rawHeaders.length; index += 2) {
+      const name = request.rawHeaders[index] ?? '';
+      const lower = name.toLowerCase();
+      if (
+        lower === 'host' ||
+        lower === 'forwarded' ||
+        lower.startsWith('x-forwarded-') ||
+        lower.startsWith('x-station-') ||
+        lower.startsWith('tailscale-')
+      )
+        continue;
+      lines.push(`${name}: ${request.rawHeaders[index + 1] ?? ''}`);
+    }
+    lines.push(`Host: 127.0.0.1:${upstreamPort}`);
+    const upstream = net.connect(upstreamPort, '127.0.0.1');
+    const close = () => {
+      socket.destroy();
+      upstream.destroy();
+    };
+    upstream.once('connect', () => {
+      upstream.write(`${lines.join('\r\n')}\r\n\r\n`);
+      if (head.length) upstream.write(head);
+      upstream.pipe(socket);
+      socket.pipe(upstream);
+    });
+    upstream.on('error', close);
+    upstream.on('close', close);
+    socket.on('error', close);
+    socket.on('close', close);
+  });
+}
+
+/**
  * Build the `node -e` source string for the spawned UI server, serializing the
  * shared {@link uiRequestHandler} so the live server and tests share one
  * implementation.
@@ -1374,6 +1440,7 @@ export function buildUiServerScript(opts: {
     const server=http.createServer(uiRequestHandler({http,crypto,fs,path,dir,mime,inject,upstreamPort,backendPrefixes,backendExcludedPrefixes,backendNavigationPrefixes,readinessFile,identity,internalApiToken,trustedTailscaleServeOrigin,hostedTenantAuthorities,immutableAsset,documentCsp}));
     (${configureHttpReceive.toString()})(server,uploadPolicy,mediaUploadPolicies.walkthrough.totalMs);
     (${configureHttpKeepAlive.toString()})(server);
+    (${configureTerminalUpgrade.toString()})(server,require('net'),upstreamPort);
     server.listen(${opts.uiPort},${JSON.stringify(opts.host ?? '0.0.0.0')});
     ${opts.exitWithLauncher ? "if(process.connected)process.on('disconnect',()=>process.exit(0));else process.exit(0);" : ''}
   `;
