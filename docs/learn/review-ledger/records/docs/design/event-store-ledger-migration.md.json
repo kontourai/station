@@ -42,7 +42,11 @@
 
     "packages/monument/src/decisions/recovery-storage.ts",
 
-    "packages/monument/src/testing/recovery-conformance.ts"
+    "packages/monument/src/testing/recovery-conformance.ts",
+
+    "packages/monument/src/session-boundary.ts",
+
+    "src-server/services/orchestration/session-turn-boundary-binding.ts"
   ],
 
   "checks": [

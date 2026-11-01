@@ -60,7 +60,11 @@
 
     "src-server/providers/__tests__/claude-adapter-events.test.ts",
 
-    "src-server/routes/orchestration/__tests__/conversation-fork.qualification.test.ts"
+    "src-server/routes/orchestration/__tests__/conversation-fork.qualification.test.ts",
+
+    "packages/monument/src/session-boundary.ts",
+
+    "src-server/services/orchestration/session-turn-boundary-binding.ts"
   ],
 
   "checks": [

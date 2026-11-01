@@ -654,8 +654,6 @@
 
     "src-server/services/orchestration/session-recovery-coordinator.ts",
 
-    "src-server/services/orchestration/session-turn-boundary.ts",
-
     "src-server/services/orchestration/sqlite-adoption-persistence.ts",
 
     "src-server/services/orchestration/sqlite-revision-evidence-persistence.ts",
@@ -1522,7 +1520,11 @@
 
     "packages/monument/src/decisions/recovery-storage.ts",
 
-    "packages/monument/src/testing/recovery-conformance.ts"
+    "packages/monument/src/testing/recovery-conformance.ts",
+
+    "packages/monument/src/session-boundary.ts",
+
+    "src-server/services/orchestration/session-turn-boundary-binding.ts"
   ],
 
   "checks": [
