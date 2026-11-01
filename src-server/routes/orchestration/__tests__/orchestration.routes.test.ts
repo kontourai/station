@@ -1873,7 +1873,6 @@ describe('Orchestration Routes', () => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            conversationId: 'conversation-fixed-intent',
             ...common,
             delegation,
             delegationAttestation: 'attestation',
