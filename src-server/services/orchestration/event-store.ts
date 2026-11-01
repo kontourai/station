@@ -2570,7 +2570,10 @@ export class EventStore {
     ReturnType<EventStore['db']['prepare']>
   >();
 
+  private readonly cachesDisabled = process.env.STATION_DISABLE_EVENT_STORE_CACHES === '1';
+
   private readStatement(sql: string) {
+    if (this.cachesDisabled) return this.db.prepare(sql);
     let statement = this.readStatements.get(sql);
     if (!statement) {
       statement = this.db.prepare(sql);
@@ -3483,7 +3486,7 @@ export class EventStore {
         WHERE thread_id = ? AND sequence = ?`,
     ).get(threadId, highWater) as { global_sequence?: number } | undefined;
     const key = `${threadId}\u0000${highWater}\u0000${head?.global_sequence ?? 'none'}`;
-    const cached = this.standingUnresolvedCache.get(key);
+    const cached = this.cachesDisabled ? undefined : this.standingUnresolvedCache.get(key);
     if (cached) {
       this.standingUnresolvedCache.delete(key);
       this.standingUnresolvedCache.set(key, cached);
@@ -3505,7 +3508,7 @@ export class EventStore {
           typeof part.sourceEventId === 'string'
         )
           standing.add(part.sourceEventId);
-    this.standingUnresolvedCache.set(key, standing);
+    if (!this.cachesDisabled) this.standingUnresolvedCache.set(key, standing);
     while (this.standingUnresolvedCache.size > STANDING_UNRESOLVED_CACHE_MAX) {
       const oldest = this.standingUnresolvedCache.keys().next().value;
       if (oldest === undefined) break;
@@ -4597,10 +4600,11 @@ export class EventStore {
    */
   private recordEventContent(threadId: string, spills: PlannedSpill[]): void {
     if (spills.length === 0) return;
-    const insert = (this.eventContentInsert ??= this.db.prepare(
-      `INSERT OR IGNORE INTO orchestration_event_content
-         (thread_id, digest, kind, body, bytes) VALUES (?, ?, ?, ?, ?)`,
-    ));
+    const sql = `INSERT OR IGNORE INTO orchestration_event_content
+         (thread_id, digest, kind, body, bytes) VALUES (?, ?, ?, ?, ?)`;
+    const insert = this.cachesDisabled
+      ? this.db.prepare(sql)
+      : (this.eventContentInsert ??= this.db.prepare(sql));
     for (const spill of spills)
       insert.run(threadId, spill.digest, spill.kind, spill.body, spill.bytes);
   }
@@ -4962,11 +4966,13 @@ export class EventStore {
         declaredOutputs.length || event.method === 'tool.completed'
           ? 'appendEventInsertOrIgnore'
           : 'appendEventInsert';
-      const insert = (this[insertSlot] ??= this.db.prepare(
-        `${declaredOutputs.length || event.method === 'tool.completed' ? 'INSERT OR IGNORE' : 'INSERT'} INTO orchestration_events
+      const insertSql = `${declaredOutputs.length || event.method === 'tool.completed' ? 'INSERT OR IGNORE' : 'INSERT'} INTO orchestration_events
           (id, provider, thread_id, turn_id, method, request_id, session_state, payload, created_at, observed_at, sequence, global_sequence)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )).run(
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+      const insertStatement = this.cachesDisabled
+        ? this.db.prepare(insertSql)
+        : (this[insertSlot] ??= this.db.prepare(insertSql));
+      const insert = insertStatement.run(
         event.eventId,
         event.provider,
         event.threadId,
@@ -5065,9 +5071,11 @@ export class EventStore {
         this.db.exec('RELEASE SAVEPOINT append_event_history');
         replayedSequence = Number(existing.sequence);
       } else {
-        (this.appendEventHighWaterUpdate ??= this.db.prepare(
-          'UPDATE orchestration_stream_identity SET high_water = ? WHERE singleton = 1',
-        )).run(globalSequence);
+        const highWaterSql = 'UPDATE orchestration_stream_identity SET high_water = ? WHERE singleton = 1';
+        const highWaterUpdate = this.cachesDisabled
+          ? this.db.prepare(highWaterSql)
+          : (this.appendEventHighWaterUpdate ??= this.db.prepare(highWaterSql));
+        highWaterUpdate.run(globalSequence);
         this.recordAttachmentRefs(event.threadId, persisted.blobRefs);
         this.recordEventContent(event.threadId, ingress.spills);
         this.chargeCommittedToolImages(persisted.toolImageKey);

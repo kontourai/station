@@ -42,7 +42,7 @@ describe('EventStore cache-disabled diagnostics', () => {
       ).toHaveLength(2);
       expect(
         queries.filter((sql) =>
-          sql.includes('UPDATE orchestration_stream_identity SET high_water'),
+          sql.includes('UPDATE orchestration_stream_identity SET high_water = ?'),
         ),
       ).toHaveLength(2);
       expect(
