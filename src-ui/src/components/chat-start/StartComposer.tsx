@@ -9,9 +9,14 @@ import {
   useState,
 } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
+import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
 import { useChatPaneFileDrop } from '../../hooks/useChatPaneFileDrop';
 import { useFileAttachment } from '../../hooks/useFileAttachment';
 import { useDockSlotDevice } from '../../hooks/useIsMobile';
+import {
+  composerReturnSends,
+  isComposerSubmitKey,
+} from '../../lib/composerReturnKey';
 import type { ApprovalMode } from '../../utils/approvalMode';
 import { filesFromDataTransfer } from '../../utils/attachment-file-transfer';
 import { MODEL_NOT_REPORTED } from '../../utils/modelCapabilities';
@@ -297,6 +302,11 @@ export function StartComposer({
   children?: ReactNode;
 }) {
   const { coarsePointer } = useDockSlotDevice();
+  // The reply composer's submit keys (#4387): Return (per the device setting)
+  // and Ctrl/Cmd+Return start the chat, so the first prompt sends the way
+  // every later one does.
+  const { chatReturnBehavior } = useDeviceSettings();
+  const returnSends = composerReturnSends(chatReturnBehavior, coarsePointer);
   const rootRef = useRef<HTMLFormElement>(null);
   const [fileError, setFileError] = useState<string | null>(null);
   const drop = useChatPaneFileDrop({
@@ -431,6 +441,11 @@ export function StartComposer({
           rows={compact ? 1 : 3}
           value={prompt}
           onChange={(event) => onPromptChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (!isComposerSubmitKey(event, returnSends)) return;
+            event.preventDefault();
+            event.currentTarget.form?.requestSubmit();
+          }}
           onPaste={(event) => {
             if (!files) return;
             const pasted = filesFromDataTransfer(event.clipboardData);
