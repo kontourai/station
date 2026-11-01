@@ -208,8 +208,11 @@ function ActivityRowMeta({
   // An attached row's origin is the app it was started in, which is also its
   // agent name; the "Elsewhere" word beside it says the rest.
   const origin = activityOriginShortLabel(session);
+  // #4402: plain words. "(also another origin)" read as an internal flag.
   const originText = session.turnOrigin?.hasOtherOrigins
-    ? `${origin ?? 'Several origins'} (also another origin)`
+    ? origin
+      ? `${origin} and elsewhere`
+      : 'Several places'
     : origin;
   const recency = activityRecency(session);
   const segments: Array<{ key: string; text: string }> = [];

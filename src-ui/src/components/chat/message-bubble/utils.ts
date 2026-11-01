@@ -201,3 +201,32 @@ export function resolveTurnModelIdentity(
   }
   return { source: 'envelope', claims };
 }
+
+/**
+ * #4402: the request's model options in words, for the requested-model
+ * claim's tooltip. The raw option keys (`reasoningEffort`, `fastMode: false`)
+ * are wire names; an unknown key is shown as itself rather than guessed at.
+ */
+const MODEL_OPTION_LABELS: Record<string, string> = {
+  effort: 'Reasoning effort',
+  reasoningEffort: 'Reasoning effort',
+  fastMode: 'Fast mode',
+  autoMode: 'Auto mode',
+  thinking: 'Thinking',
+  contextWindow: 'Context window',
+  longContext: 'Long context',
+  serviceTier: 'Service tier',
+};
+
+export function describeModelOptions(
+  options: Readonly<Record<string, unknown>> | null | undefined,
+): string | undefined {
+  if (!options) return undefined;
+  const parts = Object.entries(options).map(([key, value]) => {
+    const label = MODEL_OPTION_LABELS[key] ?? key;
+    const shown =
+      typeof value === 'boolean' ? (value ? 'on' : 'off') : String(value);
+    return `${label}: ${shown}`;
+  });
+  return parts.length > 0 ? parts.join(' · ') : undefined;
+}

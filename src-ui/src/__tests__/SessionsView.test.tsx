@@ -5103,6 +5103,6 @@ describe('Activity presentation (sessions moved under Home)', () => {
     expect(
       container.querySelector('.split-pane__item [data-segment="origin"]')
         ?.textContent,
-    ).toBe('Browser (also another origin)');
+    ).toBe('Browser and elsewhere');
   });
 });

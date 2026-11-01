@@ -259,6 +259,17 @@ describe('renderSettingRow', () => {
     ]);
   });
 
+  test('#4402: the step limit row speaks of Station’s engine, not its frameworks', () => {
+    const def = APP_SETTINGS_REGISTRY.find(
+      (entry) => entry.key === 'defaultMaxTurns',
+    )!;
+    const { container } = render(
+      renderSettingRow({ definition: def, value: undefined, onChange: vi.fn() }),
+    );
+    expect(container.textContent).not.toMatch(/VoltAgent|Strands/);
+    expect(container.textContent).toContain('Station’s own engine');
+  });
+
   // archive#1557: provenance no longer disables anything. It says where the
   // value came from; it never claims an edit would be ignored.
   test('a declared env fallback does not disable the control', () => {

@@ -560,9 +560,10 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'station',
     descriptor: { kind: 'number', min: 1, integer: true },
     label: 'Default max turns',
-    help: 'Set the fallback step limit for VoltAgent runs; Strands and native engines do not apply this setting.',
+    // #4402: the runtime framework's name is not product vocabulary.
+    help: 'Set the fallback step limit for runs on Station’s own engine; Claude Code, Codex and other engines do not apply this setting.',
     description:
-      'Fallback step limit for VoltAgent runs when the Agent has no maxSteps or guardrails.maxSteps override. Strands and native engines do not apply this setting.',
+      'Fallback step limit for runs on Station’s own engine when the Agent sets no step limit of its own. Claude Code, Codex and other engines do not apply this setting.',
     // `resolveMaxSteps` (src-server/constants.ts) falls through
     // `defaultMaxTurns || DEFAULT_MAX_STEPS` — the code's real absent-value
     // behavior is 200, not the file schema's stale documented "default": 10
