@@ -9090,7 +9090,8 @@ export class OrchestrationService {
                     if (
                       current &&
                       foldedSessionLifecycleState(
-                        current.session.lifecycleState,
+                        current.session.ownedWork?.ownLifecycleState ??
+                          current.session.lifecycleState,
                       ) === 'completed'
                     ) {
                       throw new SessionEndedError();

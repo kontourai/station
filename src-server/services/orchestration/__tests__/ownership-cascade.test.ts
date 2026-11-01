@@ -124,118 +124,149 @@ test('targeted cancellation leaves children alone for a stale turn and cascades 
   }
 });
 
-test('parent summaries remain running until the owned child stop settles', async () => {
-  const store = new EventStore(
-    join(makeTempDir('cascade-idle-'), 'events.sqlite'),
-  );
-  const engine = new GateTestAdapter();
-  const adapter: ProviderAdapterShape = engine;
-  const running = new Set(['parent', 'child']);
-  let entered!: () => void;
-  const stoppingChild = new Promise<void>((resolve) => {
-    entered = resolve;
-  });
-  let release!: () => void;
-  const gate = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  adapter.hasSession = async (id) => running.has(id);
-  adapter.listSessions = async () =>
-    store.readSessions().filter((row) => running.has(row.threadId));
-  adapter.stopSession = async (id) => {
-    if (id === 'child') {
-      entered();
-      await gate;
-    }
-    running.delete(id);
-  };
-  const service = new OrchestrationService({
-    adapterRegistry: createGateTestRegistry(adapter),
-    eventStore: store,
-    eventBus: new EventBus(),
-    logger: { debug() {}, warn() {} },
-  });
-  let stop: ReturnType<OrchestrationService['dispatch']> | undefined;
-  const readStates = async () => {
-    const detail = await service.readSession(
-      'parent',
-      INTERNAL_SESSION_READ_SCOPE,
+test.each(['idle', 'completed'] as const)(
+  'parent summaries remain running until the owned child stop settles (own %s)',
+  async (ownState) => {
+    const store = new EventStore(
+      join(makeTempDir('cascade-idle-'), 'events.sqlite'),
     );
-    const listed = (
-      await service.listSessionReadModel(INTERNAL_SESSION_READ_SCOPE)
-    ).find((row) => row.threadId === 'parent');
-    const page = await service.readSessionEventPage('parent', {
-      afterSequence: 0,
-      limit: 5,
-      authority: INTERNAL_SESSION_READ_SCOPE,
+    const engine = new GateTestAdapter();
+    const adapter: ProviderAdapterShape = engine;
+    const running = new Set(['parent', 'child']);
+    let entered!: () => void;
+    const stoppingChild = new Promise<void>((resolve) => {
+      entered = resolve;
     });
-    return [
-      detail?.session.lifecycleState,
-      listed?.lifecycleState,
-      page?.session.lifecycleState,
-    ];
-  };
-  try {
-    service.initialize();
-    await awaitSessionRecoveryCompleted(service);
-    for (const id of ['parent', 'child']) {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    adapter.hasSession = async (id) => running.has(id);
+    adapter.listSessions = async () =>
+      store.readSessions().filter((row) => running.has(row.threadId));
+    adapter.stopSession = async (id) => {
+      if (id === 'child') {
+        entered();
+        await gate;
+      }
+      running.delete(id);
+    };
+    const service = new OrchestrationService({
+      adapterRegistry: createGateTestRegistry(adapter),
+      eventStore: store,
+      eventBus: new EventBus(),
+      logger: { debug() {}, warn() {} },
+    });
+    let stop: ReturnType<OrchestrationService['dispatch']> | undefined;
+    const readStates = async () => {
+      const detail = await service.readSession(
+        'parent',
+        INTERNAL_SESSION_READ_SCOPE,
+      );
+      const listed = (
+        await service.listSessionReadModel(INTERNAL_SESSION_READ_SCOPE)
+      ).find((row) => row.threadId === 'parent');
+      const page = await service.readSessionEventPage('parent', {
+        afterSequence: 0,
+        limit: 5,
+        authority: INTERNAL_SESSION_READ_SCOPE,
+      });
+      return [
+        detail?.session.lifecycleState,
+        listed?.lifecycleState,
+        page?.session.lifecycleState,
+      ];
+    };
+    try {
+      service.initialize();
+      await awaitSessionRecoveryCompleted(service);
+      for (const id of ['parent', 'child']) {
+        store.appendEvent({
+          eventId: `${id}-started`,
+          threadId: id,
+          sessionId: id,
+          provider: 'claude',
+          method: 'session.started',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          metadata:
+            id === 'child'
+              ? {
+                  delegation: {
+                    parentConversationId: 'parent',
+                    parentSessionId: 'parent',
+                  },
+                  stationDelegationProvenance: 'caller-derived',
+                }
+              : {},
+        });
+        service.seedSessionRecord({
+          threadId: id,
+          provider: 'claude',
+          status: id === 'parent' ? 'ready' : 'running',
+        });
+      }
       store.appendEvent({
-        eventId: `${id}-started`,
-        threadId: id,
-        sessionId: id,
+        eventId: 'parent-turn',
         provider: 'claude',
-        method: 'session.started',
+        threadId: 'parent',
+        method: 'turn.started',
+        turnId: 'turn',
         createdAt: '2026-01-01T00:00:00.000Z',
-        metadata:
-          id === 'child'
-            ? {
-                delegation: {
-                  parentConversationId: 'parent',
-                  parentSessionId: 'parent',
-                },
-                stationDelegationProvenance: 'caller-derived',
-              }
-            : {},
       });
-      service.seedSessionRecord({
-        threadId: id,
+      store.appendEvent({
+        eventId: 'parent-done',
         provider: 'claude',
-        status: id === 'parent' ? 'ready' : 'running',
+        threadId: 'parent',
+        method: 'turn.completed',
+        turnId: 'turn',
+        finishReason: 'stop',
+        createdAt: '2026-01-01T00:00:01.000Z',
       });
+      expect(await readStates()).toEqual(['running', 'running', 'running']);
+      if (ownState === 'completed') {
+        await service.sessionLifecycles.transition({
+          threadId: 'parent',
+          authority: INTERNAL_SESSION_READ_SCOPE,
+          to: 'completed',
+        });
+        await expect(
+          service.sessionLifecycles.transition({
+            threadId: 'parent',
+            authority: INTERNAL_SESSION_READ_SCOPE,
+            to: 'completed',
+          }),
+        ).rejects.toThrow(/completed/);
+        await expect(
+          service.dispatch({
+            type: 'sendTurn',
+            input: {
+              threadId: 'parent',
+              input: 'must not invoke a completed parent',
+              clientTurnId: 'completed-parent-guard',
+            },
+          }),
+        ).rejects.toThrow(/complete|ended/i);
+      }
+      expect(
+        (await service.readSession('parent', INTERNAL_SESSION_READ_SCOPE))
+          ?.session.ownedWork?.ownLifecycleState,
+      ).toBe(ownState);
+      stop = service.dispatch({ type: 'stopSession', threadId: 'parent' });
+      await stoppingChild;
+      expect(running.has('child')).toBe(true);
+      expect(await readStates()).toEqual(['running', 'running', 'running']);
+      release();
+      await stop;
+      expect(running.has('child')).toBe(false);
+      expect(await readStates()).toEqual([ownState, ownState, ownState]);
+    } finally {
+      release();
+      await stop;
+      await service.shutdown();
+      store.close();
     }
-    store.appendEvent({
-      eventId: 'parent-turn',
-      provider: 'claude',
-      threadId: 'parent',
-      method: 'turn.started',
-      turnId: 'turn',
-      createdAt: '2026-01-01T00:00:00.000Z',
-    });
-    store.appendEvent({
-      eventId: 'parent-done',
-      provider: 'claude',
-      threadId: 'parent',
-      method: 'turn.completed',
-      turnId: 'turn',
-      finishReason: 'stop',
-      createdAt: '2026-01-01T00:00:01.000Z',
-    });
-    expect(await readStates()).toEqual(['running', 'running', 'running']);
-    stop = service.dispatch({ type: 'stopSession', threadId: 'parent' });
-    await stoppingChild;
-    expect(running.has('child')).toBe(true);
-    expect(await readStates()).toEqual(['running', 'running', 'running']);
-    release();
-    await stop;
-    expect(running.has('child')).toBe(false);
-    expect(await readStates()).toEqual(['idle', 'idle', 'idle']);
-  } finally {
-    release();
-    await stop;
-    await service.shutdown();
-    store.close();
-  }
-});
+  },
+);
 
 test('Stop traverses verified descendants bottom-up and excludes claimed and background boundaries', async () => {
   const path = join(makeTempDir('cascade-tree-'), 'events.sqlite');
