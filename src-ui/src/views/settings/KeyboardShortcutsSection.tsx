@@ -3,6 +3,7 @@ import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import { Empty } from '../../components/state';
 import {
   type KeyboardShortcut,
+  listedShortcuts,
   useShortcutRegistry,
 } from '../../contexts/KeyboardShortcutsContext';
 import { useIsMobile } from '../../hooks/useIsMobile';
@@ -70,8 +71,9 @@ export function KeyboardShortcutsSection() {
   const shortcuts = getAllShortcuts();
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
-    if (!query) return shortcuts;
-    return shortcuts.filter((shortcut) => {
+    const listed = listedShortcuts(shortcuts);
+    if (!query) return listed;
+    return listed.filter((shortcut) => {
       const context = contextDescription(shortcut.id).label;
       return `${shortcut.description} ${shortcut.id} ${context}`
         .toLowerCase()
