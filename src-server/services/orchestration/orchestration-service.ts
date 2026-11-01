@@ -11949,6 +11949,7 @@ export class OrchestrationService {
             const adapter =
               this.sessionAdapters.get(intent.childId) ?? retained;
             if (!adapter) continue;
+            this.assertAdapterCurrent(adapter);
             this.cascadeStopAdapters.set(intent.childId, adapter);
             const trigger = store.eventById(
               intent.parentId,
