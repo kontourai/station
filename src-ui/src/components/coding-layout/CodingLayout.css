@@ -89,6 +89,14 @@
   background: var(--terminal-background);
 }
 
+/* The prompt sat flush against the pane's left edge (#4401 A32). The inset
+   goes on xterm's own root, not on `.coding-terminal`: `FitAddon` measures
+   the container and subtracts the `.xterm` element's padding, so the grid
+   is fitted inside the inset instead of overflowing it. */
+.coding-terminal .xterm {
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+}
+
 /* Terminal tabs */
 .coding-layout__terminal-tabs {
   display: flex;
