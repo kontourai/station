@@ -15015,8 +15015,26 @@ export class OrchestrationService {
       // restarted session ran a pinned agent on the connection's account.
       applyCredentialProfile: (input) =>
         this.applyAgentCredentialProfileRef(input),
-      readSessionStartMetadata: (threadId) =>
-        this.readLatestSessionStartMetadata(threadId),
+      readSessionStartMetadata: (threadId) => {
+        const started = this.readLatestSessionStartMetadata(threadId);
+        if (!receiverAdmission?.admitted || started?.projectSlug !== undefined)
+          return started;
+        // Portable starts also persist a service-owned binding when an adapter
+        // omits its start event. Recover that record, never the offer's fields.
+        for (const event of this.options.eventStore?.listEventPayloads(
+          threadId,
+          ['session.configured'],
+        ) ?? []) {
+          if (event.method !== 'session.configured' || !event.metadata)
+            continue;
+          if (!portableConsentOfStartedMetadata(event.metadata)) continue;
+          return {
+            ...stripReservedOrchestrationMetadata(event.metadata),
+            ...started,
+          };
+        }
+        return started;
+      },
       prepareModelLaunch: (adapter, input, retainedModelId) =>
         this.withAcceptedModelLaunchPlan(
           adapter,

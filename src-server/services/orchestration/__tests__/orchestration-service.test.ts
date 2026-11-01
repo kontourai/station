@@ -6735,60 +6735,103 @@ describe('OrchestrationService', () => {
       expect(claude.respondToRequest).toHaveBeenCalledTimes(1);
     });
 
-    test('cold recovery under a fresh admission materializes and turns', async () => {
-      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
-      const started = await service.startSessionInternal(
-        {
-          type: 'start-session',
-          input: {
+    test.each([
+      'configured-only',
+      'sparse-start',
+      'sparse-config',
+      'conflicting-start',
+      'conflicting-config',
+    ] as const)(
+      'cold receiver recovery preserves recorded association: %s',
+      async (binding) => {
+        configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+        const started = await service.startSessionInternal(
+          {
+            type: 'start-session',
+            input: {
+              threadId: 'portable-cold-admitted',
+              provider: 'claude',
+              cwd: tmp,
+              metadata: { projectSlug: 'local' },
+            },
+          },
+          { userId: 'owner-user' },
+          {
+            receiverExecutionAdmission: admittedFor('portable-cold-admitted', tmp),
+            portableExecutionConsent: {
+              portableProjectId: 'prj_shared',
+              resourceId: 'git.example/acme/repo',
+              localProjectId: 'local-project-1',
+            },
+          },
+        );
+        if (started.status !== 'accepted') throw new Error(started.message);
+        if (binding !== 'configured-only') {
+          const metadata = binding.startsWith('conflicting')
+            ? { userId: 'owner-user', projectSlug: 'other' }
+            : { userId: 'owner-user' };
+          if (binding.endsWith('start')) {
+            eventStore.appendEvent({
+              eventId: randomUUID(),
+              provider: 'claude',
+              threadId: 'portable-cold-admitted',
+              sessionId: 'portable-cold-admitted',
+              createdAt: new Date().toISOString(),
+              method: 'session.started',
+              metadata,
+            });
+          } else {
+            eventStore.appendEvent({
+              eventId: randomUUID(),
+              provider: 'claude',
+              threadId: 'portable-cold-admitted',
+              sessionId: 'portable-cold-admitted',
+              createdAt: new Date().toISOString(),
+              method: 'session.configured',
+              metadata,
+            });
+          }
+        }
+        // Boot: a FRESH service over the SAME durable store, with a FRESH
+        // adapter holding no live engines — the restored session is dormant.
+        const coldClaude = new FakeAdapter('claude');
+        const cold = new RawOrchestrationService({
+          adapterRegistry: createRegistry([coldClaude]),
+          eventBus: new EventBus(),
+          eventStore,
+          listProjects: () => configuredProjects,
+          logger: { debug: vi.fn(), warn: vi.fn() },
+        });
+        // The fresh admission authorizes the spawn it needs: the engine
+        // materializes and the turn flows.
+        const turn = cold.dispatchWithReceipt(
+          {
+            type: 'sendTurn',
+            input: { threadId: 'portable-cold-admitted', input: 'hello' },
+          },
+          undefined,
+          {
+            receiverExecutionAdmission: admittedFor('portable-cold-admitted', tmp),
+          },
+        );
+        if (binding.startsWith('conflicting')) {
+          await expect(turn).rejects.toThrow(
+            'The offered Project resource is unavailable.',
+          );
+          expect(coldClaude.startSession).not.toHaveBeenCalled();
+          expect(coldClaude.sendTurn).not.toHaveBeenCalled();
+        } else {
+          await turn;
+          expect(coldClaude.startSession).toHaveBeenCalledTimes(1);
+          expect(coldClaude.sendTurn).toHaveBeenCalledTimes(1);
+          expect(coldClaude.startSession.mock.calls[0]?.[0]).toMatchObject({
             threadId: 'portable-cold-admitted',
-            provider: 'claude',
             cwd: tmp,
             metadata: { projectSlug: 'local' },
-          },
-        },
-        { userId: 'owner-user' },
-        {
-          receiverExecutionAdmission: admittedFor(
-            'portable-cold-admitted',
-            tmp,
-          ),
-          portableExecutionConsent: {
-            portableProjectId: 'prj_shared',
-            resourceId: 'git.example/acme/repo',
-            localProjectId: 'local-project-1',
-          },
-        },
-      );
-      if (started.status !== 'accepted') throw new Error(started.message);
-      // Boot: a FRESH service over the SAME durable store, with a FRESH
-      // adapter holding no live engines — the restored session is dormant.
-      const coldClaude = new FakeAdapter('claude');
-      const cold = new RawOrchestrationService({
-        adapterRegistry: createRegistry([coldClaude]),
-        eventBus: new EventBus(),
-        eventStore,
-        listProjects: () => configuredProjects,
-        logger: { debug: vi.fn(), warn: vi.fn() },
-      });
-      // The fresh admission authorizes the spawn it needs: the engine
-      // materializes and the turn flows.
-      await cold.dispatchWithReceipt(
-        {
-          type: 'sendTurn',
-          input: { threadId: 'portable-cold-admitted', input: 'hello' },
-        },
-        undefined,
-        {
-          receiverExecutionAdmission: admittedFor(
-            'portable-cold-admitted',
-            tmp,
-          ),
-        },
-      );
-      expect(coldClaude.startSession).toHaveBeenCalledTimes(1);
-      expect(coldClaude.sendTurn).toHaveBeenCalledTimes(1);
-    });
+          });
+        }
+      },
+    );
 
     test('deletion retires the cached marker; a recreated thread id starts clean', async () => {
       // The default fake registers its sessions (the cwd-echo overrides in

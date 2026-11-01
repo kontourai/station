@@ -3207,3 +3207,41 @@ receiver positives and final combined browser/native/device/hosted qualification
 remain open. B10 was paired in the earlier checkpoint but is currently absent
 from device discovery; no physical Station journey is qualified. Report groups
 and finalizer remain disabled. No Station PR or push exists.
+
+
+### Portable receiver recovery metadata candidate
+
+The two retained portable-receiver positives are now diagnosed and repaired.
+Controlled observations found the actual and persisted thread/directory, consent
+incarnation and stated project all matched the offer. A passthrough capture of
+the original refusal identified the later recovery-start guard: recovery read
+metadata only from `session.started`, while the service had persisted the portable
+binding in `session.configured`. A metadata-dropping adapter, including the cold
+fixture, therefore lost the project field before the unchanged start guard.
+The earlier missing-Project-id suspicion was not the cause of these failures.
+
+Recovery under a fresh admitted receiver coordinate now uses recorded portable
+configuration metadata when started metadata omits its project. Reserved fields
+are stripped; existing started fields take precedence. No project or consent
+field is manufactured from the offer. Ordinary recovery remains unchanged, and
+current offer, actual thread/directory, original incarnation and latest stated
+metadata checks still run before the adapter effect.
+
+The existing cold receiver case now includes configured-only, sparse-start and
+sparse-config positives, plus conflicting-start and conflicting-config refusals
+before adapter start or send. The pre-fix run reached four intended positive
+failures with 619 other cases passing. After the repair all 623 orchestration
+cases and all 1593 connected-agent cases pass, with scoped server-test types
+passing. Temporary diagnostics were removed. The production file has no new
+Biome errors; the existing test file exceeds the configured one-MiB size limit,
+so only the changed table was formatted through stdin without weakening policy.
+
+Bounded independent source review found no demonstrated actionable defect. It
+identified useful additional controls for multiple consent-bearing configured
+records and explicit credential/Agent metadata overlay; these remain coverage
+limits rather than executed acceptance. Clean committed mutation/restoration remains open for this increment. The
+new readiness run passes the connected-agent lane; accumulated documentation
+freshness is still its required failure. The
+previous failed runs remain retained evidence. This does not qualify live
+provider/native/device behavior, complete remaining controller adoption, enable
+report groups/finalizers or make the epic ready for a PR.
