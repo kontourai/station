@@ -11,7 +11,6 @@ import {
   MODEL_NOT_ADVERTISED_CODE,
 } from '@kontourai/station-contracts/provider';
 import { isFirstSendFailure } from '@kontourai/station-contracts/session-attention';
-import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import {
   type ChatHttpError,
   conversationQueries,
@@ -19,7 +18,6 @@ import {
   isProvablyNotSent,
   orchestrationQueries,
   projectChatDefaultsQueryKey,
-  useEngineConnectionsQuery,
   useInvalidateQuery,
   useQueryClient,
 } from '@kontourai/station-sdk';
@@ -367,10 +365,6 @@ export function useSendMessage(
     clearEphemeralMessages,
   } = useActiveChatActions();
   const { clearStreamingMessage } = useStreamingMessage();
-  // Only native steering fidelity permits an additive mid-turn send.
-  const { data: agentConnections = [] } = useEngineConnectionsQuery() as {
-    data: ConnectionConfig[];
-  };
   const invalidate = useInvalidateQuery();
   const queryClient = useQueryClient();
   const accountPreferences = useAccountPreferences();
@@ -1997,7 +1991,6 @@ export function useSendMessage(
       experienceNamespace,
       experienceAuthorityStatus,
       inboxRequestScope,
-      agentConnections,
       apiBase,
       assignConversationId,
       clearEphemeralMessages,
