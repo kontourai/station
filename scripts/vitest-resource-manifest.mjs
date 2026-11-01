@@ -175,6 +175,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Production route/auth composition opens real terminal PTYs in a private home.
   'src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts',
   'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
+  // The supervisor's workload host with real PTYs (ConPTY on Windows) and
+  // command children it kills as trees; a core restart is a second
+  // TerminalSessions on the same private home. No ports or host state.
+  'src-server/services/terminal/__tests__/supervisor-shell-host.process.test.ts',
   // Two disposable workers contend on private SQLite connections; no shared host output or timing assertion.
   'src-server/services/outside-agent/__tests__/oauth-concurrency.test.ts',
   // Two cache-enabled server bootstrap processes drive real MCP, Strands, CLI and shell children.
@@ -1603,6 +1607,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // with the opt-out; then service run, killed and stopped with a frozen
   // supervisor. Builds its own dist-server-*/dist-ui-* directories.
   'packages/cli/src/__tests__/supervised-lifecycle.real.test.ts',
+  // The built supervisor and workload host bundles run a core built from the
+  // production terminal modules: a live shell keeps its pid and journal
+  // across a handoff. Builds its own dist-server-* directory.
+  'src-server/services/terminal/__tests__/supervisor-terminal.real.test.ts',
   // Process supervisor: real supervisor children fork fixture core
   // generations, hand a held listening socket between them, and hammer it
   // with keep-alive HTTP and SSE clients on an ephemeral port.
@@ -1611,6 +1619,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'packages/supervisor/src/__tests__/crash-restart.test.ts',
   'packages/supervisor/src/__tests__/build-root.test.ts',
   'packages/supervisor/src/__tests__/listener-handle.test.ts',
+  // Fixture core generations relay workload requests to a fixture workload
+  // host child that runs command children; one test SIGKILLs that host.
+  'packages/supervisor/src/__tests__/workloads.test.ts',
   // A SIGKILLed supervisor, its orphaned core, and a second supervisor that reaps it.
   'packages/supervisor/src/__tests__/stale-generation.test.ts',
   // Spawns a sleeper process to prove a mismatched fingerprint is never killed.

@@ -233,6 +233,7 @@ import { bindLocalMediaPreviews } from '../bootstrap/local-media-runtime.js';
 import {
   isSupervisedEnvironment,
   requestSupervisorHandoff,
+  supervisorWorkloadChannel,
 } from '../bootstrap/supervisor-link.js';
 import {
   revokeCoordinatorConversationCredentials,
@@ -894,7 +895,7 @@ import {
   admittedTelemetryProducer,
   TelemetryProducerStore,
 } from '../../services/telemetry-producers/telemetry-producer-store.js';
-import { InProcessShellHost } from '../../services/terminal/shell-host.js';
+import { createTerminalShellHost } from '../../services/terminal/supervisor-shell-host.js';
 import {
   registerTerminalGateway,
   TerminalGateway,
@@ -9033,7 +9034,8 @@ export function configureRuntimeRoutes(
       isOperatorInPersonNotAgent(request) && isRequestPrincipalCurrent(request);
     const terminalSessions = new TerminalSessions<Request>(
       context.configLoader.getProjectHomeDir(),
-      new InProcessShellHost(
+      createTerminalShellHost(
+        supervisorWorkloadChannel(),
         new NodePtyAdapter(),
         async () => (await context.configLoader.loadAppConfig()).terminalShell,
       ),

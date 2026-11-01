@@ -16,9 +16,10 @@ The new [TerminalSessions service](../../src-server/services/terminal/terminal-s
 Project/binding scope, realpath-confined launch directories, durable session
 metadata, and sanitized sequence journals. `ShellHost` returns a process handle
 whose write, resize, signal and exit operations can later proxy a supervisor
-workload. [InProcessShellHost](../../src-server/services/terminal/shell-host.ts) uses the existing node-pty adapter. The [journal](../../src-server/services/terminal/terminal-journal.ts), [stream filter](../../src-server/services/terminal/terminal-output-sanitizer.ts), and [real PTY tests](../../src-server/services/terminal/__tests__/terminal-sessions.process.test.ts) own the storage/filter evidence. Journals are
-owned by the service in this tranche; moving their ownership into the supervisor
-and providing its list/read protocol remain later workload work.
+workload. [InProcessShellHost](../../src-server/services/terminal/shell-host.ts) uses the existing node-pty adapter. The [journal](../../src-server/services/terminal/terminal-journal.ts), [stream filter](../../src-server/services/terminal/terminal-output-sanitizer.ts), and [real PTY tests](../../src-server/services/terminal/__tests__/terminal-sessions.process.test.ts) own the storage/filter evidence. Under a supervisor that grants
+`workloads` (protocol 1.3), the supervisor's workload host owns the PTY and its
+journal, and the core reads it through the workload protocol (see Shell host
+below); otherwise the service owns both.
 
 A personal-operator HTTP control seam at
 `/api/projects/:slug/terminal-sessions` exercises the production service without
@@ -40,9 +41,10 @@ continue to use `TerminalService` and retain their existing behavior, including
 #3781's connection ownership checks. This does not claim that legacy socket
 commands have acquired Project-principal authorization.
 
-Session metadata and journal output survive disposal and a new service instance;
-in-process shells do not survive server exit. Restored sessions are ended and
-never execute their old input again. Opening with a legacy terminal id imports
+Session metadata and journal output survive disposal and a new service instance.
+In-process shells do not survive server exit, and restored sessions are ended
+and never execute their old input again. Supervisor workloads do survive (see
+Shell host). Opening with a legacy terminal id imports
 a provenance-bound history filename once and retains the mapping in the durable
 record. The legacy writer emits a receipt only for a fresh file or a previously
 verified receipt; it records the Project id captured when the shell opened,
@@ -89,8 +91,8 @@ service and reads its journal after clean disposal. This provides
 filesystem persistence across service recreation, not power-loss qualification.
 
 The Settings controls for persistence/location, age and aggregate retention,
-clear-history actions, supervisor survival, doctor reporting, explicit restart,
-and command sessions remain follow-ups within phase 1. `terminal:observe` is
+clear-history actions, doctor reporting, explicit restart, and command sessions
+in the UI remain follow-ups within phase 1. `terminal:observe` is
 governed by the Admin ceiling; no preset gains it. Its description names future
 remote-watch admission. The complete scope vocabulary uses 253 of the parser's
 256 characters, leaving three characters. Part b1 adds the personal-operator socket
@@ -347,6 +349,27 @@ resize, signal, list, and journal reads. Two implementations:
   default once the supervisor ships.
 - **In-process** runs node-pty inside the core server. Tests use it, and it
   is the fallback when no supervisor is present.
+
+**Implemented (#3994, protocol 1.3).**
+[`SupervisorShellHost`](../../src-server/services/terminal/supervisor-shell-host.ts)
+is the host whenever the supervisor grants this core `workloads`. Otherwise
+`InProcessShellHost` is, unchanged; that covers a direct start, `--watch`,
+a 1.2 supervisor, and a build without a workload host. The shell, its PTY
+(ConPTY on Windows) and its journal live in the supervisor's workload host
+([`pty-workload-host.ts`](../../src-server/services/terminal/pty-workload-host.ts)),
+which uses this journal and sanitizer unchanged. `TerminalSessions` reads
+that journal through the host while the shell runs, and from disk once it
+has exited. Draining for a handoff, it detaches from its shells instead of
+ending them. On the next generation's start it reattaches every session it
+recorded as running and the host still runs; the rest are marked exited. A
+session whose start was never recorded is ended. Clients reconnect and
+resume from their last sequence, so output from while no core was attached
+is replayed, not lost. `ShellHost.attach` and `HostedShellProcess` are the
+only additions to the host interface. Write, resize, signal and terminate
+stay on the process handle, and reads on its journal. The
+[supervisor design](process-supervisor.md) covers the protocol, kill-tree
+escalation and the evidence. Windows job objects per workload, Settings
+controls for the host, and the UI for command sessions are not implemented.
 
 The supervisor survives a core server restart or upgrade, not a machine
 reboot. After a reboot, Station restores instead: the server record reopens

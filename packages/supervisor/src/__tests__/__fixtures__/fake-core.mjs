@@ -25,6 +25,9 @@
  *   FAKE_CORE_PROTOCOL_1_0=1        speak protocol 1.0: no connection catching (parks without
  *                                   adoptsConnections, ignores listener.spares, closes an adopted
  *                                   connection as a stray handle)
+ *   FAKE_CORE_WORKLOADS=1           announce `workloads` (protocol 1.3); serves POST /workload, which
+ *                                   relays its JSON body as a workload request and answers with the
+ *                                   reply, and GET /workload-events, every workload event received
  *
  * @import { CoreToSupervisorMessage, SupervisorToCoreMessage } from '../../protocol.ts'
  */
@@ -75,6 +78,14 @@ let draining = false;
 let lastAcceptAt = 0;
 let sparesSent = 0;
 let adoptedConnections = 0;
+const announcesWorkloads = process.env.FAKE_CORE_WORKLOADS === '1';
+/** @type {string[]} */
+let granted = [];
+let nextWorkloadRequest = 1;
+/** @type {Map<string, (reply: unknown) => void>} */
+const workloadReplies = new Map();
+/** @type {unknown[]} */
+const workloadEvents = [];
 /** @type {Set<http.ServerResponse>} */
 const streams = new Set();
 
@@ -94,8 +105,30 @@ const server = http.createServer((req, res) => {
         inheritedForceCatching:
           process.env.STATION_SUPERVISOR_TEST_FORCE_CATCHING ?? null,
         adoptedConnections,
+        granted,
       }),
     );
+    return;
+  }
+  if (req.url === '/workload' && req.method === 'POST') {
+    let body = '';
+    req.setEncoding('utf8');
+    req.on('data', (chunk) => {
+      body += chunk;
+    });
+    req.on('end', () => {
+      const id = String(nextWorkloadRequest++);
+      workloadReplies.set(id, (reply) => {
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify(reply));
+      });
+      send({ type: 'workload.request', id, request: JSON.parse(body) });
+    });
+    return;
+  }
+  if (req.url === '/workload-events') {
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify(workloadEvents));
     return;
   }
   if (req.url === '/events') {
@@ -227,6 +260,7 @@ process.on(
       case 'promote':
         if (promoted) return;
         promoted = true;
+        granted = message.capabilities ?? [];
         if (process.env.FAKE_CORE_EXIT_AFTER_PROMOTE === '1') process.exit(1);
         expected = [...message.listeners];
         if (expected.length === 0) {
@@ -289,6 +323,15 @@ process.on(
       case 'drain':
         drain();
         return;
+      case 'workload.response': {
+        const reply = workloadReplies.get(message.id);
+        workloadReplies.delete(message.id);
+        reply?.(message);
+        return;
+      }
+      case 'workload.event':
+        workloadEvents.push(message);
+        return;
       case 'handoff.refused':
         // The supervisor may still be committing this generation; ask again, boundedly.
         if (handoffAttempts < 50) setTimeout(requestHandoff, 100);
@@ -307,5 +350,11 @@ process.on('disconnect', () => {
 });
 
 send(
-  protocol10 ? { type: 'parked' } : { type: 'parked', adoptsConnections: true },
+  protocol10
+    ? { type: 'parked' }
+    : {
+        type: 'parked',
+        adoptsConnections: true,
+        ...(announcesWorkloads ? { capabilities: ['workloads'] } : {}),
+      },
 );

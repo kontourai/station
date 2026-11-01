@@ -80,16 +80,25 @@ describe('planServerLaunch', () => {
     expect(plain.supervised && plain.args).not.toContain('--exit-with-parent');
   });
 
-  it(`starts directly, quietly, when ${DIRECT_LAUNCH_ENV}=1, for --watch, and with a lifecycle journal`, () => {
+  it(`starts directly, quietly, when ${DIRECT_LAUNCH_ENV}=1 and for --watch`, () => {
     for (const overrides of [
       { env: { [DIRECT_LAUNCH_ENV]: '1' } },
       { watch: true },
-      { lifecycleJournal: '/journals/work.ndjson' },
     ]) {
       expect(plan(overrides)).toEqual({ supervised: false, notice: null });
     }
     // Only `1` opts out.
     expect(plan({ env: { [DIRECT_LAUNCH_ENV]: '0' } }).supervised).toBe(true);
+  });
+
+  it('supervises a start that keeps a lifecycle journal (dogfood and e2e)', () => {
+    // Each generation's journal events name the supervisor the instance
+    // record names, so the journal no longer needs a direct start (#4135).
+    const build = codeRootWithBuild();
+    expect(
+      plan({ lifecycleJournal: '/journals/work.ndjson' }, build),
+    ).toEqual(plan({}, build));
+    expect(plan({}, build).supervised).toBe(true);
   });
 
   it('starts directly, saying why, for a build without the bundle or an unnameable instance', () => {
