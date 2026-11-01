@@ -1,5 +1,42 @@
 [
   {
+    "timestampUtc": "2026-11-01T16:34:35Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2496.1",
+    "sha": "891172481529f95c32261ba0a98df65679b21b86",
+    "artifactBuiltAt": "2026-11-01T15:40:09.369Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/41321345603",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 41321345603)"
+    ],
+    "changelog": {
+      "previousSha": "2b49d99ec926c52d85779b0e60b1d25d72430b4a",
+      "groups": {
+        "feat": [
+          "[#4414](https://github.com/kontourai/station/pull/4414) feat(terminal): same-origin terminal for every operator device",
+          "[#4412](https://github.com/kontourai/station/pull/4412) feat(supervisor): terminal workloads survive core restarts",
+          "[#4310](https://github.com/kontourai/station/pull/4310) feat(chat): continue a turn interrupted by restart"
+        ],
+        "fix": [
+          "[#4415](https://github.com/kontourai/station/pull/4415) fix(process): reliable start/stop and Windows process ownership",
+          "[#4413](https://github.com/kontourai/station/pull/4413) fix: resolve the nightly 249501 UX audit findings (#4379–#4408)",
+          "[#4299](https://github.com/kontourai/station/pull/4299) fix: restore PR review compatibility and share composer selectors",
+          "[#4366](https://github.com/kontourai/station/pull/4366) fix(chat): finish host images, generated titles and subagent instructions",
+          "[#4376](https://github.com/kontourai/station/pull/4376) fix(smoke): retain diagnostics until runtime ownership is released"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 8
+    }
+  },
+  {
     "timestampUtc": "2026-11-01T16:34:32Z",
     "channel": "nightly-android",
     "version": "0.1.11-nightly.2496.1",

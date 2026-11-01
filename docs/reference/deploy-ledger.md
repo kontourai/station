@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-01T16:34:35Z | nightly-desktop | 0.1.11-nightly.2496.1 | `8911724` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/41321345603) |
 | 2026-11-01T16:34:32Z | nightly-android | 0.1.11-nightly.2496.1 | `8911724` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/41321345603) |
 | 2026-11-01T15:41:04Z | nightly-npm | 0.11.0-nightly.2496.41321345603 | `8911724` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/41321345603) |
 | 2026-11-01T02:30:44Z | nightly-desktop | 0.1.11-nightly.2496 | `2b49d99` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/41261236636) |
@@ -396,6 +397,31 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-01T16:34:35Z · nightly-desktop · 0.1.11-nightly.2496.1
+
+- Ship SHA: `891172481529f95c32261ba0a98df65679b21b86`
+- Artifact built at: `2026-11-01T15:40:09.369Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 41321345603)
+
+### Changelog
+
+Commits since `2b49d99` ([full sha](https://github.com/kontourai/station/commit/2b49d99ec926c52d85779b0e60b1d25d72430b4a)):
+
+**Features**
+
+- [#4414](https://github.com/kontourai/station/pull/4414) feat(terminal): same-origin terminal for every operator device
+- [#4412](https://github.com/kontourai/station/pull/4412) feat(supervisor): terminal workloads survive core restarts
+- [#4310](https://github.com/kontourai/station/pull/4310) feat(chat): continue a turn interrupted by restart
+
+**Fixes**
+
+- [#4415](https://github.com/kontourai/station/pull/4415) fix(process): reliable start/stop and Windows process ownership
+- [#4413](https://github.com/kontourai/station/pull/4413) fix: resolve the nightly 249501 UX audit findings (#4379–#4408)
+- [#4299](https://github.com/kontourai/station/pull/4299) fix: restore PR review compatibility and share composer selectors
+- [#4366](https://github.com/kontourai/station/pull/4366) fix(chat): finish host images, generated titles and subagent instructions
+- [#4376](https://github.com/kontourai/station/pull/4376) fix(smoke): retain diagnostics until runtime ownership is released
 
 ## 2026-11-01T16:34:32Z · nightly-android · 0.1.11-nightly.2496.1
 
