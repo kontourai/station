@@ -1,10 +1,14 @@
 import assert from 'node:assert/strict';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { DelegationRoundsTransactionUncertainError } from '@kontourai/flow-agents/delegation-group-rounds';
 import { RESERVED_SOURCE_EXECUTION_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { onTestFinished, test, vi } from 'vitest';
+import { isRuntimePublicationParticipant } from '../../../runtime/bootstrap/runtime-publication-participant.js';
+import { StationRuntime } from '../../../runtime/bootstrap/station-runtime.js';
 import { createReportInputRuntime } from '../../../runtime/mcp/report-input-runtime.js';
+import { HomeWriterOwner } from '../../ssh/home-writer-owner.js';
 import { StationDelegationPersistence } from '../delegation-group-persistence.js';
 import { inspectSdkSourceWire } from '../delegation-group-sdk-source-wire-owner.js';
 import {
@@ -13,6 +17,10 @@ import {
   reportInputKey,
   reportInputRecordSchema,
 } from '../report-input-ledger.js';
+import {
+  type ReportRoundsPublication,
+  withReportRoundsPublication,
+} from '../report-rounds-publication.js';
 import { publicFenceFixture } from './delegation-source-fixtures/fence.js';
 import { sdkFixture } from './delegation-source-fixtures/sdk-source.js';
 import { subject } from './delegation-source-fixtures/source.js';
@@ -93,21 +101,72 @@ test.each([
     onTestFinished(() => intercepted.mockRestore());
     const closed: StreamableHTTPClientTransport[] = [];
     const originalClose = StreamableHTTPClientTransport.prototype.close;
+    let cleanupAllowed = false;
     const close = vi
       .spyOn(StreamableHTTPClientTransport.prototype, 'close')
       .mockImplementation(async function (this: StreamableHTTPClientTransport) {
         closed.push(this);
-        if (scenario === 'close-failed' && closed.length === 1)
+        if (scenario === 'close-failed' && !cleanupAllowed)
           throw new Error('controlled transport close failure');
         return originalClose.call(this);
       });
     onTestFinished(() => close.mockRestore());
     const invocation = new AbortController();
+    const ownerRuntime = new StationRuntime({ projectHomeDir: f.home });
+    const participant = Reflect.get(
+      ownerRuntime,
+      'runtimePublicationParticipant',
+    );
+    assert.ok(isRuntimePublicationParticipant(participant));
+    let ready!: (publication: ReportRoundsPublication) => void;
+    const publicationReady = new Promise<ReportRoundsPublication>((resolve) => {
+      ready = resolve;
+    });
+    let done!: () => void;
+    const publicationDone = new Promise<void>((resolve) => {
+      done = resolve;
+    });
+    const publicationPending = withReportRoundsPublication(
+      { participant, home: f.home, signal: invocation.signal },
+      async (publication) => {
+        ready(publication);
+        await publicationDone;
+      },
+    );
+    const publication = await publicationReady;
+    const writer = await HomeWriterOwner.forHome(f.home);
+    let expectedPublicationFailure: unknown;
     const runtime = createReportInputRuntime({
+      retainCleanup: publication.retainCleanup,
       persistence,
+      withHome: (current, body) =>
+        publication.withHome({ owner: writer, current }, body),
+      invokeCurrent: (current, invoke) =>
+        publication.invokeCurrent({ owner: writer, current }, invoke),
       authorize: (scope) => driver.authorizeInput(scope.envelope.id),
     });
-    onTestFinished(() => runtime.close());
+    onTestFinished(async () => {
+      cleanupAllowed = true;
+      const failures: unknown[] = [];
+      try {
+        await runtime.close();
+      } catch (error) {
+        failures.push(error);
+      }
+      done();
+      try {
+        await publicationPending;
+      } catch (error) {
+        if (error !== expectedPublicationFailure) failures.push(error);
+      }
+      try {
+        await ownerRuntime.shutdown();
+      } catch (error) {
+        failures.push(error);
+      }
+      if (failures.length)
+        throw new AggregateError(failures, 'Input cleanup failed');
+    });
     const driver = await publicFenceFixture(
       f,
       prepared.source,
@@ -162,6 +221,9 @@ test.each([
         { timeout: 10000 },
       );
       if (!opened || !binding) throw Error('Canonical binding missing');
+      await writer.runRequest(invocation.signal, () => {
+        assert.equal(sends.length, 1);
+      });
       const question = read(binding);
       assert.equal(question?.question?.eventId, opened.eventId);
       assert.equal(question?.question?.requestId, opened.requestId);
@@ -231,9 +293,23 @@ test.each([
           assert.equal(sends.length, scenario === 'storage-drift' ? 1 : 2);
           if (scenario === 'close-failed') {
             assert.equal(closed.length, 1);
+            done();
+            await assert.rejects(publicationPending, (error: unknown) => {
+              expectedPublicationFailure = error;
+              return (
+                error instanceof DelegationRoundsTransactionUncertainError &&
+                error.status === 'returned-cleanup-unknown'
+              );
+            });
+            await assert.rejects(
+              ownerRuntime.shutdown(),
+              /Runtime publication remains pending/,
+            );
+            cleanupAllowed = true;
+            const beforeRetry = closed.length;
             await runtime.close();
-            assert.equal(closed.length, 2);
-            assert.equal(closed[0], closed[1]);
+            assert.equal(closed.length, beforeRetry + 1);
+            assert.ok(closed.every((transport) => transport === closed[0]));
             assert.equal(sends.length, 2);
             assert.equal(read(binding).result, undefined);
           }

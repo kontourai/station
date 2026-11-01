@@ -29,7 +29,11 @@ import {
 } from '../../../security/runtime-request-security.js';
 import { createLogger } from '../../../utils/logger.js';
 import { ApprovalRegistry } from '../../approvals/approval-registry.js';
-import { HomeWriterOwner } from '../../ssh/home-writer-owner.js';
+import {
+  type HomeWriterLease,
+  HomeWriterOwner,
+  HomeWriterUnavailableError,
+} from '../../ssh/home-writer-owner.js';
 import { StationDelegationPersistence } from '../delegation-group-persistence.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
@@ -81,6 +85,33 @@ function publicationFor(h: Awaited<ReturnType<typeof setup>>) {
   const abort = new AbortController();
   const operations: Promise<unknown>[] = [];
   const inputErrors: unknown[] = [];
+  const acquisitions: Array<{
+    stack: string[];
+    phase: 'waiting' | 'acquired' | 'rejected';
+    requestedAt: number;
+    lease?: HomeWriterLease;
+  }> = [];
+  const acquire = HomeWriterOwner.prototype.acquire;
+  const acquisitionObserver = vi
+    .spyOn(HomeWriterOwner.prototype, 'acquire')
+    .mockImplementation(async function (this: HomeWriterOwner, ...args) {
+      const observation = {
+        stack: new Error().stack?.split('\n').slice(2, 10) ?? [],
+        phase: 'waiting' as 'waiting' | 'acquired' | 'rejected',
+        requestedAt: performance.now(),
+        lease: undefined as HomeWriterLease | undefined,
+      };
+      if (acquisitions.length < 512) acquisitions.push(observation);
+      try {
+        const lease = await acquire.apply(this, args);
+        observation.phase = 'acquired';
+        observation.lease = lease;
+        return lease;
+      } catch (error) {
+        observation.phase = 'rejected';
+        throw error;
+      }
+    });
   const createInput = inputRuntimeOwner.createReportInputRuntime;
   const inputObserver = vi
     .spyOn(inputRuntimeOwner, 'createReportInputRuntime')
@@ -118,6 +149,7 @@ function publicationFor(h: Awaited<ReturnType<typeof setup>>) {
     } finally {
       if (timer) clearTimeout(timer);
       inputObserver.mockRestore();
+      acquisitionObserver.mockRestore();
     }
     try {
       await runtime.shutdown();
@@ -133,6 +165,44 @@ function publicationFor(h: Awaited<ReturnType<typeof setup>>) {
   return {
     participant,
     inputFailure: () => inputErrors[0],
+    home: () =>
+      acquisitions
+        .flatMap((observation) => {
+          if (observation.phase === 'waiting')
+            return [
+              {
+                phase: observation.phase,
+                ageMs: performance.now() - observation.requestedAt,
+                stack: observation.stack,
+              },
+            ];
+          if (observation.phase === 'acquired' && observation.lease) {
+            try {
+              observation.lease.assertCurrent();
+              return [
+                {
+                  phase: 'held',
+                  ageMs: performance.now() - observation.requestedAt,
+                  stack: observation.stack,
+                },
+              ];
+            } catch (error) {
+              if (
+                !(error instanceof HomeWriterUnavailableError) ||
+                error.reason !== 'borrow-unavailable'
+              )
+                return [
+                  {
+                    phase: 'currentness-error',
+                    ageMs: performance.now() - observation.requestedAt,
+                    stack: observation.stack,
+                  },
+                ];
+            }
+          }
+          return [];
+        })
+        .slice(0, 16),
     inputCreated: () => inputObserver.mock.calls.length,
     signal: abort.signal,
     track: (operation: Promise<unknown>) => {
@@ -367,6 +437,7 @@ test('funded three-seat mixed-model report serves input, member results and acco
           `No canonical input: ${JSON.stringify({
             starts: starts.mock.calls.length,
             rawFetch: h.rawFetch.mock.calls.length,
+            home: operation.home(),
             inputCreated: operation.inputCreated(),
             events: starts.mock.calls
               .flatMap(([entry]) => eventStore.listEvents(entry.threadId))
@@ -589,6 +660,7 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
           `No canonical input: ${JSON.stringify({
             starts: starts.mock.calls.length,
             rawFetch: h.rawFetch.mock.calls.length,
+            home: operation.home(),
             inputCreated: operation.inputCreated(),
             events: starts.mock.calls
               .flatMap(([entry]) => eventStore.listEvents(entry.threadId))

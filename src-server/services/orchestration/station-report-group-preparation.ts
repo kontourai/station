@@ -979,43 +979,66 @@ export class StationReportGroupPreparation {
         )?.input
           ? createReportInputRuntime({
               persistence: attempt.persistence,
+              retainCleanup: (cleanup) => {
+                const retainCleanup = launch.reportHome?.retainCleanup;
+                if (!retainCleanup) refuse();
+                return retainCleanup(cleanup);
+              },
+              withHome: (current, body) => {
+                const withHome = launch.reportHome?.withHome;
+                if (!withHome) refuse();
+                return withHome(current, body);
+              },
+              invokeCurrent: (current, invoke) => {
+                const invokeCurrent = launch.reportHome?.invokeCurrent;
+                if (!invokeCurrent) refuse();
+                return invokeCurrent(current, invoke);
+              },
               authorize: async (binding) => {
-                finalizeCurrent();
-                if (
-                  binding.groupId !== state.spec.groupId ||
-                  binding.invocationId !== invocationId ||
-                  binding.seatId !== seatId ||
-                  binding.executionId !== member.taskId
-                )
-                  refuse();
-                const service = createDelegationAuthorityServiceV3(
-                  launch.authorities,
-                  {
-                    ...launch.host,
-                    // The paid wire is disposed; input authority cannot revive it.
-                    confirmExecution: async (envelope) => {
-                      finalizeCurrent();
-                      return (
-                        envelope.execution_id === member.taskId &&
-                        this.authorizes(
-                          handle,
-                          context.req.raw,
-                          state.root,
-                          envelope,
-                        )
-                      );
+                const withInputAuthority =
+                  launch.reportHome?.withFinalFetchScope;
+                if (!withInputAuthority) refuse();
+                return withInputAuthority(async (inputScope, facades) => {
+                  inputScope.check(() => {
+                    finalizeCurrent();
+                    if (
+                      binding.groupId !== state.spec.groupId ||
+                      binding.invocationId !== invocationId ||
+                      binding.seatId !== seatId ||
+                      binding.executionId !== member.taskId
+                    )
+                      refuse();
+                  });
+                  const service = createDelegationAuthorityServiceV3(
+                    facades.authorities,
+                    {
+                      ...facades.host,
+                      // Input authority cannot revive the consumed paid wire.
+                      confirmExecution: async (envelope) =>
+                        inputScope.check(() => {
+                          finalizeCurrent();
+                          return (
+                            envelope.execution_id === member.taskId &&
+                            this.authorizes(
+                              handle,
+                              context.req.raw,
+                              state.root,
+                              envelope,
+                            )
+                          );
+                        }),
+                      authenticateRenewal: async () => null,
                     },
-                    authenticateRenewal: async () => null,
-                  },
-                  { maxRenewals: state.spec.policy.maxRenewals ?? 0 },
-                );
-                const admitted = await service.admitEffect(
-                  binding.rootId,
-                  binding.envelope.id,
-                  'report',
-                );
-                finalizeCurrent();
-                return admitted.envelope;
+                    { maxRenewals: state.spec.policy.maxRenewals ?? 0 },
+                  );
+                  const admitted = await service.admitEffect(
+                    binding.rootId,
+                    binding.envelope.id,
+                    'report',
+                  );
+                  inputScope.check(finalizeCurrent);
+                  return admitted.envelope;
+                });
               },
             })
           : undefined;

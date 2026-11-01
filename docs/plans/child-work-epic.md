@@ -7,37 +7,40 @@ normally before publication. Open one PR when the combined work is ready.
 
 ## Current delivery state
 
-Main is integrated through `7c2bfae5d9b` by normal merge `2bf406dcd5c`.
-This branch has not been pushed or opened as a PR and is not ready to land.
+Main is integrated through `518ac0045e8` by normal merge `afe092aede1`.
+The branch has no remote head or pull request at this checkpoint and is not ready
+to land. Master consolidation #3991 remains separately owned.
 
-The bounded portable surface is restored: real caller and Project custody,
-personal-host route composition, eight CLI/MCP counterparts, public Flow
-frontier/claim callbacks, authenticated member selection, output pages and a
-named preflight budget refusal. Controlled pre-main qualification includes the
-real bootstrap output journey (`956aaf2f147`), bounded outcome manifests
-(`24062b8e9fc`), local and guarded HTTP Flow journeys (`61b0423bc23`,
-`245e3c7385f`), and the budget HTTP/SDK refusal (`3986bf5cfb4`). These are
-controlled-source receipts, not live provider, native, hosted or epic acceptance.
-The public `delegationGroups` capability remains false.
+Station consumes published Flow Agents 9.11.0, including the transaction-owner
+contract. Installed-consumer and controlled local receipts remain distinct from
+current live provider, native, hosted and physical-device acceptance. The
+`delegationGroups` capability remains false. Continuation finalization still
+refuses while its publication qualification guard is false.
 
-Main upgraded the direct inference SDKs to Anthropic 3.0.135 and Google 3.0.139.
-Independent source review found the narrow profiles compatible. Their refreshed
-witnesses and fixed fixture clocks passed 183 post-merge wire, profile, raw-price,
-stream and canonical input-consumer cases. The retained public-term expiry
-ceilings have not been extended. These controlled results do not qualify live
-provider/account access or complete the remaining group journeys.
+Input metadata and authority operations now use publication-owned Home scopes.
+One live input ledger spans each invocation; its individual transactions use
+fresh Home scopes. MCP sends retain the runtime effect while releasing Home
+before asynchronous work. Input cleanup is registered with the publication, so
+failed transport close retains custody through publication return and runtime
+shutdown until cleanup can retry. Nine fixed-MCP lifecycle cases and scoped
+server-test types pass, including Home availability while a question awaits an
+answer. These constructor-level publication controls do not qualify initialized
+storage teardown or the actual multi-seat report caller.
 
-Report publication remains incomplete. The existing Flow report case has a
-known currentness failure, and the funded three-seat mixed-family elicitation
-journey is unqualified. The needed public transaction-owner API merged in
-[Flow Agents #1566](https://github.com/kontourai/flow-agents/pull/1566) at
-`560956698ef6c9ba84338b41825d76782499fb58`, with REST-confirmed merge time
-2026-10-31T12:06:23Z. The latest GitHub release and npm `latest` still report
-9.10.0, the earlier release without that feature. No successor containing the
-API is yet qualified or adopted here; Station remains on 9.9.1. The metadata
-finalizer remains unavailable.
-Final combined review, documentation qualification, remaining acceptance and the
-single protected PR landing are still required.
+Both actual report-input callers still fail before canonical input. At the latest
+60-second observation, the HTTP case had no live acquisition; the direct case
+held a final-fetch Home scope about 473 ms old while SDK stream publication
+awaited Home for about 470 ms. This does not prove the proposed persistent
+nested-acquisition deadlock. No ambient scope reuse or deadline increase was
+introduced. Repeated full preparation/authority validation remains a separate
+measured cost lead, not a qualified performance improvement.
+
+The retention store and mounted-hook selection passes all 77 cases on the
+integrated source. Current browser/device observations, remaining group
+acceptance, semantic documentation freshness and final combined independent
+qualification remain open. No PR or whole-epic acceptance follows from these
+controlled receipts. The dated checkpoints below preserve their original
+revision and scope; their older delivery-state statements are historical.
 
 ### Approval handoff and preparation-race checkpoint
 
@@ -3541,3 +3544,34 @@ browser/device, main integration, semantic documentation freshness and final
 combined review remain open. No capability/finalizer was enabled and no push or PR
 was made. Current upstream includes the Activity cold-load render-loop repair;
 it must be integrated normally before final browser qualification.
+
+## Input metadata and cleanup custody checkpoint
+
+The input runtime's supplied currentness guard required Home custody. Calling it
+bare produced a real `HomeWriterUnavailableError` with `busy` before input
+authorization; merely scoping authorization left that earlier call unchanged.
+Metadata checkpoints and ledger transactions now use their own publication-owned
+scopes. The ledger remains one live instance per invocation: an intermediate
+per-check ledger reconstruction failed its live-claim controls and was discarded.
+No Home lease spans MCP or human waits.
+
+The existing close-failure case now withholds actual transport cleanup while
+letting the publication body return. Before registration, eight cases passed and
+that case failed with `Missing expected rejection`: publication had returned
+successfully despite the retained input resource. Registering the physical close
+with `retainCleanup` makes publication return `returned-cleanup-unknown` and
+runtime shutdown retain its dependencies. Allowing cleanup then retries the same
+transport without another tool send or a completed input receipt. All nine cases
+and server-test types pass. This is real publication/Home ownership with synthetic
+provider and MCP inputs, not full-boot storage, live-provider or device proof.
+
+The independent Opus review correctly identified the missing cleanup registration,
+but its claimed final-fetch/input-send deadlock is not established. The observed
+waiter is SDK stream publication; final fetch boxes the response Promise and the
+outer transport awaits it after `fence.start` returns. The added acquisition ages
+show a sub-second held scope and waiter at the direct deadline. Historical
+profiles count 110,017 authority and 1,577 preparation checks with overlapping
+~45s/~32s inclusive durations; those predate this input candidate and cannot be
+attributed to its added metadata calls. Both actual caller tests remain red, and
+renewal/adoption have not reached their intended assertions. Publication cleanup
+mutation proof and final delta review remain required. No feature is enabled.

@@ -2939,7 +2939,14 @@ requires the exact retained answer and settled transport cleanup. Reopening
 storage cannot recreate permission to resend. The runtime retains failed-close
 handles until explicit owner cleanup succeeds; owner shutdown fences new work
 and aborts open input before waiting for the same handles. Cleanup retry never
-reissues the tool or completes an uncertain receipt. The report creator selects
+reissues the tool or completes an uncertain receipt. Input metadata and ledger
+transactions acquire separate publication-owned Home scopes; the live ledger
+claim stays with the invocation. Physical sends use effect admission that releases
+Home before the asynchronous response or human wait. Input cleanup also retains a
+publication child: a failed close prevents successful publication release and
+runtime shutdown until the same resource can close. The constructor-level MCP
+controls cover these lifetimes; the real multi-seat input/renewal caller remains
+unqualified. The report creator selects
 this profile only for a member with explicit `operator-clarification-v1` input
 intent and reserved continuation capacity. Other members retain empty tool
 authority. Input authorization checks the original paid invocation and current

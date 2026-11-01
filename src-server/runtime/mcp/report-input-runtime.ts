@@ -22,6 +22,10 @@ import {
   ReportInputLedger,
   reportInputBindingSchema,
 } from '../../services/orchestration/report-input-ledger.js';
+import type {
+  ReportRoundsPublication,
+  ReportRoundsScope,
+} from '../../services/orchestration/report-rounds-publication.js';
 import {
   REPORT_INPUT_TOOL_NAME,
   readReportInputQuestion,
@@ -79,10 +83,21 @@ function serverFactory(question: string) {
   return server;
 }
 
-// UNWIRED(#91): authenticated narrowing and the separately funded follow-up remain required.
+// #91: full input, renewal and funded follow-up caller qualification remains incomplete.
 export function createReportInputRuntime(owners: {
   persistence: StationDelegationPersistence;
   authorize(binding: ReportInputBinding): Promise<DelegationEnvelopeV2>;
+  retainCleanup: ReportRoundsPublication['retainCleanup'];
+  withHome<Value>(
+    current: () => undefined,
+    body: (
+      scope: Pick<ReportRoundsScope, 'current' | 'check'>,
+    ) => Promise<Value>,
+  ): Promise<Value>;
+  invokeCurrent<Value>(
+    current: () => undefined,
+    invoke: (check: <Result>(work: () => Result) => Result) => Promise<Value>,
+  ): Promise<Value>;
 }): ReservedStationInputRuntime & { close(): Promise<void> } {
   let accepting = true;
   const retained = new Set<{
@@ -112,12 +127,26 @@ export function createReportInputRuntime(owners: {
       signal.throwIfAborted();
       return undefined;
     };
+    const withMetadata = <Value>(
+      body: (
+        scope: Pick<ReportRoundsScope, 'current' | 'check'>,
+      ) => Promise<Value>,
+    ): Promise<Value> => owners.withHome(current, body);
+    const ledger = new ReportInputLedger({
+      transact: (key, update) =>
+        withMetadata((scope) =>
+          owners.persistence
+            .reportInputStore(scope.current)
+            .transact(key, update),
+        ),
+    });
+    const checkCurrent = () => withMetadata(async (scope) => scope.current());
     const authorize = async () => {
-      current();
+      await checkCurrent();
       const envelope = validateDelegationEnvelopeV2(
         await owners.authorize(structuredClone(binding)),
       );
-      current();
+      await checkCurrent();
       requireInput(
         envelope.envelope_id === binding.envelope.id &&
           envelope.generation === binding.envelope.generation &&
@@ -136,28 +165,25 @@ export function createReportInputRuntime(owners: {
       );
     };
     await authorize();
-    await owners.persistence.assertProviderEvidenceReference(
-      binding.providerEvidence,
-      {
-        groupId: binding.groupId,
-        rootId: binding.rootId,
-        invocationId: binding.invocationId,
-        executionId: binding.executionId,
-        usage: binding.usage,
-        inputIntent: {
-          seatId: binding.seatId,
-          root: binding.authority,
-          envelope: binding.envelope,
+    await withMetadata(async (scope) => {
+      await owners.persistence.assertProviderEvidenceReference(
+        binding.providerEvidence,
+        {
+          groupId: binding.groupId,
+          rootId: binding.rootId,
+          invocationId: binding.invocationId,
+          executionId: binding.executionId,
+          usage: binding.usage,
+          inputIntent: {
+            seatId: binding.seatId,
+            root: binding.authority,
+            envelope: binding.envelope,
+          },
         },
-      },
-      current,
-    );
-    current();
-    const ledger = new ReportInputLedger(
-      owners.persistence.reportInputStore(current),
-    );
+        scope.current,
+      );
+    });
     await ledger.begin(binding);
-    current();
     requireInput(retained.size < 128);
     const handler = createMcpHandler(() => serverFactory(binding.question), {
       legacy: 'reject',
@@ -182,6 +208,13 @@ export function createReportInputRuntime(owners: {
         return closing;
       },
     };
+    const physicalClose = resource.close;
+    try {
+      resource.close = owners.retainCleanup(physicalClose);
+    } catch (error) {
+      await physicalClose();
+      throw error;
+    }
     retained.add(resource);
     let result: InputRequestResponse | undefined;
     try {
@@ -197,7 +230,7 @@ export function createReportInputRuntime(owners: {
             new StreamableHTTPClientTransport(new URL(ENDPOINT), {
               requestInit: { redirect: 'error' },
               fetch: async (input, init) => {
-                current();
+                await checkCurrent();
                 const received =
                   input instanceof Request ? input : new Request(input, init);
                 requireInput(received.url === ENDPOINT);
@@ -207,7 +240,7 @@ export function createReportInputRuntime(owners: {
           onTransport: (transport) => {
             const send = transport.send.bind(transport);
             transport.send = async (message, options) => {
-              current();
+              await checkCurrent();
               requireInput(claim.isCurrent());
               const snapshot = structuredClone(message);
               if ('method' in snapshot && snapshot.method === 'tools/call') {
@@ -236,15 +269,18 @@ export function createReportInputRuntime(owners: {
                 }
                 await authorize();
                 await ledger.consumeSend(binding, response);
-                current();
+                await checkCurrent();
                 requireInput(claim.isCurrent());
               }
-              return send(snapshot, options);
+              return owners.invokeCurrent(current, (check) => {
+                check(() => requireInput(claim.isCurrent()));
+                return send(snapshot, options);
+              });
             };
           },
         },
       );
-      current();
+      await checkCurrent();
       requireInput(connection.negotiation.era === 'modern');
       requireInput(
         connection.withElicitationRoute &&
@@ -259,7 +295,7 @@ export function createReportInputRuntime(owners: {
       const tool = await claim.run(() =>
         connection.withElicitationRoute!(
           async (elicitation) => {
-            current();
+            await checkCurrent();
             const form = inputRequestFromMcpElicitation(
               elicitation.serverId,
               elicitation.params,
@@ -269,16 +305,16 @@ export function createReportInputRuntime(owners: {
             const answer = await open(
               expectedForm,
               async (event) => {
-                current();
+                await checkCurrent();
                 await ledger.bindQuestion(binding, event);
-                current();
+                await checkCurrent();
               },
               elicitation.signal,
             );
-            current();
+            await checkCurrent();
             await authorize();
             await ledger.retainAnswer(binding, answer);
-            current();
+            await checkCurrent();
             if (answer.action !== 'accept') return { action: answer.action };
             requireInput(
               typeof answer.content.answer === 'string' &&
@@ -299,7 +335,7 @@ export function createReportInputRuntime(owners: {
             ),
         ),
       );
-      current();
+      await checkCurrent();
       requireInput(
         !tool.isError &&
           tool.content.length === 1 &&
@@ -312,7 +348,7 @@ export function createReportInputRuntime(owners: {
     } finally {
       await resource.close();
     }
-    current();
+    await checkCurrent();
     return ledger.finish(binding, result);
   };
   return Object.assign(runtime, {
