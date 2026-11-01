@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import type { TurnDeduplicator } from '@kontourai/monument';
 import { CONVERSATION_CONTEXT_UNAVAILABLE_CODE } from '@kontourai/station-contracts/orchestration';
 import type {
   ProviderSendTurnInput,
@@ -21,7 +22,6 @@ import {
 import { transcriptSeedSource } from './conversation-transcript-seed.js';
 import type { EventStore } from './event-store.js';
 import type { SessionReadScope } from './orchestration-service.js';
-import type { TurnDeduplicator } from '@kontourai/monument';
 
 const FORK_CONTEXT_MAX_BYTES = 2 * 1024 * 1024;
 const nativeForkId = z.string().min(1).max(512);
