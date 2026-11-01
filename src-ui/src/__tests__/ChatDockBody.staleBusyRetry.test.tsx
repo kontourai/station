@@ -39,6 +39,8 @@ const queuedMessagesPropsMock = vi.hoisted(() => ({
 }));
 const realControlsMock = vi.hoisted(() => ({ enabled: false }));
 const steerOrchestrationTurnMock = vi.hoisted(() => vi.fn());
+const listConversationInboxMock = vi.hoisted(() => vi.fn());
+const scopeMock = vi.hoisted(() => ({ current: undefined as any }));
 const addEphemeralMessageMock = vi.hoisted(() => vi.fn());
 const cancelTurnMock = vi.hoisted(() => vi.fn());
 const handleSendMock = vi.hoisted(() => vi.fn(async () => {}));
@@ -47,6 +49,11 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
   steerOrchestrationTurn: (...args: unknown[]) =>
     steerOrchestrationTurnMock(...args),
+}));
+vi.mock('@kontourai/station-sdk/client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-sdk/client')>()),
+  listConversationInbox: (...args: unknown[]) =>
+    listConversationInboxMock(...args),
 }));
 
 vi.mock('@kontourai/station-connect', () => ({
@@ -63,7 +70,7 @@ vi.mock('../contexts/AgentsContext', () => ({
 
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://localhost:3242' }),
-  useHostRequestAuthorityScope: () => undefined,
+  useHostRequestAuthorityScope: () => scopeMock.current,
 }));
 
 vi.mock('../contexts/ToastContext', () => ({
@@ -307,6 +314,8 @@ describe('ChatDockBody stale busy wait', () => {
     queuedMessagesPropsMock.current = null;
     realControlsMock.enabled = false;
     steerOrchestrationTurnMock.mockReset();
+    listConversationInboxMock.mockReset();
+    scopeMock.current = undefined;
     addEphemeralMessageMock.mockReset();
     cancelTurnMock.mockReset();
     handleSendMock.mockClear();
@@ -346,6 +355,58 @@ describe('ChatDockBody stale busy wait', () => {
       'thread-busy',
       expect.objectContaining({ role: 'system', sendFailure: true }),
     );
+  });
+
+  test('an unanswered inbox steer is reconciled through the inbox without invoking the adapter', async () => {
+    scopeMock.current = {
+      apiBase: 'http://localhost:3242',
+      authorityKey: 'owner',
+      isCurrent: () => true,
+    };
+    listConversationInboxMock.mockResolvedValueOnce([
+      {
+        kind: 'steer',
+        clientTurnId: 'steer-1',
+        message: 'steer me',
+        state: 'unconfirmed',
+      },
+    ]);
+    activeChatsStore.initChat('thread-busy');
+    const metadata = [
+      {
+        id: 'steer-1',
+        mode: 'steer' as const,
+        delivery: 'indeterminate' as const,
+        inboxSteerConversationId: 'conversation-a',
+      },
+    ];
+    activeChatsStore.updateChat('thread-busy', {
+      queuedMessages: ['steer me'],
+      queuedMessageMetadata: metadata,
+    });
+    renderDock({
+      session: buildSession({
+        queuedMessages: ['steer me'],
+        queuedMessageMetadata: metadata,
+        status: 'sending',
+        orchestrationProvider: 'claude',
+        orchestrationSessionStarted: true,
+        orchestrationTurnOpen: true,
+      } as Partial<ChatSession>),
+    });
+    await screen.findByTestId('queued-messages');
+    await act(async () => {
+      await queuedMessagesPropsMock.current?.onSteer('steer me', 'steer-1');
+    });
+    expect(listConversationInboxMock).toHaveBeenCalledWith(
+      'http://localhost:3242',
+      'conversation-a',
+      expect.any(Object),
+    );
+    expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
+    expect(
+      activeChatsStore.getSnapshot()['thread-busy'].queuedMessages,
+    ).toEqual([]);
   });
 
   test.each([false, true])(

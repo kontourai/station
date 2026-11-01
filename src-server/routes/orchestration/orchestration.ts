@@ -2173,6 +2173,7 @@ export function createOrchestrationRoutes(
     threadInbox?: Pick<
       ThreadInboxDelivery,
       | 'mayContinue'
+      | 'currentHead'
       | 'mustQueue'
       | 'submit'
       | 'submitSteer'
@@ -3530,6 +3531,7 @@ export function createOrchestrationRoutes(
     return c.json({
       success: true,
       data: {
+        currentHead: deps.threadInbox.currentHead(conversationId),
         entries: deps.threadInbox.list(
           conversationId,
           resolveDispatchActor(deps, c).userId,
@@ -3546,13 +3548,13 @@ export function createOrchestrationRoutes(
           kind: z.literal('steer'),
           key: z.string().min(1).max(128),
           message: z.string().min(1).max(CHAT_INPUT_MAX_CHARS),
-          expectedHead: z.number().int().nonnegative().safe(),
+          expectedHead: z.string().min(1).max(4096),
         }),
         z.object({
           kind: z.literal('display'),
           key: z.string().min(1).max(128),
           message: z.string().min(1).max(CHAT_INPUT_MAX_CHARS),
-          expectedHead: z.number().int().nonnegative().safe().optional(),
+          expectedHead: z.string().min(1).max(4096).optional(),
         }),
       ]),
     ),
@@ -3596,6 +3598,7 @@ export function createOrchestrationRoutes(
           {
             success: false,
             code: 'inbox_stale_head',
+            error: 'The conversation changed before this entry was accepted.',
             currentHead: result.currentHead,
           },
           409,

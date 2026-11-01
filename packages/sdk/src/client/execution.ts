@@ -464,6 +464,66 @@ export async function listConversationInbox(
   return result.data.entries;
 }
 
+/** Submit a steer against the current execution's observed inbox head. */
+export async function submitConversationSteer(
+  apiBase: string,
+  conversationId: string,
+  input: { key: string; message: string },
+  opts?: ClientRequestOptions,
+): Promise<ConversationInboxEntry> {
+  const url = `${apiBase}/api/orchestration/conversations/${encodeURIComponent(conversationId)}/inbox`;
+  const read = await getJson(url, opts);
+  const snapshot = (await readExecutionBody(read)) as {
+    success?: boolean;
+    data?: { currentHead?: unknown };
+    error?: string;
+    code?: string;
+  };
+  const head = snapshot.data?.currentHead;
+  if (
+    !read.ok ||
+    !snapshot.success ||
+    typeof head !== 'string' ||
+    !head ||
+    head.length > 4096
+  )
+    throw chatRefusal(
+      read,
+      snapshot,
+      'This Station cannot safely queue steering.',
+    );
+  const response = await mutateJson(url, 'POST', opts, {
+    kind: 'steer',
+    key: input.key,
+    message: input.message,
+    expectedHead: head,
+  });
+  const result = (await readExecutionBody(response)) as {
+    success?: boolean;
+    data?: ConversationInboxEntry;
+    error?: string;
+    code?: string;
+  };
+  if (
+    response.status !== 202 ||
+    !result.success ||
+    result.data?.kind !== 'steer' ||
+    result.data.clientTurnId !== input.key ||
+    result.data.conversationId !== conversationId ||
+    result.data.message !== input.message ||
+    ![
+      'queued',
+      'sending',
+      'sent',
+      'unconfirmed',
+      'refused',
+      'cancelled',
+    ].includes(result.data.state)
+  )
+    throw chatRefusal(response, result, 'Station could not accept this steer.');
+  return result.data;
+}
+
 /**
  * #3568: withdraw a follow-up Station still holds, or dismiss one that is
  * `unconfirmed` (which also lets the messages behind it go) or `refused`.

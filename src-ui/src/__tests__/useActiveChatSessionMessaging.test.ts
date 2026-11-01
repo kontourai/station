@@ -74,6 +74,7 @@ class CodedOrchestrationError extends Error {
 }
 
 const sendExecutionMessageMock = vi.fn();
+const submitConversationSteerMock = vi.fn();
 const queueExecutionMessageMock = vi
   .fn()
   .mockResolvedValue({ outcome: 'queued', entry: {} });
@@ -83,6 +84,8 @@ vi.mock('@kontourai/station-sdk/client', async (importOriginal) => ({
     sendExecutionMessageMock(...args),
   queueExecutionMessage: (...args: unknown[]) =>
     queueExecutionMessageMock(...args),
+  submitConversationSteer: (...args: unknown[]) =>
+    submitConversationSteerMock(...args),
 }));
 
 const updateChatMock = vi.fn((sessionId: string, updates: unknown) => {
@@ -3224,6 +3227,74 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
   });
 
+  it('hands a native steer to the server inbox instead of the adapter command', async () => {
+    activeChatsStore.updateChat(sessionId, {
+      status: 'sending',
+      orchestrationProvider: 'claude',
+      openTurnId: 'turn-open',
+      conversationId: sessionId,
+    });
+    submitConversationSteerMock.mockResolvedValueOnce({ state: 'queued' });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await result.current(sessionId, 'claude', sessionId, 'change direction');
+    });
+    expect(submitConversationSteerMock).toHaveBeenCalledWith(
+      'http://api.test',
+      sessionId,
+      { key: expect.any(String), message: 'change direction' },
+      expect.any(Object),
+    );
+    expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
+    expect(activeChatsStore.getSnapshot()[sessionId].queuedMessages).toEqual(
+      [],
+    );
+  });
+
+  it('marks an unanswered inbox steer so it cannot retry through the adapter', async () => {
+    activeChatsStore.updateChat(sessionId, {
+      status: 'sending',
+      orchestrationProvider: 'claude',
+      openTurnId: 'turn-open',
+      conversationId: sessionId,
+    });
+    submitConversationSteerMock.mockRejectedValueOnce(
+      new TypeError('response lost'),
+    );
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await result.current(sessionId, 'claude', sessionId, 'uncertain steer');
+    });
+    expect(
+      activeChatsStore.getSnapshot()[sessionId].queuedMessageMetadata,
+    ).toMatchObject([
+      { delivery: 'indeterminate', inboxSteerConversationId: sessionId },
+    ]);
+    expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a stale-head steer to the composer without claiming it was sent', async () => {
+    activeChatsStore.updateChat(sessionId, {
+      status: 'sending',
+      orchestrationProvider: 'claude',
+      openTurnId: 'turn-open',
+      conversationId: sessionId,
+      input: 'review this',
+    });
+    submitConversationSteerMock.mockRejectedValueOnce(
+      new CodedOrchestrationError(409, 'changed', 'inbox_stale_head'),
+    );
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await result.current(sessionId, 'claude', sessionId, 'review this');
+    });
+    expect(activeChatsStore.getSnapshot()[sessionId].input).toBe('review this');
+    expect(activeChatsStore.getSnapshot()[sessionId].queuedMessages).toEqual(
+      [],
+    );
+    expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
+  });
+
   it('keeps an unanswered busy follow-up in the outbox, not the local chat queue', async () => {
     activeChatsStore.updateChat(sessionId, {
       status: 'sending',
@@ -3718,13 +3789,9 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       },
     });
 
-    it('steers the server-named child turn when the record shows one open, even with local status idle', async () => {
+    it('submits to the server inbox when the record shows a child turn open', async () => {
       const conv = 'claude:steer-record-conv';
-      steerOrchestrationTurnMock.mockResolvedValueOnce({
-        outcome: 'steered',
-        threadId: `${conv}:child`,
-        turnId: 'server-turn',
-      });
+      submitConversationSteerMock.mockResolvedValueOnce({ state: 'queued' });
       activeChatsStore.updateChat(sessionId, {
         status: 'idle',
         orchestrationProvider: 'claude',
@@ -3738,13 +3805,13 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
         await result.current(sessionId, 'claude', sessionId, 'steer me');
       });
       expect(sendExecutionMessageMock).not.toHaveBeenCalled();
-      expect(steerOrchestrationTurnMock).toHaveBeenCalledWith({
-        clientInputId: expect.any(String),
-        threadId: `${conv}:child`,
-        text: 'steer me',
-        turnId: 'server-turn',
-        apiBase: 'http://api.test',
-      });
+      expect(submitConversationSteerMock).toHaveBeenCalledWith(
+        'http://api.test',
+        conv,
+        { key: expect.any(String), message: 'steer me' },
+        expect.any(Object),
+      );
+      expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
     });
 
     it('queues behind a turn only the record knows about (another device, local status idle)', async () => {

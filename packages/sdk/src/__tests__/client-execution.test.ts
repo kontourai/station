@@ -8,12 +8,102 @@ import {
   getConversationHandoffStatus,
   getTurnDelivery,
   handoffExecutionMessage,
+  submitConversationSteer,
 } from '../client/execution';
 import { sendExecutionMessage } from '../client/send-execution-message';
 import { ChatHttpError } from '../query-domains/chatRuntimeStream';
 
 describe('client execution', () => {
   afterEach(() => vi.unstubAllGlobals());
+
+  test('steering submits the observed session head and refuses an older Station without one', async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            success: true,
+            data: { currentHead: '["session-a",7]' },
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            success: true,
+            data: {
+              kind: 'steer',
+              state: 'queued',
+              conversationId: 'conv',
+              clientTurnId: 'k',
+              message: 'go',
+            },
+          }),
+          { status: 202 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ success: true, data: { entries: [] } })),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(
+      submitConversationSteer('http://station.test', 'conv', {
+        key: 'k',
+        message: 'go',
+      }),
+    ).resolves.toMatchObject({ kind: 'steer' });
+    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({
+      method: 'POST',
+      body: JSON.stringify({
+        kind: 'steer',
+        key: 'k',
+        message: 'go',
+        expectedHead: '["session-a",7]',
+      }),
+    });
+    await expect(
+      submitConversationSteer('http://station.test', 'conv', {
+        key: 'new',
+        message: 'no',
+      }),
+    ).rejects.toThrow();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  test('steering does not accept a receipt for a different key', async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            success: true,
+            data: { currentHead: '["session-a",7]' },
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            success: true,
+            data: {
+              kind: 'steer',
+              state: 'queued',
+              conversationId: 'conv',
+              clientTurnId: 'other',
+              message: 'go',
+            },
+          }),
+          { status: 202 },
+        ),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(
+      submitConversationSteer('http://station.test', 'conv', {
+        key: 'k',
+        message: 'go',
+      }),
+    ).rejects.toThrow();
+  });
 
   test('sends the canonical target to the controlling Station', async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(

@@ -713,6 +713,29 @@ describe('queued follow-ups survive a reload (UX audit T3)', () => {
     );
   });
 
+  test('an uncertain inbox steer keeps its reconciliation identity across reload', () => {
+    const state = {
+      ...chats.s1,
+      queuedMessages: ['steer'],
+      queuedMessageMetadata: [
+        {
+          id: 'steer-key',
+          mode: 'steer' as const,
+          delivery: 'indeterminate' as const,
+          inboxSteerConversationId: 'conversation-a',
+        },
+      ],
+    };
+    const restored = hydrateActiveChats(serializeActiveChats({ s1: state }));
+    expect(restored.s1?.queuedMessageMetadata).toMatchObject([
+      {
+        id: 'steer-key',
+        delivery: 'indeterminate',
+        inboxSteerConversationId: 'conversation-a',
+      },
+    ]);
+  });
+
   test('a chat with no queue rehydrates with an empty one and no stale reason', () => {
     const rehydrated = hydrateActiveChats([
       {

@@ -22,12 +22,22 @@ import {
 describe('POST /chat whenBusy queue (#3568)', () => {
   const station = createInboxHarness();
 
+  test('the inbox read exposes the current session head for a steer submission', async () => {
+    const world = station();
+    await world.busy();
+    const response = await world.listInbox();
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      data: { currentHead: world.inbox.currentHead(CONVERSATION) },
+    });
+  });
+
   test('steer admission rejects a stale head and leaves the inbox empty', async () => {
     const world = station();
     await world.busy();
     const current = world.service.currentConversationSessionId(CONVERSATION);
-    const currentHead = world.store.readSessionInventoryHighWater(current);
-    expect(currentHead).toBeGreaterThan(0);
+    const currentHead = world.inbox.currentHead(CONVERSATION);
+    expect(currentHead).not.toBe(JSON.stringify([current, 0]));
     const response = await world.app.request(
       `/api/orchestration/conversations/${encodeURIComponent(CONVERSATION)}/inbox`,
       {
@@ -37,7 +47,7 @@ describe('POST /chat whenBusy queue (#3568)', () => {
           kind: 'steer',
           key: 'stale-steer',
           message: 'change direction',
-          expectedHead: 0,
+          expectedHead: JSON.stringify([current, 0]),
         }),
       },
     );
@@ -52,8 +62,7 @@ describe('POST /chat whenBusy queue (#3568)', () => {
   test('a steer is recorded with its head before any delivery', async () => {
     const world = station();
     await world.busy();
-    const current = world.service.currentConversationSessionId(CONVERSATION);
-    const expectedHead = world.store.readSessionInventoryHighWater(current);
+    const expectedHead = world.inbox.currentHead(CONVERSATION);
     const send = () =>
       world.app.request(
         `/api/orchestration/conversations/${encodeURIComponent(CONVERSATION)}/inbox`,

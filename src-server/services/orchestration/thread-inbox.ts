@@ -186,7 +186,7 @@ function canonicalJson(value: unknown): string {
  */
 function threadInboxDigest(
   payload: ThreadInboxPayload,
-  expectedHead?: number,
+  expectedHead?: string,
 ): string {
   return createHash('sha256')
     .update(
@@ -412,9 +412,9 @@ export function createSqliteThreadInboxStore(
       payload: ThreadInboxPayload;
       now: number;
       kind?: 'follow-up' | 'steer' | 'display';
-      expectedHead?: number;
-      readHead?: () => number;
-    }): InboxSubmitResult | { kind: 'stale-head'; currentHead: number } {
+      expectedHead?: string;
+      readHead?: () => string;
+    }): InboxSubmitResult | { kind: 'stale-head'; currentHead: string } {
       const command = {
         type: 'inbox.submit',
         inboxId: input.conversationId,
@@ -435,7 +435,7 @@ export function createSqliteThreadInboxStore(
       db.exec('BEGIN IMMEDIATE');
       let result:
         | InboxSubmitResult
-        | { kind: 'stale-head'; currentHead: number };
+        | { kind: 'stale-head'; currentHead: string };
       try {
         const prior = run(
           {
@@ -712,7 +712,7 @@ export type ThreadInboxSubmission =
 
 type ThreadInboxHeadSubmission =
   | ThreadInboxSubmission
-  | { readonly outcome: 'stale-head'; readonly currentHead: number };
+  | { readonly outcome: 'stale-head'; readonly currentHead: string };
 
 interface ThreadInboxInput {
   conversationId: string;
@@ -878,6 +878,12 @@ export class ThreadInboxDelivery {
     return this.ports.mayContinue(this.inboxOf(conversationId), userId);
   }
 
+  currentHead(conversationId: string): string {
+    const inbox = this.inboxOf(conversationId);
+    const threadId = this.ports.currentSessionId(inbox);
+    return JSON.stringify([threadId, this.ports.headSequence(threadId)]);
+  }
+
   private inspectDelivery(
     conversationId: string,
     clientTurnId: string,
@@ -899,29 +905,29 @@ export class ThreadInboxDelivery {
    * sender placement would refuse is never accepted.
    */
   submit(
-    input: ThreadInboxInput & { expectedHead: number },
+    input: ThreadInboxInput & { expectedHead: string },
   ): ThreadInboxHeadSubmission;
   submit(input: ThreadInboxInput): ThreadInboxSubmission;
   submit(
-    input: ThreadInboxInput & { expectedHead?: number },
+    input: ThreadInboxInput & { expectedHead?: string },
   ): ThreadInboxHeadSubmission {
     return this.submitEntry(input, 'follow-up');
   }
 
   submitSteer(
-    input: ThreadInboxInput & { expectedHead: number },
+    input: ThreadInboxInput & { expectedHead: string },
   ): ThreadInboxHeadSubmission {
     return this.submitEntry(input, 'steer');
   }
 
   submitDisplay(
-    input: ThreadInboxInput & { expectedHead?: number },
+    input: ThreadInboxInput & { expectedHead?: string },
   ): ThreadInboxHeadSubmission {
     return this.submitEntry(input, 'display');
   }
 
   private submitEntry(
-    input: ThreadInboxInput & { expectedHead?: number },
+    input: ThreadInboxInput & { expectedHead?: string },
     kind: 'follow-up' | 'steer' | 'display',
   ): ThreadInboxHeadSubmission {
     // Only Station's own continuation may use its reserved key prefix: an
@@ -954,8 +960,7 @@ export class ThreadInboxDelivery {
       conversationId: inbox,
       kind,
       now,
-      readHead: () =>
-        this.ports.headSequence(this.ports.currentSessionId(inbox)),
+      readHead: () => this.currentHead(inbox),
     });
     if (result.kind === 'stale-head')
       return { outcome: 'stale-head', currentHead: result.currentHead };

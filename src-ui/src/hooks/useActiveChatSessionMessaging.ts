@@ -24,7 +24,10 @@ import {
   useInvalidateQuery,
   useQueryClient,
 } from '@kontourai/station-sdk';
-import type { ApiRequestScope } from '@kontourai/station-sdk/client';
+import {
+  type ApiRequestScope,
+  submitConversationSteer,
+} from '@kontourai/station-sdk/client';
 import { turnInterruptedContinueBoundaryId } from '@kontourai/station-shared/conversation-message';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import {
@@ -709,6 +712,9 @@ export function useSendMessage(
               delivery: 'steering',
               steerThreadId: target.threadId,
               steerTurnId: target.turnId,
+              ...(claimState.conversationId
+                ? { inboxSteerConversationId: claimState.conversationId }
+                : {}),
             },
           ],
           queueSendNowPending: true,
@@ -764,6 +770,25 @@ export function useSendMessage(
           });
         };
         try {
+          if (claimState.conversationId) {
+            const accepted = await submitConversationSteer(
+              apiBase,
+              claimState.conversationId,
+              { key: clientInputId, message: content },
+              {
+                ...(accountPreferences.requestScope
+                  ? { requestScope: accountPreferences.requestScope }
+                  : {}),
+              },
+            );
+            if (accepted.state === 'cancelled') {
+              holdUnconfirmed();
+              return true;
+            }
+            removeClaim();
+            invalidate(['conversation-inbox']);
+            return true;
+          }
           const result = await steerOrchestrationTurn({
             ...target,
             text: content,
@@ -793,6 +818,22 @@ export function useSendMessage(
             updateChat(sessionId, { input: submittedDraft });
           return false;
         } catch (error) {
+          if (
+            (error as { code?: unknown })?.code === 'inbox_stale_head' &&
+            stationAnswered(error)
+          ) {
+            removeClaim();
+            const latest = activeChatsStore.getSnapshot()[sessionId];
+            if ((latest?.input ?? '') === '')
+              updateChat(sessionId, { input: submittedDraft });
+            addEphemeralMessage(sessionId, {
+              role: 'system',
+              sendFailure: true,
+              content:
+                'The conversation changed. Review it before sending again.',
+            });
+            return false;
+          }
           if (isProvablyNotSent(error)) {
             removeClaim();
             const latest = activeChatsStore.getSnapshot()[sessionId];

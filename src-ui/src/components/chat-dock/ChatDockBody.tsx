@@ -15,6 +15,7 @@ import {
   type OrchestrationSessionSummary,
   steerOrchestrationTurn,
 } from '@kontourai/station-sdk';
+import { listConversationInbox } from '@kontourai/station-sdk/client';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import {
   TURN_INTERRUPTED_CONTINUE_PROMPT,
@@ -2206,6 +2207,37 @@ export function ChatDockBody({
                 });
               };
               try {
+                if (metadata.inboxSteerConversationId) {
+                  if (
+                    !mentionRequestScope?.isCurrent() ||
+                    mentionRequestScope.apiBase !== apiBase
+                  )
+                    throw new Error('Station authority changed.');
+                  const entries = await listConversationInbox(
+                    apiBase,
+                    metadata.inboxSteerConversationId,
+                    { requestScope: mentionRequestScope },
+                  );
+                  if (!mentionRequestScope.isCurrent())
+                    throw new Error('Station authority changed.');
+                  if (
+                    entries.some(
+                      (entry) =>
+                        entry.kind === 'steer' &&
+                        entry.clientTurnId === clientInputId &&
+                        entry.message === message,
+                    )
+                  ) {
+                    retireConfirmedById();
+                    return true;
+                  }
+                  addEphemeralMessage(activeSession.id, {
+                    role: 'system',
+                    content:
+                      'Station has not confirmed this steer. It remains held for review.',
+                  });
+                  return false;
+                }
                 const steeringInput = {
                   // Steering is a command on the live execution Session. The
                   // tab id remains the durable conversation identity after a

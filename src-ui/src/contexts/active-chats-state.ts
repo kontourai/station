@@ -1123,6 +1123,11 @@ export function hydrateActiveChats(
               ...(typeof metadata?.steerTurnId === 'string'
                 ? { steerTurnId: metadata.steerTurnId }
                 : {}),
+              ...(typeof metadata?.inboxSteerConversationId === 'string'
+                ? {
+                    inboxSteerConversationId: metadata.inboxSteerConversationId,
+                  }
+                : {}),
             };
           },
         ),
@@ -1465,6 +1470,8 @@ export interface PendingMessageMetadata {
   delivery?: 'steering' | 'indeterminate';
   steerThreadId?: string;
   steerTurnId?: string;
+  /** A possibly submitted inbox steer must be reconciled through its inbox. */
+  inboxSteerConversationId?: string;
 }
 
 function reconcilePendingMetadata(

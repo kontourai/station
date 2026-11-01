@@ -356,23 +356,46 @@ describe('thread inbox (#3568)', () => {
   test('rejects a stale expected head without writing an inbox entry', async () => {
     const world = boot(path());
     await runningFirstTurn(world);
-    const currentHead = world.store.readSessionInventoryHighWater(THREAD);
-    expect(currentHead).toBeGreaterThan(0);
+    const currentHead = world.inbox.currentHead(THREAD);
+    expect(currentHead).not.toBe(JSON.stringify([THREAD, 0]));
     expect(
       world.inbox.submit({
         conversationId: THREAD,
         clientTurnId: 'stale-head',
         payload,
-        expectedHead: 0,
+        expectedHead: JSON.stringify([THREAD, 0]),
       }),
     ).toEqual({ outcome: 'stale-head', currentHead });
+    expect(world.inbox.list(THREAD)).toEqual([]);
+  });
+
+  test('a successor with the same sequence cannot reuse the predecessor head', async () => {
+    let current = THREAD;
+    const world = boot(path(), {
+      currentSessionId: () => current,
+      headSequence: () => 1,
+    });
+    await runningFirstTurn(world);
+    const expectedHead = world.inbox.currentHead(THREAD);
+    current = 'successor-session';
+    expect(
+      world.inbox.submitSteer({
+        conversationId: THREAD,
+        clientTurnId: 'old-session-head',
+        payload,
+        expectedHead,
+      }),
+    ).toEqual({
+      outcome: 'stale-head',
+      currentHead: world.inbox.currentHead(THREAD),
+    });
     expect(world.inbox.list(THREAD)).toEqual([]);
   });
 
   test('replays the same keyed submission after the conversation head advances', async () => {
     const world = boot(path());
     const turn = await runningFirstTurn(world);
-    const expectedHead = world.store.readSessionInventoryHighWater(THREAD);
+    const expectedHead = world.inbox.currentHead(THREAD);
     const input = {
       conversationId: THREAD,
       clientTurnId: 'head-retry',
@@ -392,12 +415,10 @@ describe('thread inbox (#3568)', () => {
       { turnId: 'turn-1', prompt: 'later', inputKind: 'steer' },
       turn,
     );
-    expect(world.store.readSessionInventoryHighWater(THREAD)).toBeGreaterThan(
-      expectedHead,
-    );
+    expect(world.inbox.currentHead(THREAD)).not.toBe(expectedHead);
     expect(world.inbox.submit(input)).toMatchObject({ outcome: 'queued' });
     expect(
-      world.inbox.submit({ ...input, expectedHead: expectedHead + 1 }),
+      world.inbox.submit({ ...input, expectedHead: `${expectedHead}-changed` }),
     ).toEqual({ outcome: 'conflict' });
     expect(world.inbox.list(THREAD)).toHaveLength(1);
   });
@@ -425,7 +446,7 @@ describe('thread inbox (#3568)', () => {
     };
     world = boot(file, ports);
     await runningFirstTurn(world);
-    const expectedHead = world.store.readSessionInventoryHighWater(THREAD);
+    const expectedHead = world.inbox.currentHead(THREAD);
     const input = {
       conversationId: THREAD,
       clientTurnId: 'steer-native',
@@ -453,7 +474,7 @@ describe('thread inbox (#3568)', () => {
     };
     const first = boot(file, ports);
     await runningFirstTurn(first);
-    const expectedHead = first.store.readSessionInventoryHighWater(THREAD);
+    const expectedHead = first.inbox.currentHead(THREAD);
     expect(
       first.inbox.submitSteer({
         conversationId: THREAD,
@@ -498,7 +519,7 @@ describe('thread inbox (#3568)', () => {
     };
     world = boot(file, ports);
     await runningFirstTurn(world);
-    const expectedHead = world.store.readSessionInventoryHighWater(THREAD);
+    const expectedHead = world.inbox.currentHead(THREAD);
     world.inbox.submitSteer({
       conversationId: THREAD,
       clientTurnId: 'uncertain-steer',
@@ -518,7 +539,7 @@ describe('thread inbox (#3568)', () => {
     const file = path();
     const first = boot(file, { steerFidelity: () => 'emulated' });
     await runningFirstTurn(first);
-    const expectedHead = first.store.readSessionInventoryHighWater(THREAD);
+    const expectedHead = first.inbox.currentHead(THREAD);
     first.inbox.submitSteer({
       conversationId: THREAD,
       clientTurnId: 'confirmed-steer',
