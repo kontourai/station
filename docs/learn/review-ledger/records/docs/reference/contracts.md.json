@@ -352,7 +352,21 @@
 
     "packages/contracts/src/qualification-repair-policy.mjs",
 
-    "packages/contracts/src/qualification-repair-policy.d.mts"
+    "packages/contracts/src/qualification-repair-policy.d.mts",
+
+    "src-server/services/orchestration/ownership-tree.ts",
+
+    "src-server/services/orchestration/cancellation-fence.ts",
+
+    "src-server/services/orchestration/__tests__/ownership-tree.test.ts",
+
+    "src-server/services/orchestration/__tests__/ownership-cascade.test.ts",
+
+    "src-server/services/orchestration/__tests__/cascade-stop-delivery.process.test.ts",
+
+    "src-server/services/orchestration/__tests__/cancellation-fence.test.ts",
+
+    "src-server/services/orchestration/__tests__/cancellation-fence-race.process.test.ts"
   ],
 
   "checks": [

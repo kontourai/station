@@ -192,7 +192,21 @@
 
     "src-server/tools/station-control-task-thread-tools.ts",
 
-    "src-server/services/projects/task-review-evidence.ts"
+    "src-server/services/projects/task-review-evidence.ts",
+
+    "src-server/services/orchestration/ownership-tree.ts",
+
+    "src-server/services/orchestration/cancellation-fence.ts",
+
+    "src-server/services/orchestration/__tests__/ownership-tree.test.ts",
+
+    "src-server/services/orchestration/__tests__/ownership-cascade.test.ts",
+
+    "src-server/services/orchestration/__tests__/cascade-stop-delivery.process.test.ts",
+
+    "src-server/services/orchestration/__tests__/cancellation-fence.test.ts",
+
+    "src-server/services/orchestration/__tests__/cancellation-fence-race.process.test.ts"
   ],
 
   "checks": [
