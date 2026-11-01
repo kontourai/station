@@ -431,6 +431,36 @@ function migrateStationHome(
   }
 }
 
+function isRealDirectory(path: string): boolean {
+  const stats = lstatSync(path);
+  return stats.isDirectory() && !stats.isSymbolicLink();
+}
+
+/**
+ * A prebuilt archive's CLI keeps the lifecycle records of an instance whose
+ * home is its own Station root in `<home>/state/<channel>/instances/`
+ * (packages/cli/src/commands/lifecycle-code-root.ts), and it can write them
+ * before the server's first boot gates the home. They describe processes, not
+ * home data, so a home holding only them is still a fresh home (#4381).
+ * Anything else under `state/`, or a link anywhere in it, is not.
+ */
+function isLifecycleStateScaffolding(stateDir: string): boolean {
+  if (!isRealDirectory(stateDir)) return false;
+  for (const channel of readdirSync(stateDir)) {
+    const channelDir = join(stateDir, channel);
+    if (!isRealDirectory(channelDir)) return false;
+    for (const entry of readdirSync(channelDir)) {
+      if (entry !== 'instances') return false;
+      const instancesDir = join(channelDir, entry);
+      if (!isRealDirectory(instancesDir)) return false;
+      for (const record of readdirSync(instancesDir)) {
+        if (lstatSync(join(instancesDir, record)).isSymbolicLink()) return false;
+      }
+    }
+  }
+  return true;
+}
+
 function isBootstrapScaffolding(homeDir: string): boolean {
   if (!existsSync(homeDir)) return true;
   for (const entry of readdirSync(homeDir)) {
@@ -455,6 +485,10 @@ function isBootstrapScaffolding(homeDir: string): boolean {
       } catch {
         // fall through to the refusal below
       }
+      return false;
+    }
+    if (entry === 'state') {
+      if (isLifecycleStateScaffolding(join(homeDir, entry))) continue;
       return false;
     }
     if (entry !== 'config') return false;

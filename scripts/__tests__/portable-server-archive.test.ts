@@ -33,6 +33,7 @@ import {
   PREBUILT_ARCHIVE_MARKER,
   readPortableNodeRuntime,
   resolvePortableServerTarget,
+  stageWindowsBirthHelper,
   stationCliBundleOptions,
 } from '../lib/portable-server-archive.mjs';
 import { SUPPORTED_NODE_MAJOR } from '../node-runtime-contract.mjs';
@@ -145,6 +146,66 @@ function fakeTarget(expectedBytes: string) {
 function responding(body: string, status = 200) {
   return vi.fn(async () => new Response(body, { status }));
 }
+
+describe('stageWindowsBirthHelper (#2805)', () => {
+  function fakeGuard() {
+    const directory = makeTempDir('fake-owned-guard-');
+    const path = join(directory, 'guard.exe');
+    writeFileSync(path, 'guard bytes');
+    return { path, cleanup: vi.fn() };
+  }
+  const BIRTH = '2026-10-31T10:00:00.1234560Z';
+
+  it('stages the compiled guard beside node.exe with its SHA-256', () => {
+    const runtime = makeTempDir('archive-runtime-');
+    const guard = fakeGuard();
+    const staged = stageWindowsBirthHelper(runtime, {
+      platform: 'win32',
+      build: () => guard,
+      run: () => `${BIRTH}
+`,
+      probeWithPowerShell: () => BIRTH,
+    });
+    expect(staged.helper).toBe(join(runtime, 'station-windows-owned-guard.exe'));
+    expect(readFileSync(staged.helper, 'utf8')).toBe('guard bytes');
+    expect(
+      readFileSync(
+        join(runtime, 'station-windows-owned-guard.exe.sha256'),
+        'utf8',
+      ),
+    ).toBe(
+      `${createHash('sha256').update('guard bytes').digest('hex')}
+`,
+    );
+    expect(guard.cleanup).toHaveBeenCalled();
+  });
+
+  it('refuses to build the archive when the helper disagrees with PowerShell', () => {
+    for (const powerShell of ['2026-10-31T10:00:00.1234570Z', null]) {
+      const guard = fakeGuard();
+      expect(() =>
+        stageWindowsBirthHelper(makeTempDir('archive-runtime-'), {
+          platform: 'win32',
+          build: () => guard,
+          run: () => BIRTH,
+          probeWithPowerShell: () => powerShell,
+        }),
+      ).toThrow(/disagrees with the PowerShell probe/);
+      expect(guard.cleanup).toHaveBeenCalled();
+    }
+  });
+
+  it('refuses to stage off Windows, where the guard cannot be compiled', () => {
+    const build = vi.fn();
+    expect(() =>
+      stageWindowsBirthHelper(makeTempDir('archive-runtime-'), {
+        platform: 'linux',
+        build,
+      }),
+    ).toThrow(/build it on a Windows host/);
+    expect(build).not.toHaveBeenCalled();
+  });
+});
 
 describe('portable server Node.js pin', () => {
   it('pins an exact release of the Node.js major the repository supports', () => {

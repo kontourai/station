@@ -87,4 +87,18 @@ describe('waitForTcpOk slow-boot extension (#2964)', () => {
     );
     expect(Date.now() - started).toBeLessThan(2_000);
   });
+
+  test('names the refusal when the connect error carries no message (#4382)', async () => {
+    // `localhost` resolves to ::1 and 127.0.0.1; a refusal on both arrives as
+    // an AggregateError whose message is empty, which printed `()`.
+    const port = await freePort();
+    const failure = await waitForTcpOk('localhost', port, 5_000, {
+      childAlive: () => false,
+    }).then(
+      () => null,
+      (error: Error) => error.message,
+    );
+    expect(failure).toContain('Managed server exited before TCP listener');
+    expect(failure).toMatch(/\(\S[^()]*\)$/);
+  });
 });

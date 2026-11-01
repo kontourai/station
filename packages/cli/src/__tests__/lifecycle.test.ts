@@ -1,4 +1,8 @@
-import { execSync as realExecSync, spawn } from 'node:child_process';
+import {
+  execSync as realExecSync,
+  type SpawnOptions,
+  spawn,
+} from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import {
@@ -2896,6 +2900,67 @@ describe('lifecycle instance state', () => {
       } finally {
         process.kill(siblingPid, 'SIGKILL');
       }
+    },
+    PROCESS_INTEGRATION_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'a server that exits before listening is reported with its logged cause and log path (#4382)',
+    async () => {
+      ensureDir(TEST_CWD);
+      ensureDir(TEST_ALT_HOME);
+      writeBuildManifest('fatal-boot');
+      const base = await reserveFreePortBase();
+      const fatal =
+        "STATION_HOME_RESET_REQUIRED: Station home 'x' uses an incompatible schema.";
+      const uiPid = await spawnLongRunning();
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(() => Promise.reject(new Error('ECONNREFUSED'))),
+      );
+      // The real server spawn options, so the child writes to the very log
+      // descriptor `start` opened for it, as a failing Station server does.
+      const serverSpawn = vi.fn(
+        (_command: string, _args: string[], options: SpawnOptions) =>
+          spawn(
+            process.execPath,
+            [
+              '-e',
+              `console.log('booting'); console.error(${JSON.stringify(fatal)}); process.exit(1)`,
+            ],
+            options,
+          ),
+      );
+      const { lifecycle } = await loadLifecycleModule({
+        childProcessMock: {
+          execSync: vi.fn(() => ''),
+          spawn: vi
+            .fn()
+            .mockImplementationOnce(serverSpawn)
+            .mockReturnValueOnce({ pid: uiPid, unref: vi.fn() }),
+        },
+      });
+      const failure = await lifecycle
+        .start({
+          baseDir: TEST_ALT_HOME,
+          host: '127.0.0.1',
+          instanceName: 'fatal-boot',
+          serverPort: base,
+          uiPort: base + 10,
+        })
+        .then(
+          () => null,
+          (error: Error) => error.message,
+        );
+      for (let i = 0; i < 40 && isAlive(uiPid); i++) {
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      expect(failure).toContain('Failed to start instance');
+      expect(failure).not.toMatch(/\(\)/);
+      expect(failure).toContain(`Cause: ${fatal}`);
+      expect(failure).toContain(
+        `Log: ${join(TEST_ALT_HOME, 'logs', 'station-fatal-boot.log')}`,
+      );
     },
     PROCESS_INTEGRATION_TEST_TIMEOUT_MS,
   );
@@ -9852,6 +9917,68 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
       expect(existsSync(join(TEST_CWD, '.station'))).toBe(false);
       expect(existsSync(join(SECOND_VERSION, '.station'))).toBe(false);
     } finally {
+      killSpy.mockRestore();
+    }
+  });
+
+  it('restarts an instance whose UI listener outlived its core server instead of reporting it running (#4002)', async () => {
+    ensurePrebuiltArchive();
+    ensureDir(TEST_ALT_HOME);
+    const [serverPid, uiPid] = [41341, 41342];
+    const dead = new Set<number>();
+    const killSpy = vi.spyOn(process, 'kill').mockImplementation(((
+      pid: number,
+      signal?: NodeJS.Signals | number,
+    ) => {
+      if (signal === 0 && dead.has(pid)) throw new Error('gone');
+      return true;
+    }) as typeof process.kill);
+    const killProcessTree = vi.fn((pid: number) => {
+      dead.add(pid);
+    });
+    const target = { baseDir: TEST_ALT_HOME, serverPort: 3292, uiPort: 5324 };
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      const first = await loadLifecycleModule({
+        childProcessMock: {
+          execSync: vi.fn(() => ''),
+          spawn: readyStartMocks([serverPid, uiPid]),
+        },
+        netConnectMock: makeReadyTcpConnectMock(),
+        platformOverrides: { killProcessTree, sleepSync: vi.fn() },
+      });
+      await first.lifecycle.start(target);
+      // `kill -9` of the core server; the UI listener keeps running.
+      dead.add(serverPid);
+      log.mockClear();
+
+      const restartSpawn = readyStartMocks([41343, 41344]);
+      const second = await loadLifecycleModule({
+        childProcessMock: { execSync: vi.fn(() => ''), spawn: restartSpawn },
+        netConnectMock: makeReadyTcpConnectMock(),
+        platformOverrides: { killProcessTree, sleepSync: vi.fn() },
+      });
+      await second.lifecycle.start(target);
+      const lines = log.mock.calls.map(([line]) => String(line));
+      expect(lines.some((line) => line.includes('Already running'))).toBe(
+        false,
+      );
+      expect(
+        lines.some((line) =>
+          line.includes(`server not running (pid ${serverPid}); restarting`),
+        ),
+      ).toBe(true);
+      // What remained of the old instance was stopped, then a new one started.
+      expect(killProcessTree).toHaveBeenCalledWith(uiPid);
+      expect(restartSpawn).toHaveBeenCalled();
+      const [record] = readdirSync(archiveStateDir(TEST_ALT_HOME));
+      expect(
+        JSON.parse(
+          readFileSync(join(archiveStateDir(TEST_ALT_HOME), record!), 'utf8'),
+        ).serverPid,
+      ).toBe(41343);
+    } finally {
+      log.mockRestore();
       killSpy.mockRestore();
     }
   });

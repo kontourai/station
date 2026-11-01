@@ -8,6 +8,10 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import {
+  ensureStationHomeSchemaSync,
+  stationHomeSchemaNeedsReset,
+} from '@kontourai/station-shared/station-home-schema';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import { resolveLifecycleInstanceId } from '../commands/helpers.js';
@@ -39,7 +43,7 @@ const RELEASE = {
 function tree({
   marker = PREBUILT_ARCHIVE_MARKER_CONTENT as string | null,
   release = RELEASE as unknown,
-  git = false,
+  git = false as boolean | 'empty-dir' | 'gitfile',
 } = {}) {
   const root = makeTempDir('station-prebuilt-archive-');
   writeFileSync(
@@ -49,7 +53,14 @@ function tree({
   if (marker !== null) {
     writeFileSync(join(root, PREBUILT_ARCHIVE_MARKER_FILENAME), marker);
   }
-  if (git) mkdirSync(join(root, '.git'));
+  if (git === 'gitfile') {
+    writeFileSync(join(root, '.git'), 'gitdir: /elsewhere/.git/worktrees/x
+');
+  } else if (git) {
+    mkdirSync(join(root, '.git'));
+    if (git === true) writeFileSync(join(root, '.git', 'HEAD'), 'ref: x
+');
+  }
   return root;
 }
 
@@ -65,6 +76,20 @@ describe('isPrebuiltArchiveRoot', () => {
 
   test('does not claim a checkout even when a marker is present', () => {
     expect(isPrebuiltArchiveRoot(tree({ git: true }))).toBe(false);
+    expect(isPrebuiltArchiveRoot(tree({ git: 'gitfile' }))).toBe(false);
+  });
+
+  test('an empty .git placeholder does not turn a signed archive into a checkout (#4380)', () => {
+    // Something running in an installed archive left an empty `.git/` in its
+    // root; `start` then read the archive as a source tree and tried to build
+    // it, with no sources to build.
+    const root = tree({ git: 'empty-dir' });
+    expect(isPrebuiltArchiveRoot(root)).toBe(true);
+    expect(resolveLifecycleCodeRoot(root)).toEqual({
+      kind: 'prebuilt-archive',
+      root,
+      release: RELEASE,
+    });
   });
 
   test('requires the exact marker and valid release provenance', () => {
@@ -149,6 +174,20 @@ describe('resolveLifecycleStateLocation', () => {
     vi.stubEnv('STATION_HOME', makeTempDir('station-ambient-home-'));
     expect(stateOf(raw)).toBe(join(raw, 'state', 'stable'));
     expect(stateOf(rooted)).toBe(join(rooted, '..', '..', 'state', 'stable'));
+  });
+
+  test("a new self-rooted home holding only the archive's own records still passes the home gate (#4381)", () => {
+    // `start --home=<new dir>` from an archive keeps its records inside that
+    // home; the server's first boot must still read the home as fresh.
+    const home = join(makeTempDir('station-new-home-'), 'home');
+    const { instanceStateDir } = resolveLifecycleStateLocation(
+      resolveLifecycleCodeRoot(tree()),
+      home,
+    );
+    mkdirSync(instanceStateDir, { recursive: true });
+    writeFileSync(join(instanceStateDir, 'instance-abc.json'), '{}');
+    expect(() => ensureStationHomeSchemaSync(home)).not.toThrow();
+    expect(stationHomeSchemaNeedsReset(home)).toBe(false);
   });
 
   test('keeps a source tree and an install.sh release tree exactly where they were', () => {

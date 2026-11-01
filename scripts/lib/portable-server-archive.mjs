@@ -23,6 +23,12 @@ import {
   packageTelemetryCompanion,
   verifyTelemetryCompanion,
 } from '../package-telemetry-companion.mjs';
+import {
+  lookupProcessBirthFingerprint,
+  WINDOWS_BIRTH_HELPER_DIGEST_FILENAME,
+  WINDOWS_BIRTH_HELPER_FILENAME,
+} from '../../packages/shared/src/process-identity.mjs';
+import { execFileSyncBounded } from './bounded-capture.mjs';
 import { stageBundledRegistry } from './bundled-registry.mjs';
 import { createPackagedReleaseManifest } from './container-release-metadata.mjs';
 import {
@@ -30,6 +36,7 @@ import {
   stageDesktopServerRuntime,
 } from './desktop-server-runtime.mjs';
 import { STATION_SERVER_EXTERNALS } from './server-build-config.mjs';
+import { buildWindowsOwnedGuard } from './windows-owned-guard-build.mjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const PORTABLE_NODE_RUNTIME_CONFIG = join(
@@ -259,6 +266,64 @@ function pruneNonRuntimeArtifacts(root) {
   }
 }
 
+/**
+ * Precompiles the Windows Job guard (scripts/windows-owned-guard.cs) into the
+ * archive's runtime/, beside node.exe, with the SHA-256 the runtime checks
+ * before it runs it (#2805). Its `--identity <pid>` replaces the cold
+ * PowerShell start of every process-birth probe. Compiled here, on the Windows
+ * runner that builds the Windows archive, and refused anywhere else: csc.exe
+ * is the .NET Framework compiler every Windows host carries. The staged helper
+ * must print exactly the PowerShell probe's birth for this process, or the
+ * archive is not built.
+ */
+export function stageWindowsBirthHelper(
+  runtimeDir,
+  {
+    build = buildWindowsOwnedGuard,
+    platform = process.platform,
+    // The builder's Node.js is the runner's, not an archive runtime, so this
+    // resolves no staged helper and runs the PowerShell probe.
+    probeWithPowerShell = (pid) =>
+      lookupProcessBirthFingerprint(pid, { timeoutMs: 60_000 }),
+    run = (file, args) =>
+      execFileSyncBounded(file, args, {
+        encoding: 'utf8',
+        timeout: 60_000,
+        windowsHide: true,
+      }),
+  } = {},
+) {
+  if (platform !== 'win32') {
+    throw new Error(
+      'The Windows archive stages a guard compiled on Windows; build it on a Windows host',
+    );
+  }
+  const compiled = build();
+  try {
+    const helper = join(runtimeDir, WINDOWS_BIRTH_HELPER_FILENAME);
+    cpSync(compiled.path, helper);
+    const digest = createHash('sha256')
+      .update(readFileSync(helper))
+      .digest('hex');
+    writeFileSync(
+      join(runtimeDir, WINDOWS_BIRTH_HELPER_DIGEST_FILENAME),
+      `${digest}\n`,
+    );
+    const helperBirth = String(
+      run(helper, ['--identity', String(process.pid)]),
+    ).trim();
+    const powerShellBirth = probeWithPowerShell(process.pid);
+    if (!powerShellBirth || helperBirth !== powerShellBirth) {
+      throw new Error(
+        `The staged birth helper disagrees with the PowerShell probe for pid ${process.pid}: ${JSON.stringify(helperBirth)} vs ${JSON.stringify(powerShellBirth)}`,
+      );
+    }
+    return { helper, digest };
+  } finally {
+    compiled.cleanup();
+  }
+}
+
 function stageLaunchers(projectRoot, stageRoot) {
   const source = join(projectRoot, LAUNCHER_SOURCE);
   const bin = join(stageRoot, 'bin');
@@ -410,7 +475,9 @@ function treeFootprint(root) {
  *   install.ps1             Windows archives only: the Windows installer
  *                           (#2675 slice W), carried for the same reason
  *   lib/station-cli.mjs     the lifecycle-capable Station CLI, bundled
- *   runtime/                the pinned, digest-verified official Node.js
+ *   runtime/                the pinned, digest-verified official Node.js;
+ *                           on Windows also the precompiled process-birth
+ *                           helper and its SHA-256 (#2805)
  *   .station-prebuilt-archive  tells the CLI there is nothing to build
  *   dist-server/            the server bundle, stamped with this provenance,
  *                           plus the station-build.json `station start` reads
@@ -483,6 +550,8 @@ async function stagePortableServerTree({
     rmSync(output, { recursive: true });
   }
   stageNodeRuntime(target, nodeDistributionBytes, join(stageRoot, 'runtime'));
+  if (target.platform === 'win32')
+    stageWindowsBirthHelper(join(stageRoot, 'runtime'));
   stageLaunchers(projectRoot, stageRoot);
   // As in a source release (whose tarball is the repository), the archive
   // carries the installer: packaged `station upgrade` re-runs it, so the

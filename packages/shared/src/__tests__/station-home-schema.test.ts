@@ -106,6 +106,49 @@ describe('stationHomeSchemaNeedsReset (station#1913)', () => {
   });
 });
 
+describe('archive lifecycle state in a self-rooted home (#4381)', () => {
+  function homeWithState(): string {
+    const home = makeHome();
+    const instances = join(home, 'state', 'nightly', 'instances');
+    mkdirSync(instances, { recursive: true });
+    writeFileSync(join(instances, 'instance-abc.json'), '{}');
+    return home;
+  }
+
+  it('bootstraps a home whose only content is the CLI lifecycle records', () => {
+    const home = homeWithState();
+    expect(stationHomeSchemaNeedsReset(home)).toBe(false);
+    ensureStationHomeSchemaSync(home, { acquireMutationLock: () => () => {} });
+    expect(existsSync(join(home, STATION_HOME_SCHEMA_FILE))).toBe(true);
+  });
+
+  it('still refuses home data hidden under state/', () => {
+    for (const extra of [
+      ['state', 'nightly', 'agents.json'],
+      ['state', 'loose.json'],
+    ]) {
+      const home = homeWithState();
+      writeFileSync(join(home, ...extra), '{}');
+      expect(stationHomeSchemaNeedsReset(home)).toBe(true);
+      expect(() =>
+        ensureStationHomeSchemaSync(home, {
+          acquireMutationLock: () => () => {},
+        }),
+      ).toThrow(StationHomeResetRequiredError);
+    }
+  });
+
+  it('still refuses a state/ tree that is a link', () => {
+    const home = makeHome();
+    const elsewhere = join(dirname(home), 'elsewhere');
+    mkdirSync(join(elsewhere, 'nightly', 'instances'), { recursive: true });
+    mkdirSync(home, { recursive: true });
+    // A junction needs no privilege on Windows; elsewhere the type is ignored.
+    symlinkSync(elsewhere, join(home, 'state'), 'junction');
+    expect(stationHomeSchemaNeedsReset(home)).toBe(true);
+  });
+});
+
 describe('portable installer data-root claim', () => {
   it('bootstraps a fresh home whose only content is the exact installer marker', () => {
     const home = makeHome();

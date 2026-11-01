@@ -1,15 +1,17 @@
 import type { ChildProcess } from 'node:child_process';
 import { execFile, spawn } from 'node:child_process';
 import {
+  lstatSync,
   mkdirSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, win32 } from 'node:path';
 import {
   closeChildWorkload,
   spawnChildWorkload,
@@ -22,6 +24,7 @@ import {
   probeExactProcessIdentity,
   processBirthPredatesCurrentBoot,
 } from '@kontourai/station-shared/process-identity';
+import { windowsSystemUtilityPath } from '@kontourai/station-shared/windows-system-utility';
 import { scrubBootInternalSecrets } from '../../utils/child-process-environment.js';
 import { createLogger } from '../../utils/logger.js';
 
@@ -78,11 +81,22 @@ async function runWindowsTaskkill(
   spawnProcess: typeof spawn,
   timeoutMs: number,
 ): Promise<void> {
-  const taskkill = spawnProcess(
-    'taskkill',
+  await runTaskkill(
     ['/pid', String(pid), '/t', ...(force ? ['/f'] : [])],
-    { stdio: 'ignore', windowsHide: true },
+    spawnProcess,
+    timeoutMs,
   );
+}
+
+async function runTaskkill(
+  args: string[],
+  spawnProcess: typeof spawn,
+  timeoutMs: number,
+): Promise<void> {
+  const taskkill = spawnProcess('taskkill', args, {
+    stdio: 'ignore',
+    windowsHide: true,
+  });
   await new Promise<void>((resolve, reject) => {
     let settled = false;
     const finish = (error?: Error) => {
@@ -290,10 +304,17 @@ interface OwnedProcessRecord {
   spawnedAt: string;
 }
 
-/** Directory holding one JSON record per spawned owned child. */
+/**
+ * Directory holding one JSON record per spawned owned child. On Windows it is
+ * the per-user `%LOCALAPPDATA%\Temp`, whatever `TEMP` names, because that is
+ * the location the Windows trust policy below accepts (#3873).
+ */
 function ownedProcessRegistryDir(env: NodeJS.ProcessEnv = process.env): string {
   const override = env[STATION_OWNED_PROCESS_REGISTRY_ENV];
   if (override && override.length > 0) return override;
+  if (process.platform === 'win32' && env.LOCALAPPDATA) {
+    return win32.join(env.LOCALAPPDATA, 'Temp', 'station-owned-processes');
+  }
   return join(tmpdir(), 'station-owned-processes');
 }
 
@@ -341,7 +362,9 @@ const REGISTRY_DIR_REQUIRED_MODE = 0o700;
 type RegistryTrustReason =
   | { kind: 'not-directory' }
   | { kind: 'foreign-owner'; ownerUid: number; ourUid: number }
-  | { kind: 'too-permissive'; mode: number };
+  | { kind: 'too-permissive'; mode: number }
+  | { kind: 'reparse-point' }
+  | { kind: 'outside-user-profile'; localAppData: string | null };
 
 /**
  * Pure trust evaluation over a stat-like object, extracted (archive#1863 fix
@@ -365,10 +388,77 @@ export function evaluateRegistryDirTrust(
   return null;
 }
 
+interface WindowsRegistryTrustFs {
+  lstat(path: string): { isDirectory(): boolean; isSymbolicLink(): boolean };
+  realpath(path: string): string;
+}
+
+const NODE_WINDOWS_REGISTRY_TRUST_FS: WindowsRegistryTrustFs = {
+  lstat: (path) => lstatSync(path),
+  realpath: (path) => realpathSync.native(path),
+};
+
+/**
+ * The Windows trust policy for the owned-process registry (#3873). Node
+ * synthesizes POSIX modes from the read-only attribute on Windows (a writable
+ * directory reads 0o666) and reports no owner, so the POSIX rule above can
+ * never pass there and says nothing about who may write the directory.
+ *
+ * Windows trusts the directory by location instead: it must be a real
+ * directory (not a junction, symlink or other reparse point) whose real path,
+ * with every link in its ancestry resolved, lies inside the current user's
+ * real `%LOCALAPPDATA%`. The profile's default ACL grants that tree to the
+ * user, SYSTEM and Administrators only, so another unprivileged principal
+ * cannot plant a record there; anyone who can is already able to run code as
+ * this user. A missing `LOCALAPPDATA` fails closed. Returns null when the
+ * directory is trustworthy, or the first failing reason.
+ */
+export function evaluateWindowsRegistryDirTrust(
+  registryDir: string,
+  localAppData: string | undefined,
+  fs: WindowsRegistryTrustFs = NODE_WINDOWS_REGISTRY_TRUST_FS,
+): RegistryTrustReason | null {
+  const stat = fs.lstat(registryDir);
+  if (stat.isSymbolicLink()) return { kind: 'reparse-point' };
+  if (!stat.isDirectory()) return { kind: 'not-directory' };
+  if (!localAppData || !win32.isAbsolute(localAppData)) {
+    return { kind: 'outside-user-profile', localAppData: null };
+  }
+  const profile = fs.realpath(localAppData).toLowerCase();
+  const actual = fs.realpath(registryDir).toLowerCase();
+  const relation = win32.relative(profile, actual);
+  if (
+    relation === '' ||
+    relation.startsWith('..') ||
+    win32.isAbsolute(relation)
+  ) {
+    return { kind: 'outside-user-profile', localAppData };
+  }
+  return null;
+}
+
 function registryDirIsTrustworthy(
   registryDir: string,
   log: (message: string, data?: unknown) => void,
 ): boolean {
+  if (process.platform === 'win32') {
+    let reason: RegistryTrustReason | null;
+    try {
+      reason = evaluateWindowsRegistryDirTrust(
+        registryDir,
+        process.env.LOCALAPPDATA,
+      );
+    } catch {
+      // Just vanished or unreadable — cannot trust, fail closed.
+      return false;
+    }
+    if (reason === null) return true;
+    log(
+      'owned-process registry: directory is not a real directory inside this user's %LOCALAPPDATA%; refusing to read or write it',
+      { registryDir, reason: reason.kind },
+    );
+    return false;
+  }
   let stat: ReturnType<typeof statSync>;
   try {
     stat = statSync(registryDir);
@@ -452,9 +542,7 @@ export function recordOwnedProcess(
   const registryDir =
     options.registryDir ?? ownedProcessRegistryDir(options.env);
   const log = options.log ?? (() => {});
-  if (process.platform === 'win32' || !ensureRegistryDir(registryDir, log)) {
-    // Windows has no POSIX process groups to recover through this registry.
-    // Node's synthetic mode bits cannot establish Windows ACL trust either.
+  if (!ensureRegistryDir(registryDir, log)) {
     // Fail closed: do not write into an untrusted directory. The spawn still
     // succeeds; the child is simply not sweep-protected. spawnOwnedChild
     // already swallows write failures for the same reason.
@@ -493,7 +581,6 @@ export function forgetOwnedProcess(
   enginePid: number,
   options: { registryDir?: string; env?: NodeJS.ProcessEnv } = {},
 ): void {
-  if (process.platform === 'win32') return;
   const registryDir =
     options.registryDir ?? ownedProcessRegistryDir(options.env);
   rmSync(recordFilePath(registryDir, enginePid), { force: true });
@@ -635,6 +722,135 @@ const listProcessGroupMembers: ProcessGroupLister = (pgid) =>
     );
   });
 
+/** A live Windows process, as `Win32_Process` reports it. */
+export interface WindowsProcessEntry {
+  pid: number;
+  ppid: number;
+  /** Creation time in microseconds since 1601-01-01 UTC (FILETIME / 10). */
+  createdUs: bigint;
+}
+
+/** Lists every live Windows process, or null when the table is unreadable. */
+export type WindowsProcessLister = () => Promise<WindowsProcessEntry[] | null>;
+
+/** Ends the given Windows pids, each on its own (never `/t`). */
+export type WindowsProcessKiller = (pids: number[]) => Promise<void>;
+
+const WINDOWS_PROCESS_LINE = /^\s*(\d+)\s+(\d+)\s+(\d+)\s*$/;
+const WINDOWS_PROCESS_TABLE_TIMEOUT_MS = 30_000;
+
+/**
+ * Parse `<pid> <ppid> <creation FILETIME>` lines. Null when any non-blank line
+ * is malformed: a partial table is never read as a complete one.
+ */
+export function parseWindowsProcessTable(
+  stdout: string,
+): WindowsProcessEntry[] | null {
+  const entries: WindowsProcessEntry[] = [];
+  for (const line of stdout.split(/\r?\n/)) {
+    if (line.trim() === '') continue;
+    const match = WINDOWS_PROCESS_LINE.exec(line);
+    if (!match) return null;
+    entries.push({
+      pid: Number(match[1]),
+      ppid: Number(match[2]),
+      createdUs: BigInt(match[3]!) / 10n,
+    });
+  }
+  return entries;
+}
+
+const listWindowsProcesses: WindowsProcessLister = () =>
+  new Promise((resolve) => {
+    let command: string;
+    try {
+      command = windowsSystemUtilityPath('powershell');
+    } catch {
+      resolve(null);
+      return;
+    }
+    execFile(
+      command,
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-Command',
+        "$ErrorActionPreference = 'Stop'; Get-CimInstance -ClassName Win32_Process | ForEach-Object { if ($null -ne $_.CreationDate) { '{0} {1} {2}' -f $_.ProcessId, $_.ParentProcessId, $_.CreationDate.ToFileTimeUtc() } }",
+      ],
+      {
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout: WINDOWS_PROCESS_TABLE_TIMEOUT_MS,
+        killSignal: 'SIGKILL',
+        maxBuffer: 16 * 1024 * 1024,
+      },
+      (error, stdout) => {
+        resolve(error ? null : parseWindowsProcessTable(stdout));
+      },
+    );
+  });
+
+const killWindowsProcesses: WindowsProcessKiller = (pids) =>
+  runTaskkill(
+    ['/f', ...pids.flatMap((pid) => ['/pid', String(pid)])],
+    spawn,
+    WINDOWS_PROCESS_TABLE_TIMEOUT_MS,
+  );
+
+const UNIX_EPOCH_FROM_1601_US = 11_644_473_600_000_000n;
+
+/** A Windows birth (`yyyy-MM-ddTHH:mm:ss.fffffffZ`) in µs since 1601 UTC. */
+export function windowsBirthMicroseconds(birth: string): bigint | null {
+  const match = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\.(\d{7})Z$/.exec(
+    birth,
+  );
+  if (!match) return null;
+  const milliseconds = Date.parse(`${match[1]}Z`);
+  if (!Number.isFinite(milliseconds)) return null;
+  return (
+    BigInt(milliseconds) * 1000n +
+    BigInt(match[2]!.slice(0, 6)) +
+    UNIX_EPOCH_FROM_1601_US
+  );
+}
+
+/**
+ * The engine and the descendants provably its own (#3873). Windows records a
+ * parent pid at creation and never updates it, so `taskkill /t` follows a
+ * stale parent pid into processes the engine never started: an old process
+ * whose parent died and whose pid the engine later reused. A child counts only
+ * when it was created no earlier than the parent it names, which an orphan of
+ * an earlier pid holder never is. Null when the engine is not in the table
+ * with its recorded birth.
+ */
+export function verifiedWindowsProcessTree(
+  enginePid: number,
+  engineBirth: string,
+  table: readonly WindowsProcessEntry[],
+): number[] | null {
+  const recorded = windowsBirthMicroseconds(engineBirth);
+  const engine = table.find((entry) => entry.pid === enginePid);
+  if (recorded === null || !engine || engine.createdUs !== recorded) {
+    return null;
+  }
+  const tree = [engine];
+  for (let index = 0; index < tree.length; index += 1) {
+    const parent = tree[index]!;
+    for (const child of table) {
+      if (
+        child.ppid === parent.pid &&
+        child.pid !== parent.pid &&
+        child.pid !== process.pid &&
+        child.createdUs >= parent.createdUs &&
+        !tree.includes(child)
+      ) {
+        tree.push(child);
+      }
+    }
+  }
+  return tree.map((entry) => entry.pid);
+}
+
 type DeadLeaderGroupOutcome =
   | { kind: 'empty' }
   | { kind: 'previous-boot' }
@@ -724,6 +940,10 @@ export async function sweepOrphanedOwnedProcesses(
     probeIdentity?: ProcessIdentityProbe;
     /** Test seam over {@link listProcessGroupMembers}. */
     listProcessGroup?: ProcessGroupLister;
+    /** Test seam over the Windows process table. */
+    listWindowsProcesses?: WindowsProcessLister;
+    /** Test seam over the Windows per-pid kill. */
+    killWindowsProcesses?: WindowsProcessKiller;
   } = {},
 ): Promise<OwnedProcessSweepResult> {
   const registryDir =
@@ -740,12 +960,8 @@ export async function sweepOrphanedOwnedProcesses(
     unverifiable: 0,
     survivingGroups: [],
   };
-  if (process.platform === 'win32') {
-    log(
-      'owned-process registry: POSIX orphan sweeping is unavailable on Windows; live-owner process-tree cleanup remains available',
-    );
-    return result;
-  }
+  const listWindowsTable = options.listWindowsProcesses ?? listWindowsProcesses;
+  const killWindows = options.killWindowsProcesses ?? killWindowsProcesses;
   // BLOCKING 2: never read a registry we do not own.
   if (!registryDirIsTrustworthy(registryDir, log)) {
     return result;
@@ -868,6 +1084,51 @@ export async function sweepOrphanedOwnedProcesses(
       }
     }
     // Identity confirmed: same pid, same birth fingerprint. The owner is gone.
+    if (process.platform === 'win32') {
+      // Windows has no process group to signal; reap the engine and only the
+      // descendants verified as its own (see verifiedWindowsProcessTree).
+      const table = await listWindowsTable();
+      const tree = table
+        ? verifiedWindowsProcessTree(
+            record.enginePid,
+            record.engineBirth,
+            table,
+          )
+        : null;
+      if (!tree) {
+        result.retained += 1;
+        log(
+          'owned-process sweep: Windows process tree unreadable or engine not in it; retaining',
+          { enginePid: record.enginePid },
+        );
+        continue;
+      }
+      try {
+        await killWindows(tree);
+      } catch (error) {
+        // Part of the tree may already have exited; the probe below decides.
+        log('owned-process sweep: taskkill reported a failure', {
+          enginePid: record.enginePid,
+          error: String(error),
+        });
+      }
+      if (probeIdentity(record.enginePid).state !== 'dead') {
+        result.retained += 1;
+        log('owned-process sweep: Windows engine survived taskkill', {
+          enginePid: record.enginePid,
+        });
+        continue;
+      }
+      result.reaped.push(record.enginePid);
+      log('owned-process sweep: reaped orphaned Windows engine tree', {
+        enginePid: record.enginePid,
+        pids: tree,
+        ownerPid: record.owner.pid,
+        command: record.command,
+      });
+      rmSync(file, { force: true });
+      continue;
+    }
     // Reap the whole process group.
     try {
       // Negative pid => signal the whole process group. A detached child's

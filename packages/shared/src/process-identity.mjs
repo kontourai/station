@@ -1,5 +1,6 @@
 import { execFile, execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { win32 } from 'node:path';
 import {
   windowsPowerShell7Path,
@@ -87,6 +88,86 @@ function windowsBirthStatements(pid) {
 
 function windowsCreationDateCommand(pid) {
   return windowsBirthStatements(pid).join('; ');
+}
+
+/**
+ * The precompiled Windows Job guard (scripts/windows-owned-guard.cs) a Windows
+ * archive stages beside its bundled `runtime\\node.exe` (#2805). Its
+ * `--identity <pid>` reads GetProcessTimes and prints the same canonical
+ * birth as the PowerShell probe, without PowerShell's cold start. The digest
+ * file the archive builder writes beside it names the exact bytes it staged.
+ */
+export const WINDOWS_BIRTH_HELPER_FILENAME = 'station-windows-owned-guard.exe';
+export const WINDOWS_BIRTH_HELPER_DIGEST_FILENAME = `${WINDOWS_BIRTH_HELPER_FILENAME}.sha256`;
+// The markers of the two trees that carry a bundled runtime: the archive
+// itself, and the install root its service launcher copies `runtime\\` into.
+const WINDOWS_BIRTH_HELPER_ROOT_MARKERS = [
+  '.station-prebuilt-archive',
+  '.station-portable-install-root',
+];
+
+let verifiedBirthHelper = null;
+
+/**
+ * The staged birth helper this process may run, or null to use PowerShell.
+ * Only the directory of the running Node.js is consulted, and only when that
+ * is the `runtime\\` of a Station archive or install root: never PATH, the
+ * environment or the working directory. The helper's SHA-256 must equal the
+ * staged digest; a missing, partial or replaced helper is not run.
+ */
+export function resolveWindowsBirthHelper(dependencies = {}) {
+  const execPath = dependencies.execPath ?? process.execPath;
+  const runtimeDir = win32.dirname(execPath);
+  if (win32.basename(runtimeDir).toLowerCase() !== 'runtime') return null;
+  const root = win32.dirname(runtimeDir);
+  const exists = dependencies.fileExists ?? existsSync;
+  if (
+    !WINDOWS_BIRTH_HELPER_ROOT_MARKERS.some((marker) =>
+      exists(win32.join(root, marker)),
+    )
+  ) {
+    return null;
+  }
+  const helper = win32.join(runtimeDir, WINDOWS_BIRTH_HELPER_FILENAME);
+  try {
+    const stats = statSync(helper);
+    if (!stats.isFile()) return null;
+    const key = `${helper}|${stats.size}|${stats.mtimeMs}`;
+    if (verifiedBirthHelper?.key === key) return verifiedBirthHelper.path;
+    const expected = readFileSync(
+      win32.join(runtimeDir, WINDOWS_BIRTH_HELPER_DIGEST_FILENAME),
+      'utf8',
+    ).trim();
+    const actual = createHash('sha256')
+      .update(readFileSync(helper))
+      .digest('hex');
+    if (!/^[0-9a-f]{64}$/.test(expected) || actual !== expected) return null;
+    verifiedBirthHelper = { key, path: helper };
+    return helper;
+  } catch {
+    return null;
+  }
+}
+
+function windowsBirthHelperProbe(pid, timeoutMs, dependencies) {
+  const helper = resolveWindowsBirthHelper(dependencies);
+  if (!helper) return null;
+  return {
+    command: helper,
+    args: ['--identity', String(pid)],
+    options: {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+      timeout: timeoutMs ?? PROCESS_BIRTH_FINGERPRINT_TIMEOUT_MS,
+      killSignal: 'SIGKILL',
+    },
+  };
+}
+
+/** A helper that could not be started at all, as opposed to one that ran. */
+function helperDidNotStart(error) {
+  return typeof error?.code === 'string' && error.code !== 'ETIMEDOUT';
 }
 
 // The retry shell's logical name in `ownProcessBirthProbeSchedule`. The probe
@@ -242,7 +323,30 @@ function windowsCreationDateFingerprint(
   shell,
   env,
   fileExists,
+  dependencies = {},
 ) {
+  // The default attempt runs the staged helper when one is verified; the
+  // PowerShell 7 retry, and a helper that cannot start, keep PowerShell.
+  const helper =
+    shell === undefined
+      ? windowsBirthHelperProbe(pid, timeoutMs, dependencies)
+      : null;
+  if (helper) {
+    try {
+      return canonicalOrRecord(
+        pid,
+        helper.command,
+        exec(helper.command, helper.args, helper.options),
+      );
+    } catch (error) {
+      recordProbeFailure(
+        pid,
+        helper.command,
+        describeProbeError(error, helper.options.timeout),
+      );
+      if (!helperDidNotStart(error)) throw error;
+    }
+  }
   const { command, args, options } = windowsCreationDateProbe(
     pid,
     timeoutMs,
@@ -271,7 +375,28 @@ async function windowsCreationDateFingerprintAsync(
   shell,
   env,
   fileExists,
+  dependencies = {},
 ) {
+  const helper =
+    shell === undefined
+      ? windowsBirthHelperProbe(pid, timeoutMs, dependencies)
+      : null;
+  if (helper) {
+    try {
+      return canonicalOrRecord(
+        pid,
+        helper.command,
+        await exec(helper.command, helper.args, helper.options),
+      );
+    } catch (error) {
+      recordProbeFailure(
+        pid,
+        helper.command,
+        describeProbeError(error, helper.options.timeout),
+      );
+      if (!helperDidNotStart(error)) throw error;
+    }
+  }
   const { command, args, options } = windowsCreationDateProbe(
     pid,
     timeoutMs,
@@ -498,6 +623,7 @@ export function lookupProcessBirthFingerprint(pid, dependencies = {}) {
         dependencies.windowsShell,
         dependencies.env,
         dependencies.fileExists,
+        dependencies,
       );
     }
     if (platform === 'linux') {
@@ -577,6 +703,7 @@ export async function lookupProcessBirthFingerprintAsync(
         dependencies.windowsShell,
         dependencies.env,
         dependencies.fileExists,
+        dependencies,
       );
     }
     if (platform === 'linux') {

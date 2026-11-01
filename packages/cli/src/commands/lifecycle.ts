@@ -21,6 +21,7 @@ import {
   openSync,
   readdirSync,
   readFileSync,
+  readSync,
   realpathSync,
   renameSync,
   rmSync,
@@ -1652,6 +1653,24 @@ function getInstanceServicePorts(
  */
 function isInstanceRunning(record: InstanceStateRecord): boolean {
   return isProcessAlive(record.serverPid) || isProcessAlive(record.uiPid);
+}
+
+/**
+ * Whether the record's core server is still running: its recorded pid is
+ * alive and, when the start captured a fingerprint, still the same process
+ * (a reused pid is not this server). For a supervised record the pid is the
+ * supervisor's, which owns the core while it lives. An identity that cannot
+ * be read counts as alive: only a proven absence may restart an instance.
+ *
+ * `isInstanceRunning` keeps its either-pid rule for `stop` and reclaim, so a
+ * half-dead instance stays stoppable; `start` asks this one before it reports
+ * an instance as already running (#4002).
+ */
+function isInstanceServerAlive(record: InstanceStateRecord): boolean {
+  if (!isProcessAlive(record.serverPid)) return false;
+  if (!record.serverFingerprint || !record.serverPid) return true;
+  const actual = inspectProcessFingerprint(record.serverPid);
+  return !actual || fingerprintMatchesRecorded(actual, record.serverFingerprint);
 }
 
 function notifyBuildUpdated(serverPort: number): void {
@@ -4554,8 +4573,13 @@ export async function waitForTcpOk(
         socket.setTimeout(Math.min(1_000, Math.max(1, deadline - Date.now())));
         socket.once('connect', () => finish({ ok: true }));
         socket.once('timeout', () => finish({ ok: false, failure: 'timeout' }));
-        socket.once('error', (error) =>
-          finish({ ok: false, failure: error.message }),
+        // A refused connection to a dual-stack name is an AggregateError
+        // with an empty message; report its code rather than `()` (#4382).
+        socket.once('error', (error: NodeJS.ErrnoException) =>
+          finish({
+            ok: false,
+            failure: error.message || error.code || error.name,
+          }),
         );
       },
     );
@@ -4632,12 +4656,22 @@ export async function start(opts: StartOptions = {}): Promise<void> {
   const hostedProbeHeaders = hostedProbeAuthority
     ? { Host: hostedProbeAuthority }
     : undefined;
-  const runningMatch = ensureSingleMatch(
+  let runningMatch = ensureSingleMatch(
     listRunningInstances({ projectHome }).filter((record) =>
       matchesSelector(record, normalizedSelector),
     ),
     'start',
   );
+  // A record whose UI listener outlived its core server is not running: it
+  // would answer "Already running" while nothing serves the API (#4002).
+  // Stop what remains, which also frees its ports, and start it afresh.
+  if (runningMatch && !isInstanceServerAlive(runningMatch)) {
+    console.log(
+      `Instance ${runningMatch.instanceId}: server not running (pid ${runningMatch.serverPid ?? 'unrecorded'}); restarting`,
+    );
+    stopRecord(runningMatch, false, 'recovery');
+    runningMatch = null;
+  }
   // The home schema gate runs in the logDirectoryIsInsideHome block below —
   // after the recursive mkdir, because the gate requires the home's parent to
   // exist and a custom --base path may have a multi-level missing ancestor
@@ -4723,6 +4757,9 @@ export async function start(opts: StartOptions = {}): Promise<void> {
 
   let serverStdio: any = 'ignore';
   let logDescriptor: number | null = null;
+  // Where this start's output begins in the (appended) log, so a failure can
+  // quote what this server printed and not an earlier run's (#4382).
+  let logStartOffset = 0;
   const requestedLogDirectory = dirname(logFile);
   const homeRelation = relative(resolve(projectHome), requestedLogDirectory);
   const logDirectoryIsInsideHome =
@@ -4812,6 +4849,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
       0o600,
     );
     const openedInfo = fstatSync(logDescriptor);
+    logStartOffset = openedInfo.size;
     if (!openedInfo.isFile()) {
       closeSync(logDescriptor);
       logDescriptor = null;
@@ -5307,7 +5345,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
     // tense is true when it prints.
     warnOnSharedHome(instanceId, projectHome);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = `${error instanceof Error ? error.message : String(error)}${describeStartFailureLog(logFile, logStartOffset)}`;
     try {
       stop({ generation });
     } catch (cleanupError) {
@@ -5324,6 +5362,56 @@ export async function start(opts: StartOptions = {}): Promise<void> {
       cause: error,
     });
   }
+}
+
+/** How much of the log's end a start failure reads for its cause. */
+const START_FAILURE_LOG_TAIL_BYTES = 64 * 1024;
+const START_FAILURE_CAUSE_PATTERN =
+  /(?:STATION_[A-Z_]+|[A-Z][A-Za-z]*Error|FATAL|Fatal|fatal)/;
+
+/**
+ * The cause and the log path a failed start prints (#4382). A server that
+ * exits before listening states why only in its log, so quote the last line
+ * there that reads like a fatal error, from this start's output only, and say
+ * where the rest is. Best effort: an unreadable log still names its path.
+ */
+function describeStartFailureLog(
+  logFile: string,
+  startOffset: number,
+): string {
+  let cause: string | undefined;
+  try {
+    const descriptor = openSync(
+      logFile,
+      fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0),
+    );
+    try {
+      const size = fstatSync(descriptor).size;
+      const from = Math.max(startOffset, size - START_FAILURE_LOG_TAIL_BYTES);
+      const buffer = Buffer.alloc(Math.max(0, size - from));
+      const read = readSync(descriptor, buffer, 0, buffer.length, from);
+      const lines = buffer
+        .subarray(0, read)
+        .toString('utf8')
+        .split(/
+?
+/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+      cause = lines
+        .reverse()
+        .find((line) => START_FAILURE_CAUSE_PATTERN.test(line));
+    } finally {
+      closeSync(descriptor);
+    }
+  } catch {
+    // The path below is still the place to look.
+  }
+  const shown =
+    cause && cause.length > 500 ? `${cause.slice(0, 500)}…` : cause;
+  return `${shown ? `
+  Cause: ${shown}` : ''}
+  Log: ${logFile}`;
 }
 
 function loadHostedTenantRegistryForLifecycle():

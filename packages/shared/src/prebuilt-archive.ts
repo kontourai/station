@@ -125,13 +125,32 @@ export const PREBUILT_ARCHIVE_MARKER_FILENAME = '.station-prebuilt-archive';
 export const PREBUILT_ARCHIVE_MARKER_CONTENT = 'station-prebuilt-archive-v1\n';
 
 /**
+ * Whether `root` holds a git checkout: a `.git` gitfile (a linked worktree or
+ * submodule) or a `.git` directory with a `HEAD`. A bare directory named
+ * `.git` is not one. Something running in an installed archive can leave an
+ * empty `.git/` placeholder in its root, and reading that as a checkout made
+ * `start` try to build an archive that carries no sources (#4380).
+ */
+function holdsGitCheckout(root: string): boolean {
+  const gitPath = join(root, '.git');
+  let stats: ReturnType<typeof lstatSync>;
+  try {
+    stats = lstatSync(gitPath);
+  } catch {
+    return false;
+  }
+  if (!stats.isDirectory()) return true;
+  return existsSync(join(gitPath, 'HEAD'));
+}
+
+/**
  * The release provenance of a prebuilt archive root, or null for anything
  * else: marker, valid release provenance, and no checkout.
  */
 export function readPrebuiltArchiveRelease(
   root: string,
 ): PackagedReleaseManifest | null {
-  if (existsSync(join(root, '.git'))) return null;
+  if (holdsGitCheckout(root)) return null;
   try {
     if (
       readFileSync(join(root, PREBUILT_ARCHIVE_MARKER_FILENAME), 'utf-8') !==

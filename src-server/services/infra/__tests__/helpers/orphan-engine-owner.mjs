@@ -32,7 +32,7 @@ if (!gcFile) {
 const engineScript = `
 const { spawn } = require('node:child_process');
 process.on('SIGTERM', () => {});
-const gc = spawn(process.execPath, ['-e', 'setInterval(() => {}, 86400000)'], { stdio: 'ignore' });
+const gc = spawn(process.execPath, ['-e', 'setInterval(() => {}, 86400000)'], { stdio: 'ignore', windowsHide: true });
 process.stdout.write(String(gc.pid));
 setInterval(() => {}, 86400000);
 `;
@@ -40,6 +40,7 @@ setInterval(() => {}, 86400000);
 const engine = spawn(process.execPath, ['-e', engineScript], {
   stdio: ['ignore', 'pipe', 'inherit'],
   detached: true,
+  windowsHide: true,
 });
 
 engine.stdout.once('data', (chunk) => {
