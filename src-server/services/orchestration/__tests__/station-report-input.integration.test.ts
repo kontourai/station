@@ -13,11 +13,15 @@ import {
   readReportGroupResult,
   syncReportGroupAfterInput,
 } from '@kontourai/station-sdk/client';
+import { prepareFileMutationOwner } from '@kontourai/station-shared/lifecycle-events';
 import { Hono } from 'hono';
 import { onTestFinished, test, vi } from 'vitest';
 import { createGateTestRegistry } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { StationAgentAdapter } from '../../../providers/adapters/station-agent-adapter.js';
 import { createReportGroupRoutes } from '../../../routes/orchestration/report-groups.js';
+import { isRuntimePublicationParticipant } from '../../../runtime/bootstrap/runtime-publication-participant.js';
+import { StationRuntime } from '../../../runtime/bootstrap/station-runtime.js';
+import * as inputRuntimeOwner from '../../../runtime/mcp/report-input-runtime.js';
 import {
   bindRuntimeLocalOperator,
   getRuntimeAuthenticatedRequestPrincipal,
@@ -25,6 +29,7 @@ import {
 } from '../../../security/runtime-request-security.js';
 import { createLogger } from '../../../utils/logger.js';
 import { ApprovalRegistry } from '../../approvals/approval-registry.js';
+import { HomeWriterOwner } from '../../ssh/home-writer-owner.js';
 import { StationDelegationPersistence } from '../delegation-group-persistence.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
@@ -45,13 +50,109 @@ import {
   controlledTextStream,
 } from './delegation-source-fixtures/streamed-text.js';
 
+function useAdvancingHistoricalClock(startAt: number) {
+  const OriginalDate = Date;
+  const started = performance.now();
+  const now = () => startAt + Math.floor(performance.now() - started);
+  vi.stubGlobal(
+    'Date',
+    new Proxy(OriginalDate, {
+      construct(target, args, newTarget) {
+        return Reflect.construct(
+          target,
+          args.length ? args : [now()],
+          newTarget,
+        );
+      },
+      apply() {
+        return new OriginalDate(now()).toString();
+      },
+      get(target, key, receiver) {
+        return key === 'now' ? now : Reflect.get(target, key, receiver);
+      },
+    }),
+  );
+}
+
+function publicationFor(h: Awaited<ReturnType<typeof setup>>) {
+  const runtime = new StationRuntime({ projectHomeDir: h.f.home });
+  const participant = Reflect.get(runtime, 'runtimePublicationParticipant');
+  assert.ok(isRuntimePublicationParticipant(participant));
+  const abort = new AbortController();
+  const operations: Promise<unknown>[] = [];
+  const inputErrors: unknown[] = [];
+  const createInput = inputRuntimeOwner.createReportInputRuntime;
+  const inputObserver = vi
+    .spyOn(inputRuntimeOwner, 'createReportInputRuntime')
+    .mockImplementation((...args) => {
+      const actual = createInput(...args);
+      return Object.assign(
+        (...input: Parameters<typeof actual>) => {
+          const pending = actual(...input);
+          void pending.catch((error: unknown) => {
+            inputErrors.push(error);
+          });
+          return pending;
+        },
+        { close: () => actual.close() },
+      );
+    });
+
+  onTestFinished(async () => {
+    abort.abort();
+    const failures: unknown[] = [];
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        Promise.allSettled(operations),
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(
+            () =>
+              reject(Error('Owned input operation did not settle after abort')),
+            5000,
+          );
+        }),
+      ]);
+    } catch (error) {
+      failures.push(error);
+    } finally {
+      if (timer) clearTimeout(timer);
+      inputObserver.mockRestore();
+    }
+    try {
+      await runtime.shutdown();
+    } catch (error) {
+      failures.push(error);
+    }
+    if (failures.length)
+      throw new AggregateError(
+        failures,
+        'Input fixture cleanup is unconfirmed',
+      );
+  });
+  return {
+    participant,
+    inputFailure: () => inputErrors[0],
+    inputCreated: () => inputObserver.mock.calls.length,
+    signal: abort.signal,
+    track: (operation: Promise<unknown>) => {
+      operations.push(operation);
+    },
+    context: () => {
+      const request = new Request(h.f.req, { signal: abort.signal });
+      const principal = getRuntimeAuthenticatedRequestPrincipal(h.f.req);
+      assert.ok(principal);
+      setRuntimeAuthenticatedRequestPrincipal(request, principal);
+      bindRuntimeLocalOperator(request);
+      return h.f.context(request);
+    },
+  };
+}
+
 test('funded three-seat mixed-model report serves input, member results and accounting through HTTP and SDK', async () => {
   const h = await setup('local-grant', NOW);
-  vi.useFakeTimers({ toFake: ['Date'] });
-  vi.setSystemTime(NOW);
-  onTestFinished(() => {
-    vi.useRealTimers();
-  });
+  vi.spyOn(Date, 'now').mockRestore();
+  useAdvancingHistoricalClock(NOW);
   installControl(h);
   await h.f.storage.saveProviderConnection({
     id: 'google-1',
@@ -140,10 +241,13 @@ test('funded three-seat mixed-model report serves input, member results and acco
           },
         );
   });
+  const operation = publicationFor(h);
+  const publicationParticipant = operation.participant;
   const runtime = new StationReportGroupRuntime({
     runtime: h.preparationOwners.runtime,
     orchestration,
     rawFetch: h.rawFetch,
+    publicationParticipant,
   });
   let runtimeFailure: unknown;
   const create = runtime.create.bind(runtime);
@@ -211,6 +315,7 @@ test('funded three-seat mixed-model report serves input, member results and acco
     },
   };
   const options = {
+    signal: operation.signal,
     credential: h.f.paired.credential,
     credentialOrigin: 'http://report-control.test',
     headers: { 'X-Test-Operator': 'yes' },
@@ -227,6 +332,8 @@ test('funded three-seat mixed-model report serves input, member results and acco
     throw failure;
   });
   void running.catch(() => {});
+  operation.track(running);
+  let inputFailure: unknown;
   let opened:
     | Extract<
         ReturnType<EventStore['listEvents']>[number]['payload'],
@@ -235,15 +342,43 @@ test('funded three-seat mixed-model report serves input, member results and acco
     | undefined;
   await vi.waitFor(
     () => {
-      if (failure) throw failure;
-      const event = starts.mock.calls
-        .flatMap(([started]) => eventStore.listEvents(started.threadId))
-        .find(({ payload }) => payload.method === 'request.opened')?.payload;
-      if (event?.method !== 'request.opened') throw Error('No canonical input');
+      if (failure) {
+        inputFailure = failure;
+        return;
+      }
+      const observed = starts.mock.calls.flatMap(([entry]) =>
+        eventStore.listEvents(entry.threadId),
+      );
+      const rejected = observed.find(
+        ({ payload }) => payload.method === 'runtime.error',
+      )?.payload;
+      if (rejected?.method === 'runtime.error') {
+        inputFailure = Error(
+          `Input runtime refused (${rejected.code ?? 'unclassified'}): ${rejected.message}`,
+          { cause: operation.inputFailure() },
+        );
+        return;
+      }
+      const event = observed.find(
+        ({ payload }) => payload.method === 'request.opened',
+      )?.payload;
+      if (event?.method !== 'request.opened')
+        throw Error(
+          `No canonical input: ${JSON.stringify({
+            starts: starts.mock.calls.length,
+            rawFetch: h.rawFetch.mock.calls.length,
+            inputCreated: operation.inputCreated(),
+            events: starts.mock.calls
+              .flatMap(([entry]) => eventStore.listEvents(entry.threadId))
+              .slice(-12)
+              .map(({ payload }) => payload.method),
+          })}`,
+        );
       opened = event;
     },
     { timeout: 60000 },
   );
+  if (inputFailure) throw inputFailure;
   assert.ok(opened);
   await orchestration.dispatch({
     type: 'respondToRequest',
@@ -315,13 +450,9 @@ test('funded three-seat mixed-model report serves input, member results and acco
 }, 240000);
 
 test('explicit report input crosses real Flow dispatch, canonical answer and retained accounting once', async () => {
-  const now = NOW + 2_000;
-  const h = await setup('local-grant', now);
-  vi.useFakeTimers({ toFake: ['Date'] });
-  vi.setSystemTime(now);
-  onTestFinished(() => {
-    vi.useRealTimers();
-  });
+  const h = await setup('local-grant', NOW);
+  vi.spyOn(Date, 'now').mockRestore();
+  useAdvancingHistoricalClock(NOW);
   installControl(h);
   const flow = await createReportFlow(h.f, 'input-intent', [
     { id: 'right', requiredEvidence: true },
@@ -369,10 +500,13 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
           cache_creation_input_tokens: 0,
         }),
   );
+  const operation = publicationFor(h);
+  const publicationParticipant = operation.participant;
   const runtime = new StationReportGroupRuntime({
     runtime: h.preparationOwners.runtime,
     orchestration,
     rawFetch: h.rawFetch,
+    publicationParticipant,
   });
   const input = {
     ...h.input,
@@ -397,13 +531,17 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
     },
   };
   await assert.rejects(
-    () => runtime.create(h.f.context(), { ...input, continuation: undefined }),
+    () =>
+      runtime.create(operation.context(), {
+        ...input,
+        continuation: undefined,
+      }),
     /report_input_continuation_required/,
   );
   let failure: unknown;
   let settled: Awaited<ReturnType<typeof runtime.create>> | undefined;
   const running = runtime
-    .create(h.f.context(), input)
+    .create(operation.context(), input)
     .then((value) => {
       settled = value;
       return value;
@@ -412,6 +550,8 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
       failure = error;
       return null;
     });
+  operation.track(running);
+  let inputFailure: unknown;
   let opened:
     | Extract<
         ReturnType<EventStore['listEvents']>[number]['payload'],
@@ -420,16 +560,47 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
     | undefined;
   await vi.waitFor(
     () => {
-      if (failure) throw failure;
-      if (settled) throw Error('Report returned before opening its question');
-      const event = starts.mock.calls
-        .flatMap(([input]) => eventStore.listEvents(input.threadId))
-        .find(({ payload }) => payload.method === 'request.opened')?.payload;
-      if (event?.method !== 'request.opened') throw Error('No canonical input');
+      if (failure) {
+        inputFailure = failure;
+        return;
+      }
+      if (settled) {
+        inputFailure = Error('Report returned before opening its question');
+        return;
+      }
+      const observed = starts.mock.calls.flatMap(([entry]) =>
+        eventStore.listEvents(entry.threadId),
+      );
+      const rejected = observed.find(
+        ({ payload }) => payload.method === 'runtime.error',
+      )?.payload;
+      if (rejected?.method === 'runtime.error') {
+        inputFailure = Error(
+          `Input runtime refused (${rejected.code ?? 'unclassified'}): ${rejected.message}`,
+          { cause: operation.inputFailure() },
+        );
+        return;
+      }
+      const event = observed.find(
+        ({ payload }) => payload.method === 'request.opened',
+      )?.payload;
+      if (event?.method !== 'request.opened')
+        throw Error(
+          `No canonical input: ${JSON.stringify({
+            starts: starts.mock.calls.length,
+            rawFetch: h.rawFetch.mock.calls.length,
+            inputCreated: operation.inputCreated(),
+            events: starts.mock.calls
+              .flatMap(([entry]) => eventStore.listEvents(entry.threadId))
+              .slice(-12)
+              .map(({ payload }) => payload.method),
+          })}`,
+        );
       opened = event;
     },
     { timeout: 60000 },
   );
+  if (inputFailure) throw inputFailure;
   assert.ok(opened);
   await orchestration.dispatch({
     type: 'respondToRequest',
@@ -505,7 +676,7 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
   );
   assert.ok(!JSON.stringify(publicResult).includes('Current source only'));
   assert.ok(!('inputReceipt' in publicResult));
-  const replay = await runtime.create(h.f.context(), input);
+  const replay = await runtime.create(operation.context(), input);
   assert.equal(replay.replayed, true);
   assert.equal(h.rawFetch.mock.calls.length, 2);
   assert.equal(starts.mock.calls.length, 2);
@@ -625,6 +796,7 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
     vi.fn<typeof fetch>(async (url, init) => app.fetch(new Request(url, init))),
   );
   const options = {
+    signal: operation.signal,
     credential: h.f.paired.credential,
     credentialOrigin: 'http://127.0.0.1:43979',
     headers: { 'X-Test-Operator': 'yes' },
@@ -642,21 +814,77 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
     ),
   );
   assert.equal(h.rawFetch.mock.calls.length, 2);
+  const writer = await HomeWriterOwner.forHome(h.f.home);
+  const probe = await prepareFileMutationOwner(
+    join(h.f.home, 'security', '.home-writer.mutation'),
+  );
+  onTestFinished(() => probe.close());
+  const ownership: Array<{
+    domain: 'group' | 'authority';
+    phase: 'body' | 'return';
+    physical: string;
+    bound: boolean;
+  }> = [];
+  const retiredBindings: Array<() => void> = [];
+  const observeOwnership = async (
+    domain: 'group' | 'authority',
+    phase: 'body' | 'return',
+    scope: Parameters<StationDelegationPersistence['roundsStore']>[2],
+  ) => {
+    const attempt = probe.tryAcquire();
+    if (attempt.kind === 'acquired') await attempt.lease.release();
+    ownership.push({ domain, phase, physical: attempt.kind, bound: !!scope });
+    if (scope) {
+      scope.owner.runWithLease(scope.lease, () => undefined);
+      retiredBindings.push(() =>
+        scope.owner.runWithLease(scope.lease, () => undefined),
+      );
+    }
+  };
+  const authorityStore =
+    StationDelegationPersistence.prototype.roundsAuthorityStore;
+  const authorityObserver = vi
+    .spyOn(StationDelegationPersistence.prototype, 'roundsAuthorityStore')
+    .mockImplementation(function (this: StationDelegationPersistence, ...args) {
+      const actual = authorityStore.apply(this, args);
+      return {
+        ...actual,
+        transact: async (id, body) => {
+          const result = await actual.transact(id, async (previous) => {
+            const next = await body(previous);
+            await observeOwnership('authority', 'body', args[2]);
+            return next;
+          });
+          await observeOwnership('authority', 'return', args[2]);
+          return result;
+        },
+      };
+    });
+  onTestFinished(() => authorityObserver.mockRestore());
+  let loseAdoption = true;
   const rounds = StationDelegationPersistence.prototype.roundsStore;
   const lostAdoption = vi
     .spyOn(StationDelegationPersistence.prototype, 'roundsStore')
-    .mockImplementation(function (this: StationDelegationPersistence, current) {
-      const store = rounds.call(this, current);
+    .mockImplementation(function (this: StationDelegationPersistence, ...args) {
+      const store = rounds.apply(this, args);
       return {
-        transact: (id, body) =>
-          store.transact(id, async (previous) => {
+        transact: async (id, body) => {
+          const result = await store.transact(id, async (previous) => {
             const next = await body(previous);
-            if (next.journal.events.at(-1)?.kind === 'grant_adopted')
+            await observeOwnership('group', 'body', args[2]);
+            if (
+              loseAdoption &&
+              next.journal.events.at(-1)?.kind === 'grant_adopted'
+            )
               throw Error('controlled lost adoption commit');
             return next;
-          }),
+          });
+          await observeOwnership('group', 'return', args[2]);
+          return result;
+        },
       };
     });
+  onTestFinished(() => lostAdoption.mockRestore());
   await assert.rejects(
     narrowReportGroupAfterInput(
       'http://127.0.0.1:43979',
@@ -665,7 +893,7 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
       options,
     ),
   );
-  lostAdoption.mockRestore();
+  loseAdoption = false;
   const held = await persistence.readReportExecution(
     result.group.groupId,
     result.group.groupId,
@@ -679,6 +907,7 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
       runtime: h.preparationOwners.runtime,
       orchestration,
       rawFetch: h.rawFetch,
+      publicationParticipant,
     }),
   );
   const load = StationReportGroupCustody.prototype.loadIntentForMutation;
@@ -785,6 +1014,33 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
     ).authority?.epochs.length,
     2,
   );
+  authorityObserver.mockRestore();
+  lostAdoption.mockRestore();
+  for (const domain of ['group', 'authority'] as const)
+    for (const phase of ['body', 'return'] as const)
+      assert.ok(
+        ownership.some(
+          (entry) => entry.domain === domain && entry.phase === phase,
+        ),
+        `actual ${domain} store ${phase} was observed`,
+      );
+  assert.ok(
+    ownership.every((entry) => entry.physical === 'busy'),
+    `renewal and adoption must own Home through store return: ${JSON.stringify(ownership)}`,
+  );
+  assert.ok(
+    ownership.every((entry) => entry.bound),
+    'renewal and adoption stores must bind the exact Home lease',
+  );
+  for (const late of retiredBindings)
+    assert.throws(late, {
+      name: 'HomeWriterUnavailableError',
+      reason: 'borrow-unavailable',
+    });
+  const released = probe.tryAcquire();
+  assert.equal(released.kind, 'acquired');
+  if (released.kind === 'acquired') await released.lease.release();
+  writer.runSynchronous(() => undefined);
   const checkpoint = await readReportGroupContextCheckpoint(
     'http://127.0.0.1:43979',
     result.group.groupId,
@@ -1040,6 +1296,7 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
     runtime: h.preparationOwners.runtime,
     orchestration: reopened,
     rawFetch: h.rawFetch,
+    publicationParticipant,
   });
   const recovered = await historicalReader.result(
     h.f.context(requestFor(h, 'GET')),

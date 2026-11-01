@@ -3493,3 +3493,51 @@ and must not be assigned the same cause without evidence. Shutdown retention is
 reported rather than suppressed. Historical failures remain available; no renewal
 implementation repair, finalizer enablement, runtime/provider/device qualification,
 push or PR follows from this checkpoint.
+
+## Preparation fences and actual input admission refusal
+
+The initial execution candidate now separates request/lease currentness from
+whole-group preparation validation at internal persistence reads. Full preparation
+still guards the real store body and physical commit, business authorization and
+final fetch. The optional transaction preparation check runs at acquisition and
+after the underlying group store fulfills. Its per-scope return marker is sticky;
+returning an authority-store read cannot advance it. Consumers without this hook
+retain their existing store/currentness behavior. Full metadata post-work checks
+preserve `returned-cleanup-unknown` when work returned before the check failed.
+
+The focused selection passes 14 controls: the eight prior execution modes and
+fault cases, five Home-exclusion cases, and one new Flow-backed source-witness
+control. That control reads the actual persisted admission, follows the join
+member's envelope to its signed source receipt, and atomically replaces the receipt
+with identical bytes at a different inode after the real group store returns. It
+observes the committed create with no attempts/provider calls and requires
+`returned-cleanup-unknown` caused by `snapshot_receipt_changed`. A later generic
+refusal or merely observing zero provider calls is insufficient. Clean mutation
+proof of the new hook remains pending; this checkpoint is not delivery readiness.
+
+Both actual input cases still fail before the renewal/adoption oracle. The direct
+case now retains the real inner cause: `HomeWriterUnavailableError` with `busy`
+and `operationRan: false`, from the input authorization callback's bare
+`finalizeCurrent` reaching synchronous Home admission. That is an explicit caller
+composition gap. Do not weaken fair admission, hold Home across MCP/human waits,
+or lend another seat's scope to hide it. The three-seat HTTP timeout remains a
+separate observation.
+
+The diagnostic fixture uses a historical clock that advances with real elapsed
+time and keeps timers real. A current wall-clock control refuses the expired
+sealed-provider contract before runtime work; it does not qualify current provider
+support. Instrumented profiles attribute most time to repeated authority and
+preparation validation, with overlapping totals; they do not prove an unbiased
+performance improvement or a same-invocation lock cycle.
+
+A distinct source-metadata scope has only been audited as a proposal. It must not
+silently narrow the existing `withHome` contract; authoritative writes must keep
+checked commits, synchronous post-check failures need uncertainty classification,
+and input admission plus MCP cleanup custody require separate actual controls.
+The audit found failed input cleanup in a private retry bucket without demonstrated
+runtime-publication cleanup registration. That inherited resource gap is reasoned,
+not an executed shutdown proof. Full boot/storage, current funded provider,
+browser/device, main integration, semantic documentation freshness and final
+combined review remain open. No capability/finalizer was enabled and no push or PR
+was made. Current upstream includes the Activity cold-load render-loop repair;
+it must be integrated normally before final browser qualification.

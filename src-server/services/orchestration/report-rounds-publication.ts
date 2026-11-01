@@ -46,6 +46,8 @@ export interface ReportRoundsPublication {
     input: HomeScopeInput & {
       groupId: string;
       build(scope: ReportRoundsScope): ScopedFacades;
+      /** Facades fence body/commit; this also checks acquisition and store return. */
+      assertPreparationCurrent?(scope: ReportRoundsScope): undefined;
     },
   ): DelegationRoundsTransactionOwner;
 }
@@ -243,11 +245,33 @@ export async function withReportRoundsPublication<T>(
             throw new HomeWriterUnavailableError('identity-unavailable');
           const held = await acquireHome(options);
           try {
+            const checkPreparation = options.assertPreparationCurrent;
+            const assertPrepared = (): undefined => {
+              held.scope.current();
+              if (checkPreparation)
+                held.scope.check(() => checkPreparation(held.scope));
+              return undefined;
+            };
+            let storeReturned = false;
+            const assertCurrent = (): undefined =>
+              storeReturned ? assertPrepared() : held.scope.current();
+            assertPrepared();
             const facades = build(held.scope);
-            held.scope.current();
+            assertPrepared();
+            const store: typeof facades.store = checkPreparation
+              ? {
+                  ...facades.store,
+                  transact: async (id, body) => {
+                    const value = await facades.store.transact(id, body);
+                    storeReturned = true;
+                    return value;
+                  },
+                }
+              : facades.store;
             return {
               ...facades,
-              assertCurrent: held.scope.current,
+              store,
+              assertCurrent,
               release: held.release,
             };
           } catch (error) {

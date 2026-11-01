@@ -13,6 +13,7 @@ import {
   createDelegationRoundsController,
   type DelegationRoundsHost,
   type DelegationRoundsSpec,
+  DelegationRoundsTransactionUncertainError,
   type RoundSeat,
 } from '@kontourai/flow-agents/delegation-group-rounds';
 import { canonicalJson, type ModelRuntime } from '@kontourai/relay';
@@ -134,6 +135,12 @@ export class StationReportGroupExecution {
         requestCurrent();
         return undefined;
       };
+      const metadataCurrent = (): undefined =>
+        this.owners.environment.withCurrentAuthority(() => {
+          current();
+          signal.throwIfAborted();
+          return undefined;
+        });
       const sourceCurrent = (): undefined =>
         this.owners.environment.withCurrentAuthority(() => {
           requestCurrent();
@@ -144,6 +151,16 @@ export class StationReportGroupExecution {
       const executionCurrent = (): undefined => {
         publication?.assertCurrent();
         return sourceCurrent();
+      };
+      const assertReturnedPreparation = (scope: ReportRoundsScope): void => {
+        try {
+          scope.check(executionCurrent);
+        } catch (error) {
+          throw new DelegationRoundsTransactionUncertainError(
+            'returned-cleanup-unknown',
+            [error],
+          );
+        }
       };
       const retained = new Map<string, Retained>();
       const invocation = new AsyncLocalStorage<{
@@ -165,14 +182,15 @@ export class StationReportGroupExecution {
       const schedule = await readSchedule();
       await requestWriter.runRequest(signal, current);
       const build = (scope?: ReportRoundsScope) => {
-        const current =
-          scope?.current ??
-          (() => {
-            requestCurrent();
-            publication?.assertCurrent();
-            return undefined;
-          });
-        const preparationCurrent = scope?.current ?? executionCurrent;
+        const current = scope
+          ? () => scope.check(executionCurrent)
+          : () => {
+              requestCurrent();
+              publication?.assertCurrent();
+              return undefined;
+            };
+        const transactionCurrent = scope?.current ?? current;
+        const preparationCurrent = scope ? current : executionCurrent;
         const check = <Value>(body: () => Value): Value =>
           scope
             ? scope.check(body)
@@ -246,9 +264,13 @@ export class StationReportGroupExecution {
         };
         const launch: PreparedReservedFinalFetchOwners = {
           protocol: 'rounds-v1',
-          groups: persistence.roundsStore(current, preparationCurrent, scope),
+          groups: persistence.roundsStore(
+            transactionCurrent,
+            preparationCurrent,
+            scope,
+          ),
           authorities: persistence.roundsAuthorityStore(
-            current,
+            transactionCurrent,
             preparationCurrent,
             scope,
           ),
@@ -273,15 +295,18 @@ export class StationReportGroupExecution {
                     ) => Promise<Value>,
                   ): Promise<Value> =>
                     publication.withHome(
-                      { owner: requestWriter, current: sourceCurrent },
-                      (scope): Promise<Value> => {
+                      { owner: requestWriter, current: metadataCurrent },
+                      async (scope): Promise<Value> => {
+                        scope.check(executionCurrent);
                         const scoped: PreparedReservedFinalFetchOwners =
                           build(scope).launch;
-                        return body(scope, {
+                        const value = await body(scope, {
                           groups: scoped.groups,
                           authorities: scoped.authorities,
                           host: scoped.host,
                         });
+                        assertReturnedPreparation(scope);
+                        return value;
                       },
                     ),
                   withHome: <Value>(
@@ -856,8 +881,13 @@ export class StationReportGroupExecution {
       ): Promise<Value> =>
         publication
           ? publication.withHome(
-              { owner: requestWriter, current: sourceCurrent },
-              (scope) => work(build(scope)),
+              { owner: requestWriter, current: metadataCurrent },
+              async (scope) => {
+                scope.check(executionCurrent);
+                const value = await work(build(scope));
+                assertReturnedPreparation(scope);
+                return value;
+              },
             )
           : work(base);
       const service: typeof base.service = publication
@@ -950,7 +980,8 @@ export class StationReportGroupExecution {
               transactionOwner: publication.transactionOwner({
                 groupId,
                 owner: requestWriter,
-                current: sourceCurrent,
+                current: metadataCurrent,
+                assertPreparationCurrent: () => executionCurrent(),
                 build: (scope) => {
                   const scoped = build(scope);
                   return {
