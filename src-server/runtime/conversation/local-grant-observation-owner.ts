@@ -11,6 +11,10 @@ import {
   ProviderCredentialObservationError,
 } from './provider-credential-observation.js';
 
+export type LocalGrantObservationAdmission = <Value>(
+  check: () => Value,
+) => Promise<Value>;
+
 type ExistingLease = ReturnType<
   CurrentLocalGrantObservationOwner['requireCurrentLocalGrant']
 >;
@@ -43,8 +47,15 @@ export function captureEnvironmentLocalGrantObservationOwner(
   boundRequest: Request,
   environment: EnvironmentSecurityService,
   security: CurrentRuntimeRequestPrincipalSecurity,
+  admit?: LocalGrantObservationAdmission,
 ): Promise<EnvironmentLocalGrantObservationOwner> {
-  return captureExistingLocalGrant(boundRequest, environment, security, 'POST');
+  return captureExistingLocalGrant(
+    boundRequest,
+    environment,
+    security,
+    'POST',
+    admit,
+  );
 }
 
 /** Read custody only. This interface cannot issue an SDK credential/source lease. */
@@ -52,6 +63,7 @@ export async function captureEnvironmentLocalGrantReadOwner(
   request: Request,
   environment: EnvironmentSecurityService,
   security: CurrentRuntimeRequestPrincipalSecurity,
+  admit?: LocalGrantObservationAdmission,
 ): Promise<
   Readonly<{
     hostContextId: string;
@@ -63,8 +75,11 @@ export async function captureEnvironmentLocalGrantReadOwner(
     environment,
     security,
     'GET',
+    admit,
   );
-  const lease = owner.requireCurrentLocalGrant(request);
+  const lease = admit
+    ? await admit(() => owner.requireCurrentLocalGrant(request))
+    : owner.requireCurrentLocalGrant(request);
   const read = {
     hostContextId: lease.hostContextId,
     assertCurrent: () => {
@@ -80,6 +95,7 @@ async function captureExistingLocalGrant(
   environment: EnvironmentSecurityService,
   security: CurrentRuntimeRequestPrincipalSecurity,
   method: 'POST' | 'GET',
+  admit?: LocalGrantObservationAdmission,
 ): Promise<EnvironmentLocalGrantObservationOwner> {
   try {
     if (
@@ -109,15 +125,19 @@ async function captureExistingLocalGrant(
         )
           refuse();
       });
-    requirePrincipal();
+    if (admit) await admit(requirePrincipal);
+    else requirePrincipal();
     const before = await environment.readExistingRecord();
-    requirePrincipal();
+    if (admit) await admit(requirePrincipal);
+    else requirePrincipal();
     const environmentId = before.environmentId;
     const binding = JSON.stringify([
       'station.provider-credential-observation.host-context.v1',
       environmentId,
     ]);
-    const witness = environment.signRevisionEvidenceAuthorityBinding(binding);
+    const sign = () =>
+      environment.signRevisionEvidenceAuthorityBinding(binding);
+    const witness = admit ? await admit(sign) : sign();
     // The signer rechecks its own current ID but does not return that ID.
     // A reset between the async read and first sign could otherwise sign an
     // OLD captured ID with the NEW key and appear stable to a closure.
@@ -140,7 +160,8 @@ async function captureExistingLocalGrant(
         refuse();
       }
     };
-    assertCurrent();
+    if (admit) await admit(assertCurrent);
+    else assertCurrent();
     return Object.freeze({
       withObservationScope<T>(request: Request, check: () => T): T {
         if (request !== boundRequest) refuse();

@@ -16,6 +16,7 @@ import {
   type RuntimeFencedCredentialObservationOwners,
 } from '../../runtime/conversation/runtime-fenced-credential-observation.js';
 import { createSealedProviderPreparation } from '../../runtime/conversation/sealed-provider-preparation.js';
+import { HomeWriterOwner } from '../ssh/home-writer-owner.js';
 import {
   type PreparedReservedFinalFetchOwners,
   RoundsFinalFetchLaunchFence,
@@ -28,6 +29,7 @@ import {
   createPreparedSdkSourceWireOwner,
   disposeSdkSourceWire,
   inspectSdkSourceWire,
+  retireSdkSourceWire,
   sdkDisposalPromise,
 } from './delegation-group-sdk-source-wire-owner.js';
 import type {
@@ -36,6 +38,10 @@ import type {
 } from './delegation-group-source-admission.js';
 import { assertSynchronous } from './delegation-group-wire-intent-store.js';
 import type { OrchestrationService } from './orchestration-service.js';
+import type {
+  ReportRoundsPublication,
+  ReportRoundsScope,
+} from './report-rounds-publication.js';
 import { reportAdmissionSignature } from './station-report-group-admission.js';
 import { signReportContinuationTurn } from './station-report-group-cancellation.js';
 import type { StationReportGroupCustody } from './station-report-group-custody.js';
@@ -149,12 +155,19 @@ export class StationReportRetainedTurns {
     seatId: string,
     expectedEnvelope: DelegationEnvelopeV2,
     syncInput: { runId: string; text: string },
+    publication?: ReportRoundsPublication,
   ) {
-    return this.#capture(context, groupId, seatId, {
-      kind: 'sync',
-      envelope: expectedEnvelope,
-      sync: structuredClone(syncInput),
-    });
+    return this.#capture(
+      context,
+      groupId,
+      seatId,
+      {
+        kind: 'sync',
+        envelope: expectedEnvelope,
+        sync: structuredClone(syncInput),
+      },
+      publication,
+    );
   }
 
   async prepareReport(
@@ -163,12 +176,19 @@ export class StationReportRetainedTurns {
     seatId: string,
     expectedEnvelope: DelegationEnvelopeV2,
     request: ModelInvocationRequest,
+    publication?: ReportRoundsPublication,
   ) {
-    return this.#capture(context, groupId, seatId, {
-      kind: 'report',
-      envelope: expectedEnvelope,
-      request: structuredClone(request),
-    });
+    return this.#capture(
+      context,
+      groupId,
+      seatId,
+      {
+        kind: 'report',
+        envelope: expectedEnvelope,
+        request: structuredClone(request),
+      },
+      publication,
+    );
   }
 
   async prepareRenewalCandidate(
@@ -210,11 +230,32 @@ export class StationReportRetainedTurns {
           request: ModelInvocationRequest;
         }
       | { kind: 'renewal'; removeInput: boolean },
+    publication?: ReportRoundsPublication,
   ) {
     const sync = intent.kind === 'sync' ? intent.sync : undefined;
     const environment = this.owners.runtime.environmentSecurityService;
     const { custody, orchestration, sources, persistence } = this.owners;
-    const loaded = await custody.loadIntentForMutation(context, groupId);
+    const writer = await HomeWriterOwner.forHome(
+      environment.getProjectHomeDir(),
+    );
+    const admit = <Value>(check: () => Value): Promise<Value> =>
+      publication
+        ? publication.withHome(
+            {
+              owner: writer,
+              current: () => {
+                context.req.raw.signal.throwIfAborted();
+                return undefined;
+              },
+            },
+            async (scope) => scope.check(check),
+          )
+        : writer.runRequest(context.req.raw.signal, check);
+    const loaded = await custody.loadIntentForMutation(
+      context,
+      groupId,
+      publication,
+    );
     const epoch = loaded.authority?.epochs.at(-1);
     const seat = loaded.group?.spec.seats.find((s) => s.seatId === seatId);
     const grant = loaded.group?.grants.envelopes.find(
@@ -248,12 +289,17 @@ export class StationReportRetainedTurns {
       request,
       this.owners.runtime.environmentSecurityService,
       this.owners.runtime.requestSecurity,
+      admit,
     );
-    const lease = authority.requireCurrentLocalGrant(request);
-    const principal = createOrchestrationRequestPrincipalResolver({
-      environmentSecurityService:
-        this.owners.runtime.environmentSecurityService,
-    })(context);
+    const lease = await admit(() =>
+      authority.requireCurrentLocalGrant(request),
+    );
+    const principal = await admit(() =>
+      createOrchestrationRequestPrincipalResolver({
+        environmentSecurityService:
+          this.owners.runtime.environmentSecurityService,
+      })(context),
+    );
     const principalId = root.authenticated_principal_ref.id;
     if (principal.id !== principalId) refuse();
     if (lease.hostContextId !== root.issuer_host_id) refuse();
@@ -280,6 +326,8 @@ export class StationReportRetainedTurns {
     const selected = await this.#credentials.captureAgentSdkCredential(
       request,
       original.agentId,
+      undefined,
+      admit,
     );
     if (
       intent.kind === 'renewal' &&
@@ -304,9 +352,11 @@ export class StationReportRetainedTurns {
       if (Date.now() >= loaded.intent.deadlineAt) refuse();
       return undefined;
     };
-    current();
-    sessionCurrent();
-    qualification.assertSelection(selected.provider, selected.modelId);
+    await admit(() => {
+      current();
+      sessionCurrent();
+      qualification.assertSelection(selected.provider, selected.modelId);
+    });
     if (selected.modelId !== member.requestedModelId) refuse();
     const subject = { groupId, workItemId: member.reservedTaskId };
     const source =
@@ -332,8 +382,10 @@ export class StationReportRetainedTurns {
             loaded.intent.flow.runId,
           )
         : undefined;
-      current();
-      sessionCurrent();
+      await admit(() => {
+        current();
+        sessionCurrent();
+      });
       const outputDelivery = reservedStationSessionOutputDelivery(
         session,
         scope,
@@ -405,10 +457,11 @@ export class StationReportRetainedTurns {
         owner,
       );
       sdk = { owner, sdkHandle: prepared.sdkHandle };
-      const { wireDigest, quote, contract, sourceBinding } =
-        inspectSdkSourceWire(owner, prepared.sdkHandle);
-      current();
-      sessionCurrent();
+      const { wireDigest, quote, contract, sourceBinding } = await admit(() => {
+        current();
+        sessionCurrent();
+        return inspectSdkSourceWire(owner, prepared.sdkHandle);
+      });
       const runtime = reference('station.sealed-sdk.runtime.v2', seatId, {
         agentId: selected.agentId,
         provider: selected.provider,
@@ -468,8 +521,7 @@ export class StationReportRetainedTurns {
         if (closed) return;
         closed = true;
         sources.releaseSnapshot(source.capability);
-        disposeSdkSourceWire(owner, prepared.sdkHandle);
-        await sdkDisposalPromise(owner, prepared.sdkHandle);
+        await retireSdkSourceWire(owner, prepared.sdkHandle);
       };
       return {
         provider: selected.provider,
@@ -510,6 +562,15 @@ export class StationReportRetainedTurns {
             assertCurrent();
             return undefined;
           };
+          const reportHome = launch.reportHome;
+          const withHome = reportHome?.withHome;
+          const invokeCurrent = reportHome?.invokeCurrent;
+          if (!withHome || !invokeCurrent) refuse();
+          const withMetadata = <Value>(
+            body: (
+              scope: Pick<ReportRoundsScope, 'current' | 'check'>,
+            ) => Promise<Value>,
+          ): Promise<Value> => withHome(finalizeCurrent, body);
           const reservation = {
             groupId,
             controller: loaded.group!.spec.controller,
@@ -534,57 +595,72 @@ export class StationReportRetainedTurns {
             { ...reservation, expectedWireDigest: wireDigest },
             signal,
           );
-          sessionCurrent();
+          await withMetadata(async (scope) => scope.check(sessionCurrent));
           const clientTurnId = `report-continuation:${randomUUID()}`;
-          const port = prepareReservedStationTurn(
-            { ...scope, clientTurnId, input: brief, modelId: selected.modelId },
-            {
-              persistence,
-              sdkOwner: owner,
-              sdkHandle: prepared.sdkHandle,
-              assertSessionCurrent: sessionCurrent,
-              transport: {
-                launch: boundLaunch,
-                reservation,
-                contract: contract,
-                provider: selected.provider,
-                signal,
-                now: Date.now,
-                maxResponseBytes: 1024 * 1024,
-              },
-            },
-            session,
-          );
-          const sessionReceipt = recipient.sessionReceipt;
-          if (sessionReceipt.domain !== 'station.reserved-session.v1') refuse();
-          const continuationTurn = signReportContinuationTurn(
-            {
-              groupId,
-              seatId,
-              invocationId,
-              hostId: scope.environmentId,
-              principalId,
-              admissionSignature: reportAdmissionSignature(
-                loaded.admission,
-                environment,
-              ),
-              taskId: member.reservedTaskId,
-              clientTurnId,
-              recipient: {
-                ...recipient,
-                sessionReceipt: {
-                  ...sessionReceipt,
-                  domain: sessionReceipt.domain,
+          const port = await withMetadata(async (homeScope) => {
+            const publicationCurrent = (): undefined =>
+              homeScope.check(assertLaunchCurrent);
+            const launchMetadata = homeScope.check(() => {
+              assertLaunchCurrent();
+              const port = prepareReservedStationTurn(
+                {
+                  ...scope,
+                  clientTurnId,
+                  input: brief,
+                  modelId: selected.modelId,
                 },
-              },
-            },
-            environment,
-          );
-          await persistence.retainReportContinuationTurn(
-            continuationTurn,
-            assertLaunchCurrent,
-          );
-          assertLaunchCurrent();
+                {
+                  persistence,
+                  sdkOwner: owner,
+                  sdkHandle: prepared.sdkHandle,
+                  assertSessionCurrent: sessionCurrent,
+                  transport: {
+                    launch: boundLaunch,
+                    reservation,
+                    contract: contract,
+                    provider: selected.provider,
+                    signal,
+                    now: Date.now,
+                    maxResponseBytes: 1024 * 1024,
+                  },
+                },
+                session,
+              );
+              const sessionReceipt = recipient.sessionReceipt;
+              if (sessionReceipt.domain !== 'station.reserved-session.v1')
+                refuse();
+              const continuationTurn = signReportContinuationTurn(
+                {
+                  groupId,
+                  seatId,
+                  invocationId,
+                  hostId: scope.environmentId,
+                  principalId,
+                  admissionSignature: reportAdmissionSignature(
+                    loaded.admission,
+                    environment,
+                  ),
+                  taskId: member.reservedTaskId,
+                  clientTurnId,
+                  recipient: {
+                    ...recipient,
+                    sessionReceipt: {
+                      ...sessionReceipt,
+                      domain: sessionReceipt.domain,
+                    },
+                  },
+                },
+                environment,
+              );
+              return { port, continuationTurn };
+            });
+            await persistence.retainReportContinuationTurn(
+              launchMetadata.continuationTurn,
+              publicationCurrent,
+            );
+            publicationCurrent();
+            return launchMetadata.port;
+          });
           const sent = await orchestration.dispatchWithReceipt(
             {
               type: 'sendTurn',
@@ -602,6 +678,11 @@ export class StationReportRetainedTurns {
               delegationGroupAdmission: {
                 assertCurrent: assertLaunchCurrent,
                 signal,
+                invokeCurrent: <Value>(
+                  invoke: (
+                    check: <Result>(work: () => Result) => Result,
+                  ) => Promise<Value>,
+                ) => invokeCurrent(finalizeCurrent, invoke),
               },
             },
           );

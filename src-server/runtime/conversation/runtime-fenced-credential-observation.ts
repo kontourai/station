@@ -12,7 +12,10 @@ import {
 import type { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
 import { resolveManagedModelIdentity } from '../plugins/runtime-provider-resolution.js';
 import type { RuntimeContext } from '../types.js';
-import { captureEnvironmentLocalGrantObservationOwner } from './local-grant-observation-owner.js';
+import {
+  captureEnvironmentLocalGrantObservationOwner,
+  type LocalGrantObservationAdmission,
+} from './local-grant-observation-owner.js';
 import {
   type ObservedSdkProviderCredential,
   type ProviderCredentialObservation,
@@ -169,6 +172,7 @@ export class RuntimeFencedCredentialObservationOwner {
     request: Request,
     agentId: string,
     sessionCapability?: StationControlSourceCredentialAuthority,
+    admit?: LocalGrantObservationAdmission,
   ): Promise<
     Readonly<{
       agentId: string;
@@ -198,6 +202,7 @@ export class RuntimeFencedCredentialObservationOwner {
           request,
           owners.environmentSecurityService,
           owners.requestSecurity,
+          admit,
         );
     const assertCurrent = () => {
       if (
@@ -212,13 +217,16 @@ export class RuntimeFencedCredentialObservationOwner {
       if (session) session.assertCurrent();
       else authority!.requireCurrentLocalGrant(request).assertCurrent();
     };
-    assertCurrent();
+    if (admit) await admit(assertCurrent);
+    else assertCurrent();
     const spec = await owners.agentService.getAgent(id);
-    assertCurrent();
+    if (admit) await admit(assertCurrent);
+    else assertCurrent();
     if (session && spec.project !== session.projectSlug) refuse();
     if (spec.execution?.agentConnectionId) refuse();
     const appConfig = await owners.configLoader.loadAppConfig();
-    assertCurrent();
+    if (admit) await admit(assertCurrent);
+    else assertCurrent();
     const connections = owners.storageAdapter.listProviderConnections();
     const inventory = canonicalJson(connections);
     const binding = resolveManagedModelIdentity(spec, {
@@ -235,14 +243,20 @@ export class RuntimeFencedCredentialObservationOwner {
         provider,
       },
       sessionCapability,
+      admit,
     );
-    assertCurrent();
+    if (admit) await admit(assertCurrent);
+    else assertCurrent();
     if (
       canonicalJson(owners.storageAdapter.listProviderConnections()) !==
       inventory
     )
       refuse();
-    readObservedSdkProviderCredential(credential, provider, request);
+    if (admit)
+      await admit(() =>
+        readObservedSdkProviderCredential(credential, provider, request),
+      );
+    else readObservedSdkProviderCredential(credential, provider, request);
     return Object.freeze({
       agentId: id,
       provider,
@@ -263,6 +277,7 @@ export class RuntimeFencedCredentialObservationOwner {
       lifetimeMs?: number;
     }>,
     sessionCapability?: StationControlSourceCredentialAuthority,
+    admit?: LocalGrantObservationAdmission,
   ): Promise<ObservedSdkProviderCredential> {
     const owners = this.#owners;
     const provider = input.provider;
@@ -312,7 +327,8 @@ export class RuntimeFencedCredentialObservationOwner {
         configurationCurrent();
         runtimeCurrent();
       };
-      assertCurrent();
+      if (admit) await admit(assertCurrent);
+      else assertCurrent();
       const session = sessionCapability
         ? readStationControlSourceCredentialAuthority(
             sessionCapability,
@@ -326,6 +342,7 @@ export class RuntimeFencedCredentialObservationOwner {
             request,
             owners.environmentSecurityService,
             owners.requestSecurity,
+            admit,
           );
       const authority = sessionCapability
         ? {
@@ -333,7 +350,8 @@ export class RuntimeFencedCredentialObservationOwner {
             capability: sessionCapability,
           }
         : local!;
-      assertCurrent();
+      if (admit) await admit(assertCurrent);
+      else assertCurrent();
       if (session) {
         if (
           selected.agentIds.length !== 1 ||
@@ -341,7 +359,8 @@ export class RuntimeFencedCredentialObservationOwner {
         )
           refuse();
         const agent = await owners.agentService.getAgent(selected.agentIds[0]!);
-        assertCurrent();
+        if (admit) await admit(assertCurrent);
+        else assertCurrent();
         session.assertCurrent();
         if (
           agent.project !== session.projectSlug ||
@@ -349,7 +368,8 @@ export class RuntimeFencedCredentialObservationOwner {
         )
           refuse();
         const appConfig = await owners.configLoader.loadAppConfig();
-        assertCurrent();
+        if (admit) await admit(assertCurrent);
+        else assertCurrent();
         session.assertCurrent();
         const binding = resolveManagedModelIdentity(agent, {
           appConfig,
@@ -374,28 +394,37 @@ export class RuntimeFencedCredentialObservationOwner {
       let credential: ObservedSdkProviderCredential | undefined;
       const receipt = await owners.runtime.commitAgentConfigurationRead(
         revision,
-        () => {
-          if (!active || entered || this.#captureAttempts >= 4096) refuse();
-          assertCurrent();
-          if (session) session.assertMayCapture();
-          else local!.requireCurrentLocalGrant(request).assertCurrent();
-          entered = true;
-          this.#captureAttempts++;
-          credential = store.captureSdkCredential(
-            request,
-            operation.connectionId,
-            operation.lifetimeMs,
-          );
-          readObservedSdkProviderCredential(credential, provider, request);
-          assertCurrent();
-          return Promise.resolve(credential);
+        async () => {
+          const select = () => {
+            if (!active || entered || this.#captureAttempts >= 4096) refuse();
+            assertCurrent();
+            if (session) session.assertMayCapture();
+            else local!.requireCurrentLocalGrant(request).assertCurrent();
+            entered = true;
+            this.#captureAttempts++;
+            credential = store.captureSdkCredential(
+              request,
+              operation.connectionId,
+              operation.lifetimeMs,
+            );
+            readObservedSdkProviderCredential(credential, provider, request);
+            assertCurrent();
+            return credential;
+          };
+          return admit ? admit(select) : select();
         },
       );
-      assertCurrent();
+      if (admit) await admit(assertCurrent);
+      else assertCurrent();
       if (!entered || credential === undefined || receipt !== credential)
         refuse();
-      readObservedSdkProviderCredential(credential, provider, request);
-      return credential;
+      const captured = credential;
+      if (admit)
+        await admit(() =>
+          readObservedSdkProviderCredential(captured, provider, request),
+        );
+      else readObservedSdkProviderCredential(captured, provider, request);
+      return captured;
     } catch {
       return refuse();
     } finally {

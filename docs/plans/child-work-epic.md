@@ -3305,3 +3305,74 @@ input/context journey still need their own qualification. Accumulated review
 freshness and generated MCP equality remain separate documentation obligations.
 Report capabilities and finalizers remain disabled; no new live provider,
 native, browser, physical-device, hosted or whole-epic readiness follows here.
+
+
+## Returning continuation and active cancellation checkpoint
+
+Returning sync/report now requires the authentic runtime publication parent and
+rebuilds each transaction's group store, V3 authority service and host from its
+exact HomeWriter lease. Metadata reads and request/credential checkpoints use
+separate short admissions. Actual provider dispatch and adapter waits stay outside
+the held home and synchronous borrowed spans. Initial execution also forwards its
+publication through lookup and authorization cleanup.
+
+The retained continuation turn checks the exact reserved Session before signing,
+in the persistence guard and after the store returns. The real Session-replacement
+control reproduced a stale durable row before the repair; the repaired caller
+refuses without that row. Context ACK remains exact-byte agreement rather than
+proof of model memory.
+
+Active cancellation separates signed intent and ACK publication from the adapter
+wait. Final effect admission rechecks the original turn and current authority.
+A terminal must follow the captured start and match its invocation; replacement,
+missing-terminal and revoked-authority cases refuse. Completion, plain abort and
+explicit physical-termination uncertainty retain their distinct result meanings.
+Initially missing targets and dormant owned targets refuse, while ordinary user
+interrupt behavior remains unchanged. Owned cancellation cannot arm a deferred
+interrupt when its adapter is missing. An unknown/no-ACK intent never authorizes
+another effect. Held adapter replies retain runtime custody even after a terminal
+ACK; shutdown and Home maintenance remain blocked until their cleanup can join.
+
+A real SDK body-reader hold plus Home retirement fault reproduced the continuation
+caller's cleanup hang. Returning close now joins the existing retryable retirement
+attempt while retaining the final disposal proof and runtime cleanup child. A second
+caller control reproduced cleanup replacing a primary publication error. All close
+attempts are now joined; a failed body remains the first error when cleanup also
+fails, and a returned body followed by cleanup failure reports explicit transaction
+uncertainty. The committed-sync control verifies `returned-cleanup-unknown` and
+same-command replay without another provider call.
+
+The combined continuation, cooperative-stop and service selection passed 663 cases.
+A later owned-coalescing control reproduced two incorrect joins, for a replacement
+turn and a replacement invocation. The repair matches the pending stop's exact
+captured target while retaining same-target joining. Its expanded owner selection
+passed 38 cases. The final returning-caller and stop-owner selection passed all 46
+cases, including eight real caller variants, with scoped server-test types passing.
+The earlier regression failures remain evidence; no timeout was widened.
+
+Independent Opus source review found no P1/P2 in the preceding fix round and named
+the coalescing and cleanup-status gaps subsequently addressed above. That review
+ran no checks and omitted the scoped server instructions; it is bounded evidence,
+not final combined-source approval. The final small delta remains subject to the
+later combined review. Exact clean-tree mutations of this continuation/cancellation
+candidate are still required; the earlier sync-finalization mutations do not cover
+it. Unknown adapter effects remain intentionally retained. Synchronous observer
+coverage and configuration-timeout observation retention remain review limits.
+
+Renewal, continuation finalization, authenticated public-parent borrowing,
+checkpoint/input and accounting lifetimes, full-boot storage dependency retention,
+the funded mixed-family input/context journey, main integration, current browser
+and physical-device qualification and documentation freshness remain open. B10 appeared in a fresh physical-device inventory, but no Station
+journey was performed on it. Activity's observed selection reset remains disclosed;
+its existing one-shot surface-intent contract is distinct from the passing task-fact
+reload observations. Groups and finalizers remain disabled. No push or PR exists.
+
+
+The working-tree readiness run for this checkpoint passes repository governance,
+lint, hygiene, component style, verification policy and all 1593 connected-agent
+cases. Required documentation truth still fails recorded-review freshness:
+documentation foundations pass 249 cases and fail that one review-binding case.
+Canonical MCP equality now passes for all 132 generated topics. This does not make
+the branch ready. The source is preserved locally so clean-tree adverse mutations
+can be run; no review record is refreshed merely to clear the gate, and no push,
+PR or feature enablement follows from this checkpoint.

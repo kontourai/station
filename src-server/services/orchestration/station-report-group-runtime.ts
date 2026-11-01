@@ -26,6 +26,7 @@ import {
   isBoundLocalGrantMintedOperator,
   isRuntimeRequestPrincipalCurrent,
 } from '../../security/runtime-request-security.js';
+import { HomeWriterOwner } from '../ssh/home-writer-owner.js';
 import { StationDelegationPersistence } from './delegation-group-persistence.js';
 import {
   LocalSourceAdmissionOwner,
@@ -44,6 +45,7 @@ import {
   StationReportGroupCustody,
 } from './station-report-group-custody.js';
 import { StationReportGroupExecution } from './station-report-group-execution.js';
+import { StationReportPreparationUnavailable } from './station-report-group-input.js';
 import { StationReportGroupPreparation } from './station-report-group-preparation.js';
 import { StationReportGroupRenewal } from './station-report-group-renewal.js';
 import { StationReportRetainedTurns } from './station-report-retained-turn.js';
@@ -272,13 +274,15 @@ export class StationReportGroupRuntime {
       orchestration: owners.orchestration,
       dispatchLedger: this.#dispatch,
       wireIntents,
-      authorize: (context) => this.authorizeResponse(context),
+      authorize: (context, publication) =>
+        this.authorizeResponse(context, publication),
       turns: this.#retainedTurns,
     });
     let prepared: Promise<StationReportGroupPreparation> | undefined;
     this.#execution = new StationReportGroupExecution({
       environment: owners.runtime.environmentSecurityService,
-      authorize: (context) => this.authorizeResponse(context),
+      authorize: (context, publication) =>
+        this.authorizeResponse(context, publication),
       preparation: () =>
         (prepared ??= Promise.resolve(
           new StationReportGroupPreparation({
@@ -296,22 +300,43 @@ export class StationReportGroupRuntime {
     });
   }
 
-  async authorizeResponse(context: RuntimeSourceRequestContext) {
-    this.#assertCurrent(context);
+  async authorizeResponse(
+    context: RuntimeSourceRequestContext,
+    publication?: ReportRoundsPublication,
+  ) {
+    const writer = await HomeWriterOwner.forHome(
+      this.owners.runtime.environmentSecurityService.getProjectHomeDir(),
+    );
+    const admit = <Value>(check: () => Value): Promise<Value> =>
+      publication
+        ? publication.withHome(
+            {
+              owner: writer,
+              current: () => {
+                context.req.raw.signal.throwIfAborted();
+                return undefined;
+              },
+            },
+            async (scope) => scope.check(check),
+          )
+        : writer.runRequest(context.req.raw.signal, check);
+    await admit(() => this.#assertCurrent(context));
     const lease =
       context.req.raw.method === 'GET'
         ? await captureEnvironmentLocalGrantReadOwner(
             context.req.raw,
             this.owners.runtime.environmentSecurityService,
             this.owners.runtime.requestSecurity,
+            admit,
           )
-        : (
-            await captureEnvironmentLocalGrantObservationOwner(
-              context.req.raw,
-              this.owners.runtime.environmentSecurityService,
-              this.owners.runtime.requestSecurity,
-            )
-          ).requireCurrentLocalGrant(context.req.raw);
+        : await captureEnvironmentLocalGrantObservationOwner(
+            context.req.raw,
+            this.owners.runtime.environmentSecurityService,
+            this.owners.runtime.requestSecurity,
+            admit,
+          ).then((observation) =>
+            admit(() => observation.requireCurrentLocalGrant(context.req.raw)),
+          );
     const current = () => {
       return this.owners.runtime.environmentSecurityService.withCurrentAuthority(
         () => {
@@ -320,7 +345,7 @@ export class StationReportGroupRuntime {
         },
       );
     };
-    current();
+    await admit(current);
     return current;
   }
   #assertCurrent(context: RuntimeSourceRequestContext) {
@@ -421,24 +446,35 @@ export class StationReportGroupRuntime {
     groupId: string,
     command: ReportGroupReportInput,
   ) {
-    const result = await this.#continuation.report(context, groupId, command);
-    const historical = await this.#custody.inspectForMutation(context, groupId);
-    if (!historical) throw new StationReportCustodyUnavailable();
-    const round =
-      result.projection.rounds.findIndex(
-        (entry) => entry.operationKey === command.operationKey,
-      ) + 1;
-    const attempt = result.projection.attempts.find(
-      (entry) => entry.round === round && entry.seatId === command.seatId,
-    );
-    if (!attempt) throw new StationReportCustodyUnavailable();
-    return {
-      replayed: result.replayed,
-      group: view(historical),
-      operationKey: command.operationKey,
-      seatId: command.seatId,
-      invocationId: attempt.invocationId,
-    };
+    return this.#withRoundsPublication(context, async (publication) => {
+      const result = await this.#continuation.report(
+        context,
+        groupId,
+        command,
+        publication,
+      );
+      const historical = await this.#custody.inspectForMutation(
+        context,
+        groupId,
+        publication,
+      );
+      if (!historical) throw new StationReportCustodyUnavailable();
+      const round =
+        result.projection.rounds.findIndex(
+          (entry) => entry.operationKey === command.operationKey,
+        ) + 1;
+      const attempt = result.projection.attempts.find(
+        (entry) => entry.round === round && entry.seatId === command.seatId,
+      );
+      if (!attempt) throw new StationReportCustodyUnavailable();
+      return {
+        replayed: result.replayed,
+        group: view(historical),
+        operationKey: command.operationKey,
+        seatId: command.seatId,
+        invocationId: attempt.invocationId,
+      };
+    });
   }
 
   async syncAfterInput(
@@ -461,10 +497,21 @@ export class StationReportGroupRuntime {
     groupId: string,
     command: ReportGroupContextSyncInput,
   ) {
-    const result = await this.#continuation.sync(context, groupId, command);
-    const historical = await this.#custody.inspectForMutation(context, groupId);
-    if (!historical) throw new StationReportCustodyUnavailable();
-    return { replayed: result.replayed, group: view(historical) };
+    return this.#withRoundsPublication(context, async (publication) => {
+      const result = await this.#continuation.sync(
+        context,
+        groupId,
+        command,
+        publication,
+      );
+      const historical = await this.#custody.inspectForMutation(
+        context,
+        groupId,
+        publication,
+      );
+      if (!historical) throw new StationReportCustodyUnavailable();
+      return { replayed: result.replayed, group: view(historical) };
+    });
   }
   async finalizeContinuation(
     context: RuntimeSourceRequestContext,
@@ -627,10 +674,11 @@ export class StationReportGroupRuntime {
 
   async #withRoundsPublication<T>(
     context: RuntimeSourceRequestContext,
-    work: (publication?: ReportRoundsPublication) => Promise<T>,
+    work: (publication: ReportRoundsPublication) => Promise<T>,
   ): Promise<T> {
     const participant = this.owners.publicationParticipant;
-    if (participant === undefined) return work();
+    if (participant === undefined)
+      throw new StationReportPreparationUnavailable();
     return withReportRoundsPublication(
       {
         participant,

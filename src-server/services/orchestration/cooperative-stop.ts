@@ -17,7 +17,13 @@ import {
   type ProviderAdapterShape,
 } from '../../providers/adapter-shape.js';
 import { errorMessage } from '../../utils/error-message.js';
-import { interruptibleTurnIdForEvents } from './session-lifecycle-service.js';
+import type { SessionCommandInternalOptions } from './session-command-module.js';
+import {
+  acceptsTurnTerminalEvent,
+  interruptibleTurnIdForEvents,
+  type TurnIdentityAnchor,
+  turnIdentityAnchorForEvents,
+} from './session-lifecycle-service.js';
 
 /**
  * The cancel-acknowledgement budget now lives in the orchestration contract
@@ -25,7 +31,18 @@ import { interruptibleTurnIdForEvents } from './session-lifecycle-service.js';
  * Stop control has to outwait it, and a second hand-written copy of the
  * number in the UI would drift.
  */
-type StopSettlement = 'acknowledged' | 'completed' | 'deadline' | 'unconfirmed';
+type InvokeCurrent = NonNullable<
+  NonNullable<
+    SessionCommandInternalOptions['delegationGroupAdmission']
+  >['invokeCurrent']
+>;
+
+type StopSettlement =
+  | 'acknowledged'
+  | 'completed'
+  | 'inactive'
+  | 'deadline'
+  | 'unconfirmed';
 
 /**
  * A Stop recorded before its turn existed.
@@ -76,6 +93,7 @@ function interruptTurnResultFor(
   turnId: string,
   settlement: StopSettlement,
 ): InterruptTurnResult {
+  if (settlement === 'inactive') return { outcome: 'no-active-turn', threadId };
   if (settlement === 'completed')
     return { outcome: 'turn-completed', threadId, turnId };
   if (settlement === 'unconfirmed')
@@ -89,6 +107,8 @@ function interruptTurnResultFor(
 
 interface CooperativeStopTask {
   turnId: string;
+  anchor: TurnIdentityAnchor;
+  startEventId?: string;
   task: Promise<StopSettlement>;
   settleCompleted(): void;
 }
@@ -387,10 +407,32 @@ export class CooperativeStop {
     requestedTurnId?: string,
     initiatedBy: 'user' | 'stall' = 'user',
     assertCurrent?: () => void,
+    invokeCurrent?: InvokeCurrent,
+    assertAuthorityCurrent?: () => void,
   ): Promise<InterruptTurnResult> {
-    assertCurrent?.();
+    let admittedSnapshot: CanonicalRuntimeEvent[] | undefined;
+    if (invokeCurrent)
+      await invokeCurrent(async (check) =>
+        check(() => {
+          assertCurrent?.();
+          admittedSnapshot = this.deps.listSessionProjectionEvents(threadId);
+        }),
+      );
+    else assertCurrent?.();
     const existing = this.cooperativeStops.get(threadId);
     if (existing) {
+      if (invokeCurrent) {
+        const start = admittedSnapshot
+          ?.filter((event) => event.method === 'turn.started')
+          .at(-1);
+        if (
+          requestedTurnId !== existing.turnId ||
+          !start ||
+          start.eventId !== existing.startEventId ||
+          !acceptsTurnTerminalEvent(start, existing.anchor)
+        )
+          throw Error('Interrupt target differs from the pending stop.');
+      }
       // A second Stop for the same thread rides the first one's task rather
       // than starting a second cancel (the pre-existing coalescing), and now
       // reports the SAME derived outcome instead of an untyped void the
@@ -407,14 +449,17 @@ export class CooperativeStop {
     // — Stop must still find a codex turn that is deferred-retriable (see
     // that function's doc), or it silently no-ops in exactly the window a
     // user is most likely to reach for it.
-    const activeTurnId = interruptibleTurnIdForEvents(
-      this.deps.listSessionProjectionEvents(threadId),
-    );
-    if (!activeTurnId) {
+    const snapshot =
+      admittedSnapshot ?? this.deps.listSessionProjectionEvents(threadId);
+    const activeTurnId = interruptibleTurnIdForEvents(snapshot);
+    if (
+      !activeTurnId ||
+      (requestedTurnId && requestedTurnId !== activeTurnId)
+    ) {
+      if (invokeCurrent)
+        throw Error('Interrupt target unavailable at admission.');
       return { outcome: 'no-active-turn', threadId };
     }
-    if (requestedTurnId && requestedTurnId !== activeTurnId)
-      return { outcome: 'no-active-turn', threadId };
     const turnId = requestedTurnId ?? activeTurnId;
 
     let settleCompleted!: () => void;
@@ -423,6 +468,14 @@ export class CooperativeStop {
     });
     const state = {} as CooperativeStopTask;
     state.turnId = turnId;
+    state.anchor = turnIdentityAnchorForEvents(snapshot) ?? turnId;
+    state.startEventId = snapshot
+      .filter(
+        (event) =>
+          event.method === 'turn.started' &&
+          acceptsTurnTerminalEvent(event, state.anchor),
+      )
+      .at(-1)?.eventId;
     state.settleCompleted = settleCompleted;
     state.task = this.runCooperativeStop(
       adapter,
@@ -431,6 +484,8 @@ export class CooperativeStop {
       completed,
       initiatedBy,
       assertCurrent,
+      invokeCurrent,
+      assertAuthorityCurrent,
     );
     this.cooperativeStops.set(threadId, state);
     try {
@@ -449,7 +504,37 @@ export class CooperativeStop {
     completed: Promise<void>,
     initiatedBy: 'user' | 'stall',
     assertCurrent?: () => void,
+    invokeCurrent?: InvokeCurrent,
+    assertAuthorityCurrent?: () => void,
   ): Promise<StopSettlement> {
+    const targetOutcome = (
+      events: CanonicalRuntimeEvent[],
+    ):
+      | Extract<StopSettlement, 'completed' | 'inactive' | 'unconfirmed'>
+      | undefined => {
+      let started = false;
+      for (const event of events) {
+        if (event.eventId === state.startEventId) {
+          started = true;
+          continue;
+        }
+        if (
+          started &&
+          (event.method === 'turn.completed' ||
+            event.method === 'turn.aborted') &&
+          acceptsTurnTerminalEvent(event, state.anchor)
+        ) {
+          if (event.method === 'turn.completed') return 'completed';
+          if (event.metadata?.physicalTermination === 'unconfirmed') {
+            if (this.deps.preserveTerminationUncertainty?.(threadId) !== true)
+              throw Error('Interrupt termination uncertainty is not admitted.');
+            return 'unconfirmed';
+          }
+          return 'inactive';
+        }
+      }
+      return undefined;
+    };
     const settlement = await new Promise<StopSettlement>((resolve, reject) => {
       let authorityLost = false;
       let settled = false;
@@ -466,15 +551,57 @@ export class CooperativeStop {
       completed.then(() => settle('completed'));
       void Promise.resolve()
         .then(() => {
-          try {
-            assertCurrent?.();
-          } catch (error) {
-            authorityLost = true;
+          let adapterFailure: { error: unknown } | undefined;
+          const invoke = (check: <Value>(work: () => Value) => Value) => {
+            try {
+              const ended = check(() => {
+                const events = invokeCurrent
+                  ? this.deps.listSessionProjectionEvents(threadId)
+                  : undefined;
+                const observed = events && targetOutcome(events);
+                if (observed) {
+                  (assertAuthorityCurrent ?? assertCurrent)?.();
+                  return observed;
+                }
+                assertCurrent?.();
+                if (
+                  events &&
+                  interruptibleTurnIdForEvents(events) !== state.turnId
+                )
+                  throw Error('Interrupt target changed before admission.');
+                return undefined;
+              });
+              if (ended) {
+                settle(ended);
+                return Promise.resolve(undefined);
+              }
+            } catch (error) {
+              authorityLost = true;
+              throw error;
+            }
+            try {
+              return Promise.resolve(
+                adapter.interruptTurn(threadId, state.turnId),
+              ).catch((error: unknown) => {
+                adapterFailure = { error };
+                throw error;
+              });
+            } catch (error) {
+              adapterFailure = { error };
+              throw error;
+            }
+          };
+          if (!invokeCurrent) return invoke((work) => work());
+          return invokeCurrent((check) =>
+            settled ? Promise.resolve(undefined) : invoke(check),
+          ).catch((error: unknown) => {
+            if (!adapterFailure || adapterFailure.error !== error)
+              authorityLost = true;
             throw error;
-          }
-          return adapter.interruptTurn(threadId, state.turnId);
+          });
         })
         .then((result) => {
+          if (invokeCurrent && settled) return;
           if (
             isProviderInterruptTurnResult(result) &&
             result.outcome === 'termination-unconfirmed' &&
@@ -519,7 +646,8 @@ export class CooperativeStop {
         .catch(() => undefined);
     });
 
-    if (settlement === 'unconfirmed') return settlement;
+    if (settlement === 'unconfirmed' || settlement === 'inactive')
+      return settlement;
 
     if (settlement === 'completed') {
       // The engine completed its turn while the request was in flight. Its
@@ -543,33 +671,59 @@ export class CooperativeStop {
       return settlement;
     }
 
-    assertCurrent?.();
-
-    // The deadline is the sole path to hard teardown. Persist both the
-    // derived fact and a terminal turn before touching the engine process so
-    // recovery retains a complete, resumable transcript even if teardown dies.
-    this.deps.publishEvent({
-      eventId: crypto.randomUUID(),
-      provider: adapter.provider,
-      threadId,
-      turnId: state.turnId,
-      createdAt: new Date().toISOString(),
-      method: 'session.stop-settled',
-      outcome: 'forced',
-      initiatedBy,
-    });
-    this.deps.publishEvent({
-      eventId: crypto.randomUUID(),
-      provider: adapter.provider,
-      threadId,
-      turnId: state.turnId,
-      createdAt: new Date().toISOString(),
-      method: 'turn.aborted',
-      reason:
-        initiatedBy === 'stall' ? STALL_FORCED_STOP_REASON : FORCED_STOP_REASON,
-    });
-    this.persistResumableStoppedSession(adapter.provider, threadId);
-    await adapter.stopSession(threadId);
+    let endedBeforeForce:
+      | Extract<StopSettlement, 'completed' | 'inactive' | 'unconfirmed'>
+      | undefined;
+    const stop = (check: <Value>(work: () => Value) => Value) => {
+      const ended = check(() => {
+        const events = invokeCurrent
+          ? this.deps.listSessionProjectionEvents(threadId)
+          : undefined;
+        const observed = events && targetOutcome(events);
+        if (observed) {
+          (assertAuthorityCurrent ?? assertCurrent)?.();
+          return observed;
+        }
+        assertCurrent?.();
+        if (events && interruptibleTurnIdForEvents(events) !== state.turnId)
+          throw Error('Stop target changed before forced admission.');
+        return undefined;
+      });
+      if (ended) {
+        endedBeforeForce = ended;
+        return Promise.resolve();
+      }
+      // The deadline is the sole path to hard teardown. Persist both the
+      // derived fact and a terminal turn before touching the engine process so
+      // recovery retains a complete, resumable transcript even if teardown dies.
+      this.deps.publishEvent({
+        eventId: crypto.randomUUID(),
+        provider: adapter.provider,
+        threadId,
+        turnId: state.turnId,
+        createdAt: new Date().toISOString(),
+        method: 'session.stop-settled',
+        outcome: 'forced',
+        initiatedBy,
+      });
+      this.deps.publishEvent({
+        eventId: crypto.randomUUID(),
+        provider: adapter.provider,
+        threadId,
+        turnId: state.turnId,
+        createdAt: new Date().toISOString(),
+        method: 'turn.aborted',
+        reason:
+          initiatedBy === 'stall'
+            ? STALL_FORCED_STOP_REASON
+            : FORCED_STOP_REASON,
+      });
+      this.persistResumableStoppedSession(adapter.provider, threadId);
+      return adapter.stopSession(threadId);
+    };
+    if (invokeCurrent) await invokeCurrent(stop);
+    else await stop((work) => work());
+    if (endedBeforeForce) return endedBeforeForce;
     this.deps.assertAdapterCurrentAfterCommand(adapter);
     this.forgetLiveUserSession(threadId);
     return settlement;

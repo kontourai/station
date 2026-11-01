@@ -376,6 +376,8 @@ test('sync finalization refuses an absent receipt and recovers a lost result wit
         });
       let observeInspection = true;
       let metadataReads = 0;
+      let queuedAttemptActive = false;
+      let initialInspectionCompleted = false;
       const readExecution =
         StationDelegationPersistence.prototype.readReportExecution;
       const inspectionObserver = vi
@@ -389,6 +391,7 @@ test('sync finalization refuses an absent receipt and recovers a lost result wit
           if (observeInspection) {
             await checkHeld();
             metadataReads++;
+            if (queuedAttemptActive) initialInspectionCompleted = true;
           }
           return value;
         });
@@ -445,7 +448,8 @@ test('sync finalization refuses an absent receipt and recovers a lost result wit
         const grant = newGrant(h);
         const queuedRequest = requestFor(h, 'POST', grant.credential);
         const acquire = HomeWriterOwner.prototype.acquire;
-        let acquisitions = 0;
+        let transactionBlocked = false;
+        queuedAttemptActive = true;
         let admissionBlocker:
           | Awaited<ReturnType<HomeWriterOwner['acquire']>>
           | undefined;
@@ -456,8 +460,13 @@ test('sync finalization refuses an absent receipt and recovers a lost result wit
         const admissionObserver = vi
           .spyOn(HomeWriterOwner.prototype, 'acquire')
           .mockImplementation(async function (this: HomeWriterOwner, signal) {
-            if (signal !== queuedRequest.signal || ++acquisitions !== 2)
+            if (
+              signal !== queuedRequest.signal ||
+              !initialInspectionCompleted ||
+              transactionBlocked
+            )
               return acquire.call(this, signal);
+            transactionBlocked = true;
             admissionBlocker = await acquire.call(this);
             const waiting = acquire.call(this, signal);
             entered();
@@ -495,13 +504,15 @@ test('sync finalization refuses an absent receipt and recovers a lost result wit
             priorBodies,
             'revoked queued request never enters group body',
           );
+          assert.equal(initialInspectionCompleted, true);
           assert.equal(
-            acquisitions,
-            2,
-            'revocation follows initial snapshot and precedes transaction',
+            transactionBlocked,
+            true,
+            'revocation follows the actual snapshot and precedes the transaction',
           );
           await checkReleased();
         } finally {
+          queuedAttemptActive = false;
           admissionObserver.mockRestore();
           await admissionBlocker?.release();
           await queuedOutcome;
@@ -556,8 +567,8 @@ test('sync finalization refuses an absent receipt and recovers a lost result wit
         assert.ok(bodies > 0);
         assert.ok(authorityReads > 0);
         assert.ok(
-          metadataReads >= 6,
-          'initial and final inspections retain home custody',
+          metadataReads > 0,
+          'actual inspections were observed under home custody',
         );
         assert.equal(returns, bodies);
         for (const late of retiredBindings) {

@@ -10283,19 +10283,28 @@ export class OrchestrationService {
           }
         }
         case 'interruptTurn': {
-          const assertInterruptCurrent = () => {
+          const group = internal?.delegationGroupAdmission;
+          const invokeCurrent = group?.invokeCurrent;
+          const assertInterruptAuthorityCurrent = () => {
+            group?.assertCurrent();
             if (
-              context?.requestCurrent?.() === false ||
-              (context?.userId !== undefined &&
-                !this.sessionAuthz.canReadSessionForCommand(
-                  command.threadId,
-                  context.userId,
-                  context.tenantExecutionContext,
-                ))
+              context?.userId !== undefined &&
+              !this.sessionAuthz.canReadSessionForCommand(
+                command.threadId,
+                context.userId,
+                context.tenantExecutionContext,
+              )
             )
               throw new Error('Request authority changed before interruption.');
           };
-          assertInterruptCurrent();
+          const assertInterruptCurrent = () => {
+            assertInterruptAuthorityCurrent();
+            if (context?.requestCurrent?.() === false)
+              throw new Error('Request authority changed before interruption.');
+          };
+          if (invokeCurrent)
+            await invokeCurrent(async (check) => check(assertInterruptCurrent));
+          else assertInterruptCurrent();
           // archive#3493 residual 1: mid-materialisation there IS work to
           // cancel — the turn that triggered the start is about to be
           // announced, and the dormant branch would answer `no-active-turn`
@@ -10311,6 +10320,8 @@ export class OrchestrationService {
           // for. Deliberately NOT materialised — starting an engine in order
           // to cancel it would be the whole defect this issue is about.
           if (this.isDormantSessionThread(command.threadId)) {
+            if (group)
+              throw new Error('Owned interruption requires a live target.');
             this.persistReceipt(receipt);
             const dormant: InterruptTurnResult = {
               outcome: 'no-active-turn',
@@ -10327,6 +10338,8 @@ export class OrchestrationService {
               adapters: this.options.adapterRegistry.list(),
             });
           } catch {
+            if (group)
+              throw new Error('Owned interruption requires a current adapter.');
             // UX audit T1 (live verification): the engine session for this
             // thread does not exist YET. A dispatched turn takes 0.5-2.6s to
             // reach `turn.started`, and refusing the whole command inside that
@@ -10335,7 +10348,11 @@ export class OrchestrationService {
             // against the thread instead — `consumeAdapterEvents` applies it
             // to that thread's next `turn.started` — and say exactly that,
             // rather than claiming a stop that has not happened.
-            assertInterruptCurrent();
+            if (invokeCurrent)
+              await invokeCurrent(async (check) =>
+                check(assertInterruptCurrent),
+              );
+            else assertInterruptCurrent();
             this.cooperativeStop.recordPendingTurnInterrupt(command.threadId, {
               assertCurrent: assertInterruptCurrent,
               expiresAt: Date.now() + PENDING_TURN_INTERRUPT_TTL_MS,
@@ -10353,7 +10370,9 @@ export class OrchestrationService {
             return { receipt, result: pending };
           }
           this.assertAdapterCurrent(adapter);
-          assertInterruptCurrent();
+          if (invokeCurrent)
+            await invokeCurrent(async (check) => check(assertInterruptCurrent));
+          else assertInterruptCurrent();
           // UX audit T1: the settlement this returns is the ONLY thing that
           // knows whether the engine acknowledged (session kept warm and
           // resumable) or the budget expired and Station tore the process
@@ -10367,6 +10386,8 @@ export class OrchestrationService {
               command.turnId,
               'user',
               assertInterruptCurrent,
+              invokeCurrent,
+              assertInterruptAuthorityCurrent,
             );
           if (
             interrupted.outcome === 'cooperative' ||

@@ -453,8 +453,9 @@ existing cadence-based credential-activity touch and its failure behavior.
 
 **Borrowing and recovery.** Only an explicit live lease can start a borrowed
 span. Thenables refuse; the span invalidates before return, so a late async
-descendant cannot borrow it. Runtime-admitted report cancellation and initial execution build
-group, authority and host facades for controller transactions against an exact lease.
+descendant cannot borrow it. Runtime-admitted report cancellation, initial execution,
+returning sync/report and sync finalization build group, authority and host
+facades for controller transactions against an exact lease.
 The runtime parent spans the operation; each child releases home after the full
 store return. Its separate authority cancellation and historical execution reads
 use short metadata scopes too, ending before descendant-interrupt work. Other
@@ -470,12 +471,36 @@ source and one-shot checks borrow synchronously; actual raw transport runs outsi
 that span, and the owner returns before awaiting its response. Flow launch
 callbacks receive no implicit home borrow.
 
+Returning sync/report requires the runtime publication participant before work
+begins. The retained-turn owner checks the exact reserved Session before signing,
+in the persistence guard and after the write returns. Session replacement refuses
+without retaining a stale continuation-turn row. Context acknowledgement remains
+exact-byte agreement, not evidence that a model remembers the supplied context.
+Scoped runtime facades can resolve metadata, but their provider invocation hooks
+refuse; actual dispatch uses the operation's separately admitted effect path.
+
+Active cancellation publishes its signed intent and acknowledgement in separate
+short home scopes. The final interrupt and forced-stop admissions recheck authority
+and the original turn; adapter waits run after home release. Matching terminal
+evidence must follow the captured original start and match its invocation. A
+completed turn reports completion, a plain abort reports no active turn, and an
+explicitly unconfirmed termination retains uncertainty only under the sealed-source
+preservation policy. Unknown or replaced targets refuse. An owned coalesced stop
+must also match the pending stop's captured target. A missing adapter never arms a
+deferred owned interrupt. An intent without acknowledgement may already have issued
+an effect and cannot authorize reissue. Outstanding adapter replies retain a runtime
+child through shutdown, even when the stop has a terminal acknowledgement.
+
 Explicit SDK refusal settles the SDK waiter and requests cancellation of that
 handle. A late response body remains owned until its reader cancellation joins;
 a held foreign reader is not stolen. The final disposal promise remains pending
 through cleanup uncertainty, while a separate retirement attempt can fail and
 retry. A runtime child retains this cleanup without holding a HomeWriter lease.
-Shutdown cannot release the runtime home until that child retires. These are local
+Shutdown cannot release the runtime home until that child retires. Returning-turn
+cleanup joins the retryable retirement attempt rather than waiting indefinitely
+on final disposal after a known cleanup failure. All prepared close attempts are
+joined. A body failure remains the first cause when cleanup also fails; cleanup
+failure after a returned body reports `returned-cleanup-unknown`. These are local
 stream and runtime-custody guarantees, not proof of provider termination.
 
 Runtime home binding and child currentness share one compound proof check;
@@ -513,6 +538,10 @@ complete synchronous currentness check; async reads still revalidate after await
 Observed SDK credential reads use the request-bound owner's synchronous scope for
 both existing revalidations and secret selection. Execution finalizers and SDK
 inspection borrow that same domain without retaining a lease in returned data.
+Request-entry and credential-capture checkpoints await short metadata admissions
+when necessary, then recheck currentness synchronously after the wait. Configuration
+read serialization remains separate from home custody; neither a queued check nor
+an optional admission callback creates authority.
 
 **Evidence and limits.** [Owner and composed pairing tests](../../src-server/services/ssh/__tests__/home-writer-owner.test.ts)
 exercise actual locks, alias/directory custody, short-span borrowing, contention
@@ -521,8 +550,15 @@ adds physical-lock and no-ambient-loan checks through underlying store return,
 provider-response holds, queued result/duplicate/late-callback controls, real
 credential revocation, and metadata/publication retirement faults with runtime-home
 shutdown retry. Its separately composed event store is not proof of storage-dependency
-retention. Other controller/writer and continuation-parent qualification, input,
-final device/native and hosted evidence remain separate. Report capabilities stay
+retention. The [returning caller](../../src-server/services/orchestration/__tests__/station-report-group-continuation.test.ts)
+adds Session replacement, actual paid interruption, held replies, cleanup faults,
+committed-command replay and explicit store-binding controls. The
+[cooperative-stop owner](../../src-server/services/orchestration/__tests__/cooperative-stop.test.ts)
+distinguishes matching terminals, missing terminals, replacement invocations and
+same-target coalescing; [sync recovery](../../src-server/services/orchestration/__tests__/station-report-sync-recovery.test.ts)
+owns sync-finalization controls. Renewal adoption, continuation finalization,
+authenticated public-parent borrowing, the funded input/context journey, full-boot
+storage retention, final device/native and hosted evidence remain separate. Report capabilities stay
 disabled pending that combined qualification. [Persistence-fault tests](../../src-server/services/ssh/__tests__/device-pairing-persistence-fault.test.ts)
 exercise publication and replay fences. Personal-token mint, revoke and clear acquire
 the same home hold; reset explicitly lends its live lease to both clears. Token

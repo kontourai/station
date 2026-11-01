@@ -1100,6 +1100,9 @@ export class StationDelegationPersistence {
     value: ReportInterruptRecord,
     finalizeCurrent: DelegationPersistenceFinalizer,
     issue: () => Promise<ReportInterruptRecord>,
+    publication?: <Value>(
+      body: (current: DelegationPersistenceFinalizer) => Promise<Value>,
+    ) => Promise<Value>,
   ) {
     const intent = reportInterruptRecordSchema.parse(value);
     requirePersistence(
@@ -1108,90 +1111,103 @@ export class StationDelegationPersistence {
     );
     const domain = this.#reportInterrupts,
       file = address(intent.intent.groupId);
-    const claimed = await domain.locked(finalizeCurrent, async () => {
-      const bytes = readBytes(join(domain.directory, file), 128 * 1024);
-      const ledger =
-        bytes === null
-          ? {
-              version: 1 as const,
-              groupId: intent.intent.groupId,
-              entries: [] as ReportInterruptRecord[],
-            }
-          : reportInterruptLedgerSchema.parse(JSON.parse(bytes));
-      requirePersistence(
-        ledger.groupId === intent.intent.groupId,
-        'report_interrupt_group_conflict',
-      );
-      const prior = ledger.entries.find(
-        (entry) =>
-          entry.intent.seatId === intent.intent.seatId &&
-          entry.intent.clientTurnId === intent.intent.clientTurnId,
-      );
-      if (prior) {
+    const publish = <Value>(
+      body: (current: DelegationPersistenceFinalizer) => Promise<Value>,
+    ) => (publication ? publication(body) : body(finalizeCurrent));
+    const claimed = await publish((current) =>
+      domain.locked(current, async () => {
+        const bytes = readBytes(join(domain.directory, file), 128 * 1024);
+        const ledger =
+          bytes === null
+            ? {
+                version: 1 as const,
+                groupId: intent.intent.groupId,
+                entries: [] as ReportInterruptRecord[],
+              }
+            : reportInterruptLedgerSchema.parse(JSON.parse(bytes));
         requirePersistence(
-          same(prior.intent, intent.intent),
-          'report_interrupt_identity_conflict',
+          ledger.groupId === intent.intent.groupId,
+          'report_interrupt_group_conflict',
         );
-        return { record: prior, replayed: true };
-      }
-      requirePersistence(
-        ledger.entries.length < 128 &&
-          (bytes !== null || domain.files().length < 128),
-        'report_interrupt_capacity',
-      );
-      ledger.entries.push(intent);
-      await domain.publish(
-        file,
-        reportInterruptLedgerSchema.parse(ledger),
-        128 * 1024,
-        finalizeCurrent,
-      );
-      const retained = readBytes(join(domain.directory, file), 128 * 1024);
-      requirePersistence(
-        retained !== null &&
-          same(reportInterruptLedgerSchema.parse(JSON.parse(retained)), ledger),
-        'report_interrupt_intent_unconfirmed',
-      );
-      return { record: intent, replayed: false };
-    });
+        const prior = ledger.entries.find(
+          (entry) =>
+            entry.intent.seatId === intent.intent.seatId &&
+            entry.intent.clientTurnId === intent.intent.clientTurnId,
+        );
+        if (prior) {
+          requirePersistence(
+            same(prior.intent, intent.intent),
+            'report_interrupt_identity_conflict',
+          );
+          return { record: prior, replayed: true };
+        }
+        requirePersistence(
+          ledger.entries.length < 128 &&
+            (bytes !== null || domain.files().length < 128),
+          'report_interrupt_capacity',
+        );
+        ledger.entries.push(intent);
+        await domain.publish(
+          file,
+          reportInterruptLedgerSchema.parse(ledger),
+          128 * 1024,
+          current,
+        );
+        const retained = readBytes(join(domain.directory, file), 128 * 1024);
+        requirePersistence(
+          retained !== null &&
+            same(
+              reportInterruptLedgerSchema.parse(JSON.parse(retained)),
+              ledger,
+            ),
+          'report_interrupt_intent_unconfirmed',
+        );
+        return { record: intent, replayed: false };
+      }),
+    );
     if (claimed.replayed) return claimed;
-    assertCurrent(finalizeCurrent);
+    if (!publication) assertCurrent(finalizeCurrent);
     const acknowledged = reportInterruptRecordSchema.parse(await issue());
     requirePersistence(
       same(acknowledged.intent, intent.intent) &&
         acknowledged.acknowledgement !== null,
       'report_interrupt_ack_invalid',
     );
-    return domain.locked(finalizeCurrent, async () => {
-      const bytes = readBytes(join(domain.directory, file), 128 * 1024);
-      requirePersistence(bytes !== null, 'report_interrupt_intent_unconfirmed');
-      const ledger = reportInterruptLedgerSchema.parse(JSON.parse(bytes));
-      requirePersistence(
-        ledger.groupId === intent.intent.groupId,
-        'report_interrupt_group_conflict',
-      );
-      const index = ledger.entries.findIndex(
-        (entry) =>
-          entry.intent.seatId === intent.intent.seatId &&
-          entry.intent.clientTurnId === intent.intent.clientTurnId,
-      );
-      requirePersistence(
-        index >= 0 && same(ledger.entries[index], intent),
-        'report_interrupt_intent_changed',
-      );
-      ledger.entries[index] = acknowledged;
-      await domain.publish(file, ledger, 128 * 1024, finalizeCurrent);
-      const confirmed = readBytes(join(domain.directory, file), 128 * 1024);
-      requirePersistence(
-        confirmed !== null &&
-          same(
-            reportInterruptLedgerSchema.parse(JSON.parse(confirmed)),
-            ledger,
-          ),
-        'report_interrupt_ack_unconfirmed',
-      );
-      return { record: acknowledged, replayed: false };
-    });
+    return publish((current) =>
+      domain.locked(current, async () => {
+        const bytes = readBytes(join(domain.directory, file), 128 * 1024);
+        requirePersistence(
+          bytes !== null,
+          'report_interrupt_intent_unconfirmed',
+        );
+        const ledger = reportInterruptLedgerSchema.parse(JSON.parse(bytes));
+        requirePersistence(
+          ledger.groupId === intent.intent.groupId,
+          'report_interrupt_group_conflict',
+        );
+        const index = ledger.entries.findIndex(
+          (entry) =>
+            entry.intent.seatId === intent.intent.seatId &&
+            entry.intent.clientTurnId === intent.intent.clientTurnId,
+        );
+        requirePersistence(
+          index >= 0 && same(ledger.entries[index], intent),
+          'report_interrupt_intent_changed',
+        );
+        ledger.entries[index] = acknowledged;
+        await domain.publish(file, ledger, 128 * 1024, current);
+        const confirmed = readBytes(join(domain.directory, file), 128 * 1024);
+        requirePersistence(
+          confirmed !== null &&
+            same(
+              reportInterruptLedgerSchema.parse(JSON.parse(confirmed)),
+              ledger,
+            ),
+          'report_interrupt_ack_unconfirmed',
+        );
+        return { record: acknowledged, replayed: false };
+      }),
+    );
   }
 
   async readReportInterrupt(

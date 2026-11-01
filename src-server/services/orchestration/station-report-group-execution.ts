@@ -81,7 +81,10 @@ export class StationReportGroupExecution {
       dispatchLedger: AuthorizationLedger;
       wireIntents: FileFinalWireIntentStore;
       environment: EnvironmentSecurityService;
-      authorize(context: RuntimeSourceRequestContext): Promise<() => void>;
+      authorize(
+        context: RuntimeSourceRequestContext,
+        publication?: ReportRoundsPublication,
+      ): Promise<() => void>;
     },
   ) {
     this.owners = Object.freeze({ ...owners });
@@ -97,6 +100,7 @@ export class StationReportGroupExecution {
     const existing = await custody.findOperationForMutation(
       context,
       input.operationId,
+      publication,
     );
     if (existing) {
       if (existing.admission.root.revisions.policy.digest !== digest(input))
@@ -105,7 +109,7 @@ export class StationReportGroupExecution {
     }
     if (input.flow)
       assertDelegationFlowRuntime({ loadRun, withRunMutationLock });
-    const requestCurrent = await this.owners.authorize(context);
+    const requestCurrent = await this.owners.authorize(context, publication);
     const preparation =
       typeof this.owners.preparation === 'function'
         ? await this.owners.preparation()

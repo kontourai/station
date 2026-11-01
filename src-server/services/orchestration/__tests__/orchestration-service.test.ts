@@ -26317,6 +26317,24 @@ describe('OrchestrationService', () => {
 
       expect(claude.startSession).not.toHaveBeenCalled();
       expect(claude.interruptTurn).not.toHaveBeenCalled();
+
+      const ownedCurrent = vi.fn();
+      await expect(
+        service.dispatchWithReceipt(
+          { type: 'interruptTurn', threadId, turnId: 'missing-original-turn' },
+          undefined,
+          {
+            delegationGroupAdmission: {
+              assertCurrent: ownedCurrent,
+              signal: new AbortController().signal,
+            },
+          },
+        ),
+      ).rejects.toThrow('Owned interruption requires a live target.');
+      expect(ownedCurrent).toHaveBeenCalled();
+      expect(claude.startSession).not.toHaveBeenCalled();
+      expect(claude.interruptTurn).not.toHaveBeenCalled();
+      expect(claude.stopSession).not.toHaveBeenCalled();
     });
 
     /**
@@ -26479,6 +26497,22 @@ describe('OrchestrationService', () => {
         () => undefined,
       );
       await vi.waitFor(() => expect(claude.startSession).toHaveBeenCalled());
+
+      const ownedCurrent = vi.fn();
+      await expect(
+        service.dispatchWithReceipt(
+          { type: 'interruptTurn', threadId },
+          undefined,
+          {
+            delegationGroupAdmission: {
+              assertCurrent: ownedCurrent,
+              signal: new AbortController().signal,
+            },
+          },
+        ),
+      ).rejects.toThrow('Owned interruption requires a current adapter.');
+      expect(ownedCurrent).toHaveBeenCalled();
+      expect(claude.interruptTurn).not.toHaveBeenCalled();
 
       await expect(
         service.dispatch({ type: 'interruptTurn', threadId }),

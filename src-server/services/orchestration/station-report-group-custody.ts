@@ -210,25 +210,49 @@ export class StationReportGroupCustody {
     return data.spec.groupId;
   }
 
-  async #context(context: RuntimeSourceRequestContext, method: 'GET' | 'POST') {
-    this.#request(context, method);
+  async #context(
+    context: RuntimeSourceRequestContext,
+    method: 'GET' | 'POST',
+    publication?: ReportRoundsPublication,
+  ) {
+    const writer = await HomeWriterOwner.forHome(
+      this.owners.environment.getProjectHomeDir(),
+    );
+    const admit = <Value>(check: () => Value): Promise<Value> =>
+      publication
+        ? publication.withHome(
+            {
+              owner: writer,
+              current: () => {
+                context.req.raw.signal.throwIfAborted();
+                return undefined;
+              },
+            },
+            async (scope) => scope.check(check),
+          )
+        : writer.runRequest(context.req.raw.signal, check);
+    await admit(() => this.#request(context, method));
     const lease =
       method === 'GET'
         ? await captureEnvironmentLocalGrantReadOwner(
             context.req.raw,
             this.owners.environment,
             this.owners.security,
+            admit,
           )
-        : (
-            await captureEnvironmentLocalGrantObservationOwner(
-              context.req.raw,
-              this.owners.environment,
-              this.owners.security,
-            )
-          ).requireCurrentLocalGrant(context.req.raw);
-    const principal = createOrchestrationRequestPrincipalResolver({
-      environmentSecurityService: this.owners.environment,
-    })(context);
+        : await captureEnvironmentLocalGrantObservationOwner(
+            context.req.raw,
+            this.owners.environment,
+            this.owners.security,
+            admit,
+          ).then((observation) =>
+            admit(() => observation.requireCurrentLocalGrant(context.req.raw)),
+          );
+    const principal = await admit(() =>
+      createOrchestrationRequestPrincipalResolver({
+        environmentSecurityService: this.owners.environment,
+      })(context),
+    );
     const current = (): undefined => {
       return this.owners.environment.withCurrentAuthority(() => {
         lease.assertCurrent();
@@ -236,7 +260,7 @@ export class StationReportGroupCustody {
         return undefined;
       });
     };
-    current();
+    await admit(current);
     return { lease, principal, current };
   }
 
@@ -284,7 +308,7 @@ export class StationReportGroupCustody {
     groupId: string,
     publication?: ReportRoundsPublication,
   ) {
-    const captured = await this.#context(context, 'POST');
+    const captured = await this.#context(context, 'POST', publication);
     if (!publication) return this.#inspect(captured, groupId);
     const owner = await HomeWriterOwner.forHome(
       this.owners.environment.getProjectHomeDir(),
@@ -296,18 +320,32 @@ export class StationReportGroupCustody {
   async loadIntentForMutation(
     context: RuntimeSourceRequestContext,
     groupId: string,
+    publication?: ReportRoundsPublication,
   ) {
-    const authorized = await this.#context(context, 'POST');
-    const before = await this.#inspect(authorized, groupId);
-    if (!before?.admission.intentRef) refuse();
-    const intent = await this.owners.persistence.readReportIntent(
-      groupId,
-      before.admission.intentRef,
-      authorized.current,
+    const authorized = await this.#context(context, 'POST', publication);
+    const load = async (current: () => undefined) => {
+      const before = await this.#inspect({ ...authorized, current }, groupId);
+      if (!before?.admission.intentRef) refuse();
+      const intent = await this.owners.persistence.readReportIntent(
+        groupId,
+        before.admission.intentRef,
+        current,
+      );
+      const after = await this.#inspect({ ...authorized, current }, groupId);
+      if (!after || !same(after.admission, before.admission)) refuse();
+      return {
+        ...after,
+        intent: validateReportIntent(after.admission, intent),
+      };
+    };
+    if (!publication) return load(authorized.current);
+    const owner = await HomeWriterOwner.forHome(
+      this.owners.environment.getProjectHomeDir(),
     );
-    const after = await this.#inspect(authorized, groupId);
-    if (!after || !same(after.admission, before.admission)) refuse();
-    return { ...after, intent: validateReportIntent(after.admission, intent) };
+    return publication.withHome(
+      { owner, current: authorized.current },
+      (scope) => load(scope.current),
+    );
   }
 
   async recoverAccounting(
@@ -755,7 +793,7 @@ export class StationReportGroupCustody {
     dispatchLedger: AuthorizationLedger,
     publication?: ReportRoundsPublication,
   ) {
-    const authorized = await this.#context(context, 'POST');
+    const authorized = await this.#context(context, 'POST', publication);
     const baseCurrent = (): undefined => {
       publication?.assertCurrent();
       return authorized.current();
@@ -765,6 +803,14 @@ export class StationReportGroupCustody {
           this.owners.environment.getProjectHomeDir(),
         )
       : undefined;
+    const outsideCurrent = async (): Promise<undefined> => {
+      if (publication && owner)
+        return publication.withHome(
+          { owner, current: baseCurrent },
+          async (scope) => scope.current(),
+        );
+      return baseCurrent();
+    };
     const inspect = () =>
       publication && owner
         ? publication.withHome({ owner, current: baseCurrent }, (scope) =>
@@ -869,7 +915,7 @@ export class StationReportGroupCustody {
             refuse();
           const receipts = [];
           for (const attempt of this.#cancellationWork(state)) {
-            scoped.current();
+            await outsideCurrent();
             if (attempt.terminal) {
               receipts.push({
                 invocationId: attempt.invocationId,
@@ -884,15 +930,16 @@ export class StationReportGroupCustody {
               requestOperationKey,
               orchestration,
               attempt.continuation ? attempt.invocationId : undefined,
+              publication,
             );
-            scoped.current();
+            await outsideCurrent();
             if (!requested.reference) refuse();
             receipts.push({
               invocationId: attempt.invocationId,
               request: requested.reference,
             });
           }
-          scoped.current();
+          await outsideCurrent();
           return {
             domain: 'station.report-cancellation.v1',
             id: groupId,
@@ -932,7 +979,7 @@ export class StationReportGroupCustody {
     });
     return {
       controller,
-      current: baseCurrent,
+      current: outsideCurrent,
       identity: before.admission.spec.controller,
     };
   }
@@ -964,7 +1011,7 @@ export class StationReportGroupCustody {
       ...command,
       controller: owner.identity,
     });
-    owner.current();
+    await owner.current();
     return result;
   }
   async finalizeCancel(
@@ -996,7 +1043,7 @@ export class StationReportGroupCustody {
       ...command,
       controller: owner.identity,
     });
-    owner.current();
+    await owner.current();
     return result;
   }
 
@@ -1255,7 +1302,7 @@ export class StationReportGroupCustody {
     const command = structuredClone(input);
     id(command.operationKey);
     id(command.syncOperationKey);
-    const captured = await this.#context(context, 'POST');
+    const captured = await this.#context(context, 'POST', publication);
     const baseCurrent = (): undefined => {
       publication?.assertCurrent();
       return captured.current();
@@ -1683,38 +1730,64 @@ export class StationReportGroupCustody {
     operationId: string,
     orchestration: OrchestrationService,
     continuationInvocationId?: string,
+    publication?: ReportRoundsPublication,
   ) {
     id(operationId);
-    const authorized = await this.#context(context, 'POST');
-    const historical = await this.#inspect(authorized, groupId);
-    if (!historical?.authority?.cancelled) refuse();
-    const delivery = await this.#delivery(
-      authorized,
-      groupId,
-      seatId,
-      orchestration,
-      continuationInvocationId,
-    );
-    if (
-      delivery?.outcome !== 'started' ||
-      !delivery.sessionId ||
-      !delivery.turnId
-    )
-      refuse();
-    const member = historical.admission.members.find(
-      (entry) => entry.seatId === seatId,
-    );
-    if (!member) refuse();
-    const continuation = continuationInvocationId
-      ? await this.#continuationTurn(
-          authorized,
-          historical,
-          seatId,
-          continuationInvocationId,
+    const authorized = await this.#context(context, 'POST', publication);
+    const owner = publication
+      ? await HomeWriterOwner.forHome(
+          this.owners.environment.getProjectHomeDir(),
         )
-      : null;
-    const assertTargetCurrent = (): undefined => {
-      authorized.current();
+      : undefined;
+    const withMetadata = <Value>(
+      work: (
+        current: () => undefined,
+        check: <Result>(body: () => Result) => Result,
+      ) => Promise<Value>,
+    ): Promise<Value> =>
+      publication && owner
+        ? publication.withHome(
+            { owner, current: authorized.current },
+            (scope) => work(scope.current, scope.check),
+          )
+        : work(authorized.current, (body) =>
+            this.owners.environment.withCurrentAuthority(body),
+          );
+    const { historical, delivery, member, continuation } = await withMetadata(
+      async (current) => {
+        const scoped = { ...authorized, current };
+        const historical = await this.#inspect(scoped, groupId);
+        if (!historical?.authority?.cancelled) refuse();
+        const delivery = await this.#delivery(
+          scoped,
+          groupId,
+          seatId,
+          orchestration,
+          continuationInvocationId,
+        );
+        if (
+          delivery?.outcome !== 'started' ||
+          !delivery.sessionId ||
+          !delivery.turnId
+        )
+          refuse();
+        const member = historical.admission.members.find(
+          (entry) => entry.seatId === seatId,
+        );
+        if (!member) refuse();
+        const continuation = continuationInvocationId
+          ? await this.#continuationTurn(
+              scoped,
+              historical,
+              seatId,
+              continuationInvocationId,
+            )
+          : null;
+        return { historical, delivery, member, continuation };
+      },
+    );
+    const assertTargetCurrent = (current = authorized.current): undefined => {
+      current();
       if (continuation) {
         const session = orchestration.captureReservedStationSession(
           member.reservedTaskId,
@@ -1734,87 +1807,122 @@ export class StationReportGroupCustody {
       }
       return undefined;
     };
-    const admissionSignature = reportAdmissionSignature(
-      historical.admission,
-      this.owners.environment,
+    const intent = await withMetadata(async (current, check) =>
+      check(() => {
+        assertTargetCurrent(current);
+        const admissionSignature = reportAdmissionSignature(
+          historical.admission,
+          this.owners.environment,
+        );
+        return signReportInterrupt(
+          {
+            groupId,
+            seatId,
+            operationId,
+            hostId: authorized.lease.hostContextId,
+            principalId: authorized.principal.id,
+            admissionSignature,
+            taskId: delivery.taskId,
+            clientTurnId: delivery.clientTurnId,
+            sessionId: delivery.sessionId,
+            turnId: delivery.turnId,
+          },
+          null,
+          this.owners.environment,
+        );
+      }),
     );
-    const intent = signReportInterrupt(
-      {
-        groupId,
-        seatId,
-        operationId,
-        hostId: authorized.lease.hostContextId,
-        principalId: authorized.principal.id,
-        admissionSignature,
-        taskId: delivery.taskId,
-        clientTurnId: delivery.clientTurnId,
-        sessionId: delivery.sessionId,
-        turnId: delivery.turnId,
-      },
-      null,
-      this.owners.environment,
-    );
-    authorized.current();
     const retained = await this.owners.persistence.recordReportInterrupt(
       intent,
       authorized.current,
       async () => {
-        assertTargetCurrent();
-        const still = orchestration.inspectTurnDelivery(
-          member.reservedTaskId,
-          delivery.clientTurnId,
-          sessionReadAuthorityFromRequest(
-            authorized.principal.id,
-            undefined,
-            undefined,
-          ),
+        await withMetadata(async (current, check) =>
+          check(() => {
+            assertTargetCurrent(current);
+            const still = orchestration.inspectTurnDelivery(
+              member.reservedTaskId,
+              delivery.clientTurnId,
+              sessionReadAuthorityFromRequest(
+                authorized.principal.id,
+                undefined,
+                undefined,
+              ),
+            );
+            if (
+              still?.outcome !== 'started' ||
+              still.sessionId !== delivery.sessionId ||
+              still.turnId !== delivery.turnId
+            )
+              refuse();
+            current();
+          }),
         );
-        if (
-          still?.outcome !== 'started' ||
-          still.sessionId !== delivery.sessionId ||
-          still.turnId !== delivery.turnId
-        )
-          refuse();
-        authorized.current();
-        const response = await orchestration.dispatchWithReceipt(
-          {
-            type: 'interruptTurn',
-            threadId: delivery.sessionId,
-            turnId: delivery.turnId,
+        const command = {
+          type: 'interruptTurn' as const,
+          threadId: delivery.sessionId,
+          turnId: delivery.turnId,
+        };
+        const commandContext = {
+          userId: authorized.principal.id,
+          principal: authorized.principal,
+          requestCurrent: () => {
+            try {
+              assertTargetCurrent();
+              return true;
+            } catch {
+              return false;
+            }
           },
-          {
-            userId: authorized.principal.id,
-            principal: authorized.principal,
-            requestCurrent: () => {
-              try {
-                assertTargetCurrent();
-                return true;
-              } catch {
-                return false;
-              }
-            },
-          },
-        );
-        authorized.current();
-        const acknowledgement = reportInterruptResultSchema.parse(
-          response.result,
-        );
-        return signReportInterrupt(
-          intent.intent,
-          acknowledgement,
-          this.owners.environment,
+        };
+        const response =
+          publication && owner
+            ? await orchestration.dispatchWithReceipt(command, commandContext, {
+                delegationGroupAdmission: {
+                  assertCurrent: authorized.current,
+                  signal: context.req.raw.signal,
+                  invokeCurrent: <Value>(
+                    invoke: (
+                      check: <Result>(work: () => Result) => Result,
+                    ) => Promise<Value>,
+                  ) =>
+                    publication.invokeCurrent(
+                      { owner, current: authorized.current },
+                      invoke,
+                    ),
+                },
+              })
+            : await orchestration.dispatchWithReceipt(command, commandContext);
+        return withMetadata(async (current, check) =>
+          check(() => {
+            current();
+            const acknowledgement = reportInterruptResultSchema.parse(
+              response.result,
+            );
+            return signReportInterrupt(
+              intent.intent,
+              acknowledgement,
+              this.owners.environment,
+            );
+          }),
         );
       },
+      publication && owner
+        ? (body) => withMetadata((current) => body(current))
+        : undefined,
     );
-    if (!verifyReportInterrupt(retained.record, this.owners.environment))
-      refuse();
-    authorized.current();
-    return {
-      ...retained,
-      reference: retained.record.acknowledgement
-        ? reportInterruptReference(retained.record)
-        : null,
-    };
+    return withMetadata(async (current, check) =>
+      check(() => {
+        if (!verifyReportInterrupt(retained.record, this.owners.environment))
+          refuse();
+        current();
+        return {
+          ...retained,
+          reference: retained.record.acknowledgement
+            ? reportInterruptReference(retained.record)
+            : null,
+        };
+      }),
+    );
   }
 
   async list(context: RuntimeSourceRequestContext) {
@@ -1854,10 +1962,20 @@ export class StationReportGroupCustody {
   async findOperationForMutation(
     context: RuntimeSourceRequestContext,
     operationId: string,
+    publication?: ReportRoundsPublication,
   ) {
-    return this.#findOperation(
-      await this.#context(context, 'POST'),
-      operationId,
+    const authorized = await this.#context(context, 'POST', publication);
+    if (!publication) return this.#findOperation(authorized, operationId);
+    const owner = await HomeWriterOwner.forHome(
+      this.owners.environment.getProjectHomeDir(),
+    );
+    return publication.withHome(
+      { owner, current: authorized.current },
+      (scope) =>
+        this.#findOperation(
+          { ...authorized, current: scope.current },
+          operationId,
+        ),
     );
   }
 

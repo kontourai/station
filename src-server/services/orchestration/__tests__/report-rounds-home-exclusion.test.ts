@@ -675,3 +675,75 @@ test.each([false, true])(
     }
   },
 );
+
+test.each(['operation-lookup', 'authorize'] as const)(
+  'initial report request retains runtime home after %s release failure',
+  async (checkpoint) => {
+    const h = await setup();
+    const runtime = new StationRuntime({ projectHomeDir: h.f.home });
+    const participant = Reflect.get(runtime, 'runtimePublicationParticipant');
+    assert.ok(isRuntimePublicationParticipant(participant));
+    const forbid = (): never => {
+      throw Error('failed entry cannot reach an engine');
+    };
+    const orchestration = new OrchestrationService({
+      adapterRegistry: { register: forbid, get: forbid, list: () => [] },
+      eventBus: new EventBus(),
+      logger: { debug() {}, warn() {} },
+    });
+    const report = new StationReportGroupRuntime({
+      publicationParticipant: participant,
+      runtime: h.preparationOwners.runtime,
+      orchestration,
+      rawFetch: h.rawFetch,
+    });
+    let releaseFault: { mockRestore(): void } | undefined;
+    const arm = () => {
+      assert.equal(releaseFault, undefined);
+      const remove = fs.rmSync;
+      releaseFault = vi
+        .spyOn(fs, 'rmSync')
+        .mockImplementation((path, options) => {
+          if (String(path).includes('.home-writer.mutation.guard.stale-'))
+            throw Error('injected initial request home retirement failure');
+          return remove(path, options);
+        });
+      syncBuiltinESMExports();
+    };
+    const authorize = report.authorizeResponse;
+    const observer = vi
+      .spyOn(report, 'authorizeResponse')
+      .mockImplementation(async (...args) => {
+        if (checkpoint === 'authorize') arm();
+        return authorize.apply(report, args);
+      });
+    try {
+      if (checkpoint === 'operation-lookup') arm();
+      await assert.rejects(report.create(h.f.context(), h.input));
+      assert.ok(releaseFault);
+      assert.equal(h.rawFetch.mock.calls.length, 0);
+      await assert.rejects(runtime.shutdown(), {
+        code: 'runtime_publication_pending',
+      });
+      assert.throws(
+        () => acquireStationHomeMaintenanceLease(h.f.home),
+        StationHomeActiveError,
+      );
+      releaseFault.mockRestore();
+      releaseFault = undefined;
+      syncBuiltinESMExports();
+      await runtime.shutdown();
+      const maintenance = acquireStationHomeMaintenanceLease(h.f.home);
+      maintenance.release();
+    } finally {
+      observer.mockRestore();
+      releaseFault?.mockRestore();
+      syncBuiltinESMExports();
+      const writer = await HomeWriterOwner.forHome(h.f.home);
+      await writer.settlePendingCleanup();
+      await orchestration.shutdown();
+      await runtime.shutdown();
+    }
+  },
+  60_000,
+);

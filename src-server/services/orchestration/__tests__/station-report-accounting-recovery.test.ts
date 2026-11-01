@@ -10,6 +10,8 @@ import { onTestFinished, test, vi } from 'vitest';
 import { createGateTestRegistry } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { StationAgentAdapter } from '../../../providers/adapters/station-agent-adapter.js';
 import { createReportGroupRoutes } from '../../../routes/orchestration/report-groups.js';
+import { isRuntimePublicationParticipant } from '../../../runtime/bootstrap/runtime-publication-participant.js';
+import { StationRuntime } from '../../../runtime/bootstrap/station-runtime.js';
 import {
   bindRuntimeLocalOperator,
   getRuntimeAuthenticatedRequestPrincipal,
@@ -66,16 +68,23 @@ async function recoveryFixture() {
       resolveSkillDir: async () => null,
     }),
   });
+  const runtimeOwner = new StationRuntime({ projectHomeDir: h.f.home });
+  const publicationParticipant = Reflect.get(
+    runtimeOwner,
+    'runtimePublicationParticipant',
+  );
+  assert.ok(isRuntimePublicationParticipant(publicationParticipant));
   const owners = {
+    publicationParticipant,
     runtime: h.preparationOwners.runtime,
     orchestration,
     rawFetch: h.rawFetch,
   };
-  return { h, adapter, orchestration, eventStore, owners, relay };
+  return { h, adapter, orchestration, eventStore, owners, relay, runtimeOwner };
 }
 
 test('accounting recovery refuses aborted admission and resumes a Dispatch-only commit after expiry and Session deletion without another invocation or reservation', async () => {
-  const { h, adapter, orchestration, eventStore, owners, relay } =
+  const { h, adapter, orchestration, eventStore, owners, relay, runtimeOwner } =
     await recoveryFixture();
   const starts = vi.spyOn(adapter, 'startSession');
   const sends = vi.spyOn(adapter, 'sendTurn');
@@ -347,11 +356,13 @@ test('accounting recovery refuses aborted admission and resumes a Dispatch-only 
   } finally {
     await orchestration.shutdown();
     eventStore.close();
+    await runtimeOwner.shutdown();
   }
 }, 300_000);
 
 test('unknown physical usage stays reserved across accounting recovery and exact replay', async () => {
-  const { h, owners, orchestration, eventStore } = await recoveryFixture();
+  const { h, owners, orchestration, eventStore, runtimeOwner } =
+    await recoveryFixture();
   h.rawFetch.mockRejectedValueOnce(
     Error('controlled unknown physical response'),
   );
@@ -414,11 +425,13 @@ test('unknown physical usage stays reserved across accounting recovery and exact
   } finally {
     await orchestration.shutdown();
     eventStore.close();
+    await runtimeOwner.shutdown();
   }
 }, 180_000);
 
 test('a later invocation with missing turn proofs cannot acquire the original turn as its recovery witness', async () => {
-  const { h, owners, orchestration, eventStore } = await recoveryFixture();
+  const { h, owners, orchestration, eventStore, runtimeOwner } =
+    await recoveryFixture();
   h.rawFetch.mockImplementation(async (_url, options) => {
     const body = JSON.parse(String(options?.body));
     const prompt = JSON.parse(body.messages[0].content[0].text);
@@ -526,5 +539,6 @@ test('a later invocation with missing turn proofs cannot acquire the original tu
   } finally {
     await orchestration.shutdown();
     eventStore.close();
+    await runtimeOwner.shutdown();
   }
 }, 300_000);
