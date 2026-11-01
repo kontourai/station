@@ -109,7 +109,9 @@ test('the composer’s context meter has a visible track and fill in the control
         fillStroke: stroke('.context-meter__fill'),
         model: box('.chat-input__model-btn'),
         meterInControls: Boolean(
-          document.querySelector('.context-meter')?.closest('.chat-controls-row'),
+          document
+            .querySelector('.context-meter')
+            ?.closest('.chat-controls-row'),
         ),
       };
     });

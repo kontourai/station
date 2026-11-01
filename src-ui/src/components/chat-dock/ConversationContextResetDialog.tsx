@@ -1,4 +1,3 @@
-import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import {
   type ConversationContextBoundaryPolicy,
   type ConversationContextBoundaryProjection,
@@ -13,6 +12,7 @@ import {
   cancelConversationContextBoundary,
   reserveConversationContextBoundary,
 } from '@kontourai/station-sdk/client';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useEffect, useRef, useState } from 'react';
 import type { ChatSession } from '../../types';
 import { userFacingErrorMessage } from '../../utils/errorText';

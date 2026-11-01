@@ -1,4 +1,3 @@
-import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import {
   agentId,
   engineConnectionId,
@@ -13,6 +12,7 @@ import {
   getConversationHandoffStatus,
   handoffExecutionMessage,
 } from '@kontourai/station-sdk/client';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
