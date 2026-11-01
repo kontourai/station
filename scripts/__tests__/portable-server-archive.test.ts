@@ -162,8 +162,7 @@ describe('stageWindowsBirthHelper (#2805)', () => {
     const staged = stageWindowsBirthHelper(runtime, {
       platform: 'win32',
       build: () => guard,
-      run: () => `${BIRTH}
-`,
+      run: () => `${BIRTH}\r\n`,
       probeWithPowerShell: () => BIRTH,
     });
     expect(staged.helper).toBe(join(runtime, 'station-windows-owned-guard.exe'));
@@ -173,10 +172,7 @@ describe('stageWindowsBirthHelper (#2805)', () => {
         join(runtime, 'station-windows-owned-guard.exe.sha256'),
         'utf8',
       ),
-    ).toBe(
-      `${createHash('sha256').update('guard bytes').digest('hex')}
-`,
-    );
+    ).toBe(`${createHash('sha256').update('guard bytes').digest('hex')}\n`);
     expect(guard.cleanup).toHaveBeenCalled();
   });
 

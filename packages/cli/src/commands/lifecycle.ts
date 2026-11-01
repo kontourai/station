@@ -5367,7 +5367,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
 /** How much of the log's end a start failure reads for its cause. */
 const START_FAILURE_LOG_TAIL_BYTES = 64 * 1024;
 const START_FAILURE_CAUSE_PATTERN =
-  /(?:STATION_[A-Z_]+|[A-Z][A-Za-z]*Error|FATAL|Fatal|fatal)/;
+  /\b(?:STATION_[A-Z_]+|[A-Z][A-Za-z]*Error|FATAL|Fatal|fatal)\b/;
 
 /**
  * The cause and the log path a failed start prints (#4382). A server that
@@ -5393,9 +5393,7 @@ function describeStartFailureLog(
       const lines = buffer
         .subarray(0, read)
         .toString('utf8')
-        .split(/
-?
-/)
+        .split(/\r?\n/)
         .map((line) => line.trim())
         .filter(Boolean);
       cause = lines
@@ -5409,9 +5407,7 @@ function describeStartFailureLog(
   }
   const shown =
     cause && cause.length > 500 ? `${cause.slice(0, 500)}…` : cause;
-  return `${shown ? `
-  Cause: ${shown}` : ''}
-  Log: ${logFile}`;
+  return `${shown ? `\n  Cause: ${shown}` : ''}\n  Log: ${logFile}`;
 }
 
 function loadHostedTenantRegistryForLifecycle():

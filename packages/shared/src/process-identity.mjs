@@ -92,7 +92,7 @@ function windowsCreationDateCommand(pid) {
 
 /**
  * The precompiled Windows Job guard (scripts/windows-owned-guard.cs) a Windows
- * archive stages beside its bundled `runtime\\node.exe` (#2805). Its
+ * archive stages beside its bundled `runtime\node.exe` (#2805). Its
  * `--identity <pid>` reads GetProcessTimes and prints the same canonical
  * birth as the PowerShell probe, without PowerShell's cold start. The digest
  * file the archive builder writes beside it names the exact bytes it staged.
@@ -100,7 +100,7 @@ function windowsCreationDateCommand(pid) {
 export const WINDOWS_BIRTH_HELPER_FILENAME = 'station-windows-owned-guard.exe';
 export const WINDOWS_BIRTH_HELPER_DIGEST_FILENAME = `${WINDOWS_BIRTH_HELPER_FILENAME}.sha256`;
 // The markers of the two trees that carry a bundled runtime: the archive
-// itself, and the install root its service launcher copies `runtime\\` into.
+// itself, and the install root its service launcher copies `runtime\` into.
 const WINDOWS_BIRTH_HELPER_ROOT_MARKERS = [
   '.station-prebuilt-archive',
   '.station-portable-install-root',
@@ -111,7 +111,7 @@ let verifiedBirthHelper = null;
 /**
  * The staged birth helper this process may run, or null to use PowerShell.
  * Only the directory of the running Node.js is consulted, and only when that
- * is the `runtime\\` of a Station archive or install root: never PATH, the
+ * is the `runtime\` of a Station archive or install root: never PATH, the
  * environment or the working directory. The helper's SHA-256 must equal the
  * staged digest; a missing, partial or replaced helper is not run.
  */

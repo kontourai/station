@@ -54,12 +54,10 @@ function tree({
     writeFileSync(join(root, PREBUILT_ARCHIVE_MARKER_FILENAME), marker);
   }
   if (git === 'gitfile') {
-    writeFileSync(join(root, '.git'), 'gitdir: /elsewhere/.git/worktrees/x
-');
+    writeFileSync(join(root, '.git'), 'gitdir: /elsewhere/.git/worktrees/x\n');
   } else if (git) {
     mkdirSync(join(root, '.git'));
-    if (git === true) writeFileSync(join(root, '.git', 'HEAD'), 'ref: x
-');
+    if (git === true) writeFileSync(join(root, '.git', 'HEAD'), 'ref: x\n');
   }
   return root;
 }

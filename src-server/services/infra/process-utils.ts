@@ -454,7 +454,7 @@ function registryDirIsTrustworthy(
     }
     if (reason === null) return true;
     log(
-      'owned-process registry: directory is not a real directory inside this user's %LOCALAPPDATA%; refusing to read or write it',
+      'owned-process registry: directory is not a real directory inside this user\'s %LOCALAPPDATA%; refusing to read or write it',
       { registryDir, reason: reason.kind },
     );
     return false;

@@ -130,7 +130,7 @@ describe.runIf(WINDOWS)(
  * start, and must print exactly what the PowerShell probe prints.
  */
 describe.runIf(WINDOWS)(
-  'the staged Windows birth helper (runs on win32 only; skipped on this host)',
+  'the staged Windows birth helper (runs on win32 only)',
   () => {
     // csc.exe compiles the guard, then the stager runs its own parity check.
     const STAGE_TIMEOUT_MS = 180_000;
@@ -156,8 +156,7 @@ describe.runIf(WINDOWS)(
       mkdirSync(runtime);
       writeFileSync(
         join(root, '.station-prebuilt-archive'),
-        'station-prebuilt-archive-v1
-',
+        'station-prebuilt-archive-v1\n',
       );
       const { helper } = stageWindowsBirthHelper(runtime);
       return { root, helper, execPath: join(runtime, 'node.exe') };
@@ -226,8 +225,7 @@ describe.runIf(WINDOWS)(
         const { root, helper, execPath } = stagedArchive();
         writeFileSync(
           join(root, 'runtime', WINDOWS_BIRTH_HELPER_DIGEST_FILENAME),
-          `${'0'.repeat(64)}
-`,
+          `${'0'.repeat(64)}\n`,
         );
         const pid = await startChild();
         const sync = recordingExec();
