@@ -61,6 +61,8 @@ export type ForegroundMessageInput = ForegroundMessageFields &
   ApprovalPickCarry & { skillExperience?: SkillExperienceStartInputV1 };
 
 interface ForegroundMessageFields {
+  /** Hold an eligible follow-up in the server inbox if the conversation is busy. */
+  whenBusy?: 'queue';
   expectedInputRequest?: AttentionRequestReference;
   /**
    * The person's personal per-engine approval default on a chat's first

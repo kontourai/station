@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { URL as NodeURL } from 'node:url';
 import type { SkillExperienceDefinitionV1 } from '@kontourai/station-contracts/skill-experience';
 import { projectChatDefaultsQueryKey } from '@kontourai/station-sdk';
+import { ForegroundMessageQueuedError } from '@kontourai/station-sdk/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
@@ -3225,6 +3226,54 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       [],
     );
     expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
+  });
+
+  it('asks Station to queue if a conversation becomes busy after the local snapshot', async () => {
+    activeChatsStore.updateChat(sessionId, {
+      status: 'idle',
+      conversationId: sessionId,
+    });
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      new ForegroundMessageQueuedError({
+        outcome: 'queued',
+        conversationId: sessionId,
+        clientTurnId: 'race-key',
+        entry: {
+          conversationId: sessionId,
+          clientTurnId: 'race-key',
+          kind: 'follow-up',
+          state: 'queued',
+          message: 'racing follow-up',
+          createdAt: '2026-01-01T00:00:00Z',
+          updatedAt: '2026-01-01T00:00:00Z',
+        },
+      }),
+    );
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await result.current(
+        sessionId,
+        'claude',
+        sessionId,
+        'racing follow-up',
+        undefined,
+        undefined,
+        'race-key',
+      );
+    });
+    expect(sendExecutionMessageMock).toHaveBeenCalledWith(
+      'http://api.test',
+      expect.objectContaining({
+        message: 'racing follow-up',
+        conversationId: sessionId,
+        whenBusy: 'queue',
+      }),
+      expect.any(Object),
+    );
+    expect(queueExecutionMessageMock).not.toHaveBeenCalled();
+    expect(activeChatsStore.getSnapshot()[sessionId].queuedMessages).toEqual(
+      [],
+    );
   });
 
   it('hands a native steer to the server inbox instead of the adapter command', async () => {

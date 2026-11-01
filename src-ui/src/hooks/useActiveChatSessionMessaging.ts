@@ -1110,9 +1110,11 @@ export function useSendMessage(
           );
 
       try {
-        const { dispatchForeground, dispatchQueuedForeground } = await import(
-          '../lib/foregroundMessageDispatch'
-        );
+        const {
+          dispatchForeground,
+          dispatchPossiblyQueuedForeground,
+          dispatchQueuedForeground,
+        } = await import('../lib/foregroundMessageDispatch');
         // #2436: the server applies the conversation's recorded posture to
         // this turn. The only posture this send carries is a pick the server
         // has not received yet (no session yet, or picked offline); it is
@@ -1209,6 +1211,19 @@ export function useSendMessage(
             ? { personalApprovalDefault: carriedApprovalPick }
             : {}),
         };
+        const offerInbox = Boolean(
+          !queueBusyFollowUp &&
+            currentState?.conversationId &&
+            !options?.dispatch &&
+            !preserveComposer &&
+            !dispatchInput.setApprovalMode &&
+            !dispatchInput.expectedDefinitionFingerprint &&
+            !dispatchInput.attachments?.length &&
+            !dispatchInput.attachmentStages?.length &&
+            !dispatchInput.mcpPromptOrigin &&
+            !dispatchInput.skillExperience &&
+            dispatchInput.executionOnCurrentStation !== false,
+        );
         if (
           queueBusyFollowUp &&
           accountPreferences.requestScope &&
@@ -1217,7 +1232,9 @@ export function useSendMessage(
           throw new Error('The Station connection changed.');
         const queuedResult = queueBusyFollowUp
           ? await dispatchQueuedForeground(dispatchInput)
-          : undefined;
+          : offerInbox
+            ? await dispatchPossiblyQueuedForeground(dispatchInput)
+            : undefined;
         if (queuedResult?.outcome === 'queued') {
           stopDeliveryWatch?.();
           await live?.accepted();
@@ -1248,8 +1265,8 @@ export function useSendMessage(
             ? ({ kind: 'queued' } satisfies OutboundDispatchTransportResult)
             : true;
         }
-        const receipt = queueBusyFollowUp
-          ? queuedResult!.receipt
+        const receipt = queuedResult
+          ? queuedResult.receipt
           : await dispatchForeground(dispatchInput);
 
         stopDeliveryWatch?.();
