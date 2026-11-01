@@ -18,11 +18,12 @@ import { DatabaseSync } from 'node:sqlite';
 import { createSqliteSessionTurnBoundaryCoordinator } from ${JSON.stringify(moduleUrl)};
 const raw = new DatabaseSync(process.argv[1]);
 raw.exec('PRAGMA busy_timeout=5000');
+let armed = false;
 const db = {
   get isTransaction() { return raw.isTransaction; },
   prepare: (sql) => raw.prepare(sql),
   exec: (sql) => {
-    if (sql === 'BEGIN IMMEDIATE') process.send({ kind: 'attempting' });
+    if (armed && sql === 'BEGIN IMMEDIATE') process.send({ kind: 'attempting' });
     return raw.exec(sql);
   },
 };
@@ -30,11 +31,15 @@ const coordinator = createSqliteSessionTurnBoundaryCoordinator({
   db, head: () => 0, reconcileTerminals: () => {}, retiredBoundaryIds: () => [],
   transactionLost: (cause) => new Error('Lost transaction', { cause }),
 });
+process.send({ kind: 'ready' });
+process.once('message', () => {
+armed = true;
 const now = '2026-01-01T00:00:00.000Z';
 const result = coordinator.create({ boundaryId: 'race', threadId: 'child', state: 'prepared',
-  ownerId: 'owner', ownerPid: process.pid, ownerIdentityKind: 'unknown', createdAt: now, updatedAt: now });
+  ownerId: 'owner', ownerPid: process.pid, ownerIdentityKind: 'unverified', createdAt: now, updatedAt: now });
 raw.close();
 process.send({ kind: 'result', result }, () => process.disconnect());
+});
 `;
 
 test('a fence committed while another process enters admission prevents the boundary', {
@@ -45,7 +50,6 @@ test('a fence committed while another process enters admission prevents the boun
   const store = open(path);
   store.close();
   const db = new DatabaseSync(path);
-  db.exec('BEGIN IMMEDIATE');
   const execution = executeOwnedProcess(
     process.execPath,
     ['--import', 'tsx', '--input-type=module', '-e', contenderSource, path],
@@ -62,6 +66,10 @@ test('a fence committed while another process enters admission prevents the boun
       );
       execution.child.on('message', (message: unknown) => {
         const value = message as { kind: string; result?: { kind: string } };
+        if (value.kind === 'ready') {
+          db.exec('BEGIN IMMEDIATE');
+          execution.child.send('go');
+        }
         if (value.kind === 'attempting') {
           clearTimeout(timeout);
           resolve();
@@ -80,7 +88,7 @@ test('a fence committed while another process enters admission prevents the boun
     db.exec('COMMIT');
     expect(await waitForSuiteSettlement(execution, 5000)).toBe(true);
     expect((await execution.completion).status).toBe(0);
-    expect(result?.kind).not.toBe('applied');
+    expect(result?.kind).toBe('unavailable');
     expect(
       db
         .prepare(
