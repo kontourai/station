@@ -1,11 +1,11 @@
 # Integrated terminal
 
-Status: In progress under #3994. The scoped in-process foundation, the same-origin gateway, operator-device ticket admission, the SDK session store and the Coding cutover (still rendered by xterm.js) are implemented. Supervisor workloads, Ghostty, the layout and removal of the legacy stack remain proposed.
+Status: In progress under #3994. The scoped in-process foundation, the same-origin gateway, operator-device ticket admission, the SDK session store and the Coding cutover (still rendered by xterm.js) are implemented. The legacy `port + 1` stack is removed. Supervisor workloads, Ghostty and the layout remain proposed.
 
 > **Reading status: proposal (2026-10-17).** Replaces the current terminal
 > stack end to end. The bounded implementation below precedes that replacement; the current Coding UI behavior is
-> owned by [`TerminalService`](../../src-server/services/terminal/terminal-service.ts),
-> the [terminal WebSocket server](../../src-server/services/terminal/terminal-ws-server.ts),
+> owned by [`TerminalSessions`](../../src-server/services/terminal/terminal-sessions.ts),
+> the [terminal gateway](../../src-server/services/terminal/terminal-gateway.ts),
 > and [`TerminalPanel`](../../src-ui/src/components/coding-layout/TerminalPanel.tsx).
 > Station's implementation is written independently; no code is ported from
 > other products.
@@ -36,10 +36,8 @@ require `terminal:operate`. Operate also permits observing. The observe token
 is explicit operator promotion only; no preset, default or existing grant is
 changed. The in-person operator restriction still applies after ingress. Observer tests exercise that service
 boundary with an injected authority; they do not prove pairing or remote grants.
-The old socket, Coding UI, process projections, and project close endpoint
-continue to use `TerminalService` and retain their existing behavior, including
-#3781's connection ownership checks. This does not claim that legacy socket
-commands have acquired Project-principal authorization.
+At this boundary the old socket, Coding UI, process projections, and project
+close endpoint still used the legacy service; Delivery 6 removed it.
 
 Session metadata and journal output survive disposal and a new service instance.
 In-process shells do not survive server exit, and restored sessions are ended
@@ -216,7 +214,7 @@ POSIX [real-PTY suite](../../src-server/services/terminal/__tests__/terminal-gat
 Physical iOS, Android and Desktop devices, Windows/ConPTY and a browser broker
 (DataChannel) route are not qualified: the broker route has no socket path and
 stays refused at the client. The legacy listener, port discovery and
-`TerminalService` remain for older clients until the removal phase.
+`TerminalService` are removed (Delivery 6).
 
 ### Whole-store retention and process custody
 
@@ -655,7 +653,7 @@ plugin-supplied key:
 
 | Current surface | Outcome |
 | --- | --- |
-| `port + 1` WebSocket, `GET /api/system/terminal-port`, SDK `fetchTerminalPort` | Removed after the new socket ships |
+| `port + 1` WebSocket, `GET /api/system/terminal-port`, SDK `fetchTerminalPort` | Removed ([decision](../decisions/terminal-same-origin-only.md)) |
 | `DELETE /api/projects/:slug/terminals/:terminalId` | Kept, backed by the new session store; the server rejects an id whose session is not in `:slug` |
 | Project-scoped terminal ids | Mapped once to new instance-unique ids when their history and stored tabs are imported |
 | `/api/orchestration/processes/terminals*` and `TerminalProcessSummary`/`Detail` | Re-pointed at the journal; contract shapes kept |
@@ -689,9 +687,11 @@ verification.
    depend on the pane workspace capability specified in #3875, which is not
    yet implemented.
 5. **Agent integration:** add to chat, script runner, agent tools.
-6. **Removal:** old listener, endpoints, client components, and the dead
-   `.coding-terminal-fallback` end-to-end check; documentation and the
-   decision record.
+6. **Removal:** done for the `port + 1` listener, its endpoint and SDK
+   function, `TerminalService`, the supervisor's `terminal` listener and the
+   dead `.coding-terminal-fallback` end-to-end check, with
+   [the decision record](../decisions/terminal-same-origin-only.md). The
+   xterm.js client components go with the emulator phase.
 
 ## Verification
 

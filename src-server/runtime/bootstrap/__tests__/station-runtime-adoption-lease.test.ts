@@ -191,8 +191,6 @@ function shutdownDouble(): ShutdownDouble {
   runtime.acpBridge = { shutdown: vi.fn(async () => {}) };
   runtime.feedbackService = { stop: vi.fn() };
   runtime.voiceService = { stop: vi.fn(async () => {}) };
-  runtime.terminalWsServer = { stop: vi.fn() };
-  runtime.terminalService = { dispose: vi.fn(async () => {}) };
   runtime.configLoader = {
     getProjectHomeDir: () => '/tmp/station-home-under-test',
     dispose: vi.fn(async () => {

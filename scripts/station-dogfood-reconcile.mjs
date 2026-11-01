@@ -195,18 +195,17 @@ export function validateConfig(raw) {
   }
   if (raw.serverPort > 65532) {
     fail(
-      'dogfood config serverPort must be at most 65532 for voice/terminal/consent ports',
+      'dogfood config serverPort must be at most 65532 for voice/consent ports',
     );
   }
   const reservedPorts = [
     raw.serverPort,
-    raw.serverPort + 1,
     raw.serverPort + 2,
     raw.serverPort + 3,
     raw.uiPort,
   ];
   if (new Set(reservedPorts).size !== reservedPorts.length) {
-    fail('server, voice, terminal, consent, and UI ports must all be distinct');
+    fail('server, voice, consent, and UI ports must all be distinct');
   }
   let tailnet;
   try {

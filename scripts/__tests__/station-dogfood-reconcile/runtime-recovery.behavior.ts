@@ -173,7 +173,7 @@ export function registerRuntimeRecovery() {
       });
     });
 
-    it.each(['api', 'terminal', 'voice', 'ui'] as const)(
+    it.each(['api', 'voice', 'ui'] as const)(
       'treats a missing %s listener as an unavailable service unit and recovers the exact active SHA',
       (failedListener) => {
         const fixture = createFixture({ current: true, failedListener });

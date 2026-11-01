@@ -96,9 +96,9 @@ and historical qualifications below are not current image or cloud proof.
 The default Compose mapping exposes port 3000. The lifecycle UI proxy serves
 the UI, HTTP API, event streams, identity and Device pairing through that origin.
 The Coding terminal's ticket-admitted `/api/terminal/socket` upgrade is
-forwarded through this proxy to the API listener. The dedicated voice and legacy
-terminal listeners are separate; this proxy has no upgrade bridge to them, and
-the default mapping does not publish their ports.
+forwarded through this proxy to the API listener. The dedicated voice listener
+is separate; this proxy has no upgrade bridge to it, and the default mapping
+does not publish its port.
 The image runs as Node's unprivileged UID/GID `1000` and persists its home
 in the `station-data` volume.
 
@@ -348,7 +348,7 @@ cross-host authority. See [source recovery limits](monitoring.md#source-approval
 For a complete optional Compose proxy profile, see [Public HTTPS ingress](../../deploy/public-ingress/README.md). It keeps the root deployment private unless explicitly applied and removes direct Station host ports.
 
 The following example terminates TLS for the UI and HTTP/SSE API through the
-lifecycle proxy. It does not expose the dedicated voice/terminal listeners:
+lifecycle proxy. It does not expose the dedicated voice listener:
 
 ```nginx
 server {

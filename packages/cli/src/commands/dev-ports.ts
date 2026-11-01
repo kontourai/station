@@ -37,7 +37,7 @@ import { resolveStationRoot } from '@kontourai/station-shared/runtime-path-resol
  *  - Below the OS ephemeral range (49152+ on the relevant platforms), so the
  *    kernel never hands one of these out from under us for an outbound socket.
  *  - The 1000-wide gap between the two bases is larger than MAX_OFFSET plus
- *    the instance block width (terminal +1, voice +2, consent +3 —
+ *    the instance block width (voice +2, consent +3 —
  *    station#3677), which GUARANTEES no port in one worktree's server block
  *    can ever equal a ui port for another (39640 + 3 = 39643 < 40141). No
  *    cross-role collision is possible.
@@ -331,22 +331,22 @@ export interface AllocatedDevPorts {
 export type IsPortFree = (port: number) => boolean | Promise<boolean>;
 
 /**
- * All five listeners `start()` binds for one offset: the API server, the
- * terminal server (`serverPort + 1`), the voice server (`serverPort + 2`),
- * the consent listener (`serverPort + 3`, station#3677), and the UI
- * (`uiPort`). See `lifecycle.ts`'s `start`. The allocator must find them
- * ALL free, because `assertNoPortConflicts` is cwd-scoped and cannot see other
- * worktrees — this probe is the only cross-worktree guard. Two worktrees whose
- * offsets land 1-3 apart share a terminal/voice/consent port (terminal of
- * offset N is the API port of offset N+1), so probing only server+ui would
- * let them collide with a raw EADDRINUSE mid-start.
+ * All four listeners `start()` binds for one offset: the API server, the
+ * voice server (`serverPort + 2`), the consent listener (`serverPort + 3`,
+ * station#3677), and the UI (`uiPort`). See `lifecycle.ts`'s `start`. The
+ * allocator must find them ALL free, because `assertNoPortConflicts` is
+ * cwd-scoped and cannot see other worktrees — this probe is the only
+ * cross-worktree guard. Two worktrees whose offsets land 2-3 apart share a
+ * voice/consent port (voice of offset N is the API port of offset N+2), so
+ * probing only server+ui would let them collide with a raw EADDRINUSE
+ * mid-start.
  */
 function offsetPortsToProbe(serverPort: number, uiPort: number): number[] {
-  return [serverPort, serverPort + 1, serverPort + 2, serverPort + 3, uiPort];
+  return [serverPort, serverPort + 2, serverPort + 3, uiPort];
 }
 
 /**
- * Starting at `startOffset`, find the first offset whose FIVE listeners are
+ * Starting at `startOffset`, find the first offset whose FOUR listeners are
  * all free, scanning FORWARD to absorb the rare hash collision between two
  * worktrees. Bounded by MAX_OFFSET: because the band is
  * only MAX_OFFSET+1 wide, the scan wraps modulo (MAX_OFFSET+1) so it can cover
