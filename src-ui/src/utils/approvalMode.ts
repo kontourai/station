@@ -85,8 +85,13 @@ export const APPROVAL_MODE_OPTIONS: Array<{
 }> = [
   {
     value: 'connection-default',
-    label: 'Connection default',
-    description: 'Clears any session override for this chat.',
+    // #4390: the ONE name for the inherited default, on every surface — the
+    // composer chips, this sheet, and both Settings selects. It was
+    // "Connection default", "Engine default", "Engine settings", "Use
+    // inherited default" and the raw id `connection-default`.
+    label: 'Default',
+    description:
+      'No choice for this chat: a saved default applies, otherwise the engine’s own settings.',
   },
   {
     value: 'ask',
@@ -221,7 +226,27 @@ export function approvalModeChipLabel(mode: ApprovalMode): string {
   return APPROVAL_MODE_CHIP_LABELS[mode] ?? mode;
 }
 
-type ApprovalModeSource =
+/**
+ * #4390: where an inherited approval mode came from, in words. The source ids
+ * below are internal; the sheet printed them verbatim ("From adapter
+ * default").
+ */
+const APPROVAL_MODE_SOURCE_NOTES: Record<ApprovalModeSource, string> = {
+  'session override': 'Only this chat',
+  'agent default': 'From this Agent’s default',
+  'project default': 'From this project’s default',
+  'project last used': 'Last used in this project',
+  'project unavailable': 'This project’s default is unavailable',
+  'account default': 'From your saved default',
+  'station default': 'From this Station’s default',
+  'adapter default': 'Default: the engine’s own settings',
+};
+
+export function approvalModeSourceNote(source: ApprovalModeSource): string {
+  return APPROVAL_MODE_SOURCE_NOTES[source];
+}
+
+export type ApprovalModeSource =
   | 'session override'
   | 'agent default'
   | 'project default'

@@ -25,7 +25,15 @@ export type SettingValueDescriptor =
   | { kind: 'string'; minLength?: number; maxLength?: number; pattern?: string }
   | { kind: 'boolean' }
   | { kind: 'number'; min?: number; max?: number; integer?: boolean }
-  | { kind: 'enum'; values: readonly string[] }
+  | {
+      kind: 'enum';
+      values: readonly string[];
+      /**
+       * User-facing words per value (#4390). A value without one renders as
+       * itself; stored values never change.
+       */
+      labels?: Readonly<Record<string, string>>;
+    }
   /**
    * Structured objects/arrays. Validated by `schemas/app.schema.json` at
    * save time; the sanitizer accepts any value shape for these keys and
@@ -652,6 +660,14 @@ export const APP_SETTINGS_REGISTRY = [
     descriptor: {
       kind: 'enum',
       values: ['connection-default', 'ask', 'auto', 'never'],
+      // The same words as the composer's approval picker
+      // (`APPROVAL_MODE_OPTIONS`), never the raw ids (#4390).
+      labels: {
+        'connection-default': 'Default',
+        ask: 'Ask first',
+        auto: 'Auto',
+        never: 'Never ask (full access)',
+      },
     },
     label: 'Default approval mode',
     help: 'New chats start in this approval posture unless the chat or its Agent names its own.',

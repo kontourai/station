@@ -3,6 +3,7 @@ import {
   type AccountPreferencesPatch,
   type InteractiveApprovalEngine,
 } from '@kontourai/station-contracts/account-preferences';
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import { useState } from 'react';
 import { Button } from '../../components/Button';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
@@ -114,7 +115,7 @@ export function AccountPreferencesSection() {
           control={
             <select
               className="editor-select"
-              aria-label={`New ${engine} chats approval mode`}
+              aria-label={`New ${engineDisplayLabel(engine) ?? engine} chats approval mode`}
               disabled={account.saving || account.status !== 'account'}
               value={defaults[engine] ?? 'connection-default'}
               onChange={(event) =>
@@ -125,9 +126,7 @@ export function AccountPreferencesSection() {
             >
               {APPROVAL_MODE_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
-                  {option.value === 'connection-default'
-                    ? 'Use inherited default'
-                    : option.label}
+                  {option.label}
                 </option>
               ))}
             </select>
@@ -137,7 +136,7 @@ export function AccountPreferencesSection() {
       <ConfirmModal
         isOpen={confirmEngine !== null}
         title="Save full access default?"
-        message={`New ${confirmEngine ?? ''} chats will request Full access. The agent can act without approval prompts, subject to this device’s access and Station policy.`}
+        message={`New ${confirmEngine ? (engineDisplayLabel(confirmEngine) ?? confirmEngine) : ''} chats will request Full access. The agent can act without approval prompts, subject to this device’s access and Station policy.`}
         confirmLabel="Save full access default"
         cancelLabel="Cancel"
         variant="danger"

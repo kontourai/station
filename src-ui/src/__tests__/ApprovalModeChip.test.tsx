@@ -277,7 +277,7 @@ describe('ApprovalModeChip', () => {
     ).toBeTruthy();
     await openSheet();
     expect(option(/^Auto/).getAttribute('aria-checked')).toBe('true');
-    expect(option(/^Connection default/).getAttribute('aria-checked')).toBe(
+    expect(option(/^Default/).getAttribute('aria-checked')).toBe(
       'false',
     );
   });
@@ -297,7 +297,7 @@ describe('ApprovalModeChip', () => {
       }),
     ).toBeTruthy();
     await openSheet();
-    const defaultOption = option(/^Connection default/);
+    const defaultOption = option(/^Default/);
     expect(defaultOption.getAttribute('aria-checked')).toBe('true');
     // Says what the engine default concretely is for Codex, not only that
     // Station has not confirmed a mode.
@@ -731,7 +731,7 @@ describe('ApprovalModeChip', () => {
 
     const chip = screen.getByRole('button', { name: /^Approval mode:/ });
     expect(chip.getAttribute('aria-label')).toContain(
-      'Approval mode: Engine default — Connection default. Engine approval control.',
+      'Approval mode: Engine default — Default. Engine approval control.',
     );
     expect(
       chip.querySelector('.chat-input__approval-chip-label')?.textContent,

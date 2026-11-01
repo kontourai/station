@@ -1,8 +1,9 @@
 /** @vitest-environment jsdom */
 
-import type {
-  SettingDefinition,
-  SettingProvenanceEntry,
+import {
+  APP_SETTINGS_REGISTRY,
+  type SettingDefinition,
+  type SettingProvenanceEntry,
 } from '@kontourai/station-contracts/settings-registry';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
@@ -230,6 +231,31 @@ describe('renderSettingRow', () => {
       'debug',
       'info',
       'warn',
+    ]);
+  });
+
+  test('#4390: the Default approval mode select shows the picker words, never raw ids', () => {
+    const def = APP_SETTINGS_REGISTRY.find(
+      (entry) => entry.key === 'defaultApprovalMode',
+    )!;
+    render(
+      renderSettingRow({ definition: def, value: undefined, onChange: vi.fn() }),
+    );
+    const select = screen.getByLabelText(
+      'Default approval mode',
+    ) as HTMLSelectElement;
+    expect(Array.from(select.options).map((o) => o.textContent)).toEqual([
+      'Default',
+      'Ask first',
+      'Auto',
+      'Never ask (full access)',
+    ]);
+    // The stored values are unchanged.
+    expect(Array.from(select.options).map((o) => o.value)).toEqual([
+      'connection-default',
+      'ask',
+      'auto',
+      'never',
     ]);
   });
 

@@ -12,6 +12,7 @@ import {
   approvalModeChipLabel,
   approvalModeKnobSupported,
   approvalModeLabel,
+  approvalModeSourceNote,
   resolveEffectiveApprovalMode,
 } from '../../utils/approvalMode';
 import { ArrowDownGlyph } from '../icons/Glyph';
@@ -261,7 +262,7 @@ export function ApprovalModeChip({
       ? 'Confirmed by the engine'
       : effective.mode === 'connection-default'
         ? 'Engine settings; active mode not confirmed'
-        : `From ${effective.source === 'account default' ? 'your saved default' : effective.source}`;
+        : approvalModeSourceNote(effective.source);
 
   return (
     <>

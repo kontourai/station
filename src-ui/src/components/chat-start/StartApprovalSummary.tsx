@@ -7,6 +7,7 @@ import {
   type ApprovalMode,
   approvalModeChipLabel,
   approvalModeDescription,
+  approvalModeSourceNote,
   resolveEffectiveApprovalMode,
 } from '../../utils/approvalMode';
 import { ArrowDownGlyph } from '../icons/Glyph';
@@ -141,10 +142,7 @@ export function StartApprovalSummary({
             engineConnectionId: engine,
             onClose: () => setIsSheetOpen(false),
             onSelect: onPick,
-            sourceNote:
-              resolved.source === 'session override'
-                ? 'Only this chat'
-                : `From ${resolved.source === 'account default' ? 'your saved default' : resolved.source}`,
+            sourceNote: approvalModeSourceNote(resolved.source),
             isNewSession: true,
           }}
           pending={null}
