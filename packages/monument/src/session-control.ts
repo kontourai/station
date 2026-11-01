@@ -32,9 +32,8 @@ export interface SessionControlRequestKeys {
   settle(id: SessionControlRequestKeyId): void;
 }
 
-const sessionControlKeyIdentity = (
-  id: SessionControlRequestKeyId,
-): string => JSON.stringify([id.callerSessionId, id.tool, id.key]);
+const sessionControlKeyIdentity = (id: SessionControlRequestKeyId): string =>
+  JSON.stringify([id.callerSessionId, id.tool, id.key]);
 
 /** The digest of what a request asks for; a different ask is a different digest. */
 export function sessionControlRequestDigest(parts: readonly unknown[]): string {
