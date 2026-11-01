@@ -144,7 +144,7 @@ export function terminalOutputSocketURL(apiBase: string): string {
 
 /**
  * Observe one existing terminal; no open, input, resize or lifecycle command.
- * UNWIRED(#3994): no Station surface watches output-only yet; Coding operates
+ * UNWIRED(#3994): no Station surface watches output-only yet; Station operates
  * terminals through `TerminalSessionStore`.
  */
 export class TerminalOutputSession {

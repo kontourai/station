@@ -15,6 +15,7 @@ import {
   type TerminalTicket,
 } from '@kontourai/station-contracts/terminal-transport';
 import { z } from 'zod';
+import { envelopeError } from './api-error-message';
 import {
   type ApiRequestScope,
   assertClientRawEgressAllowed,
@@ -72,9 +73,12 @@ export class TerminalSessionError extends Error {
     message?: string,
     /** A connection failure the store retries by itself. */
     readonly retryable = false,
+    /** The host's own refusal, with its status, code and details. */
+    readonly cause?: Error,
   ) {
     super(
       message ??
+        cause?.message ??
         (code === 'unsupported-host'
           ? 'This host does not support terminal sessions. Update the host to use this feature.'
           : code === 'raw-egress-unavailable'
@@ -326,7 +330,7 @@ export class TerminalSessionStore {
       cols: number;
       rows: number;
       launch?: TerminalLaunchProfile;
-      /** Imports a pre-socket Coding terminal's owned history once. */
+      /** Imports a pre-socket terminal's owned history once. */
       legacyTerminalId?: string;
     },
   ): TerminalSession {
@@ -520,9 +524,17 @@ export class TerminalSessionStore {
       throw new TerminalSessionError('unsupported-host');
     }
     if (response.status === 401 || response.status === 403) {
-      await response.body?.cancel();
+      // The server's own refusal sentence, through the shared envelope reader.
+      const refusal = envelopeError(
+        response,
+        await readJsonBody(response),
+        'Terminal access was refused.',
+      );
       throw new TerminalSessionError(
-        response.status === 401 ? 'credential-unavailable' : 'refused',
+        refusal.status === 401 ? 'credential-unavailable' : 'refused',
+        undefined,
+        false,
+        refusal,
       );
     }
     if (!response.ok) {
@@ -720,8 +732,8 @@ class StoreSession implements TerminalSession {
   state: TerminalSessionState = 'connecting';
   status: TerminalSessionStatus | undefined;
   readOnly = false;
-  error: TerminalSessionError | undefined;
   channel: number | undefined;
+  private failure: TerminalSessionError | undefined;
   private requestId: string | undefined;
   private openSent = false;
   private applied = 0;
@@ -745,6 +757,10 @@ class StoreSession implements TerminalSession {
     z.string().min(1).max(512).parse(target.bindingKey);
     if (intent.kind === 'attach') this.terminalId = intent.terminalId;
     else this.size = { cols: intent.cols, rows: intent.rows };
+  }
+
+  get error(): TerminalSessionError | undefined {
+    return this.failure;
   }
 
   subscribe(listener: TerminalSessionListener): () => void {
@@ -936,7 +952,7 @@ class StoreSession implements TerminalSession {
 
   fail(error: TerminalSessionError): void {
     if (this.state === 'failed' || this.state === 'detached') return;
-    this.error = error;
+    this.failure = error;
     this.state = 'failed';
     this.store.forget(this);
     this.pendingInput = '';
@@ -955,7 +971,9 @@ class StoreSession implements TerminalSession {
     if (this.state === 'ready' && this.channel !== undefined)
       return Promise.resolve();
     if (this.state === 'failed')
-      return Promise.reject(this.error ?? new TerminalSessionError('protocol'));
+      return Promise.reject(
+        this.failure ?? new TerminalSessionError('protocol'),
+      );
     if (this.state === 'detached')
       return Promise.reject(new TerminalSessionError('disposed'));
     return new Promise((resolve, reject) => {
