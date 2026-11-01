@@ -148,7 +148,10 @@ async function run(durable: boolean, profile = false) {
     for await (const chunk of response.fullStream) {
       if (chunk.type === 'error') throw new Error('Benchmark framework error');
     }
-    text = await response.text;
+    const answer = await response.text;
+    if (answer === undefined)
+      throw new Error('Benchmark framework returned no text result');
+    text = answer;
     await response.usage;
     await response.finishReason;
   } finally {
