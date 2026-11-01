@@ -1,0 +1,9 @@
+{
+  "revision": "d24055fbe93e3b937e61207fd26ba62f188f76cc",
+
+  "notes": [
+    {"path":"docs/learn/README.md","note":"Reviewed the execution branch after adding Durable Station Agent to the canonical atlas. The new module uses the existing source-backed navigation and review-state model; documented build, serving, classification and evidence limits remain accurate.","inputs":["docs/learn/README.md","docs/learn/atlas.json"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the atlas execution-module addition and the canonical shipped-docs boundary. The new durability explanation is static documentation under the existing architecture-topic generator, not a live-state query, authorization grant or provider/release qualification.","inputs":["docs/reference/station-docs.md","docs/learn/atlas.json","src-server/tools/station-docs-content.ts"]}
+  ]
+}
