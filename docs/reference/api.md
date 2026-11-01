@@ -1207,8 +1207,12 @@ key has expired. A contended request instead waits in the stream for up to
 five minutes, then replays a resolved conversation or ends with an error
 frame. A pre-invocation refusal releases the key for retry.
 
-The key is not bound to the caller, Agent, conversation or input
-([#3567](https://github.com/kontourai/station/issues/3567)). Inspect the
+New keyed sends bind the submitted Agent, plugin, input, ambient context,
+Project and request options (excluding the key) to a digest. Reusing a key
+with different known input returns HTTP 409 with
+`code: "client_turn_input_conflict"` before streaming. Older rows without a digest
+remain unknown, and the key is not separately bound to the authenticated caller.
+Inspect the
 conversation after an uncertain send; do not automatically send again with a
 new key. A new key means a deliberate new request. Retention, legacy-writer
 and tombstone limits are detailed under
