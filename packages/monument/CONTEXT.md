@@ -40,7 +40,8 @@ Control route and delegated-result service supply those ports and retain their
 existing durable request-key and consumption rows. This sequence is not a
 storage command and creates no new state or inbox. The separate `steerReceipts`
 commands own the no-reclaim/confirmation decisions over receipt rows. The
-recovery-ledger core remains open extraction work in #3565.
+recovery ledger's claim and reconciliation protocol is in the package; its
+Station SQLite transitions have not yet moved to storage commands in #3565.
 
 Each storage operation is one command, executed as one atomic transaction by an
 adapter. The decision for a command is a pure function of the records it

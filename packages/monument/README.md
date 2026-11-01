@@ -81,7 +81,9 @@ ordering contract; Station's mounted route tests also inspect its real SQLite
 key row when each effect port is entered. Adapter conformance remains the
 contract for storage commands; this primitive adds none.
 
-This completes only the delivery primitive of #3565. Recovery-ledger core remains separate extraction work. The package remains private
+This completes the delivery primitive of #3565. The recovery claim protocol is
+also in the package, while its Station SQLite transitions remain to be moved
+to storage commands. The package remains private
 `0.1.0` until its reviewed functional release.
 
 ## Steer receipts
