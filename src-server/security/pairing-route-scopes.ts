@@ -2455,11 +2455,7 @@ export interface PairingScopeCredentialResolver {
  * the account-bound HTTP allowlist, which has no terminal or voice; and a
  * personal access token is not a device, so it opens neither. A WebSocket
  * session runs outside the HTTP gates (no account check, Project membership
- * or Agent audience), so admitting either would bypass them.
- */
-/**
- * Credentials no terminal or voice socket admits, whatever their scope: a
- * personal access token and an account-bound Device (#3586). The terminal
+ * or Agent audience), so admitting either would bypass them. The terminal
  * socket ticket mint applies the same refusal on every check (#3994).
  */
 export function refusedOnWebSocket(
