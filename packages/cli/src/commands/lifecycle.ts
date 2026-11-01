@@ -4638,10 +4638,11 @@ export async function start(opts: StartOptions = {}): Promise<void> {
     ),
     'start',
   );
-  // The home schema gate runs in the logDirectoryIsInsideHome block below —
-  // after the recursive mkdir, because the gate requires the home's parent to
-  // exist and a custom --base path may have a multi-level missing ancestor
-  // chain (#1570 review; supersedes the earlier pre-mkdir call from #1567).
+  // The home schema gate runs below, before the log directory and the
+  // instance record are written — after the recursive mkdir, because the
+  // gate requires the home's parent to exist and a custom --base path may
+  // have a multi-level missing ancestor chain (#1570 review; supersedes the
+  // earlier pre-mkdir call from #1567).
   const buildPaths = resolveBuildPaths(instanceId);
   const needsBuild = !watch && (Boolean(build) || !isInstalled(instanceId));
   const warnStale = () => {
@@ -4735,18 +4736,22 @@ export async function start(opts: StartOptions = {}): Promise<void> {
     );
   }
 
+  // An empty home directory is gate-safe scaffolding, and the recursive
+  // mkdir must come first: the gate requires the home's parent to exist, and
+  // a custom --base path may have a multi-level missing ancestor chain.
+  mkdirSync(projectHome, { recursive: true, mode: 0o700 });
+  // Writing logs/ into a home the server has not gated yet would make a
+  // brand-new home fail the #1560 schema gate on first boot (#1570). So would
+  // the instance record a prebuilt archive keeps in `<home>/state/<channel>`
+  // for a home that is its own Station root (`--temp-home`, `--home=<dir>`),
+  // whatever the log location (#4381). The CLI ships in lockstep with the
+  // server, so running the same gate here either bootstraps the marker or
+  // fails closed with the server's exact error — before anything is written
+  // or spawned.
+  ensureStationHomeSchemaSync(projectHome);
+
   let logDirectory = requestedLogDirectory;
   if (logDirectoryIsInsideHome) {
-    // An empty home directory is gate-safe scaffolding, and the recursive
-    // mkdir must come first: the gate requires the home's parent to exist,
-    // and a custom --base path may have a multi-level missing ancestor chain.
-    mkdirSync(projectHome, { recursive: true, mode: 0o700 });
-    // Writing logs/ into a home the server has not gated yet would make a
-    // brand-new home fail the #1560 schema gate on first boot (#1570). The
-    // CLI ships in lockstep with the server, so running the same gate here
-    // either bootstraps the marker or fails closed with the server's exact
-    // error — before anything is written or spawned.
-    ensureStationHomeSchemaSync(projectHome);
     let current = resolve(projectHome);
     for (const segment of homeRelation.split(/[\\/]+/).filter(Boolean)) {
       current = join(current, segment);

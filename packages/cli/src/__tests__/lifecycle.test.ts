@@ -8753,6 +8753,68 @@ describe('lifecycle build + restart ergonomics', () => {
     expect(existsSync(join(TEST_ALT_HOME, 'logs'))).toBe(false);
   });
 
+  it('gates a fresh home before spawn even when the log lives outside it (#4381)', async () => {
+    ensureDir(TEST_CWD);
+    // An explicit log directory outside the home used to skip the CLI's gate,
+    // so the instance record a prebuilt archive keeps in `<home>/state/...`
+    // landed first and the server refused the home this start created.
+    const outsideLogs = join(TEST_ROOT, 'outside-logs');
+    ensureDir(outsideLogs);
+    writeBuildManifest('fresh-home-outside-log');
+    const markerAtSpawn: boolean[] = [];
+    const spawn = vi.fn(() => {
+      markerAtSpawn.push(
+        existsSync(join(TEST_ALT_HOME, STATION_HOME_SCHEMA_FILE)),
+      );
+      throw new Error('spawn is out of scope');
+    });
+    const { lifecycle } = await loadLifecycleModule({
+      childProcessMock: { execSync: vi.fn(() => ''), spawn },
+    });
+
+    await lifecycle
+      .start({
+        instanceName: 'fresh-home-outside-log',
+        baseDir: TEST_ALT_HOME,
+        logFile: join(outsideLogs, 'station.log'),
+        serverPort: 3264,
+        uiPort: 5296,
+      })
+      .catch(() => {});
+
+    expect(markerAtSpawn).toEqual([true]);
+    expect(
+      JSON.parse(
+        readFileSync(join(TEST_ALT_HOME, STATION_HOME_SCHEMA_FILE), 'utf8'),
+      ),
+    ).toEqual({ version: STATION_HOME_SCHEMA_VERSION });
+  });
+
+  it('refuses an incompatible home before spawn when the log lives outside it (#4381)', async () => {
+    ensureDir(TEST_CWD);
+    ensureDir(join(TEST_ALT_HOME, 'agents'));
+    const outsideLogs = join(TEST_ROOT, 'outside-logs-refused');
+    ensureDir(outsideLogs);
+    writeBuildManifest('incompatible-home-outside-log');
+    const spawn = vi.fn();
+    const { lifecycle } = await loadLifecycleModule({
+      childProcessMock: { execSync: vi.fn(() => ''), spawn },
+    });
+
+    await expect(
+      lifecycle.start({
+        instanceName: 'incompatible-home-outside-log',
+        baseDir: TEST_ALT_HOME,
+        logFile: join(outsideLogs, 'station.log'),
+        serverPort: 3264,
+        uiPort: 5296,
+      }),
+    ).rejects.toThrow('STATION_HOME_RESET_REQUIRED');
+
+    expect(spawn).not.toHaveBeenCalled();
+    expect(existsSync(join(outsideLogs, 'station.log'))).toBe(false);
+  });
+
   it('names the supported reset command in the failure it throws (station#1913)', async () => {
     ensureDir(TEST_CWD);
     ensureDir(TEST_ALT_HOME);
