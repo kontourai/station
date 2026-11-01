@@ -29,6 +29,7 @@ const observed = (serverOwners: number[]) => () => ({
     [42000, new Set([UI])],
   ]),
   source: 'lsof',
+  reason: undefined,
   authoritative: true,
 });
 const deadline = () => Date.now() + 5_000;
@@ -137,8 +138,10 @@ describe('e2e daemon identity under the supervisor', () => {
   const processIdentityFn = (pid: number) => identities.get(pid) ?? null;
   const fetchImpl = async () =>
     new Response(JSON.stringify({ instanceId: 'e2e', bootId: 'boot-1' }));
-  const discover = (status: unknown) =>
-    discoverE2EDaemon({
+  const discover = (status: unknown) => {
+    // The JS signature's inferred type omits the options that have no
+    // default (root, instance, ports, authority), so pass a named object.
+    const options = {
       root: '/checkout',
       instance: 'e2e',
       serverPort: 1,
@@ -147,7 +150,9 @@ describe('e2e daemon identity under the supervisor', () => {
       fetchImpl,
       processIdentityFn,
       readSupervisorStatus: () => status,
-    });
+    };
+    return discoverE2EDaemon(options);
+  };
 
   it.skipIf(process.platform === 'win32')(
     'records the serving generation, and holds the lease until it is gone',
