@@ -1508,9 +1508,13 @@
 
     "src-server/services/orchestration/station-turn-dedup-bindings.ts",
 
-    "src-server/services/orchestration/delegation-create-claims.ts",
+    "src-server/runtime/routes/__tests__/send-route-key-inventory.test.ts",
 
-    "src-server/runtime/routes/__tests__/send-route-key-inventory.test.ts"
+    "src-server/services/orchestration/create-request-claims.ts",
+
+    "src-server/services/orchestration/__tests__/create-request-claims.test.ts",
+
+    "src-server/services/orchestration/__tests__/create-request-claims.process.test.ts"
   ],
 
   "checks": [

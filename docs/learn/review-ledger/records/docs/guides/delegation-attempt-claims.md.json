@@ -92,7 +92,7 @@
 
     "tests/container-self-host.spec.ts",
 
-    "src-server/services/orchestration/delegation-create-claims.ts"
+    "src-server/services/orchestration/create-request-claims.ts"
   ],
 
   "checks": [
