@@ -198,6 +198,11 @@ describe('createVerificationRequest identity', () => {
       STATION_DISABLE_EVENT_STORE_CACHES: '1',
     });
     expect(uncached).not.toBe(normal);
+    const performanceOnly = digestVerificationEnvironment({
+      STATION_DISABLE_EVENT_STORE_CACHES: '1',
+      STATION_UNCACHED_PERFORMANCE_ONLY: '1',
+    });
+    expect(performanceOnly).not.toBe(uncached);
   });
 
   it('invalidates the request when ci:fast changes its affected-test base', () => {

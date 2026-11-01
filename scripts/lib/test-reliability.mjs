@@ -61,6 +61,7 @@ export const VERIFICATION_BEHAVIOR_ENVIRONMENT = Object.freeze([
   // jobs run it), so a statics-only receipt must never answer for a full lane.
   'STATION_CI_FAST_SCOPE',
   'STATION_DISABLE_EVENT_STORE_CACHES',
+  'STATION_UNCACHED_PERFORMANCE_ONLY',
   'STATION_E2E_SEED_REGRESSION',
   'STATION_FEATURES',
   'STATION_SERVICE_ITEST',
