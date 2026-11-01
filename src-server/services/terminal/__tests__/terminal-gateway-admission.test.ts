@@ -440,6 +440,80 @@ describe('terminal gateway admission (#3994)', () => {
     expect(replay.join('')).toContain('echo:two');
   });
 
+  // Render check finding: a view reattached at another width looked one line
+  // short. The wire must carry exactly the journal: a fresh view replays it
+  // byte-for-byte from 0, and a dropped socket resumes from the last applied
+  // sequence with nothing missing or doubled.
+  test('a reattached view replays the journal exactly and a resume neither drops nor doubles output', async () => {
+    await start();
+    const store = storeFor('operator');
+    const session = store.open(scope, { cols: 49, rows: 30 });
+    const seen: { seq: number; text: string }[] = [];
+    session.subscribe({
+      output: (data, seq) =>
+        seen.push({ seq, text: new TextDecoder().decode(data) }),
+    });
+    await expect.poll(() => session.state).toBe('ready');
+    for (const line of ['one', 'two', 'three']) {
+      session.write(`${line}\r\n`);
+      await expect
+        .poll(() => seen.map((item) => item.text).join(''))
+        .toContain(`echo:${line}`);
+    }
+    const journalText = async () =>
+      (
+        await sessions.read('operator', scope, session.terminalId!)
+      ).journal.records
+        .map((record) => record.data)
+        .join('');
+    // Resume: drop every socket mid-session, then keep typing.
+    gateway.stop();
+    gateway = new TerminalGateway({
+      sessions,
+      tickets,
+      reserved: (principal) => principal === 'operator',
+    });
+    gateway.mount(server, { upgraded: () => undefined });
+    await expect.poll(() => session.state, { timeout: 10_000 }).toBe('ready');
+    session.write('four\r\n');
+    await expect
+      .poll(() => seen.map((item) => item.text).join(''))
+      .toContain('echo:four');
+    expect(seen.map((item) => item.text).join('')).toBe(await journalText());
+    const seqs = seen.map((item) => item.seq);
+    expect(new Set(seqs).size).toBe(seqs.length);
+    // Reattach: a new view at another size replays the same bytes from 0.
+    session.detach();
+    const wide = storeFor('phone');
+    const view = wide.attach(scope, session.terminalId!);
+    const replay: string[] = [];
+    view.subscribe({
+      output: (data) => replay.push(new TextDecoder().decode(data)),
+    });
+    await expect.poll(() => view.state).toBe('ready');
+    view.resize(180, 40);
+    expect(replay.join('')).toBe(await journalText());
+  });
+
+  test('input typed while a view is still attaching is delivered in full, in order', async () => {
+    await start();
+    const store = storeFor('operator');
+    const session = store.open(scope, { cols: 80, rows: 24 });
+    // Typed before the socket, the open or the replay acknowledgement.
+    session.write('e');
+    session.write('cho first');
+    await expect.poll(() => session.state).toBe('ready');
+    await expect.poll(() => spawned[0]?.written.join('')).toBe('echo first');
+    session.detach();
+    const view = storeFor('phone').attach(scope, session.terminalId!);
+    view.write('e');
+    view.write('cho second');
+    await expect.poll(() => view.state).toBe('ready');
+    await expect
+      .poll(() => spawned[0]?.written.join(''))
+      .toBe('echo firstecho second');
+  });
+
   test('an observer watches but cannot type, and an unknown device gets no ticket', async () => {
     await start();
     const operator = storeFor('operator');
