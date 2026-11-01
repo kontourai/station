@@ -192,6 +192,14 @@ describe('createVerificationRequest identity', () => {
     );
   });
 
+  it('separates cache-disabled diagnostics from ordinary verification receipts', () => {
+    const normal = digestVerificationEnvironment({});
+    const uncached = digestVerificationEnvironment({
+      STATION_DISABLE_EVENT_STORE_CACHES: '1',
+    });
+    expect(uncached).not.toBe(normal);
+  });
+
   it('invalidates the request when ci:fast changes its affected-test base', () => {
     const firstBase = digestVerificationEnvironment({
       STATION_CI_FAST_BASE: 'base-before',
