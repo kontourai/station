@@ -2879,7 +2879,7 @@ Detached processes are tracked per instance in `.station/instances/<instance-id>
 **The server runs under the [process supervisor](../design/process-supervisor.md).**
 `start` launches `station-supervisor.js` from the instance's build directory,
 and the supervisor runs the core server as a supervised generation and holds
-its four listeners. The instance record, the home registry entry, and the
+its three listeners. The instance record, the home registry entry, and the
 active-local-station record name the supervisor's pid (`"supervised": true`
 in the record): the supervisor owns the instance while core server generations
 come and go beneath it. `station restart` hands off to a new generation in

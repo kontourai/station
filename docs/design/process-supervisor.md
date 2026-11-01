@@ -56,8 +56,8 @@ Every way Station restarts interrupts running work.
 - Three supervisors exist with three behaviors: a Rust thread in Desktop, a
   Node loop in `service run`, and the archive launcher's update transaction.
   None of them keeps work alive.
-- One instance binds four ports (API, terminal `+1`, voice `+2`, consent
-  `+3`), and `station start` adds a separate UI server process.
+- One instance binds three ports (API, voice `+2`, consent `+3`), and
+  `station start` adds a separate UI server process.
 
 ## Goals
 
@@ -151,8 +151,8 @@ product decisions.
   `STATION_SUPERVISOR_IPC=1` parks before its temp and orphan sweeps, the
   home schema gate, and its log sink, which touch the home or the live
   generation's processes. Telemetry registers at import as usual, but its
-  home writes (schema gate, installation identity) wait for promotion. Its four listeners (API,
-  terminal, voice, consent) bind through one link: adopted handles when the
+  home writes (schema gate, installation identity) wait for promotion. Its three listeners (API,
+  voice, consent) bind through one link: adopted handles when the
   supervisor holds them, otherwise a normal bind reported with
   `listener.bound`. A later generation takes its base port from the held API
   socket, so `PORT=0` keeps one block across generations. `ready` carries a
