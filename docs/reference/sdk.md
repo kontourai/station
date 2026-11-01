@@ -4945,7 +4945,10 @@ reads one first and refuses an older host that does not expose a head. A stale
 head or conflicting key is a definitive refusal. Retain the original key,
 text and head after an unanswered request and reconcile against the same
 Station and authority before retrying. An unconfirmed handoff is never
-replayed automatically. See [inbox kinds and crash outcomes](session-api.md#submit-steer-follow-up-or-display-input).
+replayed automatically. Session snapshots and conversation-open execution also
+carry the current adapter's optional `durability` declaration; a missing field
+provides no steering authority. Display notes have a separate 50-note capacity
+and seven-day retention, pruned on submission. See [inbox kinds and crash outcomes](session-api.md#submit-steer-follow-up-or-display-input).
 
 `ProjectTaskRoomProtocolError` remains a plain `Error` subclass. Its
 HTTP/envelope failure form carries `status`, `code`, `details` and

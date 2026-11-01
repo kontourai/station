@@ -825,8 +825,12 @@ input, and the message stays for the next turn, which runs confined (#2898).
 Station-owned steering waits durably for the next post-tool boundary the loop
 observes, otherwise the next turn boundary. Its wording says **Steer when safe**.
 Claude and Codex retain engine-defined native placement. The composer reads the
-engine declaration; ACP's cancel-and-reprompt extension does not become an
-additive native composer action.
+current adapter declaration sent by session snapshots and conversation-open
+responses. A missing declaration is unknown; the client does not infer it from
+provider names. ACP's cancel-and-reprompt extension does not become an additive
+native composer action. Profile observations are not persisted in browser session
+state. After post-tool injection the entry remains claimed until model dispatch,
+memory storage and the canonical steer event have been acknowledged.
 
 Named-conversation steers first save text, the observed `expectedHead` and an
 authority-scoped key in IndexedDB, then submit to the server inbox. Missing

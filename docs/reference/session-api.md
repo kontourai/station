@@ -661,11 +661,18 @@ HTTP409 `inbox_stale_head` and `currentHead`, without a write.
   placement is engine-defined and disclosed. Where Station owns the loop,
   input waits for its next observed post-tool boundary; otherwise it waits
   for the next turn boundary. The current VoltAgent loop observes the boundary
-  after the preceding step's tools settle.
+  after the preceding step's tools settle. Prompt injection leaves the entry
+  claimed. It becomes sent only after the carrying model request returns and
+  its user message and steer event are recorded durably. A crash before that
+  acknowledgement remains unknown; a failed placement-policy check is refused.
 - **Follow-up:** waits for the current turn's terminal, then starts the next
   turn through the conversation's recorded binding.
 - **Display:** appears immediately as a server inbox note and is never model
-  input. Display notes and steer keys remain until conversation deletion.
+  input. An inbox retains at most 50 display notes (`inboxMaxDisplay`); a new
+  note at capacity returns HTTP409 `conversation_inbox_full`. Matching-key
+  retries still answer the retained note. The next submission prunes display
+  notes older than seven days (`inboxSettledRetentionMs`). Steer replay fences
+  remain until conversation deletion.
 
 A handoff occurs at most once per durable claim. A crash between claim and
 acknowledgement leaves `unconfirmed`: the UI says **May have been sent** and

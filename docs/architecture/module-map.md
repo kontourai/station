@@ -1781,8 +1781,9 @@ list it and withdraw it. `deleteThread` forgets a conversation's entries.
 Hosted Stations have no inbox. The same machine now holds steer and display
 kinds. Submission compares an optional expected head atomically with the write;
 steer requires the observed Session-qualified head. Display is immediately
-visible and never reaches the model. Display notes and steer keys survive
-settled-entry expiry; dismissed uncertain claims retain their replay fence.
+visible and never reaches the model. Display notes have a separate 50-note
+capacity and expire after the seven-day settled retention period on the next
+submission. Steer keys and dismissed uncertain claims retain their replay fence.
 
 Native steer text and head persist before the durable claim. Recovery settles
 a confirmed receipt or surfaces unconfirmed without replaying a claimed handoff.
@@ -1790,7 +1791,10 @@ The current Station tool-loop hook calls
 [inbox step preparation](../../src-server/runtime/conversation/inbox-model-step.ts)
 through VoltAgent's prepareStep after tools settle. The
 [post-tool inbox owner](../../src-server/services/orchestration/post-tool-inbox.ts)
-refuses ambiguous runtime ownership and unregisters on stop. Delivery rechecks
+refuses ambiguous runtime ownership without aborting the turn and unregisters
+on stop. Prompt preparation leaves the claim in flight; the carrying model
+request must return before memory, the canonical steer event and receipt are
+recorded and the entry is settled. Prior compaction cannot drop retained input. Delivery rechecks
 sender/placement policy and current turn confinement before injecting the text, retains it in later model
 steps and records the acknowledgement. Other loops use the terminal boundary.
 The UI renders server entries and an explicit Review and resend action.

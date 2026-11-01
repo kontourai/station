@@ -2072,6 +2072,9 @@ unreported capability, never inferred support. Built-in adapter conformance
 rejects omitted cells.
 
 The engine description's **Recovery and delivery** disclosure reads these cells.
+Current Session summaries and conversation-open execution carry the registered
+adapter's `durability` declaration at read time. The live composer consumes that
+observation rather than resolving a provider-name table; absence stays unknown.
 Claude and Codex declare their live steering channels as native. ACP discloses a
 connection-dependent orchestration-command fallback that may interrupt and
 reprompt; the ordinary chat composer does not offer ACP steering. Live steering does
