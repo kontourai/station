@@ -6642,15 +6642,17 @@ export function configureRuntimeRoutes(
           inputDigest,
         );
       },
+      steerFidelity: (threadId) => service.steerFidelityForThread(threadId),
       inspectSteer: (input) => eventStore.readSteerInput(input),
       steer: stationServerEntry(
-        async ({ threadId, clientInputId, payload }) => {
+        async ({ threadId, clientInputId, payload, turnId }) => {
           const dispatched = await service.dispatchWithReceipt(
             {
               type: 'steerTurn',
               threadId,
               input: payload.message,
               clientInputId,
+              turnId,
             },
             {
               userId: payload.actor.userId,

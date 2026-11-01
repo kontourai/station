@@ -5371,6 +5371,20 @@ export class OrchestrationService {
     );
   }
 
+  async steerFidelityForThread(
+    threadId: string,
+  ): Promise<'native' | 'emulated' | 'none'> {
+    const adapter = await resolveOrchestrationAdapterForThread({
+      threadId,
+      threadProviders: this.threadProviders,
+      requireAdapter: (provider) => this.requireAdapter(provider),
+      adapters: this.options.adapterRegistry.list(),
+    });
+    const fidelity = adapter.metadata.durability?.steerPlacement.state;
+    if (!fidelity) throw new Error('Engine steering fidelity is unavailable.');
+    return fidelity;
+  }
+
   async readSession(
     threadId: string,
     authority: SessionReadScope,
