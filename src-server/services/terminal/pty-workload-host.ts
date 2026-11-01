@@ -294,7 +294,10 @@ export class PtyWorkloadHost {
       detached: this.platform !== 'win32',
     });
     if (child.pid === undefined) {
-      throw new WorkloadFailure('failed', `could not start ${candidate.command}`);
+      throw new WorkloadFailure(
+        'failed',
+        `could not start ${candidate.command}`,
+      );
     }
     return new CommandProcess(child);
   }

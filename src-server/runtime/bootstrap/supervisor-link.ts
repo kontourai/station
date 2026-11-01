@@ -616,9 +616,7 @@ export class SupervisorLink implements ListenerLink {
    * event the supervisor sent after it can arrive in one turn, and the
    * requester must see the reply (and subscribe) before the event.
    */
-  onWorkloadEvent(
-    listener: (event: WorkloadEventMessage) => void,
-  ): () => void {
+  onWorkloadEvent(listener: (event: WorkloadEventMessage) => void): () => void {
     this.workloadListeners.add(listener);
     return () => this.workloadListeners.delete(listener);
   }

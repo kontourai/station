@@ -173,7 +173,9 @@ async function until<T>(
       last = error;
     }
     if (Date.now() > deadline)
-      throw new Error(`timed out waiting for ${what}: ${String(last)}\n${diagnostics()}`);
+      throw new Error(
+        `timed out waiting for ${what}: ${String(last)}\n${diagnostics()}`,
+      );
     await new Promise((done) => setTimeout(done, 100));
   }
 }
@@ -237,7 +239,8 @@ describe('a supervised terminal', () => {
           { type: 'status', id: `s${nextId++}` },
           ['status.result'],
         );
-        if (reply.type !== 'status.result') throw new Error(JSON.stringify(reply));
+        if (reply.type !== 'status.result')
+          throw new Error(JSON.stringify(reply));
         return reply.status;
       };
       try {

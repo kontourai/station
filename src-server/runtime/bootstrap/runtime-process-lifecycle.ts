@@ -14,7 +14,10 @@ function supervisorOf(env: NodeJS.ProcessEnv): LifecycleSupervisor | null {
   if (env[SUPERVISOR_ENV.ipc] !== '1') return null;
   const pid = Number(env[SUPERVISOR_ENV.pid]);
   const generation = Number(env[SUPERVISOR_ENV.generation]);
-  return Number.isInteger(pid) && pid > 0 && Number.isInteger(generation) && generation > 0
+  return Number.isInteger(pid) &&
+    pid > 0 &&
+    Number.isInteger(generation) &&
+    generation > 0
     ? { pid, generation }
     : null;
 }

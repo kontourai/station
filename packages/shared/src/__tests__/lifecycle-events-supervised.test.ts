@@ -19,7 +19,10 @@ const instance = {
   pid: SUPERVISOR,
 };
 let clock = Date.parse('2026-10-31T10:00:00Z');
-const at = () => new Date((clock += 1_000)).toISOString();
+const at = () => {
+  clock += 1_000;
+  return new Date(clock).toISOString();
+};
 
 function cli(event: Partial<LifecycleEvent>): LifecycleEvent {
   return parseLifecycleEvent({
@@ -50,7 +53,10 @@ function generation(
 
 const handoff = [
   cli({ type: 'started' }),
-  generation(1, 5001, { type: 'shutdown_observed', reason: 'supervisor_drain' }),
+  generation(1, 5001, {
+    type: 'shutdown_observed',
+    reason: 'supervisor_drain',
+  }),
   generation(1, 5001, { type: 'process_exit', exitCode: 0, signal: null }),
 ];
 

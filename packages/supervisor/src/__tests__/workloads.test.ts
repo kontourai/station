@@ -47,7 +47,9 @@ function httpJson(
         res.on('data', (chunk: string) => {
           text += chunk;
         });
-        res.on('end', () => resolve(JSON.parse(text) as Record<string, unknown>));
+        res.on('end', () =>
+          resolve(JSON.parse(text) as Record<string, unknown>),
+        );
       },
     );
     request.on('error', reject);
@@ -255,10 +257,7 @@ describe('supervisor workloads (real processes)', () => {
       await httpJson(port, '/workload', { op: 'attach', workloadId: 'doomed' }),
     ).toMatchObject({ ok: false, code: 'not-found' });
 
-    const again = await workload<WorkloadInfo>(
-      port,
-      spawnEcho(home, 'second'),
-    );
+    const again = await workload<WorkloadInfo>(port, spawnEcho(home, 'second'));
     expect(again.state).toBe('running');
     expect(Number(readFileSync(pidFile, 'utf8'))).not.toBe(firstHost);
   });

@@ -193,7 +193,10 @@ export class WorkloadHost {
   }
 
   private onHostMessage(message: Record<string, unknown>): void {
-    if (message.type === 'workload.response' && typeof message.id === 'string') {
+    if (
+      message.type === 'workload.response' &&
+      typeof message.id === 'string'
+    ) {
       const settle = this.pending.get(message.id);
       if (!settle) return;
       this.pending.delete(message.id);
@@ -276,7 +279,10 @@ export class WorkloadHost {
     const exited = [...this.registry.values()].filter(
       (entry) => entry.state === 'exited',
     );
-    for (const entry of exited.slice(0, Math.max(0, exited.length - EXITED_KEPT)))
+    for (const entry of exited.slice(
+      0,
+      Math.max(0, exited.length - EXITED_KEPT),
+    ))
       this.registry.delete(entry.workloadId);
   }
 }

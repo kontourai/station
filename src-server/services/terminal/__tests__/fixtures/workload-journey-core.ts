@@ -39,10 +39,8 @@ const scope = { projectId: 'journey', bindingKey: 'project' };
 const channel = supervisorWorkloadChannel();
 const sessions = new TerminalSessions<string>(
   env('JOURNEY_HOME'),
-  createTerminalShellHost(
-    channel,
-    new NodePtyAdapter(),
-    () => env('JOURNEY_SHELL'),
+  createTerminalShellHost(channel, new NodePtyAdapter(), () =>
+    env('JOURNEY_SHELL'),
   ),
   { authorize: () => true, resolveRoot: async () => env('JOURNEY_ROOT') },
 );

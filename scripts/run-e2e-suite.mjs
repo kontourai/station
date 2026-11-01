@@ -928,29 +928,29 @@ export function daemonIsLive(
   return [daemon.server, daemon.ui, daemon.generation]
     .filter(Boolean)
     .some((expected) => {
-    const actual = processIdentityFn(expected.pid);
-    if (sameProcessIdentity(expected, actual)) return true;
-    // A lease written by a pre-#2325 runner recorded an lstart-shaped
-    // processStart. On Linux, `processIdentityFn` now always reports the
-    // /proc birth token for a live pid, which can never equal that legacy
-    // string — reading the mismatch as "dead" let the output sweep remove a
-    // live daemon's dist-*-e2e-* outputs during an upgrade window (#2332
-    // item 3). Re-probe once through the lstart-only lens the legacy lease
-    // was written with (forcing a non-linux platform skips the birth read
-    // entirely in `processIdentity`); never persisted, only used to confirm
-    // liveness.
-    if (
-      platform === 'linux' &&
-      typeof expected?.processStart === 'string' &&
-      !expected.processStart.startsWith('linux:')
-    ) {
-      const legacy = processIdentityFn(expected.pid, undefined, {
-        platform: 'darwin',
-      });
-      if (sameProcessIdentity(expected, legacy)) return true;
-    }
-    return false;
-  });
+      const actual = processIdentityFn(expected.pid);
+      if (sameProcessIdentity(expected, actual)) return true;
+      // A lease written by a pre-#2325 runner recorded an lstart-shaped
+      // processStart. On Linux, `processIdentityFn` now always reports the
+      // /proc birth token for a live pid, which can never equal that legacy
+      // string — reading the mismatch as "dead" let the output sweep remove a
+      // live daemon's dist-*-e2e-* outputs during an upgrade window (#2332
+      // item 3). Re-probe once through the lstart-only lens the legacy lease
+      // was written with (forcing a non-linux platform skips the birth read
+      // entirely in `processIdentity`); never persisted, only used to confirm
+      // liveness.
+      if (
+        platform === 'linux' &&
+        typeof expected?.processStart === 'string' &&
+        !expected.processStart.startsWith('linux:')
+      ) {
+        const legacy = processIdentityFn(expected.pid, undefined, {
+          platform: 'darwin',
+        });
+        if (sameProcessIdentity(expected, legacy)) return true;
+      }
+      return false;
+    });
 }
 
 export function canReclaimE2ELease(

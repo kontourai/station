@@ -95,9 +95,9 @@ describe('planServerLaunch', () => {
     // Each generation's journal events name the supervisor the instance
     // record names, so the journal no longer needs a direct start (#4135).
     const build = codeRootWithBuild();
-    expect(
-      plan({ lifecycleJournal: '/journals/work.ndjson' }, build),
-    ).toEqual(plan({}, build));
+    expect(plan({ lifecycleJournal: '/journals/work.ndjson' }, build)).toEqual(
+      plan({}, build),
+    );
     expect(plan({}, build).supervised).toBe(true);
   });
 

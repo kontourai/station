@@ -40,7 +40,10 @@ const mark = (prefix: string) =>
   `echo ${prefix}-${windows ? '%M%' : '$M'}${ENTER}`;
 
 /** The supervisor's relay, in one process: JSON both ways, events a turn later. */
-function connect(host: PtyWorkloadHost, events: Set<(event: WorkloadEventMessage) => void>) {
+function connect(
+  host: PtyWorkloadHost,
+  events: Set<(event: WorkloadEventMessage) => void>,
+) {
   const listeners = new Set<(event: WorkloadEventMessage) => void>();
   const forward = (event: WorkloadEventMessage) => {
     const copy = JSON.parse(JSON.stringify(event)) as WorkloadEventMessage;
@@ -104,7 +107,11 @@ function core(home: string, root: string, channel: WorkloadChannel) {
   );
 }
 
-async function text(sessions: TerminalSessions<string>, id: string, fromSeq = 0) {
+async function text(
+  sessions: TerminalSessions<string>,
+  id: string,
+  fromSeq = 0,
+) {
   const snapshot = await sessions.read('operator', scope, id, fromSeq);
   return snapshot.journal.records.map((record) => record.data).join('');
 }
@@ -225,15 +232,16 @@ describe('terminals as supervisor workloads (real PTYs)', () => {
     const after = core(home, root, connect(host, routes));
     const [listed] = await after.list('operator', scope);
     expect(listed?.status).toBe('exited');
-    expect(count(await text(after, id), 'last-words')).toBeGreaterThanOrEqual(1);
+    expect(count(await text(after, id), 'last-words')).toBeGreaterThanOrEqual(
+      1,
+    );
     await after.dispose();
   });
 
   it('ends a command and every process it started, escalating past a process that ignores SIGTERM', async () => {
     const dir = makeTempDir('workload-kill-');
     const pidFile = join(dir, 'grandchild.pid');
-    const stubborn =
-      "process.on('SIGTERM',()=>{});setInterval(()=>{},1000)";
+    const stubborn = "process.on('SIGTERM',()=>{});setInterval(()=>{},1000)";
     const parent = [
       "const {spawn}=require('node:child_process');",
       "const {writeFileSync}=require('node:fs');",

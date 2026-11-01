@@ -6,10 +6,7 @@
  * accepting anything else.
  */
 import { describe, expect, it, vi } from 'vitest';
-import {
-  daemonIsLive,
-  discoverE2EDaemon,
-} from '../run-e2e-suite.mjs';
+import { daemonIsLive, discoverE2EDaemon } from '../run-e2e-suite.mjs';
 import { assertListenerOwnership } from '../station-dogfood-health.mjs';
 import { supervisedInstanceEvents } from '../station-dogfood-reconcile.mjs';
 
@@ -164,9 +161,9 @@ describe('e2e daemon identity under the supervisor', () => {
       // The supervisor and UI are gone but the generation still runs.
       const generationOnly = (pid: number) =>
         pid === CORE ? (identities.get(CORE) ?? null) : null;
-      expect(
-        daemonIsLive(daemon, generationOnly, { platform: 'darwin' }),
-      ).toBe(true);
+      expect(daemonIsLive(daemon, generationOnly, { platform: 'darwin' })).toBe(
+        true,
+      );
       expect(daemonIsLive(daemon, () => null, { platform: 'darwin' })).toBe(
         false,
       );
@@ -182,14 +179,18 @@ describe('e2e daemon identity under the supervisor', () => {
           state: 'serving',
           active: { pid: CORE },
         }),
-      ).rejects.toThrow('Station supervisor identity differs from the registry');
+      ).rejects.toThrow(
+        'Station supervisor identity differs from the registry',
+      );
       await expect(
         discover({
           supervisor: { pid: SUPERVISOR, instance: 'e2e' },
           state: 'handoff',
           active: { pid: CORE },
         }),
-      ).rejects.toThrow('Station supervisor identity differs from the registry');
+      ).rejects.toThrow(
+        'Station supervisor identity differs from the registry',
+      );
     },
   );
 });

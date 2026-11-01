@@ -282,43 +282,43 @@ export class TerminalSessions<Principal> {
     const unsubscribeData = hosted
       ? hosted.onOutput(() => this.changed(record.terminalId))
       : proc.onData((data) => {
-      const write = journal.append(data);
-      if (!paused && journal.backpressured && proc.pause && proc.resume) {
-        paused = true;
-        proc.pause();
-      }
-      void write
-        .then(() => {
-          if (paused && journal.drained) {
-            paused = false;
-            proc.resume?.();
+          const write = journal.append(data);
+          if (!paused && journal.backpressured && proc.pause && proc.resume) {
+            paused = true;
+            proc.pause();
           }
-          this.changed(record.terminalId);
-        })
-        .catch((error: unknown) => {
-          if (writerFailed) return;
-          writerFailed = true;
-          unsubscribeData();
-          record.status = 'failed';
-          record.journalUnavailable = true;
-          logger.error('Terminal journal write failed', {
-            terminalId: record.terminalId,
-            error,
-          });
-          void this.persist().catch((failure: unknown) =>
-            logger.error('Terminal failure persistence failed', {
-              error: failure,
-            }),
-          );
-          void this.stop(record.terminalId)
-            .then(() => this.persist())
-            .catch((failure: unknown) =>
-              logger.error('Terminal failure persistence failed', {
-                error: failure,
-              }),
-            );
+          void write
+            .then(() => {
+              if (paused && journal.drained) {
+                paused = false;
+                proc.resume?.();
+              }
+              this.changed(record.terminalId);
+            })
+            .catch((error: unknown) => {
+              if (writerFailed) return;
+              writerFailed = true;
+              unsubscribeData();
+              record.status = 'failed';
+              record.journalUnavailable = true;
+              logger.error('Terminal journal write failed', {
+                terminalId: record.terminalId,
+                error,
+              });
+              void this.persist().catch((failure: unknown) =>
+                logger.error('Terminal failure persistence failed', {
+                  error: failure,
+                }),
+              );
+              void this.stop(record.terminalId)
+                .then(() => this.persist())
+                .catch((failure: unknown) =>
+                  logger.error('Terminal failure persistence failed', {
+                    error: failure,
+                  }),
+                );
+            });
         });
-    });
     const unsubscribeExit = proc.onExit((event) => {
       // node-pty can destroy a paused socket before publishing onExit.
       if (event.outputIncomplete) {

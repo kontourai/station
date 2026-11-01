@@ -139,7 +139,8 @@ class WorkloadProcess implements HostedShellProcess {
       const exit = {
         exitCode: event.exit.exitCode,
         signal: event.exit.signal,
-        outputIncomplete: event.exit.outputIncomplete || event.exit.journalFailed,
+        outputIncomplete:
+          event.exit.outputIncomplete || event.exit.journalFailed,
       };
       this.exit = exit;
       for (const listener of [...this.exitListeners]) listener(exit);
