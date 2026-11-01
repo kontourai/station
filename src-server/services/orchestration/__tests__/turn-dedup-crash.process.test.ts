@@ -260,7 +260,7 @@ describe('client-turn dedup after a killed owner (#3559)', () => {
       (value) => value.kind === 'available' && value.active === false,
       'boot recovery to retire the dead owner boundary',
     );
-    return { adapter, service };
+    return { adapter, service, eventStore };
   }
 
   function retry(service: OrchestrationService, text = 'keyed') {
@@ -287,8 +287,31 @@ describe('client-turn dedup after a killed owner (#3559)', () => {
         step: 'adapter-invoked',
         clientTurnId: CLIENT_TURN_ID,
       });
-
-      const { adapter, service } = await restart(dbPath);
+      const db = new DatabaseSync(dbPath, { readOnly: true });
+      const boundary = db
+        .prepare(
+          'SELECT state, invocation_id FROM orchestration_turn_boundaries WHERE thread_id = ?',
+        )
+        .get(THREAD_ID) as { state: string; invocation_id: string };
+      db.close();
+      expect(boundary).toMatchObject({
+        state: 'invoking',
+        invocation_id: expect.any(String),
+      });
+      const { adapter, service, eventStore } = await restart(dbPath);
+      expect(
+        eventStore.readPreparedTurnIntent(THREAD_ID, boundary.invocation_id),
+      ).toMatchObject({
+        state: 'indeterminate',
+        capture: {
+          clientTurnId: CLIENT_TURN_ID,
+          input: { text: 'keyed' },
+          intent: {
+            invocationId: boundary.invocation_id,
+            inputDigest: expect.any(String),
+          },
+        },
+      });
       await expect(retry(service)).rejects.toMatchObject({
         code: 'foreground_message_indeterminate',
         outcome: 'indeterminate',
