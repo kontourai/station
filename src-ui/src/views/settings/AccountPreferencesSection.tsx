@@ -127,9 +127,7 @@ export function AccountPreferencesSection() {
             >
               {APPROVAL_MODE_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
-                  {option.value === 'connection-default'
-                    ? 'Use inherited default'
-                    : option.label}
+                  {option.label}
                 </option>
               ))}
             </select>

@@ -7,6 +7,7 @@ import {
   type ApprovalMode,
   approvalModeChipLabel,
   approvalModeDescription,
+  approvalModeSourceNote,
   resolveEffectiveApprovalMode,
 } from '../../utils/approvalMode';
 import { ComposerChoice } from '../ComposerChoice';
@@ -127,11 +128,10 @@ export function StartApprovalSummary({
             onClose: () => setIsSheetOpen(false),
             onSelect: onPick,
             sourceNote:
-              resolved.source === 'session override'
-                ? 'Only this chat'
-                : resolved.mode === 'connection-default'
-                  ? 'Uses the engine’s saved permissions; confirmed after startup.'
-                  : `From ${resolved.source === 'account default' ? 'your saved default' : resolved.source}`,
+              resolved.mode === 'connection-default' &&
+              resolved.source !== 'session override'
+                ? 'Uses the engine’s saved permissions; confirmed after startup.'
+                : approvalModeSourceNote(resolved.source),
             isNewSession: true,
           }}
           pending={null}

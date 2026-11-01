@@ -37,7 +37,7 @@ describe('StartApprovalSummary on the engine default', () => {
     const chip = screen.getByRole('button', { name: /^Permissions: / });
     expect(chip.textContent).toContain('Permissions Default');
     expect(chip.getAttribute('title')).toBe(
-      'Your Codex settings apply until you pick a mode. If unset, no command uses the network or writes beyond this folder and temp unasked.',
+      'Your Codex settings apply until you pick a mode. If unset, no command uses the network or writes outside this chat’s working folder and temp unasked. A chat with no project works in your home folder.',
     );
   });
 
