@@ -9,6 +9,7 @@
  * adapter implements, and `@kontourai/monument/testing` the conformance suite
  * and crash-point store.
  */
+export type { SessionTurnBoundaryReadAuthority } from './boundary-reads.js';
 export type * from './commands.js';
 export {
   decideInboxCancel,
