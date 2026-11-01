@@ -1,10 +1,11 @@
 /** Private worker-backed persistence for one SharedWorkingState document. */
 import { Worker } from 'node:worker_threads';
-import type {
-  TextDocumentOperation,
-  WorkingStateSnapshot,
+import {
+  DEFAULT_RETAINED_WORKING_STATE_OPERATIONS,
+  MAX_WORKING_STATE_SNAPSHOT_BYTES,
+  type TextDocumentOperation,
+  type WorkingStateSnapshot,
 } from '../../domain/shared-working-state.js';
-import { DEFAULT_RETAINED_WORKING_STATE_OPERATIONS } from '../../domain/shared-working-state.js';
 import { createLogger } from '../../utils/logger.js';
 
 const logger = createLogger({ name: 'project-task-room-working-state' });
@@ -33,6 +34,14 @@ export interface ProjectTaskRoomWorkingState {
     scope: { projectId: string; taskId: string; documentId: string };
     after?: string;
   }): Promise<WorkingProjection>;
+  readRevisionOrdinals(input: {
+    scope: { projectId: string; taskId: string; documentId: string };
+    revision: string;
+    revisions: readonly string[];
+  }): Promise<
+    | { kind: 'available'; revisionOrdinals: Readonly<Record<string, number>> }
+    | { kind: 'unavailable' }
+  >;
   settle(input: {
     scope: { projectId: string; taskId: string; documentId: string };
     intentId: string;
@@ -227,10 +236,11 @@ export function createProjectTaskRoomWorkingState(
     options.maxRetainedOperations ?? DEFAULT_RETAINED_WORKING_STATE_OPERATIONS;
   if (!Number.isSafeInteger(maxRetainedOperations) || maxRetainedOperations < 1)
     throw new Error('room working-state retained-operation limit is malformed');
-  const maxWorkingSnapshotBytes = options.maxWorkingSnapshotBytes ?? 512 * 1024;
+  const maxWorkingSnapshotBytes =
+    options.maxWorkingSnapshotBytes ?? MAX_WORKING_STATE_SNAPSHOT_BYTES;
   if (
     !Number.isSafeInteger(maxWorkingSnapshotBytes) ||
-    maxWorkingSnapshotBytes < 512 * 1024 ||
+    maxWorkingSnapshotBytes < MAX_WORKING_STATE_SNAPSHOT_BYTES ||
     maxWorkingSnapshotBytes > 16 * 1024 * 1024
   )
     throw new Error('room working-state snapshot limit is malformed');
@@ -334,6 +344,12 @@ export function createProjectTaskRoomWorkingState(
       }
     });
   return Object.freeze({
+    readRevisionOrdinals: (
+      input: Parameters<ProjectTaskRoomWorkingState['readRevisionOrdinals']>[0],
+    ) =>
+      request<
+        Awaited<ReturnType<ProjectTaskRoomWorkingState['readRevisionOrdinals']>>
+      >({ ...input, type: 'revision-ordinals' }),
     read: (input: Parameters<ProjectTaskRoomWorkingState['read']>[0]) =>
       request<WorkingProjection>({ type: 'read', ...input }),
     settle: (input: Parameters<ProjectTaskRoomWorkingState['settle']>[0]) => {

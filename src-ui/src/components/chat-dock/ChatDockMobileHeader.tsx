@@ -5,9 +5,11 @@ import type {
 } from 'react';
 import { useId, useRef, useState } from 'react';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
+import { Button } from '../Button';
 import {
   ArrowDownGlyph,
   FolderGlyph,
+  InboxGlyph,
   MenuGlyph,
   NewChatGlyph,
 } from '../icons/Glyph';
@@ -113,6 +115,7 @@ export interface ChatDockMobileDockToggle {
 }
 
 interface ChatDockMobileHeaderProps {
+  inboxActive?: boolean;
   showDrawerToggle: boolean;
   showConnection: boolean;
   sessionTitle: string;
@@ -123,8 +126,8 @@ interface ChatDockMobileHeaderProps {
   projectSwitcher: ChatDockMobileProjectSwitcher | null;
   activeCount: number;
   unreadCount: number;
-  taskSwitcherTriggerRef: RefObject<HTMLButtonElement | null>;
-  onOpenTaskSwitcher: () => void;
+  inboxTriggerRef: RefObject<HTMLButtonElement | null>;
+  onToggleInbox: () => void;
   onToggleSidebar: (trigger: HTMLElement) => void;
   onDragPointerDown: (event: ReactPointerEvent<HTMLElement>) => void;
   onDragClickCapture: (event: ReactMouseEvent<HTMLElement>) => void;
@@ -135,6 +138,7 @@ interface ChatDockMobileHeaderProps {
 
 /** Project and conversation context stay directly operable; secondary actions use the sheet. */
 export function ChatDockMobileHeader({
+  inboxActive = false,
   showDrawerToggle,
   showConnection,
   sessionTitle,
@@ -145,8 +149,8 @@ export function ChatDockMobileHeader({
   projectSwitcher,
   activeCount,
   unreadCount,
-  taskSwitcherTriggerRef,
-  onOpenTaskSwitcher,
+  inboxTriggerRef,
+  onToggleInbox,
   onToggleSidebar,
   onDragPointerDown,
   onDragClickCapture,
@@ -208,7 +212,7 @@ export function ChatDockMobileHeader({
             <ArrowDownGlyph />
           </button>
         ) : null}
-        {projectSwitcher && (
+        {projectSwitcher && !agentIdentity && (
           <button
             ref={projectTriggerRef}
             type="button"
@@ -255,34 +259,28 @@ export function ChatDockMobileHeader({
           onClose={() => setIsProjectOpen(false)}
         />
       )}
-      <button
-        ref={taskSwitcherTriggerRef}
-        type="button"
-        className="chat-dock__mobile-identity"
-        data-dock-drag-passthrough=""
-        // The name carries the title and eyebrow on screen, in their order,
-        // so a spoken command matching the visible label reaches it (WCAG
-        // 2.5.3).
-        aria-label={`Chats and tasks — ${sessionTitle}${
-          agentIdentity
-            ? `, ${agentIdentity.name}${routeLabel ? ` · via ${routeLabel}` : ''}${
-                sessionProjectMismatchLabel
-                  ? ` · ${sessionProjectMismatchLabel}`
-                  : ''
-              }`
-            : ''
-        }`}
-        onClick={onOpenTaskSwitcher}
-      >
+      <div className="chat-dock__mobile-identity" data-dock-drag-passthrough="">
+        <Button
+          ref={inboxTriggerRef}
+          variant="ghost"
+          className="app-toolbar__icon-btn chat-dock__mobile-header-icon"
+          aria-label={inboxActive ? 'Back to chat' : 'Inbox'}
+          title={inboxActive ? 'Back to chat' : 'Inbox'}
+          aria-pressed={inboxActive}
+          data-no-dock-drag=""
+          onClick={onToggleInbox}
+        >
+          <InboxGlyph />
+        </Button>
         <span className="chat-dock__mobile-identity-lines">
           <span
             className="chat-dock__mobile-title chat-dock__mobile-title-text"
-            title={sessionTitle}
+            title={inboxActive ? 'Inbox' : sessionTitle}
           >
-            {sessionTitle}
+            {inboxActive ? 'Inbox' : sessionTitle}
           </span>
-          {agentIdentity && ' '}
-          {agentIdentity && (
+          {!inboxActive && agentIdentity && ' '}
+          {!inboxActive && agentIdentity && (
             <span className="chat-dock__mobile-eyebrow" aria-hidden="true">
               {agentIdentity.name}
               {routeLabel ? ` · via ${routeLabel}` : ''}
@@ -291,7 +289,7 @@ export function ChatDockMobileHeader({
             </span>
           )}
         </span>
-      </button>
+      </div>
       <div className="chat-dock__mobile-actions">
         <button
           ref={chatActionsTriggerRef}

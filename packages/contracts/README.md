@@ -23,6 +23,10 @@ this checkout's source is not evidence that a particular npm version is live.
 
 ## Source distribution
 
+The `qualification-repair-policy` subpath ships `.mjs` plus `.d.mts` so
+pre-install CI and the server can share its pure validator without a TypeScript
+loader. The export map remains the authoritative domain inventory.
+
 The [export map and file list](./package.json) expose `.ts` source under `src/`;
 they do not select a compiled `dist/` package. Type-only imports can be erased
 by the consumer; runtime constants and parsers need a toolchain that handles

@@ -70,6 +70,10 @@ vi.mock('../views/connections-hub/AddMachineModal', () => ({
   AddMachineModal: () => null,
 }));
 
+vi.mock('../views/connections-hub/IntegrationStatusSection', () => ({
+  IntegrationStatusSection: () => <div data-testid="integration-status-slot" />,
+}));
+
 import { ConnectionsHub } from '../views/ConnectionsHub';
 import { ConnectionsSectionFrame } from '../views/ConnectionsSectionFrame';
 

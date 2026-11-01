@@ -19,10 +19,17 @@ import { modelIdentityLabel } from '../../utils/modelCapabilities';
 import type { OwnerAttribution } from '../../utils/ownerAttribution';
 import { absoluteTime, messageTime } from '../../utils/relativeTime';
 import type { OverflowMenuHandle } from '../ActionOverflowMenu';
+import { Button } from '../Button';
 import { FlowGateVerdictCard } from '../flow/FlowGateVerdictCard';
 import { FlowRunAttachedMarker } from '../flow/FlowRunAttachedMarker';
 import { AgentIcon } from '../icons/AgentIcon';
-import { CopyGlyph, InboxGlyph, PauseGlyph, TimeGlyph } from '../icons/Glyph';
+import {
+  BranchGlyph,
+  CopyGlyph,
+  InboxGlyph,
+  PauseGlyph,
+  TimeGlyph,
+} from '../icons/Glyph';
 import { UserIcon } from '../icons/UserIcon';
 import { LazyBoundary } from '../LazyBoundary';
 import { Skeleton } from '../state';
@@ -118,6 +125,11 @@ export interface MessageBubbleSession {
   projectSlug?: string;
   /** Present once a conversation can span replacement execution Sessions. */
   conversationId?: string;
+  /**
+   * The server's open-read answer on what this caller may do here; error
+   * copy in the bubble picks its hint by it (`chatErrorHintFor`).
+   */
+  callerAccess?: { continue: boolean; startChat: boolean };
   /** `activeSession.messages.length` — the row only needs to know if it is last. */
   messageCount: number;
   isThinking?: boolean;
@@ -697,6 +709,9 @@ function MessageBubbleComponent({
             messageIndex={idx}
             messagePreview={textContent.slice(0, 200)}
             agentSlug={rowAgentSlug}
+            turnId={msg.turnId}
+            sessionId={msg.sessionId}
+            projectSlug={activeSession.projectSlug}
           />
         )}
     </>
@@ -837,8 +852,8 @@ function MessageBubbleComponent({
                     projectId: activeSession.projectSlug,
                   }
                 : undefined,
-            forkSource: turnForkSource,
-            onForkFromTurn,
+            forkSource: isMobile ? undefined : turnForkSource,
+            onForkFromTurn: isMobile ? undefined : onForkFromTurn,
             provenance:
               msg.provenance !== undefined
                 ? {
@@ -875,6 +890,9 @@ function MessageBubbleComponent({
           messageIndex={idx}
           messagePreview={textContent.slice(0, 200)}
           agentSlug={rowAgentSlug}
+          turnId={msg.turnId}
+          sessionId={msg.sessionId}
+          projectSlug={activeSession.projectSlug}
         />
       )}
     </>
@@ -1016,10 +1034,26 @@ function MessageBubbleComponent({
     isMobile && Number.isFinite(settledAt)
       ? messageTime(settledAt, Date.now())
       : '';
+  const inlineBranch =
+    isMobile && isAssistant && turnForkSource && onForkFromTurn ? (
+      <Button
+        variant="ghost"
+        className="message-details__copy"
+        aria-label="Branch from this answer"
+        title="Branch from this answer"
+        onClick={() => onForkFromTurn(turnForkSource)}
+      >
+        <BranchGlyph />
+      </Button>
+    ) : null;
   // An answer's copy and ⋯ share one quiet row with the turn's settle time;
   // the user's bubble keeps its controls beside it.
   const mobileDetails = isAssistant ? (
     <div className="message-meta">
+      {basisChip}
+      {inlineCopy}
+      {inlineBranch}
+      {details}
       {time && envelope && (
         <time
           className="message-meta__time"
@@ -1029,9 +1063,6 @@ function MessageBubbleComponent({
           {time}
         </time>
       )}
-      {basisChip}
-      {inlineCopy}
-      {details}
     </div>
   ) : inlineCopy || details ? (
     <div className="message-actions">
@@ -1058,6 +1089,7 @@ function MessageBubbleComponent({
             showReasoning={showReasoning}
             showToolDetails={showToolDetails}
             isStreamingMessage={false}
+            callerAccess={activeSession.callerAccess}
           />
           {metadataControls}
           {metadataIdentity}
@@ -1093,7 +1125,9 @@ function MessageBubbleComponent({
             ? msg.role === 'user' && !sender && userControlCount > 0
               ? `calc(100% - ${8 + 44 * userControlCount}px)`
               : undefined
-            : '70%',
+            : msg.role === 'assistant' && !sender
+              ? undefined
+              : '70%',
         }}
         onContextMenu={onBubbleContextMenu}
         // Only to learn whether a finger is down: its long-press is text
@@ -1190,6 +1224,7 @@ function MessageBubbleComponent({
               showReasoning={showReasoning}
               showToolDetails={showToolDetails}
               isStreamingMessage={isStreamingMessage}
+              callerAccess={activeSession.callerAccess}
               foldWork={foldWork}
               onToolApproval={
                 onToolApproval ? handleContentToolApproval : undefined

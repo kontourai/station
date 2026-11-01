@@ -16,6 +16,7 @@ import type {
   PeerEnrollmentInput,
 } from '@kontourai/station-contracts/environment-security';
 import { getJson, setClientCredentialResolver } from '@kontourai/station-sdk';
+import { StationHttpError } from '@kontourai/station-sdk/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
@@ -384,6 +385,70 @@ describe('Connect Station grant composition', () => {
       actions.queryByRole('button', { name: 'Retry this same request' }),
     ).toBeNull();
     expect(actions.getAllByRole('button')).toHaveLength(2);
+  });
+
+  test('an operator refusal keeps the peer reference while Device pairing remains available', async () => {
+    wire.start.mockRejectedValue(
+      new StationHttpError(403, 'insufficient_scope'),
+    );
+    wire.get.mockRejectedValue(new StationHttpError(403, 'Forbidden'));
+    mount();
+    await identify();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Request selected access' }),
+    );
+    await screen.findByText('Peer setup needs operator access on Kontour.');
+    const reservation = wire.start.mock.calls[0][1].id;
+    expect(
+      sessionStorage.getItem(
+        'station-peer-enrollment:https://controller.test:controller-authority:https://destination.test:remote-station',
+      ),
+    ).toContain(reservation);
+    expect(screen.queryByText(/Request outcome unknown/)).toBeNull();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Request access for this device' }),
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Approve device transport' }),
+    );
+    await screen.findByText(/Device access saved/);
+    expect(wire.commit).toHaveBeenCalledOnce();
+    expect(wire.start).toHaveBeenCalledOnce();
+    expect(wire.select).not.toHaveBeenCalled();
+  });
+
+  test('confirmed peer cancellation allows another destination without restarting setup', async () => {
+    wire.cancel.mockImplementation(async (_base, id) => ({
+      ...pending,
+      id,
+      status: 'cancelled',
+    }));
+    mount();
+    await identify();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Request selected access' }),
+    );
+    await screen.findByText(/Waiting for approval/);
+    wire.complete.mockRejectedValueOnce(new StationHttpError(403, 'Forbidden'));
+    fireEvent.click(screen.getByRole('button', { name: 'Check approval' }));
+    await screen.findByText('Peer setup needs operator access on Kontour.');
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Cancel peer request' }),
+    );
+    await screen.findByText('Peer setup: cancelled.');
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Choose another Station' }),
+    );
+    expect(screen.getByLabelText('Station address')).toBeTruthy();
+    await identify('https://another.test');
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Request selected access' }),
+    );
+    await waitFor(() => expect(wire.start).toHaveBeenCalledTimes(2));
+    expect(wire.start.mock.calls[1][1].id).not.toBe(
+      wire.start.mock.calls[0][1].id,
+    );
+    expect(wire.start.mock.calls[1][1].apiBase).toBe('https://another.test');
   });
 
   test('an authority change blocks new grants while keeping the reviewed destination visible', async () => {

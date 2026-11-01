@@ -171,12 +171,12 @@
     {
       "path": "docs/learn/media/oauth-mcp-sign-in-comparison.png",
       "kind": "image",
-      "digest": "7dbc43e6c59e2f812daaebc06dfe9f1b6f837b4897d616abc8a5248078d47b2a",
-      "alt": "The Workspace MCP sign-in panel identifies the shared Station account.",
-      "caption": "The Workspace MCP sign-in panel identifies the shared Station account.",
+      "digest": "3f77dece872bd1664c97b800b23f456ff913dfb5dcfbfcc7087f5cd76e8afd69",
+      "alt": "The Workspace MCP sign-in panel identifies the shared Station account and offers editable scopes.",
+      "caption": "The Workspace MCP sign-in panel identifies the shared Station account and offers editable scopes.",
       "scenario": "OAuth MCP engine setup",
-      "evidence": "EXECUTED: inspected recaptured Chrome desktop dark-theme mounted React components with synthetic local API responses and a neutral Workspace MCP fixture. The sign-in scene uses a shared-account response; the personal-source picker follows an ordinary Add click. Current component source bytes match f521b2fc806da3cbb35b3386ba623f9d9e7fa675. The left comparison retains the frozen pre-feature component fixture. No Station host, live OAuth provider, model turn, native or hosted acceptance. Browser JPEG was re-encoded as PNG without cropping, resizing or content edits.",
-      "capturedRevision": "f521b2fc806da3cbb35b3386ba623f9d9e7fa675",
+      "evidence": "EXECUTED: captured with Playwright Chromium at 1800x1009, dark theme, from an isolated source Station instance (temp home, non-default ports) at the captured revision, with a neutral Workspace MCP integration and a local fake authorization server that answers discovery only. Shows the shared-account panel, the Scopes field prefilled from the integration default and Sign in. Replaces the earlier side-by-side comparison of mounted components: this is a single current capture, with no pre-feature baseline. No sign-in was completed; no live OAuth provider, model turn, native or hosted acceptance.",
+      "capturedRevision": "f83cf85e288326e846f8901bc220a28b6580d87b",
       "documents": [
         "docs/guides/connections.md"
       ]
@@ -439,6 +439,214 @@
       "capturedRevision": "cc7823687711769bc4c2efbd7f77409d6ac090ef",
       "documents": [
         "docs/design/outside-agent-mcp-r2b-evidence.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/session-goals-before-390-dark.png",
+      "kind": "image",
+      "digest": "a999227b7b9324adccc12dbccff6ebfd40f2bcf840b0ae40c026570e40e1bebd",
+      "alt": "Chat settings before the Session Goal control, 390px dark theme.",
+      "caption": "Session Goal component comparison: before, 390px, dark.",
+      "scenario": "Session Goal component layout",
+      "evidence": "Controlled Chromium component render using actual ChatSettingsPanel and styles at e4673c154e93f4eca46c55d5b805a5aacc1d696a; panel source extracted from 2a740cb43031655fbb33d549bfb0ba94a09113e3 with current styles. SDK/context observations are fixtures; unused Replay controls stubbed. Finite animations/fonts awaited, no JS errors or horizontal overflow; all four widths/themes inspected. No running Station, live engine, native shell, hosted, activation or release qualification.",
+      "capturedRevision": "e4673c154e93f4eca46c55d5b805a5aacc1d696a",
+      "documents": [
+        "docs/user/settings.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/session-goals-before-390-light.png",
+      "kind": "image",
+      "digest": "e72c615980e48af933f4bda16e8ec857acf3a9a8636c419ad42d0820605ccd6f",
+      "alt": "Chat settings before the Session Goal control, 390px light theme.",
+      "caption": "Session Goal component comparison: before, 390px, light.",
+      "scenario": "Session Goal component layout",
+      "evidence": "Controlled Chromium component render using actual ChatSettingsPanel and styles at e4673c154e93f4eca46c55d5b805a5aacc1d696a; panel source extracted from 2a740cb43031655fbb33d549bfb0ba94a09113e3 with current styles. SDK/context observations are fixtures; unused Replay controls stubbed. Finite animations/fonts awaited, no JS errors or horizontal overflow; all four widths/themes inspected. No running Station, live engine, native shell, hosted, activation or release qualification.",
+      "capturedRevision": "e4673c154e93f4eca46c55d5b805a5aacc1d696a",
+      "documents": [
+        "docs/user/settings.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/session-goals-before-1440-dark.png",
+      "kind": "image",
+      "digest": "bef9777f7b6d32ce1c45a04a36610ec73cf055c9b1cdc0e5319a09726675ce96",
+      "alt": "Chat settings before the Session Goal control, 1440px dark theme.",
+      "caption": "Session Goal component comparison: before, 1440px, dark.",
+      "scenario": "Session Goal component layout",
+      "evidence": "Controlled Chromium component render using actual ChatSettingsPanel and styles at e4673c154e93f4eca46c55d5b805a5aacc1d696a; panel source extracted from 2a740cb43031655fbb33d549bfb0ba94a09113e3 with current styles. SDK/context observations are fixtures; unused Replay controls stubbed. Finite animations/fonts awaited, no JS errors or horizontal overflow; all four widths/themes inspected. No running Station, live engine, native shell, hosted, activation or release qualification.",
+      "capturedRevision": "e4673c154e93f4eca46c55d5b805a5aacc1d696a",
+      "documents": [
+        "docs/user/settings.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/session-goals-before-1440-light.png",
+      "kind": "image",
+      "digest": "85b345b68f53075519fd7a81d63343e34ffe06cba8d7f89f0804bfbb0c32f88b",
+      "alt": "Chat settings before the Session Goal control, 1440px light theme.",
+      "caption": "Session Goal component comparison: before, 1440px, light.",
+      "scenario": "Session Goal component layout",
+      "evidence": "Controlled Chromium component render using actual ChatSettingsPanel and styles at e4673c154e93f4eca46c55d5b805a5aacc1d696a; panel source extracted from 2a740cb43031655fbb33d549bfb0ba94a09113e3 with current styles. SDK/context observations are fixtures; unused Replay controls stubbed. Finite animations/fonts awaited, no JS errors or horizontal overflow; all four widths/themes inspected. No running Station, live engine, native shell, hosted, activation or release qualification.",
+      "capturedRevision": "e4673c154e93f4eca46c55d5b805a5aacc1d696a",
+      "documents": [
+        "docs/user/settings.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/session-goals-after-390-dark.png",
+      "kind": "image",
+      "digest": "5b6d96ce775a85133859ad7fc170c024ebc079a09cead8d119a30ed3f72034ee",
+      "alt": "Chat settings after the Session Goal control, 390px dark theme.",
+      "caption": "Session Goal component comparison: after, 390px, dark.",
+      "scenario": "Session Goal component layout",
+      "evidence": "Controlled Chromium component render using actual ChatSettingsPanel and styles at e4673c154e93f4eca46c55d5b805a5aacc1d696a; panel and Goal control from captured revision. SDK/context observations are fixtures; unused Replay controls stubbed. Finite animations/fonts awaited, no JS errors or horizontal overflow; all four widths/themes inspected. No running Station, live engine, native shell, hosted, activation or release qualification.",
+      "capturedRevision": "e4673c154e93f4eca46c55d5b805a5aacc1d696a",
+      "documents": [
+        "docs/user/settings.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/session-goals-after-390-light.png",
+      "kind": "image",
+      "digest": "fcbe291da4ecc05ea42100071d0ee529f8a13362edaa9b97cd1b5b369ff2327d",
+      "alt": "Chat settings after the Session Goal control, 390px light theme.",
+      "caption": "Session Goal component comparison: after, 390px, light.",
+      "scenario": "Session Goal component layout",
+      "evidence": "Controlled Chromium component render using actual ChatSettingsPanel and styles at e4673c154e93f4eca46c55d5b805a5aacc1d696a; panel and Goal control from captured revision. SDK/context observations are fixtures; unused Replay controls stubbed. Finite animations/fonts awaited, no JS errors or horizontal overflow; all four widths/themes inspected. No running Station, live engine, native shell, hosted, activation or release qualification.",
+      "capturedRevision": "e4673c154e93f4eca46c55d5b805a5aacc1d696a",
+      "documents": [
+        "docs/user/settings.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/session-goals-after-1440-dark.png",
+      "kind": "image",
+      "digest": "caf25ad04192c00cd1f0cfeb68d42acaec1072e7b90f8c21245c1af152923251",
+      "alt": "Chat settings after the Session Goal control, 1440px dark theme.",
+      "caption": "Session Goal component comparison: after, 1440px, dark.",
+      "scenario": "Session Goal component layout",
+      "evidence": "Controlled Chromium component render using actual ChatSettingsPanel and styles at e4673c154e93f4eca46c55d5b805a5aacc1d696a; panel and Goal control from captured revision. SDK/context observations are fixtures; unused Replay controls stubbed. Finite animations/fonts awaited, no JS errors or horizontal overflow; all four widths/themes inspected. No running Station, live engine, native shell, hosted, activation or release qualification.",
+      "capturedRevision": "e4673c154e93f4eca46c55d5b805a5aacc1d696a",
+      "documents": [
+        "docs/user/settings.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/session-goals-after-1440-light.png",
+      "kind": "image",
+      "digest": "f6481aafc04c0f7957e1a29101684464c76ee8084b85ca81fd7abfe0fc1bbd95",
+      "alt": "Chat settings after the Session Goal control, 1440px light theme.",
+      "caption": "Session Goal component comparison: after, 1440px, light.",
+      "scenario": "Session Goal component layout",
+      "evidence": "Controlled Chromium component render using actual ChatSettingsPanel and styles at e4673c154e93f4eca46c55d5b805a5aacc1d696a; panel and Goal control from captured revision. SDK/context observations are fixtures; unused Replay controls stubbed. Finite animations/fonts awaited, no JS errors or horizontal overflow; all four widths/themes inspected. No running Station, live engine, native shell, hosted, activation or release qualification.",
+      "capturedRevision": "e4673c154e93f4eca46c55d5b805a5aacc1d696a",
+      "documents": [
+        "docs/user/settings.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/agent-efficiency-learning-390-light.png",
+      "kind": "image",
+      "digest": "3669d9ea4f4569f917fad426bc5dbbd6aac4a131e9d182b16175f2e568202410",
+      "alt": "Source inspector and copied learning proposal before and after a protected read refusal.",
+      "caption": "Current component access-state comparison; source content closes on refusal.",
+      "scenario": "Bounded agent work review",
+      "evidence": "Local-file Chromium render of current components/CSS with controlled canonical owner DTOs; source bytes match committed 4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514. Inspected 390/1440 widths and both themes without horizontal overflow/page errors. Learning comparison panels compose granted/refused states of the SAME component, not code-revision comparisons. Hono/SDK tests separately establish authorization/cache behavior. No live account, provider, installed/native or Windows acceptance. See agent-efficiency-captures.json for hashes and scope.",
+      "capturedRevision": "4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514",
+      "documents": [
+        "docs/guides/agent-efficiency.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/agent-efficiency-learning-390-dark.png",
+      "kind": "image",
+      "digest": "4a9e2c5bebdcfa6befb44f25db5fca80ae366296535d2c39b1ae7082cafff6c3",
+      "alt": "Source inspector and copied learning proposal before and after a protected read refusal.",
+      "caption": "Current component access-state comparison; source content closes on refusal.",
+      "scenario": "Bounded agent work review",
+      "evidence": "Local-file Chromium render of current components/CSS with controlled canonical owner DTOs; source bytes match committed 4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514. Inspected 390/1440 widths and both themes without horizontal overflow/page errors. Learning comparison panels compose granted/refused states of the SAME component, not code-revision comparisons. Hono/SDK tests separately establish authorization/cache behavior. No live account, provider, installed/native or Windows acceptance. See agent-efficiency-captures.json for hashes and scope.",
+      "capturedRevision": "4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514",
+      "documents": [
+        "docs/guides/agent-efficiency.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/agent-efficiency-learning-1440-light.png",
+      "kind": "image",
+      "digest": "67ee0c9b9c8f5c0fc071e8675c380718e455c5ad5bd63cbe29838f5e1b434d5f",
+      "alt": "Source inspector and copied learning proposal before and after a protected read refusal.",
+      "caption": "Current component access-state comparison; source content closes on refusal.",
+      "scenario": "Bounded agent work review",
+      "evidence": "Local-file Chromium render of current components/CSS with controlled canonical owner DTOs; source bytes match committed 4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514. Inspected 390/1440 widths and both themes without horizontal overflow/page errors. Learning comparison panels compose granted/refused states of the SAME component, not code-revision comparisons. Hono/SDK tests separately establish authorization/cache behavior. No live account, provider, installed/native or Windows acceptance. See agent-efficiency-captures.json for hashes and scope.",
+      "capturedRevision": "4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514",
+      "documents": [
+        "docs/guides/agent-efficiency.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/agent-efficiency-learning-1440-dark.png",
+      "kind": "image",
+      "digest": "c953aa47dff4dce4f52cec25e34e68c123c67bd917b507e4f3a224e4ebe576cf",
+      "alt": "Source inspector and copied learning proposal before and after a protected read refusal.",
+      "caption": "Current component access-state comparison; source content closes on refusal.",
+      "scenario": "Bounded agent work review",
+      "evidence": "Local-file Chromium render of current components/CSS with controlled canonical owner DTOs; source bytes match committed 4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514. Inspected 390/1440 widths and both themes without horizontal overflow/page errors. Learning comparison panels compose granted/refused states of the SAME component, not code-revision comparisons. Hono/SDK tests separately establish authorization/cache behavior. No live account, provider, installed/native or Windows acceptance. See agent-efficiency-captures.json for hashes and scope.",
+      "capturedRevision": "4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514",
+      "documents": [
+        "docs/guides/agent-efficiency.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/agent-efficiency-working-configuration.png",
+      "kind": "image",
+      "digest": "5dbf31011a7d8245e8dcf2d01851cc3ccd5fce106f2fa0f265c986049022e546",
+      "alt": "Reviewed Project working configuration with rules, checks and source guidance.",
+      "caption": "Controlled Project configuration fixture.",
+      "scenario": "Bounded agent work review",
+      "evidence": "Local-file Chromium render of current components/CSS with controlled canonical owner DTOs; source bytes match committed 4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514. Inspected 390/1440 widths and both themes without horizontal overflow/page errors. Learning comparison panels compose granted/refused states of the SAME component, not code-revision comparisons. Hono/SDK tests separately establish authorization/cache behavior. No live account, provider, installed/native or Windows acceptance. See agent-efficiency-captures.json for hashes and scope.",
+      "capturedRevision": "4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514",
+      "documents": [
+        "docs/guides/agent-efficiency.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/agent-efficiency-compaction.png",
+      "kind": "image",
+      "digest": "7c40856e7d18963af7903033cde691a6cb39fe541d87f48e139d9f0d42b4c76a",
+      "alt": "Context compaction policy and retained Task state controls.",
+      "caption": "Controlled Task context fixture.",
+      "scenario": "Bounded agent work review",
+      "evidence": "Local-file Chromium render of current components/CSS with controlled canonical owner DTOs; source bytes match committed 4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514. Inspected 390/1440 widths and both themes without horizontal overflow/page errors. Learning comparison panels compose granted/refused states of the SAME component, not code-revision comparisons. Hono/SDK tests separately establish authorization/cache behavior. No live account, provider, installed/native or Windows acceptance. See agent-efficiency-captures.json for hashes and scope.",
+      "capturedRevision": "4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514",
+      "documents": [
+        "docs/guides/agent-efficiency.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/agent-efficiency-supervision.png",
+      "kind": "image",
+      "digest": "4be6369b8cfd3dbf78605783ca2b11ac59b838d410500375287de1dc912bcdfc",
+      "alt": "Task supervision with an unknown original wake and pause or stop controls.",
+      "caption": "Controlled supervision fixture; an unknown wake is not resent.",
+      "scenario": "Bounded agent work review",
+      "evidence": "Local-file Chromium render of current components/CSS with controlled canonical owner DTOs; source bytes match committed 4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514. Inspected 390/1440 widths and both themes without horizontal overflow/page errors. Learning comparison panels compose granted/refused states of the SAME component, not code-revision comparisons. Hono/SDK tests separately establish authorization/cache behavior. No live account, provider, installed/native or Windows acceptance. See agent-efficiency-captures.json for hashes and scope.",
+      "capturedRevision": "4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514",
+      "documents": [
+        "docs/guides/agent-efficiency.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/agent-efficiency-usage.png",
+      "kind": "image",
+      "digest": "0bb86aa091669a95f24137fc10ae4acd658901ebe32c27212d1a3d1c5f7364a9",
+      "alt": "Usage rollup with incomplete coverage and separately attributed reported cost.",
+      "caption": "Controlled usage fixture; no live billing qualification.",
+      "scenario": "Bounded agent work review",
+      "evidence": "Local-file Chromium render of current components/CSS with controlled canonical owner DTOs; source bytes match committed 4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514. Inspected 390/1440 widths and both themes without horizontal overflow/page errors. Learning comparison panels compose granted/refused states of the SAME component, not code-revision comparisons. Hono/SDK tests separately establish authorization/cache behavior. No live account, provider, installed/native or Windows acceptance. See agent-efficiency-captures.json for hashes and scope.",
+      "capturedRevision": "4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514",
+      "documents": [
+        "docs/guides/agent-efficiency.md"
       ]
     }
   ]

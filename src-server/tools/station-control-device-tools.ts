@@ -1,3 +1,4 @@
+import { TASK_REVIEW_LIMITS } from '@kontourai/station-contracts/task-review';
 import { z } from 'zod';
 import type { StationControlToolRegistry } from './station-control-mcp-server.js';
 import { api, jsonToolResult } from './station-control-shared.js';
@@ -13,6 +14,19 @@ async function callDevice(operation: string, body: Record<string, unknown>) {
         { ok: false, code: 'unavailable' },
         { failed: true },
       );
+    if (result.ok && result.screenshot) {
+      const { screenshot, ...metadata } = result;
+      return {
+        content: [
+          { type: 'text' as const, text: JSON.stringify(metadata) },
+          {
+            type: 'image' as const,
+            data: screenshot.data as string,
+            mimeType: screenshot.mimeType as string,
+          },
+        ],
+      };
+    }
     if (result.ok && result.capture) {
       const { pngBase64, ...capture } = result.capture;
       return {
@@ -67,6 +81,15 @@ export function registerDeviceTools(registry: StationControlToolRegistry) {
     'Capture a bounded PNG from the shared device on its own host. Refused while a human controls it or if control changes during capture.',
     { deviceSessionId },
     async (args) => callDevice('screenshot', args),
+  );
+  registry.tool(
+    'device_capture_to_task',
+    'Save a device Screen to this Session’s Task, pinned to a clean commit. Commit changes first; workspace changes during capture are refused. Returns captureId, commit, digest and the image.',
+    {
+      deviceSessionId,
+      label: z.string().min(1).max(TASK_REVIEW_LIMITS.labelChars).optional(),
+    },
+    async (args) => callDevice('capture-to-task', args),
   );
   registry.tool(
     'device_snapshot',

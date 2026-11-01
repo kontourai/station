@@ -1,6 +1,7 @@
 import type { ConversationTurnActivity } from '@kontourai/station-contracts/orchestration';
 import { migrateSnoozeKey } from '../utils/activity-snooze-store';
 import { newerConversationActivity } from '../utils/conversation-activity';
+import { migrateInboxDismissal } from '../utils/inbox-dismissal-store';
 import { log } from '../utils/logger';
 import { derivePlanArtifactFromStreamingState } from '../utils/planArtifacts';
 import {
@@ -574,6 +575,7 @@ export class ActiveChatsStore {
     // both ids are known together.
     try {
       migrateSnoozeKey(sessionId, conversationId, this.now());
+      migrateInboxDismissal(sessionId, conversationId);
     } catch {
       /* ignore — snooze migration is a convenience, never load-bearing for
        * chat state itself. */

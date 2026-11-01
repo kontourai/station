@@ -90,6 +90,7 @@ import {
 } from '../../services/connections/virtual-application.js';
 import { guardAccountResponse } from '../../services/identity/account-response-guard.js';
 import {
+  isAccountBindingConsentLeaf,
   isOperatorSessionLeaf,
   isOperatorSessionRead,
   OPERATOR_SESSION_COOKIE,
@@ -436,7 +437,7 @@ export function configureRuntimeHttp({
     const ordinaryCors = cors({
       origin: resolveRuntimeCorsOrigin,
       credentials: true,
-      exposeHeaders: [STATION_ENVELOPE_HEADER],
+      exposeHeaders: [STATION_ENVELOPE_HEADER, 'X-Station-General-Stream'],
     });
     app.use('*', (c, next) =>
       outsideProtocolOwnsAdmission(c) ? next() : ordinaryCors(c, next),
@@ -922,7 +923,7 @@ function configureRuntimeSecurity(
       c.header('Access-Control-Allow-Origin', origin);
       c.header(
         'Access-Control-Expose-Headers',
-        `${ACCOUNT_AUTHENTICATION_FAILURE_HEADER}, Retry-After, ${STATION_ENVELOPE_HEADER}`,
+        `${ACCOUNT_AUTHENTICATION_FAILURE_HEADER}, Retry-After, ${STATION_ENVELOPE_HEADER}, X-Station-General-Stream`,
       );
       c.header('Vary', 'Origin');
       c.header('Access-Control-Allow-Credentials', 'true');
@@ -1168,6 +1169,7 @@ function configureRuntimeSecurity(
       .some((part) => part.trim().startsWith(`${OPERATOR_SESSION_COOKIE}=`));
     const admitOperatorSession = async (
       admittedDevice = false,
+      allowDeviceFallback = false,
     ): Promise<Response | undefined> => {
       if (
         !(
@@ -1196,13 +1198,15 @@ function configureRuntimeSecurity(
           tenant: getTenantRequestContext(c.req.raw),
         }));
       const refuse = () =>
-        c.json(
-          {
-            error: { code: 'operator_session_required' },
-            signInUrl: security.operatorSessions?.signInUrl ?? null,
-          },
-          admittedDevice || bindingDeviceAdmitted ? 403 : 401,
-        );
+        allowDeviceFallback
+          ? undefined
+          : c.json(
+              {
+                error: { code: 'operator_session_required' },
+                signInUrl: security.operatorSessions?.signInUrl ?? null,
+              },
+              admittedDevice || bindingDeviceAdmitted ? 403 : 401,
+            );
       if (!sessionSecret || !deviceCredential || hasCredentialQuery(c.req.url))
         return refuse();
       // Validate the binding credential through ordinary device admission on
@@ -1249,7 +1253,13 @@ function configureRuntimeSecurity(
       return c.res;
     };
     const inventorySignIn =
-      c.req.method === 'GET' && c.req.path === '/api/pairing/devices'
+      (c.req.method === 'GET' &&
+        ['/api/pairing/devices', '/api/pairing/requests'].includes(
+          c.req.path,
+        )) ||
+      (c.req.method === 'POST' &&
+        /^\/api\/pairing\/requests\/[^/]+\/confirm$/.test(c.req.path)) ||
+      isAccountBindingConsentLeaf(c.req.method, c.req.path)
         ? security.operatorSessions?.signInUrl
         : null;
     const hasQueryCredential = hasCredentialQuery(c.req.url);
@@ -1407,6 +1417,16 @@ function configureRuntimeSecurity(
           authority === 'operator-credential',
           locality === 'home-possession',
         );
+      if (
+        permitted &&
+        authority === 'device-credential' &&
+        operatorCookiePresent &&
+        c.req.method === 'POST' &&
+        /^\/api\/pairing\/requests\/[^/]+\/confirm$/.test(c.req.path)
+      ) {
+        const sessionResponse = await admitOperatorSession(true, true);
+        if (sessionResponse) return sessionResponse;
+      }
       if (!permitted) {
         const sessionResponse = await admitOperatorSession(
           authority === 'device-credential',
@@ -1440,6 +1460,19 @@ function configureRuntimeSecurity(
           {
             error: { code: 'insufficient_scope' },
             ...(inventorySignIn ? { signInUrl: inventorySignIn } : {}),
+          },
+          403,
+        );
+      }
+      if (isAccountBindingConsentLeaf(c.req.method, c.req.path)) {
+        const sessionResponse = await admitOperatorSession(
+          authority === 'device-credential',
+        );
+        if (sessionResponse) return sessionResponse;
+        return c.json(
+          {
+            error: { code: 'operator_session_required' },
+            signInUrl: security.operatorSessions?.signInUrl ?? null,
           },
           403,
         );

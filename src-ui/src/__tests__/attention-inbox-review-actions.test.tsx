@@ -33,9 +33,28 @@ const rejectChange = vi.fn();
 const resolveComment = vi.fn();
 let attention: AttentionProjection = { items: [], pendingCount: 0 };
 
+// Snooze is a Feature Preview; off unless a test turns it on.
+const snoozePreviews: { id: string; enabled: boolean }[] = [];
+const snoozeAttention = vi.fn();
+const unsnoozeAttention = vi.fn();
+const snoozeNotification = vi.fn();
 vi.mock('@kontourai/station-sdk', () => ({
   useNotificationsQuery: () => ({ data: [], error: null, isLoading: false }),
   useAttentionQuery: () => ({ data: attention, isLoading: false }),
+  useDevicePresentation: () => undefined,
+  useFeaturePreviewsQuery: () => ({ data: snoozePreviews }),
+  useSnoozeAttentionItemMutation: () => ({
+    mutate: snoozeAttention,
+    isPending: false,
+  }),
+  useUnsnoozeAttentionItemMutation: () => ({
+    mutate: unsnoozeAttention,
+    isPending: false,
+  }),
+  useSnoozeNotificationMutation: () => ({
+    mutate: snoozeNotification,
+    isPending: false,
+  }),
   useOrchestrationSessionsQuery: () => ({ data: [], isSuccess: true }),
   useQueryClient: () => ({ invalidateQueries: vi.fn() }),
   sendOrchestrationTurn: vi.fn(),

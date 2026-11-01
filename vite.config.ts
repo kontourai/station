@@ -1,6 +1,7 @@
 import { execSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
+import { ServerResponse } from 'node:http';
 import path from 'node:path';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
@@ -273,6 +274,21 @@ export function stationDevProxy(
       return undefined;
     },
     configure(proxy) {
+      // Match the production UI proxy's restart envelope. Vite's plain 500
+      // otherwise looks like an access refusal to the browser session gate.
+      proxy.on('error', (_error, _request, response) => {
+        if (
+          !(response instanceof ServerResponse) ||
+          response.headersSent ||
+          response.writableEnded
+        )
+          return;
+        response.writeHead(503, {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
+        });
+        response.end(JSON.stringify({ ready: false, status: 'unavailable' }));
+      });
       proxy.on('proxyReq', (outgoing, incoming) =>
         attestDevProxyRequest(outgoing, incoming, internalToken),
       );

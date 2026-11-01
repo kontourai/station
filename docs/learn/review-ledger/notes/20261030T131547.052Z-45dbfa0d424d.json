@@ -1,0 +1,17 @@
+{
+  "revision": "a9be0daa116a490a11b1b05b5f7992ed1b92ce6b",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed PendingPairingCompletion responsibility and exchange-journal claims against unchanged completion callers. devicePairing changes only refusal text lookup and direct-access error mapping; no pending/exchange state, custody, retry or module boundary changes. No prose update required; this is a diff-scoped review, not a renewed audit of unrelated modules.","inputs":["docs/architecture/module-map.md","packages/connect/src/core/devicePairing.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Reviewed the UI and ordinary-pairing approval design sections affected by DevicePairingPanel. This patch changes direct request refusal guidance only; operator inventory, passkey sign-in, step-up, approval authority and host-only rules are unchanged. No design prose update is needed.","inputs":["docs/design/operator-device-access.md","packages/connect/src/react/DevicePairingPanel.tsx"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"Reviewed sign-in and ordinary Device approval instructions against the changed DevicePairingPanel request catch. The passkey panel, consent-origin sign-in and transaction approval paths are untouched; distinct direct request error guidance does not alter these instructions.","inputs":["docs/guides/operator-passkeys.md","packages/connect/src/react/DevicePairingPanel.tsx"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Reviewed Device access and remote work relationship claims against ConnectStationDialog and PeerEnrollmentService. Device and peer holders, independent approvals, server custody and operator requirement remain accurate. New recovery controls and exact-Origin startup remedy are documented by the existing Connections guide, which this guide already identifies as the setup owner. No relationship or grant widening.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md","src-server/services/peers/peer-enrollment-service.ts","src-ui/src/views/connections-hub/ConnectStationDialog.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed client protocol admission and pairing request contract against DevicePairingPanel and peer refusal mapping. Requests, HTTP statuses and authorization remain unchanged; only existing response codes get actionable fixed guidance. No API schema or admission change.","inputs":["docs/reference/api.md","packages/connect/src/react/DevicePairingPanel.tsx"]},
+
+    {"path":"docs/reference/connect.md","note":"Reviewed one-time device pairing and PeerEnrollmentService contract against changed UI, request error mapper and route tests. Grant custody, activation policy, endpoint binding, request kind, operator requirement, journal retention and unknown-outcome behavior remain unchanged. Known request refusals now retain specific guidance and cancelled UI setup can choose a new destination; current setup steps live in Connections. Focused connect91, UI17 and service22 tests passed; live peer enrollment plus authenticated bounded forwarding read succeeded, not remote task execution.","inputs":["docs/reference/connect.md","packages/connect/src/core/devicePairing.ts","packages/connect/src/react/DevicePairingPanel.tsx","src-server/services/peers/__tests__/peer-enrollment-routes.test.ts","src-server/services/peers/peer-enrollment-service.ts","src-ui/src/__tests__/ConnectStationDialog.test.tsx","src-ui/src/views/connections-hub/ConnectStationDialog.tsx"]}
+  ]
+}

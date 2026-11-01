@@ -3,12 +3,11 @@ import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  type Client,
   type PermissionOption,
   RequestError,
   type RequestPermissionRequest,
   type RequestPermissionResponse,
-} from '@agentclientprotocol/sdk';
+} from '@agentclientprotocol/sdk/unstable';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import {
   ACP_MODEL_OVERRIDE_PER_TURN,
@@ -36,6 +35,7 @@ import {
 } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import { requiredMissingPrerequisites } from '../../runtime/frameworks/runtime-adapter-readiness.js';
 import { isAutoApprovedExternalTool } from '../../runtime/tools/tool-executor.js';
+import type { ACPClientCallbacks } from '../../services/acp/acp-bridge-types.js';
 import {
   installSessionTmpDirPolicy,
   sessionTempRoot,
@@ -208,7 +208,7 @@ async function nextEvent(
 }
 
 async function requestPermission(
-  client: Client,
+  client: ACPClientCallbacks,
   toolCallId: string,
   toolName?: string,
 ): Promise<RequestPermissionResponse> {
@@ -270,7 +270,7 @@ describe('AcpAdapter', () => {
     const process = new ACPProcess({
       command: 'unused',
       cwd: '/tmp/project',
-      createClient: () => ({}) as Client,
+      createClient: () => ({}) as ACPClientCallbacks,
       logger: { debug: vi.fn() },
       terminateProcess,
     });
@@ -290,7 +290,7 @@ describe('AcpAdapter', () => {
     const process = new ACPProcess({
       command: 'unused',
       cwd: '/tmp/project',
-      createClient: () => ({}) as Client,
+      createClient: () => ({}) as ACPClientCallbacks,
       logger: { debug: vi.fn() },
       terminateProcess,
     });
@@ -696,7 +696,7 @@ describe('AcpAdapter', () => {
     });
 
     // H1 fix, wired end-to-end: an `available_commands_update` session
-    // update sent through the live Client mutates the real
+    // update sent through the live ACPClientCallbacks mutates the real
     // AcpSessionRecord (via `ctx.state = record`) and getCommands()
     // reflects it — not just unit-testable against the mapper in isolation.
     await proc.client.sessionUpdate({
@@ -1074,6 +1074,54 @@ describe('AcpAdapter', () => {
         logger: { warn: vi.fn(), info: vi.fn() },
       });
     }
+
+    test('a required policy question overrides a previous session grant', async () => {
+      const evaluator = vi
+        .fn()
+        .mockResolvedValueOnce({ behavior: 'defer' })
+        .mockResolvedValueOnce({ behavior: 'ask', required: true });
+      const { adapter, processes } = createAdapter({
+        resolvePreToolPolicy: async () => evaluator,
+      });
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      await adapter.startSession({
+        provider: 'acp',
+        threadId: 'required-ask',
+        cwd: '/tmp/project',
+        metadata: { connectionId: 'kiro' },
+        agent: { slug: 'engine-lab' },
+      });
+      await nextEvent(iterator, 'session.started');
+      await nextEvent(iterator, 'session.configured');
+      const first = requestPermission(
+        processes[0].client,
+        'first',
+        'mcp__tools__write',
+      );
+      const opened = await nextEvent(iterator, 'request.opened');
+      await adapter.respondToRequest(
+        'required-ask',
+        String(opened.requestId),
+        'acceptForSession',
+      );
+      await first;
+      await nextEvent(iterator, 'request.resolved');
+      const second = requestPermission(
+        processes[0].client,
+        'second',
+        'mcp__tools__write',
+      );
+      const required = await nextEvent(iterator, 'required request.opened');
+      expect(required.method).toBe('request.opened');
+      await adapter.respondToRequest(
+        'required-ask',
+        String(required.requestId),
+        'decline',
+      );
+      await expect(second).resolves.toEqual({
+        outcome: { outcome: 'selected', optionId: 'reject-once' },
+      });
+    });
 
     test('maps shared staged-policy allow/deny/defer without opening a second approval path', async () => {
       const evaluator = vi
@@ -2709,7 +2757,7 @@ describe('AcpAdapter', () => {
      * stored history inside `loadSession`, plus one update still in flight
      * after the response (the SDK dispatches without awaiting).
      */
-    const emitStoredHistory = (client: Client) => {
+    const emitStoredHistory = (client: ACPClientCallbacks) => {
       const replayed = (update: Record<string, unknown>) =>
         ({ sessionId: 'native-kiro-cli', update }) as any;
       void client.sessionUpdate(
@@ -4090,7 +4138,7 @@ describe('AcpAdapter', () => {
   // before the same turn's `prompt()` rejects with a bare JSON-RPC -32603
   // ("Internal error", no detail). This is an integration probe through the
   // adapter's real event translation (`process.client.extNotification` is
-  // the genuine `createACPBridgeClient`-built Client the SDK would call, not
+  // the genuine `createACPBridgeClient`-built ACPClientCallbacks the SDK would call, not
   // a direct call into the pure mapper) — the mapper-level unit tests for
   // the retention/extraction rules live in acp-adapter-events.test.ts.
   describe('station#4084: turn-failure enrichment from a co-reported extension notification', () => {
@@ -5946,6 +5994,46 @@ describe('station#1684: station-control over ACP HTTP MCP', () => {
     expect(revokeStationControlMcpAuth).toHaveBeenCalledWith(
       'thread-gate-revoke',
     );
+  });
+
+  test('a failed coordinator-only delivery revokes only its own credential', async () => {
+    const revoke = vi.fn();
+    const { adapter } = createAdapter({
+      mcpHttpCapability: true,
+      mintStationControlMcpAuth: () => ({
+        url: STATION_CONTROL_URL,
+        token: TOKEN,
+      }),
+      revokeStationControlMcpAuth: revoke,
+    });
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-derived-refusal',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+      agent: {
+        slug: 'my-agent',
+        toolServers: [
+          {
+            id: 'station-control',
+            transport: 'stdio',
+            command: 'node',
+            args: ['/not-the-builtin'],
+            coordinatorDerived: true,
+            coordinatorGeneration: 0,
+          },
+        ],
+      },
+    });
+    expect(revoke).toHaveBeenCalledWith(
+      'thread-derived-refusal',
+      'coordinator-control',
+    );
+    expect(revoke).not.toHaveBeenCalledWith(
+      'thread-derived-refusal',
+      'station-control',
+    );
+    await adapter.stopAll();
   });
 
   /**

@@ -1,0 +1,7 @@
+{
+  "revision": "842ea31f73218e41fe18c622deb9cb39d5ef1f44",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Source-impact review: the shared credential store replaces upsertMany with compareAndUpsertMany (a multi-key compare-and-swap). Searched this document for MCP tool-server OAuth client, secret-binding grant, integration directory contents and credential-store claims; none describes the changed behavior beyond links that still resolve, so its claims stay accurate.","inputs":["docs/conformance/tool-policy-delivery.md","packages/shared/src/tool-server-credential-store.ts"]}
+  ]
+}

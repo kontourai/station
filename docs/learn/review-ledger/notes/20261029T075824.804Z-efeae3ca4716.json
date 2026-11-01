@@ -1,0 +1,7 @@
+{
+  "revision": "923bd527c349f0e34506cb3ba2e001eb25a58bd9",
+
+  "notes": [
+    {"path":"examples/self-configuring-agent/README.md","note":"SessionModelPicker gained an optional resetDisabledReason; this example makes no claim about the picker reset. Unaffected.","inputs":["examples/self-configuring-agent/README.md","src-ui/src/components/session/SessionModelPicker.tsx"]}
+  ]
+}

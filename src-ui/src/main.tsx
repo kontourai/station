@@ -44,6 +44,8 @@ import {
   QueryClient,
   QueryClientProvider,
 } from '@tanstack/react-query';
+import { InboxDismissUndo } from './components/chat-dock/inbox-dismissals';
+import { ConversationWorkStateProvider } from './components/chat-dock/useConversationWorkState';
 import { DeferredCapabilityBoundary } from './components/DeferredCapabilityBoundary';
 import { NotificationContainer } from './components/notifications/NotificationContainer';
 import { StartupHandoff } from './components/StartupHandoff';
@@ -364,7 +366,11 @@ function renderApp(): void {
                                                             <ActivityReviewProvider>
                                                               <BrandingThemeBridge />
                                                               <WorkClaimsProvider>
-                                                                <App />
+                                                                <ConversationWorkStateProvider>
+                                                                  <InboxDismissUndo>
+                                                                    <App />
+                                                                  </InboxDismissUndo>
+                                                                </ConversationWorkStateProvider>
                                                               </WorkClaimsProvider>
                                                             </ActivityReviewProvider>
                                                           </PaneRelationsProvider>

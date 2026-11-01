@@ -13,6 +13,7 @@
  * always-visible touch actions at a phone viewport.
  */
 
+import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { chromium } from '@playwright/test';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -36,15 +37,17 @@ import { MIN_TOUCH_TARGET_PX } from '../../../../../tests/helpers/touch-target';
 import { writeSnooze } from '../../../utils/activity-snooze-store';
 import type { HomeWorkItem } from '../../../views/home/home-view-model';
 import type { WorkFactsById } from '../../../views/home/work-facts';
+import { SubagentTranscriptCard } from '../../chat/SubagentTranscriptCard';
 import { ChatDockInboxPanel } from '../../chat-dock/ChatDockInboxPanel';
 import { InboxRow } from '../../chat-dock/ChatDockInboxRows';
-import { MobileTaskSwitcher } from '../../chat-dock/MobileTaskSwitcher';
+import { MobileInboxPanel } from '../../chat-dock/MobileInboxPanel';
 
 const REPO_ROOT = resolve(import.meta.dirname, '../../../../../');
 const css = [
   '../../../index.css',
   '../../chat/chat.css',
   '../../chat-dock/ChatDockInboxPanel.css',
+  '../../chat-dock/MobileInboxPanel.css',
   '../../chat-dock/ChatInboxHoverCard.css',
   '../../icons/BrandIcon.css',
   '../../icons/ProjectIcon.css',
@@ -164,13 +167,12 @@ function sheetMarkup(
 ): string {
   seed();
   const { unmount } = render(
-    <MobileTaskSwitcher
+    <MobileInboxPanel
       projectAccentBySlug={accents}
       projectIconBySlug={icons}
       open
       tasks={ITEMS}
       activeChatSessionId={null}
-      visualViewportStyle={{}}
       triggerRef={createRef<HTMLButtonElement>()}
       onClose={vi.fn()}
       onFocusChat={vi.fn()}
@@ -181,6 +183,11 @@ function sheetMarkup(
       workFacts={FACTS}
     />,
   );
+  for (const name of [/^Snoozed/, /^Earlier/]) {
+    const toggle = screen.getByRole('button', { name });
+    if (toggle.getAttribute('aria-expanded') === 'false')
+      fireEvent.click(toggle);
+  }
   const markup = document.body.innerHTML;
   unmount();
   return markup;
@@ -218,6 +225,77 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
     await browser?.close();
   });
   afterEach(() => cleanup());
+
+  test('subagent titles and incomplete results remain readable beside their status and elapsed time', async () => {
+    const { container } = render(
+      <SubagentTranscriptCard
+        child={{
+          item: {
+            producer: 'engine-subagent',
+            reporterThreadId: 'parent',
+            childId: 'review',
+            status: 'completed',
+            title:
+              'Complete all scoped transport documentation reviews and remaining acceptance captures',
+            startedAt: '2026-10-30T10:00:00Z',
+            endedAt: '2026-10-30T10:06:37Z',
+            result: {
+              summary:
+                'Partial review committed; 75 documents and 8 captures remain.',
+            },
+          },
+          provider: 'codex',
+          toolAnchor: true,
+        }}
+      />,
+    );
+    await vi.waitFor(() =>
+      expect(
+        container.querySelector('[data-brand-key="codex"] svg'),
+      ).not.toBeNull(),
+    );
+    const artifacts = resolve(REPO_ROOT, '.surface/mobile-inbox-review');
+    await mkdir(artifacts, { recursive: true });
+    for (const width of [390, 1440]) {
+      for (const theme of ['dark', 'light']) {
+        const pg = await browser.newPage({ viewport: { width, height: 500 } });
+        try {
+          await pg.setContent(
+            `<html data-theme="${theme}"><style>${css}\n${resolveCssImports(resolve(import.meta.dirname, '../../chat/SubagentTranscriptCard.css'))}</style><body><div style="max-width:560px;padding:16px">${container.innerHTML}</div></body></html>`,
+          );
+          const card = pg.locator('.subagent-card');
+          const title = await card
+            .locator('.subagent-card__title')
+            .boundingBox();
+          const status = await card
+            .locator('.subagent-card__status')
+            .boundingBox();
+          const time = await card
+            .locator('.subagent-card__elapsed')
+            .boundingBox();
+          expect(title && status && time).toBeTruthy();
+          expect(status!.y).toBeGreaterThanOrEqual(title!.y + title!.height);
+          expect(time!.x).toBeGreaterThanOrEqual(title!.x + title!.width);
+          expect(
+            await card.locator('.subagent-card__preview').textContent(),
+          ).toContain('75 documents');
+          expect(
+            await card.locator('.subagent-card__elapsed').textContent(),
+          ).toBe('6:37');
+          expect(
+            await pg.evaluate(
+              () => document.documentElement.scrollWidth > innerWidth,
+            ),
+          ).toBe(false);
+          await pg.screenshot({
+            path: resolve(artifacts, `subagents-${width}-${theme}.png`),
+          });
+        } finally {
+          await pg.close();
+        }
+      }
+    }
+  });
 
   test('hovering a row changes neither its height nor where its text sits', async () => {
     const markup = panelMarkup();
@@ -272,7 +350,7 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
     }
   });
 
-  test("a project swatch changes no row's height, in the panel or the phone sheet", async () => {
+  test("a project accent changes no row's height, in the panel or the phone sheet", async () => {
     const accents = new Map([['station', 'var(--event-tool-call)']]);
     const cases = [
       {
@@ -291,7 +369,9 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
     for (const { label, plain, painted, viewport } of cases) {
       // The fixture must contain what it claims to compare.
       expect(plain, label).not.toContain('inbox-row__project-accent');
-      expect(painted, label).toContain('inbox-row__project-accent');
+      if (label === 'panel')
+        expect(painted).toContain('inbox-row__project-accent');
+      else expect(painted).not.toContain('inbox-row__project-accent');
       const pg = await browser.newPage({ viewport });
       try {
         const measure = async (markup: string) => {
@@ -305,12 +385,27 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
         };
         const plainHeights = await measure(plain);
         const paintedHeights = await measure(painted);
-        // The swatch is drawn, not just present in the markup.
-        const swatch = await pg
-          .locator('.inbox-row__project-accent')
-          .first()
-          .boundingBox();
-        expect(swatch?.width, `${label} swatch drawn`).toBeGreaterThan(0);
+        if (label === 'panel') {
+          const swatch = await pg
+            .locator('.inbox-row__project-accent')
+            .first()
+            .boundingBox();
+          expect(swatch?.width, 'panel swatch drawn').toBeGreaterThan(0);
+        } else {
+          const line = pg.locator('.inbox-row__project-context').first();
+          expect(await line.locator('svg').count()).toBe(1);
+          const mark = await line.locator('svg').boundingBox();
+          const name = await line.locator('.inbox-row__project').boundingBox();
+          expect(mark!.width).toBeGreaterThan(0);
+          expect(mark!.x + mark!.width).toBeLessThanOrEqual(name!.x);
+          expect(
+            Math.abs(
+              mark!.y -
+                (await pg.locator('.inbox-row__title').first().boundingBox())!
+                  .y,
+            ),
+          ).toBeLessThanOrEqual(2);
+        }
         expect(plainHeights.length, label).toBe(ITEMS.length);
         expect(paintedHeights, `${label} row heights`).toEqual(plainHeights);
       } finally {
@@ -363,8 +458,25 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
           .locator('.inbox-row__project-accent.project-icon--icon')
           .first()
           .boundingBox();
-        expect(icon?.width, `${label} icon width`).toBe(12);
-        expect(icon?.height, `${label} icon height`).toBe(12);
+        expect(icon?.width, `${label} icon width`).toBe(
+          label === 'sheet' ? 24 : 12,
+        );
+        expect(icon?.height, `${label} icon height`).toBe(
+          label === 'sheet' ? 24 : 12,
+        );
+        if (label === 'sheet') {
+          const line = pg.locator('.inbox-row__project-context').first();
+          expect(await line.locator('svg').count()).toBe(0);
+          const name = await line.locator('.inbox-row__project').boundingBox();
+          expect(icon!.x + icon!.width).toBeLessThanOrEqual(name!.x);
+          expect(
+            Math.abs(
+              icon!.y -
+                (await pg.locator('.inbox-row__title').first().boundingBox())!
+                  .y,
+            ),
+          ).toBeLessThanOrEqual(2);
+        }
         expect(paintedHeights, `${label} row heights`).toEqual(plainHeights);
       } finally {
         await pg.close();
@@ -638,9 +750,7 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
       try {
         await pg.setContent(page(markup));
         await settle(pg);
-        const rows = pg.locator(
-          '.mobile-task-switcher__list .inbox-row--touch',
-        );
+        const rows = pg.locator('.mobile-inbox__list .inbox-row--touch');
         expect(await rows.count()).toBe(ITEMS.length);
         for (let index = 0; index < ITEMS.length; index += 1) {
           const row = rows.nth(index);
@@ -740,7 +850,7 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
             measured.title.width,
             `${measured.key} readable title width`,
           ).toBeGreaterThanOrEqual(minimumTitleWidth);
-          expect(measured.title.fontSize).toBe(18);
+          expect(measured.title.fontSize).toBe(14);
           expect(measured.title.height).toBeLessThanOrEqual(
             measured.title.lineHeight * 2 + 1,
           );

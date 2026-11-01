@@ -1,0 +1,46 @@
+name: "PR conflict diagnostic signer"
+on:
+  workflow_call:
+    inputs:
+      pr:
+        required: true
+        type: string
+permissions: {}
+jobs:
+  diagnostic:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+      attestations: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - name: Create nonqualifying diagnostic receipt
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STATION_DIAGNOSTIC_PR: ${{ inputs.pr }}
+          STATION_CONFLICT_RECEIPT_PATH: ${{ runner.temp }}/conflict-diagnostic/receipt.json
+        run: |
+          mkdir "$RUNNER_TEMP/conflict-diagnostic"
+          node scripts/pr-mergeability-admission.mjs
+      - name: Attest diagnostic receipt
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: ${{ runner.temp }}/conflict-diagnostic/receipt.json
+      - name: Upload diagnostic receipt
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: conflict-signer-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/conflict-diagnostic/receipt.json
+          if-no-files-found: error
+          retention-days: 14

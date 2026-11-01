@@ -4,7 +4,7 @@ import './ComposerChoice.css';
 
 type ComposerChoiceProps = Omit<
   ComponentProps<'button'>,
-  'children' | 'type'
+  'children' | 'type' | 'value'
 > & {
   'aria-label': string;
   caption: ReactNode;

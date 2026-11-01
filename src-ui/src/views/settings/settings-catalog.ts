@@ -537,10 +537,31 @@ const SETTINGS_CATALOG_SOURCE = [
     configKeys: ['workspaceCheckpoints'],
   },
   {
+    id: 'checkout-stale-after-commits',
+    title: 'Stale checkout after commits',
+    section: 'agent-runs',
+    keywords: ['git', 'behind', 'upstream', 'pull'],
+    configKeys: ['checkoutStaleAfterCommits'],
+  },
+  {
+    id: 'checkout-stale-after-days',
+    title: 'Stale checkout after days',
+    section: 'agent-runs',
+    keywords: ['git', 'behind', 'upstream', 'pull'],
+    configKeys: ['checkoutStaleAfterDays'],
+  },
+  {
     id: 'usage-limit-auto-resume',
     title: 'Resume after usage limits',
     section: 'agent-runs',
     configKeys: ['usageLimitAutoResume'],
+  },
+  {
+    id: 'claude-artifacts',
+    title: 'Claude Code artifacts',
+    section: 'agent-runs',
+    configKeys: ['claudeArtifactsEnabled'],
+    keywords: ['claude', 'artifact', 'publish', 'claude.ai', 'page'],
   },
   {
     id: 'review-guides',
@@ -587,6 +608,13 @@ const SETTINGS_CATALOG_SOURCE = [
     title: 'Default chat font size',
     section: 'chat',
     configKeys: ['defaultChatFontSize'],
+  },
+  {
+    id: 'chat-title-model',
+    title: 'Chat title model',
+    section: 'chat',
+    keywords: ['conversation title', 'generated title'],
+    configKeys: ['titleModel'],
   },
   {
     // The id is the stable URL/palette identity and stays as minted even

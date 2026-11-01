@@ -887,6 +887,8 @@ cards (`components/chat/SubagentTranscriptCard.tsx`). Claude and Muse cards
 sit after their spawning tool-call run, including every child of a workflow.
 When an engine such as Codex reports a child without a tool-call row, the
 card uses the child's parent turn and the spawn event's text position.
+That position counts the narration a settled phone turn folds into its tool
+batch, so the card follows the batch instead of splitting the prose after it.
 A steer binds the card to the assistant row containing its spawn, with text
 offsets local to that row; the live whole-turn shell retains its turn-wide
 offset. If the spawn segment has no content row at the spawn event, the projection
@@ -1969,6 +1971,37 @@ measured width at fold time deciding the unfold.
 
 ## What the dock header holds (2026-10-20)
 
+### Mobile inbox entry (2026-10-30)
+
+On a phone, Chat opens at its Inbox unless navigation names a conversation.
+The Inbox is the dock's reading surface, not a modal over the current chat.
+Its explicit header icon switches between the Inbox and the retained reader;
+the chat title identifies the conversation rather than opening a second list.
+Selecting a chat, an imported session, or New chat reveals that destination.
+A failed open keeps the Inbox visible and reports the failure. Durable Tasks
+still open their task details through canonical navigation.
+Pending opens cannot replace a later selection or New chat draft. Cross-project
+routing occurs only after the reader's focus guard accepts the destination.
+
+The Inbox and reader stay mounted while switching between them, preserving
+list position, the search, and unsent composer text. Collapse and reopen retain
+the selected view. A new conversation URL reveals its reader. A covered reader
+does not count as viewed and cannot take composer focus. A hidden New chat
+draft releases its Back-history entry until it is shown again.
+
+The Inbox uses the shared work rows, status ladder, scope filter and section
+preferences. Saved work remains listed even when it has no open local tab.
+Project artwork and engine marks identify rows; titles wrap to two lines,
+status remains explicit, and real recency timestamps stay separate. Search is
+local to the loaded, scoped work list. Task review, Activity, snooze, dismissal
+and recovery keep their existing owners. The mobile bar owns New chat.
+
+The implementation owners are `ChatDock.tsx`, `useChatDockOverlays.ts`,
+`ChatDockMobileHeader.tsx` and `MobileInboxPanel.tsx`.
+The mounted pane journey is covered in
+`ChatWorkspacePaneComposerDraft.test.tsx`; shared rows, retained search, and
+open failures are covered in `ChatDockInboxSharedRows.test.tsx`.
+
 **The bar names the chat on screen and carries the dock's primary verbs;
 everything else is one menu away.** The owner's report was that the bar was
 crowded and that nothing said what belonged in it. The rule:
@@ -1977,18 +2010,19 @@ crowded and that nothing said what belonged in it. The rule:
 | --- | --- |
 | Identity, one line: title, then agent and engine, muted. The engine is the one the chat's Session runs on, by the composer chip's rule ([chat composer §3.1](chat-composer.md#31-provider-and-model-picker)). When they do not all fit, the engine and then the agent step off the line (they wrap onto a clipped second line) before the title truncates; the title's tooltip names all three, and model and route are the context's tooltip. | Model and route: the composer's model picker names them. |
 | Inbox toggle at the far left, before the region tabs or Coding breadcrumb, with the working chats' count (the inbox's Running rows) as a badge and unread as a dot; both are in its name. While it shows a number, the More trigger shows its background-task count as a dot, not a second number. | "N chats working" dropdown: the working chats are the More menu's first rows (with their ⌘1–9 chords); the unread pill: the toggle. |
-| New, as a split button whose second half is the destination project (`ChatDockProjectContext`); switching rebinds only (#4524). | "New chats / <project>" badge, "This chat: <project>", branch badge: the destination joined New; the chat's own project and branch are the session context card's. |
+| Icon-only New chat. The start composer owns its Project choice. | Future-project selector: removed from an active conversation’s header. The chat’s fixed project and branch remain in session context. |
 | One overflow (⋯). Where the region host offers its commands (`RegionMenu` in `RegionChromeSlots`), Chat folds the region's Move to …, Add pane… and Maximize/Restore size into it as a last group. | Region Move, "+" and maximize buttons: rows of that menu. The bar drops its own buttons only while a pane absorbs the rows; other panes keep them. |
 | The region's ⋮⋮ grab (shown on hover or focus) and the show/hide chevron. | — |
 | The "This chat" chip, only while the card is folded away. | — |
-| — | Context meter: the composer's meta row, beside the model it measures; on a phone, also the Actions sheet's Conversation stats row. |
+| — | Context meter: an unboxed ring with its percentage inside, beside Send; on a phone, also the Actions sheet's Conversation stats row. |
 
 A control earns a place in the bar when it is about the chat on screen or is
 the dock's primary verb, and it is used often enough that a menu would cost
 more than its width. Anything else is a row of the More menu. Chords keep
 working wherever their control lives. The phone's bar is
-`ChatDockMobileHeader` and is unchanged by this (product law
-`station.mobile-context.primary-actions`). A region host decides per pane:
+`ChatDockMobileHeader`; its current Inbox entry is described above. Conversation
+switching stays direct, while the start composer owns Project selection. An
+active conversation does not offer a future-project switcher. A region host decides per pane:
 Chat absorbs the region's rows; Activity and the other panes keep the bar's
 buttons, so their bars are unchanged.
 
@@ -2044,9 +2078,8 @@ server read beyond the pull request links Chat details already reads.
   1211px with the inbox open (920px without); a side dock folds it.
 - **One copy of each fact.** The dock header carries no branch badge and no
   "This chat: <project>" lead-in (2026-10-20): the card, or the chip's
-  popover, is where the chat's project, directory and branch live, and the
-  header's project control is New's destination, which says it is not this
-  chat's. While the card shows, the More trigger's running-count badge
+  popover, is where the chat's project, directory and branch live. The start
+  composer owns Project selection. While the card shows, the More trigger's running-count badge
   stands down. "Shows" is the card's own report that it has mounted, not the
   width answer alone: while its lazy chunk loads, or if it fails to load, the
   trigger keeps the count. The card's props are memoised on the

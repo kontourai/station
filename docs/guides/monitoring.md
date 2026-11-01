@@ -1079,6 +1079,15 @@ live in [the shared usage fold](../../packages/shared/src/usage-fold.ts); the
 [receipt fold](../../packages/shared/src/usage-rollup.ts) owns rollup grouping.
 The Muse serve fixture replay also exercises per-answer usage visibility.
 
+### Task outcomes and reviewed retail value
+
+Usage receipts can carry separately attributed Task outcomes and optional
+reviewed published-rate value. A done Task is an owner status, not an independent
+quality score. Reported cost, estimates, retail value, billing and quota remain
+different facts; missing evidence stays unknown. See
+[bounded agent work](agent-efficiency.md#compare-usage-and-outcomes-honestly)
+for capture provenance, current-authority checks and measurement limits.
+
 ### Usage with children
 
 The conversation statistics dialog shows **Usage with children**: one total
@@ -1361,7 +1370,7 @@ modules. Provider registration runs before the initializer's first await;
 installation identity and export readiness remain asynchronous. A failure
 warns and Station continues. Alternate entry points must preserve registration
 before instrument creation. The configured SDK includes:
-- `HttpInstrumentation` — auto-instruments HTTP requests, rewriting long hexadecimal, colon-bearing, and encoded-colon path segments to `:id` (not every route parameter)
+- `HttpInstrumentation` — auto-instruments HTTP requests, rewriting long hexadecimal, colon-bearing, and encoded-colon path segments to `:id` (not every route parameter). Scheduler job paths use `:target` and omit query values in trace URL attributes, so job names do not become span names or URL attributes.
 - `AwsInstrumentation` — auto-instruments AWS SDK calls
 - A `PeriodicExportingMetricReader` with a 30-second export interval and delta temporality
 - No SDK log exporter: Station's durable logger remains a separate local path.
@@ -1396,7 +1405,7 @@ domain operations, so their totals are not counts of one business action.
 | <a id="providers--infrastructure"></a>`station.provider.operations` | Provider management and adapter outcomes | `op` or `operation`, plus `type`, `provider`, `reason`, `model_options`, `outcome`, `status` where supplied |
 | `station.notification.operations` | Notification service/route operations | `op` |
 | `station.notification.agent_operations` | Agent notification admission outcomes; no content or Session identity | `result`, `urgency` |
-| `station.scheduler.job.runs` | Actual job outcomes **and** management requests; currently not an execution-only count | `job`, `status`, or `op` |
+| `station.scheduler.job.runs` | Actual job outcomes **and** management requests; currently not an execution-only count | `status` or `op`; no per-job label |
 | `station.scheduler.concurrency.deferrals` | Invocation-capacity lifecycle outcomes | `reason`, `disposition` |
 | `station.mcp.lifecycle` | MCP connection lifecycle observations | `event`, `server` |
 | `station.mcp.negotiation.total` | Negotiation outcomes | `era`, `protocol_version`, `fallback`, `extensions`, `outcome`, and failure-only `error_class` |
@@ -1440,10 +1449,27 @@ a confirmed deferral.
 | --- | --- | --- | --- |
 | `station.chat.duration` | Primary-chat duration | `agent`, `plugin` | ms |
 | `station.tool.duration` | Matched call/result elapsed time from MetadataHandler **and** the external-engine bridge | `tool` when reported, `plugin` | ms |
-| `station.scheduler.job.duration` | Scheduler execution duration | `job` | ms |
+| `station.scheduler.job.duration` | Scheduler execution duration | no per-job label | ms |
 | `station.approval.duration` | Explicit registry settlement time | `action` | ms |
 | `station.skill.activation.duration` | `activate_skill` call duration, including failed reads | `skill` | ms |
 | `station.mcp.negotiation.duration` | Negotiation plus discovery duration | Negotiation attributes above | ms |
+| `station.runtime.event_loop_lag` | How late a 10-second runtime timer woke | None | ms |
+
+The lag histogram only sees a stall that overlaps a timer wake, and it is
+exported only with an OTel endpoint. Independently of OTel, a window whose
+event-loop delay reached one second writes an `Event loop stalled` warning to
+the server log (`<STATION_HOME>/logs/server/`). The warning carries
+`maxDelayMs` and `p99DelayMs`, plus what the process did during `elapsedMs`:
+`cpuUserMs`, `cpuSystemMs`, `majorPageFaults`, and `gcCount`, `gcTotalMs`,
+`gcMaxMs`, with `rssMb` and `heapUsedMb` at the end of the window. Read them as
+leads. CPU time is the whole process's, across all of its threads, not only
+the event loop. GC totals are main-thread pause time, so a GC total near the
+stall points at garbage collection. On Linux and macOS, many major page faults
+mean the process waited on pages read from disk (swap, or evicted code and
+mapped files); on Windows the count includes soft faults too. Little
+CPU time and few faults point at a call that blocked without computing, or at a
+host that ran other work. The warning is written about 250 ms after the window
+ends, so it includes GC pauses that Node reports late.
 
 The cost counter has USD semantics in its producer but no declared instrument
 unit. Token counters likewise have no explicit unit property.

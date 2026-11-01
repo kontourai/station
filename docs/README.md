@@ -75,7 +75,7 @@ clearly mark the stale document.
 
 ## Repository Documentation
 
-- **[Walkthrough imports](guides/walkthroughs.md)** — local recording manifests, CLI/MCP reads, limits and staged media dependency composition.
+- **[Walkthroughs](guides/walkthroughs.md)** — Project imports, Task Browser clips, authorized reads, limits and media dependencies.
 - **[Guides](guides/)** — task-oriented operator, plugin, and contributor docs.
 - **[Feature previews](guides/feature-previews.md)** — ship unfinished capabilities off by default, gate every entry point, and keep the offered-preview user table in sync.
 - **[Starter Work](guides/starter-work.md)** — how first-use actions bind to real Tasks, Sessions, approvals, and Scheduler receipts, including recovery.
@@ -143,10 +143,12 @@ design records. The pre-public repository audit,
 `docs/repo-audit-2026-06-26.md`, stays in the maintainers' archive repository
 (`kontourai/station-archive`, referenced as `archive#N`).
 User-facing docs not named in the audience table:
+[user/automations.md](user/automations.md),
 [user/native-recovery.md](user/native-recovery.md),
 [user/workspace-checkpoints.md](user/workspace-checkpoints.md),
 [user/work-board.md](user/work-board.md),
-[user/personal-boards.md](user/personal-boards.md), and
+[user/personal-boards.md](user/personal-boards.md),
+[user/houston.md](user/houston.md), and
 [user/contributing.md](user/contributing.md).
 
 ## Public Site
@@ -190,3 +192,6 @@ text cannot change without falsifying them. All three run
 inside `docs:truth:gate`. `npm run
 examples:conformance -- --build` validates every example manifest and README
 command contract, then builds every example that declares a build script.
+
+For focused Task context, reviewed learning and model-use limits, see
+[Bounded agent work](guides/agent-efficiency.md).

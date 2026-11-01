@@ -88,7 +88,7 @@ jobs:
           test "$source_sha" = "$GITHUB_SHA"
           echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
       - name: Setup pinned pnpm
-        uses: kontourai/station/.github/actions/setup-verified-pnpm@4c7804d0d71f4e18d7a0da62fb6db43973481a20
+        uses: kontourai/station/.github/actions/setup-verified-pnpm@382b4af65e5f8bc5e3d62bd64ef1eba8653af50f
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
@@ -108,6 +108,12 @@ jobs:
           # not apply here either.
           STATION_TYPECHECK_SLOTS: '4'
         run: node scripts/typecheck-aggregate.mjs
+      - name: Cache Chromium
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        continue-on-error: true
+        with:
+          path: ~/.cache/ms-playwright
+          key: station-playwright-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml') }}
       - name: Install Chromium
         timeout-minutes: 20
         run: |
@@ -209,7 +215,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Setup pinned pnpm
-        uses: kontourai/station/.github/actions/setup-verified-pnpm@4c7804d0d71f4e18d7a0da62fb6db43973481a20
+        uses: kontourai/station/.github/actions/setup-verified-pnpm@382b4af65e5f8bc5e3d62bd64ef1eba8653af50f
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }

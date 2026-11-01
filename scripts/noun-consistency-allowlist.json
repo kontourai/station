@@ -1,7 +1,7 @@
 [
   {
     "file": "src-ui/src/components/conversation-stats/ConversationStatsModal.tsx",
-    "line": 324,
+    "line": 368,
     "snippet": "Prompt total",
     "reason": "LLM-prompt sense (station#4196 cache-honest totals): the tokens actually put in front of the model (input + cache read + cache write). A token-accounting term of art, not the retired Prompts/Skills authoring noun the #190 rename removed."
   },

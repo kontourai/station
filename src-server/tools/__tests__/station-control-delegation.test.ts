@@ -994,6 +994,42 @@ describe('Station Control canonical Environment + Agent execution', () => {
     ).toBe(false);
   });
 
+  test.each([
+    ['sandbox_unavailable', /host.*sandbox/i],
+    ['provider_model_unavailable', /provider.*model.*availability/i],
+  ] as const)(
+    'a local %s start failure keeps its safe diagnostic in the delegate tool envelope',
+    async (code, guidance) => {
+      installCurrentStationFetch();
+      const service = localService();
+      service.sessionCommands.execute.mockResolvedValueOnce({
+        status: 'failed',
+        receipt: { commandId: 'command-1', status: 'failed' },
+        code,
+        message: '/private/secret-proof',
+      } as never);
+      const { delegateTask } = await import('../station-control-delegation.js');
+      const { delegationToolResult } = await import(
+        '../station-control-shared.js'
+      );
+      const response = await delegationToolResult(() =>
+        delegateTask(
+          { prompt: 'Inspect the checkout', target: currentTarget() },
+          service as never,
+        ),
+      );
+      expect(response.isError).toBe(true);
+      const body = JSON.parse(response.content[0].text);
+      expect(body).toMatchObject({
+        success: false,
+        code,
+        error: expect.stringMatching(guidance),
+      });
+      expect(JSON.stringify(response)).not.toContain('secret-proof');
+      expect(service.dispatchWithReceipt).not.toHaveBeenCalled();
+    },
+  );
+
   test.each([true, false])(
     'does not retry an indeterminate delegation start (session returned: %s)',
     async (hasSession) => {
@@ -5062,7 +5098,7 @@ describe('#2324 a delegated task event carries a provider-triggered turn’s tri
 });
 
 describe('#225 a delegated task usage event keeps every canonical usage field', () => {
-  test('projects all ten TokenUsageUpdatedEvent usage fields and bounds the opaque tier', async () => {
+  test('projects canonical token counters and bounds the opaque tier', async () => {
     const { projectDelegatedTaskEvent } = await import(
       '../station-control-delegation.js'
     );
@@ -5075,6 +5111,7 @@ describe('#225 a delegated task usage event keeps every canonical usage field', 
       method: 'token-usage.updated',
       promptTokens: 1200,
       completionTokens: 300,
+      reasoningTokens: 120,
       totalTokens: 1500,
       cacheReadTokens: 900,
       cacheWriteTokens: 44785,
@@ -5102,6 +5139,7 @@ describe('#225 a delegated task usage event keeps every canonical usage field', 
       turnId: 'turn-1',
       promptTokens: 1200,
       completionTokens: 300,
+      reasoningTokens: 120,
       totalTokens: 1500,
       cacheReadTokens: 900,
       cacheWriteTokens: 44785,

@@ -46,6 +46,7 @@ import {
   SESSION_VISIBILITY_METADATA_KEY,
   type SessionCapabilityDeliveryMetadata,
 } from '@kontourai/station-contracts/provider';
+import { engineStartupFailureGuidance } from '@kontourai/station-contracts/provider-failure';
 import { isRuntimeEventContentRef } from '@kontourai/station-contracts/runtime-event-content';
 import {
   type CanonicalRuntimeEventBase,
@@ -1364,6 +1365,11 @@ export function delegatedTaskReason(
     typeof newestStartTurnId !== 'string' ||
     typeof terminal.turnId !== 'string' ||
     newestStartTurnId === terminal.turnId;
+  const startupGuidance = engineStartupFailureGuidance(terminalCode);
+  if (startupGuidance && terminalCode) {
+    if (!terminalScopedToLatestTurn) return undefined;
+    return { code: terminalCode, detail: startupGuidance };
+  }
   if (terminalCode && DELEGATED_BUDGET_REASONS[terminalCode]) {
     if (!terminalScopedToLatestTurn) return undefined;
     return { ...DELEGATED_BUDGET_REASONS[terminalCode] };
@@ -3984,8 +3990,8 @@ function optionalNumber(value: unknown): number | undefined {
 /**
  * #225: the usage fields a delegated-task event carries, keyed by the
  * canonical `TokenUsageUpdatedEvent` so a field added to the contract is a
- * compile error here instead of a silent drop. Two fields are excluded on
- * purpose: `pricingSnapshot` is ingestion-time catalog provenance, and
+ * compile error here instead of a silent drop. Pricing snapshots and serving
+ * routes stay on the canonical receipt; this projection carries token counters.
  * `reportedCostUsd` has a per-provider scope (per-turn versus cumulative)
  * that this per-event projection cannot state.
  */
@@ -3994,6 +4000,7 @@ type DelegatedUsageField = Exclude<
   | keyof CanonicalRuntimeEventBase
   | 'method'
   | 'pricingSnapshot'
+  | 'servingRoute'
   | 'reportedCostUsd'
 >;
 
@@ -4004,6 +4011,7 @@ const DELEGATED_USAGE_FIELD_PROJECTORS: {
 } = {
   promptTokens: optionalNumber,
   completionTokens: optionalNumber,
+  reasoningTokens: optionalNumber,
   totalTokens: optionalNumber,
   cacheReadTokens: optionalNumber,
   cacheWriteTokens: optionalNumber,
@@ -4159,6 +4167,15 @@ export function projectDelegatedTaskEvent(
           : {}),
       };
     case 'runtime.error': {
+      const startupGuidance = engineStartupFailureGuidance(event.code);
+      if (startupGuidance)
+        return {
+          ...common,
+          kind: 'runtime',
+          severity: 'error',
+          text: startupGuidance,
+          retriable: false,
+        };
       // #2265: a classified provider-plan quota exhaustion projects fixed
       // actionable copy plus re-validated bounded facts instead of the
       // generic line. Anything else — unknown codes, forged details, raw
@@ -6293,6 +6310,11 @@ export async function delegateTask(
       if (started.status !== 'accepted') {
         if (input.stagedFiles)
           throw new DelegationFileRefusal('delegation_files_start_refused');
+        const startupGuidance = engineStartupFailureGuidance(started.code);
+        if (startupGuidance && started.code)
+          throw new Error(startupGuidance, {
+            cause: new LocalStationRefusal(started.code, startupGuidance),
+          });
         const error = new Error(started.message) as Error & { code?: string };
         error.code = started.code;
         throw error;
@@ -7301,6 +7323,9 @@ export async function executeExecutionTargetMessage(
               ...(context?.submissionDigest !== undefined
                 ? { submissionDigest: context.submissionDigest }
                 : {}),
+              ...(context?.mcpPromptOrigin
+                ? { mcpPromptOrigin: context.mcpPromptOrigin }
+                : {}),
               ...(input.skillExperience
                 ? { skillExperience: input.skillExperience }
                 : {}),
@@ -7327,6 +7352,9 @@ export async function executeExecutionTargetMessage(
                 : {}),
               ...(context?.submissionDigest !== undefined
                 ? { submissionDigest: context.submissionDigest }
+                : {}),
+              ...(context?.mcpPromptOrigin
+                ? { mcpPromptOrigin: context.mcpPromptOrigin }
                 : {}),
               ...(input.skillExperience
                 ? { skillExperience: input.skillExperience }

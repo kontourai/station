@@ -1,0 +1,9 @@
+{
+  "revision": "b26e90348aea4a90f7884e6741424cb5151649e5",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed HomeSurface and its ordering test against the composer journey: the start form remains first; the coordinator card follows work actions rather than displacing them. The documented composer behavior remains unchanged.","inputs":["docs/design/chat-composer.md","src-ui/src/views/home/HomeSurface.tsx","src-ui/src/views/home/__tests__/HomeSurface.test.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the Houston and Home guidance against the card placement and gallery captures: Home still offers the coordinator card, now after work actions; no fixed position is promised by this guide.","inputs":["docs/user/getting-started.md","src-ui/src/views/home/HomeSurface.tsx"]}
+  ]
+}

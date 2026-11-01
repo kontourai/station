@@ -359,7 +359,13 @@ describe('SessionTranscript source', () => {
   test('starts the app-wide live stream itself, so the detail streams with no chat dock mounted', () => {
     ensureStream.mockClear();
     const view = renderTranscript();
-    expect(ensureStream).toHaveBeenCalledWith(API, expect.anything());
+    expect(ensureStream).toHaveBeenCalledWith(
+      API,
+      expect.anything(),
+      undefined,
+      false,
+      false,
+    );
     live([
       ev({ method: 'turn.started', turnId: 'solo', prompt: 'Alone' }),
       ev({
@@ -689,6 +695,30 @@ describe('another agent’s message in the Activity transcript (#3419)', () => {
     expect(rows[1]!.textContent).toContain('Please rebase onto main.');
     expect(rows[1]!.textContent).not.toContain('[Station:');
     expect(within(rows[1]!).queryByText('You')).toBeNull();
+  });
+
+  test('a coordinator wake is labelled as Station input', () => {
+    windowState.events = [
+      {
+        sequence: 1,
+        event: ev({
+          method: 'turn.started',
+          turnId: 'wake',
+          prompt: 'Work finished',
+          clientOrigin: {
+            version: 1,
+            actor: { kind: 'internal' },
+            reported: { version: 1, surface: 'unknown', build: null },
+            sender: { kind: 'coordinator', sessionId: 'coordinator' },
+          },
+        } as never),
+      },
+    ];
+    renderTranscript(false);
+    const [row] = screen.getAllByTestId('session-transcript-message');
+    expect(row!.getAttribute('aria-label')).toBe('Update from Station');
+    expect(row!.textContent).toContain('Update from Station');
+    expect(within(row!).queryByText('You')).toBeNull();
   });
 
   test('missing sender provenance on an internal input is a named gap, never You', () => {

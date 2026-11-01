@@ -16,20 +16,25 @@ import { join } from 'node:path';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson } from '../../../__test-utils__/read-json.js';
+import { SoftwareAuthenticator } from '../../../__test-utils__/software-authenticator.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { usageExportOwnerIds } from '../../../analytics/usage-export-reader.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
+import { FeaturePreviewRegistry } from '../../../services/feature-previews/feature-preview-registry.js';
 import { createApplicationSessionRuntime } from '../../../services/identity/application-session-runtime.js';
 import { deploymentAccountPrincipal } from '../../../services/identity/deployment-authentication-service.js';
+import { MEMBER_PASSKEYS_PREVIEW_ID } from '../../../services/identity/local-account-passkeys.js';
 import {
   type LoadedLocalAccounts,
   loadLocalAccounts,
 } from '../../../services/identity/local-account-runtime.js';
+import { NotificationService } from '../../../services/notifications/notification-service.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { ProjectManifestStore } from '../../../services/projects/project-manifest-store.js';
 import { createProjectMembershipRuntime } from '../../../services/projects/project-membership-runtime.js';
 import { ProjectService } from '../../../services/projects/project-service.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
+import * as gitExec from '../../../utils/git-exec.js';
 import {
   getInternalApiToken,
   INTERNAL_API_TOKEN_HEADER,
@@ -42,7 +47,7 @@ vi.mock('../runtime-route-support.js', () => {
   return {
     configureRuntimeSupportServices: () => ({
       schedulerService: runtimeSupportStub,
-      notificationService: runtimeSupportStub,
+      notificationService: notificationServiceForFixture ?? runtimeSupportStub,
       attentionProjection: runtimeSupportStub,
       webPushService: runtimeSupportStub,
       webPushEnabled: false,
@@ -72,6 +77,7 @@ const ORIGIN = 'https://station.example.test';
 const STATION_ID = 'account-token-fixture';
 const GRANT = 'orchestration:read orchestration:operate';
 const operatorApproval = { kind: 'presented-credential' } as const;
+let notificationServiceForFixture: NotificationService | undefined;
 
 describe('account-tied personal access tokens over the production composition', () => {
   // Created first, so its after-hook removes the homes after the account
@@ -93,6 +99,8 @@ describe('account-tied personal access tokens over the production composition', 
     process.env.ALLOWED_ORIGINS = ORIGIN;
   });
   afterEach(async () => {
+    await notificationServiceForFixture?.shutdown();
+    notificationServiceForFixture = undefined;
     for (const accounts of loaded.splice(0)) await accounts.service.close();
     if (ambientHome === undefined) delete process.env.STATION_HOME;
     else process.env.STATION_HOME = ambientHome;
@@ -118,10 +126,30 @@ describe('account-tied personal access tokens over the production composition', 
       STATION_ID,
       storage,
     );
+    // #4303: member passkeys are a Feature Preview; this Station opts in.
+    const previews = new FeaturePreviewRegistry(homeDir, {
+      debug() {},
+      info() {},
+      warn() {},
+      error() {},
+    } as never);
+    const memberPasskeys = previews.bind({
+      id: MEMBER_PASSKEYS_PREVIEW_ID,
+      label: 'Member passkeys',
+      description: 'Member passkeys under test.',
+    });
+    await previews.setEnabled(MEMBER_PASSKEYS_PREVIEW_ID, true);
+    const eventBus = new EventBus();
+    const notifications = new NotificationService(eventBus, homeDir, 999_999, {
+      projectMembership: membership.service,
+    });
+    notificationServiceForFixture = notifications;
     const localAccounts = await loadLocalAccounts(
       { publicOrigin: ORIGIN },
       { stationId: STATION_ID, homeDirectory: homeDir },
       { mayRegister: async () => true },
+      [],
+      { memberPasskeys },
     );
     loaded.push(localAccounts);
     // What station-runtime.ts does once local accounts load.
@@ -137,6 +165,12 @@ describe('account-tied personal access tokens over the production composition', 
     const app = new Hono();
     let appConfig: Record<string, unknown> = {};
     const context = deepStub({
+      discordGateway: {
+        getGatewayStatus: () => ({
+          state: 'unavailable' as const,
+          reason: 'Gateway is not configured.',
+        }),
+      },
       projectMembership: membership.service,
       projectSharedTasks: membership.sharedTasks,
       deploymentAuthentication: localAccounts,
@@ -189,7 +223,7 @@ describe('account-tied personal access tokens over the production composition', 
           scope: Parameters<typeof usageExportOwnerIds>[1],
         ) => usageExportOwnerIds(authority, scope, () => undefined),
       }),
-      eventBus: new EventBus(),
+      eventBus,
       taskGraphService: { listTasks: () => [] },
     });
     const result = configureRuntimeRoutesProduction(
@@ -237,6 +271,71 @@ describe('account-tied personal access tokens over the production composition', 
         .getSetCookie()
         .map((value) => value.split(';')[0])
         .join('; ');
+      const account = localAccounts.administration
+        .list()
+        .find((entry) => entry.username === username);
+      if (!account) throw new Error(`account ${username} was not created`);
+      return {
+        accountId: account.accountId,
+        cookie,
+        principalId: deploymentAccountPrincipal(
+          issuer,
+          account.accountId,
+          username,
+        ).id,
+      };
+    };
+
+    /**
+     * #4303: a real account created with a passkey (no password), then
+     * signed in afresh with that passkey: its id and passkey session cookie.
+     */
+    const createPasskeyAccount = async (username: string) => {
+      const authenticator = new SoftwareAuthenticator();
+      const ceremony = async (
+        path: string,
+        options: Record<string, unknown>,
+        respond: (options: never) => unknown,
+      ) => {
+        const begun = await accountAuth(path, { step: 'options', ...options });
+        expect(begun.status, await begun.clone().text()).toBe(200);
+        const challenge = begun.headers
+          .getSetCookie()
+          .map((value) => value.split(';')[0])
+          .join('; ');
+        const published = (await readJson<{ data: { options: never } }>(begun))
+          .data.options;
+        const finished = await localAccounts.service.handle(
+          new Request(`${ORIGIN}/api/account-auth${path}`, {
+            method: 'POST',
+            headers: {
+              Origin: ORIGIN,
+              'Content-Type': 'application/json',
+              'x-station-invitation': 'fixture-enrollment',
+              Cookie: challenge,
+            },
+            body: JSON.stringify({
+              step: 'verify',
+              response: respond(published),
+            }),
+          }),
+          path,
+        );
+        expect(finished.status, await finished.clone().text()).toBe(200);
+        return finished;
+      };
+      await ceremony('/passkey/sign-up', { username }, (options) =>
+        authenticator.register(options, { origin: ORIGIN }),
+      );
+      const signedIn = await ceremony('/passkey/sign-in', {}, (options) =>
+        authenticator.authenticate(options, { origin: ORIGIN, counter: 1 }),
+      );
+      const cookie = signedIn.headers
+        .getSetCookie()
+        .filter((value) => value.includes('session_token='))
+        .map((value) => value.split(';')[0])
+        .join('; ');
+      expect(cookie).not.toBe('');
       const account = localAccounts.administration
         .list()
         .find((entry) => entry.username === username);
@@ -318,7 +417,6 @@ describe('account-tied personal access tokens over the production composition', 
       Cookie: owner.cookie,
       Origin: ORIGIN,
     });
-
     /** The person makes a token from their own device (self-service). */
     const mintToken = async (
       device: (init?: RequestInit) => RequestInit,
@@ -342,44 +440,48 @@ describe('account-tied personal access tokens over the production composition', 
       slug: string,
       member: Awaited<ReturnType<typeof person>>,
       role: 'viewer' | 'admin',
+      additionalMembers: Awaited<ReturnType<typeof person>>[] = [],
     ) => {
       const project = await projectService.createProject({ name: slug, slug });
       const enabled = await request(
         `/api/projects/${slug}/access/enable`,
-        ownerOperator({
+        operator({
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', Origin: ORIGIN },
           body: JSON.stringify({ localProjectId: project.id }),
         }),
       );
       expect(enabled.status, await enabled.clone().text()).toBe(200);
       const scope = (await readJson<{ data: { scope: unknown } }>(enabled)).data
         .scope;
-      const invited = await request(
-        `/api/projects/${slug}/access/invitations`,
-        ownerOperator({
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            scope,
-            email: null,
-            role,
-            expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+      for (const invitee of [member, ...additionalMembers]) {
+        const invited = await request(
+          `/api/projects/${slug}/access/invitations`,
+          operator({
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Origin: ORIGIN },
+            body: JSON.stringify({
+              scope,
+              email: null,
+              role,
+              expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+            }),
           }),
-        }),
-      );
-      expect(invited.status, await invited.clone().text()).toBe(200);
-      const token = (await readJson<{ data: { token: string } }>(invited)).data
-        .token;
-      const accepted = await request(
-        '/api/account-auth/accept-invitation',
-        member.device({
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token }),
-        }),
-      );
-      expect(accepted.status, await accepted.clone().text()).toBe(200);
+        );
+        expect(invited.status, await invited.clone().text()).toBe(200);
+        const token = (await readJson<{ data: { token: string } }>(invited))
+          .data.token;
+        const accepted = await request(
+          '/api/account-auth/accept-invitation',
+          invitee.device({
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Origin: ORIGIN },
+            body: JSON.stringify({ token }),
+          }),
+        );
+        expect(accepted.status, await accepted.clone().text()).toBe(200);
+      }
+      return project;
     };
     const slugs = async (response: Response) => {
       expect(response.status, await response.clone().text()).toBe(200);
@@ -393,14 +495,180 @@ describe('account-tied personal access tokens over the production composition', 
       request,
       operator,
       person,
+      createPasskeyAccount,
+      withHeaders,
+      operatorCredential,
       pairAccountDevice,
       mintToken,
       bearer,
       shareWith,
       slugs,
       projectService,
+      homeDir,
+      notifications,
+      owner,
+      ownerOperator,
     };
   }
+
+  test('integration status composes operator authority and the live probe', async () => {
+    const exec = vi
+      .spyOn(gitExec, 'execGitContextCommand')
+      .mockResolvedValue({ stdout: '', stderr: '' });
+    const h = await setup();
+    const response = await h.request('/api/integrations/status', h.operator());
+    expect(response.status, await response.clone().text()).toBe(200);
+    const body = await readJson<{
+      data: { connections: Array<{ provider: string }> };
+    }>(response);
+    expect(
+      body.data.connections.map((connection) => connection.provider),
+    ).toEqual(['github', 'discord', 'slack', 'webhook', 'linear', 'jira']);
+    expect(exec).toHaveBeenCalledOnce();
+  });
+
+  test('person notifications isolate paired accounts and persist their read and dismiss state', async () => {
+    const h = await setup();
+    const alice = await h.person('notificationalice');
+    const bob = await h.person('notificationbob');
+    const aliceProject = await h.shareWith('alice-project', alice, 'viewer', [
+      h.owner,
+    ]);
+    const bobProject = await h.shareWith('bob-project', bob, 'viewer');
+    const send = async (
+      principalId: string,
+      projectId: string,
+      title: string,
+    ) => {
+      const result = await h.notifications.scheduleEnveloped(
+        'review',
+        { category: 'review-request', title },
+        {
+          v: 1,
+          source: { kind: 'system', subsystem: 'review' },
+          audience: { kind: 'principal', principalId, projectId },
+          urgency: 'info',
+          interrupt: 'default',
+        },
+      );
+      expect(result.outcome).toBe('created');
+      if (!result.notification)
+        throw new Error('Expected principal notification');
+      return result.notification;
+    };
+    const aliceNotice = await send(
+      alice.principalId,
+      aliceProject.id,
+      'Alice only',
+    );
+    const bobNotice = await send(bob.principalId, bobProject.id, 'Bob only');
+    const ownerNotice = await send(
+      h.owner.principalId,
+      aliceProject.id,
+      'Owner personally',
+    );
+    const globalNotice = await h.notifications.schedule('fixture', {
+      category: 'test',
+      title: 'Owner global',
+    });
+    const list = async (request: RequestInit, query = '') => {
+      const response = await h.request(
+        `/api/me/notifications${query}`,
+        request,
+      );
+      expect(response.status, await response.clone().text()).toBe(200);
+      expect(response.headers.get('cache-control')).toBe('no-store');
+      return (await readJson<{ data: Array<{ id: string }> }>(response)).data;
+    };
+    expect(
+      await list(
+        alice.device(),
+        `?principalId=${encodeURIComponent(bob.principalId)}`,
+      ),
+    ).toEqual([aliceNotice]);
+    expect(await list(bob.device())).toEqual([bobNotice]);
+    expect(await list(h.ownerOperator())).toEqual([ownerNotice]);
+    const minted = await h.mintToken(alice.device, GRANT);
+    expect(minted.status, await minted.clone().text()).toBe(201);
+    const token = h.bearer((await readJson<{ secret: string }>(minted)).secret);
+    expect(await list(token())).toEqual([aliceNotice]);
+    expect(
+      (
+        await h.request(
+          `/api/me/notifications/${bobNotice.id}/read`,
+          token({ method: 'POST' }),
+        )
+      ).status,
+    ).toBe(404);
+    const ownerFeed = await h.request('/notifications', h.ownerOperator());
+    expect(ownerFeed.status, await ownerFeed.clone().text()).toBe(200);
+    expect(
+      (await readJson<{ data: Array<{ id: string }> }>(ownerFeed)).data,
+    ).toEqual([globalNotice]);
+    expect((await h.request('/notifications', alice.device())).status).toBe(
+      403,
+    );
+
+    for (const [method, suffix] of [
+      ['POST', '/read'],
+      ['DELETE', ''],
+    ] as const) {
+      const forbiddenRow = await h.request(
+        `/api/me/notifications/${bobNotice.id}${suffix}`,
+        alice.device({ method }),
+      );
+      expect(forbiddenRow.status).toBe(404);
+      expect(await readJson(forbiddenRow)).toEqual({
+        success: false,
+        error: 'Notification not found',
+      });
+    }
+    const read = await h.request(
+      `/api/me/notifications/${aliceNotice.id}/read`,
+      alice.device({ method: 'POST' }),
+    );
+    expect(read.status, await read.clone().text()).toBe(200);
+    expect(await readJson(read)).toEqual({
+      success: true,
+      data: { outcome: 'read' },
+    });
+    const readAgain = await h.request(
+      `/api/me/notifications/${aliceNotice.id}/read`,
+      alice.device({ method: 'POST' }),
+    );
+    expect(await readJson(readAgain)).toEqual({
+      success: true,
+      data: { outcome: 'already-read' },
+    });
+    const dismiss = await h.request(
+      `/api/me/notifications/${aliceNotice.id}`,
+      alice.device({ method: 'DELETE' }),
+    );
+    expect(dismiss.status, await dismiss.clone().text()).toBe(200);
+    const aliceAfter = await list(alice.device());
+    expect(aliceAfter[0]).toMatchObject({
+      status: 'dismissed',
+      metadata: {
+        envelope: {
+          readBy: expect.stringMatching(/^device:/),
+          dismissedBy: expect.stringMatching(/^device:/),
+        },
+      },
+    });
+    expect(await list(bob.device())).toEqual([bobNotice]);
+    const reopened = new NotificationService(new EventBus(), h.homeDir);
+    try {
+      expect(await reopened.listForPrincipal(alice.principalId)).toEqual(
+        aliceAfter,
+      );
+      expect(await reopened.listForPrincipal(bob.principalId)).toEqual([
+        bobNotice,
+      ]);
+    } finally {
+      await reopened.shutdown();
+    }
+    expect((await h.request('/api/me/notifications')).status).toBe(401);
+  });
 
   test('telemetry person leaves compose account session, Device scope, principal ownership and operator separation', async () => {
     const h = await setup();
@@ -486,6 +754,40 @@ describe('account-tied personal access tokens over the production composition', 
     if (!revoked) throw new Error('Missing paired device');
     h.security.devicePairing.revokeDevice(revoked.id, 'operator-credential');
     expect((await h.request(base, alice.device())).status).toBe(401);
+  });
+
+  test('sharing bootstrap refuses a mixed account and operator but succeeds as operator alone', async () => {
+    const h = await setup();
+    const account = await h.person('operatorfixture');
+    const project = await h.projectService.createProject({
+      name: 'Owner control',
+      slug: 'owner-control',
+    });
+    const input = {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: account.cookie,
+        Origin: ORIGIN,
+      },
+      body: JSON.stringify({ localProjectId: project.id }),
+    };
+    const mixed = await h.request(
+      '/api/projects/owner-control/access/enable',
+      h.operator(input),
+    );
+    expect(mixed.status, await mixed.clone().text()).toBe(403);
+    expect(await mixed.json()).toEqual({
+      error: { code: 'account_identity_conflict' },
+    });
+    const operator = await h.request(
+      '/api/projects/owner-control/access/enable',
+      h.operator({
+        ...input,
+        headers: { 'Content-Type': 'application/json', Origin: ORIGIN },
+      }),
+    );
+    expect(operator.status, await operator.clone().text()).toBe(200);
   });
 
   test('a member token reads its Project; a non-member token gets 404 and an empty catalogue', async () => {
@@ -585,6 +887,69 @@ describe('account-tied personal access tokens over the production composition', 
     h.localAccounts.administration.revokeSessions(member.accountId);
     const refused = await h.request('/api/projects', token());
     expect(refused.status, await refused.clone().text()).toBe(401);
+  });
+
+  test('a passkey-only account signed in with its passkey: its token stops on disable and on sign-out everywhere (#4303)', async () => {
+    const h = await setup();
+    const account = await h.createPasskeyAccount('passkey-member');
+    const credential = h.pairAccountDevice(account, 'passkey-laptop');
+    const device = h.withHeaders({
+      Authorization: `Bearer ${credential}`,
+      Cookie: account.cookie,
+      Origin: ORIGIN,
+    });
+    const minted = await h.mintToken(device);
+    expect(minted.status, await minted.clone().text()).toBe(201);
+    const token = h.bearer((await readJson<{ secret: string }>(minted)).secret);
+    const observed = await h.request('/api/auth/authority', token());
+    expect(
+      (await readJson<{ principal: { id: string } }>(observed)).principal.id,
+    ).toBe(account.principalId);
+    expect((await h.request('/api/projects', token())).status).toBe(200);
+    // The revocation is stamped in milliseconds; make it strictly later.
+    await new Promise((settle) => setTimeout(settle, 5));
+    h.localAccounts.administration.revokeSessions(account.accountId);
+    expect((await h.request('/api/projects', token())).status).toBe(401);
+    expect((await h.request('/api/projects', device())).status).toBe(401);
+
+    const second = await h.createPasskeyAccount('passkey-other');
+    const secondDevice = h.pairAccountDevice(second, 'other-laptop');
+    const secondMinted = await h.mintToken(
+      h.withHeaders({
+        Authorization: `Bearer ${secondDevice}`,
+        Cookie: second.cookie,
+        Origin: ORIGIN,
+      }),
+    );
+    const secondToken = h.bearer(
+      (await readJson<{ secret: string }>(secondMinted)).secret,
+    );
+    expect((await h.request('/api/projects', secondToken())).status).toBe(200);
+    h.localAccounts.administration.setDisabled(second.accountId, true);
+    expect((await h.request('/api/projects', secondToken())).status).toBe(401);
+  });
+
+  test('a member passkey session and its device never carry operator authority (#4303)', async () => {
+    const h = await setup();
+    const account = await h.createPasskeyAccount('passkey-guest');
+    const credential = h.pairAccountDevice(account, 'guest-laptop');
+    for (const init of [
+      { headers: { Cookie: account.cookie, Origin: ORIGIN } },
+      {
+        headers: {
+          Cookie: account.cookie,
+          Authorization: `Bearer ${credential}`,
+          Origin: ORIGIN,
+        },
+      },
+    ]) {
+      const refused = await h.request('/api/operator/accounts', init);
+      expect(refused.status, await refused.clone().text()).not.toBe(200);
+      expect([401, 403]).toContain(refused.status);
+    }
+    // Control: the same route answers the operator credential.
+    const allowed = await h.request('/api/operator/accounts', h.operator());
+    expect(allowed.status, await allowed.clone().text()).toBe(200);
   });
 
   test('re-enabling a disabled account does not revive tokens made before it was disabled', async () => {
@@ -734,12 +1099,25 @@ describe('account-tied personal access tokens over the production composition', 
     );
     expect(deviceAccess.status, await deviceAccess.clone().text()).toBe(200);
 
+    const integrationStatus = await h.request(
+      '/api/integrations/status',
+      member.device(),
+    );
+    expect(
+      integrationStatus.status,
+      await integrationStatus.clone().text(),
+    ).toBe(403);
+    expect(await integrationStatus.json()).toEqual({
+      error: { code: 'account_bound_device_route_forbidden' },
+    });
+
     // Each refusal names the layer that made it: the pairing-scope table
     // refuses tokens on the Project access leaves (`personalTokens:
     // 'refused'`) before the account-bound gate runs; the gate refuses the
     // rest. Both layers refuse the access leaves; only the first is seen.
     for (const [path, init, code] of [
       ['/api/agents', {}, 'account_bound_device_route_forbidden'],
+      ['/api/integrations/status', {}, 'account_bound_device_route_forbidden'],
       ['/api/projects/demo/access', {}, 'insufficient_scope'],
       [
         '/api/projects/demo/access/invitations',

@@ -864,6 +864,29 @@ inside a checkout. Because the baseline is the merge base, `origin/main`
 moving does not invalidate it; merging `origin/main` into the candidate does,
 unless the push is a pure merge of main (below).
 
+To inspect dependency accumulation without deleting anything, run:
+
+```bash
+node scripts/worktree-hygiene.mjs
+node scripts/worktree-hygiene.mjs --json
+```
+
+The ordinary report lists root `node_modules` directories even in kept lanes;
+JSON exposes `dependencyDirectory` (`true`, `false`, or `null` when unreadable).
+Symlinked dependency paths are not counted as directories. This is an inventory,
+not a disk-size estimate or evidence that a lane is inactive. Before retiring
+anything, check live processes, submission handoffs, recent use and local changes.
+The report never removes dependencies or worktrees.
+
+Prefer the preparation command's canonical `4294-transfer-baseline-<sha>` name.
+Automatic baseline retention owns only that naming convention and preserves
+in-use, recent and retained baselines; Windows skips pruning when it cannot
+prove process inactivity. Legacy `<lane>-transfer-baseline-<sha>` names remain
+usable for the explicit baseline selection above, but automatic retention does
+not own them. When a detached legacy lane's HEAD matches its name, the inventory
+calls out that retention gap without declaring it disposable. Repeatedly
+clearing package caches leaves those installed dependency trees in place.
+
 **A pure merge of main skips the expensive lanes (#3101).** When every pushed
 ref only adds clean merges of `origin/main` on top of the tip the remote
 already holds, `.githooks/pre-push` skips the transfer gate, static gates, SDK
@@ -1558,6 +1581,16 @@ to select the repo-local browser; the suite runner sets this itself. The reusabl
 `.github/workflows/full-regression.yml` provides the browser
 prerequisite for hosted completion; do not infer it from dependency installation.
 
+On Linux, the canonical process-exclusive corpus binds its preview fixtures
+to the installed Playwright revision when `PLAYWRIGHT_BROWSERS_PATH` is set.
+The corpus runner supplies `STATION_VITEST_CORPUS_GROUP=process-exclusive`;
+global setup then places a `google-chrome` link in the run-owned temporary
+directory ahead of ambient browsers. Ordinary affected-test shards and
+process-heavy installed-browser compatibility suites retain system-Chrome
+discovery, which otherwise takes precedence over a `chromium` link. Missing pinned files fail the prerequisite. Teardown removes
+the link with that run root and restores its PATH. This does not disable the
+Chromium sandbox or qualify an unconfigured system browser.
+
 `npm test` is the named focused pre-push test tier. Station's own
 `.githooks/pre-push` has its separate check list; it does not invoke this alias. Its checked-in manifest covers repository guardrails, public contracts,
 authentication/connection boundaries, orchestration state, and core
@@ -1676,6 +1709,85 @@ typecheck through `ci:fast`; the pre-push hook retains cheap and scoped checks. 
 with `npm run gate:for` evidence and a single `typecheck:<lane>`; do not start
 the full aggregate or `ci:fast` in the background and poll for its result.
 
+### Host heavy-check slots
+
+Typecheck slots bound compilers only. Several agents on one small host can
+still run `docs:truth:gate`, Vitest selections and pre-push gates together and
+starve everything else on it, Station included. These heavy checks therefore
+queue for a second host-wide pool, `scripts/lib/heavy-check-slots.mjs`, which
+uses the same lock-file protocol as the typecheck slots (atomic claims,
+dead-holder reclaim, a bounded wait), in its own directory:
+`/tmp/station-heavy-check-slots-<uid>` on macOS and Linux and the per-user
+temp directory on Windows.
+
+`node scripts/heavy-check-slot.mjs <label> <script.mjs> [arguments]` holds a
+slot and then runs the script as the slot holder. These entry points use it:
+
+| Entry point | Label |
+| --- | --- |
+| `npm run test:focused` | `test:focused` |
+| `npm run test:changed` | `test:changed` |
+| `npm run docs:truth:gate` (also a Veritas readiness evidence check) | `docs:truth:gate` |
+| `npm run docs:learn:build`, `npm run docs:learn:check` | `docs:learn:build`, `docs:learn:check` |
+| `npm run typecheck` (its lanes run under this slot) | `typecheck` |
+| Each `scripts/tsc-slot.mjs` compile run on its own (`npm run typecheck:<lane>`) | `typecheck <tsconfig>`, taken before its typecheck slot |
+| Pre-push transfer budgets, static gates, SDK barrel | `pre-push:transfer-budgets`, `pre-push:static-gates`, `pre-push:sdk-barrel` |
+| A verification-coordinator lane that executes (`ci:fast`, `verify:static`, `test-changed`, …) | `verification:<lane>` |
+| Each `full:regression` phase, requested or submitted | `verification:full-regression:<phase>` |
+
+- N is the smaller of one slot per four logical CPUs (floored) and one per
+  8 GiB of RAM (rounded), between 1 and 4. A 4-core, 15 GiB host gets 1.
+- A queued check prints `[heavy-check-slots] waiting for a heavy-check slot
+  for <label>: 1/1 held by pid <N> (<holder label>) in <worktree>`, repeated
+  every minute.
+- Waiters are admitted in arrival order. Each waiter writes a ticket under the
+  pool's `queue/` directory, and only the earliest N live tickets may claim a
+  slot. A ticket whose waiter died is removed by the next reader.
+- The wait is bounded. After `STATION_HEAVY_CHECK_SLOT_WAIT_MS` (default 30
+  minutes) the check fails with exit status 1 and names the holders. It never
+  passes without running.
+- A slotted check started inside another one (for example `test:focused`
+  inside `docs:truth:gate`) runs under its ancestor's slot and prints one line
+  naming it. `STATION_HEAVY_CHECK_SLOT_HELD` names the holder's exact claim
+  (slot directory, index and nonce). A marker for a released, reclaimed or
+  dead claim is ignored.
+- Admission is always taken in one order: the verification coordinator, then
+  a heavy-check slot, then typecheck or Biome.
+  - A coordinator owner takes its slot only after the lane, or each
+    full-regression phase, has been admitted and is about to execute. It
+    releases the slot before the next phase queues.
+  - A request that reuses a receipt or joins a running lane takes no slot.
+  - The wait spends the lane's deadline, as coordinator queueing already
+    does. A full-regression phase's own execution budget starts only once its
+    slot is held. A wait cut short by the lane deadline makes the lane's
+    receipt report a timeout. A cancel during the wait ends the lane as any
+    other cancel would.
+  - A refusal publishes an `infrastructure_error` receipt that names the
+    holders. Only passing receipts are reused, so the next request retries.
+- Do not call the coordinator (`ci:fast`, `verify:static`, `run-verification`)
+  from inside a slotted check. None of the slotted entry points do. A request
+  made there would join another owner's lane while its own ancestor held the
+  slot that owner waits for. That would hold until one of the bounded waits
+  failed.
+- With one slot, a `ci:fast` requested during a long full-regression phase
+  waits for that phase to finish. It fails at its own deadline if the phase
+  outlasts it.
+- If a lane is fenced because its child never settled after a timeout, the
+  coordinator process keeps that lane's slot until it exits.
+- On macOS and Linux the runner becomes the check, so the slot lasts as long
+  as that process. A check that spawns children, such as Vitest under
+  `test:focused`, releases its slot if it is killed without its children.
+  An interrupt from the terminal reaches the whole process group. A targeted
+  `kill` of only the holder leaves its children running outside the cap.
+- Hosted CI (`GITHUB_ACTIONS=true`) takes no slot, because each runner is
+  single-tenant, and prints one line saying so. `CI` alone does not exempt a
+  run, because local tools set it too.
+- A dead holder's slot is reclaimed by the next waiter.
+
+Overrides: `STATION_HEAVY_CHECK_SLOTS` (count, 1–64),
+`STATION_HEAVY_CHECK_SLOT_WAIT_MS`, and `STATION_HEAVY_CHECK_SLOT_DIR` (set it
+identically for every caller).
+
 ### Host-pressure liveness scale (#3302)
 
 A fixed liveness bound is a dead-child guard sized for an idle machine. On a
@@ -1753,6 +1865,18 @@ The HTML preview process suite also runs in the exclusive group so other Vitest
 files in that invocation do not compete with its disposable Chromium startup.
 It retains the 15-second render deadline and 3-second effective-policy check.
 
+The pinned Vitest runner 4.1.12 has a [managed timer patch](../../patches/vitest-runner-4.1.12.patch).
+Its task-event throttle could lose a pending update when a timer fired exactly
+at its 100 ms boundary, leaving a running body or hook reported as unknown
+until another update arrived. The patch clears the expired timer handle before
+retrying, so an early or boundary callback can schedule another attempt.
+The corpus-runner test exercises the installed package's public `updateTask`
+API with a controlled clock, including cancellation of a pending timer by an
+immediate flush. Real-child lifecycle controls still require observed events
+within their existing two-second test and hook limits; no worker count or
+product deadline changes. Remove the patch when an upstream release passes
+these controls through the managed dependency workflow.
+
 Pre-push and coverage remain one-worker evidence lanes. Coverage merging has a
 different correctness contract, and pre-push is already short while its
 host-wide coordinator weight allows independent worktrees to make progress.
@@ -1798,7 +1922,7 @@ This scheduling contract is rendered from `scripts/verification-lanes.mjs`; do n
 - `test-full-ordinary-7-of-8` — 80-unit host reservation; 20-minute execution deadline.
 - `test-full-ordinary-8-of-8` — 80-unit host reservation; 20-minute execution deadline.
 - `test-full-process-heavy` — 60-unit host reservation; 30-minute execution deadline.
-- `test-full-process-exclusive` — 60-unit host reservation; 4-minute execution deadline.
+- `test-full-process-exclusive` — 60-unit host reservation; 10-minute execution deadline.
 - `test-full-coordinator-exclusive` — 60-unit host reservation; 4-minute execution deadline.
 - `test-full-credential-ledger-exclusive` — 60-unit host reservation; 4-minute execution deadline.
 - `test-full-shared-output` — 60-unit host reservation; 4-minute execution deadline.
@@ -1870,6 +1994,13 @@ runners. Persistent jobs also skip automatic `pull_request` execution and run
 only for protected `main` pushes or reviewed manual dispatches; the same gate
 requires that boundary and `persist-credentials: false` on their checkouts.
 Unreviewed PR code belongs on hosted or genuinely one-job ephemeral runners.
+
+Hosted PR and merge-group Chromium setup can restore a cache keyed by runner
+OS, architecture, and the lockfile. The admitted main Nightly source gate warms
+that cache; untrusted jobs only restore it. A cache miss or cache-service failure
+falls back to the required Playwright installation, which still runs on a hit.
+Browser smoke and test failures remain required. Compare cache restore plus
+installation time with uncached setup before treating the cache as a speedup.
 
 Linux CI, Android, publish, and secret-scan jobs run on GitHub-hosted
 images. A private native Windows host remains for the hardware-reference
@@ -2453,8 +2584,11 @@ receipt); `fast-checks-statics` runs `ci:fast` with
 UI bundle budget, enforced by the fresh browser startup build rather than a
 second standalone UI build. `fast-checks` requires successful plan/statics jobs.
 The `aggregate` command independently validates empty-plan omission or proves
-that each allocated shard ran its exact slice. An unexpected skip, cancellation,
-missing receipt, or receipt for another plan or head fails the check. A deferred
+that each allocated shard ran its exact slice. Each nonempty resource group also
+compares Vitest’s reported file identities with its planned files; missing,
+duplicate, unexpected, or outside-checkout identities cause a parser error even
+when aggregate test counts pass. An unexpected skip, cancellation, missing
+receipt, or receipt for another plan or head fails the check. A deferred
 selection (the selector's exit 3) is reported and passes only when its executed
 mapped tests pass; a real assertion or infrastructure failure is not converted
 into deferral. The unresolved obligation remains for main/release full

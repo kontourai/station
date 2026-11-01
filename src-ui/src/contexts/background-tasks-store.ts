@@ -21,9 +21,10 @@
 //   `ChatUIState.backgroundTasks` registry (`selectChatBackgroundTasks`),
 //   deduped by `toolCallId` (a provider task suppresses the raw tool card it
 //   was spawned from).
-import type {
-  ChildWorkItem,
-  ChildWorkStatus,
+import {
+  type ChildWorkDisplayStatus,
+  type ChildWorkItem,
+  childWorkDisplayStatus,
 } from '@kontourai/station-contracts/child-work';
 import type { OrchestrationDelegationContext } from '@kontourai/station-contracts/orchestration';
 import { runtimeEventContentText } from '@kontourai/station-contracts/runtime-event-content';
@@ -52,6 +53,11 @@ export type BackgroundTaskState =
    * `stopped` — that would claim the stop took effect.
    */
   | 'stopped-unconfirmed'
+  /**
+   * The engine process a child ran in ended while it ran. Not `stopped`
+   * (nobody asked for it) and not `unresolved` (the end was observed).
+   */
+  | 'interrupted'
   | 'failed';
 
 export interface BackgroundTaskEntry {
@@ -120,7 +126,10 @@ function firstLine(text: string | undefined, limit = 80): string | undefined {
   return line.length > limit ? `${line.slice(0, limit - 1)}…` : line;
 }
 
-const CHILD_WORK_CARD_STATE: Record<ChildWorkStatus, BackgroundTaskState> = {
+const CHILD_WORK_CARD_STATE: Record<
+  ChildWorkDisplayStatus,
+  BackgroundTaskState
+> = {
   running: 'running',
   completed: 'completed',
   failed: 'failed',
@@ -128,6 +137,7 @@ const CHILD_WORK_CARD_STATE: Record<ChildWorkStatus, BackgroundTaskState> = {
   // #2459: a stop nobody confirmed is not a stop that happened.
   'stopped-unconfirmed': 'stopped-unconfirmed',
   unresolved: 'unresolved',
+  interrupted: 'interrupted',
 };
 
 /**
@@ -149,7 +159,7 @@ function backgroundTaskEntryFromChildWork(
     title?: string;
   },
 ): BackgroundTaskEntry {
-  const state = CHILD_WORK_CARD_STATE[item.status];
+  const state = CHILD_WORK_CARD_STATE[childWorkDisplayStatus(item)];
   if (item.producer === 'station-delegate') {
     return {
       id: item.childId,
@@ -647,7 +657,7 @@ export function reconcileBackgroundTasksSnapshot(
           // richer terminal status (completed/failed/cancelled/
           // stopped-unconfirmed) still comes through, and the two server
           // vintages agree on 'unresolved' when nothing settled it.
-          state: CHILD_WORK_CARD_STATE[child.status],
+          state: CHILD_WORK_CARD_STATE[childWorkDisplayStatus(child)],
           endedAt,
         },
       };

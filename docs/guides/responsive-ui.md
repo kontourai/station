@@ -197,10 +197,9 @@ every child. Terminal/editor phone controls should stay in one horizontally
 scrollable row; their input font must avoid mobile browser zoom. Test the real
 terminal/editor caller instead of assuming a CSS declaration proves this.
 
-The chat header's **Inventory** control opens the full reader directly on
-desktop. On a phone it is the **Chat inventory** row of the header's **⋯**
-sheet: the bar's edge reserve holds two 44px controls, and a third wrapped the
-header onto a second line (#4192). This is separate from the compact Basis/answer inspection described
+The chat header's **⋯** menu holds **Chat inventory** and **Browse turns** on
+desktop and phones. Keeping secondary actions there avoids wrapping the
+phone header onto a second line (#4192). This is separate from the compact Basis/answer inspection described
 above. Selecting a row reveals detail inline, within the existing scrollable
 reader; it does not add another modal. Closing returns focus to the opener.
 
@@ -244,20 +243,25 @@ not a universal accessibility, keyboard or device certificate.
 At the shared mobile breakpoint, `responsive-surface-panel` raises the compact
 Station text aliases to the published Kontour UI tokens: supporting text uses
 `--k-text-md` (14px), and shared sheet headings and action-menu labels use
-`--k-text-lg` (18px). Desktop density remains owned by each surface. The task
-picker uses 18px titles with up to two lines, Agent icons, 14px project/status
-metadata, and a pinned New chat action at the lower right. Project names wrap.
+`--k-text-lg` (18px). Desktop density remains owned by each surface.
+The embedded mobile Inbox uses two-line titles, project artwork and engine
+marks, short status labels, and a separate recency timestamp. Search opens
+from its icon without opening the keyboard on Inbox entry. The dock header
+owns New chat. This Inbox replaces the title-triggered Chats and tasks sheet
+and shares the desktop Inbox's scope and history preferences. It stays mounted
+behind a conversation, retaining its search and list position.
 The project picker retains [PickerCreateAction](../../src-ui/src/components/PickerCreateAction.tsx)
 for its 52px add button. Chat creation shares [NewChatAction](../../src-ui/src/components/NewChatAction.tsx)
-across the task picker, desktop inbox, the collapsed dock bar (icon only) and
+across the desktop inbox, the collapsed dock bar (icon only) and
 the open, empty dock. The mobile bar composes the same conversation-plus glyph
 with its toolbar button styles. Both forms retain a 44px minimum target and
-an accessible name. It opens the start composer. New-chat and running-chat
-selectors share [ComposerChoice](../../src-ui/src/components/ComposerChoice.tsx)
-for the caption, value, icon and chevron, and one horizontal scrolling rail.
-On a phone the selectors stay on row one; attach, mic, overflow and Start
-move to row two when needed. Every target is at least 44px. The chip menus
-are edge sheets on a phone with their own scrolling list. Creation controls remain outside the scrolling lists. The task picker presents
+an accessible name. It opens the start composer, in the dock as a draft in the
+dock body (full screen on a phone). New-chat and running-chat selectors share [ComposerChoice](../../src-ui/src/components/ComposerChoice.tsx) for their presentation. Its chips (in the dock's draft also the
+Project control, and **Run a task…** when there is more than one Station) wrap
+rather than overflow, and attach, mic and the overflow sit with Start, so a
+phone gets the chips first and [attach mic ⋯ … Start] on the next row with no
+viewport query; every target is 44px, and the chip menus are edge sheets on a phone with their own
+scrolling list. Creation controls remain outside the scrolling lists. The mobile Inbox presents
 Input/Approval compactly and keeps reasons readable in full through details;
 Git and PR data are read only when that details surface opens.
 
@@ -274,9 +278,9 @@ something; Connections is the first adopter.
 
 The mobile chat header keeps the conversation title on one line with the
 assistant beneath it. Coding omits the repeated conversation crumb on its chat
-page; pane drill-ins retain the return-to-chat crumb. Project and conversation switching remain directly
-reachable. The Project control’s New chats caption names future context;
-it does not move the open conversation. A phone browser retries an unavailable Station without reloading, and
+page; pane drill-ins retain the return-to-chat crumb. Conversation switching remains directly
+reachable. Choose the Project in the new-chat composer; the active conversation
+keeps its original Project. A phone browser retries an unavailable Station without reloading, and
 rechecks on foreground or network return. A refused credential waits for explicit
 pairing; Request access opens the selected Station directly. Pairing inputs keep
 a 16px floor on phones to avoid Safari zoom, and the dialog includes its padding
@@ -441,6 +445,25 @@ browser's own menu. The behavior is covered in jsdom by the
 cases in `FileTreePanel.test.tsx` and `InboxRow.test.tsx`, and was rendered in
 Chromium. It has not been verified in WKWebView or WebView2, or on an iOS or
 Android device.
+
+### Inbox swipe actions
+
+The Sheet gestures device preview also enables a left swipe on touch inbox rows
+in the dock panel and embedded mobile Inbox. The shared row reveals the existing clock
+and × with labels and 72px-wide targets. A swipe only reveals the controls; the
+clock opens Snooze choices and × dismisses with Undo. A right swipe closes the
+rail. Vertical movement stays available to the scroll container, and the swipe’s
+trailing click cannot open the conversation. Details and long press retain the
+same actions with the preview off.
+
+Dismissal is browser-local inbox visibility, separate from tab teardown, stopping
+work, or deleting a draft. The Dismissed section offers Restore. Lifecycle changes
+use the existing debounce; running progress does not restore a dismissed row.
+The swipe Snooze picker uses the dialog layer above its mobile inbox host.
+The Chromium journey in `inbox-swipe.browser.test.tsx` exercises touch reveal,
+hit targets, Snooze, Dismiss/Undo, preview-off recovery and desktop hover controls,
+and renders 390px and 1440px in both themes. Physical-device behavior remains
+unverified.
 
 ### Coding on a phone
 

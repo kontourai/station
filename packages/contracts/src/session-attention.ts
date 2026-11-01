@@ -248,7 +248,7 @@ export const SESSION_STATUS_WORDS = {
   interrupted: 'Interrupted',
   failed: 'Failed',
   stopped: 'Stopped',
-  elsewhere: 'Elsewhere',
+  elsewhere: 'Read only',
   running: 'Running',
   draft: 'Draft',
   done: 'Done',

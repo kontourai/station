@@ -61,7 +61,10 @@ import type { EventStore } from './event-store.js';
 import type { OrchestrationService } from './orchestration-service.js';
 import { quotedLines } from './quoted-text.js';
 import { projectSessionLifecycle } from './session-lifecycle-service.js';
-import type { TaskMemoryIncarnation } from './task-memory-store.js';
+import type {
+  TaskMemoryIncarnation,
+  TaskMemoryStore,
+} from './task-memory-store.js';
 import type {
   ThreadInboxPayload,
   ThreadInboxSubmission,
@@ -116,6 +119,24 @@ export function createTaskLeadReader(deps: {
 }
 
 export interface TaskQuestionWakePorts {
+  /** Recheck the current lead owner's access to the Task that supplied the quoted data. */
+  mayReadTask?(
+    task: TaskRecord,
+    ownerUserId: string,
+  ): boolean | Promise<boolean>;
+  placementCurrent?(
+    task: TaskRecord,
+    ownerUserId: string,
+    conversationId: string,
+  ): boolean;
+  outbox?: Pick<
+    TaskMemoryStore,
+    | 'pendingQuestionWakes'
+    | 'acknowledgeQuestionWake'
+    | 'deferQuestionWake'
+    | 'recordQuestionWakeRoute'
+    | 'questionWakeRoute'
+  >;
   readTask(taskId: string): TaskRecord | null | undefined;
   /** The lead Session's conversation; undefined when Station has no such Session. */
   readLead(sessionId: string): Promise<TaskLeadState | undefined>;
@@ -244,12 +265,101 @@ function wakeKind(record: TaskMemoryRecord): TaskQuestionWakeSkip | undefined {
 
 export class TaskQuestionWake {
   constructor(private readonly ports: TaskQuestionWakePorts) {}
+  placementRefusal(input: {
+    clientTurnId: string;
+    conversationId: string;
+    userId: string;
+  }): { reasonCode: string; reason: string } | undefined {
+    if (!input.clientTurnId.startsWith('tq-')) return;
+    const route = this.ports.outbox?.questionWakeRoute(input.clientTurnId);
+    const task = route && this.ports.readTask(route.taskId);
+    if (
+      !route ||
+      !task ||
+      task.createdAt !== route.taskCreatedAt ||
+      route.ownerUserId !== input.userId ||
+      route.conversationId !== input.conversationId ||
+      !this.ports.placementCurrent?.(task, input.userId, input.conversationId)
+    )
+      return {
+        reasonCode: 'task_question_source_changed',
+        reason:
+          'The Task question source, lead or authority changed. Nothing was sent.',
+      };
+  }
+
+  /** Boot/event reconciliation uses the original committed incarnation/version key. */
+  async reconcile(limit = 64): Promise<TaskQuestionWakeOutcome[]> {
+    const pending = this.ports.outbox?.pendingQuestionWakes(limit) ?? [];
+    const outcomes: TaskQuestionWakeOutcome[] = [];
+    for (const input of pending) outcomes.push(await this.wake(input));
+    return outcomes;
+  }
+
+  async wake(input: {
+    readonly incarnation: TaskMemoryIncarnation;
+    readonly record: TaskMemoryRecord;
+  }): Promise<TaskQuestionWakeOutcome> {
+    const outcome = await this.deliver(input);
+    try {
+      let settled =
+        outcome.kind === 'queued' ||
+        (outcome.kind === 'skipped' && outcome.reason === 'own');
+      if (outcome.kind === 'skipped' && outcome.reason === 'no-live-lead') {
+        const task = this.ports.readTask(input.incarnation.taskId);
+        settled =
+          !task ||
+          task.createdAt !== input.incarnation.taskCreatedAt ||
+          task.status === 'done' ||
+          task.status === 'canceled';
+        if (!settled && task?.sessionId) {
+          const lead = await this.ports.readLead(task.sessionId);
+          settled =
+            lead?.lifecycleState !== undefined &&
+            isSessionLifecycleStateStopped(lead.lifecycleState);
+        }
+      }
+      if (settled && this.ports.outbox) {
+        try {
+          this.ports.outbox.acknowledgeQuestionWake({
+            ...input.incarnation,
+            key: input.record.key,
+            version: input.record.version,
+            action: input.record.action,
+          });
+        } catch {
+          this.ports.logger.warn(
+            'Task question wake acknowledgement remains pending',
+            {
+              taskId: input.incarnation.taskId,
+              key: input.record.key,
+              version: input.record.version,
+            },
+          );
+        }
+      }
+      if (!settled && this.ports.outbox)
+        this.ports.outbox.deferQuestionWake({
+          ...input.incarnation,
+          key: input.record.key,
+          version: input.record.version,
+          action: input.record.action,
+        });
+    } catch {
+      this.ports.logger.warn('Task question wake remains unacknowledged', {
+        taskId: input.incarnation.taskId,
+        key: input.record.key,
+        version: input.record.version,
+      });
+    }
+    return outcome;
+  }
 
   /**
    * Tell the lead about `record`, a version that has already committed.
    * Never throws: a failure is returned and logged, and the write stands.
    */
-  async wake(input: {
+  private async deliver(input: {
     readonly incarnation: TaskMemoryIncarnation;
     readonly record: TaskMemoryRecord;
   }): Promise<TaskQuestionWakeOutcome> {
@@ -294,6 +404,25 @@ export class TaskQuestionWake {
         return { kind: 'skipped', reason: 'no-live-lead' };
       if (!this.ports.submit) return fail('inbox-unavailable');
       if (!lead.ownerUserId) return fail('no-owner');
+      if (
+        (this.ports.outbox && !this.ports.mayReadTask) ||
+        (this.ports.mayReadTask &&
+          !(await this.ports.mayReadTask(task, lead.ownerUserId)))
+      )
+        return fail('not-permitted');
+      if (
+        this.ports.outbox &&
+        !this.ports.outbox.recordQuestionWakeRoute({
+          ...incarnation,
+          clientTurnId,
+          key: record.key,
+          version: record.version,
+          action: record.action,
+          ownerUserId: lead.ownerUserId,
+          conversationId: lead.conversationId,
+        })
+      )
+        return fail('conflict');
       const submitted = this.ports.submit({
         conversationId: lead.conversationId,
         clientTurnId,

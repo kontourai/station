@@ -1,6 +1,4 @@
 /**
- * UNWIRED(#3439): no runtime composition yet; intake and dispatch will call it.
- *
  * Private Station-home storage for Automation sources and rules
  * (`security/automations.json`, mode 0600).
  *
@@ -40,6 +38,8 @@ import {
   automationConfigurationProblems,
   sourceGrantsRuleAction,
 } from './automation-config-validation.js';
+
+import { automationConfigurationFingerprint } from './automation-intent.js';
 
 const AUTOMATION_CONFIG_FILE = 'automations.json';
 
@@ -116,7 +116,7 @@ const EMPTY_CONFIGURATION: AutomationConfiguration = Object.freeze({
 });
 
 /** Removes the webhook secret; every API surface must project through this. */
-function projectAutomationSource(
+export function projectAutomationSource(
   source: AutomationSource,
 ): AutomationSourceProjection {
   if (source.kind === 'github-poll') return structuredClone(source);
@@ -209,6 +209,7 @@ export class AutomationStore {
   /** Creates a disabled source with a server-issued id. */
   async createSource(
     input: CreateAutomationSourceInput,
+    assertCurrent?: () => Promise<void>,
   ): Promise<CreateAutomationSourceResult> {
     const id = this.newId();
     let source: AutomationSource;
@@ -240,10 +241,13 @@ export class AutomationStore {
           : {}),
       };
     }
-    await this.mutate((current) => ({
-      ...current,
-      sources: [...current.sources, source],
-    }));
+    await this.mutate(
+      (current) => ({
+        ...current,
+        sources: [...current.sources, source],
+      }),
+      assertCurrent,
+    );
     return {
       source: projectAutomationSource(source),
       ...(secret ? { secret } : {}),
@@ -255,7 +259,10 @@ export class AutomationStore {
    * {@link AutomationValidationError} when its source does not grant the
    * rule's action.
    */
-  async createRule(input: CreateAutomationRuleInput): Promise<AutomationRule> {
+  async createRule(
+    input: CreateAutomationRuleInput,
+    assertCurrent?: () => Promise<void>,
+  ): Promise<AutomationRule> {
     const rule: AutomationRule = {
       id: this.newId(),
       name: input.name,
@@ -274,12 +281,54 @@ export class AutomationStore {
         ]);
       }
       return { ...current, rules: [...current.rules, rule] };
-    });
+    }, assertCurrent);
     return structuredClone(rule);
+  }
+
+  async setEnabled(
+    input: {
+      kind: 'source' | 'rule';
+      id: string;
+      expectedFingerprint: string;
+      enabled: boolean;
+    },
+    assertCurrent?: () => Promise<void>,
+  ): Promise<void> {
+    await this.mutate((current) => {
+      if (
+        automationConfigurationFingerprint(current) !==
+        input.expectedFingerprint
+      )
+        throw new AutomationValidationError([
+          'Automation configuration changed; refresh before enabling.',
+        ]);
+      const records = input.kind === 'source' ? current.sources : current.rules;
+      const record = records.find((record) => record.id === input.id);
+      if (!record || ('revokedAt' in record && record.revokedAt !== undefined))
+        throw new AutomationValidationError([
+          'Automation identity unavailable.',
+        ]);
+      return input.kind === 'source'
+        ? {
+            ...current,
+            sources: current.sources.map((source) =>
+              source.id === input.id
+                ? { ...source, enabled: input.enabled }
+                : source,
+            ),
+          }
+        : {
+            ...current,
+            rules: current.rules.map((rule) =>
+              rule.id === input.id ? { ...rule, enabled: input.enabled } : rule,
+            ),
+          };
+    }, assertCurrent);
   }
 
   private async mutate(
     change: (current: AutomationConfiguration) => AutomationConfiguration,
+    assertCurrent?: () => Promise<void>,
   ): Promise<void> {
     let release: () => Promise<void>;
     try {
@@ -293,6 +342,7 @@ export class AutomationStore {
     try {
       // Read inside the lock; a corrupt file throws here and is never
       // replaced by a write derived from an empty default.
+      await assertCurrent?.();
       const next = change(this.read());
       const problems = automationConfigurationProblems(next);
       if (problems.length > 0) throw new AutomationValidationError(problems);

@@ -101,6 +101,9 @@ const derived = pathReadPinEdges({ root: ROOT });
  * construction. Shrinking this list is the goal; growing it is a decision.
  */
 const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
+  // Reads only package.json created in a trackTempDirs checkout fixture,
+  // never repository source. Its real service and route imports select it.
+  'src-server/services/projects/__tests__/project-working-configuration.test.ts',
   // Read captured public Sigstore bundles under __fixtures__/sigstore (test
   // data, not production source); their verifier and trust-rule imports
   // select them for changes.
@@ -568,6 +571,10 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     'lists src-ui/public/color-themes, its own generated output, to refuse a sheet the catalog no longer renders; the color-theme edges in scripts/test-impact-manifest.mjs select it',
   'packages/contracts/src/__tests__/channel-fixture-corpus.test.ts':
     'walks its own fixture directory',
+  // The heavy-check slot queue lives under a makeTempDir root reached through
+  // the workspace or temp fixture object.
+  'scripts/__tests__/heavy-check-slots.test.ts': TEMP_VIA_FIXTURE,
+  'scripts/__tests__/verification-coordinator.test.ts': TEMP_VIA_FIXTURE,
   'scripts/__tests__/ci-event-environment.test.ts':
     'lists .github/workflows; the .github/workflows/** edge selects it',
   'scripts/__tests__/test-impact-incidents.test.ts':

@@ -1,0 +1,7 @@
+{
+  "revision": "65cb0062bf40afee47fb9669b299f49ba1e0bbed",
+
+  "notes": [
+    {"path":"docs/design/notification-delivery.md","note":"Checked general notification dispatch, authority fencing and shared transport startup through the listener and mount; delivery protocol and native receipts are unchanged.","inputs":["docs/design/notification-delivery.md","src-ui/src/hooks/useServerEvents.ts"]}
+  ]
+}

@@ -36,6 +36,7 @@ export function createBootRoutes(providers: BootPayloadProviders) {
     bootPayloadServed.add(1);
     return c.json({
       version: BOOT_PAYLOAD_VERSION,
+      sharedRealtime: true,
       sections: Object.fromEntries(entries),
     });
   });

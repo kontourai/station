@@ -1,4 +1,10 @@
 export { sentTurnKey } from './client/sent-turn-key';
+export {
+  fetchTaskWriteBack,
+  type TaskWriteBackEntry,
+  type TaskWriteBackLog,
+  useTaskWriteBackQuery,
+} from './query-domains/taskWriteBack';
 
 // Re-export all types
 
@@ -230,6 +236,7 @@ export {
   bindProjectResource,
   closeProjectTerminal,
   getProjectChatDefaults,
+  getProjectCheckoutFreshness,
   getProjectResolution,
   getProjectView,
   listProjectRunLocations,
@@ -544,6 +551,7 @@ export {
   deleteFeedbackRating,
   diffCommentsQueryKey,
   dismissNotification,
+  dismissPersonNotification,
   dismissTaskLearning,
   dispatchOrchestrationCommand,
   dispatchOrchestrationCommandWithReceipt,
@@ -597,6 +605,7 @@ export {
   fetchFleetServeReceiptsForStation,
   fetchIndependentReviewReceipts,
   fetchInsights,
+  fetchIntegrationStatus,
   fetchLoadedOrchestrationSessions,
   fetchMessageSearch,
   fetchMonitoringEvents,
@@ -615,6 +624,7 @@ export {
   fetchOrchestrationSessions,
   fetchOwnAccessTokens,
   fetchPeerCredentials,
+  fetchPersonNotifications,
   fetchPluginLifecycleProposal,
   fetchPluginVisibility,
   fetchProjectSessionBoard,
@@ -657,6 +667,8 @@ export {
   type ImportCredentialProfileSnapshotResult,
   type InsightsFilters,
   type IntegrationLifecycleResult,
+  type IntegrationStatus,
+  IntegrationStatusUnsupportedError,
   type IntegrationViewModel,
   type InterruptOrchestrationDelegatedTaskInput,
   inspectOrchestrationSteerInput,
@@ -692,6 +704,7 @@ export {
   type MonitoringAgentStat,
   type MonitoringMetric,
   type MonitoringStatsData,
+  markPersonNotificationRead,
   materializeEngineAgent,
   materializeKitProjectLayout,
   mintOwnAccessToken,
@@ -710,6 +723,9 @@ export {
   OWN_ACCESS_TOKENS_QUERY_KEY,
   type PeerCredentialSummary,
   type PersonalTokenInput,
+  type PersonNotificationMutationInput,
+  type PersonNotificationReadOutcome,
+  type PersonNotificationRequestScope,
   PLUGIN_VISIBILITY_QUERY_KEY,
   type PluginChangelogData,
   type PluginChangelogEntry,
@@ -725,6 +741,7 @@ export {
   type PluginSettingsData,
   PluginVisibilityForbiddenError,
   PROJECT_CHAT_DEFAULTS_QUERY_KEY_PREFIX,
+  PROJECT_CHECKOUT_FRESHNESS_QUERY_KEY_PREFIX,
   PROJECT_RUN_LOCATIONS_QUERY_KEY_PREFIX,
   ProjectIdentityIncarnationMismatchError,
   type ProjectIdentityReadFailure,
@@ -732,6 +749,7 @@ export {
   type ProviderCommandDescriptor,
   type ProviderWorkItem,
   peerCredentialQueries,
+  personNotificationsKey,
   pluginLifecycleTargetName,
   postBoardIntent,
   projectChatDefaultsQueryKey,
@@ -975,6 +993,7 @@ export {
   useCreateWorkflowMutation,
   useCredentialRecoveryQuery,
   useCredentialUsageQuery,
+  useDecideIntegrationTrustReviewMutation,
   useDelegateOrchestrationTaskMutation,
   useDelegationOptionsQuery,
   useDeleteACPConnectionMutation,
@@ -998,6 +1017,7 @@ export {
   useDisconnectIntegrationAccountMutation,
   useDisconnectSshEnvironmentMutation,
   useDismissNotificationMutation,
+  useDismissPersonNotificationMutation,
   useDismissPluginLifecycleProposalMutation,
   useDismissSessionSummaryMutation,
   useDismissTaskLearningMutation,
@@ -1037,6 +1057,7 @@ export {
   useInstallSkillMutation,
   useIntegrationAccountQuery,
   useIntegrationQuery,
+  useIntegrationStatusQuery,
   useIntegrationsQuery,
   useInterruptDelegatedTaskMutation,
   useInvalidateNotifications,
@@ -1067,6 +1088,7 @@ export {
   useLearningSourceObservationQuery,
   useLinkKnowledgeRecordMutation,
   useLoadedOrchestrationSessionsQuery,
+  useMarkPersonNotificationReadMutation,
   useMaterializeEngineAgentMutation,
   useMessageSearchQuery,
   useMigratePreIndexKnowledgeMutation,
@@ -1092,6 +1114,7 @@ export {
   useOrchestrationSessionsQuery,
   useOwnAccessTokensQuery,
   usePeerCredentialsQuery,
+  usePersonNotificationsQuery,
   usePluginChangelogQuery,
   usePluginInstallMutation,
   usePluginLifecycleProposalQuery,
@@ -1112,6 +1135,7 @@ export {
   usePreviewSchedule,
   useProbeSshEnvironmentMutation,
   useProjectChatDefaultsQuery,
+  useProjectCheckoutFreshnessQuery,
   useProjectConversationsQuery,
   useProjectIconCandidatesQuery,
   useProjectIdentityQuery,
@@ -1171,6 +1195,7 @@ export {
   useSaveFeedbackRatingMutation,
   useSaveIntegrationMutation,
   useSaveModelConnectionMutation,
+  useScheduledConversationTargetCapability,
   useSchedulerJobs,
   useSchedulerProviders,
   useSchedulerStats,
@@ -1290,8 +1315,12 @@ export {
 export {
   acknowledgeAttentionItem,
   fetchAttention,
+  snoozeAttentionItem,
+  unsnoozeAttentionItem,
   useAcknowledgeAttentionItemMutation,
   useAttentionQuery,
+  useSnoozeAttentionItemMutation,
+  useUnsnoozeAttentionItemMutation,
 } from './query-domains/attention.js';
 export {
   useBoardQuery,
@@ -1335,6 +1364,10 @@ export {
   usePatchNotificationPreferencesMutation,
   useUpdateNotificationPreferencesMutation,
 } from './query-domains/notificationPreferences.js';
+export {
+  snoozeNotification,
+  useSnoozeNotificationMutation,
+} from './query-domains/notifications.js';
 export {
   peerEnrollmentQueries,
   useCancelPeerEnrollmentMutation,
@@ -1450,6 +1483,7 @@ export {
   fetchTaskReview,
   fetchTaskReviewItem,
   fetchTaskReviewThread,
+  fetchTaskWalkthroughPage,
   TASK_REVIEW_OPENING_PREVIEW_CHARS,
   type TaskCapture,
   type TaskCaptureBrowserSession,
@@ -1476,6 +1510,8 @@ export {
   useTaskReviewItemQuery,
   useTaskReviewQuery,
   useTaskReviewThreadQuery,
+  useTaskWalkthroughsQuery,
+  useTaskWalkthroughVideoQuery,
 } from './query-domains/taskReview';
 export type { TelemetryIncidentLinkMutation } from './query-domains/telemetryCompanion';
 export {

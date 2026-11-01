@@ -65,6 +65,41 @@ function manifest(): Walkthrough {
   };
 }
 describe('Walkthrough boundary', () => {
+  test('retains a validated Task recording and refuses malformed pins and media references', () => {
+    const value = manifest();
+    value.source.commit = 'a'.repeat(40);
+    value.source.recording = {
+      file: 'recording.webm',
+      mediaType: 'video/webm',
+      byteLength: 12,
+      digest: `sha256:${'b'.repeat(64)}`,
+    };
+    expect(parseWalkthrough(value)).toEqual(value);
+    expect(() =>
+      parseWalkthrough({
+        ...value,
+        source: { ...value.source, commit: 'main' },
+      }),
+    ).toThrow('Invalid commit');
+    expect(() =>
+      parseWalkthrough({
+        ...value,
+        source: {
+          ...value.source,
+          recording: { ...value.source.recording, file: '../secret' },
+        },
+      }),
+    ).toThrow('plain file name');
+    expect(() =>
+      parseWalkthrough({
+        ...value,
+        source: {
+          ...value.source,
+          recording: { ...value.source.recording, digest: 'sha256:bad' },
+        },
+      }),
+    ).toThrow('Invalid recording digest');
+  });
   test('round trips all specified event kinds and an empty observed transcript', () => {
     const value = manifest();
     expect(parseWalkthrough(value)).toEqual(value);

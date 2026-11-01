@@ -5,13 +5,15 @@ import {
   engineConnectionId,
   engineId,
 } from '@kontourai/station-contracts/agent-identity';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   cleanup,
   fireEvent,
-  render,
+  render as renderView,
   screen,
   waitFor,
 } from '@testing-library/react';
+import type { ReactElement } from 'react';
 import { useState } from 'react';
 import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
 import { NewChatModal } from '../components/modals/NewChatModal';
@@ -28,6 +30,14 @@ vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
+  // The Station list behind the draft's "on <Station>" line: no saved or
+  // paired Stations, so only this one.
+  useSshEnvironmentsQuery: () => ({ isSuccess: false, isError: false }),
+  usePeerCredentialsQuery: () => ({ isSuccess: false, isError: false }),
+  // The visual-skills Feature Preview on, so the start composer offers them.
+  useFeaturePreviewsQuery: () => ({
+    data: [{ id: 'visual-skills', enabled: true }],
+  }),
   useSkillExperienceInventoryQuery: () => ({
     data: { experiences: [], diagnostics: [] },
     refetch: vi.fn(),
@@ -635,3 +645,12 @@ describe('NewChatModal row hierarchy', () => {
     expect(labels[2]?.className.includes(divided)).toBe(true);
   });
 });
+
+function render(ui: ReactElement) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return renderView(
+    <QueryClientProvider client={client}>{ui}</QueryClientProvider>,
+  );
+}

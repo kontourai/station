@@ -262,7 +262,7 @@ describe('StarterRegistry', () => {
     ).resolves.toMatchObject({
       state: 'started',
       receipt: reference,
-      href: `/schedule?run=${encodeURIComponent(reference.id)}`,
+      href: `/automations?run=${encodeURIComponent(reference.id)}`,
       completion: { state: 'completed' },
       correlation: { state: 'bound', replayed: false },
       replayed: false,

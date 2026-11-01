@@ -266,10 +266,10 @@ policy is changed.
 
 ## Shell quoting and MCP credential issuer advisories (2026-10)
 
-The workspace pins `shell-quote` 1.11.0, `@modelcontextprotocol/client` 2.3.1
-in the root and Shared importer, and `@modelcontextprotocol/sdk` 1.32.1.
+The workspace pins `shell-quote` 1.11.0, `@modelcontextprotocol/client` 2.4.0
+in the root and Shared importer, and `@modelcontextprotocol/sdk` 1.32.2.
 Exact overrides cover transitive client/SDK consumers. The client brings its
-exact core 2.3.1 dependency; server 2.3.1 brings its exact core 2.3.1 dependency.
+exact core 2.4.0 dependency; server 2.4.0 brings its exact core 2.4.0 dependency.
 No Station code imports core directly.
 
 The [shell-quote advisory](https://github.com/advisories/GHSA-pqg4-j6r4-53mv)
@@ -301,6 +301,18 @@ against the new graph. These controls do not establish every transitive
 consumer's remote authorization behavior or prove an attacker reached Station.
 New interactive sign-in trust and direct low-level vendor calls remain
 separate from this advisory's saved-credential binding claim.
+A [configured OAuth client](connections.md#authorization-server-binding) has no
+issuer of its own, so Station uses it only with the issuer the operator
+declares. Every pre-registered client needs one, and a mismatch is refused from
+configuration before a secret, code or verifier leaves Station, independent of
+per-person credentials, disconnects and concurrent sign-ins. The binding
+authority also releases the secret only for the issuer, endpoint and
+integration instance its grant recorded, checked at every token request, so
+no integration writer can redirect it and a recreated integration cannot
+inherit it.
+Dynamic registration without a declared issuer pins the server of its first
+completed sign-in for that resource and refuses others afterwards; only that
+first sign-in is trust-on-first-use, as the connections guide states.
 
 The earlier local audit and hosted receipts retain their observation times:
 these newly disclosed findings do not rewrite those results. Current audit,
@@ -317,6 +329,11 @@ managed entry point bootstraps the exact pnpm version in `package.json`, forces
 an inert install, and validates every installed lifecycle package's locked
 identity and complete hook set before running approved commands. Keep npm for
 script execution and publication; do not use raw npm to install this workspace.
+
+On GitHub Actions, approved native hooks use headers bundled with the running
+Node distribution when available, avoiding a separate header download during
+compilation. An explicit `npm_config_nodedir` takes precedence. Other hosts and
+Node distributions without bundled headers retain node-gyp's normal selection.
 
 `pnpm-workspace.yaml` owns workspace membership, overrides, pinned build
 permissions, and native patches. The retained npm workspace list supports

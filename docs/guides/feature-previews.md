@@ -31,6 +31,12 @@ Omit `defaultEnabled` (the registry defaults to off), or set it to `false`.
 Do not make binding conditional on the enabled choice: the operator must be
 able to discover an offered preview before enabling it.
 
+Built-in UI-only previews such as `task-collaboration` are registered as UI
+consumers in the registry and read through `useSurfaceVisibilityFlags`. That
+preview reveals member presentation in the Task workspace; room admission and
+its server routes remain governed by their independent authority checks. It does
+not turn membership or a Task share on or off.
+
 ```ts
 const preview = featurePreviews.bind({
   id: 'example-capability',
@@ -70,6 +76,14 @@ bypass the UI. Complete the applicable items before shipping:
   uploads, and mutations. An off preview must return the typed refusal below,
   without allocating resources or writing feature state. Retain the ordinary
   access guards; a preview is not an authorization check.
+- **Retained execution maintenance:** a preview may keep narrowly documented
+  operator audit, disable, revoke, cancellation, unknown-effect resolution and
+  archival routes available after it is turned off. They must retain current
+  operator authority and cannot start a provider, create a new grant or enable
+  configuration. The [isolated repair preview](agent-efficiency.md#run-an-isolated-github-repair)
+  uses this exception so disabling work does not make its unknown effects
+  impossible to inspect or settle. New setup/enable writes still select the
+  preview inside the mutation lock.
 - **Station Control MCP tools:** gate tool advertisement/registration where
   appropriate and select again in the handler. A cached tool list or direct
   call must not bypass the switch. Return a tool error (`isError: true` at the

@@ -1,61 +1,41 @@
-/* The composer's context meter (ContextPercentage.tsx). A compact chip in the
-   meta row beside the model picker: a fixed-width track and the rounded share.
-   The track carries its own inline size; a `flex: 1` track inside this
-   shrink-to-fit button resolves to 0px. */
 .context-meter {
-  display: inline-flex;
+  position: relative;
+  display: inline-grid;
+  place-items: center;
   flex: 0 0 auto;
-  align-items: center;
-  gap: var(--k-space-1);
-  min-height: 24px;
-  padding: 0 var(--k-space-2);
-  border: var(--k-border-thin, 1px) solid transparent;
-  border-radius: var(--radius-pill);
+  inline-size: 44px;
+  block-size: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
   background: transparent;
-  color: var(--text-secondary);
-  font: inherit;
-  font-size: var(--text-xs);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  cursor: pointer;
-  transition:
-    background-color var(--motion-fast) var(--ease-standard),
-    color var(--motion-fast) var(--ease-standard);
 }
-
-.context-meter:hover:not(:disabled),
-.context-meter:focus-visible {
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
+.context-meter__ring {
+  position: absolute;
+  inline-size: 40px;
+  block-size: 40px;
+  transform: rotate(-90deg);
 }
-
-.context-meter:focus-visible {
-  outline: var(--k-focus-ring-width, 2px) solid var(--accent-primary);
-  outline-offset: 1px;
-}
-
-.context-meter:disabled {
-  cursor: default;
-}
-
-.context-meter__track {
-  display: block;
-  flex: 0 0 auto;
-  inline-size: 28px;
-  block-size: 4px;
-  overflow: hidden;
-  border-radius: var(--radius-pill);
-  background: var(--border-primary);
-}
-
+.context-meter__track,
 .context-meter__fill {
-  display: block;
-  inline-size: 100%;
-  block-size: 100%;
-  transform-origin: left center;
-  transition: transform var(--motion-slow) var(--ease-standard);
+  fill: none;
+  stroke-width: 2;
 }
-
-:root[dir="rtl"] .context-meter__fill {
-  transform-origin: right center;
+.context-meter__track {
+  stroke: var(--k-line-strong);
+}
+.context-meter__fill {
+  transition: stroke-dasharray var(--motion-base) var(--ease-standard);
+  stroke-linecap: round;
+}
+.context-meter__value {
+  position: relative;
+  font-size: var(--k-text-xs);
+}
+.context-meter:focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 2px;
 }

@@ -175,6 +175,7 @@ export function directTurnSubmissionDigest(
 /** Foreground identity is shared by live sends and their durable inbox placement. */
 export function foregroundTurnSubmissionDigest(input: {
   message: string;
+  mcpPromptOrigin?: import('@kontourai/station-contracts/mcp-prompts').VerifiedMcpPromptOrigin;
   target: ExecutionTarget;
   ambientContext?: string;
   attachments?: ChatAttachmentInput[];
@@ -198,6 +199,9 @@ export function foregroundTurnSubmissionDigest(input: {
       : {}),
     scope: {
       target: input.target,
+      ...(input.mcpPromptOrigin
+        ? { mcpPromptOrigin: input.mcpPromptOrigin }
+        : {}),
       ephemeral: input.ephemeral ?? false,
       expectedInputRequest: input.expectedInputRequest ?? null,
       setApprovalMode: input.setApprovalMode ?? null,

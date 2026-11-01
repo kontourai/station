@@ -85,8 +85,10 @@ import {
   TaskRoomRail,
   TaskRoomResults,
 } from './task-workspace/TaskRoomPage';
+import { TaskSupervisionPanel } from './task-workspace/TaskSupervisionPanel';
 import { TaskTurnReferenceView } from './task-workspace/TaskTurnReferenceView';
 import { TaskUserInputReferences } from './task-workspace/TaskUserInputReferences';
+import { TaskWriteBackSection } from './task-workspace/TaskWriteBackSection';
 import './page-layout.css';
 import './TaskWorkspaceView.css';
 
@@ -104,6 +106,13 @@ type ReferenceKind = 'artifact' | 'receipt' | 'file' | 'external';
 const LazyTaskBasisWorkspacePane = lazy(() =>
   import('../workspace-panes/BasisWorkspacePane').then(
     ({ BasisWorkspacePane }) => ({ default: BasisWorkspacePane }),
+  ),
+);
+const LazyTaskOverviewTimeline = lazy(() =>
+  import('./task-workspace/TaskOverviewTimeline').then(
+    ({ TaskOverviewTimeline }) => ({
+      default: TaskOverviewTimeline,
+    }),
   ),
 );
 const LazyTaskReviewTab = lazy(() =>
@@ -222,7 +231,9 @@ function isTaskNotFound(error: unknown): boolean {
 }
 
 export function TaskWorkspaceView({ taskId }: { taskId: string }) {
-  const reviewEnabled = useSurfaceVisibilityFlags().has('task-review');
+  const previews = useSurfaceVisibilityFlags();
+  const reviewEnabled = previews.has('task-review');
+  const chatAppsEnabled = previews.has('chat-apps');
   const { apiBase } = useApiBase();
   const requestScope = useHostRequestAuthorityScope();
   // Navigation survives authority verification remounts; protected pane state does not.
@@ -299,6 +310,8 @@ export function TaskWorkspaceView({ taskId }: { taskId: string }) {
           projectSlug={taskProject.slug}
           projectId={taskProject.id}
           reviewEnabled={reviewEnabled}
+          collaborationEnabled={previews.has('task-collaboration')}
+          chatAppsEnabled={chatAppsEnabled}
           tab={tab}
           setTab={setTab}
         />
@@ -433,6 +446,8 @@ function TaskWorkspaceContent({
   projectSlug,
   projectId,
   reviewEnabled,
+  collaborationEnabled,
+  chatAppsEnabled,
   tab,
   setTab,
 }: {
@@ -441,9 +456,13 @@ function TaskWorkspaceContent({
   projectSlug: string;
   projectId: string;
   reviewEnabled: boolean;
+  collaborationEnabled: boolean;
+  chatAppsEnabled: boolean;
   tab: string;
   setTab: (tab: string) => void;
 }) {
+  const supervisionAuthority = useHostRequestAuthorityScope();
+  const { updateParams } = useNavigationActions();
   const references = useMemo(() => taskReferences(graph), [graph]);
   // AW-4: the list is derived from what this Station has actually
   // installed, not from a hardcoded filter. An optional experience appears
@@ -535,6 +554,7 @@ function TaskWorkspaceContent({
     <div className="page page--full task-workspace">
       <TaskRoomHeader
         task={graph.task}
+        collaborationEnabled={collaborationEnabled}
         projectSlug={projectSlug}
         projectId={projectId}
         onDetails={() => setTab('Details')}
@@ -631,7 +651,13 @@ function TaskWorkspaceContent({
         <TaskRoomEditorPane taskId={taskId} startInPreview />
         <TaskMemoryPanel taskId={graph.task.id} />
         {graph.task.status === 'done' ? (
-          <TaskLearningPanel taskId={graph.task.id} />
+          <TaskLearningPanel
+            taskId={graph.task.id}
+            projectId={projectId}
+            projectSlug={projectSlug}
+            taskCreatedAt={graph.task.createdAt}
+            authority={supervisionAuthority ?? undefined}
+          />
         ) : null}
       </div>
       <div
@@ -642,6 +668,31 @@ function TaskWorkspaceContent({
         aria-labelledby="task-tab-Overview"
       >
         <TaskRoomRail task={graph.task} onBrief={() => setTab('Plan')} />
+        {supervisionAuthority && (
+          <TaskSupervisionPanel
+            taskId={graph.task.id}
+            taskCreatedAt={graph.task.createdAt}
+            projectId={graph.task.projectId}
+            authority={supervisionAuthority}
+          />
+        )}
+        {reviewEnabled && (
+          <Suspense fallback={<SkeletonBlock label="Loading Timeline" />}>
+            <LazyTaskOverviewTimeline
+              taskId={graph.task.id}
+              taskCreatedAt={graph.task.createdAt}
+              visible={tab === 'Overview'}
+              onOpenCapture={(id) =>
+                updateParams({
+                  taskView: 'review',
+                  reviewKind: 'capture',
+                  reviewItem: id,
+                  reviewThread: null,
+                })
+              }
+            />
+          </Suspense>
+        )}
         <TaskRelationships task={graph.task} kind="children" />
         <div id="task-deliverables">
           <TaskRoomResults task={graph.task} />
@@ -663,6 +714,12 @@ function TaskWorkspaceContent({
         id="task-panel-Details"
         aria-labelledby="task-tab-Details"
       >
+        {chatAppsEnabled && tab === 'Details' && (
+          <TaskWriteBackSection
+            taskId={taskId}
+            taskCreatedAt={graph.task.createdAt}
+          />
+        )}
         <details className="task-workspace__record-details">
           <summary>Task identity and workspace</summary>
           <TaskIdentitySection task={graph.task} />

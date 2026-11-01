@@ -36,8 +36,8 @@ import {
 import type { OrchestrationEvent, OrchestrationSnapshotPayload } from './types';
 
 interface OwnedStream {
-  authorityKey?: string;
   connection: FetchSseConnection;
+  legacyGeneral?: FetchSseConnection;
   /** Waiting out a terminal (401/403) stop — see `onTerminal` below. */
   parked: boolean;
   /**
@@ -120,6 +120,10 @@ const ORCHESTRATION_STREAM_STALL_TIMEOUT_MS = 75_000;
  * when the page merely comes back to the foreground.
  */
 const requestedBases = new Set<string>();
+const owners = new Map<string, number>();
+const generalOwners = new Map<string, number>();
+const streamAuthorities = new Map<string, string | undefined>();
+const streamModes = new Map<string, boolean>();
 let recoveryListenersInstalled = false;
 let hiddenSince: number | undefined;
 /** apiBases whose chats this document has already seeded from a snapshot. */
@@ -134,7 +138,7 @@ function notifyOrchestrationAuthorityChanged(apiBase: string): void {
   if (owned && !owned.ended && !owned.connection.signal.aborted) {
     owned.connection.restart();
   } else if (requestedBases.has(apiBase)) {
-    ensureOrchestrationEventStream(apiBase);
+    connectOrchestrationEventStream(apiBase);
   }
 }
 
@@ -145,7 +149,7 @@ export { registerOrchestrationStreamQueryClient };
 
 export function resyncOrchestrationEventStream(apiBase: string): void {
   const owned = activeSources.get(apiBase);
-  if (owned?.parked) ensureOrchestrationEventStream(apiBase);
+  if (owned?.parked) connectOrchestrationEventStream(apiBase);
   else notifyOrchestrationAuthorityChanged(apiBase);
 }
 
@@ -155,7 +159,8 @@ function reensureRequestedStreams(): void {
     true
   )
     return;
-  for (const apiBase of requestedBases) ensureOrchestrationEventStream(apiBase);
+  for (const apiBase of requestedBases)
+    connectOrchestrationEventStream(apiBase);
 }
 
 function recoverAfterVisibilityChange(): void {
@@ -174,6 +179,27 @@ function recoverAfterVisibilityChange(): void {
   reensureRequestedStreams();
 }
 
+function authorityChanged(event: Event): void {
+  notifyOrchestrationAuthorityChanged((event as CustomEvent<string>).detail);
+}
+
+function removeRecoveryListeners(): void {
+  if (!recoveryListenersInstalled) return;
+  recoveryListenersInstalled = false;
+  hiddenSince = undefined;
+  globalThis.document?.removeEventListener(
+    'visibilitychange',
+    recoverAfterVisibilityChange,
+  );
+  globalThis.window?.removeEventListener('focus', reensureRequestedStreams);
+  globalThis.window?.removeEventListener('online', reensureRequestedStreams);
+  globalThis.window?.removeEventListener('pageshow', reensureRequestedStreams);
+  globalThis.window?.removeEventListener(
+    'station:orchestration-authority-change',
+    authorityChanged,
+  );
+}
+
 function installRecoveryListeners(): void {
   if (recoveryListenersInstalled) return;
   recoveryListenersInstalled = true;
@@ -190,10 +216,7 @@ function installRecoveryListeners(): void {
   scope.window?.addEventListener('pageshow', reensureRequestedStreams);
   scope.window?.addEventListener(
     'station:orchestration-authority-change',
-    (event) =>
-      notifyOrchestrationAuthorityChanged(
-        (event as CustomEvent<string>).detail,
-      ),
+    authorityChanged,
   );
 }
 
@@ -208,8 +231,8 @@ function installRecoveryListeners(): void {
  * failure. The chip and the reason were reading two different sources.
  *
  * The fix is to keep the one derivation current, not to add a second local
- * fold. Only a turn-boundary event triggers it, at most once a second, so a
- * chatty stream cannot turn this into a refetch loop.
+ * fold. Only an event in the list below triggers it, at most once a second,
+ * so a chatty stream cannot turn this into a refetch loop.
  *
  * #2310: `turn.started` is a boundary too. A session nothing has been sent to
  * reads as a Draft (the server's lineage fold), outside the live lanes, and its
@@ -221,6 +244,12 @@ function installRecoveryListeners(): void {
  * and the authority query subtree register their client on mount, so list
  * refresh remains available without a mounted dock. #2309 Phase B, a server-pushed conversation
  * activity record, supersedes this.
+ *
+ * A blocking request opening or resolving moves the session in and out of
+ * `review_pending` (the server folds `pendingReview` from these two events),
+ * and nothing else may follow: a resolved approval resumes the same turn with
+ * tool and content frames only. Without them here the inbox kept a resolved
+ * approval in "Needs you" until some later boundary or the 60s poll.
  */
 const SESSION_READ_MODEL_FACT_METHODS: ReadonlySet<string> = new Set([
   'session.started',
@@ -228,6 +257,8 @@ const SESSION_READ_MODEL_FACT_METHODS: ReadonlySet<string> = new Set([
   'session.state-changed',
   'child-work.updated',
   'turn.started',
+  'request.opened',
+  'request.resolved',
   'runtime.error',
   'session.exited',
   'turn.completed',
@@ -235,15 +266,73 @@ const SESSION_READ_MODEL_FACT_METHODS: ReadonlySet<string> = new Set([
 ]);
 const SESSION_READ_MODEL_REFRESH_WINDOW_MS = 1000;
 
+/**
+ * #4266: events after which a conversation can be at rest. The inventory
+ * carries the finish time Home and the inbox sort finished work by; a copy
+ * read while the work ran holds its start time instead, so it is re-read,
+ * at most once per {@link CONVERSATION_INVENTORY_REFRESH_WINDOW_MS}: the read
+ * refetches every loaded inventory page, and a busy Station ends turns
+ * often. The live row's own finish time covers the wait.
+ */
+const CONVERSATION_INVENTORY_REST_METHODS: ReadonlySet<string> = new Set([
+  'runtime.error',
+  'session.exited',
+  'turn.completed',
+  'turn.aborted',
+]);
+const CONVERSATION_INVENTORY_REFRESH_WINDOW_MS = 5000;
+
+/**
+ * Re-reads the active conversation inventory for `apiBase`: now when the
+ * window has passed, else once at its end, however many turns end inside
+ * it. The client is resolved when it fires, as the session refresh does.
+ */
+function requestConversationInventoryRefresh(apiBase: string): void {
+  const state = sessionReadModelRefreshState(apiBase);
+  if (state.inventoryDeferred !== undefined) return;
+  if (state.inventoryAwaitingSettle !== undefined) return;
+  const run = () => {
+    state.inventoryDeferred = undefined;
+    const client = currentStreamQueryClient(apiBase);
+    if (!client) return;
+    const queryKey = ['conversation-inventory'];
+    if (client.isFetching({ queryKey, type: 'active' }) > 0) {
+      const stop = client.getQueryCache().subscribe(() => {
+        if (client.isFetching({ queryKey, type: 'active' }) > 0) return;
+        stop();
+        state.inventoryAwaitingSettle = undefined;
+        requestConversationInventoryRefresh(apiBase);
+      });
+      state.inventoryAwaitingSettle = stop;
+      return;
+    }
+    state.inventoryLastAt = Date.now();
+    void client.invalidateQueries(
+      { queryKey, type: 'active' },
+      { cancelRefetch: false },
+    );
+  };
+  const elapsed = Date.now() - state.inventoryLastAt;
+  if (elapsed >= CONVERSATION_INVENTORY_REFRESH_WINDOW_MS) run();
+  else
+    state.inventoryDeferred = setTimeout(
+      run,
+      CONVERSATION_INVENTORY_REFRESH_WINDOW_MS - elapsed,
+    );
+}
+
 function refreshSessionReadModelOnFact(
   apiBase: string,
   event: OrchestrationEvent,
 ): void {
   if (!SESSION_READ_MODEL_FACT_METHODS.has(event.method)) return;
-  void currentStreamQueryClient(apiBase)?.invalidateQueries(
+  const client = currentStreamQueryClient(apiBase);
+  void client?.invalidateQueries(
     { queryKey: ['conversation-inbox', apiBase], type: 'active' },
     { cancelRefetch: false },
   );
+  if (CONVERSATION_INVENTORY_REST_METHODS.has(event.method))
+    requestConversationInventoryRefresh(apiBase);
   requestSessionReadModelRefresh(apiBase);
 }
 
@@ -330,26 +419,94 @@ export function resetSessionReadModelRefreshForTests(): void {
  * invalidation, and `applyOrchestrationSnapshot`'s reconnect-fallback
  * refetch (archive#1225 — the `toolMappings` cache lookup, see
  * `rehydrateChatSession.ts`) all resolve the apiBase's current registration
- * when they run. Calls without a client (the recovery re-ensure below)
- * register nothing and return a no-op.
+ * when they run. Every call owns a subscription and must release it; the
+ * last release closes the transport and removes its recovery registration.
  */
 export function ensureOrchestrationEventStream(
   apiBase: string,
   queryClient?: QueryClient,
   authorityKey?: string,
+  general = false,
+  sharedRealtime = false,
 ): () => void {
-  const release = queryClient
+  const replacedAuthority =
+    authorityKey !== undefined &&
+    streamAuthorities.has(apiBase) &&
+    streamAuthorities.get(apiBase) !== authorityKey;
+  if (replacedAuthority) {
+    owners.delete(apiBase);
+    generalOwners.delete(apiBase);
+  }
+  const releaseClient = queryClient
     ? registerOrchestrationStreamQueryClient(apiBase, queryClient, authorityKey)
     : () => {};
+  owners.set(apiBase, (owners.get(apiBase) ?? 0) + 1);
+  if (general)
+    generalOwners.set(apiBase, (generalOwners.get(apiBase) ?? 0) + 1);
   requestedBases.add(apiBase);
   installRecoveryListeners();
+  if (
+    !streamModes.has(apiBase) ||
+    (authorityKey !== undefined &&
+      streamAuthorities.get(apiBase) !== authorityKey)
+  )
+    streamModes.set(apiBase, sharedRealtime);
+  connectOrchestrationEventStream(apiBase, authorityKey);
+  if (general && !streamModes.get(apiBase)) startLegacyGeneral(apiBase);
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    releaseClient();
+    if (
+      authorityKey !== undefined &&
+      streamAuthorities.get(apiBase) !== authorityKey
+    )
+      return;
+    if (general) {
+      const count = (generalOwners.get(apiBase) ?? 1) - 1;
+      if (count > 0) generalOwners.set(apiBase, count);
+      else {
+        generalOwners.delete(apiBase);
+        const owned = activeSources.get(apiBase);
+        owned?.legacyGeneral?.close();
+        if (owned) owned.legacyGeneral = undefined;
+      }
+    }
+    const remaining = (owners.get(apiBase) ?? 1) - 1;
+    if (remaining > 0) {
+      owners.set(apiBase, remaining);
+      return;
+    }
+    owners.delete(apiBase);
+    requestedBases.delete(apiBase);
+    streamModes.delete(apiBase);
+    const owned = activeSources.get(apiBase);
+    if (owned) {
+      activeSources.delete(apiBase);
+      clearDeferredParkedRetry(owned);
+      owned.legacyGeneral?.close();
+      owned.connection.close();
+    }
+    if (owners.size === 0) removeRecoveryListeners();
+  };
+}
+
+function connectOrchestrationEventStream(
+  apiBase: string,
+  authorityKey?: string,
+): void {
   let existing = activeSources.get(apiBase);
   if (
-    existing &&
     authorityKey !== undefined &&
-    existing.authorityKey !== authorityKey
+    streamAuthorities.has(apiBase) &&
+    streamAuthorities.get(apiBase) !== authorityKey
   ) {
-    existing.connection.close();
+    if (existing) {
+      clearDeferredParkedRetry(existing);
+      existing.legacyGeneral?.close();
+      existing.connection.close();
+    }
     activeSources.delete(apiBase);
     setStreamConnectionState(apiBase, 'interrupted');
     appliedCursors.delete(apiBase);
@@ -358,6 +515,8 @@ export function ensureOrchestrationEventStream(
     clearSequencedLiveEvents(apiBase);
     existing = undefined;
   }
+  if (authorityKey !== undefined || !streamAuthorities.has(apiBase))
+    streamAuthorities.set(apiBase, authorityKey);
   if (existing && !existing.ended && !existing.connection.signal.aborted) {
     // A parked stream is alive but waiting for a credential change that may
     // have arrived by a path that never announced it. Ask again at most once
@@ -375,7 +534,7 @@ export function ensureOrchestrationEventStream(
           wait,
         );
     }
-    return release;
+    return;
   }
   if (existing) activeSources.delete(apiBase);
   // archive#1092: dedup guard against duplicate/overlapping frames on a
@@ -405,244 +564,260 @@ export function ensureOrchestrationEventStream(
   let hasReceivedSnapshot = basesWithSnapshot.has(apiBase);
   let receiving = false;
   sharedOrchestrationStreamRetrying(apiBase);
-  const authenticatedStream = fetchSSE(`${apiBase}/api/orchestration/events`, {
-    authentication: 'required',
-    initialLastEventId,
-    // station#2301: lets the server's stream open/close lines say WHICH
-    // document connected — see `clientDocumentSession.ts`.
-    headers: {
-      'X-Station-Client-Session': CLIENT_DOCUMENT_SESSION_ID,
-      ...(streamEpochs.has(apiBase)
-        ? { 'X-Station-Stream-Epoch': streamEpochs.get(apiBase)! }
-        : {}),
-    },
-    // archive#1848: a ceiling equal to the initial delay is not a backoff
-    // ladder — it is a fixed 2s poll that never decays, so a server that is
-    // down, restarting, or refusing keeps receiving ~30 requests/minute from
-    // every open client for as long as the app is open. The ceiling is safe
-    // to raise only because `fetchSSE` now restarts the ladder after an
-    // attempt that actually delivered frames, so an ordinary blip on a
-    // healthy stream still reconnects in 2s rather than inheriting a
-    // ratcheted-up delay.
-    retryDelayMs: 2000,
-    maxRetryDelayMs: 30_000,
-    stallTimeoutMs: ORCHESTRATION_STREAM_STALL_TIMEOUT_MS,
-    onOpen: (response) => {
-      if (
-        activeSources.get(apiBase) !== owned ||
-        owned.connection.signal.aborted
-      )
-        return;
-      sharedOrchestrationStreamOpened(apiBase, response);
-    },
-    onMessage: (raw) => {
-      if (
-        activeSources.get(apiBase) !== owned ||
-        owned.connection.signal.aborted
-      )
-        return;
-      sharedOrchestrationStreamMessage(apiBase, raw);
-      if (!receiving) {
-        recordReplayConnection(apiBase, 'receiving');
-        setStreamConnectionState(apiBase, 'receiving');
-        receiving = true;
-      }
-      if (raw.event === ORCHESTRATION_STREAM_CAUGHT_UP_EVENT) {
-        // station#2530 review D6: an empty or malformed body is a legitimate
-        // wire shape (an older server, a rolling deploy mid-response) — it
-        // means no reconcile payload, never a reason to throw inside the SSE
-        // handler and drop the connection's whole message loop.
-        let caughtUp: Partial<OrchestrationSnapshotPayload> = {};
-        if (raw.data) {
-          try {
-            caughtUp = JSON.parse(
-              raw.data,
-            ) as Partial<OrchestrationSnapshotPayload>;
-          } catch {
-            caughtUp = {};
-          }
+  const authenticatedStream = fetchSSE(
+    `${apiBase}/api/orchestration/events${streamModes.get(apiBase) ? '?includeGeneral=1' : ''}`,
+    {
+      authentication: 'required',
+      initialLastEventId,
+      // station#2301: lets the server's stream open/close lines say WHICH
+      // document connected — see `clientDocumentSession.ts`.
+      headers: {
+        'X-Station-Client-Session': CLIENT_DOCUMENT_SESSION_ID,
+        ...(streamEpochs.has(apiBase)
+          ? { 'X-Station-Stream-Epoch': streamEpochs.get(apiBase)! }
+          : {}),
+      },
+      // archive#1848: a ceiling equal to the initial delay is not a backoff
+      // ladder — it is a fixed 2s poll that never decays, so a server that is
+      // down, restarting, or refusing keeps receiving ~30 requests/minute from
+      // every open client for as long as the app is open. The ceiling is safe
+      // to raise only because `fetchSSE` now restarts the ladder after an
+      // attempt that actually delivered frames, so an ordinary blip on a
+      // healthy stream still reconnects in 2s rather than inheriting a
+      // ratcheted-up delay.
+      retryDelayMs: 2000,
+      maxRetryDelayMs: 30_000,
+      stallTimeoutMs: ORCHESTRATION_STREAM_STALL_TIMEOUT_MS,
+      onOpen: (response) => {
+        if (
+          activeSources.get(apiBase) !== owned ||
+          owned.connection.signal.aborted
+        )
+          return;
+        sharedOrchestrationStreamOpened(apiBase, response);
+      },
+      onMessage: (raw) => {
+        if (
+          activeSources.get(apiBase) !== owned ||
+          owned.connection.signal.aborted
+        )
+          return;
+        if (raw.event !== 'station:general' || streamModes.get(apiBase))
+          sharedOrchestrationStreamMessage(apiBase, raw);
+        if (raw.event === 'station:general') return;
+        if (!receiving) {
+          recordReplayConnection(apiBase, 'receiving');
+          setStreamConnectionState(apiBase, 'receiving');
+          receiving = true;
         }
-        if (caughtUp.sessions) {
-          applyOrchestrationSnapshot(caughtUp as OrchestrationSnapshotPayload, {
+        if (raw.event === ORCHESTRATION_STREAM_CAUGHT_UP_EVENT) {
+          // station#2530 review D6: an empty or malformed body is a legitimate
+          // wire shape (an older server, a rolling deploy mid-response) — it
+          // means no reconcile payload, never a reason to throw inside the SSE
+          // handler and drop the connection's whole message loop.
+          let caughtUp: Partial<OrchestrationSnapshotPayload> = {};
+          if (raw.data) {
+            try {
+              caughtUp = JSON.parse(
+                raw.data,
+              ) as Partial<OrchestrationSnapshotPayload>;
+            } catch {
+              caughtUp = {};
+            }
+          }
+          if (caughtUp.sessions) {
+            applyOrchestrationSnapshot(
+              caughtUp as OrchestrationSnapshotPayload,
+              {
+                apiBase,
+                isReconnectFallback: hasReceivedSnapshot,
+                queryClient: currentStreamQueryClient(apiBase),
+              },
+            );
+            const client = currentStreamQueryClient(apiBase);
+            if (client)
+              for (const session of caughtUp.sessions) {
+                if (session.conversationActivity)
+                  workObservation(client).streamObserved(
+                    session.conversationActivity,
+                  );
+              }
+            hasReceivedSnapshot = true;
+            basesWithSnapshot.add(apiBase);
+          }
+          if (parseStreamSequence(raw.id) !== undefined) {
+            cursor.adopt(raw.id);
+            appliedCursors.set(apiBase, raw.id!);
+          }
+          requestSessionReadModelRefresh(apiBase);
+          setStreamConnectionState(apiBase, 'caught-up');
+          recordReplayConnection(apiBase, 'caught-up');
+        } else if (raw.event === 'orchestration:snapshot') {
+          // A replacement snapshot already contains every durable delta. Reveal
+          // locally held text first, then let the snapshot become authoritative.
+          settleSemanticDeliveryBuffer(apiBase);
+          // A snapshot always replaces local state — adopt its cursor
+          // unconditionally rather than gating it through `admit`.
+          const payload = JSON.parse(raw.data) as OrchestrationSnapshotPayload;
+          const previousEpoch = streamEpochs.get(apiBase);
+          if (
+            payload.epoch &&
+            previousEpoch &&
+            payload.epoch !== previousEpoch
+          ) {
+            activeChatsStore.clearConversationActivity();
+            clearSequencedLiveEvents(apiBase);
+            const client = currentStreamQueryClient(apiBase);
+            if (client) workObservation(client).resetStreamEpoch();
+          }
+          if (payload.epoch) streamEpochs.set(apiBase, payload.epoch);
+          cursor.adopt(raw.id);
+          if (parseStreamSequence(raw.id) !== undefined)
+            appliedCursors.set(apiBase, raw.id!);
+          recordReplaySnapshot(apiBase, payload, hasReceivedSnapshot);
+          applyOrchestrationSnapshot(payload, {
             apiBase,
             isReconnectFallback: hasReceivedSnapshot,
             queryClient: currentStreamQueryClient(apiBase),
           });
           const client = currentStreamQueryClient(apiBase);
           if (client)
-            for (const session of caughtUp.sessions) {
+            for (const session of payload.sessions) {
               if (session.conversationActivity)
                 workObservation(client).streamObserved(
                   session.conversationActivity,
                 );
             }
+          // Overflow compaction replaces non-durable list and inbox hints too.
+          if (client) {
+            const currentAuthority = currentStreamAuthorityKey(apiBase, client);
+            const scope =
+              currentAuthority === undefined
+                ? [apiBase]
+                : [apiBase, currentAuthority];
+            void client.invalidateQueries({
+              queryKey: ['orchestration-sessions', ...scope],
+            });
+            void client.invalidateQueries({
+              queryKey: ['conversation-inbox', ...scope],
+            });
+          }
           hasReceivedSnapshot = true;
           basesWithSnapshot.add(apiBase);
-        }
-        if (parseStreamSequence(raw.id) !== undefined) {
-          cursor.adopt(raw.id);
-          appliedCursors.set(apiBase, raw.id!);
-        }
-        requestSessionReadModelRefresh(apiBase);
-        setStreamConnectionState(apiBase, 'caught-up');
-        recordReplayConnection(apiBase, 'caught-up');
-      } else if (raw.event === 'orchestration:snapshot') {
-        // A replacement snapshot already contains every durable delta. Reveal
-        // locally held text first, then let the snapshot become authoritative.
-        settleSemanticDeliveryBuffer(apiBase);
-        // A snapshot always replaces local state — adopt its cursor
-        // unconditionally rather than gating it through `admit`.
-        const payload = JSON.parse(raw.data) as OrchestrationSnapshotPayload;
-        const previousEpoch = streamEpochs.get(apiBase);
-        if (payload.epoch && previousEpoch && payload.epoch !== previousEpoch) {
-          activeChatsStore.clearConversationActivity();
-          clearSequencedLiveEvents(apiBase);
+        } else if (raw.event === ORCHESTRATION_STREAM_ACTIVITY_EVENT) {
+          const payload = JSON.parse(raw.data) as {
+            conversation?: import('@kontourai/station-contracts/orchestration').OrchestrationConversationStreamBinding;
+          };
+          activeChatsStore.applyConversationActivity(
+            payload.conversation?.activity,
+          );
           const client = currentStreamQueryClient(apiBase);
-          if (client) workObservation(client).resetStreamEpoch();
+          if (client && payload.conversation?.activity)
+            workObservation(client).streamObserved(
+              payload.conversation.activity,
+            );
+        } else if (raw.event === SERVER_EVENTS.ORCHESTRATION_EVENT) {
+          if (!cursor.admit(raw.id)) return;
+          if (parseStreamSequence(raw.id) !== undefined)
+            appliedCursors.set(apiBase, raw.id!);
+          // archive#1410: the frame is a wrapper, not a bare event — the
+          // server attaches a completed turn's provenance envelope as a
+          // SIBLING of `event` so the canonical event itself stays untouched.
+          // Typed `unknown` all the way to the render boundary, which is the
+          // only place that decides whether this build can read it.
+          const payload = JSON.parse(raw.data) as {
+            event: OrchestrationEvent;
+            provenance?: unknown;
+            conversation?: import('@kontourai/station-contracts/orchestration').OrchestrationConversationStreamBinding;
+          };
+          handleOrchestrationEvent(
+            apiBase,
+            payload.event,
+            payload.provenance,
+            payload.conversation,
+            parseStreamSequence(raw.id),
+          );
+          const client = currentStreamQueryClient(apiBase);
+          if (client && payload.conversation?.activity)
+            workObservation(client).streamObserved(
+              payload.conversation.activity,
+            );
+          refreshSessionReadModelOnFact(apiBase, payload.event);
+        } else if (
+          raw.event ===
+            SERVER_EVENTS.ORCHESTRATION_SESSION_PROJECTION_UPDATED ||
+          raw.event === SERVER_EVENTS.ORCHESTRATION_SESSIONS_CHANGED
+        ) {
+          // archive#4054: this frame carries no claim beyond "re-read the
+          // server projection". In particular, the client must not turn
+          // `lastEventAt` into a second silence detector; the watchdog's
+          // narrower progress derivation is serialized on that projection.
+          requestSessionReadModelRefresh(apiBase);
         }
-        if (payload.epoch) streamEpochs.set(apiBase, payload.epoch);
-        cursor.adopt(raw.id);
-        if (parseStreamSequence(raw.id) !== undefined)
-          appliedCursors.set(apiBase, raw.id!);
-        recordReplaySnapshot(apiBase, payload, hasReceivedSnapshot);
-        applyOrchestrationSnapshot(payload, {
-          apiBase,
-          isReconnectFallback: hasReceivedSnapshot,
-          queryClient: currentStreamQueryClient(apiBase),
-        });
-        const client = currentStreamQueryClient(apiBase);
-        if (client)
-          for (const session of payload.sessions) {
-            if (session.conversationActivity)
-              workObservation(client).streamObserved(
-                session.conversationActivity,
-              );
-          }
-        // Overflow compaction replaces non-durable list and inbox hints too.
-        if (client) {
-          const currentAuthority = currentStreamAuthorityKey(apiBase, client);
-          const scope =
-            currentAuthority === undefined
-              ? [apiBase]
-              : [apiBase, currentAuthority];
-          void client.invalidateQueries({
-            queryKey: ['orchestration-sessions', ...scope],
-          });
-          void client.invalidateQueries({
-            queryKey: ['conversation-inbox', ...scope],
-          });
-        }
-        hasReceivedSnapshot = true;
-        basesWithSnapshot.add(apiBase);
-      } else if (raw.event === ORCHESTRATION_STREAM_ACTIVITY_EVENT) {
-        const payload = JSON.parse(raw.data) as {
-          conversation?: import('@kontourai/station-contracts/orchestration').OrchestrationConversationStreamBinding;
-        };
-        activeChatsStore.applyConversationActivity(
-          payload.conversation?.activity,
-        );
-        const client = currentStreamQueryClient(apiBase);
-        if (client && payload.conversation?.activity)
-          workObservation(client).streamObserved(payload.conversation.activity);
-      } else if (raw.event === SERVER_EVENTS.ORCHESTRATION_EVENT) {
-        if (!cursor.admit(raw.id)) return;
-        if (parseStreamSequence(raw.id) !== undefined)
-          appliedCursors.set(apiBase, raw.id!);
-        // archive#1410: the frame is a wrapper, not a bare event — the
-        // server attaches a completed turn's provenance envelope as a
-        // SIBLING of `event` so the canonical event itself stays untouched.
-        // Typed `unknown` all the way to the render boundary, which is the
-        // only place that decides whether this build can read it.
-        const payload = JSON.parse(raw.data) as {
-          event: OrchestrationEvent;
-          provenance?: unknown;
-          conversation?: import('@kontourai/station-contracts/orchestration').OrchestrationConversationStreamBinding;
-        };
-        handleOrchestrationEvent(
-          apiBase,
-          payload.event,
-          payload.provenance,
-          payload.conversation,
-          parseStreamSequence(raw.id),
-        );
-        const client = currentStreamQueryClient(apiBase);
-        if (client && payload.conversation?.activity)
-          workObservation(client).streamObserved(payload.conversation.activity);
-        refreshSessionReadModelOnFact(apiBase, payload.event);
-      } else if (
-        raw.event === SERVER_EVENTS.ORCHESTRATION_SESSION_PROJECTION_UPDATED ||
-        raw.event === SERVER_EVENTS.ORCHESTRATION_SESSIONS_CHANGED
-      ) {
-        // archive#4054: this frame carries no claim beyond "re-read the
-        // server projection". In particular, the client must not turn
-        // `lastEventAt` into a second silence detector; the watchdog's
-        // narrower progress derivation is serialized on that projection.
-        requestSessionReadModelRefresh(apiBase);
-      }
+      },
+      // `fetchSSE` owns transient retry. Keep its single-flight entry until it
+      // reaches a terminal stop: deleting it here makes a remount during the
+      // backoff window create a second stream while this one is still live and
+      // scheduled to reconnect. Both streams then replay and apply the same
+      // orchestration events.
+      onError: (error) => {
+        if (
+          activeSources.get(apiBase) !== owned ||
+          owned.connection.signal.aborted
+        )
+          return;
+        sharedOrchestrationStreamFailed(apiBase, error);
+        // Do not leave the last partial answer invisible during retry/backoff.
+        settleSemanticDeliveryBuffer(apiBase, false);
+        receiving = false;
+        if (setStreamConnectionState(apiBase, 'interrupted'))
+          recordReplayConnection(apiBase, 'interrupted');
+      },
+      // station#2301: a TERMINAL (401/403) failure parks this stream IN PLACE,
+      // still registered, until the SDK's origin-scoped credential wake
+      // (`notifyCredentialChanged`, fired by `ApiBaseContext` when the saved
+      // credential changes) or an explicit `retry()` resumes it. It used to
+      // `close()` and drop the entry instead, which aborted before the SDK
+      // could register that wake — so fixing the credential recovered nothing,
+      // and the dock sat on "Connection needs attention" until an app restart.
+      //
+      // archive#1094's concern still holds and is why the entry is KEPT: a
+      // parked stream that had been dropped from `activeSources` would be an
+      // orphan — unreachable to close, yet woken by a credential change to
+      // replay against its stale cursor beside whatever stream a later ensure
+      // created. Keeping it registered makes it the one owner, so no second
+      // stream is ever created while it waits.
+      //
+      // Resuming in place keeps this stream's cursor. That assumes the new
+      // credential is the same principal's; if it is not, the server still
+      // gates every replayed event by the NEW request's authority.
+      onTerminal: (error) => {
+        if (
+          activeSources.get(apiBase) !== owned ||
+          owned.connection.signal.aborted
+        )
+          return;
+        sharedOrchestrationStreamFailed(apiBase, error, true);
+        // fetchSSE invokes onError first. Cancel its deferred transient flush:
+        // a terminal 401/403 means authority was lost, so hidden content is
+        // discarded rather than projected into a later replacement owner.
+        settleSemanticDeliveryBuffer(apiBase, true);
+        recordReplayConnection(apiBase, 'closed');
+        setStreamConnectionState(apiBase, 'closed');
+        owned.parked = true;
+        // The floor counts from the rejection, so the first recovery signal
+        // after a 401 does not immediately repeat it.
+        owned.lastParkedRetryAt = monotonicNow();
+      },
+      onRetry: () => {
+        sharedOrchestrationStreamRetrying(apiBase);
+        // A deferred retry still pending re-checks `parked` before it fires.
+        owned.parked = false;
+      },
     },
-    // `fetchSSE` owns transient retry. Keep its single-flight entry until it
-    // reaches a terminal stop: deleting it here makes a remount during the
-    // backoff window create a second stream while this one is still live and
-    // scheduled to reconnect. Both streams then replay and apply the same
-    // orchestration events.
-    onError: (error) => {
-      if (
-        activeSources.get(apiBase) !== owned ||
-        owned.connection.signal.aborted
-      )
-        return;
-      sharedOrchestrationStreamFailed(apiBase, error);
-      // Do not leave the last partial answer invisible during retry/backoff.
-      settleSemanticDeliveryBuffer(apiBase, false);
-      receiving = false;
-      if (setStreamConnectionState(apiBase, 'interrupted'))
-        recordReplayConnection(apiBase, 'interrupted');
-    },
-    // station#2301: a TERMINAL (401/403) failure parks this stream IN PLACE,
-    // still registered, until the SDK's origin-scoped credential wake
-    // (`notifyCredentialChanged`, fired by `ApiBaseContext` when the saved
-    // credential changes) or an explicit `retry()` resumes it. It used to
-    // `close()` and drop the entry instead, which aborted before the SDK
-    // could register that wake — so fixing the credential recovered nothing,
-    // and the dock sat on "Connection needs attention" until an app restart.
-    //
-    // archive#1094's concern still holds and is why the entry is KEPT: a
-    // parked stream that had been dropped from `activeSources` would be an
-    // orphan — unreachable to close, yet woken by a credential change to
-    // replay against its stale cursor beside whatever stream a later ensure
-    // created. Keeping it registered makes it the one owner, so no second
-    // stream is ever created while it waits.
-    //
-    // Resuming in place keeps this stream's cursor. That assumes the new
-    // credential is the same principal's; if it is not, the server still
-    // gates every replayed event by the NEW request's authority.
-    onTerminal: (error) => {
-      if (
-        activeSources.get(apiBase) !== owned ||
-        owned.connection.signal.aborted
-      )
-        return;
-      sharedOrchestrationStreamFailed(apiBase, error, true);
-      // fetchSSE invokes onError first. Cancel its deferred transient flush:
-      // a terminal 401/403 means authority was lost, so hidden content is
-      // discarded rather than projected into a later replacement owner.
-      settleSemanticDeliveryBuffer(apiBase, true);
-      recordReplayConnection(apiBase, 'closed');
-      setStreamConnectionState(apiBase, 'closed');
-      owned.parked = true;
-      // The floor counts from the rejection, so the first recovery signal
-      // after a 401 does not immediately repeat it.
-      owned.lastParkedRetryAt = monotonicNow();
-    },
-    onRetry: () => {
-      sharedOrchestrationStreamRetrying(apiBase);
-      // A deferred retry still pending re-checks `parked` before it fires.
-      owned.parked = false;
-    },
-  });
+  );
 
   const owned: OwnedStream = {
-    authorityKey,
     connection: authenticatedStream,
     parked: false,
     lastParkedRetryAt: 0,
@@ -650,12 +825,16 @@ export function ensureOrchestrationEventStream(
     ended: false,
   };
   activeSources.set(apiBase, owned);
+  if (generalOwners.has(apiBase) && !streamModes.get(apiBase))
+    startLegacyGeneral(apiBase);
   // station#2301 review (L1): the abort signal covers every abort, but the
   // loop can also end by REJECTING — a callback above throwing inside the
   // SDK's catch — without aborting. Either way the connection is gone.
   void authenticatedStream.completed.then(
     () => {
       owned.ended = true;
+      owned.legacyGeneral?.close();
+      owned.legacyGeneral = undefined;
       if (activeSources.get(apiBase) === owned)
         sharedOrchestrationStreamFailed(
           apiBase,
@@ -666,6 +845,8 @@ export function ensureOrchestrationEventStream(
     },
     (error: unknown) => {
       owned.ended = true;
+      owned.legacyGeneral?.close();
+      owned.legacyGeneral = undefined;
       if (activeSources.get(apiBase) === owned)
         sharedOrchestrationStreamFailed(apiBase, error);
       clearDeferredParkedRetry(owned);
@@ -679,5 +860,29 @@ export function ensureOrchestrationEventStream(
       );
     },
   );
-  return release;
+}
+
+function startLegacyGeneral(apiBase: string): void {
+  const owned = activeSources.get(apiBase);
+  if (!owned || owned.legacyGeneral) return;
+  // General events have no replay cursor, so do not wait for orchestration.
+  const legacy = fetchSSE(`${apiBase}/events`, {
+    authentication: 'required',
+    headers: { 'X-Station-Client-Session': CLIENT_DOCUMENT_SESSION_ID },
+    retryDelayMs: 3000,
+    maxRetryDelayMs: 30_000,
+    onMessage: (message) => {
+      if (
+        activeSources.get(apiBase) !== owned ||
+        owned.legacyGeneral !== legacy ||
+        legacy.signal.aborted
+      )
+        return;
+      sharedOrchestrationStreamMessage(apiBase, {
+        event: 'station:general',
+        data: JSON.stringify({ event: message.event, data: message.data }),
+      });
+    },
+  });
+  owned.legacyGeneral = legacy;
 }

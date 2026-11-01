@@ -1,5 +1,6 @@
 import type { StationTaskBasisKeptToolResult } from '@kontourai/station-contracts/task-basis';
 import { useAnswerBasisQuery } from '@kontourai/station-sdk/answer-basis';
+import { ErrorState } from '@kontourai/station-sdk/error-state';
 import { useTaskBasisQuery } from '@kontourai/station-sdk/task-basis';
 import type { BasisContributionRefV2 } from '@kontourai/surface/basis';
 import {
@@ -786,11 +787,15 @@ export function StationBasisPane({
   };
   if (query.error)
     return (
-      <section className="station-basis-pane" aria-label="Basis" role="alert">
-        Basis is unavailable.
-        <button type="button" onClick={() => void query.refetch()}>
-          Retry
-        </button>
+      <section className="station-basis-pane" aria-label="Basis">
+        <ErrorState
+          title="Basis is unavailable."
+          action={
+            <button type="button" onClick={() => void query.refetch()}>
+              Retry
+            </button>
+          }
+        />
       </section>
     );
   if (queryIsLoading)

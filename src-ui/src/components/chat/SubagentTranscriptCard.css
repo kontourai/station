@@ -8,12 +8,17 @@
   color: var(--k-text);
 }
 
+/* #4266: one header row (identity | title and status | time and chevron),
+   all centred on that row; the preview or activity spans the columns after
+   the identity below it. */
 .subagent-card__main {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   width: 100%;
   min-height: 44px;
-  align-items: flex-start;
-  gap: var(--k-space-2);
+  align-items: center;
+  column-gap: var(--k-space-2);
+  row-gap: 2px;
   padding: var(--k-space-2) var(--k-space-3);
   border: 0;
   border-radius: inherit;
@@ -34,6 +39,9 @@
 }
 
 .subagent-card__glyph {
+  grid-column: 1;
+  grid-row: 1;
+  align-self: start;
   display: inline-flex;
   flex-shrink: 0;
   align-items: center;
@@ -41,20 +49,26 @@
   color: var(--k-text-muted);
 }
 
+/* Its children are the grid's cells. */
 .subagent-card__text {
-  display: flex;
+  display: contents;
+}
+
+.subagent-card__text > * {
+  grid-column: 2 / -1;
   min-width: 0;
-  flex: 1;
-  flex-direction: column;
-  gap: 2px;
+}
+
+.subagent-card__text > .subagent-card__headline {
+  grid-column: 2;
+  grid-row: 1;
 }
 
 .subagent-card__headline {
-  display: flex;
+  display: grid;
   min-width: 0;
-  flex-wrap: nowrap;
   align-items: center;
-  column-gap: var(--k-space-2);
+  row-gap: var(--k-space-1);
 }
 
 .subagent-card__title {
@@ -65,13 +79,16 @@
   font-size: var(--k-text-sm);
   font-weight: 600;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .subagent-card__status {
   display: inline-flex;
   flex-shrink: 0;
-  max-width: 45%;
+  max-width: 100%;
   align-items: center;
   gap: var(--k-space-1);
   color: var(--k-text-muted);
@@ -87,7 +104,8 @@
 }
 
 .subagent-card__status--stopped-unconfirmed,
-.subagent-card__status--unresolved {
+.subagent-card__status--unresolved,
+.subagent-card__status--interrupted {
   color: var(--k-caution);
 }
 
@@ -129,6 +147,13 @@
   white-space: nowrap;
 }
 
+.subagent-card__preview {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
+}
+
 .subagent-card__model {
   font-family: var(--k-font-mono);
 }
@@ -141,11 +166,12 @@
 }
 
 .subagent-card__aside {
+  align-self: start;
+  grid-column: 3;
+  grid-row: 1;
   display: flex;
-  flex-shrink: 0;
   align-items: center;
   gap: var(--k-space-2);
-  align-self: center;
   color: var(--k-text-muted);
   font-size: var(--k-text-xs);
   font-variant-numeric: tabular-nums;
@@ -251,6 +277,7 @@
 }
 
 .subagent-card__main[aria-expanded="true"] .subagent-card__title {
+  display: block;
   white-space: normal;
   overflow-wrap: anywhere;
 }

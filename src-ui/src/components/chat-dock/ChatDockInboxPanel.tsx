@@ -9,12 +9,16 @@ import { useCoarsePointer } from '../../hooks/useCoarsePointer';
 import { useRowFocusPreservation } from '../../hooks/useRowFocusPreservation';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 import {
+  type ConversationOpenResult,
   openWorkItem,
   workItemOpenFailureMessage,
 } from '../../views/home/work-item-open-policy';
+import { ActionOverflowMenu } from '../ActionOverflowMenu';
+import { Button } from '../Button';
 import { MessageGlyph, RefreshGlyph } from '../icons/Glyph';
 import { NewChatAction } from '../NewChatAction';
-import { Empty } from '../state';
+import { Empty, ErrorState } from '../state';
+import { useSheetGesturesPreview } from '../useResponsiveSheetGesture';
 import {
   type CollapsibleInboxSectionId,
   InboxGroupList,
@@ -22,6 +26,7 @@ import {
   moveFocusBeforeRemovingInboxRow,
 } from './ChatDockInboxRows';
 import { InboxScopeFilter, useInboxScope } from './InboxScopeFilter';
+import { useInboxDismissActions } from './inbox-dismissals';
 import {
   clearSnooze,
   snoozeKeyFor,
@@ -43,7 +48,7 @@ export interface ChatDockInboxPanelProps {
     projectName?: string,
     model?: string,
     conversationUpdatedAt?: string,
-  ) => Promise<boolean> | boolean | undefined;
+  ) => Promise<ConversationOpenResult> | ConversationOpenResult;
   onOpenSession: (threadId: string) => void;
   /** See WorkItemOpenHandlers.agentsLoaded (station#3687). */
   agentsLoaded?: boolean;
@@ -100,8 +105,8 @@ export interface ChatDockInboxPanelProps {
 /**
  * Desktop chrome for the shared inbox rows (kontourai/station#3312): the
  * dock's side panel — scroll container, persisted collapsible sections, and
- * the history footer. Row/group anatomy lives in `ChatDockInboxRows.tsx`,
- * shared with `MobileTaskSwitcher`'s sheet chrome.
+ * the inbox toolbar. Row/group anatomy lives in `ChatDockInboxRows.tsx`,
+ * shared with the embedded `MobileInboxPanel`.
  */
 function ChatDockInboxPanelImpl({
   items,
@@ -131,6 +136,7 @@ function ChatDockInboxPanelImpl({
   // A pointer that cannot hover gets the always-visible 44px chrome, the
   // same one the mobile sheet uses, rather than hover-revealed controls.
   const coarsePointer = useCoarsePointer();
+  const swipeActions = useSheetGesturesPreview();
   const panelRef = useRef<HTMLElement>(null);
   // A row that changes lane remounts in another section; keep focus on it.
   useRowFocusPreservation(panelRef, '.chat-dock-inbox__item');
@@ -151,9 +157,13 @@ function ChatDockInboxPanelImpl({
   // inbox toggle's Needs-you count reads, so the two cannot disagree.
   const scope = useInboxScope(items, now, workFacts);
   const groups = useInboxGroups(scope.items, now, workFacts);
+  const dismissals = useInboxDismissActions(items, workFacts);
 
   const toggleSection = (id: CollapsibleInboxSectionId) => {
-    setDeviceSetting('inboxSections', { ...sections, [id]: !sections[id] });
+    setDeviceSetting('inboxSections', {
+      ...sections,
+      [id]: sections[id] === false,
+    });
   };
 
   const hasAnyItems = groups.some((group) => group.items.length > 0);
@@ -165,8 +175,54 @@ function ChatDockInboxPanelImpl({
       aria-label="Inbox chats"
       tabIndex={-1}
     >
+      <div className="chat-dock-inbox__toolbar">
+        <Button
+          variant="ghost"
+          aria-label="Find conversations"
+          title="Find conversations"
+          onClick={onOpenHistory}
+        >
+          <MessageGlyph />
+        </Button>
+        <span className="chat-dock-inbox__toolbar-title">Inbox</span>
+        {onNewChat && <NewChatAction iconOnly onClick={onNewChat} />}
+        <ActionOverflowMenu
+          label="Inbox actions"
+          actions={[
+            {
+              key: 'browse',
+              label: 'Browse all conversations',
+              glyph: <MessageGlyph />,
+              onSelect: onOpenHistory,
+            },
+            ...(sync
+              ? [
+                  {
+                    key: 'refresh',
+                    label: sync.refreshing ? 'Refreshing…' : 'Refresh inbox',
+                    glyph: <RefreshGlyph />,
+                    disabled: sync.refreshing,
+                    onSelect: sync.onRefresh,
+                  },
+                ]
+              : []),
+          ]}
+        />
+      </div>
       <InboxScopeFilter scope={scope} />
       <div className="chat-dock-inbox__scroll">
+        {sync?.failed && (
+          <ErrorState
+            variant="compact"
+            title="Couldn’t refresh the inbox."
+            description="Showing the last known list."
+            action={
+              <Button variant="secondary" onClick={sync.onRefresh}>
+                Retry
+              </Button>
+            }
+          />
+        )}
         {!hasAnyItems && (
           <Empty
             variant="compact"
@@ -179,6 +235,7 @@ function ChatDockInboxPanelImpl({
         )}
         {hasAnyItems && (
           <InboxGroupList
+            swipeActions={swipeActions}
             groups={groups}
             idPrefix="chat-dock-inbox"
             activeChatSessionId={activeChatSessionId}
@@ -209,6 +266,7 @@ function ChatDockInboxPanelImpl({
                 agentsLoaded,
               })
                 .then((outcome) => {
+                  if (outcome === 'cancelled') return;
                   if (outcome === 'opened' || outcome === 'fallback') {
                     onAcknowledgeConversation?.(item);
                     return;
@@ -230,6 +288,14 @@ function ChatDockInboxPanelImpl({
               if (wakeAt === null) clearSnooze(key, now);
               else writeSnooze(key, wakeAt, now);
             }}
+            onDismiss={(item, action) => {
+              moveFocusBeforeRemovingInboxRow(panelRef.current, action);
+              dismissals.dismiss(item);
+            }}
+            onRestore={(item, action) => {
+              moveFocusBeforeRemovingInboxRow(panelRef.current, action);
+              dismissals.restore(item);
+            }}
             onCloseChat={(sessionId, action) => {
               moveFocusBeforeRemovingInboxRow(panelRef.current, action);
               onCloseChat(sessionId);
@@ -244,30 +310,7 @@ function ChatDockInboxPanelImpl({
           />
         )}
       </div>
-      <footer className="chat-dock-inbox__footer">
-        {sync?.failed && (
-          <p className="chat-dock-inbox__sync-status" role="status">
-            Couldn't refresh. Showing the last known list.
-          </p>
-        )}
-        <button type="button" onClick={onOpenHistory}>
-          <MessageGlyph />
-          History
-        </button>
-        {sync && (
-          <button
-            type="button"
-            className="chat-dock-inbox__refresh"
-            onClick={sync.onRefresh}
-            disabled={sync.refreshing}
-            aria-label={sync.refreshing ? 'Refreshing inbox' : 'Refresh inbox'}
-          >
-            <RefreshGlyph />
-            {sync.refreshing ? 'Refreshing…' : 'Refresh'}
-          </button>
-        )}
-        {onNewChat && <NewChatAction onClick={onNewChat} />}
-      </footer>
+      {dismissals.notice}
     </aside>
   );
 }

@@ -64,7 +64,9 @@
 
     ".github/workflows/release.yml",
 
-    "docs/guides/testing.md"
+    "docs/guides/testing.md",
+
+    "src-server/services/automation/repair-controller.ts"
   ],
 
   "checks": [

@@ -526,6 +526,19 @@ export const APP_SETTINGS_REGISTRY = [
     defaultValue: false,
   }),
   defineSetting({
+    key: 'claudeArtifactsEnabled',
+    scope: 'station',
+    descriptor: { kind: 'boolean' },
+    label: 'Claude Code artifacts',
+    help: 'Claude Code sessions can publish HTML and Markdown files as shareable Claude artifact pages.',
+    // Read at each Claude session start (station-runtime.ts `getArtifactsEnabled`
+    // → claude-adapter.ts `buildOptions`), which sets CLAUDE_CODE_ARTIFACT to
+    // 1 or 0; running sessions keep the value they started with.
+    description:
+      'Turn on the Artifact tool for new Claude Code sessions. It publishes pages to claude.ai and needs a claude.ai subscription login; API-key, Bedrock and Vertex logins do not get it.',
+    defaultValue: false,
+  }),
+  defineSetting({
     key: 'distributionProfile',
     scope: 'station',
     descriptor: { kind: 'composite' },
@@ -547,6 +560,30 @@ export const APP_SETTINGS_REGISTRY = [
     // behavior is 200, not the file schema's stale documented "default": 10
     // (schemas/app.schema.json corrected to match in this same slice).
     defaultValue: 200,
+  }),
+  defineSetting({
+    key: 'checkoutStaleAfterCommits',
+    scope: 'station',
+    descriptor: { kind: 'number', min: 1, integer: true },
+    label: 'Stale checkout after commits',
+    help: 'The stale checkout warning appears once a Project’s checkout is this many commits behind its upstream.',
+    description:
+      'Commits behind its upstream branch at which a Project’s checkout reads as stale. Used by the Stale checkout warning preview.',
+    // `resolveProjectCheckoutStaleThresholds` falls through to
+    // DEFAULT_CHECKOUT_STALE_AFTER_COMMITS.
+    defaultValue: 50,
+  }),
+  defineSetting({
+    key: 'checkoutStaleAfterDays',
+    scope: 'station',
+    descriptor: { kind: 'number', min: 1, integer: true },
+    label: 'Stale checkout after days',
+    help: 'The stale checkout warning appears once a Project’s checkout has lacked an upstream commit, or gone unfetched, this many days.',
+    description:
+      'Days a Project’s checkout may lack a commit on its upstream branch, or go without a fetch, before it reads as stale. Used by the Stale checkout warning preview.',
+    // `resolveProjectCheckoutStaleThresholds` falls through to
+    // DEFAULT_CHECKOUT_STALE_AFTER_DAYS.
+    defaultValue: 3,
   }),
   defineSetting({
     key: 'defaultMaxOutputTokens',
@@ -576,6 +613,16 @@ export const APP_SETTINGS_REGISTRY = [
     // Confirmed against ChatDock.tsx: `appConfig?.defaultChatFontSize ??
     // CONFIG_DEFAULTS.defaultChatFontSize` (14).
     defaultValue: 14,
+  }),
+  defineSetting({
+    key: 'titleModel',
+    scope: 'station',
+    descriptor: { kind: 'string', maxLength: 255 },
+    label: 'Chat title model',
+    help: 'Choose the model that names a chat after its first reply.',
+    // #4266: read by `resolveTitleModel` (chat-title-generation.ts).
+    description:
+      'When empty, no model sees the chat and it is named from its first message.',
   }),
   defineSetting({
     key: 'defaultWorkspaceIsolation',

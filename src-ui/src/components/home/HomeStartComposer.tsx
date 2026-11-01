@@ -21,6 +21,7 @@ import {
   useBindStartProject,
   useStartSelection,
 } from '../../hooks/useStartSelection';
+import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
 import {
   dispatchNewChatIntent,
   type NewChatHandoff,
@@ -50,6 +51,7 @@ import {
   withProjectRunLocations,
   workspaceHintText,
 } from '../modals/new-chat-modal-utils';
+import { VISUAL_SKILLS_PREVIEW_ID } from '../skill-experiences/SkillExperiencePicker';
 import { describeReadFailure, SkeletonList } from '../state';
 
 // The pickers and setup guidance load on first use, outside Home's bundle.
@@ -163,7 +165,7 @@ export function reloadHeldHomeDraftsForTests() {
 }
 
 type ChipMenu = {
-  kind: 'agents' | 'project' | 'model';
+  kind: 'agents' | 'project' | 'model' | 'station';
   trigger: HTMLElement | null;
   agentSlug?: string;
 };
@@ -193,6 +195,9 @@ export function HomeStartComposer({
 }) {
   const { namespace } = useAuthorityPersistence();
   const { setDockState } = useNavigation();
+  const visualSkillsEnabled = useSurfaceVisibilityFlags().has(
+    VISUAL_SKILLS_PREVIEW_ID,
+  );
   const draftStore = useMemo(() => {
     if (!projectSlug) return homeDraftStore;
     const key = JSON.stringify([namespace, projectSlug]);
@@ -532,40 +537,21 @@ export function HomeStartComposer({
         }
         stationControl={
           <StartStationControl
-            prompt={prompt}
-            projectSlug={viewModel.selectedProject?.slug}
-            projectName={viewModel.selectedProject?.name}
-            defaultEnvironment={viewModel.selectedProject?.defaultEnvironment}
-            agentSlug={agent?.slug}
-            executionAgentId={
-              agent ? start.modelChoiceFor(agent)?.executionAgentId : undefined
-            }
-            expectedDefinitionFingerprint={
-              agent
-                ? start.modelChoiceFor(agent)?.expectedDefinitionFingerprint
-                : undefined
-            }
             environmentId={
               agent ? start.modelChoiceFor(agent)?.environmentId : undefined
             }
-            providerOptions={
-              agent ? start.modelChoiceFor(agent)?.providerOptions : undefined
-            }
-            model={agent ? start.modelChoiceFor(agent)?.modelId : undefined}
+            defaultEnvironment={viewModel.selectedProject?.defaultEnvironment}
+            canChoose={Boolean(agent)}
+            projectSelected={Boolean(viewModel.selectedProject)}
             disabled={
               pending ||
               contextPending ||
               fixedProjectMissing ||
               !selectedContextResolved
             }
-            onPromptChange={setPrompt}
-            onStarted={(_task, station, sentPrompt) => {
-              clearSent(sentPrompt);
-              setNotice({
-                text: `Task started on ${station}. Open Activity to follow its progress.`,
-                tone: 'status',
-              });
-            }}
+            onOpen={(trigger) =>
+              setMenu({ kind: 'station', trigger, agentSlug: agent?.slug })
+            }
           />
         }
         projectFixed={Boolean(projectSlug)}
@@ -575,14 +561,18 @@ export function HomeStartComposer({
         }}
         project={projectChip}
         onOpenProject={(trigger) => setMenu({ kind: 'project', trigger })}
-        overflowActions={[
-          {
-            key: 'skills',
-            label: 'Use a visual skill',
-            haspopup: 'dialog',
-            onSelect: () => handOff({ kind: 'skills' }),
-          },
-        ]}
+        overflowActions={
+          visualSkillsEnabled
+            ? [
+                {
+                  key: 'skills',
+                  label: 'Use a visual skill',
+                  haspopup: 'dialog',
+                  onSelect: () => handOff({ kind: 'skills' }),
+                },
+              ]
+            : []
+        }
         canStart={canStart}
         pending={pending}
         files={{

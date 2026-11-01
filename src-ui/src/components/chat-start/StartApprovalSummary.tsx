@@ -6,6 +6,7 @@ import { useConfig } from '../../contexts/ConfigContext';
 import {
   type ApprovalMode,
   approvalModeChipLabel,
+  approvalModeDescription,
   resolveEffectiveApprovalMode,
 } from '../../utils/approvalMode';
 import { ComposerChoice } from '../ComposerChoice';
@@ -30,7 +31,6 @@ export function StartApprovalSummary({
   projectDefaultUnavailable = false,
   pick,
   onPick,
-  sheetLayer,
 }: {
   agent: AgentData;
   executionAgentId?: string;
@@ -41,8 +41,6 @@ export function StartApprovalSummary({
   /** This start's own pick, if one was made. */
   pick?: ApprovalMode;
   onPick?: (mode: ApprovalMode) => void;
-  /** The picker's layer; `dialog` inside a dialog. */
-  sheetLayer?: 'dialog' | 'popover';
 }) {
   const account = useAccountPreferences();
   const [isSheetOpen, setIsSheetOpen] = useState(false);
@@ -81,7 +79,9 @@ export function StartApprovalSummary({
       : resolved.source === 'project unavailable'
         ? "This project's new-chat settings could not be read here; Station applies them when the chat starts."
         : resolved.mode === 'connection-default'
-          ? 'Uses the engine’s saved permissions; the active mode is confirmed after startup.'
+          ? engine === 'codex'
+            ? approvalModeDescription('connection-default', 'codex')
+            : 'The engine has not reported its active approval mode yet.'
           : `Requested at startup, from ${resolved.source}.`
   }${
     resolved.source !== 'session override' &&
@@ -99,7 +99,7 @@ export function StartApprovalSummary({
         className="start-composer__chip"
         caption="Approval"
         value={label}
-        aria-label={`${visible}. ${title}`}
+        aria-label={`${visible}. ${title} Approval ${label}`}
         title={title}
         disabled
       />
@@ -111,7 +111,7 @@ export function StartApprovalSummary({
         className="start-composer__chip start-composer__chip--approval"
         aria-haspopup="dialog"
         aria-expanded={isSheetOpen}
-        aria-label={`${visible}. ${title}`}
+        aria-label={`${visible}. ${title} Approval ${label}`}
         title={title}
         onClick={() => setIsSheetOpen((open) => !open)}
         caption="Approval"
@@ -133,7 +133,6 @@ export function StartApprovalSummary({
                   ? 'Uses the engine’s saved permissions; confirmed after startup.'
                   : `From ${resolved.source === 'account default' ? 'your saved default' : resolved.source}`,
             isNewSession: true,
-            layer: sheetLayer,
           }}
           pending={null}
         />

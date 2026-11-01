@@ -72,8 +72,6 @@
 
     "src-ui/src/components/chat-dock/ChatDockProjectSwitcherSheet.tsx",
 
-    "src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx",
-
     "src-ui/src/components/chat/chat.css",
 
     "src-ui/src/components/header/ThemeToggle.tsx",
@@ -138,9 +136,9 @@
 
     "pnpm-lock.yaml#/snapshots",
 
-    "src-ui/src/components/ComposerChoice.tsx",
+    "src-ui/src/components/chat-dock/MobileInboxPanel.tsx",
 
-    "src-ui/src/components/ComposerChoice.css"
+    "src-ui/src/components/chat-dock/MobileSheetPending.tsx"
   ],
 
   "checks": [

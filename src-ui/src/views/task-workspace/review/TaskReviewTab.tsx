@@ -11,6 +11,7 @@ import {
   taskReviewThreadQueryKey,
   useCaptureToTaskMutation,
   useCreateReviewThreadMutation,
+  useFeaturePreviewsQuery,
   useReopenReviewThreadMutation,
   useReplyReviewThreadMutation,
   useResolveReviewThreadMutation,
@@ -46,6 +47,7 @@ import { ReviewItemList } from './ReviewItemList';
 import { ReviewThreadCard } from './ReviewThreadCard';
 import { copyReviewThreadsForAgent } from './review-copy';
 import { type ReviewThreadActions, sameReviewArtifact } from './review-types';
+import { TaskReviewClips } from './TaskReviewClips';
 import { TaskReviewLayout } from './TaskReviewLayout';
 
 type AvailableSummary = Extract<
@@ -352,6 +354,7 @@ export function TaskReviewTab({
 }) {
   const { apiBase } = useApiBase();
   const authority = useHostRequestAuthorityScope();
+  const previews = useFeaturePreviewsQuery();
   const queryClient = useQueryClient();
   const kind = useNavigation(() =>
     new URLSearchParams(window.location.search).get('reviewKind'),
@@ -568,6 +571,25 @@ export function TaskReviewTab({
                 onCaptured={(id) => select('capture', id)}
               />
             }
+            clips={
+              visible &&
+              authority?.isCurrent() &&
+              previews.data?.some(
+                (preview) => preview.id === 'walkthroughs' && preview.enabled,
+              ) ? (
+                <TaskReviewClips
+                  key={JSON.stringify([
+                    authority.apiBase,
+                    authority.authorityKey,
+                    task.id,
+                    task.createdAt,
+                  ])}
+                  taskId={task.id}
+                  taskCreatedAt={task.createdAt}
+                  requestScope={authority}
+                />
+              ) : null
+            }
           />
         }
         content={
@@ -602,6 +624,7 @@ export function TaskReviewTab({
             <ReviewDocumentView
               key={`${content.kind}:${content.id}`}
               artifact={content.artifact}
+              revisionOrdinals={content.revisionOrdinals}
               previousArtifact={
                 threads.find(
                   (thread) =>

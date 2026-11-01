@@ -71,7 +71,7 @@ export interface MonitoringDeps {
   queryEventsFromDisk: (
     start: number,
     end: number,
-    userId: string,
+    owner: string | readonly string[],
     options?: RuntimeEventQueryOptions,
   ) => Promise<any[] | RuntimeEventPage>;
   /**
@@ -102,6 +102,33 @@ export interface MonitoringDeps {
    * for no one and reads no rows.
    */
   eventOwnerForRequest?: (request: Request) => string | null | undefined;
+  /**
+   * Every row owner the request's principal may read: itself plus, in a
+   * personal Station, the rest of its personal conversation account (the
+   * local operator and each approved device). The same owner set session
+   * reads use (`OrchestrationService.readableSessionOwnerIds`).
+   */
+  readableEventOwnerIds?: (
+    authority: SessionReadAuthority,
+  ) => readonly string[];
+}
+
+/**
+ * The row owners a monitoring read may return. An explicitly named user is
+ * read exactly, as before. Otherwise the request's principal decides: rows
+ * are stamped with principal ids (`human:device:<id>`, `human:local:operator`),
+ * so the host's OS username never matched them and every reader came back
+ * empty. The alias is only a fallback for compositions with no authority.
+ */
+export function monitoringReadOwnerIds(
+  requestedUserId: string | undefined,
+  authority: SessionReadAuthority | undefined,
+  deps: Pick<MonitoringDeps, 'readableEventOwnerIds'>,
+): readonly string[] {
+  if (requestedUserId !== undefined) return [requestedUserId];
+  if (authority)
+    return deps.readableEventOwnerIds?.(authority) ?? [authority.userId];
+  return [getCachedUser().alias];
 }
 
 /** Shared by both receipt leaves so they cannot bound differently. */
@@ -381,7 +408,11 @@ export function createMonitoringRoutes(deps: MonitoringDeps) {
         403,
       );
     }
-    const userId = fixedOwner ?? requestedUserId ?? getCachedUser().alias;
+    const ownerIds = monitoringReadOwnerIds(
+      fixedOwner ?? requestedUserId,
+      authority,
+      deps,
+    );
 
     // If time range specified, return historical events as JSON
     if (startTime || endTime) {
@@ -498,7 +529,7 @@ export function createMonitoringRoutes(deps: MonitoringDeps) {
       let filteredEvents: any[];
       let readerTruncated = false;
       try {
-        const page = await deps.queryEventsFromDisk(start, end, userId, {
+        const page = await deps.queryEventsFromDisk(start, end, ownerIds, {
           limit,
           matches,
         });
@@ -577,7 +608,17 @@ export function createMonitoringRoutes(deps: MonitoringDeps) {
       await stream.writeSSE({ data: JSON.stringify(connectedEvent) });
 
       const eventHandler = (event: any) => {
-        if (event.userId && event.userId !== userId) return;
+        // History's owner rule, on either owner field. Writers stamp
+        // `station.user.id`, so checking `userId` alone admitted every
+        // principal's rows. An unowned live row still streams, as before.
+        const rowOwners = [event.userId, event['station.user.id']].filter(
+          (id): id is string => typeof id === 'string' && id.length > 0,
+        );
+        if (
+          rowOwners.length > 0 &&
+          !rowOwners.some((id) => ownerIds.includes(id))
+        )
+          return;
         // An agent's stream carries only rows its owner is named on.
         if (
           fixedOwner !== undefined &&

@@ -23,11 +23,17 @@ import {
   raceWithSignal,
 } from '../../utils/bounded-async.js';
 import { openPrivateSqlite } from '../../utils/private-sqlite.js';
+import { localAccountSignOutOrigin } from './account-signout-origins.js';
 import { LocalAccountAdministration } from './local-account-administration.js';
 import {
   createOidcAccountSubject,
   type LocalAccountOidcProvider,
 } from './local-account-oidc.js';
+import {
+  createMemberPasskeys,
+  MEMBER_PASSKEY_ENDPOINTS,
+  MEMBER_PASSKEYS_PREVIEW_ID,
+} from './local-account-passkeys.js';
 
 export interface LocalAccountEmail {
   kind: 'verify-email' | 'reset-password';
@@ -61,6 +67,14 @@ interface PendingEnrollmentAttemptState {
   readonly cleanupSessionIds: Set<string>;
 }
 
+export interface LocalAccountProviderFeatures {
+  /**
+   * The member-passkeys Feature Preview, read on every passkey request.
+   * Absent means off: no passkey operation is offered or answered.
+   */
+  memberPasskeys?: () => boolean;
+}
+
 interface LocalAccountProviderTestHooks {
   /**
    * Test-only barrier at the real session-create hook boundary. Production
@@ -80,6 +94,8 @@ export async function createLocalAccountProvider(
   mode: 'email-password' | 'username-password' = 'email-password',
   oidc: readonly LocalAccountOidcProvider[] = [],
   testHooks: LocalAccountProviderTestHooks = {},
+  signOutBrowserOrigins: readonly string[] = [],
+  features: LocalAccountProviderFeatures = {},
 ): Promise<LocalAccountProvider> {
   if (secret.length < 32)
     throw new Error(
@@ -124,7 +140,7 @@ export async function createLocalAccountProvider(
       attempt: PendingEnrollmentAttemptState,
     ): boolean {
       if (!attempt.cleanupRequested) return true;
-      if (!localUsername || closed) return false;
+      if (!localUsername || closed || database.isTransaction) return false;
       try {
         if (attempt.cleanupAll) {
           database
@@ -202,12 +218,30 @@ export async function createLocalAccountProvider(
       database,
       localUsername,
     );
+    // Member passkeys need Station-owned usernames; email accounts stay
+    // password-only until their verified-contact rules cover passkeys.
+    const memberPasskeys = localUsername
+      ? createMemberPasskeys({
+          publicOrigin: host.publicOrigin,
+          basePath: host.basePath,
+          database,
+          administration,
+          mayRegister: (invitation) => enrollment.mayRegister({ invitation }),
+        })
+      : undefined;
     const options = {
       database,
       secret,
       baseURL: host.publicOrigin,
       basePath: host.basePath,
-      trustedOrigins: [...(host.allowedBrowserOrigins ?? [host.publicOrigin])],
+      trustedOrigins: (request?: Request) => {
+        const standard = [
+          ...(host.allowedBrowserOrigins ?? [host.publicOrigin]),
+        ];
+        const signOutOrigin =
+          request && localAccountSignOutOrigin(request, signOutBrowserOrigins);
+        return signOutOrigin ? [...standard, signOutOrigin] : standard;
+      },
       telemetry: { enabled: false },
       logger: { disabled: true },
       emailAndPassword: {
@@ -267,6 +301,8 @@ export async function createLocalAccountProvider(
           : {}),
       },
       advanced: {
+        // Keep the provider Origin guard active in test and production.
+        disableOriginCheck: false,
         cookiePrefix: `station-account-${createHash('sha256').update(host.stationId).digest('hex').slice(0, 20)}`,
         useSecureCookies: host.publicOrigin.startsWith('https:'),
       },
@@ -282,6 +318,7 @@ export async function createLocalAccountProvider(
               }),
             ]
           : []),
+        ...(memberPasskeys ? [memberPasskeys.plugin] : []),
         ...(oidc.length
           ? [
               genericOAuth({
@@ -693,12 +730,79 @@ export async function createLocalAccountProvider(
         methods: ['POST'],
         operation: 'revoke-session',
       },
+      ...(memberPasskeys ? MEMBER_PASSKEY_ENDPOINTS : []),
     ].filter(
       (endpoint) =>
         !localUsername ||
         !['verify-contact', 'request-recovery'].includes(endpoint.operation),
     ) as DeploymentAuthenticationProvider['endpoints'];
     const cookie = getCookies(options).sessionToken.name;
+    const passkeyChallengeCookie = context.createAuthCookie(
+      'better-auth-passkey',
+    ).name;
+
+    async function authenticateRequest(request: {
+      headers: Headers;
+      signal: AbortSignal;
+    }): Promise<DeploymentAuthenticationResult> {
+      if (closed || request.signal.aborted) return { kind: 'unavailable' };
+      const current = await auth.api.getSession({
+        headers: request.headers,
+        query: { disableCookieCache: true, disableRefresh: true },
+      });
+      if (closed || request.signal.aborted) return { kind: 'unavailable' };
+      if (current && localUsername) {
+        const latest = liveSessionRecord(current.session.id);
+        if (!latest || latest.token !== current.session.token)
+          return { kind: 'invalid', reason: 'revoked' };
+        if (latest.enrollmentId) return { kind: 'invalid', reason: 'revoked' };
+      }
+      return resolveSession(current);
+    }
+    /** Member passkeys, refused while their Feature Preview is off. */
+    async function handleMemberPasskey(
+      passkeys: NonNullable<typeof memberPasskeys>,
+      path: string,
+      request: Request,
+    ): Promise<Response> {
+      if (!features.memberPasskeys?.())
+        return Response.json(
+          {
+            success: false,
+            error:
+              'Enable Member passkeys in Settings → Advanced → Feature previews.',
+            code: 'feature_preview_disabled',
+            previewId: MEMBER_PASSKEYS_PREVIEW_ID,
+            settingsPath:
+              '/settings?view=feature-previews&highlight=feature-previews',
+          },
+          { status: 404 },
+        );
+      return passkeys.handle(path, request, {
+        handler: (ceremony) => auth.handler(ceremony),
+        challengeCookie: passkeyChallengeCookie,
+        async currentAccount(current) {
+          const result = await authenticateRequest(current);
+          return result.kind === 'authenticated'
+            ? {
+                userId: result.session.subject,
+                sessionId: result.session.sessionId,
+                authenticatedAt: result.session.authenticatedAt,
+              }
+            : undefined;
+        },
+        async retireCredentialGuard(retire) {
+          await context.adapter.transaction(async () => {
+            retire();
+          });
+        },
+        async findVerification(identifier) {
+          const row =
+            await context.internalAdapter.findVerificationValue(identifier);
+          return row ? { value: row.value, expiresAt: row.expiresAt } : null;
+        },
+      });
+    }
     return {
       administration,
       async issueRecovery(accountId) {
@@ -928,6 +1032,10 @@ export async function createLocalAccountProvider(
                     throw new Error(
                       'Pending enrollment promotion is unavailable.',
                     );
+                  if (database.isTransaction)
+                    throw new Error(
+                      'Pending enrollment promotion is unavailable.',
+                    );
                   const changed = database
                     .prepare(
                       `UPDATE session SET stationPendingEnrollmentId = NULL
@@ -942,7 +1050,7 @@ export async function createLocalAccountProvider(
                 async discard(enrollmentId, sessionId, signal) {
                   const attempt = pendingAttempt(enrollmentId);
                   if (!attempt) {
-                    if (closed || signal.aborted)
+                    if (closed || signal.aborted || database.isTransaction)
                       throw new Error(
                         'Pending enrollment cleanup is unconfirmed.',
                       );
@@ -1008,22 +1116,7 @@ export async function createLocalAccountProvider(
             }
           : {}),
       },
-      async authenticate(request) {
-        if (closed || request.signal.aborted) return { kind: 'unavailable' };
-        const current = await auth.api.getSession({
-          headers: request.headers,
-          query: { disableCookieCache: true, disableRefresh: true },
-        });
-        if (closed || request.signal.aborted) return { kind: 'unavailable' };
-        if (current && localUsername) {
-          const latest = liveSessionRecord(current.session.id);
-          if (!latest || latest.token !== current.session.token)
-            return { kind: 'invalid', reason: 'revoked' };
-          if (latest.enrollmentId)
-            return { kind: 'invalid', reason: 'revoked' };
-        }
-        return resolveSession(current);
-      },
+      authenticate: authenticateRequest,
       async handle(request) {
         const path = new URL(request.url).pathname.slice(host.basePath.length);
         if (
@@ -1038,6 +1131,8 @@ export async function createLocalAccountProvider(
             { status: 404 },
           );
         }
+        if (memberPasskeys && path.startsWith('/passkey/'))
+          return handleMemberPasskey(memberPasskeys, path, request);
         let operation = request;
         const external = oidc.find(
           (provider) => path === `/oidc/${provider.id}/begin`,

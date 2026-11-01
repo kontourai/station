@@ -55,6 +55,7 @@ type ToolNameMapping = Map<
 >;
 
 interface RuntimeInitializationContext {
+  getReviewedTariffConfiguration?: InitializeRuntimeDeps['getReviewedTariffConfiguration'];
   validateProjectTools?: InitializeRuntimeDeps['validateProjectTools'];
   resolveProjectToolServers?: InitializeRuntimeDeps['resolveProjectToolServers'];
   attachedSessionSources?: AttachedSessionSource[];
@@ -66,6 +67,7 @@ interface RuntimeInitializationContext {
   environmentSecurityService: Pick<
     EnvironmentSecurityService,
     | 'verifyCredential'
+    | 'authorizeCredential'
     | 'resolveGrantedScope'
     // #3586: the voice WebSocket refuses account-bound devices and tokens.
     | 'identifyDevice'
@@ -170,6 +172,7 @@ interface RuntimeInitializationContext {
   }) => void;
   onRouteServicesReady: (services: {
     orchestrationService: OrchestrationService;
+    nativeForkStoredReadBinder?: import('../../security/native-fork-read-admission.js').NativeForkReadAdmissionDomain['bindAtConversationMount'];
     usageAggregator?: UsageAggregator;
   }) => void | Promise<void>;
   onVoltAgentCreated: (voltAgent: import('@voltagent/core').VoltAgent) => void;
@@ -200,6 +203,7 @@ export function createRuntimeInitializationDeps(
     orchestrationEventStore: context.orchestrationEventStore,
     hostImagesPreview: context.hostImagesPreview,
     credentialProfileRecoveryAdapter: context.credentialProfileRecoveryAdapter,
+    getReviewedTariffConfiguration: context.getReviewedTariffConfiguration,
     usageAggregator: context.usageAggregator,
     orchestrationUsageRef: context.orchestrationUsageRef,
     monitoringEmitter: context.monitoringEmitter,

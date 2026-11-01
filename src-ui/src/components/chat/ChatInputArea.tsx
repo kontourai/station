@@ -324,6 +324,18 @@ interface ChatInputAreaProps {
   onClearAttachments: () => void;
   onModelSelect: (model: SelectableModel) => void;
   onModelReset: () => void;
+  /**
+   * Why the model/engine reset is refused right now. Set, the picker's reset
+   * is disabled with it shown, and the composer's reset chip stays in place
+   * disabled with it as its description.
+   */
+  modelResetDisabledReason?: string;
+  /**
+   * False when this conversation cannot take the reset at all (the server's
+   * open resolution denies changes). The composer then offers no reset chip.
+   * Defaults to true.
+   */
+  modelResetOffered?: boolean;
   onModelClose: () => void;
   onModelOpen: () => void;
   onModelRuntimeOptionChange: (
@@ -371,6 +383,11 @@ interface ChatInputAreaProps {
   agentHandoffDisabled?: boolean;
   agentHandoffDisabledReason?: string;
   workspaceRefused?: boolean;
+  /**
+   * The server refused this caller a send here: the disabled composer shows
+   * no "Type a message" placeholder (its `sendBlockedReason` says why).
+   */
+  sendRefused?: boolean;
   /**
    * The conversation's open read is still in flight: the composer is disabled
    * and its placeholder names the wait. It occupies no new space, so the
@@ -514,6 +531,8 @@ export function ChatInputArea({
   onClearAttachments,
   onModelSelect,
   onModelReset,
+  modelResetDisabledReason,
+  modelResetOffered = true,
   onModelClose,
   onModelOpen,
   onModelRuntimeOptionChange,
@@ -541,6 +560,7 @@ export function ChatInputArea({
   agentHandoffDisabled = false,
   agentHandoffDisabledReason,
   workspaceRefused = false,
+  sendRefused = false,
   loadingConversation = false,
   onStartNewChat,
 }: ChatInputAreaProps) {
@@ -701,6 +721,7 @@ export function ChatInputArea({
   const modelAccessibleLabel = [
     'Engine & model:',
     executionEngineLabel,
+    modelLabel,
     agentEngineMove
       ? agentEngineMove.nextTurn
         ? `This conversation's ${executionEngineLabel ?? 'engine'} session has ended; its next turn starts on ${agentEngineMove.to}, where its Agent now points.`
@@ -717,30 +738,40 @@ export function ChatInputArea({
   ]
     .filter(Boolean)
     .join(' ');
-  const agentAccessibleLabel = `Agent: ${[agentLabel ?? 'current Agent', agentRoute].filter(Boolean).join(' · ')}. ${agentHandoffDisabled ? (agentHandoffDisabledReason ?? 'Unavailable') : 'Change Agent'}`;
+  // The shared handoff reason names no action ("Send a message first."), so
+  // the refused state names it here, where the action is known.
+  const agentAccessibleLabel = `Agent: ${[agentLabel ?? 'current Agent', agentRoute].filter(Boolean).join(' · ')}. ${
+    agentHandoffDisabled
+      ? `Can’t change Agent yet.${agentHandoffDisabledReason ? ` ${agentHandoffDisabledReason}` : ''}`
+      : 'Change Agent'
+  }`;
   // A turn is in flight. Steer is the default on engines that can take
   // mid-turn input; otherwise Enter queues until this turn finishes.
   const mentionLocation =
     workingDirectory && mentionProjectSlug
       ? { projectSlug: mentionProjectSlug, workingDir: workingDirectory }
       : null;
-  const placeholder = workspaceRefused
-    ? 'This conversation continues from its original workspace — start a new chat to work here'
-    : loadingConversation
-      ? 'Loading chat…'
-      : allowDraftWhileDisabled
-        ? turnInFlight
-          ? 'Draft a follow-up while this turn finishes…'
-          : 'Waiting on this chat — check again above to send…'
-        : turnInFlight
-          ? sendMode === 'steer' && busyFollowUp === 'steer'
-            ? busySteeringKind === 'native'
-              ? 'Steer this turn…'
-              : 'Send at a safe boundary…'
-            : 'Queue a follow-up…'
-          : mentionLocation && mentionRequestScope
-            ? 'Type a message — @ files, / for commands…'
-            : 'Type a message — / for commands…';
+  // A composer whose sending the server refused invites no typing: its
+  // reason, under the draft, says why.
+  const placeholder = sendRefused
+    ? ''
+    : workspaceRefused
+      ? 'This conversation continues from its original workspace — start a new chat to work here'
+      : loadingConversation
+        ? 'Loading chat…'
+        : allowDraftWhileDisabled
+          ? turnInFlight
+            ? 'Draft a follow-up while this turn finishes…'
+            : 'Waiting on this chat — check again above to send…'
+          : turnInFlight
+            ? sendMode === 'steer' && busyFollowUp === 'steer'
+              ? busySteeringKind === 'native'
+                ? 'Steer this turn…'
+                : 'Send at a safe boundary…'
+              : 'Queue a follow-up…'
+            : mentionLocation && mentionRequestScope
+              ? 'Type a message — @ files, / for commands…'
+              : 'Type a message — / for commands…';
   const composerTokens = parseComposerTokens(input);
   const displayInput = composerDisplayValue(input, composerTokens);
 
@@ -780,6 +811,7 @@ export function ChatInputArea({
   const queuedDiscard = useUnconfirmedDiscardDisclosure();
   if (!queuedRetryText && queuedDiscard.open) queuedDiscard.close();
   const queuedRetryDescriptionId = React.useId();
+  const modelResetReasonId = React.useId();
   const composerRootRef = useRef<HTMLDivElement | null>(null);
   // The draft's two-line floor, written by the per-keystroke sizing below and
   // read by the reservation.
@@ -1068,6 +1100,7 @@ export function ChatInputArea({
                 runtimeOptions={modelRuntimeOptions}
                 onSelect={onModelSelect}
                 onReset={onModelReset}
+                resetDisabledReason={modelResetDisabledReason}
                 onRuntimeOptionChange={onModelRuntimeOptionChange}
                 onClose={onModelClose}
               />
@@ -1158,17 +1191,37 @@ export function ChatInputArea({
             value={modelLabel}
             valueClassName="chat-input__model-name"
           />
-          {isOverride && (
-            <button
-              type="button"
-              className="chat-input__model-reset"
-              onClick={onModelReset}
-              title="Reset this chat to its default model"
-            >
-              Use {modelResetSourceLabel(defaultModelSource)}
-            </button>
+          {/* A reset the conversation cannot take at all is not offered. While
+              the reset is only temporarily blocked (any shared handoff reason:
+              a turn running, queued or offline messages unresolved, or their
+              state still being checked or unavailable) it stays in place,
+              disabled, so the row does not shift every turn, and carries the
+              reason as its description: the composer row has no room for the
+              sentence, and the picker states the same reason as text. */}
+          {isOverride && modelResetOffered && (
+            <>
+              <button
+                type="button"
+                className="chat-input__model-reset"
+                aria-disabled={modelResetDisabledReason ? true : undefined}
+                aria-describedby={
+                  modelResetDisabledReason ? modelResetReasonId : undefined
+                }
+                onClick={modelResetDisabledReason ? undefined : onModelReset}
+                title={
+                  modelResetDisabledReason ??
+                  'Reset this chat to its default model'
+                }
+              >
+                Use {modelResetSourceLabel(defaultModelSource)}
+              </button>
+              {modelResetDisabledReason && (
+                <span id={modelResetReasonId} className="sr-only">
+                  {modelResetDisabledReason}
+                </span>
+              )}
+            </>
           )}
-          {contextMeter}
           {modeChoices.length > 0 && onAcpSessionModeChange ? (
             <React.Suspense fallback={null}>
               <AcpSessionModeChip
@@ -1744,6 +1797,7 @@ export function ChatInputArea({
             </span>
           )}
           <span className="chat-controls-row__spacer" />
+          {contextMeter}
           {/* On a phone Send/Queue hide (keeping their width) until there is
               something to send, so typing never moves Stop. Stop therefore
               sits after them, at the row's edge: before them it floated

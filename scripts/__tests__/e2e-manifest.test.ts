@@ -175,6 +175,7 @@ describe('e2e manifest', () => {
       'tests/client-authority-live.spec.ts',
       'tests/project-guest-shared-task-live.spec.ts',
       'tests/project-guest-admin-live.spec.ts',
+      'tests/member-passkeys-live.spec.ts',
       'tests/interactive-workspace-performance-bridge.spec.ts',
     ]);
     // #2144 slice 4 (#2146): Settings left `extended` for `product` so that

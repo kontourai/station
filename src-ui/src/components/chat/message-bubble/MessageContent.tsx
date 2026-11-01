@@ -37,8 +37,8 @@ import { blockHasVisibleContent } from './visibleContent';
 
 type MessageContentPart = NonNullable<ChatMessage['contentParts']>[number];
 
-/** Consecutive tool-call runs longer than this collapse to the ToolCallBatch
- * summary + sheet. 1 means a solo call stays an inline row and any 2+ run
+/** Activity runs longer than this collapse to the ToolCallBatch
+ * summary + sheet. 1 means a solo call stays inline; a run with reasoning or 2+ calls
  * becomes one line that opens the existing overlay. Shared with
  * `StreamingMessage` so a run does not change shape when the turn settles.
  * The summary is transcript chrome, not "tool details"; opening the sheet
@@ -48,6 +48,12 @@ type MessageContentPart = NonNullable<ChatMessage['contentParts']>[number];
 export const INLINE_RUN_LIMIT = 1;
 
 interface MessageContentProps {
+  /**
+   * What the server's open read says this caller may do in the
+   * conversation; a reloaded runtime-error part picks its hint by it, as the
+   * error card does. Absent means unknown, and the full hint shows.
+   */
+  callerAccess?: { continue?: boolean; startChat?: boolean };
   contentParts?: MessageContentPart[];
   messageKey?: string;
   textContent: string;
@@ -70,6 +76,7 @@ interface MessageContentProps {
 }
 
 function MessageContentComponent({
+  callerAccess,
   contentParts,
   messageKey = 'message',
   textContent,
@@ -81,11 +88,6 @@ function MessageContentComponent({
   onToolApproval,
   appTools,
 }: MessageContentProps & { appTools: ReadonlySet<string> }) {
-  // Consecutive tool-call parts collapse into one batch (`LazyToolCallBatch`);
-  // any other part in between — prose, reasoning, a file, a UI block —
-  // breaks the run, so the agent's words between tool calls are never
-  // buried inside a collapsed summary. Only the structural split runs
-  // eagerly here; classification/summary happens inside the lazy chunk.
   const anchoredChildren = useTranscriptChildrenForCalls(
     contentParts?.flatMap((part) =>
       part.toolCallId ? [part.toolCallId] : [],
@@ -99,9 +101,16 @@ function MessageContentComponent({
         ? [{ type: 'text', content: textContent }]
         : [];
     return foldWork && !keepChildAnchors
-      ? foldTurnWork(parts, appTools)
-      : splitToolCallRuns(parts, appTools);
-  }, [contentParts, textContent, foldWork, keepChildAnchors, appTools]);
+      ? foldTurnWork(parts, appTools, showReasoning)
+      : splitToolCallRuns(parts, appTools, showReasoning);
+  }, [
+    contentParts,
+    textContent,
+    foldWork,
+    keepChildAnchors,
+    appTools,
+    showReasoning,
+  ]);
   const blocks = useTranscriptChildBlocks(baseBlocks);
   usePreloadToolCallBatch(
     blocks.some((block) => block.type === 'tool-call-run'),
@@ -144,9 +153,20 @@ function MessageContentComponent({
     />
   );
 
-  const renderInterlude = (part: MessageContentPart, index: number) => (
-    <LazyMarkdown key={`interlude:${index}`}>{part.content ?? ''}</LazyMarkdown>
-  );
+  const renderInterlude = (part: MessageContentPart, index: number) =>
+    part.type === 'reasoning' ? (
+      <ReasoningSection
+        key={`reasoning:${index}`}
+        content={part.content ?? ''}
+        fontSize={chatFontSize}
+        show={showReasoning}
+        hasAnswerText
+      />
+    ) : (
+      <LazyMarkdown key={`interlude:${index}`}>
+        {part.content ?? ''}
+      </LazyMarkdown>
+    );
 
   if (
     contentParts?.length ||
@@ -164,8 +184,8 @@ function MessageContentComponent({
               <SubagentTranscriptCard key={block.key} child={block.child} />
             );
           if (block.type === 'tool-call-run') {
-            // A solo call stays an inline row. Two or more consecutive
-            // calls collapse to one summary line that opens the sheet —
+            // A solo call stays inline. Calls with reasoning or sibling
+            // calls share one summary line that opens the sheet —
             // live and settled share this threshold so a run does not
             // change shape when the turn completes.
             // A subagent a call spawned is drawn after the run, outside any
@@ -176,7 +196,10 @@ function MessageContentComponent({
                 calls={block.calls}
               />
             );
-            if (block.calls.length <= INLINE_RUN_LIMIT) {
+            if (
+              block.calls.length + (block.interludes?.length ?? 0) <=
+              INLINE_RUN_LIMIT
+            ) {
               return [
                 ...block.calls.map(({ part, index }) =>
                   renderToolCall(part, index),
@@ -244,6 +267,7 @@ function MessageContentComponent({
               const translated = translateProjectedRuntimeError(
                 part.content,
                 part.runtimeErrorCode,
+                callerAccess,
               );
               if (translated) {
                 const raw = projectedRuntimeErrorRaw(part.content);
@@ -350,7 +374,11 @@ function areMessageContentPropsEqual(
     previous.showToolDetails === next.showToolDetails &&
     previous.isStreamingMessage === next.isStreamingMessage &&
     previous.foldWork === next.foldWork &&
-    previous.onToolApproval === next.onToolApproval
+    previous.onToolApproval === next.onToolApproval &&
+    // By value: an open read that lands later must refresh a reloaded error
+    // part's hint, but a new object with the same answer must not re-render.
+    previous.callerAccess?.continue === next.callerAccess?.continue &&
+    previous.callerAccess?.startChat === next.callerAccess?.startChat
   );
 }
 

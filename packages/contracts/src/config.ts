@@ -21,6 +21,12 @@ export interface AppConfig {
   reviewGuidesEnabled?: boolean;
   reviewGuideModel?: string;
   reviewGuideInstructions?: string;
+  /**
+   * #4266: the model that writes a conversation's title after its first
+   * exchange. Falls back to `structureModel`; titles stay derived from the
+   * first prompt when neither is set.
+   */
+  titleModel?: string;
   region?: string;
   defaultModel: string;
   invokeModel: string;
@@ -69,6 +75,17 @@ export interface AppConfig {
    * Station states no posture" — it is NOT a fourth posture.
    */
   defaultApprovalMode?: ApprovalMode;
+  /**
+   * A Project's checkout reads as stale at this many commits behind its
+   * upstream (`resolveProjectCheckoutStaleThresholds` in
+   * `@kontourai/station-contracts/project-checkout-freshness`). Absent: 50.
+   */
+  checkoutStaleAfterCommits?: number;
+  /**
+   * ...or once it has lacked an upstream commit, or gone without a fetch,
+   * for this many days. Absent: 3.
+   */
+  checkoutStaleAfterDays?: number;
   logLevel?: 'trace' | 'debug' | 'info' | 'warn' | 'error';
   /**
    * When a Station service run by the fixed launcher downloads an available
@@ -195,6 +212,15 @@ export interface AppConfig {
    * stop is left to the user with its reset time still shown.
    */
   usageLimitAutoResume?: boolean;
+  /**
+   * Turn on Claude Code's Artifact tool, which publishes a local HTML or
+   * Markdown file as a page on claude.ai. **Default off.** Read at each
+   * Claude session start, never by a running session: on, the spawn gets
+   * `CLAUDE_CODE_ARTIFACT=1`; off, it gets `CLAUDE_CODE_ARTIFACT=0`, so an
+   * ambient or connection-env value cannot turn the tool on behind it. The
+   * engine offers the tool only to a claude.ai subscription login.
+   */
+  claudeArtifactsEnabled?: boolean;
   /** Distribution defaults for starter layouts and registry sources. */
   distributionProfile?: DistributionProfileSelection;
   /**

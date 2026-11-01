@@ -65,6 +65,9 @@
     "./tool-request-preview": "./src/tool-request-preview.ts",
     "./return-focus": "./src/return-focus.ts",
     "./temp-dir": "./src/temp-dir.ts",
+    "./integration-trust-overlay": "./src/integration-trust-overlay.ts",
+    "./remote-address-guard": "./src/remote-address-guard.ts",
+    "./station-curation": "./src/station-curation.ts",
     "./fs-windows-compat": "./src/fs-windows-compat.ts",
     "./windows-path-trust": "./src/windows-path-trust.ts",
     "./runtime-events": "./src/runtime-events.ts",
@@ -133,9 +136,9 @@
   "dependencies": {
     "@kontourai/station-contracts": "^0.13.0",
     "@kontourai/thread": "0.5.0",
-    "@modelcontextprotocol/client": "2.3.1",
+    "@modelcontextprotocol/client": "2.4.0",
     "agent-skills-ts-sdk": "^2.5.0",
     "esbuild": "^0.28.2",
-    "jose": "6.2.12"
+    "jose": "6.2.13"
   }
 }

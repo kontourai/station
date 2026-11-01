@@ -140,8 +140,6 @@ export type StartAgentChip =
       approvalPick?: ApprovalMode;
       /** Present: the Permissions chip is a picker for `approvalPick`. */
       onApprovalPick?: (mode: ApprovalMode) => void;
-      /** `dialog` when the composer sits in a dialog. */
-      approvalSheetLayer?: 'dialog' | 'popover';
     };
 
 /** The project chip: the context the start runs in. */
@@ -173,6 +171,21 @@ function startAgentChipText(chip: StartAgentChip): string {
   return chip.modelLabel && chip.modelLabel !== MODEL_NOT_REPORTED
     ? `${chip.agent.name} · ${chip.modelLabel}`
     : chip.agent.name;
+}
+
+/** The project chip's words for No project. */
+export const NO_PROJECT_PHRASE = 'Without a project';
+
+/**
+ * Where a start runs, as the project chip words it: "in <Project>", or
+ * "without a project". The dock draft's line reads the same words.
+ */
+export function startProjectPhrase(
+  project: Extract<StartProjectChip, { status: 'ready' }>,
+): string {
+  return project.isGlobal
+    ? NO_PROJECT_PHRASE.toLowerCase()
+    : `in ${project.label}`;
 }
 
 /** The compact text box grows with its text up to this many lines. */
@@ -226,6 +239,7 @@ export function StartComposer({
   onPromptChange,
   textareaRef,
   compact = false,
+  layout = 'hero',
   heading,
   agent,
   onOpenAgents,
@@ -252,6 +266,12 @@ export function StartComposer({
   textareaRef?: RefObject<HTMLTextAreaElement | null>;
   /** One line, above a page of work (Home with work). */
   compact?: boolean;
+  /**
+   * `hero` (Home, Project page): a heading with the Project and Station
+   * controls above the text box. `draft` (the dock's New chat): no heading;
+   * those controls join the chip row under the text, as in a reply composer.
+   */
+  layout?: 'hero' | 'draft';
   heading?: string;
   agent: StartAgentChip;
   onOpenAgents: (trigger: HTMLElement) => void;
@@ -307,6 +327,42 @@ export function StartComposer({
     onOpenModel && agent.status === 'ready'
       ? (agent.agent?.name ?? 'Choose an agent')
       : startAgentChipText(agent);
+  const draft = layout === 'draft';
+  const projectControl = (
+    <>
+      {project.status === 'ready' && (
+        <button
+          type="button"
+          className={`choice-trigger start-composer__project${draft ? ' start-composer__chip' : ''}`}
+          aria-haspopup={projectFixed ? undefined : 'dialog'}
+          aria-label={`Project: ${project.label}. ${project.isGlobal ? NO_PROJECT_PHRASE : `in ${project.label}`}`}
+          title={project.folder}
+          disabled={projectFixed}
+          onClick={(event) => onOpenProject(event.currentTarget)}
+        >
+          {!project.isGlobal && (
+            <ProjectIcon
+              project={{ name: project.label, icon: project.icon }}
+              size={displayableProjectIcon(project.icon) ? 18 : 24}
+              accent={project.accent}
+            />
+          )}
+          <span>
+            {project.isGlobal ? NO_PROJECT_PHRASE : `in ${project.label}`}
+          </span>
+          {!projectFixed && <ArrowDownGlyph className="choice-caret" />}
+        </button>
+      )}
+      {project.status === 'loading' && (
+        <span
+          role="status"
+          aria-label="Checking which project the chat starts in"
+        >
+          <Skeleton variant="line" width="6rem" />
+        </span>
+      )}
+    </>
+  );
   return (
     <form
       ref={rootRef}
@@ -318,7 +374,7 @@ export function StartComposer({
         drop.onDrop(event);
         if (event.defaultPrevented) event.stopPropagation();
       }}
-      className={`start-composer${compact ? ' start-composer--compact' : ''}`}
+      className={`start-composer${compact ? ' start-composer--compact' : ''}${draft ? ' start-composer--draft' : ''}`}
       data-coarse-pointer={coarsePointer || undefined}
       aria-label="Start work"
       onSubmit={(event) => {
@@ -326,43 +382,15 @@ export function StartComposer({
         if (canStart && !pending) onStart();
       }}
     >
-      <div className="start-composer__destination">
-        <h2>
-          {heading ?? (compact ? 'Start work' : 'What would you like to do?')}
-        </h2>
-        {project.status === 'ready' && (
-          <button
-            type="button"
-            className="choice-trigger start-composer__project"
-            aria-haspopup={projectFixed ? undefined : 'dialog'}
-            aria-label={`Project: ${project.label}`}
-            title={project.folder}
-            disabled={projectFixed}
-            onClick={(event) => onOpenProject(event.currentTarget)}
-          >
-            {!project.isGlobal && (
-              <ProjectIcon
-                project={{ name: project.label, icon: project.icon }}
-                size={displayableProjectIcon(project.icon) ? 18 : 24}
-                accent={project.accent}
-              />
-            )}
-            <span>
-              {project.isGlobal ? 'Without a project' : `in ${project.label}`}
-            </span>
-            {!projectFixed && <ArrowDownGlyph className="choice-caret" />}
-          </button>
-        )}
-        {project.status === 'loading' && (
-          <span
-            role="status"
-            aria-label="Checking which project the chat starts in"
-          >
-            <Skeleton variant="line" width="6rem" />
-          </span>
-        )}
-        {stationControl}
-      </div>
+      {!draft && (
+        <div className="start-composer__destination">
+          <h2>
+            {heading ?? (compact ? 'Start work' : 'What would you like to do?')}
+          </h2>
+          {projectControl}
+          {stationControl}
+        </div>
+      )}
       <div
         className={`start-composer__box${drop.isDraggingFiles ? ' start-composer__box--file-drag' : ''}`}
       >
@@ -484,7 +512,7 @@ export function StartComposer({
               <ComposerChoice
                 className="start-composer__chip start-composer__chip--model"
                 aria-haspopup="dialog"
-                aria-label={`Model: ${agent.modelLabel ?? MODEL_NOT_REPORTED}${agent.modelNote ? `. ${agent.modelNote}` : ''}`}
+                aria-label={`Model: ${agent.modelLabel && agent.modelLabel !== MODEL_NOT_REPORTED ? agent.modelLabel : 'Model'}${agent.modelNote ? `. ${agent.modelNote}` : ''}`}
                 title={agent.modelNote}
                 disabled={!agent.agent}
                 onClick={(event) => onOpenModel(event.currentTarget)}
@@ -509,9 +537,10 @@ export function StartComposer({
                   }
                   pick={agent.approvalPick}
                   onPick={agent.onApprovalPick}
-                  sheetLayer={agent.approvalSheetLayer}
                 />
               )}
+            {draft && projectControl}
+            {draft && stationControl}
             {skill && (
               <span className="start-composer__chip start-composer__chip--skill">
                 <span className="start-composer__chip-text">{skill.title}</span>

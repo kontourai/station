@@ -43,7 +43,11 @@ import {
   SkeletonBlock,
 } from '../components/state';
 import { Toggle } from '../components/Toggle';
-import { useUsageTelemetryDisclosureState } from '../components/UsageTelemetryDisclosure';
+import {
+  telemetryDestinationHint,
+  usageSharingChoiceAuthority,
+  useUsageTelemetryDisclosureState,
+} from '../components/UsageTelemetryDisclosure';
 import { useApiBase } from '../contexts/ApiBaseContext';
 import { useConfigActions, useConfigSnapshot } from '../contexts/ConfigContext';
 import {
@@ -69,6 +73,7 @@ import {
   settingsForAnswerDelivery,
 } from '../utils/answerDelivery';
 import { AboutSection } from './settings/AboutSection';
+import { AccountSharingSection } from './settings/AccountSharingSection';
 import { AgentDefaultsSection } from './settings/AgentDefaultsSection';
 import { AnswerSharesSection } from './settings/AnswerSharesSection';
 import { DeviceHostsSection } from './settings/DeviceHostsSection';
@@ -1214,6 +1219,9 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                   it used to sit in was dissolved. System is where this page
                   already keeps Station administration: updates, log level,
                   export and import, and the two resets. */}
+                    {/* #4305: whether this Station shares Projects with local
+                  accounts at all; the account list below manages them. */}
+                    <AccountSharingSection />
                     <LocalAccountsSection />
                   </>
                 )}
@@ -1298,6 +1306,12 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                       section="telemetry"
                       telemetryPublishers={telemetryStatus.data?.publishers}
                       telemetryDisclosure={telemetryDisclosure.data}
+                      telemetryChoiceAuthority={usageSharingChoiceAuthority(
+                        telemetryDisclosure,
+                      )}
+                      onTelemetryChoiceRetry={() =>
+                        void invalidate(['usage-telemetry-disclosure'])
+                      }
                       telemetryCounts={telemetryStatus.data?.liteInventory}
                       telemetryNoticeRef={telemetryNotice.element}
                       telemetryNoticeError={telemetryNotice.isError}
@@ -1336,17 +1350,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                             description="Sharing uses configured destinations only."
                             control={
                               <span className="settings__field-hint">
-                                {telemetryDisclosure.settled
-                                  ? telemetryDisclosure.isError
-                                    ? 'Could not read whether a destination is configured.'
-                                    : telemetryDisclosure.data
-                                          ?.endpointConfigured === false
-                                      ? 'No additional destination configured.'
-                                      : telemetryDisclosure.data
-                                            ?.endpointConfigured === true
-                                        ? 'Additional destination configured.'
-                                        : 'This Station has not reported whether a destination is configured.'
-                                  : null}
+                                {telemetryDestinationHint(telemetryDisclosure)}
                               </span>
                             }
                           />

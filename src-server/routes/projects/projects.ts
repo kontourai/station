@@ -33,6 +33,10 @@ import {
   type ProjectRunLocations,
 } from '@kontourai/station-contracts/project';
 import type { ProjectChatDefaultsView } from '@kontourai/station-contracts/project-chat-defaults';
+import {
+  PROJECT_CHECKOUT_FRESHNESS_PREVIEW_ID,
+  type ProjectCheckoutFreshness,
+} from '@kontourai/station-contracts/project-checkout-freshness';
 import type { ProjectResourceBindOutcome } from '@kontourai/station-contracts/project-identity';
 import type {
   ProjectMemberAction,
@@ -73,6 +77,7 @@ import {
   grantedPairingScope,
   type PairingScopeContextStore,
 } from '../../security/pairing-route-scopes.js';
+import type { FeaturePreviewSelector } from '../../services/feature-previews/feature-preview-registry.js';
 import type { StationKitObservabilityRegistry } from '../../services/kits/kit-observability-registry.js';
 import {
   layoutPluginBindingWithheld,
@@ -364,6 +369,15 @@ interface ProjectRouteDeps {
     /** The caller's own full-access proof, decided by this route. */
     options: { mayGrantFullAccess: boolean },
   ) => ProjectChatDefaultsView | Promise<ProjectChatDefaultsView>;
+  /**
+   * How far the Project's checkout is behind its upstream, behind the
+   * `stale-project-checkout` preview. Absent: `GET /:slug/checkout-freshness`
+   * answers 501.
+   */
+  checkoutFreshness?: {
+    preview: FeaturePreviewSelector;
+    read: (project: ProjectConfig) => Promise<ProjectCheckoutFreshness>;
+  };
 }
 
 /**
@@ -1366,6 +1380,44 @@ export function createProjectRoutes(
         data: await deps.chatDefaults(c, project, {
           mayGrantFullAccess: mayRaiseFullAccessDefault(c),
         }),
+      });
+    } catch (error: unknown) {
+      const failure = projectReadFailure(error, 'Project');
+      return c.json({ success: false, error: failure.error }, failure.status);
+    }
+  });
+
+  // Whether the Project's checkout is far behind its upstream. The answer
+  // names a host path and a command to run there, so a shared member is
+  // answered as if the Project did not exist, like any other owner-only read.
+  app.get('/:slug/checkout-freshness', async (c) => {
+    try {
+      const slug = param(c, 'slug');
+      const project = await projectService.getProject(slug);
+      if ((await deps.memberProjectAdmission?.(c, slug)) !== undefined)
+        return c.json({ success: false, error: 'Project not found' }, 404);
+      const freshness = deps.checkoutFreshness;
+      if (!freshness)
+        return c.json(
+          { success: false, error: 'Checkout freshness is unavailable.' },
+          501,
+        );
+      return await freshness.preview.select<Promise<Response>>({
+        enabled: async () =>
+          c.json({ success: true, data: await freshness.read(project) }),
+        disabled: async () =>
+          c.json(
+            {
+              success: false,
+              error:
+                'Enable Stale checkout warning in Settings → Advanced → Feature previews.',
+              code: 'feature_preview_disabled',
+              previewId: PROJECT_CHECKOUT_FRESHNESS_PREVIEW_ID,
+              settingsPath:
+                '/settings?view=feature-previews&highlight=feature-previews',
+            },
+            404,
+          ),
       });
     } catch (error: unknown) {
       const failure = projectReadFailure(error, 'Project');

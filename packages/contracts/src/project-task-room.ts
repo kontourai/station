@@ -8,6 +8,11 @@ import {
   type ChatAttachmentMimeType,
   validatePersistedChatAttachmentDescriptor,
 } from './chat-attachment.js';
+import {
+  boundaryText,
+  timestamp as canonicalTimestamp,
+  sha256,
+} from './contract-validation.js';
 
 export const PROJECT_TASK_ROOM_SCHEMA_VERSION =
   'station.project-task-room/v5' as const;
@@ -89,13 +94,11 @@ export interface ProjectTaskRoomMemberPrincipal {
   principalId: string;
   deviceId: string;
 }
-/** Legacy runtime consumers switch to the v5 union with member admission. */
 export type ProjectTaskRoomPrincipal =
   | ProjectTaskRoomHumanPrincipal
-  | ProjectTaskRoomAgentPrincipal;
-export type ProjectTaskRoomV5Principal =
-  | ProjectTaskRoomPrincipal
+  | ProjectTaskRoomAgentPrincipal
   | ProjectTaskRoomMemberPrincipal;
+export type ProjectTaskRoomV5Principal = ProjectTaskRoomPrincipal;
 export interface ProjectTaskRoomPersonMention {
   kind: 'person';
   principalId: string;
@@ -395,7 +398,7 @@ export interface ProjectTaskRoomAppendIntent {
   body: ProjectTaskRoomAppendBody;
 }
 export interface ProjectTaskRoomRecord {
-  schemaVersion: ProjectTaskRoomLegacySchemaVersion;
+  schemaVersion: ProjectTaskRoomSchemaVersion;
   scope: ProjectTaskRoomScope;
   principal: ProjectTaskRoomPrincipal;
   correlationId?: string;
@@ -405,7 +408,7 @@ export interface ProjectTaskRoomRecord {
   bodyBytes: number;
   checkpointDigest: string;
 }
-/** v5 wire shape; legacy runtime producers remain on ProjectTaskRoomRecord until 2B. */
+/** The v5 wire shape admits member principals. */
 export interface ProjectTaskRoomV5Record
   extends Omit<ProjectTaskRoomRecord, 'schemaVersion' | 'principal'> {
   schemaVersion: typeof PROJECT_TASK_ROOM_SCHEMA_VERSION;
@@ -521,7 +524,7 @@ function roomId(value: unknown): value is string {
 }
 /** New collaboration IDs are exact; legacy room IDs retain their wire rules. */
 function memberId(value: unknown): value is string {
-  return roomId(value) && value.trim() === value && !hasExtendedControl(value);
+  return boundaryText(value, 256);
 }
 function roomFile(value: unknown): value is string {
   return (
@@ -550,19 +553,11 @@ function roomText(value: unknown, max: number): value is string {
   }
   return true;
 }
-function sha256(value: unknown): value is string {
-  return typeof value === 'string' && /^[0-9a-f]{64}$/.test(value);
-}
 function nonnegative(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 }
 function positive(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 1;
-}
-function canonicalTimestamp(value: unknown): value is string {
-  if (typeof value !== 'string' || value.length !== 24) return false;
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) && new Date(parsed).toISOString() === value;
 }
 export type ProjectTaskRoomOpenOutcome =
   | {

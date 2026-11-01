@@ -94,7 +94,7 @@ jobs:
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Setup pinned pnpm
-        uses: kontourai/station/.github/actions/setup-verified-pnpm@4c7804d0d71f4e18d7a0da62fb6db43973481a20
+        uses: kontourai/station/.github/actions/setup-verified-pnpm@382b4af65e5f8bc5e3d62bd64ef1eba8653af50f
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -144,6 +144,13 @@ jobs:
       - run: npm run dependencies:ci
         timeout-minutes: 15
 
+      - name: Restore trusted Chromium cache
+        if: ${{ steps.mode.outputs.legacy == 'true' }}
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        continue-on-error: true
+        with:
+          path: ~/.cache/ms-playwright
+          key: station-playwright-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml') }}
       - name: Install Chromium for changed-set touch-target checks
         if: ${{ steps.mode.outputs.legacy == 'true' }}
         timeout-minutes: 20
@@ -222,11 +229,12 @@ jobs:
     permissions:
       contents: read
     concurrency:
-      # Two repository-wide PR shard slots retain every planned matrix leg.
-      # PR parity XOR shard parity distributes one-shard and four-shard plans.
+      # Three bounded PR shard groups retain every planned matrix leg.
+      # Keep the two existing names so old and new runs share their slots;
+      # route odd-numbered shards of PRs ending in 0, 1 or 2 to the third.
       # Required integration and diagnostics use separate source identities.
       group: >-
-        ${{ github.event_name == 'pull_request_target' && format('ci-pr-shards-{0}', ((endsWith(format('{0}',
+        ${{ github.event_name == 'pull_request_target' && (matrix.shard == 1 || matrix.shard == 3) && (endsWith(format('{0}', github.event.pull_request.number), '0') || endsWith(format('{0}', github.event.pull_request.number), '1') || endsWith(format('{0}', github.event.pull_request.number), '2')) && 'ci-pr-shards-third' || github.event_name == 'pull_request_target' && format('ci-pr-shards-{0}', ((endsWith(format('{0}',
         github.event.pull_request.number), '1') || endsWith(format('{0}', github.event.pull_request.number), '3') ||
         endsWith(format('{0}', github.event.pull_request.number), '5') || endsWith(format('{0}',
         github.event.pull_request.number), '7') || endsWith(format('{0}', github.event.pull_request.number), '9')) !=
@@ -263,7 +271,7 @@ jobs:
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Setup pinned pnpm
-        uses: kontourai/station/.github/actions/setup-verified-pnpm@4c7804d0d71f4e18d7a0da62fb6db43973481a20
+        uses: kontourai/station/.github/actions/setup-verified-pnpm@382b4af65e5f8bc5e3d62bd64ef1eba8653af50f
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -331,6 +339,13 @@ jobs:
 
       # Same provisioning as fast-checks-statics: the selection can include
       # real-Chromium touch-target checks (station#3513).
+      - name: Restore trusted Chromium cache
+        if: ${{ steps.slice.outputs.empty == 'false' }}
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        continue-on-error: true
+        with:
+          path: ~/.cache/ms-playwright
+          key: station-playwright-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml') }}
       - name: Install Chromium for changed-set touch-target checks
         if: ${{ steps.slice.outputs.empty == 'false' }}
         timeout-minutes: 20
@@ -424,7 +439,7 @@ jobs:
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Setup pinned pnpm
-        uses: kontourai/station/.github/actions/setup-verified-pnpm@4c7804d0d71f4e18d7a0da62fb6db43973481a20
+        uses: kontourai/station/.github/actions/setup-verified-pnpm@382b4af65e5f8bc5e3d62bd64ef1eba8653af50f
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -453,7 +468,14 @@ jobs:
       # (not silently skip) without a browser, redding every affected PR.
       # `playwright install` is called directly so the exported path wins
       # over install:playwright's node_modules pin. Bounded + retried per
-      # #3517. Hosted runners are ephemeral, so this installs every job.
+      # #3517. A main-only Nightly warms the version-bound cache; installation
+      # still runs so a miss or incomplete cache cannot bypass provisioning.
+      - name: Restore trusted Chromium cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        continue-on-error: true
+        with:
+          path: ~/.cache/ms-playwright
+          key: station-playwright-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml') }}
       - name: Install Chromium for changed-set touch-target checks
         timeout-minutes: 20
         run: |
@@ -791,7 +813,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Setup pinned pnpm
-        uses: kontourai/station/.github/actions/setup-verified-pnpm@4c7804d0d71f4e18d7a0da62fb6db43973481a20
+        uses: kontourai/station/.github/actions/setup-verified-pnpm@382b4af65e5f8bc5e3d62bd64ef1eba8653af50f
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -825,7 +847,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Setup pinned pnpm
-        uses: kontourai/station/.github/actions/setup-verified-pnpm@4c7804d0d71f4e18d7a0da62fb6db43973481a20
+        uses: kontourai/station/.github/actions/setup-verified-pnpm@382b4af65e5f8bc5e3d62bd64ef1eba8653af50f
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -893,7 +915,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup pinned pnpm
-        uses: kontourai/station/.github/actions/setup-verified-pnpm@4c7804d0d71f4e18d7a0da62fb6db43973481a20
+        uses: kontourai/station/.github/actions/setup-verified-pnpm@382b4af65e5f8bc5e3d62bd64ef1eba8653af50f
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -978,7 +1000,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Setup pinned pnpm
-        uses: kontourai/station/.github/actions/setup-verified-pnpm@4c7804d0d71f4e18d7a0da62fb6db43973481a20
+        uses: kontourai/station/.github/actions/setup-verified-pnpm@382b4af65e5f8bc5e3d62bd64ef1eba8653af50f
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:

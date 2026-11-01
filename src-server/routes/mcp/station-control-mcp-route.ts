@@ -74,6 +74,7 @@ import {
   STATION_CONTROL_MCP_HTTP_CHANNELS,
   STATION_CONTROL_MCP_PATH,
   STATION_KNOWLEDGE_MCP_PATH,
+  stationControlDisclosureForToken,
   stationControlTokenAssurance,
   verifyStationControlMcpToken,
   verifyStationControlMcpTokenEntry,
@@ -129,6 +130,7 @@ function extractBearerToken(header: string | undefined): string | undefined {
 }
 
 interface StationControlMcpRouteOptions {
+  progressiveToolsEnabled?: () => boolean;
   serverId?: BuiltinStationApiMcpId;
   /** THIS running instance's actually-bound HTTP port — never read from
    * `process.env.PORT`/`STATION_PORT` (see this module's header comment
@@ -169,6 +171,9 @@ export function createStationControlMcpRoutes(
       channels: STATION_CONTROL_MCP_HTTP_CHANNELS,
       serverId,
     });
+    const purpose = verifyStationControlMcpTokenEntry(candidate)?.serverId;
+    const coordinatorCredential =
+      purpose === 'coordinator-control' || purpose === 'coordinator-knowledge';
     const resolveCallerRecord: StationControlCallerRecordResolver | undefined =
       verified?.externalClientLeaseId
         ? (sessionId) => {
@@ -185,6 +190,11 @@ export function createStationControlMcpRoutes(
         : options.resolveCallerRecord;
     if (
       !verified ||
+      (coordinatorCredential &&
+        !resolveStationControlCallerFromToken(
+          candidate,
+          resolveCallerRecord,
+        )) ||
       (verified.externalClientLeaseId && url.searchParams.has('token')) ||
       (verified.externalClientLeaseId &&
         !resolveStationControlCallerFromToken(candidate, resolveCallerRecord))
@@ -263,6 +273,12 @@ export function createStationControlMcpRoutes(
               undefined,
               serverId,
               listableFor,
+              options.progressiveToolsEnabled?.() && candidate
+                ? stationControlDisclosureForToken(
+                    candidate,
+                    options.progressiveToolsEnabled,
+                  )
+                : undefined,
             ),
       { legacy: 'stateless', responseMode: 'auto' },
     );
@@ -297,6 +313,11 @@ export function createStationControlMcpRoutes(
             return (
               current !== undefined &&
               current.sessionId === verified.sessionId &&
+              (!coordinatorCredential ||
+                resolveStationControlCallerFromToken(
+                  candidate,
+                  resolveCallerRecord,
+                ) !== null) &&
               (!current.externalClientLeaseId ||
                 resolveStationControlCallerFromToken(
                   candidate,

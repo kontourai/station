@@ -21,6 +21,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
+import { StrictMode, useState } from 'react';
 import {
   afterEach,
   beforeAll,
@@ -41,6 +42,12 @@ import {
 } from '../hooks/lastChosenModel';
 import { resetStartChoicesForTests } from '../hooks/useStartSelection';
 import { deviceSettingsStore } from '../lib/device-settings-store';
+
+/** jsdom runs `history.back()` as chained 0ms tasks; let queued ones land. */
+async function flushHistory() {
+  for (let turn = 0; turn < 4; turn += 1)
+    await act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
+}
 
 function render(ui: Parameters<typeof renderView>[0]) {
   const client = new QueryClient({
@@ -73,8 +80,16 @@ const state = vi.hoisted(() => ({
   agentConnections: [] as unknown[],
   /** `GET /api/projects/run-locations`; undefined until it answers. */
   runLocations: undefined as Record<string, unknown> | undefined,
+  /** `GET /api/environments/peers`, as this caller may read it. */
+  peers: [] as unknown[],
   /** `GET /api/projects/:slug/chat-defaults`, by slug. */
   chatDefaults: {} as Record<string, unknown>,
+  /** What the device reports about this Station (its host name). */
+  device: undefined as { hostName?: string } | undefined,
+  /** `GET /api/environments/ssh`: saved Stations besides this one. */
+  environments: [] as unknown[],
+  /** `GET /api/feature-previews`: visual skills on unless a test says not. */
+  featurePreviews: [] as Array<{ id: string; enabled: boolean }>,
 }));
 
 vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
@@ -86,16 +101,17 @@ vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
   }),
 }));
 vi.mock('../hooks/useDevicePresentation', () => ({
-  useDevicePresentation: () => undefined,
+  useDevicePresentation: () => state.device,
 }));
 vi.mock('@kontourai/station-sdk', () => ({
+  useFeaturePreviewsQuery: () => ({ data: state.featurePreviews }),
   useSshEnvironmentsQuery: () => ({
-    data: [],
+    data: state.environments,
     isSuccess: true,
     isError: false,
   }),
   usePeerCredentialsQuery: () => ({
-    data: [],
+    data: state.peers,
     isSuccess: true,
     isError: false,
   }),
@@ -159,6 +175,15 @@ vi.mock('@kontourai/station-sdk', () => ({
   telemetry: { track: vi.fn() },
 }));
 vi.mock('../contexts/ConfigContext', () => ({ useConfig: () => undefined }));
+// The caller's server-reported grant: this Station's operator.
+vi.mock('@kontourai/station-sdk/authority-observation', () => ({
+  getAuthorityObservation: async () => ({
+    schemaVersion: 'station.authority-observation/v1',
+    environmentId: 'env-parity',
+    principal: { kind: 'human', id: 'owner' },
+    grant: { kind: 'operator' },
+  }),
+}));
 // The Model picker's own UI has its own tests; here it is the choice it makes.
 vi.mock('../components/session/SessionModelPicker', () => ({
   SessionModelPicker: ({
@@ -264,7 +289,11 @@ beforeEach(() => {
   state.projectsError = false;
   state.agentConnections = [];
   state.runLocations = undefined;
+  state.peers = [];
   state.chatDefaults = {};
+  state.device = undefined;
+  state.environments = [];
+  state.featurePreviews = [{ id: 'visual-skills', enabled: true }];
   resetHeldHomeDraftsForTests();
 });
 // Every dock listener a test adds, removed even when the test fails, so a
@@ -275,8 +304,10 @@ window.addEventListener = ((type: string, listener: never, options?: never) => {
   if (type === 'station:open-new-chat') dockListeners.push(listener);
   return realAdd(type, listener, options);
 }) as typeof window.addEventListener;
-afterEach(() => {
+afterEach(async () => {
   cleanup();
+  // An open draft folds its history layer on unmount; let that land.
+  await flushHistory();
   for (const listener of dockListeners.splice(0))
     window.removeEventListener('station:open-new-chat', listener);
 });
@@ -330,7 +361,7 @@ function renderBoth(projectSlug?: string) {
     dockSelect,
     starts,
     home: () => within(screen.getByTestId('home')),
-    dock: () => screen.getByRole('dialog', { name: 'New chat' }),
+    dock: () => screen.getByRole('region', { name: 'New chat' }),
     cleanupListener: () =>
       window.removeEventListener('station:open-new-chat', listener),
   };
@@ -619,7 +650,7 @@ describe('Home and the dock start the same way', () => {
     expect((projectChip(home) as HTMLButtonElement).disabled).toBe(true);
     expect(projectChip(home).textContent).toContain('Station');
     expect(projectChip(ui.dock()).getAttribute('aria-label')).toBe(
-      'Project: No project',
+      'Project: No project. Without a project',
     );
     expect(
       within(formOf(home)).getByRole('button', { name: 'Model: Opus' }),
@@ -660,9 +691,37 @@ describe('Home and the dock start the same way', () => {
     expect(ui.starts).toHaveLength(0);
     expect(
       projectChip(screen.getByTestId('home')).getAttribute('aria-label'),
-    ).toBe('Project: missing-project');
+    ).toBe('Project: missing-project. in missing-project');
     ui.cleanupListener();
   });
+
+  test.each(['home', 'dock'] as const)(
+    'on %s, tapping Runs on opens the Station choice with another Station to run on',
+    async (surface) => {
+      state.peers = [
+        {
+          environmentId: 'env-brian-media',
+          apiBase: 'https://brian-media.example.ts.net',
+          label: 'brian-media',
+          scope: 'orchestration:read orchestration:operate',
+        },
+      ];
+      const ui = renderBoth();
+      const root = surface === 'home' ? screen.getByTestId('home') : ui.dock();
+      fireEvent.click(
+        await within(formOf(root)).findByRole('button', {
+          name: 'Runs on This Station. Choose where this work runs',
+        }),
+      );
+      const menu = await screen.findByRole('dialog', {
+        name: 'Where this work runs',
+      });
+      expect(
+        within(menu).getByRole('button', { name: /brian-media/ }),
+      ).toBeTruthy();
+      ui.cleanupListener();
+    },
+  );
 
   test('both render the shared composer and open on the same selection', () => {
     const ui = renderBoth();
@@ -692,10 +751,10 @@ describe('Home and the dock start the same way', () => {
     const home = screen.getByTestId('home');
     const dock = ui.dock();
     expect(projectChip(home).getAttribute('aria-label')).toBe(
-      'Project: Station',
+      'Project: Station. in Station',
     );
     expect(projectChip(dock).getAttribute('aria-label')).toBe(
-      'Project: Station',
+      'Project: Station. in Station',
     );
     expect(agentChip(home).getAttribute('aria-label')).toBe(
       agentChip(dock).getAttribute('aria-label'),
@@ -944,13 +1003,13 @@ describe('Home and the dock start the same way', () => {
     );
     await waitFor(() =>
       expect(projectChip(home).getAttribute('aria-label')).toBe(
-        'Project: Station',
+        'Project: Station. in Station',
       ),
     );
     act(() => deviceSettingsStore.set('chatDockProjectSlug', null));
     await waitFor(() =>
       expect(projectChip(home).getAttribute('aria-label')).toBe(
-        'Project: No project',
+        'Project: No project. Without a project',
       ),
     );
     ui.cleanupListener();
@@ -967,7 +1026,7 @@ describe('Home and the dock start the same way', () => {
     expect(deviceSettingsStore.get('chatDockProjectSlug')).toBe('station');
     await waitFor(() =>
       expect(projectChip(home).getAttribute('aria-label')).toBe(
-        'Project: Station',
+        'Project: Station. in Station',
       ),
     );
     fireEvent.click(projectChip(home));
@@ -1098,7 +1157,7 @@ describe('Home and the dock start the same way', () => {
     await waitFor(() =>
       expect(
         projectChip(screen.getByTestId('home')).getAttribute('aria-label'),
-      ).toBe('Project: Notes'),
+      ).toBe('Project: Notes. in Notes'),
     );
     expect(projectChip(screen.getByTestId('home')).getAttribute('title')).toBe(
       'Runs in your home folder (~)',
@@ -1109,7 +1168,7 @@ describe('Home and the dock start the same way', () => {
     const second = renderBoth();
     for (const root of [screen.getByTestId('home'), second.dock()]) {
       expect(projectChip(root).getAttribute('aria-label')).toBe(
-        'Project: Notes',
+        'Project: Notes. in Notes',
       );
       expect(projectChip(root).getAttribute('title')).toBe(
         'Runs in your home folder (~)',
@@ -1212,7 +1271,7 @@ describe('Home and the dock start the same way', () => {
       { target: { value: 'Go' } },
     );
     expect(
-      within(form).queryByRole('button', { name: 'Project: No project' }),
+      within(form).queryByRole('button', { name: 'Project: No project. Without a project' }),
     ).toBeNull();
     const startButton = within(form).getByRole('button', {
       name: 'Start',
@@ -1236,7 +1295,7 @@ describe('Home and the dock start the same way', () => {
     const home = screen.getByTestId('home');
     await waitFor(() =>
       expect(projectChip(home).getAttribute('aria-label')).toBe(
-        'Project: Notes',
+        'Project: Notes. in Notes',
       ),
     );
     fireEvent.change(
@@ -1289,6 +1348,15 @@ describe('Home and the dock start the same way', () => {
       }) as HTMLTextAreaElement;
     const startButton = () =>
       screen.getByRole('button', { name: 'Start' }) as HTMLButtonElement;
+    test('with the visual-skills preview off, Home offers no visual skills', () => {
+      state.featurePreviews = [{ id: 'visual-skills', enabled: false }];
+      renderHome();
+      // "Use a visual skill" is the menu's only action, so no menu at all.
+      expect(
+        screen.queryByRole('button', { name: 'More start options' }),
+      ).toBeNull();
+    });
+
     async function handOffSkills() {
       fireEvent.click(
         screen.getByRole('button', { name: 'More start options' }),
@@ -1716,7 +1784,7 @@ test("the dock's draft reports its text as it changes, so a dismissal can return
       />
     </AuthorityPersistenceContext.Provider>,
   );
-  const dock = screen.getByRole('dialog', { name: 'New chat' });
+  const dock = screen.getByRole('region', { name: 'New chat' });
   fireEvent.change(
     within(dock).getByRole('textbox', { name: 'What would you like done?' }),
     { target: { value: 'From Home, edited in the dock' } },
@@ -1724,6 +1792,306 @@ test("the dock's draft reports its text as it changes, so a dismissal can return
   expect(onDraftChange).toHaveBeenLastCalledWith(
     'From Home, edited in the dock',
   );
+});
+
+// The dock's New chat is a draft in the dock body, not a dialog over the
+// page: no title bar or hero, no recent chats, one quiet line naming where
+// Start runs, and the Project and Station controls in the chip row under the
+// text. Home keeps its start box with the hero above it.
+describe("the dock's New chat is a draft, not a dialog", () => {
+  test('the draft names its Project and Station; Home keeps its hero', async () => {
+    deviceSettingsStore.set('chatDockProjectSlug', 'station');
+    state.device = { hostName: 'Kontour' };
+    const ui = renderBoth();
+    const dock = ui.dock();
+    // A region the screen reader can find by name, and no dialog anywhere.
+    expect(dock.tagName).toBe('SECTION');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    // Derived: the bound Project's name, the device's own Station name.
+    expect(
+      await within(dock).findByText('Start a chat in Station on Kontour'),
+    ).toBeTruthy();
+    expect(
+      within(dock).queryByRole('heading', {
+        name: 'What would you like to do?',
+      }),
+    ).toBeNull();
+    expect(within(dock).queryByText('Continue working')).toBeNull();
+    expect(
+      within(dock).queryByRole('button', { name: 'Close new chat' }),
+    ).toBeNull();
+    // The Project control sits in the chip row with Agent, not above the box.
+    const chips = within(formOf(dock)).getByRole('group', {
+      name: 'Chat setup',
+    });
+    expect(within(chips).getByRole('button', { name: /^Project:/ })).toBe(
+      projectChip(dock),
+    );
+    // One Station: nothing to choose, so no Station control.
+    expect(
+      within(dock).queryByRole('button', { name: /^Run a task on a Station/ }),
+    ).toBeNull();
+
+    const home = screen.getByTestId('home');
+    expect(
+      within(home).getByRole('heading', { name: 'What would you like to do?' }),
+    ).toBeTruthy();
+    expect(
+      within(formOf(home))
+        .getByRole('group', { name: 'Chat setup' })
+        .contains(projectChip(home)),
+    ).toBe(false);
+  });
+
+  // The line is an empty draft's hint: once there is text, the chips say
+  // where it goes and a short dock keeps the room for the composer.
+  test('the draft line steps aside once the draft holds text', async () => {
+    deviceSettingsStore.set('chatDockProjectSlug', 'station');
+    state.device = { hostName: 'Kontour' };
+    const dock = renderBoth().dock();
+    const line = 'Start a chat in Station on Kontour';
+    expect(await within(dock).findByText(line)).toBeTruthy();
+    fireEvent.change(within(formOf(dock)).getByRole('textbox'), {
+      target: { value: 'Tidy the sidebar' },
+    });
+    expect(within(dock).queryByText(line)).toBeNull();
+    fireEvent.change(within(formOf(dock)).getByRole('textbox'), {
+      target: { value: '' },
+    });
+    expect(within(dock).getByText(line)).toBeTruthy();
+  });
+
+  // Like the dialog it replaced, the draft takes a history entry, so a
+  // phone's Back dismisses it; leaving it returns focus to its opener.
+  test('Back and Escape dismiss the draft, and focus returns to the control that opened it', async () => {
+    const onClose = vi.fn();
+    function Harness() {
+      const [open, setOpen] = useState(false);
+      return (
+        <AuthorityPersistenceContext.Provider
+          value={{ status: 'verified', namespace: 'ns-1', observation: null }}
+        >
+          <button type="button" onClick={() => setOpen(true)}>
+            Open draft
+          </button>
+          {open && (
+            <NewChatModal
+              projectIconBySlug={new Map()}
+              startSurface
+              agents={state.agents as AgentData[]}
+              projects={state.projects as ProjectMetadata[]}
+              onSelect={vi.fn()}
+              onClose={() => {
+                onClose();
+                setOpen(false);
+              }}
+            />
+          )}
+        </AuthorityPersistenceContext.Provider>
+      );
+    }
+    // As main.tsx renders the app: StrictMode replays effects, which must
+    // not re-capture the draft's own text box as the place to return to.
+    render(
+      <StrictMode>
+        <Harness />
+      </StrictMode>,
+    );
+    const opener = screen.getByRole('button', { name: 'Open draft' });
+    opener.focus();
+    fireEvent.click(opener);
+    const draft = screen.getByRole('region', { name: 'New chat' });
+    fireEvent.keyDown(draft, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('region', { name: 'New chat' })).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(opener));
+    await flushHistory();
+
+    opener.focus();
+    fireEvent.click(opener);
+    screen.getByRole('region', { name: 'New chat' });
+    act(() => window.history.back());
+    await waitFor(() =>
+      expect(screen.queryByRole('region', { name: 'New chat' })).toBeNull(),
+    );
+    expect(onClose).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(document.activeElement).toBe(opener));
+  });
+
+  // Out of view (a collapsed dock keeps it hidden) the draft gives up its Back
+  // entry without travelling back, so nothing in flight is cancelled, and a
+  // Back then does not discard it. Back in view, it takes an entry again.
+  test('a draft out of view holds no Back entry and releases it without travelling back', async () => {
+    const onClose = vi.fn();
+    // One mounted draft whose visibility the test flips, as the dock does.
+    let setInView: (inView: boolean) => void = () => undefined;
+    function Harness() {
+      const [historyActive, setHistoryActive] = useState(true);
+      setInView = setHistoryActive;
+      return (
+        <AuthorityPersistenceContext.Provider
+          value={{ status: 'verified', namespace: 'ns-1', observation: null }}
+        >
+          <NewChatModal
+            projectIconBySlug={new Map()}
+            startSurface
+            agents={state.agents as AgentData[]}
+            projects={state.projects as ProjectMetadata[]}
+            onSelect={vi.fn()}
+            onClose={onClose}
+            historyActive={historyActive}
+          />
+        </AuthorityPersistenceContext.Provider>
+      );
+    }
+    render(<Harness />);
+    await flushHistory();
+    const back = vi.spyOn(window.history, 'back');
+    act(() => setInView(false));
+    await flushHistory();
+    expect(back).not.toHaveBeenCalled();
+    back.mockRestore();
+
+    act(() => window.history.back());
+    await flushHistory();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole('region', { name: 'New chat' })).toBeTruthy();
+
+    act(() => setInView(true));
+    await flushHistory();
+    act(() => window.history.back());
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
+
+  // After Start the dock hands focus to the new chat's composer
+  // (`requestComposerFocus`); the draft must not pull it back to its opener.
+  test('a started draft does not return focus to the control that opened it', async () => {
+    function Harness() {
+      const [open, setOpen] = useState(false);
+      return (
+        <AuthorityPersistenceContext.Provider
+          value={{ status: 'verified', namespace: 'ns-1', observation: null }}
+        >
+          <button type="button" onClick={() => setOpen(true)}>
+            Open draft
+          </button>
+          {open && (
+            <NewChatModal
+              projectIconBySlug={new Map()}
+              startSurface
+              agents={state.agents as AgentData[]}
+              projects={state.projects as ProjectMetadata[]}
+              onSelect={() => setOpen(false)}
+              onClose={() => setOpen(false)}
+            />
+          )}
+        </AuthorityPersistenceContext.Provider>
+      );
+    }
+    render(<Harness />);
+    const opener = screen.getByRole('button', { name: 'Open draft' });
+    opener.focus();
+    fireEvent.click(opener);
+    const draft = screen.getByRole('region', { name: 'New chat' });
+    fireEvent.change(
+      within(draft).getByRole('textbox', { name: 'What would you like done?' }),
+      { target: { value: 'Go' } },
+    );
+    const start = within(draft).getByRole('button', { name: 'Start' });
+    await waitFor(() =>
+      expect((start as HTMLButtonElement).disabled).toBe(false),
+    );
+    fireEvent.click(start);
+    await waitFor(() =>
+      expect(screen.queryByRole('region', { name: 'New chat' })).toBeNull(),
+    );
+    await act(() => new Promise((resolve) => requestAnimationFrame(resolve)));
+    await act(() => new Promise((resolve) => requestAnimationFrame(resolve)));
+    expect(document.activeElement).not.toBe(opener);
+  });
+
+  // The whole draft owns a dropped file: let go over the line (not the
+  // composer), it joins the draft's files instead of the browser opening it.
+  test('a file dropped on the draft outside the composer joins its files', async () => {
+    const ui = renderBoth();
+    const dock = ui.dock();
+    const lead = await within(dock).findByText(/^Start a chat/);
+    const file = new File(['x'], 'notes.txt', { type: 'text/plain' });
+    const dataTransfer = {
+      types: ['Files'],
+      files: [file],
+      items: [{ kind: 'file', type: 'text/plain', getAsFile: () => file }],
+    } as unknown as DataTransfer;
+    fireEvent.dragEnter(lead, { dataTransfer, relatedTarget: null });
+    const dropped = fireEvent.drop(lead, { dataTransfer });
+    // Handled: the browser's default (open the file, leave the app) is off.
+    expect(dropped).toBe(false);
+    const list = await within(dock).findByRole('list', {
+      name: 'Files for this chat',
+    });
+    expect(within(list).getByText('notes.txt')).toBeTruthy();
+  });
+
+  // A draft that takes no files (the fork's Agent list) still swallows the
+  // drop and says why; the next drag clears that, so it never goes stale.
+  test('a refused drop says why, and the next drag clears it', async () => {
+    render(
+      <AuthorityPersistenceContext.Provider
+        value={{ status: 'verified', namespace: 'ns-1', observation: null }}
+      >
+        <NewChatModal
+          projectIconBySlug={new Map()}
+          agents={state.agents as AgentData[]}
+          projects={state.projects as ProjectMetadata[]}
+          onSelect={vi.fn()}
+          onClose={vi.fn()}
+        />
+      </AuthorityPersistenceContext.Provider>,
+    );
+    const draft = screen.getByRole('region', { name: 'New Chat' });
+    const file = new File(['x'], 'notes.txt', { type: 'text/plain' });
+    const dataTransfer = {
+      types: ['Files'],
+      files: [file],
+      items: [{ kind: 'file', type: 'text/plain', getAsFile: () => file }],
+    } as unknown as DataTransfer;
+    expect(fireEvent.drop(draft, { dataTransfer })).toBe(false);
+    expect((await within(draft).findByRole('alert')).textContent).toBe(
+      'This draft cannot take files.',
+    );
+    fireEvent.dragEnter(draft, { dataTransfer, relatedTarget: null });
+    expect(
+      within(draft).queryByText('This draft cannot take files.'),
+    ).toBeNull();
+  });
+
+  test('with no project the line uses the chip’s words and names no Station before the device answers; a second Station adds the Station control', async () => {
+    state.environments = [
+      {
+        profile: {
+          id: 'ssh-1',
+          environmentId: 'env-lab',
+          name: 'Lab box',
+          verifiedProjectPath: true,
+        },
+        state: { phase: 'connected' },
+      },
+    ];
+    const ui = renderBoth();
+    const dock = ui.dock();
+    // The device has not answered (undefined): no Station claim yet.
+    expect(
+      await within(dock).findByText('Start a chat without a project'),
+    ).toBeTruthy();
+    const chips = within(formOf(dock)).getByRole('group', {
+      name: 'Chat setup',
+    });
+    expect(
+      await within(chips).findByRole('button', {
+        name: 'Runs on This Station. Choose where this work runs',
+      }),
+    ).toBeTruthy();
+  });
 });
 
 // #3366 follow-up: the composer draws a project with `ProjectIcon` — the

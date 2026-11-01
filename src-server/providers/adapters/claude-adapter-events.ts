@@ -7,6 +7,10 @@ import type {
   TerminalReason,
 } from '@anthropic-ai/claude-agent-sdk';
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
+import {
+  CLAUDE_ARTIFACT_TOOL_NAME,
+  parseClaudeArtifactPublish,
+} from '@kontourai/station-contracts/claude-artifact';
 import { sanitizeUntrustedDisplayText } from '@kontourai/station-contracts/orchestration';
 import {
   ENGINE_SESSION_BINDING_DEAD_CODE,
@@ -27,6 +31,10 @@ import {
   summarizeImageOmissions,
 } from '../model-image-attachments.js';
 import { providerFailure } from '../provider-failure.js';
+import {
+  classifyEngineStartupFailure,
+  engineStartupFailureEvent,
+} from '../provider-startup-failure.js';
 import {
   type ClaudeChildWorkContext,
   type ClaudeChildWorkState,
@@ -1006,6 +1014,13 @@ export function mapClaudeSdkMessage({
       record.session.status = outcome === 'binding-dead' ? 'dead' : 'error';
       if (target.kind === 'turn') settleClaudeResultTarget(turnContext, target);
       clearClaudeSdkTurns(turnContext);
+      const startupFailure =
+        outcome === 'failed' && !usageLimit
+          ? classifyEngineStartupFailure(
+              'claude',
+              claudeResultFailureText(message),
+            )
+          : undefined;
       publish({
         eventId: crypto.randomUUID(),
         provider,
@@ -1032,6 +1047,7 @@ export function mapClaudeSdkMessage({
             : ENGINE_TURN_FAILED_CODE,
         retriable: false,
         message: claudeResultFailureText(message),
+        ...(startupFailure ? engineStartupFailureEvent(startupFailure) : {}),
         ...(usageLimit ? { details: { ...usageLimit } } : {}),
         // #2324 review F1: a failed turn the engine opened on its own ends
         // with this error; it carries the trigger its start did.
@@ -1261,6 +1277,18 @@ export function mapClaudeSdkMessage({
     if (message.parent_tool_use_id !== null) return;
     const content = (message.message as { content?: unknown })?.content;
     if (!Array.isArray(content)) return;
+    // The SDK's structured tool output belongs to the whole message, so it
+    // is attributed to a result only when the message carries exactly one.
+    const resultBlockCount = content.filter(
+      (block) =>
+        Boolean(block) &&
+        typeof block === 'object' &&
+        (block as { type?: string }).type === 'tool_result',
+    ).length;
+    const structuredOutput =
+      resultBlockCount === 1
+        ? (message as { tool_use_result?: unknown }).tool_use_result
+        : undefined;
     for (const block of content) {
       if (
         !block ||
@@ -1307,6 +1335,10 @@ export function mapClaudeSdkMessage({
         });
       }
       const images = collectClaudeToolResultImages(toolResult.content);
+      const claudeArtifact =
+        toolName === CLAUDE_ARTIFACT_TOOL_NAME && toolResult.is_error !== true
+          ? parseClaudeArtifactPublish(structuredOutput)
+          : undefined;
       publish({
         eventId: crypto.randomUUID(),
         provider,
@@ -1330,6 +1362,7 @@ export function mapClaudeSdkMessage({
           ? { outputReceipt: claudeToolResultOutputReceipt(toolResult.content) }
           : {}),
         ...(images.attachments ? { attachments: images.attachments } : {}),
+        ...(claudeArtifact ? { claudeArtifact } : {}),
       });
     }
     return;
