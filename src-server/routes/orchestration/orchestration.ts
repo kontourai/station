@@ -126,6 +126,7 @@ function isPersonRequest(request: Request): boolean {
   const principal = getRuntimeAuthenticatedRequestPrincipal(request);
   return principal !== undefined && principal.kind !== 'internal';
 }
+
 import {
   AnswerAssessmentConflictError,
   AnswerAssessmentModule,
