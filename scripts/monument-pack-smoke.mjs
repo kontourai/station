@@ -127,6 +127,24 @@ assert.equal(typeof sqlite.openSqliteKernelStorage, 'function');
 assert.equal(typeof testing.registerKernelConformance, 'function');
 assert.equal(typeof sessionControl.runWithSessionControlKey, 'function');
 assert.equal(typeof recovery.createRecoveryLedger, 'function');
+assert.equal(typeof recovery.createSqliteRecoveryStorage, 'function');
+assert.equal(typeof recovery.openMemoryRecoveryStorage, 'function');
+
+const recoveryVolume = new recovery.MemoryRecoveryVolume();
+const recoveryStore = recovery.openMemoryRecoveryStorage({
+  volume: recoveryVolume,
+  makeIntent: (input) => ({ ...input, attempts: 0 }),
+  updateIntent: (current, changes) => ({ ...current, ...changes }),
+  project: (current) => current,
+  sourceTerminated: () => false,
+});
+const recoveryIntent = {
+  fingerprint: 'smoke', threadId: 'thread', provider: 'engine', sourceEventId: 'event',
+  sourceTurnId: 'turn', failureKind: 'capacity', scope: 'account', decision: 'retry-now',
+  maxAttempts: 1, outcome: 'armed', createdAt: '2026-01-01', updatedAt: '2026-01-01',
+};
+assert.equal((await recoveryStore.execute({ type: 'armRecoveryIntent', args: [recoveryIntent] })).outcome, 'armed');
+await recoveryStore.close();
 
 const claim = (owner) => ({
   type: 'turnDedup.claim',

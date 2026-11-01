@@ -4,6 +4,7 @@ import {
   type RecoveryGuardRow,
   recoveryGuardPlan,
 } from './decisions/recovery-storage.js';
+import { KernelStorageClosedError } from './port.js';
 import type {
   RecoveryIntentInput,
   RecoveryIntentShape,
@@ -92,6 +93,7 @@ export interface RecoveryStoragePort<
   execute<C extends RecoveryStorageCommand<I, P, Reason>>(
     command: C,
   ): Promise<RecoveryStorageResult<I, P, Reason, C>>;
+  close(): Promise<void>;
 }
 
 function recoveryTransition(result: {
@@ -107,6 +109,7 @@ class SqliteRecoveryStorage<
   Reason extends string,
 > {
   private inFlight = false;
+  private closed = false;
   constructor(
     private readonly options: {
       db: SqliteKernelDatabase;
@@ -143,6 +146,7 @@ class SqliteRecoveryStorage<
     command: C,
     options: RecoveryExecuteOptions = {},
   ): RecoveryStorageResult<I, P, Reason, C> {
+    if (this.closed) throw new KernelStorageClosedError();
     if (!RECOVERY_OPERATIONS.includes(command.type))
       throw new Error('Unknown recovery storage command.');
     if (this.inFlight)
@@ -174,7 +178,15 @@ class SqliteRecoveryStorage<
       let result: unknown;
       const guard = this.guard(command);
       if (guard && !guard.allowed) {
-        result = guard.refused === 'null' ? null : { kind: 'stale' };
+        // The host may observe a post-write fault even on a no-op retry; its
+        // exact terminal readback is the existing acknowledgement rule.
+        result =
+          command.type === 'recordRecoveryTerminal' &&
+          this.options.afterTerminalWrite
+            ? this.recordRecoveryTerminal(...command.args)
+            : guard.refused === 'null'
+              ? null
+              : { kind: 'stale' };
       } else
         switch (command.type) {
           case 'armRecoveryIntent':
@@ -270,6 +282,10 @@ class SqliteRecoveryStorage<
     command: C,
   ): Promise<RecoveryStorageResult<I, P, Reason, C>> {
     return this.executeSync(command);
+  }
+
+  async close(): Promise<void> {
+    this.closed = true;
   }
 
   private readGuardRows(
@@ -881,5 +897,6 @@ export function createSqliteRecoveryStorage<
   return Object.freeze({
     executeSync: storage.executeSync.bind(storage),
     execute: storage.execute.bind(storage),
+    close: storage.close.bind(storage),
   });
 }

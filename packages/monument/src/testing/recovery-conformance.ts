@@ -224,6 +224,31 @@ const basicRecoveryConformanceCases: readonly RecoveryConformanceCase[] = [
       }),
   },
   {
+    name: 'closing a handle fences later commands without discarding committed data',
+    run: (harness) =>
+      withSession(harness, async (session) => {
+        const old = session.storage;
+        await old.execute({
+          type: 'armRecoveryIntent',
+          args: [intent('closed')],
+        });
+        await session.reopen();
+        await assert.rejects(
+          old.execute({ type: 'findRecoveryIntent', args: ['closed'] }),
+          /closed/i,
+        );
+        assert.equal(
+          (
+            await session.storage.execute({
+              type: 'findRecoveryIntent',
+              args: ['closed'],
+            })
+          )?.outcome,
+          'armed',
+        );
+      }),
+  },
+  {
     name: 'fences claims and requires provider acceptance before success',
     run: (harness) =>
       withSession(harness, async ({ storage }) => {
@@ -573,6 +598,36 @@ const basicRecoveryConformanceCases: readonly RecoveryConformanceCase[] = [
           }),
           { kind: 'applied' },
         );
+      }),
+  },
+  {
+    name: 'preserves bulk cancellation outcome while fencing every matching intent',
+    run: (harness) =>
+      withSession(harness, async (session) => {
+        for (const id of ['first-terminal', 'second-terminal']) {
+          await session.storage.execute({
+            type: 'armRecoveryIntent',
+            args: [intent(id)],
+          });
+          session.markSourceTerminated(`thread-${id}`, 'turn');
+        }
+        assert.deepEqual(
+          await session.storage.execute({
+            type: 'cancelSourceTerminatedRecoveries',
+            args: [later],
+          }),
+          { kind: 'stale' },
+        );
+        for (const id of ['first-terminal', 'second-terminal'])
+          assert.equal(
+            (
+              await session.storage.execute({
+                type: 'findRecoveryIntent',
+                args: [id],
+              })
+            )?.outcome,
+            'canceled',
+          );
       }),
   },
   {

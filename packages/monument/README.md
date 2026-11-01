@@ -30,7 +30,7 @@ directory and checks all of this.
 | `@kontourai/monument` | The port (`KernelStorage`, `CommitParticipant`), commands and results, the pure decision functions (including `planTurnBoundaryReconcile`), owner liveness, message delivery decisions and sequencing, and the in-memory adapter | none |
 | `@kontourai/monument/adapter` | For adapter authors: `KernelTransaction`, `runKernelTransactionStep`, `isReadOnlyKernelCommand` | none |
 | `@kontourai/monument/sqlite` | The `node:sqlite` adapter, and the table bindings that let it run over a host's existing tables | Node 24 |
-| `@kontourai/monument/recovery` | Recovery claim and reconciliation protocol over host storage | Node 24 (`node:crypto`) |
+| `@kontourai/monument/recovery` | Recovery claim protocol, commands, and memory/SQLite adapters | Node 24 (`node:crypto`) |
 | `@kontourai/monument/session-control` | Request-key identity, digest and keyed execution | Node 24 (`node:crypto`) |
 | `@kontourai/monument/testing` | The conformance suite, the crash-point store, a fake process table, and the in-memory and `node:sqlite` harnesses | Node 24 (`node:assert`, `node:sqlite`) |
 
@@ -40,6 +40,23 @@ Adapter authors must implement
 custom adapter must update its implementation. The storage commands and
 persisted row format are unchanged. This source compatibility change is
 separate from on-disk compatibility.
+
+## Recovery storage
+
+`RecoveryStoragePort` executes one typed recovery command at a time. Its
+in-memory volume retains committed records across handles; the SQLite adapter
+binds a host-owned table and creates no schema. The host supplies row mapping,
+a projection and a fixed, trusted SQL predicate for its source-terminal
+facts. SQLite requires WAL and a positive busy timeout, sets and checks
+`synchronous = FULL`, and runs each command in a transaction. A host may opt
+into a nested savepoint; it owns the outer commit and must wait for that commit
+before performing effects. Closing the adapter fences that handle without
+closing the host's SQLite connection.
+
+`registerRecoveryConformance` in the testing entry point exercises memory and
+SQLite harnesses, including Station's migrated table and simulated failure
+before commit or after acknowledgement is lost. Those tests do not prove
+physical power-loss durability or provider effects.
 
 ## Message delivery
 
@@ -81,9 +98,8 @@ ordering contract; Station's mounted route tests also inspect its real SQLite
 key row when each effect port is entered. Adapter conformance remains the
 contract for storage commands; this primitive adds none.
 
-This completes the delivery primitive of #3565. The recovery claim protocol is
-also in the package, while its Station SQLite transitions remain to be moved
-to storage commands. The package remains private
+This completes the delivery primitive of #3565. The recovery claim protocol and
+storage commands are also in the package. The package remains private
 `0.1.0` until its reviewed functional release.
 
 ## Steer receipts

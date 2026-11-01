@@ -123,7 +123,6 @@ export function createRecoveryHarness(
             })
           : undefined;
       let database: DatabaseSync | undefined;
-      let raw: RecoveryConformanceStorage;
       const beforeCommit = () => {
         if (failCommit) {
           failCommit = false;
@@ -133,9 +132,9 @@ export function createRecoveryHarness(
         commitCallback = undefined;
         callback?.();
       };
-      const open = () => {
+      const open = (): RecoveryConformanceStorage => {
         if (kind === 'memory') {
-          raw = openMemoryRecoveryStorage<
+          return openMemoryRecoveryStorage<
             RecoveryConformanceIntent,
             RecoveryConformanceIntent,
             string
@@ -171,7 +170,7 @@ export function createRecoveryHarness(
           database.exec(
             'PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000',
           );
-          raw = createSqliteRecoveryStorage<
+          return createSqliteRecoveryStorage<
             RecoveryConformanceIntent,
             RecoveryConformanceIntent,
             string
@@ -185,8 +184,10 @@ export function createRecoveryHarness(
           });
         }
       };
-      open();
-      const wrap: RecoveryConformanceStorage = {
+      let raw = open();
+      const makeWrap = (
+        current: RecoveryConformanceStorage,
+      ): RecoveryConformanceStorage => ({
         executeSync: <
           C extends RecoveryStorageCommand<
             RecoveryConformanceIntent,
@@ -196,7 +197,7 @@ export function createRecoveryHarness(
         >(
           command: C,
         ) => {
-          const result = raw.executeSync(command);
+          const result = current.executeSync(command);
           if (loseAck) {
             loseAck = false;
             throw new Error('acknowledgement fault');
@@ -214,21 +215,27 @@ export function createRecoveryHarness(
         ) => {
           const result =
             via === 'sync'
-              ? raw.executeSync(command)
-              : await raw.execute(command);
+              ? current.executeSync(command)
+              : await current.execute(command);
           if (loseAck) {
             loseAck = false;
             throw new Error('acknowledgement fault');
           }
           return result;
         },
-      };
+        close: () => current.close(),
+      });
+      let wrap = makeWrap(raw);
       return {
-        storage: wrap,
+        get storage() {
+          return wrap;
+        },
         async reopen() {
+          await wrap.close();
           database?.close();
           database = undefined;
-          open();
+          raw = open();
+          wrap = makeWrap(raw);
         },
         markSourceTerminated(threadId, turnId) {
           terminated.add(`${threadId}:${turnId}`);
@@ -248,6 +255,7 @@ export function createRecoveryHarness(
           commitCallback = callback;
         },
         async dispose() {
+          await wrap.close();
           database?.close();
           await location?.dispose();
         },

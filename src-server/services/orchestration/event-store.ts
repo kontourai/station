@@ -17544,6 +17544,7 @@ export class EventStore {
     releaseVoiceTurnOwner(this.recoveryLedgerOwner.id);
     releaseSessionTurnBoundaryOwner(this.recoveryLedgerOwner.id);
     releaseRecoveryLedgerOwner(this.recoveryLedgerOwner.id);
+    void this.recoverySql?.close();
     this.readStatements.clear();
     this.db.close();
     this.storeClosed = true;

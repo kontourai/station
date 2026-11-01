@@ -109,14 +109,23 @@ describe('RecoveryLedger', () => {
       type: 'armRecoveryIntent',
       args: [{ ...intent, fingerprint: 'nested' }],
     };
-    host.db.exec('BEGIN IMMEDIATE');
-    expect(() => storage.executeSync(command)).toThrow('existing transaction');
-    expect(
-      storage.executeSync(command, { withinHostTransaction: true }).fingerprint,
-    ).toBe('nested');
-    host.db.exec('ROLLBACK');
-    expect(ledger.find('nested')).toBeNull();
-    eventStore.close();
+    try {
+      host.db.exec('BEGIN IMMEDIATE');
+      try {
+        expect(() => storage.executeSync(command)).toThrow(
+          'existing transaction',
+        );
+        expect(
+          storage.executeSync(command, { withinHostTransaction: true })
+            .fingerprint,
+        ).toBe('nested');
+      } finally {
+        host.db.exec('ROLLBACK');
+      }
+      expect(ledger.find('nested')).toBeNull();
+    } finally {
+      eventStore.close();
+    }
   });
 
   test('#2823: a failed startup scan is unavailable, never an empty obligation list', () => {
@@ -516,13 +525,11 @@ describe('RecoveryLedger', () => {
   test('reads back an identical durable terminal after a post-write fault', () => {
     const { databasePath, eventStore, intent } = fixture();
     eventStore.close();
-    let faulted = false;
+    let faults = 0;
     const faulting = new EventStore(databasePath, undefined, undefined, {
       recoveryTransition: () => {
-        if (!faulted) {
-          faulted = true;
-          throw new Error('injected after UPDATE');
-        }
+        faults += 1;
+        throw new Error('injected after UPDATE');
       },
     });
     const ledger = faulting.createRecoveryLedger();
@@ -547,7 +554,15 @@ describe('RecoveryLedger', () => {
       ),
     ).toEqual({ kind: 'applied' });
     // The terminal answered through its readback: the fault did fire.
-    expect(faulted).toBe(true);
+    expect(faults).toBe(1);
+    expect(
+      ledger.terminal(
+        intent.fingerprint,
+        'succeeded',
+        '2026-08-13T00:00:02.000Z',
+      ),
+    ).toEqual({ kind: 'applied' });
+    expect(faults).toBe(2);
     expect(ledger.find(intent.fingerprint)).toMatchObject({
       outcome: 'succeeded',
     });

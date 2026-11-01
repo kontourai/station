@@ -5,6 +5,7 @@ import {
   type RecoveryGuardRow,
   recoveryGuardPlan,
 } from './decisions/recovery-storage.js';
+import { KernelStorageClosedError } from './port.js';
 import type {
   RecoveryIntentInput,
   RecoveryOwner,
@@ -47,10 +48,12 @@ export class MemoryRecoveryVolume<I extends RecoverySqlIntent> {
     sourceTerminated(intent: I): boolean;
     beforeCommit?: () => void;
   }): RecoveryStoragePort<I, P, Reason> {
+    let closed = false;
     const executeSync = <C extends RecoveryStorageCommand<I, P, Reason>>(
       command: C,
       executeOptions: RecoveryExecuteOptions = {},
     ): RecoveryStorageResult<I, P, Reason, C> => {
+      if (closed) throw new KernelStorageClosedError();
       if (executeOptions.withinHostTransaction)
         throw new Error('Memory recovery storage has no host transaction.');
       if (options.volume.#inFlight)
@@ -442,6 +445,9 @@ export class MemoryRecoveryVolume<I extends RecoverySqlIntent> {
       execute: async <C extends RecoveryStorageCommand<I, P, Reason>>(
         command: C,
       ) => executeSync(command),
+      close: async () => {
+        closed = true;
+      },
     });
   }
 }
