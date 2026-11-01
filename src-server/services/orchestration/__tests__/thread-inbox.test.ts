@@ -382,7 +382,8 @@ describe('thread inbox (#3568)', () => {
     expect(world.inbox.submit(input)).toMatchObject({ outcome: 'queued' });
     expect(
       JSON.parse(
-        world.store.threadInboxStore().read(THREAD, input.clientTurnId)!.payload,
+        world.store.threadInboxStore().read(THREAD, input.clientTurnId)!
+          .payload,
       ),
     ).toMatchObject({ expectedHead });
     await emit(
