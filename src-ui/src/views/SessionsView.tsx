@@ -110,6 +110,16 @@ import './page-layout.css';
 
 const SETTLED_PAGE_SIZE = 20;
 
+/**
+ * The inventory before the sessions query has answered — ONE array, not a
+ * fresh `[]` per render. Everything downstream is memoized on it, ending in
+ * the quick-review source the `main` page publishes from a layout effect;
+ * a new empty array each render re-published that source, whose provider
+ * update re-rendered this view, and a cold load of `/` with Activity
+ * restored as the page looped until React threw #185 (#4379).
+ */
+const NO_SESSIONS: OrchestrationSessionSummary[] = [];
+
 function isReadOnlyAttachedSession(
   session: OrchestrationSessionSummary,
 ): boolean {
@@ -325,7 +335,7 @@ export function SessionsView({
   onContinueInChat?: (threadId: string, draft: string) => void;
 }) {
   const {
-    data: inventory = [],
+    data: inventory = NO_SESSIONS,
     isLoading,
     error: sessionsError,
     refetch,
