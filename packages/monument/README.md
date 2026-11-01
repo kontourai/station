@@ -158,12 +158,17 @@ enforce this contract; legacy rows remain unknown.
 can be evicted, oldest first; each eviction leaves an expired-key tombstone.
 An optional `turnDedupMinResolvedEntries` stops eviction once that many resolved
 rows remain. The floor must be a positive integer no greater than the soft cap;
-omitting it preserves the original all-row policy. Station sets the floor equal
-to its cap (2,000 by default), so unresolved rows cannot consume successful
-replay capacity. Unresolved rows can still grow without bound. This is a shared
-count budget, not a per-scope minimum retry duration. An older writer can evict
-below the floor. Writers with tombstone support still leave expired-key
+omitting it preserves the original all-row policy. A host may instead set
+`turnDedupResolvedRetentionMs` to retain each resolved row for that wall-clock
+duration after resolution, regardless of count. Legacy rows without a resolution
+time start a fresh window on first observation. Station uses seven days; live
+windows and unresolved rows can grow without bound. An older writer can evict
+below the window or floor. Writers with tombstone support still leave expired-key
 tombstones under their retention rules; writers from before #3559 may not.
+For timed retention, a SQLite host binding must supply a nullable
+`resolvedAtColumn`. The host must clear it when an older writer changes the
+row without updating the timestamp. A forward wall-clock step can shorten the
+elapsed window; this policy is not a trusted-clock guarantee.
 
 Read-only commands (`turnDedup.read`, `turnBoundary.list`,
 `turnBoundary.hasPossibleEffect`) run in a deferred transaction, so under WAL

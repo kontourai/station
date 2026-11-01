@@ -33,6 +33,19 @@ describe('TurnDeduplicator', () => {
     return { store, ledger: store.createTurnDeduplicator(), directory };
   }
 
+  function ageResolved(directory: string, keys: string[]) {
+    const database = new DatabaseSync(join(directory, 'orchestration.sqlite'));
+    try {
+      const update = database.prepare(
+        'UPDATE orchestration_turn_dedup SET resolved_at = ? WHERE dedup_key = ?',
+      );
+      for (const key of keys)
+        update.run(Date.now() - 8 * 24 * 60 * 60 * 1000, key);
+    } finally {
+      database.close();
+    }
+  }
+
   test('gives only the winning module an owner handle and preserves a resolved claim across restart', () => {
     const first = open();
     const owner = first.ledger.claim({
@@ -539,8 +552,16 @@ describe('TurnDeduplicator', () => {
   test('an evicted resolved key answers expired, never owner, across restart; tombstones do not count toward the cap', () => {
     const { store, ledger, directory } = open(2);
     const path = join(directory, 'orchestration.sqlite');
-    const keys = ['k1', 'k2', 'k3', 'k4', 'k5'];
-    for (const clientTurnId of keys) {
+    for (const clientTurnId of ['k1', 'k2', 'k3']) {
+      const owner = ledger.claim({ threadId: 'thread', clientTurnId });
+      if (owner.kind !== 'owner') throw new Error('expected owner');
+      owner.claim.resolve(`turn-${clientTurnId}`);
+    }
+    ageResolved(
+      directory,
+      ['k1', 'k2', 'k3'].map((key) => turnDedupKey('thread', key)),
+    );
+    for (const clientTurnId of ['k4', 'k5']) {
       const owner = ledger.claim({ threadId: 'thread', clientTurnId });
       if (owner.kind !== 'owner') throw new Error('expected owner');
       owner.claim.resolve(`turn-${clientTurnId}`);
@@ -549,7 +570,7 @@ describe('TurnDeduplicator', () => {
       expect(ledger.claim({ threadId: 'thread', clientTurnId })).toEqual({
         kind: 'expired',
       });
-    // The two newest stay full rows: the cap counts live rows, not tombstones.
+    // The two newer keys stay within their retry window.
     expect(ledger.claim({ threadId: 'thread', clientTurnId: 'k4' })).toEqual({
       kind: 'contended',
       turnId: 'turn-k4',
@@ -560,10 +581,11 @@ describe('TurnDeduplicator', () => {
     });
     store.close();
 
-    // A /chat key evicted the same way answers expired too. Rows created in
-    // the same millisecond are evicted in key order, so `chat-a` goes first.
-    const { store: chatStore } = open(2);
+    // A /chat key past its retry window answers expired too.
+    const { store: chatStore, directory: chatDirectory } = open(2);
     for (const clientTurnId of ['chat-a', 'chat-b', 'chat-c']) {
+      if (clientTurnId === 'chat-c')
+        ageResolved(chatDirectory, [chatTurnDedupKey('chat-a')]);
       expect(chatStore.claimChatTurn(clientTurnId)).toEqual({ claimed: true });
       chatStore.resolveChatTurn(clientTurnId, `conversation-${clientTurnId}`);
     }
@@ -595,8 +617,10 @@ describe('TurnDeduplicator', () => {
 
   // #3606 review: a tombstone answers only for its own key.
   test('evicting one /chat key never makes a different fresh /chat key answer expired', () => {
-    const { store } = open(2);
+    const { store, directory } = open(2);
     for (const clientTurnId of ['chat-a', 'chat-b', 'chat-c']) {
+      if (clientTurnId === 'chat-c')
+        ageResolved(directory, [chatTurnDedupKey('chat-a')]);
       expect(store.claimChatTurn(clientTurnId)).toEqual({ claimed: true });
       store.resolveChatTurn(clientTurnId, `conversation-${clientTurnId}`);
     }
@@ -613,16 +637,16 @@ describe('TurnDeduplicator', () => {
     store.close();
   });
 
-  // #3606 review F2: /chat tombstones are time-bounded at 30 days, far past
-  // every retry window Station has (the longest is 7 days).
-  test('a /chat tombstone past 30 days is removed while one inside the bound still answers expired', () => {
+  test('a /chat tombstone remains expired after 30 days', () => {
     const { store, directory } = open(2);
     const settle = (clientTurnId: string) => {
       expect(store.claimChatTurn(clientTurnId)).toEqual({ claimed: true });
       store.resolveChatTurn(clientTurnId, `conversation-${clientTurnId}`);
     };
-    // c1 and c2 are evicted to tombstones; c3 and c4 stay full rows.
-    for (const clientTurnId of ['c1', 'c2', 'c3', 'c4']) settle(clientTurnId);
+    // c1 and c2 leave their retry window; c3 and c4 stay full rows.
+    for (const clientTurnId of ['c1', 'c2']) settle(clientTurnId);
+    ageResolved(directory, ['c1', 'c2'].map(chatTurnDedupKey));
+    for (const clientTurnId of ['c3', 'c4']) settle(clientTurnId);
     const day = 24 * 60 * 60 * 1000;
     const database = new DatabaseSync(join(directory, 'orchestration.sqlite'));
     try {
@@ -645,7 +669,7 @@ describe('TurnDeduplicator', () => {
           .prepare('SELECT dedup_key FROM orchestration_turn_dedup_expired')
           .all() as Array<{ dedup_key: string }>
       ).map((row) => row.dedup_key);
-      expect(keys).not.toContain(chatTurnDedupKey('c1'));
+      expect(keys).toContain(chatTurnDedupKey('c1'));
       expect(keys).toContain(chatTurnDedupKey('c2'));
     } finally {
       tombstones.close();
@@ -654,7 +678,10 @@ describe('TurnDeduplicator', () => {
       claimed: false,
       outcome: 'expired',
     });
-    expect(store.claimChatTurn('c1')).toEqual({ claimed: true });
+    expect(store.claimChatTurn('c1')).toEqual({
+      claimed: false,
+      outcome: 'expired',
+    });
     store.close();
   });
 
@@ -671,9 +698,9 @@ describe('TurnDeduplicator', () => {
       if (owner.kind !== 'owner') throw new Error('expected owner');
       owner.claim.resolve(`turn-${clientTurnId}`);
     };
-    // Same-millisecond rows are evicted in key order, so `a-start` goes first.
     settle('a-start');
     settle('k2');
+    ageResolved(directory, [turnDedupKey('thread', 'a-start')]);
     settle('k3');
     outcomes.push(
       ledger.claim({ threadId: 'thread', clientTurnId: 'a-start' }).kind,

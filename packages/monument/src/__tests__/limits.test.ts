@@ -19,3 +19,11 @@ it.each([0, -1, 1.5])('rejects the invalid resolved floor %s', (floor) => {
     'monument limit turnDedupMinResolvedEntries must be a positive integer.',
   );
 });
+
+it.each([0, -1, 1.5])('rejects an invalid retry window %s', (window) => {
+  expect(() =>
+    resolveKernelLimits({ turnDedupResolvedRetentionMs: window }),
+  ).toThrow(
+    'monument limit turnDedupResolvedRetentionMs must be a positive integer.',
+  );
+});

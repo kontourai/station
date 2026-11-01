@@ -9,6 +9,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -610,10 +611,8 @@ describe('streamPrimaryAgentChat client-turn dedup (station#1224 offline slice 2
 
   // #3559: retention must never turn an old key back into a new one.
   test('a retry of an evicted clientTurnId is refused as indeterminate and never re-runs the agent', async () => {
-    const cappedStore = new ChatTurnDedupStore(
-      join(dir, 'capped-chat-turn-dedup.sqlite'),
-      2,
-    );
+    const filePath = join(dir, 'capped-chat-turn-dedup.sqlite');
+    const cappedStore = new ChatTurnDedupStore(filePath, 2);
     const streamText = vi.fn(async () => ({
       fullStream: emptyStream(),
       text: Promise.resolve(''),
@@ -623,8 +622,14 @@ describe('streamPrimaryAgentChat client-turn dedup (station#1224 offline slice 2
     const agent = buildAgent(streamText);
     const ctx = buildCtx({ memoryAdapter, dedupStore: cappedStore });
     const app = buildApp(ctx, agent, cappedStore);
-    // Same-millisecond rows are evicted in key order, so turn-a goes first.
     for (const clientTurnId of ['turn-a', 'turn-b', 'turn-c']) {
+      if (clientTurnId === 'turn-c') {
+        const db = new DatabaseSync(filePath);
+        db.prepare(
+          'UPDATE orchestration_turn_dedup SET resolved_at = ? WHERE dedup_key = ?',
+        ).run(Date.now() - 8 * 24 * 60 * 60 * 1000, 'chat:6:turn-a');
+        db.close();
+      }
       const response = await app.request(`/chat?clientTurnId=${clientTurnId}`, {
         method: 'POST',
       });

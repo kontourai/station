@@ -269,7 +269,8 @@ CREATE TABLE IF NOT EXISTS orchestration_turn_dedup (
   value TEXT,
   created_at INTEGER NOT NULL,
   owner_json TEXT,
-  input_digest TEXT
+  input_digest TEXT,
+  resolved_at INTEGER
 );
 
 -- #3559: keys whose resolved dedup row capacity retention evicted. A retry of
@@ -828,6 +829,15 @@ export function ensureOrchestrationTurnDedupColumns(
       );
     }
     ensureTurnDedupInputDigest(db);
+    if (!new Set(columns.map((column) => column.name)).has('resolved_at'))
+      db.exec(
+        'ALTER TABLE orchestration_turn_dedup ADD COLUMN resolved_at INTEGER',
+      );
+    db.exec(`CREATE INDEX IF NOT EXISTS orchestration_turn_dedup_resolved_at ON orchestration_turn_dedup(resolved_at) WHERE value IS NOT NULL;
+      CREATE TRIGGER IF NOT EXISTS orchestration_turn_dedup_reset_resolved_at
+      AFTER UPDATE OF value, created_at, owner_json ON orchestration_turn_dedup
+      WHEN NEW.resolved_at IS OLD.resolved_at AND (NEW.value IS NOT OLD.value OR NEW.created_at IS NOT OLD.created_at OR NEW.owner_json IS NOT OLD.owner_json)
+      BEGIN UPDATE orchestration_turn_dedup SET resolved_at = NULL WHERE dedup_key = NEW.dedup_key; END;`);
     // This migration is deliberately additive-only. An ownerless unresolved
     // row may belong to an older runtime that is still executing its turn;
     // deleting it would permit a new runtime to execute that same turn.

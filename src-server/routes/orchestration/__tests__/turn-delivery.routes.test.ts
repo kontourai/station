@@ -1159,8 +1159,19 @@ describe('foreground delivery lookup (GET /conversations/:id/turn-deliveries/:ke
   });
 
   test('an evicted key answers expired', async () => {
-    const { send, lookup, adapter } = station({ maxEntries: 1 });
-    expect((await send('conversation:evict', 'key-old')).status).toBe(200);
+    const { send, lookup, adapter, store } = station({ maxEntries: 1 });
+    const first = await send('conversation:evict', 'key-old');
+    expect(first.status).toBe(200);
+    const sessionId = ((await first.json()) as { data: { sessionId: string } })
+      .data.sessionId;
+    store['db']
+      .prepare(
+        'UPDATE orchestration_turn_dedup SET resolved_at = ? WHERE dedup_key = ?',
+      )
+      .run(
+        Date.now() - 8 * 24 * 60 * 60 * 1000,
+        turnDedupKey(sessionId, 'key-old'),
+      );
     await eventually(async () => {
       expect((await send('conversation:evict', 'key-new')).status).toBe(200);
     });

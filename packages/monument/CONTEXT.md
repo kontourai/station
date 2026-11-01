@@ -129,10 +129,12 @@ vite or vitest configs are accepted limits, left to review.
 - **Turn dedup:** when both original and incoming input digests are known, a mismatch answers `conflict` before replay, contention or dead-owner reclaim. Reclaim preserves only the original digest; legacy input stays unknown. Digest-less callers retain legacy behavior. `turnDedupMaxEntries` is a soft cap on all rows; eviction is oldest first
   among resolved rows only. The optional positive `turnDedupMinResolvedEntries`
   floor stops eviction once that many resolved rows remain and cannot exceed
-  the cap. Omitting it preserves the original policy. Station sets floor equal
-  to cap, so unresolved rows do not erode resolved replay; unresolved storage
-  still grows without bound. This shared count is not a per-scope retry-time
-  guarantee. Older writers can evict below the floor; only writers with
+  the cap. Omitting it preserves the original policy. A host may instead set `turnDedupResolvedRetentionMs`: resolved rows remain
+  replayable for that wall-clock duration after resolution and older rows expire
+  on a later write, regardless of the count cap. Unknown legacy resolution
+  times start their window on first observation. Station uses seven days;
+  live windows and unresolved rows can grow without bound. Older writers can
+  evict below this window or the floor; only writers with
   tombstone support (#3559 and later) leave expired-key tombstones. An unresolved
   claim is never evicted.
   An evicted key leaves a tombstone, which holds only the key and the time

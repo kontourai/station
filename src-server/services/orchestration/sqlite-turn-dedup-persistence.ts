@@ -12,25 +12,13 @@ import type { TurnIdempotencyPersistence } from '../turn-idempotency.js';
 import type { SqliteDatabase } from './sqlite-database.js';
 
 /**
- * Bound on retained turn-dedup rows. Exported so the `/chat` facade and this
- * store share ONE constant rather than each hardcoding 2000 — they did, in
- * two files, which is a drift waiting to happen.
+ * The legacy soft cap, retained for callers that report it. Station's timed
+ * policy protects live retry windows even when this count is exceeded.
  */
 export const TURN_DEDUP_MAX_ENTRIES = 2000;
 
-/**
- * #3559 / #3606 review: how long an evicted `chat:` key's tombstone answers
- * `expired`. Far past every client retry window Station has (the longest,
- * the UI outbound queue, is seven days); after it the key is new again. The
- * bound exists because a relayed station-agent turn writes a thread key AND a
- * `chat:` key, and `chat:` tombstones have no thread whose deletion would
- * remove them. They go on the first dedup write after the bound, not at it.
- *
- * Thread tombstones are NOT time-bounded: a session-control start re-drives
- * its unresolved request key forever with the same clientTurnId, so its
- * thread tombstone must last as long. Both leave with `deleteThread`.
- */
-const TURN_DEDUP_TOMBSTONE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+/** A resolved result remains replayable for seven days after resolution. */
+export const TURN_DEDUP_RESOLVED_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
  * archive#1224 (offline): folds `(threadId, clientTurnId)` into the
@@ -87,6 +75,7 @@ export const STATION_TURN_DEDUP_KERNEL_TABLES: SqliteKernelTables = {
     tombstoneTable: 'orchestration_turn_dedup_expired',
     ownerIdField: 'token',
     inputDigestColumn: 'input_digest',
+    resolvedAtColumn: 'resolved_at',
     ownerErrorMessage: 'Invalid orchestration turn claim owner_json',
     legacyUntrackedKeyPrefixes: [CHAT_KEY_PREFIX],
   },
@@ -126,19 +115,14 @@ export function createSqliteTurnDedupPersistence({
     database: db,
     tables: STATION_TURN_DEDUP_KERNEL_TABLES,
   });
-  // Resolved rows are the only eviction candidates: an unresolved claim is
-  // never evicted, regardless of owner liveness, so a turn in flight can never
-  // become claimable again because of retention (#3559). Setting floor equal
-  // to cap keeps resolved replay capacity independent of unresolved pressure.
+  // Live windows and unresolved claims are independent of global pressure.
+  // Expired keys leave tombstones until their thread is deleted; chat keys
+  // have no thread cleanup and their tombstones remain.
   const limits = {
     turnDedupMaxEntries: maxEntries,
     turnDedupMinResolvedEntries: maxEntries,
-    turnDedupTombstoneRetention: [
-      {
-        keyPrefix: CHAT_KEY_PREFIX,
-        maxAgeMs: TURN_DEDUP_TOMBSTONE_RETENTION_MS,
-      },
-    ],
+    turnDedupResolvedRetentionMs: TURN_DEDUP_RESOLVED_RETENTION_MS,
+    turnDedupTombstoneRetention: [],
   };
   // Refuse a bad limit now, not at the first claim.
   resolveKernelLimits(limits);

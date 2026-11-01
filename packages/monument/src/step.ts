@@ -108,8 +108,10 @@ function applyTurnDedup<Result>(
   limits: KernelLimits,
   now: number,
   prune: boolean,
+  resolvedAt?: number,
 ): Result {
-  if (decision.write.kind === 'put') tx.turnDedup.put(decision.write.record);
+  if (decision.write.kind === 'put')
+    tx.turnDedup.put(decision.write.record, resolvedAt);
   else if (decision.write.kind === 'delete') tx.turnDedup.delete(key);
   if (prune) {
     // Eviction first, so its own tombstones are never older than the rule.
@@ -117,6 +119,9 @@ function applyTurnDedup<Result>(
       {
         maxEntries: limits.turnDedupMaxEntries,
         minResolvedEntries: limits.turnDedupMinResolvedEntries ?? 0,
+        ...(limits.turnDedupResolvedRetentionMs !== undefined
+          ? { resolvedRetentionMs: limits.turnDedupResolvedRetentionMs }
+          : {}),
       },
       now,
     );
@@ -243,6 +248,7 @@ function dispatch(
         limits,
         command.now,
         true,
+        command.now,
       );
     case 'turnDedup.release':
       return applyTurnDedup(

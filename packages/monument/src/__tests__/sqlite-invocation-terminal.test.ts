@@ -999,9 +999,16 @@ for (const failure of [false, true])
     await storage.close();
     storage = openSqliteKernelStorage({ database: db });
     cleanup.push(() => storage.close());
-    expect(db.prepare('SELECT * FROM monument_turn_dedup').all()).toEqual(
-      linkedBefore,
-    );
+    expect(
+      db
+        .prepare(
+          'SELECT dedup_key, value, created_at, owner_json, input_digest FROM monument_turn_dedup',
+        )
+        .all(),
+    ).toEqual(linkedBefore);
+    expect(
+      db.prepare('SELECT resolved_at FROM monument_turn_dedup').all(),
+    ).toEqual([{ resolved_at: null }, { resolved_at: null }]);
     expect(
       storage.executeSync({ type: 'turnDedup.read', key: 'v3-key' }, context),
     ).toEqual({

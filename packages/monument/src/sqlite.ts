@@ -80,6 +80,8 @@ export interface SqliteTurnDedupTables {
   readonly ownerIdField: string;
   /** Optional host-owned additive digest column; legacy bindings use owner_json. */
   readonly inputDigestColumn?: string;
+  /** Host-owned nullable resolution time in milliseconds. */
+  readonly resolvedAtColumn?: string;
   /**
    * Thrown, as is, for any `owner_json` the adapter refuses, in place of the
    * detailed reason. The host's callers may already match on it.
@@ -264,7 +266,8 @@ CREATE TABLE IF NOT EXISTS monument_turn_dedup (
   value TEXT,
   created_at INTEGER NOT NULL,
   owner_json TEXT,
-  input_digest TEXT
+  input_digest TEXT,
+  resolved_at INTEGER
 );
 CREATE TABLE IF NOT EXISTS monument_turn_dedup_expired (
   dedup_key TEXT PRIMARY KEY,
@@ -458,6 +461,21 @@ function resolveTables(configuredTables?: SqliteKernelTables): ResolvedTables {
     RESERVED_OWNER_FIELDS.has(dedup.ownerIdField)
   )
     throw new TypeError(`ownerIdField cannot be ${dedup.ownerIdField}.`);
+  if (dedup && dedup !== 'unused' && dedup.resolvedAtColumn) {
+    const reserved = [
+      'dedup_key',
+      'value',
+      'created_at',
+      'owner_json',
+      dedup.inputDigestColumn,
+    ]
+      .filter((name): name is string => name !== undefined)
+      .map((name) => name.toLowerCase());
+    if (reserved.includes(dedup.resolvedAtColumn.toLowerCase()))
+      throw new TypeError(
+        'The resolution time must have its own dedup column.',
+      );
+  }
   const boundary = tables.turnBoundary;
   let invocationTerminals: SqliteInvocationTerminalFacts | undefined;
   if (
@@ -551,6 +569,9 @@ function resolveTables(configuredTables?: SqliteKernelTables): ResolvedTables {
               ...(dedup.inputDigestColumn
                 ? { inputDigestColumn: identifier(dedup.inputDigestColumn) }
                 : {}),
+              ...(dedup.resolvedAtColumn
+                ? { resolvedAtColumn: identifier(dedup.resolvedAtColumn) }
+                : {}),
               table: identifier(dedup.table),
               tombstoneTable: identifier(dedup.tombstoneTable),
               owned: false,
@@ -560,6 +581,7 @@ function resolveTables(configuredTables?: SqliteKernelTables): ResolvedTables {
               tombstoneTable: 'monument_turn_dedup_expired',
               ownerIdField: 'id',
               inputDigestColumn: 'input_digest',
+              resolvedAtColumn: 'resolved_at',
               owned: true,
             },
     requestKeys:
@@ -761,6 +783,9 @@ function migrate(db: SqliteKernelDatabase, tables: ResolvedTables): void {
         ...(tables.turnDedup.inputDigestColumn
           ? [tables.turnDedup.inputDigestColumn]
           : []),
+        ...(tables.turnDedup.resolvedAtColumn
+          ? [tables.turnDedup.resolvedAtColumn]
+          : []),
       ]);
       requireColumns(db, tables.turnDedup.tombstoneTable, [
         'dedup_key',
@@ -940,6 +965,23 @@ function migrate(db: SqliteKernelDatabase, tables: ResolvedTables): void {
       ).some((c) => c.name === 'input_digest')
     )
       db.exec('ALTER TABLE monument_turn_dedup ADD COLUMN input_digest TEXT');
+    if (tables.turnDedup !== 'unused' && tables.turnDedup.owned) {
+      if (
+        !(
+          db.prepare('PRAGMA table_info(monument_turn_dedup)').all() as Array<{
+            name: string;
+          }>
+        ).some((column) => column.name === 'resolved_at')
+      )
+        db.exec(
+          'ALTER TABLE monument_turn_dedup ADD COLUMN resolved_at INTEGER',
+        );
+      db.exec(`CREATE INDEX IF NOT EXISTS monument_turn_dedup_resolved_at ON monument_turn_dedup(resolved_at) WHERE value IS NOT NULL;
+        CREATE TRIGGER IF NOT EXISTS monument_turn_dedup_reset_resolved_at
+        AFTER UPDATE OF value, created_at, owner_json ON monument_turn_dedup
+        WHEN NEW.resolved_at IS OLD.resolved_at AND (NEW.value IS NOT OLD.value OR NEW.created_at IS NOT OLD.created_at OR NEW.owner_json IS NOT OLD.owner_json)
+        BEGIN UPDATE monument_turn_dedup SET resolved_at = NULL WHERE dedup_key = NEW.dedup_key; END;`);
+    }
     const row = db
       .prepare("SELECT value FROM monument_meta WHERE key = 'schema_version'")
       .get() as { value: string } | undefined;
@@ -1394,17 +1436,18 @@ function sqliteTransaction(
         );
         return row ? decodeDedup(row, dedup) : undefined;
       },
-      put: (record) => {
+      put: (record, resolvedAt) => {
         run(
-          `INSERT INTO ${dedup.table} (dedup_key, value, created_at, owner_json${dedup.inputDigestColumn ? `, ${dedup.inputDigestColumn}` : ''})
-           VALUES (?, ?, ?, ?${dedup.inputDigestColumn ? ', ?' : ''})
+          `INSERT INTO ${dedup.table} (dedup_key, value, created_at, owner_json${dedup.inputDigestColumn ? `, ${dedup.inputDigestColumn}` : ''}${dedup.resolvedAtColumn ? `, ${dedup.resolvedAtColumn}` : ''})
+           VALUES (?, ?, ?, ?${dedup.inputDigestColumn ? ', ?' : ''}${dedup.resolvedAtColumn ? ', ?' : ''})
            ON CONFLICT(dedup_key) DO UPDATE SET value = excluded.value,
-             created_at = excluded.created_at, owner_json = excluded.owner_json${dedup.inputDigestColumn ? `, ${dedup.inputDigestColumn} = excluded.${dedup.inputDigestColumn}` : ''}`,
+             created_at = excluded.created_at, owner_json = excluded.owner_json${dedup.inputDigestColumn ? `, ${dedup.inputDigestColumn} = excluded.${dedup.inputDigestColumn}` : ''}${dedup.resolvedAtColumn ? `, ${dedup.resolvedAtColumn} = COALESCE(excluded.${dedup.resolvedAtColumn}, ${dedup.table}.${dedup.resolvedAtColumn})` : ''}`,
           record.key,
           record.value,
           record.createdAt,
           encodeDedupOwner(record, dedup),
           ...(dedup.inputDigestColumn ? [record.inputDigest ?? null] : []),
+          ...(dedup.resolvedAtColumn ? [resolvedAt ?? null] : []),
         );
       },
       delete: (key) => {
@@ -1423,7 +1466,33 @@ function sqliteTransaction(
           `DELETE FROM ${dedup.tombstoneTable} WHERE substr(CAST(dedup_key AS BLOB), 1, length(CAST(?1 AS BLOB))) = CAST(?1 AS BLOB)`,
           prefix,
         ),
-      evictResolved: ({ maxEntries, minResolvedEntries }, now) => {
+      evictResolved: (
+        { maxEntries, minResolvedEntries, resolvedRetentionMs },
+        now,
+      ) => {
+        if (resolvedRetentionMs !== undefined) {
+          if (!dedup.resolvedAtColumn)
+            throw new SqliteKernelConfigurationError(
+              'Timed turn dedup retention requires a resolvedAtColumn.',
+            );
+          const resolvedAt = dedup.resolvedAtColumn;
+          // Legacy rows start their window when first observed by this policy.
+          run(
+            `UPDATE ${dedup.table} SET ${resolvedAt} = ? WHERE value IS NOT NULL AND ${resolvedAt} IS NULL`,
+            now,
+          );
+          const expired = `SELECT dedup_key FROM ${dedup.table} WHERE value IS NOT NULL AND typeof(${resolvedAt}) = 'integer' AND ${resolvedAt} >= 0 AND ${resolvedAt} <= ?`;
+          run(
+            `INSERT OR IGNORE INTO ${dedup.tombstoneTable} (dedup_key, expired_at) SELECT dedup_key, ? FROM (${expired})`,
+            now,
+            now - resolvedRetentionMs,
+          );
+          run(
+            `DELETE FROM ${dedup.table} WHERE dedup_key IN (${expired})`,
+            now - resolvedRetentionMs,
+          );
+          return;
+        }
         // Both statements pick the same overflow: nothing writes the table
         // between them inside this transaction, and the order is total.
         const overflow = `SELECT dedup_key FROM ${dedup.table}
