@@ -937,7 +937,8 @@ placed below the supervisor/release directories.
 
 The installer is for a fresh named instance and fails closed if any selected
 loopback port is already occupied. The API port must be at most 65532, and the
-API, terminal (`API + 1`), voice (`API + 2`), consent (`API + 3`,
+API, the reserved `API + 1` slot (no longer bound, but a supervisor from an
+older Station can still hold it), voice (`API + 2`), consent (`API + 3`,
 station#3677), and UI ports must be five distinct ports; all five are checked
 for unmanaged listeners. It never guesses that an unmanaged listener
 is safe to stop or adopt. For an existing ad-hoc dogfood service, first stage
