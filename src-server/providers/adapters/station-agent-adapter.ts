@@ -249,6 +249,7 @@ interface StationAgentAdapterOptions {
     cancel(threadId: string, turnId?: string): void | Promise<void>;
     pause(): Promise<void>;
     retained(threadId: string): boolean;
+    activeTurn?(threadId: string): string | undefined;
   };
   apiBase: string;
   /**
@@ -1609,6 +1610,19 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     const activeController = record.activeController;
     const origin = record.activeOrigin;
     if (!activeTurnId || !activeController) {
+      const retained = this.options.durable?.activeTurn?.(threadId) ?? turnId;
+      if (
+        retained &&
+        this.options.durable?.snapshot(threadId, retained)?.state === 'running'
+      ) {
+        if (turnId && turnId !== retained)
+          return {
+            outcome: 'target-mismatch',
+            activeTurnId: retained,
+          } as const;
+        await this.options.durable.cancel(threadId, retained);
+        return { outcome: 'cancelled', turnId: retained } as const;
+      }
       return { outcome: 'no-active-turn' } as const;
     }
     if (turnId && turnId !== activeTurnId) {

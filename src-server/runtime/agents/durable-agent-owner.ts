@@ -678,6 +678,7 @@ function createStationOwner(home: string) {
       settled = onSettled;
     },
     recover: (async (input) => {
+      if (input.signal.aborted) return 'retry';
       if (!existsSync(path)) return 'not-owned';
       const database = openPrivateSqlite(path, 'Durable Station agent');
       let saved: ReturnType<typeof readSqliteAgentTurn>;
@@ -697,8 +698,9 @@ function createStationOwner(home: string) {
       if (!saved) return 'not-owned';
       const captured = descriptor(saved.turn.spec.input);
       if (
-        !enabled() ||
-        agents.get(captured.slug)?.definition !== captured.definition ||
+        (!saved.turn.cancelRequested &&
+          (!enabled() ||
+            agents.get(captured.slug)?.definition !== captured.definition)) ||
         recoveryReady?.(captured) === false
       )
         return 'retry';

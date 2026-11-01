@@ -542,6 +542,14 @@ export async function initializeRuntime(
         orchestrationService.publishDurableStationEvent(event),
       cancel: (threadId, turnId) => durableOwner.cancel(threadId, turnId),
       pause: () => durableOwner.pause(),
+      activeTurn: (threadId) =>
+        durableOwner
+          .list()
+          .find(
+            (value) =>
+              value.state === 'running' &&
+              value.spec.key.conversationId === threadId,
+          )?.spec.key.invocationId,
       retained: (threadId) =>
         durableOwner
           .list()
