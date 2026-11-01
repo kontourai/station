@@ -2184,6 +2184,60 @@ Marking a Session complete can race a new turn. The [lifecycle module](../../src
 
 **Code and evidence.** `OrchestrationService` composes session reads, Flow/policy completion, workflow publication, canonical event publication, and observation Adapters into `SessionLifecycleModule`; the lifecycle route calls that Module directly. `SessionExecutionCoordinator` composes the durable boundary below and owns process-local waiter fairness; neither is a caller mutation Interface. Direct contract and synchronized integration evidence lives in `session-lifecycle-module.test.ts`, `session-execution-coordinator.test.ts`, `session-turn-boundary.test.ts`, `orchestration-service.test.ts`, and orchestration route tests. **Do not reintroduce:** a lifecycle method on the broad service, a check-before-await without post-gate revalidation, an untracked gap between provider acceptance and `turn.started`, a process-only provider boundary, or a mutex around idempotency-claim joining.
 
+**Owned delegation.** The [ownership projection](../../src-server/services/orchestration/ownership-tree.ts)
+records an exact initiating execution Session as `verified` only from a start's
+server-derived caller context. Conversation names, historical mentions and
+conversation-only runtime attestations remain `claimed`. The naming index keeps
+its existing read contract. A verified owned start enrolls before the provider
+effect, so cancellation can discover a child whose start has not returned.
+The confirmed edge and its allocated global sequence share the start append.
+An explicit `metadata.backgroundBoundary: true` excludes that subtree.
+
+The [cancellation store](../../src-server/services/orchestration/cancellation-fence.ts)
+co-commits each child/trigger-event stop intent with its turn-admission fence.
+Explicit Stop and cancel record `session.cancellation-requested` before effects;
+canonical exits, aborts and cancelled lifecycle transitions also derive child
+obligations. Targeted cancellation validates the committed event prefix under
+the writer lock. The request records intention; adapter terminal and settlement
+events determine execution outcomes. A fence that wins admission refuses the
+new turn inside that same writer transaction. An admitted child goes through
+its own stop path, deepest first; an unfinished deeper stop holds its ancestors.
+
+`OrchestrationService` consumes pending stops through startup, committed-event
+observation, adapter binding and its existing idle reconciliation. A locally
+held binding delivers; a live peer requires matching process PID and birth and
+keeps its intent pending for that owner. The [process registry](../../src-server/services/infra/process-utils.ts)
+corroborates process identity, but its records do not map Sessions to engines.
+Missing, dead or unverifiable custody is retained and reported. Delivery is at
+least once, and adapters make repeated stops harmless. Muse serve retains its
+Session and original host when termination is unconfirmed; a retry does not
+signal a departed leader or turn its departure into confirmation. Pending cleanup also
+prevents deletion of its evidence.
+
+Open reconstructs edges through the naming index and derives stop obligations
+from retained request and terminal events. Completed, permanently fenced
+children are excluded from fresh stop targets; pending stops still redeliver.
+Completing root stop delivery releases its temporary root fence while child fences remain.
+Ownership candidate and activity reads use one SQLite snapshot. Session
+summaries report `running` while verified owned descendants run or stop
+obligations remain pending, retaining the own fold in `ownedWork`. Turn
+coordination continues to describe the parent's own turn.
+Lifecycle transition validation and the completed-session send guard use the
+own fold, preserving those execution boundaries while the aggregate is busy.
+
+**Ownership evidence and limits.** The real service and SQLite cases are
+[`ownership-cascade.test.ts`](../../src-server/services/orchestration/__tests__/ownership-cascade.test.ts),
+[`ownership-tree.test.ts`](../../src-server/services/orchestration/__tests__/ownership-tree.test.ts)
+and [`cancellation-fence.test.ts`](../../src-server/services/orchestration/__tests__/cancellation-fence.test.ts).
+[`cascade-stop-delivery.process.test.ts`](../../src-server/services/orchestration/__tests__/cascade-stop-delivery.process.test.ts)
+uses a real peer owner and abrupt requester exit, including delivery before a
+failed completion write. Built-in repeat-stop behavior is exercised by
+[`adapter-conformance.test.ts`](../../src-server/providers/__tests__/adapter-conformance.test.ts);
+[`muse-serve-adapter.test.ts`](../../src-server/providers/__tests__/muse-serve-adapter.test.ts)
+retains unconfirmed host custody. These scripted cases establish local protocol
+behavior, with their existing unrelated expected failures and skips preserved;
+they do not qualify live providers, devices or installed releases.
+
 ## SessionTurnBoundaryAuthority
 
 This owner records when a provider call may have crossed into an external effect. A restart must not turn an unknown outcome into permission to replay. The [opaque claim protocol](../../src-server/services/orchestration/session-turn-boundary.ts), [SQLite composition](../../src-server/services/orchestration/sqlite-session-turn-boundary.ts) and Monument share that responsibility.

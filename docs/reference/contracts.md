@@ -40,6 +40,28 @@ field; see [transcript previews](../design/mcp-ui-host.md#transcript-previews).
 
 ### Delegation file refusals
 
+### Delegated execution ownership
+
+`AgentDelegationContext.parentSessionId` identifies the initiating execution
+Session in the host-resolved caller context. `parentConversationId` keeps its
+naming role. Lifecycle ownership uses the start's server-derived provenance and
+exact Session identity; historical or conversation-only evidence stays claimed.
+The start metadata marker `backgroundBoundary: true` excludes an independent
+subtree from its parent's cascade. See [Session lifecycle](../architecture/module-map.md#sessionlifecyclemodule).
+
+`SessionCancellationRequestedEvent` records a durable Stop or cancel intention,
+with the requested turn when one is known. Adapter terminal and settlement
+events carry the execution outcome. `OrchestrationSessionSummary.ownedWork`
+reports `runningChildCount`, `pendingStopCount` and `ownLifecycleState` while
+aggregate owned work keeps the parent running. The counts cover verified,
+non-background descendants and pending stop obligations.
+
+New delegated-result request IDs are `dr-` followed by the first 40 hexadecimal
+characters of SHA-256 over JSON `[childSessionId, childTerminalEventId]`.
+Existing stored IDs and semantic transition keys are retained for replay.
+
+### Delegation file refusals
+
 `@kontourai/station-contracts/attachment-staging` owns
 `DelegationFileRefusalCode`, the closed `delegation_files_*` vocabulary.
 `@kontourai/station-shared/delegation-files` supplies the runtime refusal class

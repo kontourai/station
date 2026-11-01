@@ -15053,7 +15053,7 @@ export class EventStore {
     return recordCascadeStopIntent(this.db, parentId, childId, terminalId);
   }
 
-  /** Edge confirmation and pending obligations must share one committed snapshot. */
+  /** Edge confirmation and pending obligations must share one SQLite snapshot. */
   private readOwnershipSnapshot<T>(read: () => T): T {
     if (this.db.isTransaction) return read();
     this.db.exec('BEGIN');
