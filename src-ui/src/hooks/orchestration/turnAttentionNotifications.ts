@@ -51,6 +51,50 @@ const userStoppedTurns = new Set<string>();
 const stallStoppedTurns = new Set<string>();
 const pendingTurns = new Map<string, ReturnType<typeof setTimeout>>();
 
+/**
+ * #4396: `handledTurns` lived only in this page's memory, so every reload
+ * replayed recent terminal events into it empty and toasted each of them
+ * again, labelled "just now". The turns this device already settled are kept
+ * here, bounded like `handledTurns`, and read ONCE when the page loads: a
+ * turn settled before this load is not news to it. Live tabs keep their own
+ * in-memory record, so two open tabs still each hear about a new turn.
+ */
+export const SETTLED_TURNS_STORAGE_KEY = 'station.turnAttention.settled';
+
+function readSettledTurns(): Set<string> {
+  try {
+    const raw = globalThis.localStorage?.getItem(SETTLED_TURNS_STORAGE_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return new Set(
+      Array.isArray(parsed)
+        ? parsed.filter((key): key is string => typeof key === 'string')
+        : [],
+    );
+  } catch {
+    return new Set();
+  }
+}
+
+function persistSettledTurn(key: string): void {
+  try {
+    const storage = globalThis.localStorage;
+    if (!storage) return;
+    const settled = readSettledTurns();
+    settled.delete(key);
+    remember(settled, key);
+    storage.setItem(SETTLED_TURNS_STORAGE_KEY, JSON.stringify([...settled]));
+  } catch {
+    // Storage full or refused: this page still dedupes in memory.
+  }
+}
+
+let settledBeforeLoad: Set<string> | undefined;
+
+function settledBeforeThisLoad(key: string): boolean {
+  settledBeforeLoad ??= readSettledTurns();
+  return settledBeforeLoad.has(key);
+}
+
 function turnKey(threadId: string, turnId: string): string {
   return `${threadId}\u0000${turnId}`;
 }
@@ -65,6 +109,7 @@ function remember(set: Set<string>, key: string): void {
 
 function settle(key: string): void {
   remember(handledTurns, key);
+  persistSettledTurn(key);
   const pending = pendingTurns.get(key);
   if (pending) {
     clearTimeout(pending);
@@ -72,13 +117,26 @@ function settle(key: string): void {
   }
 }
 
-/** Test seam: forget every turn this module has seen. */
-export function resetTurnAttentionNotifications(): void {
+/**
+ * Test seam: forget every turn this module has seen. `reload` simulates a
+ * page load instead: this page's memory is lost, but what it persisted is
+ * read afresh.
+ */
+export function resetTurnAttentionNotifications(
+  options: { reload?: boolean } = {},
+): void {
   for (const timer of pendingTurns.values()) clearTimeout(timer);
   pendingTurns.clear();
   handledTurns.clear();
   userStoppedTurns.clear();
   stallStoppedTurns.clear();
+  settledBeforeLoad = undefined;
+  if (options.reload) return;
+  try {
+    globalThis.localStorage?.removeItem(SETTLED_TURNS_STORAGE_KEY);
+  } catch {
+    // Nothing persisted to forget.
+  }
 }
 
 /**
@@ -218,6 +276,10 @@ export function notifyTurnTerminal(terminal: TurnTerminal): void {
   if (!turnId || isReplayThread(threadId)) return;
   const key = turnKey(threadId, turnId);
   if (handledTurns.has(key) || pendingTurns.has(key)) return;
+  if (settledBeforeThisLoad(key)) {
+    remember(handledTurns, key);
+    return;
+  }
   const chatKey = activeChatsStore.getChatKeyForExecutionSession(threadId);
   if (isOwnStop(key, turnId, chatKey)) {
     settle(key);
