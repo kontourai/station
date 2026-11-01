@@ -3191,8 +3191,15 @@ and prior failed qualification reports remain evidence; no general performance
 resolution is claimed. The fixture's separately composed event store still does
 not prove storage-dependency retention. Already-errored bodies and underlying
 post-cancellation rejection were source-reviewed, not newly executed platform
-controls. Clean committed mutation/restoration, documentation freshness and
-readiness remain to be completed for this increment.
+controls. The candidate is preserved at `6c5eff78753`. From its clean tree,
+removing only the SDK runtime-cleanup registration caused the body-fault row's
+runtime shutdown exclusion assertion to fail; all seven other caller cases
+passed. Byte-exact restoration returned the tree to clean state and all eight
+caller cases passed again. The source digest, injected bytes and terminal logs
+are retained in the owned mutation receipt. This closes that bounded mutation
+sequence. Required readiness still fails documentation freshness, and the same
+two portable-receiver positives remain failing with their cause unestablished;
+neither result is dismissed as infrastructure or cleared by this checkpoint.
 
 The other four controller constructions, active cancellation intent/ACK writers,
 authentic continuation-parent mapping, funded input/context journeys, portable
