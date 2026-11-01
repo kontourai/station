@@ -1,5 +1,6 @@
 import type { AgentDelegationContext } from '@kontourai/station-contracts/agent';
 import { FOREGROUND_MESSAGE_INDETERMINATE_CODE } from '@kontourai/station-contracts/orchestration';
+import { CLIENT_TURN_INPUT_CONFLICT_CODE } from '@kontourai/station-contracts/provider';
 import type { TurnProvenanceContextInjection } from '@kontourai/station-contracts/turn-provenance-context';
 import { SpanStatusCode } from '@opentelemetry/api';
 import type { Context } from 'hono';
@@ -33,6 +34,7 @@ import {
 } from '../../runtime/plugins/runtime-configuration-lease.js';
 import { InjectableStream } from '../../runtime/streaming/InjectableStream.js';
 import type { RuntimeContext } from '../../runtime/types.js';
+import { chatTurnSubmissionDigest } from '../../services/orchestration/turn-submission-digest.js';
 import {
   chatContextInjectionBlocks,
   chatContextInjectionTokens,
@@ -128,6 +130,7 @@ interface StreamPrimaryAgentChatArgs {
   projectSlug?: string;
   /** archive#1224 (offline): absent in callers/tests that predate this — dedup is then simply inert (byte-identical to before). */
   dedupStore?: ChatTurnDedupStore;
+  submissionDigest?: string;
   /** Exact authorized orchestration coordinate from Station's internal relay only. */
   turnCorrelation?: AuthorizedTurnCorrelation;
   mcpPromptOrigin?: import('@kontourai/station-contracts/mcp-prompts').VerifiedMcpPromptOrigin;
@@ -195,6 +198,7 @@ export function streamPrimaryAgentChat({
   agent,
   configurationLease,
   dedupStore,
+  submissionDigest,
   projectSlug,
   turnCorrelation,
   mcpPromptOrigin,
@@ -213,10 +217,21 @@ export function streamPrimaryAgentChat({
     restOptions.clientTurnId.length > 0
       ? restOptions.clientTurnId
       : undefined;
+  const inputDigest = requestedClientTurnId
+    ? (submissionDigest ??
+      chatTurnSubmissionDigest({
+        slug,
+        plugin,
+        input,
+        ambientContext: ambientContext ?? null,
+        modelOverride: modelOverride ?? null,
+        projectSlug: projectSlug ?? null,
+      }))
+    : undefined;
   let initialClaim: ChatTurnDedupClaim | undefined;
   try {
     initialClaim = requestedClientTurnId
-      ? dedupStore?.claim(requestedClientTurnId)
+      ? dedupStore?.claim(requestedClientTurnId, inputDigest)
       : undefined;
   } catch (error) {
     releaseRelayScopes({
@@ -227,6 +242,21 @@ export function streamPrimaryAgentChat({
     throw error;
   }
   if (initialClaim && !initialClaim.claimed && 'outcome' in initialClaim) {
+    if (initialClaim.outcome === 'conflict') {
+      releaseRelayScopes({
+        nativeForeground,
+        nativeWorkspace,
+        nativeOutputGrant,
+      });
+      return c.json(
+        {
+          success: false,
+          code: CLIENT_TURN_INPUT_CONFLICT_CODE,
+          error: 'This turn key was already used for different input.',
+        },
+        409,
+      );
+    }
     chatTurnDedup.add(1, { outcome: initialClaim.outcome });
     releaseRelayScopes({
       nativeForeground,
@@ -351,7 +381,12 @@ export function streamPrimaryAgentChat({
             });
             const resolvedConversationId =
               claim.conversationId ??
-              (await dedupStore!.awaitResolution(clientTurnId));
+              (await dedupStore!.awaitResolution(
+                clientTurnId,
+                undefined,
+                undefined,
+                inputDigest,
+              ));
             if (!resolvedConversationId) {
               throw new Error(
                 `Turn ${clientTurnId} is already being processed.`,

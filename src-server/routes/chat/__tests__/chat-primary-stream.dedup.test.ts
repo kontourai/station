@@ -90,7 +90,7 @@ function buildApp(ctx: any, agent: any, dedupStore: ChatTurnDedupStore) {
       ctx,
       slug: 'assistant',
       plugin: '',
-      input: 'hello',
+      input: c.req.query('input') ?? 'hello',
       restOptions: c.req.query('clientTurnId')
         ? { clientTurnId: c.req.query('clientTurnId') }
         : {},
@@ -137,6 +137,32 @@ describe('streamPrimaryAgentChat client-turn dedup (station#1224 offline slice 2
 
   afterEach(() => {
     rmSync(dir, { recursive: true, force: true });
+  });
+
+  test('a reused key with changed input conflicts before another agent call', async () => {
+    const streamText = vi.fn(async () => ({
+      fullStream: finishedStream(),
+      text: Promise.resolve(''),
+      usage: Promise.resolve(undefined),
+      finishReason: Promise.resolve('stop'),
+    }));
+    const app = buildApp(
+      buildCtx({ memoryAdapter, dedupStore }),
+      buildAgent(streamText),
+      dedupStore,
+    );
+    const first = await app.request('/chat?clientTurnId=key&input=A', {
+      method: 'POST',
+    });
+    await first.text();
+    const second = await app.request('/chat?clientTurnId=key&input=B', {
+      method: 'POST',
+    });
+    expect(second.status).toBe(409);
+    expect(await second.json()).toMatchObject({
+      code: 'client_turn_input_conflict',
+    });
+    expect(streamText).toHaveBeenCalledTimes(1);
   });
 
   test('two /chat requests with the SAME clientTurnId execute the agent only once', async () => {

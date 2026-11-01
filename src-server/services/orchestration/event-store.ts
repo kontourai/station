@@ -17048,16 +17048,20 @@ export class EventStore {
    */
   claimChatTurn(
     clientTurnId: string,
+    inputDigest?: string,
   ):
     | { claimed: true }
     | { claimed: false; conversationId?: string }
+    | { claimed: false; outcome: 'conflict' }
     | { claimed: false; outcome: 'indeterminate' | 'expired' } {
     const claim = this.turnIdempotence.claim(
       chatTurnDedupKey(clientTurnId),
       Date.now(),
       'tracked',
+      inputDigest,
     );
     if (claim.claimed) return { claimed: true };
+    if (claim.conflict) return { claimed: false, outcome: 'conflict' };
     if (claim.indeterminate)
       return { claimed: false, outcome: 'indeterminate' };
     if (claim.expired) return { claimed: false, outcome: 'expired' };
@@ -17083,12 +17087,14 @@ export class EventStore {
     clientTurnId: string,
     timeoutMs?: number,
     intervalMs?: number,
+    inputDigest?: string,
   ): Promise<string | undefined> {
     return awaitTurnResolution(
       this.turnIdempotence,
       chatTurnDedupKey(clientTurnId),
       timeoutMs,
       intervalMs,
+      inputDigest,
     );
   }
 

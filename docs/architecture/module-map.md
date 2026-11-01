@@ -2282,9 +2282,12 @@ conversation ID and a `finish` whose `finishReason` is always `completed`.
 It replays no output or original finish reason; the client reads the
 conversation. An unmarked legacy `chat:` row still reads as `untracked` and
 keeps the dead-owner reclaim rule; an unrecognised invocation record fails
-closed. The key is not bound to the caller, Agent, conversation or input
-([#3567](https://github.com/kontourai/station/issues/3567)): different input
-under a resolved key replays the earlier conversation ID. Inspect that
+closed. Newly keyed direct `/chat` sends bind the submitted Agent, plugin,
+input, ambient context, project and request options (excluding the key) to a
+canonical digest. Reuse with a different known digest returns
+`client_turn_input_conflict` before streaming. Older rows without a digest
+remain unknown, and this route does not separately bind an authenticated
+caller to the key. Inspect the
 conversation after an uncertain send; do not automatically resend under a
 new key. Use a new key only for a deliberate new request. A pre-call refusal
 can leave a created conversation with the user message and a failure marker;
