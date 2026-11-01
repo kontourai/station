@@ -1,3 +1,28 @@
+/* The failed-boundary row is a callout, not bare text (#4379, cf #1712): it
+   can render inside a flush page frame (Activity's split pane) whose body has
+   no padding of its own, so it carries the inset and border itself. The
+   message takes the row and the two actions wrap together beneath it on a
+   narrow phone instead of breaking one at a time. */
+.lazy-boundary__error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-2) var(--k-space-3);
+  margin: var(--k-space-4);
+  padding: var(--k-space-3) var(--k-space-4);
+  border: 1px solid var(--tone-border-error);
+  border-radius: var(--k-radius-overlay);
+  background: var(--k-panel-raised);
+  color: var(--k-text);
+  font-size: var(--k-text-md);
+  line-height: 1.4;
+}
+
+.lazy-boundary__error > span {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+
 .lazy-boundary__error > button {
   min-width: 44px;
   min-height: 44px;

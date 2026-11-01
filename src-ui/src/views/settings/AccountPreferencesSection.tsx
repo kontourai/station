@@ -114,7 +114,9 @@ export function AccountPreferencesSection() {
           control={
             <select
               className="editor-select"
-              aria-label={`New ${engine} chats approval mode`}
+              // #4403: the row's own visible title ("New Codex chats"), not
+              // the lowercase engine id.
+              aria-label={`${engineRows[engine].title} approval mode`}
               disabled={account.saving || account.status !== 'account'}
               value={defaults[engine] ?? 'connection-default'}
               onChange={(event) =>
@@ -125,9 +127,7 @@ export function AccountPreferencesSection() {
             >
               {APPROVAL_MODE_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
-                  {option.value === 'connection-default'
-                    ? 'Use inherited default'
-                    : option.label}
+                  {option.label}
                 </option>
               ))}
             </select>
@@ -137,7 +137,7 @@ export function AccountPreferencesSection() {
       <ConfirmModal
         isOpen={confirmEngine !== null}
         title="Save full access default?"
-        message={`New ${confirmEngine ?? ''} chats will request Full access. The agent can act without approval prompts, subject to this device’s access and Station policy.`}
+        message={`${confirmEngine ? engineRows[confirmEngine].title : 'New chats'} will request Full access. The agent can act without approval prompts, subject to this device’s access and Station policy.`}
         confirmLabel="Save full access default"
         cancelLabel="Cancel"
         variant="danger"

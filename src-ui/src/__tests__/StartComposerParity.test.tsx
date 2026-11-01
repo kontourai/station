@@ -604,9 +604,7 @@ describe('Home and the dock start the same way', () => {
     fireEvent.click(
       within(formOf(home)).getByRole('button', { name: /^Permissions: Ask/ }),
     );
-    fireEvent.click(
-      await screen.findByRole('radio', { name: /^Connection default/ }),
-    );
+    fireEvent.click(await screen.findByRole('radio', { name: /^Default/ }));
     const engineDefault = await within(formOf(home)).findByRole('button', {
       name: /^Permissions: Default/,
     });
@@ -780,7 +778,7 @@ describe('Home and the dock start the same way', () => {
     // Home re-derives from the remembered choice while it stays mounted.
     await waitFor(() =>
       expect(agentChip(home).getAttribute('aria-label')).toBe(
-        'Agent: Codex · gpt-5.4',
+        'Agent: Codex · GPT 5.4',
       ),
     );
     fireEvent.change(
@@ -816,7 +814,7 @@ describe('Home and the dock start the same way', () => {
     );
     await waitFor(() =>
       expect(agentChip(ui.dock()).getAttribute('aria-label')).toBe(
-        'Agent: Codex · gpt-5.4',
+        'Agent: Codex · GPT 5.4',
       ),
     );
     const dock = ui.dock();

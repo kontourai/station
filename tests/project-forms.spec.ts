@@ -329,7 +329,7 @@ test.describe('Project forms', () => {
     ).toBeVisible();
     await expect.poll(() => nonexistentProjectRequests).toEqual([]);
 
-    await fillStable(page, 'input[placeholder="/path/to/project"]', '/tmp');
+    await fillStable(page, 'input[placeholder="~/code/my-project"]', '/tmp');
 
     const nameInput = page.locator('input[placeholder="My Project"]');
     await expect(nameInput).toHaveValue('Tmp');
@@ -622,7 +622,7 @@ test.describe('Project forms', () => {
 
       await page.getByPlaceholder('My Project').fill('Keyboard-safe project');
       await page
-        .getByPlaceholder('/path/to/project')
+        .getByPlaceholder('~/code/my-project')
         .fill('/tmp/keyboard-safe');
       await expect(page.getByText('Recent on this device')).toBeVisible();
       await page.getByRole('button', { name: 'Browse all' }).click();
@@ -641,12 +641,12 @@ test.describe('Project forms', () => {
       await expect(page.getByPlaceholder('My Project')).toHaveValue(
         'Keyboard-safe project',
       );
-      await expect(page.getByPlaceholder('/path/to/project')).toHaveValue(
+      await expect(page.getByPlaceholder('~/code/my-project')).toHaveValue(
         '/tmp/keyboard-safe',
       );
 
       if (viewport.width === 390) {
-        const directory = page.getByPlaceholder('/path/to/project');
+        const directory = page.getByPlaceholder('~/code/my-project');
         await directory.fill('/tmp/d');
         const option = page.locator('.path-autocomplete__option', {
           hasText: 'demo',
@@ -717,7 +717,7 @@ test.describe('Project forms', () => {
       page.getByRole('heading', { name: 'New Project' }),
     ).toBeVisible();
 
-    const directory = page.getByPlaceholder('/path/to/project');
+    const directory = page.getByPlaceholder('~/code/my-project');
     const browseButton = page.getByRole('button', {
       name: 'Browse for a folder',
     });
@@ -855,7 +855,7 @@ test.describe('Project forms', () => {
 
     // A trailing slash keeps every mocked suggestion eligible, so the
     // dropdown is genuinely open when the pointer goes for the footer.
-    await fillStable(page, 'input[placeholder="/path/to/project"]', '/tmp/');
+    await fillStable(page, 'input[placeholder="~/code/my-project"]', '/tmp/');
     await expect(page.locator('.path-autocomplete__option')).toBeVisible();
     await expect(page.locator('input[placeholder="My Project"]')).toHaveValue(
       'Tmp',

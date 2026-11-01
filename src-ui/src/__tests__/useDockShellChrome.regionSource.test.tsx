@@ -72,6 +72,7 @@ const { RegionModelProvider, useRegionModel } = await import(
   '../contexts/RegionModelContext'
 );
 const { useDockShellChrome } = await import('../hooks/useDockShellChrome');
+const { dockSnapPixels } = await import('../components/chat-dock/dockSnap');
 
 describe('useDockShellChrome reads its open state from the region model', () => {
   beforeEach(() => {
@@ -743,4 +744,197 @@ describe('setRegionOpen reopens at the shell’s own snap (#2155 D3)', () => {
     });
     expect(result.current.chrome.dockSnap).toBe('collapsed');
   });
+});
+
+/**
+ * #4399: on a phone, Chat actions › Full screen is `applyDockSnap('full')`,
+ * and the drawer's Activity row opens the page AT `/` — no pathname change,
+ * so the restore is the region model's (`restoreMaximizedDocks`), which
+ * clears `maximized` and nothing else. The publishing shell must not then
+ * re-derive Full from its own snap and keep the page covered.
+ */
+describe('a page open at / shows the page past a full-screen phone dock (#4399)', () => {
+  const SNAP_KEY = 'station.chatDock.snap';
+
+  function stubPhone() {
+    const innerWidth = Object.getOwnPropertyDescriptor(window, 'innerWidth');
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      value: 412,
+    });
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: true,
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    }));
+    return () => {
+      vi.unstubAllGlobals();
+      if (innerWidth) Object.defineProperty(window, 'innerWidth', innerWidth);
+    };
+  }
+
+  beforeEach(() => {
+    window.localStorage.removeItem(SNAP_KEY);
+  });
+
+  test('the drawer’s Activity row returns a full-screen Chat to Half', () => {
+    const restore = stubPhone();
+    try {
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      const wrapper = ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={client}>
+          <RegionModelProvider>{children}</RegionModelProvider>
+        </QueryClientProvider>
+      );
+      const { result } = renderHook(
+        () => ({
+          chrome: useDockShellChrome({
+            publishesDockSlotClearance: true,
+            registersDockShortcuts: false,
+            regionId: 'bottom',
+          }),
+          model: useRegionModel(),
+        }),
+        { wrapper },
+      );
+      expect(result.current.chrome.isMobile).toBe(true);
+      const metrics = {
+        viewportHeight: result.current.chrome.visualViewport.height,
+        toolbarHeight: result.current.chrome.toolbarHeight,
+        collapsedHeight: result.current.chrome.collapsedHeight,
+      };
+
+      act(() => result.current.chrome.applyDockSnap('full'));
+      expect(result.current.model.regions.bottom.maximized).toBe(true);
+      expect(result.current.chrome.dockHeight).toBe(
+        dockSnapPixels('full', metrics),
+      );
+
+      act(() => {
+        result.current.model.openSurfaceInRegion('activity', {
+          region: 'main',
+        });
+      });
+
+      expect(result.current.model.regions.main.occupant).toBe('activity');
+      expect(result.current.model.regions.bottom.maximized).toBe(false);
+      expect(result.current.chrome.dockSnap).toBe('half');
+      expect(result.current.chrome.dockHeight).toBe(
+        dockSnapPixels('half', metrics),
+      );
+      expect(window.localStorage.getItem(SNAP_KEY)).toBe('half');
+    } finally {
+      restore();
+    }
+  });
+});
+
+/**
+ * #4392: a dock opened in a short desktop-classified window (a phone held
+ * sideways under a fine pointer) carries the desktop clamp
+ * (`innerHeight - 150`); turning the device to portrait crosses into the
+ * phone breakpoint, and the open dock must re-derive its height from its
+ * snap against the NEW viewport instead of keeping the landscape pixels.
+ */
+describe('an open dock re-derives its snap height when the viewport turns (#4392)', () => {
+  test.each(['bottom', 'right'] as const)(
+    'a Chat dock in %s: the landscape desktop clamp becomes Half of the portrait phone viewport',
+    async (region) => {
+      const saved = {
+        innerWidth: Object.getOwnPropertyDescriptor(window, 'innerWidth'),
+        innerHeight: Object.getOwnPropertyDescriptor(window, 'innerHeight'),
+      };
+      const listeners = new Set<(event: MediaQueryListEvent) => void>();
+      let phone = false;
+      const resize = (width: number, height: number) => {
+        Object.defineProperty(window, 'innerWidth', {
+          configurable: true,
+          value: width,
+        });
+        Object.defineProperty(window, 'innerHeight', {
+          configurable: true,
+          value: height,
+        });
+      };
+      resize(915, 412);
+      vi.stubGlobal('matchMedia', (query: string) => ({
+        get matches() {
+          return phone;
+        },
+        media: query,
+        onchange: null,
+        addListener: () => {},
+        removeListener: () => {},
+        addEventListener: (
+          _type: string,
+          listener: (event: MediaQueryListEvent) => void,
+        ) => listeners.add(listener),
+        removeEventListener: (
+          _type: string,
+          listener: (event: MediaQueryListEvent) => void,
+        ) => listeners.delete(listener),
+        dispatchEvent: () => false,
+      }));
+      try {
+        const client = new QueryClient({
+          defaultOptions: { queries: { retry: false } },
+        });
+        const wrapper = ({ children }: { children: ReactNode }) => (
+          <QueryClientProvider client={client}>
+            <RegionModelProvider>{children}</RegionModelProvider>
+          </QueryClientProvider>
+        );
+        const { result } = renderHook(
+          () => ({
+            chrome: useDockShellChrome({
+              publishesDockSlotClearance: true,
+              registersDockShortcuts: false,
+              regionId: region,
+            }),
+            model: useRegionModel(),
+          }),
+          { wrapper },
+        );
+        if (region !== 'bottom')
+          act(() => result.current.model.placeSurface('chat', region));
+        expect(result.current.model.regions[region].occupant).toBe('chat');
+        expect(result.current.chrome.isMobile).toBe(false);
+        expect(result.current.chrome.isDockOpen).toBe(true);
+        expect(result.current.chrome.dockHeight).toBe(412 - 150);
+
+        await act(async () => {
+          resize(430, 932);
+          phone = true;
+          window.dispatchEvent(new Event('resize'));
+          for (const listener of [...listeners])
+            listener({ matches: true } as MediaQueryListEvent);
+          await new Promise((resolve) => requestAnimationFrame(resolve));
+        });
+
+        expect(result.current.chrome.isMobile).toBe(true);
+        expect(result.current.chrome.visualViewport.height).toBe(932);
+        expect(result.current.chrome.dockHeight).toBe(
+          dockSnapPixels(result.current.chrome.dockSnap, {
+            viewportHeight: 932,
+            toolbarHeight: result.current.chrome.toolbarHeight,
+            collapsedHeight: result.current.chrome.collapsedHeight,
+          }),
+        );
+        expect(result.current.chrome.dockHeight).toBeGreaterThan(262);
+      } finally {
+        vi.unstubAllGlobals();
+        if (saved.innerWidth)
+          Object.defineProperty(window, 'innerWidth', saved.innerWidth);
+        if (saved.innerHeight)
+          Object.defineProperty(window, 'innerHeight', saved.innerHeight);
+      }
+    },
+  );
 });

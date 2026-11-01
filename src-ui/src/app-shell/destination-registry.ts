@@ -77,7 +77,12 @@ export interface DestinationDefinition {
     label?: string;
     route?: string;
   };
-  palette?: { order: number; params?: Readonly<Record<string, string | null>> };
+  palette?: {
+    order: number;
+    params?: Readonly<Record<string, string | null>>;
+    /** One plain line under the row, for a destination its name does not explain. */
+    detail?: string;
+  };
   /** Stable semantic owner used by sidebar selection and management routing. */
   managementGroup?: ManagementDestinationId;
   managementViewTypes?: readonly NavigationView['type'][];
@@ -500,7 +505,11 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
     // whether or not this row is offered.
     customizeNav: { group: 'this-station', order: 100 },
     managementGroup: 'developer',
-    palette: { order: 80 },
+    palette: {
+      order: 80,
+      // #4407: "Developer" alone said nothing about what is there.
+      detail: 'Logs, diagnostics and internals of this Station',
+    },
     managementViewTypes: ['developer'],
     view: { type: 'developer' },
   },

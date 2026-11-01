@@ -20,7 +20,9 @@ interface ConversationTurnFold {
  * share one key. Two sessions with NO conversation identity can never fold —
  * absence is not corroboration, matching `run-groups.ts`' doctrine.
  */
-function conversationIdentity(session: OrchestrationSessionSummary): string {
+export function conversationIdentity(
+  session: OrchestrationSessionSummary,
+): string {
   return session.conversationId ?? session.threadId;
 }
 
@@ -48,10 +50,13 @@ function conversationIdentity(session: OrchestrationSessionSummary): string {
  *   is the highest-priority, newest member — newest state wins, and a
  *   conversation with an active turn renders in Running, not once per
  *   finished turn.
- * - `pinnedThreadId` (the selected session) exempts its whole conversation:
- *   a deep link or explicit selection of an older turn keeps every turn
- *   visible while the reader is inspecting it, so the selected row cannot
- *   vanish under its own fold.
+ * - `pinnedThreadId` (the selected session) exempts its whole conversation
+ *   when it names an OLDER turn: a deep link or explicit selection of an
+ *   older turn keeps every turn visible while the reader is inspecting it, so
+ *   the selected row cannot vanish under its own fold. Selecting the
+ *   representative itself folds as usual (#4386): that row is already
+ *   visible, and unfolding it listed one conversation twice the moment it
+ *   was opened — including from a Board "Recent work" link.
  */
 export function foldConversationTurns(
   presentations: readonly ActivitySessionPresentation[],
@@ -74,13 +79,13 @@ export function foldConversationTurns(
   const turnCounts = new Map<string, number>();
   for (const members of membersByConversation.values()) {
     if (members.length < 2) continue;
+    const [representative, ...rest] = members;
     if (
       pinnedThreadId &&
-      members.some((member) => member.threadId === pinnedThreadId)
+      rest.some((member) => member.threadId === pinnedThreadId)
     ) {
       continue;
     }
-    const [representative, ...rest] = members;
     turnCounts.set(representative.threadId, members.length);
     for (const member of rest) {
       foldedAway.add(member.threadId);
@@ -95,4 +100,28 @@ export function foldConversationTurns(
     ),
     turnCounts,
   };
+}
+
+/**
+ * One entry per conversation for a recency list (#4386): non-delegated
+ * sessions sharing a {@link conversationIdentity} collapse to their most
+ * recently updated member, so a chat whose engine session was replaced by a
+ * continuation (`<root>:session:<uuid>`) is listed — and linked — once.
+ * Delegated sessions are runs, not turns, and pass through untouched.
+ * Output is newest-first.
+ */
+export function latestSessionPerConversation(
+  sessions: readonly OrchestrationSessionSummary[],
+): OrchestrationSessionSummary[] {
+  const newestFirst = [...sessions].sort((a, b) =>
+    b.updatedAt.localeCompare(a.updatedAt),
+  );
+  const seen = new Set<string>();
+  return newestFirst.filter((session) => {
+    if (session.delegation) return true;
+    const key = conversationIdentity(session);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }

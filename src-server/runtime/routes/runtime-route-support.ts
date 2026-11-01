@@ -310,6 +310,9 @@ export function memoizeStationSetupRequirement<T>(
   };
 }
 
+/** The built-in Station Agent's public identity (`agent-service.ts`). */
+const BUILTIN_STATION_AGENT_SLUG = 'station';
+
 /**
  * #1536 D8: the one thing standing between this Station and a working chat on
  * its own engine, or `null` when nothing is.
@@ -322,6 +325,15 @@ export function memoizeStationSetupRequirement<T>(
  * bound to an EXTERNAL engine has no managed-model concept, so it is skipped:
  * asking a model-resolution probe about Claude Code reports a working Agent as
  * broken (the `deriveAgentCatalog` lesson).
+ *
+ * #4388 (deliberate reversal of #1536 D8 for this one Agent): the built-in
+ * Station Agent is optional. A fresh home whose chats run on Claude Code or
+ * Codex never asked for it, so its missing model connection is informational
+ * — the Agents page and the picker's disabled row already say "Not set up" —
+ * and is not attention: it raised a bell badge and "Needs attention" that no
+ * working chat would ever clear, while Station details said "No notices". An
+ * Agent the person authored on Station's own engine still projects, because
+ * they did ask for it.
  */
 export async function readStationSetupRequirement(
   context: ConfigureRuntimeRoutesContext,
@@ -333,17 +345,13 @@ export async function readStationSetupRequirement(
     // that varied with store order would re-mint the row. And taking
     // `agents[0]` unconditionally silenced the notice whenever the agent that
     // happened to sort first was external-engine bound, even with a blocked
-    // Station-engine agent right behind it. Station's own Agent first; then the
-    // first Station-engine candidate by slug.
-    const candidates = [...agents].sort((left, right) =>
-      left.slug.localeCompare(right.slug),
-    );
-    const station = candidates.find((agent) => agent.slug === 'station');
+    // Station-engine agent right behind it. The first Station-engine
+    // candidate by slug, never the optional built-in Agent (#4388).
+    const candidates = [...agents]
+      .filter((agent) => agent.slug !== BUILTIN_STATION_AGENT_SLUG)
+      .sort((left, right) => left.slug.localeCompare(right.slug));
     const readAvailability = createStationEngineAvailabilityReader(context);
-    const ordered = station
-      ? [station, ...candidates.filter((agent) => agent.slug !== 'station')]
-      : candidates;
-    for (const metadata of ordered) {
+    for (const metadata of candidates) {
       const spec = await context.agentService.getAgent(metadata.slug);
       if (isExternalEngineBoundAgent(spec)) continue;
       const reason = readAvailability(spec);

@@ -498,7 +498,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
                 suggestionsInitiallyOpen={false}
                 value={form.workingDirectory ?? ''}
                 onChange={(v) => setField('workingDirectory', v)}
-                placeholder="/path/to/project"
+                placeholder="~/code/my-project"
                 className="editor-input path-autocomplete__input project-settings__working-dir-input"
               />
               <span className="editor-hint">

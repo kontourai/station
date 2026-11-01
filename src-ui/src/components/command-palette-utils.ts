@@ -21,6 +21,11 @@ export interface PaletteCommand {
   icon?: unknown;
   /** Secondary bounded context shown without changing ranking behavior. */
   detail?: string;
+  /**
+   * The command's live keyboard chord, already spelled for this platform
+   * (#4407). Shown in place of the group tag, which repeats the group header.
+   */
+  shortcut?: string;
   /** Unavailable options reveal their state/action instead of closing the palette. */
   closeOnRun?: boolean;
   /** Rendered as unavailable while retaining its explanatory command row. */

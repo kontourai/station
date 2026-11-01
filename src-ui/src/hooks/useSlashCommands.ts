@@ -115,8 +115,19 @@ export function useSlashCommands(
 
   // #3284: prompts from the MCP servers in this agent's tool view. A Station
   // agent only — an ACP engine owns its own commands (above).
+  //
+  // #4405 (A34): and only an Agent the Station runtime actually runs. An
+  // engine's default identity (`codex`, `claude`: `engineDefault`) and an
+  // Agent bound to an engine connection are not in the runtime's agent set,
+  // so the route answers 404 on every chat load for them — routine console
+  // noise for a list that cannot exist.
+  const runsOnStationRuntime =
+    !!currentAgent &&
+    !isAcp &&
+    currentAgent.engineDefault !== true &&
+    !currentAgent.execution?.agentConnectionId;
   const { data: mcpPromptListing } = useAgentMcpPromptsQuery(
-    isAcp ? null : agentSlug,
+    runsOnStationRuntime ? agentSlug : null,
     { staleTime: 60_000 },
   );
 

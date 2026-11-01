@@ -138,14 +138,14 @@ test('a real preference control saves account scope and preserves device storage
   expect(fixture.patch.mock.calls[0]?.[1]).toEqual({ theme: 'light' });
   expect(localStorage.getItem('station-device-settings-v1')).toBe(local);
   fixture.patch.mockRejectedValueOnce(new Error('Offline'));
-  fireEvent.change(screen.getByLabelText('New codex chats approval mode'), {
+  fireEvent.change(screen.getByLabelText('New Codex chats approval mode'), {
     target: { value: 'auto' },
   });
   await screen.findByRole('alert');
   expect(
     (
       screen.getByLabelText(
-        'New codex chats approval mode',
+        'New Codex chats approval mode',
       ) as HTMLSelectElement
     ).value,
   ).toBe('connection-default');

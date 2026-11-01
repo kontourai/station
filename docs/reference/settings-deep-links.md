@@ -123,7 +123,7 @@ Read `GET /config/app` for values.
       {
         "id": "default-max-turns",
         "label": "Default max turns",
-        "help": "Set the fallback step limit for VoltAgent runs; Strands and native engines do not apply this setting.",
+        "help": "Set the fallback step limit for runs on Station’s own engine; Claude Code, Codex and other engines do not apply this setting.",
         "scope": "station",
         "section": "agent-runs",
         "route": "/settings?view=agent-runs&highlight=default-max-turns",

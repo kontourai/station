@@ -18,7 +18,7 @@ const SURFACE_LABELS: Record<ClientOriginSurface, string> = {
   mobile: 'Mobile app',
   cli: 'CLI',
   mcp: 'MCP client',
-  unknown: 'Unknown surface',
+  unknown: 'Unknown app',
 };
 
 /**
@@ -51,8 +51,11 @@ export function clientOriginSummary(origin: ClientOrigin | undefined): string {
       : origin.actor.kind === 'operator'
         ? 'Operator'
         : origin.actor.kind === 'internal'
-          ? 'Station (internal)'
-          : 'Unknown actor';
+          ? 'Station'
+          : 'Unknown sender';
+  // #4402: Station's own turns ("Station (internal) · Unknown surface") have
+  // no client app; an unreported surface is omitted rather than named.
+  if (origin.reported.surface === 'unknown') return actor;
   const surface =
     SURFACE_LABELS[origin.reported.surface] ?? origin.reported.surface;
   return `${actor} · ${surface}`;

@@ -22,6 +22,10 @@ describe('FileAttachmentInput accessibility', () => {
     const input = container.querySelector('input[type="file"]');
     expect(input).toBeTruthy();
     expect(input?.getAttribute('accept')).toContain('.heic,.heif');
+    // #4403: the native input is what Attach clicks, not a second control —
+    // exposed, browsers name it a 1x1 "Choose File" button in every composer.
+    expect(input?.getAttribute('aria-hidden')).toBe('true');
+    expect((input as HTMLInputElement | null)?.tabIndex).toBe(-1);
     const openPicker = vi.fn();
     Object.defineProperty(input, 'click', { value: openPicker });
 
