@@ -454,7 +454,7 @@ function registryDirIsTrustworthy(
     }
     if (reason === null) return true;
     log(
-      'owned-process registry: directory is not a real directory inside this user\'s %LOCALAPPDATA%; refusing to read or write it',
+      "owned-process registry: directory is not a real directory inside this user's %LOCALAPPDATA%; refusing to read or write it",
       { registryDir, reason: reason.kind },
     );
     return false;
@@ -801,9 +801,7 @@ const UNIX_EPOCH_FROM_1601_US = 11_644_473_600_000_000n;
 
 /** A Windows birth (`yyyy-MM-ddTHH:mm:ss.fffffffZ`) in µs since 1601 UTC. */
 export function windowsBirthMicroseconds(birth: string): bigint | null {
-  const match = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\.(\d{7})Z$/.exec(
-    birth,
-  );
+  const match = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\.(\d{7})Z$/.exec(birth);
   if (!match) return null;
   const milliseconds = Date.parse(`${match[1]}Z`);
   if (!Number.isFinite(milliseconds)) return null;

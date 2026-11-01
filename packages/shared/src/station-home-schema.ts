@@ -454,7 +454,8 @@ function isLifecycleStateScaffolding(stateDir: string): boolean {
       const instancesDir = join(channelDir, entry);
       if (!isRealDirectory(instancesDir)) return false;
       for (const record of readdirSync(instancesDir)) {
-        if (lstatSync(join(instancesDir, record)).isSymbolicLink()) return false;
+        if (lstatSync(join(instancesDir, record)).isSymbolicLink())
+          return false;
       }
     }
   }

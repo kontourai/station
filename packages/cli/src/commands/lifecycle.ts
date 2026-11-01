@@ -1670,7 +1670,9 @@ function isInstanceServerAlive(record: InstanceStateRecord): boolean {
   if (!isProcessAlive(record.serverPid)) return false;
   if (!record.serverFingerprint || !record.serverPid) return true;
   const actual = inspectProcessFingerprint(record.serverPid);
-  return !actual || fingerprintMatchesRecorded(actual, record.serverFingerprint);
+  return (
+    !actual || fingerprintMatchesRecorded(actual, record.serverFingerprint)
+  );
 }
 
 function notifyBuildUpdated(serverPort: number): void {
@@ -5375,10 +5377,7 @@ const START_FAILURE_CAUSE_PATTERN =
  * there that reads like a fatal error, from this start's output only, and say
  * where the rest is. Best effort: an unreadable log still names its path.
  */
-function describeStartFailureLog(
-  logFile: string,
-  startOffset: number,
-): string {
+function describeStartFailureLog(logFile: string, startOffset: number): string {
   let cause: string | undefined;
   try {
     const descriptor = openSync(
@@ -5405,8 +5404,7 @@ function describeStartFailureLog(
   } catch {
     // The path below is still the place to look.
   }
-  const shown =
-    cause && cause.length > 500 ? `${cause.slice(0, 500)}…` : cause;
+  const shown = cause && cause.length > 500 ? `${cause.slice(0, 500)}…` : cause;
   return `${shown ? `\n  Cause: ${shown}` : ''}\n  Log: ${logFile}`;
 }
 

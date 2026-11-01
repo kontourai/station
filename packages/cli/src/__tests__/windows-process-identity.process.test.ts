@@ -8,18 +8,9 @@
  * required Windows job (`npm run test:windows:portable`) and is skipped,
  * visibly, everywhere else.
  */
-import {
-  type ChildProcess,
-  execFileSync,
-  spawn,
-} from 'node:child_process';
+import { type ChildProcess, execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import {
-  copyFileSync,
-  mkdirSync,
-  realpathSync,
-  writeFileSync,
-} from 'node:fs';
+import { copyFileSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   lookupProcessBirthFingerprint,
@@ -167,7 +158,11 @@ describe.runIf(WINDOWS)(
       const exec = vi.fn(
         (file: string, args: readonly string[], options?: object) => {
           commands.push(file);
-          return execFileSync(file, args, options as never) as unknown as string;
+          return execFileSync(
+            file,
+            args,
+            options as never,
+          ) as unknown as string;
         },
       );
       return { commands, exec };

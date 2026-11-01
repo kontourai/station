@@ -165,7 +165,9 @@ describe('stageWindowsBirthHelper (#2805)', () => {
       run: () => `${BIRTH}\r\n`,
       probeWithPowerShell: () => BIRTH,
     });
-    expect(staged.helper).toBe(join(runtime, 'station-windows-owned-guard.exe'));
+    expect(staged.helper).toBe(
+      join(runtime, 'station-windows-owned-guard.exe'),
+    );
     expect(readFileSync(staged.helper, 'utf8')).toBe('guard bytes');
     expect(
       readFileSync(

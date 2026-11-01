@@ -72,7 +72,10 @@ describe('Windows registry trust policy (#3873)', () => {
         'C:\\Users\\me\\AppData\\Local\\Temp\\station-owned-processes',
         'C:\\Users\\me\\AppData\\Local',
         {
-          lstat: () => ({ isDirectory: () => true, isSymbolicLink: () => true }),
+          lstat: () => ({
+            isDirectory: () => true,
+            isSymbolicLink: () => true,
+          }),
           realpath: identity,
         },
       ),
@@ -266,7 +269,12 @@ describe('Windows owned-process registry (#3873)', () => {
         schemaVersion: 1,
         enginePid,
         engineBirth: ENGINE_BIRTH,
-        owner: { pid: 2_000_000_019, instanceId: 'g', bootId: 'g', birth: null },
+        owner: {
+          pid: 2_000_000_019,
+          instanceId: 'g',
+          bootId: 'g',
+          birth: null,
+        },
         command: 'engine',
         spawnedAt: '2026-10-31T10:00:00Z',
       })}\n`,
@@ -305,97 +313,94 @@ function isAlive(pid: number | null | undefined): boolean {
 describe.runIf(process.platform === 'win32')(
   'Windows orphan engine journey (#3873)',
   () => {
-    test(
-      'a killed owner leaves an orphan the sweep reaps, grandchild included',
-      async () => {
-        const localAppData = process.env.LOCALAPPDATA;
-        expect(localAppData, 'LOCALAPPDATA must be set on Windows').toBeTruthy();
-        const tempRoot = join(localAppData!, 'Temp');
-        mkdirSync(tempRoot, { recursive: true });
-        const registryDir = mkdtempSync(join(tempRoot, 'station-sweep-win-'));
-        const gcFile = join(registryDir, 'grandchild.pid');
-        const owner = spawn(
-          process.execPath,
-          [join(__dirname, 'helpers', 'orphan-engine-owner.mjs'), gcFile],
-          { stdio: ['ignore', 'pipe', 'inherit'], windowsHide: true },
-        );
-        let engine: number | null = null;
-        let grandchild: number | null = null;
-        try {
-          engine = await new Promise<number>((resolve, reject) => {
-            let buffer = '';
-            owner.stdout!.on('data', (chunk: Buffer) => {
-              buffer += chunk.toString();
-              const match = /ENGINE_PID=(\d+)\r?\n/.exec(buffer);
-              if (match) resolve(Number(match[1]));
-            });
-            owner.once('error', reject);
-            owner.once('exit', (code) =>
-              reject(new Error(`owner exited early code=${code}`)),
-            );
+    test('a killed owner leaves an orphan the sweep reaps, grandchild included', async () => {
+      const localAppData = process.env.LOCALAPPDATA;
+      expect(localAppData, 'LOCALAPPDATA must be set on Windows').toBeTruthy();
+      const tempRoot = join(localAppData!, 'Temp');
+      mkdirSync(tempRoot, { recursive: true });
+      const registryDir = mkdtempSync(join(tempRoot, 'station-sweep-win-'));
+      const gcFile = join(registryDir, 'grandchild.pid');
+      const owner = spawn(
+        process.execPath,
+        [join(__dirname, 'helpers', 'orphan-engine-owner.mjs'), gcFile],
+        { stdio: ['ignore', 'pipe', 'inherit'], windowsHide: true },
+      );
+      let engine: number | null = null;
+      let grandchild: number | null = null;
+      try {
+        engine = await new Promise<number>((resolve, reject) => {
+          let buffer = '';
+          owner.stdout!.on('data', (chunk: Buffer) => {
+            buffer += chunk.toString();
+            const match = /ENGINE_PID=(\d+)\r?\n/.exec(buffer);
+            if (match) resolve(Number(match[1]));
           });
-          for (let i = 0; i < 400 && grandchild === null; i++) {
-            try {
-              grandchild = Number(readFileSync(gcFile, 'utf8').trim()) || null;
-            } catch {
-              await new Promise((r) => setTimeout(r, 25));
-            }
-          }
-          expect(grandchild, 'the fixture reports its grandchild').not.toBe(
-            null,
+          owner.once('error', reject);
+          owner.once('exit', (code) =>
+            reject(new Error(`owner exited early code=${code}`)),
           );
-
-          const record = recordOwnedProcess(
-            engine,
-            resolveOwnedProcessOwner(
-              { STATION_INSTANCE_ID: 'win-journey', STATION_BOOT_ID: 'boot' },
-              owner.pid!,
-            ),
-            'fake-engine',
-            { registryDir },
-          );
-          expect(record.engineBirth, 'engine birth must be readable').toBeTruthy();
-          expect(record.owner.birth, 'owner birth must be readable').toBeTruthy();
-          expect(existsSync(join(registryDir, `engine-${engine}.json`))).toBe(
-            true,
-          );
-
-          // TerminateProcess on the owner alone: it runs no cleanup.
-          process.kill(owner.pid!, 'SIGKILL');
-          await new Promise<void>((resolve) => {
-            if (owner.exitCode !== null || owner.signalCode !== null) resolve();
-            else owner.once('exit', () => resolve());
-          });
-          expect(isAlive(engine)).toBe(true);
-          expect(isAlive(grandchild)).toBe(true);
-
-          const result = await sweepOrphanedOwnedProcesses({ registryDir });
-          expect(result.reaped).toEqual([engine]);
-          for (
-            let i = 0;
-            i < 200 && (isAlive(engine) || isAlive(grandchild));
-            i++
-          ) {
+        });
+        for (let i = 0; i < 400 && grandchild === null; i++) {
+          try {
+            grandchild = Number(readFileSync(gcFile, 'utf8').trim()) || null;
+          } catch {
             await new Promise((r) => setTimeout(r, 25));
           }
-          expect(isAlive(engine)).toBe(false);
-          expect(isAlive(grandchild)).toBe(false);
-          expect(existsSync(join(registryDir, `engine-${engine}.json`))).toBe(
-            false,
-          );
-        } finally {
-          for (const pid of [owner.pid, engine, grandchild]) {
-            if (!pid || !isAlive(pid)) continue;
-            try {
-              process.kill(pid, 'SIGKILL');
-            } catch {
-              // Already gone.
-            }
-          }
-          rmSync(registryDir, { recursive: true, force: true });
         }
-      },
-      180_000,
-    );
+        expect(grandchild, 'the fixture reports its grandchild').not.toBe(null);
+
+        const record = recordOwnedProcess(
+          engine,
+          resolveOwnedProcessOwner(
+            { STATION_INSTANCE_ID: 'win-journey', STATION_BOOT_ID: 'boot' },
+            owner.pid!,
+          ),
+          'fake-engine',
+          { registryDir },
+        );
+        expect(
+          record.engineBirth,
+          'engine birth must be readable',
+        ).toBeTruthy();
+        expect(record.owner.birth, 'owner birth must be readable').toBeTruthy();
+        expect(existsSync(join(registryDir, `engine-${engine}.json`))).toBe(
+          true,
+        );
+
+        // TerminateProcess on the owner alone: it runs no cleanup.
+        process.kill(owner.pid!, 'SIGKILL');
+        await new Promise<void>((resolve) => {
+          if (owner.exitCode !== null || owner.signalCode !== null) resolve();
+          else owner.once('exit', () => resolve());
+        });
+        expect(isAlive(engine)).toBe(true);
+        expect(isAlive(grandchild)).toBe(true);
+
+        const result = await sweepOrphanedOwnedProcesses({ registryDir });
+        expect(result.reaped).toEqual([engine]);
+        for (
+          let i = 0;
+          i < 200 && (isAlive(engine) || isAlive(grandchild));
+          i++
+        ) {
+          await new Promise((r) => setTimeout(r, 25));
+        }
+        expect(isAlive(engine)).toBe(false);
+        expect(isAlive(grandchild)).toBe(false);
+        expect(existsSync(join(registryDir, `engine-${engine}.json`))).toBe(
+          false,
+        );
+      } finally {
+        for (const pid of [owner.pid, engine, grandchild]) {
+          if (!pid || !isAlive(pid)) continue;
+          try {
+            process.kill(pid, 'SIGKILL');
+          } catch {
+            // Already gone.
+          }
+        }
+        rmSync(registryDir, { recursive: true, force: true });
+      }
+    }, 180_000);
   },
 );

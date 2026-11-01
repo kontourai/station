@@ -20,14 +20,14 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  packageTelemetryCompanion,
-  verifyTelemetryCompanion,
-} from '../package-telemetry-companion.mjs';
-import {
   lookupProcessBirthFingerprint,
   WINDOWS_BIRTH_HELPER_DIGEST_FILENAME,
   WINDOWS_BIRTH_HELPER_FILENAME,
 } from '../../packages/shared/src/process-identity.mjs';
+import {
+  packageTelemetryCompanion,
+  verifyTelemetryCompanion,
+} from '../package-telemetry-companion.mjs';
 import { execFileSyncBounded } from './bounded-capture.mjs';
 import { stageBundledRegistry } from './bundled-registry.mjs';
 import { createPackagedReleaseManifest } from './container-release-metadata.mjs';
