@@ -19,7 +19,7 @@ import {
   WINDOWS_BIRTH_HELPER_DIGEST_FILENAME,
 } from '@kontourai/station-shared/process-identity';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { stageWindowsBirthHelper } from '../../../../scripts/lib/portable-server-archive.mjs';
+import { stageWindowsBirthHelper } from '../../../../scripts/lib/windows-birth-helper.mjs';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import { inspectProcessFingerprint } from '../commands/platform.js';
 

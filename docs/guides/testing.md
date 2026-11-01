@@ -954,7 +954,12 @@ non-append descriptor, which Windows requires. The probe test is the one test
 of that PowerShell probe that does not fake it (skipped off Windows). It also
 compiles the archive's process-birth helper and proves the helper prints the
 probe's birth (#2805). The registry suite kills a real owner and proves the
-startup sweep reaps its orphaned engine and grandchild (#3873). Full Windows Vitest parity
+startup sweep reaps its orphaned engine and grandchild (#3873). The
+supervisor's terminal workload tests run there too: the workload host with
+real ConPTY shells, and a journey whose shell keeps its pid and journal across
+a handoff of built supervisor and workload host bundles. A ConPTY cannot change
+parents, so Windows is where that design is load-bearing.
+Full Windows Vitest parity
 remains failing closed under issue #1420; do not add exclusions or
 `continue-on-error` to relabel that gap green.
 

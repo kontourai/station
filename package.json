@@ -235,7 +235,7 @@
     "test:prepush": "node scripts/run-verification.mjs request prepush",
     "test:prepush:raw": "npm run prepare:verify-static && node scripts/run-prepush-tier.mjs",
     "test:prepush:repeat": "npm run prepare:verify-static && node scripts/run-prepush-tier.mjs --repeat=20",
-    "test:windows:portable": "npm run test:prepush && node node_modules/vitest/vitest.mjs run src-server/services/ssh/__tests__/openssh-launch-bootstrap.test.ts src-server/services/__tests__/helpers/hermetic-openssh.test.ts src-server/adapters/file/__tests__/memory-adapter-message-durability.test.ts packages/cli/src/__tests__/windows-process-identity.process.test.ts src-server/services/infra/__tests__/owned-process-windows.test.ts --maxWorkers=1 --no-file-parallelism",
+    "test:windows:portable": "npm run test:prepush && node node_modules/vitest/vitest.mjs run src-server/services/ssh/__tests__/openssh-launch-bootstrap.test.ts src-server/services/__tests__/helpers/hermetic-openssh.test.ts src-server/adapters/file/__tests__/memory-adapter-message-durability.test.ts packages/cli/src/__tests__/windows-process-identity.process.test.ts src-server/services/infra/__tests__/owned-process-windows.test.ts src-server/services/terminal/__tests__/supervisor-shell-host.process.test.ts src-server/services/terminal/__tests__/supervisor-terminal.real.test.ts --maxWorkers=1 --no-file-parallelism",
     "test:windows:diagnostic": "node scripts/run-windows-vitest-diagnostic.mjs",
     "test:load-reliability": "node scripts/run-load-reliability.mjs",
     "test:full": "node scripts/run-verification.mjs request test-full",

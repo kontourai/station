@@ -1,0 +1,7 @@
+{
+  "revision": "e2262367422d4f2b49c7f077ef69f6236783a592",
+
+  "notes": [
+    {"path":"deploy/public-ingress/README.md","note":"Rechecked after station-dogfood-health.mjs made parentPidOf module-private; no claim here depends on that export, and dogfood health behavior is unchanged.","inputs":["deploy/public-ingress/README.md","scripts/station-dogfood-health.mjs"]}
+  ]
+}

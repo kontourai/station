@@ -74,6 +74,7 @@
     "scripts/lib/station-stop-hint.mjs",
     "scripts/lib/desktop-node-runtime.mjs",
     "scripts/lib/windows-owned-guard-build.mjs",
+    "scripts/lib/windows-birth-helper.mjs",
     "scripts/windows-owned-guard.cs",
     "packages/shared/src/process-identity.mjs",
     "scripts/prepare-desktop-rust-resources.mjs",

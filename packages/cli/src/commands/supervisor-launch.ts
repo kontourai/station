@@ -62,7 +62,10 @@ interface ServerLaunchInput {
   codeRoot: string;
   /** `--watch` runs the server from source under a watcher. */
   watch: boolean;
-  /** `--lifecycle-journal` records the server pid in a journal. */
+  /**
+   * `--lifecycle-journal`: supervised like any other start, since each
+   * generation's events name the supervisor the record names.
+   */
   lifecycleJournal?: string;
   /**
    * A launcher supervises this start (`station service run`) and gives the
@@ -76,18 +79,18 @@ interface ServerLaunchInput {
 /**
  * Whether this start runs under the supervisor, and with what arguments.
  *
- * Direct, without a notice, when the operator opted out, for `--watch` (a
- * source watcher restarts the server itself), and for a start that keeps a
- * lifecycle journal: the journal pairs the recorded pid with the server's
- * own events, and under the supervisor those name different processes. With
- * a notice when the supervisor cannot run here: a build without the bundle,
- * or an instance id the supervisor's control channel cannot name.
+ * Direct, without a notice, when the operator opted out, and for `--watch`
+ * (a source watcher restarts the server itself). With a notice when the
+ * supervisor cannot run here: a build without the bundle, or an instance id
+ * the supervisor's control channel cannot name. A start that keeps a
+ * lifecycle journal is supervised like any other: each generation's events
+ * name the supervisor the record names (`LifecycleSupervisor`).
  */
 export function planServerLaunch(input: ServerLaunchInput): ServerLaunchPlan {
   if (input.env[DIRECT_LAUNCH_ENV] === '1') {
     return { supervised: false, notice: null };
   }
-  if (input.watch || input.lifecycleJournal) {
+  if (input.watch) {
     return { supervised: false, notice: null };
   }
   const bundle = join(input.serverDir, SUPERVISOR_BUNDLE_FILENAME);

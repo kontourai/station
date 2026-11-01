@@ -33,9 +33,9 @@ import {
   PREBUILT_ARCHIVE_MARKER,
   readPortableNodeRuntime,
   resolvePortableServerTarget,
-  stageWindowsBirthHelper,
   stationCliBundleOptions,
 } from '../lib/portable-server-archive.mjs';
+import { stageWindowsBirthHelper } from '../lib/windows-birth-helper.mjs';
 import { SUPPORTED_NODE_MAJOR } from '../node-runtime-contract.mjs';
 
 const repoRoot = resolve(import.meta.dirname, '../..');

@@ -37,6 +37,7 @@ import {
   type SupervisorEvent,
 } from './protocol.ts';
 import { startSelfCheck } from './self-check.ts';
+import { WorkloadHost } from './workload-host.ts';
 
 export const SUPERVISOR_VERSION: string = packageJson.version;
 
@@ -67,6 +68,11 @@ export interface SupervisorOptions {
    * supervisor (`station service run`) closes: the launcher has exited.
    */
   exitWithParent?: boolean;
+  /**
+   * The workload host entry (protocol 1.3), inside `buildRoot`. Without one
+   * no generation is granted `workloads` and terminals stay in the core.
+   */
+  workloadHost?: string | null;
 }
 
 /** Set by other Station supervisors (Desktop, `service run`) on their child. */
@@ -265,8 +271,15 @@ export async function runSupervisor(options: SupervisorOptions): Promise<void> {
   };
   if (processHooks) process.on('exit', onProcessExit);
 
+  const workloads = new WorkloadHost({
+    entry: options.workloadHost ?? null,
+    log,
+    onEvent: (event) => manager.sendWorkloadEvent(event),
+  });
+
   const manager = new GenerationManager({
     entry: options.entry,
+    workloads,
     launcher: createForkLauncher({ log, children, registry }),
     clock,
     handoff: options.handoff,
@@ -304,6 +317,7 @@ export async function runSupervisor(options: SupervisorOptions): Promise<void> {
           protocol: { ...SUPERVISOR_PROTOCOL },
         },
         ...manager.status(),
+        workloads: workloads.status(),
       }),
       handoff: (request, onProgress) => manager.handoff(request, onProgress),
       stop: (drainDeadlineMs) => void stopAndExit(drainDeadlineMs),
@@ -320,6 +334,13 @@ export async function runSupervisor(options: SupervisorOptions): Promise<void> {
     stopSelfCheck();
     log(`shutting down with exit code ${code}`);
     manager.closeListeners();
+    // After the generations: a draining core detaches from its terminals
+    // rather than ending them, so they end here, with the supervisor.
+    await workloads
+      .stop()
+      .catch((error: unknown) =>
+        log(`stopping the workload host failed: ${String(error)}`),
+      );
     await control.close();
     releaseLock();
     exit(code);

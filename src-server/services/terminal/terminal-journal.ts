@@ -183,6 +183,11 @@ export class TerminalJournal {
     });
   }
 
+  /** The last numbered record, 0 before any; settled appends only. */
+  get lastSeq(): number {
+    return this.nextSeq - 1;
+  }
+
   get backpressured(): boolean {
     return this.queuedBytes >= this.options.maxPendingBytes / 2;
   }

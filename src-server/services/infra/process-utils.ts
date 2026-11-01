@@ -483,7 +483,7 @@ function registryDirIsTrustworthy(
         ourUid: reason.ourUid,
       },
     );
-  } else {
+  } else if (reason.kind === 'too-permissive') {
     log(
       'owned-process registry: directory mode is broader than 0700; refusing to read or write it',
       {

@@ -1102,7 +1102,12 @@ normal restarts, and rotates only while Station is stopped after 10 MiB,
 retaining the immediately previous secured log.
 The bounded JSONL lifecycle journal correlates instance, exact SHA, random boot
 ID, and backend PID across `started`, fsynced `stop_intent`, observed shutdown,
-and process-exit events. It classifies expected promotion, operator stop,
+and process-exit events. A start under the process supervisor records the
+supervisor's PID; each core generation stamps its events with that supervisor
+and its generation number, and only the newest generation's exit counts as
+the instance's, so a handoff is not read as a stop or a crash. Dogfood health
+accepts a supervised instance's server ports held by the recorded supervisor
+together with its own child generation. It classifies expected promotion, operator stop,
 expected recovery/rollback, unexpected signal, crash, and an unobservable
 SIGKILL/native crash without inventing a sender. Public readiness responses
 never expose the PID, paths, journal reason, or boot identity.
