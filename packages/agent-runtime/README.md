@@ -48,7 +48,12 @@ must default to `unsafe` in the host; replay safety is a trusted declaration.
 `lease.approval(tool, timeoutMs, wait)` persists a pending request before asking
 the host. Its identity and absolute deadline survive takeover. The host receives
 that identity and the remaining time when it reinstalls the wait; it must never
-substitute an automatic approval. A decision compares the current owner fence
+substitute an automatic approval. New identities bind the complete durable turn
+key and tool ID, because native tool-call IDs are not global. Existing approval
+IDs are recovered by their tool binding without rewriting the record.
+`createAgentRuntime`'s optional `approvalSettled(spec, approval)` callback runs
+after the recorded decision commits (or when replaying a committed decision).
+It receives detached data and does not grant tool entry. A decision compares the current owner fence
 and approval revision, commits once, and cannot grant permission after the
 deadline. Pending, denied and expired approvals block the tool execution grant.
 Duplicate local waits join one request. A failed decision commit leaves the
