@@ -35,7 +35,7 @@ interface Ledger {
 export class DelegationCreateConflictError extends Error {
   readonly code = 'delegation_create_conflict';
   constructor() {
-    super('This request key already belongs to different delegation input.');
+    super('This request key is already bound to different input.');
   }
 }
 export class DelegationCreateIndeterminateError extends Error {
@@ -46,7 +46,7 @@ export class DelegationCreateIndeterminateError extends Error {
     readonly clientTurnId: string,
   ) {
     super(
-      'The original delegation may have started. Inspect its session; do not resend under a new key.',
+      'Work for this request may have started. Inspect the original session; do not resend under a new key.',
     );
   }
 }
@@ -185,7 +185,6 @@ export async function runDelegationCreate(
   existingAttemptSessionId: string | undefined,
   create: (sessionId: string) => Promise<DelegatedTaskHandle>,
 ): Promise<DelegatedTaskHandle> {
-  if (existingAttemptSessionId) return create(existingAttemptSessionId);
   const claims = input.delegationAttemptClaimStore?.createRequests;
   if (!claims)
     throw new Error('Durable delegation create claims are unavailable.');
@@ -197,12 +196,13 @@ export async function runDelegationCreate(
       requestKey: input.clientTurnId!,
       intent: input.createRequestIntent ?? {
         prompt: input.prompt,
+        attemptId: input.delegationAttemptId ?? null,
         target: input.target,
         parentTaskId: input.parentTaskId ?? null,
         sessionId: input.sessionId ?? null,
         attachments: input.taskRoomAttachments ?? null,
       },
-      sessionId: input.sessionId,
+      sessionId: existingAttemptSessionId ?? input.sessionId,
     },
     create,
   );

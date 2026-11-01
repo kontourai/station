@@ -841,7 +841,7 @@ const stagedAttachmentReferencesSchema = z
   .optional();
 
 export const delegateTaskSchema = z.object({
-  clientTurnId: z.string().min(1).max(128),
+  clientTurnId: z.string().min(1).max(200),
   attachmentRefs: stagedAttachmentReferencesSchema,
   // Inline bytes are not a delegation transport; never silently discard them.
   attachments: z.never().optional(),
@@ -1178,7 +1178,7 @@ const delegatedTaskEventsQuerySchema = z.object({
 });
 
 export const continueDelegatedTaskBodySchema = z.object({
-  clientTurnId: z.string().min(1).max(128),
+  clientTurnId: z.string().min(1).max(200),
   taskRoomReply: z
     .object({
       taskId: z.string().min(1).max(256),
@@ -4172,6 +4172,15 @@ export function createOrchestrationRoutes(
       const delegation = resolvedDelegation?.context;
       const delegate = deps.delegateTask;
       const roomRequest = body.taskRoomRequest;
+      if (roomRequest && body.clientTurnId !== roomRequest.operationId)
+        return c.json(
+          {
+            success: false,
+            code: 'client_turn_input_conflict',
+            error: 'The request key must match this Task Room operation.',
+          },
+          409,
+        );
       let roomAttachments: ChatAttachmentInput[] | undefined;
       let releaseRoomRequestPublication: (() => void) | undefined;
       const dispatch = async (
@@ -4855,6 +4864,15 @@ export function createOrchestrationRoutes(
               )
           : undefined;
         const roomReply = getBody(c).taskRoomReply;
+        if (roomReply && getBody(c).clientTurnId !== roomReply.operationId)
+          return c.json(
+            {
+              success: false,
+              code: 'client_turn_input_conflict',
+              error: 'The request key must match this Task Room operation.',
+            },
+            409,
+          );
         let continuationMessage = getBody(c).message;
         if (roomReply && roomReply.attachBrief !== false && principal) {
           const context = await deps.taskRoomWork?.resolveContext?.(

@@ -651,11 +651,12 @@ describe('Orchestration Routes', () => {
       expect(engineSteer).not.toHaveBeenCalled();
       await expect(
         steerTurn(input.apiBase, { ...input, clientInputId: '' }),
+      ).rejects.toThrow('clientInputId must be');
+      expect(engineSteer).not.toHaveBeenCalled();
+      await expect(
+        steerTurn(input.apiBase, { ...input, clientInputId: undefined }),
       ).rejects.toThrow('Validation failed');
       expect(engineSteer).not.toHaveBeenCalled();
-      await steerTurn(input.apiBase, { ...input, clientInputId: undefined });
-      expect(engineSteer).toHaveBeenCalledTimes(1);
-      expect(engineSteer.mock.calls[0][0]).not.toHaveProperty('clientInputId');
     } finally {
       fetchSpy.mockRestore();
     }
@@ -799,6 +800,7 @@ describe('Orchestration Routes', () => {
       });
       expect(adapter.steerTurn).toHaveBeenCalledTimes(1);
       expect(await steerTurn(input.apiBase, input)).toEqual({
+        clientInputId: input.clientInputId,
         outcome: 'steered',
         threadId,
         turnId: 'live',

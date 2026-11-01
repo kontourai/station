@@ -6387,7 +6387,10 @@ export async function delegateTask(
               ...(resolved.modelOptions
                 ? { modelOptions: { ...resolved.modelOptions } }
                 : {}),
-              clientTurnId: input.clientTurnId ?? randomUUID(),
+              clientTurnId:
+                input.taskRoomInvocationAdmission?.clientTurnId ??
+                input.clientTurnId ??
+                randomUUID(),
               ...(input.stagedFiles
                 ? { clientTurnId: fileBinding.clientTurnId }
                 : {}),

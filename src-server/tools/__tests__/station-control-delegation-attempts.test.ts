@@ -178,6 +178,12 @@ function claimInput(overrides: Record<string, unknown> = {}) {
     prompt: 'Ship the portable thing',
     target: portableTarget(),
     receiverAdmission: admissionStub(resourcePath),
+    readAuthority: sessionReadAuthorityFromRequest(
+      'operator',
+      undefined,
+      undefined,
+    ),
+    principal: humanPrincipal('test', 'operator', 'Operator'),
     delegationAttemptId: 'attempt-1',
     delegationAttemptCaller: { deviceId: 'dev-verified-1' },
     delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(dir),
@@ -249,6 +255,28 @@ describe('receiver-local claim → single effect', () => {
     const record = await probe.read(CLAIM_KEY);
     expect(record?.state).toBe('accepted');
     expect(record?.taskId).toBe(result.taskId);
+  });
+
+  test('a different portable attempt cannot reuse a claimed request key to create another session', async () => {
+    const { delegateTask } = await import('../station-control-delegation.js');
+    const service = localService();
+    const first = await delegateTask(
+      { ...claimInput(), clientTurnId: 'shared-create-key' },
+      service as never,
+    );
+    await expect(
+      delegateTask(
+        {
+          ...claimInput({ delegationAttemptId: 'attempt-2' }),
+          clientTurnId: 'shared-create-key',
+          prompt: 'different input',
+        },
+        service as never,
+      ),
+    ).rejects.toMatchObject({ code: 'delegation_create_conflict' });
+    expect(first.sessionId).toMatch(/^task:/);
+    expect(service.startSessionInternal).toHaveBeenCalledTimes(1);
+    expect(service.dispatchWithReceipt).toHaveBeenCalledTimes(1);
   });
 
   test('mismatched validated intent under the same key conflicts with NO effect', async () => {

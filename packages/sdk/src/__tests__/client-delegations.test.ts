@@ -10,6 +10,7 @@ import {
   observeDelegatedTaskEvents,
   respondToDelegatedTaskRequest,
 } from '../client/delegations';
+import { sentTurnKey } from '../client/sent-turn-key';
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -20,6 +21,46 @@ function jsonResponse(status: number, body: unknown): Response {
 
 describe('client/delegations fetchers (#977 Wave 2)', () => {
   afterEach(() => vi.unstubAllGlobals());
+
+  test.each(['create', 'continue'] as const)(
+    '%s keeps its generated key across an uncertain retry',
+    async (kind) => {
+      const failure = Object.freeze(
+        new TypeError('Response lost after sending.'),
+      );
+      const bodies: unknown[] = [];
+      vi.stubGlobal(
+        'fetch',
+        vi.fn<typeof fetch>(async (_url, init) => {
+          bodies.push(JSON.parse(String(init?.body)));
+          throw failure;
+        }),
+      );
+      const send = (clientTurnId?: string) =>
+        kind === 'create'
+          ? delegateTask('http://station.test', {
+              prompt: 'same input',
+              target: {
+                environment: { kind: 'current' },
+                agent: agentId('station'),
+              },
+              clientTurnId,
+            })
+          : continueDelegatedTask('http://station.test', 'task:existing', {
+              message: 'same input',
+              clientTurnId,
+            });
+      const first = await send().catch((error: unknown) => error);
+      expect(first).toBe(failure);
+      const key = sentTurnKey(first);
+      expect(key).toEqual(expect.any(String));
+      const second = await send(key).catch((error: unknown) => error);
+      expect(second).toBe(failure);
+      expect(sentTurnKey(second)).toBe(key);
+      expect(bodies).toHaveLength(2);
+      expect(bodies[1]).toEqual(bodies[0]);
+    },
+  );
 
   test('projects poisoned caller handle identities out of the exact create body and preserves distinct server identities', async () => {
     const handle = {
@@ -39,6 +80,7 @@ describe('client/delegations fetchers (#977 Wave 2)', () => {
     await expect(
       delegateTask('http://station.test', {
         prompt: 'Ship it',
+        clientTurnId: 'projection-key',
         target: {
           environment: { kind: 'current' },
           agent: agentId('station'),
@@ -49,13 +91,14 @@ describe('client/delegations fetchers (#977 Wave 2)', () => {
         currentSessionId: 'session:current-poisoned',
         taskId: 'task:poisoned',
       } as Parameters<typeof delegateTask>[1]),
-    ).resolves.toEqual(handle);
+    ).resolves.toEqual({ ...handle, clientTurnId: 'projection-key' });
     expect(fetchMock).toHaveBeenCalledWith(
       'http://station.test/api/orchestration/delegations',
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({
           prompt: 'Ship it',
+          clientTurnId: 'projection-key',
           target: { environment: { kind: 'current' }, agent: 'station' },
           parentTaskId: 'task:parent',
         }),
@@ -203,6 +246,7 @@ describe('client/delegations fetchers (#977 Wave 2)', () => {
 
     await delegateTask('http://station.test', {
       prompt: 'Ship it',
+      clientTurnId: 'fixture-key',
       target: {
         environment: { kind: 'current' },
         agent: agentId('codex'),
@@ -217,6 +261,7 @@ describe('client/delegations fetchers (#977 Wave 2)', () => {
         method: 'POST',
         body: JSON.stringify({
           prompt: 'Ship it',
+          clientTurnId: 'fixture-key',
           target: {
             environment: { kind: 'current' },
             agent: 'codex',
@@ -243,6 +288,7 @@ describe('client/delegations fetchers (#977 Wave 2)', () => {
 
     await continueDelegatedTask('http://station.test', 'task:1', {
       message: 'Keep going',
+      clientTurnId: 'fixture-key',
       modelOptions: { thinking: true },
     });
 
@@ -252,6 +298,7 @@ describe('client/delegations fetchers (#977 Wave 2)', () => {
         method: 'POST',
         body: JSON.stringify({
           message: 'Keep going',
+          clientTurnId: 'fixture-key',
           modelOptions: { thinking: true },
         }),
       }),
@@ -378,13 +425,17 @@ describe('client/delegations fetchers (#977 Wave 2)', () => {
     await expect(
       continueDelegatedTask('http://station.test', 'task:1', {
         message: 'Keep going',
+        clientTurnId: 'fixture-key',
       }),
     ).resolves.toMatchObject(handle);
     expect(fetchMock).toHaveBeenCalledWith(
       'http://station.test/api/orchestration/delegations/task%3A1/continue',
       expect.objectContaining({
         method: 'POST',
-        body: JSON.stringify({ message: 'Keep going' }),
+        body: JSON.stringify({
+          message: 'Keep going',
+          clientTurnId: 'fixture-key',
+        }),
       }),
     );
   });

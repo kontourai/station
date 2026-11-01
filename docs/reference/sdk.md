@@ -2235,10 +2235,12 @@ input even when v1 accepts it. An older host rejects the distinct command rather
 than steering the parent.
 
 `steerOrchestrationTurn({ threadId, text, turnId?, clientInputId?, apiBase? })`
-sends input to an open turn. With an ID it uses the protected `steerTurnOnce`
-wire command, which older servers reject before invocation. Without an ID it
-retains legacy behavior. Use one stable `clientInputId` per intent and retain
-its original Session, turn and text when retrying an acknowledgement. The server
+sends input to an open turn. It chooses a `clientInputId` when omitted and
+always uses the protected `steerTurnOnce` wire command, which older servers
+reject before invocation. The result returns the chosen `clientInputId`; on
+failure, `sentTurnKey(error)` retrieves it without replacing the error.
+Pass that ID as `clientInputId` on a deliberate retry, retaining the original
+Session, turn and text. The server
 journals the adapter attempt before invocation and returns a confirmed same-ID
 result without sending it again. `outcome: 'indeterminate'` means delivery cannot
 be confirmed; retain the input for review and do not automatically send it as a
@@ -4810,16 +4812,24 @@ the [Session API](session-api.md). The legacy `streamConversationTurn` export
 targets Station's private compatibility route, `/api/agents/:slug/chat`.
 
 `sendExecutionMessage` (including `sendExecutionMessageWithInventory`),
-`continueExecutionMessage` and `sendOrchestrationTurn` choose one `clientTurnId`
-per call before asynchronous work. Pass `clientTurnId` to retain a caller-owned
-key; omission generates one. A supplied key must be a nonblank string of at
-most 200 UTF-16 code units, and invalid values fail before any request, including
-visual-skill inventory reads. These calls send the key and return it on a
-`KeyedForegroundMessageReceipt`; the SDK attaches it even when the server's
-receipt does not echo it. The base `ForegroundMessageReceipt` remains usable by
+`continueExecutionMessage`, `sendOrchestrationTurn`, `delegateTask` and
+`continueDelegatedTask` choose one `clientTurnId` before asynchronous work.
+Pass `clientTurnId` to retain a caller-owned key. Omission generates one unless
+a delegation already names an attempt or Task Room operation. A supplied key
+must be a nonblank string of at most 200 UTF-16 code units, and invalid values
+fail before any request, including visual-skill inventory reads. Foreground
+calls return the key on a `KeyedForegroundMessageReceipt`; delegation handles
+also carry `clientTurnId`. The SDK adds its chosen key even when the
+server does not echo it. The base `ForegroundMessageReceipt` remains usable by
 other receipt producers without claiming a key they do not return.
 
-A foreground failure after key selection is associated with that key through
+A portable attempt uses its caller-owned `attemptId` as the default key; a Task Room reply uses its
+`operationId`. `submitTaskRoomAgentRequest` carries its required `operationId`
+as `clientTurnId`. Task Room operation and request keys must match, so a
+caller cannot bypass an existing operation's input check by changing only one
+of the two identifiers. Server-authorized turn keys remain server-owned.
+
+A send failure after key selection is associated with that key through
 `sentTurnKey(error)`, including typed queued or indeterminate outcomes,
 transport errors and preflight refusals. Preserve the original input with the
 key for inspection or a deliberate retry. The SDK never retries automatically.
@@ -4827,9 +4837,10 @@ Server digest enforcement and replay retention remain separate contracts; key
 custody alone does not establish a minimum retry window. The fixed automatic
 background route uses the same key custody.
 
-For a new foreground conversation, retain the original input and key. Current
-Station hosts durably reserve an implicit conversation allocation under the
-caller scope and key, replay its completed handle, and refuse changed input.
+For a new foreground conversation, retain the original input and key. A server
+containing the durable create-claim implementation reserves an implicit
+conversation allocation under the caller scope and key, replays its completed
+handle, and refuses changed input.
 An unfinished create claim is indeterminate even if no Session is visible;
 inspect its reserved reference instead of starting under a new key. Older
 hosts may allocate a fresh conversation per attempt, so choose and retain an

@@ -860,6 +860,7 @@ const VERBS: Record<string, VerbSpec> = {
     detail: [
       'Options (create):',
       '  --agent=<slug>        Delegate to an Agent',
+      '  --client-turn-id=<id> Reuse the same key and input for a deliberate retry',
       '  --on=<environment>    Run on a saved Environment (default: current)',
       '  --model=<id>          Select a model for this task',
       '  --project=<slug>      Bind to a project (or --project-path=<path>)',
