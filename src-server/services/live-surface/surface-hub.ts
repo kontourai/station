@@ -109,6 +109,14 @@ export const H264_QUEUE_MAX_UNITS = 32;
 
 export type LiveSurfaceViewerCodec = 'image' | 'h264';
 
+/**
+ * Keyframe requests reach the encoder at most this often. Each one makes the
+ * encoder send a large IDR to EVERY viewer, so several viewers overflowing
+ * together, or one that keeps falling behind, must not turn into a stream
+ * of keyframes that raises everyone's bitrate.
+ */
+export const KEYFRAME_REQUEST_MIN_INTERVAL_MS = 500;
+
 class HubViewer implements LiveSurfaceViewer {
   slot: HubFrame | null = null;
   private readonly videoQueue: HubFrame[] = [];
@@ -243,6 +251,7 @@ export class LiveSurfaceHub {
   private lastPublishedAt = Number.NEGATIVE_INFINITY;
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
   private disposed = false;
+  private lastKeyframeRequestAt = Number.NEGATIVE_INFINITY;
   private readonly unsubscribeLease: () => void;
   private readonly unsubscribeStatus: () => void;
   private inputHealth: () => { wedged: boolean; wedgedSince: number | null } =
@@ -407,6 +416,10 @@ export class LiveSurfaceHub {
 
   /** @internal An `h264` viewer needs a decoding point. */
   requestKeyframe(): void {
+    const at = this.now();
+    if (at - this.lastKeyframeRequestAt < KEYFRAME_REQUEST_MIN_INTERVAL_MS)
+      return;
+    this.lastKeyframeRequestAt = at;
     try {
       this.producer.requestKeyframe?.();
     } catch (error) {

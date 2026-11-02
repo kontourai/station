@@ -10,6 +10,7 @@ import {
 import { LiveSurfaceControlLeaseState } from '../control-lease.js';
 import {
   H264_QUEUE_MAX_UNITS,
+  KEYFRAME_REQUEST_MIN_INTERVAL_MS,
   LiveSurfaceHub,
   type LiveSurfaceHubOptions,
   type LiveSurfaceViewer,
@@ -474,6 +475,27 @@ describe('live surface hub: H.264 viewers (#4418)', () => {
     expect(await tagOf(viewer)).toBe(5);
     expect(await tagOf(viewer)).toBe(6);
     viewer.close();
+    await hub.dispose();
+  });
+
+  test('keyframe requests from many viewers reach the encoder at most once per interval', async () => {
+    const { hub, unit, requestKeyframe } = await videoHub();
+    const viewers = [0, 1, 2].map(() => hub.attach(PARAMS, undefined, 'h264'));
+    await hub.settled();
+    vi.advanceTimersByTime(KEYFRAME_REQUEST_MIN_INTERVAL_MS);
+    requestKeyframe.mockClear();
+    // All three overflow on the same unit: one request, not three.
+    unit(true, 1);
+    for (let i = 0; i < H264_QUEUE_MAX_UNITS; i++) unit(false, 2);
+    expect(requestKeyframe).toHaveBeenCalledTimes(1);
+    unit(true, 3);
+    for (let i = 0; i < H264_QUEUE_MAX_UNITS; i++) unit(false, 4);
+    expect(requestKeyframe).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(KEYFRAME_REQUEST_MIN_INTERVAL_MS);
+    unit(true, 5);
+    for (let i = 0; i < H264_QUEUE_MAX_UNITS; i++) unit(false, 6);
+    expect(requestKeyframe).toHaveBeenCalledTimes(2);
+    for (const viewer of viewers) viewer.close();
     await hub.dispose();
   });
 
