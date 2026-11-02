@@ -1396,6 +1396,28 @@ describe('persistent runner policy', () => {
 
   test.each([
     (job: Record<string, unknown>) => {
+      job.permissions = { contents: 'read', 'pull-requests': 'write' };
+    },
+    (job: Record<string, unknown>) => {
+      job.steps = [{ run: 'node candidate-policy.mjs' }];
+    },
+    (job: Record<string, unknown>) => {
+      job.if = 'always()';
+    },
+  ])('rejects widened conflict admission authority', (mutate) => {
+    const findings = persistentRunnerPolicyFindings(
+      primaryCiJobFixture('pr-admission', mutate),
+    );
+    expect(findings).toContainEqual({
+      file: '.github/workflows/ci.yml',
+      jobId: 'pr-admission',
+      message:
+        'base-controlled PR job permission overrides must declare only permissions: { contents: read }',
+    });
+  });
+
+  test.each([
+    (job: Record<string, unknown>) => {
       job.needs = [];
     },
     (job: Record<string, unknown>) => {

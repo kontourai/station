@@ -428,10 +428,14 @@ export function findVerdictBearingContinueOnError(workflowText) {
   return offenders;
 }
 
-/** The admission guard of every fast-checks part job that needs `classify`. */
+/**
+ * The admission guard of every fast-checks part job that needs `classify`.
+ * A pull request also needs `pr-admission` to succeed, so a confirmed merge
+ * conflict defers the plan and statics instead of spending runner time.
+ */
 export const REQUIRED_FAST_CHECKS_CONDITION =
   // biome-ignore lint/suspicious/noTemplateCurlyInString: literal reviewed GitHub Actions predicate.
-  "${{ always() && !cancelled() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}";
+  "${{ always() && !cancelled() && needs.pr-admission.outputs.admitted != 'false' && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}";
 
 /**
  * The required `fast-checks` aggregator's guard (#2709): the same event
@@ -662,7 +666,7 @@ export function collectRequiredBrowserSmokeFindings(workflowText) {
       !part ||
       part.if !== REQUIRED_FAST_CHECKS_CONDITION ||
       swallowsFailure(part) ||
-      !sameList(needsList(part), ['classify'])
+      !sameList(needsList(part), ['classify', 'pr-admission'])
     )
       findings.push(
         `Required ${partId} must admit PR and merge candidates without swallowing failures.`,
