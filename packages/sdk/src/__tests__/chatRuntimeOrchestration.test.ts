@@ -348,6 +348,31 @@ describe('chatRuntimeOrchestration', () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
+  it('a deliberate wrapper retry keeps the key and exact input after a lost response', async () => {
+    const failure = Object.freeze(new TypeError('Lost acknowledgement.'));
+    const bodies: unknown[] = [];
+    vi.mocked(fetch).mockImplementation(async (_url, init) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      throw failure;
+    });
+    const first = await sendOrchestrationTurn({
+      threadId: 'retry-thread',
+      text: 'same input',
+    }).catch((error: unknown) => error);
+    expect(first).toBe(failure);
+    const key = sentTurnKey(first);
+    expect(key).toEqual(expect.any(String));
+    const second = await sendOrchestrationTurn({
+      threadId: 'retry-thread',
+      text: 'same input',
+      clientTurnId: key,
+    }).catch((error: unknown) => error);
+    expect(second).toBe(failure);
+    expect(sentTurnKey(second)).toBe(key);
+    expect(bodies).toHaveLength(2);
+    expect(bodies[1]).toEqual(bodies[0]);
+  });
+
   it('retains its chosen key when API-base resolution rejects before a request', async () => {
     const failure = Object.freeze(new Error('The API base is unavailable.'));
     vi.mocked(_getApiBase).mockRejectedValueOnce(failure);

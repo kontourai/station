@@ -90,7 +90,9 @@
 
     "src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx",
 
-    "tests/container-self-host.spec.ts"
+    "tests/container-self-host.spec.ts",
+
+    "src-server/services/orchestration/create-request-claims.ts"
   ],
 
   "checks": [

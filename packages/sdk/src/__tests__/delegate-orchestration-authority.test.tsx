@@ -83,6 +83,7 @@ describe('delegateOrchestrationTask per-invocation authority (#480 review)', () 
     vi.stubGlobal('fetch', fetchMock);
 
     const handle = await delegateOrchestrationTask({
+      clientTurnId: 'authority-test-key',
       prompt: 'Ship it',
       target: { environment: { kind: 'current' }, agent: agentId('codex') },
       parentTaskId: 'parent:1',
@@ -99,6 +100,7 @@ describe('delegateOrchestrationTask per-invocation authority (#480 review)', () 
     // The public body is exactly the delegation contract: no client scope,
     // no address, no functions cross into it.
     expect(JSON.parse(String(init.body))).toEqual({
+      clientTurnId: 'authority-test-key',
       prompt: 'Ship it',
       target: { environment: { kind: 'current' }, agent: 'codex' },
       parentTaskId: 'parent:1',
@@ -122,6 +124,7 @@ describe('delegateOrchestrationTask per-invocation authority (#480 review)', () 
     let rotated = false;
     const pending = delegateOrchestrationTask(
       {
+        clientTurnId: 'authority-test-key',
         prompt: 'Ship it',
         target: { environment: { kind: 'current' }, agent: agentId('codex') },
         apiBase: HOME_A,
@@ -154,6 +157,7 @@ describe('delegateOrchestrationTask per-invocation authority (#480 review)', () 
 
     const pending = delegateOrchestrationTask(
       {
+        clientTurnId: 'authority-test-key',
         prompt: 'Ship it',
         target: { environment: { kind: 'current' }, agent: agentId('codex') },
         apiBase: HOME_A,
@@ -179,6 +183,7 @@ describe('delegateOrchestrationTask per-invocation authority (#480 review)', () 
 
     const handle = await delegateOrchestrationTask(
       {
+        clientTurnId: 'authority-test-key',
         prompt: 'Ship it',
         target: { environment: { kind: 'current' }, agent: agentId('codex') },
         apiBase: HOME_A,
@@ -197,6 +202,7 @@ describe('delegateOrchestrationTask per-invocation authority (#480 review)', () 
       'Bearer home-a-credential',
     );
     expect(JSON.parse(String(init.body))).toEqual({
+      clientTurnId: 'authority-test-key',
       prompt: 'Ship it',
       target: { environment: { kind: 'current' }, agent: 'codex' },
     });
@@ -218,6 +224,7 @@ describe('delegateOrchestrationTask per-invocation authority (#480 review)', () 
     );
     // EXACTLY the pre-#480 call shape: a bare DelegateTaskInput, no envelope.
     const handle = await result.current.mutateAsync({
+      clientTurnId: 'authority-test-key',
       prompt: 'Ship it legacy',
       target: { environment: { kind: 'current' }, agent: agentId('codex') },
     });
@@ -232,6 +239,7 @@ describe('delegateOrchestrationTask per-invocation authority (#480 review)', () 
     // the public body is the input itself.
     expect(url).toBe(`${HOME_A}${DELEGATIONS_PATH}`);
     expect(JSON.parse(String(init.body))).toEqual({
+      clientTurnId: 'authority-test-key',
       prompt: 'Ship it legacy',
       target: { environment: { kind: 'current' }, agent: 'codex' },
     });
@@ -259,6 +267,7 @@ describe('delegateOrchestrationTask per-invocation authority (#480 review)', () 
     act(() => {
       pending = result.current.mutateAsync({
         input: {
+          clientTurnId: 'authority-test-key',
           prompt: 'Ship it',
           target: {
             environment: { kind: 'current' },

@@ -402,6 +402,55 @@ describe('fast-checks under GitHub job-status semantics (#2709 re-land)', () => 
     },
   );
 
+  test('a deferred conflict spends no plan, shard or statics runner and fails the aggregator', () => {
+    const state = simulate(jobs, sameRepositoryPr, {
+      outcomes: { 'pr-admission': 'failure' },
+      outputs: { 'pr-admission': { admitted: 'false' } },
+    });
+    expect(state.results.get('pr-admission')).toBe('failure');
+    for (const part of PARTS)
+      expect(state.results.get(part), part).toBe('skipped');
+    expect(aggregatorPartResults(jobs, state)).toBe(1);
+  });
+
+  test.each(['failure', 'cancelled'] as const)(
+    'an admission job that %s without deciding never blocks the candidate',
+    (outcome) => {
+      const state = simulate(jobs, sameRepositoryPr, {
+        outcomes: { 'pr-admission': outcome },
+        outputs: { 'fast-checks-plan': { legacy: 'false' } },
+      });
+      for (const part of PARTS)
+        expect(state.results.get(part), part).toBe('success');
+      expect(aggregatorPartResults(jobs, state)).toBe(0);
+    },
+  );
+
+  test.each([
+    ['merge_group', { ...sameRepositoryPr, event: 'merge_group' }],
+    ['workflow_dispatch', { ...sameRepositoryPr, event: 'workflow_dispatch' }],
+  ])('%s never evaluates conflict admission', (_name, context) => {
+    const state = simulate(jobs, context, {
+      outputs: {
+        classify: { heavy: 'false' },
+        'fast-checks-plan': { legacy: 'false' },
+      },
+    });
+    expect(state.results.get('pr-admission')).toBe('skipped');
+    expect(state.results.get('fast-checks-plan')).toBe('success');
+  });
+
+  test('a fork candidate and a metadata-only edit skip conflict admission', () => {
+    for (const context of [
+      { ...sameRepositoryPr, headRepository: 'someone/fork' },
+      { ...sameRepositoryPr, action: 'edited' },
+    ])
+      expect(
+        simulate(jobs, context).results.get('pr-admission'),
+        JSON.stringify(context),
+      ).toBe('skipped');
+  });
+
   test('empty selections allocate no shard runner while retaining a required verdict', () => {
     const state = simulate(jobs, sameRepositoryPr, {
       outputs: {

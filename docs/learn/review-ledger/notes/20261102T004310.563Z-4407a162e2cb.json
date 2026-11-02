@@ -1,0 +1,9 @@
+{
+  "revision": "baea223194ee8bcb4beebe204fcc15ee7980b5f1",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed request-scoped release on existing Sessions, independent current caller namespaces and seven-day starting expiry with live-owner retention against the owner and tests. The separate Monument turn ledger is unchanged; only its comment layout and the Station separator-collision example changed. No module-map prose change is needed.","inputs":["docs/architecture/module-map.md","packages/monument/src/turn-dedup.ts","src-server/services/orchestration/__tests__/create-request-claims.process.test.ts","src-server/services/orchestration/__tests__/create-request-claims.test.ts","src-server/services/orchestration/create-request-claims.ts","src-server/services/orchestration/station-turn-dedup-bindings.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"The turn-dedup diff restores comment layout and a concrete Station key-collision example. Kernel commands, table bindings, turn retention and extraction remain unchanged; Station CreateRequestClaims is separate from this migration inventory.","inputs":["docs/design/event-store-ledger-migration.md","packages/monument/src/turn-dedup.ts","src-server/services/orchestration/station-turn-dedup-bindings.ts"]}
+  ]
+}
