@@ -109,10 +109,8 @@ async function run(
   });
   const owner = stationAgentRuntimeOwner(dir.path);
   let paused = false;
-  const observability = createVoltAgentObservability({
-    serviceName: 'agent-runtime-benchmark',
-  });
-  AgentRegistry.getInstance().setGlobalObservability(observability);
+  await observability.forceFlush();
+  await observability.getStorage().clear();
   try {
     const failures: unknown[] = [];
     owner.configure({
@@ -273,6 +271,9 @@ async function run(
       await inspector.post('Profiler.enable');
       await inspector.post('Profiler.start');
     }
+    if (typeof global.gc !== 'function')
+      throw new Error('Benchmark requires --expose-gc');
+    global.gc();
     const collections: number[] = [];
     const gc = new PerformanceObserver((list) => {
       for (const entry of list.getEntries()) collections.push(entry.duration);
@@ -448,11 +449,7 @@ async function run(
       traceCount,
     };
   } finally {
-    try {
-      if (!paused) await owner.pause();
-    } finally {
-      await observability.shutdown();
-    }
+    if (!paused) await owner.pause();
   }
 }
 const environment = {
@@ -463,7 +460,13 @@ const environment = {
   logicalCpus: cpus().length,
   sqlite: 'WAL synchronous=FULL',
   measuredAt: new Date().toISOString(),
+  fixture:
+    'one live SDK tracer provider; trace storage cleared and GC requested between isolated phase fixtures; no GC within a measured phase',
 };
+const observability = createVoltAgentObservability({
+  serviceName: 'agent-runtime-benchmark',
+});
+AgentRegistry.getInstance().setGlobalObservability(observability);
 const results = [];
 try {
   for (const steps of sizes)
@@ -507,5 +510,6 @@ try {
   if (args.includes('--profile'))
     await run(true, sizes.at(-1)!, chunkCounts.at(-1)!, 0, true);
 } finally {
+  await observability.shutdown();
   clearTimeout(watchdog);
 }
