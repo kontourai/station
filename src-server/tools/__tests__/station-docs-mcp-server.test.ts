@@ -4,11 +4,11 @@ import { PERMISSION_TIERS } from '@kontourai/station-contracts/plugin';
 import { WORKSPACE_PANE_REGIONS } from '@kontourai/station-contracts/workspace-pane';
 import { describe, expect, test } from 'vitest';
 import packageJson from '../../../package.json' with { type: 'json' };
-import { parsePluginManifestDocumentWithFormat } from '../../services/plugins/plugin-manifest-loader.js';
 import {
   readStationDocsInputs,
   stationDocsDigest,
 } from '../../../scripts/generate-station-docs.mjs';
+import { parsePluginManifestDocumentWithFormat } from '../../services/plugins/plugin-manifest-loader.js';
 import { STATION_DOCS_TOPICS } from '../station-docs-content.js';
 import {
   createStationDocsMcpServer,
