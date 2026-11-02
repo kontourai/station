@@ -346,10 +346,21 @@ and fragments are removed. The read-only `browser_network` agent tool uses
 the existing Browser authority and diagnostics permissions, and returns
 bounded pages of the same metadata.
 
+With the same preview enabled, **Annotate** in **⋯** opens Select, Box, Draw
+and Erase tools over the streamed page. S, B, D and E select them; Escape
+cancels and Enter attaches. Select inspects an element on the server. Box and
+Draw marks use target viewport coordinates; Erase removes a mark under the
+pointer. Attach sends an image and a JSON description to the active chat's
+composer. A selected element uses its target PNG crop; otherwise the image is
+a target viewport screenshot. Marks are described in JSON, not burned into
+the image. Both files must be supported by the conversation's engine. The
+description and image can expose page content; attaching is an explicit share.
+
 **Screenshot** (in **⋯**) captures the page's viewport as PNG (JPEG over
 16 MiB, refused beyond that) with view standing, one capture at a time per
 session (a second request joins the one in flight), and offers **Save image**
-and, where the viewer's clipboard accepts PNGs, **Copy image**.
+and, where the viewer's clipboard accepts PNGs, **Copy image**. With Browser
+artifacts enabled, **Attach to chat** adds it to the active composer.
 
 A workspace Browser pane keeps an ordered set of up to twelve session tabs.
 Select a tab to watch its exact server session; arrow keys select adjacent tabs

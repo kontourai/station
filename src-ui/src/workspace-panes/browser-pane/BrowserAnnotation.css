@@ -1,0 +1,29 @@
+.browser-annotation {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+}
+.browser-annotation__tools {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-1);
+  pointer-events: auto;
+  z-index: 1;
+}
+.browser-annotation__surface {
+  position: absolute;
+  touch-action: none;
+  pointer-events: auto;
+  cursor: crosshair;
+}
+.browser-annotation__surface rect,
+.browser-annotation__surface polyline {
+  fill: none;
+  stroke: var(--k-brand);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}

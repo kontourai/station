@@ -14,6 +14,7 @@ export interface BrowserScreenshotShot {
   /** The page's host, for the file name. */
   host: string;
   takenAt: Date;
+  provenance?: { browserSessionId: string; generation: number; url: string };
 }
 
 function pad(value: number): string {
@@ -42,9 +43,11 @@ function canCopyImage(blob: Blob): boolean {
 export function BrowserScreenshot({
   shot,
   onDismiss,
+  onAttach,
 }: {
   shot: BrowserScreenshotShot;
   onDismiss: () => void;
+  onAttach?: () => void;
 }) {
   const [url, setUrl] = useState<string | null>(null);
   const [copy, setCopy] = useState<'idle' | 'copied' | 'failed'>('idle');
@@ -101,6 +104,11 @@ export function BrowserScreenshot({
           }}
         >
           Copy image
+        </Button>
+      ) : null}
+      {onAttach ? (
+        <Button size="sm" className="browser-pane__control" onClick={onAttach}>
+          Attach to chat
         </Button>
       ) : null}
       <Button size="sm" className="browser-pane__control" onClick={onDismiss}>

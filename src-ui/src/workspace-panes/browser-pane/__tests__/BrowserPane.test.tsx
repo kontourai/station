@@ -19,6 +19,9 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 vi.mock('../../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
 }));
+vi.mock('../useBrowserArtifactIntake', () => ({
+  useBrowserArtifactIntake: () => () => async () => {},
+}));
 // The live view is its own tested component; here it only has to be mounted
 // on the right surface.
 vi.mock('../../../live-surface/LiveSurfaceCanvas', () => ({

@@ -6746,6 +6746,18 @@ reachability or that the review was addressed. Tags and blobs remain claims.
 resolve to the exact current passing evaluation. A passing gate linked only
 to another Task stays claimed. Receipt references remain claims.
 
+Browser artifact routes on personal hosts require the `browser-artifacts`
+feature preview and Browser view authority:
+
+- `POST /api/browser/sessions/:browserSessionId/pick` takes target viewport
+  coordinates `{x, y, generation, screenshot?}`. It returns element metadata
+  and, by default, a base64 PNG crop with its digest. It refuses a changed
+  session generation or viewport and a page that changes during inspection.
+- `GET /api/browser/sessions/:browserSessionId/network?after=<sequence>`
+  returns a bounded page of in-memory request metadata. Query values, URL
+  credentials and fragments are redacted; bodies and headers are not retained.
+  Requests from an Agent also require the Project's Browser diagnostics setting.
+
 Browser capture routes on personal hosts:
 
 - `GET /api/tasks/:taskId/review/capture-sessions` returns `data.sessions` with

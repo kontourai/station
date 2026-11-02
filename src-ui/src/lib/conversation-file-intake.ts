@@ -10,6 +10,7 @@ export interface FileIntakeOperation {
   requestScope: FileIntakeScope;
   signal: AbortSignal;
   isCurrent?: () => boolean;
+  allOrNothing?: boolean;
 }
 type Receiver = {
   apiBase: string;
@@ -23,6 +24,7 @@ type Pending = {
   scope: FileIntakeScope;
   sessionId: string;
   files: File[];
+  allOrNothing: boolean;
   controller: AbortController;
   claimed?: Receiver;
   timer: ReturnType<typeof setTimeout>;
@@ -75,6 +77,7 @@ function drain() {
         receiver.receive(request.files, {
           requestScope: request.scope,
           signal: request.controller.signal,
+          allOrNothing: request.allOrNothing,
         }),
       )
       .then(
@@ -133,6 +136,7 @@ export function requestConversationFileIntake(
   sessionId: string,
   files: File[],
   activate: () => void,
+  options: { allOrNothing?: boolean } = {},
 ): Promise<FileIntakeResult> {
   if (!scope.isCurrent())
     return Promise.reject(
@@ -151,6 +155,7 @@ export function requestConversationFileIntake(
       scope,
       sessionId,
       files: [...files],
+      allOrNothing: options.allOrNothing === true,
       controller: new AbortController(),
       resolve,
       reject,

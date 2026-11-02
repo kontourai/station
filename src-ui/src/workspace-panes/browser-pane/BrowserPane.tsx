@@ -50,6 +50,7 @@ import {
 } from '../../live-surface/LiveSurfaceCanvas';
 import { BrowserAcquisitionPanel } from './BrowserAcquisitionPanel';
 import { BrowserAgentSettingsPanel } from './BrowserAgentSettingsPanel';
+import { BrowserAnnotationFlow } from './BrowserAnnotationFlow';
 import {
   BrowserConsoleDrawer,
   useBrowserConsole,
@@ -82,6 +83,7 @@ import {
   browserPaneKeys,
   describeBrowserFailure,
 } from './browserPaneApi';
+import { useBrowserArtifactIntake } from './useBrowserArtifactIntake';
 import './BrowserPane.css';
 
 /**
@@ -561,6 +563,7 @@ function BrowserSessionPane({
   transport: BrowserFetch;
 }) {
   const queryClient = useQueryClient();
+  const attachFiles = useBrowserArtifactIntake();
   const sessionKey = browserPaneKeys.session(apiBase, browserSessionId);
   /** Who controls the live view, as the canvas's own stream reports it. */
   const [control, setControl] = useState<LiveSurfaceControlState | null>(null);
@@ -592,6 +595,7 @@ function BrowserSessionPane({
   const coarsePointer = useCoarsePointer();
   const narrow = useIsMobile();
   const [shot, setShot] = useState<BrowserScreenshotShot | null>(null);
+  const [annotating, setAnnotating] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [draft, setDraft] = useState<string | null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -730,6 +734,15 @@ function BrowserSessionPane({
       blob: await api.screenshot(browserSessionId),
       host: hostOf(record?.url ?? ''),
       takenAt: new Date(),
+      ...(record
+        ? {
+            provenance: {
+              browserSessionId,
+              generation: record.generation,
+              url: record.url,
+            },
+          }
+        : {}),
     }),
     onSuccess: (next) => {
       setShot(next);
@@ -886,6 +899,18 @@ function BrowserSessionPane({
       disabled: !live || screenshot.isPending,
       onSelect: () => screenshot.mutate(),
     },
+    ...(artifactsEnabled
+      ? [
+          {
+            kind: 'action' as const,
+            id: 'annotate',
+            label: 'Annotate',
+            glyph: <CameraGlyph />,
+            disabled: !live,
+            onSelect: () => setAnnotating(true),
+          },
+        ]
+      : []),
     {
       kind: 'list',
       id: 'viewport',
@@ -1175,6 +1200,16 @@ function BrowserSessionPane({
       ) : null}
       <div className="browser-pane__stage" ref={stageRef}>
         {body}
+        {annotating && live && record && generation !== undefined ? (
+          <BrowserAnnotationFlow
+            key={`${browserSessionId}:${generation}:${record.url}:${record.viewport.width}:${record.viewport.height}`}
+            stageRef={stageRef}
+            record={record}
+            api={api}
+            onClose={() => setAnnotating(false)}
+            onError={setNotice}
+          />
+        ) : null}
         {live && record?.surfaceId && chipTone === 'agent' ? (
           <span className="browser-pane__takeover-hint" aria-hidden="true">
             {coarsePointer ? 'Tap' : 'Click'} anywhere to take over from the
@@ -1225,7 +1260,50 @@ function BrowserSessionPane({
               </div>
             ) : null}
             {shot ? (
-              <BrowserScreenshot shot={shot} onDismiss={() => setShot(null)} />
+              <BrowserScreenshot
+                shot={shot}
+                onDismiss={() => setShot(null)}
+                {...(artifactsEnabled
+                  ? {
+                      onAttach: () => {
+                        void Promise.resolve()
+                          .then(() =>
+                            attachFiles()([
+                              new File(
+                                [shot.blob],
+                                `browser-screenshot.${shot.blob.type === 'image/jpeg' ? 'jpg' : 'png'}`,
+                                { type: shot.blob.type },
+                              ),
+                              new File(
+                                [
+                                  JSON.stringify(
+                                    {
+                                      kind: 'browser-screenshot',
+                                      observedAt: shot.takenAt.toISOString(),
+                                      ...shot.provenance,
+                                    },
+                                    null,
+                                    2,
+                                  ),
+                                ],
+                                'browser-screenshot.json',
+                                { type: 'application/json' },
+                              ),
+                            ]),
+                          )
+                          .then(
+                            () => setShot(null),
+                            (error) =>
+                              setNotice(
+                                error instanceof Error
+                                  ? error.message
+                                  : 'Could not attach screenshot.',
+                              ),
+                          );
+                      },
+                    }
+                  : {})}
+              />
             ) : null}
             {newDialog && !isDismissed(newDialog) ? (
               <div className="browser-pane__overlay-notice" role="status">

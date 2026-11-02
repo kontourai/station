@@ -30,6 +30,9 @@ import type { LiveSurfaceControlState } from '../../../live-surface/LiveSurfaceC
 vi.mock('../../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
 }));
+vi.mock('../useBrowserArtifactIntake', () => ({
+  useBrowserArtifactIntake: () => () => async () => {},
+}));
 
 const controlHolder: { state: LiveSurfaceControlState | null } = {
   state: null,
