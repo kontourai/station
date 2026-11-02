@@ -37,6 +37,7 @@ import {
   RegionModelProvider,
   useRegionModel,
 } from '../../contexts/RegionModelContext';
+import { registerDevicePanePromotion } from '../../float-over-chat/floatStore';
 import type { DockShellChrome } from '../../hooks/useDockShellChrome';
 import { MOBILE_MEDIA_QUERY } from '../../hooks/useIsMobile';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
@@ -366,6 +367,21 @@ test('closing a tab unplaces its surface; the region keeps its other pane', asyn
       visible: true,
     }),
   );
+});
+
+test('closing the Device tab promotes it after the region accepts the close', async () => {
+  await mountShells();
+  await waitFor(() => expect(model).not.toBeNull());
+  act(() => currentModel().placeSurface('device', 'bottom'));
+  const close = await within(shell()).findByRole('button', {
+    name: 'Close Device',
+  });
+  const promote = vi.fn();
+  const unregister = registerDevicePanePromotion(promote);
+  fireEvent.click(close);
+  await waitFor(() => expect(promote).toHaveBeenCalledOnce());
+  expect(currentModel().regions.bottom.panes).not.toContain('device');
+  unregister();
 });
 
 /**
