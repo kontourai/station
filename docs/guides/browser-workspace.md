@@ -378,8 +378,8 @@ content. **Attach recording frames to chat** stages four time-sampled JPEGs and 
 
 The server rechecks Browser view authority, preview state and session generation
 periodically while capturing, on stop and before returning a clip. Navigation can continue while the Browser generation remains the same. Closing the Browser surface or
-stopping Station cancels in-progress work. The server retains a completed clip
-for one minute; the open viewer owns the downloaded Blob until
+stopping Station cancels in-progress work. The server retains up to four completed results for at most one minute; an
+older result may be discarded sooner. The open viewer owns the downloaded Blob until
 it is dismissed. Generated temporary frame files are removed after encoding or
 cancellation. A process crash can leave its private temporary staging directory;
 automatic crash cleanup is not currently provided.

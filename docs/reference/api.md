@@ -6775,7 +6775,8 @@ feature preview and Browser view authority:
   are at most four active Browser recordings per Station and two per owner;
   finished recordings no longer consume active slots. Capture stops at 30 seconds and
   finishes at 300 frames or 64 MiB of raw input, retaining earlier frames; encoded output is limited to 16 MiB and a
-  completed result is retained for one minute. This path offers a local save;
+  completed result is retained for at most one minute; at most four completed
+  results are retained, so an older one may be discarded sooner. This path offers a local save;
   `POST .../recordings/:recordingId/task` publishes to the pinned Task after
   authority and workspace rechecks. `GET .../recordings/:recordingId/frames`
   returns four sampled JPEGs and provenance while retained, or `409` when the
