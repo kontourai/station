@@ -162,8 +162,10 @@ function parseLine(line: string): any {
  * `process.stdin.destroy()` alone does NOT close the underlying pipe fd)
  * BEFORE delivering the page-1 result (which carries a `nextCursor`,
  * guaranteeing the parent writes a page-2 request). That page-2 write
- * deterministically hits the closed pipe — the EPIPE a dead/broken codex
- * binary produces in production. The child stays alive so only the stdin
+ * hits the closed pipe on Unix — the EPIPE a dead/broken codex binary
+ * produces in production. The Windows test also closes the parent writer
+ * because closing fd 0 leaves an inherited pipe handle open there.
+ * The child stays alive so only the stdin
  * door can settle the in-flight catalog read.
  */
 const EPIPE_AFTER_FIRST_PAGE_CHILD = [
@@ -4515,7 +4517,10 @@ describe('CodexAdapter', () => {
   // `model/list` page (whose result carries a nextCursor, so a page-2
   // request is guaranteed), then destroys its stdin BEFORE delivering the
   // page-1 response — the parent's page-2 write therefore lands on a
-  // closed pipe (EPIPE) deterministically, while the child stays alive so
+  // closed pipe (EPIPE) on Unix. Windows retains another inherited pipe
+  // handle, so close the parent's writable stream before forwarding page 1;
+  // page 2 then raises the real stream's write-after-end error instead.
+  // The child stays alive so
   // the process 'exit' door never fires: the stdin door is the only
   // teardown path exercised.
   test('rejects a model catalog read whose app-server stdin closes mid-flight instead of crashing', async ({
@@ -4532,6 +4537,12 @@ describe('CodexAdapter', () => {
           stdio: 'pipe',
           windowsHide: true,
         });
+        if (process.platform === 'win32') {
+          const stdin = child.stdin;
+          child.stdout.on('data', (chunk: Buffer) => {
+            if (chunk.toString().includes('nextCursor')) stdin.end();
+          });
+        }
         child.once('close', () => announceClose());
         return child;
       },
