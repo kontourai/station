@@ -464,8 +464,14 @@ beforeEach(() => {
   deviceSettingsStore.reset('chatDockProjectSlug');
   surfaceObservers.length = 0;
   vi.stubGlobal('ResizeObserver', SurfaceResizeObserver);
-  window.history.replaceState({}, '', '/?dock=open');
-  navigationStore.navigate('/', { dock: 'open', maximize: null });
+  // The open chat is named in the route, as it is in the app: a phone bar
+  // offers chat actions only when there is a chat to act on (#4404).
+  window.history.replaceState({}, '', '/?dock=open&chat=chat-1');
+  navigationStore.navigate('/', {
+    dock: 'open',
+    chat: 'chat-1',
+    maximize: null,
+  });
   fixture.session = SESSION;
   fixture.git = GIT;
   fixture.inbox = [inboxRow({})];

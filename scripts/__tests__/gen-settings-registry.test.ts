@@ -261,6 +261,8 @@ const PUBLISHED_SCOPE_BY_ID: Readonly<Record<string, string>> = {
   'usage-limit-auto-resume': 'station',
   'claude-artifacts': 'station',
   'default-workspace-isolation': 'station',
+  // #4389: where chats without a project run.
+  'no-project-chat-folder': 'station',
   'device-hosts': 'station',
   'default-approval-mode': 'station',
   'registry-url': 'station',
