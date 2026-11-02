@@ -614,8 +614,8 @@ again, attachments included, in the fork. On your message, **Edit and resend**
 opens the same kind of fork with the message in the composer, for you to change
 and send. Both use the message's Agent and keep the original chat and answer
 unchanged. If that Agent cannot run, the fork's Agent list opens instead. On a
-phone, **Edit and resend** is in the message's sheet and **Regenerate** is under
-the answer sheet's **⋯**. For the message that started a chat, both start a new
+phone, **Edit and resend** is in the message's sheet and **Regenerate** is a row
+of the answer's sheet. For the message that started a chat, both start a new
 chat with the same Agent and Project. When earlier messages have no completed
 answer to fork from, neither is offered; **New chat from this message** remains.
 
