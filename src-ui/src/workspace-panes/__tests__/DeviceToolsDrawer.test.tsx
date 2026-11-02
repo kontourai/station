@@ -806,6 +806,35 @@ describe('a device on an SSH device host (#2442)', () => {
     );
   });
 
+  test('a bounded log sample remains readable when JSON escaping expands it', async () => {
+    const { drawer } = await renderDrawer(({ method, path }) => {
+      if (method === 'GET' && path.endsWith('/tools'))
+        return { body: { success: true, data: snapshot({ hostId: REMOTE }) } };
+      if (method === 'GET' && path.endsWith('/logs'))
+        return {
+          body: {
+            success: true,
+            data: {
+              ...REMOTE_TARGET,
+              appId: 'com.example.app',
+              processId: '42',
+              output: `${'\u0000'.repeat(90_000)}sentinel`,
+              truncated: true,
+            },
+          },
+        };
+      return undefined;
+    });
+    fireEvent.change(await within(drawer).findByLabelText('App ID'), {
+      target: { value: 'com.example.app' },
+    });
+    await click(within(drawer).getByRole('button', { name: 'Start logs' }));
+    await within(drawer).findByText(/sentinel/);
+    expect(
+      within(drawer).getByText('Older log output was truncated.'),
+    ).toBeTruthy();
+  });
+
   test('pausing, changing app ID and disconnecting abort in-flight log reads', async () => {
     const { drawer } = await renderDrawer(({ method, path }) =>
       method === 'GET' && path.endsWith('/tools')

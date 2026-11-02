@@ -206,7 +206,7 @@ export function useDeviceLogs(
       const value = await data(
         await getJson(
           `${scope.apiBase}${toolsPath(target, '/logs', { appId }, projectSlug)}`,
-          { signal, requestScope: scope, maxResponseBytes: 512 * 1024 },
+          { signal, requestScope: scope, maxResponseBytes: 2 * 1024 * 1024 },
         ),
       );
       if (

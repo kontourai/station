@@ -41,6 +41,15 @@ vi.mock('../../../../contexts/ApiBaseContext', () => ({
     isCurrent: () => true,
   }),
 }));
+vi.mock('../../../../contexts/ProjectsContext', () => ({
+  useScopedProjectsQuery: () => ({
+    data: [{ id: 'project-1', slug: 'project-slug' }],
+    isLoading: false,
+    isSuccess: true,
+    error: null,
+    refetch: vi.fn(),
+  }),
+}));
 
 const task: TaskRecord = {
   id: 'task-1',
@@ -289,7 +298,7 @@ function setup(
       if (path.endsWith('/device-capture-sessions'))
         return json({
           sessions:
-            url.searchParams.get('projectSlug') === task.projectId
+            url.searchParams.get('projectSlug') === 'project-slug'
               ? deviceSessions
               : [],
         });
