@@ -7,7 +7,10 @@ import { expect, it, vi } from 'vitest';
 import type { BrowserPaneApi } from '../browserPaneApi';
 
 const intake = vi.hoisted(() => vi.fn());
-const pickedState = vi.hoisted(() => ({ value: null as unknown }));
+const pickedState = vi.hoisted(() => ({
+  value: null as unknown,
+  viewport: null as unknown,
+}));
 vi.mock('../useBrowserArtifactIntake', () => ({
   useBrowserArtifactIntake: () => intake,
 }));
@@ -15,32 +18,36 @@ vi.mock('../BrowserAnnotation', () => ({
   BrowserAnnotation: (props: {
     onAttach(value: unknown): void;
     onCancel(): void;
-  }) => (
-    <>
-      <button
-        type="button"
-        onClick={() =>
-          props.onAttach({
-            picked: pickedState.value,
-            marks: [
-              {
-                kind: 'box',
-                points: [
-                  { x: 0, y: 0 },
-                  { x: 1, y: 1 },
-                ],
-              },
-            ],
-          })
-        }
-      >
-        Attach
-      </button>
-      <button type="button" onClick={props.onCancel}>
-        Cancel
-      </button>
-    </>
-  ),
+    viewport: unknown;
+  }) => {
+    pickedState.viewport = props.viewport;
+    return (
+      <>
+        <button
+          type="button"
+          onClick={() =>
+            props.onAttach({
+              picked: pickedState.value,
+              marks: [
+                {
+                  kind: 'box',
+                  points: [
+                    { x: 0, y: 0 },
+                    { x: 1, y: 1 },
+                  ],
+                },
+              ],
+            })
+          }
+        >
+          Attach
+        </button>
+        <button type="button" onClick={props.onCancel}>
+          Cancel
+        </button>
+      </>
+    );
+  },
 }));
 
 import { BrowserAnnotationFlow } from '../BrowserAnnotationFlow';
@@ -196,6 +203,7 @@ it('captures the viewport before marking and includes it alongside an element cr
     url: 'https://example.test/',
     state: 'live',
     viewport: { width: 800, height: 600, deviceScaleFactor: 1 },
+    zoomFactor: 2,
   } as BrowserSessionView;
   const api = {
     annotationScreenshot: vi.fn().mockResolvedValue({
@@ -217,6 +225,11 @@ it('captures the viewport before marking and includes it alongside an element cr
   );
   const attach = await screen.findByRole('button', { name: 'Attach' });
   expect(api.annotationScreenshot).toHaveBeenCalledOnce();
+  expect(pickedState.viewport).toEqual({
+    width: 400,
+    height: 300,
+    deviceScaleFactor: 1,
+  });
   fireEvent.click(attach);
   await waitFor(() => expect(accepted).toHaveBeenCalledOnce());
   const files = accepted.mock.calls[0]![0] as File[];
@@ -237,6 +250,7 @@ it('captures the viewport before marking and includes it alongside an element cr
   expect(json).toMatchObject({
     coordinateSpace: 'viewport',
     cropOrigin: { x: 12, y: 20 },
+    viewport: { width: 400, height: 300 },
     untrustedPageContent: {
       notice: expect.stringContaining('untrusted'),
       picked: { name: 'Example' },

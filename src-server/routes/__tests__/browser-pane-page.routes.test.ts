@@ -143,7 +143,7 @@ function fakeHost() {
 
 const makeTempDir = trackTempDirs();
 
-type Role = 'operator' | 'nobody';
+type Role = 'operator' | 'operator-device' | 'nobody';
 const roleOf = (request: Request) =>
   (request.headers.get('x-test-role') ?? 'nobody') as Role;
 
@@ -165,6 +165,7 @@ function harness(
   let ids = 0;
   const sessions = new BrowserSessionRegistry({
     stationHome,
+    experienceEnabled: () => true,
     hostResolver: createLocalBrowserHostResolver(() => fake.host),
     newId: () =>
       `bs_00000000-0000-4000-8000-${String(++ids).padStart(12, '0')}`,
@@ -175,8 +176,16 @@ function harness(
       ? { screenshotDeadlineMs: options.screenshotDeadlineMs }
       : {}),
   });
-  const authorizeProject: BrowserProjectAuthorizer = async (request) =>
-    roleOf(request) === 'operator' ? { kind: 'operator' } : undefined;
+  const authorizeProject: BrowserProjectAuthorizer = async (
+    request,
+    _project,
+    purpose,
+  ) =>
+    roleOf(request) === 'operator'
+      ? { kind: 'operator' }
+      : roleOf(request) === 'operator-device' && purpose === 'view'
+        ? { kind: 'operator-device' }
+        : undefined;
   const surfaces = new LiveSurfaceRegistry(
     options.lease ? { lease: options.lease } : {},
   );
@@ -320,6 +329,61 @@ function harness(
 }
 
 describe('Browser pane: network diagnostics', () => {
+  test('an operator device may view artifacts while its drive standing remains refused', async () => {
+    const h = harness({ networkPreview: true });
+    try {
+      const session = await h.open();
+      h.fake.handle('Page.getLayoutMetrics', () => ({
+        cssVisualViewport: { pageX: 0, pageY: 0 },
+      }));
+      h.fake.handle('Page.captureScreenshot', () => ({ data: PNG_1X1 }));
+      expect(
+        (
+          await h.browser(
+            'GET',
+            `/sessions/${session.browserSessionId}/network`,
+            { role: 'operator-device' },
+          )
+        ).status,
+      ).toBe(200);
+      expect(
+        (
+          await h.browser(
+            'GET',
+            `/sessions/${session.browserSessionId}/screenshot?annotation=1`,
+            { role: 'operator-device' },
+          )
+        ).status,
+      ).toBe(200);
+      const picked = await h.browser(
+        'POST',
+        `/sessions/${session.browserSessionId}/pick`,
+        {
+          role: 'operator-device',
+          body: {
+            x: 1,
+            y: 1,
+            generation: session.generation,
+            screenshot: false,
+          },
+        },
+      );
+      expect(picked.status).toBe(409);
+      expect(
+        h.fake.sent.some((item) => item.method === 'Page.getFrameTree'),
+      ).toBe(true);
+      expect(
+        (
+          await h.browser('DELETE', `/sessions/${session.browserSessionId}`, {
+            role: 'operator-device',
+          })
+        ).status,
+      ).toBe(403);
+    } finally {
+      await h.binder.dispose();
+      await h.sessions.shutdown();
+    }
+  });
   test.each([false, true])(
     'agent network read requires evaluation permission: %s',
     async (browserEvaluate) => {
@@ -383,6 +447,81 @@ describe('Browser pane: network diagnostics', () => {
       }
     },
   );
+  test('picks using the zoomed target viewport rather than the nominal size', async () => {
+    const h = harness({ networkPreview: true });
+    try {
+      const session = await h.open();
+      await h.sessions.setZoom(session.browserSessionId, 2, {
+        actor: { kind: 'operator' },
+        generation: session.generation,
+        guard: () => {},
+      });
+      h.fake.handle('Page.getFrameTree', () => ({
+        frameTree: {
+          frame: {
+            id: 'frame',
+            loaderId: 'loader',
+            url: 'https://example.com/',
+          },
+        },
+      }));
+      h.fake.handle('DOM.getNodeForLocation', () => ({ backendNodeId: 1 }));
+      h.fake.handle('Page.createIsolatedWorld', () => ({
+        executionContextId: 1,
+      }));
+      h.fake.handle('DOM.resolveNode', () => ({
+        object: { objectId: 'node' },
+      }));
+      h.fake.handle('Runtime.callFunctionOn', () => ({
+        result: {
+          value: {
+            selector: 'button',
+            tagName: 'button',
+            name: '',
+            role: '',
+            attributes: [],
+            styles: {},
+            rect: { x: 590, y: 40, width: 40, height: 30 },
+          },
+        },
+      }));
+      h.fake.handle('Accessibility.getPartialAXTree', () => ({ nodes: [] }));
+      const path = `/sessions/${session.browserSessionId}/pick`;
+      const inside = await h.browser('POST', path, {
+        body: {
+          x: 600,
+          y: 50,
+          generation: session.generation,
+          screenshot: false,
+        },
+      });
+      expect(inside.status).toBe(200);
+      expect(await inside.json()).toMatchObject({
+        data: {
+          viewport: { width: 640, height: 400 },
+          rect: { x: 590, y: 40 },
+        },
+      });
+      const count = h.fake.sent.filter(
+        (call) => call.method === 'DOM.getNodeForLocation',
+      ).length;
+      const outside = await h.browser('POST', path, {
+        body: {
+          x: 640,
+          y: 50,
+          generation: session.generation,
+          screenshot: false,
+        },
+      });
+      expect(outside.status).toBe(409);
+      expect(
+        h.fake.sent.filter((call) => call.method === 'DOM.getNodeForLocation'),
+      ).toHaveLength(count);
+    } finally {
+      await h.binder.dispose();
+      await h.sessions.shutdown();
+    }
+  });
   test('requires preview and viewing authority, captures redacted metadata and stops when disabled', async () => {
     const h = harness();
     try {
@@ -782,6 +921,39 @@ describe('Browser pane: screenshots', () => {
       (await h.browser('GET', `/sessions/${id}/screenshot?annotation=1`))
         .status,
     ).toBe(409);
+  });
+
+  test('refuses an annotation screenshot when zoom changes during capture', async () => {
+    const h = harness({ networkPreview: true });
+    const session = await h.open();
+    let enter!: () => void;
+    let release!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      enter = resolve;
+    });
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    h.fake.handle('Page.getLayoutMetrics', () => ({
+      cssVisualViewport: { pageX: 0, pageY: 0 },
+    }));
+    h.fake.handle('Page.captureScreenshot', async () => {
+      enter();
+      await waiting;
+      return { data: PNG_1X1 };
+    });
+    const capture = h.browser(
+      'GET',
+      `/sessions/${session.browserSessionId}/screenshot?annotation=1`,
+    );
+    await entered;
+    await h.sessions.setZoom(session.browserSessionId, 2, {
+      actor: { kind: 'operator' },
+      generation: session.generation,
+      guard: () => {},
+    });
+    release();
+    expect((await capture).status).toBe(409);
   });
 
   test('annotation waits for an earlier screenshot before measuring its own origin', async () => {

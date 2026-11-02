@@ -1734,7 +1734,7 @@ function BrowserSessionPane({
         record &&
         generation !== undefined ? (
           <BrowserAnnotationFlow
-            key={`${browserSessionId}:${generation}:${record.url}:${record.viewport.width}:${record.viewport.height}`}
+            key={`${browserSessionId}:${generation}:${record.url}:${record.viewport.width}:${record.viewport.height}:${record.zoomFactor ?? 1}`}
             stageRef={stageRef}
             record={record}
             api={api}

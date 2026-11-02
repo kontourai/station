@@ -402,7 +402,7 @@ export function isValidBrowserZoom(value: unknown): value is number {
   );
 }
 
-function zoomedViewport(
+export function browserEffectiveViewport(
   viewport: BrowserViewport,
   factor: number,
 ): BrowserViewport {
@@ -889,13 +889,19 @@ export class BrowserSessionRegistry {
         ? (record.zoomFactor ?? 1)
         : 1;
     try {
-      await applyViewport(cdp, session, zoomedViewport(viewport, zoom));
+      await applyViewport(
+        cdp,
+        session,
+        browserEffectiveViewport(viewport, zoom),
+      );
     } catch (error) {
       // All or nothing: a half-applied emulation (new size, old touch mode)
       // must not outlive the refusal. Best effort; the original error wins.
-      await applyViewport(cdp, session, zoomedViewport(previous, zoom)).catch(
-        () => {},
-      );
+      await applyViewport(
+        cdp,
+        session,
+        browserEffectiveViewport(previous, zoom),
+      ).catch(() => {});
       throw error;
     }
     this.requireLive(browserSessionId, record.generation);
@@ -933,12 +939,15 @@ export class BrowserSessionRegistry {
     if (!live)
       throw new BrowserSessionError('not-live', 'The browser is not running.');
     const cdp = live.host.cdp();
-    const previous = zoomedViewport(record.viewport, record.zoomFactor ?? 1);
+    const previous = browserEffectiveViewport(
+      record.viewport,
+      record.zoomFactor ?? 1,
+    );
     try {
       await applyViewport(
         cdp,
         live.target.cdpSessionId,
-        zoomedViewport(record.viewport, factor),
+        browserEffectiveViewport(record.viewport, factor),
         options.guard,
       );
       this.requireLive(browserSessionId, live.generation);
@@ -1509,7 +1518,10 @@ export class BrowserSessionRegistry {
           this.options.stationHome,
           record.profileRef,
         ),
-        viewport: zoomedViewport(record.viewport, record.zoomFactor ?? 1),
+        viewport: browserEffectiveViewport(
+          record.viewport,
+          record.zoomFactor ?? 1,
+        ),
       });
       if (record.state === 'closed') {
         // Closed while opening: nothing may run in a closed session.

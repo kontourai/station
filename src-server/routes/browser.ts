@@ -35,6 +35,7 @@ import {
   BrowserSessionError,
   type BrowserSessionRecord,
   type BrowserSessionRegistry,
+  browserEffectiveViewport,
   browserProfileFor,
   browserViewportProblem,
   isValidBrowserProjectId,
@@ -949,7 +950,10 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
     try {
       const picked = await pickBrowserElement(
         live,
-        found.session.viewport,
+        browserEffectiveViewport(
+          found.session.viewport,
+          found.session.zoomFactor ?? 1,
+        ),
         { x: body.x, y: body.y },
         body.screenshot !== false,
         scroll as { x: number; y: number } | undefined,
@@ -971,7 +975,8 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
         target.target.cdpSessionId !== live.target.cdpSessionId ||
         current.session.generation !== body.generation ||
         current.session.viewport.width !== found.session.viewport.width ||
-        current.session.viewport.height !== found.session.viewport.height
+        current.session.viewport.height !== found.session.viewport.height ||
+        (current.session.zoomFactor ?? 1) !== (found.session.zoomFactor ?? 1)
       )
         return c.json({ success: false, code: 'stale-generation' }, 409);
       return c.json({
@@ -981,7 +986,10 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
           browserSessionId: found.session.browserSessionId,
           targetId: live.target.targetId,
           generation: live.generation,
-          viewport: found.session.viewport,
+          viewport: browserEffectiveViewport(
+            found.session.viewport,
+            found.session.zoomFactor ?? 1,
+          ),
         },
       });
     } catch {
@@ -1021,7 +1029,8 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
         !deps.networkPreviewEnabled?.() ||
         current.session.generation !== found.session.generation ||
         current.session.viewport.width !== found.session.viewport.width ||
-        current.session.viewport.height !== found.session.viewport.height
+        current.session.viewport.height !== found.session.viewport.height ||
+        (current.session.zoomFactor ?? 1) !== (found.session.zoomFactor ?? 1)
       )
         return c.json({ success: false, code: 'stale-generation' }, 409);
       return c.json({
