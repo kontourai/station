@@ -1,6 +1,8 @@
+import { once } from 'node:events';
 import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { Worker } from 'node:worker_threads';
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import { afterEach, expect, test, vi } from 'vitest';
@@ -145,7 +147,20 @@ test('Task attachment transport preserves history and bytes across restart and e
         opts,
       );
     const probe = new DatabaseSync(join(root, 'events.sqlite'));
+    // Reproduce the reopened runtime worker's independent startup write lock.
+    const writer = new Worker(
+      `const { parentPort, workerData } = require('node:worker_threads');
+       const { DatabaseSync } = require('node:sqlite');
+       const db = new DatabaseSync(workerData);
+       db.exec('PRAGMA busy_timeout = 5000; BEGIN IMMEDIATE');
+       parentPort.postMessage('locked');
+       setTimeout(() => { db.exec('COMMIT'); db.close(); }, 250);`,
+      { eval: true, workerData: join(root, 'events.sqlite') },
+    );
     try {
+      expect(await once(writer, 'message')).toEqual(['locked']);
+      // Reach the format fence after bounded contention, rather than SQLITE_BUSY.
+      probe.exec('PRAGMA busy_timeout = 5000');
       const row = probe
         .prepare('SELECT * FROM project_task_room_records LIMIT 1')
         .get();
@@ -163,6 +178,7 @@ test('Task attachment transport preserves history and bytes across restart and e
       ).toThrow('room requires v4 writer');
     } finally {
       probe.close();
+      await writer.terminate();
     }
     const response = await read();
     expect(response.status).toBe(200);
