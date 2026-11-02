@@ -69,7 +69,7 @@ export function BrowserNetworkDrawer({
           action={<Button onClick={() => void read.refetch()}>Retry</Button>}
         />
       ) : shown.length === 0 ? (
-        <Empty label="No matching requests" />
+        <Empty label="Nothing to show" />
       ) : (
         <ol>
           {shown.map((entry) => (
