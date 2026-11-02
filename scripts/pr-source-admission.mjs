@@ -15,7 +15,7 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
  *
  * Only a confirmed conflict defers: two consecutive observations, `retryMs`
  * apart, each reporting `mergeable: false` for an unchanged owner while main
- * stayed put (see checkPrMergeability). A conflicted candidate cannot merge,
+ * stayed put within that observation (see checkPrMergeability). A conflicted candidate cannot merge,
  * so the plan, shards and statics would be discarded work. Every other
  * outcome, including GitHub still computing mergeability and API failures,
  * admits the run: deferral exists to save cost, so uncertainty must never

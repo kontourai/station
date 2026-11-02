@@ -168,6 +168,27 @@ test('a conflict GitHub reports once and then retracts is admitted', async () =>
   );
 });
 
+test('conflicts separated by an inconclusive observation do not confirm each other', async () => {
+  // Per attempt the check reads the PR twice: conflict, unknown, conflict.
+  const sequence = [false, null, false];
+  let reads = 0;
+  await withGithub(
+    () => sequence[Math.floor(reads++ / 2)] ?? null,
+    async (url) => {
+      expect(
+        await admitPullRequest({
+          env: environment(url),
+          attempts: 3,
+          ...noWait,
+        }),
+      ).toEqual({
+        admitted: true,
+        reason: 'inconclusive: conflict',
+      });
+    },
+  );
+});
+
 test('a conflict on a head that is no longer current is not deferred', async () => {
   await withGithub(false, async (url) => {
     const result = await admitPullRequest({
