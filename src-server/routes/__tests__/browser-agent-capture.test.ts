@@ -1136,7 +1136,14 @@ test.skipIf(!mediaReady)(
   'records a still surface already watched without waiting for a new frame',
   async () => {
     const h = await harness({ recording: true, stillFrame: true });
-    const clip = await h.recordSyntheticDevice({ holdStill: true });
+    let liveFrames = 0;
+    const clip = await h.recordSyntheticDevice({
+      holdStill: true,
+      onFrameConsumed: () => {
+        liveFrames++;
+      },
+    });
+    expect(liveFrames).toBe(0);
     expect(clip.source.recording?.mediaType).toBe('video/webm');
     expect(clip.events.filter((event) => event.kind === 'frame')).toHaveLength(
       1,

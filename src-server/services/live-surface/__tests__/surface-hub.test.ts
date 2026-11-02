@@ -448,7 +448,7 @@ describe('live surface hub: H.264 viewers (#4418)', () => {
           index === 0 ? tag : 0,
         ),
       );
-    const jpeg = () =>
+    const jpeg = (capturedAt = 1) =>
       publish(
         {
           surfaceId: 'surface-1',
@@ -458,7 +458,7 @@ describe('live surface hub: H.264 viewers (#4418)', () => {
           width: 320,
           height: 200,
           deviceScaleFactor: 1,
-          capturedAt: 1,
+          capturedAt,
         },
         new Uint8Array([0xff]),
       );
@@ -640,6 +640,85 @@ describe('live surface hub: H.264 viewers (#4418)', () => {
     await hub.dispose();
   });
 
+  test.each(['published', 'pending'] as const)(
+    'fresh-only H.264 fallback seeds a post-attachment %s image without replaying it',
+    async (placement) => {
+      const { hub, jpeg, unit } = await videoHub();
+      const image = hub.attach(PARAMS);
+      await hub.settled();
+      await image.next();
+      jpeg();
+      await image.next();
+      const video = hub.attach(PARAMS, undefined, {
+        codec: 'h264',
+        freshOnly: true,
+      });
+      await video.next();
+      if (placement === 'published') vi.advanceTimersByTime(1000);
+      jpeg(Date.now());
+      unit(true, 1, 4 * 1024 * 1024 + 1);
+      expect((await video.next())?.kind).toBe('state');
+      let received: Awaited<ReturnType<typeof video.next>> | undefined;
+      const result = video.next().then((value) => {
+        received = value;
+        return value;
+      });
+      await Promise.resolve();
+      if (!received) video.close();
+      const frame = await result;
+      expect(frame).toMatchObject({
+        kind: 'frame',
+        header: { codec: 'jpeg', seq: 2 },
+      });
+      if (placement === 'pending') {
+        vi.advanceTimersByTime(100);
+        let replayed = false;
+        const next = video.next().then((value) => {
+          if (value?.kind === 'frame') replayed = true;
+          return value;
+        });
+        await Promise.resolve();
+        expect(replayed).toBe(false);
+        video.close();
+        await next;
+      }
+      video.close();
+      image.close();
+      await hub.dispose();
+    },
+  );
+
+  test('fresh-only fallback refuses a post-attachment arrival with an older capture time', async () => {
+    const { hub, jpeg, unit } = await videoHub();
+    const image = hub.attach(PARAMS);
+    await hub.settled();
+    await image.next();
+    jpeg();
+    await image.next();
+    const video = hub.attach(PARAMS, undefined, {
+      codec: 'h264',
+      freshOnly: true,
+    });
+    await video.next();
+    vi.advanceTimersByTime(1000);
+    jpeg(Date.now() - 2000);
+    unit(true, 1, 4 * 1024 * 1024 + 1);
+    expect((await video.next())?.kind).toBe('state');
+    let received = false;
+    const next = video.next().then((value) => {
+      if (value?.kind === 'frame') received = true;
+      return value;
+    });
+    await Promise.resolve();
+    expect(received).toBe(false);
+    vi.advanceTimersByTime(1000);
+    jpeg(Date.now());
+    expect((await next)?.kind).toBe('frame');
+    video.close();
+    image.close();
+    await hub.dispose();
+  });
+
   test('fresh-only H.264 viewer does not inherit an old image on fallback', async () => {
     const { hub, jpeg, unit } = await videoHub();
     const image = hub.attach(PARAMS);
@@ -771,5 +850,24 @@ test('images emitted with zero viewers are acknowledged', async () => {
   viewer.close();
   expect(producer.emit()).toBe(true);
   expect(producer.acks).toEqual([1]);
+  await hub.dispose();
+});
+
+test('a skipped pending image is acknowledged while an H.264 viewer remains', async () => {
+  const { producer, hub } = build();
+  const image = hub.attach(PARAMS);
+  await hub.settled();
+  await image.next();
+  expect(producer.emit()).toBe(true);
+  expect(await frameCounter(image)).toBe(1);
+  expect(producer.emit()).toBe(true);
+  const video = hub.attach(PARAMS, undefined, { codec: 'h264' });
+  const fresh = hub.attach(PARAMS, undefined, { freshOnly: true });
+  image.close();
+  vi.advanceTimersByTime(100);
+  expect(producer.acks.filter((seq) => seq === 2)).toEqual([2]);
+  expect(producer.emit()).toBe(true);
+  fresh.close();
+  video.close();
   await hub.dispose();
 });
