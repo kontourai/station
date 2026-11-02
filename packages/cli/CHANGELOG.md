@@ -1,5 +1,85 @@
 # @kontourai/station-cli
 
+## 0.12.0
+
+### Minor Changes
+
+- 4350458: Station Automations, observe-only intake: `github-poll` sources are polled on
+  the scheduler's existing tick, and each completed workflow run is normalized to
+  the allow-listed fields, deduped, matched against the source's enabled rules
+  and recorded, with episodes opened and closed. Nothing is started yet. The
+  contracts add `AutomationDeliveryRecord`; the SDK client adds
+  `listAutomationDeliveries`; the CLI adds `station automation deliveries`,
+  served by the read-only `GET /automations/deliveries`.
+  
+  The Feature Preview is off by default and operator reads require management
+  access. Delivery and episode updates commit atomically. Poll coverage and
+  failures are retained in `AutomationDeliveryPage.polls`; a bounded partial page
+  never advances its cursor or claims complete source coverage.
+- b2b838b: Add `listWorkClaims` to the SDK client, the person's read of the work claims of the Sessions they may read. The CLI gains `station claims list`, `station delegate list` (the `list_delegated_tasks` inventory) and `station conversation fork <agent> <conversation-id>` (the web app's fork, with `--target-agent`, `--project`, `--turn` and `--idempotency-key`). Without `--agent` or `--session`, `list` is now a `station delegate` sub-verb (`station delegate list` was a usage error before); a `--session` follow-up that starts with "list" is still sent as a message.
+- 027f81a: Add explicit local operator setup and revocation for selected external Station
+  Control clients, with independent bounded leases, server-recorded Session and
+  Project scope, header-only delegated custody, and private CLI configuration.
+  This does not add remote OAuth, browser-bound authority or engine takeover.
+  
+  Keep text context across engine changes and fork starts, and refuse ordinary
+  continuation when its first context delivery fails or cannot be confirmed.
+  Allow saved forks to reopen before first send and to be deleted safely before
+  starting an engine.
+  
+  Confirm a first native identity from its correlated engine completion when it
+  arrives after turn preparation, while refusing conflicting identities and
+  preventing later carrier rebinds from borrowing that completion.
+- d2ec5ee: Add Session reads a person can make from the CLI (#3427). `station sessions wait|digest|transcript|search` and `station activity` read your own Sessions with your saved credential, never as an agent. `sessions wait` reports a turn that a Station restart interrupted as `restart-interrupted` (exit 3), never as settled. The SDK adds `waitForSession`, `getSessionDigest` and `listSessionActivity`, gated on the new `sessionPersonReads` capability flag. They throw `SessionReadsUnsupportedError` on a Station that predates them. The wait, digest and activity reads are behind the `session-cli-reads` Feature Preview.
+- 53651b4: `station start` and `station service run` run the core server under the Station process supervisor, and the instance record names the supervisor as the owner. `station restart` hands a running instance to a new core generation in place, `station stop` drains it through the supervisor's control channel, and `station supervisor status` shows what the supervisor reports. `STATION_DIRECT_LAUNCH=1` keeps the direct start.
+
+### Patch Changes
+
+- 90cda98: `station approvals list` no longer requires `--agent=<slug>`. Without it, the command lists pending approval requests from every session on the Station; with it, the list is narrowed to that Agent's engine as before. `station approvals --help` now shows the real flags (`--agent`, `--thread`, `--watch`) and the thread id that `respond` takes. `station checkpoints --help` now lists its actions.
+- c6fcfc3: Stop the CLI hanging on macOS Keychain dialogs. On macOS the CLI now reaches the Keychain through Apple's `/usr/bin/security` tool instead of an addon inside `node`. Keychain approval was tied to the exact `node` binary, which changes with every runtime upgrade, so each upgrade showed a new dialog and a non-interactive shell hung indefinitely. With the stable tool, one **Always Allow** keeps working across upgrades. Credentials saved by earlier versions ask once more, this time for `security`.
+  
+  `station stations list`, `stations show`, and other status displays now check only whether a credential exists, and never show a Keychain dialog. Reading, storing, or deleting a credential gives up after 5 seconds without a terminal, or 2 minutes with one. It exits non-zero with an error that names the cause and the remedy: run the command once from a terminal and choose **Always Allow**, or unlock the keychain. Linux and Windows still use the native keyring addon.
+- 450bcf4: Remote MCP integrations can use an OAuth client the operator registered: `ToolDef.oauthClient` adds a pre-registered `clientId` with its declared authorization server `issuer` (required with any client ID, and optional otherwise to pin registration), a Client ID Metadata Document `clientMetadataUrl`, default `scopes`, and `clientSecretRef`, a secret binding id written only by the secret-binding routes. A new `mcp-integration-oauth-client` grant (`SecretBinding.oauthClientGrants`) authorizes a binding as one integration's client secret at the `issuer`, `resource` and integration `instanceId` it was bound for, and a server with no client registration reports the `client-id-required` authorization state. The SDK adds `bindOAuthClientSecret`/`unbindOAuthClientSecret`, their query hooks, and an optional per-sign-in `scopes` choice on `useStartIntegrationOAuthMutation` (an empty list requests the server's advertised scopes). The tool contract adds `toolServerOAuthResourceIdentity`, `assertToolOAuthClientWritable` and `withoutToolBindingReferences`; the shared credential store adds `compareAndUpsertMany`; the CLI import refuses, and export strips, OAuth client-secret references. `ToolAccountStatus.rememberedScopes` returns the caller's scope choice from their last completed sign-in. The tool contract adds `isToolClientMetadataDocumentUrl`, and `STATION_OAUTH_CLIENT_METADATA_URL` sets an optional deployment-wide metadata-document client ID. The shared MCP module adds an optional `authorizationFetch` transport option and exports `REQUIRES_AUTHORIZATION_FETCH`: a provider carrying that symbol is refused by `createMCPTransport` without `authorizationFetch`.
+- 2d13ace: The legacy terminal listener on the server port + 1 is gone (#3994). The SDK
+  no longer exports `fetchTerminalPort`, and `GET /api/system/terminal-port` is
+  no longer served; terminals use `TerminalSessionStore` over the same-origin
+  `/api/terminal/socket`. The CLI no longer reserves or waits on the server
+  port + 1 when it starts an instance.
+- 2fc7b0d: A supervised Station on a slow or busy host no longer counts its first boot as a crash. A core started while nothing serves (first boot, crash restart, rollback) now has 120 seconds to park instead of the 30 a handoff trial gets, and `--boot-park-timeout-ms` tunes it. A generation that misses its park or readiness deadline is logged by name (`generation 1 did not park within 120000ms (park deadline); ending it`) instead of only as a SIGTERM exit. Missed deadlines still count as failures, and the supervisor now also gives up after `maxFailures` failures in a row with no generation serving between them, so a core that never comes up stops even when long deadlines spread its failures past the failure window. `station build` gives `biome format` 120 seconds per Basis MCP app, scaled by `STATION_LIVENESS_SCALE`, and names the bound when it is exceeded.
+- b0fe18d: Terminals survive core server restarts and upgrades under the process supervisor: a shell keeps its process and every line of output across a handoff. Lifecycle journal events from a supervised core name the supervisor that owns the instance, so `station start --lifecycle-journal` (used by dogfood and the end-to-end suite) now runs under the supervisor too.
+- 5fd1346: Stop the Station service from restarting a working server or UI process just because the host is busy. When a process keeps missing health checks while it's alive and its port is listening, the supervisor normally runs a confirmation probe after 180 seconds and restarts the process if that fails. If the host is CPU-starved at that point, the supervisor now waits instead, logging the pressure reading it saw. It waits for at most 15 minutes of continuous failure, then confirms and restarts a process that still doesn't answer.
+  
+  How pressure is measured depends on the platform:
+  
+  - **Linux:** CPU pressure stall information (PSI) of 25% or more over the last minute. In a container with its own cgroup namespace (Docker's default under cgroup v2), its `cpu.pressure` is used instead of the host-wide file.
+  - **macOS, or Linux without PSI:** a one-minute load average of 1.5 or more per CPU.
+  - **Windows:** neither signal exists, so the 180-second timing is unchanged.
+  
+  A process that has answered with another Station's identity during the failure window is never given extra time.
+- 975abe2: Terminals for every operator device (#3994). The SDK adds
+  `TerminalSessionStore`, which operates every terminal on one Station over the
+  same-origin `/api/terminal/socket`: open (by server-resolved launch profile) or
+  attach, coalesced input, latest-wins resize, a bounded output buffer, and
+  per-session resume with backoff. Its `TerminalSession` interface is what a
+  renderer consumes. Sockets are admitted before the upgrade by a single-use
+  ticket from `POST /api/terminal/tickets`, minted through the ordinary
+  authenticated transport, including a native shell's host transport.
+  
+  `TerminalOutputSession` now uses the same ticket: it no longer sends a
+  credential frame and accepts a native host transport. It needs a host with the
+  ticket route; an older host reports `unsupported-host`. Its `createSocket`
+  callback receives the offered subprotocols as a second argument.
+  
+  The CLI's UI server now forwards the terminal socket's WebSocket upgrade (that
+  path only, attestation headers stripped) to the API listener, so a browser that
+  reached Station through the UI port or a tailnet name opens the socket too.
+  
+  The contracts add the ticket path, lifetime and subprotocol constants,
+  `TerminalTicket`, `TerminalLaunchProfile` and `TERMINAL_CLOSE` to
+  `terminal-transport`, and optional `projectId`/`bindingKey` on an engine sign-in
+  attempt's `terminal`, naming the socket scope to attach under. The SDK's engine sign-in attempt parser accepts those two fields.
+- c01c023: Check Tailscale pairing Origin admission before minting offers, describe advertised endpoint reachability accurately, and report actionable Windows scheduled-task startup results. Add sanitized engine startup diagnostics for unavailable sandbox prerequisites and provider models.
+
 ## 0.11.0
 
 ### Minor Changes

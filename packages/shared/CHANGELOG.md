@@ -1,5 +1,101 @@
 # @kontourai/station-shared
 
+## 0.14.0
+
+### Minor Changes
+
+- 3096837: Add the `chat-host-images` contract subpath and the `content.host-images` canonical runtime event: a settled turn's map from each host image path its reply named to the attachment Station stored, or to the reason it did not keep it. `projectRuntimeEventsToMessages` now carries that map on the turn's assistant rows as `metadata.hostImages`. Engines cannot emit the event (`ProviderRuntimeEvent` excludes it).
+- 027f81a: Add explicit local operator setup and revocation for selected external Station
+  Control clients, with independent bounded leases, server-recorded Session and
+  Project scope, header-only delegated custody, and private CLI configuration.
+  This does not add remote OAuth, browser-bound authority or engine takeover.
+  
+  Keep text context across engine changes and fork starts, and refuse ordinary
+  continuation when its first context delivery fails or cannot be confirmed.
+  Allow saved forks to reopen before first send and to be deleted safely before
+  starting an engine.
+  
+  Confirm a first native identity from its correlated engine completion when it
+  arrives after turn preparation, while refusing conflicting identities and
+  preventing later carrier rebinds from borrowing that completion.
+- 450bcf4: Remote MCP integrations can use an OAuth client the operator registered: `ToolDef.oauthClient` adds a pre-registered `clientId` with its declared authorization server `issuer` (required with any client ID, and optional otherwise to pin registration), a Client ID Metadata Document `clientMetadataUrl`, default `scopes`, and `clientSecretRef`, a secret binding id written only by the secret-binding routes. A new `mcp-integration-oauth-client` grant (`SecretBinding.oauthClientGrants`) authorizes a binding as one integration's client secret at the `issuer`, `resource` and integration `instanceId` it was bound for, and a server with no client registration reports the `client-id-required` authorization state. The SDK adds `bindOAuthClientSecret`/`unbindOAuthClientSecret`, their query hooks, and an optional per-sign-in `scopes` choice on `useStartIntegrationOAuthMutation` (an empty list requests the server's advertised scopes). The tool contract adds `toolServerOAuthResourceIdentity`, `assertToolOAuthClientWritable` and `withoutToolBindingReferences`; the shared credential store adds `compareAndUpsertMany`; the CLI import refuses, and export strips, OAuth client-secret references. `ToolAccountStatus.rememberedScopes` returns the caller's scope choice from their last completed sign-in. The tool contract adds `isToolClientMetadataDocumentUrl`, and `STATION_OAUTH_CLIENT_METADATA_URL` sets an optional deployment-wide metadata-document client ID. The shared MCP module adds an optional `authorizationFetch` transport option and exports `REQUIRES_AUTHORIZATION_FETCH`: a provider carrying that symbol is refused by `createMCPTransport` without `authorizationFetch`.
+- b0fe18d: Terminals survive core server restarts and upgrades under the process supervisor: a shell keeps its process and every line of output across a handoff. Lifecycle journal events from a supervised core name the supervisor that owns the instance, so `station start --lifecycle-journal` (used by dogfood and the end-to-end suite) now runs under the supervisor too.
+- 1f9c869: Add scoped Companion installation, start/stop, retained-operation recovery and received-product-trends clients. Queries partition by captured Station authority, validate bounded responses and keep current runtime/storage observations separate from historical operation receipts. Mutations do not retry automatically.
+  
+  Add additive preparation metadata, managed lifecycle DTOs and a bounded product-trends contract with a pure decoder. Product aggregates preserve retention, producer-clock time and unknown delivery coverage; they do not represent personal usage or billing. Engine and outcome dimensions must match the existing disclosure inventory.
+  
+  These APIs require a compatible server. Installation and start admission still require an authenticated architecture-qualified artifact and explicit operator intent. This change does not issue that qualification, enable sending, acknowledge disclosure or grant personal source access.
+  
+  Add the metadata-only `AnalyticsSourceEnrollmentIntent` DTO for preparing or cancelling a personal source enrollment proposal. Its destination-verification and export-authority flags remain false; it neither issues a credential nor enables synchronization.
+  
+  Add public receiving-key candidate contracts for person/tenant-scoped analytics key slots. Candidates bind a source proposal and return signed public keys only; signature integrity is not remote-person authentication, source approval or an export grant. Source credential delivery and synchronization remain separate work.
+  
+  Add `AnalyticsSourceApproval` for recorded source-user consent. Personal reviews use the existing distinct-origin consent channel with a requester-bound decision policy and exact source/key/policy revalidation. Recorded approval remains separate from source credential issuance and export activation.
+  
+  Add encrypted source credential delivery and receiving-custody DTOs. Approved source policies produce idempotent recipient-bound ciphertext with hash-only source storage; receiving APIs return metadata and retain plaintext privately. These stages do not activate source export or verify source identity.
+  
+  Add a receiving delivery-possession proof and a single scoped source export endpoint. Each read checks the current approved policy, Device/account standing, tenant, owner set and credential hash, with grant-bound continuations and queued-response revocation. The static proof grants no general API identity; receiving source verification and automatic synchronization remain separate work.
+  
+  Add explicit same-policy source credential rotation with expected-revision checks, bounded operation replay custody and idempotent encrypted delivery recovery. Rotation invalidates previous export credentials, proofs, continuations and queued responses; receiving materialization refuses rollback. It does not extend or broaden source permission.
+  
+  Add explicit receiving-source address confirmation through personal consent and a bounded HTTPS canonical-page reader. Core retains the narrow credential privately, checks source identity before sending it, validates pages through a shared pure contract decoder and rechecks source/receiving authority before queued release. Source rotation clears confirmation. This adds no durable index, background sync or installed/native qualification.
+  
+  Journal private source deletion and owner/tenant scope changes transactionally with their EventStore mutations. Bound retained invalidations to 10,000 entries, refuse changed/missing evidence, and fence canonical continuations plus queued source/receiving pages against destructive changes. The source revision header is distinct from credential rotation; old opaque cursors require a fresh first page. Companion invalidation replay and restored-home generation fencing remain separate work.
+  
+  Add grant-scoped retained invalidation replay with bounded fixed-head pages, exact owner/tenant selection, generation-bound cursors and explicit 410 responses for pruned checkpoints. Epoch changes, rotation, revocation and lost journal evidence refuse instead of advancing a replica blindly. Companion materialization remains separate work.
+  
+  Add strict private usage commit/checkpoint/receipt contracts and isolated companion storage. An operator service provisions only an empty key hash; private capabilities alone bind/read data. Page, checkpoint and receipt commit atomically with stale-writer/incarnation checks and idempotent lost-reply recovery. Retained storage is not current source authority; Core sync, invalidation application, current Insights and deployment qualification remain separate work.
+  
+  Add page-bounded Core private usage capture and operation-ID recovery. It derives a target/grant-specific private capability from owned analytics custody, rechecks source/person access before writes, and keeps keys and staged summaries out of API results. Temporary outbox bodies expire while content-free recovery intent remains. Historical capture status does not establish a live index; invalidation application and current Insights remain separate work.
+  
+  Add private companion invalidation commit/checkpoint/receipt contracts and a schema-v2 migration. Withdraw older captured facts, preserve newer thread incarnations, advance replay and recovery evidence atomically, and reject late older writes across windows. Existing data upgrades without assuming deletion history was applied. Core replay orchestration and live indexed query qualification remain separate work.
+  
+  Connect Core sync to bounded source invalidation replay before advancing fact pages. Persist private replay intent, recover lost replies by the original operation, and recheck person/source access at the final write. Return replay progress without exposing facts or credentials; retained gaps refuse reconciliation, and completed mutations restart the selected snapshot. Current Insights, restore fencing and deployment qualification remain separate work.
+  
+  Add bounded selected-window private receipt indexing and a receiving-person query API. Reuse canonical sparse/cumulative receipt reconciliation, pin source/checkpoint/index continuations, refuse stale or revoked reads, and invalidate derived copies with retention/withdrawal. Preserve numeric event order and report retained-only coverage; grouped/saved Insights and installed/native qualification remain separate work.
+  
+  Add resumable server-side grouped totals over normalized private receipts, preserving complete indexed material beyond the interactive 500-receipt cap. Keep comparison-window caches independent, bind filter/group continuations, withhold partial totals, and bound each aggregation step and retained cache. Reuse one shared row accumulator; correct mixed-currency/snapshot shortcuts and cost-only-first pricing status. Saved definitions, SDK/Insights UI and deployment qualification remain separate work.
+  
+  Add principal-owned saved query definitions with restart persistence, revision checks, scoped export and content-erasing tombstones. Wire the scoped SDK and existing Profile/Insights surface to private source/date/group/measure/comparison controls, foreground sync, receipt/provenance details and guarded historical display. Known source refusal cannot be undone by an older response or later outage. Source onboarding controls, restore authority and installed/native/release qualification remain separate work.
+
+### Patch Changes
+
+- 56b934a: Expose launch-bound workload exit observations so engines can report confirmed memory exhaustion after scope cleanup.
+- fa98d8a: Forward connected OAuth MCP accounts to Claude Code and Codex through a loopback proxy with session-and-server-scoped credentials. Keep remote tokens in Station, coordinate refresh across clients, and surface sign-in refusals before launch and during tool use.
+- a4b0d97: Add `configureHttpKeepAlive` to `@kontourai/station-shared/http-upload`. The API listener and the CLI's serialized UI listener now hold an idle connection for 65 seconds instead of Node's default 5, so a client that polls reuses its connection instead of opening a new one, and a reverse proxy with a 60-second idle limit closes its upstream connection before Node does.
+- a4b0d97: Add `@kontourai/station-shared/visual-viewport`, one visual viewport subscription per window that reads the geometry once per frame for every subscriber. The SDK's `AutoSelectModal` and Connect's connection manager modal now read it too, so inside the Android shell they size to the visible height above the keyboard like the app's own dialogs.
+  
+  Add `@kontourai/station-shared/strict-indexeddb`, the strict-durability single-store IndexedDB transaction that Connect's broker routing grant storage and the app's relay credential custody now share instead of each carrying a copy.
+- a4b0d97: Add `@kontourai/station-shared/ui-document-policy`: the content-hashed build asset pattern and the document Content-Security-Policy that the UI listener and the web service worker both apply, so offline caching and the offline shell policy follow the listener's rules.
+- Updated dependencies [4350458]
+- Updated dependencies [5490494]
+- Updated dependencies [3096837]
+- Updated dependencies [68e6f96]
+- Updated dependencies [027f81a]
+- Updated dependencies [e057f3b]
+- Updated dependencies [e057f3b]
+- Updated dependencies [fa98d8a]
+- Updated dependencies [cd46072]
+- Updated dependencies [450bcf4]
+- Updated dependencies [06d2a34]
+- Updated dependencies [17b366c]
+- Updated dependencies [8ba48bf]
+- Updated dependencies [2a1af2e]
+- Updated dependencies [b207cfe]
+- Updated dependencies [c102e03]
+- Updated dependencies [d2ec5ee]
+- Updated dependencies [6b4917e]
+- Updated dependencies [7c2bfae]
+- Updated dependencies [1f9c869]
+- Updated dependencies [975abe2]
+- Updated dependencies [de27744]
+- Updated dependencies [853bd6e]
+- Updated dependencies [3d41457]
+- Updated dependencies [74dc7e0]
+- Updated dependencies [c01c023]
+- Updated dependencies [e057f3b]
+  - @kontourai/station-contracts@0.14.0
+
 ## 0.13.0
 
 ### Patch Changes
