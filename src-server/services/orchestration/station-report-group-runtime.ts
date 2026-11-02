@@ -429,38 +429,45 @@ export class StationReportGroupRuntime {
     groupId: string,
     input: ReportGroupAccountingRecoveryInput,
   ): Promise<ReportGroupAccountingRecoveryResult> {
-    const recovered = await this.#custody.recoverAccounting(
-      context,
-      groupId,
-      input,
-      this.owners.orchestration,
-      this.#wireIntents,
-      this.#dispatch,
-    );
-    const historical = await this.#custody.inspectForMutation(context, groupId);
-    if (!historical) throw new StationReportCustodyUnavailable();
-    return {
-      groupId,
-      seatId: input.seatId,
-      invocationId: input.invocationId,
-      operationKey: recovered.operationKey,
-      replayed: recovered.replayed,
-      status: recovered.status,
-      reason: recovered.reason,
-      accounting:
-        recovered.accounting === null
-          ? null
-          : {
-              inputTokens: recovered.accounting.inputTokens,
-              outputTokens: recovered.accounting.outputTokens,
-              costMicros: recovered.accounting.costMicros,
-            },
-      receipt: {
-        id: recovered.receipt.id,
-        domain: recovered.receipt.domain,
-        digest: recovered.receipt.digest,
-      },
-    };
+    return this.#withRoundsPublication(context, async (publication) => {
+      const recovered = await this.#custody.recoverAccounting(
+        context,
+        groupId,
+        input,
+        this.owners.orchestration,
+        this.#wireIntents,
+        this.#dispatch,
+        publication,
+      );
+      const historical = await this.#custody.inspectForMutation(
+        context,
+        groupId,
+        publication,
+      );
+      if (!historical) throw new StationReportCustodyUnavailable();
+      return {
+        groupId,
+        seatId: input.seatId,
+        invocationId: input.invocationId,
+        operationKey: recovered.operationKey,
+        replayed: recovered.replayed,
+        status: recovered.status,
+        reason: recovered.reason,
+        accounting:
+          recovered.accounting === null
+            ? null
+            : {
+                inputTokens: recovered.accounting.inputTokens,
+                outputTokens: recovered.accounting.outputTokens,
+                costMicros: recovered.accounting.costMicros,
+              },
+        receipt: {
+          id: recovered.receipt.id,
+          domain: recovered.receipt.domain,
+          digest: recovered.receipt.digest,
+        },
+      };
+    });
   }
 
   async report(

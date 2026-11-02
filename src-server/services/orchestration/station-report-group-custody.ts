@@ -43,7 +43,6 @@ import type { EnvironmentSecurityService } from '../ssh/environment-security-ser
 import {
   type HomeWriterLease,
   HomeWriterOwner,
-  HomeWriterUnavailableError,
 } from '../ssh/home-writer-owner.js';
 import {
   DelegationPersistenceError,
@@ -355,393 +354,394 @@ export class StationReportGroupCustody {
     orchestration: OrchestrationService,
     wireIntents: FileFinalWireIntentStore,
     dispatchLedger: RecoverableAuthorizationLedger,
+    publication: ReportRoundsPublication,
   ) {
+    if (!publication) refuse();
     id(command.seatId);
     id(command.invocationId);
     id(command.operationKey);
-    const authority = await this.#context(context, 'POST');
+    const authority = await this.#context(context, 'POST', publication);
     const writer = await HomeWriterOwner.forHome(
       this.owners.environment.getProjectHomeDir(),
     );
-    const hold = await writer.acquire(context.req.raw.signal);
-    let released = false,
-      operationRan = false;
-    const release = async () => {
-      if (released) return;
-      try {
-        await hold.release();
-        released = true;
-      } catch (error) {
-        throw new HomeWriterUnavailableError('cleanup-required', operationRan, {
-          cause: error,
-        });
-      }
-    };
-    const current = (): undefined =>
-      writer.runWithLease(hold, authority.current);
-    const authorized = { ...authority, current };
-    try {
-      current();
-      const before = await this.#inspect(authorized, groupId);
-      const ledger = before?.authority;
-      const origin = ledger?.origins.find(
-        (entry) => entry.invocationId === command.invocationId,
-      );
-      const epoch = origin && ledger?.epochs[origin.epoch];
-      const invocation = ledger?.invocations.find(
-        (entry) => entry.invocationId === command.invocationId,
-      );
-      const seat = before?.group?.spec.seats.find(
-        (entry) => entry.seatId === command.seatId,
-      );
-      const member = before?.admission.members.find(
-        (entry) => entry.seatId === command.seatId,
-      );
-      const envelope = epoch?.envelopes.find(
-        (entry) => entry.envelope_id === invocation?.envelopeId,
-      );
-      if (
-        !before?.group ||
-        !ledger ||
-        !origin ||
-        !epoch ||
-        !invocation ||
-        !seat ||
-        !member ||
-        !envelope ||
-        seat.envelope.id !== envelope.envelope_id ||
-        envelope.execution_id !== member.reservedTaskId
-      )
-        refuse();
-      const group = before.group;
-      const root = rootAuthorityReferenceV2(epoch.root);
-      const envelopeRef = {
-        id: envelope.envelope_id,
-        generation: envelope.generation,
-        digest: delegationEnvelopeDigestV2(envelope),
-      };
-      let intent: ReportAccountingRecoveryIntent | null = null;
-      const confirm: NonNullable<
-        DelegationAuthorityHostV3['confirmHistoricalReconciliation']
-      > = async (candidate, candidateRoot, candidateEnvelope) => {
+    return publication.withHome(
+      { owner: writer, current: authority.current },
+      async (scope) => {
+        const hold = scope.lease;
+        let active = true;
+        const current = (): undefined => {
+          if (!active) refuse();
+          return scope.current();
+        };
+        const authorized = { ...authority, current };
         current();
-        const usage = intent?.data.accounting;
-        return (
-          !!usage &&
-          same(candidateRoot, epoch.root) &&
-          same(candidateEnvelope, envelope) &&
-          candidate.invocationId === invocation.invocationId &&
-          candidate.envelopeId === envelope.envelope_id &&
-          same(candidate.allocation, invocation.allocation) &&
-          candidate.terminal &&
-          same(candidate.usage, {
-            inputTokens: usage.inputTokens,
-            outputTokens: usage.outputTokens,
-            costMicros: usage.costMicros,
-          })
+        const before = await this.#inspect(authorized, groupId);
+        const ledger = before?.authority;
+        const origin = ledger?.origins.find(
+          (entry) => entry.invocationId === command.invocationId,
         );
-      };
-      const service = createDelegationAuthorityServiceV3(
-        this.owners.persistence.roundsAuthorityStore(current, current, {
-          owner: writer,
-          lease: hold,
-        }),
-        {
-          now: () => new Date().toISOString(),
-          authorize: async (action, candidate, child) => {
-            current();
-            return (
-              (action === 'inspect' ||
-                (action === 'reconcile' &&
-                  intent !== null &&
-                  intent.data.accounting !== null)) &&
-              same(candidate, ledger.epochs.at(-1)!.root) &&
-              (child === null ||
-                same(
-                  child,
-                  ledger.epochs
-                    .at(-1)!
-                    .envelopes.find(
-                      (entry) => entry.envelope_id === envelope.envelope_id,
-                    ),
-                ))
-            );
+        const epoch = origin && ledger?.epochs[origin.epoch];
+        const invocation = ledger?.invocations.find(
+          (entry) => entry.invocationId === command.invocationId,
+        );
+        const seat = before?.group?.spec.seats.find(
+          (entry) => entry.seatId === command.seatId,
+        );
+        const member = before?.admission.members.find(
+          (entry) => entry.seatId === command.seatId,
+        );
+        const envelope = epoch?.envelopes.find(
+          (entry) => entry.envelope_id === invocation?.envelopeId,
+        );
+        if (
+          !before?.group ||
+          !ledger ||
+          !origin ||
+          !epoch ||
+          !invocation ||
+          !seat ||
+          !member ||
+          !envelope ||
+          seat.envelope.id !== envelope.envelope_id ||
+          envelope.execution_id !== member.reservedTaskId
+        )
+          refuse();
+        const group = before.group;
+        const root = rootAuthorityReferenceV2(epoch.root);
+        const envelopeRef = {
+          id: envelope.envelope_id,
+          generation: envelope.generation,
+          digest: delegationEnvelopeDigestV2(envelope),
+        };
+        let intent: ReportAccountingRecoveryIntent | null = null;
+        const confirm: NonNullable<
+          DelegationAuthorityHostV3['confirmHistoricalReconciliation']
+        > = async (candidate, candidateRoot, candidateEnvelope) => {
+          current();
+          const usage = intent?.data.accounting;
+          return (
+            !!usage &&
+            same(candidateRoot, epoch.root) &&
+            same(candidateEnvelope, envelope) &&
+            candidate.invocationId === invocation.invocationId &&
+            candidate.envelopeId === envelope.envelope_id &&
+            same(candidate.allocation, invocation.allocation) &&
+            candidate.terminal &&
+            same(candidate.usage, {
+              inputTokens: usage.inputTokens,
+              outputTokens: usage.outputTokens,
+              costMicros: usage.costMicros,
+            })
+          );
+        };
+        const service = createDelegationAuthorityServiceV3(
+          this.owners.persistence.roundsAuthorityStore(current, current, scope),
+          {
+            now: () => new Date().toISOString(),
+            authorize: async (action, candidate, child) => {
+              current();
+              return (
+                (action === 'inspect' ||
+                  (action === 'reconcile' &&
+                    intent !== null &&
+                    intent.data.accounting !== null)) &&
+                same(candidate, ledger.epochs.at(-1)!.root) &&
+                (child === null ||
+                  same(
+                    child,
+                    ledger.epochs
+                      .at(-1)!
+                      .envelopes.find(
+                        (entry) => entry.envelope_id === envelope.envelope_id,
+                      ),
+                  ))
+              );
+            },
+            confirmExecution: async () => false,
+            confirmReconciliation: (candidate, candidateRoot) =>
+              confirm(candidate, candidateRoot, envelope),
+            confirmHistoricalReconciliation: confirm,
+            authenticateRenewal: async () => null,
           },
-          confirmExecution: async () => false,
-          confirmReconciliation: (candidate, candidateRoot) =>
-            confirm(candidate, candidateRoot, envelope),
-          confirmHistoricalReconciliation: confirm,
-          authenticateRenewal: async () => null,
-        },
-        { maxRenewals: ledger.maxRenewals },
-      );
-      let replayed = false;
-      const result = await recoverAuthorizedDelegationAccountingV1({
-        authorityId: epoch.root.authority_id,
-        invocationId: invocation.invocationId,
-        service,
-        dispatchLedger,
-        host: {
-          admitRecovery: async (observed) => {
-            current();
-            if (
-              observed.authorityId !== epoch.root.authority_id ||
-              observed.invocationId !== invocation.invocationId ||
-              observed.originEpoch !== origin.epoch ||
-              !same(observed.root, epoch.root) ||
-              !same(observed.envelope, envelope) ||
-              !same(observed.invocation.allocation, invocation.allocation)
-            )
-              refuse();
-            const {
-              authorizationId,
-              invocationId,
-              reservationId,
-              limits,
-              capacity,
-            } = observed.reservation;
-            const header = {
-              version: 1 as const,
-              groupId,
-              seatId: command.seatId,
-              operationKey: command.operationKey,
-              authorityId: observed.authorityId,
-              invocationId: observed.invocationId,
-              ownerId: authorized.principal.id,
-              originEpoch: observed.originEpoch,
-              root,
-              envelope: envelopeRef,
-              reservationProtocol: observed.reservationProtocol,
-              reservation: {
+          { maxRenewals: ledger.maxRenewals },
+        );
+        let replayed = false;
+        const result = await recoverAuthorizedDelegationAccountingV1({
+          authorityId: epoch.root.authority_id,
+          invocationId: invocation.invocationId,
+          service,
+          dispatchLedger,
+          host: {
+            admitRecovery: async (observed) => {
+              current();
+              if (
+                observed.authorityId !== epoch.root.authority_id ||
+                observed.invocationId !== invocation.invocationId ||
+                observed.originEpoch !== origin.epoch ||
+                !same(observed.root, epoch.root) ||
+                !same(observed.envelope, envelope) ||
+                !same(observed.invocation.allocation, invocation.allocation)
+              )
+                refuse();
+              const {
                 authorizationId,
                 invocationId,
                 reservationId,
                 limits,
                 capacity,
-              },
-            };
-            const retained =
-              await this.owners.persistence.readReportAccountingRecovery(
+              } = observed.reservation;
+              const header = {
+                version: 1 as const,
                 groupId,
-                command.operationKey,
-                current,
-              );
-            if (retained) {
-              if (
-                !same(
-                  Object.fromEntries(
-                    Object.keys(header).map((key) => [
-                      key,
-                      Reflect.get(retained.data, key),
-                    ]),
-                  ),
-                  header,
-                )
-              )
-                refuse();
-              replayed = true;
-            }
-            const wire = await wireIntents.lookup(
-              epoch.root.authority_id,
-              invocation.invocationId,
-              current,
-            );
-            const terminalRecord =
-              await this.owners.persistence.findReportObservationByInvocation(
-                groupId,
-                invocation.invocationId,
-                'terminal',
-                current,
-              );
-            const resultRecord =
-              await this.owners.persistence.findReportObservationByInvocation(
-                groupId,
-                invocation.invocationId,
-                'result',
-                current,
-              );
-            let terminal =
-              retained?.data.terminal ??
-              (terminalRecord?.observation.kind === 'terminal'
-                ? (terminalRecord.observation.witness ?? null)
-                : null);
-            const evidence =
-              terminal?.data.evidence ??
-              (resultRecord?.observation.kind === 'result'
-                ? resultRecord.observation.evidence
-                : null);
-            let accounting: ReportAccountingRecoveryIntent['data']['accounting'] =
-              null;
-            if (evidence && wire) {
-              if (wire.effect !== seat.effect && wire.effect !== 'context-sync')
-                refuse();
-              if (
-                wire.effect === 'context-sync' &&
-                envelope.execution_authority.allowed_tools.length !== 0
-              )
-                refuse();
-              const binding = {
-                groupId,
-                controller: group.spec.controller,
-                seatId: member.seatId,
+                seatId: command.seatId,
+                operationKey: command.operationKey,
+                authorityId: observed.authorityId,
+                invocationId: observed.invocationId,
+                ownerId: authorized.principal.id,
+                originEpoch: observed.originEpoch,
                 root,
                 envelope: envelopeRef,
-                executionId: member.reservedTaskId,
-                invocationId: invocation.invocationId,
-                effect: wire.effect,
-                allocation: invocation.allocation,
-                executionBindingDigest: wireIdentityDigest(
-                  envelope.execution_binding,
-                ),
-                principalDigest: epoch.root.authenticated_principal_ref.digest,
-                subjectDigest: epoch.root.authenticated_subject_ref.digest,
-                finalWireDigest: wire.finalWireDigest,
+                reservationProtocol: observed.reservationProtocol,
+                reservation: {
+                  authorizationId,
+                  invocationId,
+                  reservationId,
+                  limits,
+                  capacity,
+                },
               };
-              if (!same(wire, binding))
-                throw new DelegationPersistenceError(
-                  'report_recovery_wire_mismatch',
-                );
-              const continuation =
-                await this.owners.persistence.readReportContinuationTurn(
+              const retained =
+                await this.owners.persistence.readReportAccountingRecovery(
                   groupId,
-                  invocation.invocationId,
+                  command.operationKey,
                   current,
                 );
-              const initial =
-                group.attempts.find(
-                  (attempt) => attempt.seatId === member.seatId,
-                )?.invocationId === invocation.invocationId;
-              if (!continuation && !initial && !terminal)
-                throw new DelegationPersistenceError(
-                  'report_recovery_turn_binding_missing',
-                );
-              const clientTurnId = continuation
-                ? (
-                    await this.#continuationTurn(
-                      authorized,
-                      before,
-                      command.seatId,
-                      invocation.invocationId,
-                    )
-                  ).clientTurnId
-                : initial
-                  ? member.reservedClientTurnId
-                  : terminal?.data.terminal.clientTurnId;
-              if (!clientTurnId) refuse();
-              if (!terminal) {
-                const delivery = await this.#delivery(
-                  authorized,
-                  groupId,
-                  command.seatId,
-                  orchestration,
-                  continuation ? invocation.invocationId : undefined,
-                );
-                if (delivery?.outcome === 'started')
-                  terminal = writer.runWithLease(hold, () =>
-                    captureReportTerminalWitness(
-                      {
-                        environment: this.owners.environment,
-                        orchestration,
-                        current,
-                      },
-                      {
-                        groupId,
-                        seatId: command.seatId,
-                        invocationId: invocation.invocationId,
-                        root,
-                        envelope: envelopeRef,
-                        evidence,
-                        ownerId: authorized.principal.id,
-                        turn: {
-                          conversationId: member.reservedTaskId,
-                          sessionId: delivery.sessionId,
-                          clientTurnId,
-                          turnId: delivery.turnId,
-                        },
-                      },
-                    ),
-                  );
-              }
-              if (terminal) {
+              if (retained) {
                 if (
-                  !verifyReportTerminalWitness(
-                    terminal,
-                    this.owners.environment,
-                  ) ||
-                  terminal.data.groupId !== groupId ||
-                  terminal.data.seatId !== command.seatId ||
-                  terminal.data.invocationId !== invocation.invocationId ||
-                  !same(terminal.data.root, root) ||
-                  !same(terminal.data.envelope, envelopeRef) ||
-                  !same(terminal.data.evidence, evidence) ||
-                  terminal.data.terminal.conversationId !==
-                    member.reservedTaskId ||
-                  terminal.data.terminal.sessionId !== member.reservedTaskId ||
-                  terminal.data.terminal.clientTurnId !== clientTurnId ||
-                  terminal.data.terminal.ownerId !== authorized.principal.id
+                  !same(
+                    Object.fromEntries(
+                      Object.keys(header).map((key) => [
+                        key,
+                        Reflect.get(retained.data, key),
+                      ]),
+                    ),
+                    header,
+                  )
                 )
                   refuse();
-                if (observed.reservationProtocol !== 'retained-tariff-v1')
-                  refuse();
-                const priced =
-                  (await this.owners.persistence.assertProviderEvidenceReference(
-                    evidence,
-                    {
-                      groupId,
-                      rootId: epoch.root.authority_id,
-                      invocationId: invocation.invocationId,
-                      executionId: member.reservedTaskId,
-                      ...(resultRecord?.observation.kind === 'result'
-                        ? { usage: resultRecord.observation }
-                        : {}),
-                      executionIntent: {
-                        binding,
-                        modelReceipt:
-                          envelope.execution_binding.runtime.model_receipt_ref,
-                      },
-                    },
-                    current,
-                  )) ?? refuse();
-                accounting = {
-                  inputTokens: priced.inputTokens,
-                  outputTokens: priced.outputTokens,
-                  costMicros: priced.costMicros,
-                  costBasis: priced.costBasis,
-                };
+                replayed = true;
               }
-            }
-            const candidate = writer.runWithLease(hold, () =>
-              signReportAccountingRecoveryIntent(
-                {
-                  ...header,
-                  terminal,
-                  wireIntentDigest: wire ? wireIdentityDigest(wire) : null,
-                  accounting,
-                },
-                this.owners.environment,
-              ),
-            );
-            if (retained && !same(retained, candidate)) refuse();
-            intent = retained ?? candidate;
-            operationRan = true;
-            const receipt =
-              await this.owners.persistence.retainReportAccountingRecovery(
-                intent,
+              const wire = await wireIntents.lookup(
+                epoch.root.authority_id,
+                invocation.invocationId,
                 current,
               );
-            current();
-            return {
-              accounting: intent.data.accounting,
-              receipt,
-              lease: { assertCurrent: current, release },
-            };
+              const terminalRecord =
+                await this.owners.persistence.findReportObservationByInvocation(
+                  groupId,
+                  invocation.invocationId,
+                  'terminal',
+                  current,
+                );
+              const resultRecord =
+                await this.owners.persistence.findReportObservationByInvocation(
+                  groupId,
+                  invocation.invocationId,
+                  'result',
+                  current,
+                );
+              let terminal =
+                retained?.data.terminal ??
+                (terminalRecord?.observation.kind === 'terminal'
+                  ? (terminalRecord.observation.witness ?? null)
+                  : null);
+              const evidence =
+                terminal?.data.evidence ??
+                (resultRecord?.observation.kind === 'result'
+                  ? resultRecord.observation.evidence
+                  : null);
+              let accounting: ReportAccountingRecoveryIntent['data']['accounting'] =
+                null;
+              if (evidence && wire) {
+                if (
+                  wire.effect !== seat.effect &&
+                  wire.effect !== 'context-sync'
+                )
+                  refuse();
+                if (
+                  wire.effect === 'context-sync' &&
+                  envelope.execution_authority.allowed_tools.length !== 0
+                )
+                  refuse();
+                const binding = {
+                  groupId,
+                  controller: group.spec.controller,
+                  seatId: member.seatId,
+                  root,
+                  envelope: envelopeRef,
+                  executionId: member.reservedTaskId,
+                  invocationId: invocation.invocationId,
+                  effect: wire.effect,
+                  allocation: invocation.allocation,
+                  executionBindingDigest: wireIdentityDigest(
+                    envelope.execution_binding,
+                  ),
+                  principalDigest:
+                    epoch.root.authenticated_principal_ref.digest,
+                  subjectDigest: epoch.root.authenticated_subject_ref.digest,
+                  finalWireDigest: wire.finalWireDigest,
+                };
+                if (!same(wire, binding))
+                  throw new DelegationPersistenceError(
+                    'report_recovery_wire_mismatch',
+                  );
+                const continuation =
+                  await this.owners.persistence.readReportContinuationTurn(
+                    groupId,
+                    invocation.invocationId,
+                    current,
+                  );
+                const initial =
+                  group.attempts.find(
+                    (attempt) => attempt.seatId === member.seatId,
+                  )?.invocationId === invocation.invocationId;
+                if (!continuation && !initial && !terminal)
+                  throw new DelegationPersistenceError(
+                    'report_recovery_turn_binding_missing',
+                  );
+                const clientTurnId = continuation
+                  ? (
+                      await this.#continuationTurn(
+                        authorized,
+                        before,
+                        command.seatId,
+                        invocation.invocationId,
+                      )
+                    ).clientTurnId
+                  : initial
+                    ? member.reservedClientTurnId
+                    : terminal?.data.terminal.clientTurnId;
+                if (!clientTurnId) refuse();
+                if (!terminal) {
+                  const delivery = await this.#delivery(
+                    authorized,
+                    groupId,
+                    command.seatId,
+                    orchestration,
+                    continuation ? invocation.invocationId : undefined,
+                  );
+                  if (delivery?.outcome === 'started')
+                    terminal = writer.runWithLease(hold, () =>
+                      captureReportTerminalWitness(
+                        {
+                          environment: this.owners.environment,
+                          orchestration,
+                          current,
+                        },
+                        {
+                          groupId,
+                          seatId: command.seatId,
+                          invocationId: invocation.invocationId,
+                          root,
+                          envelope: envelopeRef,
+                          evidence,
+                          ownerId: authorized.principal.id,
+                          turn: {
+                            conversationId: member.reservedTaskId,
+                            sessionId: delivery.sessionId,
+                            clientTurnId,
+                            turnId: delivery.turnId,
+                          },
+                        },
+                      ),
+                    );
+                }
+                if (terminal) {
+                  if (
+                    !verifyReportTerminalWitness(
+                      terminal,
+                      this.owners.environment,
+                    ) ||
+                    terminal.data.groupId !== groupId ||
+                    terminal.data.seatId !== command.seatId ||
+                    terminal.data.invocationId !== invocation.invocationId ||
+                    !same(terminal.data.root, root) ||
+                    !same(terminal.data.envelope, envelopeRef) ||
+                    !same(terminal.data.evidence, evidence) ||
+                    terminal.data.terminal.conversationId !==
+                      member.reservedTaskId ||
+                    terminal.data.terminal.sessionId !==
+                      member.reservedTaskId ||
+                    terminal.data.terminal.clientTurnId !== clientTurnId ||
+                    terminal.data.terminal.ownerId !== authorized.principal.id
+                  )
+                    refuse();
+                  if (observed.reservationProtocol !== 'retained-tariff-v1')
+                    refuse();
+                  const priced =
+                    (await this.owners.persistence.assertProviderEvidenceReference(
+                      evidence,
+                      {
+                        groupId,
+                        rootId: epoch.root.authority_id,
+                        invocationId: invocation.invocationId,
+                        executionId: member.reservedTaskId,
+                        ...(resultRecord?.observation.kind === 'result'
+                          ? { usage: resultRecord.observation }
+                          : {}),
+                        executionIntent: {
+                          binding,
+                          modelReceipt:
+                            envelope.execution_binding.runtime
+                              .model_receipt_ref,
+                        },
+                      },
+                      current,
+                    )) ?? refuse();
+                  accounting = {
+                    inputTokens: priced.inputTokens,
+                    outputTokens: priced.outputTokens,
+                    costMicros: priced.costMicros,
+                    costBasis: priced.costBasis,
+                  };
+                }
+              }
+              const candidate = writer.runWithLease(hold, () =>
+                signReportAccountingRecoveryIntent(
+                  {
+                    ...header,
+                    terminal,
+                    wireIntentDigest: wire ? wireIdentityDigest(wire) : null,
+                    accounting,
+                  },
+                  this.owners.environment,
+                ),
+              );
+              if (retained && !same(retained, candidate)) refuse();
+              intent = retained ?? candidate;
+              const receipt =
+                await this.owners.persistence.retainReportAccountingRecovery(
+                  intent,
+                  current,
+                );
+              current();
+              return {
+                accounting: intent.data.accounting,
+                receipt,
+                lease: {
+                  assertCurrent: current,
+                  // Publication releases Home after Flow returns.
+                  release: () => {
+                    active = false;
+                  },
+                },
+              };
+            },
           },
-        },
-      });
-      return { replayed, operationKey: command.operationKey, ...result };
-    } finally {
-      await release();
-    }
+        });
+        return { replayed, operationKey: command.operationKey, ...result };
+      },
+    );
   }
 
   async revokeExecutionAuthority(

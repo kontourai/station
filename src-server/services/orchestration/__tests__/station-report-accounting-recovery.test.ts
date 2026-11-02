@@ -360,74 +360,153 @@ test('accounting recovery refuses aborted admission and resumes a Dispatch-only 
   }
 }, 300_000);
 
-test('unknown physical usage stays reserved across accounting recovery and exact replay', async () => {
-  const { h, owners, orchestration, eventStore, runtimeOwner } =
-    await recoveryFixture();
-  h.rawFetch.mockRejectedValueOnce(
-    Error('controlled unknown physical response'),
-  );
-  const reserve = vi.spyOn(FileAuthorizationLedger.prototype, 'reserve');
-  const settle = vi.spyOn(FileAuthorizationLedger.prototype, 'settleChecked');
-  const release = vi.spyOn(FileAuthorizationLedger.prototype, 'release');
-  try {
-    const runtime = new StationReportGroupRuntime(owners);
-    await assert.rejects(
-      runtime.create(h.f.context(), {
-        ...h.input,
-        maxConcurrent: 1,
-        members: h.input.members.slice(0, 1),
-      }),
-      /rounds_terminal_accounting_required/,
+test.each(['exact-replay', 'shutdown-custody'] as const)(
+  'unknown physical usage stays reserved during %s',
+  async (mode) => {
+    const { h, owners, orchestration, eventStore, runtimeOwner } =
+      await recoveryFixture();
+    h.rawFetch.mockRejectedValueOnce(
+      Error('controlled unknown physical response'),
     );
-    const inventory = await runtime.list(h.f.context(requestFor(h)));
-    assert.equal(inventory.groups.length, 1);
-    const group = inventory.groups[0];
-    const member = group.members[0];
-    const attempt = member.attempts[0];
-    assert.equal(h.rawFetch.mock.calls.length, 1);
-    assert.equal(reserve.mock.calls.length, 1);
-    const reservation = reserve.mock.calls[0][0];
-    const dispatch = new FileAuthorizationLedger({
-      root: join(h.f.home, 'report-groups', 'dispatch'),
-    });
-    const before = await dispatch.inspectInvocation(reservation);
-    assert.equal(before[0].state, 'reserved');
-    const command = {
-      operationKey: 'observe-unknown',
-      seatId: member.seatId,
-      invocationId: attempt.invocationId,
-    };
-    const result = await runtime.recoverAccounting(
-      h.f.context(requestFor(h, 'POST')),
-      group.groupId,
-      command,
+    const reserve = vi.spyOn(FileAuthorizationLedger.prototype, 'reserve');
+    const settle = vi.spyOn(FileAuthorizationLedger.prototype, 'settleChecked');
+    const release = vi.spyOn(FileAuthorizationLedger.prototype, 'release');
+    const ownedStore: unknown = Reflect.get(
+      runtimeOwner,
+      'orchestrationEventStore',
     );
-    assert.equal(result.status, 'held');
-    assert.equal(result.reason, 'usage-unknown');
-    assert.equal(result.accounting, null);
-    const after = await runtime.get(h.f.context(requestFor(h)), group.groupId);
-    assert.ok(after);
-    assert.equal(after.members[0].attempts[0].usage, null);
-    assert.equal(after.members[0].attempts[0].accountingTerminal, false);
-    assert.equal(after.revision, group.revision);
-    const replay = await runtime.recoverAccounting(
-      h.f.context(requestFor(h, 'POST')),
-      group.groupId,
-      command,
-    );
-    assert.equal(replay.replayed, true);
-    assert.equal(replay.status, 'held');
-    assert.deepEqual(await dispatch.inspectInvocation(reservation), before);
-    assert.equal(settle.mock.calls.length, 0);
-    assert.equal(release.mock.calls.length, 0);
-    assert.equal(reserve.mock.calls.length, 1);
-    assert.equal(h.rawFetch.mock.calls.length, 1);
-  } finally {
-    await orchestration.shutdown();
-    eventStore.close();
-    await runtimeOwner.shutdown();
-  }
-}, 180_000);
+    assert.ok(ownedStore instanceof EventStore);
+    const close = vi.spyOn(ownedStore, 'close');
+    let resumeRecovery = () => {};
+    let restoreRecovery = () => {};
+    let recovering:
+      | ReturnType<StationReportGroupRuntime['recoverAccounting']>
+      | undefined;
+    try {
+      const runtime = new StationReportGroupRuntime(owners);
+      await assert.rejects(
+        runtime.create(h.f.context(), {
+          ...h.input,
+          maxConcurrent: 1,
+          members: h.input.members.slice(0, 1),
+        }),
+        /rounds_terminal_accounting_required/,
+      );
+      const inventory = await runtime.list(h.f.context(requestFor(h)));
+      assert.equal(inventory.groups.length, 1);
+      const group = inventory.groups[0];
+      const member = group.members[0];
+      const attempt = member.attempts[0];
+      assert.equal(h.rawFetch.mock.calls.length, 1);
+      assert.equal(reserve.mock.calls.length, 1);
+      const reservation = reserve.mock.calls[0][0];
+      const dispatch = new FileAuthorizationLedger({
+        root: join(h.f.home, 'report-groups', 'dispatch'),
+      });
+      const before = await dispatch.inspectInvocation(reservation);
+      assert.equal(before[0].state, 'reserved');
+      const command = {
+        operationKey: 'observe-unknown',
+        seatId: member.seatId,
+        invocationId: attempt.invocationId,
+      };
+      let recoveryEntered!: () => void;
+      const entered = new Promise<void>((resolve) => {
+        recoveryEntered = resolve;
+      });
+      const resume = new Promise<void>((resolve) => {
+        resumeRecovery = resolve;
+      });
+      if (mode === 'shutdown-custody') {
+        const retain =
+          StationDelegationPersistence.prototype.retainReportAccountingRecovery;
+        const held = vi
+          .spyOn(
+            StationDelegationPersistence.prototype,
+            'retainReportAccountingRecovery',
+          )
+          .mockImplementation(async function (
+            this: StationDelegationPersistence,
+            ...args
+          ) {
+            recoveryEntered();
+            await resume;
+            return retain.apply(this, args);
+          });
+        restoreRecovery = () => held.mockRestore();
+      }
+      recovering = runtime.recoverAccounting(
+        h.f.context(requestFor(h, 'POST')),
+        group.groupId,
+        command,
+      );
+      void recovering.catch(() => {});
+      if (mode === 'shutdown-custody') {
+        await Promise.race([
+          entered,
+          recovering.then(() => {
+            throw Error('recovery returned before intent retention');
+          }),
+        ]);
+        try {
+          await assert.rejects(
+            runtimeOwner.shutdown(),
+            /Runtime publication remains pending/,
+          );
+          assert.equal(
+            close.mock.calls.length,
+            0,
+            'runtime storage stays open while recovery is admitted',
+          );
+        } finally {
+          resumeRecovery();
+        }
+      }
+      const result = await recovering;
+      assert.equal(result.status, 'held');
+      assert.equal(result.reason, 'usage-unknown');
+      assert.equal(result.accounting, null);
+      const after = await runtime.get(
+        h.f.context(requestFor(h)),
+        group.groupId,
+      );
+      assert.ok(after);
+      assert.equal(after.members[0].attempts[0].usage, null);
+      assert.equal(after.members[0].attempts[0].accountingTerminal, false);
+      assert.equal(after.revision, group.revision);
+      if (mode === 'shutdown-custody') {
+        await runtimeOwner.shutdown();
+        assert.equal(close.mock.calls.length, 1);
+        assert.deepEqual(await dispatch.inspectInvocation(reservation), before);
+        assert.equal(settle.mock.calls.length, 0);
+        assert.equal(release.mock.calls.length, 0);
+        assert.equal(reserve.mock.calls.length, 1);
+        assert.equal(h.rawFetch.mock.calls.length, 1);
+        return;
+      }
+      const replay = await runtime.recoverAccounting(
+        h.f.context(requestFor(h, 'POST')),
+        group.groupId,
+        command,
+      );
+      assert.equal(replay.replayed, true);
+      assert.equal(replay.status, 'held');
+      assert.deepEqual(await dispatch.inspectInvocation(reservation), before);
+      assert.equal(settle.mock.calls.length, 0);
+      assert.equal(release.mock.calls.length, 0);
+      assert.equal(reserve.mock.calls.length, 1);
+      assert.equal(h.rawFetch.mock.calls.length, 1);
+    } finally {
+      resumeRecovery();
+      await recovering?.catch(() => {});
+      restoreRecovery();
+      await orchestration.shutdown();
+      eventStore.close();
+      await runtimeOwner.shutdown();
+    }
+  },
+  180_000,
+);
 
 test('a later invocation with missing turn proofs cannot acquire the original turn as its recovery witness', async () => {
   const { h, owners, orchestration, eventStore, runtimeOwner } =
