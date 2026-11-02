@@ -626,6 +626,7 @@ export function FloatOverChatHost({
         receivedAt={receivedAt}
         apiBase={apiBase}
         transport={transport}
+        agentActionsEnabled={access.data?.experiencePreviewEnabled === true}
       />
     );
   }
@@ -884,6 +885,7 @@ function BrowserFloat({
   receivedAt,
   apiBase,
   transport,
+  agentActionsEnabled,
 }: {
   anchor: HTMLElement;
   conversationKey: string;
@@ -893,6 +895,7 @@ function BrowserFloat({
   receivedAt: number | undefined;
   apiBase: string;
   transport: FloatFetch;
+  agentActionsEnabled: boolean;
 }) {
   const host = hostOf(session.url);
   const openBrowser = useOpenBrowserSessionInRegion();
@@ -977,6 +980,7 @@ function BrowserFloat({
             transport={transport}
             hostControls
             inputRequiresLease
+            agentActionsEnabled={agentActionsEnabled}
             onControlState={reportControl(onControlState)}
           />
           {pendingDialog ? (

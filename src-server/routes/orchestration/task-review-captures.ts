@@ -139,7 +139,11 @@ export function createTaskReviewCaptureRoutes(deps: {
     if (!projectId)
       throw new TaskBrowserCaptureError('not-found', 'Task Project not found.');
     const actor = await deps.authorizeProject(c.req.raw, projectId, 'view');
-    if (!actor || !deps.isRequestPrincipalCurrent(c.req.raw))
+    if (
+      !actor ||
+      actor.kind === 'operator-device' ||
+      !deps.isRequestPrincipalCurrent(c.req.raw)
+    )
       throw new TaskBrowserCaptureError(
         'forbidden',
         'Browser view access is required.',

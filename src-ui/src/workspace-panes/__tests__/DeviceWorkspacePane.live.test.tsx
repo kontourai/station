@@ -155,6 +155,23 @@ describe('opening a device', () => {
     release();
   });
 
+  test('subscribes the Device canvas to the shared agent overlay when its preview is enabled', async () => {
+    const log = stubDeviceFetch({
+      inventory: readyInventory([IOS_DEVICE]),
+      browserExperiencePreview: true,
+    });
+    renderInQueryClient(<DeviceWorkspacePane />);
+    await openFirst('Open iPhone 17 Pro');
+    await waitFor(() =>
+      expect(
+        log.streams.some(
+          (stream) =>
+            new URL(stream.url).searchParams.get('agentActions') === '1',
+        ),
+      ).toBe(true),
+    );
+  });
+
   test('starts and stops a Task recording for the selected host-qualified session', async () => {
     activeProject.slug = 'project-one';
     const log = stubDeviceFetch({

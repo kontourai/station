@@ -1057,6 +1057,11 @@ function DeviceStage({
   const canvas = (
     <LiveSurfaceCanvas
       apiBase={requestScope.apiBase}
+      agentActionsEnabled={
+        previews.data?.some(
+          (preview) => preview.id === 'browser-experience' && preview.enabled,
+        ) === true
+      }
       fit={{
         aspect: DEVICE_PLACEHOLDER_ASPECT[platform],
         cornerRadius: (box) => deviceCornerRadius(platform, box),

@@ -9,6 +9,7 @@ import * as reviewContracts from '@kontourai/station-contracts/task-review';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { createTaskReviewCaptureRoutes } from '../../../routes/orchestration/task-review-captures.js';
 import * as auth from '../../../routes/system/auth.js';
 import { __resetStationServerSelfAttestationForTests } from '../../../security/station-server-scope.js';
 import type { CdpTransport } from '../../../services/browser/browser-host.js';
@@ -66,6 +67,35 @@ const PROJECT_ID = randomUUID();
 const OTHER_PROJECT_ID = randomUUID();
 const AT = '2026-10-04T00:00:00.000Z';
 const makeTempDir = trackTempDirs();
+
+test('Task capture refuses operator-device Browser view standing', async () => {
+  const listSessions = vi.fn(() => []);
+  const app = createTaskReviewCaptureRoutes({
+    logger: { warn() {} },
+    runtime: {
+      personTaskReviewAccess: async () => ({
+        kind: 'granted',
+        staleOutcome: { kind: 'not-found' },
+        write: {
+          projectId: 'alpha',
+          taskId: 'task',
+          taskCreatedAt: '2026-01-01',
+          author: { kind: 'human', principalId: 'person' },
+          beforeCommit: () => true,
+        },
+      }),
+    } as never,
+    captures: {} as never,
+    registry: { listSessions } as never,
+    localProjectIdFor: () => 'alpha',
+    authorizeProject: async () => ({ kind: 'operator-device' }),
+    isStationInternalRequest: () => false,
+    isRequestPrincipalCurrent: () => true,
+  });
+  const response = await app.request('/task/review/capture-sessions');
+  expect(response.status).toBe(403);
+  expect(listSessions).not.toHaveBeenCalled();
+});
 
 describe('Task review through configureRuntimeRoutes', () => {
   const closers: Array<() => Promise<void>> = [];
