@@ -519,11 +519,8 @@ those remote choices and keeps the original message. Check whether it arrived
 before sending changed work. You choose the receiver’s Project again before Start.
 This preview takes text only; attachment and visual-reply reads are unavailable.
 
-The Project choice is explicit: a Project on this computer is never matched to
-one on another computer by name or slug. This chat path uses the existing
-personal-peer credential and the destination’s ordinary foreground chat
-checks. It does not create a portable Project execution offer or change the
-separate consent required for a remote Task.
+Choose the destination’s Project explicitly; Station does not match Projects
+between computers by name. Remote Tasks keep their separate execution consent.
 
 With that preview off, or for SSH destinations, **Start** opens **Run on a
 Station** and **Run task** starts a resumable Task there. Its existing portable
