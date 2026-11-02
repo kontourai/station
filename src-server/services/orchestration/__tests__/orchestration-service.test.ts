@@ -26166,6 +26166,10 @@ describe('OrchestrationService', () => {
           modelId: 'claude-sonnet-4-6',
         },
       });
+      // #4389: a no-project start first prepares its scratch folder with real
+      // file I/O, so wait (on real timers) until the catalog read and its
+      // deadline exist before advancing the fake clock past that deadline.
+      await vi.waitFor(() => expect(operationSignal).toBeDefined());
       await vi.advanceTimersByTimeAsync(5_000);
 
       await expect(pending).resolves.toBeDefined();
