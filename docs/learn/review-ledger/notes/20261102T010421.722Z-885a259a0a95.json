@@ -1,0 +1,7 @@
+{
+  "revision": "cdf23df0d6fd5a7fb00b08a51b63324de242ea7b",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Refs #3568 and #3575. Re-read the durable inbox and optional adapter declaration API contract against conversation-open validExecution and the response-decoder integration cases. The SDK accepts all nine declared cells with valid states and placement/history/owner fields, preserves older-host omission, and rejects malformed declarations as typed invalid-response. A clean-commit control restoring the old allowlist rejected both valid Station/native profiles (2 failures); source was restored byte-exactly. This repairs a real mobile inventory failure. No new route, permission, published-version or deployment claim.","inputs":["docs/reference/sdk.md","packages/sdk/src/conversation-open.ts"]}
+  ]
+}
