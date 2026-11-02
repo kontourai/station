@@ -51,9 +51,17 @@ export function copyAgentEffect(effect: EffectRecord): EffectRecord {
     })),
   };
 }
-function partialBatches(parts: readonly string[]): string[] {
+function partialBatches(
+  parts: readonly string[],
+  completeOnly = true,
+): string[] {
   const batches: string[] = [];
-  for (let offset = 0; offset < parts.length; offset += 128)
+  for (
+    let offset = 0;
+    offset <
+    (completeOnly ? parts.length - (parts.length % 128) : parts.length);
+    offset += 128
+  )
     batches.push(agentWire(parts.slice(offset, offset + 128)));
   return batches;
 }
@@ -72,17 +80,31 @@ function readPartialBatch(database: DatabaseSync, ref: string): string[] {
 export function agentEffectHeader(
   database: DatabaseSync,
   effect: EffectRecord,
-  legacy = false,
+  format: 1 | 2 | 3 = 3,
 ): string {
   return canonical({
     ...effect,
-    version: legacy ? 1 : 2,
+    version: format,
     intent: { ...effect.intent, input: effect.inputDigest },
     attempts: effect.attempts.map((attempt) => ({
       ...attempt,
-      partials: (legacy
+      ...(format === 3
+        ? {
+            tail: attempt.partials.slice(
+              attempt.partials.length - (attempt.partials.length % 128),
+            ),
+            tailDigest: hash(
+              canonical(
+                attempt.partials.slice(
+                  attempt.partials.length - (attempt.partials.length % 128),
+                ),
+              ),
+            ),
+          }
+        : {}),
+      partials: (format === 1
         ? attempt.partials
-        : partialBatches(attempt.partials)
+        : partialBatches(attempt.partials, format === 3)
       ).map((wire) => agentBodyReference(database, wire)),
       output:
         attempt.output === null
@@ -302,8 +324,39 @@ export function readAgentEffect(
     return copyAgentEffect(prior.value);
   }
   const raw = JSON.parse(wire);
-  const batched = raw?.version === 2;
+  const tailed = raw?.version === 3;
+  const batched = raw?.version === 2 || tailed;
+  const tails: string[][] = [];
+  if (tailed) {
+    const stored = effectSchema
+      .extend({
+        version: z.literal(3),
+        attempts: z
+          .array(
+            effectSchema.shape.attempts.element.extend({
+              tail: z.array(payload).max(127),
+              tailDigest: text,
+            }),
+          )
+          .max(1024),
+      })
+      .parse(raw);
+    for (const attempt of stored.attempts) {
+      if (hash(canonical(attempt.tail)) !== attempt.tailDigest)
+        throw new Error('DURABLE_AGENT_PARTIAL_TAIL_DAMAGED');
+      for (const part of attempt.tail) readAgentWire(part);
+      tails.push(attempt.tail);
+    }
+    raw.attempts = stored.attempts.map(
+      ({ tail: _tail, tailDigest: _digest, ...attempt }) => attempt,
+    );
+  }
   const header = effectSchema.parse(batched ? { ...raw, version: 1 } : raw);
+  const writer = database
+    .prepare('SELECT writer_format FROM agent_steps_meta WHERE id=1')
+    .get()?.writer_format;
+  if (!tailed && writer === 'agent-steps/10')
+    throw new Error('DURABLE_AGENT_EFFECT_DAMAGED');
   if (
     !batched &&
     header.intent.input.startsWith('sha256:') &&
@@ -314,7 +367,12 @@ export function readAgentEffect(
     throw new Error('DURABLE_AGENT_EFFECT_DAMAGED');
   if (!header.intent.input.startsWith('sha256:')) {
     if (
-      ['agent-steps/7', 'agent-steps/8', 'agent-steps/9'].includes(
+      [
+        'agent-steps/7',
+        'agent-steps/8',
+        'agent-steps/9',
+        'agent-steps/10',
+      ].includes(
         String(
           database
             .prepare('SELECT writer_format FROM agent_steps_meta WHERE id=1')
@@ -332,13 +390,18 @@ export function readAgentEffect(
         ...header.intent,
         input: readAgentBody(database, header.intent.input),
       },
-      attempts: header.attempts.map((attempt) => ({
+      attempts: header.attempts.map((attempt, index) => ({
         ...attempt,
-        partials: attempt.partials.flatMap((ref) =>
-          batched
-            ? readPartialBatch(database, ref)
-            : [readAgentBody(database, ref)],
-        ),
+        partials: [
+          ...attempt.partials.flatMap((ref) => {
+            if (!batched) return [readAgentBody(database, ref)];
+            const batch = readPartialBatch(database, ref);
+            if (tailed && batch.length !== 128)
+              throw new Error('DURABLE_AGENT_PARTIAL_BATCH_DAMAGED');
+            return batch;
+          }),
+          ...(tails[index] ?? []),
+        ],
         output:
           attempt.output === null
             ? null
@@ -357,18 +420,18 @@ function write(
   database: DatabaseSync,
   turnId: string,
   effect: EffectRecord,
-  legacy = false,
+  format: 1 | 2 | 3 = 3,
 ) {
   const input = putAgentBody(database, effect.intent.input);
   validate(effect, true, input);
   for (const attempt of effect.attempts) {
-    for (const part of legacy
+    for (const part of format === 1
       ? attempt.partials
-      : partialBatches(attempt.partials))
+      : partialBatches(attempt.partials, format === 3))
       putAgentBody(database, part);
     if (attempt.output !== null) putAgentBody(database, attempt.output);
   }
-  const wire = agentEffectHeader(database, effect, legacy);
+  const wire = agentEffectHeader(database, effect, format);
   rememberEffect(
     database,
     JSON.stringify([turnId, effect.intent.id]),
@@ -507,11 +570,25 @@ export function migrateAgentEffects(database: DatabaseSync) {
     .all()) {
     const turnId = String(row.turn_id);
     const effect = readAgentEffect(database, turnId, String(row.id))!;
-    write(database, turnId, effect, true);
+    write(database, turnId, effect, 1);
   }
 }
 
 export function migrateAgentEffectBatches(database: DatabaseSync) {
+  for (const row of database
+    .prepare('SELECT turn_id,id FROM agent_steps_effects')
+    .all()) {
+    const turnId = String(row.turn_id);
+    write(
+      database,
+      turnId,
+      readAgentEffect(database, turnId, String(row.id))!,
+      2,
+    );
+  }
+}
+
+export function migrateAgentEffectTails(database: DatabaseSync) {
   for (const row of database
     .prepare('SELECT turn_id,id FROM agent_steps_effects')
     .all()) {

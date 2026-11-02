@@ -38,6 +38,7 @@ export function createChatRuntimeFixture(
     agentStatus: new Map(),
     agentStats: new Map(),
     metricsLog: [],
+    modelCatalog: undefined,
     configLoader: new ConfigLoader({ projectHomeDir: home }),
     appConfig: {
       defaultModel: 'scripted',

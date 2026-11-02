@@ -22,7 +22,7 @@ const cleanup: Array<() => void | Promise<void>> = [];
 afterEach(async () => {
   for (const close of cleanup.splice(0).reverse()) await close();
 });
-async function retainedFixture() {
+async function retainedFixture(now?: () => number) {
   const dir = mkdtempDisposableSync(join(tmpdir(), 'agent-retained-'));
   const database = new DatabaseSync(join(dir.path, 'journal.sqlite'));
   database.exec(
@@ -34,6 +34,7 @@ async function retainedFixture() {
     owner,
     liveness: () => 'live',
     implementation: 'validation/1',
+    now,
   });
   const lease = await runtime.start({
     key,
@@ -252,7 +253,7 @@ it('writer 8 partials retain their logical bytes when converted into immutable b
   expect(
     f.database.prepare('SELECT writer_format FROM agent_steps_meta').get()
       ?.writer_format,
-  ).toBe('agent-steps/9');
+  ).toBe('agent-steps/10');
   expect(
     JSON.parse(
       String(
@@ -261,5 +262,91 @@ it('writer 8 partials retain their logical bytes when converted into immutable b
           .get('model:old')?.record,
       ),
     ).version,
-  ).toBe(2);
+  ).toBe(3);
+});
+
+it('400 individually committed text chunks retain bounded storage and an exact aborted prefix', async () => {
+  const f = await turnFixture();
+  cleanup.push(() => f.close());
+  await f.lease.effect({
+    type: 'effectPlan',
+    intent: {
+      id: 'paced',
+      kind: 'model',
+      replay: 'unsafe',
+      input: agentWire('prompt'),
+    },
+  });
+  await f.lease.effect({ type: 'effectBegin', id: 'paced' });
+  f.database.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+  const diskBytes = () =>
+    Number(f.database.prepare('PRAGMA page_count').get()?.page_count) *
+    Number(f.database.prepare('PRAGMA page_size').get()?.page_size);
+  const before = diskBytes();
+  const parts: string[] = [];
+  let textBytes = 0;
+  for (let index = 0; index < 400; index++) {
+    const delta = `token-${index}: `.padEnd(64, 'text ');
+    textBytes += Buffer.byteLength(delta);
+    const part = agentWire({ type: 'text-delta', id: 'a', delta });
+    parts.push(part);
+    await f.lease.effect({ type: 'effectPartial', id: 'paced', part });
+  }
+  f.database.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+  expect(diskBytes() - before).toBeLessThanOrEqual(2 * textBytes + 128 * 1024);
+  expect(
+    Number(
+      f.database.prepare('SELECT count(*) AS n FROM agent_steps_bodies').get()
+        ?.n,
+    ),
+  ).toBeLessThanOrEqual(8);
+  const recovered = await f.recover();
+  const { effect } = await recovered.effect({
+    type: 'effectRead',
+    id: 'paced',
+  });
+  expect(effect.state).toBe('indeterminate');
+  expect(effect.attempts[0]?.state).toBe('aborted');
+  expect(effect.attempts[0]?.partials).toEqual(parts);
+});
+
+it('a pure host clock keeps selected commands independent of retained body history', async () => {
+  const f = await retainedFixture(() => 1_000);
+  cleanup.push(() => f.close());
+  await f.lease.tool(
+    { id: 'clock-history', input: 'input', replay: 'unsafe' },
+    async () => 'result',
+  );
+  let reads = 0;
+  f.database.setAuthorizer((_action, table) => {
+    if (table === 'agent_steps_bodies') reads++;
+    return constants.SQLITE_OK;
+  });
+  try {
+    await f.lease.frame('clock-frame', 'data: {}\n\n');
+  } finally {
+    f.database.setAuthorizer(null);
+  }
+  expect(reads).toBe(0);
+});
+
+it('a host clock cannot change durable state inside its timestamp callback', async () => {
+  let mutate = () => {};
+  const f = await retainedFixture(() => {
+    mutate();
+    return 1_000;
+  });
+  cleanup.push(() => f.close());
+  f.database.exec('CREATE TABLE clock_probe(value INTEGER) STRICT');
+  mutate = () => {
+    f.database.exec('INSERT INTO clock_probe VALUES(1)');
+  };
+  await expect(f.lease.frame('clock-mutation', 'data: {}\n\n')).rejects.toThrow(
+    'CLOCK_CHANGED_STATE',
+  );
+  mutate = () => {};
+  await f.lease.assertCurrent();
+  expect(
+    f.database.prepare('SELECT count(*) AS n FROM clock_probe').get()?.n,
+  ).toBe(0);
 });

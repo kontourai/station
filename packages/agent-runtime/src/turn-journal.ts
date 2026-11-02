@@ -30,6 +30,7 @@ import {
   effectsDefinition,
   migrateAgentEffectBatches,
   migrateAgentEffects,
+  migrateAgentEffectTails,
   takeOverAgentEffects,
   unfinishedAgentEffects,
   validateAgentEffects,
@@ -221,9 +222,13 @@ const writer8Definitions = [
   ...writer7Definitions.slice(1),
   ...changeDefinitions,
 ];
-const currentDefinitions = [
+const writer9Definitions = [
   writer8Definitions[0]!.replaceAll('agent-steps/8', 'agent-steps/9'),
   ...writer8Definitions.slice(1),
+];
+const currentDefinitions = [
+  writer9Definitions[0]!.replaceAll('agent-steps/9', 'agent-steps/10'),
+  ...writer9Definitions.slice(1),
 ];
 const idOf = (key: RunKey) => canonical(key);
 const affinityKey = (spec: AgentTurnSpec): RunKey => ({
@@ -244,6 +249,8 @@ function validateRow(row: Record<string, unknown>): AgentTurnRecord {
   return turn;
 }
 
+const validatedSchemas = new WeakMap<DatabaseSync, string>();
+
 function validateAgentJournalSchema(
   database: DatabaseSync,
   inTransaction = false,
@@ -255,6 +262,17 @@ function validateAgentJournalSchema(
     (database.isTransaction && !inTransaction)
   )
     throw new Error('DURABLE_AGENT_STORAGE_POLICY');
+  if (
+    database
+      .prepare('SELECT writer_format FROM agent_steps_meta WHERE id=1')
+      .get()?.writer_format !== 'agent-steps/10'
+  )
+    throw new Error('DURABLE_AGENT_WRITER_UNSUPPORTED');
+  const schema = JSON.stringify([
+    database.prepare('PRAGMA main.schema_version').get()?.schema_version,
+    database.prepare('PRAGMA temp.schema_version').get()?.schema_version,
+  ]);
+  if (validatedSchemas.get(database) === schema) return;
   const rows = database
     .prepare(
       "SELECT sql FROM main.sqlite_schema WHERE (lower(name) GLOB 'agent_steps_*' OR lower(tbl_name) GLOB 'agent_steps_*') AND sql IS NOT NULL ORDER BY sql",
@@ -272,9 +290,10 @@ function validateAgentJournalSchema(
       ?.n !== 1 ||
     database
       .prepare('SELECT writer_format FROM agent_steps_meta WHERE id=1')
-      .get()?.writer_format !== 'agent-steps/9'
+      .get()?.writer_format !== 'agent-steps/10'
   )
     throw new Error('DURABLE_AGENT_WRITER_UNSUPPORTED');
+  validatedSchemas.set(database, schema);
 }
 
 function readAffinity(
@@ -575,7 +594,7 @@ export function openSqliteAgentJournal(options: {
     database.exec('BEGIN IMMEDIATE');
     try {
       for (const sql of currentDefinitions) database.exec(sql);
-      database.exec("INSERT INTO agent_steps_meta VALUES(1,'agent-steps/9')");
+      database.exec("INSERT INTO agent_steps_meta VALUES(1,'agent-steps/10')");
       database.exec('COMMIT');
     } catch (error) {
       if (database.isTransaction) database.exec('ROLLBACK');
@@ -839,8 +858,52 @@ export function openSqliteAgentJournal(options: {
       }
       migrateAgentEffectBatches(database);
       database.exec('DROP TABLE agent_steps_meta');
-      database.exec(currentDefinitions[0]!);
+      database.exec(writer9Definitions[0]!);
       database.exec("INSERT INTO agent_steps_meta VALUES(1,'agent-steps/9')");
+      database.exec('COMMIT');
+    } catch (error) {
+      if (database.isTransaction) database.exec('ROLLBACK');
+      invalidateAgentValidation(database);
+      throw error;
+    }
+  }
+  if (
+    database
+      .prepare('SELECT writer_format FROM agent_steps_meta WHERE id=1')
+      .get()?.writer_format === 'agent-steps/9'
+  ) {
+    const actual = database
+      .prepare(
+        "SELECT sql FROM main.sqlite_schema WHERE (lower(name) GLOB 'agent_steps_*' OR lower(tbl_name) GLOB 'agent_steps_*') AND sql IS NOT NULL ORDER BY sql",
+      )
+      .all()
+      .map((row) => row.sql);
+    if (
+      canonical(actual) !== canonical([...writer9Definitions].sort()) ||
+      database
+        .prepare(
+          "SELECT 1 FROM temp.sqlite_schema WHERE lower(name) GLOB 'agent_steps_*' OR lower(tbl_name) GLOB 'agent_steps_*'",
+        )
+        .get()
+    )
+      throw new Error('DURABLE_AGENT_MIGRATION_REFUSED');
+    database.exec('BEGIN IMMEDIATE');
+    try {
+      for (const row of database
+        .prepare('SELECT * FROM agent_steps_turns')
+        .all()) {
+        const turn = validateRow(row);
+        const id = idOf(turn.spec.key);
+        validateAgentEffects(database, id);
+        validateAgentApprovals(database, id);
+        readAgentFrames(database, id);
+        affinity(turn.spec);
+        settledAt(database, turn);
+      }
+      migrateAgentEffectTails(database);
+      database.exec('DROP TABLE agent_steps_meta');
+      database.exec(currentDefinitions[0]!);
+      database.exec("INSERT INTO agent_steps_meta VALUES(1,'agent-steps/10')");
       database.exec('COMMIT');
     } catch (error) {
       if (database.isTransaction) database.exec('ROLLBACK');
@@ -902,7 +965,13 @@ export function openSqliteAgentJournal(options: {
     ): Promise<AgentJournalResult> {
       if (closed) throw new Error('DURABLE_AGENT_STORAGE_CLOSED');
       const command = commandSchema.parse(raw);
-      const clock = context.now ?? Date.now;
+      const clock = () => {
+        const before = database.prepare('SELECT total_changes() AS n').get()?.n;
+        const at = (context.now ?? Date.now)();
+        if (database.prepare('SELECT total_changes() AS n').get()?.n !== before)
+          throw new Error('DURABLE_AGENT_CLOCK_CHANGED_STATE');
+        return at;
+      };
       database.exec(command.type === 'read' ? 'BEGIN' : 'BEGIN IMMEDIATE');
       try {
         validateSchema(true);
@@ -1063,7 +1132,7 @@ export function openSqliteAgentJournal(options: {
               throw new Error('DURABLE_ASYNC_PARTICIPANT');
           }
         }
-        if (participants.length || clock !== Date.now) {
+        if (participants.length) {
           invalidateAgentValidation(database);
           validateSelected = true;
           validateAgentEffects(database, idOf(key));

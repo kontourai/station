@@ -1,17 +1,29 @@
-import { mkdtempDisposableSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempDisposableSync,
+  readdirSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { Session } from 'node:inspector/promises';
 import { cpus, platform, release, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { monitorEventLoopDelay, performance } from 'node:perf_hooks';
+import { DatabaseSync } from 'node:sqlite';
+import { setTimeout as tokenDelay } from 'node:timers/promises';
 import type {
   LanguageModelV3,
   LanguageModelV3StreamPart,
 } from '@ai-sdk/provider';
 import { AgentRegistry, createVoltAgentObservability } from '@voltagent/core';
+import { Hono } from 'hono';
 import { z } from 'zod';
+import { createChatRuntimeFixture } from '../src-server/__test-utils__/chat-runtime-fixture.js';
 import { FileMemoryAdapter } from '../src-server/adapters/file/memory-adapter.js';
+import { streamPrimaryAgentChat } from '../src-server/routes/chat/chat-primary-stream.js';
 import { stationAgentRuntimeOwner } from '../src-server/runtime/agents/durable-agent-owner.js';
 import { VoltAgentFramework } from '../src-server/runtime/frameworks/voltagent-adapter.js';
+import { captureRuntimeConfigurationLease } from '../src-server/runtime/plugins/runtime-configuration-lease.js';
 import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 
 const args = process.argv.slice(2);
@@ -32,29 +44,53 @@ if (
   }).trim()
 )
   throw new Error('Benchmark requires the named committed clean revision');
-const watchdog = setTimeout(() => {
-  throw new Error('Agent runtime benchmark exceeded fifteen minutes');
-}, 900_000);
-watchdog.unref();
+
 const sizes = (
-  args.find((a) => a.startsWith('--sizes='))?.slice(8) ?? '10,40,80,200'
+  args.find((a) => a.startsWith('--sizes='))?.slice(8) ?? '10,80,200'
 )
   .split(',')
   .map(Number);
 const chunkCounts = (
-  args.find((a) => a.startsWith('--chunks='))?.slice(9) ?? '100,200,400'
+  args.find((a) => a.startsWith('--chunks='))?.slice(9) ?? '100,400'
+)
+  .split(',')
+  .map(Number);
+const pacing = (
+  args.find((a) => a.startsWith('--paces='))?.slice(8) ?? '0,5,20'
 )
   .split(',')
   .map(Number);
 if (
+  pacing.some((n) => ![0, 5, 20].includes(n)) ||
   sizes.some((n) => !Number.isSafeInteger(n) || n < 1 || n > 200) ||
   chunkCounts.some((n) => !Number.isSafeInteger(n) || n < 100 || n > 400)
 )
   throw new Error('Invalid bounded workload');
+const budgetMs =
+  900_000 +
+  2 *
+    sizes.reduce((a, b) => a + b, 0) *
+    chunkCounts.reduce((a, b) => a + b, 0) *
+    pacing.reduce((a, b) => a + b, 0);
+const watchdog = setTimeout(() => {
+  throw new Error(`Agent runtime benchmark exceeded ${budgetMs}ms`);
+}, budgetMs);
+watchdog.unref();
+function diskBytes(path: string): number {
+  if (!existsSync(path)) return 0;
+  const stat = statSync(path);
+  return stat.isDirectory()
+    ? readdirSync(path).reduce(
+        (n, child) => n + diskBytes(join(path, child)),
+        0,
+      )
+    : stat.size;
+}
 async function run(
   durable: boolean,
   steps: number,
   chunks: number,
+  paceMs: number,
   profile = false,
 ) {
   using dir = mkdtempDisposableSync(join(tmpdir(), 'agent-runtime-benchmark-'));
@@ -77,6 +113,9 @@ async function run(
   });
   let calls = 0;
   let tools = 0;
+  let textBytes = 0;
+  let walPeakBytes = 0;
+  const journalPath = join(dir.path, 'data/agent-runtime/steps.sqlite');
   const model: LanguageModelV3 = {
     specificationVersion: 'v3',
     provider: 'scripted',
@@ -98,7 +137,10 @@ async function run(
           delta:
             !tool && index === chunks - 1
               ? 'DONE'
-              : `step${calls}.chunk${index} `,
+              : `step${calls}.chunk${index}: streaming runtime durability evidence `.padEnd(
+                  64,
+                  'text ',
+                ),
         })),
         { type: 'text-end', id: 'answer' },
         ...(tool
@@ -123,11 +165,17 @@ async function run(
           },
         },
       ];
+      let index = 0;
       return {
         stream: new ReadableStream({
-          start(controller) {
-            for (const part of parts) controller.enqueue(part);
-            controller.close();
+          async pull(controller) {
+            const part = parts[index++]!;
+            if (part.type === 'text-delta') {
+              if (paceMs) await tokenDelay(paceMs);
+              textBytes += Buffer.byteLength(part.delta);
+            }
+            controller.enqueue(part);
+            if (index === parts.length) controller.close();
           },
         }),
       };
@@ -156,15 +204,40 @@ async function run(
     hooks: { beforeToolCall: async () => true },
   });
   const commits: number[] = [];
+  const projections: number[] = [];
   const execute = owner.journal.execute.bind(owner.journal);
   owner.journal.execute = async (command, context) => {
     const start = performance.now();
     try {
       return await execute(command, context);
     } finally {
-      commits.push(performance.now() - start);
+      const elapsed = performance.now() - start;
+      commits.push(elapsed);
+      if (command.type === 'projectFrame') projections.push(elapsed);
+      if (commits.length % 256 === 0)
+        walPeakBytes = Math.max(walPeakBytes, diskBytes(`${journalPath}-wal`));
     }
   };
+  const runtime = createChatRuntimeFixture(dir.path, storage);
+  const app = new Hono();
+  app.post('/chat', (c) =>
+    streamPrimaryAgentChat({
+      c,
+      ctx: runtime,
+      slug: 'assistant',
+      plugin: '',
+      input: 'Run the bounded workload.',
+      restOptions: {
+        userId: 'owner',
+        conversationId: 'conversation',
+        clientTurnId: 'turn',
+      },
+      injectContext: null,
+      ragContext: null,
+      agent,
+      configurationLease: captureRuntimeConfigurationLease(runtime)!,
+    }),
+  );
   const inspector = profile ? new Session() : undefined;
   inspector?.connect();
   if (inspector) {
@@ -177,20 +250,22 @@ async function run(
   const started = performance.now();
   let text = '';
   try {
-    const response = await agent.streamText('Run the bounded workload.', {
-      userId: 'owner',
-      conversationId: 'conversation',
-      clientTurnId: 'turn',
-    });
-    for await (const chunk of response.fullStream) {
-      if (chunk.type === 'error') throw new Error('Benchmark framework error');
-    }
-    const answer = await response.text;
-    if (answer === undefined)
-      throw new Error('Benchmark framework returned no text result');
-    text = answer;
-    await response.usage;
-    await response.finishReason;
+    const response = await app.request('/chat', { method: 'POST' });
+    if (response.status !== 200)
+      throw new Error(`Chat route status ${response.status}`);
+    const wire = await response.text();
+    const events = wire
+      .split('\n')
+      .filter((line) => line.startsWith('data: {'))
+      .map((line) => JSON.parse(line.slice(6)));
+    if (events.some((event) => event.type === 'error'))
+      throw new Error('Benchmark route error');
+    text = events
+      .filter((event) => event.type === 'text-delta')
+      .map((event) => event.text ?? event.delta ?? '')
+      .join('');
+    if (!wire.includes('data: [DONE]'))
+      throw new Error('Missing route terminal');
   } finally {
     delay.disable();
     if (inspector) {
@@ -204,16 +279,45 @@ async function run(
   const terminal = durable
     ? owner.read('conversation', 'turn')?.turn.state
     : undefined;
+  walPeakBytes = Math.max(walPeakBytes, diskBytes(`${journalPath}-wal`));
   await owner.pause();
+  const journalBytes = diskBytes(journalPath);
+  let bodiesBytes = 0;
+  let framesBytes = 0;
+  let frames = 0;
+  if (journalBytes) {
+    const database = new DatabaseSync(journalPath, { readOnly: true });
+    try {
+      bodiesBytes = Number(
+        database
+          .prepare(
+            'SELECT coalesce(sum(length(CAST(wire AS BLOB))),0) AS n FROM agent_steps_bodies',
+          )
+          .get()?.n,
+      );
+      const projected = database
+        .prepare(
+          'SELECT count(*) AS n,coalesce(sum(length(CAST(record AS BLOB))),0) AS bytes FROM agent_steps_frames',
+        )
+        .get();
+      frames = Number(projected?.n);
+      framesBytes = Number(projected?.bytes);
+    } finally {
+      database.close();
+    }
+  }
+  const onDiskBytes = diskBytes(dir.path);
   if (
     calls !== steps ||
     tools !== steps - 1 ||
     !text.endsWith('DONE') ||
+    Buffer.byteLength(text) !== textBytes ||
+    (durable && projections.length < steps * chunks) ||
     failures.length ||
     (durable && terminal !== 'completed')
   )
     throw new Error(
-      `Benchmark did not complete: ${JSON.stringify({ calls, tools, text, terminal, failures })}`,
+      `Benchmark did not complete: ${JSON.stringify({ calls, tools, text: text.slice(-128), observedTextBytes: Buffer.byteLength(text), textBytes, terminal, failures })}`,
     );
   const sorted = commits.sort((a, b) => a - b);
   const percentile = (q: number) =>
@@ -222,12 +326,30 @@ async function run(
     durable,
     steps,
     chunks,
+    paceMs,
     profile,
     milliseconds,
     modelCalls: calls,
     toolCalls: tools,
     operations: sorted.length,
     journalMs: { p50: percentile(0.5), p99: percentile(0.99) },
+    projectionMs: {
+      p50:
+        projections.sort((a, b) => a - b)[
+          Math.floor(projections.length * 0.5)
+        ] ?? null,
+      p99: projections[Math.floor(projections.length * 0.99)] ?? null,
+    },
+    storage: {
+      textBytes,
+      onDiskBytes,
+      journalBytes,
+      bodiesBytes,
+      framesBytes,
+      frames,
+      walPeakBytes,
+      ratio: onDiskBytes / textBytes,
+    },
     eventLoopDelayMs: {
       p50: delay.percentile(50) / 1e6,
       p99: delay.percentile(99) / 1e6,
@@ -252,33 +374,45 @@ AgentRegistry.getInstance().setGlobalObservability(observability);
 const results = [];
 try {
   for (const steps of sizes)
-    for (const chunks of chunkCounts) {
-      const baseline = await run(false, steps, chunks);
-      const durable = await run(true, steps, chunks);
-      results.push({
-        steps,
-        chunks,
-        baseline,
-        durable,
-        ratio: durable.milliseconds / baseline.milliseconds,
-      });
-      writeFileSync(
-        output,
-        JSON.stringify(
-          {
-            revision,
-            environment,
-            scope:
-              'actual Station VoltAgent adapter; scripted zero-network provider; FileMemory; fresh conversation; excludes HTTP/event projection',
-            results,
-          },
-          null,
-          2,
-        ),
-      );
-    }
+    for (const chunks of chunkCounts)
+      for (const paceMs of pacing) {
+        const baseline = await run(false, steps, chunks, paceMs);
+        const durable = await run(true, steps, chunks, paceMs);
+        results.push({
+          steps,
+          chunks,
+          paceMs,
+          baseline,
+          durable,
+          ratio: durable.milliseconds / baseline.milliseconds,
+        });
+        writeFileSync(
+          output,
+          JSON.stringify(
+            {
+              revision,
+              environment,
+              scope:
+                'actual Station VoltAgent adapter and in-process Hono chat/SSE route including projectFrame; scripted paced provider; FileMemory; fresh conversation; excludes only TCP',
+              results,
+            },
+            null,
+            2,
+          ),
+        );
+        process.stdout.write(
+          `${JSON.stringify({
+            steps,
+            chunks,
+            paceMs,
+            ratio: durable.milliseconds / baseline.milliseconds,
+            storageRatio: durable.storage.ratio,
+            p99: durable.eventLoopDelayMs.p99,
+          })}\n`,
+        );
+      }
   if (args.includes('--profile'))
-    await run(true, sizes.at(-1)!, chunkCounts.at(-1)!, true);
+    await run(true, sizes.at(-1)!, chunkCounts.at(-1)!, 0, true);
 } finally {
   await observability.shutdown();
   clearTimeout(watchdog);

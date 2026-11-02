@@ -68,7 +68,7 @@ export function readAgentFrames(
     .all(turnId)
     .map(parseFrame);
   if (
-    frames.length > 65536 ||
+    frames.length > 1_048_576 ||
     frames.some((frame, index) => frame.position !== index)
   )
     throw new Error('DURABLE_AGENT_FRAME_ORDER_DAMAGED');
@@ -90,7 +90,10 @@ export function projectAgentFrame(
         )
         .get(turnId)?.n ?? -1,
     ) + 1;
-  if (position >= 65536 || Buffer.byteLength(command.wire) > 32 * 1024 * 1024)
+  if (
+    position >= 1_048_576 ||
+    Buffer.byteLength(command.wire) > 32 * 1024 * 1024
+  )
     throw new Error('DURABLE_AGENT_FRAME_CAPACITY');
   const frame = frameSchema.parse({
     version: 1,
