@@ -70,6 +70,12 @@ export const NOTIFICATION_SOUND_VALUES = [
   'none',
 ] as const satisfies readonly NotificationSound[];
 
+/**
+ * #4405 (A36): the inbox scope that follows the project page on screen, and
+ * shows all work anywhere else.
+ */
+export const INBOX_SCOPE_CURRENT_PROJECT = 'current-project';
+
 export interface InboxSectionsState {
   snoozed: boolean;
   earlier: boolean;
@@ -313,6 +319,10 @@ export interface DeviceSettings {
   chatDockWidth: number;
   diffStyle: 'unified' | 'split';
   diffWrap: boolean;
+  /**
+   * `'all'`, a Station or project key, or `INBOX_SCOPE_CURRENT_PROJECT`
+   * (the default: the project page on screen, else all work).
+   */
   inboxScope: string;
   inboxOpen: boolean;
   inboxSections: InboxSectionsState;
@@ -833,7 +843,10 @@ export const DEVICE_SETTINGS_REGISTRY = [
     label: 'Inbox scope',
     help: 'Limit the inbox to one project or Station on this device.',
     description: 'Selected project or Station filter for the inbox.',
-    defaultValue: 'all',
+    // #4405 (A36): unchosen, the inbox follows the project page you are on
+    // (`INBOX_SCOPE_CURRENT_PROJECT`), and shows all work outside one. A
+    // stored choice, "All work" included, is kept.
+    defaultValue: INBOX_SCOPE_CURRENT_PROJECT,
   }),
   defineDeviceSetting({
     key: 'inboxOpen',
