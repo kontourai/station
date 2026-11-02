@@ -284,6 +284,7 @@
 }
 .session-model-picker .model-runtime-effort-choices {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--k-space-1);
   margin: 0 0 var(--k-space-3);
   padding: 0;
