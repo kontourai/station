@@ -52,7 +52,9 @@ function throwIfCancelled(signal: AbortSignal): void {
   if (signal.aborted) throw cancelled();
 }
 
-async function waitForCleanup(done: Promise<void>): Promise<void> {
+export async function waitForRecordingCleanup(
+  done: Promise<void>,
+): Promise<void> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     await Promise.race([
@@ -69,7 +71,7 @@ async function waitForCleanup(done: Promise<void>): Promise<void> {
   }
 }
 
-function encode(
+export function encodeBrowserRecording(
   ffmpeg: string,
   concat: string,
   durationMs: number,
@@ -208,7 +210,7 @@ export class TaskBrowserRecording {
     this.disposed = true;
     const jobs = [...this.jobs];
     for (const job of jobs) job.controller.abort();
-    await waitForCleanup(
+    await waitForRecordingCleanup(
       Promise.allSettled(jobs.map((job) => job.done)).then(() => {}),
     );
     if (this.cleanupFailures.length)
@@ -299,7 +301,7 @@ export class TaskBrowserRecording {
       if (entry) {
         offSurface = entry.onDispose(async () => {
           controller.abort();
-          await waitForCleanup(done);
+          await waitForRecordingCleanup(done);
         });
         if (entry.signal.aborted) controller.abort();
       }
@@ -405,7 +407,7 @@ export class TaskBrowserRecording {
           mode: 0o600,
         });
         throwIfCancelled(signal);
-        const bytes = await encode(
+        const bytes = await encodeBrowserRecording(
           resolution.paths.ffmpeg,
           concat,
           input.durationMs,

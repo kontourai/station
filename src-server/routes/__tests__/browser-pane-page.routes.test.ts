@@ -19,6 +19,7 @@ import {
   type CdpTransport,
   createLocalBrowserHostResolver,
 } from '../../services/browser/browser-host.js';
+import type { BrowserHumanRecording } from '../../services/browser/browser-human-recording.js';
 import { BrowserLiveSurfaces } from '../../services/browser/browser-live-surfaces.js';
 import { BrowserSessionRegistry } from '../../services/browser/browser-session-registry.js';
 import { CdpProtocolError } from '../../services/browser/cdp-pipe-transport.js';
@@ -155,6 +156,7 @@ function harness(
     /** The Project's `browserEvaluate` (D4); absent: no settings store. */
     browserEvaluate?: boolean;
     networkPreview?: boolean;
+    humanRecordings?: BrowserHumanRecording;
     /** The live-surface lease's clock and holds (test seam). */
     lease?: { now: () => number; humanHoldMs?: number };
   } = {},
@@ -214,6 +216,9 @@ function harness(
     consoleFor: (id, after) => binder.consoleFor(id, after),
     networkFor: (id, after, limit) => binder.networkFor(id, after, limit),
     networkPreviewEnabled: () => networkPreview,
+    ...(options.humanRecordings
+      ? { humanRecordings: options.humanRecordings }
+      : {}),
     ...(options.browserEvaluate !== undefined
       ? {
           projectSettings: {
@@ -320,6 +325,57 @@ function harness(
 }
 
 describe('Browser pane: network diagnostics', () => {
+  test('recording routes require a person and current Browser authority', async () => {
+    const recorder = {
+      start: vi.fn(() => 'recording-id'),
+      status: vi.fn(() => ({ id: 'recording-id', state: 'recording' })),
+      stop: vi.fn(() => true),
+      video: vi.fn(() => Buffer.from('webm')),
+      cancel: vi.fn(() => true),
+    };
+    const h = harness({
+      networkPreview: true,
+      humanRecordings: recorder as unknown as BrowserHumanRecording,
+    });
+    try {
+      const session = await h.open();
+      const path = `/sessions/${session.browserSessionId}/recordings`;
+      const body = { generation: session.generation };
+      h.setNetworkPreview(false);
+      const disabled = await h.browser('POST', path, { body });
+      expect(disabled.status).toBe(404);
+      expect((await disabled.json()).code).toBe('feature_preview_disabled');
+      h.setNetworkPreview(true);
+      expect(
+        (await h.browser('POST', path, { agent: true, body })).status,
+      ).toBe(403);
+      expect(
+        (await h.browser('POST', path, { role: 'nobody', body })).status,
+      ).toBe(403);
+      expect(recorder.start).not.toHaveBeenCalled();
+      expect(
+        (
+          await h.browser('POST', path, {
+            body: { generation: session.generation + 1 },
+          })
+        ).status,
+      ).toBe(409);
+      expect((await h.browser('POST', path, { body })).status).toBe(201);
+      expect((await h.browser('GET', `${path}/recording-id`)).status).toBe(200);
+      expect(
+        (await h.browser('POST', `${path}/recording-id/stop`, { body: {} }))
+          .status,
+      ).toBe(200);
+      expect(
+        (await h.browser('GET', `${path}/recording-id/video`)).headers.get(
+          'content-type',
+        ),
+      ).toBe('video/webm');
+    } finally {
+      await h.binder.dispose();
+      await h.sessions.shutdown();
+    }
+  });
   test.each([false, true])(
     'agent network read requires evaluation permission: %s',
     async (browserEvaluate) => {

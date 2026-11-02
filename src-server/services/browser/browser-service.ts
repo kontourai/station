@@ -6,12 +6,15 @@
 import { findRunning } from '@kontourai/station-shared/instance-registry';
 import { createLogger } from '../../utils/logger.js';
 import type { LiveSurfaceRegistry } from '../live-surface/registry.js';
+import type { MediaToolsResolver } from '../media-tools/media-tools-resolver.js';
+import { encodeBrowserRecording } from '../projects/task-browser-recording.js';
 import type { BrowserProjectAuthorizer } from './browser-access.js';
 import type { BrowserConsoleSnapshot } from './browser-console-log.js';
 import {
   type BrowserHost,
   createLocalBrowserHostResolver,
 } from './browser-host.js';
+import { BrowserHumanRecording } from './browser-human-recording.js';
 import { BrowserLiveSurfaces } from './browser-live-surfaces.js';
 import { LocalTargetStore } from './browser-local-targets.js';
 import type { BrowserNetworkLog } from './browser-network-log.js';
@@ -52,6 +55,7 @@ export interface BrowserServiceOptions {
   /** The resolved allowed-origin list (`resolveConfiguredRuntimeOrigins`). */
   configuredOrigins: readonly string[];
   networkPreviewEnabled?: () => boolean;
+  recordingResolver?: Pick<MediaToolsResolver, 'resolveFfmpeg'>;
   /**
    * More Station-owned listener ports, read LIVE on every check and never
    * cached: the managed device hub and its stream helpers (#1970), whose
@@ -69,6 +73,7 @@ export interface BrowserServiceOptions {
 }
 
 export interface BrowserService {
+  humanRecordings?: BrowserHumanRecording;
   registry: BrowserSessionRegistry;
   acquisition: ChromiumAcquisition;
   localTargets: LocalTargetStore;
@@ -206,7 +211,18 @@ export function createBrowserService(
           }),
       })
     : undefined;
+  const humanRecordings =
+    surfaces && options.liveSurfaces && options.recordingResolver
+      ? new BrowserHumanRecording({
+          registry,
+          surfaces: options.liveSurfaces.registry,
+          surfaceIdFor: (id) => surfaces.surfaceIdFor(id),
+          resolver: options.recordingResolver,
+          encode: encodeBrowserRecording,
+        })
+      : undefined;
   return {
+    ...(humanRecordings ? { humanRecordings } : {}),
     registry,
     acquisition,
     localTargets,
@@ -226,6 +242,7 @@ export function createBrowserService(
     networkFor: async (browserSessionId, after, limit) =>
       surfaces?.networkFor(browserSessionId, after, limit),
     shutdown: async () => {
+      await humanRecordings?.dispose();
       // Surfaces first: no viewer keeps streaming from a browser being shut.
       await surfaces?.dispose();
       await registry.shutdown();

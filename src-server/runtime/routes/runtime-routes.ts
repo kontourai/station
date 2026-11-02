@@ -8133,7 +8133,8 @@ export function configureRuntimeRoutes(
     const browserArtifactsPreview = context.featurePreviews.bind({
       id: 'browser-artifacts',
       label: 'Browser artifacts',
-      description: 'Try Browser annotations and network diagnostics.',
+      description:
+        'Try Browser annotations, recording and network diagnostics.',
     });
     const browserArtifactsEnabled = () =>
       browserArtifactsPreview.select({
@@ -8146,6 +8147,7 @@ export function configureRuntimeRoutes(
       consentPort: configuredConsentPort(),
       configuredOrigins: allowedOrigins,
       networkPreviewEnabled: browserArtifactsEnabled,
+      recordingResolver: context.walkthroughImportDependencies.resolver,
       // #1970: the managed device hub and its helpers, read live.
       // #1973: every SSH device host's local forward and host hub port too.
       extraListenerPorts: () => [
@@ -8179,6 +8181,7 @@ export function configureRuntimeRoutes(
         consoleFor: browserService.consoleFor,
         networkFor: browserService.networkFor,
         networkPreviewEnabled: browserArtifactsEnabled,
+        humanRecordings: browserService.humanRecordings,
         authorizeProject: authorizeBrowserProject,
         authorizeOperator: createBrowserOperatorAuthorizer(browserAccess),
         localTargets: browserService.localTargets,

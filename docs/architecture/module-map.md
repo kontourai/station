@@ -5185,8 +5185,9 @@ which retains bounded, redacted request metadata in memory per generation.
 an optional target PNG crop after checking page identity. The Browser pane's
 annotation overlay maps pointer positions to the target viewport; its file
 intake passes the image and JSON description to the selected conversation's
-existing attachment staging owner. Human-controlled recording remains separate
-work; the Task recorder described below accepts a bound Agent call.
+existing attachment staging owner. A person can capture a bounded WebM through
+`browser-human-recording.ts` and save it locally; it does not publish Task clips.
+The separate Task recorder described below accepts a bound Agent call.
 
 **Evidence and limits.** Synthetic tests include `chromium-acquisition.test.ts`,
 `browser-session-registry.test.ts`, `egress-policy.test.ts`,

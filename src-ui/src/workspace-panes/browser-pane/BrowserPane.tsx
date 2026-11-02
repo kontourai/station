@@ -10,6 +10,7 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -63,6 +64,11 @@ import {
   BrowserOverflowMenu,
 } from './BrowserOverflowMenu';
 import { BrowserPageDialog } from './BrowserPageDialog';
+import {
+  BrowserRecordingButton,
+  BrowserRecordingStatus,
+  useBrowserRecording,
+} from './BrowserRecording';
 import {
   BrowserScreenshot,
   type BrowserScreenshotShot,
@@ -309,7 +315,10 @@ export default function BrowserPane({
   transport = authenticatedFetch,
 }: BrowserPaneProps) {
   const { apiBase } = useApiBase();
-  const api = browserPaneApi(apiBase, transport);
+  const api = useMemo(
+    () => browserPaneApi(apiBase, transport),
+    [apiBase, transport],
+  );
   const queryClient = useQueryClient();
   const access = useQuery({
     queryKey: browserPaneKeys.access(apiBase, projectSlug),
@@ -759,6 +768,12 @@ function BrowserSessionPane({
   });
 
   const live = record?.state === 'live';
+  const recording = useBrowserRecording(
+    api,
+    browserSessionId,
+    generation ?? 0,
+    live && artifactsEnabled,
+  );
   const consoleState = useBrowserConsole({
     apiBase,
     api,
@@ -901,6 +916,22 @@ function BrowserSessionPane({
       disabled: !live || screenshot.isPending,
       onSelect: () => screenshot.mutate(),
     },
+    ...(artifactsEnabled
+      ? [
+          {
+            kind: 'action' as const,
+            id: 'record',
+            label: recording.active ? 'Stop recording' : 'Record',
+            glyph: <CameraGlyph />,
+            disabled:
+              !live ||
+              recording.busy ||
+              recording.stopping ||
+              (!recording.active && recording.phase !== 'idle'),
+            onSelect: recording.toggle,
+          },
+        ]
+      : []),
     ...(artifactsEnabled
       ? [
           {
@@ -1152,6 +1183,9 @@ function BrowserSessionPane({
           ) : null}
         </IconButton>
         {artifactsEnabled ? (
+          <BrowserRecordingButton recording={recording} live={live} />
+        ) : null}
+        {artifactsEnabled ? (
           <Button
             size="sm"
             disabled={!live}
@@ -1245,10 +1279,16 @@ function BrowserSessionPane({
             />
           </div>
         ) : null}
-        {notice || shot || (newDialog && !isDismissed(newDialog)) ? (
+        {notice ||
+        shot ||
+        (artifactsEnabled && (recording.phase !== 'idle' || recording.error)) ||
+        (newDialog && !isDismissed(newDialog)) ? (
           // Laid over the live view, never above it: a notice appearing must
           // not move the canvas under someone's pointer.
           <div className="browser-pane__notices">
+            {artifactsEnabled ? (
+              <BrowserRecordingStatus recording={recording} />
+            ) : null}
             {notice ? (
               <div className="browser-pane__overlay-notice">
                 <p className="browser-pane__notice" role="alert">

@@ -368,6 +368,23 @@ session (a second request joins the one in flight), and offers **Save image**
 and, where the viewer's clipboard accepts PNGs, **Copy image**. With Browser
 artifacts enabled, **Attach to chat** adds it to the active composer.
 
+With **Browser artifacts** enabled, **Record** in the toolbar or **⋯** starts a
+silent Browser clip. The indicator stays visible while capturing; **Stop
+recording** finishes it, and **Save clip** downloads a WebM. Capture also stops
+at 30 seconds. It admits at most 300 frames and 64 MiB of raw JPEGs; the encoded
+clip is limited to 16 MiB. FFmpeg must already be available through Station's
+media-tools resolver. A missing tool refuses the recording; downloading one
+requires the operator's separate consent. The clip may contain sensitive page
+content. It is not automatically attached to a Task or chat.
+
+The server rechecks Browser view authority, preview state and session generation
+while capturing and before returning a clip. Closing the Browser surface or
+stopping Station cancels in-progress work. The server retains a completed clip
+for one minute; the open viewer owns the downloaded Blob until
+it is dismissed. Generated temporary frame files are removed after encoding or
+cancellation. A process crash can leave its private temporary staging directory;
+automatic crash cleanup is not currently provided.
+
 A workspace Browser pane keeps an ordered set of up to twelve session tabs.
 Select a tab to watch its exact server session; arrow keys select adjacent tabs
 and Alt+Left/Right reorders them. **New tab** opens a blank session. Closing a

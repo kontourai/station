@@ -6763,6 +6763,17 @@ feature preview and Browser view authority:
   across updates. Advance the cursor through pages before using `latestSeq`.
   Requests from an Agent also require **Let agents run JavaScript in this
   Project's pages** (`browserEvaluate`).
+- `POST /api/browser/sessions/:browserSessionId/recordings` takes
+  `{generation}` and starts a person-owned silent recording. It returns
+  `{recordingId}`. `GET .../recordings/:recordingId` reads its state;
+  `POST .../recordings/:recordingId/stop` requests completion, and `DELETE`
+  cancels or discards it. `GET .../recordings/:recordingId/video` returns a
+  bounded WebM while it is retained. Each operation rechecks person and Browser
+  authority, preview state, session generation and recording ownership. There
+  are at most two retained jobs per Station. Capture stops at 30 seconds and
+  refuses more than 300 frames or 64 MiB of raw input; encoded output is limited to 16 MiB and a
+  completed result is retained for one minute. This path offers a local save;
+  it does not publish a Task clip.
 
 Browser capture routes on personal hosts:
 

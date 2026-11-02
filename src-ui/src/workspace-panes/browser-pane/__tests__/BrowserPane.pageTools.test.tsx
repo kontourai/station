@@ -454,6 +454,35 @@ describe('the console drawer', () => {
 });
 
 describe('screenshots', () => {
+  test('the menu starts a recording and the toolbar stops it', async () => {
+    artifactFixture.enabled = true;
+    controlHolder.state = control();
+    let state: 'recording' | 'encoding' = 'recording';
+    const path = `/api/browser/sessions/${SESSION}/recordings`;
+    const fake = renderPane({
+      [SUMMARY]: ok(sessionView()),
+      [`POST ${path}`]: () => ({
+        body: { success: true, data: { recordingId: 'r1' } },
+      }),
+      [`GET ${path}/r1`]: () => ({
+        body: { success: true, data: { id: 'r1', state } },
+      }),
+      [`POST ${path}/r1/stop`]: () => {
+        state = 'encoding';
+        return { body: { success: true } };
+      },
+      [`DELETE ${path}/r1`]: () => ({ body: { success: true } }),
+    });
+    await chooseFromMenu('Record');
+    expect(await screen.findByText('Recording…')).toBeTruthy();
+    await clickWhenEnabled('Stop recording');
+    await waitFor(() =>
+      expect(fake.calls).toContainEqual(
+        expect.objectContaining({ method: 'POST', path: `${path}/r1/stop` }),
+      ),
+    );
+    expect(await screen.findByText('Finishing recording…')).toBeTruthy();
+  });
   test('marks screenshot page provenance as untrusted in the attachment metadata', async () => {
     artifactFixture.enabled = true;
     controlHolder.state = control();
