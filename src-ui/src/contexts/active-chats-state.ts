@@ -26,6 +26,8 @@ import type {
   ToolRequestServerGrant,
   ToolRequestSessionGrant,
 } from '@kontourai/station-shared/tool-request-preview';
+import type { PeerChatBinding } from '../lib/peer-chat';
+import { readPeerChatBinding } from '../lib/peer-chat';
 import {
   readSkillExperienceDraft,
   type SkillExperienceDraft,
@@ -369,6 +371,7 @@ export type ChatLiveUsage = {
 };
 
 export type ChatUIState = {
+  peerChat?: PeerChatBinding;
   taskShaping?: boolean;
   skillExperienceDraft?: SkillExperienceDraft;
   skillExperienceDraftInvalid?: boolean;
@@ -834,6 +837,7 @@ export type ActiveChatMetadata = {
 };
 
 export type PersistedActiveChat = {
+  peerChat?: PeerChatBinding;
   taskShaping?: boolean;
   skillExperienceDraft?: SkillExperienceDraft;
   skillExperienceDraftInvalid?: boolean;
@@ -1158,6 +1162,7 @@ export function hydrateActiveChats(
       inputHistory: stringList(session.inputHistory),
       hasUnread: false,
       agentSlug: session.agentSlug,
+      peerChat: readPeerChatBinding(session.peerChat),
       conversationId: text(session.conversationId),
       currentSessionId: text(session.currentSessionId),
       conversationOpenPending: typeof session.conversationId === 'string',
@@ -1299,6 +1304,7 @@ export function activeChatDurableId(
  * see `activeChatHasWork` below.
  */
 export function isDurableActiveChat(chat: {
+  peerChat?: PeerChatBinding;
   conversationId?: string;
   unsentMessages?: unknown[];
   queuedMessages?: unknown[];
@@ -1309,7 +1315,8 @@ export function isDurableActiveChat(chat: {
 }): boolean {
   if (chat.replay) return false;
   return Boolean(
-    chat.conversationId ||
+    chat.peerChat ||
+      chat.conversationId ||
       chat.unsentMessages?.length ||
       chat.skillExperienceDraft ||
       chat.skillExperienceDraftInvalid ||
@@ -1366,6 +1373,7 @@ export function serializeActiveChats(
       conversationId: chat.conversationId,
       currentSessionId: chat.currentSessionId,
       agentSlug: chat.agentSlug!,
+      peerChat: chat.peerChat,
       queuedMessages: chat.queuedMessages || [],
       queuedMessageMetadata: chat.queuedMessageMetadata,
       pendingQueueDispatch: chat.pendingQueueDispatch,
@@ -1597,6 +1605,7 @@ export function mergeChatUpdates(
     chat.stopSettledTurnId = undefined;
   }
   const shouldPersist =
+    'peerChat' in nextUpdates ||
     'skillExperienceDraft' in nextUpdates ||
     'skillExperienceDraftInvalid' in nextUpdates ||
     'skillExperienceActive' in nextUpdates ||

@@ -4146,6 +4146,28 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                               },
                             );
                           },
+                          onPeerChatStarted: (agent, binding) => {
+                            const sessionId = openChatForAgentInScopedPane(
+                              agent,
+                              dockChromeProjectSlug ?? undefined,
+                            );
+                            if (!sessionId)
+                              throw new Error('Could not open the chat.');
+                            updateChat(sessionId, {
+                              peerChat: binding,
+                              provider: undefined,
+                              executionAgentId: undefined,
+                              conversationOpenPending: false,
+                              title:
+                                binding.pending?.text.trim().slice(0, 80) ||
+                                'New chat',
+                            });
+                            settleDockForStartedDraft();
+                            setShowNewChatModal(false, undefined, 'started');
+                            setNewChatProjectOverride(null);
+                            setHandoffSource(null);
+                            navigate(pathname, { chat: sessionId });
+                          },
                           onTaskStarted: (task, stationName) => {
                             setShowNewChatModal(false, undefined, 'started');
                             setNewChatProjectOverride(null);

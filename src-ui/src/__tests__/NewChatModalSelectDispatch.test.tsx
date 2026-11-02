@@ -1,3 +1,6 @@
+import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactElement, ReactNode } from 'react';
 /**
  * @vitest-environment jsdom
  *
@@ -33,7 +36,7 @@ import {
   act,
   cleanup,
   fireEvent,
-  render,
+  render as renderComponent,
   screen,
   waitFor,
   within,
@@ -54,6 +57,17 @@ import { resetStartChoicesForTests } from '../hooks/useStartSelection';
 vi.mock('../components/chat-start/StartStationControl', () => ({
   StartStationControl: () => <span>Runs on this Station</span>,
 }));
+
+function render(ui: ReactElement) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return renderComponent(ui, {
+    wrapper: ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    ),
+  });
+}
 
 const AGENT: AgentData = {
   slug: 'assistant',
@@ -280,6 +294,8 @@ const { pluginAuthoringComposerDraft } = await import(
 
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
+  setClientCredentialResolver(undefined);
   hostScope.current = undefined;
   launcher.props = null;
   resetStartChoicesForTests();
@@ -1614,6 +1630,94 @@ describe('the start composer in the dock', () => {
     },
   );
 
+  test('a paired chat chooses the receiver’s project and opens a chat without creating a task', async () => {
+    const fingerprint = 'c'.repeat(64);
+    const profile: AgentData = {
+      slug: agentId('codex'),
+      name: 'Codex',
+      available: true,
+      definitionFingerprint: fingerprint,
+    };
+    selectionModelState.agents = [profile];
+    selectionModelState.recommendedAgent = profile;
+    hostScope.current = {
+      apiBase: 'http://station.test',
+      authorityKey: 'source-authority',
+      isCurrent: () => true,
+    };
+    featurePreviews.current = [{ id: 'paired-station-chats', enabled: true }];
+    const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+      Response.json({
+        success: true,
+        data: [
+          {
+            id: 'receiver-only-project',
+            slug: 'windows-checkout',
+            name: 'Windows checkout',
+            workingDirectory: 'C:\\work\\station',
+            hasWorkingDirectory: true,
+            layoutCount: 0,
+            hasKnowledge: false,
+          },
+        ],
+      }),
+    );
+    vi.stubGlobal('fetch', fetch);
+    setClientCredentialResolver(async () => ({
+      origin: 'http://station.test',
+      credential: 'source-token',
+      requestAuthority: hostScope.current!,
+    }));
+    const onPeerChatStarted = vi.fn();
+    const onTaskStarted = vi.fn();
+    const onSelect = start(vi.fn(), {
+      initialPrompt: 'Which machine is this?',
+      onPeerChatStarted,
+      onTaskStarted,
+      startSelection: {
+        context: '__global__',
+        agentSlug: profile.slug,
+        model: {
+          modelId: 'remote-model',
+          executionAgentId: agentId('codex'),
+          expectedDefinitionFingerprint: fingerprint,
+          environmentId: 'peer-kontour',
+          providerOptions: {},
+        },
+      },
+    });
+    await screen.findByText(/Choose a project on the selected Station/);
+    fireEvent.click(
+      await screen.findByRole('button', { name: /Project: Choose a project/ }),
+    );
+    fireEvent.click(
+      await screen.findByRole('button', { name: /Windows checkout/ }),
+    );
+    await waitFor(() => expect(startButton().disabled).toBe(false));
+    fireEvent.click(startButton());
+    expect(onPeerChatStarted).toHaveBeenCalledWith(
+      profile,
+      expect.objectContaining({
+        environmentId: 'peer-kontour',
+        projectSlug: 'windows-checkout',
+        model: 'remote-model',
+        pending: expect.objectContaining({
+          text: 'Which machine is this?',
+          dispatched: false,
+        }),
+      }),
+    );
+    expect(onTaskStarted).not.toHaveBeenCalled();
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole('dialog', { name: 'Run on a Station' }),
+    ).toBeNull();
+    expect(String(fetch.mock.calls[0]?.[0])).toContain(
+      '/peer-kontour/chat-api/api/projects',
+    );
+    vi.unstubAllGlobals();
+  });
+
   describe("a start carrying Home's selection", () => {
     test('carries an explicit This Station selection for a plain Agent without fabricating an engine override', async () => {
       selectionModelState.agents = [AGENT];
@@ -2095,7 +2199,7 @@ test('New Task start surface retains its label and Escape closes it', () => {
   );
   expect(screen.getByRole('region', { name: 'New Task' })).toBeTruthy();
   // No title bar: the draft's own line names what Start will do.
-  expect(screen.getByText(/^Shape a Task without a project on /)).toBeTruthy();
+  expect(screen.getByRole('heading', { name: 'Shape a Task' })).toBeTruthy();
   fireEvent.keyDown(screen.getByPlaceholderText('Describe the idea…'), {
     key: 'Escape',
   });

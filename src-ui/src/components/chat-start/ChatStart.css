@@ -45,14 +45,10 @@
   color: var(--k-text-muted);
 }
 
-/* The dock's New chat draft reads like an empty chat: a quiet line centred
-   in the body, setup and errors under it, and the start composer pinned
-   where a reply composer sits. */
-/* The body takes the room the composer leaves and scrolls itself, so setup
-   and errors are never underneath the composer. */
+/* Setup feedback precedes the centered New Chat composer. */
 .new-chat-draft__body {
   display: flex;
-  flex: 1 1 0;
+  flex: 0 0 auto;
   flex-direction: column;
   gap: var(--k-space-3);
 }
@@ -77,11 +73,11 @@
 .new-chat-modal > .start-composer {
   flex: 0 0 auto;
   box-sizing: border-box;
-  position: sticky;
-  bottom: 0;
+  margin-block: auto;
   z-index: 1;
   background: var(--k-bg);
-  padding: 0 var(--k-space-3) max(var(--k-space-3), var(--safe-bottom, 0px));
+  padding: var(--k-space-5) var(--k-space-4)
+    max(var(--k-space-5), var(--safe-bottom, 0px));
 }
 /* A short dock (a desktop bottom dock at its normal height) keeps the body
    readable: the draft's text box shrinks with the draft's height (`cqh` of
@@ -91,8 +87,7 @@
   min-height: 2.75rem;
   height: clamp(2.75rem, 100cqh - 25rem, 6rem);
 }
-/* A file dragged over the draft: the whole draft takes it. Drawn above the
-   pinned composer, whose background would otherwise cover the frame. */
+/* A file drag covers the whole draft, including the composer. */
 .new-chat-modal[data-file-drag]::after {
   content: "";
   position: absolute;
@@ -102,9 +97,7 @@
   border-radius: var(--k-radius-md);
   pointer-events: none;
 }
-/* While a setup panel shows, Start cannot run yet: setup and the composer
-   scroll together in the draft (one scroller) instead of a squeezed body
-   over a pinned composer. */
+/* Setup and the composer scroll together while Start is unavailable. */
 .new-chat-modal:has(.chat-start__setup) > .new-chat-draft__body {
   flex: 1 0 auto;
   overflow-y: visible;

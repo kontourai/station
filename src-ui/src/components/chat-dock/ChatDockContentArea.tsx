@@ -16,6 +16,11 @@ import type { ComposerActionsMenuProps } from './ComposerActionsMenu';
 // Stable module-scope loader: LazyBoundary rebuilds its lazy component when
 // the load identity changes, so an inline loader re-suspends on every parent
 // render (station#2605).
+const loadPeerChatBody = () =>
+  import('./PeerChatBody').then(({ PeerChatBody }) => ({
+    default: PeerChatBody,
+  }));
+
 const loadConversationHistory = () =>
   import('../chat/ConversationHistory').then(({ ConversationHistory }) => ({
     default: ConversationHistory,
@@ -150,6 +155,18 @@ function ChatDockContentAreaImpl({
   onRetryConversationOpen,
   onOpenBackgroundTasks,
 }: ChatDockContentAreaProps) {
+  if (activeSession?.peerChat)
+    return (
+      <LazyBoundary
+        key={activeSession.id}
+        load={loadPeerChatBody}
+        componentProps={{
+          chat: activeSession,
+          binding: activeSession.peerChat,
+        }}
+        pending={<SkeletonList label="Opening remote chat" />}
+      />
+    );
   return (
     <div className="chat-dock__content-area">
       {isHistoryOpen && (

@@ -38,6 +38,7 @@ import type {
   FlowGateVerdictInfo,
   FlowRunBinding,
 } from './contexts/active-chats-state';
+import type { PeerChatBinding } from './lib/peer-chat';
 import type { EffectiveModelSource } from './utils/execution';
 import type { TransformationReceipt } from './utils/heif-normalizer';
 import type { PlanArtifact } from './utils/planArtifacts';
@@ -357,6 +358,7 @@ export interface UnacknowledgedDecision {
 }
 
 export interface ChatSession {
+  peerChat?: PeerChatBinding;
   taskShaping?: boolean;
   skillExperienceDraft?: import('./lib/skill-experience-draft').SkillExperienceDraft;
   skillExperienceDraftInvalid?: boolean;
