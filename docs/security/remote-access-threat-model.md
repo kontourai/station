@@ -664,7 +664,13 @@ can expose page contents and is served through that Task's authorized reads.
 Device session enumeration, capture and recording require `terminal:operate`
 in addition to current Task, Project and device authority. A Device recording
 or agent log sample holds the device input lease and refuses a human-held lease;
-log output is bounded and can contain private application data.
+log output is bounded and can contain private application data. Project app
+staging and Task reproduction capture also require `terminal:operate`, plus
+current Project, Device and Task authority. Workspace staging refuses symlinks
+and escapes; uploads and host-side installation are bounded. A reproduction
+attachment includes a screenshot and app logs, so Task readers can see those
+contents. A lost response after installation or Task publication may leave the
+effect unconfirmed; the caller must inspect the device or Task before retrying.
 
 The exact `POST /api/projects/:projectSlug/walkthroughs/import` and
 `POST /api/transcription` uploads also retain the standard principal rate

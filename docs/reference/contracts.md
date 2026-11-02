@@ -1835,8 +1835,11 @@ Host/device IDs are descriptive and carry no credentials, paths, or execution
 authority. A capture is one observed frame, not stream health or app/build
 identity. The contract also exports the pure `isMobileDeviceHostId` grammar
 check; full response and request validation belongs to the helper, route, and
-SDK boundaries;
-see [Mobile device inspection](../guides/mobile-device-workspace.md).
+SDK boundaries. `@kontourai/station-contracts/device-tools` also defines the
+fixed `DeviceAppAction` and `DeviceAppActionResult` shapes, the 128 MiB upload
+ceiling, and the `postcondition-failed` refusal. A foreground result does not
+prove an app handled a URL; a staged artifact is not an installation receipt.
+See [Mobile device inspection](../guides/mobile-device-workspace.md).
 
 ## Native push registration
 
