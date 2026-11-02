@@ -33,7 +33,13 @@ export interface LiveSurfaceFrameHeader {
   codec: LiveSurfaceCodec;
   /** H.264 access units identify decoder recovery points. */
   keyframe?: boolean;
-  /** Encoded image size in image pixels. */
+  /**
+   * The frame's size in surface pixels: the coordinate space a viewer draws
+   * it in and aims input at. Usually the encoded image's own size; a body may
+   * be encoded at another resolution (an Android H.264 unit or polled
+   * screenshot at the device's size), and viewers then draw it scaled to
+   * this box, so every path of one surface shares one coordinate space.
+   */
   width: number;
   height: number;
   /**
