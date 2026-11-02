@@ -173,6 +173,8 @@ describe('buildStationResetPlan', () => {
       'defaultMaxTurns',
       'defaultMaxOutputTokens',
       'defaultWorkspaceIsolation',
+      // #4389: where chats without a project run (private folder or home).
+      'noProjectChatFolder',
       'workspaceCheckpoints',
       'checkoutStaleAfterCommits',
       'checkoutStaleAfterDays',
