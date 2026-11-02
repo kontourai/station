@@ -167,6 +167,11 @@ const ARGS: Record<string, Record<string, unknown>> = {
   device_open: { platform: 'android', deviceId: 'emulator-5554' },
   device_screenshot: { deviceSessionId: 'device-session' },
   device_capture_to_task: { deviceSessionId: 'device-session' },
+  device_logs: { deviceSessionId: 'device-session', appId: 'com.example.app' },
+  device_record_to_task: {
+    deviceSessionId: 'device-session',
+    durationMs: 1000,
+  },
   device_snapshot: { deviceSessionId: 'device-session' },
   device_input: {
     deviceSessionId: 'device-session',

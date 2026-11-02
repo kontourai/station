@@ -1,4 +1,5 @@
 import type { ActionOperation } from './action-operation.js';
+import { isMobileDeviceHostId } from './mobile-device.js';
 
 export const WALKTHROUGH_SCHEMA = 'station.walkthrough/v1' as const;
 /** Refusals, never truncation. Text limits count UTF-16 code units. */
@@ -120,6 +121,15 @@ export interface Walkthrough {
     durationMs: number;
     /** Commit observed for a Task-bound Browser recording. */
     commit?: string;
+    /** Host-qualified Device identity; null appId means it was not observed. */
+    device?: {
+      hostId: string;
+      deviceId: string;
+      name: string;
+      runtime: string;
+      appId: string | null;
+      appObservedAt: string | null;
+    };
     recording?: {
       file: string;
       mediaType: 'video/webm';
@@ -275,6 +285,7 @@ export function parseWalkthrough(value: unknown): Walkthrough {
     'durationMs',
     'commit',
     'recording',
+    'device',
   ]);
   const durationMs = number(s.durationMs, WALKTHROUGH_LIMITS.durationMs, 1);
   if (
@@ -284,6 +295,47 @@ export function parseWalkthrough(value: unknown): Walkthrough {
   )
     refuse('Invalid commit');
   let recording: Walkthrough['source']['recording'];
+  let device: Walkthrough['source']['device'];
+  if (s.device !== undefined) {
+    const d = record(s.device);
+    fields(d, [
+      'hostId',
+      'deviceId',
+      'name',
+      'runtime',
+      'appId',
+      'appObservedAt',
+    ]);
+    if (!isMobileDeviceHostId(d.hostId)) refuse('Invalid device host');
+    const deviceId = text(d.deviceId, 256);
+    const name = text(d.name, 256);
+    const runtime = text(d.runtime, 256);
+    if (
+      !deviceId ||
+      !name ||
+      !runtime ||
+      (d.appId !== null &&
+        (typeof d.appId !== 'string' ||
+          !/^[A-Za-z][A-Za-z0-9_-]*(\.[A-Za-z0-9_-]+)+$/.test(d.appId) ||
+          d.appId.length > 255))
+    )
+      refuse('Invalid device identity');
+    if (
+      (d.appId === null && d.appObservedAt !== null) ||
+      (d.appId !== null &&
+        (typeof d.appObservedAt !== 'string' ||
+          !Number.isFinite(Date.parse(d.appObservedAt))))
+    )
+      refuse('Invalid app observation');
+    device = {
+      hostId: d.hostId,
+      deviceId,
+      name,
+      runtime,
+      appId: d.appId as string | null,
+      appObservedAt: d.appObservedAt as string | null,
+    };
+  }
   if (s.recording !== undefined) {
     const video = record(s.recording);
     fields(video, ['file', 'mediaType', 'byteLength', 'digest']);
@@ -473,6 +525,7 @@ export function parseWalkthrough(value: unknown): Walkthrough {
       durationMs,
       ...(s.commit === undefined ? {} : { commit: s.commit as string }),
       ...(recording === undefined ? {} : { recording }),
+      ...(device === undefined ? {} : { device }),
       ...(s.originalName === undefined
         ? {}
         : { originalName: filename(s.originalName) }),
@@ -496,6 +549,12 @@ export function parseWalkthrough(value: unknown): Walkthrough {
     ...(frameSelection ? { frameSelection } : {}),
     events,
   };
+  if (
+    device &&
+    manifest.capture.platform !== 'ios' &&
+    manifest.capture.platform !== 'android'
+  )
+    refuse('Invalid device platform');
   if (
     new TextEncoder().encode(JSON.stringify(manifest)).byteLength >
     WALKTHROUGH_LIMITS.manifestBytes

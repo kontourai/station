@@ -6,7 +6,7 @@ import type { MobileDeviceInventory } from '@kontourai/station-contracts/mobile-
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import { TASK_REVIEW_LIMITS } from '@kontourai/station-contracts/task-review';
 import { Hono } from 'hono';
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import type WebSocket from 'ws';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { resolveStationControlCallerFromToken } from '../../runtime/mcp/station-control-caller.js';
@@ -26,7 +26,10 @@ import { EventStore } from '../../services/orchestration/event-store.js';
 import { ProjectTaskRoomRuntime } from '../../services/orchestration/project-task-room-runtime.js';
 import { TaskReviewSend } from '../../services/orchestration/task-review-send.js';
 import { TaskBrowserCapture } from '../../services/projects/task-browser-capture.js';
+import type { TaskBrowserRecording } from '../../services/projects/task-browser-recording.js';
 import { TaskCaptureBlobStore } from '../../services/projects/task-capture-blob-store.js';
+import { TaskDeviceCapture } from '../../services/projects/task-device-capture.js';
+import { TaskDeviceRecording } from '../../services/projects/task-device-recording.js';
 import { TaskReviewModule } from '../../services/projects/task-review-module.js';
 import { STATION_CONTROL_CALLER_TOKEN_HEADER } from '../../tools/station-control-shared.js';
 import { execGit } from '../../utils/git-exec.js';
@@ -149,6 +152,7 @@ async function harness(
   let shots = 0;
   let duringShot: (() => Promise<void> | void) | undefined;
   let enabled = true;
+  let personDeviceAllowed = true;
   class Socket extends EventEmitter {
     readyState = 1;
     send(_data: string, callback: (error?: Error) => void) {
@@ -212,6 +216,12 @@ async function harness(
     sessions,
     surfaces,
     tools: {
+      foreground: async () => {
+        throw new Error('unexpected foreground request');
+      },
+      logs: async () => {
+        throw new Error('unexpected log request');
+      },
       accessibility: async () => ({
         space: { width: 1, height: 1 },
         elements: [],
@@ -252,11 +262,62 @@ async function harness(
   });
   const app = new Hono();
   app.route('/api/device-agent', deviceRoutes);
+  let recordingSourceSeen: string | undefined;
+  let recordingReady!: () => void;
+  const recordingStarted = new Promise<void>((resolve) => {
+    recordingReady = resolve;
+  });
+  const recordingManager = new TaskDeviceRecording({
+    recordSource: async (
+      _access,
+      input,
+      resolveSource,
+    ): ReturnType<TaskBrowserRecording['recordSource']> => {
+      const source = await resolveSource();
+      if (!(await source.authorize())) throw new Error('unauthorized');
+      recordingSourceSeen = source.device?.hostId;
+      input.onStarted?.();
+      recordingReady();
+      await new Promise<void>((resolve, reject) => {
+        input.stopSignal?.addEventListener('abort', () => resolve(), {
+          once: true,
+        });
+        input.signal?.addEventListener(
+          'abort',
+          () => reject(new Error('cancelled')),
+          { once: true },
+        );
+      });
+      throw new Error('injected recording failure');
+    },
+  });
   app.route(
     '/api/tasks',
     createTaskReviewCaptureRoutes({
       runtime: room,
       captures,
+      deviceRecordings: {
+        manager: recordingManager,
+        surfaces,
+        enabled: () => true,
+        walkthroughPreview: { select: ({ enabled }) => enabled() },
+      },
+      devices: new TaskDeviceCapture({
+        captures,
+        access: {
+          isOperator: async () => true,
+          hasStanding: async () => true,
+          mayAccessDevice: async () => personDeviceAllowed,
+        },
+        hostIds: () => ['local'],
+        host: (hostId) => (hostId === 'local' ? { host, sessions } : undefined),
+        hostRevision: (hostId) => (hostId === 'local' ? 1 : undefined),
+        projectMatches: (request, id) =>
+          id === PROJECT &&
+          new URL(request.url).searchParams.get('projectSlug') ===
+            'capture-demo',
+        requestCurrent: () => true,
+      }),
       registry: {
         getSession: () => undefined,
         listSessions: () => [],
@@ -315,6 +376,7 @@ async function harness(
       body: JSON.stringify(body),
     });
   closers.push(async () => {
+    await recordingManager.dispose();
     for (const id of ['agent-a', 'agent-b', 'agent-unbound'])
       revokeStationControlMcpToken(id);
     await sessions.dispose();
@@ -336,8 +398,11 @@ async function harness(
     workspace,
     commit,
     task,
+    id,
     store,
     access,
+    recordingStarted,
+    recordingSourceSeen: () => recordingSourceSeen,
     shots: () => shots,
     capture: (body: Record<string, unknown> = {}, token = tokenA) =>
       post('capture-to-task', { deviceSessionId: id, ...body }, token),
@@ -348,6 +413,9 @@ async function harness(
     },
     disable: () => {
       enabled = false;
+    },
+    revokePerson: () => {
+      personDeviceAllowed = false;
     },
     take: () =>
       claimHumanControl(surfaces.get(sessions.get(id)!.surfaceId)!, {
@@ -368,6 +436,111 @@ async function harness(
         : [],
   };
 }
+
+test('person selects and captures a host-qualified Device session in Review', async () => {
+  const h = await harness();
+  const listing = await h.app.request(
+    '/api/tasks/task-a/review/device-capture-sessions?projectSlug=capture-demo',
+  );
+  expect(listing.status).toBe(200);
+  expect(await listing.json()).toMatchObject({
+    success: true,
+    data: { sessions: [{ sourceSessionId: `local:${h.id}`, hostId: 'local' }] },
+  });
+  const result = await h.app.request(
+    '/api/tasks/task-a/review/device-captures?projectSlug=capture-demo',
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        sourceKind: 'device',
+        sourceSessionId: `local:${h.id}`,
+        operationId: 'person-capture',
+      }),
+    },
+  );
+  expect(result.status).toBe(201);
+  expect(h.store.listCaptures(h.access.write)).toMatchObject([
+    {
+      sourceKind: 'device',
+      sourceSessionId: `local:${h.id}`,
+      commit: h.commit,
+    },
+  ]);
+  expect(
+    (
+      await h.app.request(
+        '/api/tasks/task-a/review/device-capture-sessions?projectSlug=other',
+      )
+    ).status,
+  ).toBe(403);
+  h.revokePerson();
+  const denied = await h.app.request(
+    '/api/tasks/task-a/review/device-captures?projectSlug=capture-demo',
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        sourceKind: 'device',
+        sourceSessionId: `local:${h.id}`,
+        operationId: 'denied',
+      }),
+    },
+  );
+  expect(denied.status).toBe(503);
+  expect(h.shots()).toBe(1);
+});
+
+test('a person recording job is Task-scoped and reports a recorder failure after stop', async () => {
+  const h = await harness();
+  const start = await h.app.request(
+    '/api/tasks/task-a/review/device-recordings?projectSlug=capture-demo',
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        sourceSessionId: `local:${h.id}`,
+        durationMs: 1000,
+      }),
+    },
+  );
+  expect(start.status).toBe(202);
+  const started = await start.json();
+  if (
+    !started ||
+    typeof started !== 'object' ||
+    !('data' in started) ||
+    !started.data ||
+    typeof started.data !== 'object' ||
+    !('id' in started.data) ||
+    typeof started.data.id !== 'string'
+  )
+    throw new Error('Missing recording job');
+  const jobId = started.data.id;
+  await h.recordingStarted;
+  expect(h.recordingSourceSeen()).toBe('local');
+  const wrongTask = await h.app.request(
+    `/api/tasks/task-b/review/device-recordings/${jobId}`,
+  );
+  expect(wrongTask.status).toBe(404);
+  const stop = await h.app.request(
+    `/api/tasks/task-a/review/device-recordings/${jobId}/stop`,
+    { method: 'POST' },
+  );
+  expect(await stop.json()).toMatchObject({
+    success: true,
+    data: { state: 'stopping' },
+  });
+  await vi.waitFor(async () => {
+    const status = await h.app.request(
+      `/api/tasks/task-a/review/device-recordings/${jobId}`,
+    );
+    expect(await status.json()).toMatchObject({
+      success: true,
+      data: { state: 'failed', code: 'recording-unavailable' },
+    });
+  });
+});
 
 test('publishes a device Screen on only the bound Task and serves it through the authorized content route', async () => {
   const h = await harness();
