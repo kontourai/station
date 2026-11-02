@@ -21,7 +21,6 @@ import {
   type SelectableModel,
 } from '../../utils/modelCapabilities';
 import { Button } from '../Button';
-import { BrandIcon } from '../icons/BrandIcon';
 import {
   BrainGlyph,
   CheckGlyph,
@@ -167,14 +166,12 @@ export function SessionModelPicker({
       return {
         ...provider,
         icon: (
-          <BrandIcon
-            name={provider.name}
-            icon={
-              model?.providerType === 'claude' ||
-              model?.providerType === 'codex'
-                ? `brand:${model.providerType}`
-                : undefined
-            }
+          <ModelIcon
+            model={{
+              id: provider.id,
+              name: provider.name,
+              providerType: model?.providerType,
+            }}
             size={20}
           />
         ),
