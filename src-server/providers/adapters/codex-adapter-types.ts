@@ -96,6 +96,22 @@ export interface AwaitingApprovalAcknowledgement {
 }
 
 export interface CodexSessionRecord extends CodexUsageLimitState {
+  boundToolHandler?: (params: unknown, rpcKey: string) => Promise<unknown>;
+  boundChannelClosed?: boolean;
+  boundChannelCurrent?: () => boolean;
+  closeBoundTools?: () => Promise<void>;
+  boundToolApprovals?: Map<
+    string,
+    {
+      resolve: (allowed: boolean) => void;
+      turnId: string;
+      rpcKey: string;
+      toolName: string;
+    }
+  >;
+  cancelledBoundTurns?: Set<string>;
+  activeBoundRequests?: Set<string>;
+  cancelledBoundRequests?: Set<string>;
   preparedResumeBindingKey?: string;
   externalThreadId: string;
   codexThreadId: string;

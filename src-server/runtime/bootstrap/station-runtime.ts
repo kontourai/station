@@ -500,7 +500,10 @@ import {
   createStationControlCallerRecordResolver,
   stationControlCallerRecordSources,
 } from '../mcp/station-control-caller.js';
-import { claudeInProcessStationControlOptions } from '../mcp/station-control-in-process.js';
+import {
+  claudeInProcessStationControlOptions,
+  createCodexBoundToolServer,
+} from '../mcp/station-control-in-process.js';
 import {
   buildStationControlMcpHeaderUrl,
   coordinatorGeneration,
@@ -997,6 +1000,38 @@ export class StationRuntime {
     },
   });
   private codexAdapter = new CodexAdapter({
+    boundToolsEpoch: () =>
+      this.featurePreviews.generation('codex-bound-browser-device-tools'),
+    boundToolsEnabled: () =>
+      this.codexBoundToolsPreview?.select({
+        enabled: () => true,
+        disabled: () => false,
+      }) ?? false,
+    createBoundTools: (input) =>
+      createCodexBoundToolServer({
+        ...input,
+        resolveRecord: createStationControlCallerRecordResolver(
+          stationControlCallerRecordSources({
+            orchestrationService: {
+              resolveSessionActingPrincipal: (threadId) =>
+                this.orchestrationService.resolveSessionActingPrincipal(
+                  threadId,
+                ),
+              firstStartedMetadataOfThread: (threadId) =>
+                this.orchestrationService.firstStartedMetadataOfThread(
+                  threadId,
+                ),
+            },
+            eventStore: this.orchestrationEventStore,
+            getProject: (slug) => this.storageAdapter.getProject(slug),
+          }),
+        ),
+        dispatch: (request) => {
+          if (!this.codexToolDispatch)
+            throw new Error('Station tool dispatch unavailable');
+          return this.codexToolDispatch(request);
+        },
+      }),
     resolveMcpOAuth: (input) => this.resolveExternalMcpOAuth(input),
     nativeSessionOwnership: {
       assertMutable: (sessionId) =>
@@ -1207,6 +1242,7 @@ export class StationRuntime {
   /** archive#1398 — see {@link StationRuntime.fleetProbes}. */
   private fleetProbeService: FleetProbeService | undefined;
   private readonly featurePreviews: FeaturePreviewRegistry;
+  private codexToolDispatch?: (request: Request) => Promise<Response>;
   private projectWorkingConfiguration: ProjectWorkingRuntime | undefined;
   private learningReview: LearningReviewRuntime | undefined;
   private reviewedTariffConfiguration:
@@ -1236,6 +1272,7 @@ export class StationRuntime {
   /** #4305: gates the Settings control, not deployment configuration. */
   private accountSharingSettingPreview!: FeaturePreviewSelector;
   private progressiveToolsPreview!: FeaturePreviewSelector;
+  private codexBoundToolsPreview?: FeaturePreviewSelector;
   private sshEnvironmentService: SshEnvironmentService;
   private timers: NodeJS.Timeout[] = [];
   private analyticsMaintenance?: (
@@ -1642,6 +1679,17 @@ export class StationRuntime {
         description:
           'Load authorized Station tool families on demand for compatible Codex sessions. Other engines retain their existing tool loading.',
       });
+      if (
+        !isHostedTenantExecutionRequired() &&
+        !loadHostedTenantRegistryFromEnvironment()
+      ) {
+        this.codexBoundToolsPreview = this.featurePreviews.bind({
+          id: 'codex-bound-browser-device-tools',
+          label: 'Codex browser and device tools',
+          description:
+            'Let Codex Sessions use authorized browser and device tools through a bound channel.',
+        });
+      }
       // Journal consumers wire after the quarantine notice: the runtime must
       // report a recorded corruption before anything asks the store for more
       // than its publisher.
@@ -5074,6 +5122,10 @@ export class StationRuntime {
   private configureRoutes(
     app: Parameters<NonNullable<HonoServerConfig['configureApp']>>[0],
   ): void {
+    this.codexToolDispatch = async (request) =>
+      app.fetch(request, {
+        incoming: { socket: { remoteAddress: '127.0.0.1' } },
+      } as never);
     // The existing handshake environment identity qualifies these local owner
     // records; it is not a new logical Station or machine identity.
     this.runtimeSearch ??= createRuntimeSearch({

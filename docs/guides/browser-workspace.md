@@ -98,14 +98,14 @@ operator/admin standing. Bearer-exposed or delegated-custody credentials do not
 satisfy that caller contract. A tool-supplied Session or Project ID cannot
 create authority.
 
-Only engines Station runs in-process get `station-browser`: Claude Agents,
-unless the Agent switched browser tools off. Codex reaches Station over a
-URL-token connection (`bearer-exposed`: the token sits in the spawn argv any
-same-user process can read) and agents connected over ACP with an HTTP-header token
-(`delegated-custody`: the connected app holds it). Neither credential can be attributed
-to one Session, so those engines are not offered the tools and a browser call
-from them is refused `caller-not-bound`. This is deliberate; it is not a gap in
-MCP support. Offering them would need a new bound channel, not a wiring change.
+Claude Agents receive `station-browser` in-process unless the Agent switches it
+off. With the **Codex browser and device tools** Feature Preview enabled, a
+Codex Agent can receive the same registrations through its Session's dynamic
+tool stream. On resume, Station accepts persisted tool names only when they are
+also in the current authorized catalog; tools added since the thread started
+need a new thread. ACP header-token calls remain `caller-not-bound`. See the
+[bound-channel decision](../decisions/browser-agent-actions-and-bound-channel.md)
+for the protocol and evidence limits.
 
 **Approval posture.** Only `browser_status`, which reads Station's own records,
 may run without a prompt. Every other station-browser tool reads or drives a

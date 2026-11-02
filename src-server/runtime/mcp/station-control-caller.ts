@@ -38,6 +38,7 @@ import {
   stationControlCallerPrincipal,
 } from '../../tools/station-control-shared.js';
 import { INTERNAL_TENANT_HEADER } from '../../utils/internal-api-token.js';
+import { codexToolRequestIsBound } from './codex-bound-request.js';
 import {
   stationControlTokenAssurance,
   verifyStationControlMcpTokenEntry,
@@ -236,6 +237,7 @@ function resolveVerifiedStationControlCaller(
   if (
     !verified ||
     (verified.serverId !== 'station-control' &&
+      verified.serverId !== 'codex-tools' &&
       verified.serverId !== 'station-knowledge' &&
       verified.serverId !== 'coordinator-control' &&
       verified.serverId !== 'coordinator-knowledge')
@@ -328,6 +330,12 @@ export function resolveStationControlCallerForRequest(
     return null;
   const token = request.headers.get(STATION_CONTROL_CALLER_TOKEN_HEADER);
   if (!token) return null;
+  const entry = verifyStationControlMcpTokenEntry(token);
+  if (
+    entry?.serverId === 'codex-tools' &&
+    !codexToolRequestIsBound(request, token)
+  )
+    return null;
   const verified = resolveVerifiedStationControlCaller(token, resolveRecord);
   if (!verified) return null;
   const requestTenant =

@@ -37,7 +37,15 @@ import type {
   Prerequisite,
 } from '@kontourai/station-contracts/tool';
 import { validateInputRequestContent } from '@kontourai/station-shared/input-request';
+import {
+  externalMcpToolApprovalIdentity,
+  resolveAuthoredToolApproval,
+} from '@kontourai/station-shared/mcp-tool-selection';
 import { builtinStationApiServerId } from '../../runtime/bootstrap/station-control-runtime-env.js';
+import {
+  canonicalizeExternalToolName,
+  isAutoApprovedExternalTool,
+} from '../../runtime/tools/tool-executor.js';
 import {
   assertRequiredConfinementObserved,
   ConfinementRefusedError,
@@ -159,6 +167,7 @@ import {
   reportedCodexThreadSandbox,
   resolveCodexExecutionKnobs,
 } from './codex-approval-mode.js';
+import { CodexBoundToolChannel } from './codex-bound-tool-channel.js';
 import {
   codexConfinementConfigArgs,
   codexThreadSandboxRequest,
@@ -189,6 +198,17 @@ type CodexExecutionKnobs = NonNullable<
 >;
 
 interface CodexAdapterOptions {
+  boundToolsEnabled?: () => boolean;
+  boundToolsEpoch?: () => number | undefined;
+  createBoundTools?: (input: {
+    sessionId: string;
+    tenantExecutionContext?: import('@kontourai/station-contracts/tenancy').TenantExecutionContext;
+    includeBrowser: boolean;
+    includeDevices: boolean;
+    isCurrent: () => boolean;
+  }) => Promise<
+    import('../../runtime/mcp/station-control-in-process.js').CodexBoundToolServer
+  >;
   resolveMcpOAuth?: EngineMcpOAuthResolver;
   processFactory?: (
     appHomeEnv?: Record<string, string>,
@@ -274,6 +294,55 @@ interface CodexAdapterOptions {
   /** Test-only cache controls; production cache is 30 seconds and 64 entries. */
   quotaCacheTtlMs?: number;
   quotaCacheMaxEntries?: number;
+}
+
+function codexBoundToolResult(value: unknown) {
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    !('content' in value) ||
+    !Array.isArray(value.content)
+  )
+    throw new Error('bound-tool-result-refused');
+  const items = value.content.map((item: unknown) => {
+    if (!item || typeof item !== 'object')
+      throw new Error('bound-tool-result-refused');
+    const content = item as Record<string, unknown>;
+    if (content.type === 'text' && typeof content.text === 'string')
+      return { type: 'inputText', text: content.text };
+    if (
+      content.type === 'image' &&
+      typeof content.data === 'string' &&
+      typeof content.mimeType === 'string' &&
+      /^image\/(png|jpeg|webp|gif)$/.test(content.mimeType)
+    )
+      return {
+        type: 'inputImage',
+        imageUrl: `data:${content.mimeType};base64,${content.data}`,
+      };
+    throw new Error('bound-tool-result-refused');
+  });
+  const refused = items.some((item) => {
+    if (item.type !== 'inputText') return false;
+    try {
+      const parsed: unknown = JSON.parse(item.text);
+      return (
+        !!parsed &&
+        typeof parsed === 'object' &&
+        'ok' in parsed &&
+        parsed.ok === false
+      );
+    } catch {
+      return false;
+    }
+  });
+  const result = {
+    contentItems: items,
+    success: !refused && !('isError' in value && value.isError === true),
+  };
+  if (Buffer.byteLength(JSON.stringify(result)) > 8 * 1024 * 1024)
+    throw new Error('bound-tool-result-refused');
+  return result;
 }
 
 interface CodexNativeAdoption {
@@ -2062,6 +2131,61 @@ export class CodexAdapter implements ProviderAdapterShape {
     this.transport.handleProcess(record);
 
     try {
+      const controlCandidate = input.agent?.toolServers
+        ?.slice()
+        .reverse()
+        .find((server) => server.id === 'station-control');
+      const control =
+        controlCandidate &&
+        builtinStationApiServerId(
+          controlCandidate.id,
+          toPassthroughToolDef(controlCandidate),
+        ) === 'station-control'
+          ? controlCandidate
+          : undefined;
+      const includeBrowser =
+        !!input.agent && input.agent.browserTools !== false;
+      const includeDevices = !!control;
+      const epoch = this.options.boundToolsEpoch?.();
+      let retired = false;
+      const bindingCurrent = () => {
+        if (retired) return false;
+        try {
+          if (
+            !record.stopped &&
+            !record.boundChannelClosed &&
+            this.transport.getSession(input.threadId) === record &&
+            this.options.boundToolsEnabled?.() === true &&
+            this.options.boundToolsEpoch?.() === epoch
+          )
+            return true;
+        } catch {}
+        retired = true;
+        return false;
+      };
+      const boundTools =
+        this.options.boundToolsEnabled?.() &&
+        this.options.createBoundTools &&
+        (includeBrowser || includeDevices)
+          ? await this.options.createBoundTools({
+              sessionId: input.threadId,
+              tenantExecutionContext: input.tenantExecutionContext,
+              includeBrowser,
+              includeDevices,
+              isCurrent: bindingCurrent,
+            })
+          : undefined;
+      record.closeBoundTools = boundTools?.close;
+      record.boundChannelCurrent = boundTools ? bindingCurrent : undefined;
+      const offeredTools =
+        boundTools?.tools.filter((tool) => {
+          if (!tool.name.startsWith('device_')) return true;
+          if (control?.disabledTools?.includes(tool.name)) return false;
+          return (
+            control?.allowedTools === undefined ||
+            control.allowedTools.includes(tool.name)
+          );
+        }) ?? [];
       assertExecutionOverrideDelivery(
         input.metadata,
         toolServers.report?.undelivered ?? [],
@@ -2073,7 +2197,7 @@ export class CodexAdapter implements ProviderAdapterShape {
           version: '0.1.0',
         },
         capabilities: {
-          experimentalApi: false,
+          experimentalApi: !!boundTools,
         },
       });
       this.transport.sendNotification(record, 'initialized');
@@ -2141,6 +2265,16 @@ export class CodexAdapter implements ProviderAdapterShape {
               model: input.modelId,
               ...approvalWire,
               experimentalRawEvents: false,
+              ...(boundTools
+                ? {
+                    dynamicTools: offeredTools.map((tool) => ({
+                      type: 'function',
+                      name: tool.name,
+                      description: tool.description ?? tool.name,
+                      inputSchema: tool.inputSchema,
+                    })),
+                  }
+                : {}),
               persistExtendedHistory: false,
               ...(authoredMcpConfig ? { config: authoredMcpConfig } : {}),
               serviceTier: modelOptions.fastMode ? 'fast' : null,
@@ -2152,6 +2286,69 @@ export class CodexAdapter implements ProviderAdapterShape {
       }
 
       const codexThread = extractThread(result);
+      if (boundTools) {
+        const channel = new CodexBoundToolChannel(
+          codexThread.id,
+          new Set(offeredTools.map((tool) => tool.name)),
+          () =>
+            record.activeTurnId &&
+            !record.cancelledBoundTurns?.has(record.activeTurnId)
+              ? record.activeTurnId
+              : undefined,
+          bindingCurrent,
+        );
+        record.boundToolHandler = async (params, rpcKey) => {
+          if (!params || typeof params !== 'object' || Array.isArray(params))
+            throw new Error('bound-tool-refused');
+          const payload = params as Record<string, unknown>;
+          if (
+            typeof payload.threadId !== 'string' ||
+            payload.threadId.length > 256 ||
+            typeof payload.turnId !== 'string' ||
+            payload.turnId.length > 256 ||
+            typeof payload.callId !== 'string' ||
+            payload.callId.length > 256 ||
+            typeof payload.tool !== 'string' ||
+            payload.tool.length > 256 ||
+            payload.namespace != null ||
+            Buffer.byteLength(JSON.stringify(payload.arguments) ?? '') > 40_000
+          )
+            throw new Error('bound-tool-refused');
+          const call = {
+            threadId: payload.threadId,
+            turnId: payload.turnId,
+            callId: payload.callId,
+            name: payload.tool,
+          };
+          return channel.invoke(
+            call,
+            () =>
+              this.approveBoundTool(
+                record,
+                call.turnId,
+                call.name,
+                payload.arguments,
+                rpcKey,
+                input.agent,
+              ),
+            async (current) => {
+              const response = await boundTools.call(
+                call.name,
+                payload.arguments,
+                () =>
+                  current() && !record.cancelledBoundTurns?.has(call.turnId),
+              );
+              return codexBoundToolResult(response);
+            },
+            () => !record.cancelledBoundRequests?.has(rpcKey),
+          );
+        };
+        const close = record.closeBoundTools;
+        record.closeBoundTools = async () => {
+          channel.close();
+          await close?.();
+        };
+      }
       if (
         resumeCursor &&
         (input.requireNativeResumeIdentity ||
@@ -3105,6 +3302,14 @@ export class CodexAdapter implements ProviderAdapterShape {
     if (turnId && turnId !== activeTurnId) {
       return { outcome: 'target-mismatch', activeTurnId } as const;
     }
+    record.cancelledBoundTurns ??= new Set();
+    if (record.cancelledBoundTurns.size >= 4096) {
+      record.boundChannelClosed = true;
+      void record.closeBoundTools?.().catch(() => {});
+    } else {
+      record.cancelledBoundTurns.add(activeTurnId);
+    }
+    this.cancelBoundToolApprovals(record, activeTurnId);
     const targetTurnId = turnId ?? activeTurnId;
 
     // #2486: Codex has no per-child stop that leaves the parent's turn
@@ -3355,12 +3560,82 @@ export class CodexAdapter implements ProviderAdapterShape {
     return { outcome: 'stopped', taskId };
   }
 
-  /**
-   * #2316: answer every open approval `cancel` on the wire and settle it
-   * (`request.resolved`), so no later answer lands on a dead request and no
-   * session grant is minted for it.
-   */
+  private approveBoundTool(
+    record: CodexSessionRecord,
+    turnId: string,
+    tool: string,
+    args: unknown,
+    rpcKey: string,
+    agent: ProviderSessionStartInput['agent'],
+  ): Promise<boolean> {
+    const server = tool.startsWith('browser_')
+      ? 'station-browser'
+      : 'station-control';
+    const name = `mcp__${server}__${tool}`;
+    const identity = externalMcpToolApprovalIdentity(name);
+    const authored = resolveAuthoredToolApproval(
+      [name, canonicalizeExternalToolName(name)],
+      agent?.autoApprove,
+      agent?.askBeforeUse,
+      identity.key,
+    );
+    if (authored !== 'ask' && record.approvedTools.has(name))
+      return Promise.resolve(true);
+    if (
+      authored !== 'ask' &&
+      isAutoApprovedExternalTool(
+        name,
+        agent?.autoApprove,
+        agent?.toolServers,
+        'authentic',
+      )
+    )
+      return Promise.resolve(true);
+    record.boundToolApprovals ??= new Map();
+    const pending = record.boundToolApprovals;
+    if (pending.size >= 16 || record.cancelledBoundTurns?.has(turnId))
+      return Promise.resolve(false);
+    const requestId = crypto.randomUUID();
+    return new Promise((resolve) => {
+      pending.set(requestId, { resolve, turnId, rpcKey, toolName: name });
+      this.transport.publish({
+        eventId: crypto.randomUUID(),
+        provider: 'codex',
+        threadId: record.externalThreadId,
+        turnId,
+        createdAt: this.now().toISOString(),
+        requestId,
+        method: 'request.opened',
+        requestType: 'approval',
+        title: `Allow ${tool}`,
+        payload: { toolName: name, toolInput: args },
+      });
+    });
+  }
+
+  private cancelBoundToolApprovals(
+    record: CodexSessionRecord,
+    turnId?: string,
+  ): void {
+    for (const [requestId, pending] of record.boundToolApprovals ?? []) {
+      if (turnId && pending.turnId !== turnId) continue;
+      record.boundToolApprovals!.delete(requestId);
+      pending.resolve(false);
+      this.transport.publish({
+        eventId: crypto.randomUUID(),
+        provider: 'codex',
+        threadId: record.externalThreadId,
+        createdAt: this.now().toISOString(),
+        requestId,
+        method: 'request.resolved',
+        status: 'cancelled',
+      });
+    }
+  }
+
+  /** Settle open approvals so no answer can land after cancellation (#2316). */
   private cancelPendingApprovals(record: CodexSessionRecord): void {
+    this.cancelBoundToolApprovals(record);
     for (const [requestId, pending] of record.pendingApprovals) {
       const outcome = resolveApprovalOutcome(
         pending.method,
@@ -3386,6 +3661,36 @@ export class CodexAdapter implements ProviderAdapterShape {
     context?: Parameters<ProviderAdapterShape['respondToRequest']>[3],
   ): Promise<void> {
     const record = this.transport.requireSession(threadId);
+    const bound = record.boundToolApprovals?.get(requestId);
+    if (bound) {
+      if (context?.inputContent !== undefined)
+        throw new Error('This request does not accept question answers.');
+      if (
+        record.activeTurnId !== bound.turnId ||
+        record.cancelledBoundTurns?.has(bound.turnId) ||
+        record.cancelledBoundRequests?.has(bound.rpcKey) ||
+        record.boundChannelClosed ||
+        record.boundChannelCurrent?.() !== true
+      ) {
+        record.boundToolApprovals!.delete(requestId);
+        bound.resolve(false);
+        throw new Error('This Codex approval request is not open.');
+      }
+      record.boundToolApprovals!.delete(requestId);
+      if (decision === 'acceptForSession')
+        record.approvedTools.add(bound.toolName);
+      this.transport.publish({
+        eventId: crypto.randomUUID(),
+        provider: 'codex',
+        threadId,
+        createdAt: this.now().toISOString(),
+        requestId,
+        method: 'request.resolved',
+        status: mapApprovalResolutionStatus(decision),
+      });
+      bound.resolve(decision === 'accept' || decision === 'acceptForSession');
+      return;
+    }
     const pending = record.pendingApprovals.get(requestId);
     if (!pending) {
       // Answered already, closed by Codex, or never opened: in each case
@@ -3452,6 +3757,14 @@ export class CodexAdapter implements ProviderAdapterShape {
   }
 
   async stopSession(threadId: string): Promise<void> {
+    const record = this.transport.getSession(threadId);
+    if (record) {
+      if (record.activeTurnId) {
+        record.cancelledBoundTurns ??= new Set();
+        record.cancelledBoundTurns.add(record.activeTurnId);
+      }
+      this.cancelBoundToolApprovals(record);
+    }
     await this.transport.stopSession(threadId, () => this.now().toISOString());
     // archive#1195: best-effort — a session that stops cleanly no longer
     // needs its station-control MCP token; a session that never had one is

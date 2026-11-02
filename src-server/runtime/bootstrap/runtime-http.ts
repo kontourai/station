@@ -116,6 +116,7 @@ import {
 import type { Logger } from '../../utils/logger.js';
 import { outwardTransportError } from '../../utils/outward-error.js';
 import { isRouteError, type RouteError } from '../../utils/route-error.js';
+import { transferCodexToolRequestProof } from '../mcp/codex-bound-request.js';
 import {
   buildRuntimeRouteVocabulary,
   labelRuntimeRoutePath,
@@ -1713,6 +1714,7 @@ function configureRuntimeSecurity(
         body: bodyResult,
         duplex: 'half',
       });
+      transferCodexToolRequestProof(raw, c.req.raw);
       if (
         nativePeer &&
         !transferVerifiedNativeVirtualApplicationRequest(raw, c.req.raw)
