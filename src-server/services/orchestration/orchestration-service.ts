@@ -12279,7 +12279,6 @@ export class OrchestrationService {
             this.cascadeStopAdapters.set(intent.childId, adapter);
         }
         for (const intent of intents) {
-          if (this.cascadeDeliveryStopped) return;
           const owner = owners.get(intent.childId)!;
           if (
             owner.custody !== 'local' ||
@@ -12317,7 +12316,6 @@ export class OrchestrationService {
                 intent.childId,
               );
             }
-            if (this.cascadeDeliveryStopped) return;
             const completed = store.completeCascadeStop(
               intent.childId,
               intent.terminalId,
@@ -12348,7 +12346,11 @@ export class OrchestrationService {
             });
           }
         }
-      } while (this.cascadeStopReconcileAgain && remaining > 0);
+      } while (
+        this.cascadeStopReconcileAgain &&
+        !this.cascadeDeliveryStopped &&
+        remaining > 0
+      );
       // The durable backlog resumes on the next health tick, not another
       // recursive pass that would bypass this invocation's probe budget.
       if (remaining === 0) this.cascadeStopReconcileAgain = false;
