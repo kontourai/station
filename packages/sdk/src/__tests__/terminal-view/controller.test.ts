@@ -270,16 +270,18 @@ describe('TerminalController', () => {
     });
     const shared = sharedSession();
     const first = await startController(shared);
+    // One view alone must not detach what the session retains.
+    shared.output('kept');
+    expect(shared.retained[0]?.byteLength).toBe(4);
     const second = await startController(shared);
     expect(() => shared.output('seen by both views')).not.toThrow();
-    expect(shared.retained[0]?.byteLength).toBe('seen by both views'.length);
     // A view that subscribes later replays the retained chunk.
     const late = await startController(shared);
     for (const { controller } of [first, second, late]) {
       await vi.waitFor(async () => {
         controller.selectAll();
         expect(await controller.copy()).toBe(true);
-        expect(writeText).toHaveBeenLastCalledWith('seen by both views');
+        expect(writeText).toHaveBeenLastCalledWith('keptseen by both views');
       });
       controller.dispose();
     }
