@@ -11,6 +11,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -29,6 +30,7 @@ import {
   glyph,
   LockGlyph,
   PhoneGlyph,
+  RecordGlyph,
   RefreshGlyph,
   ShieldGlyph,
   TerminalGlyph,
@@ -81,6 +83,11 @@ import {
   BrowserOverflowMenu,
 } from './BrowserOverflowMenu';
 import { BrowserPageDialog } from './BrowserPageDialog';
+import {
+  BrowserRecordingButton,
+  BrowserRecordingStatus,
+  useBrowserRecording,
+} from './BrowserRecording';
 import {
   BrowserScreenshot,
   type BrowserScreenshotShot,
@@ -357,7 +364,10 @@ export default function BrowserPane({
 }: BrowserPaneProps) {
   const { apiBase } = useApiBase();
   const requestScope = useHostRequestAuthorityScope();
-  const api = browserPaneApi(apiBase, transport);
+  const api = useMemo(
+    () => browserPaneApi(apiBase, transport),
+    [apiBase, transport],
+  );
   const queryClient = useQueryClient();
   const visibility = useSurfaceVisibilityFlags();
   const [browserFocused, setBrowserFocused] = useState(false);
@@ -990,6 +1000,12 @@ function BrowserSessionPane({
   });
 
   const live = record?.state === 'live';
+  const recording = useBrowserRecording(
+    api,
+    browserSessionId,
+    generation,
+    live && artifactsEnabled && generation !== undefined,
+  );
   const consoleState = useBrowserConsole({
     apiBase,
     api,
@@ -1352,6 +1368,23 @@ function BrowserSessionPane({
       ? [
           {
             kind: 'action' as const,
+            id: 'record',
+            label: recording.active ? 'Stop recording' : 'Record',
+            glyph: <RecordGlyph />,
+            disabled:
+              !live ||
+              generation === undefined ||
+              recording.busy ||
+              recording.stopping ||
+              (!recording.active && recording.phase !== 'idle'),
+            onSelect: recording.toggle,
+          },
+        ]
+      : []),
+    ...(artifactsEnabled
+      ? [
+          {
+            kind: 'action' as const,
             id: 'annotate',
             label: 'Annotate',
             glyph: <EditGlyph />,
@@ -1658,6 +1691,12 @@ function BrowserSessionPane({
           ) : null}
         </IconButton>
         {artifactsEnabled ? (
+          <BrowserRecordingButton
+            recording={recording}
+            live={live && generation !== undefined}
+          />
+        ) : null}
+        {artifactsEnabled ? (
           <Button
             size="sm"
             disabled={!live}
@@ -1773,10 +1812,16 @@ function BrowserSessionPane({
             />
           </div>
         ) : null}
-        {notice || shot || (newDialog && !isDismissed(newDialog)) ? (
+        {notice ||
+        shot ||
+        (artifactsEnabled && (recording.phase !== 'idle' || recording.error)) ||
+        (newDialog && !isDismissed(newDialog)) ? (
           // Laid over the live view, never above it: a notice appearing must
           // not move the canvas under someone's pointer.
           <div className="browser-pane__notices">
+            {artifactsEnabled ? (
+              <BrowserRecordingStatus recording={recording} />
+            ) : null}
             {notice ? (
               <div className="browser-pane__overlay-notice">
                 <p className="browser-pane__notice" role="alert">

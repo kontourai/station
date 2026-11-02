@@ -109,6 +109,7 @@ import {
 import { createBrowserPrincipalAuthorizer } from '../../services/browser/browser-agent-authority.js';
 import { BrowserAutomation } from '../../services/browser/browser-automation.js';
 import { withBrowserHumanControl } from '../../services/browser/browser-human-control.js';
+import { BrowserHumanTaskClip } from '../../services/browser/browser-human-task-clip.js';
 import { loadLocatorEngineInstallExpression } from '../../services/browser/browser-locator-engine.js';
 import {
   isStationInternalRequest,
@@ -200,6 +201,7 @@ import {
 } from '../../services/projects/project-room-store.js';
 import { ProjectSharedTaskService } from '../../services/projects/project-shared-task-service.js';
 import type { ProjectSharedTaskStore } from '../../services/projects/project-shared-task-store.js';
+import { RecordingLimiter } from '../../services/projects/recording-limiter.js';
 import { TaskBrowserCapture } from '../../services/projects/task-browser-capture.js';
 import { TaskBrowserRecording } from '../../services/projects/task-browser-recording.js';
 import { createTaskCaptureBlobStoreFactory } from '../../services/projects/task-capture-blob-store-factory.js';
@@ -8185,13 +8187,15 @@ export function configureRuntimeRoutes(
     const browserArtifactsPreview = context.featurePreviews.bind({
       id: 'browser-artifacts',
       label: 'Browser artifacts',
-      description: 'Try Browser annotations and network diagnostics.',
+      description:
+        'Try Browser annotations, recording and network diagnostics.',
     });
     const browserArtifactsEnabled = () =>
       browserArtifactsPreview.select({
         enabled: () => true,
         disabled: () => false,
       });
+    const recordingLimiter = new RecordingLimiter();
     browserService = createBrowserService({
       stationHome: context.configLoader.getProjectHomeDir(),
       experienceEnabled: browserExperienceEnabled,
@@ -8199,6 +8203,8 @@ export function configureRuntimeRoutes(
       consentPort: configuredConsentPort(),
       configuredOrigins: allowedOrigins,
       networkPreviewEnabled: browserArtifactsEnabled,
+      recordingResolver: context.walkthroughImportDependencies.resolver,
+      recordingLimiter,
       // #1970: the managed device hub and its helpers, read live.
       // #1973: every SSH device host's local forward and host hub port too.
       extraListenerPorts: () => [
@@ -8214,6 +8220,7 @@ export function configureRuntimeRoutes(
           }
         : {}),
     });
+    let humanTaskClip: BrowserHumanTaskClip | undefined;
     context.app.use('/api/browser/*', async (c, next) => {
       roomRequestPrincipals.set(
         c.req.raw,
@@ -8264,6 +8271,12 @@ export function configureRuntimeRoutes(
         consoleFor: browserService.consoleFor,
         networkFor: browserService.networkFor,
         networkPreviewEnabled: browserArtifactsEnabled,
+        humanRecordings: browserService.humanRecordings,
+        recordingAdmissionKey: (c) =>
+          resolveLiveSurfaceHumanCaller?.(c)?.principal,
+        prepareHumanTaskClip: (request, conversationId, browser) =>
+          humanTaskClip?.prepare(request, conversationId, browser) ??
+          Promise.resolve({ kind: 'none' }),
         authorizeProject: authorizeBrowserProject,
         authorizeOperator: createBrowserOperatorAuthorizer(browserAccess),
         localTargets: browserService.localTargets,
@@ -8363,6 +8376,21 @@ export function configureRuntimeRoutes(
             forbiddenRoots: captureForbiddenRoots,
           })
         : undefined;
+    if (
+      taskCaptures &&
+      taskWalkthroughs &&
+      captureRuntime &&
+      localMediaPreviews
+    ) {
+      humanTaskClip = new BrowserHumanTaskClip({
+        runtime: captureRuntime,
+        captures: taskCaptures,
+        store: taskWalkthroughs,
+        preview: localMediaPreviews.walkthroughsPreview,
+        localProjectIdFor: captureProjectIdFor,
+        isCurrent: isRequestPrincipalCurrent,
+      });
+    }
     taskRecordings =
       taskCaptures &&
       taskWalkthroughs &&
@@ -8376,6 +8404,7 @@ export function configureRuntimeRoutes(
             resolver: context.walkthroughImportDependencies.resolver,
             preview: localMediaPreviews.walkthroughsPreview,
             store: taskWalkthroughs,
+            limiter: recordingLimiter,
           })
         : undefined;
     const deviceRecordings =

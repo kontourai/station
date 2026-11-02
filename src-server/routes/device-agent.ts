@@ -164,6 +164,7 @@ export function createDeviceAgentRoutes(deps: DeviceAgentRoutesDeps) {
             const manifest = await capture.recordings!.recordSource(
               taskAccess,
               {
+                admissionKey: authority.principalId,
                 durationMs: body.durationMs as number,
                 ...(body.maxBytes !== undefined
                   ? { maxBytes: body.maxBytes as number }

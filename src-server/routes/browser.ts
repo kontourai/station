@@ -21,6 +21,7 @@ import type {
 } from '../services/browser/browser-access.js';
 import type { BrowserConsoleSnapshot } from '../services/browser/browser-console-log.js';
 import type { BrowserViewport } from '../services/browser/browser-host.js';
+import type { BrowserHumanRecording } from '../services/browser/browser-human-recording.js';
 import {
   LocalTargetError,
   type LocalTargetStore,
@@ -146,6 +147,15 @@ export interface BrowserRoutesDeps {
     (ReturnType<BrowserNetworkLog['read']> & { generation: number }) | undefined
   >;
   networkPreviewEnabled?: () => boolean;
+  humanRecordings?: BrowserHumanRecording;
+  recordingAdmissionKey?(context: Context): string | undefined;
+  prepareHumanTaskClip?(
+    request: Request,
+    conversationId: string,
+    browser: BrowserSessionRecord,
+  ): Promise<
+    import('../services/browser/browser-human-task-clip.js').HumanTaskPreparation
+  >;
   acquisition: Pick<ChromiumAcquisition, 'status' | 'startDownload'>;
   localTargets: Pick<LocalTargetStore, 'list' | 'add' | 'remove'>;
   /** Per-Project browser permissions (D4). Absent: the routes are not served. */
@@ -523,6 +533,210 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
       : status === 403
         ? denied
         : { success: false, code: 'not-found' };
+
+  const recordingAccess = async (request: Request, id: string) => {
+    const found = await sessionFor(request, id, 'view');
+    if (found.status !== 200) return found;
+    if (
+      !deps.isRequestPrincipalCurrent(request) ||
+      !deps.networkPreviewEnabled?.() ||
+      !deps.isAgentRequest ||
+      deps.isAgentRequest(request)
+    )
+      return { status: 403 as const };
+    return { ...found, owner: JSON.stringify(found.actor) };
+  };
+
+  const recordingPreview = async (c: Context, next: () => Promise<void>) => {
+    if (!deps.networkPreviewEnabled?.())
+      return c.json(
+        {
+          success: false,
+          code: 'feature_preview_disabled',
+          previewId: 'browser-artifacts',
+          settingsPath:
+            '/settings?view=feature-previews&highlight=feature-previews',
+          error: 'Enable Browser artifacts in Feature previews.',
+        },
+        404,
+      );
+    await next();
+  };
+  app.use('/sessions/:browserSessionId/recordings', recordingPreview);
+  app.use('/sessions/:browserSessionId/recordings/*', recordingPreview);
+
+  app.post('/sessions/:browserSessionId/recordings', async (c) => {
+    const id = c.req.param('browserSessionId');
+    const found = await recordingAccess(c.req.raw, id);
+    if (found.status !== 200) return c.json(refuse(found.status), found.status);
+    const body = await readJsonObject(c.req.raw, [
+      'generation',
+      'taskSessionId',
+    ]);
+    if (
+      !body ||
+      !Number.isSafeInteger(body.generation) ||
+      (body.taskSessionId !== undefined &&
+        (typeof body.taskSessionId !== 'string' ||
+          body.taskSessionId.length < 1 ||
+          body.taskSessionId.length > 256))
+    )
+      return c.json(invalid, 400);
+    if (
+      found.session.state !== 'live' ||
+      body.generation !== found.session.generation
+    )
+      return c.json({ success: false, code: 'stale-generation' }, 409);
+    if (!deps.humanRecordings)
+      return c.json({ success: false, code: 'recording-unavailable' }, 503);
+    try {
+      const taskSessionId = body.taskSessionId;
+      const recordingId = deps.humanRecordings.start({
+        session: found.session,
+        owner: found.owner,
+        admissionKey: deps.recordingAdmissionKey?.(c) ?? found.owner,
+        ...(typeof taskSessionId === 'string' && deps.prepareHumanTaskClip
+          ? {
+              prepareTask: () =>
+                deps.prepareHumanTaskClip!(
+                  c.req.raw,
+                  taskSessionId,
+                  found.session,
+                ),
+            }
+          : {}),
+        authorize: async () => {
+          const again = await recordingAccess(c.req.raw, id);
+          return (
+            again.status === 200 &&
+            again.owner === found.owner &&
+            again.session.generation === found.session.generation
+          );
+        },
+      });
+      return c.json({ success: true, data: { recordingId } }, 201);
+    } catch {
+      return c.json({ success: false, code: 'recording-unavailable' }, 503);
+    }
+  });
+
+  app.get('/sessions/:browserSessionId/recordings/:recordingId', async (c) => {
+    const id = c.req.param('browserSessionId');
+    const found = await recordingAccess(c.req.raw, id);
+    if (found.status !== 200) return c.json(refuse(found.status), found.status);
+    const result = deps.humanRecordings?.status(
+      c.req.param('recordingId'),
+      found.owner,
+      id,
+      found.session.generation,
+    );
+    return result
+      ? c.json({ success: true, data: result })
+      : c.json({ success: false, code: 'not-found' }, 404);
+  });
+
+  app.post(
+    '/sessions/:browserSessionId/recordings/:recordingId/stop',
+    async (c) => {
+      const id = c.req.param('browserSessionId');
+      const found = await recordingAccess(c.req.raw, id);
+      if (found.status !== 200)
+        return c.json(refuse(found.status), found.status);
+      if (!(await readJsonObject(c.req.raw, []))) return c.json(invalid, 400);
+      return deps.humanRecordings?.stop(
+        c.req.param('recordingId'),
+        found.owner,
+        id,
+        found.session.generation,
+      )
+        ? c.json({ success: true })
+        : c.json({ success: false, code: 'not-found' }, 404);
+    },
+  );
+
+  app.delete(
+    '/sessions/:browserSessionId/recordings/:recordingId',
+    async (c) => {
+      const id = c.req.param('browserSessionId');
+      const found = await recordingAccess(c.req.raw, id);
+      if (found.status !== 200)
+        return c.json(refuse(found.status), found.status);
+      return deps.humanRecordings?.cancel(
+        c.req.param('recordingId'),
+        found.owner,
+        id,
+        found.session.generation,
+      )
+        ? c.json({ success: true })
+        : c.json({ success: false, code: 'not-found' }, 404);
+    },
+  );
+
+  app.post(
+    '/sessions/:browserSessionId/recordings/:recordingId/task',
+    async (c) => {
+      const id = c.req.param('browserSessionId');
+      const found = await recordingAccess(c.req.raw, id);
+      if (found.status !== 200)
+        return c.json(refuse(found.status), found.status);
+      if (!(await readJsonObject(c.req.raw, []))) return c.json(invalid, 400);
+      const publication = deps.humanRecordings?.publishTask(
+        c.req.param('recordingId'),
+        found.owner,
+        id,
+        found.session.generation,
+        c.req.raw,
+      );
+      if (!publication)
+        return c.json({ success: false, code: 'task-unavailable' }, 409);
+      try {
+        return c.json({ success: true, data: await publication });
+      } catch {
+        return c.json({ success: false, code: 'task-unavailable' }, 409);
+      }
+    },
+  );
+
+  app.get(
+    '/sessions/:browserSessionId/recordings/:recordingId/frames',
+    async (c) => {
+      const id = c.req.param('browserSessionId');
+      const found = await recordingAccess(c.req.raw, id);
+      if (found.status !== 200)
+        return c.json(refuse(found.status), found.status);
+      const frames = deps.humanRecordings?.contact(
+        c.req.param('recordingId'),
+        found.owner,
+        id,
+        found.session.generation,
+      );
+      return frames
+        ? c.json({ success: true, data: { frames } })
+        : c.json({ success: false, code: 'contact-unavailable' }, 409);
+    },
+  );
+
+  app.get(
+    '/sessions/:browserSessionId/recordings/:recordingId/video',
+    async (c) => {
+      const id = c.req.param('browserSessionId');
+      const found = await recordingAccess(c.req.raw, id);
+      if (found.status !== 200)
+        return c.json(refuse(found.status), found.status);
+      const bytes = deps.humanRecordings?.video(
+        c.req.param('recordingId'),
+        found.owner,
+        id,
+        found.session.generation,
+      );
+      if (!bytes) return c.json({ success: false, code: 'not-found' }, 404);
+      c.header('X-Content-Type-Options', 'nosniff');
+      return c.body(new Uint8Array(bytes), 200, {
+        'Content-Type': 'video/webm',
+        'Content-Disposition': 'attachment; filename="browser-recording.webm"',
+      });
+    },
+  );
 
   // `?view=summary` is what a pane polls (the latest few actions); the full
   // history is read on demand without it.
