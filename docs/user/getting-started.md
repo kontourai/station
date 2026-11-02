@@ -35,10 +35,10 @@ without adding a model API key:
    the Project. Operator setup is saved across reloads; reopen **New Project** to
    check and continue the same Project, intent and starter. See [repository setup and recovery](https://github.com/kontourai/station/blob/main/docs/guides/connections.md#start-a-project-from-a-repository)
    and [document import](https://github.com/kontourai/station/blob/main/docs/guides/knowledge.md#import-documents-from-your-computer).
-5. To talk to the built-in **Station** assistant using the same Codex account,
+5. To talk to the built-in **Station Assistant** using the same Codex account,
    open **Settings → General → Built-in agent engine → Change…**, choose
-   **Codex**, choose **Use this engine**, then **Save**. Select **Station** in
-   the chat's Agent picker. Ask it to list your projects to exercise a read-only
+   **Codex**, choose **Use this engine**, then **Save**. Select **Station
+   Assistant** in the chat's Agent picker. Ask it to list your projects to exercise a read-only
    Station tool as well as chat.
 
 For a customized Codex Agent, open **Customize → Agents → New agent → Use an
@@ -493,7 +493,14 @@ show what **Start** will use:
   checks it. A project with no folder
   can be chosen too. Its chats run in your home folder, or, for an ACP
   engine, in that engine's own Working Directory or else a private folder
-  Station makes for the chat; the chip and list say which.
+  Station makes for the chat; the chip and list say which. A Codex chat in
+  Codex's sandbox never runs in your home folder: it gets a private folder.
+- A chat **Without a project** runs in a private folder Station makes for
+  that chat inside its own data folder, not in your home folder. To run such
+  chats in your home folder instead, set **Settings › Agent runs › Chats
+  without a project** to **Home folder** (a sandboxed Codex chat still gets
+  a private folder). The setting applies to new chats; a chat that already
+  ran keeps its folder.
 - **⋯** holds **Use a visual skill** while the **Visual skills** Feature
   Preview is on; with it off there is no **⋯**.
 
@@ -602,6 +609,18 @@ send. With a message, Station sends your message, a blank line, then the
 context.
 
 **Fork from here** is not a new start: it keeps its own Agent list.
+
+To try a message again, use its actions. On an answer, **Regenerate** forks
+the chat just before the message that asked for it and sends that message
+again, attachments included, in the fork. On your message, **Edit and resend**
+opens the same kind of fork with the message in the composer, for you to change
+and send. Both use the message's Agent and keep the original chat and answer
+unchanged. If that Agent cannot run, the fork's Agent list opens instead. On a
+phone, **Edit and resend** is in the message's sheet and **Regenerate** is a row
+of the answer's sheet. For the message that started a chat, both start a new
+chat with the same Agent and Project. When earlier messages have no completed
+answer to fork from, neither is offered; **New chat from this message** remains.
+
 The usage disclosure ends after your usage decision. **Personalize Station**
 opens optional preferences after the work entry; it is not a prerequisite for a
 chat.
@@ -637,7 +656,9 @@ At the end of first-run setup, **Take the tour** and **Connect another device**
 are optional alternatives to **Start your first chat**. Both save the same selected answers before opening their next step.
 
 On a phone, the dock starts at **Inbox** unless you open a specific
-conversation. Its Inbox icon returns to the work list; the chat title stays
+conversation. A conversation opens full screen; **Restore chat size** in the
+chat bar shrinks it to a peek and **Full screen chat** grows it back. The menu
+drawer lists your recent chats. Its Inbox icon returns to the work list; the chat title stays
 as context. Search opens from the magnifier. Your search, list position and
 unsent message stay in place when switching back to a conversation. Collapse
 and reopen restore the last view. Use the compose icon at the right of the
@@ -652,7 +673,9 @@ for creating a project, including a short first-project prompt when empty.
 In **Inbox**, delegated work folds under its recorded parent.
 Expand the subtask count to read the children; children that need you stay
 visible. Task-owned chats appear under their Task as sessions. **Show work**
-filters by project or Station and stays selected on this device. If work needs
+filters by project or Station and stays selected on this device. It starts at
+**All work**; **Current project** follows the project whose page you are on,
+and shows all work anywhere else. If work needs
 you outside the filter, choose **Show all** from the notice.
 
 To clear your inbox, hover a conversation on desktop and choose **× Dismiss

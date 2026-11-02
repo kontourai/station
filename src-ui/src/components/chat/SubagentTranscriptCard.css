@@ -92,7 +92,7 @@
   align-items: center;
   gap: var(--k-space-1);
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 
 .subagent-card__status--completed {
@@ -142,7 +142,7 @@
 .subagent-card__preview {
   overflow: hidden;
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -173,7 +173,7 @@
   align-items: center;
   gap: var(--k-space-2);
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   font-variant-numeric: tabular-nums;
 }
 
@@ -199,7 +199,7 @@
 .subagent-card__note {
   margin: 0;
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 
 .subagent-card__actions {
@@ -300,5 +300,5 @@
   border-radius: var(--k-radius-sm);
   background: var(--k-panel-raised);
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }

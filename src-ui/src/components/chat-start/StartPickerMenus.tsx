@@ -1,4 +1,5 @@
 import type { AgentData } from '../../contexts/AgentsContext';
+import { useConfig } from '../../contexts/ConfigContext';
 import {
   effectiveExecutionStationId,
   useExecutionStations,
@@ -8,6 +9,7 @@ import type { useStartSelection } from '../../hooks/useStartSelection';
 import type { AgentFixRoute } from '../AgentReadinessCell';
 import { agentFixRoute } from '../AgentReadinessCell';
 import {
+  GLOBAL_CONTEXT,
   resolveNewChatAgentEnable,
   resolveNewChatWorkspaceHint,
 } from '../modals/new-chat-modal-utils';
@@ -71,6 +73,8 @@ export function StartPickerMenus({
     modelConnections,
     acpConnections,
   } = selection;
+  // #4389: where a No project chat runs on this Station.
+  const noProjectChatFolder = useConfig()?.noProjectChatFolder ?? 'private';
   const close = () => {
     onSearch('');
     setMenu(null);
@@ -120,6 +124,8 @@ export function StartPickerMenus({
     agent: start.agent,
     project: viewModel.selectedProject,
     acpConnections,
+    noProjectChatFolder:
+      context === GLOBAL_CONTEXT ? noProjectChatFolder : undefined,
   });
   if (menu.kind === 'project')
     return (

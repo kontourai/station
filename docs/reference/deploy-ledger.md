@@ -28,6 +28,8 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-02T19:22:58Z | nightly-desktop | 0.1.11-nightly.2497.1 | `b5fa353` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/41491168448) |
+| 2026-11-02T19:22:54Z | nightly-android | 0.1.11-nightly.2497.1 | `b5fa353` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/41491168448) |
 | 2026-11-02T17:38:07Z | nightly-npm | 0.11.0-nightly.2497.41491168448 | `b5fa353` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/41491168448) |
 | 2026-11-02T00:57:48Z | nightly-desktop | 0.1.11-nightly.2497 | `a5fcd6b` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/41364353618) |
 | 2026-11-02T00:57:46Z | nightly-android | 0.1.11-nightly.2497 | `a5fcd6b` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/41364353618) |
@@ -401,6 +403,70 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-02T19:22:58Z · nightly-desktop · 0.1.11-nightly.2497.1
+
+- Ship SHA: `b5fa35320b8ff943cacc0e1eaba2d2cf320eb30b`
+- Artifact built at: `2026-11-02T17:56:19.873Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 41491168448)
+
+### Changelog
+
+Commits since `a5fcd6b` ([full sha](https://github.com/kontourai/station/commit/a5fcd6bb2a9ecb72f82e85a0f6239fb7b031937f)):
+
+**Features**
+
+- [#4420](https://github.com/kontourai/station/pull/4420) feat(agent-runtime): durable station-agent model and tool steps
+- [#4438](https://github.com/kontourai/station/pull/4438) feat(live-surface): one shared frame stream, guaranteed input headroom, client H.264
+- [#4421](https://github.com/kontourai/station/pull/4421) feat(orchestration): add a durable ownership cascade for delegated work
+- [#4442](https://github.com/kontourai/station/pull/4442) feat(browser): shortcuts, zoom, appearance, agent cursor and working access
+- [#4439](https://github.com/kontourai/station/pull/4439) feat(agents): bound browser and device tools for Codex agents
+- [#4423](https://github.com/kontourai/station/pull/4423) feat: durable inbox steering and engine profiles
+
+**Fixes**
+
+- [#4448](https://github.com/kontourai/station/pull/4448) fix(codex): give unbound confined chats private workspaces
+- [#4434](https://github.com/kontourai/station/pull/4434) fix(supervisor): give slow hosts time to boot and name the park timeout
+
+**Other**
+
+- [#4452](https://github.com/kontourai/station/pull/4452) test(projects): wait for the Room Agent publication instead of a 1 s poll
+- [#4424](https://github.com/kontourai/station/pull/4424) refactor(monument): move recovery admission and the session boundary onto Monument
+- [#4430](https://github.com/kontourai/station/pull/4430) refactor(terminal): remove the legacy port+1 terminal listener
+- [#4432](https://github.com/kontourai/station/pull/4432) chore: deslop the UX audit fixes and name the engine in an empty save-default label
+
+## 2026-11-02T19:22:54Z · nightly-android · 0.1.11-nightly.2497.1
+
+- Ship SHA: `b5fa35320b8ff943cacc0e1eaba2d2cf320eb30b`
+- Artifact built at: `2026-11-02T17:36:42.111Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 41491168448)
+
+### Changelog
+
+Commits since `a5fcd6b` ([full sha](https://github.com/kontourai/station/commit/a5fcd6bb2a9ecb72f82e85a0f6239fb7b031937f)):
+
+**Features**
+
+- [#4420](https://github.com/kontourai/station/pull/4420) feat(agent-runtime): durable station-agent model and tool steps
+- [#4438](https://github.com/kontourai/station/pull/4438) feat(live-surface): one shared frame stream, guaranteed input headroom, client H.264
+- [#4421](https://github.com/kontourai/station/pull/4421) feat(orchestration): add a durable ownership cascade for delegated work
+- [#4442](https://github.com/kontourai/station/pull/4442) feat(browser): shortcuts, zoom, appearance, agent cursor and working access
+- [#4439](https://github.com/kontourai/station/pull/4439) feat(agents): bound browser and device tools for Codex agents
+- [#4423](https://github.com/kontourai/station/pull/4423) feat: durable inbox steering and engine profiles
+
+**Fixes**
+
+- [#4448](https://github.com/kontourai/station/pull/4448) fix(codex): give unbound confined chats private workspaces
+- [#4434](https://github.com/kontourai/station/pull/4434) fix(supervisor): give slow hosts time to boot and name the park timeout
+
+**Other**
+
+- [#4452](https://github.com/kontourai/station/pull/4452) test(projects): wait for the Room Agent publication instead of a 1 s poll
+- [#4424](https://github.com/kontourai/station/pull/4424) refactor(monument): move recovery admission and the session boundary onto Monument
+- [#4430](https://github.com/kontourai/station/pull/4430) refactor(terminal): remove the legacy port+1 terminal listener
+- [#4432](https://github.com/kontourai/station/pull/4432) chore: deslop the UX audit fixes and name the engine in an empty save-default label
 
 ## 2026-11-02T17:38:07Z · nightly-npm · 0.11.0-nightly.2497.41491168448
 

@@ -22,7 +22,7 @@
 
 .acp-add-dialog__result > span {
   color: var(--text-secondary);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
 }
 
 .acp-add-dialog__form > label,
@@ -30,7 +30,7 @@
   display: grid;
   gap: 0.375rem;
   color: var(--text-secondary);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
 }
 
 .engine-setup input {
@@ -53,7 +53,7 @@
   width: fit-content;
   cursor: pointer;
   color: var(--accent-primary);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
 }
 
 .acp-add-dialog__result {
@@ -88,13 +88,13 @@
   margin: 0;
   padding-left: 1.25rem;
   color: var(--text-secondary);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
 }
 
 .acp-add-dialog__group-heading {
   margin: 0;
   color: var(--text-primary);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   font-weight: 600;
 }
 
@@ -107,7 +107,7 @@
   display: grid;
   gap: 0.375rem;
   color: var(--text-secondary);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   overflow-wrap: anywhere;
 }
 
@@ -123,13 +123,13 @@
 .acp-add-dialog__confirm-note {
   margin: 0;
   color: var(--text-muted);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
 }
 
 .acp-add-dialog__field-note {
   margin: 0;
   color: var(--warning-text);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
 }
 
 .acp-add-dialog__result-reason {

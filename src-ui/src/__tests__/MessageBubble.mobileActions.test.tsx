@@ -233,13 +233,25 @@ describe('MessageBubble phone copy and details actions', () => {
     const sheet = screen.getByRole('dialog', {
       name: 'Answer details and actions',
     });
+    // #4404 (A40): one sheet lists every answer action — no second ⋯ whose
+    // popup clipped the sheet title, and no row repeating that title.
     expect(
-      await within(sheet).findByRole('button', { name: 'More answer actions' }),
+      await within(sheet).findByRole('button', { name: 'Provenance' }),
     ).toBeTruthy();
+    expect(
+      within(sheet).queryByRole('button', { name: 'More answer actions' }),
+    ).toBeNull();
+    expect(
+      within(sheet).queryByRole('button', { name: 'Answer details' }),
+    ).toBeNull();
     expect(
       within(sheet).getByRole('button', { name: 'Good response' }),
     ).toBeTruthy();
     expect(within(sheet).queryByRole('button', { name: /^Copy/ })).toBeNull();
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Provenance' }));
+    expect(
+      await screen.findByRole('dialog', { name: 'Provenance' }),
+    ).toBeTruthy();
   });
 
   it('keeps an answer without a turn footer to one Copy, outside its sheet', () => {

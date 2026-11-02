@@ -160,12 +160,18 @@ outside pointer input, navigation and changing sidebar presentation dismiss
 the popup. The header's sidebar control toggles the desktop rail or the
 mobile drawer. The header retains breadcrumbs, its Layout picker,
 notifications and Station controls, and ends with its region controls. The
+phone drawer is the one exception to places-only: it lists up to five
+**Recent chats** under Activity, because a phone has no docked Inbox beside
+the page (#4397); the desktop map does not. The
 account control moved to the footer
 ([pane workspace plan](../plans/pane-workspace.md)); the phone's `⋯` menu keeps
 a Profile row while the drawer is closed.
 
 **Personal Boards** follows Projects and remains visible when empty; its
-`+` creates the first Board and focuses its name. Loading and failed reads
+`+` creates the first Board and focuses its name. Confirming that first name
+gives the Board an address from it (`/boards/<name-slug>`, a Board created
+there and the `untitled-board` placeholder removed) and opens it; a rename
+afterwards never changes a Board's address (#4405). Loading and failed reads
 remain visible, with Retry on failure and creation disabled until the list
 is available. The collapsed rail has one dashboard button that opens the
 personal Board list and its create action. Escape returns focus to that

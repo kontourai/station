@@ -179,9 +179,10 @@ describe('message bubble context menu', () => {
     const trigger = await screen.findByRole('button', {
       name: 'More answer actions',
     });
-    expect(rightClick(screen.getByRole('link', { name: 'the docs' }))).toBe(
-      false,
-    );
+    // The answer's markdown and its ⋯ are separate lazy chunks: neither
+    // waits for the other, so the link is awaited on its own.
+    const link = await screen.findByRole('link', { name: 'the docs' });
+    expect(rightClick(link)).toBe(false);
     expect(trigger.getAttribute('aria-expanded')).toBe('false');
   });
 

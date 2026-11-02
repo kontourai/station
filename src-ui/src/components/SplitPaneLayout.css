@@ -171,7 +171,7 @@
 
 .split-pane__label {
   font-family: var(--font-mono);
-  font-size: 0.6rem;
+  font-size: var(--k-text-sm);
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -211,7 +211,7 @@
 }
 
 .split-pane__subtitle {
-  font-size: 0.72rem;
+  font-size: var(--k-text-sm);
   color: var(--text-secondary);
   margin: 0.25rem 0 0;
   line-height: 1.25;
@@ -463,7 +463,7 @@
 }
 
 .split-pane__item-subtitle {
-  font-size: 0.68rem;
+  font-size: var(--k-text-sm);
   color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
@@ -534,7 +534,7 @@
 
 .split-pane__section-header {
   font-family: var(--font-mono);
-  font-size: 0.57rem;
+  font-size: var(--k-text-sm);
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -563,7 +563,7 @@
   color: var(--text-secondary);
   cursor: pointer;
   font-family: var(--font-mono);
-  font-size: 0.6rem;
+  font-size: var(--k-text-sm);
   font-weight: 700;
   letter-spacing: 0.08em;
   text-align: left;
@@ -640,9 +640,10 @@
    default rhythm; only the split-pane list row's padding is tuned so its
    OWN content-driven height lands within measurement tolerance of a real
    item row — proven with a real Chromium measurement, not grepped CSS text
-   (SplitPaneLayout.skeleton-geometry.test.tsx). */
+   (SplitPaneLayout.skeleton-geometry.test.tsx). The 12px text floor (#4403)
+   grew a real row to ~41.9px, so the vertical padding follows (6px -> 7.5px). */
 .split-pane__list .skeleton-list__item {
-  padding: 6px 12px;
+  padding: 7.5px 12px;
 }
 
 .split-pane__detail-skeleton {
@@ -761,7 +762,7 @@
   }
 
   .split-pane__label {
-    font-size: 0.62rem;
+    font-size: var(--k-text-sm);
   }
 
   .split-pane__subtitle {
