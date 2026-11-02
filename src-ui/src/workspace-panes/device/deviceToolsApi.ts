@@ -1,6 +1,8 @@
 import {
   DEVICE_AX_CLIENT_MAX_BYTES,
   type DeviceAccessibilityTree,
+  type DeviceAppAction,
+  type DeviceAppActionResult,
   type DeviceControlHeldBy,
   type DevicePermissionsReadBack,
   type DeviceToolAction,
@@ -46,6 +48,7 @@ const KNOWN_FAILURES: readonly DeviceToolsFailure[] = [
   'tool-unavailable',
   'tool-failed',
   'app-not-running',
+  'postcondition-failed',
   'tool-timeout',
   'hub-unavailable',
   'unknown-host',
@@ -371,11 +374,59 @@ export function useDeviceToolAction(
   });
 }
 
+export function useDeviceAppAction(
+  scope: ApiRequestScope,
+  target: DeviceToolsTarget,
+  projectSlug: string | null,
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (
+      action: DeviceAppAction,
+    ): Promise<DeviceAppActionResult> => {
+      const value = await data(
+        await mutateJson(
+          `${scope.apiBase}${toolsPath(target, '/app-actions', {}, projectSlug)}`,
+          'POST',
+          { requestScope: scope, maxResponseBytes: 16 * 1024 },
+          action,
+        ),
+      );
+      if (
+        value.hostId !== target.hostId ||
+        value.platform !== target.platform ||
+        value.deviceId !== target.deviceId ||
+        value.appId !== action.appId ||
+        value.action !== action.type ||
+        value.observed !==
+          (action.type === 'terminate' ? 'not-running' : 'foreground') ||
+        typeof value.observedAt !== 'string'
+      )
+        throw new DeviceToolsRequestError(200, undefined);
+      return {
+        ...target,
+        appId: action.appId,
+        action: action.type,
+        observed: action.type === 'terminate' ? 'not-running' : 'foreground',
+        observedAt: value.observedAt,
+      };
+    },
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: deviceToolsKey(scope, target, projectSlug),
+      }),
+  });
+}
+
 /** Plain-language copy for a refused or failed request. */
 export function describeDeviceToolsFailure(error: unknown): string {
   const code =
     error instanceof DeviceToolsRequestError ? error.code : undefined;
   switch (code) {
+    case 'postcondition-failed':
+      return 'The device state could not be confirmed.';
+    case 'app-not-running':
+      return 'The app is not running on this device.';
     case 'device-controlled-by-other':
       return error instanceof DeviceToolsRequestError &&
         error.heldBy === 'same-person-elsewhere'

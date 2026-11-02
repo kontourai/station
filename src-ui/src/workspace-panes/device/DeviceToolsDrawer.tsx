@@ -1,6 +1,7 @@
 import {
   DEVICE_PUSH_PAYLOAD_MAX_BYTES,
   type DeviceAccessibilityTree,
+  type DeviceAppAction,
   type DeviceLocationReadBack,
   type DevicePermission,
   type DevicePermissionDecision,
@@ -30,6 +31,7 @@ import {
   describeDeviceLogsFailure,
   describeDeviceToolsFailure,
   useDeviceAccessibilityTree,
+  useDeviceAppAction,
   useDeviceLogs,
   useDevicePermissions,
   useDeviceToolAction,
@@ -306,6 +308,14 @@ export function DeviceToolsDrawer(props: DeviceToolsDrawerProps) {
               <span className="device-tools__muted">—</span>
             )}
           </Row>
+          {deviceLoopEnabled ? (
+            <AppActions
+              key={targetKey}
+              requestScope={requestScope}
+              target={target}
+              projectSlug={projectSlug}
+            />
+          ) : null}
         </Section>
 
         {deviceLoopEnabled ? (
@@ -476,6 +486,95 @@ export function DeviceToolsDrawer(props: DeviceToolsDrawerProps) {
         ) : null}
       </div>
     </aside>
+  );
+}
+
+function AppActions({
+  requestScope,
+  target,
+  projectSlug,
+}: {
+  requestScope: ApiRequestScope;
+  target: DeviceToolsTarget;
+  projectSlug: string | null;
+}) {
+  const [appId, setAppId] = useState('');
+  const [url, setUrl] = useState('');
+  const [notice, setNotice] = useState<string | null>(null);
+  const action = useDeviceAppAction(requestScope, target, projectSlug);
+  const run = async (next: DeviceAppAction) => {
+    setNotice(null);
+    try {
+      const result = await action.mutateAsync(next);
+      setNotice(
+        result.observed === 'foreground'
+          ? 'App is in the foreground.'
+          : 'App is not running.',
+      );
+    } catch {
+      /* The error is shown below. */
+    }
+  };
+  const valid = APP_ID.test(appId) && appId.length <= 255;
+  return (
+    <>
+      <label className="device-tools__field">
+        <span className="device-tools__label">App to control</span>
+        <input
+          value={appId}
+          maxLength={255}
+          autoCapitalize="off"
+          autoComplete="off"
+          spellCheck={false}
+          onChange={(event) => setAppId(event.target.value)}
+        />
+      </label>
+      <div className="device-tools__actions">
+        <Button
+          size="sm"
+          disabled={!valid || action.isPending}
+          onClick={() => void run({ type: 'launch', appId })}
+        >
+          Launch
+        </Button>
+        <Button
+          size="sm"
+          disabled={!valid || action.isPending}
+          onClick={() => void run({ type: 'terminate', appId })}
+        >
+          Terminate
+        </Button>
+      </div>
+      <label className="device-tools__field">
+        <span className="device-tools__label">URL</span>
+        <input
+          value={url}
+          maxLength={500}
+          autoCapitalize="off"
+          autoComplete="off"
+          spellCheck={false}
+          onChange={(event) => setUrl(event.target.value)}
+        />
+      </label>
+      <div className="device-tools__actions">
+        <Button
+          size="sm"
+          disabled={!valid || !url || action.isPending}
+          onClick={() => void run({ type: 'open-url', appId, url })}
+        >
+          Open URL
+        </Button>
+      </div>
+      {action.isPending ? <p role="status">Checking app state…</p> : null}
+      {notice ? <p role="status">{notice}</p> : null}
+      {action.isError ? (
+        <ErrorState
+          variant="compact"
+          title="App action unavailable"
+          description={describeDeviceToolsFailure(action.error)}
+        />
+      ) : null}
+    </>
   );
 }
 

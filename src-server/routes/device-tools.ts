@@ -20,6 +20,7 @@ import {
   type DeviceToolsService,
   isDeviceAppId,
   isDeviceToolsTarget,
+  parseDeviceAppAction,
 } from '../services/devices/device-tools.js';
 
 /**
@@ -114,6 +115,7 @@ const FAILURE_STATUS: Partial<
   unsupported: 422,
   'tool-failed': 502,
   'app-not-running': 409,
+  'postcondition-failed': 409,
   'tool-timeout': 504,
 };
 
@@ -404,6 +406,75 @@ export function createDeviceToolsRoutes(options: DeviceToolsRouteOptions) {
       return run(c, async () =>
         publish(c, await admitted.service.accessibility(admitted.target)),
       );
+    },
+  );
+
+  app.post(
+    '/hosts/:hostId/devices/:platform/:deviceId/tools/app-actions',
+    async (c) => {
+      if (!options.deviceLoopEnabled?.())
+        return c.json(
+          {
+            success: false,
+            code: 'feature_preview_disabled',
+            previewId: 'device-developer-loop',
+          },
+          404,
+        );
+      if (!queryIsClean(c, ['projectSlug']))
+        return failure(c, 'invalid-request');
+      const body = await readBoundedRequestBody(c.req.raw, 4096);
+      let value: unknown;
+      try {
+        value = body.status === 'ok' ? JSON.parse(body.body) : null;
+      } catch {
+        value = null;
+      }
+      const action = parseDeviceAppAction(value);
+      if (!action) return failure(c, 'invalid-request');
+      const admitted = await admit(c, 'drive');
+      if (!admitted.ok) return admitted.response;
+      const { target, caller, service } = admitted;
+      if (!options.controlConflict) return failure(c, 'unavailable');
+      const readmit = async () => {
+        if (
+          !options.deviceLoopEnabled?.() ||
+          !stillCurrent(c) ||
+          !(await access!.mayAccessDevice(
+            c.req.raw,
+            target.platform,
+            target.deviceId,
+            'drive',
+            target.hostId,
+          )) ||
+          (target.hostId === LOCAL_DEVICE_HOST_ID
+            ? tools
+            : options.toolsFor?.(target.hostId)) !== service ||
+          !stillCurrent(c) ||
+          !options.deviceLoopEnabled?.()
+        )
+          throw new DeviceToolsAdmissionError({ code: 'access-denied' });
+        const heldBy = options.controlConflict!(
+          caller,
+          target.platform,
+          target.deviceId,
+          target.hostId,
+        );
+        if (heldBy !== 'none')
+          throw new DeviceToolsAdmissionError({
+            code: 'device-controlled-by-other',
+            heldBy,
+          });
+      };
+      return run(c, async () => {
+        await readmit();
+        const result = await service.appAction(target, action, {
+          beforeRun: readmit,
+          signal: c.req.raw.signal,
+        });
+        await readmit();
+        return publish(c, result);
+      });
     },
   );
 

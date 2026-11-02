@@ -32,9 +32,13 @@
  * iOS permission changes use only `simctl privacy` (no serve-sim CLI), and
  * nothing here runs a helper binary spawned inside the simulator.
  */
+
+import { setTimeout as delay } from 'node:timers/promises';
 import type {
   DeviceAccessibilityElement,
   DeviceAccessibilityTree,
+  DeviceAppAction,
+  DeviceAppActionResult,
   DeviceAppearance,
   DeviceLocation,
   DeviceLocationReadBack,
@@ -76,6 +80,7 @@ export type DeviceToolsErrorCode =
   | 'tool-unavailable'
   | 'tool-failed'
   | 'app-not-running'
+  | 'postcondition-failed'
   | 'tool-timeout'
   | 'hub-unavailable'
   /** The SSH device host's operator has not enabled its hub (#2442). */
@@ -251,6 +256,61 @@ const ANDROID_PERMISSION_NAME = oneOf(
 );
 const PROCESS_ID = /^[1-9][0-9]{0,9}$/;
 const IOS_LOG_PREDICATE = /^processIdentifier == [1-9][0-9]{0,9}$/;
+const URL_ARGUMENT =
+  /^[A-Za-z][A-Za-z0-9+.-]{0,31}:[A-Za-z0-9%._~:/?#[\]@!$&()*+,;=-]*$/;
+const QUOTED_URL_ARGUMENT =
+  /^'[A-Za-z][A-Za-z0-9+.-]{0,31}:[A-Za-z0-9%._~:/?#[\]@!$&()*+,;=-]*'$/;
+
+export function deviceAppUrl(value: unknown): string | null {
+  if (
+    typeof value !== 'string' ||
+    value.length > 500 ||
+    [...value].some((character) => {
+      const code = character.codePointAt(0) ?? 0;
+      return code <= 32 || code === 127 || character === '\\';
+    })
+  )
+    return null;
+  try {
+    const parsed = new URL(value);
+    if (
+      parsed.username ||
+      parsed.password ||
+      [
+        'file:',
+        'javascript:',
+        'data:',
+        'about:',
+        'intent:',
+        'content:',
+      ].includes(parsed.protocol)
+    )
+      return null;
+    const encoded = parsed.href.replaceAll("'", '%27');
+    return encoded.length <= 500 && URL_ARGUMENT.test(encoded) ? encoded : null;
+  } catch {
+    return null;
+  }
+}
+
+export function parseDeviceAppAction(value: unknown): DeviceAppAction | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const input = value as Record<string, unknown>;
+  if (!isDeviceAppId(input.appId)) return null;
+  if (
+    (input.type === 'launch' || input.type === 'terminate') &&
+    Object.keys(input).length === 2
+  )
+    return { type: input.type, appId: input.appId };
+  if (
+    input.type === 'open-url' &&
+    Object.keys(input).length === 3 &&
+    typeof input.url === 'string' &&
+    deviceAppUrl(input.url)
+  )
+    return { type: input.type, appId: input.appId, url: input.url };
+  return null;
+}
 
 /**
  * Every argument vector the Tools drawer may run, per tool. `exec` refuses a
@@ -261,6 +321,9 @@ export const DEVICE_TOOL_ARGV_SHAPES: Readonly<
   Record<DeviceTool, readonly (readonly ArgPart[])[]>
 > = {
   xcrun: [
+    ['simctl', 'launch', IOS_UDID, APP_ID],
+    ['simctl', 'terminate', IOS_UDID, APP_ID],
+    ['simctl', 'openurl', IOS_UDID, URL_ARGUMENT],
     ['simctl', 'ui', IOS_UDID, 'appearance'],
     ['simctl', 'ui', IOS_UDID, 'appearance', APPEARANCE],
     ['simctl', 'location', IOS_UDID, 'set', COORDINATE_PAIR],
@@ -284,6 +347,32 @@ export const DEVICE_TOOL_ARGV_SHAPES: Readonly<
     ],
   ],
   adb: [
+    [
+      '-s',
+      EMULATOR_SERIAL,
+      'shell',
+      'monkey',
+      '-p',
+      APP_ID,
+      '-c',
+      'android.intent.category.LAUNCHER',
+      '1',
+    ],
+    ['-s', EMULATOR_SERIAL, 'shell', 'am', 'force-stop', APP_ID],
+    [
+      '-s',
+      EMULATOR_SERIAL,
+      'shell',
+      'am',
+      'start',
+      '-W',
+      '-a',
+      'android.intent.action.VIEW',
+      '-d',
+      QUOTED_URL_ARGUMENT,
+      '-p',
+      APP_ID,
+    ],
     ['-s', EMULATOR_SERIAL, 'shell', 'cmd', 'uimode', 'night'],
     ['-s', EMULATOR_SERIAL, 'shell', 'cmd', 'uimode', 'night', NIGHT],
     ['-s', EMULATOR_SERIAL, 'emu', 'geo', 'fix', COORDINATE, COORDINATE],
@@ -907,6 +996,7 @@ function reasonOf(error: unknown): DeviceToolsUnreadableReason {
 
 export class DeviceToolsService {
   private readonly activeLogs = new Set<string>();
+  private readonly activeAppActions = new Set<string>();
   /** What THIS Station last set, per device (iOS cannot read location). */
   private readonly lastLocation = new Map<
     string,
@@ -1060,6 +1150,136 @@ export class DeviceToolsService {
     const foregroundApp = await this.readForeground(target, beforeRun);
     await beforeRun?.();
     return { foregroundApp, readAt: new Date(this.now()).toISOString() };
+  }
+
+  /** Runs one typed app action and observes the requested device state. */
+  async appAction(
+    target: DeviceToolsTarget,
+    action: DeviceAppAction,
+    options: { beforeRun?: () => Promise<void>; signal?: AbortSignal } = {},
+  ): Promise<DeviceAppActionResult> {
+    this.assertOwnHost(target);
+    assertTarget(target.platform, target.deviceId);
+    assertAppId(action.appId);
+    if (!['launch', 'terminate', 'open-url'].includes(action.type))
+      throw new DeviceToolsError('invalid-request');
+    const url = action.type === 'open-url' ? deviceAppUrl(action.url) : null;
+    if (action.type === 'open-url' && !url)
+      throw new DeviceToolsError('invalid-request');
+    const key = this.key(target);
+    if (this.activeAppActions.has(key)) throw new DeviceHostBusyError();
+    this.activeAppActions.add(key);
+    const check = async () => {
+      if (options.signal?.aborted) throw new DeviceToolsError('tool-failed');
+      await options.beforeRun?.();
+      if (options.signal?.aborted) throw new DeviceToolsError('tool-failed');
+    };
+    const runOptions = { beforeRun: check, signal: options.signal };
+    try {
+      const ios = target.platform === 'ios';
+      const { deviceId } = target;
+      const args =
+        action.type === 'launch'
+          ? ios
+            ? ['simctl', 'launch', deviceId, action.appId]
+            : [
+                '-s',
+                deviceId,
+                'shell',
+                'monkey',
+                '-p',
+                action.appId,
+                '-c',
+                'android.intent.category.LAUNCHER',
+                '1',
+              ]
+          : action.type === 'terminate'
+            ? ios
+              ? ['simctl', 'terminate', deviceId, action.appId]
+              : ['-s', deviceId, 'shell', 'am', 'force-stop', action.appId]
+            : ios
+              ? ['simctl', 'openurl', deviceId, url!]
+              : [
+                  '-s',
+                  deviceId,
+                  'shell',
+                  'am',
+                  'start',
+                  '-W',
+                  '-a',
+                  'android.intent.action.VIEW',
+                  '-d',
+                  `'${url}'`,
+                  '-p',
+                  action.appId,
+                ];
+      await this.exec(ios ? 'xcrun' : 'adb', args, runOptions);
+      for (let attempt = 0; attempt < 10; attempt++) {
+        await check();
+        let observed = false;
+        if (action.type === 'terminate') {
+          if (ios) {
+            const output = await this.exec(
+              'xcrun',
+              ['simctl', 'spawn', deviceId, 'launchctl', 'list'],
+              runOptions,
+            );
+            if (!/^\s*PID\s+Status\s+Label\s*$/m.test(output))
+              throw new DeviceToolsError('postcondition-failed');
+            observed = !output
+              .split(/\r?\n/)
+              .some(
+                (line) =>
+                  /^\d+\s+\S+\s+UIKitApplication:([^[]+)\[/.exec(line)?.[1] ===
+                  action.appId,
+              );
+          } else {
+            try {
+              const output = await this.exec(
+                'adb',
+                ['-s', deviceId, 'shell', 'pidof', action.appId],
+                runOptions,
+              );
+              if (!output.trim())
+                throw new DeviceToolsError('postcondition-failed');
+            } catch (error) {
+              if (
+                error instanceof DeviceToolsError &&
+                error.code === 'tool-failed' &&
+                error.exitCode === 1 &&
+                error.stderrPresent === false
+              )
+                observed = true;
+              else throw error;
+            }
+          }
+        } else {
+          const read = await this.readForeground(target, check);
+          observed =
+            read.state === 'read' && read.value?.appId === action.appId;
+        }
+        await check();
+        if (observed)
+          return {
+            ...target,
+            appId: action.appId,
+            action: action.type,
+            observed:
+              action.type === 'terminate' ? 'not-running' : 'foreground',
+            observedAt: new Date(this.now()).toISOString(),
+          };
+        if (attempt < 9) {
+          try {
+            await delay(200, undefined, { signal: options.signal });
+          } catch {
+            throw new DeviceToolsError('tool-failed');
+          }
+        }
+      }
+      throw new DeviceToolsError('postcondition-failed');
+    } finally {
+      this.activeAppActions.delete(key);
+    }
   }
 
   private async readAppearance(

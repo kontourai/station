@@ -14,6 +14,7 @@ import {
   type DeviceToolRunner,
   DeviceToolsError,
   DeviceToolsService,
+  deviceAppUrl,
   deviceControlConflict,
   deviceToolArgv,
   encodeDevicePushPayload,
@@ -37,6 +38,82 @@ test('local runner refuses before spawning when admission fails', async () => {
     }),
   ).rejects.toThrow('denied');
   expect(run).not.toHaveBeenCalled();
+});
+
+test('typed iOS app actions require the observed app state', async () => {
+  const app = 'com.example.app';
+  const runner = fakeRunner({
+    [`xcrun simctl launch ${UDID} ${app}`]: `${app}: 42\n`,
+    [`xcrun simctl terminate ${UDID} ${app}`]: '',
+    [`xcrun simctl spawn ${UDID} launchctl list`]:
+      'PID Status Label\n- 0 other\n',
+    [`xcrun simctl openurl ${UDID} example://page`]: '',
+  });
+  const service = new DeviceToolsService({
+    runner,
+    hub: hubAnswering({
+      [`/vendor/serve-sim/helper/${UDID}/foreground`]: { bundleId: app },
+    }),
+  });
+  await expect(
+    service.appAction(IOS, { type: 'launch', appId: app }),
+  ).resolves.toMatchObject({ observed: 'foreground', appId: app });
+  await expect(
+    service.appAction(IOS, {
+      type: 'open-url',
+      appId: app,
+      url: 'example://page',
+    }),
+  ).resolves.toMatchObject({ observed: 'foreground' });
+  await expect(
+    service.appAction(IOS, { type: 'terminate', appId: app }),
+  ).resolves.toMatchObject({ observed: 'not-running' });
+  const malformed = new DeviceToolsService({
+    runner: fakeRunner({
+      [`xcrun simctl terminate ${UDID} ${app}`]: '',
+      [`xcrun simctl spawn ${UDID} launchctl list`]: '',
+    }),
+    hub: hubAnswering(),
+  });
+  await expect(
+    malformed.appAction(IOS, { type: 'terminate', appId: app }),
+  ).rejects.toMatchObject({ code: 'postcondition-failed' });
+});
+
+test('Android app actions use fixed host vectors and reject unsafe URLs', async () => {
+  const app = 'com.example.app';
+  const url = 'https://example.test/path?a=1&b=2';
+  const runner = fakeRunner({
+    [`adb -s ${SERIAL} shell monkey -p ${app} -c android.intent.category.LAUNCHER 1`]:
+      'Events injected: 1',
+    [`adb -s ${SERIAL} shell am start -W -a android.intent.action.VIEW -d '${url}' -p ${app}`]:
+      'Status: ok',
+    [`adb -s ${SERIAL} shell dumpsys window`]: `mCurrentFocus=Window{1 u0 ${app}/.Main}`,
+    [`adb -s ${SERIAL} shell am force-stop ${app}`]: '',
+    [`adb -s ${SERIAL} shell pidof ${app}`]: new DeviceToolError(
+      'tool-failed',
+      'absent',
+      1,
+      false,
+    ),
+  });
+  const service = new DeviceToolsService({ runner, hub: hubAnswering() });
+  await expect(
+    service.appAction(ANDROID, { type: 'launch', appId: app }),
+  ).resolves.toMatchObject({ observed: 'foreground' });
+  await expect(
+    service.appAction(ANDROID, { type: 'open-url', appId: app, url }),
+  ).resolves.toMatchObject({ observed: 'foreground' });
+  await expect(
+    service.appAction(ANDROID, { type: 'terminate', appId: app }),
+  ).resolves.toMatchObject({ observed: 'not-running' });
+  for (const value of [
+    'file:///tmp/a',
+    'javascript:alert(1)',
+    'https://a.test/\\evil',
+    'https://user:password@example.test/',
+  ])
+    expect(deviceAppUrl(value)).toBeNull();
 });
 
 /**

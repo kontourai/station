@@ -806,6 +806,45 @@ describe('a device on an SSH device host (#2442)', () => {
     );
   });
 
+  test('App actions use the selected host and show only observed outcomes', async () => {
+    const { drawer, log } = await renderDrawer(({ method, path, body }) => {
+      if (method === 'GET' && path.endsWith('/tools'))
+        return { body: { success: true, data: snapshot({ hostId: REMOTE }) } };
+      if (method === 'POST' && path.endsWith('/app-actions')) {
+        const action = body as { type: string; appId: string };
+        return {
+          body: {
+            success: true,
+            data: {
+              ...REMOTE_TARGET,
+              appId: action.appId,
+              action: action.type,
+              observed:
+                action.type === 'terminate' ? 'not-running' : 'foreground',
+              observedAt: '2026-11-01T00:00:00Z',
+            },
+          },
+        };
+      }
+      return undefined;
+    });
+    fireEvent.change(await within(drawer).findByLabelText('App to control'), {
+      target: { value: 'com.example.app' },
+    });
+    await click(within(drawer).getByRole('button', { name: 'Launch' }));
+    await within(drawer).findByText('App is in the foreground.');
+    fireEvent.change(within(drawer).getByLabelText('URL'), {
+      target: { value: 'example://page' },
+    });
+    await click(within(drawer).getByRole('button', { name: 'Open URL' }));
+    expect(
+      toolsRequests(log, '/app-actions').map((request) => request.body),
+    ).toEqual([
+      { type: 'launch', appId: 'com.example.app' },
+      { type: 'open-url', appId: 'com.example.app', url: 'example://page' },
+    ]);
+  });
+
   test('a bounded log sample remains readable when JSON escaping expands it', async () => {
     const { drawer } = await renderDrawer(({ method, path }) => {
       if (method === 'GET' && path.endsWith('/tools'))

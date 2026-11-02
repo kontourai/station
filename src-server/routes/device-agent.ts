@@ -11,7 +11,11 @@ import {
 import type { DeviceAutomation } from '../services/devices/device-automation.js';
 import { DeviceSessionError } from '../services/devices/device-session-service.js';
 import { DeviceHostBusyError } from '../services/devices/device-shares.js';
-import { isDeviceAppId } from '../services/devices/device-tools.js';
+import {
+  DeviceToolsError,
+  isDeviceAppId,
+  parseDeviceAppAction,
+} from '../services/devices/device-tools.js';
 import { isValidMobileDeviceId } from '../services/mobile-device/mobile-device-host.js';
 import type { ProjectTaskRoomRuntime } from '../services/orchestration/project-task-room-runtime.js';
 import {
@@ -58,9 +62,11 @@ export function createDeviceAgentRoutes(deps: DeviceAgentRoutesDeps) {
       code:
         error instanceof DeviceSessionError
           ? error.code
-          : error instanceof DeviceHostBusyError
-            ? 'device-host-busy'
-            : 'device-error',
+          : error instanceof DeviceToolsError
+            ? error.code
+            : error instanceof DeviceHostBusyError
+              ? 'device-host-busy'
+              : 'device-error',
     }),
   );
   app.post('/:operation', async (c) => {
@@ -110,6 +116,45 @@ export function createDeviceAgentRoutes(deps: DeviceAgentRoutesDeps) {
     const id = body.deviceSessionId;
     if (typeof id !== 'string' || !id || id.length > 80)
       return c.json({ ok: false, code: 'invalid-request' });
+    if (
+      operation === 'launch-app' ||
+      operation === 'terminate-app' ||
+      operation === 'open-url'
+    ) {
+      if (!deps.deviceLoopEnabled?.())
+        return c.json({
+          ok: false,
+          code: 'feature_preview_disabled',
+          previewId: 'device-developer-loop',
+        });
+      const allowed =
+        operation === 'open-url'
+          ? ['deviceSessionId', 'appId', 'url']
+          : ['deviceSessionId', 'appId'];
+      if (Object.keys(body).some((key) => !allowed.includes(key)))
+        return c.json({ ok: false, code: 'invalid-request' });
+      const action = parseDeviceAppAction({
+        type:
+          operation === 'launch-app'
+            ? 'launch'
+            : operation === 'terminate-app'
+              ? 'terminate'
+              : 'open-url',
+        appId: body.appId,
+        ...(operation === 'open-url' ? { url: body.url } : {}),
+      });
+      if (!action) return c.json({ ok: false, code: 'invalid-request' });
+      return c.json(
+        await deps.automation.appAction(
+          access,
+          authority,
+          id,
+          action,
+          () => deps.deviceLoopEnabled?.() === true,
+          c.req.raw.signal,
+        ),
+      );
+    }
     if (operation === 'record-to-task') {
       if (!deps.deviceLoopEnabled?.())
         return c.json({

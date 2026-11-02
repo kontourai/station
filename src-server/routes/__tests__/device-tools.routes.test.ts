@@ -193,6 +193,44 @@ const actionPath = (id = IOS) => `${toolsPath(id)}/actions`;
 const DARK = { type: 'set-appearance', appearance: 'dark' };
 
 describe('who may read and act (D12: view vs drive)', () => {
+  test('typed app action checks drive authority and reports the observed postcondition', async () => {
+    const runner: DeviceToolRunner = {
+      async run(_tool, args, options) {
+        await options.beforeRun?.();
+        if (args.includes('terminate')) return '';
+        if (args.includes('launchctl')) return 'PID Status Label\n- 0 other\n';
+        throw new DeviceToolError('tool-failed', 'unexpected');
+      },
+    };
+    const { call } = setup(() => true, runner);
+    const path = `${toolsPath()}/app-actions`;
+    expect(
+      (
+        await call('POST', path, 'contributor', {
+          type: 'terminate',
+          appId: 'com.example.app',
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await call('POST', path, 'operator', {
+          type: 'terminate',
+          appId: 'com.example.app',
+          extra: true,
+        })
+      ).status,
+    ).toBe(400);
+    const response = await call('POST', path, 'operator', {
+      type: 'terminate',
+      appId: 'com.example.app',
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      success: true,
+      data: { action: 'terminate', observed: 'not-running', hostId: 'local' },
+    });
+  });
   test('disconnect aborts the in-flight log runner', async () => {
     let started!: () => void;
     const running = new Promise<void>((resolve) => {

@@ -114,6 +114,28 @@ export function registerDeviceTools(registry: StationControlToolRegistry) {
     async (args) => callDevice('logs', args),
   );
   registry.tool(
+    'device_launch_app',
+    'Launch an installed app and observe it in the foreground on the selected device host.',
+    { deviceSessionId, appId: z.string().min(3).max(255) },
+    async (args) => callDevice('launch-app', args),
+  );
+  registry.tool(
+    'device_terminate_app',
+    'Terminate an app and observe that its process is no longer running.',
+    { deviceSessionId, appId: z.string().min(3).max(255) },
+    async (args) => callDevice('terminate-app', args),
+  );
+  registry.tool(
+    'device_open_url',
+    'Open a URL and observe the expected app in the foreground; this does not prove the app handled the URL.',
+    {
+      deviceSessionId,
+      appId: z.string().min(3).max(255),
+      url: z.string().min(1).max(500),
+    },
+    async (args) => callDevice('open-url', args),
+  );
+  registry.tool(
     'device_snapshot',
     'Read the device accessibility tree on its own host. Coordinates describe current screen content; re-inspect after changes. Refused while a human controls it.',
     { deviceSessionId },

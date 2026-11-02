@@ -219,9 +219,29 @@ function harness(
         readAt: new Date().toISOString(),
       }),
     ),
+    appAction: vi.fn(
+      async (
+        target: Parameters<DeviceToolsService['appAction']>[0],
+        action: Parameters<DeviceToolsService['appAction']>[1],
+        options: Parameters<DeviceToolsService['appAction']>[2],
+      ) => {
+        await options?.beforeRun?.();
+        return {
+          ...target,
+          appId: action.appId,
+          action: action.type,
+          observed:
+            action.type === 'terminate'
+              ? ('not-running' as const)
+              : ('foreground' as const),
+          observedAt: new Date().toISOString(),
+        };
+      },
+    ),
   };
   const remoteTools = {
     foreground: localTools.foreground,
+    appAction: vi.fn(localTools.appAction.getMockImplementation()!),
     logs: vi.fn(
       async (
         target: Parameters<DeviceToolsService['logs']>[0],
@@ -532,6 +552,85 @@ test('opening an existing device while a person drives preserves their lease', a
   expect(await h.open()).toBe(id);
   expect(entry.lease.snapshot()).toEqual(before);
   expect(h.packets).toEqual([]);
+});
+
+test('app tools use the selected host and refuse a human-held lease', async () => {
+  const h = harness('sdk-in-process', { operator: true, remote: true });
+  const localId = await h.open();
+  expect(
+    parsed(
+      await h.run('device_launch_app', {
+        deviceSessionId: localId,
+        appId: 'com.example.app',
+      }),
+    ),
+  ).toMatchObject({
+    ok: true,
+    result: { hostId: 'local', observed: 'foreground' },
+  });
+  const remote = parsed(await h.run('device_open', { ...h.remoteDevice }));
+  const remoteId = remote.session.sessionId;
+  expect(
+    parsed(
+      await h.run('device_open_url', {
+        deviceSessionId: remoteId,
+        appId: 'com.example.app',
+        url: 'example://page',
+      }),
+    ),
+  ).toMatchObject({
+    ok: true,
+    result: { hostId: h.remoteDevice.hostId, observed: 'foreground' },
+  });
+  expect(h.remoteTools.appAction).toHaveBeenCalledOnce();
+  expect(h.localTools.appAction).toHaveBeenCalledOnce();
+  await h.take(localId);
+  expect(
+    parsed(
+      await h.run('device_terminate_app', {
+        deviceSessionId: localId,
+        appId: 'com.example.app',
+      }),
+    ),
+  ).toMatchObject({ ok: false });
+  expect(h.localTools.appAction).toHaveBeenCalledOnce();
+});
+
+test('human takeover aborts an in-flight app action and cannot report success', async () => {
+  const h = harness();
+  const id = await h.open();
+  let started!: () => void;
+  const ready = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  let aborted = false;
+  h.localTools.appAction.mockImplementationOnce(
+    async (_target, _action, options) => {
+      await options?.beforeRun?.();
+      started();
+      return await new Promise<never>((_resolve, reject) =>
+        options?.signal?.addEventListener(
+          'abort',
+          () => {
+            aborted = true;
+            reject(new Error('aborted'));
+          },
+          { once: true },
+        ),
+      );
+    },
+  );
+  const pending = h.run('device_launch_app', {
+    deviceSessionId: id,
+    appId: 'com.example.app',
+  });
+  await ready;
+  await h.take(id);
+  expect(parsed(await pending)).toMatchObject({
+    ok: false,
+    code: 'interrupted',
+  });
+  expect(aborted).toBe(true);
 });
 
 test('record-to-task validates its preview, bounds, binding and recorder availability', async () => {

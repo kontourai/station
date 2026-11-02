@@ -116,6 +116,21 @@ export const DEVICE_PUSH_PAYLOAD_MAX_BYTES = 4096;
 /** Maximum uploaded simulator app archive or Android APK. */
 export const DEVICE_ARTIFACT_UPLOAD_MAX_BYTES = 128 * 1024 * 1024;
 
+/** App actions are fixed operations on one installed app, not shell commands. */
+export type DeviceAppAction =
+  | { type: 'launch' | 'terminate'; appId: string }
+  | { type: 'open-url'; appId: string; url: string };
+
+export interface DeviceAppActionResult {
+  hostId: string;
+  platform: MobileDevicePlatform;
+  deviceId: string;
+  appId: string;
+  action: DeviceAppAction['type'];
+  observed: 'foreground' | 'not-running';
+  observedAt: string;
+}
+
 /** An iOS bundle id or Android package name: dotted, no shell characters. */
 export const DEVICE_APP_ID_MAX_LENGTH = 255;
 
@@ -219,6 +234,7 @@ export type DeviceToolsFailure =
   | 'tool-unavailable'
   | 'tool-failed'
   | 'app-not-running'
+  | 'postcondition-failed'
   | 'tool-timeout'
   | 'hub-unavailable'
   /** The path names an SSH device host this Station does not have. */

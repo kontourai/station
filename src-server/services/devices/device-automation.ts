@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { DeviceAppAction } from '@kontourai/station-contracts/device-tools';
 import type { LiveSurfaceInput } from '@kontourai/station-contracts/live-surface';
 import type {
   DeviceAgentReveal,
@@ -26,7 +27,8 @@ import type { DeviceToolsService } from './device-tools.js';
 interface DeviceAutomationHost {
   host: Pick<LocalMobileDeviceHost, 'inventory' | 'capture'>;
   sessions: DeviceSessionService;
-  tools: Pick<DeviceToolsService, 'accessibility' | 'logs' | 'foreground'>;
+  tools: Pick<DeviceToolsService, 'accessibility' | 'logs' | 'foreground'> &
+    Partial<Pick<DeviceToolsService, 'appAction'>>;
 }
 interface DeviceAutomationDeps extends DeviceAutomationHost {
   surfaces: Pick<LiveSurfaceRegistry, 'get'>;
@@ -522,6 +524,76 @@ export class DeviceAutomation {
       );
       if (!(await current())) return refused('interrupted');
       return { ok: true as const, logs };
+    });
+  }
+
+  async appAction(
+    access: DeviceAgentAccessDeps,
+    authority: DeviceAgentAuthority,
+    id: string,
+    action: DeviceAppAction,
+    enabled: () => boolean,
+    signal?: AbortSignal,
+  ) {
+    return this.withControl(access, authority, id, async (selected) => {
+      const run = selected.services.tools.appAction;
+      if (!run) return refused('unsupported');
+      const abort = new AbortController();
+      const stillCurrent = () => {
+        const live = this.sessionServices(id);
+        return (
+          enabled() &&
+          !abort.signal.aborted &&
+          !signal?.aborted &&
+          live?.session.surfaceId === selected.session.surfaceId &&
+          live.services.sessions === selected.services.sessions &&
+          live.services.tools === selected.services.tools &&
+          live.services.host === selected.services.host &&
+          this.deps.surfaces.get(selected.session.surfaceId) ===
+            selected.entry &&
+          selected.entry.lease.isCurrent(selected.lease.fence, selected.agent)
+            .ok
+        );
+      };
+      const current = async () =>
+        stillCurrent() &&
+        (await selected.entry.authorize(
+          authority.principalId,
+          'input',
+          selected.context,
+        )) &&
+        stillCurrent();
+      const beforeRun = async () => {
+        if (!(await current())) throw new Error('device authority changed');
+      };
+      const off = selected.entry.lease.onChange(() => {
+        if (
+          !selected.entry.lease.isCurrent(selected.lease.fence, selected.agent)
+            .ok
+        )
+          abort.abort();
+      });
+      try {
+        await beforeRun();
+        const result = await run.call(
+          selected.services.tools,
+          selected.session,
+          action,
+          {
+            beforeRun,
+            signal: signal
+              ? AbortSignal.any([signal, abort.signal])
+              : abort.signal,
+          },
+        );
+        if (!(await current())) return refused('interrupted');
+        return { ok: true as const, result };
+      } catch (error) {
+        if (!(await current())) return refused('interrupted');
+        throw error;
+      } finally {
+        off();
+      }
     });
   }
 
