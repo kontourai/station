@@ -1530,7 +1530,19 @@
 
     "packages/contracts/src/connection-recovery.ts",
 
-    "src-ui/src/components/chat-dock/UsageLimitBanner.tsx"
+    "src-ui/src/components/chat-dock/UsageLimitBanner.tsx",
+
+    "src-server/services/orchestration/recovery-ledger.ts",
+
+    "src-server/services/orchestration/session-turn-boundary.ts",
+
+    "src-server/services/orchestration/post-tool-inbox.ts",
+
+    "src-server/runtime/conversation/inbox-model-step.ts",
+
+    "src-ui/src/components/chat/ConversationInboxMessages.css",
+
+    "src-ui/src/__tests__/ConversationInboxMessages.geometry.test.tsx"
   ],
 
   "checks": [

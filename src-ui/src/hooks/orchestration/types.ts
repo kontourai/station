@@ -3,7 +3,10 @@ import type {
   ConversationTurnActivity,
   OrchestrationDelegationContext,
 } from '@kontourai/station-contracts/orchestration';
-import type { EngineId } from '@kontourai/station-contracts/provider';
+import type {
+  EngineId,
+  ProviderDurabilityProfile,
+} from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 
 /**
@@ -22,6 +25,7 @@ export type OrchestrationSnapshotPayload = {
   epoch?: string;
   sessions: Array<{
     provider: EngineId;
+    durability?: ProviderDurabilityProfile;
     threadId: string;
     status: string;
     /**

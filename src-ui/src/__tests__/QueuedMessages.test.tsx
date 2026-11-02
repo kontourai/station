@@ -33,6 +33,59 @@ function renderQueue(ui: Parameters<typeof render>[0]) {
   return result;
 }
 
+it('retains legacy input for destination review without exposing send or steer', () => {
+  const review = vi.fn();
+  renderQueue(
+    <QueuedMessages
+      sessionId="s"
+      messages={['saved text']}
+      metadata={[{ id: 'legacy', mode: 'queue', originUnverified: true }]}
+      onReviewOrigin={review}
+      canSteer
+      onSteer={async () => true}
+      onSendMessageNow={async () => {}}
+    />,
+  );
+  expect(screen.getByText('Review destination')).toBeTruthy();
+  expect(screen.queryByText('1', { exact: true })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Send as steer' })).toBeNull();
+  expect(
+    screen.queryByRole('button', { name: /Send pending message/ }),
+  ).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Review and resend' }));
+  expect(review).toHaveBeenCalledExactlyOnceWith('legacy');
+});
+
+it.each([undefined, 'indeterminate'] as const)(
+  'missing steering support hides Send-as-steer and Retry-steering (%s), while follow-up Retry works',
+  (delivery) => {
+    const onRetry = vi.fn();
+    const onSteer = vi.fn(async () => true);
+    renderQueue(
+      <QueuedMessages
+        sessionId="missing-profile"
+        messages={['retained input']}
+        metadata={[{ id: 'retained', mode: 'steer', delivery }]}
+        canSteer={false}
+        steeringUnavailableReason="Steering unavailable: the host did not report a durability profile."
+        onSteer={onSteer}
+        failure={{ message: 'Follow-up was refused for now.', at: 1 }}
+        onRetry={onRetry}
+      />,
+    );
+    expect(
+      screen.getByText(/host did not report a durability profile/),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Send as steer' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry steering' })).toBeNull();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Retry the queued message' }),
+    );
+    expect(onRetry).toHaveBeenCalledTimes(1);
+    expect(onSteer).not.toHaveBeenCalled();
+  },
+);
+
 describe('pending message disclosure', () => {
   it('starts compact, announces required review, and reveals actions only after expansion', () => {
     render(

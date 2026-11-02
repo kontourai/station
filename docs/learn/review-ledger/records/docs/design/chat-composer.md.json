@@ -224,7 +224,17 @@
 
     "src-ui/src/components/ComposerChoice.tsx",
 
-    "src-ui/src/components/ComposerChoice.css"
+    "src-ui/src/components/ComposerChoice.css",
+
+    "src-ui/src/components/chat/ConversationInboxMessages.css",
+
+    "src-ui/src/__tests__/ConversationInboxMessages.geometry.test.tsx",
+
+    "src-server/services/orchestration/orchestration-session-state.ts",
+
+    "src-ui/src/hooks/orchestration/snapshotHandlers.ts",
+
+    "src-ui/src/hooks/useDerivedSessions.ts"
   ],
 
   "checks": [
