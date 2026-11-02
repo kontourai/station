@@ -43,7 +43,7 @@ test.each([404, 501])(
       code: 'feature_preview_disabled',
       previewId: 'project-working-configuration',
       message:
-        'Project working configuration is unavailable. Enable its Feature Preview or update this Station.',
+        'Working configuration requires an accessible local repository and an updated personal Station.',
     });
   },
 );

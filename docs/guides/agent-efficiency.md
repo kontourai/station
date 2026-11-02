@@ -1,9 +1,11 @@
 # Bounded agent work
 
 Station can reduce repeated context and tool-schema loading while keeping the
-source, authority and result of each operation visible. These capabilities are
-[Feature previews](../user/settings.md#feature-previews), off by default. They
-are independent choices; turning one on grants no additional tool permission.
+source, authority and result of each operation visible. Reviewed Project working
+configuration is available on personal hosts without a preview switch. Learning,
+compaction, supervision and automations remain independent, default-off
+[Feature previews](../user/settings.md#feature-previews); enabling one grants no
+additional tool permission.
 
 ## Review a Project's working configuration
 
@@ -13,6 +15,11 @@ completion criteria, checkpoints and evidence pointers before applying them.
 Only the operator in person can discover or change this host-filesystem
 configuration. Applying it saves defaults; it runs no setup, installation,
 validation command or model.
+
+Until a configuration is reviewed, Task briefing skips repository-source
+discovery. Projects without a local repository can still dispatch Tasks. Once
+reviewed, guidance remains mandatory and is checked again before model effects;
+losing its root or source access does not silently remove the rules.
 
 Discovery follows bounded files inside the selected execution root and reports
 incomplete reads. It pins the Project incarnation, root identity and source
@@ -27,19 +34,24 @@ repository rules without a known relevant path stay lazy pointers. Omission
 counts and exact reviewed revisions remain visible. A smaller brief alone does
 not establish a smaller whole model prompt or measured savings.
 
-## Load tools as needed
+## Tool loading compatibility
 
-The progressive-tools preview initially lists `list_tool_families` and
+Station's experimental progressive-tools protocol initially lists `list_tool_families` and
 `load_tool_family` for eligible runtime tokens. Loading a family exposes the
 existing registrations and schemas under that token's private incarnation.
 Source selection, custody filters and call-time authorization remain in force.
 Another token starts with its own index; rotation and revocation invalidate the
-old capability. Disabling the preview restores static discovery.
+old capability. It is not offered as a Station preview until a native consumer
+is qualified.
 
 Claude keeps its existing native on-demand tool search. External leases and
-engines without this runtime admission retain their static selection. Actual
-engine handling of dynamic list notifications needs qualification separately
-from MCP transport fixtures.
+engines without this runtime admission retain their static selection. Native
+Codex retains the static catalog, including on hosts that previously saved an
+enabled progressive-tools choice. The 0.164.0
+qualification loaded a family but did not expose its tools, including on the next
+turn. MCP transport notification fixtures do not establish engine compatibility.
+A future native admission must prove an actual family tool call before hiding
+the static catalog. Current Claude tool search needs no Station preview switch.
 
 Codex built-in Control and Knowledge credentials travel in private thread
 JSON-RPC configuration as HTTP headers. They stay outside spawn argv and retain

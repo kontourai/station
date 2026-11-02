@@ -8668,11 +8668,6 @@ export function configureRuntimeRoutes(
       '/api/projects',
       createProjectWorkingConfigurationRoutes({
         service: working.service,
-        enabled: () =>
-          working.preview.select({
-            enabled: () => true,
-            disabled: () => false,
-          }),
         authorize: async (request, slug) => {
           if (isStationInternalRequest(request)) return undefined;
           const project = context.projectService

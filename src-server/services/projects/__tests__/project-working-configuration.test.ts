@@ -10,9 +10,46 @@ import { join } from 'node:path';
 import { expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { createProjectWorkingConfigurationRoutes } from '../../../routes/projects/project-working-configuration-routes.js';
+import { composeProjectWorkingRuntime } from '../../../runtime/project-working-configuration-runtime.js';
 import { ProjectWorkingConfigurationService } from '../project-working-configuration.js';
 
 const makeTempDir = trackTempDirs();
+
+test('an unconfigured Project without a local repository can brief Tasks, while discovery still requires a repository', async () => {
+  let admitted = true;
+  const runtime = composeProjectWorkingRuntime({
+    home: makeTempDir('working-config-no-root-'),
+    hosted: false,
+    projects: () => [{ id: 'knowledge-only-project', slug: 'work' }],
+    resolveDirectory: async () => undefined,
+    canRead: () => admitted,
+  })!;
+  const task = {
+    id: 'task',
+    projectId: 'knowledge-only-project',
+    title: 'Knowledge task',
+    description: '',
+    priority: 'normal' as const,
+    status: 'todo' as const,
+    createdBy: 'operator',
+    createdAt: '2026-11-02T00:00:00Z',
+    updatedAt: '2026-11-02T00:00:00Z',
+  };
+  expect(await runtime.forTask(task, 'operator')).toMatchObject({
+    state: 'unconfigured',
+    omittedRules: 0,
+  });
+  await expect(
+    runtime.service.discover('work', () => true),
+  ).rejects.toMatchObject({
+    code: 'unavailable',
+  });
+  admitted = false;
+  await expect(runtime.forTask(task, 'operator')).rejects.toMatchObject({
+    code: 'unavailable',
+  });
+});
+
 function fixture() {
   const home = makeTempDir('working-configuration-');
   const cwd = join(home, 'checkout');
@@ -221,13 +258,11 @@ test('revocation, replaced Project and execution root, escaping sources and over
   ).rejects.toMatchObject({ code: 'unavailable' });
 });
 
-test('route preview and Project admission guard direct reads and apply; revocation before response delivery releases no configuration', async () => {
+test('Project admission guards direct reads and apply; revocation before response delivery releases no configuration', async () => {
   const f = fixture();
-  let enabled = false;
   let admitted = true;
   const app = createProjectWorkingConfigurationRoutes({
     service: f.service,
-    enabled: () => enabled,
     authorize: async () =>
       admitted
         ? {
@@ -237,12 +272,6 @@ test('route preview and Project admission guard direct reads and apply; revocati
           }
         : undefined,
   });
-  const disabled = await app.request('/work/working-configuration');
-  expect(disabled.status).toBe(404);
-  expect(await disabled.json()).toMatchObject({
-    code: 'feature_preview_disabled',
-  });
-  enabled = true;
   admitted = false;
   expect((await app.request('/work/working-configuration')).status).toBe(404);
   admitted = true;
