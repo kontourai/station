@@ -2,7 +2,10 @@ import { createHash } from 'node:crypto';
 import type { Writable } from 'node:stream';
 import { spawnOwnedChild } from '../../infra/process-utils.js';
 import { locateExecutable, standardAdbDirs } from '../device-host-tools.js';
-import type { DeviceAppInstallParams } from './device-app-install-program.js';
+import {
+  DEVICE_INSTALL_HOST_PHASE_BUDGET_MS,
+  type DeviceAppInstallParams,
+} from './device-app-install-program.js';
 import { runSshDeviceScript, type SpawnSsh } from './ssh-device-session.js';
 import { REMOTE_LOADER_JS, type SshDeviceTarget } from './ssh-device-target.js';
 
@@ -30,7 +33,11 @@ export type DeviceInstallOutcome =
 
 /** Transfer and host execution budgets plus time for SSH setup and cleanup. */
 export function deviceInstallDeadlineMs(bytes: number): number {
-  return 270_000 + Math.ceil(bytes / (128 * 1024)) * 1000;
+  return (
+    2 * DEVICE_INSTALL_HOST_PHASE_BUDGET_MS +
+    30_000 +
+    Math.ceil(bytes / (128 * 1024)) * 1000
+  );
 }
 
 /** Run the fixed host program. A lost transport after admission has an unknown effect. */

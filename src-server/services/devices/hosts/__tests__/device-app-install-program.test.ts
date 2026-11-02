@@ -15,6 +15,7 @@ import { expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../../__test-utils__/temp-dirs.js';
 import {
   DEVICE_APP_INSTALL_SCRIPT,
+  DEVICE_INSTALL_HOST_PHASE_BUDGET_MS,
   type DeviceAppInstallParams,
 } from '../device-app-install-program.js';
 import { remoteLoaderCommand } from '../ssh-device-target.js';
@@ -432,9 +433,67 @@ test('SSH install deadlines scale with payload and reserve 30 seconds for setup'
         beforeInstall: async () => true,
       });
       expect(result.ok).toBe(true);
+      expect(expected).toBe(
+        2 * DEVICE_INSTALL_HOST_PHASE_BUDGET_MS +
+          30_000 +
+          Math.ceil(length / (128 * 1024)) * 1000,
+      );
       expect(timer.mock.calls.some((call) => call[1] === expected)).toBe(true);
     }
   } finally {
     timer.mockRestore();
+  }
+});
+
+test('registry retains admission up to the scaled deadline and refuses at the deadline', async () => {
+  const { home, bin } = fixture();
+  const stationHome = join(home, 'station-deadline');
+  mkdirSync(stationHome, { recursive: true });
+  const { DeviceHostStore } = await import('../device-host-store.js');
+  const { DeviceHostRegistry } = await import('../device-host-registry.js');
+  const { deviceInstallDeadlineMs } = await import('../device-app-install.js');
+  const store = new DeviceHostStore(stationHome);
+  const host = store.add({
+    label: 'Remote',
+    sshTarget: 'tester@example.invalid',
+  });
+  store.setHubEnabled(host.hostId, true);
+  const registry = new DeviceHostRegistry({
+    stationHome,
+    store,
+    localHub: () => undefined,
+    spawn: localSshTransport(home, bin),
+  });
+  const bytes = Buffer.from('apk fixture');
+  const input = {
+    platform: 'android' as const,
+    deviceId: 'emulator-5554',
+    digest: request(bytes).digest,
+    files: [{ path: 'Application.apk', executable: false, bytes }],
+  };
+  let now = 1_000_000;
+  const clock = vi.spyOn(Date, 'now').mockImplementation(() => now);
+  try {
+    const deadline = now + deviceInstallDeadlineMs(bytes.length);
+    const within = await registry.installApp(host.hostId, {
+      ...input,
+      beforeInstall: async () => {
+        now = deadline - 1;
+        return true;
+      },
+    });
+    expect(within.ok).toBe(true);
+    now = 1_000_000;
+    const expired = await registry.installApp(host.hostId, {
+      ...input,
+      beforeInstall: async () => {
+        now = deadline;
+        return true;
+      },
+    });
+    expect(expired).toMatchObject({ ok: false, effect: 'none' });
+  } finally {
+    clock.mockRestore();
+    await registry.shutdown();
   }
 });

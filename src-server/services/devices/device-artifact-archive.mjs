@@ -42,7 +42,7 @@ export async function inspectDeviceArchive(bytes, kind, signal) {
       {
         lazyEntries: true,
         decodeStrings: true,
-        validateEntrySizes: true,
+        validateEntrySizes: false,
         strictFileNames: true,
       },
       (error, value) =>

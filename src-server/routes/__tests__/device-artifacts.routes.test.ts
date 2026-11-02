@@ -248,3 +248,41 @@ test('a stalled upload has a ten-minute deadline and does not block another Proj
     spy.mockRestore();
   }
 });
+
+test('chunked upload stores an exact-sized owned backing buffer', async () => {
+  const h = fixture(null);
+  const bytes = await apk();
+  const staged = vi.spyOn(h.staging, 'stageUpload');
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(bytes.subarray(0, 11));
+      controller.enqueue(bytes.subarray(11));
+      controller.close();
+    },
+  });
+  const request = new Request(
+    'http://station.test/projects/demo/device-artifacts/upload?platform=android',
+    {
+      method: 'POST',
+      headers: { 'x-human': 'yes' },
+      body,
+      duplex: 'half',
+    } as RequestInit,
+  );
+  const response = await h.app.request(request);
+  expect(response.status).toBe(201);
+  const owned = staged.mock.calls[0]![1];
+  expect(owned.byteLength).toBe(bytes.byteLength);
+  expect(owned.buffer.byteLength).toBe(bytes.byteLength);
+  const { data } = (await response.json()) as { data: { handle: string } };
+  await h.staging.withArtifact(
+    'project-id',
+    data.handle,
+    async () => true,
+    async (_receipt, payload) => {
+      expect(payload.platform === 'android' && payload.apk.equals(bytes)).toBe(
+        true,
+      );
+    },
+  );
+});

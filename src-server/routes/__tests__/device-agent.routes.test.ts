@@ -1700,8 +1700,31 @@ test('agent history records unknown when authorization fails after app dispatch'
         appId: 'com.example.app',
       }),
     ),
-  ).toMatchObject({ ok: false });
+  ).toMatchObject({ ok: false, effect: 'unknown' });
   expect(h.sessions.actionHistory(id)).toContainEqual(
     expect.objectContaining({ action: 'launch', outcome: 'unknown' }),
+  );
+});
+
+test('agent history records failed when authorization fails before app dispatch', async () => {
+  const h = harness();
+  const id = await h.open();
+  h.localTools.appAction.mockImplementationOnce(
+    async (_target, _action, options) => {
+      h.revokeMember();
+      await options?.beforeRun?.();
+      throw new Error('expected authority refusal');
+    },
+  );
+  expect(
+    parsed(
+      await h.run('device_launch_app', {
+        deviceSessionId: id,
+        appId: 'com.example.app',
+      }),
+    ),
+  ).toMatchObject({ ok: false, effect: 'none' });
+  expect(h.sessions.actionHistory(id)).toContainEqual(
+    expect.objectContaining({ action: 'launch', outcome: 'failed' }),
   );
 });

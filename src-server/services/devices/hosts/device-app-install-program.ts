@@ -1,3 +1,5 @@
+export const DEVICE_INSTALL_HOST_PHASE_BUDGET_MS = 120_000;
+
 /** Fixed program sent to a device host; all per-install values are data. */
 export interface DeviceAppInstallParams {
   platform: 'ios' | 'android';
@@ -64,7 +66,7 @@ const finish = (result) => {
   } else cleanup();
 };
 const cancel = () => finish({ ok: false, code: 'interrupted', effect: actionStarted ? 'unknown' : 'none' });
-let deadline = setTimeout(() => finish({ ok: false, code: 'tool-timeout', effect: actionStarted ? 'unknown' : 'none' }), 120000 + Math.ceil(total / (128 * 1024)) * 1000);
+let deadline = setTimeout(() => finish({ ok: false, code: 'tool-timeout', effect: actionStarted ? 'unknown' : 'none' }), ${DEVICE_INSTALL_HOST_PHASE_BUDGET_MS} + Math.ceil(total / (128 * 1024)) * 1000);
 const run = (command, args) => new Promise((resolve, reject) => {
   if (p.executables && p.executables[command]) command = p.executables[command];
   if (done) return reject(new Error('interrupted'));
@@ -236,7 +238,7 @@ function consume(chunk) {
   if (!current) openNext();
   if (!current && index === p.files.length) {
     if ('sha256:' + overall.digest('hex') !== p.digest) throw new Error('mismatch');
-    clearTimeout(deadline); deadline = setTimeout(() => finish({ ok: false, code: 'tool-timeout', effect: actionStarted ? 'unknown' : 'none' }), 120000);
+    clearTimeout(deadline); deadline = setTimeout(() => finish({ ok: false, code: 'tool-timeout', effect: actionStarted ? 'unknown' : 'none' }), ${DEVICE_INSTALL_HOST_PHASE_BUDGET_MS});
     phase = 'inspecting'; void work();
   }
 }

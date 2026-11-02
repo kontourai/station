@@ -327,20 +327,10 @@ test('global install-copy capacity is shared across three Projects', async () =>
 });
 
 test('stored payload bytes have a host-wide ceiling across Projects', async () => {
-  const zip = new ZipFile();
-  const chunks: Buffer[] = [];
-  const done = new Promise<Buffer>((resolve, reject) => {
-    zip.outputStream.on('data', (chunk: Buffer) => chunks.push(chunk));
-    zip.outputStream.on('end', () => resolve(Buffer.concat(chunks)));
-    zip.outputStream.on('error', reject);
+  const bytes = await apk();
+  const store = new DeviceArtifactStaging({
+    maxGlobalStoredBytes: bytes.length * 4,
   });
-  zip.addBuffer(Buffer.from('manifest'), 'AndroidManifest.xml');
-  zip.addBuffer(Buffer.alloc(110 * 1024 * 1024), 'assets/large', {
-    compress: false,
-  });
-  zip.end();
-  const bytes = await done;
-  const store = new DeviceArtifactStaging();
   const allowed = async () => true;
   try {
     for (const project of ['a', 'b', 'c', 'a'])

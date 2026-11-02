@@ -167,7 +167,7 @@ async function readUpload(
     throw new DeviceArtifactError('cancelled');
   const capacity =
     declared === null ? DEVICE_ARTIFACT_UPLOAD_MAX_BYTES : Number(declared);
-  let buffer = Buffer.allocUnsafe(Math.min(capacity, 64 * 1024));
+  let buffer = Buffer.allocUnsafeSlow(Math.min(capacity, 64 * 1024));
   const reader = request.body.getReader();
   let total = 0;
   const abort = () => {
@@ -184,7 +184,7 @@ async function readUpload(
         throw new DeviceArtifactError('invalid-artifact');
       const needed = total + part.value.byteLength;
       if (needed > buffer.length) {
-        const next = Buffer.allocUnsafe(
+        const next = Buffer.allocUnsafeSlow(
           Math.min(capacity, Math.max(needed, buffer.length * 2)),
         );
         buffer.copy(next, 0, 0, total);
@@ -196,7 +196,13 @@ async function readUpload(
     }
     if (!total || (declared !== null && total !== capacity))
       throw new DeviceArtifactError('invalid-artifact');
-    return buffer.subarray(0, total);
+    if (buffer.length !== total) {
+      const exact = Buffer.allocUnsafeSlow(total);
+      buffer.copy(exact, 0, 0, total);
+      buffer.fill(0);
+      buffer = exact;
+    }
+    return buffer;
   } catch (error) {
     buffer.fill(0, 0, total);
     void reader.cancel().catch(() => {});

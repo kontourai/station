@@ -260,6 +260,16 @@ function wipe(payload: Payload): void {
 
 /** Bounded Project-scoped artifact staging. */
 export class DeviceArtifactStaging {
+  constructor(private readonly limits: { maxGlobalStoredBytes?: number } = {}) {
+    const maximum = limits.maxGlobalStoredBytes;
+    if (
+      maximum !== undefined &&
+      (!Number.isSafeInteger(maximum) ||
+        maximum < 0 ||
+        maximum > MAX_GLOBAL_STORED_BYTES)
+    )
+      throw new RangeError('Invalid artifact storage limit.');
+  }
   private readonly entries = new Map<string, Entry>();
   private readonly shutdown = new AbortController();
   private readonly active = new Map<string, Promise<void>>();
@@ -321,7 +331,10 @@ export class DeviceArtifactStaging {
     if (
       [...this.entries.values()].reduce((sum, entry) => sum + entry.bytes, 0) +
         bytes >
-        MAX_GLOBAL_STORED_BYTES ||
+        Math.min(
+          this.limits.maxGlobalStoredBytes ?? MAX_GLOBAL_STORED_BYTES,
+          MAX_GLOBAL_STORED_BYTES,
+        ) ||
       projectEntries.length >= MAX_ARTIFACTS ||
       projectEntries.reduce((sum, entry) => sum + entry.bytes, 0) + bytes >
         MAX_STORED_BYTES
