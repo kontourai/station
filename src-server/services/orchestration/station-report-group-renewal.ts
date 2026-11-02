@@ -8,7 +8,10 @@ import {
   rootAuthorityReferenceV2,
   validateDelegationEnvelopeV2,
 } from '@kontourai/flow-agents/delegation-envelope-v2';
-import { createDelegationRoundsController } from '@kontourai/flow-agents/delegation-group-rounds';
+import {
+  createDelegationRoundsController,
+  DelegationRoundsTransactionUncertainError,
+} from '@kontourai/flow-agents/delegation-group-rounds';
 import { canonicalJson } from '@kontourai/relay';
 import { REPORT_GROUP_RENEWAL_LIMITS } from '@kontourai/station-contracts/report-group';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
@@ -16,9 +19,14 @@ import { inputRequestFromRequestEvent } from '@kontourai/station-shared/input-re
 import { z } from 'zod/v3';
 import { REPORT_INPUT_TOOL_NAME } from '../../runtime/conversation/report-input-profile.js';
 import type { EnvironmentSecurityService } from '../ssh/environment-security-service.js';
+import { HomeWriterOwner } from '../ssh/home-writer-owner.js';
 import type { StationDelegationPersistence } from './delegation-group-persistence.js';
 import type { RuntimeSourceRequestContext } from './delegation-group-source-admission.js';
 import type { OrchestrationService } from './orchestration-service.js';
+import type {
+  ReportRoundsPublication,
+  ReportRoundsScope,
+} from './report-rounds-publication.js';
 import { reportAdmissionSignature } from './station-report-group-admission.js';
 import type { StationReportGroupCustody } from './station-report-group-custody.js';
 import { StationReportPreparationUnavailable } from './station-report-group-input.js';
@@ -69,7 +77,10 @@ export class StationReportGroupRenewal {
       orchestration: OrchestrationService;
       environment: EnvironmentSecurityService;
       dispatchLedger: AuthorizationLedger;
-      authorize(context: RuntimeSourceRequestContext): Promise<() => void>;
+      authorize(
+        context: RuntimeSourceRequestContext,
+        publication?: ReportRoundsPublication,
+      ): Promise<() => void>;
     },
   ) {
     this.owners = Object.freeze({ ...owners });
@@ -185,17 +196,27 @@ export class StationReportGroupRenewal {
     context: RuntimeSourceRequestContext,
     groupId: string,
     sent: unknown,
+    publication?: ReportRoundsPublication,
   ) {
+    if (!publication) refuse();
     const operation = inputSchema.parse(structuredClone(sent));
-    const authorize = await this.owners.authorize(context);
+    const authorize = await this.owners.authorize(context, publication);
+    const writer = await HomeWriterOwner.forHome(
+      this.owners.environment.getProjectHomeDir(),
+    );
     const current = (): undefined => {
+      publication.assertCurrent();
       authorize();
       context.req.raw.signal.throwIfAborted();
       return undefined;
     };
     const { custody, persistence, turns, orchestration, environment } =
       this.owners;
-    const loaded = await custody.loadIntentForMutation(context, groupId);
+    const loaded = await custody.loadIntentForMutation(
+      context,
+      groupId,
+      publication,
+    );
     const { group, authority, intent, admission } = loaded;
     const epoch = authority?.epochs.at(-1);
     const member = admission.members.find(
@@ -216,6 +237,7 @@ export class StationReportGroupRenewal {
       authority.cancelled
     )
       refuse();
+    const renewalLimit = intent.continuation.maxRenewals;
     const renewalKey = `renew:${operation.operationKey}`;
     const prior = authority.epochs.find(
       (entry) => entry.renewal?.command.operationKey === renewalKey,
@@ -226,36 +248,72 @@ export class StationReportGroupRenewal {
       );
     const readReceipt = async (
       reference: Parameters<typeof persistence.readReportFlowObservation>[1],
+      scope: ReportRoundsScope,
     ) => {
       const observed = await persistence.readReportFlowObservation(
         groupId,
         reference,
-        current,
+        scope.current,
       );
       if (observed.kind !== 'continuation') refuse();
-      const record = recordSchema.parse(observed.value);
-      const expected = Buffer.from(signatureFor(record.data), 'base64url');
-      const actual = Buffer.from(record.signature, 'base64url');
-      if (
-        expected.length !== actual.length ||
-        !timingSafeEqual(expected, actual) ||
-        record.data.groupId !== groupId ||
-        !same(record.data.operation, operation) ||
-        record.data.admissionSignature !==
-          reportAdmissionSignature(admission, environment)
-      )
-        refuse();
-      return record;
+      return scope.check(() => {
+        const record = recordSchema.parse(observed.value);
+        const expected = Buffer.from(signatureFor(record.data), 'base64url');
+        const actual = Buffer.from(record.signature, 'base64url');
+        if (
+          expected.length !== actual.length ||
+          !timingSafeEqual(expected, actual) ||
+          record.data.groupId !== groupId ||
+          !same(record.data.operation, operation) ||
+          record.data.admissionSignature !==
+            reportAdmissionSignature(admission, environment)
+        )
+          refuse();
+        return record;
+      });
     };
     let root = epoch.root;
     let envelopes = epoch.envelopes;
     let receipt: Parameters<typeof persistence.readReportFlowObservation>[1];
     let record: z.infer<typeof recordSchema>;
     const candidates = new Map<string, Candidate>();
+    const publicationCurrent = (): undefined => {
+      current();
+      for (const witness of candidates.values()) witness.assertCurrent();
+      return undefined;
+    };
+    const withHome = <Value>(
+      work: (scope: ReportRoundsScope) => Promise<Value>,
+    ) =>
+      publication.withHome(
+        { owner: writer, current: publicationCurrent },
+        work,
+      );
+    let finishCandidates!: () => void;
+    const candidatesFinished = new Promise<void>((resolve) => {
+      finishCandidates = resolve;
+    });
+    const closeCandidates = publication.retainCleanup(async () => {
+      await candidatesFinished;
+      const closed = await Promise.allSettled(
+        [...candidates.values()].map((candidate) => candidate.close()),
+      );
+      const failures = closed.flatMap((entry) =>
+        entry.status === 'rejected' ? [entry.reason] : [],
+      );
+      if (failures.length)
+        throw new AggregateError(
+          failures,
+          'Renewal candidate cleanup unconfirmed',
+        );
+    });
+    let outcome:
+      | { ok: true; value: { replayed: boolean } }
+      | { ok: false; error: unknown };
     try {
       if (prior?.renewal) {
         receipt = prior.renewal.command.hostReceipt;
-        record = await readReceipt(receipt);
+        record = await withHome((scope) => readReceipt(receipt, scope));
         root = validateRootAuthorityV2(record.data.root);
         envelopes = record.data.envelopes.map(validateDelegationEnvelopeV2);
         if (!same(root, prior.root) || !same(envelopes, prior.envelopes))
@@ -274,11 +332,15 @@ export class StationReportGroupRenewal {
           .filter((entry) => entry.seatId === operation.seatId)
           .at(-1);
         if (!attempt?.terminal || !attempt.observation) refuse();
-        const result = await persistence.readReportObservation(
-          groupId,
-          attempt.invocationId,
-          attempt.observation,
-          current,
+        const resultReference = attempt.observation;
+        const terminalReference = attempt.terminal;
+        const result = await withHome((scope) =>
+          persistence.readReportObservation(
+            groupId,
+            attempt.invocationId,
+            resultReference,
+            scope.current,
+          ),
         );
         if (
           result.observation.kind !== 'result' ||
@@ -286,15 +348,17 @@ export class StationReportGroupRenewal {
         )
           refuse();
         const inputReceipt = result.observation.inputReceipt;
-        const answer = await persistence.readReportInputReceipt(
-          inputReceipt,
-          {
-            groupId,
-            seatId: operation.seatId,
-            invocationId: attempt.invocationId,
-            threadId: member.reservedTaskId,
-          },
-          current,
+        const answer = await withHome((scope) =>
+          persistence.readReportInputReceipt(
+            inputReceipt,
+            {
+              groupId,
+              seatId: operation.seatId,
+              invocationId: attempt.invocationId,
+              threadId: member.reservedTaskId,
+            },
+            scope.current,
+          ),
         );
         const origin = authority.origins.find(
           (entry) => entry.invocationId === attempt.invocationId,
@@ -329,11 +393,13 @@ export class StationReportGroupRenewal {
             answer.binding.envelope.digest
         )
           refuse();
-        const terminal = await persistence.readReportObservation(
-          groupId,
-          attempt.invocationId,
-          attempt.terminal,
-          current,
+        const terminal = await withHome((scope) =>
+          persistence.readReportObservation(
+            groupId,
+            attempt.invocationId,
+            terminalReference,
+            scope.current,
+          ),
         );
         if (
           terminal.observation.kind !== 'terminal' ||
@@ -342,60 +408,76 @@ export class StationReportGroupRenewal {
           !same(terminal.observation.evidence, answer.binding.providerEvidence)
         )
           refuse();
-        await persistence.assertProviderEvidenceReference(
-          answer.binding.providerEvidence,
-          {
-            groupId,
-            rootId: answer.binding.rootId,
-            invocationId: attempt.invocationId,
-            executionId: member.reservedTaskId,
-            usage: answer.binding.usage,
-            inputIntent: {
-              seatId: operation.seatId,
-              root: answer.binding.authority,
-              envelope: answer.binding.envelope,
+        await withHome((scope) =>
+          persistence.assertProviderEvidenceReference(
+            answer.binding.providerEvidence,
+            {
+              groupId,
+              rootId: answer.binding.rootId,
+              invocationId: attempt.invocationId,
+              executionId: member.reservedTaskId,
+              usage: answer.binding.usage,
+              inputIntent: {
+                seatId: operation.seatId,
+                root: answer.binding.authority,
+                envelope: answer.binding.envelope,
+              },
             },
-          },
-          current,
-        );
-        const event = orchestration.readSessionEventById(
-          member.reservedTaskId,
-          answer.question.eventId,
-          sessionReadAuthorityFromRequest(
-            root.authenticated_principal_ref.id,
-            undefined,
-            undefined,
+            scope.current,
           ),
+        );
+        const question = answer.question;
+        const event = await publication.check(
+          { owner: writer, current: publicationCurrent },
+          () =>
+            orchestration.readSessionEventById(
+              member.reservedTaskId,
+              question.eventId,
+              sessionReadAuthorityFromRequest(
+                root.authenticated_principal_ref.id,
+                undefined,
+                undefined,
+              ),
+            ),
         );
         if (
           event?.method !== 'request.opened' ||
-          event.eventId !== answer.question.eventId ||
+          event.eventId !== question.eventId ||
           event.provider !== 'station-agent' ||
           event.threadId !== answer.binding.threadId ||
           event.turnId !== answer.binding.turnId ||
-          event.requestId !== answer.question.requestId ||
-          !same(inputRequestFromRequestEvent(event), answer.question.form)
+          event.requestId !== question.requestId ||
+          !same(inputRequestFromRequestEvent(event), question.form)
         )
           refuse();
-        const outcome = orchestration.readRequestOutcome(
-          answer.binding.threadId,
-          answer.question.requestId,
+        const outcome = await publication.check(
+          { owner: writer, current: publicationCurrent },
+          () =>
+            orchestration.readRequestOutcome(
+              answer.binding.threadId,
+              question.requestId,
+            ),
         );
         if (outcome.state !== 'resolved' || outcome.status !== 'approved')
           refuse();
         for (const entry of admission.members) {
-          current();
+          await publication.check({ owner: writer, current }, () => undefined);
           const candidate = await turns.prepareRenewalCandidate(
             context,
             groupId,
             entry.seatId,
             entry.seatId === operation.seatId,
+            publication,
           );
           candidates.set(entry.seatId, candidate);
-          candidate.assertCurrent();
+          await publication.check({ owner: writer, current }, () =>
+            candidate.assertCurrent(),
+          );
         }
         const selected = candidates.get(operation.seatId) ?? refuse();
-        if (!same(selected.recipient(), answer.binding.recipient)) refuse();
+        await publication.check({ owner: writer, current }, () => {
+          if (!same(selected.recipient(), answer.binding.recipient)) refuse();
+        });
         root = validateRootAuthorityV2({
           ...epoch.root,
           authority_epoch: epoch.root.authority_epoch + 1,
@@ -448,10 +530,14 @@ export class StationReportGroupRenewal {
             }),
           );
         }
+        const admissionSignature = await publication.check(
+          { owner: writer, current: publicationCurrent },
+          () => reportAdmissionSignature(admission, environment),
+        );
         const data = {
           groupId,
           operation,
-          admissionSignature: reportAdmissionSignature(admission, environment),
+          admissionSignature,
           predecessor: rootAuthorityReferenceV2(epoch.root),
           inputReceipt,
           inputInvocationId: attempt.invocationId,
@@ -459,76 +545,79 @@ export class StationReportGroupRenewal {
           envelopes,
           authorityRevision: authority.revision,
         };
-        for (const candidate of candidates.values()) candidate.assertCurrent();
-        record = recordSchema.parse({ data, signature: signatureFor(data) });
-        receipt = await persistence.retainReportFlowObservation(
-          groupId,
-          'continuation',
-          record,
-          current,
+        record = await publication.check(
+          { owner: writer, current: publicationCurrent },
+          () => recordSchema.parse({ data, signature: signatureFor(data) }),
+        );
+        receipt = await withHome((scope) =>
+          persistence.retainReportFlowObservation(
+            groupId,
+            'continuation',
+            record,
+            scope.current,
+          ),
         );
       }
-      const publicationCurrent = (): undefined => {
-        current();
-        for (const witness of candidates.values()) witness.assertCurrent();
-        return undefined;
-      };
-      const service = createDelegationAuthorityServiceV3(
-        persistence.roundsAuthorityStore(publicationCurrent),
-        {
-          now: () => new Date(Date.now()).toISOString(),
-          authorize: async (action, candidate) => {
-            current();
-            return action === 'inspect' && same(candidate, root);
+      const serviceFor = (scope: ReportRoundsScope) =>
+        createDelegationAuthorityServiceV3(
+          persistence.roundsAuthorityStore(scope.current, scope.current, scope),
+          {
+            now: () => new Date(Date.now()).toISOString(),
+            authorize: async (action, candidate) =>
+              scope.check(() => action === 'inspect' && same(candidate, root)),
+            confirmExecution: async (candidate, candidateRoot) =>
+              scope.check(() => {
+                if (
+                  prior ||
+                  !same(candidateRoot, root) ||
+                  !envelopes.some((entry) => same(entry, candidate))
+                )
+                  return false;
+                for (const witness of candidates.values())
+                  witness.assertCurrent();
+                return true;
+              }),
+            authenticateRenewal: async ({
+              action,
+              current: observed,
+              command,
+            }) => {
+              scope.current();
+              const retained = await readReceipt(receipt, scope);
+              return scope.check(() => {
+                if (
+                  !same(retained, record) ||
+                  !same(command.root, root) ||
+                  !same(command.envelopes, envelopes) ||
+                  command.operationKey !== renewalKey ||
+                  !same(command.hostReceipt, receipt) ||
+                  !same(command.previousAuthority, record.data.predecessor) ||
+                  command.expectedRevision !== record.data.authorityRevision
+                )
+                  return null;
+                if (action === 'renew') {
+                  if (prior || !same(observed, authority)) return null;
+                  for (const witness of candidates.values())
+                    witness.assertCurrent();
+                }
+                return receipt;
+              });
+            },
           },
-          confirmExecution: async (candidate, candidateRoot) => {
-            current();
-            if (
-              prior ||
-              !same(candidateRoot, root) ||
-              !envelopes.some((entry) => same(entry, candidate))
-            )
-              return false;
-            for (const witness of candidates.values()) witness.assertCurrent();
-            return true;
-          },
-          authenticateRenewal: async ({
-            action,
-            current: observed,
-            command,
-          }) => {
-            current();
-            const retained = await readReceipt(receipt);
-            if (
-              !same(retained, record) ||
-              !same(command.root, root) ||
-              !same(command.envelopes, envelopes) ||
-              command.operationKey !== renewalKey ||
-              !same(command.hostReceipt, receipt) ||
-              !same(command.previousAuthority, record.data.predecessor) ||
-              command.expectedRevision !== record.data.authorityRevision
-            )
-              return null;
-            if (action === 'renew') {
-              if (prior || !same(observed, authority)) return null;
-              for (const witness of candidates.values())
-                witness.assertCurrent();
-            }
-            return receipt;
-          },
-        },
-        { maxRenewals: intent.continuation.maxRenewals },
+          { maxRenewals: renewalLimit },
+        );
+      await withHome((scope) =>
+        serviceFor(scope).renew({
+          schemaVersion: '3.1',
+          authorityId: root.authority_id,
+          operationKey: renewalKey,
+          expectedRevision: record.data.authorityRevision,
+          previousAuthority: record.data.predecessor,
+          root,
+          envelopes,
+          hostReceipt: receipt,
+        }),
       );
-      await service.renew({
-        schemaVersion: '3.1',
-        authorityId: root.authority_id,
-        operationKey: renewalKey,
-        expectedRevision: record.data.authorityRevision,
-        previousAuthority: record.data.predecessor,
-        root,
-        envelopes,
-        hostReceipt: receipt,
-      });
       const adoption = {
         kind: 'adoptRenewal' as const,
         groupId,
@@ -538,42 +627,103 @@ export class StationReportGroupRenewal {
         renewalOperationKey: renewalKey,
         authority: rootAuthorityReferenceV2(root),
       };
+      const hostFor = (scope: ReportRoundsScope) => ({
+        authorize: async ({
+          action,
+          groupId: candidate,
+          current: projection,
+          command,
+        }: Parameters<
+          Parameters<
+            typeof createDelegationRoundsController
+          >[0]['host']['authorize']
+        >[0]) =>
+          scope.check(() =>
+            (action === 'adoptRenewal' || action === 'replay') &&
+            same(command, adoption) &&
+            candidate === groupId &&
+            (!projection || same(projection.spec, admission.spec))
+              ? root.authenticated_principal_ref
+              : null,
+          ),
+        executionHost: () => refuse(),
+        prepareRequest: async () => refuse(),
+        retainObservation: async () => refuse(),
+        confirmTerminal: async () => refuse(),
+        requestDescendantCancellation: async () => refuse(),
+      });
+      const service: ReturnType<typeof createDelegationAuthorityServiceV3> = {
+        issue: (...args) =>
+          withHome((scope) => serviceFor(scope).issue(...args)),
+        derive: (...args) =>
+          withHome((scope) => serviceFor(scope).derive(...args)),
+        inspect: (...args) =>
+          withHome((scope) => serviceFor(scope).inspect(...args)),
+        admitEffect: (...args) =>
+          withHome((scope) => serviceFor(scope).admitEffect(...args)),
+        reserveInvocation: (...args) =>
+          withHome((scope) => serviceFor(scope).reserveInvocation(...args)),
+        reconcileInvocation: (...args) =>
+          withHome((scope) => serviceFor(scope).reconcileInvocation(...args)),
+        cancel: (...args) =>
+          withHome((scope) => serviceFor(scope).cancel(...args)),
+        renew: (...args) =>
+          withHome((scope) => serviceFor(scope).renew(...args)),
+        importV2: (...args) =>
+          withHome((scope) => serviceFor(scope).importV2(...args)),
+      };
       const controller = createDelegationRoundsController({
-        store: persistence.roundsStore(publicationCurrent),
+        store: {
+          transact: (id, body) =>
+            withHome((scope) =>
+              persistence
+                .roundsStore(scope.current, scope.current, scope)
+                .transact(id, body),
+            ),
+        },
         authorityService: service,
         dispatchLedger: this.owners.dispatchLedger,
         host: {
-          authorize: async ({
-            action,
-            groupId: candidate,
-            current: projection,
-            command,
-          }) => {
-            current();
-            return (action === 'adoptRenewal' || action === 'replay') &&
-              same(command, adoption) &&
-              candidate === groupId &&
-              (!projection || same(projection.spec, admission.spec))
-              ? root.authenticated_principal_ref
-              : null;
-          },
+          authorize: (...args) =>
+            withHome((scope) => hostFor(scope).authorize(...args)),
           executionHost: () => refuse(),
           prepareRequest: async () => refuse(),
           retainObservation: async () => refuse(),
           confirmTerminal: async () => refuse(),
           requestDescendantCancellation: async () => refuse(),
         },
+        transactionOwner: publication.transactionOwner({
+          groupId,
+          owner: writer,
+          current: publicationCurrent,
+          build: (scope) => ({
+            store: persistence.roundsStore(scope.current, scope.current, scope),
+            authorityService: serviceFor(scope),
+            host: hostFor(scope),
+          }),
+        }),
       });
       if (group.grants.authority.authority_epoch < root.authority_epoch) {
         await controller.adoptRenewal(adoption);
       }
-      current();
-      return { replayed: !!prior };
-    } finally {
-      const closed = await Promise.allSettled(
-        [...candidates.values()].map((candidate) => candidate.close()),
+      await publication.check(
+        { owner: writer, current: publicationCurrent },
+        () => undefined,
       );
-      if (closed.some((entry) => entry.status === 'rejected')) refuse();
+      outcome = { ok: true, value: { replayed: !!prior } };
+    } catch (error) {
+      outcome = { ok: false, error };
     }
+    finishCandidates();
+    try {
+      await closeCandidates();
+    } catch (error) {
+      throw new DelegationRoundsTransactionUncertainError(
+        outcome.ok ? 'returned-cleanup-unknown' : 'publication-unknown',
+        outcome.ok ? [error] : [outcome.error, error],
+      );
+    }
+    if (!outcome.ok) throw outcome.error;
+    return outcome.value;
   }
 }

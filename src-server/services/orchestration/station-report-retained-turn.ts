@@ -196,11 +196,18 @@ export class StationReportRetainedTurns {
     groupId: string,
     seatId: string,
     removeInput: boolean,
+    publication: ReportRoundsPublication,
   ) {
-    const captured = await this.#capture(context, groupId, seatId, {
-      kind: 'renewal',
-      removeInput,
-    });
+    const captured = await this.#capture(
+      context,
+      groupId,
+      seatId,
+      {
+        kind: 'renewal',
+        removeInput,
+      },
+      publication,
+    );
     return Object.freeze({
       binding: captured.binding,
       recipient: captured.recipient,
@@ -511,6 +518,8 @@ export class StationReportRetainedTurns {
         refuse();
       let claimed = false;
       let closed = false;
+      let cleaned = false;
+      let closing: Promise<void> | undefined;
       const assertCurrent = (): undefined => {
         if (closed) refuse();
         current();
@@ -518,10 +527,20 @@ export class StationReportRetainedTurns {
         return undefined;
       };
       const close = async () => {
-        if (closed) return;
         closed = true;
-        sources.releaseSnapshot(source.capability);
-        await retireSdkSourceWire(owner, prepared.sdkHandle);
+        if (cleaned) return;
+        if (!closing) {
+          closing = (async () => {
+            sources.releaseSnapshot(source.capability);
+            await retireSdkSourceWire(owner, prepared.sdkHandle);
+            cleaned = true;
+          })();
+        }
+        try {
+          await closing;
+        } finally {
+          closing = undefined;
+        }
       };
       return {
         provider: selected.provider,

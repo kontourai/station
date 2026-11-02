@@ -265,7 +265,8 @@ export class StationReportGroupRuntime {
       orchestration: owners.orchestration,
       environment: owners.runtime.environmentSecurityService,
       dispatchLedger: this.#dispatch,
-      authorize: (context) => this.authorizeResponse(context),
+      authorize: (context, publication) =>
+        this.authorizeResponse(context, publication),
     });
     this.#continuation = new StationReportGroupContinuation({
       environment: owners.runtime.environmentSecurityService,
@@ -392,14 +393,21 @@ export class StationReportGroupRuntime {
     groupId: string,
     command: unknown,
   ) {
-    const result = await this.#renewal.narrowAfterInput(
-      context,
-      groupId,
-      command,
-    );
-    const historical = await this.#custody.inspectForMutation(context, groupId);
-    if (!historical) throw new StationReportCustodyUnavailable();
-    return { replayed: result.replayed, group: view(historical) };
+    return this.#withRoundsPublication(context, async (publication) => {
+      const result = await this.#renewal.narrowAfterInput(
+        context,
+        groupId,
+        command,
+        publication,
+      );
+      const historical = await this.#custody.inspectForMutation(
+        context,
+        groupId,
+        publication,
+      );
+      if (!historical) throw new StationReportCustodyUnavailable();
+      return { replayed: result.replayed, group: view(historical) };
+    });
   }
 
   async recoverAccounting(
