@@ -20,6 +20,8 @@ import {
 import { bodyDefinitions, readAgentBody } from './turn-bodies.js';
 import { changeDefinitions } from './turn-changes.js';
 import {
+  agentEffectHeader,
+  copyAgentEffect,
   decideAgentEffect,
   type EffectCommand,
   type EffectResult,
@@ -27,7 +29,6 @@ import {
   effectIndexDefinition,
   effectsDefinition,
   migrateAgentEffects,
-  readAgentEffect,
   takeOverAgentEffects,
   unfinishedAgentEffects,
   validateAgentEffects,
@@ -95,6 +96,23 @@ export type AgentJournalResult =
         | 'conflict'
         | 'settled';
     };
+function copyAgentAnswer(answer: AgentJournalResult): AgentJournalResult {
+  if (answer.kind === 'effect')
+    return { ...answer, effect: copyAgentEffect(answer.effect) };
+  if (answer.kind === 'owned')
+    return {
+      ...answer,
+      turn: {
+        ...answer.turn,
+        spec: { ...answer.turn.spec, key: { ...answer.turn.spec.key } },
+        fence: { ...answer.turn.fence, owner: { ...answer.turn.fence.owner } },
+      },
+    };
+  if (answer.kind === 'approval')
+    return { ...answer, approval: { ...answer.approval } };
+  if (answer.kind === 'frame') return { ...answer, frame: { ...answer.frame } };
+  return { ...answer };
+}
 type Owned = { readonly key: RunKey; readonly expected: Fence };
 type StepCommand = EffectCommand | ApprovalCommand | FrameCommand;
 type EffectProtocol = {
@@ -835,6 +853,7 @@ export function openSqliteAgentJournal(options: {
     ): Promise<AgentJournalResult> {
       if (closed) throw new Error('DURABLE_AGENT_STORAGE_CLOSED');
       const command = commandSchema.parse(raw);
+      const clock = context.now ?? Date.now;
       database.exec(command.type === 'read' ? 'BEGIN' : 'BEGIN IMMEDIATE');
       try {
         validateSchema(true);
@@ -896,7 +915,7 @@ export function openSqliteAgentJournal(options: {
               return { kind: 'refused', reason: 'conflict' };
             if (turn.state === 'running' && !turn.cancelRequested) {
               turn.cancelRequested = true;
-              turn.cancelRequestedAt = context.now?.() ?? Date.now();
+              turn.cancelRequestedAt = clock();
               write(turn);
             }
             return owned(turn);
@@ -906,12 +925,7 @@ export function openSqliteAgentJournal(options: {
           if (command.type === 'projectFrame') {
             if (probe(turn.fence.owner) !== 'live')
               return { kind: 'refused', reason: 'unknown-owner' };
-            return projectAgentFrame(
-              database,
-              idOf(key),
-              command,
-              context.now?.() ?? Date.now(),
-            );
+            return projectAgentFrame(database, idOf(key), command, clock());
           }
           if (turn.state !== 'running')
             return { kind: 'refused', reason: 'settled' };
@@ -947,24 +961,14 @@ export function openSqliteAgentJournal(options: {
           ) {
             if (probe(turn.fence.owner) !== 'live')
               return { kind: 'refused', reason: 'unknown-owner' };
-            return decideAgentEffect(
-              database,
-              idOf(key),
-              command,
-              context.now?.() ?? Date.now(),
-            );
+            return decideAgentEffect(database, idOf(key), command, clock());
           } else if (
             command.type === 'approvalPlan' ||
             command.type === 'approvalResolve'
           ) {
             if (probe(turn.fence.owner) !== 'live')
               return { kind: 'refused', reason: 'unknown-owner' };
-            return decideAgentApproval(
-              database,
-              idOf(key),
-              command,
-              context.now?.() ?? Date.now(),
-            );
+            return decideAgentApproval(database, idOf(key), command, clock());
           } else {
             if (probe(turn.fence.owner) !== 'live')
               return { kind: 'refused', reason: 'unknown-owner' };
@@ -978,7 +982,7 @@ export function openSqliteAgentJournal(options: {
             )
               return { kind: 'refused', reason: 'busy' };
             turn.state = turn.cancelRequested ? 'cancelled' : command.state;
-            const at = context.now?.() ?? Date.now();
+            const at = clock();
             if (!Number.isSafeInteger(at) || at < 1)
               throw new Error('DURABLE_AGENT_CLOCK_UNAVAILABLE');
             database
@@ -1010,7 +1014,7 @@ export function openSqliteAgentJournal(options: {
               throw new Error('DURABLE_ASYNC_PARTICIPANT');
           }
         }
-        if (participants.length) {
+        if (participants.length || clock !== Date.now) {
           invalidateAgentValidation(database);
           validateSelected = true;
           validateAgentEffects(database, idOf(key));
@@ -1058,20 +1062,22 @@ export function openSqliteAgentJournal(options: {
           ) !== canonical(answer.approval)
         )
           throw new Error('DURABLE_AGENT_PARTICIPANT_CHANGED_STATE');
-        if (
-          answer.kind === 'effect' &&
-          canonical(
-            readAgentEffect(
-              database,
-              idOf(command.type === 'open' ? command.spec.key : command.key),
-              answer.effect.intent.id,
-            ),
-          ) !== canonical(answer.effect)
-        )
-          throw new Error('DURABLE_AGENT_PARTICIPANT_CHANGED_STATE');
+        if (answer.kind === 'effect') {
+          const expected = agentEffectHeader(database, answer.effect);
+          const actual = database
+            .prepare(
+              'SELECT record FROM agent_steps_effects WHERE turn_id=? AND id=?',
+            )
+            .get(idOf(key), answer.effect.intent.id)?.record;
+          if (
+            typeof actual !== 'string' ||
+            (actual !== expected && canonical(JSON.parse(actual)) !== expected)
+          )
+            throw new Error('DURABLE_AGENT_PARTICIPANT_CHANGED_STATE');
+        }
         acceptAgentValidation(database, idOf(key));
         database.exec('COMMIT');
-        return structuredClone(answer);
+        return copyAgentAnswer(answer);
       } catch (error) {
         if (database.isTransaction) database.exec('ROLLBACK');
         invalidateAgentValidation(database);

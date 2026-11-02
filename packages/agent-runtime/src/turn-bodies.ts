@@ -10,7 +10,11 @@ export const bodyDefinitions = [
 const CACHE_BYTES = 16 * 1024 * 1024;
 const caches = new WeakMap<
   DatabaseSync,
-  { values: Map<string, { wire: string; size: number }>; size: number }
+  {
+    values: Map<string, { wire: string; size: number }>;
+    wires: Map<string, string>;
+    size: number;
+  }
 >();
 export function clearAgentBodies(database: DatabaseSync) {
   caches.delete(database);
@@ -18,7 +22,7 @@ export function clearAgentBodies(database: DatabaseSync) {
 function cache(database: DatabaseSync) {
   let state = caches.get(database);
   if (!state) {
-    state = { values: new Map(), size: 0 };
+    state = { values: new Map(), wires: new Map(), size: 0 };
     caches.set(database, state);
   }
   return state;
@@ -31,6 +35,30 @@ function knownBody(database: DatabaseSync, digest: string) {
     values.set(digest, known);
   }
   return known?.wire;
+}
+function rememberBody(database: DatabaseSync, digest: string, wire: string) {
+  const state = cache(database);
+  const size = wire.length * 2 + 256;
+  if (size > CACHE_BYTES) return;
+  while (
+    state.values.size &&
+    (state.size + size > CACHE_BYTES || state.values.size >= 4096)
+  ) {
+    const oldest = state.values.keys().next().value!;
+    const value = state.values.get(oldest)!;
+    state.size -= value.size;
+    state.wires.delete(value.wire);
+    state.values.delete(oldest);
+  }
+  state.values.set(digest, { wire, size });
+  state.wires.set(wire, digest);
+  state.size += size;
+}
+export function agentBodyReference(
+  database: DatabaseSync,
+  wire: string,
+): string {
+  return cache(database).wires.get(wire) ?? hash(wire);
 }
 export function readAgentBody(database: DatabaseSync, digest: string): string {
   const known = knownBody(database, digest);
@@ -46,32 +74,25 @@ export function readAgentBody(database: DatabaseSync, digest: string): string {
   )
     throw new Error('DURABLE_AGENT_BODY_DAMAGED');
   readAgentWire(row.wire);
-  const state = cache(database);
-  const size = row.wire.length * 2 + 256;
-  if (size <= CACHE_BYTES) {
-    while (
-      state.values.size &&
-      (state.size + size > CACHE_BYTES || state.values.size >= 4096)
-    ) {
-      const oldest = state.values.keys().next().value!;
-      state.size -= state.values.get(oldest)!.size;
-      state.values.delete(oldest);
-    }
-    state.values.set(digest, { wire: row.wire, size });
-    state.size += size;
-  }
+  rememberBody(database, digest, row.wire);
   return row.wire;
 }
 export function putAgentBody(database: DatabaseSync, wire: string): string {
+  const state = cache(database);
+  const known = state.wires.get(wire);
+  if (known !== undefined) {
+    knownBody(database, known);
+    return known;
+  }
   const digest = hash(wire);
-  if (knownBody(database, digest) === wire) return digest;
   readAgentWire(wire);
-  database
+  const inserted = database
     .prepare(
       'INSERT INTO agent_steps_bodies VALUES(?,?,?) ON CONFLICT(digest) DO NOTHING',
     )
     .run(digest, wire, Buffer.byteLength(wire));
-  if (readAgentBody(database, digest) !== wire)
+  if (inserted.changes === 1) rememberBody(database, digest, wire);
+  else if (readAgentBody(database, digest) !== wire)
     throw new Error('DURABLE_AGENT_BODY_DAMAGED');
   return digest;
 }

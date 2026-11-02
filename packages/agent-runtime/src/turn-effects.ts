@@ -1,7 +1,11 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { z } from 'zod';
 import { canonical, fence, hash, runKey, text } from './encoding.js';
-import { putAgentBody, readAgentBody } from './turn-bodies.js';
+import {
+  agentBodyReference,
+  putAgentBody,
+  readAgentBody,
+} from './turn-bodies.js';
 import { agentWire, readAgentWire } from './turn-wire.js';
 import type { Fence, RunKey } from './types.js';
 
@@ -37,6 +41,36 @@ const effectSchema = z
   })
   .strict();
 export type EffectRecord = z.infer<typeof effectSchema>;
+export function copyAgentEffect(effect: EffectRecord): EffectRecord {
+  return {
+    ...effect,
+    intent: { ...effect.intent },
+    attempts: effect.attempts.map((attempt) => ({
+      ...attempt,
+      partials: [...attempt.partials],
+    })),
+  };
+}
+export function agentEffectHeader(
+  database: DatabaseSync,
+  effect: EffectRecord,
+): string {
+  return canonical({
+    ...effect,
+    intent: { ...effect.intent, input: effect.inputDigest },
+    attempts: effect.attempts.map((attempt) => ({
+      ...attempt,
+      partials: attempt.partials.map((wire) =>
+        agentBodyReference(database, wire),
+      ),
+      output:
+        attempt.output === null
+          ? null
+          : agentBodyReference(database, attempt.output),
+    })),
+  });
+}
+
 export type EffectResult = {
   readonly kind: 'effect';
   readonly effect: EffectRecord;
@@ -158,7 +192,7 @@ function rememberEffect(
     state.size -= state.values.get(oldest)!.size;
     state.values.delete(oldest);
   }
-  state.values.set(key, { wire, value: structuredClone(value), size });
+  state.values.set(key, { wire, value: copyAgentEffect(value), size });
   state.size += size;
 }
 export function unfinishedAgentEffects(
@@ -174,7 +208,11 @@ export function unfinishedAgentEffects(
       .get(turnId, kind ?? null, kind ?? null, kind ?? null) !== undefined
   );
 }
-function validate(record: EffectRecord, bodiesValidated = false) {
+function validate(
+  record: EffectRecord,
+  bodiesValidated = false,
+  inputReference?: string,
+) {
   const effect = effectSchema.parse(record);
   const last = effect.attempts.at(-1);
   if (!bodiesValidated) readAgentWire(effect.intent.input);
@@ -209,7 +247,7 @@ function validate(record: EffectRecord, bodiesValidated = false) {
     }
   }
   if (
-    effect.inputDigest !== hash(effect.intent.input) ||
+    effect.inputDigest !== (inputReference ?? hash(effect.intent.input)) ||
     ((effect.intent.kind === 'model' || effect.intent.kind === 'provider') &&
       effect.intent.replay !== 'unsafe') ||
     (effect.state === 'running' && last?.state !== 'running') ||
@@ -240,7 +278,7 @@ export function readAgentEffect(
   if (prior?.wire === wire) {
     cache.delete(key);
     cache.set(key, prior);
-    return structuredClone(prior.value);
+    return copyAgentEffect(prior.value);
   }
   const header = effectSchema.parse(JSON.parse(wire));
   if (!header.intent.input.startsWith('sha256:')) {
@@ -256,42 +294,38 @@ export function readAgentEffect(
       throw new Error('DURABLE_AGENT_EFFECT_DAMAGED');
     return validate(header);
   }
-  const effect = validate({
-    ...header,
-    intent: {
-      ...header.intent,
-      input: readAgentBody(database, header.intent.input),
+  const effect = validate(
+    {
+      ...header,
+      intent: {
+        ...header.intent,
+        input: readAgentBody(database, header.intent.input),
+      },
+      attempts: header.attempts.map((attempt) => ({
+        ...attempt,
+        partials: attempt.partials.map((ref) => readAgentBody(database, ref)),
+        output:
+          attempt.output === null
+            ? null
+            : readAgentBody(database, attempt.output),
+      })),
     },
-    attempts: header.attempts.map((attempt) => ({
-      ...attempt,
-      partials: attempt.partials.map((ref) => readAgentBody(database, ref)),
-      output:
-        attempt.output === null
-          ? null
-          : readAgentBody(database, attempt.output),
-    })),
-  });
+    true,
+    header.intent.input,
+  );
   rememberEffect(database, key, wire, effect);
   if (effect.intent.id !== id)
     throw new Error('DURABLE_AGENT_EFFECT_ID_DAMAGED');
   return effect;
 }
 function write(database: DatabaseSync, turnId: string, effect: EffectRecord) {
-  validate(effect, true);
-  const header = {
-    ...effect,
-    intent: {
-      ...effect.intent,
-      input: putAgentBody(database, effect.intent.input),
-    },
-    attempts: effect.attempts.map((attempt) => ({
-      ...attempt,
-      partials: attempt.partials.map((wire) => putAgentBody(database, wire)),
-      output:
-        attempt.output === null ? null : putAgentBody(database, attempt.output),
-    })),
-  };
-  const wire = canonical(header);
+  const input = putAgentBody(database, effect.intent.input);
+  validate(effect, true, input);
+  for (const attempt of effect.attempts) {
+    for (const part of attempt.partials) putAgentBody(database, part);
+    if (attempt.output !== null) putAgentBody(database, attempt.output);
+  }
+  const wire = agentEffectHeader(database, effect);
   rememberEffect(
     database,
     JSON.stringify([turnId, effect.intent.id]),
@@ -360,7 +394,7 @@ export function decideAgentEffect(
     effect = {
       version: 1,
       intent: command.intent,
-      inputDigest: hash(command.intent.input),
+      inputDigest: putAgentBody(database, command.intent.input),
       state: 'planned',
       attempts: [],
     };
