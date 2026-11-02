@@ -8,6 +8,9 @@ import {
   runWithAgentTurn,
 } from '../index.js';
 
+const total = Number(process.argv[3] ?? 400);
+if (!Number.isSafeInteger(total) || total < 400 || total > 3200)
+  throw new Error('Invalid fixture delta count');
 const database = new DatabaseSync(process.argv[2]!);
 database.exec(
   'PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON',
@@ -50,7 +53,7 @@ const model = durableLanguageModel({
     return {
       stream: new ReadableStream<LanguageModelV3StreamPart>({
         async pull(controller) {
-          if (index < 400) {
+          if (index < total) {
             await delay(1);
             controller.enqueue({
               type: 'text-delta',
@@ -92,7 +95,7 @@ for await (const part of result.stream) {
   await lease.frame(`control:${count}`, 'data: {"type":"checkpoint"}\n\n');
   process.send?.({ index: count++, delta: part.delta });
   await acknowledged;
-  if (count === 400) finish();
+  if (count === total) finish();
 }
 await journal.close();
 database.close();

@@ -15,6 +15,8 @@ authority and `orchestration:operate`. The current Codex adapter supports save
 paused, pause and clear; resume and Station-managed execution are unavailable.
 See [Session Goals](api.md#session-goals) for commands and uncertain outcomes.
 
+For current built-in engines, an accepted new Session start waits until its already-announced `session.started` event is durable. The recorded owner is therefore available to an immediate follow-up command. Publication contention is retried asynchronously; a start whose commit cannot be confirmed within the five-second publication budget returns `indeterminate`, so inspect it before retrying. This confirms Session creation and ownership, not delivery or completion of a turn. Adapters that have not yet announced a start retain their existing deferred-start semantics; Station does not invent a durable event from a returned handle.
+
 For foreground chat, the canonical execution surface is
 `POST /api/orchestration/chat`. It accepts an
 Environment + Agent target and a message. Station resolves the Agent's engine,

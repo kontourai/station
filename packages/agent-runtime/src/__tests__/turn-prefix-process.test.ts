@@ -24,7 +24,7 @@ afterEach(async () => {
   children.clear();
   for (const directory of temporary.splice(0)) directory.remove();
 });
-it.each([5, 130, 300, 389])(
+it.each([5, 130, 300, 389, 1300])(
   'SIGKILL after %i displayed deltas restores an exact committed prefix without model redispatch',
   async (threshold) => {
     const directory = mkdtempDisposableSync(
@@ -39,6 +39,7 @@ it.each([5, 130, 300, 389])(
         'tsx',
         resolve(import.meta.dirname, 'turn-prefix-process.fixture.ts'),
         path,
+        String(threshold > 400 ? 1600 : 400),
       ],
       { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe', 'ipc'] },
     );
