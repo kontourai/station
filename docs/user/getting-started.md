@@ -37,8 +37,8 @@ without adding a model API key:
    and [document import](https://github.com/kontourai/station/blob/main/docs/guides/knowledge.md#import-documents-from-your-computer).
 5. To talk to the built-in **Station Assistant** using the same Codex account,
    open **Settings → General → Built-in agent engine → Change…**, choose
-   **Codex**, choose **Use this engine**, then **Save**. Select **Station** in
-   the chat's Agent picker. Ask it to list your projects to exercise a read-only
+   **Codex**, choose **Use this engine**, then **Save**. Select **Station
+   Assistant** in the chat's Agent picker. Ask it to list your projects to exercise a read-only
    Station tool as well as chat.
 
 For a customized Codex Agent, open **Customize → Agents → New agent → Use an
