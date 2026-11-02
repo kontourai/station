@@ -234,7 +234,7 @@ describe('BrowserPane honest states', () => {
       }),
     );
     fireEvent.click(screen.getByRole('button', { name: /Control options/ }));
-    const actions = await screen.findByRole('group', {
+    const actions = await screen.findByRole('region', {
       name: 'Recent actions',
     });
     await waitFor(() =>

@@ -50,7 +50,13 @@ export function AgentActionOverlay({
         {action.kind === 'click' ? (
           <span className="live-surface__agent-ping" />
         ) : null}
-        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+        <svg
+          aria-hidden="true"
+          width="20"
+          height="20"
+          viewBox="0 0 20 20"
+          fill="none"
+        >
           <path
             d="M3 2l12 8-5 1-2 5z"
             fill="var(--k-panel)"

@@ -292,9 +292,9 @@ function BrowserDriverChip({
               {releaseLabel}
             </button>
           ) : null}
-          <div role="group" aria-label="Recent actions">
+          <section aria-label="Recent actions">
             {history.isPending ? (
-              'Loading actions…'
+              <SkeletonBlock count={1} label="Loading recent actions" />
             ) : history.isError ? (
               'Could not load actions.'
             ) : (
@@ -312,7 +312,7 @@ function BrowserDriverChip({
                   ))}
               </ol>
             )}
-          </div>
+          </section>
         </div>
       ) : null}
     </span>
@@ -1644,12 +1644,12 @@ function BrowserSessionPane({
           body
         )}
         {experienceEnabled && live && !floating && zoomFactor !== 1 ? (
-          <span
+          <output
             className="browser-pane__zoom-indicator"
             aria-label={`Page zoom ${Math.round(zoomFactor * 100)}%`}
           >
             {Math.round(zoomFactor * 100)}%
-          </span>
+          </output>
         ) : null}
         {canDriveLive && record?.surfaceId && chipTone === 'agent' ? (
           <span className="browser-pane__takeover-hint" aria-hidden="true">

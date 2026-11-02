@@ -150,7 +150,7 @@
   position: absolute;
   inset: 0;
   opacity: 0;
-  transition: opacity 150ms ease-out;
+  transition: opacity var(--motion-fast) var(--ease-out);
 }
 .live-surface__agent-action[data-visible="true"] {
   opacity: 1;
@@ -169,7 +169,7 @@
   inset: 0;
   border-radius: 50%;
   background: color-mix(in srgb, var(--k-brand) 35%, transparent);
-  animation: live-surface-agent-ping 700ms ease-out;
+  animation: live-surface-agent-ping var(--motion-status-spin) var(--ease-out);
 }
 @keyframes live-surface-agent-ping {
   from {
@@ -179,13 +179,5 @@
   to {
     transform: scale(2);
     opacity: 0;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .live-surface__agent-action {
-    transition: none;
-  }
-  .live-surface__agent-ping {
-    animation: none;
   }
 }
