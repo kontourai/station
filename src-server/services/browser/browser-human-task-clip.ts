@@ -26,6 +26,7 @@ export type HumanTaskClip = {
     request: Request;
     signal: AbortSignal;
     browserCurrent(): Promise<boolean>;
+    onCleanupFailure?(error: unknown): void;
   }): Promise<{ walkthroughId: string }>;
 };
 export type HumanTaskPreparation =
@@ -131,6 +132,7 @@ export class BrowserHumanTaskClip {
           request: next,
           signal,
           browserCurrent,
+          onCleanupFailure,
         }) => {
           signal.throwIfAborted();
           if (!(await browserCurrent()))
@@ -166,10 +168,12 @@ export class BrowserHumanTaskClip {
               store: this.deps.store,
               candidates: 0,
               retained: [],
-              onCleanupFailure: (error) =>
+              onCleanupFailure: (error) => {
+                onCleanupFailure?.(error);
                 logger.warn('Task recording staging cleanup failed', {
                   errorName: error instanceof Error ? error.name : typeof error,
-                }),
+                });
+              },
               recheck: async () =>
                 !!(await current(next)) && (await browserCurrent()),
             });

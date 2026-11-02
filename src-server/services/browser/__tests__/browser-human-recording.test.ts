@@ -8,8 +8,8 @@ import { RecordingLimiter } from '../../projects/recording-limiter.js';
 import {
   encodeBrowserRecording,
   TaskBrowserRecording,
-  TaskBrowserRecordingError,
 } from '../../projects/task-browser-recording.js';
+import { TaskBrowserRecordingError } from '../../projects/task-recording-errors.js';
 import { BrowserHumanRecording } from '../browser-human-recording.js';
 import type { BrowserSessionRecord } from '../browser-session-registry.js';
 
@@ -471,6 +471,43 @@ describe('human Browser recording', () => {
     );
     expect(h.encode).toHaveBeenCalledOnce();
     await h.recorder.dispose();
+  });
+
+  it('retains Task publication cleanup failures for recorder disposal', async () => {
+    const h = fixture();
+    const cleanupError = new Error('staging cleanup failed');
+    const id = h.recorder.start({
+      session: h.session,
+      owner: 'alice',
+      authorize: async () => true,
+      prepareTask: async () => ({
+        kind: 'ready',
+        clip: {
+          taskId: 'task-a',
+          publish: async ({ onCleanupFailure }) => {
+            onCleanupFailure?.(cleanupError);
+            return { walkthroughId: 'clip' };
+          },
+        },
+      }),
+    });
+    await vi.waitFor(() => expect(h.canDeliver()).toBe(true));
+    h.recorder.stop(id, 'alice', 'bs_test', 3);
+    await vi.waitFor(() =>
+      expect(h.recorder.status(id, 'alice', 'bs_test', 3)?.state).toBe('ready'),
+    );
+    await expect(
+      h.recorder.publishTask(
+        id,
+        'alice',
+        'bs_test',
+        3,
+        new Request('http://station.test'),
+      ),
+    ).resolves.toEqual({ walkthroughId: 'clip' });
+    await expect(h.recorder.dispose()).rejects.toMatchObject({
+      errors: [cleanupError],
+    });
   });
 
   it('retries a transient Task publication failure', async () => {

@@ -59,7 +59,6 @@ import { localProjectIdFor } from '../../services/projects/project-local-id.js';
 import { TaskBrowserCapture } from '../../services/projects/task-browser-capture.js';
 import { TaskBrowserRecording } from '../../services/projects/task-browser-recording.js';
 import { TaskCaptureBlobStore } from '../../services/projects/task-capture-blob-store.js';
-import { publishTaskRecording } from '../../services/projects/task-recording-publication.js';
 import { TaskReviewModule } from '../../services/projects/task-review-module.js';
 import { TaskWalkthroughStore } from '../../services/walkthroughs/task-walkthrough-store.js';
 import { WalkthroughService } from '../../services/walkthroughs/walkthrough-service.js';
@@ -781,6 +780,7 @@ test('person recording reports success when cleanup fails after publication', as
   const discard = vi
     .spyOn(TaskWalkthroughStore.prototype, 'discard')
     .mockRejectedValueOnce(new Error('cleanup failed'));
+  const cleanupFailure = vi.fn();
   const result = await prepared.clip.publish({
     bytes: Buffer.from('webm'),
     durationMs: 500,
@@ -791,6 +791,7 @@ test('person recording reports success when cleanup fails after publication', as
     }),
     signal: new AbortController().signal,
     browserCurrent: async () => true,
+    onCleanupFailure: cleanupFailure,
   });
   expect(
     await (await h.person('task-a/review/walkthroughs')).json(),
@@ -799,6 +800,9 @@ test('person recording reports success when cleanup fails after publication', as
     data: { items: [{ id: result.walkthroughId }] },
   });
   expect(discard).toHaveBeenCalledOnce();
+  expect(cleanupFailure).toHaveBeenCalledWith(
+    expect.objectContaining({ message: 'cleanup failed' }),
+  );
 });
 
 test('person recording refuses a workspace change during Task publication', async () => {
@@ -1100,38 +1104,32 @@ test.skipIf(!mediaReady)(
   },
 );
 
-test('agent route preserves workspace-changed when the publication pin changes', async () => {
-  const h = await harness({ recording: true });
-  vi.spyOn(TaskBrowserRecording.prototype, 'record').mockImplementation(
-    async (access) => {
-      const before = {
-        workspace: h.workspace,
-        pin: { commit: 'a', statusDigest: 'clean' },
-      };
-      return publishTaskRecording({
-        access,
-        before: before as never,
-        stage: { id: 'clip', path: h.home } as never,
-        bytes: Buffer.from('webm'),
-        signal: new AbortController().signal,
-        captures: {
-          pin: async () => ({ ...before, pin: { ...before.pin, commit: 'b' } }),
-        } as never,
-        store: { publish: vi.fn(), discard: vi.fn() } as never,
-        durationMs: 500,
-        width: 1,
-        height: 1,
-        candidates: 0,
-        retained: [],
-        recheck: async () => true,
-      });
-    },
-  );
-  expect(await h.record()).toMatchObject({
-    ok: false,
-    code: 'workspace-changed',
-  });
-});
+test.skipIf(process.platform === 'win32')(
+  'agent route preserves workspace-changed when the publication pin changes',
+  async () => {
+    const dir = temporary('station-fake-encoder-');
+    const encoder = join(dir, 'ffmpeg');
+    writeFileSync(encoder, '#!/bin/sh\nprintf webm\n', { mode: 0o700 });
+    const h = await harness({ recording: true, encoderPath: encoder });
+    const pin = TaskBrowserCapture.prototype.pin;
+    let calls = 0;
+    vi.spyOn(TaskBrowserCapture.prototype, 'pin').mockImplementation(
+      async function (this: TaskBrowserCapture, access) {
+        const result = await pin.call(this, access);
+        calls++;
+        return calls === 1
+          ? result
+          : { ...result, pin: { ...result.pin, commit: 'changed' } };
+      },
+    );
+    expect(await h.record()).toMatchObject({
+      ok: false,
+      code: 'workspace-changed',
+    });
+    expect(calls).toBeGreaterThanOrEqual(2);
+    expect(h.streams()).toBe(1);
+  },
+);
 
 test.skipIf(!mediaReady)(
   'a workspace changed during recording is refused and the staged clip is removed',

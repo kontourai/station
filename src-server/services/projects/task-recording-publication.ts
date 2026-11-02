@@ -10,7 +10,7 @@ import {
   type TaskBrowserCapture,
   TaskBrowserCaptureError,
 } from './task-browser-capture.js';
-import { TaskBrowserRecordingError } from './task-browser-recording.js';
+import { TaskBrowserRecordingError } from './task-recording-errors.js';
 import { verifyTaskReviewEvidence } from './task-review-evidence.js';
 
 type Pin = Awaited<ReturnType<TaskBrowserCapture['pin']>>;

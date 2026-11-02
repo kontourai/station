@@ -22,24 +22,13 @@ import {
   TaskBrowserCapture,
   type TaskCaptureBrowserRegistry,
 } from './task-browser-capture.js';
+import { TaskBrowserRecordingError } from './task-recording-errors.js';
 import { publishTaskRecording } from './task-recording-publication.js';
 
 const MAX_RAW_FRAME_BYTES = 64 * 1024 * 1024;
 const MAX_FRAMES = 300;
 const ENCODE_TIMEOUT_MS = 60_000;
 const CLEANUP_TIMEOUT_MS = 10_000;
-
-export class TaskBrowserRecordingError extends Error {
-  readonly response: { code: string; error: string };
-  constructor(
-    readonly code: string,
-    message: string,
-  ) {
-    super(message);
-    this.name = 'TaskBrowserRecordingError';
-    this.response = { code, error: message };
-  }
-}
 
 function cancelled(): TaskBrowserRecordingError {
   return new TaskBrowserRecordingError('cancelled', 'Recording was cancelled.');

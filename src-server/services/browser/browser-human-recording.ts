@@ -12,9 +12,9 @@ import type { MediaToolsResolver } from '../media-tools/media-tools-resolver.js'
 import { RecordingLimiter } from '../projects/recording-limiter.js';
 import {
   encodeBrowserRecording,
-  TaskBrowserRecordingError,
   waitForRecordingCleanup,
 } from '../projects/task-browser-recording.js';
+import { TaskBrowserRecordingError } from '../projects/task-recording-errors.js';
 import type { HumanTaskPreparation } from './browser-human-task-clip.js';
 import { redactNetworkUrl } from './browser-network-log.js';
 import type {
@@ -288,6 +288,7 @@ export class BrowserHumanRecording {
           bytes: job.bytes,
           request,
           signal: AbortSignal.any([job.cancel.signal, request.signal]),
+          onCleanupFailure: (error) => this.cleanupFailures.push(error),
           browserCurrent: async () => {
             try {
               await job.current?.(true);
