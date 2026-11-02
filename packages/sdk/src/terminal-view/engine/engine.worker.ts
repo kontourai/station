@@ -7,11 +7,14 @@
 import { EngineHost } from './engine-host';
 import type { EngineRequest } from './protocol';
 
-const scope = self as unknown as DedicatedWorkerGlobalScope;
+// This module only ever runs as a dedicated worker, where the global `self`
+// is the worker scope; the module-local declaration gives it that type.
+declare const self: DedicatedWorkerGlobalScope;
+
 const host = new EngineHost((event, transfer) =>
-  scope.postMessage(event, transfer ?? []),
+  self.postMessage(event, transfer ?? []),
 );
 
-scope.onmessage = (message: MessageEvent<EngineRequest>) => {
+self.onmessage = (message: MessageEvent<EngineRequest>) => {
   void host.handle(message.data);
 };

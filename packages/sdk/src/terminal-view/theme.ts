@@ -48,22 +48,27 @@ export function cssColorToRgb(value: string): number | null {
   const text = value.trim();
   if (!text) return null;
   probe ??= document.createElement('canvas').getContext('2d');
-  if (!probe) return null;
-  probe.fillStyle = '#000001';
-  probe.fillStyle = text;
-  const resolved = String(probe.fillStyle);
-  if (resolved === '#000001' && text !== '#000001') {
-    // Not a colour the 2D context accepts; let the engine resolve it.
-    const el = document.createElement('span');
-    el.style.color = text;
-    document.body.append(el);
-    const computed = getComputedStyle(el).color;
-    el.remove();
-    return parseRgb(computed);
+  if (probe) {
+    probe.fillStyle = '#000001';
+    probe.fillStyle = text;
+    const resolved = String(probe.fillStyle);
+    if (resolved !== '#000001' || text === '#000001')
+      return resolved.startsWith('#')
+        ? Number.parseInt(resolved.slice(1, 7), 16)
+        : parseRgb(resolved);
   }
-  return resolved.startsWith('#')
-    ? Number.parseInt(resolved.slice(1, 7), 16)
-    : parseRgb(resolved);
+  // No 2D context, or a colour it does not accept: let the cascade resolve it.
+  const el = document.createElement('span');
+  el.style.color = text;
+  document.body.append(el);
+  const computed = getComputedStyle(el).color;
+  el.remove();
+  return parseRgb(computed) ?? parseHex(computed);
+}
+
+function parseHex(value: string): number | null {
+  const match = value.trim().match(/^#([0-9a-f]{6})$/i);
+  return match ? Number.parseInt(match[1]!, 16) : null;
 }
 
 function parseRgb(value: string): number | null {

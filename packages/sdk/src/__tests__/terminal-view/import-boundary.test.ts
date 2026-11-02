@@ -42,9 +42,7 @@ function sources(dir: string): string[] {
 }
 
 describe('Coding layout terminal boundary', () => {
-  // UNWIRED(#3994): Coding still renders xterm until the TerminalPanel cutover;
-  // `it.fails` turns red the moment the layout is clean, so flip it then.
-  it.fails('imports terminal code only through the public SDK entry', () => {
+  it('imports terminal code only through the public SDK entry', () => {
     const violations = sources(codingLayout).flatMap((path) =>
       terminalBoundaryViolations(readFileSync(path, 'utf8')).map(
         (specifier) => `${relative(root, path)}: ${specifier}`,

@@ -16,6 +16,7 @@ import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+import { invokedDirectly } from '../lib/module-entry.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '../..');
@@ -25,15 +26,15 @@ const vendorDir = join(
 );
 
 /** Ghostty v1.4.0 (annotated tag ce787fc1 peels to this commit). */
-export const GHOSTTY_TAG = 'v1.4.0';
-export const GHOSTTY_REVISION = '83fb95624b0439ee660c2679b43b38c8b63769cd';
-export const ZIG_VERSION = '0.17.0';
+const GHOSTTY_TAG = 'v1.4.0';
+const GHOSTTY_REVISION = '83fb95624b0439ee660c2679b43b38c8b63769cd';
+const ZIG_VERSION = '0.17.0';
 /**
  * Official Zig 0.17.0 archives (https://ziglang.org/download/index.json).
  * Each archive is also signed with Zig's minisign key
  * RWSGOq2NVecA2UPNdBUZykf1CCb147pkmdtYxgb3Ti+JO/wCYvhbAb/U.
  */
-export const ZIG_RELEASES = {
+const ZIG_RELEASES = {
   'x86_64-windows': {
     url: 'https://ziglang.org/download/0.17.0/zig-x86_64-windows-0.17.0.zip',
     sha256: 'b5663f69581dcf391293fbf16c06cb80d81d806545ce618b4d0bab7f0eb8c428',
@@ -44,7 +45,7 @@ export const ZIG_RELEASES = {
  * terminal state (snapshot), so the module omits both. Every other feature
  * stays at Ghostty's default.
  */
-export const BUILD_ARGS = [
+const BUILD_ARGS = [
   'build',
   '-Demit-lib-vt',
   '-Dtarget=wasm32-freestanding',
@@ -73,7 +74,7 @@ function run(command, args, options = {}) {
  * GhosttyKey follows the W3C UI Events `code` list in header order. Emits
  * the `code` → enum value table so the view never hand-copies the enum.
  */
-export function keyTableSource(eventHeader) {
+function keyTableSource(eventHeader) {
   const end = eventHeader.indexOf('} GhosttyKey;');
   const start = eventHeader.lastIndexOf('typedef enum', end);
   if (end < 0 || start < 0) throw new Error('GhosttyKey enum not found');
@@ -147,8 +148,14 @@ async function main() {
     );
 
   const zigVersion = run(values.zig, ['version']);
-  if (zigVersion !== ZIG_VERSION)
-    throw new Error(`zig reports ${zigVersion}, expected ${ZIG_VERSION}`);
+  if (zigVersion !== ZIG_VERSION) {
+    const archives = Object.entries(ZIG_RELEASES)
+      .map(([host, { url, sha256 }]) => `  ${host}: ${url} (sha256 ${sha256})`)
+      .join('\n');
+    throw new Error(
+      `zig reports ${zigVersion}, expected ${ZIG_VERSION}. Official archives:\n${archives}`,
+    );
+  }
 
   const env = { ...process.env };
   if (values['cache-dir']) env.ZIG_GLOBAL_CACHE_DIR = values['cache-dir'];
@@ -196,6 +203,6 @@ async function main() {
   process.stdout.write(`${sha256(wasmOut)}  ghostty-vt.wasm\n`);
 }
 
-if (fileURLToPath(import.meta.url) === resolve(process.argv[1] ?? '')) {
+if (invokedDirectly(import.meta.url)) {
   await main();
 }

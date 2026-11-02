@@ -27,7 +27,6 @@ export const TerminalOpt = {
   COLOR_CURSOR: 13,
   COLOR_PALETTE: 14,
   SELECTION: 21,
-  SCROLLBACK_MAX_BYTES: 27,
   RESET: 43,
 } as const;
 

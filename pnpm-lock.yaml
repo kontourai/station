@@ -307,12 +307,6 @@ importers:
       '@voltagent/server-hono':
         specifier: ^2.0.14
         version: 2.0.14(patch_hash=1ed9acb7ad00289d710ebe5f24822fef3f189794d80d8ec34469405808622ce5)(@voltagent/core@2.11.0(patch_hash=953e966ee1694e8afdc84da18950b5a07c4824075acef2d97f4cbbd41bbc822b)(@ai-sdk/provider-utils@4.0.62(zod@4.6.7))(@ai-sdk/provider@3.0.19)(@aws-sdk/credential-provider-node@3.972.89)(@smithy/signature-v4@5.7.4)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.317(zod@4.6.7))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.22.0)(zod@4.6.7))(ai@6.0.317(zod@4.6.7))(supports-color@7.2.0)(zod@4.6.7)
-      '@xterm/addon-fit':
-        specifier: ^0.11.0
-        version: 0.11.0
-      '@xterm/xterm':
-        specifier: ^6.0.0
-        version: 6.0.0
       agent-skills-ts-sdk:
         specifier: ^2.5.0
         version: 2.5.0
@@ -4815,12 +4809,6 @@ packages:
     peerDependencies:
       '@voltagent/core': ^2.0.0
       zod: ^3.25.0 || ^4.0.0
-
-  '@xterm/addon-fit@0.11.0':
-    resolution: {integrity: sha512-jYcgT6xtVYhnhgxh3QgYDnnNMYTcf8ElbxxFzX0IZo+vabQqSPAjC3c1wJrKB5E19VwQei89QCiZZP86DCPF7g==}
-
-  '@xterm/xterm@6.0.0':
-    resolution: {integrity: sha512-TQwDdQGtwwDt+2cgKDLn0IRaSxYu1tSUjgKarSDkUM0ZNiSRXFpjxEsvc/Zgc5kq5omJ+V0a8/kIM2WD3sMOYg==}
 
   abbrev@3.0.1:
     resolution: {integrity: sha512-AO2ac6pjRB3SJmGJo+v5/aK6Omggp6fsLrs6wN9bd35ulu4cCwaAU9+7ZhXjeqHVkaHThLuzH0nZr0YpCDhygg==}
@@ -13190,10 +13178,6 @@ snapshots:
       - bufferutil
       - supports-color
       - utf-8-validate
-
-  '@xterm/addon-fit@0.11.0': {}
-
-  '@xterm/xterm@6.0.0': {}
 
   abbrev@3.0.1:
     optional: true

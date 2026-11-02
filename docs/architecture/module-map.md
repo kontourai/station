@@ -6341,7 +6341,7 @@ Station uses against the module's `ghostty_type_json()`. The
 [engine test](../../packages/sdk/src/__tests__/terminal-view/terminal-engine.test.ts)
 runs the real module headlessly: rows and styles, encoders, replies detached
 during replay, the mirror after cursor-addressed redraws, find, selection and
-OSC 8. The [boundary test](../../packages/sdk/src/__tests__/terminal-view/coding-layout-boundary.test.ts)
+OSC 8. The [boundary test](../../packages/sdk/src/__tests__/terminal-view/import-boundary.test.ts)
 keeps the Coding layout on the public entry. **Do not reintroduce:** a second
 emulator, terminal state in React render, replies written during replay, or a
 Coding import of terminal internals.

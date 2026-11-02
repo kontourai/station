@@ -50,7 +50,6 @@ export interface ControllerSnapshot {
 
 export interface ControllerOptions {
   font: FontSpec;
-  scrollbackBytes?: number;
   screenReader: boolean;
   reducedMotion: boolean;
   onLink?(target: TerminalLinkTarget): void;
@@ -63,7 +62,10 @@ export interface ControllerOptions {
   /** Test seam: a different worker or wasm source. */
   createWorker?: () => EnginePort;
   wasmUrl?: URL | string;
-  forceRenderer?: 'canvas2d';
+  /** Test seam: a renderer without a GPU or 2D canvas. */
+  createRenderer?: (canvas: HTMLCanvasElement) => TerminalRenderer;
+  /** Test seam: cell metrics where no 2D canvas can measure text. */
+  measureCell?: typeof measureCell;
 }
 
 export interface ControllerElements {
@@ -139,15 +141,9 @@ export class TerminalController {
   };
 
   private update(patch: Partial<ControllerSnapshot>): void {
-    let changed = false;
-    for (const [key, value] of Object.entries(patch)) {
-      if (
-        (this.snapshot as unknown as Record<string, unknown>)[key] !== value
-      ) {
-        changed = true;
-        break;
-      }
-    }
+    const changed = Object.entries(patch).some(
+      ([key, value]) => Reflect.get(this.snapshot, key) !== value,
+    );
     if (!changed) return;
     this.snapshot = { ...this.snapshot, ...patch };
     for (const listener of this.listeners) listener();
@@ -161,7 +157,7 @@ export class TerminalController {
       const module = await loadGhosttyVt(this.options.wasmUrl);
       if (this.disposed) return;
       this.theme = readTerminalTheme(this.elements.root);
-      this.metrics = measureCell(
+      this.metrics = (this.options.measureCell ?? measureCell)(
         this.options.font,
         window.devicePixelRatio || 1,
       );
@@ -197,7 +193,6 @@ export class TerminalController {
         module,
         size: this.size,
         theme: this.engineTheme(this.theme),
-        scrollbackBytes: this.options.scrollbackBytes,
       });
       this.installListeners();
       this.setScreenReader(this.options.screenReader);
@@ -219,11 +214,14 @@ export class TerminalController {
         this.engine?.send({ type: 'visible', visible: this.visible }),
       failed: () => this.swapToCanvas(),
     };
-    const webgl =
-      this.options.forceRenderer === 'canvas2d'
-        ? null
-        : WebGl2Renderer.create(this.elements.canvas, callbacks);
-    const renderer = webgl ?? new Canvas2dRenderer(this.elements.canvas);
+    if (this.options.createRenderer) {
+      const renderer = this.options.createRenderer(this.elements.canvas);
+      this.update({ renderer: renderer.kind });
+      return renderer;
+    }
+    const renderer =
+      WebGl2Renderer.create(this.elements.canvas, callbacks) ??
+      new Canvas2dRenderer(this.elements.canvas);
     this.update({ renderer: renderer.kind });
     return renderer;
   }
@@ -311,7 +309,10 @@ export class TerminalController {
     if (!this.metrics || !this.engine || !this.renderer) return;
     const dpr = window.devicePixelRatio || 1;
     if (dpr !== this.metrics.dpr)
-      this.metrics = measureCell(this.options.font, dpr);
+      this.metrics = (this.options.measureCell ?? measureCell)(
+        this.options.font,
+        dpr,
+      );
     const next = this.measureGrid();
     const size = this.size;
     if (
@@ -353,7 +354,10 @@ export class TerminalController {
   setFont(font: FontSpec): void {
     this.options = { ...this.options, font };
     if (!this.metrics) return;
-    this.metrics = measureCell(font, window.devicePixelRatio || 1);
+    this.metrics = (this.options.measureCell ?? measureCell)(
+      font,
+      window.devicePixelRatio || 1,
+    );
     this.size = null;
     this.relayout();
   }
@@ -428,7 +432,6 @@ export class TerminalController {
     if (this.blinkTimer) clearInterval(this.blinkTimer);
     this.blinkTimer = null;
     this.cursorOn = true;
-    // Reduced motion: a steady cursor.
     if (!this.focused || this.options.reducedMotion) return;
     this.blinkTimer = setInterval(() => {
       if (!this.model.cursor?.blinking) return;

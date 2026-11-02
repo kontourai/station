@@ -38,16 +38,11 @@ export class EngineHost {
   private async init(request: Extract<EngineRequest, { type: 'init' }>) {
     try {
       const vt = await GhosttyVtModule.instantiate(request.module);
-      this.engine = new TerminalEngine(
-        vt,
-        request.size,
-        {
-          reply: (bytes) => this.post({ type: 'reply', bytes }, [bytes.buffer]),
-          bell: () => this.post({ type: 'bell' }),
-          title: (title) => this.post({ type: 'title', title }),
-        },
-        { scrollbackBytes: request.scrollbackBytes },
-      );
+      this.engine = new TerminalEngine(vt, request.size, {
+        reply: (bytes) => this.post({ type: 'reply', bytes }, [bytes.buffer]),
+        bell: () => this.post({ type: 'bell' }),
+        title: (title) => this.post({ type: 'title', title }),
+      });
       this.engine.setTheme(request.theme);
       this.post({ type: 'ready' });
       const queued = this.queue ?? [];

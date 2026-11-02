@@ -12,14 +12,34 @@ import type {
   EngineRequest,
 } from './protocol';
 
+/** The parts of a `Worker` the client uses; a real `Worker` satisfies it. */
 export interface EnginePort {
   postMessage(message: EngineRequest, transfer: Transferable[]): void;
-  addEventListener(
-    type: 'message',
-    listener: (event: MessageEvent<EngineEvent>) => void,
-  ): void;
-  addEventListener(type: 'error', listener: (event: Event) => void): void;
+  onmessage: ((event: MessageEvent) => void) | null;
+  onerror: ((event: ErrorEvent) => void) | null;
   terminate(): void;
+}
+
+const ENGINE_EVENT_TYPES = new Set<string>([
+  'ready',
+  'frame',
+  'input',
+  'reply',
+  'bell',
+  'title',
+  'result',
+  'error',
+]);
+
+/** Worker messages cross a thread boundary; accept only known event kinds. */
+function isEngineEvent(data: unknown): data is EngineEvent {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    'type' in data &&
+    typeof data.type === 'string' &&
+    ENGINE_EVENT_TYPES.has(data.type)
+  );
 }
 
 export interface EngineClientHandlers {
@@ -58,7 +78,7 @@ export function createEngineWorker(): EnginePort {
   return new Worker(new URL('./engine.worker.ts', import.meta.url), {
     type: 'module',
     name: 'station-terminal-engine',
-  }) as unknown as EnginePort;
+  });
 }
 
 export class EngineClient {
@@ -70,10 +90,10 @@ export class EngineClient {
     private readonly port: EnginePort,
     private readonly handlers: EngineClientHandlers,
   ) {
-    port.addEventListener('message', (event) => this.receive(event.data));
-    port.addEventListener('error', () =>
-      handlers.error('The terminal engine stopped.'),
-    );
+    port.onmessage = (event) => {
+      if (isEngineEvent(event.data)) this.receive(event.data);
+    };
+    port.onerror = () => handlers.error('The terminal engine stopped.');
   }
 
   private receive(event: EngineEvent): void {

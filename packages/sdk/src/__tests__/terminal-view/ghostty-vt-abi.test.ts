@@ -6,10 +6,21 @@ import * as abi from '../../terminal-view/engine/abi';
 import { GHOSTTY_KEY_BY_CODE } from '../../terminal-view/engine/keys.generated';
 import { GhosttyVtModule } from '../../terminal-view/engine/wasm';
 
-const vendor = (name: string) =>
-  fileURLToPath(
-    new URL(`../../terminal-view/vendor/ghostty-vt/${name}`, import.meta.url),
-  );
+const WASM_PATH = fileURLToPath(
+  new URL(
+    '../../terminal-view/vendor/ghostty-vt/ghostty-vt.wasm',
+    import.meta.url,
+  ),
+);
+const REVISION_PATH = fileURLToPath(
+  new URL('../../terminal-view/vendor/ghostty-vt/REVISION', import.meta.url),
+);
+const LICENSE_PATH = fileURLToPath(
+  new URL('../../terminal-view/vendor/ghostty-vt/LICENSE', import.meta.url),
+);
+const TYPES_PATH = fileURLToPath(
+  new URL('../../terminal-view/vendor/ghostty-vt/types.json', import.meta.url),
+);
 const scriptPath = fileURLToPath(
   new URL('../../../../../scripts/ghostty-vt/build-wasm.mjs', import.meta.url),
 );
@@ -40,14 +51,14 @@ let manifest: Manifest;
 let wasm: Uint8Array<ArrayBuffer>;
 
 beforeAll(async () => {
-  wasm = new Uint8Array(readFileSync(vendor('ghostty-vt.wasm')));
+  wasm = new Uint8Array(readFileSync(WASM_PATH));
   const vt = await GhosttyVtModule.instantiate(await WebAssembly.compile(wasm));
   manifest = vt.typeManifest() as Manifest;
 });
 
 describe('vendored libghostty-vt', () => {
   it('is the pinned Ghostty revision, built by the pinned toolchain', () => {
-    const revision = readFileSync(vendor('REVISION'), 'utf8');
+    const revision = readFileSync(REVISION_PATH, 'utf8');
     const script = readFileSync(scriptPath, 'utf8');
     const pinned = script.match(/GHOSTTY_REVISION = '([0-9a-f]{40})'/)?.[1];
     expect(pinned).toBe('83fb95624b0439ee660c2679b43b38c8b63769cd');
@@ -58,14 +69,14 @@ describe('vendored libghostty-vt', () => {
   });
 
   it('matches the recorded SHA-256', () => {
-    const recorded = readFileSync(vendor('REVISION'), 'utf8').match(
+    const recorded = readFileSync(REVISION_PATH, 'utf8').match(
       /^sha256 ([0-9a-f]{64})$/m,
     )?.[1];
     expect(createHash('sha256').update(wasm).digest('hex')).toBe(recorded);
   });
 
   it('ships Ghostty’s MIT license beside the binary', () => {
-    expect(readFileSync(vendor('LICENSE'), 'utf8')).toMatch(/MIT License/);
+    expect(readFileSync(LICENSE_PATH, 'utf8')).toMatch(/MIT License/);
   });
 
   it('imports nothing from the host', () => {
@@ -75,9 +86,7 @@ describe('vendored libghostty-vt', () => {
   });
 
   it('matches the committed type manifest', () => {
-    expect(JSON.parse(readFileSync(vendor('types.json'), 'utf8'))).toEqual(
-      manifest,
-    );
+    expect(JSON.parse(readFileSync(TYPES_PATH, 'utf8'))).toEqual(manifest);
   });
 
   it('is the wasm32 little-endian ABI the engine assumes', () => {

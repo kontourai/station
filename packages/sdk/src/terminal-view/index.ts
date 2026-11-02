@@ -10,5 +10,5 @@ export type {
   TerminalViewSessionListener,
   TerminalViewSessionState,
 } from './session';
-// UNWIRED(#3994): Coding's TerminalPanel renders this once the operate session store lands.
+export { toTerminalViewSession } from './store-session';
 export { TerminalView, type TerminalViewProps } from './TerminalView';

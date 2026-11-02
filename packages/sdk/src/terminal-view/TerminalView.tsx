@@ -11,7 +11,7 @@ import {
 } from 'react';
 import { ActionControl } from '../components/ActionControl';
 import { ErrorState } from '../components/ErrorState';
-import { type ControllerOptions, TerminalController } from './controller';
+import { TerminalController } from './controller';
 import { loadSymbolsFont, TERMINAL_FONT_FAMILY } from './font';
 import type { TerminalLinkTarget } from './links';
 import type { FontSpec } from './render/glyph-atlas';
@@ -42,12 +42,12 @@ export interface TerminalViewProps {
   onBell?(): void;
   /** Retries a failed or exited session. */
   onReconnect?(): void;
+  /**
+   * Show connection and exit notices over the terminal (default). A host that
+   * reports those itself, with its own recovery action, turns them off.
+   */
+  notices?: boolean;
   className?: string;
-  /** @internal Test seams. */
-  engineOptions?: Pick<
-    ControllerOptions,
-    'createWorker' | 'wasmUrl' | 'forceRenderer'
-  >;
 }
 
 const FOCUSABLE =
@@ -104,8 +104,8 @@ export function TerminalView({
   onTitleChange,
   onBell,
   onReconnect,
+  notices = true,
   className,
-  engineOptions,
 }: TerminalViewProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -156,7 +156,6 @@ export function TerminalView({
           rootRef.current && moveFocus(rootRef.current, direction),
         onContextMenu: (position) => setMenu(position),
         onFindRequest: () => setFindOpen(true),
-        ...engineOptions,
       },
     );
     setController(next);
@@ -482,7 +481,8 @@ export function TerminalView({
               variant="compact"
             />
           </div>
-        ) : sessionState !== 'ready' &&
+        ) : notices &&
+          sessionState !== 'ready' &&
           sessionState !== 'none' &&
           SESSION_NOTICE[sessionState] ? (
           <div className="station-terminal__banner" role="status">
@@ -504,6 +504,11 @@ export function TerminalView({
         >
           {(
             [
+              [
+                'Interrupt (Ctrl+C)',
+                'Ctrl+C',
+                () => controller?.sendKey('KeyC', 'c', 1 << 1),
+              ],
               ['Escape', 'Esc', () => controller?.sendKey('Escape', 'Escape')],
               ['Tab', 'Tab', () => controller?.sendKey('Tab', 'Tab')],
               [

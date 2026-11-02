@@ -20,7 +20,6 @@ export type EngineRequest =
       module: WebAssembly.Module;
       size: EngineSize;
       theme: EngineTheme;
-      scrollbackBytes?: number;
     }
   | { type: 'write'; bytes: Uint8Array; mode: 'live' | 'replay' }
   | { type: 'resize'; size: EngineSize }

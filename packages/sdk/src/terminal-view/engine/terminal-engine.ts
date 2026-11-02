@@ -175,7 +175,6 @@ export class TerminalEngine {
     private readonly vt: GhosttyVtModule,
     size: EngineSize,
     private readonly effects: EngineEffects,
-    options: { scrollbackBytes?: number } = {},
   ) {
     this.size = { ...size };
     this.scratch = vt.calloc(SCRATCH_BYTES);
@@ -195,10 +194,6 @@ export class TerminalEngine {
     this.mouseEvent = vt.construct('ghostty_mouse_event_new', 0);
     this.gesture = vt.construct('ghostty_selection_gesture_new', 0);
 
-    if (options.scrollbackBytes !== undefined) {
-      this.vt.data().setUint32(this.scratch, options.scrollbackBytes, true);
-      this.setOpt(TerminalOpt.SCROLLBACK_MAX_BYTES, this.scratch);
-    }
     this.installEffects();
     this.resize(size);
   }
@@ -471,7 +466,6 @@ export class TerminalEngine {
     const colors = this.readColors();
     const scrollbar = this.readScrollbar();
 
-    // Point the reusable iterator at this update's rows.
     view = vt.data();
     view.setUint32(s, this.rowIterator, true);
     vt.check(
@@ -596,7 +590,6 @@ export class TerminalEngine {
     const attrs = new Uint16Array(cols);
     const clusters: Record<number, string> = {};
 
-    // Row-level facts: soft wrap and the selected span.
     vt.check('ghostty_render_state_row_get', this.rowIterator, RowData.RAW, s);
     const rawRow = vt.data().getBigUint64(s, true);
     vt.data().setUint8(s, 0);

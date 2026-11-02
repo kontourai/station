@@ -103,6 +103,13 @@ attributes, status reports) for live output are written back through
 `session.write` only while the session is `ready`. A `readOnly` session never
 receives input, pastes or resizes.
 
+`toTerminalViewSession(session)` adapts a `TerminalSession` from the
+[terminal session store](#terminal-output-sessions). Output the store hands a
+new subscriber from its retained buffer, and output that arrives while the
+session replays, both count as replay. A program that has exited reads as
+`exited` whatever the connection state. The Coding terminal pane renders
+through this entry and adapter, the same surface a plugin gets.
+
 Optional props:
 
 | Prop | Purpose |
@@ -111,10 +118,11 @@ Optional props:
 | `fontSize`, `fontFamily` | Font in CSS pixels; the default stack ends in a bundled Nerd Font symbols face |
 | `screenReaderMode` | Keeps a navigable text mirror and polite announcements; off means no mirror is kept |
 | `detectScreenReader` | Host signal used when `screenReaderMode` is unset; browsers expose none themselves |
-| `touchKeys` | Shows the Esc, Tab, arrow and sticky Ctrl key row (44px targets) |
+| `touchKeys` | Shows the Ctrl+C, Esc, Tab, arrow and sticky Ctrl key row (44px targets) |
 | `onOpenLink(target)` | Receives `{ kind: 'url', url }` (http and https only) or `{ kind: 'path', path, line, column? }` |
 | `onAddToChat(text)` | Adds an Add to chat item to the context menu |
 | `onTitleChange`, `onBell`, `onReconnect` | Program title (untrusted text), bell, and retry of an exited or failed session |
+| `notices` | Connection and exit notices over the terminal (default on); off for a host that reports them itself |
 
 The emulator runs in a Web Worker. The WebAssembly module and the symbols font
 load with the first terminal on a page. Rendering uses WebGL2 and falls back to

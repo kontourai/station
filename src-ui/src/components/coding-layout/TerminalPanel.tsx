@@ -1,13 +1,17 @@
 import type { TerminalLaunchProfile } from '@kontourai/station-contracts/terminal-transport';
 import {
+  authenticatedFetch,
   executeCodingCommand,
   type TerminalSession,
   type TerminalSessionTarget,
 } from '@kontourai/station-sdk';
-import { FitAddon } from '@xterm/addon-fit';
-import { Terminal } from '@xterm/xterm';
+import {
+  type TerminalLinkTarget,
+  TerminalView,
+  type TerminalViewSession,
+  toTerminalViewSession,
+} from '@kontourai/station-sdk/terminal-view';
 import { useEffect, useRef, useState } from 'react';
-import '@xterm/xterm/css/xterm.css';
 import {
   activeChatsStore,
   useActiveChatActions,
@@ -15,22 +19,27 @@ import {
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { setShortcutContext } from '../../contexts/KeyboardShortcutsContext';
 import { useNavigation } from '../../contexts/NavigationContext';
+import {
+  describeOpenInRegionRefusal,
+  useOpenBrowserSessionInRegion,
+  useOpenFilePreviewInRegion,
+} from '../../contexts/useOpenInRegion';
 import { MOBILE_MEDIA_QUERY, useIsMobile } from '../../hooks/useIsMobile';
-import { copyToClipboard } from '../../lib/clipboard';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
-import { observeRootTheme } from '../../lib/root-theme';
+import { browserPaneApi } from '../../workspace-panes/browser-pane/browserPaneApi';
 import { activeTerminalWriter } from './activeTerminal';
+import { terminalLinkRelativePath } from './terminalLinkPath';
 import {
   buildTerminalSelectionHandoff,
   selectionContainsCredential,
 } from './terminalSelectionHandoff';
 import { useTerminalSessionStore } from './terminalSessionStore';
-import { readTerminalTheme } from './terminalTheme';
 
 /**
  * One terminal view on the shared SDK session store: the same-origin socket
  * every operator device reaches (#3994). The server decides the program and
- * working directory; this view names a session, or asks for a new one.
+ * working directory; this view names a session, or asks for a new one. It
+ * renders through the public `TerminalView`, the surface plugins also get.
  */
 export function TerminalPanel({
   projectSlug,
@@ -65,11 +74,15 @@ export function TerminalPanel({
   isActive?: boolean;
 }) {
   const store = useTerminalSessionStore();
+  const { apiBase } = useApiBase();
+  const openFilePreview = useOpenFilePreviewInRegion();
+  const openBrowserSession = useOpenBrowserSessionInRegion();
   const activeChat = useNavigation((state) => state.activeChat);
   const { getDraft, setDraft, updateChat } = useActiveChatActions();
-  const containerRef = useRef<HTMLDivElement>(null);
-  const terminalRef = useRef<Terminal | null>(null);
   const sessionRef = useRef<TerminalSession | null>(null);
+  const [viewSession, setViewSession] = useState<TerminalViewSession | null>(
+    null,
+  );
   const [wsError, setWsError] = useState<string | null>(null);
   const [connectionAttempt, setConnectionAttempt] = useState(0);
   const [connected, setConnected] = useState(false);
@@ -80,7 +93,6 @@ export function TerminalPanel({
   const [unavailableReason, setUnavailableReason] = useState<string | null>(
     null,
   );
-  const [selection, setSelection] = useState('');
   const [handoffError, setHandoffError] = useState<string | null>(null);
   // The newest open options; a view does not restart when they change.
   const intentRef = useRef({ terminalId, launch, legacyTerminalId, onOpened });
@@ -88,48 +100,22 @@ export function TerminalPanel({
   const projectId = target?.projectId;
   const bindingKey = target?.bindingKey;
   const key = viewKey ?? terminalId;
-
-  // The canvas cannot follow the cascade: re-read the terminal variables
-  // after any light/dark, palette, accent or branding change on the root.
-  useEffect(
-    () =>
-      observeRootTheme(() => {
-        const terminal = terminalRef.current;
-        const container = containerRef.current;
-        if (terminal && container)
-          terminal.options.theme = readTerminalTheme(container);
-      }),
-    [],
+  // Larger glyphs on a phone, by the app's one mobile breakpoint (including
+  // its landscape-phone clause). Read once per view, as before.
+  const [fontSize] = useState(() =>
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia(MOBILE_MEDIA_QUERY).matches
+      ? 14
+      : 12,
   );
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: An explicit reconnect restarts this view with the same terminal identity.
   useEffect(() => {
-    if (!containerRef.current || !projectId || !bindingKey) return;
+    if (!projectId || !bindingKey) return;
     setUnavailableReason(null);
     setWsError(null);
     setConnected(false);
-
-    // Bump the glyph size on a phone — xterm renders to a canvas, so the
-    // readable-text fix has to live in JS, not CSS. Read once at mount; a
-    // landscape phone counts, as it does for every other mobile affordance.
-    const isMobileViewport =
-      typeof window !== 'undefined' &&
-      typeof window.matchMedia === 'function' &&
-      window.matchMedia(MOBILE_MEDIA_QUERY).matches;
-
-    const terminal = new Terminal({
-      cursorBlink: true,
-      convertEol: true,
-      fontSize: isMobileViewport ? 14 : 12,
-      fontFamily:
-        "'MesloLGS NF', 'MesloLGM Nerd Font', 'Hack Nerd Font', 'FiraCode Nerd Font', 'JetBrainsMono Nerd Font', Menlo, courier-new, courier, monospace",
-      theme: readTerminalTheme(containerRef.current),
-    });
-    terminalRef.current = terminal;
-    const fitAddon = new FitAddon();
-    terminal.loadAddon(fitAddon);
-    terminal.open(containerRef.current);
-    fitAddon.fit();
 
     const scope = { projectId, bindingKey };
     const intent = intentRef.current;
@@ -137,16 +123,17 @@ export function TerminalPanel({
     let session: TerminalSession | null = null;
     let unsubscribe: (() => void) | undefined;
     let reported = intent.terminalId;
-    let exited = false;
     const begin = (importHistory: boolean) => {
       unsubscribe?.();
+      // The view sizes the session once it has measured its grid; the store
+      // sends the latest size when the session is ready.
       session = intent.terminalId
         ? store.attach(scope, intent.terminalId)
         : attachOnly
           ? null
           : store.open(scope, {
-              cols: terminal.cols,
-              rows: terminal.rows,
+              cols: 80,
+              rows: 24,
               ...(intent.launch && { launch: intent.launch }),
               ...(importHistory &&
                 intent.legacyTerminalId && {
@@ -154,11 +141,8 @@ export function TerminalPanel({
                 }),
             });
       sessionRef.current = session;
-      unsubscribe = session?.subscribe({
-        output: (data) => terminal.write(data),
-        reset: () => terminal.reset(),
-        change: render,
-      });
+      setViewSession(session ? toTerminalViewSession(session) : null);
+      unsubscribe = session?.subscribe({ change: render });
       if (session) render(session);
       else setWsError('This terminal session is unavailable.');
     };
@@ -188,8 +172,6 @@ export function TerminalPanel({
         return;
       }
       if (current.status === 'exited' || current.status === 'failed') {
-        if (!exited) terminal.write('\r\n[terminal exited]\r\n');
-        exited = true;
         setWsError('The shell has exited.');
         return;
       }
@@ -199,52 +181,25 @@ export function TerminalPanel({
     };
     begin(true);
 
-    const dataDispose = terminal.onData((data) => {
-      session?.write(data);
-    });
-    const selectionDispose = terminal.onSelectionChange(() => {
-      setSelection(terminal.hasSelection() ? terminal.getSelection() : '');
-      setHandoffError(null);
-    });
-    let resizeFrame: number | null = null;
-    const scheduleResize = () => {
-      if (resizeFrame !== null) return;
-      resizeFrame = requestAnimationFrame(() => {
-        resizeFrame = null;
-        const proposed = fitAddon.proposeDimensions();
-        if (!proposed) return;
-        if (proposed.cols !== terminal.cols || proposed.rows !== terminal.rows)
-          fitAddon.fit();
-        // Latest size wins in the store; it is sent once the session is ready.
-        session?.resize(terminal.cols, terminal.rows);
-      });
-    };
-    const observer = new ResizeObserver(scheduleResize);
-    observer.observe(containerRef.current);
-
     return () => {
       unsubscribe?.();
-      dataDispose.dispose();
-      selectionDispose.dispose();
-      observer.disconnect();
-      if (resizeFrame !== null) cancelAnimationFrame(resizeFrame);
       // Unmounting is presentation lifecycle, not terminal lifecycle: the
       // shell keeps running and the next view resumes its output.
       session?.detach();
       sessionRef.current = null;
-      terminal.dispose();
-      terminalRef.current = null;
+      setViewSession(null);
     };
   }, [store, projectId, bindingKey, key, attachOnly, connectionAttempt]);
 
-  const sendText = (text: string): boolean =>
-    sessionRef.current?.write(text) ?? false;
+  // Mirror of the composer's unmount guard: blur never fires for an
+  // unmounted terminal, and a stuck terminalFocused would suppress every
+  // {not:'terminalFocused'} shortcut globally.
+  useEffect(() => () => setShortcutContext('terminalFocused', false), []);
 
-  const sendSelectionToChat = async () => {
-    // Read from xterm at the hand-off, rather than from selection state: this
-    // is the one complete, contiguous selection on which the credential scan
-    // must operate, even if PTY output arrived in multiple reads.
-    const terminalOutput = terminalRef.current?.getSelection() ?? '';
+  const sendSelectionToChat = async (terminalOutput: string) => {
+    // The view hands over its one complete selection, read from the
+    // emulator at the hand-off: the credential scan sees all of it even when
+    // the PTY delivered it across several reads.
     if (!terminalOutput) return;
     if (selectionContainsCredential(terminalOutput)) {
       setHandoffError(
@@ -281,13 +236,57 @@ export function TerminalPanel({
     setHandoffError(null);
   };
 
-  const copySelection = async () => {
-    const terminalOutput = terminalRef.current?.getSelection() ?? '';
-    if (!terminalOutput) return;
+  // URLs open in the Browser pane and `path:line` in the file preview, the
+  // same placement a chat link takes.
+  const openLink = async (link: TerminalLinkTarget) => {
+    if (!projectId) return;
+    if (link.kind === 'url') {
+      if (!openBrowserSession) {
+        setHandoffError('The Browser pane cannot open here.');
+        return;
+      }
+      const api = browserPaneApi(apiBase, authenticatedFetch);
+      try {
+        const { browserSessionId } = await api.create({
+          projectSlug,
+          url: link.url,
+        });
+        const outcome = openBrowserSession({ projectId, browserSessionId });
+        if (outcome.ok) setHandoffError(null);
+        else {
+          // No pane shows it: close the session rather than leave it running.
+          void api.close(browserSessionId).catch(() => undefined);
+          setHandoffError(describeOpenInRegionRefusal(outcome.reason));
+        }
+      } catch (error) {
+        setHandoffError(
+          error instanceof Error ? error.message : 'The link could not open.',
+        );
+      }
+      return;
+    }
+    const cwd = await sessionRef.current?.cwd().catch(() => null);
+    const path = terminalLinkRelativePath(workingDir, cwd ?? null, link.path);
+    if (!path) {
+      setHandoffError('That file is outside this Project.');
+      return;
+    }
+    if (!openFilePreview) {
+      setHandoffError('Files cannot open here.');
+      return;
+    }
+    const thread = bindingKey?.startsWith('thread:')
+      ? bindingKey.slice('thread:'.length)
+      : undefined;
+    const outcome = openFilePreview({
+      projectId,
+      projectSlug,
+      path,
+      lineRange: { start: link.line, end: link.line },
+      ...(thread ? { thread } : {}),
+    });
     setHandoffError(
-      (await copyToClipboard(terminalOutput))
-        ? null
-        : 'Unable to copy the terminal selection.',
+      outcome.ok ? null : describeOpenInRegionRefusal(outcome.reason),
     );
   };
 
@@ -328,58 +327,25 @@ export function TerminalPanel({
       ) : !connected ? (
         <p role="status">Connecting to the terminal…</p>
       ) : null}
-      {selection && (
-        <fieldset className="coding-terminal-selection-actions">
-          <legend>Terminal selection actions</legend>
-          <button type="button" onClick={() => void sendSelectionToChat()}>
-            Send to chat
-          </button>
-          <button type="button" onClick={() => void copySelection()}>
-            Copy
-          </button>
-        </fieldset>
-      )}
       {handoffError && <p role="alert">{handoffError}</p>}
       <div
-        ref={containerRef}
         className="coding-terminal"
-        role="application"
-        aria-label="Terminal"
         onFocusCapture={() => setShortcutContext('terminalFocused', true)}
         onBlurCapture={(event) => {
           if (!event.currentTarget.contains(event.relatedTarget as Node | null))
             setShortcutContext('terminalFocused', false);
         }}
-        onPointerDown={() => terminalRef.current?.focus()}
-      />
-      {isMobile && (
-        <div
-          className="coding-terminal-keys"
-          role="toolbar"
-          aria-label="Terminal keys"
-        >
-          {[
-            ['Interrupt (Ctrl+C)', 'Ctrl+C', '\u0003'],
-            ['Tab', 'Tab', '\t'],
-            ['Previous command', '↑', '\u001b[A'],
-            ['Next command', '↓', '\u001b[B'],
-          ].map(([label, text, input]) => (
-            <button
-              key={label}
-              type="button"
-              aria-label={label}
-              disabled={!connected}
-              onPointerDown={(event) => event.preventDefault()}
-              onClick={() => {
-                sendText(input!);
-                terminalRef.current?.focus();
-              }}
-            >
-              {text}
-            </button>
-          ))}
-        </div>
-      )}
+      >
+        <TerminalView
+          session={viewSession}
+          label="Terminal"
+          fontSize={fontSize}
+          touchKeys={isMobile}
+          notices={false}
+          onAddToChat={(text) => void sendSelectionToChat(text)}
+          onOpenLink={(link) => void openLink(link)}
+        />
+      </div>
     </div>
   );
 }

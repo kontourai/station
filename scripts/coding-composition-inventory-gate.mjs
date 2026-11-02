@@ -168,9 +168,6 @@ const expectedDependencies = new Map(
     // The Diff toolbar's four glyphs, kept out of the entry's shared Glyph
     // module: drawn pixels, nothing decided.
     'src-ui/src/components/coding-layout/diffGlyphs.tsx': 'presentation',
-    // The terminal's xterm colours, read from the `--terminal-*` theme
-    // variables: a colour mapping, nothing run or granted.
-    'src-ui/src/components/coding-layout/terminalTheme.ts': 'presentation',
     'src-ui/src/components/coding-layout/FileContentViewer.tsx':
       'privileged-renderer',
     'src-ui/src/components/coding-layout/FileTreeContextMenu.tsx':
@@ -197,6 +194,8 @@ const expectedDependencies = new Map(
       'privileged-renderer',
     'src-ui/src/components/coding-layout/chatContextDraft.ts': 'chat-handoff',
     'src-ui/src/components/coding-layout/planSession.ts': 'task-plan',
+    'src-ui/src/components/coding-layout/terminalLinkPath.ts':
+      'privileged-renderer',
     'src-ui/src/components/coding-layout/terminalSelectionHandoff.ts':
       'chat-handoff',
     'src-ui/src/components/coding-layout/terminalSessionStore.ts':

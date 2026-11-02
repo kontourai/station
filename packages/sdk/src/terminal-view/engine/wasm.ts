@@ -10,12 +10,11 @@
  * rebuild their view whenever the buffer identity or length changed.
  */
 
-type WasmFn = (...args: never[]) => number | bigint | undefined;
-
 export interface GhosttyVtExports {
   readonly memory: WebAssembly.Memory;
   readonly __indirect_function_table: WebAssembly.Table;
-  readonly [name: string]: WasmFn | WebAssembly.Memory | WebAssembly.Table;
+  /** Every export, for looking up C functions by name. */
+  readonly all: WebAssembly.Exports;
 }
 
 export type WasmValueType = 'i32' | 'i64' | 'f32' | 'f64';
@@ -123,14 +122,25 @@ export class GhosttyVtModule {
         `Unexpected libghostty-vt imports: ${imports.map((i) => `${i.module}.${i.name}`).join(', ')}`,
       );
     const instance = await WebAssembly.instantiate(module, {});
-    return new GhosttyVtModule(instance.exports as unknown as GhosttyVtExports);
+    const { memory, __indirect_function_table: table } = instance.exports;
+    if (
+      !(memory instanceof WebAssembly.Memory) ||
+      !(table instanceof WebAssembly.Table)
+    )
+      throw new Error('libghostty-vt exports no memory or function table');
+    return new GhosttyVtModule({
+      memory,
+      __indirect_function_table: table,
+      all: instance.exports,
+    });
   }
 
   /** Calls an exported C function by name. */
   call(name: string, ...args: (number | bigint)[]): number {
-    const fn = this.exports[name];
+    const fn = this.exports.all[name];
     if (typeof fn !== 'function') throw new Error(`Missing export ${name}`);
-    return (fn as (...a: (number | bigint)[]) => number)(...args);
+    // C functions here return an int, a pointer or nothing (wasm i32 / void).
+    return Number(fn(...args) ?? 0);
   }
 
   /** Calls and throws a {@link GhosttyVtError} unless it returned success. */
@@ -237,7 +247,10 @@ export class GhosttyVtModule {
     const instance = new WebAssembly.Instance(module, { t: { f: fn } });
     const table = this.exports.__indirect_function_table;
     const index = this.freeTableSlots.pop() ?? table.grow(1);
-    table.set(index, instance.exports.f as unknown as () => void);
+    const trampoline = instance.exports.f;
+    if (typeof trampoline !== 'function')
+      throw new Error('trampoline module exports no function');
+    table.set(index, trampoline);
     return index;
   }
 

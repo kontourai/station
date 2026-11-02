@@ -1,6 +1,6 @@
 # Integrated terminal
 
-Status: In progress under #3994. The scoped in-process foundation, the same-origin gateway, operator-device ticket admission, the SDK session store and the Coding cutover (still rendered by xterm.js) are implemented. Supervisor workloads, Ghostty, the layout and removal of the legacy stack remain proposed.
+Status: In progress under #3994. The scoped in-process foundation, the same-origin gateway, operator-device ticket admission, the SDK session store, the Ghostty `TerminalView` and the Coding cutover onto it are implemented. Supervisor workloads, the layout and removal of the legacy stack remain proposed.
 
 > **Reading status: proposal (2026-10-17).** Replaces the current terminal
 > stack end to end. The bounded implementation below precedes that replacement; the current Coding UI behavior is
@@ -201,8 +201,9 @@ records the admission and its residual risks.
   wakes on `online` or visibility. Its `TerminalSession` interface is what a
   renderer consumes; the later Ghostty view uses the same interface.
 - **Coding cutover.** [TerminalPanel](../../src-ui/src/components/coding-layout/TerminalPanel.tsx)
-  keeps xterm.js, the theme, selection hand-off and the mobile key toolbar on
-  the store. Tabs are keyed per Project and reconciled with the server's
+  keeps the session lifecycle and selection hand-off on the store and renders
+  through the public `TerminalView` ([emulator boundary](#emulator-implementation-boundary-3994-phase-3)),
+  which owns the theme, input and the mobile key row. Tabs are keyed per Project and reconciled with the server's
   session list, so a shell opened on one device appears on another. Saved
   `coding-terminal-tabs` are migrated once into the first Project that opens:
   labels kept, the old id named for history import, any stored program

@@ -8,11 +8,13 @@
   color: var(--terminal-foreground, var(--k-text));
 }
 
+/* The inset sits outside the grid, so the grid measures only usable space. */
 .station-terminal__body {
   position: relative;
   flex: 1;
   min-height: 0;
   display: flex;
+  padding: var(--k-space-2) var(--k-space-3);
 }
 
 .station-terminal__grid {
@@ -23,7 +25,6 @@
   overflow: hidden;
   cursor: text;
   touch-action: none;
-  padding-inline-start: var(--k-space-1);
 }
 
 .station-terminal__grid:focus-within {
@@ -31,8 +32,12 @@
   outline-offset: -2px;
 }
 
+/* Out of flow: the container alone sizes the grid, so the terminal follows
+   its pane instead of holding the height of its first layout. */
 .station-terminal__canvas {
-  display: block;
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
 }
 
 /* The input sits at the cursor so IME candidate windows open beside it. */
