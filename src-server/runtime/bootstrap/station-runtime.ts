@@ -5107,10 +5107,7 @@ export class StationRuntime {
   private configureRoutes(
     app: Parameters<NonNullable<HonoServerConfig['configureApp']>>[0],
   ): void {
-    this.codexToolDispatch = async (request) =>
-      app.fetch(request, {
-        incoming: { socket: { remoteAddress: '127.0.0.1' } },
-      } as never);
+    this.codexToolDispatch = async (request) => app.fetch(request);
     // The existing handshake environment identity qualifies these local owner
     // records; it is not a new logical Station or machine identity.
     this.runtimeSearch ??= createRuntimeSearch({

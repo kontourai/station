@@ -304,10 +304,10 @@ function codexBoundToolResult(value: unknown) {
     !('content' in value) ||
     !Array.isArray(value.content)
   )
-    throw new Error('bound-tool-result-refused');
+    throw new Error('bound-tool-executed-result-withheld');
   const items = value.content.map((item: unknown) => {
     if (!item || typeof item !== 'object')
-      throw new Error('bound-tool-result-refused');
+      throw new Error('bound-tool-executed-result-withheld');
     const content = item as Record<string, unknown>;
     if (content.type === 'text' && typeof content.text === 'string')
       return { type: 'inputText', text: content.text };
@@ -321,7 +321,7 @@ function codexBoundToolResult(value: unknown) {
         type: 'inputImage',
         imageUrl: `data:${content.mimeType};base64,${content.data}`,
       };
-    throw new Error('bound-tool-result-refused');
+    throw new Error('bound-tool-executed-result-withheld');
   });
   const refused = items.some((item) => {
     if (item.type !== 'inputText' || typeof item.text !== 'string')
@@ -343,7 +343,7 @@ function codexBoundToolResult(value: unknown) {
     success: !refused && !('isError' in value && value.isError === true),
   };
   if (Buffer.byteLength(JSON.stringify(result)) > 8 * 1024 * 1024)
-    throw new Error('bound-tool-result-refused');
+    throw new Error('bound-tool-executed-result-withheld');
   return result;
 }
 
@@ -2133,10 +2133,9 @@ export class CodexAdapter implements ProviderAdapterShape {
     this.transport.handleProcess(record);
 
     try {
-      const controlCandidate = input.agent?.toolServers
-        ?.slice()
-        .reverse()
-        .find((server) => server.id === 'station-control');
+      const controlCandidate = input.agent?.toolServers?.find(
+        (server) => server.id === 'station-control',
+      );
       const control =
         controlCandidate &&
         builtinStationApiServerId(
@@ -2147,7 +2146,7 @@ export class CodexAdapter implements ProviderAdapterShape {
           : undefined;
       const includeBrowser =
         !!input.agent && input.agent.browserTools !== false;
-      const includeDevices = !!control;
+      const includeDevices = !!control && !control.coordinatorDerived;
       const epoch = this.options.boundToolsEpoch?.();
       let retired = false;
       const bindingCurrent = () => {
@@ -3316,11 +3315,10 @@ export class CodexAdapter implements ProviderAdapterShape {
       return { outcome: 'target-mismatch', activeTurnId } as const;
     }
     record.cancelledBoundTurns ??= new Set();
-    if (record.cancelledBoundTurns.size >= 4096) {
-      record.boundChannelClosed = true;
-      void record.closeBoundTools?.().catch(() => {});
-    } else {
-      record.cancelledBoundTurns.add(activeTurnId);
+    record.cancelledBoundTurns.add(activeTurnId);
+    if (record.cancelledBoundTurns.size > 32) {
+      const oldest = record.cancelledBoundTurns.values().next().value;
+      if (oldest !== undefined) record.cancelledBoundTurns.delete(oldest);
     }
     this.cancelBoundToolApprovals(record, activeTurnId);
     const targetTurnId = turnId ?? activeTurnId;

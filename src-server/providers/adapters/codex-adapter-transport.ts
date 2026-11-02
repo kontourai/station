@@ -1000,9 +1000,18 @@ export class CodexAdapterTransport {
           (result) => {
             if (mayReply()) this.sendResponse(record, request.id, result);
           },
-          () => {
-            if (mayReply())
-              this.sendErrorResponse(record, request.id, 'Bound tool refused');
+          (error: unknown) => {
+            if (mayReply()) {
+              const message =
+                error instanceof Error &&
+                error.message === 'bound-tool-executed-result-withheld'
+                  ? 'Bound tool executed; result withheld'
+                  : error instanceof Error &&
+                      error.message === 'bound-tool-session-restart-required'
+                    ? 'Bound tool unavailable; restart the Session'
+                    : 'Bound tool refused';
+              this.sendErrorResponse(record, request.id, message);
+            }
           },
         )
         .finally(() => {

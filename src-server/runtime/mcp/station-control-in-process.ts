@@ -29,7 +29,7 @@ import {
   type TenantExecutionContext,
   tenantExecutionContextFromSession,
 } from '@kontourai/station-contracts/tenancy';
-import { McpServer } from '@modelcontextprotocol/server';
+import { McpServer, type Transport } from '@modelcontextprotocol/server';
 import { createStationBrowserMcpServer } from '../../tools/station-browser-mcp-server.js';
 import { registerBrowserTools } from '../../tools/station-control-browser-tools.js';
 import { registerDeviceTools } from '../../tools/station-control-device-tools.js';
@@ -97,12 +97,7 @@ export async function createCodexBoundToolServer(input: {
     number,
     { resolve: (result: unknown) => void; reject: (error: Error) => void }
   >();
-  const transport: {
-    onmessage?: (message: unknown) => void;
-    start(): Promise<void>;
-    close(): Promise<void>;
-    send(message: unknown): Promise<void>;
-  } = {
+  const transport: Transport = {
     start: async () => {},
     close: async () => {},
     send: async (message) => {
@@ -122,8 +117,14 @@ export async function createCodexBoundToolServer(input: {
       else waiting.resolve(response.result);
     },
   };
-  await server.connect(transport as never);
-  const request = (method: string, params: unknown, current: () => boolean) => {
+  await server.connect(transport);
+  const request = (
+    method: string,
+    params: Record<string, unknown>,
+    current: () => boolean,
+  ) => {
+    if (!verifyStationControlMcpToken(token) && !closed && input.isCurrent())
+      return Promise.reject(new Error('bound-tool-session-restart-required'));
     if (closed || pending.size >= 16 || !current())
       return Promise.reject(new Error('bound-tool-refused'));
     const id = ++nextId;

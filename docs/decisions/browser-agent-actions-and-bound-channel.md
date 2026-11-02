@@ -101,7 +101,11 @@ its own replacement Request and consumes the original. A socket request or
 independently cloned Request carrying copied headers has no proof. Only browser and device agent routes are in that
 audience. The existing caller, owner, recorded Project, operator/admin,
 per-tool approval, device shares, browser evaluation and lease checks remain
-in force. A consumed call ID cannot be replayed. Cancellation, process exit,
+in force. A consumed call ID cannot be replayed within its turn; older turns are rejected.
+Coordinator-derived station-control entries do not grant Codex device tools.
+An expired in-process credential requires restarting the Session. If an effect
+has run but its result cannot be safely returned, the response says it executed
+and its result was withheld. Cancellation, process exit,
 stop and replacement close the binding and pending approvals. Preview
 withdrawal invalidates authority, including while an approval is pending; a
 later re-enable requires a fresh Session. An

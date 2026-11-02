@@ -269,6 +269,30 @@ describe('station#514: authenticated mutation budget', () => {
     expect(await refused.json()).toEqual({ bound: false });
   });
 
+  it('admits only the exact in-process tool request without treating it as loopback', async () => {
+    const { app, request } = createBudgetHarness({ extraMutationRoutes: [] });
+    const token = 'private-tool-token';
+    app.post('/api/browser-agent/status', (c) => c.json({ reached: true }));
+    const original = new Request(`${ALLOWED_ORIGIN}/api/browser-agent/status`, {
+      method: 'POST',
+      headers: {
+        'x-station-control-caller-token': token,
+        'content-type': 'application/json',
+      },
+      body: '{}',
+    });
+    bindCodexToolRequest(original, token, () => true);
+    const copied = original.clone();
+    expect(
+      (await request('/api/browser-agent/status', {}, undefined, original))
+        .status,
+    ).toBe(200);
+    expect(
+      (await request('/api/browser-agent/status', {}, undefined, copied))
+        .status,
+    ).toBe(401);
+  });
+
   // ── AC: Limits apply before mutation side effects ──
   describe('body-size budget rejects before side effects', () => {
     it('returns 413 and leaves no persisted state for an oversized body', async () => {

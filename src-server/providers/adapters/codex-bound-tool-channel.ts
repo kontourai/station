@@ -2,6 +2,7 @@
 export class CodexBoundToolChannel {
   private readonly calls = new Set<string>();
   private closed = false;
+  private callsTurn?: string;
 
   constructor(
     private readonly threadId: string,
@@ -34,6 +35,10 @@ export class CodexBoundToolChannel {
         return false;
       }
     };
+    if (current() && this.callsTurn !== call.turnId) {
+      this.calls.clear();
+      this.callsTurn = call.turnId;
+    }
     if (
       !current() ||
       !call.callId ||
@@ -45,7 +50,7 @@ export class CodexBoundToolChannel {
     if (!(await approve(current)) || !current())
       throw new Error('bound-tool-refused');
     const result = await execute(current);
-    if (!current()) throw new Error('bound-tool-refused');
+    if (!current()) throw new Error('bound-tool-executed-result-withheld');
     return result;
   }
 }

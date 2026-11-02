@@ -315,3 +315,27 @@ test('revocation during Project authorization prevents the device effect', async
     await server.close();
   }
 });
+
+test('an expired tool credential tells the Session to restart before execution', async () => {
+  const now = vi.spyOn(Date, 'now');
+  const start = Date.now();
+  now.mockReturnValue(start);
+  const dispatch = vi.fn(async () => new Response('{}'));
+  const server = await createCodexBoundToolServer({
+    sessionId: 'expires-session',
+    includeBrowser: true,
+    includeDevices: false,
+    isCurrent: () => true,
+    dispatch,
+  });
+  try {
+    now.mockReturnValue(start + 12 * 60 * 60 * 1000 + 1);
+    await expect(server.call('browser_status', {}, () => true)).rejects.toThrow(
+      'bound-tool-session-restart-required',
+    );
+    expect(dispatch).not.toHaveBeenCalled();
+  } finally {
+    await server.close();
+    now.mockRestore();
+  }
+});

@@ -419,3 +419,225 @@ test('a delegated Session without approval authority refuses an approval-bound t
   await adapter.stopSession('delegated-session');
   await iterator.return?.();
 });
+
+test('replay protection is scoped to the current turn across long sessions', async () => {
+  let turn = 'turn-0';
+  const { CodexBoundToolChannel } = await import(
+    '../adapters/codex-bound-tool-channel.js'
+  );
+  const channel = new CodexBoundToolChannel(
+    'native',
+    new Set(['browser_status']),
+    () => turn,
+    () => true,
+  );
+  const invoke = (turnId: string) =>
+    channel.invoke(
+      { threadId: 'native', turnId, callId: 'same-id', name: 'browser_status' },
+      async () => true,
+      async () => 'ok',
+      () => true,
+    );
+  for (let index = 0; index < 4100; index++) {
+    turn = `turn-${index}`;
+    await expect(invoke(turn)).resolves.toBe('ok');
+  }
+  await expect(invoke(turn)).rejects.toThrow('bound-tool-refused');
+  await expect(invoke('turn-0')).rejects.toThrow('bound-tool-refused');
+});
+
+test('a call whose turn expires after execution withholds the result', async () => {
+  let current = true;
+  const { CodexBoundToolChannel } = await import(
+    '../adapters/codex-bound-tool-channel.js'
+  );
+  const channel = new CodexBoundToolChannel(
+    'native',
+    new Set(['browser_open']),
+    () => 'turn',
+    () => current,
+  );
+  await expect(
+    channel.invoke(
+      {
+        threadId: 'native',
+        turnId: 'turn',
+        callId: 'call',
+        name: 'browser_open',
+      },
+      async () => true,
+      async () => {
+        current = false;
+        return 'done';
+      },
+      () => true,
+    ),
+  ).rejects.toThrow('bound-tool-executed-result-withheld');
+});
+
+test('device catalog uses the first control entry and excludes coordinator-derived authority', async () => {
+  const { builtinStationControlServerPath } = await import(
+    '../../runtime/bootstrap/station-control-runtime-env.js'
+  );
+  const control = {
+    id: 'station-control',
+    displayName: 'Station Control',
+    transport: 'stdio',
+    command: process.execPath,
+    args: [builtinStationControlServerPath()],
+    coordinatorGeneration: 1,
+  };
+  for (const [firstDerived, secondDerived] of [
+    [true, false],
+    [false, true],
+  ] as const) {
+    const child = new FakeCodexProcess();
+    const create = vi.fn(async () => ({
+      tools: [],
+      call: vi.fn(),
+      close: async () => {},
+    }));
+    const adapter = new CodexAdapter({
+      processFactory: () => child as never,
+      boundToolsEnabled: () => true,
+      createBoundTools: create,
+      mintStationControlMcpAuth: () => ({
+        url: 'http://127.0.0.1:12345/mcp/station-control',
+        token: 'test',
+      }),
+    });
+    const session = adapter.startSession({
+      provider: 'codex',
+      threadId: `control-${firstDerived}`,
+      cwd: '/tmp',
+      agent: {
+        toolServers: [
+          { ...control, coordinatorDerived: firstDerived },
+          { ...control, coordinatorDerived: secondDerived },
+        ],
+      } as never,
+    });
+    await flushIo();
+    await emit(child, { id: '1', result: { userAgent: 'test' } });
+    await emit(child, { id: '2', result: { thread: { id: 'native' } } });
+    await withTimeout(session, 'start');
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({ includeDevices: !firstDerived }),
+    );
+    await adapter.stopSession(`control-${firstDerived}`);
+  }
+});
+
+test('session approval applies to later defers, and interrupt fences pending and executing calls', async () => {
+  const child = new FakeCodexProcess();
+  let finish!: (value: { content: { type: string; text: string }[] }) => void;
+  const execute = vi.fn(
+    () =>
+      new Promise<{ content: { type: string; text: string }[] }>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const adapter = new CodexAdapter({
+    processFactory: () => child as never,
+    boundToolsEnabled: () => true,
+    resolveBoundToolPolicy: async () => async () => ({ behavior: 'defer' }),
+    createBoundTools: async () => ({
+      tools: [
+        { name: 'browser_status', inputSchema: { type: 'object' } },
+        { name: 'browser_open', inputSchema: { type: 'object' } },
+      ],
+      call: execute,
+      close: async () => {},
+    }),
+  });
+  const events: any[] = [];
+  const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+  void (async () => {
+    for await (const event of { [Symbol.asyncIterator]: () => iterator })
+      events.push(event);
+  })();
+  const started = adapter.startSession({
+    provider: 'codex',
+    threadId: 'interrupt-session',
+    cwd: '/tmp',
+    agent: {} as never,
+  });
+  await flushIo();
+  await emit(child, { id: '1', result: { userAgent: 'test' } });
+  await emit(child, { id: '2', result: { thread: { id: 'native' } } });
+  await withTimeout(started, 'start');
+  const turn = adapter.sendTurn({ threadId: 'interrupt-session', input: 'go' });
+  await flushIo();
+  await emit(child, { id: '3', result: { turn: { id: 'turn' } } });
+  await withTimeout(turn, 'turn');
+  const call = (id: number, tool = 'browser_status') =>
+    emit(child, {
+      id,
+      method: 'item/tool/call',
+      params: {
+        threadId: 'native',
+        turnId: 'turn',
+        callId: `call-${id}`,
+        tool,
+        arguments: {},
+      },
+    });
+  await call(101);
+  const approval = await waitFor(
+    () => events.find((e) => e.method === 'request.opened'),
+    'approval',
+  );
+  await adapter.respondToRequest(
+    'interrupt-session',
+    approval.requestId,
+    'acceptForSession',
+  );
+  await waitFor(
+    () => (execute.mock.calls.length === 1 ? true : undefined),
+    'execution',
+  );
+  await call(102);
+  await waitFor(
+    () => (execute.mock.calls.length === 2 ? true : undefined),
+    'session approval',
+  );
+  expect(events.filter((e) => e.method === 'request.opened')).toHaveLength(1);
+  for (let id = 103; id < 117; id++) await call(id, 'browser_open');
+  await waitFor(
+    () =>
+      events.filter((e) => e.method === 'request.opened').length === 15
+        ? true
+        : undefined,
+    'pending approvals',
+  );
+  await call(117, 'browser_open');
+  expect(repliesTo(child, 117)[0]?.error).toBeDefined();
+  const pending = events.filter((e) => e.method === 'request.opened')[1];
+  const interrupted = adapter.interruptTurn('interrupt-session');
+  await flushIo();
+  const request = child.stdin.lines
+    .map((line) => JSON.parse(line))
+    .find((line) => line.method === 'turn/interrupt');
+  expect(request).toBeDefined();
+  await emit(child, { id: request.id, result: {} });
+  await withTimeout(interrupted, 'interrupt');
+  await expect(
+    adapter.respondToRequest('interrupt-session', pending.requestId, 'accept'),
+  ).rejects.toThrow();
+  expect(
+    events.some(
+      (e) =>
+        e.method === 'request.resolved' &&
+        e.requestId === pending.requestId &&
+        e.status === 'cancelled',
+    ),
+  ).toBe(true);
+  finish({ content: [{ type: 'text', text: 'ok' }] });
+  const response = await waitFor(
+    () => repliesTo(child, 102)[0],
+    'withheld result',
+  );
+  expect(response.error.message).toContain('executed; result withheld');
+  await adapter.stopSession('interrupt-session');
+  await iterator.return?.();
+});

@@ -55,6 +55,14 @@ import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../domain/config-loader.js';
 import { ensureStationHomeSchema } from '../../domain/home-schema-gate.js';
 import { getOrchestrationDatabasePath } from '../../domain/migrations/003-orchestration-events.js';
+import {
+  emit,
+  FakeCodexProcess,
+  flushIo,
+  repliesTo,
+  waitFor,
+  withTimeout,
+} from '../../providers/__tests__/codex-adapter-wire-harness.js';
 import { listProviders } from '../../providers/registries/registry.js';
 import type { AccountSharingRuntimeState } from '../../routes/system/account-sharing-routes.js';
 import {
@@ -535,6 +543,134 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
         rmDirSyncRetrying(home);
       }
     }
+  });
+
+  it('keeps Codex tools off by default and on hosted runtimes, and applies runtime policy before dispatch', async () => {
+    home = await createSchemaHome('station-codex-bound-runtime-');
+    const agentDir = join(home, 'agents', 'bound-test');
+    mkdirSync(agentDir, { recursive: true });
+    writeFileSync(
+      join(agentDir, 'agent.json'),
+      JSON.stringify({
+        name: 'Bound Test',
+        prompt: 'Test agent.',
+        model: 'anthropic.test-model',
+      }),
+    );
+    runtime = new StationRuntime({
+      projectHomeDir: home,
+      port: TEST_PORT,
+      host: '127.0.0.1',
+    });
+    await runtime.initialize();
+    const subject = runtime as any;
+    let adapter = subject.codexAdapter;
+    let child = new FakeCodexProcess();
+    adapter.processFactory = () => child;
+    const start = async (threadId: string) => {
+      child = new FakeCodexProcess();
+      const write = child.stdin._write.bind(child.stdin);
+      child.stdin._write = (chunk, encoding, callback) => {
+        write(chunk, encoding, callback);
+        child.emit('wire-write');
+      };
+      const wire = async (method: string): Promise<any> => {
+        for (;;) {
+          const found = child.stdin.lines
+            .map((line: string) => JSON.parse(line))
+            .find((line: any) => line.method === method);
+          if (found) return found;
+          await new Promise<void>((resolve) =>
+            child.once('wire-write', resolve),
+          );
+        }
+      };
+      const promise = adapter.startSession({
+        provider: 'codex',
+        threadId,
+        cwd: home,
+        agent: { slug: 'bound-test' },
+        metadata: {
+          delegation: {
+            mode: 'isolated-child',
+            depth: 1,
+            maxDepth: 2,
+            parentAgentSlug: 'parent',
+            rootAgentSlug: 'root',
+            blockedTools: ['station-browser_browser_status'],
+          },
+        },
+      });
+      const initialize = await wire('initialize');
+      await emit(child, { id: initialize.id, result: { userAgent: 'test' } });
+      const thread = await wire('thread/start');
+      await emit(child, {
+        id: thread.id,
+        result: { thread: { id: `native-${threadId}` } },
+      });
+      await promise;
+      return thread.params;
+    };
+    const off = await start('preview-off');
+    expect(off.dynamicTools).toBeUndefined();
+    await adapter.stopSession('preview-off');
+    await subject.featurePreviews.setEnabled(
+      'codex-bound-browser-device-tools',
+      true,
+    );
+    const policy = vi.spyOn(subject, 'resolveExternalPreToolPolicy');
+    const dispatch = vi.spyOn(subject, 'codexToolDispatch');
+    const enabled = await start('preview-on');
+    expect(
+      enabled.dynamicTools.some((tool: any) => tool.name === 'browser_status'),
+    ).toBe(true);
+    expect(policy).toHaveBeenCalled();
+    await expect(policy.mock.results[0].value).resolves.toBeDefined();
+    const turn = adapter.sendTurn({ threadId: 'preview-on', input: 'go' });
+    await flushIo();
+    await emit(child, { id: '3', result: { turn: { id: 'turn' } } });
+    await withTimeout(turn, 'runtime turn');
+    await emit(child, {
+      id: 51,
+      method: 'item/tool/call',
+      params: {
+        threadId: 'native-preview-on',
+        turnId: 'turn',
+        callId: 'call',
+        tool: 'browser_status',
+        arguments: {},
+      },
+    });
+    await waitFor(() => repliesTo(child, 51)[0], 'policy denial');
+    expect(repliesTo(child, 51)[0].error).toBeDefined();
+    expect(dispatch).not.toHaveBeenCalled();
+    await adapter.stopSession('preview-on');
+    await runtime.shutdown();
+    runtime = undefined;
+    rmDirSyncRetrying(home);
+    home = await createSchemaHome('station-codex-bound-hosted-');
+    const registryPath = join(home, 'hosted-tenants.json');
+    writeFileSync(
+      registryPath,
+      JSON.stringify({
+        schemaVersion: 1,
+        tenants: [{ id: 'alpha', authority: 'alpha.station.test' }],
+      }),
+    );
+    process.env[hostedRegistryFileEnv] = registryPath;
+    runtime = new StationRuntime({
+      projectHomeDir: home,
+      port: TEST_PORT,
+      host: '127.0.0.1',
+    });
+    await runtime.initialize();
+    const hosted = runtime as any;
+    expect(hosted.codexBoundToolsPreview).toBeUndefined();
+    adapter = hosted.codexAdapter;
+    adapter.processFactory = () => child;
+    const hostedStart = await start('hosted');
+    expect(hostedStart.dynamicTools).toBeUndefined();
+    await adapter.stopSession('hosted');
   });
 
   it('rejects an incompatible home before EventStore can create SQLite state', () => {
