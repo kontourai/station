@@ -21,7 +21,7 @@ import {
 } from 'react';
 import { Button } from '../../components/Button';
 import { CloseGlyph } from '../../components/icons/Glyph';
-import { ErrorState } from '../../components/state';
+import { ErrorState, SkeletonBlock } from '../../components/state';
 import {
   axRectOnShownFrame,
   type DeviceFrameRotation,
@@ -565,7 +565,9 @@ function AppActions({
           Open URL
         </Button>
       </div>
-      {action.isPending ? <p role="status">Checking app state…</p> : null}
+      {action.isPending ? (
+        <SkeletonBlock count={1} label="Checking app state" />
+      ) : null}
       {notice ? <p role="status">{notice}</p> : null}
       {action.isError ? (
         <ErrorState
