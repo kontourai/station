@@ -705,7 +705,21 @@ export function openSqliteAgentJournal(options: {
       "SELECT 1 FROM main.sqlite_schema WHERE lower(name) GLOB 'agent_steps_*' OR lower(tbl_name) GLOB 'agent_steps_*'",
     ).get()
   ) {
-    database.exec('PRAGMA auto_vacuum=INCREMENTAL; VACUUM');
+    if (
+      !agentStatement(
+        database,
+        'SELECT 1 FROM main.sqlite_schema WHERE sql IS NOT NULL LIMIT 1',
+      ).get()
+    ) {
+      database.exec('PRAGMA journal_mode=DELETE');
+      try {
+        database.exec(
+          'PRAGMA page_size=2048; PRAGMA auto_vacuum=INCREMENTAL; VACUUM',
+        );
+      } finally {
+        database.exec('PRAGMA journal_mode=WAL');
+      }
+    } else database.exec('PRAGMA auto_vacuum=INCREMENTAL; VACUUM');
     database.exec('BEGIN IMMEDIATE');
     try {
       for (const sql of currentDefinitions) database.exec(sql);

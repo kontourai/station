@@ -327,3 +327,7 @@ the same tool-anchored prompt additions and the deferred steer memory write with
 a whole new stream clears the prior stream's in-memory additions. Observed-event
 publication retries the actual append asynchronously for at most five seconds;
 SQLite's normal busy timeout is restored before synchronous observers run.
+
+New empty agent journals use 2 KiB SQLite pages to bound cold metadata overhead.
+Initialization restores WAL before creating turn tables; existing journal page geometry
+is retained. Control nodes use ordinary rowid tables to avoid index-page overflow.
