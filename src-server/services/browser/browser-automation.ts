@@ -1322,8 +1322,14 @@ export class BrowserAutomation {
     for (const quad of quads) {
       if (!Array.isArray(quad) || quad.length !== 8) continue;
       const points = [0, 2, 4, 6].map((i) => ({
-        x: Math.min(Math.max(quad[i]! + view.offsetX, 0), view.width),
-        y: Math.min(Math.max(quad[i + 1]! + view.offsetY, 0), view.height),
+        x: Math.min(
+          Math.max(quad[i]! + view.offsetX, view.offsetX),
+          view.offsetX + view.visualWidth,
+        ),
+        y: Math.min(
+          Math.max(quad[i + 1]! + view.offsetY, view.offsetY),
+          view.offsetY + view.visualHeight,
+        ),
       }));
       let area = 0;
       for (let i = 0; i < 4; i += 1) {
@@ -1930,7 +1936,7 @@ export class BrowserAutomation {
             typeof value.url === 'string' ? value.url : selected.record.url,
           ),
           title: capTitle(text(value.title, TITLE_MAX)),
-          viewport: { width: view.width, height: view.height },
+          viewport: { width: view.visualWidth, height: view.visualHeight },
           snapshot:
             table.refs.size === 0 ? rendered.textWithoutRefs : rendered.text,
           refCount: rendered.refs.size,
@@ -2499,8 +2505,8 @@ export class BrowserAutomation {
             } else {
               const view = await this.viewport(control.send);
               point = {
-                x: Math.round(view.width / 2),
-                y: Math.round(view.height / 2),
+                x: Math.round(view.offsetX + view.visualWidth / 2),
+                y: Math.round(view.offsetY + view.visualHeight / 2),
               };
             }
             await control.dispatch([

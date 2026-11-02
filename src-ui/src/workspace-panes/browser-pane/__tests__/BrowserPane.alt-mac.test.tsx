@@ -32,7 +32,7 @@ import BrowserPane from '../BrowserPane';
 
 afterEach(() => vi.restoreAllMocks());
 
-test('macOS Alt+Left in the address field stays with the text field', async () => {
+test('macOS Alt+Left and Alt+Right stay with the address field', async () => {
   const sessionId = 'bs_0f8f7c1e-9a41-4f2b-9d4a-2b8b1c0e5a77';
   const session = {
     browserSessionId: sessionId,
@@ -95,21 +95,23 @@ test('macOS Alt+Left in the address field stays with the text field', async () =
   const address = await screen.findByLabelText('Address');
   await screen.findByTestId('live-canvas');
   act(() => address.focus());
-  const event = new KeyboardEvent('keydown', {
-    key: 'ArrowLeft',
-    altKey: true,
-    bubbles: true,
-    cancelable: true,
-  });
-  act(() => {
-    address.dispatchEvent(event);
-  });
-  expect(event.defaultPrevented).toBe(false);
-  await act(async () => {});
-  expect(
-    requests.filter(
-      (request) =>
-        request.method === 'POST' && request.path.endsWith('/history'),
-    ),
-  ).toEqual([]);
+  for (const key of ['ArrowLeft', 'ArrowRight']) {
+    const event = new KeyboardEvent('keydown', {
+      key,
+      altKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    act(() => {
+      address.dispatchEvent(event);
+    });
+    expect(event.defaultPrevented).toBe(false);
+    await act(async () => {});
+    expect(
+      requests.filter(
+        (request) =>
+          request.method === 'POST' && request.path.endsWith('/history'),
+      ),
+    ).toEqual([]);
+  }
 });
