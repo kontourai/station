@@ -16,6 +16,29 @@ export const changeDefinitions = [
     ];
   }),
 ] as const;
+const compactDelete =
+  "CREATE TRIGGER agent_steps_changes_no_delete BEFORE DELETE ON agent_steps_changes WHEN NOT EXISTS(SELECT 1 FROM agent_steps_changes newer WHERE newer.turn_id=OLD.turn_id AND newer.kind=OLD.kind AND newer.id=OLD.id AND newer.seq>OLD.seq) BEGIN SELECT RAISE(ABORT,'immutable latest agent change'); END";
+const compactIndex =
+  'CREATE INDEX agent_steps_changes_record ON agent_steps_changes(turn_id,kind,id,seq)';
+const compactTrigger =
+  'CREATE TRIGGER agent_steps_compact_changes AFTER INSERT ON agent_steps_changes BEGIN DELETE FROM agent_steps_changes WHERE turn_id=NEW.turn_id AND kind=NEW.kind AND id=NEW.id AND seq<NEW.seq; END';
+export const compactChangeDefinitions = [
+  ...changeDefinitions.map((sql) =>
+    sql === changeDefinitions[3] ? compactDelete : sql,
+  ),
+  compactIndex,
+  compactTrigger,
+];
+export function compactAgentChanges(database: DatabaseSync) {
+  database.exec('DROP TRIGGER agent_steps_changes_no_delete');
+  database.exec(compactDelete);
+  database.exec(compactIndex);
+  database.exec(compactTrigger);
+  database.exec(
+    'DELETE FROM agent_steps_changes WHERE EXISTS(SELECT 1 FROM agent_steps_changes newer WHERE newer.turn_id=agent_steps_changes.turn_id AND newer.kind=agent_steps_changes.kind AND newer.id=agent_steps_changes.id AND newer.seq>agent_steps_changes.seq)',
+  );
+}
+
 export function agentChangeCursor(database: DatabaseSync): number {
   const cursor =
     agentStatement(

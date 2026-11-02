@@ -23,7 +23,11 @@ import {
   readAgentBody,
   readAgentBodyChunk,
 } from './turn-bodies.js';
-import { changeDefinitions } from './turn-changes.js';
+import {
+  changeDefinitions,
+  compactAgentChanges,
+  compactChangeDefinitions,
+} from './turn-changes.js';
 import {
   agentEffectHeader,
   copyAgentEffect,
@@ -243,7 +247,10 @@ const writer9Definitions = [
 ];
 const currentDefinitions = [
   writer9Definitions[0]!.replaceAll('agent-steps/9', 'agent-steps/10'),
-  ...writer9Definitions.slice(1),
+  ...writer9Definitions
+    .slice(1)
+    .filter((sql) => !new Set<string>(changeDefinitions).has(sql)),
+  ...compactChangeDefinitions,
   ...bodyChunkDefinitions,
 ];
 const idOf = (key: RunKey) => canonical(key);
@@ -945,6 +952,7 @@ export function openSqliteAgentJournal(options: {
         affinity(turn.spec);
         settledAt(database, turn);
       }
+      compactAgentChanges(database);
       for (const sql of bodyChunkDefinitions) database.exec(sql);
       migrateAgentEffectTails(database);
       database.exec('DROP TABLE agent_steps_meta');
@@ -1112,18 +1120,19 @@ export function openSqliteAgentJournal(options: {
             if (command.type === 'projectFrameBatch')
               return {
                 kind: 'frames',
-                frames: command.frames.map((frame) =>
-                  projectAgentFrame(
-                    database,
-                    idOf(key),
-                    {
-                      type: 'projectFrame',
-                      key,
-                      expected: command.expected,
-                      ...frame,
-                    },
-                    at,
-                  ).frame,
+                frames: command.frames.map(
+                  (frame) =>
+                    projectAgentFrame(
+                      database,
+                      idOf(key),
+                      {
+                        type: 'projectFrame',
+                        key,
+                        expected: command.expected,
+                        ...frame,
+                      },
+                      at,
+                    ).frame,
                 ),
               };
             return projectAgentFrame(database, idOf(key), command, at);

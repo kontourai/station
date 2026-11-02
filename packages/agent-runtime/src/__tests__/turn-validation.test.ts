@@ -10,6 +10,7 @@ import {
   bodyDefinitions,
   putAgentBody,
 } from '../turn-bodies.js';
+import { changeDefinitions } from '../turn-changes.js';
 import { key, owner } from './fixture.js';
 import { turnFixture } from './turn-fixture.js';
 
@@ -253,8 +254,17 @@ for (const previous of [8, 9] as const)
     f.database
       .prepare('UPDATE agent_steps_effects SET record=? WHERE id=?')
       .run(JSON.stringify(header), 'model:old');
+    const changes = f.database
+      .prepare('SELECT * FROM agent_steps_changes')
+      .all();
+    removeChangeTracking(f.database);
+    for (const sql of changeDefinitions) f.database.exec(sql);
+    for (const row of changes)
+      f.database
+        .prepare('INSERT INTO agent_steps_changes VALUES(?,?,?,?)')
+        .run(row.seq, row.turn_id, row.kind, row.id);
     f.database.exec(
-      `DROP TABLE agent_steps_body_chunks; DROP TABLE agent_steps_meta; CREATE TABLE agent_steps_meta(id INTEGER PRIMARY KEY CHECK(id=1), writer_format TEXT NOT NULL CHECK(writer_format='agent-steps/${previous}')) STRICT; INSERT INTO agent_steps_meta VALUES(1,'agent-steps/${previous}')`,
+      `DROP TABLE agent_steps_meta; CREATE TABLE agent_steps_meta(id INTEGER PRIMARY KEY CHECK(id=1), writer_format TEXT NOT NULL CHECK(writer_format='agent-steps/${previous}')) STRICT; INSERT INTO agent_steps_meta VALUES(1,'agent-steps/${previous}')`,
     );
     await expect(f.crash.reopen()).resolves.toBeDefined();
     expect(
@@ -306,10 +316,19 @@ it('400 individually committed text chunks retain bounded storage and an exact a
   expect(diskBytes() - before).toBeLessThanOrEqual(2 * textBytes + 128 * 1024);
   expect(
     Number(
+      f.database.prepare('SELECT count(*) AS n FROM agent_steps_changes').get()
+        ?.n,
+    ),
+  ).toBeLessThanOrEqual(8);
+  expect(
+    Number(
       f.database.prepare('SELECT count(*) AS n FROM agent_steps_bodies').get()
         ?.n,
     ),
   ).toBeLessThanOrEqual(8);
+  expect(() => f.database.exec('DELETE FROM agent_steps_changes')).toThrow(
+    'immutable latest agent change',
+  );
   const recovered = await f.recover();
   const { effect } = await recovered.effect({
     type: 'effectRead',
