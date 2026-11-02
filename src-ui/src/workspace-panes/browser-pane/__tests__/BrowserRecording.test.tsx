@@ -16,6 +16,13 @@ const resize = vi.hoisted(() =>
 vi.mock('../../../utils/downscaleImage', () => ({
   downscaleImageToFit: resize,
 }));
+vi.mock('../../../contexts/active-chats-store', () => ({
+  activeChatsStore: {
+    getSnapshot: () => ({
+      'conversation-1': { currentSessionId: 'task-session-1' },
+    }),
+  },
+}));
 vi.mock('../../../contexts/navigation-store', () => ({
   navigationStore: { getSnapshot: () => ({ activeChat: 'conversation-1' }) },
 }));
@@ -111,7 +118,7 @@ it('starts, shows recording, stops and offers the encoded clip to save', async (
   expect(api.startRecording).toHaveBeenCalledWith(
     'bs_test',
     3,
-    'conversation-1',
+    'task-session-1',
   );
   expect(api.stopRecording).toHaveBeenCalledWith('bs_test', 'r1');
   expect(api.recordingVideo).toHaveBeenCalled();

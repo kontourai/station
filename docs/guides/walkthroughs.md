@@ -35,8 +35,11 @@ authorization/recovery and usability evidence beyond fixture and synthesized-spe
 
 ## Record a Task clip
 
-The Browser pane also offers a person-initiated silent WebM recording for local
-save and can attach four sampled frames to a chat, described in [Browser workspace](browser-workspace.md). That path does not publish a Task clip; the bound Agent path below remains separate.
+The Browser pane also offers person-initiated silent WebM recording and chat
+frames, described in [Browser workspace](browser-workspace.md). With an active
+Task lead Session, Task access and a clean workspace pinned at recording start,
+**Add to Task clips** publishes through the same Task clip store after rechecks.
+Human and bound Agent Browser recordings share active admission slots. The bound Agent path below remains separate.
 
 With Walkthroughs enabled, a bound lead Session can call the sensitive
 `station-browser` tool `browser_record_to_task` with `durationMs` (1–30,000),

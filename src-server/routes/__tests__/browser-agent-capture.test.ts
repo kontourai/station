@@ -777,7 +777,7 @@ test('person recording refuses a workspace change during Task publication', asyn
   if (prepared.kind !== 'ready') throw new Error('Expected Task pin');
   const publish = TaskWalkthroughStore.prototype.publish;
   vi.spyOn(TaskWalkthroughStore.prototype, 'publish').mockImplementation(
-    function (...args) {
+    function (this: TaskWalkthroughStore, ...args) {
       writeFileSync(join(h.workspace, 'late-untracked.txt'), 'dirty');
       return publish.apply(this, args);
     },

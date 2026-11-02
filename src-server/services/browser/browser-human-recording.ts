@@ -327,6 +327,7 @@ export class BrowserHumanRecording {
   private remove(id: string) {
     const job = this.jobs.get(id);
     if (job?.timer) clearTimeout(job.timer);
+    job?.cancel.abort();
     this.jobs.delete(id);
   }
 
@@ -368,6 +369,8 @@ export class BrowserHumanRecording {
         capturedAt: string;
         url: string;
         viewport: { width: number; height: number };
+        imageWidth: number;
+        imageHeight: number;
       }[] = [];
       let rawBytes = 0;
       job.state = 'recording';
@@ -398,6 +401,8 @@ export class BrowserHumanRecording {
             file,
             tMs: frames.length ? Math.floor(performance.now() - started) : 0,
             size: frame.body.byteLength,
+            imageWidth: frame.header.width,
+            imageHeight: frame.header.height,
             capturedAt: new Date(frame.header.capturedAt).toISOString(),
             url: redactNetworkUrl(session.url),
             viewport: {
@@ -469,8 +474,8 @@ export class BrowserHumanRecording {
       }
       job.clip = {
         durationMs: duration,
-        width: Math.round(frames[0]!.viewport.width),
-        height: Math.round(frames[0]!.viewport.height),
+        width: frames[0]!.imageWidth,
+        height: frames[0]!.imageHeight,
       };
       job.bytes = bytes;
       job.state = 'ready';

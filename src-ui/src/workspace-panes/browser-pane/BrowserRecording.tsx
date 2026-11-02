@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { IconButton } from '../../components/IconButton';
 import { RecordGlyph } from '../../components/icons/Glyph';
+import { activeChatsStore } from '../../contexts/active-chats-store';
 import { navigationStore } from '../../contexts/navigation-store';
 import { BROWSER_PAGE_CONTENT_NOTICE } from './browserArtifactContent';
 import { BrowserApiError, type BrowserPaneApi } from './browserPaneApi';
@@ -49,11 +50,17 @@ export function useBrowserRecording(
     mutationFn: () => {
       if (generation === undefined)
         throw new Error('Browser generation is unavailable.');
-      return api.startRecording(
-        sessionId,
-        generation,
-        navigationStore.getSnapshot().activeChat ?? undefined,
+      const active = navigationStore.getSnapshot().activeChat;
+      const matches = Object.entries(activeChatsStore.getSnapshot()).filter(
+        ([key, chat]) => key === active || chat.conversationId === active,
       );
+      const [key, chat] =
+        matches.length === 1 ? matches[0]! : [undefined, undefined];
+      const taskSessionId =
+        chat && !chat.conversationOpenPending && !chat.conversationOpenFailed
+          ? (chat.currentSessionId ?? key)
+          : undefined;
+      return api.startRecording(sessionId, generation, taskSessionId);
     },
     onSuccess: ({ recordingId: id }) => {
       if (
@@ -339,9 +346,10 @@ export function BrowserRecordingStatus({
                 },
                 () => {
                   if (alive.current)
-                    setTaskMessage(
-                      'Could not add this recording to Task clips.',
-                    );
+                    setTaskResult({
+                      id,
+                      message: 'Could not add this recording to Task clips.',
+                    });
                 },
               )
               .finally(() => {

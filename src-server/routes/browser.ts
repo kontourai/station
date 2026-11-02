@@ -571,15 +571,15 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
     if (found.status !== 200) return c.json(refuse(found.status), found.status);
     const body = await readJsonObject(c.req.raw, [
       'generation',
-      'conversationId',
+      'taskSessionId',
     ]);
     if (
       !body ||
       !Number.isSafeInteger(body.generation) ||
-      (body.conversationId !== undefined &&
-        (typeof body.conversationId !== 'string' ||
-          body.conversationId.length < 1 ||
-          body.conversationId.length > 256))
+      (body.taskSessionId !== undefined &&
+        (typeof body.taskSessionId !== 'string' ||
+          body.taskSessionId.length < 1 ||
+          body.taskSessionId.length > 256))
     )
       return c.json(invalid, 400);
     if (
@@ -590,17 +590,17 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
     if (!deps.humanRecordings)
       return c.json({ success: false, code: 'recording-unavailable' }, 503);
     try {
-      const conversationId = body.conversationId;
+      const taskSessionId = body.taskSessionId;
       const recordingId = deps.humanRecordings.start({
         session: found.session,
         owner: found.owner,
         admissionKey: deps.recordingAdmissionKey?.(c) ?? found.owner,
-        ...(typeof conversationId === 'string' && deps.prepareHumanTaskClip
+        ...(typeof taskSessionId === 'string' && deps.prepareHumanTaskClip
           ? {
               prepareTask: () =>
                 deps.prepareHumanTaskClip!(
                   c.req.raw,
-                  conversationId,
+                  taskSessionId,
                   found.session,
                 ),
             }

@@ -6764,16 +6764,20 @@ feature preview and Browser view authority:
   Requests from an Agent also require **Let agents run JavaScript in this
   Project's pages** (`browserEvaluate`).
 - `POST /api/browser/sessions/:browserSessionId/recordings` takes
-  `{generation}` and starts a person-owned silent recording. It returns
+  `{generation, taskSessionId?}` and starts a person-owned silent recording. A
+  Task lead Session selector may establish a person-authorized clean-workspace
+  pin before frames are captured; it is not authority. It returns
   `{recordingId}`. `GET .../recordings/:recordingId` reads its state;
   `POST .../recordings/:recordingId/stop` requests completion, and `DELETE`
   cancels or discards it. `GET .../recordings/:recordingId/video` returns a
   bounded WebM while it is retained. Each operation rechecks person and Browser
   authority, preview state, session generation and recording ownership. There
-  are at most two retained jobs per Station. Capture stops at 30 seconds and
+  are at most four active Browser recordings per Station and two per owner;
+  finished recordings no longer consume active slots. Capture stops at 30 seconds and
   finishes at 300 frames or 64 MiB of raw input, retaining earlier frames; encoded output is limited to 16 MiB and a
   completed result is retained for one minute. This path offers a local save;
-  it does not publish a Task clip. `GET .../recordings/:recordingId/frames`
+  `POST .../recordings/:recordingId/task` publishes to the pinned Task after
+  authority and workspace rechecks. `GET .../recordings/:recordingId/frames`
   returns four sampled JPEGs and provenance while retained, or `409` when the
   bounded sample is unavailable. The same person, session and preview checks apply.
 

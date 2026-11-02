@@ -260,13 +260,13 @@ export function browserPaneApi(apiBase: string, fetcher: BrowserFetch) {
           signal,
         },
       ),
-    startRecording: (id: string, generation: number, conversationId?: string) =>
+    startRecording: (id: string, generation: number, taskSessionId?: string) =>
       call<{ recordingId: string }>(
         fetcher,
         `${root}/sessions/${enc(id)}/recordings`,
         {
           method: 'POST',
-          body: { generation, ...(conversationId ? { conversationId } : {}) },
+          body: { generation, ...(taskSessionId ? { taskSessionId } : {}) },
         },
       ),
     recordingStatus: (id: string, recordingId: string, signal?: AbortSignal) =>

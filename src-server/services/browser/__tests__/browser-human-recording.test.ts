@@ -8,6 +8,7 @@ import { RecordingLimiter } from '../../projects/recording-limiter.js';
 import {
   encodeBrowserRecording,
   TaskBrowserRecording,
+  TaskBrowserRecordingError,
 } from '../../projects/task-browser-recording.js';
 import { BrowserHumanRecording } from '../browser-human-recording.js';
 import type { BrowserSessionRecord } from '../browser-session-registry.js';
@@ -157,7 +158,11 @@ describe('human Browser recording', () => {
     };
     h.recorder.start(input);
     h.recorder.start(input);
-    expect(() => h.recorder.start(input)).toThrow('capacity');
+    const prepareTask = vi.fn(async () => ({ kind: 'none' as const }));
+    expect(() => h.recorder.start({ ...input, prepareTask })).toThrow(
+      'capacity',
+    );
+    expect(prepareTask).not.toHaveBeenCalled();
     await h.recorder.dispose();
   });
 
@@ -368,6 +373,30 @@ describe('human Browser recording', () => {
     await changed.recorder.dispose();
   });
 
+  it('reports an encoded clip that exceeds its byte limit', async () => {
+    const h = fixture();
+    h.encode.mockRejectedValue(
+      new TaskBrowserRecordingError(
+        'recording-too-large',
+        'Encoded recording exceeds the byte limit.',
+      ),
+    );
+    const id = h.recorder.start({
+      session: h.session,
+      owner: 'alice',
+      authorize: async () => true,
+    });
+    await vi.waitFor(() => expect(h.canDeliver()).toBe(true));
+    h.recorder.stop(id, 'alice', 'bs_test', 3);
+    await vi.waitFor(() =>
+      expect(h.recorder.status(id, 'alice', 'bs_test', 3)).toMatchObject({
+        state: 'failed',
+        error: 'The encoded recording is too large to save.',
+      }),
+    );
+    await h.recorder.dispose();
+  });
+
   it('finishes the clip at the raw byte cap', async () => {
     const h = fixture();
     const id = h.recorder.start({
@@ -432,6 +461,50 @@ describe('human Browser recording', () => {
       expect(h.recorder.status(id, 'alice', 'bs_test', 3)?.state).toBe('ready'),
     );
     expect(h.encode).toHaveBeenCalledOnce();
+    await h.recorder.dispose();
+  });
+
+  it('cancels a pending Task publication when the recording is discarded', async () => {
+    const h = fixture();
+    let aborted = false;
+    const publish = vi.fn(
+      async ({ signal }: { signal: AbortSignal }) =>
+        new Promise<{ walkthroughId: string }>((_resolve, reject) => {
+          signal.addEventListener(
+            'abort',
+            () => {
+              aborted = true;
+              reject(new Error('cancelled'));
+            },
+            { once: true },
+          );
+        }),
+    );
+    const id = h.recorder.start({
+      session: h.session,
+      owner: 'alice',
+      authorize: async () => true,
+      prepareTask: async () => ({
+        kind: 'ready',
+        clip: { taskId: 'task-a', publish },
+      }),
+    });
+    await vi.waitFor(() => expect(h.canDeliver()).toBe(true));
+    h.recorder.stop(id, 'alice', 'bs_test', 3);
+    await vi.waitFor(() =>
+      expect(h.recorder.status(id, 'alice', 'bs_test', 3)?.state).toBe('ready'),
+    );
+    const publication = h.recorder.publishTask(
+      id,
+      'alice',
+      'bs_test',
+      3,
+      new Request('http://station.test'),
+    )!;
+    const rejection = expect(publication).rejects.toThrow('cancelled');
+    h.recorder.cancel(id, 'alice', 'bs_test', 3);
+    await rejection;
+    expect(aborted).toBe(true);
     await h.recorder.dispose();
   });
 

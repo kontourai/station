@@ -59,14 +59,15 @@ export class BrowserHumanTaskClip {
     const enabled = () =>
       this.deps.preview.select({ enabled: () => true, disabled: () => false });
     if (!enabled() || !this.deps.isCurrent(request)) return { kind: 'none' };
-    const linked =
-      await this.deps.runtime.sessionTaskReviewAccess(conversationId);
-    if (linked.kind !== 'granted') return { kind: 'none' };
     const unavailable = {
       kind: 'unavailable' as const,
       reason:
         'Commit or stash changes to add recordings to the Task, and ensure you have Task access.',
     };
+    const linked =
+      await this.deps.runtime.sessionTaskReviewAccess(conversationId);
+    if (linked.kind === 'no-task') return { kind: 'none' };
+    if (linked.kind !== 'granted') return unavailable;
     const person = await this.deps.runtime.personTaskReviewAccess({
       taskId: linked.write.taskId,
       request,

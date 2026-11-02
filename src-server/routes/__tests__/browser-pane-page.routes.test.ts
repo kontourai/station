@@ -507,7 +507,7 @@ describe('Browser pane: network diagnostics', () => {
       expect(
         (
           await h.browser('POST', path, {
-            body: { generation: session.generation, conversationId: 'chat-a' },
+            body: { generation: session.generation, taskSessionId: 'chat-a' },
           })
         ).status,
       ).toBe(201);
