@@ -1835,6 +1835,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/chat-dock-bounds.spec.ts',
+    bucket: 'extended',
+    surface: 'Chat / Dock',
+    tierTarget: 'full',
+    primary: false,
+    rationale:
+      '#4401: the dock chrome stays inside its bounds, measured in a rendered page with a long chat title. A side region at its 280px minimum keeps the title readable with no control over another (the × is hit where it is drawn); the 400px default keeps the full bar; a collapsed left or right strip draws nothing outside its 36px. In the Coding layout the Inbox crumb never truncates while the title does, and a rail tooltip leaves with the pointer after a mouse-closed panel hands focus back, yet still shows for keyboard focus.',
+    exceptions: [],
+  },
+  {
     path: 'tests/chat-inventory-layout.spec.ts',
     bucket: 'extended',
     surface: 'Chat / Session context',

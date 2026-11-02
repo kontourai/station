@@ -52,6 +52,15 @@ export interface RegionChromeTab {
 /** The gap between a tab and the move menu it opens, above or below. */
 const GAP = 4;
 
+/**
+ * Below this side-region width (CSS px) the bar's own spacing, the hover-only
+ * placement grab and the agent avatar leave too little for the chat title
+ * (#4401). Sized so the 280px minimum (`MIN_DOCK_WIDTH`) still shows the
+ * title, the ×, the status chip and the region's buttons without overlap;
+ * the 400px default keeps the full bar.
+ */
+const COMPACT_SIDE_BAR_WIDTH = 360;
+
 const TOGGLE_EXEMPT =
   'a, button, [role="button"], [role="link"], [role="tab"], input, select, textarea, [data-dock-toggle-shield]';
 
@@ -776,11 +785,19 @@ export function RegionChromeBar({
     tabs.length > 1 &&
     !chrome.isMobile &&
     (isDockOpen || chrome.isCollapsedDragPreview);
+  // #4401: an open side region near its minimum width cannot fit the bar's
+  // full spacing beside the pane's identity and the region's buttons; the
+  // bar tightens instead of letting the title vanish under the ×.
+  const isCompact =
+    side !== null &&
+    isDockOpen &&
+    !isDockMaximized &&
+    chrome.dockWidth < COMPACT_SIDE_BAR_WIDTH;
 
   return (
     <div
       ref={barRef}
-      className={`chat-dock__header region-chrome ${isDockMaximized ? 'is-maximized' : ''} ${chrome.isDragging ? 'is-dragging' : ''}`}
+      className={`chat-dock__header region-chrome ${isDockMaximized ? 'is-maximized' : ''} ${chrome.isDragging ? 'is-dragging' : ''}${isCompact ? ' is-compact' : ''}`}
       onPointerDown={onDragPointerDown}
       onClickCapture={chrome.onHeaderDragClickCapture}
       data-dock-drag-surface=""

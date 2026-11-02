@@ -21,6 +21,7 @@ import {
   type CSSProperties,
   type KeyboardEvent,
   memo,
+  type FocusEvent as ReactFocusEvent,
   type ReactNode,
   type PointerEvent as ReactPointerEvent,
   useCallback,
@@ -2048,10 +2049,19 @@ function CodingViewRail({
  * scrolls (it must: a workspace can hold more panes than a short window
  * shows), and a tooltip inside a scrolling rail is clipped to it, so the tip
  * is placed from the item's measured box instead, as the Browser flyout is.
- * Shown on hover and keyboard focus, as the kit's tooltip is.
+ * Shown on hover and on KEYBOARD focus (`:focus-visible`): closing a panel
+ * hands focus back to its rail item, and a tip shown for that focus stayed
+ * over the rail after a mouse user's pointer had left (#4401).
  */
 function RailTip({ label, children }: { label: string; children: ReactNode }) {
   const [place, setPlace] = useState<CSSProperties | null>(null);
+  const showForFocus = (event: ReactFocusEvent<HTMLElement>) => {
+    if (
+      event.target instanceof Element &&
+      event.target.matches(':focus-visible')
+    )
+      show(event);
+  };
   const show = (event: { currentTarget: HTMLElement }) => {
     const anchor = event.currentTarget.getBoundingClientRect();
     setPlace({
@@ -2068,7 +2078,7 @@ function RailTip({ label, children }: { label: string; children: ReactNode }) {
       className="coding-workbench__rail-tip-anchor"
       onPointerEnter={show}
       onPointerLeave={hide}
-      onFocus={show}
+      onFocus={showForFocus}
       onBlur={hide}
     >
       {children}
