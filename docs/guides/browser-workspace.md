@@ -433,3 +433,9 @@ receipt. Named/incognito profile management, file transfer, native authenticatio
 handoff, annotations/recordings, document preview and connection admission remain
 separate acceptance work under #90. The epic must remain open until its remaining
 behavior and platform receipts exist.
+
+## Browser experience preview
+
+Enable **Browser experience** in Feature Previews to try per-tab zoom, page appearance, the Float over chat button, Browser shortcuts, and the agent action overlay. Appearance uses the same browser emulation operation as the agent color-scheme tool. The driver chip opens recent session actions. Screenshot to chat is a separate action that attaches to the active chat for the same Project. Mod+Shift+S opens the screenshot view, including with the preview off or focus in the live page. See [keyboard shortcuts](keyboard-shortcuts.md#browser-shortcuts). Find in page is not currently supported on the streamed host.
+
+A current device paired by the operator can view Browser sessions and agent reveals within its granted scope. The Browser access response identifies this standing as `operator-device`, separately from `operator` and `project-admin`. Viewing does not grant drive authority; an operator or Project administrator must have the separate authority and scope needed to control a session. A stale credential or missing Project standing is reported in the pane.

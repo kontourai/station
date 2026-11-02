@@ -303,9 +303,9 @@ describe('live surface routes through runtime authentication', () => {
     const hub = h.registry.get(SURFACE)!.hub;
     const attach = hub.attach.bind(hub);
     const codecs: string[] = [];
-    hub.attach = (params, identity, codec) => {
-      codecs.push(codec ?? 'image');
-      return attach(params, identity, codec);
+    hub.attach = (params, identity, options) => {
+      codecs.push(options?.codec ?? 'image');
+      return attach(params, identity, options);
     };
     // The synthetic producer offers images only: the request falls back.
     const imageOnly = await h.request(`${base}/frames?codec=h264`, 'operator');

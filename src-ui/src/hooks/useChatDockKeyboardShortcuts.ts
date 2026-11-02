@@ -1,11 +1,13 @@
 import { useCallback } from 'react';
 import { useActiveChatActions } from '../contexts/ActiveChatsContext';
 import { isTurnInFlight } from '../contexts/active-chats-state';
+import { getShortcutContext } from '../contexts/KeyboardShortcutsContext';
 import { describeStopTurnOutcome } from './useActiveChatSessionMessaging';
 import { useCancelMessage } from './useActiveChatSessions';
 import { useKeyboardShortcut } from './useKeyboardShortcut';
 
 const DOCK_WHEN = { not: 'composerFocused' } as const;
+const NEW_CHAT_WHEN = { not: 'browserFocused' } as const;
 
 function useDockShortcut(
   id: string,
@@ -68,7 +70,19 @@ export function useChatDockKeyboardShortcuts({
   const { removeChat, addEphemeralMessage } = useActiveChatActions();
   const cancelMessage = useCancelMessage();
 
-  useDockShortcut('dock.newChat', 't', ['cmd'], 'New chat', onNewChat);
+  useKeyboardShortcut(
+    'dock.newChat',
+    't',
+    ['cmd'],
+    'New chat',
+    () => {
+      if (getShortcutContext('composerFocused')) return false;
+      onNewChat();
+    },
+    true,
+    0,
+    NEW_CHAT_WHEN,
+  );
 
   useDockShortcut(
     'dock.openConversation',

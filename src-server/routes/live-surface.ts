@@ -63,6 +63,7 @@ import {
 
 export interface LiveSurfaceRouteOptions {
   isRequestPrincipalCurrent: (request: Request) => boolean;
+  agentActionsEnabled?: () => boolean;
   /**
    * The authenticated HUMAN caller and the client it acts from, or null for
    * an unattributable or agent-originated request (which is then refused).
@@ -105,6 +106,8 @@ export interface LiveSurfaceRouteOptions {
  */
 const AUTHORIZATION_CONTEXT_QUERY_KEY = 'projectSlug';
 const CODEC_QUERY_KEY = 'codec';
+/** `?agentActions=1` asks for agent action geometry in state records. */
+const AGENT_ACTIONS_QUERY_KEY = 'agentActions';
 
 const STREAM_QUERY_KEYS: readonly (keyof LiveSurfaceStreamParams)[] = [
   'maxFps',
@@ -118,6 +121,7 @@ const KNOWN_FRAMES_QUERY_KEYS: ReadonlySet<string> = new Set([
   ...STREAM_QUERY_KEYS,
   AUTHORIZATION_CONTEXT_QUERY_KEY,
   CODEC_QUERY_KEY,
+  AGENT_ACTIONS_QUERY_KEY,
 ]);
 
 function failure(
@@ -229,7 +233,8 @@ export function createLiveSurfaceRoutes(
       (key) =>
         (!STREAM_QUERY_KEYS.includes(key as keyof LiveSurfaceStreamParams) &&
           key !== AUTHORIZATION_CONTEXT_QUERY_KEY &&
-          key !== CODEC_QUERY_KEY) ||
+          key !== CODEC_QUERY_KEY &&
+          key !== AGENT_ACTIONS_QUERY_KEY) ||
         (c.req.queries(key)?.length ?? 0) > 1,
     );
     if (refusedKey !== undefined)
@@ -239,6 +244,9 @@ export function createLiveSurfaceRoutes(
         400,
         KNOWN_FRAMES_QUERY_KEYS.has(refusedKey) ? refusedKey : 'unknown',
       );
+    const agentActions = c.req.query(AGENT_ACTIONS_QUERY_KEY);
+    if (agentActions !== undefined && agentActions !== '1')
+      return failure(c, 'invalid-request', 400, AGENT_ACTIONS_QUERY_KEY);
     const parsed = parseLiveSurfaceStreamParams({
       maxFps: c.req.query('maxFps'),
       quality: c.req.query('quality'),
@@ -254,10 +262,16 @@ export function createLiveSurfaceRoutes(
     const viewer = entry.hub.attach(
       parsed.params,
       { principal: human.principal, device: human.device },
-      codec === 'h264' &&
-        entry.hub.producer.capabilities.codecs.includes('h264')
-        ? 'h264'
-        : 'image',
+      {
+        ...(agentActions === '1'
+          ? { agentActions: () => options.agentActionsEnabled?.() === true }
+          : {}),
+        codec:
+          codec === 'h264' &&
+          entry.hub.producer.capabilities.codecs.includes('h264')
+            ? 'h264'
+            : 'image',
+      },
     );
     const abort = new AbortController();
     const end = () => {

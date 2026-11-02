@@ -68,6 +68,36 @@ async function frameCounter(viewer: LiveSurfaceViewer): Promise<number> {
 }
 
 describe('live surface hub', () => {
+  test('agent actions are bounded and appear only for negotiated viewers', async () => {
+    const { hub } = build();
+    const legacy = hub.attach(PARAMS);
+    const opted = hub.attach(PARAMS, undefined, { agentActions: () => true });
+    const initialLegacy = await legacy.next();
+    await opted.next();
+    expect(
+      initialLegacy?.kind === 'state' && initialLegacy.state,
+    ).not.toHaveProperty('agentActions');
+    for (let i = 0; i < 15; i += 1)
+      hub.publishAgentAction({
+        kind: 'click',
+        generation: 3,
+        point: { x: i, y: 4 },
+        box: { x: i, y: 4, width: 2, height: 3 },
+        viewport: { x: 0, y: 0, width: 100, height: 100 },
+      });
+    const next = await opted.next();
+    expect(next?.kind).toBe('state');
+    if (next?.kind !== 'state') throw new Error('expected state');
+    expect(next.state.agentActions?.events).toHaveLength(12);
+    expect(next.state.agentActions?.events.at(-1)).toMatchObject({
+      kind: 'click',
+      generation: 3,
+      point: { x: 14, y: 4 },
+    });
+    legacy.close();
+    opted.close();
+    await hub.dispose();
+  });
   test('starts the producer on the first viewer and stops it at zero viewers', async () => {
     const { producer, hub } = build();
     expect(producer.running).toBe(false);
@@ -443,7 +473,7 @@ describe('live surface hub: H.264 viewers (#4418)', () => {
 
   test('delivers units in order, never a delta before the first keyframe', async () => {
     const { hub, unit } = await videoHub();
-    const viewer = hub.attach(PARAMS, undefined, 'h264');
+    const viewer = hub.attach(PARAMS, undefined, { codec: 'h264' });
     await hub.settled();
     expect((await viewer.next())?.kind).toBe('state');
     unit(false, 1);
@@ -460,7 +490,7 @@ describe('live surface hub: H.264 viewers (#4418)', () => {
 
   test('overflow drops the queue, asks for a keyframe and resumes only at one', async () => {
     const { hub, unit, requestKeyframe } = await videoHub();
-    const viewer = hub.attach(PARAMS, undefined, 'h264');
+    const viewer = hub.attach(PARAMS, undefined, { codec: 'h264' });
     await hub.settled();
     await viewer.next();
     requestKeyframe.mockClear();
@@ -482,7 +512,9 @@ describe('live surface hub: H.264 viewers (#4418)', () => {
 
   test('keyframe requests reach the encoder at most once per interval, and a suppressed one is deferred, not dropped', async () => {
     const { hub, unit, requestKeyframe } = await videoHub();
-    const viewers = [0, 1, 2].map(() => hub.attach(PARAMS, undefined, 'h264'));
+    const viewers = [0, 1, 2].map(() =>
+      hub.attach(PARAMS, undefined, { codec: 'h264' }),
+    );
     await hub.settled();
     vi.advanceTimersByTime(KEYFRAME_REQUEST_MIN_INTERVAL_MS);
     requestKeyframe.mockClear();
@@ -506,15 +538,15 @@ describe('live surface hub: H.264 viewers (#4418)', () => {
 
   test('a second viewer joining inside the window still gets its keyframe request', async () => {
     const { hub, requestKeyframe } = await videoHub();
-    const first = hub.attach(PARAMS, undefined, 'h264');
+    const first = hub.attach(PARAMS, undefined, { codec: 'h264' });
     await hub.settled();
     vi.advanceTimersByTime(KEYFRAME_REQUEST_MIN_INTERVAL_MS);
     requestKeyframe.mockClear();
-    const second = hub.attach(PARAMS, undefined, 'h264');
+    const second = hub.attach(PARAMS, undefined, { codec: 'h264' });
     await hub.settled();
     expect(requestKeyframe).toHaveBeenCalledTimes(1);
     vi.advanceTimersByTime(100);
-    const third = hub.attach(PARAMS, undefined, 'h264');
+    const third = hub.attach(PARAMS, undefined, { codec: 'h264' });
     await hub.settled();
     expect(requestKeyframe).toHaveBeenCalledTimes(1);
     vi.advanceTimersByTime(KEYFRAME_REQUEST_MIN_INTERVAL_MS);
@@ -526,7 +558,7 @@ describe('live surface hub: H.264 viewers (#4418)', () => {
   test('a viewer that keeps overflowing is switched to images and stops asking for keyframes', async () => {
     const { hub, unit, jpeg, requestKeyframe, setCodecDemand } =
       await videoHub();
-    const viewer = hub.attach(PARAMS, undefined, 'h264');
+    const viewer = hub.attach(PARAMS, undefined, { codec: 'h264' });
     await hub.settled();
     await viewer.next();
     requestKeyframe.mockClear();
@@ -557,7 +589,7 @@ describe('live surface hub: H.264 viewers (#4418)', () => {
 
   test('overflows spread wider than the window keep the viewer on H.264', async () => {
     const { hub, unit, setCodecDemand } = await videoHub();
-    const viewer = hub.attach(PARAMS, undefined, 'h264');
+    const viewer = hub.attach(PARAMS, undefined, { codec: 'h264' });
     await hub.settled();
     await viewer.next();
     for (let round = 0; round < H264_FALLBACK_OVERFLOWS + 1; round++) {
@@ -579,7 +611,7 @@ describe('live surface hub: H.264 viewers (#4418)', () => {
     (hub.producer as SyntheticLiveSurfaceProducer).start = async (_p, f) => {
       publish = f;
     };
-    const viewer = hub.attach(PARAMS, undefined, 'h264');
+    const viewer = hub.attach(PARAMS, undefined, { codec: 'h264' });
     await hub.settled();
     await viewer.next();
     requestKeyframe.mockClear();
@@ -616,7 +648,7 @@ describe('live surface hub: H.264 viewers (#4418)', () => {
       h264: false,
     });
     await image.next();
-    const video = hub.attach(PARAMS, undefined, 'h264');
+    const video = hub.attach(PARAMS, undefined, { codec: 'h264' });
     await hub.settled();
     // Joining a running stream asks for a decoding point at once.
     expect(requestKeyframe).toHaveBeenCalled();
