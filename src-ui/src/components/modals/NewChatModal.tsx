@@ -935,9 +935,7 @@ export function NewChatModal({
           });
         } catch (error) {
           startedRef.current = false;
-          setSelectFeedback(
-            userFacingErrorMessage(error),
-          );
+          setSelectFeedback(userFacingErrorMessage(error));
           setShowChatOptions(true);
         }
         return;
