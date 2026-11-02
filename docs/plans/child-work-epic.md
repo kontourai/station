@@ -8,42 +8,76 @@ normally before publication. Open one PR when the combined work is ready.
 ## Current delivery state
 
 **NOT_READY.** The branch has no push or PR. Main is integrated through
-`d956ef4650c` by normal merge `edc145eca914`; the local `origin/main` ref has
-advanced since then and still needs normal integration before publication.
-Master consolidation #3991 remains separately owned. Group advertisement and
-continuation-finalizer qualification guards remain false.
+`db857573504` by normal merge `fcd4b8b68ef`. Master consolidation #3991 remains
+separately owned. Group advertisement and continuation-finalizer qualification
+guards remain false.
 
-At `fafcd375ee2`, route currency uses an optional synchronous credential-route
-assessment implemented by `EnvironmentSecurityService`. The assessment reads
-the operator record once, delegates device policy to the existing owner, and
-returns only call-local operator/scope evidence. The request-security helper
-still applies capability and route-scope policy, with locality taken from the
-request's authenticated principal. Ports without assessment keep their existing
-path. No decision, record, credential or source cache is added; the revision
-signer's before/after record reads remain independent. Assessment strips
-activity, while ingress authorization keeps durable request counting.
+At `fafcd375ee2`, route currency gained an optional synchronous credential-route
+assessment implemented by `EnvironmentSecurityService`. It reads the operator
+record once and delegates device policy to the existing owner. The request
+helper still applies capability and scope policy using locality from its own
+principal. Ordinary ports without assessment retain the legacy path. No decision,
+record, credential or source cache is added; the signer's two record reads remain
+independent. Assessment strips activity; ingress still counts real requests.
 
-The real-owner cost control failed before the change with three record reads.
-The implemented and byte-exact restored selections each pass 61 tests across
-four files, with at most one route-check record read. Server-test types and
-scoped Biome pass. Reintroducing a duplicate operator read fails only the cost
-control (26 pass, one intended fail); forwarding activity into assessment fails
-only the activity-isolation control (26 pass, one intended fail). These are
-read-count and policy receipts, not elapsed-time or full-caller qualification.
+The real-owner cost control failed before the repair with three record reads.
+At `94da16baaab`, the expanded bounded selection passes 63 cases, with at most
+one route-check record read. Passive-counter liveness, aliases, promoted approval,
+record replacement, rotation, revocation and narrowing are covered. Clean-commit
+mutations caught a duplicate operator read, stale device-assessment caching,
+dropped promoted-device approval and activity forwarding. Every restoration was
+byte-exact. These are read-count and policy receipts, not a latency benchmark.
 
-Accounting recovery now retains publication and exact Home custody through the
-recovery body and trailing read (`f09435644f3`, `b3f5bfecb80`). Its five-case
-selection passes; removing only publication from the trailing inspection makes
-the Home-exclusion control fail, and exact restoration passes again. This proves
-constructor-level custody, not full initialized-storage or boot/auth wiring.
+Independent review found Proxy fixtures inventing the optional assessment. Their
+security ports now explicitly omit it. An earlier identity callback was also
+inert; the affected abstract ports now execute that callback. The 34-file route
+selection passes 469 cases. Removing only the explicit optional-member absence
+fails seven positive controls with HTTP 403. These abstract ports do not establish
+Home custody or fully initialized storage; real-owner controls remain separate.
 
-The last original report-input caller run before assessment remains one pass
-and one failure near the unchanged 120-second product deadline. Both original
-callers must pass at the combined head; the new per-read saving makes no such
-claim. Full initialized-storage teardown, boot/auth, accounting release-failure
-retry, semantic documentation catch-up, real CLI/reload/second-device and desktop
-receipts, main integration, visual validation, deslop and independent combined
-qualification remain open. Exactly one PR is to be opened only after readiness.
+The main merge preserves activation checks before ownership reservation and
+rechecks captured authority immediately before durable cascade cancellation.
+It retains both mutation-catalog entries and regenerates MCP content normally.
+The eight-file merge selection had 771 passes and one new assertion mismatch:
+dispatch wraps the controlled withdrawal in its public error envelope. After
+correcting that assertion and routing the new live-surface fixture through the
+async pairing factory, both changed files pass all 44 cases. Server-test types,
+read-only lint and MCP generation checks pass. From clean `fcd4b8b68ef`, dropping
+only the adjacent cascade check fails both withdrawal controls with 35 other
+passes; byte-exact restoration passes all 44 again.
+
+Both original report-input callers passed once at `c6bc8c6bbd2`, with unchanged
+120-second product deadlines and original assertions. The merged-head run at
+`fcd4b8b68ef` is one pass and one failure: the direct caller exhausts the deadline
+at 120061 ms before its missing-terminal fault reaches the canonical event read.
+The sentinel rejects that insufficient evidence. The earlier green remains
+historical; there is no repeatability, latency-margin or combined-head pass claim.
+
+A separate real-service selection at `94da16baaab` had 234 passes and four
+failures: one Room Agent publication wait and three native first-frame waits.
+The native failures occurred before the revocation assertions. A diagnostic
+legacy-helper control also failed the Room Agent wait and one native first-frame
+wait (73 pass, two fail), with different native cases failing. This rules out the
+assessment as the sole cause, but establishes no underlying cause or acceptance.
+
+Accounting recovery retains publication and exact Home custody through its body
+and trailing read (`f09435644f3`, `b3f5bfecb80`). Its five-case selection and trailing
+inspection mutation establish constructor-level custody, not full initialized
+storage or boot/auth wiring. Those remain open, as does release-failure retry.
+
+Readiness remains failed on stale semantic documentation and capture reviews.
+An archived profiling source was preserved byte-for-byte under a non-test suffix,
+and the raw-temp fixture now uses the standard tracker. Verification proceeds
+past those issues but still refuses an unreviewed provider-specific durability
+decision in `orchestration-service.ts`; that separately owned #3991 code is
+unchanged. Device qualification is NOT_ADMITTED: `device_list` reports Agent
+device access disabled and returned no inventory. Enabling it applies to a later
+agent session; there is no current device-availability claim.
+
+Remaining work includes the full-caller deadline, complete boot/auth and storage
+teardown qualification, the full group matrix, semantic documentation catch-up,
+real CLI/reload/second-device and desktop receipts, visual validation, deslop and
+independent combined qualification. Open exactly one PR only after readiness.
 
 ### Historical delivery checkpoint before the later custody and currency repairs
 
