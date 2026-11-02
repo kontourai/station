@@ -1,6 +1,7 @@
 import type { Skill } from '@kontourai/station-contracts/catalog';
 import { resolveEngineCapabilityMatrix } from '@kontourai/station-contracts/engine-capability-matrix';
 import type { AgentMcpPrompt } from '@kontourai/station-contracts/mcp-prompts';
+import { readProviderDurabilityProfile } from '@kontourai/station-contracts/provider';
 import { resolveSkillCommandName } from '@kontourai/station-contracts/skill-command';
 import {
   useAgentMcpPromptsQuery,
@@ -170,14 +171,16 @@ export function useSlashCommands(
     const builtinCore: SlashCommand[] = [
       ...(compactionPreview &&
       currentAgent &&
-      resolveEngineCapabilityMatrix(
-        currentAgent.execution?.agentConnectionId ??
-          (currentAgent.engineConnectionType ? 'external' : undefined),
-        {
-          engineId: currentAgent.engineId,
-          type: currentAgent.engineConnectionType,
-        },
-      ).durability.compaction.owner === 'station'
+      readProviderDurabilityProfile(
+        resolveEngineCapabilityMatrix(
+          currentAgent.execution?.agentConnectionId ??
+            (currentAgent.engineConnectionType ? 'external' : undefined),
+          {
+            engineId: currentAgent.engineId,
+            type: currentAgent.engineConnectionType,
+          },
+        ),
+      )?.compaction.owner === 'station'
         ? [
             {
               cmd: '/compact',

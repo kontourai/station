@@ -1,0 +1,7 @@
+{
+  "revision": "2791f554d4934c74de9e755f1719d2b150e1dca2",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Refs #3568 and #3575. Re-read the server-declaration requirement, missing-profile disclosure and pending-message retry sections after merging main 2d13aceaba38. The native-steer unit fixtures now explicitly provide STEERING_ENGINE_DURABILITY in both the chat state and server summary; assertions and delivery/receipt checks are unchanged. All 82 tests in the four files that contained hosted shard 1/2/3 failures pass, including the three attention peer projections. Missing declarations still hide Send-as-steer/Retry-steering and keep ordinary follow-up Retry available; the separate missing-profile controls remain covered. The real mobile inventory journey passed on the shared-reader head; two legacy native browser fixture cases remain an accepted low verification gap, not a claim of native UI runtime qualification.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/ChatDockBody.sessionFailureBanner.test.tsx"]}
+  ]
+}

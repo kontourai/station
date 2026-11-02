@@ -1532,7 +1532,15 @@
 
     "src-server/runtime/streaming/handlers/ReasoningHandler.ts",
 
-    "src-server/runtime/streaming/__tests__/ReasoningHandler.test.ts"
+    "src-server/runtime/streaming/__tests__/ReasoningHandler.test.ts",
+
+    "src-server/services/orchestration/post-tool-inbox.ts",
+
+    "src-server/runtime/conversation/inbox-model-step.ts",
+
+    "src-ui/src/components/chat/ConversationInboxMessages.css",
+
+    "src-ui/src/__tests__/ConversationInboxMessages.geometry.test.tsx"
   ],
 
   "checks": [
