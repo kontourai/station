@@ -17,6 +17,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -28,6 +29,10 @@ import {
   liveSurfaceStreamBudget,
   useSteppedPixelBox,
 } from './liveSurfaceStreamBudget';
+import {
+  LiveSurfaceH264Decoder,
+  liveSurfaceH264Offered,
+} from './liveSurfaceVideoDecoder';
 import {
   type LiveSurfaceFrame,
   type UseLiveSurfaceResult,
@@ -184,6 +189,16 @@ export type LiveSurfaceControllerTone = 'you' | 'agent' | 'other' | 'none';
 
 /** Heartbeats arrive every ~5 s; two missed ones is a stall worth saying. */
 const LIVE_SURFACE_STALL_MS = 12_000;
+/** A failed H.264 decoder reconnects for a keyframe at most this often. */
+const VIDEO_RESYNC_MIN_INTERVAL_MS = 2_000;
+/** Decoder failures in a row, with no picture between, before images. */
+const VIDEO_FAILURES_BEFORE_IMAGES = 3;
+
+/** Pane diagnostics: what this viewer is drawing, and where it decodes. */
+function codecLabel(codec: LiveSurfaceFrameHeader['codec']): string {
+  if (codec === 'h264') return 'H.264, decoded in this browser';
+  return codec.toUpperCase();
+}
 const DOUBLE_CLICK_MS = 500;
 const DOUBLE_CLICK_SLOP_PX = 4;
 
@@ -297,67 +312,181 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     count: number;
   } | null>(null);
 
-  const draw = useCallback(async (frame: LiveSurfaceFrame) => {
-    // Latest-frame-wins in the client too: while one frame decodes, only the
-    // newest waiting frame is kept.
-    if (decodingRef.current) {
-      nextFrameRef.current = frame;
-      return;
-    }
-    decodingRef.current = true;
-    let current: LiveSurfaceFrame | null = frame;
-    while (current) {
-      const { header, body } = current;
-      const canvas = canvasRef.current;
-      if (canvas) {
-        // A rotated frame is drawn turned, so the canvas has the SHOWN size
-        // and input maps in the shown frame's pixels (see `toSurface`).
-        const shown = shownSize(header);
-        if (canvas.width !== shown.width) canvas.width = shown.width;
-        if (canvas.height !== shown.height) canvas.height = shown.height;
-        headerRef.current = header;
-        setFrameRotation(header.rotation ?? 0);
-        setFrameSize((previous) =>
-          previous?.width === shown.width && previous.height === shown.height
-            ? previous
-            : shown,
-        );
-        if (typeof createImageBitmap === 'function') {
+  /**
+   * Size the canvas for `header` and adopt it as the frame input maps to.
+   * Every received frame does this, whether or not its picture decodes
+   * here, so input and overlays follow the stream's geometry.
+   */
+  const adoptFrame = useCallback((header: LiveSurfaceFrameHeader) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    // A rotated frame is drawn turned, so the canvas has the SHOWN size
+    // and input maps in the shown frame's pixels (see `toSurface`).
+    const shown = shownSize(header);
+    if (canvas.width !== shown.width) canvas.width = shown.width;
+    if (canvas.height !== shown.height) canvas.height = shown.height;
+    headerRef.current = header;
+    setFrameRotation(header.rotation ?? 0);
+    setFrameSize((previous) =>
+      previous?.width === shown.width && previous.height === shown.height
+        ? previous
+        : shown,
+    );
+    return canvas;
+  }, []);
+
+  /** Size the canvas for `header` and draw `picture` into it, turned. */
+  const paint = useCallback(
+    (picture: CanvasImageSource, header: LiveSurfaceFrameHeader) => {
+      const canvas = adoptFrame(header);
+      if (!canvas) return;
+      const context = canvas.getContext('2d');
+      if (!context) return;
+      // An H.264 picture is decoded at the device's size and drawn at the
+      // header's (the size input maps against), so draw to that box.
+      if (!header.rotation) {
+        context.drawImage(picture, 0, 0, header.width, header.height);
+        return;
+      }
+      // Turn the drawing clockwise about the canvas origin, then shift it
+      // back into the (already swapped) canvas box.
+      context.save();
+      if (header.rotation === 90) {
+        context.translate(header.height, 0);
+        context.rotate(Math.PI / 2);
+      } else if (header.rotation === 180) {
+        context.translate(header.width, header.height);
+        context.rotate(Math.PI);
+      } else {
+        context.translate(0, header.width);
+        context.rotate(-Math.PI / 2);
+      }
+      context.drawImage(picture, 0, 0, header.width, header.height);
+      context.restore();
+    },
+    [adoptFrame],
+  );
+
+  const draw = useCallback(
+    async (frame: LiveSurfaceFrame) => {
+      // Latest-frame-wins in the client too: while one frame decodes, only
+      // the newest waiting frame is kept.
+      if (decodingRef.current) {
+        nextFrameRef.current = frame;
+        return;
+      }
+      decodingRef.current = true;
+      let current: LiveSurfaceFrame | null = frame;
+      while (current) {
+        const { header, body } = current;
+        adoptFrame(header);
+        if (canvasRef.current && typeof createImageBitmap === 'function') {
           try {
             const bitmap = await createImageBitmap(
               new Blob([body.slice()], { type: `image/${header.codec}` }),
             );
-            const context = canvas.getContext('2d');
-            if (context && !header.rotation) {
-              context.drawImage(bitmap, 0, 0);
-            } else if (context) {
-              // Turn the drawing clockwise about the canvas origin, then
-              // shift it back into the (already swapped) canvas box.
-              context.save();
-              if (header.rotation === 90) {
-                context.translate(header.height, 0);
-                context.rotate(Math.PI / 2);
-              } else if (header.rotation === 180) {
-                context.translate(header.width, header.height);
-                context.rotate(Math.PI);
-              } else {
-                context.translate(0, header.width);
-                context.rotate(-Math.PI / 2);
-              }
-              context.drawImage(bitmap, 0, 0);
-              context.restore();
-            }
+            paint(bitmap, header);
             bitmap.close?.();
           } catch {
             // An undecodable frame is skipped; the next one replaces it.
           }
         }
+        current = nextFrameRef.current;
+        nextFrameRef.current = null;
       }
-      current = nextFrameRef.current;
-      nextFrameRef.current = null;
-    }
-    decodingRef.current = false;
+      decodingRef.current = false;
+    },
+    [adoptFrame, paint],
+  );
+
+  // H.264 (#4418): asked for only where WebCodecs can decode it. Every
+  // access unit goes to the decoder in order (none may be skipped); the
+  // decoder paints each picture it produces.
+  const acceptH264 = useMemo(
+    () => liveSurfaceH264Offered(props.apiBase),
+    [props.apiBase],
+  );
+  /** Decoder failures since the last picture. */
+  const videoFailuresRef = useRef(0);
+  const videoDecoderRef = useRef<LiveSurfaceH264Decoder | null>(null);
+  const lastResyncRef = useRef(Number.NEGATIVE_INFINITY);
+  const resyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /**
+   * Ask for a keyframe by reconnecting (a fresh stream starts at one), at
+   * most every two seconds; a request inside that window is deferred to its
+   * end, because the reset decoder waits for nothing else.
+   */
+  const resyncVideo = useCallback(() => {
+    if (resyncTimerRef.current) return;
+    const wait =
+      lastResyncRef.current + VIDEO_RESYNC_MIN_INTERVAL_MS - Date.now();
+    resyncTimerRef.current = setTimeout(
+      () => {
+        resyncTimerRef.current = null;
+        lastResyncRef.current = Date.now();
+        surfaceRef.current.retry();
+      },
+      Math.max(0, wait),
+    );
   }, []);
+  const closeVideoDecoder = useCallback(() => {
+    videoDecoderRef.current?.close();
+    videoDecoderRef.current = null;
+  }, []);
+  const cancelResync = useCallback(() => {
+    if (resyncTimerRef.current) clearTimeout(resyncTimerRef.current);
+    resyncTimerRef.current = null;
+  }, []);
+  // A deferred resync belongs to the target it was asked for: a new target
+  // (or unmount) cancels it rather than reconnecting a healthy stream.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the target props are the change keys.
+  useEffect(
+    () => () => {
+      cancelResync();
+      videoFailuresRef.current = 0;
+    },
+    [props.apiBase, props.surfaceId, props.projectSlug, cancelResync],
+  );
+  const decodeVideo = useCallback(
+    async (frame: LiveSurfaceFrame) => {
+      // Geometry first, as for images: overlays and input follow the
+      // stream even before (or without) a decoded picture.
+      adoptFrame(frame.header);
+      let decoder = videoDecoderRef.current;
+      if (!decoder) {
+        decoder = new LiveSurfaceH264Decoder({
+          onPicture: (picture, header) => {
+            videoFailuresRef.current = 0;
+            try {
+              paint(picture, header);
+            } finally {
+              picture.close();
+            }
+          },
+          onError: () => {
+            videoFailuresRef.current += 1;
+            if (videoFailuresRef.current < VIDEO_FAILURES_BEFORE_IMAGES) {
+              resyncVideo();
+              return;
+            }
+            // It keeps failing with nothing shown: stop asking for H.264.
+            cancelResync();
+            closeVideoDecoder();
+            surfaceRef.current.declineH264();
+          },
+        });
+        videoDecoderRef.current = decoder;
+      }
+      const outcome = await decoder.decode(frame.header, frame.body);
+      if (outcome === 'unsupported' && videoDecoderRef.current === decoder) {
+        closeVideoDecoder();
+        cancelResync();
+        surfaceRef.current.declineH264();
+      }
+    },
+    [adoptFrame, paint, closeVideoDecoder, resyncVideo, cancelResync],
+  );
+  useEffect(() => closeVideoDecoder, [closeVideoDecoder]);
 
   const constrainedNetwork = useConstrainedNetwork();
   const pixels = useSteppedPixelBox(containerRef);
@@ -370,12 +499,19 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     }),
     paramsPending: !pixels.measured,
     visibilityRef: containerRef,
-    onFrame: (frame) => void draw(frame),
+    onFrame: (frame) =>
+      void (frame.header.codec === 'h264' ? decodeVideo(frame) : draw(frame)),
     transport: props.transport,
     now,
+    acceptH264,
     ...(props.projectSlug ? { projectSlug: props.projectSlug } : {}),
     agentActionsEnabled: props.agentActionsEnabled === true,
   });
+  // A new target or a new stream starts a new decoder at its first keyframe.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the surface and its connection status are the change keys.
+  useEffect(() => {
+    if (surface.status !== 'live') closeVideoDecoder();
+  }, [props.surfaceId, surface.status, closeVideoDecoder]);
   const { sendInput } = surface;
   const surfaceRef = useRef(surface);
   surfaceRef.current = surface;
@@ -730,6 +866,9 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
         : `Reconnecting… The frame shown is ${frameAge} s old.`;
   else if (surface.status === 'suspended')
     statusText = 'Paused while this pane is hidden.';
+  else if (surface.status === 'queued')
+    statusText =
+      'Waiting: other live views are streaming. Hide one to show this.';
   else if (surface.status === 'unavailable')
     statusText = 'This surface is not available.';
   else if (surface.status === 'denied')
@@ -758,8 +897,10 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
   else if (surface.status === 'live' && inputChannel === 'down')
     inputLine =
       'Input is not reaching this surface. Controls are paused until it reconnects.';
+  // Polled stills replace the IMAGE path only; an H.264 viewer still has video.
   const videoLine =
-    surface.producerStatus.videoMode === 'snapshot-poll'
+    surface.producerStatus.videoMode === 'snapshot-poll' &&
+    surface.activeCodec !== 'h264'
       ? surface.producerStatus.videoDegradedReason === 'decoder-unavailable'
         ? 'Showing a still screenshot about once a second: live video needs a video decoder (ffmpeg) that is not installed on the Station host.'
         : 'Showing a still screenshot about once a second: live video stopped working on the Station host.'
@@ -919,6 +1060,15 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
           </p>
         ) : null}
       </div>
+      {surface.activeCodec && surface.status === 'live' ? (
+        <p
+          className="live-surface__codec"
+          data-testid="live-surface-codec"
+          data-codec={surface.activeCodec}
+        >
+          {codecLabel(surface.activeCodec)}
+        </p>
+      ) : null}
     </div>
   );
 }

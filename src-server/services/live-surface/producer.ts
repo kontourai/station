@@ -84,6 +84,12 @@ export interface LiveSurfaceDispatchContext {
  *   the stuck dispatch settles; it cannot cancel it. A producer that never
  *   settles a dispatch leaves the surface wedged forever.
  */
+/** Which encodings a surface's attached viewers take. */
+export interface LiveSurfaceCodecDemand {
+  image: boolean;
+  h264: boolean;
+}
+
 export interface LiveSurfaceProducer {
   readonly surfaceId: string;
   readonly capabilities: {
@@ -95,6 +101,20 @@ export interface LiveSurfaceProducer {
     onFrame: (header: LiveSurfaceFrameHeader, body: Uint8Array) => void,
   ): Promise<void>;
   ack(seq: number): void;
+  /**
+   * Optional: ask an inter-frame (`h264`) producer for a fresh decoding
+   * point. The hub calls it when an H.264 viewer joins a running stream or
+   * overflows its queue. A source that cannot be asked waits for its next
+   * natural keyframe.
+   */
+  requestKeyframe?(): void;
+  /**
+   * Optional: which encodings the attached viewers take. Called before
+   * `start` and on every attach or detach. A producer that can emit both
+   * `h264` access units and decoded images uses it to run its image decoder
+   * only while an image viewer is attached. Must not throw.
+   */
+  setCodecDemand?(demand: LiveSurfaceCodecDemand): void;
   stop(): Promise<void>;
   dispatch(
     input: LiveSurfaceInput,
