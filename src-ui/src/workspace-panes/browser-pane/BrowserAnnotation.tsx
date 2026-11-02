@@ -42,6 +42,7 @@ export interface BrowserAnnotationValue {
 
 export function BrowserAnnotation({
   stageRef,
+  screenshot,
   viewport,
   generation,
   sessionId,
@@ -51,6 +52,7 @@ export function BrowserAnnotation({
   pending,
 }: {
   stageRef: RefObject<HTMLDivElement | null>;
+  screenshot: Blob;
   viewport: BrowserViewportView;
   generation: number;
   sessionId: string;
@@ -59,6 +61,12 @@ export function BrowserAnnotation({
   onAttach(value: BrowserAnnotationValue): void;
   pending: boolean;
 }) {
+  const [imageUrl, setImageUrl] = useState<string>();
+  useEffect(() => {
+    const url = URL.createObjectURL(screenshot);
+    setImageUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [screenshot]);
   const [tool, setTool] = useState<Tool>('select');
   const [picked, setPicked] = useState<BrowserPickedElementView | null>(null);
   const [marks, setMarks] = useState<Mark[]>([]);
@@ -263,6 +271,14 @@ export function BrowserAnnotation({
             setDraft(null);
           }}
         >
+          {imageUrl ? (
+            <image
+              href={imageUrl}
+              width={viewport.width}
+              height={viewport.height}
+              preserveAspectRatio="none"
+            />
+          ) : null}
           {picked ? (
             <rect
               x={picked.rect.x}

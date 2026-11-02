@@ -5,6 +5,8 @@ import type { BrowserLiveTarget } from '../browser-session-registry.js';
 function fixture(changed = false) {
   let frames = 0;
   let loader = 'old';
+  let invalidContext = false;
+  let worldId = 0;
   const calls: Array<{ method: string; params?: object }> = [];
   const cdp = {
     send: vi.fn(async (method: string, params?: object) => {
@@ -23,8 +25,12 @@ function fixture(changed = false) {
         case 'DOM.getNodeForLocation':
           return { backendNodeId: 4 };
         case 'Page.createIsolatedWorld':
-          return { executionContextId: 7 };
+          return { executionContextId: ++worldId };
         case 'DOM.resolveNode':
+          if (invalidContext) {
+            invalidContext = false;
+            throw new Error('Cannot find context with specified id');
+          }
           return { object: { objectId: 'object' } };
         case 'Runtime.callFunctionOn':
           return {
@@ -43,6 +49,23 @@ function fixture(changed = false) {
                   { name: 'src', value: '/asset?credential=private' },
                   { name: 'action', value: '/submit?session=private' },
                   { name: 'data-other', value: 'sk-abcdefghijk123' },
+                  ...['formaction', 'poster', 'xlink:href'].map((name) => ({
+                    name,
+                    value: '/path?token=private',
+                  })),
+                  {
+                    name: 'ping',
+                    value: '/one?token=private /two?secret=private',
+                  },
+                  {
+                    name: 'srcset',
+                    value: '/a?token=private 1x, /b?secret=private 2x',
+                  },
+                  {
+                    name: 'style',
+                    value:
+                      'background:url(https://example.test/?token=private)',
+                  },
                 ],
                 styles: {},
                 rect: { x: 10, y: 20, width: 50, height: 30 },
@@ -74,6 +97,9 @@ function fixture(changed = false) {
   return {
     live,
     calls,
+    invalidate: () => {
+      invalidContext = true;
+    },
     navigate: () => {
       loader = 'new';
     },
@@ -103,8 +129,12 @@ describe('browser element picking', () => {
     });
     expect(result.screenshot).toBeTruthy();
     expect(result.html).toContain('https://example.test/a?[redacted]');
+    expect(result.html).toContain(
+      'srcset="https://example.test/a?[redacted] 1x, https://example.test/b?[redacted] 2x"',
+    );
+    expect(result.html).toContain('style="[redacted]"');
     expect(result.html).not.toMatch(
-      /user|pass|secret-value|token=|frag|credential=|session=|sk-abcdefghijk123/,
+      /user|pass|secret-value|token=|frag|credential=|session=|sk-abcdefghijk123|private/,
     );
   });
 
@@ -135,6 +165,27 @@ describe('browser element picking', () => {
     expect(
       h.calls.filter((call) => call.method === 'Page.createIsolatedWorld'),
     ).toHaveLength(2);
+  });
+
+  it('recreates a destroyed cached execution context and retries the pick', async () => {
+    const h = fixture();
+    const viewport = { width: 100, height: 80 };
+    const point = { x: 15, y: 25 };
+    await pickBrowserElement(h.live, viewport, point, false);
+    h.invalidate();
+    const result = await pickBrowserElement(h.live, viewport, point, false);
+    expect(result.locator).toBe('css=html > body > button');
+    expect(
+      h.calls.filter((call) => call.method === 'Page.createIsolatedWorld'),
+    ).toHaveLength(2);
+    expect(
+      h.calls
+        .filter((call) => call.method === 'DOM.resolveNode')
+        .map(
+          (call) =>
+            (call.params as { executionContextId: number }).executionContextId,
+        ),
+    ).toEqual([1, 1, 2]);
   });
 
   it('refuses out-of-bounds points and navigation during capture', async () => {

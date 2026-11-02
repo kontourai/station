@@ -6,8 +6,16 @@ import { BrowserAnnotation } from '../BrowserAnnotation';
 import type { BrowserPaneApi } from '../browserPaneApi';
 
 afterEach(() => vi.unstubAllGlobals());
+const screenshot = new Blob(['captured'], { type: 'image/png' });
 
 it('maps pointer input through a letterboxed canvas and attaches a box with Enter', async () => {
+  vi.stubGlobal(
+    'URL',
+    Object.assign(URL, {
+      createObjectURL: vi.fn(() => 'blob:captured'),
+      revokeObjectURL: vi.fn(),
+    }),
+  );
   vi.stubGlobal(
     'ResizeObserver',
     class {
@@ -40,6 +48,7 @@ it('maps pointer input through a letterboxed canvas and attaches a box with Ente
   render(
     <BrowserAnnotation
       stageRef={stageRef}
+      screenshot={screenshot}
       viewport={{ width: 800, height: 400, deviceScaleFactor: 1 }}
       generation={1}
       sessionId="bs_test"
@@ -50,6 +59,9 @@ it('maps pointer input through a letterboxed canvas and attaches a box with Ente
     />,
   );
   const surface = await screen.findByLabelText('Annotate browser page');
+  expect(surface.querySelector('image')?.getAttribute('href')).toBe(
+    'blob:captured',
+  );
   Object.defineProperty(surface, 'setPointerCapture', { value: () => {} });
   fireEvent.keyDown(screen.getByRole('group', { name: 'Browser annotation' }), {
     key: 'b',
@@ -82,6 +94,13 @@ it('maps pointer input through a letterboxed canvas and attaches a box with Ente
 });
 
 it('selects with target viewport coordinates and erases the selected element', async () => {
+  vi.stubGlobal(
+    'URL',
+    Object.assign(URL, {
+      createObjectURL: vi.fn(() => 'blob:captured'),
+      revokeObjectURL: vi.fn(),
+    }),
+  );
   vi.stubGlobal(
     'ResizeObserver',
     class {
@@ -118,6 +137,7 @@ it('selects with target viewport coordinates and erases the selected element', a
   render(
     <BrowserAnnotation
       stageRef={stageRef}
+      screenshot={screenshot}
       viewport={{ width: 800, height: 400, deviceScaleFactor: 1 }}
       generation={7}
       sessionId="bs_test"

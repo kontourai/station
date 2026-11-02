@@ -65,37 +65,53 @@ it('filters failed requests and XHR requests through the drawer control', async 
 });
 
 it('polls newer updates and replaces the existing request without crossing generations', async () => {
+  let generation = 1;
   const network = vi.fn(async (_id: string, after: number) =>
-    after === 0
+    generation === 2
       ? {
-          generation: 1,
+          generation: 2,
           latestSeq: 1,
           dropped: 0,
           entries: [
             {
-              requestSeq: 1,
               seq: 1,
               method: 'GET',
-              url: 'https://example.test/a',
-              type: 'Fetch',
-            },
-          ],
-        }
-      : {
-          generation: 1,
-          latestSeq: 2,
-          dropped: 0,
-          entries: [
-            {
-              requestSeq: 1,
-              seq: 2,
-              method: 'GET',
-              url: 'https://example.test/a',
+              url: 'https://example.test/new',
               type: 'Fetch',
               status: 200,
             },
           ],
-        },
+        }
+      : after === 0
+        ? {
+            generation: 1,
+            latestSeq: 1,
+            dropped: 0,
+            entries: [
+              {
+                requestSeq: 1,
+                seq: 1,
+                method: 'GET',
+                url: 'https://example.test/a',
+                type: 'Fetch',
+              },
+            ],
+          }
+        : {
+            generation: 1,
+            latestSeq: 2,
+            dropped: 0,
+            entries: [
+              {
+                requestSeq: 1,
+                seq: 2,
+                method: 'GET',
+                url: 'https://example.test/a',
+                type: 'Fetch',
+                status: 200,
+              },
+            ],
+          },
   );
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -122,6 +138,7 @@ it('polls newer updates and replaces the existing request without crossing gener
     1,
     expect.any(AbortSignal),
   );
+  generation = 2;
   view.rerender(
     <QueryClientProvider client={client}>
       <BrowserNetworkDrawer
@@ -129,9 +146,15 @@ it('polls newer updates and replaces the existing request without crossing gener
         apiBase=""
         browserSessionId="bs_test"
         generation={2}
-        live={false}
+        live
       />
     </QueryClientProvider>,
+  );
+  expect(await screen.findByText(/example.test\/new/)).toBeTruthy();
+  expect(network).toHaveBeenLastCalledWith(
+    'bs_test',
+    0,
+    expect.any(AbortSignal),
   );
   expect(screen.queryByText(/example.test\/a/)).toBeNull();
 });

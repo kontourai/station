@@ -78,6 +78,7 @@ export function BrowserAnnotationFlow({
   return (
     <BrowserAnnotation
       stageRef={stageRef}
+      screenshot={capture.data.blob}
       viewport={record.viewport}
       generation={record.generation}
       sessionId={record.browserSessionId}
