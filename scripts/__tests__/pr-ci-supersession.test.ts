@@ -345,6 +345,7 @@ const merged = {
   base: { ref: 'main', repo: { full_name: repository } },
 };
 const sourceNames = [
+  'PR source admission',
   'Repository source scans',
   'fast-checks plan',
   'fast-checks statics',

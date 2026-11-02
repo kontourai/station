@@ -22,6 +22,7 @@ import {
 } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { readJson } from '../../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { keyedTurnRequest } from '../../../__test-utils__/turn-admission-fixture.js';
 import type {
   ProviderAdapterMetadata,
   ProviderSendTurnInput,
@@ -33,6 +34,7 @@ import {
   delegateTask,
 } from '../../../tools/station-control-delegation.js';
 import { isSqliteContentionError } from '../../../utils/sqlite-wal.js';
+import { FileDelegationAttemptClaimStore } from '../../orchestration/delegation-attempt-claim-store.js';
 import { EventBus } from '../../orchestration/event-bus.js';
 import { EventStore } from '../../orchestration/event-store.js';
 import { OrchestrationService } from '../../orchestration/orchestration-service.js';
@@ -417,6 +419,7 @@ async function fixture(observe = true) {
     );
   }
   const app = createOrchestrationRoutes(sessions, {
+    delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(directory),
     eventBus: bus,
     logger: { debug: vi.fn() },
     resolvePrincipal: () => principal,
@@ -448,7 +451,7 @@ async function fixture(observe = true) {
     app.request(path, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      body: JSON.stringify(keyedTurnRequest(body)),
     });
   const history = async () => {
     const result = await room.history({ taskId: task.id, request });

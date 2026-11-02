@@ -6,7 +6,9 @@ import {
   getOrchestrationSessionEventPage,
   interruptTurn,
   steerChildWork,
+  steerTurn,
 } from '../client/orchestration';
+import { sentTurnKey } from '../client/sent-turn-key';
 
 const capability = vi.hoisted(() => vi.fn());
 vi.mock('../client/publicStationCapabilities', () => ({
@@ -14,6 +16,38 @@ vi.mock('../client/publicStationCapabilities', () => ({
 }));
 
 describe('orchestration lifecycle-control client', () => {
+  test('steer selects and retains one input key across an uncertain retry', async () => {
+    const failure = Object.freeze(new TypeError('Lost steer response.'));
+    const bodies: unknown[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>(async (_url, init) => {
+        bodies.push(JSON.parse(String(init?.body)));
+        throw failure;
+      }),
+    );
+    const send = (clientInputId?: string) =>
+      steerTurn('http://station.test', {
+        threadId: 'existing-thread',
+        turnId: 'existing-turn',
+        text: 'same input',
+        clientInputId,
+      });
+    const first = await send().catch((error: unknown) => error);
+    expect(first).toBe(failure);
+    const key = sentTurnKey(first);
+    expect(key).toEqual(expect.any(String));
+    const second = await send(key).catch((error: unknown) => error);
+    expect(second).toBe(failure);
+    expect(sentTurnKey(second)).toBe(key);
+    expect(bodies).toHaveLength(2);
+    expect(bodies[0]).toMatchObject({
+      type: 'steerTurnOnce',
+      clientInputId: key,
+    });
+    expect(bodies[1]).toEqual(bodies[0]);
+  });
+
   afterEach(() => vi.unstubAllGlobals());
 
   test('child command and history are gated by the host capability and retain the exact target', async () => {
