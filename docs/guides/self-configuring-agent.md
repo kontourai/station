@@ -745,6 +745,27 @@ that could adopt it. See the
    Children on an SSH or paired Station, children of Station's own agent, and
    children on a hosted Station are not delivered this way: use `get_task`
    for those.
+   A Session started from a server-derived caller context records its exact
+   initiating Session. Stop, cancel and discard cascade through verified owned
+   Sessions, deepest first, using each child's own stop path. A declared
+   `metadata.backgroundBoundary: true` at start makes that subtree independent.
+   A name or conversation-only lineage remains a claim and grants no cascade
+   authority. See [owned delegation](../architecture/module-map.md#sessionlifecyclemodule).
+
+   A parent Session's aggregate lifecycle stays running while owned work or
+   stop obligations remain live; `ownedWork.ownLifecycleState` retains its own
+   fold. Another live process picks up its pending child stop through existing
+   reconciliation, including turn completion when idle parking is disabled.
+   A terminal child with no live binding or newer admission is already settled.
+   Unknown child custody stays pending for inspection but does not prevent the
+   parent stopping itself. `ownedWork.state` and `pendingStops` distinguish
+   stopping locally, waiting on a peer, and unknown cleanup from running work.
+   Session and Inbox status lines show **Stopping**, **Waiting on another
+   Station process**, or **Unknown** through the shared status ladder.
+   Reopening resumes recorded obligations, and
+   repeated delivery is harmless at the adapter. New result request IDs derive
+   from the child execution Session and its terminal event. Historical stored
+   delivery IDs remain stable across upgrade and retry.
 4. Keep child sessions isolated with delegation limits.
 5. Refine successful skills instead of baking everything into one giant system prompt.
 

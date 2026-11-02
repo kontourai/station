@@ -45,8 +45,10 @@ import { parseMcpToolRef } from '@kontourai/station-contracts/layout';
 import { parseLearningContextContributions } from '@kontourai/station-contracts/learning-review';
 import type {
   ConversationHandoffProjection,
+  InterruptTurnResult,
   OrchestrationCommandReceipt,
   OrchestrationSessionEventWindow,
+  OwnedSessionActivity,
   RuntimeEventElisionReason,
   SteerTurnResult,
 } from '@kontourai/station-contracts/orchestration';
@@ -103,6 +105,7 @@ import {
   providerCostScope,
   providerUsageScope,
 } from '@kontourai/station-shared/usage-fold';
+import { z } from 'zod';
 import { CHAT_INPUT_MAX_CHARS } from '../../../src-shared/chat-input-limits.js';
 import {
   canonicalPersistedRequestId,
@@ -244,6 +247,17 @@ import {
   isAttachmentBlobRef,
 } from './attachment-blob-store.js';
 import {
+  backfillCascadeStopIntents,
+  CANCELLATION_FENCE_SCHEMA,
+  type CascadeSessionFacts,
+  completeCascadeStop,
+  deriveCascadeStopIntents,
+  isCascadeStopSettled,
+  readCascadeInterruptResult,
+  readCascadeSessionFacts,
+  recordCascadeStopIntent,
+} from './cancellation-fence.js';
+import {
   CANONICAL_TERMINAL_EVENT_SQL,
   canonicalTerminalOutcome,
   terminalEngineFamily,
@@ -308,6 +322,7 @@ import {
   createSqliteDelegationResultStore,
   type DelegationResultStore,
   migrateDelegationResultSchema,
+  writeTransaction,
 } from './delegation-result-delivery.js';
 import {
   MAX_EVENT_CONTENT_BYTES,
@@ -332,6 +347,13 @@ import {
   DRAFT_ENDING_TURN_METHODS,
   projectionFactKeysForEvent,
 } from './orchestration-session-state.js';
+import {
+  backfillSessionOwnership,
+  OWNERSHIP_TREE_SCHEMA,
+  ownedDescendantsBottomUp,
+  recordSessionOwnership,
+  reserveOwnershipStart,
+} from './ownership-tree.js';
 import { decodeTurnIntent } from './prepared-turn-intent.js';
 import { createSqliteProjectSupervisionStore } from './project-supervision.js';
 import {
@@ -2493,6 +2515,7 @@ type SessionWorkItemAssociationMetadataRow = Record<string, unknown>;
  * fold such an event and should instead re-read the thread's durable state.
  */
 export interface EventStoreCommitObserver {
+  sessionHasBinding?(threadId: string): boolean;
   eventCommitted?(input: {
     event: CanonicalRuntimeEvent;
     globalSequence: number;
@@ -2860,6 +2883,8 @@ export class EventStore {
     applyWalJournalMode(this.db, { store: 'orchestration event store' });
     try {
       this.db.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
+      this.db.exec(CANCELLATION_FENCE_SCHEMA);
+      this.db.exec(OWNERSHIP_TREE_SCHEMA);
       this.db.exec(`CREATE TABLE IF NOT EXISTS orchestration_steer_inputs (
         thread_id TEXT NOT NULL,
         client_input_id TEXT NOT NULL,
@@ -2976,6 +3001,11 @@ export class EventStore {
       ensureCredentialApplicationCommitPendingIndex(this.db);
       ensureOrchestrationEventStoreColumns(this.db);
       migrateSessionParentMentions(this.db);
+      backfillSessionOwnership(this.db);
+      backfillCascadeStopIntents(
+        this.db,
+        (childId) => this.cascadeStopOwner(childId).custody === 'settled',
+      );
       ensurePositiveTurnStartIndex(this.db);
       // #4003: Task memory (summary revisions and keyed records), apart from
       // the room document.
@@ -5060,6 +5090,13 @@ export class EventStore {
           'UPDATE orchestration_stream_identity SET high_water = ? WHERE singleton = 1',
         )).run(globalSequence);
         this.recordAttachmentRefs(event.threadId, persisted.blobRefs);
+        recordSessionOwnership(this.db, event, globalSequence);
+        deriveCascadeStopIntents(
+          this.db,
+          event,
+          globalSequence,
+          (childId) => this.cascadeStopOwner(childId).custody === 'settled',
+        );
         this.recordEventContent(event.threadId, ingress.spills);
         this.chargeCommittedToolImages(persisted.toolImageKey);
         this.projectConversationHistoryEvent(event);
@@ -15023,6 +15060,254 @@ export class EventStore {
     return this.sessionTurnBoundaries;
   }
 
+  recordCascadeStopIntent(
+    parentId: string,
+    childId: string,
+    terminalId: string,
+  ): boolean {
+    return recordCascadeStopIntent(this.db, parentId, childId, terminalId);
+  }
+
+  /** Edge confirmation and pending obligations share one SQLite snapshot. */
+  private readOwnershipSnapshot<T>(read: () => T): T {
+    return writeTransaction(this.db, 'ownership_read', read, 'deferred');
+  }
+
+  ownedDescendantsBottomUp(parentId: string) {
+    return this.readOwnershipSnapshot(() =>
+      ownedDescendantsBottomUp(this.db, parentId),
+    );
+  }
+
+  ownedStopTargets(parentId: string) {
+    return this.readOwnershipSnapshot(() =>
+      ownedDescendantsBottomUp(this.db, parentId).filter(
+        (id) => this.cascadeStopOwner(id).custody !== 'settled',
+      ),
+    );
+  }
+
+  private hasSessionBinding(threadId: string): boolean {
+    return [...this.commitObservers].some(
+      (observer) => observer.sessionHasBinding?.(threadId) === true,
+    );
+  }
+
+  ownedSessionActivities(
+    parentIds: readonly string[],
+  ): Map<string, OwnedSessionActivity> {
+    return this.readOwnershipSnapshot(() => {
+      const result = new Map<string, OwnedSessionActivity>();
+      const unique = [...new Set(parentIds)];
+      const pending = this.pendingCascadeStops();
+      for (
+        let offset = 0;
+        offset < unique.length;
+        offset += EVENT_STORE_BATCH_CHUNK_SIZE
+      ) {
+        const chunk = unique.slice(
+          offset,
+          offset + EVENT_STORE_BATCH_CHUNK_SIZE,
+        );
+        const relations = z
+          .array(z.object({ root_id: z.string(), child_id: z.string() }))
+          .parse(
+            this.db
+              .prepare(`WITH RECURSIVE
+          requested(root_id) AS (VALUES ${chunk.map(() => '(?)').join(', ')}),
+          edges(parent_id, child_id) AS (
+            SELECT parent_session_id, child_session_id FROM orchestration_session_ownership WHERE binding = 'verified' AND background_boundary = 0
+            UNION SELECT parent_session_id, child_session_id FROM orchestration_ownership_starts
+          ),
+          owned(root_id, child_id) AS (
+            SELECT root_id, root_id FROM requested
+            UNION SELECT owned.root_id, edges.child_id FROM owned JOIN edges ON edges.parent_id = owned.child_id
+          ) SELECT root_id, child_id FROM owned`)
+              .all(...chunk),
+          );
+        const facts = readCascadeSessionFacts(
+          this.db,
+          relations.map((row) => row.child_id),
+        );
+        for (const rootId of chunk) {
+          const children = new Set(
+            relations
+              .filter((row) => row.root_id === rootId)
+              .map((row) => row.child_id),
+          );
+          const stops = pending.filter((intent) =>
+            children.has(intent.childId),
+          );
+          const counts = new Map<
+            string,
+            OwnedSessionActivity['pendingStops'][number]
+          >();
+          for (const stop of stops) {
+            const key = JSON.stringify([stop.custody, stop.reason]);
+            const entry = counts.get(key);
+            if (entry) entry.count++;
+            else
+              counts.set(key, {
+                custody: stop.custody,
+                reason: stop.reason,
+                count: 1,
+              });
+          }
+          let runningChildCount = 0;
+          for (const childId of children) {
+            const current = facts.get(childId)!;
+            if (
+              childId !== rootId &&
+              current.active &&
+              this.classifyCascadeStop(current, this.hasSessionBinding(childId))
+                .custody !== 'settled'
+            )
+              runningChildCount++;
+          }
+          result.set(rootId, {
+            runningChildCount,
+            pendingStopCount: stops.length,
+            pendingStops: [...counts.values()],
+          });
+        }
+      }
+      return result;
+    });
+  }
+
+  reserveOwnershipStart(childId: string, metadata?: Record<string, unknown>) {
+    reserveOwnershipStart(this.db, childId, metadata);
+  }
+
+  hasPendingCascadeDescendant(childId: string, terminalId: string): boolean {
+    return this.readOwnershipSnapshot(() => {
+      const pending = new Set(
+        this.pendingCascadeStops()
+          .filter(
+            (intent) =>
+              intent.terminalId === terminalId && intent.custody !== 'unknown',
+          )
+          .map((intent) => intent.childId),
+      );
+      return ownedDescendantsBottomUp(this.db, childId).some((id) =>
+        pending.has(id),
+      );
+    });
+  }
+
+  pendingCascadeStops() {
+    return z
+      .array(
+        z.object({
+          parentId: z.string(),
+          childId: z.string(),
+          terminalId: z.string(),
+          custody: z.enum(['local', 'peer', 'unknown']),
+          reason: z.string(),
+        }),
+      )
+      .parse(
+        this.db
+          .prepare(`SELECT i.parent_session_id AS parentId, i.child_session_id AS childId, i.terminal_event_id AS terminalId,
+      COALESCE(c.custody, 'unknown') AS custody, COALESCE(json_extract(c.evidence_json, '$.reason'), 'unobserved') AS reason
+      FROM orchestration_cascade_stop_intents i LEFT JOIN orchestration_cascade_stop_custody c
+        ON c.child_session_id = i.child_session_id AND c.terminal_event_id = i.terminal_event_id
+      WHERE i.state = 'pending' ORDER BY i.rowid`)
+          .all(),
+      );
+  }
+
+  cascadeStopOwner(
+    childId: string,
+    locallyHeld = this.hasSessionBinding(childId),
+  ) {
+    return this.classifyCascadeStop(
+      readCascadeSessionFacts(this.db, [childId]).get(childId)!,
+      locallyHeld,
+    );
+  }
+
+  private classifyCascadeStop(
+    facts: CascadeSessionFacts,
+    locallyHeld: boolean,
+  ): {
+    custody: 'local' | 'peer' | 'unknown' | 'settled';
+    reason: string;
+    owner?: { pid: number; birth?: string };
+  } {
+    if (isCascadeStopSettled(facts, locallyHeld))
+      return { custody: 'settled', reason: 'terminal-and-unbound' };
+    const row = facts.owner;
+    if (!row)
+      return {
+        custody: locallyHeld ? 'local' : 'unknown',
+        reason: locallyHeld ? 'local-adapter' : 'no-session-owner',
+      };
+    const owner = {
+      pid: row.pid,
+      ...(row.birth === null ? {} : { birth: row.birth }),
+    };
+    if (
+      row.id === this.recoveryLedgerOwner.id ||
+      (row.pid === process.pid &&
+        row.identityKind === 'exact' &&
+        'birth' in this.recoveryLedgerOwner &&
+        row.birth === this.recoveryLedgerOwner.birth)
+    )
+      return {
+        custody: 'local',
+        reason: locallyHeld
+          ? 'local-boundary-and-adapter'
+          : 'local-owner-unbound',
+        owner,
+      };
+    if (row.pid === process.pid)
+      return { custody: 'unknown', reason: 'unverified-local-owner', owner };
+    const observed = this.recoveryProcessIdentity.probe(row.pid);
+    if (
+      row.identityKind === 'exact' &&
+      row.birth &&
+      observed.state === 'exact' &&
+      observed.identity.start === row.birth
+    )
+      return { custody: 'peer', reason: 'live-exact-boundary-owner', owner };
+    return {
+      custody: 'unknown',
+      reason: observed.state === 'dead' ? 'dead-owner' : 'unverified-owner',
+      owner,
+    };
+  }
+
+  recordCascadeStopCustody(
+    childId: string,
+    terminalId: string,
+    custody: 'local' | 'peer' | 'unknown',
+    reason: string,
+  ): boolean {
+    const result = z
+      .object({ changes: z.union([z.number(), z.bigint()]) })
+      .parse(
+        this.db
+          .prepare(`INSERT INTO orchestration_cascade_stop_custody VALUES (?, ?, ?, ?)
+      ON CONFLICT(child_session_id, terminal_event_id) DO UPDATE SET custody = excluded.custody, evidence_json = excluded.evidence_json
+      WHERE custody != excluded.custody OR evidence_json != excluded.evidence_json`)
+          .run(childId, terminalId, custody, JSON.stringify({ reason })),
+      );
+    return Number(result.changes) > 0;
+  }
+
+  completeCascadeStop(
+    childId: string,
+    terminalId: string,
+    result?: InterruptTurnResult,
+  ): void {
+    completeCascadeStop(this.db, childId, terminalId, result);
+  }
+
+  readCascadeInterruptResult(childId: string, terminalId: string) {
+    return readCascadeInterruptResult(this.db, childId, terminalId);
+  }
+
   readInputlessTurnDisposition(threadId: string) {
     return this.sessionTurnBoundaries.readInputlessTurnDisposition(threadId);
   }
@@ -16838,6 +17123,62 @@ export class EventStore {
     this.db.exec('BEGIN IMMEDIATE');
     try {
       this.createSkillExperienceSnapshots().deleteThread(threadId);
+      const owned = new Set([
+        threadId,
+        ...this.ownedDescendantsBottomUp(threadId),
+      ]);
+      for (const intent of this.pendingCascadeStops()) {
+        if (
+          (owned.has(intent.childId) || intent.parentId === threadId) &&
+          this.cascadeStopOwner(intent.childId).custody === 'settled'
+        )
+          this.completeCascadeStop(intent.childId, intent.terminalId);
+      }
+      if (
+        this.pendingCascadeStops().some(
+          (intent) => owned.has(intent.childId) || intent.parentId === threadId,
+        )
+      )
+        throw new Error(
+          'Cannot delete a Session with pending ownership cleanup.',
+        );
+      for (const childId of owned) {
+        if (childId === threadId) continue;
+        if (this.cascadeStopOwner(childId).custody !== 'settled')
+          throw new Error(
+            'Cannot delete a Session before owned child cleanup is confirmed.',
+          );
+      }
+      this.db
+        .prepare(
+          'DELETE FROM orchestration_session_ownership WHERE child_session_id = ? OR parent_session_id = ?',
+        )
+        .run(threadId, threadId);
+      this.db
+        .prepare(
+          'DELETE FROM orchestration_ownership_starts WHERE child_session_id = ? OR parent_session_id = ?',
+        )
+        .run(threadId, threadId);
+      this.db
+        .prepare(
+          'DELETE FROM orchestration_cascade_stop_custody WHERE child_session_id = ?',
+        )
+        .run(threadId);
+      this.db
+        .prepare(
+          'DELETE FROM orchestration_cascade_stop_results WHERE child_session_id = ?',
+        )
+        .run(threadId);
+      this.db
+        .prepare(
+          'DELETE FROM orchestration_cascade_stop_intents WHERE child_session_id = ?',
+        )
+        .run(threadId);
+      this.db
+        .prepare(
+          'DELETE FROM orchestration_cancellation_fences WHERE thread_id = ?',
+        )
+        .run(threadId);
       // A deleted conversation is no one's coordinator any more.
       coordinator.forgetConversation(threadId);
       this.db

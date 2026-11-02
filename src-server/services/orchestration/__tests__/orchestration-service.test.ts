@@ -28054,6 +28054,7 @@ describe('OrchestrationService', () => {
       'session.configured': 'non-fold',
       'session.state-changed': 'non-fold',
       'session.stop-settled': 'non-fold',
+      'session.cancellation-requested': 'non-fold',
       'session.approval-mode-set': 'non-fold',
       'session.exited': 'fold',
       'turn.started': 'fold',

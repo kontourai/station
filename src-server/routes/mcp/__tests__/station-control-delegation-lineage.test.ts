@@ -611,6 +611,7 @@ describe('#2601 delegate_task stamps lineage from the verified caller', () => {
       createChildDelegationContext({
         agentSlug: 'planner',
         conversationId: 'conversation-root',
+        sessionId: 'session-root',
         spec: SPECS.planner,
       }),
     );
@@ -779,8 +780,11 @@ describe('#2601 a request with no verified caller claims no lineage', () => {
 });
 
 describe('#2601 registry default Agents delegate under the default policy', () => {
-  const defaultPolicyChild = (agentSlug: string, conversationId: string) =>
-    createChildDelegationContext({ agentSlug, conversationId });
+  const defaultPolicyChild = (
+    agentSlug: string,
+    conversationId: string,
+    sessionId: string,
+  ) => createChildDelegationContext({ agentSlug, conversationId, sessionId });
 
   test.each([
     ['station', 'session-station', 'conversation-station'],
@@ -796,12 +800,12 @@ describe('#2601 registry default Agents delegate under the default policy', () =
       );
       expect(delegated.isError).toBe(false);
       expect(stampedDelegation(delegateTask)).toEqual(
-        defaultPolicyChild(agentSlug, conversationId),
+        defaultPolicyChild(agentSlug, conversationId, sessionId),
       );
       const sent = await callTool(sessionId, 'send_message', SEND_ARGS);
       expect(sent.isError).toBe(false);
       expect(stampedDelegation(executeForegroundMessage)).toEqual(
-        defaultPolicyChild(agentSlug, conversationId),
+        defaultPolicyChild(agentSlug, conversationId, sessionId),
       );
     },
   );
@@ -829,7 +833,7 @@ describe('#2601 registry default Agents delegate under the default policy', () =
     );
     expect(result.isError).toBe(false);
     expect(stampedDelegation(delegateTask)).toEqual(
-      defaultPolicyChild('codex', 'conversation-adopted'),
+      defaultPolicyChild('codex', 'conversation-adopted', 'session-adopted'),
     );
   });
 

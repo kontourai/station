@@ -256,6 +256,7 @@ export function writeTransaction<T>(
   db: TransactionalSqliteDatabase,
   savepoint: string,
   run: () => T,
+  mode: 'immediate' | 'deferred' = 'immediate',
 ): T {
   if (db.isTransaction) {
     db.exec(`SAVEPOINT ${savepoint}`);
@@ -273,7 +274,7 @@ export function writeTransaction<T>(
       throw error;
     }
   }
-  db.exec('BEGIN IMMEDIATE');
+  db.exec(mode === 'immediate' ? 'BEGIN IMMEDIATE' : 'BEGIN');
   try {
     const value = run();
     db.exec('COMMIT');
@@ -1393,8 +1394,11 @@ function readSettlementIdentity(
   return undefined;
 }
 
-function deliveryIdFor(childConversationId: string, transitionKey: string) {
-  return `dr-${createHash('sha256').update(`${childConversationId}\u0000${transitionKey}`).digest('hex').slice(0, 40)}`;
+function deliveryIdFor(childSessionId: string, terminalEventId: string) {
+  return `dr-${createHash('sha256')
+    .update(JSON.stringify([childSessionId, terminalEventId]))
+    .digest('hex')
+    .slice(0, 40)}`;
 }
 
 const rowKeyOf = (row: DelegationResultRow) =>
@@ -1699,6 +1703,13 @@ export class DelegationResultDelivery {
           settled.invocationId,
         )
       : { text: '', incomplete: false };
+    const terminal = this.ports
+      .foldEvents(thread)
+      .find(({ sequence }) => sequence === settled.sequence)?.event;
+    if (!terminal)
+      throw new Error(
+        'Child terminal identity is unavailable; result remains undelivered.',
+      );
     this.ports.store.record(
       {
         childConversationId,
@@ -1708,7 +1719,7 @@ export class DelegationResultDelivery {
         childSessionId: thread,
         ...(settled.turnId ? { childTurnId: settled.turnId } : {}),
         outcome: settled.outcome,
-        deliveryId: deliveryIdFor(childConversationId, transitionKey),
+        deliveryId: deliveryIdFor(thread, terminal.eventId),
         text: composeDelegationResultText({
           taskId: owner.taskId,
           ...(owner.childAgent ? { agent: owner.childAgent } : {}),
@@ -1752,7 +1763,7 @@ export class DelegationResultDelivery {
         childSessionId: thread,
         childTurnId: interrupted.turnId,
         outcome: 'interrupted',
-        deliveryId: deliveryIdFor(childConversationId, transitionKey),
+        deliveryId: deliveryIdFor(thread, interrupted.eventId),
         text: composeDelegationResultText({
           taskId: owner.taskId,
           ...(owner.childAgent ? { agent: owner.childAgent } : {}),

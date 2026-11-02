@@ -56,6 +56,238 @@ export function removeEmptyRender(source) {
 }
 export const MUTATIONS = [
   {
+    id: 'cascade-custody-ui',
+    test: 'src-ui/src/__tests__/owned-work-status.test.tsx',
+    failure: 'owned cleanup renders',
+    files: [
+      {
+        path: 'src-ui/src/views/home/work-facts.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'if (session?.ownedWork) entry.ownedWorkState = session.ownedWork.state;',
+            '',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'cascade-ended-child',
+    test: 'src-server/services/orchestration/__tests__/ownership-cascade-review.test.ts',
+    failure: 'a parent Stop completes for a terminal unbound child',
+    files: [
+      {
+        path: 'src-server/services/orchestration/cancellation-fence.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'return facts.confirmedStop || (facts.terminal && !locallyHeld);',
+            'return facts.confirmedStop;',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'cascade-unknown-holds-parent',
+    test: 'src-server/services/orchestration/__tests__/ownership-cascade-review.test.ts',
+    failure: 'unknown cleanup stays visible while the parent stops itself',
+    files: [
+      {
+        path: 'src-server/services/orchestration/event-store.ts',
+        change: (source) =>
+          exactReplace(source, "intent.custody !== 'unknown'", 'true'),
+      },
+    ],
+  },
+  {
+    id: 'cascade-ended-child-deletion',
+    test: 'src-server/services/orchestration/__tests__/ownership-cascade-review.test.ts',
+    failure: 'a terminal unbound child permits parent deletion',
+    files: [
+      {
+        path: 'src-server/services/orchestration/event-store.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "if (this.cascadeStopOwner(childId).custody !== 'settled')",
+            "if (this.classifyCascadeStop({ ...readCascadeSessionFacts(this.db, [childId]).get(childId)!, terminal: false }, this.hasSessionBinding(childId)).custody !== 'settled')",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'cascade-self-peer',
+    test: 'src-server/services/orchestration/__tests__/ownership-cascade-review.test.ts',
+    failure:
+      'unknown cleanup stays visible while the parent stops itself: self',
+    files: [
+      {
+        path: 'src-server/services/orchestration/event-store.ts',
+        change: (source) =>
+          exactReplace(
+            exactReplace(
+              source,
+              "if (row.pid === process.pid)\n      return { custody: 'unknown', reason: 'unverified-local-owner', owner };",
+              '',
+            ),
+            'row.id === this.recoveryLedgerOwner.id ||',
+            '(locallyHeld && row.id === this.recoveryLedgerOwner.id) || false &&',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'cascade-prepared-fence',
+    test: 'src-server/services/orchestration/__tests__/cancellation-fence.test.ts',
+    failure: 'a fence refuses an otherwise eligible prepared claim',
+    files: [
+      {
+        path: 'src-server/services/orchestration/cancellation-fence.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '  const row = z\n    .object({ thread_id: z.string(), state: z.string() })',
+            '  return false;\n  const row = z\n    .object({ thread_id: z.string(), state: z.string() })',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'cascade-custody-api',
+    test: 'src-server/services/orchestration/__tests__/ownership-cascade-review.test.ts',
+    failure: 'unknown cleanup stays visible while the parent stops itself',
+    files: [
+      {
+        path: 'src-server/services/orchestration/event-store.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'pendingStops: [...counts.values()],',
+            'pendingStops: [],',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'cascade-parking-disabled-pickup',
+    test: 'src-server/services/orchestration/__tests__/cascade-stop-delivery.process.test.ts',
+    failure:
+      'a live peer retains the intent and its actual owner reconciles: parking-disabled-terminal-pickup',
+    files: [
+      {
+        path: 'src-server/services/orchestration/orchestration-service.ts',
+        change: (source) => {
+          const start = source.indexOf('  private observeCommittedEvent(');
+          return (
+            source.slice(0, start) +
+            exactReplace(
+              source.slice(start),
+              "      event.method === 'turn.completed' ||\n      event.method === 'turn.aborted' ||\n      event.method === 'session.exited'",
+              "      event.method === 'turn.aborted' ||\n      event.method === 'session.exited'",
+            )
+          );
+        },
+      },
+    ],
+  },
+  {
+    id: 'cascade-muse-unconfirmed-retry',
+    test: 'src-server/providers/__tests__/muse-serve-adapter.test.ts',
+    failure:
+      'cascade keeps an unconfirmed Muse child pending across repeated delivery',
+    files: [
+      {
+        path: 'src-server/providers/adapters/muse-serve-session.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'if (this.stopConfirmed) return { terminationConfirmed: true };',
+            'if (this.stopped) return { terminationConfirmed: true };',
+          ),
+      },
+    ],
+  },
+
+  {
+    id: 'cascade-parent-first',
+    test: 'src-server/services/orchestration/__tests__/ownership-cascade.test.ts',
+    failure:
+      'Stop traverses verified descendants bottom-up and excludes claimed and background boundaries',
+    files: [
+      {
+        path: 'src-server/services/orchestration/event-store.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "WHERE i.state = 'pending' ORDER BY i.rowid",
+            "WHERE i.state = 'pending' ORDER BY i.rowid DESC",
+          ),
+      },
+      {
+        path: 'src-server/services/orchestration/orchestration-service.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'store.hasPendingCascadeDescendant(intent.childId, intent.terminalId)',
+            'false',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'cascade-adapter-repeat-stop',
+    test: 'src-server/providers/__tests__/adapter-conformance.test.ts',
+    failure: 'lifecycle — adapter-shape.ts hasSession:',
+    files: [
+      'claude',
+      'codex',
+      'acp',
+      'muse',
+      'station-agent',
+      'bedrock',
+      'ollama',
+    ].map((name) => ({
+      path: `src-server/providers/adapters/${name}-adapter.ts`,
+      change: (source) =>
+        exactReplace(
+          source,
+          'async stopSession(threadId: string): Promise<void> {',
+          `async stopSession(threadId: string): Promise<void> {
+    if (!(await this.hasSession(threadId))) throw new Error('Injected repeated stop rejection');`,
+        ),
+    })),
+  },
+  {
+    id: 'cascade-owned-activity',
+    test: 'src-server/services/orchestration/__tests__/ownership-cascade.test.ts',
+    failure:
+      'parent summaries remain running until the owned child stop settles',
+    files: [
+      {
+        path: 'src-server/services/orchestration/event-store.ts',
+        change: (source) =>
+          exactReplace(source, 'current.active &&', 'false &&'),
+      },
+    ],
+  },
+  {
+    id: 'cascade-pending-activity',
+    test: 'src-server/services/orchestration/__tests__/ownership-cascade.test.ts',
+    failure:
+      'parent summaries remain running until the owned child stop settles',
+    files: [
+      {
+        path: 'src-server/services/orchestration/event-store.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'pendingStopCount: stops.length,',
+            'pendingStopCount: 0,',
+          ),
+      },
+    ],
+  },
+  {
     id: 'attention-snooze-pending',
     test: 'src-server/services/projects/__tests__/attention-projection.test.ts',
     failure:

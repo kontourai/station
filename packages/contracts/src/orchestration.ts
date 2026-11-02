@@ -1141,7 +1141,22 @@ export interface TerminalAttribution {
   detail?: string;
 }
 
+export interface OwnedSessionActivity {
+  runningChildCount: number;
+  pendingStopCount: number;
+  pendingStops: Array<{
+    custody: 'local' | 'peer' | 'unknown';
+    reason: string;
+    count: number;
+  }>;
+}
+
 export interface OrchestrationSessionSummary extends ProviderSession {
+  /** Aggregate owned execution activity; the parent's own event fold is retained. */
+  ownedWork?: OwnedSessionActivity & {
+    state: 'running' | 'stopping' | 'waiting-on-peer' | 'unknown';
+    ownLifecycleState: SessionLifecycleState;
+  };
   controlMode: SessionControlMode;
   /**
    * REQUIRED, and that is the point (ADR 0012 / archive#1778). The consumer

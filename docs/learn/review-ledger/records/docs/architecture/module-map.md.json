@@ -1508,7 +1508,31 @@
 
     "src-server/services/terminal/terminal-tickets.ts",
 
-    "packages/sdk/src/client/terminal-session-store.ts"
+    "packages/sdk/src/client/terminal-session-store.ts",
+
+    "src-server/services/orchestration/ownership-tree.ts",
+
+    "src-server/services/orchestration/cancellation-fence.ts",
+
+    "src-server/services/orchestration/__tests__/ownership-tree.test.ts",
+
+    "src-server/services/orchestration/__tests__/ownership-cascade.test.ts",
+
+    "src-server/services/orchestration/__tests__/cascade-stop-delivery.process.test.ts",
+
+    "src-server/services/orchestration/__tests__/cancellation-fence.test.ts",
+
+    "src-server/services/orchestration/__tests__/cancellation-fence-race.process.test.ts",
+
+    "src-server/services/orchestration/__tests__/ownership-cascade-review.test.ts",
+
+    "packages/contracts/src/session-attention.ts",
+
+    "src-ui/src/views/home/work-facts.ts",
+
+    "src-ui/src/views/home/work-status.ts",
+
+    "src-ui/src/__tests__/owned-work-status.test.tsx"
   ],
 
   "checks": [

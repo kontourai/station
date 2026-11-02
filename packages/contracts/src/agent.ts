@@ -320,6 +320,8 @@ export interface AgentDelegationContext {
   maxDepth: number;
   parentAgentSlug: AgentId;
   parentConversationId?: string;
+  /** Exact initiating execution; lifecycle authority also requires server-derived provenance. */
+  parentSessionId?: string;
   rootAgentSlug: AgentId;
   rootConversationId?: string;
   allowedTools?: string[];

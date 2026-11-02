@@ -1,3 +1,4 @@
+import type { OwnedSessionActivity } from '@kontourai/station-contracts/orchestration';
 import { SESSION_RECOVERY_FAILED_CODE } from '@kontourai/station-contracts/provider-failure';
 import type { ProviderRuntimeErrorEvent } from '@kontourai/station-contracts/runtime-events';
 import { providerFailure } from '../../providers/provider-failure.js';
@@ -568,6 +569,7 @@ export function buildOrchestrationSessionSummary(options: {
     threadId: string,
     provider: string | undefined,
   ) => ChildWorkSessionView | undefined;
+  readOwnedWork?: (threadId: string) => OwnedSessionActivity | undefined;
   /**
    * The CONVERSATION's first prompted turn, supplied only when this thread is a
    * continuation child (`EventStore.conversationRootFirstPromptedTurn`).
@@ -793,6 +795,24 @@ export function buildOrchestrationSessionSummary(options: {
     hasActiveTurn: hasOpenTurn(events),
     ...(draft !== undefined ? { draft } : {}),
   };
+  const ownedWork = options.readOwnedWork?.(base.threadId);
+  if (
+    ownedWork &&
+    (ownedWork.runningChildCount > 0 || ownedWork.pendingStopCount > 0)
+  ) {
+    summary.ownedWork = {
+      ...ownedWork,
+      state: ownedWork.pendingStops.some((stop) => stop.custody === 'unknown')
+        ? 'unknown'
+        : ownedWork.pendingStops.some((stop) => stop.custody === 'peer')
+          ? 'waiting-on-peer'
+          : ownedWork.pendingStopCount > 0
+            ? 'stopping'
+            : 'running',
+      ownLifecycleState: lifecycle.lifecycleState,
+    };
+    summary.lifecycleState = 'running';
+  }
   // #2456: a delegated session, as its parent's child work. Derived from the
   // summary's own folds (delegation + open turn + lifecycle), so it can never
   // disagree with the members it is computed from.

@@ -69,6 +69,9 @@ export interface WorkFacts {
   station?: { id: string; label: string };
   attention?: WorkAttentionKind;
   activity?: WorkActivity;
+  ownedWorkState?: NonNullable<
+    OrchestrationSessionSummary['ownedWork']
+  >['state'];
 }
 
 export type WorkFactsById = ReadonlyMap<string, WorkFacts>;
@@ -234,6 +237,7 @@ export function buildWorkFacts({
       if (attention) entry.attention = attention;
     }
     if (item.lifecycleLabel === 'Running') {
+      if (session?.ownedWork) entry.ownedWorkState = session.ownedWork.state;
       const activity =
         workActivityFrom(session?.conversationActivity, session?.threadId) ??
         // The chat's own copy of the server record; a turn a Stop receipt
