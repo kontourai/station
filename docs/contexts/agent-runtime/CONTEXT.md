@@ -134,8 +134,4 @@ physical-crash, cache-benefit or release qualification. Text input is the previe
 supported admission form; unavailable configuration holds recovery.
 
 
-The opt-in agent-turn writer now uses compressed frame blocks and shared native
-text bodies while retaining logical frame and provider chunk boundaries. Finished
-completed-turn replay expires after seven days; a refusing tombstone and explicit
-expiry frame remain. Uncertain turns retain their evidence. See the private package
-README for writer-11 storage, typed frame capacity, and steer replay contracts.
+The opt-in agent-turn writer uses packed delta/frame blocks and shared native text while retaining logical frame and provider chunk boundaries. Writer 12 tracks typed body references under a private connection permit. Indexed expiry/garbage queues bound maintenance per command; later commands drain the backlog. Every terminal state retains replay for seven days, then a compact identity tombstone synthesizes the refusing expiry frames. Uncertain nonterminal turns retain their evidence. See the private package README for migration, work budgets, typed corruption/capacity and real-stream steer replay contracts.
