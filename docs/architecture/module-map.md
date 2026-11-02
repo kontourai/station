@@ -6404,7 +6404,7 @@ the operator in person and the operator's own paired devices
 ([`isTerminalOperator`](../../src-server/security/coding-authority.ts)); hosted,
 account, member, agent and plugin admission is withheld. Engine sign-in, the
 Project terminal close and the process projections reach TerminalSessions; no
-other terminal service or listener remains. An ACP agent's terminals are
+other terminal service or listener remains. An ACP engine's terminals are
 `command` sessions opened through
 [AcpSessionTerminals](../../src-server/services/acp/acp-session-terminals.ts)
 (pipes and an output cap, from

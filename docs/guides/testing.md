@@ -958,7 +958,7 @@ startup sweep reaps its orphaned engine and grandchild (#3873). The
 supervisor's terminal workload tests run there too: the workload host with
 real ConPTY shells, and a journey whose shell keeps its pid and journal across
 a handoff of built supervisor and workload host bundles. The command-session
-suite runs there as well: output caps, exits and ACP agent terminals without a
+suite runs there as well: output caps, exits and ACP engine terminals without a
 PTY (its PTY restart cases are POSIX-only). A ConPTY cannot change
 parents, so Windows is where that design is load-bearing.
 Full Windows Vitest parity

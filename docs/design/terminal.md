@@ -457,7 +457,7 @@ default output cap (a cap outside 1 KiB to 1 GiB is refused, not clamped).
 Output past the cap is not journaled; the command is ended, and its record
 reports `outputCapped`. The exit also records the signal number that ended it.
 
-An ACP agent's `terminal/create`, `terminal/output`, `terminal/wait_for_exit`,
+An ACP engine's `terminal/create`, `terminal/output`, `terminal/wait_for_exit`,
 `terminal/kill` and `terminal/release` run on these sessions
 ([`acp-session-terminals.ts`](../../src-server/services/acp/acp-session-terminals.ts))
 wherever the host has terminal sessions (a personal host). They are recorded

@@ -1108,7 +1108,7 @@ non-operator members is a separate program and is not widened here.
   WebSocket path to Station; the client refuses raw terminal egress there
   before minting a ticket. That egress stays closed until a broker transport
   for the socket exists and this model is updated.
-- **Agent commands and restart.** On a personal host an ACP agent's
+- **Agent commands and restart.** On a personal host an ACP engine's
   terminals are command sessions in the same store, recorded under the
   agent session's Project (or a reserved `.agent-terminals` Project) and its
   `thread:<id>` binding. The operator, and their own devices with

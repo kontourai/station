@@ -337,7 +337,7 @@ product decisions.
     default), after which they are ended and their exit reports
     `outputCapped`. The cap, signal reporting and group termination live in
     [`command-process.ts`](../../src-server/services/terminal/command-process.ts),
-    shared with the in-process host. An ACP agent's terminals are command
+    shared with the in-process host. An ACP engine's terminals are command
     sessions ([terminal design](terminal.md#session-kinds)). An exited
     workload's id may be spawned again; that is how an explicit restart keeps
     a session's id. Reattaching the engine that started a command is not
