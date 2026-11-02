@@ -580,28 +580,29 @@ outputs are **NOT_VERIFIED** by the deterministic fixture suite.
 
 ### Delivery API route audit
 
-The mounted route owners are `runtime-routes.ts:3219` (`/agents`), `:3251`
-(`/api/skills`) and `:3912` (`/integrations`). Setup requires an operator
-credential with authority to author command-backed integrations; the integration
-management middleware and command-choice gate are not bypassed by a probe.
-`validate()` parses JSON and applies the named schema
-(`src-server/routes/schemas/schema-validation.ts:67`). GET/DELETE leaves use
-`param()` (`:114`) plus the named service's ownership/existence checks; they have
-no body schema. The probe sends no PUT requests.
+[configureRuntimeRoutes](../../src-server/runtime/routes/runtime-routes.ts)
+mounts `/agents`, `/api/skills` and `/integrations` through the route factories
+below. Setup requires an operator credential with authority to author
+command-backed integrations; the integration management middleware and
+command-choice gate are not bypassed by a probe.
+[`validate()` and `param()`](../../src-server/routes/schemas/schema-validation.ts)
+own body parsing and required route parameters. GET/DELETE leaves also use the
+named service's ownership/existence checks; they have no body schema. The probe
+sends no PUT requests.
 
 | Probe request | Real route owner | Validation / submitted body |
 | --- | --- | --- |
-| `POST /integrations` | `src-server/routes/agents/tools.ts:422` | `integrationSchema`, `src-server/routes/schemas/schema-definitions/runtime.ts:222`; `{ id, kind: 'mcp', transport: 'stdio', command, args }`, or the documented HTTP `endpoint` variant. The route saves it disabled. |
-| `POST /integrations/:id/reconnect` | `src-server/routes/agents/tools.ts:894` | No body schema; `{}` is ignored. `probeIntegration` performs the real handshake and persists inventory. |
-| `GET /integrations` | `src-server/routes/agents/tools.ts:342` | No body; discovered original tool names are projected by the real route. |
-| `POST /integrations/:id/tools/apply` | `src-server/routes/agents/tools.ts:999` | `integrationToolsApplySchema`, `runtime.ts:301`; `{ disabledTools: ['blocked'] }`. |
-| `POST /integrations/:id/enabled` | `src-server/routes/agents/tools.ts:908` | `integrationEnabledSchema`, `runtime.ts:300`; `{ enabled: true }`. |
-| `POST /api/skills/local` | `src-server/routes/agents/skills.ts:145` | `localSkillCreateSchema`, `src-server/routes/schemas/schema-definitions/content.ts:76`; string `name`/`body`, description; omitted `global` uses the local package scope. |
-| `GET /api/skills/:name` | `src-server/routes/agents/skills.ts:116` | Required name parameter; `getSkill` resolves the package path. |
-| `POST /agents` | `src-server/routes/agents/agents.ts:362` | `agentCreateSchema`, `content.ts:437`, then `validator.validateAgentSpec` (`src-server/domain/validator.ts:92`, managed prompt guard `:132`); name/slug/model/prompt, execution binding and Auto mode, selected skill and MCP servers. Additional Agent fields pass through to the real service/loader; the route checks selected skill names. |
-| `DELETE /agents/:slug` | `src-server/routes/agents/agents.ts:557` | Required slug; service refuses reserved identities or referenced Agents. |
-| `DELETE /api/skills/:name` | `src-server/routes/agents/skills.ts:324` | Required name; service requires a writable, owned package. |
-| `DELETE /integrations/:id` | `src-server/routes/agents/tools.ts:869` | Required ID; built-ins and contributed definitions cannot be deleted. Removing the integration also removes its stored disable policy. |
+| `POST /integrations` | [createToolRoutes](../../src-server/routes/agents/tools.ts) | `integrationSchema`, `src-server/routes/schemas/schema-definitions/runtime.ts`; `{ id, kind: 'mcp', transport: 'stdio', command, args }`, or the documented HTTP `endpoint` variant. The route saves it disabled. |
+| `POST /integrations/:id/reconnect` | [createToolRoutes](../../src-server/routes/agents/tools.ts) | No body schema; `{}` is ignored. `probeIntegration` performs the real handshake and persists inventory. |
+| `GET /integrations` | [createToolRoutes](../../src-server/routes/agents/tools.ts) | No body; discovered original tool names are projected by the real route. |
+| `POST /integrations/:id/tools/apply` | [createToolRoutes](../../src-server/routes/agents/tools.ts) | `integrationToolsApplySchema`, `runtime.ts`; `{ disabledTools: ['blocked'] }`. |
+| `POST /integrations/:id/enabled` | [createToolRoutes](../../src-server/routes/agents/tools.ts) | `integrationEnabledSchema`, `runtime.ts`; `{ enabled: true }`. |
+| `POST /api/skills/local` | [createSkillRoutes](../../src-server/routes/agents/skills.ts) | `localSkillCreateSchema`, `src-server/routes/schemas/schema-definitions/content.ts`; string `name`/`body`, description; omitted `global` uses the local package scope. |
+| `GET /api/skills/:name` | [createSkillRoutes](../../src-server/routes/agents/skills.ts) | Required name parameter; `getSkill` resolves the package path. |
+| `POST /agents` | [createAgentRoutes](../../src-server/routes/agents/agents.ts) | `agentCreateSchema`, `content.ts`, then `validator.validateAgentSpec` (`src-server/domain/validator.ts`, including its managed prompt guard); name/slug/model/prompt, execution binding and Auto mode, selected skill and MCP servers. Additional Agent fields pass through to the real service/loader; the route checks selected skill names. |
+| `DELETE /agents/:slug` | [createAgentRoutes](../../src-server/routes/agents/agents.ts) | Required slug; service refuses reserved identities or referenced Agents. |
+| `DELETE /api/skills/:name` | [createSkillRoutes](../../src-server/routes/agents/skills.ts) | Required name; service requires a writable, owned package. |
+| `DELETE /integrations/:id` | [createToolRoutes](../../src-server/routes/agents/tools.ts) | Required ID; built-ins and contributed definitions cannot be deleted. Removing the integration also removes its stored disable policy. |
 
 The [real-route lifecycle suite](../../scripts/__tests__/engine-delivery-routes.test.ts)
 mounts these actual Hono route factories with real ConfigLoader, SkillService,
@@ -629,6 +630,6 @@ exercise external adapters' passthrough or prove native policy enforcement.
 
 | Turn request | Real route owner | Validation / submitted body |
 | --- | --- | --- |
-| `POST /api/orchestration/chat` | `src-server/routes/orchestration/orchestration.ts:2916` | `foregroundMessageSchema` (`:981`, derived from `foregroundMessageObjectSchema`, `:802`); conversation ID, selected temporary Agent in `target`, expected engine, directory workspace, `model.override`, message and client turn ID. |
-| `POST /api/orchestration/chat/:conversationId/continue` | `orchestration.ts:3310` | `continueForegroundMessageSchema` (`:997`); message, `model.override` and client turn ID. |
-| `POST /api/orchestration/commands` | `orchestration.ts:5650` | `orchestrationCommandSchema` (`:571`); cleanup uses only `{ type: 'stopSession', threadId }`, never start/send commands. |
+| `POST /api/orchestration/chat` | [createOrchestrationRoutes](../../src-server/routes/orchestration/orchestration.ts) | `foregroundMessageSchema` (derived from `foregroundMessageObjectSchema`); conversation ID, selected temporary Agent in `target`, expected engine, directory workspace, `model.override`, message and client turn ID. |
+| `POST /api/orchestration/chat/:conversationId/continue` | [createOrchestrationRoutes](../../src-server/routes/orchestration/orchestration.ts) | `continueForegroundMessageSchema`; message, `model.override` and client turn ID. |
+| `POST /api/orchestration/commands` | [createOrchestrationRoutes](../../src-server/routes/orchestration/orchestration.ts) | `orchestrationCommandSchema`; cleanup uses only `{ type: 'stopSession', threadId }`, never start/send commands. |

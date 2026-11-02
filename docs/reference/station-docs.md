@@ -197,6 +197,13 @@ or terminal result must not be invented to make engines look uniform. An idle
 turn is not necessarily a terminal Session, and optional Flow gating must not
 be inferred from ordinary execution completion.
 
+Report-member Sessions can use a recorded sealed-source policy instead of the
+ordinary managed-journal policy for the same engine. They do not admit generic
+Steer or Queue as new paid work; use their bounded report/group controls. An
+interruption or saved cursor does not prove provider termination, release unknown
+accounting or authorize replay. See the [Session input restrictions](session-api.md#submit-steer-follow-up-or-display-input)
+and [report-group API](api.md#report-groups).
+
 ## Tasks and the task workspace
 
 A Task is a durable, user-addressable work identity belonging to a Project. It survives restarts and can span execution episodes. Sessions also retain persisted history; their purpose is to record an execution episode rather than own the durable work identity. A Task may correlate an exact Session, or none at all.

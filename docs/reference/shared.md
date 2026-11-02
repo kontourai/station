@@ -53,9 +53,12 @@ ownership of waiting and reclamation.
 The server's [HomeWriterOwner](../../src-server/services/ssh/home-writer-owner.ts)
 adopts this contract for canonical-home identity, mandatory pairing construction
 and registry, token and native-push mutation spans. Async token operations acquire
-the same hold; their synchronous lookup touch leaves no deferred writer. Accounting
-recovery remains unfinished. Its file operations remain synchronous;
-no guarantee is made about latency on a stalled filesystem.
+the same hold; their synchronous lookup touch leaves no deferred writer.
+[Report accounting recovery](api.md#report-groups) now holds runtime publication
+custody and an exact Home scope. Broader all-writer and live recovery
+qualification remain separate; this does not enable the continuation finalizer.
+File operations remain synchronous, with no latency guarantee on a stalled
+filesystem.
 
 The [export map](../../packages/shared/package.json) selects source files, mostly
 `.ts` with a few `.mjs` Node leaves, and declares Node 24.x. See the

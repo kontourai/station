@@ -6443,12 +6443,24 @@ until publication exclusion across rounds writers is qualified. A 404 from an
 older host is reported as unsupported.
 
 
-`@kontourai/station-sdk/client` exports `createReportGroup`, `getReportGroup`,
-`listReportGroups`, `cancelReportGroup`, `finalizeReportGroupCancel`, `readReportGroupEvents`,
-`subscribeReportGroupEvents`, `readReportGroupResult`, `syncReportGroupContext`
-`finalizeReportGroupSync` and `recoverReportGroupAccounting`. Public shapes live at
-`@kontourai/station-contracts/report-group`. This is the personal-host advisory
-report surface, separate from CLI session groups. Optional create `flow` selectors
+`@kontourai/station-sdk/client` exports these report operations:
+
+- Creation and reads: `parseReportGroupInput`, `createReportGroup`,
+  `getReportGroup`, `listReportGroups`, `readReportGroupEvents`,
+  `subscribeReportGroupEvents` and `readReportGroupResult`.
+- Context and input: `parseReportGroupContextSyncInput`,
+  `readReportGroupContextCheckpoint`, `syncReportGroupContext`,
+  `finalizeReportGroupSync`, `narrowReportGroupAfterInput` and
+  `syncReportGroupAfterInput`.
+- Continuation and recovery: `continueReportGroupReport`,
+  `finalizeReportGroupContinuation`, `cancelReportGroup`,
+  `finalizeReportGroupCancel` and `recoverReportGroupAccounting`.
+
+Public shapes live at `@kontourai/station-contracts/report-group`.
+Export availability does not imply that a host enables an operation; the
+continuation finalizer remains unavailable as described above.
+This personal-host advisory report surface is separate from CLI session groups.
+Optional create `flow` selectors
 bind a run ID and exact seat-to-step map; workspace and grants remain server-owned.
 Views distinguish independent advisory and retained Flow topology. Flow owns
 frontier, claims, joins and gates; reports grant no gate acceptance. See the
