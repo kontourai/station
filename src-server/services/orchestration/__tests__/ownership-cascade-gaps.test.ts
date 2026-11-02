@@ -414,30 +414,28 @@ test('a probe spanning a new recheck cannot clear that request before a fresh pr
   const f = await fixture('unknown');
   let releaseFirst!: () => void;
   let releaseFresh!: () => void;
-  let entered!: () => void;
-  let observed!: () => void;
   const first = new Promise<void>((resolve) => {
     releaseFirst = resolve;
   });
   const fresh = new Promise<void>((resolve) => {
     releaseFresh = resolve;
   });
-  const probing = new Promise<void>((resolve) => {
-    entered = resolve;
-  });
-  const recorded = new Promise<void>((resolve) => {
-    observed = resolve;
-  });
   let maintenance: Promise<void> | undefined;
   try {
     await f.service.dispatch({ type: 'stopSession', threadId: 'parent' });
+    f.store.upsertSession({
+      threadId: 'child',
+      provider: 'claude',
+      status: 'running',
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
+    });
     f.store.requestCascadeRecheck('parent');
     let probes = 0;
     vi.mocked(f.adapter.hasSession).mockImplementation(async (id) => {
       if (id !== 'child') return f.running.has(id);
       probes += 1;
       if (probes === 1) {
-        entered();
         await first;
       } else await fresh;
       return false;
@@ -449,16 +447,15 @@ test('a probe spanning a new recheck cannot clear that request before a fresh pr
         const result = record(...args);
         if (args[0] === 'child' && firstRecord) {
           firstRecord = false;
-          observed();
         }
         return result;
       },
     );
     maintenance = f.service.maintainOwnedWork();
-    await probing;
+    await vi.waitFor(() => expect(probes).toBeGreaterThan(0));
     f.store.requestCascadeRecheck('parent');
     releaseFirst();
-    await recorded;
+    await vi.waitFor(() => expect(firstRecord).toBe(false));
     expect(() =>
       f.store.deleteThread('parent', { releaseUnknownOwnedWork: true }),
     ).toThrow('still checking');
