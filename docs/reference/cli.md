@@ -3689,6 +3689,14 @@ confinement, and Station's own artifact verification. Do not substitute
 skipping every one of those checks. Agent execution does not use
 `node-pty` and is unaffected either way.
 
+For each running instance, `Terminal shell host (<instance>)` passes when its
+supervisor granted the core `workloads` (read from the supervisor's status),
+so shells survive a core restart; otherwise it warns and says why, and shells
+run in the core server, ending with it and reopening after it. `Terminal PTY
+host bundle (<instance>)` warns when `station-pty-host.js` is missing beside
+the server bundle. With no instance running, one `Terminal shell host` line
+says so.
+
 ```
 station doctor [--json]
 ```

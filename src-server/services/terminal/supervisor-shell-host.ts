@@ -267,7 +267,7 @@ export class SupervisorShellHost implements ShellHost {
   async attach(
     terminalId: string,
     journal: ShellJournalSpec,
-  ): Promise<HostedShellProcess | null> {
+  ): Promise<HostedShellProcess | 'ended' | null> {
     let info: WorkloadInfo;
     try {
       info = (await this.channel.requestWorkload({
@@ -281,7 +281,7 @@ export class SupervisorShellHost implements ShellHost {
     // The host marks a workload exited and sends its exit event in one step,
     // and the channel keeps order, so a workload reported running here
     // reports its exit after this reply, to the listener subscribed below.
-    if (info.state !== 'running') return null;
+    if (info.state !== 'running') return 'ended';
     return new WorkloadProcess(this.channel, info, journal);
   }
 }

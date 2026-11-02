@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import {
+  cp,
   lstat,
   mkdir,
   readdir,
@@ -7,6 +8,7 @@ import {
   realpath,
   rename,
   rm,
+  stat,
   writeFile,
 } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
@@ -29,6 +31,14 @@ import {
   TerminalJournal,
   type TerminalJournalOptions,
 } from './terminal-journal.js';
+import {
+  defaultTerminalJournalDirectory,
+  type TerminalRetention,
+} from './terminal-retention.js';
+
+/** Written between a shell's earlier output and the shell reopened after a restart. */
+export const TERMINAL_RESTORED_DIVIDER =
+  '\r\n\x1b[2m── restored after restart ──\x1b[0m\r\n';
 
 const limitsSchema = z
   .object({
@@ -84,7 +94,9 @@ const recordSchema = scopeSchema
     /**
      * Absent: an interactive PTY. `command`: a server-launched program with
      * no PTY whose output is capped at `outputCapBytes` (an agent's ACP
-     * terminal). Its program is never stored, so it cannot be restarted.
+     * terminal). Its program is never stored, so it cannot be restarted. It is
+     * never a user shell: no ordinal, no restore, and it is retained in its
+     * own pool.
      */
     kind: z.literal('command').optional(),
     outputCapBytes: z.number().int().optional(),
@@ -109,6 +121,18 @@ const recordSchema = scopeSchema
         imported: z.boolean(),
       })
       .optional(),
+    /** A shell's stable "Shell N" number within its binding. */
+    ordinal: z.number().int().positive().optional(),
+    /** The journal's parent directory; absent is `<home>/terminal-journals`. */
+    journalRoot: z.string().min(1).optional(),
+    /** Opened with history off: its journal was never written to disk. */
+    persist: z.literal(false).optional(),
+    /** When it ended, for age-based expiry. */
+    endedAt: z.number().optional(),
+    /** When a shell was reopened after its host restarted. */
+    restoredAt: z.number().optional(),
+    /** Ended because its in-process host stopped with the core, not by itself. */
+    hostStopped: z.literal(true).optional(),
   })
   .strict();
 type SessionRecord = z.infer<typeof recordSchema>;
@@ -156,6 +180,32 @@ interface TerminalSessionAuthority<Principal> {
     principal: Principal,
     scope: TerminalSessionScope,
   ): Promise<string>;
+  /**
+   * Whether a shell that ended because its host restarted may be reopened in
+   * its binding. Absent: none is, and such shells stay ended.
+   */
+  restorable?(scope: TerminalSessionScope): Promise<boolean>;
+}
+
+function isShell(record: SessionRecord): boolean {
+  return (
+    record.kind !== 'command' &&
+    (!record.launch || record.launch.kind === 'shell')
+  );
+}
+
+/**
+ * Agent commands are retained apart from everything else, so a busy agent
+ * can only expire its own ended commands, never a person's shell history.
+ */
+const COMMAND_SESSION_SLOTS = 16;
+type RetentionPool = 'command' | 'session';
+function poolOf(record: SessionRecord): RetentionPool {
+  return record.kind === 'command' ? 'command' : 'session';
+}
+
+function sameScope(a: TerminalSessionScope, b: TerminalSessionScope) {
+  return a.projectId === b.projectId && a.bindingKey === b.bindingKey;
 }
 
 /** Project/binding authority belongs here, independently of any transport. */
@@ -168,8 +218,10 @@ export class TerminalSessions<Principal> {
   private persistence: Promise<void> = Promise.resolve();
   private readonly ready: Promise<void>;
   private disposed = false;
-  private readonly capacity: number;
+  private readonly budget: z.infer<typeof limitsSchema>;
   private readonly journalOptions: TerminalJournalOptions;
+  private readonly defaultRetention: TerminalRetention;
+  private retention: TerminalRetention;
   private readonly listeners = new Set<(terminalId: string) => void>();
   private readonly exits = new Map<string, (exit: TerminalExit) => void>();
 
@@ -183,15 +235,23 @@ export class TerminalSessions<Principal> {
       maxDiskBytes?: number;
       maxTailBytes?: number;
     } = {},
+    /**
+     * The retention settings, read again before each open and maintenance
+     * pass. Absent: the constructor's limits, with no age expiry.
+     */
+    private readonly readRetention?: () => Promise<TerminalRetention>,
   ) {
     this.journalOptions = resolveTerminalJournalOptions(journalOptions);
-    const budget = limitsSchema.parse(limits);
-    this.capacity = Math.min(
-      budget.maxSessions,
-      Math.floor(budget.maxDiskBytes / this.journalOptions.maxBytes),
-      Math.floor(budget.maxTailBytes / this.journalOptions.tailBytes),
-    );
-    if (this.capacity < 1)
+    this.budget = limitsSchema.parse(limits);
+    this.defaultRetention = {
+      persist: this.journalOptions.persist,
+      directory: defaultTerminalJournalDirectory(home),
+      maxAgeMs: Number.POSITIVE_INFINITY,
+      maxTerminalBytes: this.journalOptions.maxBytes,
+      maxTotalBytes: this.budget.maxDiskBytes,
+    };
+    this.retention = this.defaultRetention;
+    if (this.capacity() < 1)
       throw new Error('Terminal journal exceeds global storage budget');
     this.ready = this.load();
     // Initialization remains a rejection for every caller, without an
@@ -212,6 +272,11 @@ export class TerminalSessions<Principal> {
       /** Socket form of `legacy`: the slug is resolved by the server. */
       legacyTerminalId?: string;
       launch?: TerminalLaunchProfile;
+      /**
+       * Returns the binding's running shell instead of opening a second one.
+       * Opens are serialized, so concurrent callers share one shell.
+       */
+      adopt?: boolean;
     },
   ) {
     return this.serialize(async () => {
@@ -219,6 +284,27 @@ export class TerminalSessions<Principal> {
       await this.ready;
       if (this.disposed)
         throw new TerminalSessionRefusal('Terminal sessions stopped');
+      const shellRequested = !input.launch || input.launch.kind === 'shell';
+      if (
+        input.adopt &&
+        shellRequested &&
+        !input.legacy &&
+        input.legacyTerminalId === undefined
+      ) {
+        const running = [...this.records.values()].find(
+          (record) =>
+            sameScope(record, scope) &&
+            isShell(record) &&
+            record.status === 'running' &&
+            this.live.has(record.terminalId),
+        );
+        if (running)
+          return {
+            ...(await this.read(principal, scope, running.terminalId)),
+            adopted: true as const,
+          };
+      }
+      await this.maintain();
       if (input.legacyTerminalId !== undefined && !input.legacy) {
         if (!this.authority.legacyProjectSlug)
           throw new TerminalSessionRefusal('Legacy terminals unavailable');
@@ -291,8 +377,10 @@ export class TerminalSessions<Principal> {
         createdAt: Date.now(),
         ...(profile && { launch: profile }),
         ...(input.legacy && { legacy: { ...input.legacy, imported: false } }),
+        ...(shellRequested && { ordinal: this.nextOrdinal(scope) }),
+        ...this.storage(),
       });
-      await this.makeRoom(1, principal);
+      await this.makeRoom(record, principal);
       this.records.set(record.terminalId, record);
       await this.persist();
       try {
@@ -312,7 +400,7 @@ export class TerminalSessions<Principal> {
           cwd,
           cols: record.cols,
           rows: record.rows,
-          journal: this.journalSpec(record.terminalId),
+          journal: this.journalSpec(record),
           ...(launch && { launch }),
         });
         this.track(record, proc, journal);
@@ -322,6 +410,7 @@ export class TerminalSessions<Principal> {
       } catch (error) {
         await this.stop(record.terminalId);
         record.status = 'failed';
+        record.endedAt = Date.now();
         await this.persist();
         throw error;
       }
@@ -372,8 +461,9 @@ export class TerminalSessions<Principal> {
         ...(outputCapBytes === undefined
           ? { launch: { kind: 'server' } }
           : { kind: 'command', outputCapBytes }),
+        ...this.storage(),
       });
-      await this.makeRoom(1);
+      await this.makeRoom(record);
       this.records.set(record.terminalId, record);
       await this.persist();
       const exited = new Promise<TerminalExit>((done) =>
@@ -387,7 +477,7 @@ export class TerminalSessions<Principal> {
           cwd,
           cols: record.cols,
           rows: record.rows,
-          journal: this.journalSpec(record.terminalId),
+          journal: this.journalSpec(record),
           launch: input.launch,
           ...spawnKind,
         });
@@ -398,6 +488,7 @@ export class TerminalSessions<Principal> {
         this.exits.delete(record.terminalId);
         await this.stop(record.terminalId);
         record.status = 'failed';
+        record.endedAt = Date.now();
         await this.persist();
         throw error;
       }
@@ -412,6 +503,7 @@ export class TerminalSessions<Principal> {
       const record = this.internalRecord(scope, terminalId);
       await this.stop(terminalId);
       if (record.status !== 'failed') record.status = 'exited';
+      record.endedAt ??= Date.now();
       await (await this.journal(record)).flush();
       await this.persist();
     });
@@ -511,7 +603,7 @@ export class TerminalSessions<Principal> {
           cwd,
           cols: record.cols,
           rows: record.rows,
-          journal: this.journalSpec(terminalId),
+          journal: this.journalSpec(record),
           ...(launch && { launch }),
         });
         this.track(record, proc, previous);
@@ -616,6 +708,7 @@ export class TerminalSessions<Principal> {
               writerFailed = true;
               unsubscribeData();
               record.status = 'failed';
+              record.endedAt = Date.now();
               record.journalUnavailable = true;
               logger.error('Terminal journal write failed', {
                 terminalId: record.terminalId,
@@ -645,6 +738,7 @@ export class TerminalSessions<Principal> {
         });
       }
       if (record.status !== 'failed') record.status = 'exited';
+      record.endedAt = Date.now();
       record.exitCode = event.outputIncomplete ? null : event.exitCode;
       record.exitSignal = event.outputIncomplete ? null : event.signal;
       if (event.outputCapped) record.outputCapped = true;
@@ -792,6 +886,7 @@ export class TerminalSessions<Principal> {
       const record = await this.find(principal, scope, terminalId, 'operate');
       await this.stop(terminalId);
       if (record.status !== 'failed') record.status = 'exited';
+      record.endedAt ??= Date.now();
       await (await this.journal(record)).flush();
       await this.persist();
     });
@@ -816,11 +911,16 @@ export class TerminalSessions<Principal> {
     // ending it, so the next generation reattaches. The supervisor ends it
     // when the supervisor itself stops.
     const stops = await Promise.allSettled(
-      [...this.live].map(([id, session]) => {
-        if (!isHostedShellProcess(session.process)) return this.stop(id);
+      [...this.live].map(async ([id, session]) => {
+        if (!isHostedShellProcess(session.process)) {
+          await this.stop(id);
+          // Its host is stopping, not the person: it may reopen on restart.
+          const record = this.records.get(id);
+          if (record && record.status === 'exited') record.hostStopped = true;
+          return;
+        }
         session.process.detach();
         this.live.delete(id);
-        return Promise.resolve();
       }),
     );
     const flushes = await Promise.allSettled(
@@ -828,7 +928,9 @@ export class TerminalSessions<Principal> {
         (await journal).flush(),
       ),
     );
-    const writes = await Promise.allSettled([this.persistence]);
+    const writes = await Promise.allSettled([
+      this.records.size > 0 ? this.persist() : this.persistence,
+    ]);
     const errors = [...stops, ...flushes, ...writes].flatMap((result) =>
       result.status === 'rejected' ? [result.reason] : [],
     );
@@ -872,10 +974,50 @@ export class TerminalSessions<Principal> {
       throw new TerminalSessionRefusal('Terminal access refused');
   }
 
-  private journalSpec(terminalId: string): ShellJournalSpec {
+  /** Where a new record's journal goes, under the current settings. */
+  private storage(): Pick<SessionRecord, 'journalRoot' | 'persist'> {
     return {
-      directory: join(this.home, 'terminal-journals', terminalId),
-      options: { ...this.journalOptions },
+      ...(this.retention.directory !== this.defaultRetention.directory && {
+        journalRoot: this.retention.directory,
+      }),
+      ...(!this.retention.persist && { persist: false as const }),
+    };
+  }
+
+  /** The next "Shell N" for a binding: numbers are never reused while any remain. */
+  private nextOrdinal(scope: TerminalSessionScope): number {
+    let highest = 0;
+    for (const record of this.records.values())
+      if (sameScope(record, scope))
+        highest = Math.max(highest, record.ordinal ?? 0);
+    return highest + 1;
+  }
+
+  private capacity(): number {
+    return Math.min(
+      this.budget.maxSessions,
+      Math.floor(
+        this.retention.maxTotalBytes / this.retention.maxTerminalBytes,
+      ),
+      Math.floor(this.budget.maxTailBytes / this.journalOptions.tailBytes),
+    );
+  }
+
+  private journalDirectory(record: SessionRecord): string {
+    return join(
+      record.journalRoot ?? this.defaultRetention.directory,
+      record.terminalId,
+    );
+  }
+
+  private journalSpec(record: SessionRecord): ShellJournalSpec {
+    return {
+      directory: this.journalDirectory(record),
+      options: {
+        ...this.journalOptions,
+        maxBytes: this.retention.maxTerminalBytes,
+        persist: record.persist !== false,
+      },
     };
   }
 
@@ -884,11 +1026,9 @@ export class TerminalSessions<Principal> {
       return Promise.reject(new TerminalSessionRefusal('Terminal not found'));
     let journal = this.journals.get(record.terminalId);
     if (!journal) {
+      const spec = this.journalSpec(record);
       journal = (async () => {
-        const value = new TerminalJournal(
-          join(this.home, 'terminal-journals', record.terminalId),
-          this.journalOptions,
-        );
+        const value = new TerminalJournal(spec.directory, spec.options);
         await value.load();
         return value;
       })();
@@ -897,7 +1037,197 @@ export class TerminalSessions<Principal> {
     return journal;
   }
 
+  /**
+   * Applies the current retention settings to ended terminals: expires those
+   * past the maximum age, moves the rest into the configured directory, and
+   * trims to the total budget. Running shells are never touched.
+   */
+  private async maintain(): Promise<void> {
+    await this.refreshRetention();
+    const now = Date.now();
+    for (const record of [...this.records.values()]) {
+      if (
+        this.live.has(record.terminalId) ||
+        this.stopping.has(record.terminalId) ||
+        record.status === 'running' ||
+        record.status === 'starting'
+      )
+        continue;
+      if (now - (record.endedAt ?? record.createdAt) > this.retention.maxAgeMs)
+        await this.retire(record);
+      else if (
+        (record.journalRoot ?? this.defaultRetention.directory) !==
+        this.retention.directory
+      )
+        await this.relocate(record);
+    }
+    try {
+      await this.makeRoom(null);
+    } catch (error) {
+      // Every retained terminal is running; the next open is refused instead.
+      if (!(error instanceof TerminalSessionRefusal)) throw error;
+    }
+  }
+
+  /** Moves an ended terminal's journal into the configured directory. */
+  private async relocate(record: SessionRecord): Promise<void> {
+    const from = this.journalDirectory(record);
+    const root = this.retention.directory;
+    const to = join(root, record.terminalId);
+    try {
+      await lstat(to);
+      logger.warn('Terminal journal already exists at the new location', {
+        terminalId: record.terminalId,
+      });
+      return;
+    } catch (error) {
+      if (!this.notFound(error)) throw error;
+    }
+    const cached = this.journals.get(record.terminalId);
+    if (cached) await Promise.allSettled([cached]);
+    this.journals.delete(record.terminalId);
+    try {
+      await mkdir(root, { recursive: true, mode: 0o700 });
+      await rename(from, to);
+    } catch (error) {
+      if (error instanceof Error && 'code' in error && error.code === 'EXDEV') {
+        await cp(from, to, { recursive: true, errorOnExist: true });
+        await rm(from, { recursive: true, force: true });
+      } else if (!this.notFound(error)) {
+        logger.warn('Terminal journal could not be moved', {
+          terminalId: record.terminalId,
+          error,
+        });
+        return;
+      }
+    }
+    if (root === this.defaultRetention.directory) delete record.journalRoot;
+    else record.journalRoot = root;
+    await this.persist();
+  }
+
+  /**
+   * Reopens a shell that ended only because its host restarted: a fresh
+   * shell in the same directory, continuing the same journal after a
+   * divider. Nothing that ran before is run again.
+   */
+  private async restore(record: SessionRecord): Promise<void> {
+    if (
+      !this.authority.restorable ||
+      record.journalUnavailable ||
+      (record.legacy && !record.legacy.imported) ||
+      !(await this.authority.restorable(record))
+    )
+      return;
+    let cwd: string;
+    try {
+      cwd = await realpath(record.cwd);
+      if (cwd !== record.cwd || !(await stat(cwd)).isDirectory()) return;
+    } catch {
+      return;
+    }
+    const journal = await this.journal(record);
+    await journal.append(TERMINAL_RESTORED_DIVIDER);
+    await journal.flush();
+    const proc = await this.host.spawn({
+      terminalId: record.terminalId,
+      cwd,
+      cols: record.cols,
+      rows: record.rows,
+      journal: this.journalSpec(record),
+    });
+    this.track(record, proc, journal);
+    record.status = 'running';
+    delete record.exitCode;
+    delete record.endedAt;
+    delete record.hostStopped;
+    record.restoredAt = Date.now();
+    await this.persist();
+  }
+
+  /** Disk use of the terminals the caller may observe, per Project. */
+  usage(principal: Principal) {
+    return this.serialize(async () => {
+      await this.ready;
+      await this.maintain();
+      const projects = new Map<
+        string,
+        { projectId: string; terminals: number; running: number; bytes: number }
+      >();
+      for (const record of [...this.records.values()]) {
+        if (!(await this.authority.authorize(principal, record, 'observe')))
+          continue;
+        const entry = projects.get(record.projectId) ?? {
+          projectId: record.projectId,
+          terminals: 0,
+          running: 0,
+          bytes: 0,
+        };
+        entry.terminals += 1;
+        if (this.live.has(record.terminalId)) entry.running += 1;
+        entry.bytes += await this.diskBytes(record);
+        projects.set(record.projectId, entry);
+      }
+      const list = [...projects.values()];
+      return {
+        retention: { ...this.retention },
+        projects: list,
+        terminals: list.reduce((sum, entry) => sum + entry.terminals, 0),
+        bytes: list.reduce((sum, entry) => sum + entry.bytes, 0),
+      };
+    });
+  }
+
+  /**
+   * Deletes the history of ended terminals, in one Project or everywhere the
+   * caller may operate. Running terminals keep theirs and are counted.
+   */
+  clearHistory(principal: Principal, projectId?: string) {
+    return this.serialize(async () => {
+      await this.ready;
+      let cleared = 0;
+      let running = 0;
+      for (const record of [...this.records.values()]) {
+        if (projectId !== undefined && record.projectId !== projectId) continue;
+        if (!(await this.authority.authorize(principal, record, 'operate')))
+          continue;
+        if (
+          this.live.has(record.terminalId) ||
+          this.stopping.has(record.terminalId)
+        ) {
+          running += 1;
+          continue;
+        }
+        await this.retire(record);
+        cleared += 1;
+      }
+      return { cleared, running };
+    });
+  }
+
+  private async diskBytes(record: SessionRecord): Promise<number> {
+    const directory = this.journalDirectory(record);
+    let names: string[];
+    try {
+      names = await readdir(directory);
+    } catch (error) {
+      if (this.notFound(error)) return 0;
+      throw error;
+    }
+    let bytes = 0;
+    for (const name of names) {
+      try {
+        bytes += (await lstat(join(directory, name))).size;
+      } catch (error) {
+        if (!this.notFound(error)) throw error;
+      }
+    }
+    return bytes;
+  }
+
   private async load(): Promise<void> {
+    const restoring: SessionRecord[] = [];
+    await this.refreshRetention();
     try {
       const records = z
         .array(recordSchema)
@@ -911,32 +1241,57 @@ export class TerminalSessions<Principal> {
         if (this.records.has(record.terminalId))
           throw new Error('Duplicate terminal identity');
         this.records.set(record.terminalId, record);
-        // A shell the supervisor kept running across this restart is
-        // reattached. An in-process host cannot restore a PTY, so its shells
-        // have ended: keep identity and output, and never re-run a command.
-        const reattached =
-          record.status === 'running' || record.status === 'starting'
-            ? await this.host.attach?.(
-                record.terminalId,
-                this.journalSpec(record.terminalId),
-              )
-            : null;
-        if (reattached && record.status === 'running')
-          this.track(record, reattached, reattached.journal);
-        else if (record.status === 'running' || record.status === 'starting') {
-          // A shell whose start was never recorded is not resumed either.
-          if (reattached) await reattached.terminate?.();
-          record.status = 'exited';
-        }
+        if (await this.reconcile(record)) restoring.push(record);
       }
+      // Records from before stable ordinals are numbered in creation order.
+      for (const record of [...this.records.values()].sort(
+        (a, b) => a.createdAt - b.createdAt,
+      ))
+        if (isShell(record) && record.ordinal === undefined)
+          record.ordinal = this.nextOrdinal(record);
     } catch (error) {
       if (!this.notFound(error)) throw error;
     }
-    await this.makeRoom(0);
+    await this.makeRoom(null);
+    await this.retireOversized();
+    await this.maintain();
+    await this.restoreAll(restoring);
+    if (this.records.size > 0) await this.persist();
+  }
+
+  /**
+   * Settles a loaded record against its host. A shell the supervisor kept
+   * running across this restart is reattached. Otherwise it has ended; true
+   * when it ended only because its host went away, so it may be reopened.
+   */
+  private async reconcile(record: SessionRecord): Promise<boolean> {
+    if (record.status !== 'running' && record.status !== 'starting')
+      return record.hostStopped === true && isShell(record);
+    const reattached = await this.host.attach?.(
+      record.terminalId,
+      this.journalSpec(record),
+    );
+    if (reattached && reattached !== 'ended' && record.status === 'running') {
+      this.track(record, reattached, reattached.journal);
+      return false;
+    }
+    // A shell whose start was never recorded is not resumed either.
+    if (reattached && reattached !== 'ended') await reattached.terminate?.();
+    const wasRunning = record.status === 'running';
+    record.status = 'exited';
+    record.endedAt ??= Date.now();
+    // The host no longer knows a shell it was running: the host itself
+    // restarted (a reboot, or an in-process host with its core). One that
+    // ended while the host kept running (`'ended'`) stays ended.
+    return wasRunning && !reattached && isShell(record);
+  }
+
+  /** Startup: an ended journal larger than the per-terminal size is expired. */
+  private async retireOversized(): Promise<void> {
     for (const record of [...this.records.values()]) {
       // A reattached shell's host owns its journal and keeps it in bounds.
       if (this.live.has(record.terminalId)) continue;
-      const directory = join(this.home, 'terminal-journals', record.terminalId);
+      const directory = this.journalDirectory(record);
       let names: string[];
       try {
         names = await readdir(directory);
@@ -949,39 +1304,81 @@ export class TerminalSessions<Principal> {
       );
       if (
         sizes.reduce((sum, size) => sum + size, 0) >
-        this.journalOptions.maxBytes
+        this.retention.maxTerminalBytes
       )
         await this.retire(record);
     }
   }
 
+  private async restoreAll(restoring: readonly SessionRecord[]): Promise<void> {
+    for (const record of restoring) {
+      if (this.records.get(record.terminalId) !== record) continue;
+      try {
+        await this.restore(record);
+      } catch (error) {
+        logger.warn('Terminal could not be restored after restart', {
+          terminalId: record.terminalId,
+          error,
+        });
+        await this.stop(record.terminalId);
+        record.status = 'exited';
+        record.endedAt ??= Date.now();
+      }
+    }
+  }
+
+  private async refreshRetention(): Promise<void> {
+    if (!this.readRetention) return;
+    try {
+      this.retention = await this.readRetention();
+    } catch (error) {
+      logger.warn('Terminal retention settings unavailable', { error });
+    }
+  }
+
+  /**
+   * Expires the oldest ended records until `incoming` fits its pool, or, for
+   * null, until every pool is within its capacity. A pool only expires its
+   * own records.
+   */
   private async makeRoom(
-    additional: number,
+    incoming: SessionRecord | null,
     principal?: Principal,
   ): Promise<void> {
-    while (this.records.size + additional > this.capacity) {
-      let victim: SessionRecord | undefined;
-      for (const record of [...this.records.values()].sort(
-        (a, b) => a.createdAt - b.createdAt,
-      )) {
-        if (
-          this.live.has(record.terminalId) ||
-          this.stopping.has(record.terminalId)
-        )
-          continue;
-        if (
-          principal !== undefined &&
-          !(await this.authority.authorize(principal, record, 'operate'))
-        )
-          continue;
-        victim = record;
-        break;
+    const pools: RetentionPool[] = incoming
+      ? [poolOf(incoming)]
+      : ['session', 'command'];
+    for (const pool of pools) {
+      const capacity =
+        pool === 'command' ? COMMAND_SESSION_SLOTS : this.capacity();
+      const members = () =>
+        [...this.records.values()].filter(
+          (record) => record !== incoming && poolOf(record) === pool,
+        );
+      while (members().length + (incoming ? 1 : 0) > capacity) {
+        let victim: SessionRecord | undefined;
+        for (const record of members().sort(
+          (a, b) => a.createdAt - b.createdAt,
+        )) {
+          if (
+            this.live.has(record.terminalId) ||
+            this.stopping.has(record.terminalId)
+          )
+            continue;
+          if (
+            principal !== undefined &&
+            !(await this.authority.authorize(principal, record, 'operate'))
+          )
+            continue;
+          victim = record;
+          break;
+        }
+        if (!victim)
+          throw new TerminalSessionRefusal('Terminal session capacity reached');
+        if (principal !== undefined)
+          await this.check(principal, victim, 'operate');
+        await this.retire(victim);
       }
-      if (!victim)
-        throw new TerminalSessionRefusal('Terminal session capacity reached');
-      if (principal !== undefined)
-        await this.check(principal, victim, 'operate');
-      await this.retire(victim);
     }
   }
 
@@ -1000,7 +1397,7 @@ export class TerminalSessions<Principal> {
     }
     if (journal) await journal.discard();
     else
-      await rm(join(this.home, 'terminal-journals', record.terminalId), {
+      await rm(this.journalDirectory(record), {
         recursive: true,
         force: true,
       });

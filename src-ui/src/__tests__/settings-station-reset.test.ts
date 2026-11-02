@@ -149,6 +149,14 @@ describe('buildStationResetPlan', () => {
       'serverUpdateDownloadPolicy',
       // Station host
       'terminalShell',
+      // #3994: terminal history retention. A reset clears each to its
+      // default: history on, <home>/terminal-journals (ended journals move
+      // back there), 30 days, 16 MiB per terminal and 1024 MiB in total.
+      'terminalHistoryEnabled',
+      'terminalHistoryDirectory',
+      'terminalHistoryMaxAgeDays',
+      'terminalHistoryMaxTerminalMiB',
+      'terminalHistoryMaxTotalMiB',
       'mcpUiHost',
       'surfaceTrustFromVeritasEvidence',
       // #3386: conversations outside projects in Activity.

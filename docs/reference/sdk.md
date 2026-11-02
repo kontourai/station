@@ -57,6 +57,15 @@ server's reason), `connection-lost` and `protocol`. A refused ticket
 `StationHttpError` with its status, code and details, and uses its message. See the
 [socket protocol](api.md#terminal-socket-operator-transport).
 
+`list` records carry `ordinal`, a shell's stable "Shell N" within its binding,
+and `restoredAt` when the shell was reopened after its host restarted.
+`openOrAdoptProjectShell(apiBase, projectSlug, {cols, rows})` answers with the
+Project binding's running shell or opens one; concurrent callers share one
+shell, and it returns null on a host that predates it. Terminal history usage
+and clearing (#3994) are `fetchTerminalHistory`, `clearTerminalHistory(projectId?)`,
+`useTerminalHistoryQuery` and `useClearTerminalHistoryMutation`; an older or
+hosted Station throws `TerminalHistoryUnsupportedError`.
+
 ## Terminal output sessions
 
 `TerminalOutputSession` from `@kontourai/station-sdk/client` observes an existing

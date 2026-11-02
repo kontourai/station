@@ -63,6 +63,7 @@ function bareHostDeps(overrides: Partial<DoctorDeps>): Partial<DoctorDeps> {
       mismatches: [],
     })),
     inspectSupervisorWedges: vi.fn(async () => []),
+    inspectShellHosts: vi.fn(() => []),
     probeTerminalPty: vi.fn(() => ({
       state: 'unavailable' as const,
       reason: 'node-pty failed to load.',

@@ -396,6 +396,56 @@ export const APP_SETTINGS_REGISTRY = [
     help: 'Terminal sessions Station opens for you start in this shell instead of the host default.',
     description: 'Shell used when Station spawns a terminal session.',
   }),
+  // Terminal history retention (#3994). The server reads these through
+  // `resolveTerminalRetention`; the defaults below are the values it applies.
+  defineSetting({
+    key: 'terminalHistoryEnabled',
+    scope: 'station',
+    descriptor: { kind: 'boolean' },
+    label: 'Keep terminal history',
+    help: 'New terminals write their output to disk, so it survives a restart.',
+    description:
+      'When off, new terminals keep only recent output in memory and write nothing to disk.',
+    defaultValue: true,
+  }),
+  defineSetting({
+    key: 'terminalHistoryDirectory',
+    scope: 'station',
+    descriptor: { kind: 'string', maxLength: 4096 },
+    label: 'Terminal history location',
+    help: 'Terminal history is stored in this directory, and ended terminals’ history moves here.',
+    description:
+      'Absolute local directory for terminal history. Leave empty for terminal-journals in the Station home.',
+    placeholder: '<Station home>/terminal-journals',
+  }),
+  defineSetting({
+    key: 'terminalHistoryMaxAgeDays',
+    scope: 'station',
+    descriptor: { kind: 'number', min: 1, max: 3650, integer: true },
+    label: 'Terminal history maximum age',
+    help: 'History of terminals that ended more than this many days ago is deleted.',
+    description: 'Days to keep the history of an ended terminal, 1 to 3650.',
+    defaultValue: 30,
+  }),
+  defineSetting({
+    key: 'terminalHistoryMaxTerminalMiB',
+    scope: 'station',
+    descriptor: { kind: 'number', min: 1, max: 1024, integer: true },
+    label: 'Terminal history per terminal',
+    help: 'Each terminal keeps at most this many MiB of history; the oldest output goes first.',
+    description: 'MiB of history each terminal keeps, 1 to 1024.',
+    defaultValue: 16,
+  }),
+  defineSetting({
+    key: 'terminalHistoryMaxTotalMiB',
+    scope: 'station',
+    descriptor: { kind: 'number', min: 16, max: 1048576, integer: true },
+    label: 'Terminal history total',
+    help: 'All terminals together keep at most this many MiB; the oldest ended terminals go first.',
+    description:
+      'MiB of history all terminals keep together, 16 to 1048576, and at least the per-terminal size.',
+    defaultValue: 1024,
+  }),
   defineSetting({
     key: 'mobileDeviceHubUrl',
     scope: 'station',

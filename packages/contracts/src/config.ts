@@ -120,6 +120,13 @@ export interface AppConfig {
   defaultVectorDbProvider?: string;
   agentConnections?: Record<string, AgentConnectionSettings>;
   terminalShell?: string;
+  /** Terminal history retention (#3994); absent means the registry default. */
+  terminalHistoryEnabled?: boolean;
+  /** Absolute directory for terminal journals; absent is `<home>/terminal-journals`. */
+  terminalHistoryDirectory?: string;
+  terminalHistoryMaxAgeDays?: number;
+  terminalHistoryMaxTerminalMiB?: number;
+  terminalHistoryMaxTotalMiB?: number;
   /**
    * Runtime-derived (never persisted): the shell this host would try FIRST
    * when `terminalShell` is unset — `SHELL` where the environment sets one,

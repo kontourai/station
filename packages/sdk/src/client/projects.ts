@@ -331,6 +331,38 @@ export async function closeProjectTerminal(
   );
 }
 
+/**
+ * `POST /api/projects/:slug/terminal-sessions` with `adopt` — the Project
+ * binding's running shell, or a new one when it has none. The server
+ * serializes opens, so two views opening an empty binding at once get the
+ * same shell. Null when this Station predates `adopt` (404 or the strict
+ * schema's 400); the caller then opens through the terminal socket.
+ */
+export async function openOrAdoptProjectShell(
+  apiBase: string,
+  projectSlug: string,
+  size: { cols: number; rows: number },
+  opts?: ClientRequestOptions,
+): Promise<{ terminalId: string; ordinal?: number; adopted: boolean } | null> {
+  const response = await mutateJson(
+    `${apiBase}/api/projects/${encodeURIComponent(projectSlug)}/terminal-sessions`,
+    'POST',
+    opts,
+    { ...size, bindingKey: 'project', adopt: true },
+  );
+  if (response.status === 404 || response.status === 400) return null;
+  const record = await unwrapOrThrow<{
+    terminalId: string;
+    ordinal?: number;
+    adopted?: boolean;
+  }>(response, 'Failed to open terminal');
+  return {
+    terminalId: record.terminalId,
+    ...(record.ordinal !== undefined && { ordinal: record.ordinal }),
+    adopted: record.adopted === true,
+  };
+}
+
 /** `POST /api/projects/:slug/file-preview` — bounded, project-bound file preview. */
 export async function previewProjectWorkspaceFile(
   apiBase: string,

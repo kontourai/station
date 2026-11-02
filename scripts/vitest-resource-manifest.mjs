@@ -172,6 +172,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/adapters/__tests__/node-pty-adapter.test.ts',
   // Real node-pty shells in isolated homes; no shared ports or host state.
   'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+  // Real node-pty shells in a private home; one loopback server on port 0.
+  'src-server/services/terminal/__tests__/terminal-retention.process.test.ts',
   // Production route/auth composition opens real terminal PTYs in a private home.
   'src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts',
   'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
