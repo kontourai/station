@@ -53,7 +53,7 @@ export const MAX_TROUBLESHOOT_AMBIENT_CONTEXT_LENGTH = 3_600;
 const DOCTOR_TIMEOUT_MS = 10_000;
 const MAX_AMBIENT_DOCTOR_LINES = 6;
 
-export const TROUBLESHOOT_OPENING_MESSAGE =
+const TROUBLESHOOT_OPENING_MESSAGE =
   "I'd like help troubleshooting a problem with Station.";
 
 export interface TroubleshootPrepareInput {
@@ -100,7 +100,7 @@ async function hasEntries(directory: string | undefined): Promise<boolean> {
  * the full playbook is fetched through `get_troubleshoot_playbook` because it
  * does not fit the ambient-context limit.
  */
-export function renderTroubleshootAmbientContext(
+function renderTroubleshootAmbientContext(
   context: TroubleshootContext,
 ): string {
   const { station, caller, doctor, logs, seed } = context;
