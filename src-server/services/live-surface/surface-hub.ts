@@ -107,7 +107,7 @@ const FPS_FLOOR = LIVE_SURFACE_STREAM_PARAM_BOUNDS.maxFps.min;
  * further behind than this would show a picture over a second old, so the
  * queue is dropped and the viewer resynchronizes on the next keyframe.
  */
-export const H264_QUEUE_MAX_BYTES = 4 * 1024 * 1024;
+const H264_QUEUE_MAX_BYTES = 4 * 1024 * 1024;
 export const H264_QUEUE_MAX_UNITS = 32;
 
 export type LiveSurfaceViewerCodec = 'image' | 'h264';

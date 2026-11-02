@@ -1166,6 +1166,20 @@ class H264BitReader {
   }
 }
 
+/** Read past `seq_scaling_list_present` lists; their values are not needed. */
+function skipScalingLists(bits: H264BitReader, lists: number): void {
+  for (let list = 0; list < lists; list += 1) {
+    if (!bits.u(1)) continue;
+    const size = list < 6 ? 16 : 64;
+    let last = 8;
+    let next = 8;
+    for (let j = 0; j < size && next !== 0; j += 1) {
+      next = (last + bits.se() + 256) % 256;
+      if (next !== 0) last = next;
+    }
+  }
+}
+
 /** The NAL units of an Annex-B access unit, start codes removed. */
 export function splitAnnexB(accessUnit: Uint8Array): Uint8Array[] {
   const starts: number[] = [];
@@ -1224,19 +1238,7 @@ export function parseLiveSurfaceH264Sequence(
       bits.ue(); // bit_depth_luma_minus8
       bits.ue(); // bit_depth_chroma_minus8
       bits.u(1); // qpprime_y_zero_transform_bypass_flag
-      if (bits.u(1)) {
-        const lists = chromaFormatIdc === 3 ? 12 : 8;
-        for (let list = 0; list < lists; list += 1) {
-          if (!bits.u(1)) continue;
-          const size = list < 6 ? 16 : 64;
-          let last = 8;
-          let next = 8;
-          for (let j = 0; j < size && next !== 0; j += 1) {
-            next = (last + bits.se() + 256) % 256;
-            if (next !== 0) last = next;
-          }
-        }
-      }
+      if (bits.u(1)) skipScalingLists(bits, chromaFormatIdc === 3 ? 12 : 8);
     }
     bits.ue(); // log2_max_frame_num_minus4
     const pocType = bits.ue();
