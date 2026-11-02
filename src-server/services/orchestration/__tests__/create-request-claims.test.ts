@@ -163,16 +163,16 @@ describe.each([false, true])(
       expect(
         Object.keys(JSON.parse(readFileSync(file, 'utf8')).claims),
       ).toHaveLength(0);
-      await expect(
-        claims.run(
-          {
-            ...input(),
-            sessionId: existing ? 'resumed-session' : undefined,
-            sessionExists: () => existing,
-          },
-          async (id) => handle(id),
-        ),
-      ).resolves.toMatchObject({ providerTurnId: 'turn-1' });
+      const retryInput = {
+        ...input(),
+        sessionId: existing ? 'resumed-session' : undefined,
+        sessionExists: () => existing,
+      };
+      const effect = vi.fn(async (id: string) => handle(id));
+      const result = await claims.run(retryInput, effect);
+      expect(result.providerTurnId).toBe('turn-1');
+      expect(await claims.run(retryInput, effect)).toEqual(result);
+      expect(effect).toHaveBeenCalledTimes(1);
     });
   },
 );
@@ -317,7 +317,7 @@ test('changed input conflicts while the original create is still running', async
   }
 });
 
-test('a starting claim expires after seven days, reclaiming capacity with an explicit duplicate-risk window', async () => {
+test('a starting claim expires into an indeterminate receipt while a deliberate new key can run', async () => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date('2026-11-01T00:00:00Z'));
   const { home, file, claims } = setup();
@@ -352,12 +352,35 @@ test('a starting claim expires after seven days, reclaiming capacity with an exp
   });
   expect(effect).not.toHaveBeenCalled();
   vi.setSystemTime(new Date('2026-11-08T00:00:00Z'));
-  const result = await new CreateRequestClaims(home).run(input(), effect);
-  expect(result.sessionId).not.toBe(row.sessionId);
+  await expect(
+    new CreateRequestClaims(home).run(input(), effect),
+  ).rejects.toMatchObject({
+    code: 'create_request_indeterminate',
+    sessionId: row.sessionId,
+    message: expect.stringContaining('A new key is permitted'),
+  });
+  expect(effect).not.toHaveBeenCalled();
+  await expect(
+    new CreateRequestClaims(home).run(
+      { ...input(), requestKey: 'deliberate-new-key' },
+      effect,
+    ),
+  ).resolves.toMatchObject({ providerTurnId: 'turn-1' });
   expect(effect).toHaveBeenCalledTimes(1);
-  expect(
-    Object.keys(JSON.parse(readFileSync(file, 'utf8')).claims),
-  ).toHaveLength(1);
+  await expect(
+    new CreateRequestClaims(home).run(
+      { ...input(), intent: { message: 'different' } },
+      effect,
+    ),
+  ).rejects.toMatchObject({ code: 'create_request_conflict' });
+  vi.setSystemTime(new Date('2027-11-08T00:00:00Z'));
+  await expect(
+    new CreateRequestClaims(home).run(input(), effect),
+  ).rejects.toMatchObject({
+    code: 'create_request_indeterminate',
+    sessionId: row.sessionId,
+  });
+  expect(effect).toHaveBeenCalledTimes(1);
 });
 
 test('expiry cannot prune a still-running create when another request is admitted', async () => {
@@ -391,4 +414,15 @@ test('expiry cannot prune a still-running create when another request is admitte
   expect(
     Object.keys(JSON.parse(readFileSync(file, 'utf8')).claims),
   ).toHaveLength(2);
+});
+
+test('an oversized ledger refuses with typed capacity before effects', async () => {
+  const { file, claims } = setup();
+  writeFileSync(file, ' '.repeat(4 * 1024 * 1024 + 1));
+  const effect = vi.fn(async (id: string) => handle(id));
+  await expect(claims.run(input(), effect)).rejects.toMatchObject({
+    code: 'create_request_capacity',
+    limit: 'bytes',
+  });
+  expect(effect).not.toHaveBeenCalled();
 });

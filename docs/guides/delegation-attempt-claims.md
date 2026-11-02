@@ -13,9 +13,13 @@ with no Session can be reclaimed; a durable starting mark without confirmation
 is indeterminate. A pre-start refusal releases its request claim even when the
 target Session already exists; typed rejected starts also release the claim.
 Unconfirmed starting claims expire seven days after their first mark, and legacy
-starting claims receive a durable window on migration. After expiry, key reuse is
-a new request and may duplicate the original effect. Expiry never authorizes
-automatic retry. Inspect the reserved conversationId with `get_session` or the
+starting claims receive a durable window on migration. Expiry leaves a compact
+indeterminate receipt: the original key keeps its Session reference and never
+executes again, while its active-request slot and pending-byte reservation are
+freed. A deliberate new key is permitted for a separate request after expiry and
+may duplicate the original effect. Expiry never authorizes automatic retry. The
+expired receipts retain input proof indefinitely within the ledger byte budget;
+see the API limits for capacity pressure. Inspect the reserved conversationId with `get_session` or the
 Session API; Station cannot automatically reconcile an absent Session. Admission reserves
 receipt bytes before effects; 1,024 records or the 4 MiB budget produce a typed
 HTTP 429. The [API reference](../reference/api.md) explains the 3 KiB receipt

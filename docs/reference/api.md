@@ -2689,21 +2689,30 @@ Session. A pre-start refusal releases this request's claim even when its target
 Session already exists. A typed rejected start also releases the claim. The
 original typed error is preserved.
 
-Completed receipts expire seven wall-clock days after completion. Unconfirmed
-starting claims expire seven days after their first starting mark. At expiry,
-the next admission removes them to recover capacity; reusing the key becomes a
-new request and may duplicate an earlier effect. Expiry does not prove failure
-or authorize an automatic retry. Retain the original Session reference and do
-not blindly retry outside the window. A live owner retains its request lock
-even across expiry. Forward clock jumps can shorten elapsed retention. Legacy
-starting claims receive a durable seven-day window at migration; legacy
-completed records receive the same window after their first observation.
-Unmarked reservations remain reclaimable only when no Session exists.
-Legacy unscoped keys fail closed for verified agent callers within their window;
-inspect their original Session instead of automatically using a new key.
+Completed receipts expire seven wall-clock days after completion; reusing one of
+those keys later is a new request. Retain the original Session reference and do
+not blindly retry outside that window.
+
+Unconfirmed starting claims expire seven days after their first starting mark
+into compact indeterminate receipts. The original key continues to return HTTP
+409 with its original Session reference and never executes again; different input
+still conflicts. Expiry frees the active-request slot and pending-receipt
+reservation. After expiry, a caller may deliberately submit a separate request
+with a new key, after inspecting the original Session. That may duplicate an
+earlier effect; expiry does not prove failure or authorize an automatic retry.
+A live or unverifiable owner prevents expiry while its request is running.
+Forward clock jumps can shorten elapsed retention. Legacy starting claims receive
+a durable seven-day window at migration; legacy completed records receive the same
+window after their first observation. Unmarked reservations remain reclaimable
+only when no Session exists. Legacy unscoped keys fail closed for verified agent
+callers; inspect their original Session instead of automatically using a new key.
 Current operator and verified Session scopes have independent key namespaces.
-Claims retain at most 1,024 records in a 4 MiB ledger, reserving 3 KiB per pending
-receipt before any effect. Capacity refuses with HTTP `429`,
+
+Admission retains at most 1,024 active or completed requests within their window,
+plus expired indeterminate receipts, in a 4 MiB ledger. Each pending request
+reserves 3 KiB before effects. Expired indeterminate receipts retain their input
+proof and Session reference indefinitely, consume ledger bytes, and may eventually
+cause capacity pressure. Capacity refuses with HTTP 429,
 `create_request_capacity`, and starts nothing. An oversized or invalid receipt
 leaves its started create indeterminate rather than overflowing storage. These
 limits are separate from the turn ledger's seven-day retention.

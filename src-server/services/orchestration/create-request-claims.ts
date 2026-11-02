@@ -1,6 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash, randomUUID } from 'node:crypto';
-import { statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
@@ -38,11 +37,13 @@ interface Claim {
   sessionId: string;
   starting?: true;
   startedAt?: number;
+  expired?: true;
   legacyDigest?: true;
   completedAt?: number;
   result?: CreateHandle;
 }
 function claimExpired(claim: Claim, now: number): boolean {
+  if (claim.expired) return false;
   const since = claim.result ? claim.completedAt : claim.startedAt;
   return since !== undefined && now - since >= RETENTION_MS;
 }
@@ -61,6 +62,7 @@ interface Ledger {
   version: 2;
   claims: Record<string, Claim>;
 }
+type StoredLedger = Ledger | { version: 1; claims: Record<string, Claim> };
 
 export function isCreateRequestHandle(
   value: unknown,
@@ -120,9 +122,12 @@ export class CreateRequestIndeterminateError extends Error {
   constructor(
     readonly sessionId: string,
     readonly clientTurnId: string,
+    expired = false,
   ) {
     super(
-      'Creation may have started. Inspect the returned conversationId with get_session or the Session API and retain the original request key. Station cannot automatically reconcile an absent Session. Do not resend under a new key; after seven days the claim expires and key reuse may duplicate the original effect.',
+      expired
+        ? 'Creation remains indeterminate after its seven-day window. Inspect the returned conversationId with get_session or the Session API. The original key will never execute again. A new key is permitted for a deliberate separate request, which may duplicate the original effect.'
+        : 'Creation may have started. Inspect the returned conversationId with get_session or the Session API and retain the original request key. Station cannot automatically reconcile an absent Session. Do not resend under a new key within seven days. After expiry the original key remains indeterminate; a deliberate new key is permitted for a separate request and may duplicate the original effect.',
     );
   }
 }
@@ -171,18 +176,20 @@ export class CreateRequestClaims {
     this.#file = join(dataDir, 'delegation-create-claims.json');
   }
   #read(): { ledger: Ledger; migrated: boolean } {
+    let value: StoredLedger | typeof MISSING;
     try {
-      if (statSync(this.#file).size > MAX_LEDGER_BYTES)
-        throw new CreateRequestCapacityError('bytes');
+      value = readJsonFile<StoredLedger | typeof MISSING>(this.#file, MISSING, {
+        maxBytes: MAX_LEDGER_BYTES,
+        label: 'Create request claims',
+      });
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      if (
+        error instanceof Error &&
+        error.message === 'Create request claims exceeds the byte limit.'
+      )
+        throw new CreateRequestCapacityError('bytes');
+      throw error;
     }
-    const value = readJsonFile<
-      Ledger | { version: 1; claims: Record<string, Claim> } | typeof MISSING
-    >(this.#file, MISSING, {
-      maxBytes: MAX_LEDGER_BYTES,
-      label: 'Create request claims',
-    });
     if (value === MISSING)
       return { ledger: { version: 2, claims: {} }, migrated: false };
     if (
@@ -208,6 +215,9 @@ export class CreateRequestClaims {
         !claim.sessionId ||
         !['delegation', 'foreground'].includes(claim.kind) ||
         (claim.starting !== undefined && claim.starting !== true) ||
+        (claim.expired !== undefined && claim.expired !== true) ||
+        (claim.expired &&
+          (claim.starting !== undefined || claim.result !== undefined)) ||
         (claim.startedAt !== undefined && !Number.isFinite(claim.startedAt)) ||
         (claim.completedAt !== undefined &&
           !Number.isFinite(claim.completedAt)) ||
@@ -327,7 +337,12 @@ export class CreateRequestClaims {
             const owner = inspectLock(`${this.#file}.${id}.owner`);
             if (owner && lockOwnerAlive(owner.owner)) continue;
           }
-          delete ledger.claims[id];
+          if (row.result) delete ledger.claims[id];
+          else {
+            row.expired = true;
+            delete row.starting;
+            delete row.startedAt;
+          }
         }
         if (callerSessionId && ledger.claims[legacyKey]?.legacyDigest)
           throw new CreateRequestConflictError();
@@ -341,7 +356,10 @@ export class CreateRequestClaims {
             throw new CreateRequestConflictError();
           return { claim: existing, fresh: false };
         }
-        if (Object.keys(ledger.claims).length >= MAX_CLAIMS)
+        if (
+          Object.values(ledger.claims).filter((row) => !row.expired).length >=
+          MAX_CLAIMS
+        )
           throw new CreateRequestCapacityError('records');
         const row: Claim = {
           kind: input.kind,
@@ -354,13 +372,20 @@ export class CreateRequestClaims {
         // Reserve room for every outstanding result before any effect can run.
         const reservedBytes =
           Buffer.byteLength(JSON.stringify(ledger) + '\n') +
-          Object.values(ledger.claims).filter((r) => !r.result).length *
+          Object.values(ledger.claims).filter((r) => !r.result && !r.expired)
+            .length *
             (MAX_RECEIPT_BYTES + 128);
         if (reservedBytes > MAX_LEDGER_BYTES)
           throw new CreateRequestCapacityError('bytes');
         return { claim: row, fresh: true };
       });
       const { claim } = reserved;
+      if (claim.expired)
+        throw new CreateRequestIndeterminateError(
+          claim.sessionId,
+          input.requestKey,
+          true,
+        );
       if (claim.result) return claim.result as T;
       if (
         claim.starting ||

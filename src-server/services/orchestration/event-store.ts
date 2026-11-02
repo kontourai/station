@@ -410,7 +410,7 @@ import {
   chatTurnDedupKey,
   STATION_TURN_DEDUP_KERNEL_TABLES,
   stationTurnDedupHost,
-  TURN_DEDUP_LEGACY_COUNT_HINT,
+  TURN_DEDUP_MAX_ENTRIES,
   TURN_DEDUP_RESOLVED_RETENTION_MS,
   type TurnIdempotencyProcessIdentity,
   turnDedupKey,
@@ -2357,7 +2357,7 @@ export interface ConversationHistoryQuarantineRecord {
 /**
  * Legacy dedup soft cap, re-exported for the `/chat` facade.
  */
-export { TURN_DEDUP_LEGACY_COUNT_HINT };
+export { TURN_DEDUP_MAX_ENTRIES };
 
 const NATIVE_INVOCATION_TERMINAL_RETENTION = 1000;
 const VOICE_TURN_TERMINAL_RETENTION = 1000;
@@ -2661,7 +2661,7 @@ export class EventStore {
 
   constructor(
     dbPath: string,
-    turnDedupMaxEntries = TURN_DEDUP_LEGACY_COUNT_HINT,
+    turnDedupMaxEntries = TURN_DEDUP_MAX_ENTRIES,
     turnProcessIdentity?: TurnIdempotencyProcessIdentity,
     /**
      * Private fault seams, named so an added seam cannot silently rebind

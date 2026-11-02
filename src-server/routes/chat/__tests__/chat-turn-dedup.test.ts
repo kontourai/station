@@ -331,10 +331,10 @@ describe('ChatTurnDedupStore (station#1224 offline slice 2)', () => {
   });
 
   test('expiry tombstones a resolved claim outside its window but never unresolved claims', async () => {
-    const CHAT_TURN_DEDUP_LEGACY_COUNT_HINT = 6;
+    const CHAT_TURN_DEDUP_MAX_ENTRIES = 6;
     const ownerStore = new ChatTurnDedupStore(
       filePath,
-      CHAT_TURN_DEDUP_LEGACY_COUNT_HINT,
+      CHAT_TURN_DEDUP_MAX_ENTRIES,
     );
     expect(ownerStore.claim('old-live')).toEqual({ claimed: true });
     const database = new DatabaseSync(filePath);
@@ -363,16 +363,13 @@ describe('ChatTurnDedupStore (station#1224 offline slice 2)', () => {
     seedTurnRows(filePath, [
       { key: 'old-dead', value: null, createdAt: 1, owner: deadOwner },
       { key: 'old-resolved', value: 'conversation-old', createdAt: 2 },
+      ...Array.from({ length: CHAT_TURN_DEDUP_MAX_ENTRIES }, (_, index) => ({
+        key: `resolved-${index}`,
+        value: `conversation-${index}`,
+        createdAt: index + 10,
+      })),
       ...Array.from(
-        { length: CHAT_TURN_DEDUP_LEGACY_COUNT_HINT },
-        (_, index) => ({
-          key: `resolved-${index}`,
-          value: `conversation-${index}`,
-          createdAt: index + 10,
-        }),
-      ),
-      ...Array.from(
-        { length: CHAT_TURN_DEDUP_LEGACY_COUNT_HINT - 3 },
+        { length: CHAT_TURN_DEDUP_MAX_ENTRIES - 3 },
         (_, index) => ({
           key: `live-${index}`,
           value: null,
@@ -391,10 +388,7 @@ describe('ChatTurnDedupStore (station#1224 offline slice 2)', () => {
     aging.close();
     // Other resolved rows have unknown age and begin a fresh window; the
     // unresolved rows survive regardless of age or count.
-    const store = new ChatTurnDedupStore(
-      filePath,
-      CHAT_TURN_DEDUP_LEGACY_COUNT_HINT,
-    );
+    const store = new ChatTurnDedupStore(filePath, CHAT_TURN_DEDUP_MAX_ENTRIES);
     expect(store.claim('new-turn')).toEqual({ claimed: true });
 
     // Prove eviction happened, before any claim can mask it by reclaiming.
@@ -408,11 +402,7 @@ describe('ChatTurnDedupStore (station#1224 offline slice 2)', () => {
       expect(keys).not.toContain('chat:12:old-resolved');
       expect(keys).toContain('chat:8:old-live');
       expect(keys).toContain('chat:8:old-dead');
-      for (
-        let index = 0;
-        index < CHAT_TURN_DEDUP_LEGACY_COUNT_HINT;
-        index += 1
-      ) {
+      for (let index = 0; index < CHAT_TURN_DEDUP_MAX_ENTRIES; index += 1) {
         expect(keys).toContain(`chat:10:resolved-${index}`);
       }
       // #3559: expiry leaves a tombstone.
@@ -539,27 +529,23 @@ describe('ChatTurnDedupStore (station#1224 offline slice 2)', () => {
     }
   });
 
-  // Writes CHAT_TURN_DEDUP_LEGACY_COUNT_HINT+1 claim/resolve pairs through the real store.
+  // Writes CHAT_TURN_DEDUP_MAX_ENTRIES+1 claim/resolve pairs through the real store.
   test('retains a full retry window and expires a resolved key after it', {
     timeout: 30_000,
   }, async () => {
-    const { CHAT_TURN_DEDUP_LEGACY_COUNT_HINT } = await import(
+    const { CHAT_TURN_DEDUP_MAX_ENTRIES } = await import(
       '../chat-turn-dedup.js'
     );
     const store = new ChatTurnDedupStore(filePath);
-    for (
-      let index = 0;
-      index <= CHAT_TURN_DEDUP_LEGACY_COUNT_HINT;
-      index += 1
-    ) {
+    for (let index = 0; index <= CHAT_TURN_DEDUP_MAX_ENTRIES; index += 1) {
       store.claim(`turn-${index}`);
       store.resolve(`turn-${index}`, `conversation-${index}`);
     }
 
     // The most recent entries still replay their conversation.
-    expect(store.claim(`turn-${CHAT_TURN_DEDUP_LEGACY_COUNT_HINT}`)).toEqual({
+    expect(store.claim(`turn-${CHAT_TURN_DEDUP_MAX_ENTRIES}`)).toEqual({
       claimed: false,
-      conversationId: `conversation-${CHAT_TURN_DEDUP_LEGACY_COUNT_HINT}`,
+      conversationId: `conversation-${CHAT_TURN_DEDUP_MAX_ENTRIES}`,
     });
     expect(store.claim('turn-0')).toEqual({
       claimed: false,

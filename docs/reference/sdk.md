@@ -4846,9 +4846,10 @@ input. A durable starting mark without confirmation is indeterminate; inspect
 its reserved reference with `get_session` or the Session API. Station cannot
 automatically reconcile an absent Session. Completed create receipts replay for
 seven wall-clock days after completion. Unconfirmed starting claims expire seven
-days after their first starting mark. Expired keys become new requests, so reuse
-can duplicate the original effect; do not automatically retry outside that
-window. Pre-start refusals release the request key even for an existing Session.
+days after their first starting mark into compact indeterminate receipts. The
+original key remains indeterminate with its Session reference and never executes
+again. After expiry, a deliberate new key is permitted for a separate request; it
+may duplicate the original effect and must not be generated automatically. Pre-start refusals release the request key even for an existing Session.
 Keys must be unique per intended request within the caller scope (including a
 verified calling Session). Capacity is a typed HTTP 429 before effects. See the
 [API limits](api.md) for receipt-size and migration semantics. Older hosts may

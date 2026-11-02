@@ -30,7 +30,7 @@ import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
 import { ACTIVE_TURN_FOLD_METHODS } from '../session-lifecycle-service.js';
 import { evaluateSessionWait } from '../session-turn-wait.js';
-import { TURN_DEDUP_LEGACY_COUNT_HINT } from '../station-turn-dedup-bindings.js';
+import { TURN_DEDUP_MAX_ENTRIES } from '../station-turn-dedup-bindings.js';
 import {
   ThreadInboxDelivery,
   type ThreadInboxDeliveryPorts,
@@ -101,7 +101,7 @@ function boot(
 ) {
   incarnation += 1;
   const birth = `boot-${incarnation}`;
-  const store = new EventStore(path, TURN_DEDUP_LEGACY_COUNT_HINT, {
+  const store = new EventStore(path, TURN_DEDUP_MAX_ENTRIES, {
     exact: () => ({ pid: process.pid, start: birth }),
     probe: () => ({
       state: 'exact',
@@ -1140,7 +1140,7 @@ describe('thread inbox (#3568)', () => {
     queueFollowUp(first);
     await crash(first);
     // A new process deletes the conversation before anything opened the inbox.
-    const fresh = new EventStore(file, TURN_DEDUP_LEGACY_COUNT_HINT);
+    const fresh = new EventStore(file, TURN_DEDUP_MAX_ENTRIES);
     try {
       fresh.deleteThread(THREAD);
       expect(fresh.threadInboxStore().list(THREAD)).toEqual([]);

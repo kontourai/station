@@ -50,7 +50,7 @@ export function stationTurnDedupHost(
 }
 
 /** Compatibility count hint; it does not bound retained retry windows. */
-export const TURN_DEDUP_LEGACY_COUNT_HINT = 2000;
+export const TURN_DEDUP_MAX_ENTRIES = 2000;
 
 /** A resolved result remains replayable for seven days after resolution. */
 export const TURN_DEDUP_RESOLVED_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;

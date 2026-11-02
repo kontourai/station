@@ -34,7 +34,7 @@ import {
 } from '../project-supervision.js';
 import { ProjectTaskRoomRuntime } from '../project-task-room-runtime.js';
 import { ACTIVE_TURN_FOLD_METHODS } from '../session-lifecycle-service.js';
-import { TURN_DEDUP_LEGACY_COUNT_HINT } from '../station-turn-dedup-bindings.js';
+import { TURN_DEDUP_MAX_ENTRIES } from '../station-turn-dedup-bindings.js';
 import {
   createTaskLeadReader,
   TaskQuestionWake,
@@ -122,7 +122,7 @@ function boot(
   incarnation += 1;
   const inboxWarn = vi.fn();
   const birth = `boot-${incarnation}`;
-  const store = new EventStore(path, TURN_DEDUP_LEGACY_COUNT_HINT, {
+  const store = new EventStore(path, TURN_DEDUP_MAX_ENTRIES, {
     exact: () => ({ pid: process.pid, start: birth }),
     probe: () => ({
       state: 'exact',
