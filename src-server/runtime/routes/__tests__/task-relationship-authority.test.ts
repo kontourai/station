@@ -1,3 +1,4 @@
+import { ok } from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
@@ -370,8 +371,12 @@ test('Task list groups authorized independent room requests and linked chats wit
       headers: { principal },
     });
     expect(response.status).toBe(200);
-    const body = (await response.json()) as { data: { id: string }[] };
-    return body.data.find((task) => task.id === h.task.id);
+    const body = (await response.json()) as {
+      data: { id: string; workChatConversationIds?: string[] }[];
+    };
+    const task = body.data.find((task) => task.id === h.task.id);
+    ok(task, 'Task list omitted the requested Task');
+    return task;
   };
   expect(await read('owner')).toMatchObject({
     workChatConversationIds: expect.arrayContaining([
