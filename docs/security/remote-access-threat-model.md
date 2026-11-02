@@ -1108,6 +1108,17 @@ non-operator members is a separate program and is not widened here.
   WebSocket path to Station; the client refuses raw terminal egress there
   before minting a ticket. That egress stays closed until a broker transport
   for the socket exists and this model is updated.
+- **History and restore (#3994).** `GET /api/terminal/history` needs
+  `terminal:observe` and `DELETE` needs `terminal:operate`, both refusing
+  personal tokens and requiring the same operator test; usage lists only
+  sessions the caller may observe and clearing only those it may operate. The
+  usage answer names the history directory, a host path the operator already
+  sees in Settings. Moving that directory is a settings write an agent is
+  refused; it must be absolute. A shell reopened after its host restarted is a
+  login shell in its recorded directory, only while its Project exists; no
+  command, agent or server-owned launch is replayed. `adopt` on the existing
+  open route grants nothing new: it returns a running shell in the same
+  binding under the same operate check.
 
 The voice WebSocket requires `orchestration:operate` and refuses an
 account-bound device and any personal access token whatever its scope (#3586). The terminal socket ticket
