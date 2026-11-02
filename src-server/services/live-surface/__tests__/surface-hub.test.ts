@@ -431,7 +431,7 @@ describe('live surface hub: H.264 viewers (#4418)', () => {
       { heartbeatMs: 60_000 },
     );
     let seq = 0;
-    const unit = (keyframe: boolean, tag: number) =>
+    const unit = (keyframe: boolean, tag: number, size = 1) =>
       publish(
         {
           surfaceId: 'surface-1',
@@ -444,7 +444,9 @@ describe('live surface hub: H.264 viewers (#4418)', () => {
           deviceScaleFactor: 1,
           capturedAt: 1,
         },
-        new Uint8Array([tag]),
+        Uint8Array.from({ length: size }, (_, index) =>
+          index === 0 ? tag : 0,
+        ),
       );
     const jpeg = () =>
       publish(
@@ -638,6 +640,35 @@ describe('live surface hub: H.264 viewers (#4418)', () => {
     await hub.dispose();
   });
 
+  test('fresh-only H.264 viewer does not inherit an old image on fallback', async () => {
+    const { hub, jpeg, unit } = await videoHub();
+    const image = hub.attach(PARAMS);
+    await hub.settled();
+    await image.next();
+    jpeg();
+    expect((await image.next())?.kind).toBe('frame');
+    const video = hub.attach(PARAMS, undefined, {
+      codec: 'h264',
+      freshOnly: true,
+    });
+    await video.next();
+    unit(true, 1, 4 * 1024 * 1024 + 1);
+    expect((await video.next())?.kind).toBe('state');
+    let delivered = false;
+    const next = video.next().then((value) => {
+      delivered = true;
+      return value;
+    });
+    await Promise.resolve();
+    expect(delivered).toBe(false);
+    vi.advanceTimersByTime(1000);
+    jpeg();
+    expect((await next)?.kind).toBe('frame');
+    video.close();
+    image.close();
+    await hub.dispose();
+  });
+
   test('keeps image and H.264 viewers apart and reports their demand', async () => {
     const { hub, unit, jpeg, setCodecDemand, requestKeyframe } =
       await videoHub();
@@ -712,5 +743,33 @@ test('fresh-only image viewer skips both cached and pre-attachment pending frame
   expect(syntheticFrameCounter(record.body)).toBe(3);
   fresh.close();
   existing.close();
+  await hub.dispose();
+});
+
+test('fresh-only viewer acknowledges a skipped pending frame after the other viewer closes', async () => {
+  const { producer, hub } = build();
+  const other = hub.attach(PARAMS);
+  await hub.settled();
+  await other.next();
+  expect(producer.emit()).toBe(true);
+  expect(await frameCounter(other)).toBe(1);
+  expect(producer.emit()).toBe(true);
+  const fresh = hub.attach(PARAMS, undefined, { freshOnly: true });
+  other.close();
+  vi.advanceTimersByTime(100);
+  expect(producer.acks.filter((seq) => seq === 2)).toEqual([2]);
+  expect(producer.emit()).toBe(true);
+  fresh.close();
+  await hub.dispose();
+});
+
+test('images emitted with zero viewers are acknowledged', async () => {
+  const { producer, hub } = build({ hub: { idleStopMs: 5000 } });
+  const viewer = hub.attach(PARAMS);
+  await hub.settled();
+  await viewer.next();
+  viewer.close();
+  expect(producer.emit()).toBe(true);
+  expect(producer.acks).toEqual([1]);
   await hub.dispose();
 });

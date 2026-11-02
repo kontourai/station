@@ -236,7 +236,9 @@ With **Device developer loop** and **Walkthroughs** enabled, use **Record to
 Task** in the Device pane to select a Task and start a clip. Stop it with the
 toolbar control; Station also stops at 30 seconds. The clip is saved in Task
 Review with the host and device and the app observed at the start. A rotated
-frame currently refuses the recording. An agent with a Task-bound Session can
+frame currently refuses the recording. If no fresh image arrives, the clip uses
+the last image cached when recording began; that image may predate the clip.
+An agent with a Task-bound Session can
 use `device_record_to_task` with a duration of up to 30 seconds.
 
 With **Device developer loop** enabled, the Tools drawer can sample logs for

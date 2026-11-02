@@ -5,6 +5,10 @@ import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { promisify } from 'node:util';
 import {
+  LIVE_SURFACE_COORDINATE_MAX,
+  type LiveSurfaceRecord,
+} from '@kontourai/station-contracts/live-surface';
+import {
   parseWalkthrough,
   WALKTHROUGH_LIMITS,
   WALKTHROUGH_SCHEMA,
@@ -82,6 +86,19 @@ async function convertPngFrame(
   height: number,
   signal: AbortSignal,
 ): Promise<number> {
+  if (
+    !Number.isSafeInteger(width) ||
+    !Number.isSafeInteger(height) ||
+    width < 1 ||
+    height < 1 ||
+    width > LIVE_SURFACE_COORDINATE_MAX ||
+    height > LIVE_SURFACE_COORDINATE_MAX ||
+    width * height > 16 * 1024 * 1024
+  )
+    throw new TaskBrowserRecordingError(
+      'recording-unavailable',
+      'Device image dimensions are invalid.',
+    );
   try {
     await execFileAsync(
       ffmpeg,
@@ -469,6 +486,7 @@ export class TaskBrowserRecording {
             'recording-unavailable',
             'Recording authority changed.',
           );
+        const fallback = entry.hub.snapshotImage();
         const viewer = entry.hub.attach(
           {
             maxFps: 10,
@@ -499,6 +517,58 @@ export class TaskBrowserRecording {
           png?: boolean;
         }[] = [];
         let rawBytes = 0;
+        const appendFrame = async (
+          record: Extract<LiveSurfaceRecord, { kind: 'frame' }>,
+        ) => {
+          this.deps.captures.current(access);
+          if (
+            source.checkEachFrame &&
+            (!this.enabled() ||
+              !source.current() ||
+              !(await source.authorize()) ||
+              !this.enabled())
+          )
+            throw new TaskBrowserRecordingError(
+              'recording-unavailable',
+              'Recording authority changed during capture.',
+            );
+          if (source.device && record.header.rotation)
+            throw new TaskBrowserRecordingError(
+              'recording-unavailable',
+              'Rotated Device recording is unavailable.',
+            );
+          if (record.header.codec !== 'jpeg' && record.header.codec !== 'png')
+            throw new TaskBrowserRecordingError(
+              'recording-unavailable',
+              'The surface returned an unsupported frame.',
+            );
+          rawBytes += record.body.byteLength;
+          if (rawBytes > MAX_RAW_FRAME_BYTES || frames.length >= MAX_FRAMES)
+            throw new TaskBrowserRecordingError(
+              'recording-too-large',
+              'Frames exceed the recording limit.',
+            );
+          const file = `frame-${String(frames.length).padStart(4, '0')}.${record.header.codec === 'png' ? 'png' : 'jpg'}`;
+          const tMs =
+            frames.length === 0
+              ? 0
+              : Math.min(
+                  input.durationMs - 1,
+                  Math.max(0, Math.floor(performance.now() - started)),
+                );
+          await writeFile(join(stage.path, file), record.body, {
+            flag: 'wx',
+            mode: 0o600,
+          });
+          frames.push({
+            file,
+            tMs,
+            width: record.header.width,
+            height: record.header.height,
+            bytes: record.body.byteLength,
+            ...(record.header.codec === 'png' ? { png: true } : {}),
+          });
+        };
         try {
           input.onStarted?.();
           while (!captureSignal.aborted) {
@@ -512,54 +582,7 @@ export class TaskBrowserRecording {
               break;
             }
             if (record.kind !== 'frame') continue;
-            this.deps.captures.current(access);
-            if (
-              source.checkEachFrame &&
-              (!this.enabled() ||
-                !source.current() ||
-                !(await source.authorize()) ||
-                !this.enabled())
-            )
-              throw new TaskBrowserRecordingError(
-                'recording-unavailable',
-                'Recording authority changed during capture.',
-              );
-            if (source.device && record.header.rotation)
-              throw new TaskBrowserRecordingError(
-                'recording-unavailable',
-                'Rotated Device recording is unavailable.',
-              );
-            if (record.header.codec !== 'jpeg' && record.header.codec !== 'png')
-              throw new TaskBrowserRecordingError(
-                'recording-unavailable',
-                'The surface returned an unsupported frame.',
-              );
-            rawBytes += record.body.byteLength;
-            if (rawBytes > MAX_RAW_FRAME_BYTES || frames.length >= MAX_FRAMES)
-              throw new TaskBrowserRecordingError(
-                'recording-too-large',
-                'Frames exceed the recording limit.',
-              );
-            const file = `frame-${String(frames.length).padStart(4, '0')}.${record.header.codec === 'png' ? 'png' : 'jpg'}`;
-            const tMs =
-              frames.length === 0
-                ? 0
-                : Math.min(
-                    input.durationMs - 1,
-                    Math.max(0, Math.floor(performance.now() - started)),
-                  );
-            await writeFile(join(stage.path, file), record.body, {
-              flag: 'wx',
-              mode: 0o600,
-            });
-            frames.push({
-              file,
-              tMs,
-              width: record.header.width,
-              height: record.header.height,
-              bytes: record.body.byteLength,
-              ...(record.header.codec === 'png' ? { png: true } : {}),
-            });
+            await appendFrame(record);
           }
           throwIfCancelled(signal);
           if (!duration.signal.aborted)
@@ -573,6 +596,7 @@ export class TaskBrowserRecording {
           viewer.close();
         }
         throwIfCancelled(signal);
+        if (!frames.length && fallback) await appendFrame(fallback);
         if (!frames.length)
           throw new TaskBrowserRecordingError(
             'recording-unavailable',
