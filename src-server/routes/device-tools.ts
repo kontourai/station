@@ -12,6 +12,7 @@ import { type Context, Hono } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { readBoundedRequestBody } from '../security/bounded-request-body.js';
 import type { DeviceAccess } from '../services/devices/device-access.js';
+import type { DeviceArtifactStaging } from '../services/devices/device-app-artifacts.js';
 import { DeviceHostBusyError } from '../services/devices/device-shares.js';
 import {
   type DeviceControlConflict,
@@ -22,6 +23,10 @@ import {
   isDeviceToolsTarget,
   parseDeviceAppAction,
 } from '../services/devices/device-tools.js';
+import type {
+  DeviceInstallFile,
+  DeviceInstallOutcome,
+} from '../services/devices/hosts/device-app-install.js';
 
 /**
  * The Device pane's Tools drawer (#1971, D10), under `/api/mobile-devices`:
@@ -59,6 +64,20 @@ import {
 
 export interface DeviceToolsRouteOptions {
   isRequestPrincipalCurrent: (request: Request) => boolean;
+  appInstall?: {
+    staging: DeviceArtifactStaging;
+    projectId(slug: string): string | undefined;
+    authorize(request: Request, projectId: string): Promise<boolean>;
+    run(input: {
+      hostId: string;
+      platform: 'ios' | 'android';
+      deviceId: string;
+      digest: string;
+      files: DeviceInstallFile[];
+      beforeInstall: () => Promise<boolean>;
+      signal: AbortSignal;
+    }): Promise<DeviceInstallOutcome>;
+  };
   deviceLoopEnabled?: () => boolean;
   access?: DeviceAccess;
   /** The local device host's service. */
@@ -406,6 +425,142 @@ export function createDeviceToolsRoutes(options: DeviceToolsRouteOptions) {
       return run(c, async () =>
         publish(c, await admitted.service.accessibility(admitted.target)),
       );
+    },
+  );
+
+  app.post(
+    '/hosts/:hostId/devices/:platform/:deviceId/tools/install',
+    async (c) => {
+      if (!options.deviceLoopEnabled?.())
+        return c.json(
+          { success: false, code: 'feature_preview_disabled' },
+          404,
+        );
+      const config = options.appInstall;
+      const slug = c.req.query('projectSlug');
+      if (!config || !options.controlConflict) return failure(c, 'unavailable');
+      if (
+        !queryIsClean(c, ['projectSlug']) ||
+        !slug ||
+        !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(slug)
+      )
+        return failure(c, 'invalid-request');
+      const projectId = config.projectId(slug);
+      if (!projectId) return failure(c, 'access-denied');
+      const body = await readBoundedRequestBody(c.req.raw, 4096);
+      let value: unknown;
+      try {
+        value = body.status === 'ok' ? JSON.parse(body.body) : null;
+      } catch {
+        value = null;
+      }
+      if (
+        !value ||
+        typeof value !== 'object' ||
+        Array.isArray(value) ||
+        Object.keys(value).length !== 1 ||
+        typeof (value as { artifactHandle?: unknown }).artifactHandle !==
+          'string' ||
+        !/^[0-9a-f-]{36}$/.test(
+          (value as { artifactHandle: string }).artifactHandle,
+        )
+      )
+        return failure(c, 'invalid-request');
+      const handle = (value as { artifactHandle: string }).artifactHandle;
+      const admitted = await admit(c, 'drive');
+      if (!admitted.ok) return admitted.response;
+      const { target, caller, service } = admitted;
+      const current = async () => {
+        if (
+          !options.deviceLoopEnabled?.() ||
+          !stillCurrent(c) ||
+          c.req.raw.signal.aborted ||
+          config.projectId(slug) !== projectId ||
+          !(await config.authorize(c.req.raw, projectId))
+        )
+          return false;
+        const fresh = await admit(c, 'drive');
+        return (
+          fresh.ok &&
+          fresh.service === service &&
+          fresh.caller.principal === caller.principal &&
+          fresh.caller.device === caller.device &&
+          options.controlConflict!(
+            caller,
+            target.platform,
+            target.deviceId,
+            target.hostId,
+          ) === 'none' &&
+          config.projectId(slug) === projectId &&
+          options.deviceLoopEnabled?.() === true &&
+          stillCurrent(c)
+        );
+      };
+      let started = false;
+      let outcome: DeviceInstallOutcome | undefined;
+      try {
+        const result = await config.staging.withArtifact(
+          projectId,
+          handle,
+          current,
+          async (receipt, payload, artifactCurrent, signal) => {
+            if (receipt.platform !== target.platform)
+              return {
+                ok: false as const,
+                code: 'incompatible-artifact',
+                effect: 'none' as const,
+              };
+            const files =
+              payload.platform === 'ios'
+                ? payload.files
+                : [
+                    {
+                      path: 'Application.apk',
+                      executable: false,
+                      bytes: payload.apk,
+                    },
+                  ];
+            started = true;
+            outcome = await config.run({
+              ...target,
+              digest: receipt.digest,
+              files,
+              signal,
+              beforeInstall: async () =>
+                (await current()) &&
+                (await artifactCurrent()) &&
+                (await current()),
+            });
+            if (!(await current()))
+              return {
+                ok: false as const,
+                code: 'interrupted',
+                effect:
+                  outcome.ok || outcome.effect === 'unknown'
+                    ? ('unknown' as const)
+                    : ('none' as const),
+              };
+            return outcome;
+          },
+          c.req.raw.signal,
+        );
+        return result.ok
+          ? publish(c, result)
+          : c.json({ success: false, ...result }, 409);
+      } catch {
+        return c.json(
+          {
+            success: false,
+            code: 'interrupted',
+            effect:
+              started &&
+              (!outcome || outcome.ok || outcome.effect === 'unknown')
+                ? 'unknown'
+                : 'none',
+          },
+          409,
+        );
+      }
     },
   );
 

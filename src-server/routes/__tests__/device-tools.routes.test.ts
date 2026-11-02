@@ -5,8 +5,10 @@ import type {
   MobileDeviceSummary,
 } from '@kontourai/station-contracts/mobile-device';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { ZipFile } from 'yazl';
 import { readJson } from '../../__test-utils__/read-json.js';
 import type { DeviceAccess } from '../../services/devices/device-access.js';
+import { DeviceArtifactStaging } from '../../services/devices/device-app-artifacts.js';
 import { DeviceToolError } from '../../services/devices/device-host-tools.js';
 import type { DeviceSocket } from '../../services/devices/device-live-surface-producer.js';
 import { DeviceSessionService } from '../../services/devices/device-session-service.js';
@@ -92,6 +94,7 @@ afterEach(async () => {
 function setup(
   deviceLoopEnabled = () => true,
   runnerOverride?: DeviceToolRunner,
+  appInstall?: Parameters<typeof createDeviceToolsRoutes>[0]['appInstall'],
 ) {
   const calls: { tool: DeviceTool; args: string[] }[] = [];
   const runner = {
@@ -145,6 +148,7 @@ function setup(
   });
   const app = createDeviceToolsRoutes({
     deviceLoopEnabled,
+    ...(appInstall ? { appInstall } : {}),
     isRequestPrincipalCurrent: () => true,
     access: fakeAccess,
     tools,
@@ -1372,4 +1376,77 @@ describe('a device on an SSH device host, served by that host (#2442)', () => {
       DEVICE_AX_RESPONSE_MAX_BYTES,
     );
   });
+});
+
+test('install requires current Project and device authority before invoking the selected host', async () => {
+  const staging = new DeviceArtifactStaging();
+  const archive = new ZipFile();
+  const chunks: Buffer[] = [];
+  const bytes = new Promise<Buffer>((resolve, reject) => {
+    archive.outputStream.on('data', (chunk: Buffer) => chunks.push(chunk));
+    archive.outputStream.on('end', () => resolve(Buffer.concat(chunks)));
+    archive.outputStream.on('error', reject);
+  });
+  archive.addBuffer(Buffer.from('manifest'), 'AndroidManifest.xml');
+  archive.end();
+  const receipt = await staging.stageUpload(
+    'project',
+    await bytes,
+    'android',
+    async () => true,
+  );
+  let allowed = true;
+  const run = vi.fn(
+    async (input: {
+      digest: string;
+      beforeInstall: () => Promise<boolean>;
+    }) => {
+      if (!(await input.beforeInstall()))
+        return {
+          ok: false as const,
+          code: 'interrupted',
+          effect: 'none' as const,
+        };
+      return {
+        ok: true as const,
+        digest: input.digest,
+        metadata: {
+          platform: 'android' as const,
+          abi: 'universal',
+          appId: 'com.example.app',
+          version: '1',
+          build: '1',
+          revision: null,
+        },
+      };
+    },
+  );
+  const { call } = setup(() => true, undefined, {
+    staging,
+    projectId: (slug) => (slug === 'demo' ? 'project' : undefined),
+    authorize: async () => allowed,
+    run,
+  });
+  const path =
+    '/hosts/local/devices/android/emulator-5554/tools/install?projectSlug=demo';
+  const body = { artifactHandle: receipt.handle };
+  expect((await call('POST', path, 'contributor', body)).status).toBe(403);
+  allowed = false;
+  expect((await call('POST', path, 'operator', body)).status).toBe(409);
+  expect(run).not.toHaveBeenCalled();
+  allowed = true;
+  const response = await call('POST', path, 'operator', body);
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({
+    success: true,
+    data: { digest: receipt.digest, metadata: { appId: 'com.example.app' } },
+  });
+  expect(run).toHaveBeenCalledWith(
+    expect.objectContaining({
+      hostId: 'local',
+      deviceId: 'emulator-5554',
+      digest: receipt.digest,
+    }),
+  );
+  await staging.dispose();
 });

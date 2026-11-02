@@ -5048,6 +5048,23 @@ export function configureRuntimeRoutes(
         deviceLoopEnabled,
         isRequestPrincipalCurrent,
         access: deviceAccess,
+        appInstall: {
+          staging: artifacts,
+          projectId: (slug) =>
+            context.projectService
+              .listProjects()
+              .find((project) => project.slug === slug)?.id,
+          authorize: async (request, projectId) =>
+            !!(await authorizeArtifactProject(request, projectId, 'drive')),
+          run: (input) =>
+            input.hostId === LOCAL_DEVICE_HOST_ID
+              ? runDeviceAppInstall({
+                  ...input,
+                  target: { host: 'localhost' },
+                  spawn: spawnLocalDeviceInstall,
+                })
+              : hostRegistry.installApp(input.hostId, input),
+        },
         // THIS machine's xcrun/adb and hub serve the local device host; an
         // SSH device host has its own service (#2442), built per host.
         tools: ownDeviceTools,
