@@ -5,6 +5,7 @@ import { FileAuthorizationLedger } from '@kontourai/dispatch';
 import { flowRunHead, loadRun } from '@kontourai/flow';
 import { delegationAccountingDollarsV1 } from '@kontourai/flow-agents/delegation-dispatch';
 import { recoverReportGroupAccounting } from '@kontourai/station-sdk/client';
+import { prepareFileMutationOwner } from '@kontourai/station-shared/lifecycle-events';
 import { Hono } from 'hono';
 import { onTestFinished, test, vi } from 'vitest';
 import { createGateTestRegistry } from '../../../__test-utils__/orchestration-gate-test-harness.js';
@@ -24,6 +25,7 @@ import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
 import { createSessionAgentResolver } from '../session-agent-resolution.js';
+import { StationReportGroupCustody } from '../station-report-group-custody.js';
 import { StationReportGroupRuntime } from '../station-report-group-runtime.js';
 import { createReportFlow } from './delegation-source-fixtures/flow.js';
 import {
@@ -360,7 +362,7 @@ test('accounting recovery refuses aborted admission and resumes a Dispatch-only 
   }
 }, 300_000);
 
-test.each(['exact-replay', 'shutdown-custody'] as const)(
+test.each(['exact-replay', 'shutdown-custody', 'shutdown-tail'] as const)(
   'unknown physical usage stays reserved during %s',
   async (mode) => {
     const { h, owners, orchestration, eventStore, runtimeOwner } =
@@ -379,6 +381,8 @@ test.each(['exact-replay', 'shutdown-custody'] as const)(
     const close = vi.spyOn(ownedStore, 'close');
     let resumeRecovery = () => {};
     let restoreRecovery = () => {};
+    let closeProbe = async () => {};
+    const lateChecks: Array<() => undefined> = [];
     let recovering:
       | ReturnType<StationReportGroupRuntime['recoverAccounting']>
       | undefined;
@@ -435,13 +439,61 @@ test.each(['exact-replay', 'shutdown-custody'] as const)(
           });
         restoreRecovery = () => held.mockRestore();
       }
+      if (mode === 'shutdown-tail') {
+        const probe = await prepareFileMutationOwner(
+          join(h.f.home, 'security', '.home-writer.mutation'),
+        );
+        closeProbe = () => probe.close();
+        let trailing = false;
+        const inspect = StationReportGroupCustody.prototype.inspectForMutation;
+        const tail = vi
+          .spyOn(StationReportGroupCustody.prototype, 'inspectForMutation')
+          .mockImplementation(async function (
+            this: StationReportGroupCustody,
+            ...args
+          ) {
+            trailing = true;
+            try {
+              return await inspect.apply(this, args);
+            } finally {
+              trailing = false;
+            }
+          });
+        const read = StationDelegationPersistence.prototype.readReportExecution;
+        const hold = vi
+          .spyOn(StationDelegationPersistence.prototype, 'readReportExecution')
+          .mockImplementation(async function (
+            this: StationDelegationPersistence,
+            ...args
+          ) {
+            const result = await read.apply(this, args);
+            if (trailing) {
+              const physical = probe.tryAcquire();
+              if (physical.kind === 'acquired') await physical.lease.release();
+              assert.equal(
+                physical.kind,
+                'busy',
+                'trailing recovery read must keep exact Home custody through return',
+              );
+              args[2]();
+              lateChecks.push(args[2]);
+              recoveryEntered();
+              await resume;
+            }
+            return result;
+          });
+        restoreRecovery = () => {
+          hold.mockRestore();
+          tail.mockRestore();
+        };
+      }
       recovering = runtime.recoverAccounting(
         h.f.context(requestFor(h, 'POST')),
         group.groupId,
         command,
       );
       void recovering.catch(() => {});
-      if (mode === 'shutdown-custody') {
+      if (mode !== 'exact-replay') {
         await Promise.race([
           entered,
           recovering.then(() => {
@@ -463,6 +515,11 @@ test.each(['exact-replay', 'shutdown-custody'] as const)(
         }
       }
       const result = await recovering;
+      if (mode === 'shutdown-tail') {
+        assert.equal(lateChecks.length, 1);
+        for (const current of lateChecks)
+          assert.throws(current, { reason: 'borrow-unavailable' });
+      }
       assert.equal(result.status, 'held');
       assert.equal(result.reason, 'usage-unknown');
       assert.equal(result.accounting, null);
@@ -474,7 +531,7 @@ test.each(['exact-replay', 'shutdown-custody'] as const)(
       assert.equal(after.members[0].attempts[0].usage, null);
       assert.equal(after.members[0].attempts[0].accountingTerminal, false);
       assert.equal(after.revision, group.revision);
-      if (mode === 'shutdown-custody') {
+      if (mode !== 'exact-replay') {
         await runtimeOwner.shutdown();
         assert.equal(close.mock.calls.length, 1);
         assert.deepEqual(await dispatch.inspectInvocation(reservation), before);
@@ -500,6 +557,7 @@ test.each(['exact-replay', 'shutdown-custody'] as const)(
       resumeRecovery();
       await recovering?.catch(() => {});
       restoreRecovery();
+      await closeProbe();
       await orchestration.shutdown();
       eventStore.close();
       await runtimeOwner.shutdown();
