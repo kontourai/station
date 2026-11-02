@@ -195,6 +195,15 @@
       "configKey": "terminalShell"
     },
     {
+      "id": "terminal-history",
+      "label": "Terminal history",
+      "help": "New terminals write their output to disk, so it survives a restart.",
+      "scope": "station",
+      "section": "host-runtime",
+      "route": "/settings?view=host-runtime&highlight=terminal-history",
+      "configKey": "terminalHistoryEnabled"
+    },
+    {
       "id": "mcp-ui-host",
       "label": "MCP UI host",
       "help": "Tools that ship their own interface display it in chat inside a sandboxed frame instead of a plain unsupported notice.",

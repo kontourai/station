@@ -198,6 +198,8 @@ export interface GenerationStatus {
   state: GenerationState;
   bootId: string | null;
   port: number | null;
+  /** Protocol 1.3: generation capabilities granted in `promote` (`workloads`). */
+  capabilities?: string[];
 }
 
 export type SupervisorState =
@@ -226,6 +228,8 @@ export interface SupervisorStatus {
   restarts: { consecutiveFailures: number; lastBackoffMs: number | null };
   /** Protocol 1.3: workloads this supervisor's workload host runs or ran. */
   workloads?: WorkloadStatus[];
+  /** Protocol 1.3: whether a workload host is configured and not stopped. */
+  workloadHost?: { available: boolean };
 }
 
 export interface WorkloadStatus {

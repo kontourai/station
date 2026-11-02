@@ -62,6 +62,10 @@ import {
   LogLevelEditService,
 } from '../../services/config/log-level-edit-service.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
+import {
+  TERMINAL_RETENTION_KEYS,
+  terminalRetentionProblem,
+} from '../../services/terminal/terminal-retention.js';
 import { defaultTerminalShell } from '../../services/terminal/terminal-shells.js';
 import { configOps } from '../../telemetry/metrics.js';
 import type { Logger } from '../../utils/logger.js';
@@ -576,6 +580,45 @@ export function createConfigRoutes(
             logRefusal('scope_command_not_granted');
             return commandRefused;
           }
+        }
+      }
+
+      // Terminal history retention: each value's range is the registry's;
+      // the rules spanning settings are checked against the merged result.
+      if (
+        TERMINAL_RETENTION_KEYS.some((key) =>
+          Object.hasOwn(body as object, key),
+        )
+      ) {
+        const current = await configLoader.loadAppConfig();
+        const merged: Record<string, unknown> = { ...current };
+        for (const key of TERMINAL_RETENTION_KEYS) {
+          if (!Object.hasOwn(body as object, key)) continue;
+          const value = (body as Record<string, unknown>)[key];
+          if (value === null || value === undefined || value === '')
+            delete merged[key];
+          else merged[key] = value;
+        }
+        const problem = terminalRetentionProblem(merged);
+        if (problem)
+          return c.json(
+            { success: false, error: `${problem}; no settings were saved.` },
+            400,
+          );
+        if (
+          changesAny(body as object, current, ['terminalHistoryDirectory']) &&
+          requestMayBeAnAgent(c.req.raw)
+        ) {
+          logRefusal('scope_agent_command_not_granted');
+          return c.json(
+            {
+              success: false,
+              code: COMMAND_NOT_GRANTED_CODE,
+              error:
+                'An agent cannot move terminal history. The operator can, in Settings.',
+            },
+            403,
+          );
         }
       }
 

@@ -318,6 +318,7 @@ export async function runSupervisor(options: SupervisorOptions): Promise<void> {
         },
         ...manager.status(),
         workloads: workloads.status(),
+        workloadHost: { available: workloads.available },
       }),
       handoff: (request, onProgress) => manager.handoff(request, onProgress),
       stop: (drainDeadlineMs) => void stopAndExit(drainDeadlineMs),

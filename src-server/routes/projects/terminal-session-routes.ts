@@ -22,6 +22,8 @@ const openSchema = z
     bindingKey: binding,
     subdirectory: z.string().max(4096).optional(),
     legacyTerminalId: z.string().min(1).max(256).optional(),
+    /** Answer with the binding's running shell when it has one. */
+    adopt: z.boolean().optional(),
   })
   .strict();
 
@@ -66,6 +68,7 @@ export function createTerminalSessionRoutes(
         ...(input.legacyTerminalId && {
           legacy: { projectSlug: slug, terminalId: input.legacyTerminalId },
         }),
+        ...(input.adopt && { adopt: true }),
       },
     );
     return c.json({ success: true, data: result });
@@ -158,6 +161,56 @@ export function createTerminalSessionRoutes(
       z.string().uuid().parse(c.req.param('terminalId')),
     );
     return c.json({ success: true });
+  });
+  return app;
+}
+
+/**
+ * Terminal history usage and clearing (#3994), mounted at
+ * `/api/terminal/history`. Usage lists what the caller may observe; clearing
+ * deletes ended terminals' history the caller may operate.
+ */
+export function createTerminalHistoryRoutes(
+  sessions: TerminalSessions<Request>,
+  authorizeRequest: (request: Request) => boolean,
+) {
+  const app = new Hono();
+  app.use('*', async (c, next) => {
+    if (!authorizeRequest(c.req.raw))
+      return c.json({ success: false, error: 'Terminal access refused' }, 403);
+    await next();
+  });
+  app.onError((error, c) => {
+    if (error instanceof z.ZodError)
+      return c.json({ success: false, error: 'Invalid terminal request' }, 400);
+    logger.error('Terminal history operation failed', { error });
+    return c.json(
+      { success: false, error: 'Terminal history unavailable' },
+      503,
+    );
+  });
+  app.get('/', async (c) => {
+    const usage = await sessions.usage(c.req.raw);
+    return c.json({
+      success: true,
+      data: {
+        enabled: usage.retention.persist,
+        directory: usage.retention.directory,
+        projects: usage.projects,
+        terminals: usage.terminals,
+        bytes: usage.bytes,
+      },
+    });
+  });
+  app.delete('/', async (c) => {
+    const projectId = c.req.query('projectId');
+    const result = await sessions.clearHistory(
+      c.req.raw,
+      projectId === undefined
+        ? undefined
+        : z.string().min(1).max(256).parse(projectId),
+    );
+    return c.json({ success: true, data: result });
   });
   return app;
 }

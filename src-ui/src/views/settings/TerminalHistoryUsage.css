@@ -1,0 +1,36 @@
+/* Settings › Host options › Terminal history usage (#3994). */
+
+.terminal-history {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--k-space-2);
+}
+
+.terminal-history__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--k-text-sm);
+}
+
+.terminal-history__table th,
+.terminal-history__table td {
+  padding: var(--k-space-1) var(--k-space-2);
+  border-bottom: var(--k-border-thin) solid var(--k-line);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.terminal-history__table thead th {
+  color: var(--k-text-muted);
+  font-weight: 600;
+}
+
+.terminal-history__table tbody th {
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+
+.terminal-history__table td:last-child {
+  text-align: right;
+}

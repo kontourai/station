@@ -344,6 +344,19 @@ const SETTINGS_CATALOG_SOURCE = [
     configKeys: ['terminalShell'],
   },
   {
+    id: 'terminal-history',
+    title: 'Terminal history',
+    section: 'host-runtime',
+    keywords: ['retention journal scrollback disk usage clear'],
+    configKeys: [
+      'terminalHistoryEnabled',
+      'terminalHistoryDirectory',
+      'terminalHistoryMaxAgeDays',
+      'terminalHistoryMaxTerminalMiB',
+      'terminalHistoryMaxTotalMiB',
+    ],
+  },
+  {
     id: 'mcp-ui-host',
     title: 'MCP UI host',
     section: 'host-runtime',

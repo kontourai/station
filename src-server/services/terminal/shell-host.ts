@@ -30,13 +30,15 @@ export interface ShellHost {
     launch?: ShellLaunch;
   }): Promise<IPtyProcess>;
   /**
-   * A shell this host kept running while the core restarted, or null when it
-   * has ended. Only hosts that outlive the core (the supervisor's) have one.
+   * A shell this host kept running while the core restarted; `'ended'` when
+   * it ended while this host kept running; null when this host does not know
+   * it (the host itself restarted). Only hosts that outlive the core (the
+   * supervisor's) have one.
    */
   attach?(
     terminalId: string,
     journal: ShellJournalSpec,
-  ): Promise<HostedShellProcess | null>;
+  ): Promise<HostedShellProcess | 'ended' | null>;
 }
 
 /**

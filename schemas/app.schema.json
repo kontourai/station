@@ -293,6 +293,33 @@
       "type": "string",
       "description": "Shell used when Station spawns a terminal session."
     },
+    "terminalHistoryEnabled": {
+      "type": "boolean",
+      "description": "Write new terminals' output to disk so it survives a restart."
+    },
+    "terminalHistoryDirectory": {
+      "type": "string",
+      "maxLength": 4096,
+      "description": "Absolute directory for terminal history; empty uses terminal-journals in the Station home."
+    },
+    "terminalHistoryMaxAgeDays": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 3650,
+      "description": "Days to keep the history of an ended terminal."
+    },
+    "terminalHistoryMaxTerminalMiB": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1024,
+      "description": "MiB of history each terminal keeps."
+    },
+    "terminalHistoryMaxTotalMiB": {
+      "type": "integer",
+      "minimum": 16,
+      "maximum": 1048576,
+      "description": "MiB of history all terminals keep together."
+    },
     "disableDefaultSkillRegistries": {
       "type": "boolean",
       "description": "Stop Station from loading its built-in skill registries."

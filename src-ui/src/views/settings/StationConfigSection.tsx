@@ -59,6 +59,11 @@ export const STATION_SETTING_KEYS_BY_SECTION = {
   // and the local device helper the Device pane dials.
   'host-runtime': [
     'terminalShell',
+    'terminalHistoryEnabled',
+    'terminalHistoryDirectory',
+    'terminalHistoryMaxAgeDays',
+    'terminalHistoryMaxTerminalMiB',
+    'terminalHistoryMaxTotalMiB',
     'mcpUiHost',
     'surfaceTrustFromVeritasEvidence',
     'attachedSessionsOutsideProjects',

@@ -1646,6 +1646,26 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     origin: 'explicit',
     personalTokens: 'refused',
   },
+  // #3994: terminal history usage reads what the caller may observe; clearing
+  // deletes ended terminals' output, the operate tier.
+  {
+    id: '/api/terminal/history:GET:terminal-observe',
+    method: 'GET',
+    prefix: '/api/terminal/history',
+    exact: true,
+    scope: PAIRING_SCOPE_TERMINAL_OBSERVE,
+    origin: 'explicit',
+    personalTokens: 'refused',
+  },
+  {
+    id: '/api/terminal/history:DELETE:terminal-operate',
+    method: 'DELETE',
+    prefix: '/api/terminal/history',
+    exact: true,
+    scope: PAIRING_SCOPE_TERMINAL_OPERATE,
+    origin: 'explicit',
+    personalTokens: 'refused',
+  },
   {
     id: '/api/pairing:manage',
     method: '*',

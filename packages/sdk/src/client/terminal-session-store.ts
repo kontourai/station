@@ -139,6 +139,10 @@ export interface TerminalSessionRecord {
     | { kind: 'agent'; connectionId: string; mode: string }
     | { kind: 'server' };
   legacy?: { projectSlug: string; terminalId: string; imported: boolean };
+  /** A shell's stable number in its binding ("Shell N"); absent from older hosts. */
+  ordinal?: number;
+  /** Set when the shell was reopened after its host restarted. */
+  restoredAt?: number;
 }
 
 export interface TerminalSessionSocket extends EventTarget {
