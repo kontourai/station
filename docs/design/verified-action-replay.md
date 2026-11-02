@@ -12,8 +12,10 @@
 
 ## Problem
 
-An Agent drives the Station browser one tool call at a time, and each call
-costs a model turn. A Session that repeats a known flow, such as signing in to a
+An Agent drives the Station browser through tool calls. When each action
+depends on what the previous one showed, each needs its own model round trip.
+A model can batch independent calls in one turn, but a sequential flow cannot
+be batched that way. A Session that repeats a known flow, such as signing in to a
 local app, opening a settings view or filling in a setup form, spends that model
 time on every run, and its path can differ from run to run.
 
@@ -56,9 +58,10 @@ replays a sequence.
   taken without a bound lease, or one that overlaps a human hold, returns no
   usable refs ([guide](../guides/browser-workspace.md#agent-authority-and-human-input)).
   A recording therefore cannot store a ref.
-- **Action history is not a recording.** History is capped at 200 entries
-  (`BROWSER_SESSION_HISTORY_LIMIT` in the
-  [session registry](../../src-server/services/browser/browser-session-registry.ts)).
+- **Action history is not a recording.** History keeps at most 200 actor and
+  lifecycle entries (`BROWSER_SESSION_HISTORY_LIMIT` in the
+  [session registry](../../src-server/services/browser/browser-session-registry.ts)),
+  with separate, smaller bounds for page-originated entries and refused calls.
   It records typed text, single printable key presses and scripts by size only,
   and records a select's method and text length rather than its value. List
   and summary URLs drop the query and fragment. That posture is deliberate,
@@ -93,8 +96,9 @@ does not collide with History replay; see [open questions](#open-questions).
 
 ### A bound Session runs every replay
 
-Here, "without a model" means one model turn for the whole sequence rather than
-one turn per action. It does not mean running without a caller. The decision
+Here, "without a model" means one tool call for the whole sequence, which
+removes the model round trips between dependent actions. It does not promise
+an exact N-to-one saving, because a model can already batch independent calls. It does not mean running without a caller. The decision
 record's authority chain starts with a verified, bound Session owner, its
 canonical Project, current operator/admin standing and the exact profile grant.
 A replay outside a Session would need a new principal kind, so that is out of
@@ -104,14 +108,29 @@ Replay would be a station-browser tool (working name `browser_replay`) that a
 bound Session calls with a recording identifier. It is a sequencer over the
 existing operations, not a second executor:
 
-- Each replayed action calls the same BrowserAutomation operation a live tool
-  call uses. That operation repeats the authority checks, selects the profile,
-  runs through `withLive`/`withControl` and the captured fence, refuses
-  `obscured`, and refuses `dialog-open` while a person's dialog is held. Each
-  action writes its own history entry with the Agent as the actor and the
-  values recorded by size only.
-- Replay takes no special lease. A human takeover advances the fence and stops
-  replay as it stops a live action. Replay never resumes after hand-back.
+- **Fresh authorization before every action.** Today a live tool call resolves
+  the caller's Project standing once, at the route boundary
+  (`authorizeBrowserAgentCaller` in
+  [browser-agent routes](../../src-server/routes/browser-agent.ts)), and the
+  operation afterwards checks only that the issued grant is still current
+  (identity and credential continuity), not membership. Reusing the
+  operations would therefore not recheck standing per action. Replay must
+  re-run the route-level caller and standing authorization before each
+  replayed action, in addition to the operation's own grant and fence checks.
+- **The operations themselves are reused.** Each replayed action then calls the
+  same BrowserAutomation operation a live tool call uses: it selects the
+  profile, runs through `withLive`/`withControl` and the captured fence,
+  refuses `obscured`, and refuses `dialog-open` while a person's dialog is
+  held. Each action writes its own history entry with the Agent as the actor
+  and the values recorded by size only.
+- **A replay-wide takeover latch.** Replay takes no special lease, but per-action
+  leases are not enough on their own: `withControl` claims and releases
+  control for each operation, so after a person takes and returns control
+  between two actions, the next operation can claim a fresh lease. Replay
+  must therefore keep its own latch for the whole sequence. Any human hold
+  observed at any point, including during target resolution or between
+  operations, stops replay as `interrupted`, and a stopped replay never
+  resumes after hand-back.
 - Replay is a sensitive station-browser tool and follows the existing approval
   posture. The prompt shows the recording's actions: target descriptions,
   origins and value kinds, but not literal or secret values. Under the current
@@ -201,15 +220,26 @@ their own.
    Replay never retries an action whose effect is unknown.
 4. **End check.** The end path must match, every end anchor must be present
    and every gone anchor absent.
-5. **Outcome attribution.** Replay reports success only if at least one
-   recorded end condition was observed false before replay acted and true
-   afterwards. Station samples the end conditions before the first action. If
-   every condition was already true before replay acted, the result is
-   `end-mismatch` even though every action ran, because nothing shows that the
-   replay produced the outcome. This is the pilot's `/settings?view=appearance`
-   case. The e2e framework exempts a step whose last action navigated; Station
-   should accept that exemption only when it observed the navigation commit
-   during the replay.
+5. **Observed progress, not proof of cause.** Replay reports success only if
+   at least one recorded end condition was observed false before replay acted
+   and true afterwards. Station samples the end conditions before the first
+   action. If every condition was already true before replay acted, the result
+   is `end-mismatch` even though every action ran, because nothing shows that
+   the replay produced the outcome. This is the pilot's
+   `/settings?view=appearance` case. The converse is weaker: a condition that
+   turns true during replay shows progress, not that replay caused it. An
+   unrelated asynchronous update can satisfy an anchor in the same window. The
+   rule is a conservative filter, and the request's live check (below) still
+   decides whether the work succeeded.
+
+   The e2e framework exempts a step whose last action navigated. Station would
+   accept that exemption only for the navigation that replay itself issued:
+   the commit must belong to that action, reach the recorded destination and
+   be a new document after the action. The browser decision already says
+   navigation observations confer no authority, and today's observations
+   include redirects and script-driven navigation, so an unrelated commit
+   during replay does not qualify. The exemption never credits page state that
+   existed before replay.
 
 The tool returns one of three results:
 
@@ -250,9 +280,13 @@ replayed step never rewrites its own entry.
   when the Project is removed or when their profile is deleted. Delete an
   Agent's recordings when the Agent is deleted. Replay rechecks authority on
   every action anyway; deletion keeps stale literal values from lingering.
-- **Refuse** a step whose secret binding was revoked or no longer grants that
-  origin (`secret-unavailable`). Keep the entry, because the binding may be
-  restored.
+- **Refuse** a step whose secret binding is temporarily unavailable or no
+  longer grants that origin (`secret-unavailable`), and keep the entry, since
+  the grant may be given back.
+- **Evict** a step whose secret binding was revoked. Revocation is terminal
+  ([contract](../../packages/contracts/src/secret-binding.ts)): a revoked
+  binding cannot be reactivated, so a replacement is a new binding, and using
+  it requires re-recording the step or explicitly rebinding the recording.
 - **Do not invalidate** on human takeover, cancellation or an unavailable
   model. None of these shows that the recording is stale.
 
@@ -269,9 +303,20 @@ this at the cost of more misses. That choice is an [open question](#open-questio
 `browser-field`) would name a canonical Project, a principal profile and an
 origin. This follows the exact-grant pattern of the existing kinds. The model
 sees only `<secret:name>`. Station resolves the value inside the Station
-process when it types, and every replay re-authorizes the grant. The value
-never appears in a tool result, the recording or history (history already
-records typed text by size only).
+process when it types. At the moment of each secret dispatch, not only at the
+start of replay, Station would check:
+
+- the binding's owner rules (the existing contract already restricts who may
+  use a credential) and that the binding is neither revoked nor ungranted;
+- the actual origin of the document holding the focused field, against the
+  grant's origin;
+- that no navigation or redirect happened between resolving the field and
+  typing into it.
+
+Any failure refuses the step before typing. An origin check at replay start is
+not enough, because recorded actions or a redirect can change the origin
+before the secret is typed. The value never appears in a tool result, the
+recording or history (history already records typed text by size only).
 
 **Literal values.** Values that come from the instruction, the parameters or
 the Agent's own composition are stored verbatim in the recording. This is a
@@ -342,8 +387,8 @@ can target elements from the accessibility tree.
    takeover controls, and it cannot hand off to an Agent. This suits test
    suites, not repeated work inside a Session.
 3. **Build recordings from browser action history.** Rejected: refs do not
-   last, values are recorded by size only, history is capped at 200 entries
-   and has no verification signal. Widening history to keep values would
+   last, values are recorded by size only, history keeps at most 200 actor and
+   lifecycle entries, and it has no verification signal. Widening history to keep values would
    weaken a deliberate privacy posture.
 4. **Cache model responses or whole tool-call transcripts.** Rejected: this
    repeats model output against a page that may have changed, with no target
@@ -353,6 +398,13 @@ can target elements from the accessibility tree.
    no semantic identity that can be checked.
 6. **Record every successful step without a check.** Rejected: the pilot's
    dark-mode step shows that a goal can pass without doing anything.
+7. **Explicitly authored, parameterized procedures.** A person or Agent writes
+   a named procedure (targets, parameters, end checks) that Station runs
+   through the same authorized operations. This avoids automatic recording
+   and its verification and provenance problem, because a reviewer approves
+   the procedure itself. It costs authoring effort and does not learn from
+   live runs. It is a real candidate for the first slice if the
+   verification question has no good answer.
 
 ## Acceptance, if implemented
 
@@ -360,16 +412,22 @@ Each case must reach the real BrowserAutomation and lease owners and fail when
 its protection is reverted:
 
 - revoking authority (Agent access, Project standing or the profile grant)
-  partway through a replay refuses the next action;
+  partway through a replay refuses the next action, including a Project
+  membership change that the issued grant alone would not catch;
 - a human takeover partway through stops replay, writes no further history
-  entries for the Agent and leaves the entry intact;
+  entries for the Agent and leaves the entry intact; so does a takeover that
+  is released again between two replayed actions;
 - an outcome that is already true returns `end-mismatch`, and the step is not
   reported as replayed;
+- a navigation that the page or a redirect commits during replay does not
+  satisfy the navigation exemption;
 - an ambiguous or missing target stops replay without acting;
 - an action interrupted after dispatch returns `action-uncertain` and is not
   retried;
 - a secret value never appears in the tool result, the recording, history or
   logs, and a revoked binding refuses the step;
+- a recorded action or redirect that lands on another origin with an
+  identical field locator refuses the secret step before typing;
 - a recording made in one principal's profile cannot be replayed in another.
 
 Fault injection should show, for each case, that the test fails with the
