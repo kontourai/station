@@ -117,6 +117,10 @@ import type { Logger } from '../../utils/logger.js';
 import { outwardTransportError } from '../../utils/outward-error.js';
 import { isRouteError, type RouteError } from '../../utils/route-error.js';
 import {
+  codexToolRequestIsBound,
+  transferCodexToolRequestProof,
+} from '../mcp/codex-bound-request.js';
+import {
   buildRuntimeRouteVocabulary,
   labelRuntimeRoutePath,
 } from './runtime-route-label.js';
@@ -967,6 +971,9 @@ function configureRuntimeSecurity(
       caller: c.req.header(INTERNAL_PROXY_CALLER_HEADER),
       token: c.req.header(INTERNAL_API_TOKEN_HEADER),
     });
+    const boundToken = c.req.header('x-station-control-caller-token');
+    const inProcessTool =
+      !!boundToken && codexToolRequestIsBound(c.req.raw, boundToken);
     const effectivePeerClass = classifyRuntimeCallerPeerClass({
       environment: c.env,
       header: (name) => c.req.header(name),
@@ -993,7 +1000,10 @@ function configureRuntimeSecurity(
     // headers are already set above, so a browser can read the refusal.
     if (
       producerSecret === undefined &&
-      clientProtocolApplies(requiredCapability, proxyCaller === 'loopback')
+      clientProtocolApplies(
+        requiredCapability,
+        proxyCaller === 'loopback' || inProcessTool,
+      )
     ) {
       const refusal = evaluateClientProtocol(
         c.req.header(CLIENT_PROTOCOL_HEADER),
@@ -1312,21 +1322,21 @@ function configureRuntimeSecurity(
     // by `classifyAttestedProxyCaller`). Every other caller must present a
     // valid bearer or device-session credential below; absent and malformed
     // Authorization headers both fail with `authentication_required`.
-    if (proxyCaller === 'loopback' && credential === undefined) {
-      // The attested internal token is a process-local credential rather than
-      // a compatibility floor. Keep its existing bounded mutation budget
-      // identity without treating arbitrary loopback callers as principals.
-      // The token itself was minted at boot for this process; record that
-      // mint-time home-possession on the request principal so the one
-      // local-operator predicate can read it (never the proxy stamp).
+    if (
+      (inProcessTool || proxyCaller === 'loopback') &&
+      credential === undefined
+    ) {
+      // The exact in-process tool proof does not confer loopback locality or
+      // local-operator authority. Only the attested internal hop has those.
+      // Both paths use the existing bounded mutation budget.
       setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
         kind: 'internal',
-        credential: 'internal-token',
+        credential: inProcessTool ? 'in-process-bound-tool' : 'internal-token',
         authority: undefined,
         source: 'bearer',
-        locality: 'home-possession',
+        ...(inProcessTool ? {} : { locality: 'home-possession' as const }),
       });
-      bindRuntimeLocalOperator(c.req.raw);
+      if (!inProcessTool) bindRuntimeLocalOperator(c.req.raw);
       setBudgetPrincipal(
         c as unknown as PairingScopeContextStore,
         deriveBudgetPrincipal('loopback'),
@@ -1713,6 +1723,7 @@ function configureRuntimeSecurity(
         body: bodyResult,
         duplex: 'half',
       });
+      transferCodexToolRequestProof(raw, c.req.raw);
       if (
         nativePeer &&
         !transferVerifiedNativeVirtualApplicationRequest(raw, c.req.raw)

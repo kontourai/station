@@ -114,7 +114,16 @@ export interface BrowserAgentGrant {
   /** The profile it may act in (`operator` or `principal:<id>`). */
   readonly profileKey: string;
 }
-const minted = new WeakSet<object>();
+const minted = new WeakMap<object, () => boolean>();
+
+export function browserAgentGrantCurrent(grant: unknown): boolean {
+  if (typeof grant !== 'object' || grant === null) return false;
+  try {
+    return minted.get(grant)?.() === true;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Whether `grant` is a grant this module minted that admits `principal` to a
@@ -125,7 +134,11 @@ export function browserAgentGrantAllows(
   record: Pick<BrowserSessionRecord, 'projectId' | 'principalKey'>,
   principal: string,
 ): boolean {
-  if (typeof grant !== 'object' || grant === null || !minted.has(grant))
+  if (
+    typeof grant !== 'object' ||
+    grant === null ||
+    !browserAgentGrantCurrent(grant)
+  )
     return false;
   const g = grant as BrowserAgentGrant;
   return (
@@ -167,6 +180,7 @@ export type BrowserAgentAuthorityRefusal =
 export async function authorizeBrowserAgentCaller(
   caller: StationControlCaller | null,
   authorize: BrowserPrincipalAuthorizer,
+  isCurrent: () => boolean = () => true,
 ): Promise<
   | { ok: true; authority: BrowserAgentAuthority }
   | { ok: false; refusal: BrowserAgentAuthorityRefusal }
@@ -182,6 +196,8 @@ export async function authorizeBrowserAgentCaller(
   const principalId = caller.principal!.id;
   const projectId = caller.localProjectId!;
   const projectActor = await authorize(principalId, projectId);
+  if (!isCurrent())
+    return { ok: false, refusal: browserAgentCallerRefusal(null)! };
   const profileKey = projectActor
     ? browserProfileFor(projectId, projectActor)?.principalKey
     : undefined;
@@ -200,7 +216,7 @@ export async function authorizeBrowserAgentCaller(
     principalId,
     profileKey,
   });
-  minted.add(grant);
+  minted.set(grant, isCurrent);
   const thread = caller.conversationId ?? caller.sessionId;
   return {
     ok: true,
