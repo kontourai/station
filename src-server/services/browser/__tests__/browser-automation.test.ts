@@ -295,6 +295,7 @@ async function harness(
     sessions,
     surfaces,
     surfaceIdFor: (id) => binder.surfaceIdFor(id),
+    agentActionsEnabled: () => true,
     dialogWaitingForPerson: (id) => binder.pendingDialogFor(id) !== undefined,
     settings,
     ...(options.networkFor
@@ -396,6 +397,114 @@ describe('BrowserAutomation: a session id is only a selector', () => {
     expect(await result).toMatchObject({ ok: false, code: 'not-authorized' });
     await h.binder.dispose();
     await h.sessions.shutdown();
+  });
+  test('a successful agent click publishes target geometry on its live surface', async () => {
+    const h = await harness();
+    scriptButton(h.fake);
+    h.fake.handle('Page.getLayoutMetrics', () => ({
+      cssLayoutViewport: { clientWidth: 800, clientHeight: 600 },
+      cssVisualViewport: {
+        offsetX: 20,
+        offsetY: 30,
+        clientWidth: 600,
+        clientHeight: 400,
+      },
+    }));
+    const session = await h.open();
+    const entry = h.entryOf(session.browserSessionId);
+    const viewer = entry.hub.attach(
+      { maxFps: 10, quality: 70, maxWidth: 800, maxHeight: 600 },
+      undefined,
+      { agentActions: () => true },
+    );
+    try {
+      await viewer.next();
+      expect(
+        await h.automation.click(
+          await authorityFor(),
+          session.browserSessionId,
+          { x: 100, y: 50 },
+        ),
+      ).toMatchObject({ ok: true });
+      expect(h.fake.mouse()).toEqual([
+        expect.objectContaining({ type: 'mouseMoved', x: 120, y: 80 }),
+        expect.objectContaining({ type: 'mousePressed', x: 120, y: 80 }),
+        expect.objectContaining({ type: 'mouseReleased', x: 120, y: 80 }),
+      ]);
+      expect(
+        await h.automation.click(
+          await authorityFor(),
+          session.browserSessionId,
+          { x: 650, y: 50 },
+        ),
+      ).toMatchObject({ ok: false, code: 'outside-viewport' });
+      const record = await viewer.next();
+      expect(record?.kind).toBe('state');
+      if (record?.kind !== 'state') throw new Error('expected state');
+      expect(record.state.agentActions?.events.at(-1)).toMatchObject({
+        kind: 'click',
+        generation: session.generation,
+        point: { x: 120, y: 80 },
+        viewport: { x: 20, y: 30, width: 600, height: 400 },
+      });
+    } finally {
+      viewer.close();
+      await h.binder.dispose();
+      await h.sessions.shutdown();
+    }
+  });
+  test('clamps element input and the default scroll point to the visual viewport', async () => {
+    const h = await harness();
+    scriptButton(h.fake);
+    h.fake.handle('Page.getLayoutMetrics', () => ({
+      cssLayoutViewport: { clientWidth: 800, clientHeight: 600 },
+      cssVisualViewport: {
+        offsetX: 100,
+        offsetY: 60,
+        clientWidth: 300,
+        clientHeight: 200,
+        pageX: 0,
+        pageY: 0,
+      },
+    }));
+    h.fake.handle('DOM.getContentQuads', () => ({
+      quads: [[-50, -30, 400, -30, 400, 260, -50, 260]],
+    }));
+    const session = await h.open();
+    const authority = await authorityFor();
+    try {
+      const snapshot = await h.automation.snapshot(
+        authority,
+        session.browserSessionId,
+      );
+      expect(snapshot).toMatchObject({
+        ok: true,
+        viewport: { width: 300, height: 200 },
+      });
+      expect(
+        await h.automation.click(authority, session.browserSessionId, {
+          ref: 'e1',
+        }),
+      ).toMatchObject({ ok: true });
+      expect(h.fake.mouse()).toEqual([
+        expect.objectContaining({ type: 'mouseMoved', x: 250, y: 160 }),
+        expect.objectContaining({ type: 'mousePressed', x: 250, y: 160 }),
+        expect.objectContaining({ type: 'mouseReleased', x: 250, y: 160 }),
+      ]);
+      expect(
+        await h.automation.scroll(authority, session.browserSessionId, {
+          deltaY: 100,
+        }),
+      ).toMatchObject({ ok: true });
+      expect(h.fake.mouse().at(-1)).toMatchObject({
+        type: 'mouseWheel',
+        x: 250,
+        y: 160,
+      });
+    } finally {
+      await h.binder.dispose();
+      await h.sessions.shutdown();
+    }
   });
   test("another Project's session and another profile's session are both session-not-found", async () => {
     const h = await harness();

@@ -29,14 +29,19 @@ import type { LiveSurfaceControlState } from '../../../live-surface/LiveSurfaceC
 
 const artifactFixture = vi.hoisted(() => ({
   enabled: false,
+  experience: false,
   attach: vi.fn(async (_files: File[]) => {}),
 }));
 vi.mock('../../../hooks/useSurfaceVisibilityFlags', () => ({
   useSurfaceVisibilityFlags: () =>
-    new Set(artifactFixture.enabled ? ['browser-artifacts'] : []),
+    new Set([
+      ...(artifactFixture.enabled ? ['browser-artifacts'] : []),
+      ...(artifactFixture.experience ? ['browser-experience'] : []),
+    ]),
 }));
 vi.mock('../../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
+  useHostRequestAuthorityScope: () => undefined,
 }));
 vi.mock('../useBrowserArtifactIntake', () => ({
   useBrowserArtifactIntake: () => () => artifactFixture.attach,
@@ -186,7 +191,42 @@ afterEach(() => {
   vi.unstubAllGlobals();
   controlHolder.state = null;
   artifactFixture.enabled = false;
+  artifactFixture.experience = false;
   artifactFixture.attach.mockClear();
+});
+
+test('artifact and experience controls are available together', async () => {
+  artifactFixture.enabled = true;
+  artifactFixture.experience = true;
+  renderPane({
+    'GET /api/browser/projects/alpha/access': ok({
+      projectId: 'p-alpha',
+      role: 'operator',
+      operator: true,
+      canDrive: true,
+      browser: 'ready',
+      experiencePreviewEnabled: true,
+    }),
+    [SUMMARY]: ok(sessionView()),
+    [`GET /api/browser/sessions/${SESSION}/network?after=0`]: ok({
+      generation: 1,
+      entries: [],
+      dropped: 0,
+      latestSeq: 0,
+    }),
+  });
+  await screen.findByTestId('live-canvas');
+  fireEvent.click(screen.getByRole('button', { name: 'Network' }));
+  expect(
+    await screen.findByRole('region', { name: 'Network diagnostics' }),
+  ).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'More browser actions' }));
+  expect(screen.getByRole('menuitem', { name: 'Annotate' })).toBeTruthy();
+  expect(
+    screen.getByRole('menuitem', { name: /Screenshot to chat/ }),
+  ).toBeTruthy();
+  expect(screen.getByRole('menuitem', { name: /Zoom/ })).toBeTruthy();
+  expect(screen.getByRole('menuitem', { name: /Appearance/ })).toBeTruthy();
 });
 
 describe('a dialog held for the person in control', () => {

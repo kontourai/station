@@ -40,6 +40,7 @@
  */
 
 import type {
+  LiveSurfaceAgentAction,
   LiveSurfaceInput,
   LiveSurfaceInputResult,
   LiveSurfaceModifiers,
@@ -58,6 +59,7 @@ import {
   type BrowserAgentAuthority,
   browserAgentGrantCurrent,
 } from './browser-agent-authority.js';
+import { browserColorSchemeParams } from './browser-color-scheme.js';
 import type { BrowserViewport } from './browser-host.js';
 import { jsStringLiteral } from './browser-js-literal.js';
 import {
@@ -611,6 +613,7 @@ export interface BrowserAutomationDeps {
     | undefined
   >;
   networkPreviewEnabled?: () => boolean;
+  agentActionsEnabled?: () => boolean;
   /**
    * Whether the session's page holds a dialog for a PERSON to answer. While
    * it does, every action on the page is refused `dialog-open`: the page is
@@ -630,6 +633,13 @@ interface Selected {
   record: BrowserSessionRecord;
   live: BrowserLiveTarget;
 }
+
+type AgentPointerGeometry = {
+  x: number;
+  y: number;
+  box: LiveSurfaceAgentAction['box'];
+  viewport: LiveSurfaceAgentAction['viewport'];
+};
 
 interface IsolatedWorld {
   generation: number;
@@ -1000,6 +1010,32 @@ export class BrowserAutomation {
     );
   }
 
+  private publishPointer(
+    selected: Selected,
+    kind: LiveSurfaceAgentAction['kind'],
+    point: AgentPointerGeometry,
+  ): void {
+    if (this.deps.agentActionsEnabled?.() !== true) return;
+    const current = this.deps.sessions.getSession(
+      selected.record.browserSessionId,
+    );
+    if (
+      !current ||
+      current.state !== 'live' ||
+      current.generation !== selected.live.generation
+    )
+      return;
+    const surfaceId = this.deps.surfaceIdFor(selected.record.browserSessionId);
+    const entry = surfaceId ? this.deps.surfaces.get(surfaceId) : undefined;
+    entry?.hub.publishAgentAction({
+      kind,
+      generation: selected.live.generation,
+      point: { x: point.x, y: point.y },
+      box: point.box,
+      viewport: point.viewport,
+    });
+  }
+
   // --- the isolated world ----------------------------------------------------
 
   /**
@@ -1245,16 +1281,31 @@ export class BrowserAutomation {
     height: number;
     offsetX: number;
     offsetY: number;
+    visualWidth: number;
+    visualHeight: number;
   }> {
     const metrics = await send<{
       cssLayoutViewport?: { clientWidth?: number; clientHeight?: number };
-      cssVisualViewport?: { offsetX?: number; offsetY?: number };
+      cssVisualViewport?: {
+        offsetX?: number;
+        offsetY?: number;
+        clientWidth?: number;
+        clientHeight?: number;
+      };
     }>('Page.getLayoutMetrics', {});
     return {
       width: metrics?.cssLayoutViewport?.clientWidth ?? 0,
       height: metrics?.cssLayoutViewport?.clientHeight ?? 0,
       offsetX: metrics?.cssVisualViewport?.offsetX ?? 0,
       offsetY: metrics?.cssVisualViewport?.offsetY ?? 0,
+      visualWidth:
+        metrics?.cssVisualViewport?.clientWidth ??
+        metrics?.cssLayoutViewport?.clientWidth ??
+        0,
+      visualHeight:
+        metrics?.cssVisualViewport?.clientHeight ??
+        metrics?.cssLayoutViewport?.clientHeight ??
+        0,
     };
   }
 
@@ -1265,7 +1316,7 @@ export class BrowserAutomation {
   private async elementPoint(
     backendNodeId: number,
     send: Send,
-  ): Promise<{ x: number; y: number }> {
+  ): Promise<AgentPointerGeometry> {
     try {
       await send('DOM.scrollIntoViewIfNeeded', { backendNodeId });
     } catch (error) {
@@ -1285,12 +1336,20 @@ export class BrowserAutomation {
       if (!(error instanceof CdpProtocolError)) throw error;
     }
     const view = await this.viewport(send);
-    let best: { x: number; y: number; area: number } | undefined;
+    let best:
+      | { x: number; y: number; area: number; box: AgentPointerGeometry['box'] }
+      | undefined;
     for (const quad of quads) {
       if (!Array.isArray(quad) || quad.length !== 8) continue;
       const points = [0, 2, 4, 6].map((i) => ({
-        x: Math.min(Math.max(quad[i]! + view.offsetX, 0), view.width),
-        y: Math.min(Math.max(quad[i + 1]! + view.offsetY, 0), view.height),
+        x: Math.min(
+          Math.max(quad[i]! + view.offsetX, view.offsetX),
+          view.offsetX + view.visualWidth,
+        ),
+        y: Math.min(
+          Math.max(quad[i + 1]! + view.offsetY, view.offsetY),
+          view.offsetY + view.visualHeight,
+        ),
       }));
       let area = 0;
       for (let i = 0; i < 4; i += 1) {
@@ -1304,6 +1363,16 @@ export class BrowserAutomation {
           x: points.reduce((sum, p) => sum + p.x, 0) / 4,
           y: points.reduce((sum, p) => sum + p.y, 0) / 4,
           area,
+          box: {
+            x: Math.min(...points.map((p) => p.x)),
+            y: Math.min(...points.map((p) => p.y)),
+            width:
+              Math.max(...points.map((p) => p.x)) -
+              Math.min(...points.map((p) => p.x)),
+            height:
+              Math.max(...points.map((p) => p.y)) -
+              Math.min(...points.map((p) => p.y)),
+          },
         };
     }
     if (!best)
@@ -1315,7 +1384,17 @@ export class BrowserAutomation {
             : 'The element could not be brought into the viewport.',
         ),
       );
-    return { x: Math.round(best.x), y: Math.round(best.y) };
+    return {
+      x: Math.round(best.x),
+      y: Math.round(best.y),
+      box: best.box,
+      viewport: {
+        x: view.offsetX,
+        y: view.offsetY,
+        width: view.visualWidth,
+        height: view.visualHeight,
+      },
+    };
   }
 
   /**
@@ -1384,29 +1463,41 @@ export class BrowserAutomation {
     target: BrowserActionTarget,
     send: Send,
     options: { hitTest: boolean },
-  ): Promise<{
-    x: number;
-    y: number;
-    label: string;
-    backendNodeId?: number;
-  }> {
+  ): Promise<
+    AgentPointerGeometry & {
+      label: string;
+      backendNodeId?: number;
+    }
+  > {
     if ('x' in target) {
       const view = await this.viewport(send);
       if (
         target.x < 0 ||
         target.y < 0 ||
-        target.x > view.width ||
-        target.y > view.height
+        target.x > view.visualWidth ||
+        target.y > view.visualHeight
       )
         throw new ToolRefusal(
           refuse(
             'outside-viewport',
-            `(${target.x}, ${target.y}) is outside the ${view.width}×${view.height} viewport. Coordinates are CSS pixels of the visible viewport.`,
+            `(${target.x}, ${target.y}) is outside the ${view.visualWidth}×${view.visualHeight} viewport. Coordinates are CSS pixels of the visible viewport.`,
           ),
         );
       return {
-        x: target.x,
-        y: target.y,
+        x: target.x + view.offsetX,
+        y: target.y + view.offsetY,
+        box: {
+          x: target.x + view.offsetX,
+          y: target.y + view.offsetY,
+          width: 0,
+          height: 0,
+        },
+        viewport: {
+          x: view.offsetX,
+          y: view.offsetY,
+          width: view.visualWidth,
+          height: view.visualHeight,
+        },
         label: `at ${Math.round(target.x)},${Math.round(target.y)}`,
       };
     }
@@ -1937,7 +2028,7 @@ export class BrowserAutomation {
             typeof value.url === 'string' ? value.url : selected.record.url,
           ),
           title: capTitle(text(value.title, TITLE_MAX)),
-          viewport: { width: view.width, height: view.height },
+          viewport: { width: view.visualWidth, height: view.visualHeight },
           snapshot:
             table.refs.size === 0 ? rendered.textWithoutRefs : rendered.text,
           refCount: rendered.refs.size,
@@ -2013,6 +2104,7 @@ export class BrowserAutomation {
               },
             );
           await control.dispatch(events);
+          this.publishPointer(selected, 'click', point);
           this.record(authority, selected, 'clicked', point.label);
           return { ok: true, clicked: point.label };
         },
@@ -2042,6 +2134,7 @@ export class BrowserAutomation {
           await control.dispatch([
             { kind: 'pointer', type: 'move', x: point.x, y: point.y },
           ]);
+          this.publishPointer(selected, 'hover', point);
           this.record(authority, selected, 'hovered', point.label);
           return { ok: true, hovered: point.label };
         },
@@ -2125,6 +2218,7 @@ export class BrowserAutomation {
             button: 'left',
           });
           await control.dispatch(moves);
+          this.publishPointer(selected, 'drag', end);
           this.record(
             authority,
             selected,
@@ -2231,14 +2325,7 @@ export class BrowserAutomation {
             const pending = this.rawSend(
               selected.live,
               'Emulation.setEmulatedMedia',
-              {
-                features: [
-                  {
-                    name: 'prefers-color-scheme',
-                    value: scheme === 'system' ? '' : scheme,
-                  },
-                ],
-              },
+              browserColorSchemeParams(scheme),
             );
             // A timeout or takeover cannot undo a request already sent to CDP.
             this.record(
@@ -2510,8 +2597,8 @@ export class BrowserAutomation {
             } else {
               const view = await this.viewport(control.send);
               point = {
-                x: Math.round(view.width / 2),
-                y: Math.round(view.height / 2),
+                x: Math.round(view.offsetX + view.visualWidth / 2),
+                y: Math.round(view.offsetY + view.visualHeight / 2),
               };
             }
             await control.dispatch([

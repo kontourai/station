@@ -2348,3 +2348,7 @@ create operator authority, and the `/mcp` transport and Connections management
 journey remain later slices. The reference records the exact loopback predicate,
 Serve suspension, HTTPS ingress requirements, quotas and raw-forwarding/cookie
 residuals; it is not a deployment or end-to-end compatibility qualification.
+
+## Operator-owned Device Browser viewing
+
+The personal-host Browser and Device agent-reveal reads may opt into distinct operator-device view standing for a current unbound Device paired by the operator, subject to its granted scope. This is not operator authority: Task Review captures, Browser input and mutations, Device drive and administration remain separately authorized. Revocation, rebinding, person binding, delegation and agent-originated credentials do not retain this standing; publication rechecks the current credential and Device record.
