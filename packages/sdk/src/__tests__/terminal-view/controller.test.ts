@@ -164,9 +164,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-async function startController(
-  shared?: ReturnType<typeof sharedSession>,
-) {
+async function startController(shared?: ReturnType<typeof sharedSession>) {
   const root = document.createElement('div');
   root.getBoundingClientRect = () => DOMRect.fromRect(rect);
   const canvas = document.createElement('canvas');
