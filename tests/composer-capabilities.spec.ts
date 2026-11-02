@@ -238,6 +238,7 @@ async function seedRoutes(
               ? {
                   lastEventMethod: 'runtime.error',
                   lastRuntimeErrorUsageLimit: true,
+                  lastRuntimeErrorMessage: 'Usage limit reached',
                 }
               : {}),
           })),
@@ -539,6 +540,9 @@ test('blocked credential recovery explains its reason and retry at both widths a
     'saved credential recovery records cannot be read',
   );
   await expect(banner.getByRole('status')).toContainText('Next check');
+  await expect(
+    page.getByText('No failure detail was recorded for this session.'),
+  ).toBeHidden();
   await expect(
     banner.getByRole('button', { name: 'Resume now', exact: true }),
   ).toBeEnabled();
