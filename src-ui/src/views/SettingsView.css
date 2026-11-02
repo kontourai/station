@@ -1375,7 +1375,7 @@
 }
 
 .settings__section .provenance-badge {
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 
 .settings__section :is(h3, h4),
@@ -1417,7 +1417,7 @@
 .settings__scope-pill.badge {
   border-radius: var(--k-radius-sm);
   padding: var(--k-space-1) var(--k-space-2);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   font-weight: 500;
   line-height: var(--k-leading-normal);
   white-space: nowrap;

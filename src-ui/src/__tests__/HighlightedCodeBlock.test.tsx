@@ -56,8 +56,10 @@ function renderBlock() {
   return render(<Code className="language-ts">{'const answer = 42;\n'}</Code>);
 }
 
+// The header also carries the Wrap toggle (#4407); Copy's name follows its
+// state (Copy, Copied, the refusal), so match the action, not one label.
 function copyButton() {
-  return screen.getByRole('button');
+  return screen.getByRole('button', { name: /cop/i });
 }
 
 describe('HighlightedCodeBlock copy (station#3339)', () => {

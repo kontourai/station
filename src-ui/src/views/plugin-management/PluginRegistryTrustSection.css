@@ -31,7 +31,7 @@
 
 .plugin-registry-trust__list code {
   font-family: var(--k-font-mono);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   overflow-wrap: anywhere;
 }
 

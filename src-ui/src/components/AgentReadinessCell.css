@@ -48,7 +48,7 @@
   min-height: 0;
   padding: 0 var(--space-2);
   margin-left: var(--space-2);
-  font-size: 0.62rem;
+  font-size: var(--k-text-sm);
   line-height: 1.5;
   vertical-align: middle;
 }
@@ -65,7 +65,7 @@
   border-color: var(--warning-border);
   color: var(--warning-text);
   font-family: inherit;
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
   font-weight: 500;
   text-transform: none;
   text-align: left;

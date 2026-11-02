@@ -24,6 +24,7 @@ import {
   splitCwdBreadcrumb,
   workspaceHintText,
 } from '../components/modals/new-chat-modal-utils';
+import type { AgentData } from '../contexts/AgentsContext';
 
 describe('new-chat-modal-utils', () => {
   test('scopes pre-session model overrides to context and provider binding', () => {
@@ -1697,6 +1698,34 @@ describe('new-chat-modal-utils', () => {
           acpConnections,
         }),
       ).toEqual({ kind: 'connection', path: '/tmp/s1089-elsewhere' });
+    });
+
+    test('a No project chat names its private folder unless the Station chose home (#4389)', () => {
+      const codex = { slug: 'codex', execution: {} } as AgentData;
+      expect(
+        resolveNewChatWorkspaceHint({
+          agent: codex,
+          project: undefined,
+          acpConnections,
+          noProjectChatFolder: 'private',
+        }),
+      ).toEqual({ kind: 'managed' });
+      expect(
+        resolveNewChatWorkspaceHint({
+          agent: codex,
+          project: undefined,
+          acpConnections,
+          noProjectChatFolder: 'home',
+        }),
+      ).toEqual({ kind: 'home' });
+      // A Project with no folder still runs in home: callers pass no choice.
+      expect(
+        resolveNewChatWorkspaceHint({
+          agent: codex,
+          project: undefined,
+          acpConnections,
+        }),
+      ).toEqual({ kind: 'home' });
     });
 
     test("a project's own working directory still outranks the connection default", () => {

@@ -240,7 +240,7 @@ export function AutocompleteSelector({
               {item.isActive && (
                 <span
                   style={{
-                    fontSize: '11px',
+                    fontSize: 'var(--k-text-sm)',
                     padding: '2px 8px',
                     borderRadius: '12px',
                     background: 'var(--accent-primary)',
@@ -254,7 +254,7 @@ export function AutocompleteSelector({
               {item.badge && (
                 <span
                   style={{
-                    fontSize: '11px',
+                    fontSize: 'var(--k-text-sm)',
                     padding: '2px 8px',
                     borderRadius: '12px',
                     background: 'var(--accent-primary)',

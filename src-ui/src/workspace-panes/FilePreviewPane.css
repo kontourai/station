@@ -70,7 +70,7 @@
   border-radius: 999px;
   background: transparent;
   color: var(--text-secondary);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   font-weight: 600;
   cursor: pointer;
 }
@@ -89,7 +89,7 @@
   border-radius: 999px;
   display: inline-grid;
   place-items: center;
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
   font-weight: 700;
   background: var(--accent-primary);
   color: var(--text-on-accent);
@@ -117,7 +117,7 @@
 .workspace-file-preview__status,
 .workspace-file-preview__notice {
   margin: 0 0 6px;
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   color: var(--text-secondary);
 }
 .workspace-file-preview__status {
@@ -129,7 +129,7 @@
   flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 6px;
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
 }
 
 /* Go to line is shown in the tool's contextual floating controls. */

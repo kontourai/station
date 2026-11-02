@@ -28,6 +28,14 @@ vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
+  // Station config behind the No project folder hint (#4389): nothing saved.
+  useConfigQuery: () => ({
+    data: undefined,
+    error: null,
+    dataUpdatedAt: 0,
+    isFetching: false,
+    refetch: vi.fn(),
+  }),
   // The Station list behind the draft's "on <Station>" line: no saved or
   // paired Stations, so only this one.
   useSshEnvironmentsQuery: () => ({ isSuccess: false, isError: false }),

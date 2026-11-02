@@ -21,7 +21,7 @@
   color: var(--text-secondary);
   cursor: pointer;
   font-family: var(--font-mono);
-  font-size: 0.62rem;
+  font-size: var(--k-text-sm);
   font-weight: 700;
   line-height: 1;
 }

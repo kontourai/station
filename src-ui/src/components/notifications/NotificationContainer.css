@@ -135,7 +135,7 @@
 
 .toast-card__eyebrow {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--k-text-sm);
   font-weight: 650;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -209,7 +209,7 @@
   background: var(--bg-tertiary);
   color: var(--text-muted);
   font-family: monospace;
-  font-size: 11px;
+  font-size: var(--k-text-sm);
 }
 
 .toast-card__dismiss {
@@ -330,7 +330,7 @@
 
 .toast-card__repeat {
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 
 .toast-card__action-error {
@@ -513,7 +513,7 @@
   padding-block: var(--k-space-2);
   color: var(--k-text-muted);
   cursor: pointer;
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 
 .toast-card__diagnostics summary:focus-visible {

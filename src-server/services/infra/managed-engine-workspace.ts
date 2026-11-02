@@ -59,6 +59,48 @@ async function rejectSymlink(path: string, label: string): Promise<void> {
   }
 }
 
+/** One directory of a chain `prepareStationPrivateFolder` creates. */
+export interface StationFolderStep {
+  directory: string;
+  label: string;
+  /**
+   * Tighten an existing directory to 0700 too. A shared parent such as
+   * `runtime/` is only created 0700 when missing, never re-moded.
+   */
+  restrict: boolean;
+}
+
+/**
+ * Create (or reuse) a chain of directories inside a Station home, each
+ * refusing symbolic links before and after creation and each proven, by real
+ * path, to stay inside the Station home. Returns the last directory's real
+ * path. This is the one preparation every Station-made chat folder goes
+ * through: managed engine workspaces here and no-project scratch folders
+ * (#4389, `no-project-chat-folder.ts`).
+ *
+ * Fails closed. No caller may replace failure with HOME or process.cwd().
+ */
+export async function prepareStationPrivateFolder(
+  stationHome: string,
+  steps: readonly StationFolderStep[],
+): Promise<string> {
+  const home = resolve(stationHome);
+  await mkdir(home, { recursive: true, mode: WORKSPACE_MODE });
+  const realHome = await realpath(home);
+  let last = realHome;
+  for (const { directory, label, restrict } of steps) {
+    await rejectSymlink(directory, label);
+    await mkdir(directory, { recursive: true, mode: WORKSPACE_MODE });
+    await rejectSymlink(directory, label);
+    if (restrict) await chmod(directory, WORKSPACE_MODE);
+    last = await realpath(directory);
+    if (!isContainedBy(realHome, last)) {
+      throw new Error(`${label} escaped Station home: ${last}`);
+    }
+  }
+  return last;
+}
+
 /**
  * Prepare a private, deterministic workspace for an otherwise-unbound engine
  * process. Session and probe identities are explicitly disjoint; repeated
@@ -75,42 +117,30 @@ export async function prepareManagedEngineWorkspace(
 ): Promise<string> {
   const labelPrefix = engine.toUpperCase();
   const home = resolve(stationHome);
-  const runtime = join(home, 'runtime');
   const root = join(home, 'runtime', `${engine}-workspaces`);
   const digest = createHash('sha256')
     .update(JSON.stringify(identity))
     .digest('hex');
-  const workspace = join(root, identity.kind, digest);
-
-  await mkdir(home, { recursive: true, mode: WORKSPACE_MODE });
-  const realHome = await realpath(home);
-  await rejectSymlink(runtime, 'Station runtime directory');
-  await mkdir(runtime, { recursive: true, mode: WORKSPACE_MODE });
-  await rejectSymlink(runtime, 'Station runtime directory');
-  const realRuntime = await realpath(runtime);
-  if (!isContainedBy(realHome, realRuntime)) {
-    throw new Error(
-      `Station runtime directory escaped Station home: ${realRuntime}`,
-    );
-  }
-
-  for (const [directory, label] of [
-    [root, `${labelPrefix} managed workspace root`],
-    [
-      join(root, identity.kind),
-      `${labelPrefix} managed workspace identity root`,
-    ],
-    [workspace, `${labelPrefix} managed workspace`],
-  ] as const) {
-    await rejectSymlink(directory, label);
-    await mkdir(directory, { recursive: true, mode: WORKSPACE_MODE });
-    await rejectSymlink(directory, label);
-    await chmod(directory, WORKSPACE_MODE);
-    const actual = await realpath(directory);
-    if (!isContainedBy(realHome, actual)) {
-      throw new Error(`${label} escaped Station home: ${actual}`);
-    }
-  }
-
-  return realpath(workspace);
+  return prepareStationPrivateFolder(home, [
+    {
+      directory: join(home, 'runtime'),
+      label: 'Station runtime directory',
+      restrict: false,
+    },
+    {
+      directory: root,
+      label: `${labelPrefix} managed workspace root`,
+      restrict: true,
+    },
+    {
+      directory: join(root, identity.kind),
+      label: `${labelPrefix} managed workspace identity root`,
+      restrict: true,
+    },
+    {
+      directory: join(root, identity.kind, digest),
+      label: `${labelPrefix} managed workspace`,
+      restrict: true,
+    },
+  ]);
 }

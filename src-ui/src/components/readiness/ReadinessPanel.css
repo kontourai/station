@@ -34,7 +34,7 @@
   border-radius: var(--k-radius-sm);
   background: var(--k-panel-raised);
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   font-family: var(--k-font-ui);
   cursor: pointer;
   transition: border-color var(--k-dur) var(--k-ease);
@@ -52,7 +52,7 @@
 
 .readiness-panel__generated {
   margin: 0;
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   color: var(--k-text-faint);
 }
 
@@ -85,7 +85,7 @@
   border-radius: var(--k-radius-sm);
   background: var(--k-panel-raised);
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 
 .readiness-panel__error {
@@ -95,7 +95,7 @@
   border-radius: var(--k-radius-sm);
   background: var(--k-negative-soft);
   color: var(--k-negative);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   overflow-wrap: anywhere;
 }
 
@@ -114,7 +114,7 @@
 
 .readiness-panel__empty-desc {
   margin: var(--k-space-2) 0 0;
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   color: var(--k-text-faint);
 }
 
@@ -131,7 +131,7 @@
 
 .readiness-panel__message {
   margin: 0;
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   color: var(--k-text-muted);
 }
 
@@ -196,7 +196,7 @@
   /* An interactive control reads the action role, not the brand (an
      identity slot only). The fallback covers @kontourai/ui before 1.14. */
   color: var(--k-action, var(--k-brand));
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   cursor: pointer;
   text-decoration: underline;
   text-underline-offset: 2px;
@@ -215,7 +215,7 @@
 .readiness-panel__detail-summary,
 .readiness-panel__detail-empty {
   margin: 0;
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   color: var(--k-text-muted);
 }
 
@@ -232,7 +232,7 @@
 }
 
 .readiness-panel__claim-type {
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   font-family: var(--k-font-mono);
   color: var(--k-text-muted);
 }
@@ -243,7 +243,7 @@
 
 .readiness-panel__claim-subject {
   margin: 0;
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   color: var(--k-text-faint);
   font-family: var(--k-font-mono);
   overflow-wrap: anywhere;
@@ -258,7 +258,7 @@
 }
 
 .readiness-panel__evidence {
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 
 .readiness-panel__evidence-summary {
@@ -277,7 +277,7 @@
 /* Transparency gaps */
 .readiness-panel__gaps-title {
   margin: 0 0 var(--k-space-1);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   color: var(--k-caution);
 }
 
@@ -290,7 +290,7 @@
 }
 
 .readiness-panel__gap {
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   color: var(--k-text-muted);
 }
 
