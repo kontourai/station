@@ -1,6 +1,9 @@
 # Verified noncredential prose matches at exact historical locations.
 # The second match repeated the first in its explanatory comment.
 # Neither entry exempts a whole file, commit, or future match.
+# Synthetic redaction-test value, now assembled at runtime; this pins its
+# original historical location only.
+bd378e30b91d1abdf916b0dedbbe908b4d33e213:src-server/services/projects/__tests__/task-device-capture.test.ts:generic-api-key:209
 c48f31f8ce965ee706327a33ffba6cc69638cb87:packages/cli/src/commands/delegate.ts:generic-api-key:1330
 6036d762eee2f8adec304242c93d24f215616a40:.gitleaksignore:generic-api-key:1
 d23831f8a93620c2266ba9851043a256eaf7f17a:packages/cli/src/commands/delegate.ts:generic-api-key:1034
