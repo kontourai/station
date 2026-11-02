@@ -10,14 +10,20 @@ import { CreateRequestClaims } from '../create-request-claims.js';
 
 const temp = trackTempDirs();
 afterEach(() => vi.useRealTimers());
-test.each([
-  { cut: 'reserved', age: 0 },
-  { cut: 'reserved', age: 210 * 24 * 60 * 60 * 1000 },
-  { cut: 'starting', age: 0 },
-  { cut: 'rejected', age: 0 },
-])(
-  'SIGKILL after $cut (age=$age): changed input conflicts while live and reclaims only after an unmarked owner dies',
-  async ({ cut, age }) => {
+test.each(
+  [
+    { cut: 'reserved', age: 0 },
+    { cut: 'reserved', age: 210 * 24 * 60 * 60 * 1000 },
+    { cut: 'starting', age: 0 },
+    { cut: 'rejected', age: 0 },
+  ].flatMap((row) =>
+    row.cut === 'starting'
+      ? [{ ...row, changed: true }]
+      : [false, true].map((changed) => ({ ...row, changed })),
+  ),
+)(
+  'SIGKILL after $cut (age=$age, changed=$changed): input conflicts while live and reclaims only after an unmarked owner dies',
+  async ({ cut, age, changed }) => {
     const home = temp('create-owner-crash-');
     const child = spawn(
       process.execPath,
@@ -108,7 +114,7 @@ test.each([
         vi.useFakeTimers({ toFake: ['Date'] });
         vi.setSystemTime(Date.now() + age);
       }
-      const changed = new CreateRequestClaims(home).run(
+      const retryWithInput = new CreateRequestClaims(home).run(
         {
           kind: 'foreground',
           principal: undefined,
@@ -118,18 +124,18 @@ test.each([
             undefined,
           ),
           requestKey: 'crash-key',
-          intent: { message: 'changed input' },
+          intent: { message: changed ? 'changed input' : 'original input' },
           hasSessionStartRecord: () => false,
         },
         effect,
       );
       if (cut === 'starting') {
-        await expect(changed).rejects.toMatchObject({
+        await expect(retryWithInput).rejects.toMatchObject({
           code: 'create_request_conflict',
         });
         expect(effect).not.toHaveBeenCalled();
       } else {
-        await expect(changed).resolves.toMatchObject({
+        await expect(retryWithInput).resolves.toMatchObject({
           providerTurnId: 'original-provider-turn',
         });
         expect(effect).toHaveBeenCalledOnce();

@@ -7,7 +7,7 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { createOrchestrationRoutes } from '../../../routes/orchestration/orchestration.js';
 import type { ForegroundMessageHandle } from '../../execution-target/execution-target-execution.js';
-import { CreateRequestClaims } from '../create-request-claims.js';
+import { FileDelegationAttemptClaimStore } from '../delegation-attempt-claim-store.js';
 import { EventBus } from '../event-bus.js';
 
 const temp = trackTempDirs();
@@ -47,11 +47,9 @@ function fixture() {
         eventBus: new EventBus(),
         logger: { debug: vi.fn() },
         getUserId: () => 'operator',
-        delegationAttemptClaimStore: {
-          createRequests: new CreateRequestClaims(home),
-        },
+        delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(home),
         executeForegroundMessage: effect,
-      } as never,
+      },
     );
   const send = (message = 'hello') =>
     mount().request('/chat', {
