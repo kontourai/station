@@ -139,6 +139,17 @@ function setup(
   let captureCode: string | undefined;
   let createCode: string | undefined;
   let pickerFails = false;
+  let deviceSessions: Array<{
+    sourceSessionId: string;
+    hostId: string;
+    sessionId: string;
+    surfaceId: string;
+    deviceId: string;
+    platform: 'ios' | 'android';
+    runtime: string;
+    openedAt: string;
+    name: string;
+  }> = [];
   let hasCapture = false;
   let outdated = false;
   let loseCreateResponse = false;
@@ -180,7 +191,7 @@ function setup(
             threads: entries,
           });
         }
-        if (path.endsWith('/captures')) {
+        if (path.endsWith('/captures') || path.endsWith('/device-captures')) {
           if (captureCode)
             return new Response(
               JSON.stringify({
@@ -275,6 +286,13 @@ function setup(
           { status: 404 },
         );
       }
+      if (path.endsWith('/device-capture-sessions'))
+        return json({
+          sessions:
+            url.searchParams.get('projectSlug') === task.projectId
+              ? deviceSessions
+              : [],
+        });
       if (path.endsWith('/capture-sessions')) {
         if (pickerFails)
           return new Response(
@@ -423,6 +441,9 @@ function setup(
     ...view,
     reads,
     writes,
+    setDeviceSessions: (sessions: typeof deviceSessions) => {
+      deviceSessions = sessions;
+    },
     client,
     loseNextCreateResponse: () => {
       loseCreateResponse = true;
@@ -627,15 +648,28 @@ test('lists Task clips without reading video, then releases the opened clip on c
       static revokeObjectURL = revokeUrl;
     },
   );
-  const fixture = setup(false, undefined, {
-    'task-1': [clip('clip-a', 'Checkout tour')],
-  });
+  const deviceClip = clip('clip-a', 'Checkout tour');
+  deviceClip.capture.platform = 'ios';
+  deviceClip.source.device = {
+    hostId: 'ssh-0123456789ab',
+    deviceId: 'device-1',
+    name: 'Phone',
+    runtime: 'iOS',
+    appId: null,
+    appObservedAt: null,
+  };
+  const fixture = setup(false, undefined, { 'task-1': [deviceClip] });
   const entry = await screen.findByRole('button', {
     name: /Checkout tour.*aaaaaaa.*0:13/,
   });
   expect(fixture.reads.filter((path) => path.endsWith('/video'))).toEqual([]);
   fireEvent.click(entry);
   const dialog = await screen.findByRole('dialog', { name: 'Checkout tour' });
+  expect(
+    within(dialog).getByText(
+      /Phone.*ssh-0123456789ab.*device-1.*App at start: Unknown/,
+    ),
+  ).toBeTruthy();
   await waitFor(() =>
     expect(dialog.querySelector('video')?.getAttribute('src')).toBe(
       'blob:review-clip',
@@ -905,12 +939,49 @@ test.each([
   },
 );
 
+test('captures a host-qualified Device session into the Task', async () => {
+  const fixture = setup();
+  fixture.setDeviceSessions([
+    {
+      sourceSessionId: 'ssh-123456abcdef:session-1',
+      hostId: 'ssh-123456abcdef',
+      name: 'iPhone',
+      sessionId: 'session-1',
+      surfaceId: 'surface-1',
+      deviceId: 'device-1',
+      platform: 'ios',
+      runtime: 'iOS 26.5',
+      openedAt: '2026-10-25T00:00:00Z',
+    },
+  ]);
+  fireEvent.click(screen.getByRole('button', { name: 'Capture' }));
+  const option = await screen.findByRole('option', {
+    name: 'Device · iPhone · ssh-123456abcdef',
+  });
+  fireEvent.change(screen.getByRole('combobox', { name: 'Session' }), {
+    target: { value: (option as HTMLOptionElement).value },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Capture Screen' }));
+  await waitFor(() =>
+    expect(
+      fixture.writes.some(
+        (write) =>
+          write.path.endsWith('/device-captures') &&
+          write.body.sourceSessionId === 'ssh-123456abcdef:session-1' &&
+          write.body.sourceKind === 'device',
+      ),
+    ).toBe(true),
+  );
+});
+
 test('shows a compact capture-picker failure and lets the person refresh it', async () => {
   const fixture = setup();
   fixture.failPicker();
   fireEvent.click(screen.getByRole('button', { name: 'Capture' }));
   const alert = await screen.findByRole('alert');
-  expect(alert.textContent).toContain('Couldn’t load Browser sessions.');
+  expect(alert.textContent).toContain(
+    'Some capture sessions could not be loaded.',
+  );
   const reads = fixture.reads.filter((path) =>
     path.endsWith('/capture-sessions'),
   ).length;
@@ -931,7 +1002,7 @@ test('capture picker survives malformed URLs and distinguishes same-host paths a
   ]);
   fireEvent.click(screen.getByRole('button', { name: 'Capture' }));
   const picker = await screen.findByRole('combobox', {
-    name: 'Browser session',
+    name: 'Session',
   });
   await waitFor(() =>
     expect(

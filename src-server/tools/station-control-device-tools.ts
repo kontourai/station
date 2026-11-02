@@ -92,6 +92,28 @@ export function registerDeviceTools(registry: StationControlToolRegistry) {
     async (args) => callDevice('capture-to-task', args),
   );
   registry.tool(
+    'device_record_to_task',
+    'Record a bounded device clip to this Session’s Task, pinned to a clean workspace.',
+    {
+      deviceSessionId,
+      durationMs: z.number().int().min(1).max(30000),
+      maxBytes: z
+        .number()
+        .int()
+        .min(1)
+        .max(16 * 1024 * 1024)
+        .optional(),
+      label: z.string().min(1).max(TASK_REVIEW_LIMITS.labelChars).optional(),
+    },
+    async (args) => callDevice('record-to-task', args),
+  );
+  registry.tool(
+    'device_logs',
+    'Read a bounded log sample for one running app on the device host. The process identity is checked again before publication.',
+    { deviceSessionId, appId: z.string().min(3).max(255) },
+    async (args) => callDevice('logs', args),
+  );
+  registry.tool(
     'device_snapshot',
     'Read the device accessibility tree on its own host. Coordinates describe current screen content; re-inspect after changes. Refused while a human controls it.',
     { deviceSessionId },

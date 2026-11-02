@@ -146,6 +146,22 @@ describe('runBoundedToolCapture (#1971): stdin, output and deadline', () => {
     return { spawnTool, calls, written };
   }
 
+  test('an early stream exit is not a completed sample', async () => {
+    const fake = fakeSpawn('partial');
+    await expect(
+      runBoundedToolCapture(
+        'xcrun',
+        [],
+        {
+          timeoutMs: 1000,
+          partialOnTimeout: true,
+          requireSampleDuration: true,
+        },
+        fake.spawnTool,
+      ),
+    ).rejects.toMatchObject({ code: 'tool-failed' });
+  });
+
   test('without a payload stdin is ignored (EOF, never an open pipe); no shell, hidden window', async () => {
     const fake = fakeSpawn('dark\n');
     await expect(

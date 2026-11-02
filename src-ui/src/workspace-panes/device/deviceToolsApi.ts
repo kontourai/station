@@ -12,6 +12,7 @@ import type { MobileDevicePlatform } from '@kontourai/station-contracts/mobile-d
 import { getJson, mutateJson } from '@kontourai/station-sdk';
 import type { ApiRequestScope } from '@kontourai/station-sdk/client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
 
 /**
  * React Query bindings for the Device pane's Tools drawer (#1971).
@@ -178,6 +179,58 @@ const deviceToolsKey = (
   target.platform,
   target.deviceId,
 ];
+
+export function useDeviceLogs(
+  scope: ApiRequestScope,
+  target: DeviceToolsTarget,
+  projectSlug: string | null,
+  appId: string,
+  enabled: boolean,
+) {
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    if (!enabled)
+      void queryClient.cancelQueries({
+        queryKey: [
+          ...deviceToolsKey(scope, target, projectSlug),
+          'logs',
+          appId,
+        ],
+        exact: true,
+      });
+  }, [enabled, queryClient, scope, target, projectSlug, appId]);
+  return useQuery({
+    queryKey: [...deviceToolsKey(scope, target, projectSlug), 'logs', appId],
+    queryFn: async ({ signal }) => {
+      const value = await data(
+        await getJson(
+          `${scope.apiBase}${toolsPath(target, '/logs', { appId }, projectSlug)}`,
+          { signal, requestScope: scope, maxResponseBytes: 512 * 1024 },
+        ),
+      );
+      if (
+        value.hostId !== target.hostId ||
+        value.platform !== target.platform ||
+        value.deviceId !== target.deviceId ||
+        value.appId !== appId ||
+        typeof value.output !== 'string' ||
+        typeof value.processId !== 'string'
+      )
+        throw new DeviceToolsRequestError(200, undefined);
+      return { output: value.output, processId: value.processId };
+    },
+    enabled,
+    refetchInterval: enabled ? 5000 : false,
+    refetchIntervalInBackground: false,
+    retry: false,
+  });
+}
+
+export function describeDeviceLogsFailure(error: unknown): string {
+  return error instanceof DeviceToolsRequestError && error.status === 404
+    ? 'This Station cannot read device logs. Update the host and try again.'
+    : describeDeviceToolsFailure(error);
+}
 
 /** The drawer's values, read back once on open and on Refresh. */
 export function useDeviceToolsSnapshot(

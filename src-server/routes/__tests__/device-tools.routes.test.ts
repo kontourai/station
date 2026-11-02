@@ -89,12 +89,15 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0)) await cleanup();
 });
 
-function setup() {
+function setup(deviceLoopEnabled = () => true) {
   const calls: { tool: DeviceTool; args: string[] }[] = [];
   const runner = {
     async run(tool: DeviceTool, args: readonly string[]) {
       calls.push({ tool, args: [...args] });
       if (args.join(' ') === `simctl ui ${IOS} appearance`) return 'dark\n';
+      if (args.join(' ') === `simctl spawn ${IOS} launchctl list`)
+        return '42 0 UIKitApplication:com.example.app[abc]\n';
+      if (args.includes('stream')) return 'application log';
       return '';
     },
   };
@@ -135,6 +138,7 @@ function setup() {
     access: fakeAccess,
   });
   const app = createDeviceToolsRoutes({
+    deviceLoopEnabled,
     isRequestPrincipalCurrent: () => true,
     access: fakeAccess,
     tools,
@@ -183,11 +187,26 @@ const actionPath = (id = IOS) => `${toolsPath(id)}/actions`;
 const DARK = { type: 'set-appearance', appearance: 'dark' };
 
 describe('who may read and act (D12: view vs drive)', () => {
+  test('logs are unavailable while the developer-loop preview is off', async () => {
+    const { call, calls } = setup(() => false);
+    const response = await call(
+      'GET',
+      `${toolsPath()}/logs?appId=com.example.app`,
+      'operator',
+    );
+    expect(response.status).toBe(404);
+    expect(await readJson(response)).toMatchObject({
+      code: 'feature_preview_disabled',
+      previewId: 'device-developer-loop',
+    });
+    expect(calls).toEqual([]);
+  });
   test('a contributor or viewer (no standing) is refused everything, and nothing runs', async () => {
     const { call, calls } = setup();
     for (const [method, path, body] of [
       ['GET', toolsPath(), undefined],
       ['GET', `${toolsPath()}/accessibility`, undefined],
+      ['GET', `${toolsPath()}/logs?appId=com.example.app`, undefined],
       ['GET', `${toolsPath()}/permissions?appId=com.example.app`, undefined],
       ['POST', actionPath(), DARK],
     ] as const) {
@@ -196,6 +215,25 @@ describe('who may read and act (D12: view vs drive)', () => {
       expect((await readJson(response)).code).toBe('access-denied');
     }
     expect(calls).toEqual([]);
+  });
+
+  test('an authorized reader receives only the selected app log sample', async () => {
+    const { call, calls } = setup();
+    const response = await call(
+      'GET',
+      `${toolsPath()}/logs?appId=com.example.app`,
+      `viewonly:${IOS}`,
+    );
+    expect(response.status).toBe(200);
+    expect((await readJson(response)).data).toMatchObject({
+      hostId: 'local',
+      appId: 'com.example.app',
+      processId: '42',
+      output: 'application log',
+    });
+    expect(
+      calls.some(({ args }) => args.includes('processIdentifier == 42')),
+    ).toBe(true);
   });
 
   test('a shared admin reads and drives a device shared with them, and only that one', async () => {

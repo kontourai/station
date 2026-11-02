@@ -33,6 +33,16 @@ vi.mock('../../contexts/ApiBaseContext', () => ({
     authorityKey: 'authority-1',
   }),
 }));
+vi.mock('../../contexts/ProjectsContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../contexts/ProjectsContext')>()),
+  useScopedProjectsQuery: () => ({
+    data: [{ id: 'project-id', slug: 'project-one', name: 'Project' }],
+    isLoading: false,
+    isSuccess: true,
+    error: null,
+    refetch: vi.fn(),
+  }),
+}));
 
 import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { deviceFloatSourceKey } from '../../float-over-chat/floatSource';
@@ -93,6 +103,154 @@ async function openFirst(name: string) {
 }
 
 describe('opening a device', () => {
+  test('starts and stops a Task recording for the selected host-qualified session', async () => {
+    activeProject.slug = 'project-one';
+    const log = stubDeviceFetch({
+      inventory: readyInventory([ANDROID_DEVICE]),
+      deviceLoopPreview: true,
+    });
+    const originalFetch = globalThis.fetch;
+    const jobId = '11111111-2222-4333-8444-555555555555';
+    const requests: Array<{ path: string; method: string; body?: unknown }> =
+      [];
+    vi.stubGlobal(
+      'fetch',
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = new URL(String(input));
+        const method = init?.method ?? 'GET';
+        if (url.pathname === '/api/tasks' && method === 'GET')
+          return Response.json({
+            success: true,
+            data:
+              url.searchParams.get('projectId') === 'project-one'
+                ? [{ id: 'task-a', title: 'Test Task', status: 'ready' }]
+                : [],
+          });
+        if (url.pathname.includes('/review/device-recordings')) {
+          requests.push({
+            path: url.pathname,
+            method,
+            ...(init?.body ? { body: JSON.parse(String(init.body)) } : {}),
+          });
+          if (url.pathname.endsWith('/stop'))
+            return Response.json({
+              success: true,
+              data: {
+                id: jobId,
+                state: 'completed',
+                result: { walkthroughId: 'clip', commit: 'a'.repeat(40) },
+              },
+            });
+          return Response.json({
+            success: true,
+            data: {
+              id: jobId,
+              state: method === 'POST' ? 'starting' : 'recording',
+            },
+          });
+        }
+        return originalFetch(input, init);
+      },
+    );
+    renderInQueryClient(<DeviceWorkspacePane />);
+    await openFirst('Open Pixel 10 Pro XL');
+    await click(await screen.findByRole('button', { name: 'Record to Task' }));
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Record to Task',
+    });
+    await click(
+      await within(dialog).findByRole('button', { name: /Test Task/ }),
+    );
+    await click(
+      within(dialog).getByRole('button', { name: 'Start recording' }),
+    );
+    await screen.findByText('Recording to Task…');
+    const opened = log.requests.find(
+      (request) =>
+        request.url.includes('/sessions') && request.method === 'POST',
+    );
+    expect(opened).toBeDefined();
+    expect(requests[0]).toMatchObject({
+      method: 'POST',
+      body: {
+        sourceSessionId: expect.stringMatching(/^local:/),
+        durationMs: 30000,
+      },
+    });
+    await click(screen.getByRole('button', { name: 'Stop recording' }));
+    await screen.findByText('Recording saved to Task.');
+  });
+  test('saves a screenshot from the selected device and Project', async () => {
+    activeProject.slug = 'project-one';
+    stubDeviceFetch({ inventory: readyInventory([ANDROID_DEVICE]) });
+    const originalFetch = globalThis.fetch;
+    const capture = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input).includes('/capture?')) {
+          return Response.json({
+            success: true,
+            data: {
+              captureId: 'capture-1',
+              target: {
+                hostId: 'local',
+                platform: 'android',
+                deviceId: ANDROID_DEVICE.deviceId,
+              },
+              capturedAt: '2026-09-12T00:00:00.000Z',
+              width: 1,
+              height: 1,
+              mimeType: 'image/png',
+              pngBase64:
+                'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aDWQAAAAASUVORK5CYII=',
+            },
+          });
+        }
+        return originalFetch(input, init);
+      },
+    );
+    vi.stubGlobal('fetch', capture);
+    const create = vi.fn(() => 'blob:device-screenshot');
+    Object.assign(URL, { createObjectURL: create, revokeObjectURL: vi.fn() });
+    const download = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => {});
+    renderInQueryClient(<DeviceWorkspacePane />);
+    await openFirst('Open Pixel 10 Pro XL');
+    await click(await screen.findByRole('button', { name: 'Save screenshot' }));
+    await waitFor(() => expect(download).toHaveBeenCalledOnce());
+    expect(create).toHaveBeenCalledOnce();
+    expect(
+      capture.mock.calls.some(([url]) =>
+        String(url).includes(
+          `/hosts/local/devices/android/${ANDROID_DEVICE.deviceId}/capture?projectSlug=project-one`,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  test('reports a screenshot refusal without downloading', async () => {
+    stubDeviceFetch({ inventory: readyInventory([ANDROID_DEVICE]) });
+    const originalFetch = globalThis.fetch;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
+        String(input).includes('/capture')
+          ? Promise.resolve(Response.json({ success: false }, { status: 403 }))
+          : originalFetch(input, init),
+      ),
+    );
+    const download = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => {});
+    renderInQueryClient(<DeviceWorkspacePane />);
+    await openFirst('Open Pixel 10 Pro XL');
+    await click(await screen.findByRole('button', { name: 'Save screenshot' }));
+    expect(
+      await screen.findByText('Screenshot could not be saved'),
+    ).toBeTruthy();
+    expect(download).not.toHaveBeenCalled();
+  });
+
   test('Open shows step 1 (open device), then step 2 (connect video) until the first frame', async () => {
     const answer = deferred<MobileDeviceSession>();
     const log = stubDeviceFetch({

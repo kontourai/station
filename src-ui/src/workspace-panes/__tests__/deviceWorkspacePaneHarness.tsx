@@ -123,6 +123,7 @@ const SCOPE = {
 };
 
 export interface DeviceFetchPlan {
+  deviceLoopPreview?: boolean;
   inventory?: MobileDeviceInventory | (() => MobileDeviceInventory);
   inventoryThrows?: Error;
   inventoryStatus?: number;
@@ -199,6 +200,26 @@ export function stubDeviceFetch(plan: DeviceFetchPlan = {}): DeviceFetchLog {
       const method = (init?.method ?? 'GET').toUpperCase();
       const body = init?.body ? JSON.parse(String(init.body)) : undefined;
       log.requests.push({ method, url, body });
+      if (path.endsWith('/api/feature-previews') && method === 'GET')
+        return json({
+          success: true,
+          data: plan.deviceLoopPreview
+            ? [
+                {
+                  id: 'device-developer-loop',
+                  label: 'Device developer loop',
+                  description: 'Device diagnostics',
+                  enabled: true,
+                },
+                {
+                  id: 'walkthroughs',
+                  label: 'Walkthroughs',
+                  description: 'Task clips',
+                  enabled: true,
+                },
+              ]
+            : [],
+        });
       if (path.endsWith('/api/mobile-devices/hosts') && method === 'GET')
         return json({
           success: true,

@@ -1,3 +1,4 @@
+import { useFeaturePreviewsQuery } from '@kontourai/station-sdk';
 import { fetchDeviceAgentReveals } from '@kontourai/station-sdk/mobile-device';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
@@ -7,6 +8,8 @@ import {
   useNavigationOptional,
 } from '../contexts/NavigationContext';
 import { useOpenDeviceInRegion } from '../contexts/useOpenDeviceInRegion';
+import { deviceFloatSourceKey } from './floatSource';
+import { getFloatingSource, isFloatDismissed, openFloat } from './floatStore';
 
 // Explicit intents survive chat remounts in this tab; neither IDs nor scopes grant access.
 const handledIntents = new Map<string, Set<string>>();
@@ -14,15 +17,18 @@ const handledIntents = new Map<string, Set<string>>();
 export function AgentDeviceReveal({
   projectSlug,
   conversationId,
+  float = false,
 }: {
   projectSlug: string;
   conversationId: string;
+  float?: boolean;
 }) {
   const navigation = useNavigationOptional();
   return navigation ? (
     <ProjectDeviceReveal
       projectSlug={projectSlug}
       conversationId={conversationId}
+      float={float}
     />
   ) : null;
 }
@@ -30,9 +36,11 @@ export function AgentDeviceReveal({
 function ProjectDeviceReveal({
   projectSlug,
   conversationId,
+  float,
 }: {
   projectSlug: string;
   conversationId: string;
+  float: boolean;
 }) {
   const { selectedProject, lastProject } = useNavigation();
   const activeProject = selectedProject || lastProject;
@@ -42,6 +50,7 @@ function ProjectDeviceReveal({
       key={`${projectSlug}:${conversationId}`}
       projectSlug={projectSlug}
       conversationId={conversationId}
+      float={float}
     />
   );
 }
@@ -49,12 +58,20 @@ function ProjectDeviceReveal({
 function ActiveDeviceReveal({
   projectSlug,
   conversationId,
+  float,
 }: {
   projectSlug: string;
   conversationId: string;
+  float: boolean;
 }) {
   const scope = useHostRequestAuthorityScope();
   const open = useOpenDeviceInRegion();
+  const previews = useFeaturePreviewsQuery(scope?.apiBase, { enabled: float });
+  const floatEnabled =
+    float &&
+    previews.data?.some(
+      (preview) => preview.id === 'device-developer-loop' && preview.enabled,
+    ) === true;
   const seen = useRef<{ key: string; ids: Set<string> } | null>(null);
   const query = useQuery({
     queryKey: [
@@ -83,6 +100,7 @@ function ActiveDeviceReveal({
     if (
       !scope ||
       !open ||
+      (float && previews.isPending) ||
       !scope.isCurrent() ||
       !query.data ||
       query.isFetching ||
@@ -110,6 +128,24 @@ function ActiveDeviceReveal({
       previous.delete(previous.values().next().value!);
     const latest = fresh.at(-1);
     if (!latest) return;
+    if (floatEnabled) {
+      const session = latest.session;
+      const key = deviceFloatSourceKey(session);
+      if (
+        !getFloatingSource(conversationId) &&
+        !isFloatDismissed(conversationId, key)
+      )
+        openFloat(conversationId, {
+          kind: 'device',
+          hostId: session.hostId,
+          platform: session.platform,
+          deviceId: session.deviceId,
+          surfaceId: session.surfaceId,
+          projectSlug,
+          name: session.name,
+        });
+      return;
+    }
     const outcome = open(scope, latest.session, { region: 'right' });
     if (!outcome.ok && outcome.reason === 'region-unavailable')
       open(scope, latest.session);
@@ -121,6 +157,9 @@ function ActiveDeviceReveal({
     query.isError,
     projectSlug,
     conversationId,
+    float,
+    floatEnabled,
+    previews.isPending,
   ]);
   return null;
 }

@@ -5729,7 +5729,7 @@ authority. See the [Device guide](../guides/mobile-device-workspace.md).
 
 The opt-in `@kontourai/station-sdk/mobile-device` subpath exports
 `fetchMobileDeviceInventory(apiBase, options?)` and
-`captureMobileDevice(apiBase, target, options?)`, the shared inventory/target/capture
+`captureMobileDevice(apiBase, target, options?, projectSlug?)`, the shared inventory/target/capture
 types, and `MobileDeviceRequestError` with an HTTP status. Both use the existing
 `ClientRequestOptions` credential and origin boundary. Responses are validated;
 capture refuses mismatched targets and returns a timestamped PNG, not stream
@@ -5737,11 +5737,17 @@ readiness or foreground-app provenance. See [Mobile device inspection](../guides
 for host setup, access scopes, limits, and the web/desktop integration boundary.
 
 Inventory additionally accepts optional `projectSlug` and `hostId` arguments;
-the host defaults to `local`. The one-frame capture client currently accepts
+the host defaults to `local`. Pass the active Project slug to capture a shared
+device as a Project admin. The one-frame capture client currently accepts
 UUID-shaped iOS IDs and Android `emulator-<number>` IDs. Use
 `isCaptureableMobileDeviceTarget` before offering that action: a listed device
 is not necessarily accepted by this capture API. Capture does not boot a device
 or establish a live session. See the [SDK boundary](../../packages/sdk/src/mobile-device.ts).
+
+Task Review also exposes `useTaskDeviceCaptureSessionsQuery(taskId, projectSlug)`
+and `useCaptureDeviceToTaskMutation(taskId, projectSlug)`. Their device session
+IDs include the host, and the capture route checks the Task Project and device
+access again before storing the Screen.
 
 ## Experimental encrypted-channel transport consumer
 

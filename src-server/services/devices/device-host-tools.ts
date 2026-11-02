@@ -146,11 +146,17 @@ export function runBoundedToolCapture(
     stdin?: string;
     maxBuffer?: number;
     partialOnTimeout?: boolean;
+    requireSampleDuration?: boolean;
+    signal?: AbortSignal;
   },
   spawnTool: typeof spawn = spawn,
 ): Promise<string> {
   const maxBuffer = options.maxBuffer ?? 256 * 1024;
   return new Promise((resolve, reject) => {
+    if (options.signal?.aborted) {
+      reject(new DeviceToolError('tool-failed', `${command} cancelled`));
+      return;
+    }
     let child: ReturnType<typeof spawn>;
     try {
       child = spawnTool(command, [...args], {
@@ -176,6 +182,7 @@ export function runBoundedToolCapture(
       settled = true;
       clearTimeout(timer);
       clearTimeout(flushTimer);
+      options.signal?.removeEventListener('abort', onAbort);
       if (error) reject(error);
       else resolve(Buffer.concat(chunks).toString('utf8'));
     };
@@ -191,6 +198,9 @@ export function runBoundedToolCapture(
       child.stdin?.destroy();
       finish(error);
     };
+    function onAbort() {
+      abort(new DeviceToolError('tool-failed', `${command} cancelled`));
+    }
     const flushMs = options.partialOnTimeout
       ? Math.min(1000, options.timeoutMs * 0.1)
       : 0;
@@ -222,11 +232,15 @@ export function runBoundedToolCapture(
     );
     child.on('close', (code) => {
       finish(
-        code === 0 || (timedOut && options.partialOnTimeout)
+        (code === 0 && !options.requireSampleDuration) ||
+          (timedOut && options.partialOnTimeout)
           ? null
           : new DeviceToolError('tool-failed', `${command} failed`),
       );
     });
+    options.signal?.addEventListener('abort', onAbort, { once: true });
+    if (options.signal?.aborted) onAbort();
+    if (settled) return;
     if (options.stdin !== undefined) {
       child.stdin?.on('error', () => {
         // The exit status reports the failure; a closed pipe adds nothing.

@@ -195,6 +195,11 @@ device idle timeout to a Browser pane.
 
 ## Capture a device Screen to a Task
 
+In Task Review, **Capture** lists accessible Device sessions alongside Browser
+sessions. Select the named host and device to save a Screen to that Task.
+Station checks the Task's Project and the device's current access before
+publishing; a removed host or ended session cannot provide a capture.
+
 A bound agent can call station-control `device_capture_to_task` with the
 `deviceSessionId` returned by `device_open` and an optional `label` (120
 characters maximum). The route derives the Task from that Session's current
@@ -208,8 +213,10 @@ capture return `workspace-changed`; unavailable workspaces or unobserved
 submodules return `workspace-unobservable`. Per-Task, home-storage and image
 limits use the same capture store as `browser_capture_to_task`, including
 `capture-limit`, `capture-home-limit` and `screenshot-too-large` refusals.
-Human takeover, source loss or authority changes refuse publication. The
-control lease remains held through publication and is then released.
+For the agent tool, human takeover, source loss or authority changes refuse
+publication. Its control lease remains held through publication and is then
+released. Person capture rechecks device access and session identity before
+publication.
 
 Success returns `captureId`, `commit`, `digest` and the image. The immutable
 Screen is available in Review and in the Overview **Timeline** while the
@@ -220,12 +227,30 @@ gate-evaluation verifier; missing or unverifiable evidence says **claimed**.
 The gate reference must name the same capture and commit. Thumbnail bytes come
 through the Task-authorized capture-content route.
 
+With **Device developer loop** and **Walkthroughs** enabled, use **Record to
+Task** in the Device pane to select a Task and start a clip. Stop it with the
+toolbar control; Station also stops at 30 seconds. The clip is saved in Task
+Review with the host and device and the app observed at the start. A rotated
+frame currently refuses the recording. An agent with a Task-bound Session can
+use `device_record_to_task` with a duration of up to 30 seconds.
+
+With **Device developer loop** enabled, the Tools drawer can sample logs for
+one running app ID. Start or pause the sample and filter the displayed output
+by text or level. Station bounds the sample and checks the app's process ID
+again before publishing; samples can have gaps. `device_logs` provides the
+same bounded read to an authorized agent. Both tools use the selected device
+host, including an enabled SSH host.
+
 The commit records the observed Task workspace. It does not establish which
 build is installed on the device or which app is in the foreground; attach
 those receipts separately. Real-device capture and installed-build provenance
 require separate verification.
 
 ## Single-frame API and SDK
+
+The live Device toolbar's **Save screenshot** action downloads a PNG of the
+selected host and device. A failed capture is shown as an error; a screenshot
+does not identify the installed build or foreground app.
 
 - `GET /api/mobile-devices/hosts/local/devices` returns host state,
   `observedAt`, and device ID/platform/name/runtime/booted metadata.
@@ -248,9 +273,10 @@ import {
   captureMobileDevice,
 } from '@kontourai/station-sdk/mobile-device';
 
-const inventory = await fetchMobileDeviceInventory(apiBase, requestOptions);
+const projectSlug = 'my-project'; // The active Project for a shared device.
+const inventory = await fetchMobileDeviceInventory(apiBase, requestOptions, projectSlug);
 // Display the returned device list and let the user select an exact target.
-const capture = await captureMobileDevice(apiBase, selectedTarget, requestOptions);
+const capture = await captureMobileDevice(apiBase, selectedTarget, requestOptions, projectSlug);
 // Render only after decoding the PNG; this is a timestamped snapshot.
 const imageUrl = `data:${capture.mimeType};base64,${capture.pngBase64}`;
 ```
@@ -293,7 +319,7 @@ The Agent route fixtures cover colliding local/SSH device IDs, host removal,
 lease-neutral open and reveal admission. The mounted reveal fixture reaches the
 canonical region and Device live surface, checks repeat/dismissal behavior and
 stale authority, and sends no control request. These are synthetic receipts.
-Artifact installation/lifecycle with build provenance, bounded correlated logs,
-recording/reproduction bundles, physical-device and authenticated remote-platform
+Artifact installation/lifecycle with build provenance, reproduction bundles,
+physical-device and authenticated remote-platform
 qualification remain outstanding under #1967/#1970/#1971/#1973; cloud/EAS providers
 remain #2373. These epics are not complete on fixture evidence alone.

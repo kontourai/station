@@ -119,6 +119,7 @@ export type RemoteDeviceHostParams =
       /** One deadline for the whole run. */
       timeoutMs: number;
       maxBuffer: number;
+      sampleDurationMs?: number;
       /** stdin closing cancels the run (Station keeps it open meanwhile). */
       cancelOnClose?: boolean;
       /**
@@ -234,7 +235,7 @@ if (p.mode === 'avd') {
 
 if (p.mode === 'tool') {
   const followedBy = p.followedBy === undefined ? [] : p.followedBy;
-  if (!Number.isSafeInteger(p.timeoutMs) || p.timeoutMs < 1 || p.timeoutMs > ${REMOTE_TOOL_LIMITS.maxTimeoutMs} || !Number.isSafeInteger(p.maxBuffer) || p.maxBuffer < 1 || p.maxBuffer > ${REMOTE_TOOL_LIMITS.maxBuffer} || (p.stdin !== undefined && (typeof p.stdin !== 'string' || Buffer.byteLength(p.stdin, 'utf8') > ${REMOTE_TOOL_LIMITS.maxStdinBytes})) || !Array.isArray(followedBy) || followedBy.length > ${REMOTE_TOOL_LIMITS.maxFollowedBy} || (followedBy.length > 0 && p.stdin !== undefined) || (p.keepGoing !== undefined && typeof p.keepGoing !== 'boolean')) return fail('protocol');
+  if (!Number.isSafeInteger(p.timeoutMs) || p.timeoutMs < 1 || p.timeoutMs > ${REMOTE_TOOL_LIMITS.maxTimeoutMs} || !Number.isSafeInteger(p.maxBuffer) || p.maxBuffer < 1 || p.maxBuffer > ${REMOTE_TOOL_LIMITS.maxBuffer} || (p.stdin !== undefined && (typeof p.stdin !== 'string' || Buffer.byteLength(p.stdin, 'utf8') > ${REMOTE_TOOL_LIMITS.maxStdinBytes})) || !Array.isArray(followedBy) || followedBy.length > ${REMOTE_TOOL_LIMITS.maxFollowedBy} || (followedBy.length > 0 && p.stdin !== undefined) || (p.keepGoing !== undefined && typeof p.keepGoing !== 'boolean') || (p.sampleDurationMs !== undefined && (!Number.isSafeInteger(p.sampleDurationMs) || p.sampleDurationMs < 1 || p.sampleDurationMs >= p.timeoutMs || p.sampleDurationMs > 5000 || p.tool !== 'xcrun' || !Array.isArray(p.args) || p.args[3] !== 'log' || p.args[4] !== 'stream' || followedBy.length > 0))) return fail('protocol');
   // Written, flushed, then exit: a descendant the tool left holding its
   // stdout must not keep this session open.
   let answered = false;
@@ -272,6 +273,7 @@ if (p.mode === 'tool') {
     if (cancelled || answered) return;
     const left = deadline - Date.now();
     if (left <= 0) { answer({ ok: false, failure: 'tool-timeout', applied: index - failedAt.length }); return; }
+    if (p.sampleDurationMs !== undefined && left <= p.sampleDurationMs) { answer({ ok: false, failure: 'tool-timeout', applied: 0 }); return; }
     const args = commands[index];
     const last = index === commands.length - 1;
     try {
@@ -299,7 +301,13 @@ if (p.mode === 'tool') {
       if (current.stdin) current.stdin.destroy();
       settle(false, failure);
     };
-    const timer = setTimeout(() => abort('tool-timeout'), left);
+    const timer = setTimeout(() => {
+      if (p.sampleDurationMs !== undefined) {
+        try { current.kill('SIGKILL'); } catch {}
+        if (current.stdout) current.stdout.destroy();
+        settle(true);
+      } else abort('tool-timeout');
+    }, p.sampleDurationMs === undefined ? left : Math.min(left, p.sampleDurationMs));
     current.stdout.on('data', (chunk) => {
       size += chunk.length;
       if (size > p.maxBuffer) { abort('tool-failed'); return; }
@@ -307,7 +315,7 @@ if (p.mode === 'tool') {
     });
     current.stdout.on('error', () => {});
     current.on('error', (error) => settle(false, error && error.code === 'ENOENT' ? 'tool-unavailable' : 'tool-failed'));
-    current.on('close', (code) => settle(code === 0, 'tool-failed'));
+    current.on('close', (code) => settle(code === 0 && p.sampleDurationMs === undefined, 'tool-failed'));
     if (p.stdin !== undefined) { current.stdin.on('error', () => {}); current.stdin.end(p.stdin); }
   };
   runOne();

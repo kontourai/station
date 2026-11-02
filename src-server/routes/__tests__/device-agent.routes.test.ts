@@ -60,6 +60,7 @@ function harness(
   let shared = true;
   let active = true;
   let enabled = true;
+  let loopEnabled = true;
   let operator = options.operator === true;
   let principalId = 'admin';
   let conversationId = 'conversation';
@@ -192,8 +193,41 @@ function harness(
         },
       })
     : undefined;
-  const localTools = { accessibility };
+  const localTools = {
+    accessibility,
+    foreground: vi.fn(
+      async (_target: Parameters<DeviceToolsService['foreground']>[0]) => ({
+        readAt: new Date().toISOString(),
+        foregroundApp: { state: 'read' as const, value: null },
+      }),
+    ),
+    logs: vi.fn(
+      async (
+        target: Parameters<DeviceToolsService['logs']>[0],
+        appId: string,
+      ) => ({
+        ...target,
+        appId,
+        processId: '42',
+        output: 'local log',
+        readAt: new Date().toISOString(),
+      }),
+    ),
+  };
   const remoteTools = {
+    foreground: localTools.foreground,
+    logs: vi.fn(
+      async (
+        target: Parameters<DeviceToolsService['logs']>[0],
+        appId: string,
+      ) => ({
+        ...target,
+        appId,
+        processId: '43',
+        output: 'remote log',
+        readAt: new Date().toISOString(),
+      }),
+    ),
     accessibility: vi.fn(async () => ({
       ...(await accessibility()),
       truncated: true,
@@ -247,6 +281,7 @@ function harness(
     resolveAndroidAvd: async () => 'Test',
   };
   const routes = createDeviceAgentRoutes({
+    deviceLoopEnabled: () => loopEnabled,
     ...access,
     isInternalRequest: () => true,
     resolveCaller: (request) => {
@@ -356,6 +391,7 @@ function harness(
         body: JSON.stringify(body),
       }),
     access,
+    automation,
     device,
     humanAction: () =>
       humanTools.request(
@@ -393,6 +429,10 @@ function harness(
     remoteHost,
     remoteSessions,
     remoteTools,
+    localTools,
+    setLoopEnabled: (value: boolean) => {
+      loopEnabled = value;
+    },
     removeRemote: () => {
       remoteAvailable = false;
     },
@@ -469,6 +509,67 @@ test('opening an existing device while a person drives preserves their lease', a
   expect(h.packets).toEqual([]);
 });
 
+test('device logs refuse an off preview and suppress output when it is disabled during sampling', async () => {
+  const h = harness();
+  const id = await h.open();
+  h.setLoopEnabled(false);
+  expect(
+    parsed(
+      await h.run('device_logs', {
+        deviceSessionId: id,
+        appId: 'com.example.app',
+      }),
+    ),
+  ).toMatchObject({ ok: false, code: 'feature_preview_disabled' });
+  expect(h.localTools.logs).not.toHaveBeenCalled();
+  h.setLoopEnabled(true);
+  h.localTools.logs.mockImplementationOnce(async (target, appId) => {
+    h.setLoopEnabled(false);
+    return {
+      ...target,
+      appId,
+      processId: '42',
+      output: 'private log',
+      readAt: new Date().toISOString(),
+    };
+  });
+  expect(
+    parsed(
+      await h.run('device_logs', {
+        deviceSessionId: id,
+        appId: 'com.example.app',
+      }),
+    ),
+  ).toEqual({ ok: false, code: 'interrupted' });
+});
+
+test('a Device recording source loses authority when a human takes control', async () => {
+  const h = harness();
+  const id = await h.open();
+  const decision = await authorizeDeviceAgentCaller(h.access);
+  if (!decision.ok) throw new Error('fixture authority unavailable');
+  await expect(
+    h.automation.recordToTask(
+      h.access,
+      decision.authority,
+      id,
+      () => true,
+      async (source) => {
+        expect(source.device).toMatchObject({
+          hostId: 'local',
+          deviceId: h.device.deviceId,
+          appId: null,
+          appObservedAt: null,
+        });
+        expect(await source.authorize()).toBe(true);
+        await h.take(id);
+        expect(await source.authorize()).toBe(false);
+        throw new Error('recording interrupted');
+      },
+    ),
+  ).rejects.toThrow('recording interrupted');
+});
+
 test('SSH tools retain host identity with colliding local device ids and fail closed after host removal', async () => {
   const h = harness('sdk-in-process', { operator: true, remote: true });
   const localId = await h.open();
@@ -487,6 +588,17 @@ test('SSH tools retain host identity with colliding local device ids and fail cl
     parsed(await h.run('device_snapshot', { deviceSessionId: id })),
   ).toMatchObject({ ok: true, tree: { truncated: true } });
   expect(h.remoteTools.accessibility).toHaveBeenCalledOnce();
+  expect(
+    parsed(
+      await h.run('device_logs', {
+        deviceSessionId: id,
+        appId: 'com.example.app',
+      }),
+    ),
+  ).toMatchObject({
+    ok: true,
+    logs: { hostId: h.remoteDevice.hostId, output: 'remote log' },
+  });
   const capture = await h.run('device_screenshot', { deviceSessionId: id });
   expect(parsed(capture)).toMatchObject({
     ok: true,

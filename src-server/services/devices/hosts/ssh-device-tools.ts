@@ -59,6 +59,7 @@ export interface SshToolRequest {
   timeoutMs: number;
   /** The most output the tool may print. */
   maxBuffer: number;
+  sampleDurationMs?: number;
 }
 
 export type SshToolFailure =
@@ -137,6 +138,15 @@ export function isValidSshToolRequest(request: SshToolRequest): boolean {
     Number.isSafeInteger(request.maxBuffer) &&
     request.maxBuffer >= 1 &&
     request.maxBuffer <= REMOTE_TOOL_LIMITS.maxBuffer &&
+    (request.sampleDurationMs === undefined ||
+      (Number.isSafeInteger(request.sampleDurationMs) &&
+        request.sampleDurationMs > 0 &&
+        request.sampleDurationMs <= 5000 &&
+        request.sampleDurationMs < request.timeoutMs &&
+        request.tool === 'xcrun' &&
+        request.args[3] === 'log' &&
+        request.args[4] === 'stream' &&
+        followedBy.length === 0)) &&
     (request.stdin === undefined ||
       (typeof request.stdin === 'string' &&
         Buffer.byteLength(request.stdin, 'utf8') <=
@@ -181,6 +191,9 @@ export async function runSshDeviceTool(input: {
         ? { followedBy: request.followedBy.map((args) => [...args]) }
         : {}),
       ...(request.keepGoing ? { keepGoing: true } : {}),
+      ...(request.sampleDurationMs !== undefined
+        ? { sampleDurationMs: request.sampleDurationMs }
+        : {}),
       timeoutMs: request.timeoutMs,
       maxBuffer: request.maxBuffer,
       cancelOnClose: true,
@@ -282,6 +295,9 @@ export function createSshDeviceToolRunner(
           ...(options.stdin !== undefined ? { stdin: options.stdin } : {}),
           timeoutMs: options.timeoutMs,
           maxBuffer: options.maxBuffer ?? DEFAULT_MAX_BUFFER,
+          ...(options.sampleDurationMs !== undefined
+            ? { sampleDurationMs: options.sampleDurationMs }
+            : {}),
         },
         options.beforeRun ? { beforeRun: options.beforeRun } : undefined,
       );

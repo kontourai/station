@@ -233,9 +233,10 @@ export function handOffFloat(
   conversation: string,
   sourceKey: string,
   now = Date.now(),
+  retain = false,
 ): void {
   handoffs.set(handoffKey(conversation, sourceKey), { seen: false, at: now });
-  floating.delete(conversation);
+  if (!retain) floating.delete(conversation);
   emit();
 }
 

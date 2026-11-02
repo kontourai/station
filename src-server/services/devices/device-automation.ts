@@ -12,6 +12,7 @@ import {
   releaseAgentControl,
 } from '../live-surface/registry.js';
 import type { LocalMobileDeviceHost } from '../mobile-device/mobile-device-host.js';
+import type { RecordingSource } from '../projects/task-browser-recording.js';
 import {
   authorizeDeviceAgentCaller,
   type DeviceAgentAccessDeps,
@@ -25,7 +26,7 @@ import type { DeviceToolsService } from './device-tools.js';
 interface DeviceAutomationHost {
   host: Pick<LocalMobileDeviceHost, 'inventory' | 'capture'>;
   sessions: DeviceSessionService;
-  tools: Pick<DeviceToolsService, 'accessibility'>;
+  tools: Pick<DeviceToolsService, 'accessibility' | 'logs' | 'foreground'>;
 }
 interface DeviceAutomationDeps extends DeviceAutomationHost {
   surfaces: Pick<LiveSurfaceRegistry, 'get'>;
@@ -486,6 +487,101 @@ export class DeviceAutomation {
       )
         return refused('interrupted');
       return { ok: true, ...result };
+    });
+  }
+
+  async logs(
+    access: DeviceAgentAccessDeps,
+    authority: DeviceAgentAuthority,
+    id: string,
+    appId: string,
+    enabled: () => boolean,
+  ) {
+    return this.withControl(access, authority, id, async (selected) => {
+      const current = async () =>
+        enabled() &&
+        selected.entry.lease.isCurrent(selected.lease.fence, selected.agent)
+          .ok &&
+        (await selected.entry.authorize(
+          authority.principalId,
+          'view',
+          selected.context,
+        )) &&
+        selected.entry.lease.isCurrent(selected.lease.fence, selected.agent)
+          .ok &&
+        enabled();
+      const beforeRun = async () => {
+        if (!(await current())) throw new Error('device authority changed');
+      };
+      const logs = await selected.services.tools.logs(
+        selected.session,
+        appId,
+        beforeRun,
+      );
+      if (!(await current())) return refused('interrupted');
+      return { ok: true as const, logs };
+    });
+  }
+
+  async recordToTask<T extends object>(
+    access: DeviceAgentAccessDeps,
+    authority: DeviceAgentAuthority,
+    id: string,
+    enabled: () => boolean,
+    publish: (source: RecordingSource) => Promise<T>,
+  ) {
+    return this.withControl(access, authority, id, async (selected) => {
+      const current = () => {
+        const live = this.sessionServices(id);
+        return (
+          enabled() &&
+          live?.services.sessions === selected.services.sessions &&
+          live.services.tools === selected.services.tools &&
+          live.services.host === selected.services.host &&
+          live.session.surfaceId === selected.session.surfaceId &&
+          this.deps.surfaces.get(selected.session.surfaceId) ===
+            selected.entry &&
+          selected.entry.lease.isCurrent(selected.lease.fence, selected.agent)
+            .ok
+        );
+      };
+      const authorize = async () =>
+        current() &&
+        (await selected.entry.authorize(
+          authority.principalId,
+          'view',
+          selected.context,
+        )) &&
+        current();
+      if (!(await authorize())) return refused('interrupted');
+      const observed = await selected.services.tools.foreground(
+        selected.session,
+        async () => {
+          if (!(await authorize())) throw new Error('device authority changed');
+        },
+      );
+      if (!(await authorize())) return refused('interrupted');
+      const appId =
+        observed.foregroundApp.state === 'read'
+          ? (observed.foregroundApp.value?.appId ?? null)
+          : null;
+      const result = await publish({
+        entry: selected.entry,
+        current,
+        authorize,
+        checkEachFrame: true,
+        platform: selected.session.platform,
+        adapter: 'device-live-surface',
+        device: {
+          hostId: selected.session.hostId,
+          deviceId: selected.session.deviceId,
+          name: selected.session.name,
+          runtime: selected.session.runtime,
+          appId,
+          appObservedAt: appId === null ? null : observed.readAt,
+        },
+      });
+      return { ok: true as const, ...result };
     });
   }
 

@@ -11,12 +11,21 @@ import {
 import type { DeviceAutomation } from '../services/devices/device-automation.js';
 import { DeviceSessionError } from '../services/devices/device-session-service.js';
 import { DeviceHostBusyError } from '../services/devices/device-shares.js';
+import { isDeviceAppId } from '../services/devices/device-tools.js';
 import { isValidMobileDeviceId } from '../services/mobile-device/mobile-device-host.js';
 import type { ProjectTaskRoomRuntime } from '../services/orchestration/project-task-room-runtime.js';
 import {
   type TaskBrowserCapture,
   TaskBrowserCaptureError,
 } from '../services/projects/task-browser-capture.js';
+import {
+  type TaskBrowserRecording,
+  TaskBrowserRecordingError,
+} from '../services/projects/task-browser-recording.js';
+import {
+  BROWSER_RECORD_MAX_DURATION_MS,
+  BROWSER_RECORD_MAX_ENCODED_BYTES,
+} from '../tools/station-browser-policy.js';
 import type { StationControlCaller } from '../tools/station-control-shared.js';
 
 export interface DeviceAgentRoutesDeps
@@ -24,10 +33,12 @@ export interface DeviceAgentRoutesDeps
   isInternalRequest(request: Request): boolean;
   resolveCaller(request: Request): StationControlCaller | null;
   automation: DeviceAutomation;
+  deviceLoopEnabled?: () => boolean;
   taskCapture?():
     | {
         runtime: Pick<ProjectTaskRoomRuntime, 'sessionTaskReviewAccess'>;
         captures: TaskBrowserCapture;
+        recordings?: TaskBrowserRecording;
         localProjectIdFor(identity: string): string | undefined;
       }
     | undefined;
@@ -99,6 +110,116 @@ export function createDeviceAgentRoutes(deps: DeviceAgentRoutesDeps) {
     const id = body.deviceSessionId;
     if (typeof id !== 'string' || !id || id.length > 80)
       return c.json({ ok: false, code: 'invalid-request' });
+    if (operation === 'record-to-task') {
+      if (!deps.deviceLoopEnabled?.())
+        return c.json({
+          ok: false,
+          code: 'feature_preview_disabled',
+          previewId: 'device-developer-loop',
+          settingsPath:
+            '/settings?view=feature-previews&highlight=feature-previews',
+        });
+      if (
+        Object.keys(body).some(
+          (key) =>
+            !['deviceSessionId', 'label', 'durationMs', 'maxBytes'].includes(
+              key,
+            ),
+        ) ||
+        !Number.isSafeInteger(body.durationMs) ||
+        (body.durationMs as number) < 1 ||
+        (body.durationMs as number) > BROWSER_RECORD_MAX_DURATION_MS ||
+        (body.maxBytes !== undefined &&
+          (!Number.isSafeInteger(body.maxBytes) ||
+            (body.maxBytes as number) < 1 ||
+            (body.maxBytes as number) > BROWSER_RECORD_MAX_ENCODED_BYTES))
+      )
+        return c.json({ ok: false, code: 'invalid-request' });
+      const parsed = parseTaskReviewCreateCaptureRequest({
+        sourceKind: 'device',
+        sourceSessionId: id,
+        label: body.label,
+        operationId: randomUUID(),
+      });
+      if (!parsed) return c.json({ ok: false, code: 'invalid-request' });
+      const capture = deps.taskCapture?.();
+      if (!capture?.recordings)
+        return c.json({ ok: false, code: 'recording-unavailable' });
+      const taskAccess = await capture.runtime.sessionTaskReviewAccess(
+        authority.sessionId,
+      );
+      if (
+        taskAccess.kind !== 'granted' ||
+        capture.localProjectIdFor(taskAccess.write.projectId) !==
+          authority.projectId
+      )
+        return c.json({ ok: false, code: 'no_task_binding' });
+      try {
+        const result = await deps.automation.recordToTask(
+          access,
+          authority,
+          id,
+          () => deps.deviceLoopEnabled?.() === true,
+          async (source) => {
+            const manifest = await capture.recordings!.recordSource(
+              taskAccess,
+              {
+                durationMs: body.durationMs as number,
+                ...(body.maxBytes !== undefined
+                  ? { maxBytes: body.maxBytes as number }
+                  : {}),
+                ...(parsed.label ? { label: parsed.label } : {}),
+                signal: c.req.raw.signal,
+              },
+              async () => source,
+            );
+            return {
+              walkthroughId: manifest.id,
+              commit: manifest.source.commit,
+              recording: manifest.source.recording,
+            };
+          },
+        );
+        return c.json(result);
+      } catch (error) {
+        if (
+          error instanceof TaskBrowserRecordingError ||
+          error instanceof TaskBrowserCaptureError
+        )
+          return c.json({
+            ok: false,
+            code: error.code,
+            message: error.response.error,
+          });
+        throw error;
+      }
+    }
+    if (operation === 'logs') {
+      if (!deps.deviceLoopEnabled?.())
+        return c.json({
+          ok: false,
+          code: 'feature_preview_disabled',
+          previewId: 'device-developer-loop',
+          settingsPath:
+            '/settings?view=feature-previews&highlight=feature-previews',
+        });
+      if (
+        Object.keys(body).some(
+          (key) => key !== 'deviceSessionId' && key !== 'appId',
+        ) ||
+        !isDeviceAppId(body.appId)
+      )
+        return c.json({ ok: false, code: 'invalid-request' });
+      return c.json(
+        await deps.automation.logs(
+          access,
+          authority,
+          id,
+          body.appId,
+          () => deps.deviceLoopEnabled?.() === true,
+        ),
+      );
+    }
     if (operation === 'capture-to-task') {
       if (
         Object.keys(body).some(

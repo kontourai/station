@@ -42,9 +42,10 @@ import {
 import { DeviceWorkspacePane } from '../../workspace-panes/DeviceWorkspacePane';
 import { readDevicePaneState } from '../../workspace-panes/devicePaneStateStorage';
 import { AgentDeviceReveal } from '../AgentDeviceReveal';
+import { getFloatingSource, resetFloatStoreForTests } from '../floatStore';
 
 let model: ReturnType<typeof useRegionModel> | undefined;
-function Workspace() {
+function Workspace({ float = false }: { float?: boolean }) {
   const regions = useRegionModel();
   const navigation = useNavigation();
   useEffect(() => {
@@ -53,7 +54,11 @@ function Workspace() {
   model = regions;
   return (
     <>
-      <AgentDeviceReveal projectSlug="alpha" conversationId="conversation" />
+      <AgentDeviceReveal
+        projectSlug="alpha"
+        conversationId="conversation"
+        float={float}
+      />
       {regions.regions.right.panes.includes('device') ? (
         <DeviceWorkspacePane />
       ) : null}
@@ -68,6 +73,90 @@ afterEach(() => {
   vi.unstubAllGlobals();
   setClientCredentialResolver();
   localStorage.clear();
+  resetFloatStoreForTests();
+});
+
+test('an agent reveal floats the host-qualified session without opening a pane', async () => {
+  authorizeScope();
+  const session = sessionFor(ANDROID_DEVICE);
+  const deviceFetch = stubDeviceFetch({
+    inventory: readyInventory([ANDROID_DEVICE]),
+    sessions: [session],
+    deviceLoopPreview: true,
+  });
+  void deviceFetch;
+  const fallback = globalThis.fetch;
+  vi.stubGlobal(
+    'fetch',
+    async (input: Parameters<typeof fetch>[0], init?: RequestInit) =>
+      String(input).includes('/agent-reveals?')
+        ? Response.json({
+            success: true,
+            data: {
+              reveals: [
+                { intentId: '33333333-2222-4333-8444-555555555555', session },
+              ],
+            },
+          })
+        : fallback(input, init),
+  );
+  renderInQueryClient(
+    <KeyboardShortcutsProvider>
+      <NavigationProvider>
+        <RegionModelProvider>
+          <Workspace float />
+        </RegionModelProvider>
+      </NavigationProvider>
+    </KeyboardShortcutsProvider>,
+  );
+  await waitFor(() =>
+    expect(getFloatingSource('conversation')).toMatchObject({
+      kind: 'device',
+      hostId: session.hostId,
+      deviceId: session.deviceId,
+      surfaceId: session.surfaceId,
+    }),
+  );
+  expect(model?.regions.right.panes).not.toContain('device');
+});
+
+test('with the developer loop preview off an agent reveal opens the pane', async () => {
+  authorizeScope();
+  const session = sessionFor(ANDROID_DEVICE);
+  stubDeviceFetch({
+    inventory: readyInventory([ANDROID_DEVICE]),
+    sessions: [session],
+  });
+  const fallback = globalThis.fetch;
+  vi.stubGlobal(
+    'fetch',
+    async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('/agent-reveals?'))
+        return Response.json({
+          success: true,
+          data: {
+            reveals: [
+              { intentId: '44444444-2222-4333-8444-555555555555', session },
+            ],
+          },
+        });
+      if (url.includes('/feature-previews'))
+        return Response.json({ success: true, data: [] });
+      return fallback(input, init);
+    },
+  );
+  renderInQueryClient(
+    <KeyboardShortcutsProvider>
+      <NavigationProvider>
+        <RegionModelProvider>
+          <Workspace float />
+        </RegionModelProvider>
+      </NavigationProvider>
+    </KeyboardShortcutsProvider>,
+  );
+  await waitFor(() => expect(model?.regions.right.panes).toContain('device'));
+  expect(getFloatingSource('conversation')).toBeNull();
 });
 
 test('an Agent request survives initial polling failure, opens the real pane once, and respects dismissal and stale authority', async () => {

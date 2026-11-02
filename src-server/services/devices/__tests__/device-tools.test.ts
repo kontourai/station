@@ -91,6 +91,44 @@ function hubAnswering(
   };
 }
 
+test('logs resolve one app process and filter to its PID on its own host', async () => {
+  const app = 'com.example.app';
+  const runner = fakeRunner({
+    [`xcrun simctl spawn ${UDID} launchctl list`]: `42 0 UIKitApplication:${app}[abc][rb-legacy]\n`,
+    [`xcrun simctl spawn ${UDID} log stream --style compact --predicate processIdentifier == 42`]:
+      'app event',
+  });
+  const service = new DeviceToolsService({ runner, hub: hubAnswering() });
+  await expect(service.logs(IOS, app)).resolves.toMatchObject({
+    appId: app,
+    processId: '42',
+    output: 'app event',
+    hostId: 'local',
+  });
+  expect(runner.calls).toHaveLength(3);
+  await expect(
+    service.logs({ ...IOS, hostId: 'ssh-0123456789ab' }, app),
+  ).rejects.toBeInstanceOf(DeviceToolsError);
+  await expect(service.logs(IOS, 'com.example.other')).rejects.toBeInstanceOf(
+    DeviceToolsError,
+  );
+});
+
+test('logs refuse publication when the app process changes during sampling', async () => {
+  let reads = 0;
+  const runner: DeviceToolRunner = {
+    async run(_tool, args) {
+      if (args.includes('launchctl'))
+        return `${++reads === 1 ? 42 : 43} 0 UIKitApplication:com.example.app[abc][rb-legacy]\n`;
+      return 'event';
+    },
+  };
+  const service = new DeviceToolsService({ runner, hub: hubAnswering() });
+  await expect(service.logs(IOS, 'com.example.app')).rejects.toMatchObject({
+    code: 'tool-failed',
+  });
+});
+
 describe('the argv whitelist', () => {
   test('every builder output is one of the fixed shapes', () => {
     const built: [DeviceTool, string[]][] = [
@@ -130,7 +168,7 @@ describe('the argv whitelist', () => {
   });
 
   test.each([
-    ['xcrun', ['simctl', 'spawn', UDID, 'launchctl', 'list']],
+    ['xcrun', ['simctl', 'spawn', UDID, 'launchctl', 'kickstart']],
     ['xcrun', ['simctl', 'ui', UDID, 'appearance', 'dark', '--extra']],
     ['xcrun', ['simctl', 'ui', 'booted', 'appearance']],
     ['xcrun', ['simctl', 'privacy', UDID, 'grant', 'all', 'com.example.app']],
@@ -185,7 +223,7 @@ describe('the argv whitelist', () => {
       }
     ).exec.bind(service);
     await expect(
-      exec('xcrun', ['simctl', 'spawn', UDID, 'launchctl', 'list']),
+      exec('xcrun', ['simctl', 'spawn', UDID, 'launchctl', 'kickstart']),
     ).rejects.toMatchObject({ code: 'invalid-request' });
     expect(runner.calls).toEqual([]);
   });
