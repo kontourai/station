@@ -7,6 +7,46 @@ normally before publication. Open one PR when the combined work is ready.
 
 ## Current delivery state
 
+**NOT_READY.** The branch has no push or PR. Main is integrated through
+`d956ef4650c` by normal merge `edc145eca914`; the local `origin/main` ref has
+advanced since then and still needs normal integration before publication.
+Master consolidation #3991 remains separately owned. Group advertisement and
+continuation-finalizer qualification guards remain false.
+
+At `fafcd375ee2`, route currency uses an optional synchronous credential-route
+assessment implemented by `EnvironmentSecurityService`. The assessment reads
+the operator record once, delegates device policy to the existing owner, and
+returns only call-local operator/scope evidence. The request-security helper
+still applies capability and route-scope policy, with locality taken from the
+request's authenticated principal. Ports without assessment keep their existing
+path. No decision, record, credential or source cache is added; the revision
+signer's before/after record reads remain independent. Assessment strips
+activity, while ingress authorization keeps durable request counting.
+
+The real-owner cost control failed before the change with three record reads.
+The implemented and byte-exact restored selections each pass 61 tests across
+four files, with at most one route-check record read. Server-test types and
+scoped Biome pass. Reintroducing a duplicate operator read fails only the cost
+control (26 pass, one intended fail); forwarding activity into assessment fails
+only the activity-isolation control (26 pass, one intended fail). These are
+read-count and policy receipts, not elapsed-time or full-caller qualification.
+
+Accounting recovery now retains publication and exact Home custody through the
+recovery body and trailing read (`f09435644f3`, `b3f5bfecb80`). Its five-case
+selection passes; removing only publication from the trailing inspection makes
+the Home-exclusion control fail, and exact restoration passes again. This proves
+constructor-level custody, not full initialized-storage or boot/auth wiring.
+
+The last original report-input caller run before assessment remains one pass
+and one failure near the unchanged 120-second product deadline. Both original
+callers must pass at the combined head; the new per-read saving makes no such
+claim. Full initialized-storage teardown, boot/auth, accounting release-failure
+retry, semantic documentation catch-up, real CLI/reload/second-device and desktop
+receipts, main integration, visual validation, deslop and independent combined
+qualification remain open. Exactly one PR is to be opened only after readiness.
+
+### Historical delivery checkpoint before the later custody and currency repairs
+
 Main is integrated through `b3515bec387` by normal merge `44365fc9ec9`.
 The branch has no remote head or pull request at this checkpoint and is not ready
 to land. Master consolidation #3991 remains separately owned.
