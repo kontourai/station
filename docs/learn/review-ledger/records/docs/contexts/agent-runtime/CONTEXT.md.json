@@ -92,7 +92,13 @@
 
     "packages/contracts/src/connection-recovery.ts",
 
-    "src-ui/src/components/chat-dock/UsageLimitBanner.tsx"
+    "src-ui/src/components/chat-dock/UsageLimitBanner.tsx",
+
+    "src-server/runtime/conversation/inbox-model-step.ts",
+
+    "packages/agent-runtime/src/turn-retention.ts",
+
+    "packages/agent-runtime/src/turn-body-codec.ts"
   ],
 
   "checks": [

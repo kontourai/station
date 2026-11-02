@@ -1600,7 +1600,11 @@
 
     "src-ui/src/components/chat/ConversationInboxMessages.css",
 
-    "src-ui/src/__tests__/ConversationInboxMessages.geometry.test.tsx"
+    "src-ui/src/__tests__/ConversationInboxMessages.geometry.test.tsx",
+
+    "packages/agent-runtime/src/turn-retention.ts",
+
+    "packages/agent-runtime/src/turn-body-codec.ts"
   ],
 
   "checks": [

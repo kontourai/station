@@ -32,7 +32,7 @@ import type { ProviderDurabilityProfile } from '@kontourai/station-contracts/pro
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import { Memory } from '@voltagent/core';
-import type { PrepareStepFunction } from 'ai';
+import type { PrepareStepFunction, UIMessage } from 'ai';
 import { simulateReadableStream } from 'ai';
 import { MockLanguageModelV3 } from 'ai/test';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -1037,7 +1037,8 @@ describe('thread inbox (#3568)', () => {
               (message) =>
                 message.role === 'user' &&
                 message.parts.some(
-                  (part) => part.type === 'text' && part.text === FOLLOW_UP,
+                  (part: UIMessage['parts'][number]) =>
+                    part.type === 'text' && part.text === FOLLOW_UP,
                 ),
             ),
           ).toHaveLength(1);
