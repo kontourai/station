@@ -104,6 +104,75 @@ function renderNestedPicker(onOuterClose = vi.fn()) {
 }
 
 describe('SessionModelPicker', () => {
+  test('shows settings only for the exact current provider route', () => {
+    renderPicker({
+      currentModel: 'shared',
+      currentProviderId: 'second',
+      models: [
+        {
+          id: 'shared',
+          name: 'Shared model',
+          providerId: 'first',
+          capabilities: {
+            supportsEffort: true,
+            supportedEffortLevels: ['low'],
+          },
+        },
+        {
+          id: 'shared',
+          name: 'Shared model',
+          providerId: 'second',
+          capabilities: {
+            supportsEffort: true,
+            supportedEffortLevels: ['high'],
+          },
+        },
+      ],
+    });
+    expect(screen.getByRole('radio', { name: 'High' })).toBeTruthy();
+    expect(screen.queryByRole('radio', { name: 'Low' })).toBeNull();
+  });
+
+  test('recovers from an empty collection and search without losing keyboard access', () => {
+    renderPicker();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Favorites', exact: true }),
+    );
+    expect(screen.getByText('No favorite models yet.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Clear filter' }));
+    const search = screen.getByRole('searchbox', { name: 'Search models' });
+    expect(document.activeElement).toBe(search);
+    fireEvent.change(search, { target: { value: 'no such model' } });
+    expect(screen.getByText('Nothing matches your search.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Clear filter' }));
+    fireEvent.keyDown(search, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(
+      screen.getByRole('option', { name: /GPT-5.6/ }),
+    );
+  });
+
+  test('uses reported effort labels and disables settings for an unavailable route', () => {
+    renderPicker({
+      models: [
+        {
+          id: 'gpt-5.6',
+          name: 'GPT-5.6',
+          available: false,
+          capabilities: {
+            supportsEffort: true,
+            supportedEffortLevels: ['low', 'xhigh'],
+            effortLabels: { xhigh: 'Extra High' },
+          },
+        },
+      ],
+    });
+    expect(
+      screen.getByRole('group', { name: 'Thinking effort' }),
+    ).toHaveProperty('disabled', true);
+    expect(screen.getByRole('radio', { name: 'Extra High' })).toBeTruthy();
+    expect(screen.queryByRole('radio', { name: 'Medium' })).toBeNull();
+  });
+
   test('distinguishes an unreachable cached catalog from a live empty catalog', () => {
     const { rerender } = render(
       <SessionModelPicker
@@ -142,17 +211,9 @@ describe('SessionModelPicker', () => {
   test('selects a model and provider-supported effort directly', () => {
     const props = renderPicker();
 
-    expect(
-      screen.queryByRole('combobox', { name: 'Thinking effort' }),
-    ).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Options' }));
+    expect(screen.getByRole('group', { name: 'Thinking effort' })).toBeTruthy();
     fireEvent.click(screen.getByRole('option', { name: /GPT-5.5/ }));
-    fireEvent.change(
-      screen.getByRole('combobox', { name: 'Thinking effort' }),
-      {
-        target: { value: 'xhigh' },
-      },
-    );
+    fireEvent.click(screen.getByRole('radio', { name: 'Highest' }));
 
     expect(props.onSelect).toHaveBeenCalledWith({
       id: 'gpt-5.5',
@@ -163,9 +224,9 @@ describe('SessionModelPicker', () => {
       },
     });
     expect(props.onRuntimeOptionChange).toHaveBeenCalledWith('effort', 'xhigh');
-    fireEvent.change(screen.getByRole('combobox', { name: 'Filter models' }), {
-      target: { value: 'recents' },
-    });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Recent', exact: true }),
+    );
     expect(
       within(screen.getByRole('listbox', { name: 'Models' })).getAllByRole(
         'option',
@@ -176,11 +237,7 @@ describe('SessionModelPicker', () => {
 
   test('removes the effort override when model default is selected', () => {
     const props = renderPicker();
-    fireEvent.click(screen.getByRole('button', { name: 'Options' }));
-    fireEvent.change(
-      screen.getByRole('combobox', { name: 'Thinking effort' }),
-      { target: { value: '' } },
-    );
+    fireEvent.click(screen.getByRole('radio', { name: 'Use model default' }));
     expect(props.onRuntimeOptionChange).toHaveBeenCalledWith(
       'effort',
       undefined,
@@ -193,9 +250,7 @@ describe('SessionModelPicker', () => {
       currentModel: 'provider-default',
     });
 
-    expect(
-      screen.queryByRole('combobox', { name: 'Thinking effort' }),
-    ).toBeNull();
+    expect(screen.queryByRole('group', { name: 'Thinking effort' })).toBeNull();
   });
 
   test('renders one provider-reported Auto mode control', () => {
@@ -211,7 +266,6 @@ describe('SessionModelPicker', () => {
       runtimeOptions: {},
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Options' }));
     const autoMode = screen.getByRole('checkbox', { name: 'Auto mode' });
     expect(screen.getAllByRole('checkbox', { name: 'Auto mode' })).toHaveLength(
       1,
@@ -389,11 +443,11 @@ describe('SessionModelPicker', () => {
     });
 
     expect(
-      screen.getByRole('option', { name: 'LiteLLM · Local · Setup required' }),
+      screen.getByRole('button', { name: 'LiteLLM · Local Setup required' }),
     ).toHaveProperty('disabled', true);
-    fireEvent.change(screen.getByRole('combobox', { name: 'Filter models' }), {
-      target: { value: 'bedrock-prod' },
-    });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Bedrock · Prod', exact: true }),
+    );
     const bedrockModel = screen.getByRole('option', {
       name: /GPT-5.6Bedrock · Prod/,
     });
@@ -428,8 +482,9 @@ describe('SessionModelPicker', () => {
       ],
     });
     expect(screen.getByText(/200k/)).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Options' }));
-    expect(screen.queryByText('Vision')).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Vision', exact: true }),
+    ).toBeTruthy();
     expect(screen.getByRole('option', { name: /Plain/ })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Vision' }));
     expect(screen.getByRole('option', { name: /Reasoner/ })).toBeTruthy();
@@ -627,15 +682,8 @@ describe('SessionModelPicker', () => {
     expect(document.activeElement).toBe(last);
   });
 
-  // archive#1806: the Thinking effort <select> and the Adaptive
-  // thinking/Fast mode/Auto mode checkboxes rendered as bare, unstyled
-  // native controls inside an otherwise fully themed surface. The select
-  // must carry the app's shared themed-select class (`editor-select`,
-  // `editor-controls.css`), and every checkbox must render through the
-  // app's existing themed `Checkbox` component (`cb`/`cb__box`/`cb__input`,
-  // `components/Checkbox.tsx`) — real, accessible, keyboard-operable form
-  // controls, not bespoke divs.
-  test("themes the Thinking effort select and every checkbox with the app's shared controls", () => {
+  // Effort stays a native radio group; boolean settings reuse Checkbox.
+  test('shows effort choices and themes every checkbox with the shared controls', () => {
     renderPicker({
       models: [
         {
@@ -654,9 +702,11 @@ describe('SessionModelPicker', () => {
       runtimeOptions: { effort: 'high' },
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Options' }));
-    const select = screen.getByRole('combobox', { name: 'Thinking effort' });
-    expect(select.className).toContain('editor-select');
+    const effort = screen.getByRole('group', { name: 'Thinking effort' });
+    expect(within(effort).getByRole('radio', { name: 'High' })).toHaveProperty(
+      'checked',
+      true,
+    );
 
     for (const name of ['Adaptive thinking', 'Fast mode', 'Auto mode']) {
       const checkbox = screen.getByRole('checkbox', { name });

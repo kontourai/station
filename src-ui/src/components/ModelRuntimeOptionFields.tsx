@@ -1,4 +1,5 @@
 import type { ModelOptionCapabilities } from '@kontourai/station-contracts/tool';
+import { useId } from 'react';
 import { effortLabel } from '../utils/modelCapabilities';
 import { Checkbox } from './Checkbox';
 
@@ -33,6 +34,7 @@ export function ModelRuntimeOptionFields({
   capabilities,
   runtimeOptions,
   disabled,
+  effortPresentation = 'select',
   onRuntimeOptionChange,
 }: {
   /** Unique per mount — two pickers on one page must not share input ids. */
@@ -42,30 +44,62 @@ export function ModelRuntimeOptionFields({
   capabilities: ModelOptionCapabilities | undefined;
   runtimeOptions: Record<string, unknown>;
   disabled?: boolean;
+  /** The picker exposes choices; compact editors retain their native select. */
+  effortPresentation?: 'select' | 'choices';
   onRuntimeOptionChange: (
     key: string,
     value: string | number | boolean | undefined,
   ) => void;
 }) {
+  const effortGroup = useId();
   const effortOptions =
     capabilities?.supportsEffort === true
       ? (capabilities.supportedEffortLevels ?? [])
       : [];
+  const selectedEffort =
+    typeof runtimeOptions.effort === 'string' &&
+    effortOptions.includes(runtimeOptions.effort)
+      ? runtimeOptions.effort
+      : '';
   return (
     <>
-      {effortOptions.length > 0 && (
+      {effortOptions.length > 0 && effortPresentation === 'choices' && (
+        <fieldset
+          className={`${className} model-runtime-effort-choices`}
+          disabled={disabled}
+        >
+          <legend>Thinking effort</legend>
+          {['', ...effortOptions].map((option) => {
+            return (
+              <label key={option}>
+                <input
+                  type="radio"
+                  name={effortGroup}
+                  value={option}
+                  checked={selectedEffort === option}
+                  onChange={() =>
+                    onRuntimeOptionChange('effort', option || undefined)
+                  }
+                />
+                <span>
+                  {option
+                    ? (capabilities?.effortLabels?.[option] ??
+                      effortLabel(option))
+                    : 'Use model default'}
+                </span>
+              </label>
+            );
+          })}
+        </fieldset>
+      )}
+      {effortOptions.length > 0 && effortPresentation === 'select' && (
         <label className={className}>
           <span>Thinking effort</span>
           <select
             className="editor-select"
             aria-label="Thinking effort"
             disabled={disabled}
-            value={
-              typeof runtimeOptions.effort === 'string' &&
-              effortOptions.includes(runtimeOptions.effort)
-                ? runtimeOptions.effort
-                : ''
-            }
+            value={selectedEffort}
             onChange={(event) =>
               onRuntimeOptionChange('effort', event.target.value || undefined)
             }

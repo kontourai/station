@@ -173,14 +173,17 @@ the Agent's name plus a qualifier (the row keeps the qualifier), or "Model not
 reported": a row with a model catalog but no reported model offers **Choose
 model**, and one with neither shows no model control. A row that cannot start
 keeps its Model control, so a choice made before its repair carries through it. The Model picker offers search, recent choices, favorites and provider
-filters; Options reveals capability filters and the selected model's supported
-runtime controls. Reviewed canonical model identities still own grouping across
+filters. A visual collection rail exposes Favorites, Recent and provider routes;
+capability filters sit above the results. The current model's supported runtime
+controls stay visible beside the list, with direct thinking-effort choices.
+On phones, collections scroll horizontally and settings follow the model list. Reviewed canonical model identities still own grouping across
 provider routes; similar names do not establish equivalence.
 
 Agent choices are grouped as **Station**, **Coding apps**, and **My agents**;
 recent use orders rows inside their group. Bundled engine and model marks identify
-known brands. The Engine & model picker uses one filter control and a collapsed
-Options section. Home and New Chat share its menu controller; `/model` shares
+known brands. The Engine & model picker separates collection navigation, model choices and
+current-model settings. Selecting a model applies it and closes the picker;
+changing a runtime option keeps it open. Home and New Chat share its menu controller; `/model` shares
 filtering, availability and choice memory with the popup.
 
 Choosing another engine is a conversation override of the selected Agent's

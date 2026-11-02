@@ -20,13 +20,27 @@ import {
   type ModelProviderOption,
   type SelectableModel,
 } from '../../utils/modelCapabilities';
-import { CheckGlyph } from '../icons/Glyph';
+import { Button } from '../Button';
+import { BrandIcon } from '../icons/BrandIcon';
+import {
+  BrainGlyph,
+  CheckGlyph,
+  DashboardGlyph,
+  EngineGlyph,
+  glyph,
+  SearchGlyph,
+  TimeGlyph,
+} from '../icons/Glyph';
 import { ModelIcon } from '../icons/ModelIcon';
 import { ModelRuntimeOptionFields } from '../ModelRuntimeOptionFields';
-import { Empty, SkeletonList } from '../state';
+import { Empty, FilteredEmpty, SkeletonList } from '../state';
 import { ModelCatalogUnavailableState } from './ModelCatalogUnavailableState';
 import { ModelPickerDialogFrame } from './ModelPickerDialogFrame';
 import './SessionModelPicker.css';
+
+const FavoriteGlyph = glyph(
+  'm8 1.8 1.9 3.9 4.3.6-3.1 3 .7 4.3L8 11.6l-3.8 2 .7-4.3-3.1-3 4.3-.6L8 1.8Z',
+);
 
 interface SessionModelPickerProps {
   models: SelectableModel[];
@@ -92,7 +106,6 @@ export function SessionModelPicker({
   const [query, setQuery] = useState('');
   const [providerFilter, setProviderFilter] = useState('all');
   const [capabilityFilters, setCapabilityFilters] = useState<string[]>([]);
-  const [optionsOpen, setOptionsOpen] = useState(false);
   const preferences = useModelPickerPreferences();
   const favoriteKeys = useMemo(
     () => new Set(preferences.favorites),
@@ -100,16 +113,74 @@ export function SessionModelPicker({
   );
   const searchRef = useRef<HTMLInputElement>(null);
   const activeModel = currentModel || defaultModel;
-  const selectedModel =
-    models.find(
-      (model) =>
-        model.id === activeModel &&
-        model.executionAgentId === currentExecutionAgentId &&
-        (!currentProviderId || model.providerId === currentProviderId),
-    ) ??
-    models.find((model) => model.id === activeModel) ??
-    models[0];
+  const selectedModel = models.find(
+    (model) =>
+      model.id === activeModel &&
+      (!currentExecutionAgentId ||
+        model.executionAgentId === currentExecutionAgentId) &&
+      (!currentProviderId || model.providerId === currentProviderId),
+  );
   const capabilities = selectedModel?.capabilities;
+  const hasRuntimeOptions = Boolean(
+    (capabilities?.supportsEffort &&
+      capabilities.supportedEffortLevels?.length) ||
+      capabilities?.supportsAdaptiveThinking ||
+      capabilities?.supportsFastMode ||
+      capabilities?.supportsAutoMode,
+  );
+  const clearFilters = () => {
+    setQuery('');
+    setProviderFilter('all');
+    setCapabilityFilters([]);
+    searchRef.current?.focus();
+  };
+  const navigationChoices: (ModelProviderOption & { icon: ReactNode })[] = [
+    {
+      id: 'all',
+      name: 'All models',
+      icon: <DashboardGlyph />,
+      available: true,
+    },
+    {
+      id: 'favorites',
+      name: 'Favorites',
+      icon: <FavoriteGlyph />,
+      available: true,
+    },
+    { id: 'recents', name: 'Recent', icon: <TimeGlyph />, available: true },
+    ...(models.some((model) => model.engineName)
+      ? [
+          {
+            id: 'current-engine',
+            name: 'Current engine',
+            icon: <EngineGlyph />,
+            available: true,
+          },
+        ]
+      : []),
+    ...providers.map((provider) => {
+      const model = models.find(
+        (entry) =>
+          entry.providerId === provider.id ||
+          entry.executionAgentId === provider.id,
+      );
+      return {
+        ...provider,
+        icon: (
+          <BrandIcon
+            name={provider.name}
+            icon={
+              model?.providerType === 'claude' ||
+              model?.providerType === 'codex'
+                ? `brand:${model.providerType}`
+                : undefined
+            }
+            size={20}
+          />
+        ),
+      };
+    }),
+  ];
   const filters = useMemo(
     () => [
       {
@@ -169,6 +240,17 @@ export function SessionModelPicker({
     capabilityFilters,
     filters,
   ]);
+  const emptyFavorites =
+    providerFilter === 'favorites' && preferences.favorites.length === 0;
+  const emptyTitle = query.trim()
+    ? 'Nothing matches your search.'
+    : capabilityFilters.length > 0
+      ? 'No models match these filters.'
+      : emptyFavorites
+        ? 'No favorite models yet.'
+        : providerFilter === 'recents' && preferences.recents.length === 0
+          ? 'No recent models yet.'
+          : 'No models in this collection.';
 
   const selectModel = (model: SelectableModel) =>
     chooseModelRoute(model, onSelect, currentProviderId);
@@ -248,7 +330,7 @@ export function SessionModelPicker({
             <small className="session-model-picker__model-metadata">
               {[
                 model.capabilities?.contextWindow
-                  ? formatContextWindow(model.capabilities.contextWindow)
+                  ? `${formatContextWindow(model.capabilities.contextWindow)} context`
                   : undefined,
                 model.supportsVision === true ? 'Vision' : undefined,
                 model.description,
@@ -274,7 +356,7 @@ export function SessionModelPicker({
           disabled={model.available === false}
           onClick={() => toggleFavorite(model)}
         >
-          {favorite ? '★' : '☆'}
+          <FavoriteGlyph />
         </button>
       </div>
     );
@@ -338,137 +420,184 @@ export function SessionModelPicker({
             />
           )}
           {models.length > 0 ? (
-            <>
-              <input
-                ref={searchRef}
-                className="session-model-picker__search"
-                type="search"
-                placeholder="Search models…"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-              />
-              <div className="session-model-picker__toolbar">
-                <select
-                  className="editor-select"
-                  aria-label="Filter models"
-                  value={providerFilter}
-                  onChange={(event) => setProviderFilter(event.target.value)}
-                >
-                  <option value="all">All models</option>
-                  {models.some((model) => model.engineName) && (
-                    <option value="current-engine">Current engine</option>
-                  )}
-                  <option value="recents">Recent</option>
-                  <option value="favorites">Favorites</option>
-                  {providers.map((provider) => (
-                    <option
-                      key={provider.id}
-                      value={provider.id}
-                      disabled={!provider.available}
-                    >
-                      {provider.name}
-                      {provider.available
-                        ? ''
-                        : ` · ${provider.detail ?? 'Unavailable'}`}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  className="session-model-picker__options-toggle"
-                  aria-expanded={optionsOpen}
-                  onClick={() => setOptionsOpen((open) => !open)}
-                >
-                  Options
-                  {capabilityFilters.length > 0
-                    ? ` (${capabilityFilters.length})`
-                    : ''}
-                </button>
-              </div>
-              {optionsOpen && availableFilters.length > 0 && (
-                <fieldset
-                  className="session-model-picker__filters"
-                  aria-label="Capabilities"
-                >
-                  {availableFilters.map((filter) => (
-                    <button
-                      type="button"
-                      key={filter.id}
-                      aria-pressed={capabilityFilters.includes(filter.id)}
-                      onClick={() =>
-                        setCapabilityFilters((current) =>
-                          current.includes(filter.id)
-                            ? current.filter((id) => id !== filter.id)
-                            : [...current, filter.id],
-                        )
-                      }
-                    >
-                      {filter.label}
-                    </button>
-                  ))}
-                </fieldset>
-              )}
-              <div
-                className="session-model-picker__models"
-                role="listbox"
-                aria-label="Models"
+            <div className="session-model-picker__workspace">
+              <nav
+                className="session-model-picker__navigation"
+                aria-label="Model collections"
               >
-                {modelSections.map((section) =>
-                  section.kind === 'model' ? (
-                    // A fieldset IS role="group", which is what a listbox
-                    // accepts around its options; the legend names the model
-                    // whose routes these are.
-                    <fieldset
-                      key={`model:${section.canonicalId}`}
-                      className="session-model-picker__model-group"
-                    >
-                      <legend className="session-model-picker__model-group-name">
-                        {section.displayName}
-                      </legend>
-                      {section.routes.map(renderModelRow)}
-                    </fieldset>
-                  ) : (
-                    renderModelRow(section.model)
-                  ),
-                )}
-                {visibleModels.length === 0 && (
-                  <Empty
-                    className="session-model-picker__state"
-                    variant="compact"
-                    label={
-                      providerFilter === 'favorites' && !query
-                        ? 'No favorite models yet.'
-                        : providerFilter === 'recents' && !query
-                          ? 'No recent models yet.'
-                          : 'Nothing matches your search.'
-                    }
+                {navigationChoices.map((choice) => (
+                  <button
+                    type="button"
+                    key={choice.id}
+                    aria-pressed={providerFilter === choice.id}
+                    disabled={!choice.available}
+                    title={choice.detail}
+                    onClick={() => {
+                      setProviderFilter(choice.id);
+                      setQuery('');
+                    }}
+                  >
+                    {choice.icon}
+                    <span>{choice.name}</span>
+                    {!choice.available && (
+                      <small>{choice.detail ?? 'Unavailable'}</small>
+                    )}
+                  </button>
+                ))}
+              </nav>
+              <div className="session-model-picker__catalog">
+                <div className="session-model-picker__search-field">
+                  <SearchGlyph />
+                  <input
+                    ref={searchRef}
+                    aria-label="Search models"
+                    className="session-model-picker__search"
+                    type="search"
+                    placeholder="Search models…"
+                    value={query}
+                    onChange={(event) => {
+                      setQuery(event.target.value);
+                      setProviderFilter('all');
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'ArrowDown') {
+                        const first = event.currentTarget
+                          .closest('[role="dialog"]')
+                          ?.querySelector<HTMLButtonElement>(
+                            '[role="option"]:not(:disabled)',
+                          );
+                        if (first) {
+                          event.preventDefault();
+                          first.focus();
+                        }
+                      }
+                    }}
                   />
+                </div>
+                {availableFilters.length > 0 && (
+                  <fieldset
+                    className="session-model-picker__filters"
+                    aria-label="Capabilities"
+                  >
+                    {availableFilters.map((filter) => (
+                      <button
+                        type="button"
+                        key={filter.id}
+                        aria-pressed={capabilityFilters.includes(filter.id)}
+                        onClick={() =>
+                          setCapabilityFilters((current) =>
+                            current.includes(filter.id)
+                              ? current.filter((id) => id !== filter.id)
+                              : [...current, filter.id],
+                          )
+                        }
+                      >
+                        {filter.label}
+                      </button>
+                    ))}
+                  </fieldset>
                 )}
+                <div className="session-model-picker__results-heading">
+                  <span>
+                    {query.trim()
+                      ? 'Search results'
+                      : (navigationChoices.find(
+                          (choice) => choice.id === providerFilter,
+                        )?.name ?? 'Models')}
+                  </span>
+                  <span role="status">
+                    {visibleModels.length}{' '}
+                    {visibleModels.length === 1 ? 'model' : 'models'}
+                  </span>
+                </div>
+                <div
+                  className="session-model-picker__models"
+                  role="listbox"
+                  aria-label="Models"
+                >
+                  {modelSections.map((section) =>
+                    section.kind === 'model' ? (
+                      // A fieldset IS role="group", which is what a listbox
+                      // accepts around its options; the legend names the model
+                      // whose routes these are.
+                      <fieldset
+                        key={`model:${section.canonicalId}`}
+                        className="session-model-picker__model-group"
+                      >
+                        <legend className="session-model-picker__model-group-name">
+                          {section.displayName}
+                        </legend>
+                        {section.routes.map(renderModelRow)}
+                      </fieldset>
+                    ) : (
+                      renderModelRow(section.model)
+                    ),
+                  )}
+                  {visibleModels.length === 0 && (
+                    <FilteredEmpty
+                      query={query}
+                      noun="models"
+                      onClear={clearFilters}
+                      variant="compact"
+                      title={emptyTitle}
+                      description={
+                        emptyFavorites && !query.trim()
+                          ? 'Star a model to keep it here, or clear filters to browse.'
+                          : 'Clear filters to see all models.'
+                      }
+                    />
+                  )}
+                </div>
               </div>
-            </>
+              {selectedModel && (
+                <aside
+                  className="session-model-picker__settings"
+                  aria-label="Selected model settings"
+                >
+                  <div className="session-model-picker__selected-heading">
+                    <ModelIcon model={selectedModel} size={28} />
+                    <div>
+                      <small>Current model</small>
+                      <strong>{selectedModel.name}</strong>
+                    </div>
+                  </div>
+                  {hasRuntimeOptions ? (
+                    <ModelRuntimeOptionFields
+                      idPrefix="session-model-picker"
+                      className="session-model-picker__effort"
+                      effortPresentation="choices"
+                      capabilities={capabilities}
+                      runtimeOptions={runtimeOptions}
+                      disabled={selectedModel.available === false}
+                      onRuntimeOptionChange={onRuntimeOptionChange}
+                    />
+                  ) : (
+                    <p className="session-model-picker__settings-empty">
+                      <BrainGlyph />
+                      No adjustable settings reported.
+                    </p>
+                  )}
+                </aside>
+              )}
+            </div>
           ) : catalogNotice ? null : (
             <ModelCatalogUnavailableState stale={stale} />
           )}
-          {optionsOpen && (
-            <ModelRuntimeOptionFields
-              idPrefix="session-model-picker"
-              className="session-model-picker__effort"
-              capabilities={capabilities}
-              runtimeOptions={runtimeOptions}
-              onRuntimeOptionChange={onRuntimeOptionChange}
-            />
-          )}
           {(currentModel || currentExecutionAgentId) && (
-            <button
-              type="button"
-              className="session-model-picker__reset"
-              disabled={Boolean(resetDisabledReason)}
-              onClick={onReset}
-            >
-              Use{' '}
-              {currentExecutionAgentId ? 'Agent defaults' : defaultSourceLabel}
-              {resetDisabledReason ? ` · ${resetDisabledReason}` : ''}
-            </button>
+            <footer className="session-model-picker__footer">
+              <Button
+                variant="secondary"
+                className="session-model-picker__reset"
+                disabled={Boolean(resetDisabledReason)}
+                onClick={onReset}
+              >
+                Use{' '}
+                {currentExecutionAgentId
+                  ? 'Agent defaults'
+                  : defaultSourceLabel}
+                {resetDisabledReason ? ` · ${resetDisabledReason}` : ''}
+              </Button>
+            </footer>
           )}
         </>
       )}

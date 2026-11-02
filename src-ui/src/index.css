@@ -8800,7 +8800,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
 .new-chat-modal__model-picker {
   position: relative;
-  width: min(420px, 100%);
+  width: min(820px, 100%);
 }
 
 .new-chat-modal__model-picker .session-model-picker {

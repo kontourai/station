@@ -275,23 +275,19 @@ describe('NewChatModal engine chips', () => {
     expect(await screen.findByRole('dialog', { name: 'Model' })).toBeTruthy();
     expect(await screen.findByPlaceholderText('Search models…')).toBeTruthy();
     expect(
-      (
-        screen.getByRole('combobox', {
-          name: 'Filter models',
-        }) as HTMLSelectElement
-      ).value,
-    ).toBe('all');
+      screen
+        .getByRole('button', { name: 'All models', exact: true })
+        .getAttribute('aria-pressed'),
+    ).toBe('true');
     expect(
       screen
         .getByRole('option', { name: /Shared model · Provider two/ })
         .getAttribute('aria-selected'),
     ).toBe('true');
-    expect(
-      screen.queryByRole('combobox', { name: 'Thinking effort' }),
-    ).toBeNull();
-    fireEvent.change(screen.getByRole('combobox', { name: 'Filter models' }), {
-      target: { value: 'provider-one' },
-    });
+    expect(screen.queryByRole('group', { name: 'Thinking effort' })).toBeNull();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Provider one', exact: true }),
+    );
     fireEvent.click(
       screen.getByRole('option', { name: /Shared model · Provider one/ }),
     );
@@ -311,18 +307,12 @@ describe('NewChatModal engine chips', () => {
     expect(
       screen.queryByRole('button', { name: /session override/ }),
     ).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Options' }));
     // An effort change keeps the picker open.
-    fireEvent.change(
-      screen.getByRole('combobox', { name: 'Thinking effort' }),
-      {
-        target: { value: 'high' },
-      },
-    );
+    fireEvent.click(screen.getByRole('radio', { name: 'High' }));
     expect(screen.getByRole('dialog', { name: 'Model' })).toBeTruthy();
-    fireEvent.change(screen.getByRole('combobox', { name: 'Filter models' }), {
-      target: { value: 'provider-two' },
-    });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Provider two', exact: true }),
+    );
     fireEvent.click(
       screen.getByRole('option', { name: /Shared model · Provider two/ }),
     );
@@ -361,9 +351,9 @@ describe('NewChatModal engine chips', () => {
       screen.getByRole('button', { name: /^Model: historical-model/ }),
     );
     await screen.findByRole('dialog', { name: 'Model' });
-    fireEvent.change(screen.getByRole('combobox', { name: 'Filter models' }), {
-      target: { value: 'provider-one' },
-    });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Provider one', exact: true }),
+    );
     fireEvent.click(
       screen.getByRole('option', { name: /Shared model · Provider one/ }),
     );
