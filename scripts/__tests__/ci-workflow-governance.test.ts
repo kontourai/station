@@ -46,7 +46,7 @@ const cleanWorkflow = `
 ${primaryTriggers}
 jobs:
   fast-checks-plan:
-    needs: classify
+    needs: [classify, pr-admission]
     if: ${REQUIRED_FAST_CHECKS_CONDITION}
     outputs:
       legacy: ${FAST_CHECKS_LEGACY_OUTPUT}
@@ -88,7 +88,7 @@ jobs:
         with:
           if-no-files-found: error
   fast-checks-statics:
-    needs: classify
+    needs: [classify, pr-admission]
     if: ${REQUIRED_FAST_CHECKS_CONDITION}
     steps:
       - name: Run fast CI
@@ -361,7 +361,7 @@ describe('primary CI workflow governance', () => {
     expect(classify?.['runs-on']).toBe('ubuntu-22.04');
     expect(fastChecks?.if).toBe(
       // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub expression syntax is literal workflow data.
-      "${{ always() && !cancelled() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}",
+      "${{ always() && !cancelled() && (github.event_name != 'pull_request_target' || needs.pr-admission.result == 'success') && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}",
     );
     expect(fastChecks?.['runs-on']).toBe('ubuntu-24.04');
     // The fence is the gate's constant, not a second literal (#2577: this pin
@@ -658,7 +658,25 @@ describe('required browser evidence cannot silently disappear', () => {
     [
       'manual dependency',
       (text: string) =>
-        text.replace('needs: classify', 'needs: [classify, full-regression]'),
+        text.replace(
+          'needs: [classify, pr-admission]',
+          'needs: [classify, pr-admission, full-regression]',
+        ),
+      admitsPlan,
+    ],
+    [
+      'dropped conflict admission dependency',
+      (text: string) =>
+        text.replace('needs: [classify, pr-admission]', 'needs: classify'),
+      admitsPlan,
+    ],
+    [
+      'pre-admission condition',
+      (text: string) =>
+        text.replace(
+          "(github.event_name != 'pull_request_target' || needs.pr-admission.result == 'success') && ",
+          '',
+        ),
       admitsPlan,
     ],
     [

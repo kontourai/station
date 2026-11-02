@@ -50,6 +50,39 @@ jobs:
           AFTER: ${{ github.event_name == 'merge_group' && github.event.merge_group.head_sha || github.sha }}
         run: node scripts/classify-ci-change.mjs --before "$BEFORE" --after "$AFTER" >> "$GITHUB_OUTPUT"
 
+  # Defer a same-repository pull request with a confirmed merge conflict
+  # before it spends the plan, shards and statics: it cannot merge, so that
+  # work is discarded. Only a confirmed conflict defers; GitHub still
+  # computing mergeability or an API failure admits the run
+  # (scripts/pr-source-admission.mjs). The workflow comes from the base
+  # branch and no candidate code runs here. A deferred run is re-run with
+  # "Re-run failed jobs" once the conflict is gone; the source policy reads
+  # the newest attempt, so that supersedes the deferred verdict.
+  pr-admission:
+    name: PR source admission
+    if: ${{ github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      admitted: ${{ steps.admit.outputs.admitted }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - id: admit
+        name: Check current PR mergeability
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/pr-source-admission.mjs
+
   # #2709: `fast-checks` is the required check. The affected-test selection
   # outgrew one runner's fifteen-minute budget, so it is computed once here,
   # run as one to four planned slices in fast-checks-shard, and the fixed
@@ -59,10 +92,10 @@ jobs:
   # plan (scripts/fast-checks-shard.mjs, scripts/lib/fast-checks-shards.mjs).
   fast-checks-plan:
     name: fast-checks plan
-    needs: classify
+    needs: [classify, pr-admission]
     # Same admission as the part jobs beside it: same-repository PRs, the
     # merge queue, dispatch, and heavy pushes. Forks stay on fork-smoke.
-    if: ${{ always() && !cancelled() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}
+    if: ${{ always() && !cancelled() && (github.event_name != 'pull_request_target' || needs.pr-admission.result == 'success') && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}
     permissions:
       contents: read
     concurrency:
@@ -399,10 +432,10 @@ jobs:
 
   fast-checks-statics:
     name: fast-checks statics
-    needs: classify
+    needs: [classify, pr-admission]
     # `always()` permits same-repository PR feedback after its intentionally
     # skipped classifier. Fork PRs stay on the isolated fork-smoke job below.
-    if: ${{ always() && !cancelled() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}
+    if: ${{ always() && !cancelled() && (github.event_name != 'pull_request_target' || needs.pr-admission.result == 'success') && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}
     permissions:
       contents: read
     concurrency:
