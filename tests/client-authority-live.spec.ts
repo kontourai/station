@@ -746,7 +746,9 @@ test.describe
       // ephemeral on the repair surface with no remembered Project rows.
       await page.reload();
       await expect(
-        page.getByRole('region', { name: 'Station access required' }),
+        page
+          .getByRole('region', { name: 'Station access required' })
+          .getByRole('heading', { name: 'Connect to a Station', exact: true }),
         'the revoked browser must land on the access/repair surface',
       ).toBeVisible({ timeout: 45_000 });
       await expect(
