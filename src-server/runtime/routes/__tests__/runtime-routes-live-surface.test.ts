@@ -325,33 +325,32 @@ describe('live surface routes in the runtime composition', () => {
         offerId: offer.offerId,
         proof: offer.challenge,
         deviceName: 'bound',
-        accountCandidate: {
-          issuer: 'https://accounts.example.test',
-          subject: 'person-1',
-          displayName: 'Person',
+        source: 'tailnet',
+        requester: {
+          provider: 'tailscale-serve',
+          login: 'person@example.test',
         },
-        accountCandidateSessionId: 'account-session',
-        requireAccountBinding: true,
       });
       h.pairing.confirmRequest(
         request.requestId,
         { kind: 'presented-credential' },
-        { kind: 'account', principalId: 'human:deployment:person' },
+        { kind: 'verified-ingress', principalId: 'human:deployment:person' },
       );
       const bound = h.pairing.exchange({
         offerId: offer.offerId,
         proof: offer.challenge,
         requestId: request.requestId,
       });
+      expect(h.pairing.verifyCredential(bound.credential)).toBe(true);
+      const boundResponse = await h.app.request(
+        access,
+        { headers: headers(bound.credential) },
+        REMOTE,
+      );
       expect(
-        (
-          await h.app.request(
-            access,
-            { headers: headers(bound.credential) },
-            REMOTE,
-          )
-        ).status,
-      ).not.toBe(200);
+        boundResponse.status,
+        `${await boundResponse.text()} ${JSON.stringify(h.errors.mock.calls)}`,
+      ).toBe(403);
       const revoked = pair(h.pairing, 'device');
       h.pairing.revokeDevice(revoked.device.id, 'operator-credential');
       expect(
@@ -373,6 +372,8 @@ describe('live surface routes in the runtime composition', () => {
         const row = data.devices.find(
           (item: { id: string }) => item.id === h.device.device.id,
         );
+        row.source = 'tailnet';
+        row.requester = bound.device.requester;
         row.principalBinding = bound.device.principalBinding;
         writeFileSync(file, JSON.stringify(data));
         h.currentPairing.value = new DevicePairingService({
@@ -381,14 +382,14 @@ describe('live surface routes in the runtime composition', () => {
         });
         return status;
       });
+      const rebound = await h.app.request(
+        access,
+        { headers: headers(h.device.credential) },
+        REMOTE,
+      );
       expect(
-        (
-          await h.app.request(
-            access,
-            { headers: headers(h.device.credential) },
-            REMOTE,
-          )
-        ).status,
+        rebound.status,
+        `${await rebound.text()} ${JSON.stringify(h.errors.mock.calls)}`,
       ).toBe(403);
     } finally {
       await h.result.liveSurfaceRegistry!.dispose();
