@@ -119,8 +119,6 @@ async function captureExistingLocalGrant(
             authorizeCredential: (candidate) => candidate === credential,
             resolveGrantedScope: () => scope,
           }) ||
-          environment.credentialLocality(credential) !== 'home-possession' ||
-          environment.credentialMintKind(credential) !== 'local-grant' ||
           !isRuntimeRequestPrincipalCurrent(boundRequest, security)
         )
           refuse();

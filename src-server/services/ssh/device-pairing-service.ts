@@ -3640,6 +3640,8 @@ export class DevicePairingService {
    * bindings require their own current owners and are refused here. */
   readCurrentUnboundLocalGrantScope(candidate: string): string | undefined {
     return this.#writer.runSynchronous(() => {
+      if (this.#registryOutcomeUnconfirmed)
+        throw new HomeWriterUnavailableError('cleanup-required', true);
       try {
         const registry =
           this.#registrySnapshotActive || this.#registrySpanDepth

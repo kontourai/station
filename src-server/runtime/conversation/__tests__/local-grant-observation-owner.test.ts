@@ -23,6 +23,7 @@ import {
 } from '../../../security/runtime-request-security.js';
 import { DevicePairingService } from '../../../services/ssh/device-pairing-service.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
+import { HomeWriterUnavailableError } from '../../../services/ssh/home-writer-owner.js';
 import { captureEnvironmentLocalGrantObservationOwner } from '../local-grant-observation-owner.js';
 import {
   ProviderCredentialObservationError,
@@ -462,10 +463,24 @@ test('one current-grant validation shares one home hold and observes a later rev
       holds++;
     return link(from, to);
   });
+  const open = fs.openSync;
+  let opens = 0;
+  const read = vi
+    .spyOn(fs, 'openSync')
+    .mockImplementation((path, flags, mode) => {
+      if (String(path) === join(h.home, 'security', '.home-writer.mutation'))
+        opens++;
+      return open(path, flags, mode);
+    });
   syncBuiltinESMExports();
   try {
     lease.assertCurrent();
     assert.equal(holds, 1);
+    assert.ok(opens > 0, 'Home inspection observer must execute');
+    assert.ok(
+      opens <= 13,
+      `current-grant validation inspected Home ${opens} times; maximum 13`,
+    );
     const other = await DevicePairingService.create({
       homeDir: h.home,
       environmentId: h.record.environmentId,
@@ -474,6 +489,7 @@ test('one current-grant validation shares one home hold and observes a later rev
     denied(lease.assertCurrent);
   } finally {
     observe.mockRestore();
+    read.mockRestore();
     syncBuiltinESMExports();
   }
 });
@@ -569,5 +585,106 @@ test('a complete authority check refuses registry bytes changed during its synch
     );
   } finally {
     writeFileSync(path, original);
+  }
+});
+
+test('uncertain publication of another Device fences the still-active grant before external policy', async () => {
+  const h = await setup();
+  const service = h.environment.devicePairing;
+  const offer = service.createOffer({ endpoint: 'http://127.0.0.1:43979' });
+  const requested = service.requestPairing({
+    offerId: offer.offerId,
+    proof: offer.challenge,
+    deviceName: 'other-device',
+    requesterPosition: 'unproven',
+  });
+  service.confirmRequest(requested.requestId, { kind: 'presented-credential' });
+  const other = service.exchange({
+    offerId: offer.offerId,
+    proof: offer.challenge,
+    requestId: requested.requestId,
+    locality: 'home-possession',
+    mintKind: 'local-grant',
+  });
+  const authorize = vi.fn(
+    (candidate: string, route: { method: string; path: string }) =>
+      h.environment.authorizeCredential(candidate, route),
+  );
+  const scope = vi.fn((candidate: string) =>
+    h.environment.resolveGrantedScope(candidate),
+  );
+  const operator = vi.fn((candidate: string) =>
+    h.environment.verifyOperatorCredential(candidate),
+  );
+  const owner = await captureEnvironmentLocalGrantObservationOwner(
+    h.request,
+    h.environment,
+    {
+      authorizeCredential: authorize,
+      resolveGrantedScope: scope,
+      verifyOperatorCredential: operator,
+    },
+  );
+  const lease = owner.requireCurrentLocalGrant(h.request);
+  const remove = fs.rmSync;
+  let faultApplied = false;
+  let checked = false;
+  const fault = vi.spyOn(fs, 'rmSync').mockImplementation((...args) => {
+    if (
+      String(args[0]).includes('.paired-devices.json.') &&
+      String(args[0]).endsWith('.tmp')
+    ) {
+      faultApplied = true;
+      throw Error('controlled published-registry cleanup failure');
+    }
+    return remove(...args);
+  });
+  syncBuiltinESMExports();
+  try {
+    assert.throws(
+      () =>
+        owner.withObservationScope(h.request, () => {
+          assert.throws(
+            () => service.revokeDevice(other.device.id, 'operator-credential'),
+            HomeWriterUnavailableError,
+          );
+          assert.equal(faultApplied, true);
+          const committed = JSON.parse(
+            readFileSync(
+              join(h.home, 'security', 'paired-devices.json'),
+              'utf8',
+            ),
+          );
+          assert.equal(
+            committed.devices.find(
+              (device: { id: string }) => device.id === h.paired.device.id,
+            ).revokedAt,
+            null,
+          );
+          assert.notEqual(
+            committed.devices.find(
+              (device: { id: string }) => device.id === other.device.id,
+            ).revokedAt,
+            null,
+          );
+          authorize.mockClear();
+          scope.mockClear();
+          operator.mockClear();
+          denied(lease.assertCurrent);
+          assert.equal(authorize.mock.calls.length, 0);
+          assert.equal(scope.mock.calls.length, 0);
+          assert.equal(operator.mock.calls.length, 0);
+          checked = true;
+        }),
+      /Paired-device registry revision changed/,
+    );
+    assert.equal(
+      checked,
+      true,
+      'the target grant was checked inside the active uncertain span',
+    );
+  } finally {
+    fault.mockRestore();
+    syncBuiltinESMExports();
   }
 });
