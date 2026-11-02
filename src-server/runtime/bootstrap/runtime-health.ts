@@ -166,14 +166,16 @@ export async function startRuntimeHealthChecks(context: {
   const interval = context.interval ?? MS_PER_MINUTE;
   let ownedWork: Promise<void> | undefined;
   const runHealthChecks = async () => {
-    ownedWork ??= Promise.resolve()
-      .then(() => context.maintainOwnedWork())
-      .catch((error) =>
-        context.logger.warn('Owned-work maintenance failed', { error }),
-      )
-      .finally(() => {
-        ownedWork = undefined;
-      });
+    if (!ownedWork) {
+      ownedWork = Promise.resolve()
+        .then(() => context.maintainOwnedWork())
+        .catch((error) =>
+          context.logger.warn('Owned-work maintenance failed', { error }),
+        )
+        .finally(() => {
+          ownedWork = undefined;
+        });
+    }
     await context.runHealthChecks();
   };
 
