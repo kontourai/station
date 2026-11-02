@@ -386,7 +386,7 @@ async function run(
         bodiesBytes += bodyChunkBytes;
         const blocks = database
           .prepare(
-            'SELECT coalesce(sum(last_position-position+1),0) AS n,coalesce(sum(length(CAST(record AS BLOB))),0) AS bytes FROM agent_steps_frame_blocks',
+            'SELECT coalesce(sum(last_ordinal-first_ordinal+1),0) AS n,coalesce(sum(length(CAST(record AS BLOB))),0) AS bytes FROM agent_steps_frame_blocks',
           )
           .get();
         frames = Number(blocks?.n);
