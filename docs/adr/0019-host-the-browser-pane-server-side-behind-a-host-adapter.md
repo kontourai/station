@@ -318,7 +318,8 @@ Semantics:
   typed input (pointer, key, text).
 - **Fan-out.** A surface hub fans one producer out to N authorized viewers.
   **Latest-frame-wins:** a slow viewer skips frames and never receives a queue
-  of stale ones. The producer is suspended when the surface has **zero
+  of stale ones. (Images only: H.264 access units queue per viewer, bounded;
+  see Frame transport below.) The producer is suspended when the surface has **zero
   viewers**; the session itself stays alive (D6).
 - **Control lease.** There is one controller and any number of viewers, and
   watching never requires the lease.
@@ -355,8 +356,9 @@ further behind at the next keyframe. JPEG viewers keep latest-frame-wins.
 
 Over the relay, throughput is bounded by stop-and-wait 16 KiB chunks (see
 Context). Streams therefore **adapt fps and quality** to what the path
-delivers. They keep latest-frame-wins end to end and never buffer stale
-frames to catch up. Improving relay throughput is separate work that overlaps
+delivers. Image streams keep latest-frame-wins end to end and never buffer
+stale frames to catch up; an H.264 viewer's queue is bounded to about a
+second and resynchronizes rather than catching up. Improving relay throughput is separate work that overlaps
 #1973.
 
 ## Consequences
