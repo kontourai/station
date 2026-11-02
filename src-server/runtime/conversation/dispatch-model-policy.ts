@@ -1,6 +1,7 @@
 import { appendFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { LanguageModelV3 } from '@ai-sdk/provider';
+import { durableLanguageModel } from '@kontourai/agent-runtime';
 import type {
   CapabilityEvidence,
   DispatchReceipt,
@@ -1920,13 +1921,16 @@ async function buildFleetPlanContext(
   const resolution = await config.fleetRouting.resolveCandidates();
   const shells = buildFleetCandidateShells(resolution.candidates);
   resolution.candidates.forEach((candidate, index) => {
-    models[shells[index]!.runtimeId] = createFleetInferenceModel({
-      environmentId: candidate.environmentId,
-      environmentLabel: candidate.environmentLabel,
-      apiBase: candidate.apiBase,
-      credential: candidate.credential,
-      modelId: candidate.modelId,
-    });
+    models[shells[index]!.runtimeId] = durableLanguageModel(
+      createFleetInferenceModel({
+        environmentId: candidate.environmentId,
+        environmentLabel: candidate.environmentLabel,
+        apiBase: candidate.apiBase,
+        credential: candidate.credential,
+        modelId: candidate.modelId,
+      }),
+      { layer: 'provider' },
+    );
   });
   return {
     routing: config.fleetRouting,

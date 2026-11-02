@@ -112,6 +112,7 @@ interface RuntimeInitializationContext {
   orchestrationEventStore: EventStore;
   /** The `chat-host-images` Feature Preview selector (station-runtime binds it). */
   hostImagesPreview?: FeaturePreviewSelector;
+  durableAgentPreview?: FeaturePreviewSelector;
   credentialProfileRecoveryAdapter?: CredentialProfileRecoveryAdapter;
   usageAggregator?: UsageAggregator;
   /** archive#3245: lifetime analytics' read of the orchestration substrate. */
@@ -205,6 +206,7 @@ export function createRuntimeInitializationDeps(
     onACPConnectionsReady: context.onACPConnectionsReady,
     orchestrationEventStore: context.orchestrationEventStore,
     hostImagesPreview: context.hostImagesPreview,
+    durableAgentPreview: context.durableAgentPreview,
     credentialProfileRecoveryAdapter: context.credentialProfileRecoveryAdapter,
     getReviewedTariffConfiguration: context.getReviewedTariffConfiguration,
     usageAggregator: context.usageAggregator,
