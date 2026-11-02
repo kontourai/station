@@ -117,8 +117,13 @@ function failure(
   c: Context,
   code: LiveSurfaceRouteErrorCode,
   status: 400 | 403 | 404 | 413 | 503,
+  /** The query key a frames request was refused for (#4418). */
+  field?: string,
 ) {
-  return c.json({ success: false, code }, status);
+  return c.json(
+    { success: false, code, ...(field === undefined ? {} : { field }) },
+    status,
+  );
 }
 
 export function createLiveSurfaceRoutes(
@@ -209,27 +214,27 @@ export function createLiveSurfaceRoutes(
     const caller = await authorize(c, entry, ['view']);
     if (!caller.ok) return caller.response;
     const human = caller.value;
-    const queryKeys = Object.keys(c.req.queries());
-    if (
-      queryKeys.some(
-        (key) =>
-          (!STREAM_QUERY_KEYS.includes(key as keyof LiveSurfaceStreamParams) &&
-            key !== AUTHORIZATION_CONTEXT_QUERY_KEY &&
-            key !== CODEC_QUERY_KEY) ||
-          (c.req.queries(key)?.length ?? 0) > 1,
-      )
-    )
-      return failure(c, 'invalid-request', 400);
+    // A refused frames request names the key it was refused for, so a
+    // client can tell a codec it may not ask for from any other mistake.
+    const refusedKey = Object.keys(c.req.queries()).find(
+      (key) =>
+        (!STREAM_QUERY_KEYS.includes(key as keyof LiveSurfaceStreamParams) &&
+          key !== AUTHORIZATION_CONTEXT_QUERY_KEY &&
+          key !== CODEC_QUERY_KEY) ||
+        (c.req.queries(key)?.length ?? 0) > 1,
+    );
+    if (refusedKey !== undefined)
+      return failure(c, 'invalid-request', 400, refusedKey);
     const parsed = parseLiveSurfaceStreamParams({
       maxFps: c.req.query('maxFps'),
       quality: c.req.query('quality'),
       maxWidth: c.req.query('maxWidth'),
       maxHeight: c.req.query('maxHeight'),
     });
-    if (!parsed.ok) return failure(c, 'invalid-request', 400);
+    if (!parsed.ok) return failure(c, 'invalid-request', 400, 'stream-params');
     const codec = c.req.query(CODEC_QUERY_KEY);
     if (codec !== undefined && codec !== 'h264')
-      return failure(c, 'invalid-request', 400);
+      return failure(c, 'invalid-request', 400, CODEC_QUERY_KEY);
 
     const request = c.req.raw;
     const viewer = entry.hub.attach(

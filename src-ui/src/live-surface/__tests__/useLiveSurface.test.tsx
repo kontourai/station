@@ -1,9 +1,14 @@
 // @vitest-environment jsdom
+
+import {
+  encodeLiveSurfaceRecord,
+  type LiveSurfaceRecord,
+} from '@kontourai/station-contracts/live-surface';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { createRef } from 'react';
 import { expect, test, vi } from 'vitest';
 import { createLiveSurfaceStreamAdmission } from '../liveSurfaceStreamAdmission';
-import { useLiveSurface } from '../useLiveSurface';
+import { liveSurfaceH264Declines, useLiveSurface } from '../useLiveSurface';
 
 test('does not send queued input to a different surface after an old request settles', async () => {
   let resolveInput!: (response: Response) => void;
@@ -113,4 +118,63 @@ test('past the per-origin cap a viewer waits as queued, without a request, until
   );
   b.unmount();
   c.unmount();
+});
+
+test('after the hub switches a viewer to images, reconnects and a reopened pane ask for images (#4418)', async () => {
+  liveSurfaceH264Declines.clear();
+  const urls: string[] = [];
+  const frame = (seq: number, codec: 'h264' | 'jpeg'): LiveSurfaceRecord => ({
+    kind: 'frame',
+    header: {
+      surfaceId: 'device:a',
+      seq,
+      epoch: 0,
+      codec,
+      ...(codec === 'h264' ? { keyframe: true } : {}),
+      width: 576,
+      height: 1280,
+      deviceScaleFactor: 1,
+      capturedAt: 1,
+    },
+    body: new Uint8Array([seq]),
+  });
+  const transport = vi.fn(async (input: RequestInfo | URL) => {
+    urls.push(String(input));
+    // The first stream: H.264, then the hub's downgrade to images, then it
+    // ends (a dropped connection).
+    const records =
+      urls.length === 1 ? [frame(1, 'h264'), frame(2, 'jpeg')] : [];
+    return new Response(
+      new ReadableStream({
+        start(controller) {
+          for (const record of records)
+            controller.enqueue(encodeLiveSurfaceRecord(record));
+          if (urls.length === 1) controller.close();
+        },
+      }),
+    );
+  });
+  const mount = () =>
+    renderHook(() =>
+      useLiveSurface({
+        apiBase: 'http://127.0.0.1:3999',
+        surfaceId: 'device:a',
+        visibilityRef: createRef<Element>(),
+        onFrame: () => {},
+        transport,
+        acceptH264: true,
+      }),
+    );
+  const first = mount();
+  await waitFor(() => expect(urls).toHaveLength(2), { timeout: 3_000 });
+  first.unmount();
+  const reopened = mount();
+  await waitFor(() => expect(urls).toHaveLength(3));
+  expect(urls.map((url) => new URL(url).searchParams.has('codec'))).toEqual([
+    true,
+    false,
+    false,
+  ]);
+  reopened.unmount();
+  liveSurfaceH264Declines.clear();
 });

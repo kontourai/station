@@ -5243,9 +5243,10 @@ simulator/emulator sessions and device-share authorization. Device video and
 input have separate liveness: iOS uses MJPEG. Android passes H.264 access
 units to viewers that decode them (parameter sets prepended to each IDR,
 forgotten on a new encoder session). Every Android frame (H.264 unit, ffmpeg
-JPEG, polled PNG) declares one size, the device picture fitted to the stream
-params, whatever resolution its body has; viewers draw it scaled to that box,
-so a tap from any viewer lands on the same device point. Server-side ffmpeg
+JPEG, polled PNG) declares one size, the encoded picture (the SPS size once
+known, even when the encoder downscales below the screenshot's size) fitted
+to the stream params, whatever resolution its body has; viewers draw it
+scaled to that box, so a tap from any viewer lands on the same device point. Server-side ffmpeg
 decoding runs only while an image viewer is attached; otherwise image viewers
 get a labelled PNG-poll fallback. A successful Device dispatch means
 the hub socket accepted bytes, not that the application applied them. The
@@ -5256,7 +5257,8 @@ principal or client-supplied object cannot authorize a surface.
 
 `routes/live-surface.ts` serves one authenticated frame response per viewer and
 separate input/lease requests. `?codec=h264` asks for access units; a producer
-without them sends images. It rechecks stream authorization; a transient
+without them sends images. A refused frames request names the key it was
+refused for (`field`). It rechecks stream authorization; a transient
 busy authorizer is distinct from denial and retains a prior allow only within
 a bounded grace. `useLiveSurface.ts` suspends hidden viewers, reconnects, and
 coalesces input through one in-flight POST. It opens a frame stream only with a
@@ -5264,8 +5266,12 @@ slot from `liveSurfaceStreamAdmission.ts`: two per origin, shared across tabs
 through Web Locks (per page where Web Locks is missing), so input and lease
 requests keep a connection; a viewer past the cap reads `queued`. A viewer
 asks for H.264 only from a loopback Station, in a secure context with
-WebCodecs, and falls back to images when the browser refuses the profile or an
-older host refuses the query key (400 `invalid-request`).
+WebCodecs, and falls back to images when the browser refuses the profile, the
+host refuses the codec (400 `invalid-request` naming `codec`, or naming no key,
+which is all a host older than the key can send), or the hub switches the
+viewer to images. The page remembers each such decline per target for its
+session (`liveSurfaceH264Declines`), so a reconnect or reopened pane asks for
+images instead of falling behind again.
 `liveSurfaceVideoDecoder.ts` configures from the keyframe's SPS, decodes in
 order, resets on error, and resets when 30 units are pending; the canvas then
 reconnects for a keyframe (at most every 2 s, deferring rather than dropping a

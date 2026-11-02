@@ -70,9 +70,10 @@ import {
  *   slow relay is a live stream, not a stalled one.
  * - Codec (#4418): with `acceptH264` the stream asks for H.264 access units
  *   (`?codec=h264`). The frames' own `codec` says what arrived
- *   (`activeCodec`). A host too old for the key answers 400; the viewer then
- *   asks again without it, once, and stays on images for this target, as it
- *   does after `declineH264` (the browser refused the profile).
+ *   (`activeCodec`). A refusal of the codec (or of an unknown key by a host
+ *   too old to name it), `declineH264` (the browser refused the profile or
+ *   keeps failing), and a hub downgrade to images all stop this page asking
+ *   for H.264 for that target (`liveSurfaceH264Declines`).
  */
 
 export type LiveSurfaceConnectionStatus =
@@ -179,6 +180,15 @@ export interface UseLiveSurfaceResult {
 
 /** How long "the host is busy" stays up without a newer outcome. */
 const HOST_BUSY_NOTICE_MS = 5_000;
+
+/**
+ * Targets (`apiBase`, surface, Project context) this page has stopped asking
+ * for H.264, for the rest of the page's session: the browser refused the
+ * profile, the host refused the codec, or the hub switched a viewer to
+ * images because it could not keep up. Remembering it keeps a reconnect, or
+ * the pane reopening, from asking again and falling behind again.
+ */
+export const liveSurfaceH264Declines = new Set<string>();
 
 const LIVE_SURFACE_RECONNECT_DELAYS_MS = [
   500, 1_000, 2_000, 4_000, 8_000, 10_000,
@@ -306,10 +316,19 @@ export function useLiveSurface(
   const [inputNotice, setInputNotice] = useState<LiveSurfaceInputNotice>(null);
   const [retryToken, setRetryToken] = useState(0);
   const [activeCodec, setActiveCodec] = useState<LiveSurfaceCodec | null>(null);
-  /** The target this viewer stopped asking H.264 of, if any. */
-  const [h264DeclinedFor, setH264DeclinedFor] = useState<string | null>(null);
+  /** Bumped when a decline must reconnect at once (it re-runs the stream). */
+  const [declineVersion, setDeclineVersion] = useState(0);
   const targetKey = `${apiBase}\n${surfaceId}\n${projectSlug ?? ''}`;
-  const askH264 = acceptH264 && h264DeclinedFor !== targetKey;
+  /**
+   * Record a decline. `reconnect` re-opens the stream now, for images; a
+   * downgrade the hub already applied leaves the running stream alone, and
+   * only the next connection asks for images.
+   */
+  const declineH264For = useCallback((key: string, reconnect = true) => {
+    if (liveSurfaceH264Declines.has(key)) return;
+    liveSurfaceH264Declines.add(key);
+    if (reconnect) setDeclineVersion((version) => version + 1);
+  }, []);
   const epochRef = useRef(0);
   const targetGenerationRef = useRef(0);
 
@@ -343,7 +362,10 @@ export function useLiveSurface(
     let attempt = 0;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let stopped = false;
-    const url = streamUrl(apiBase, surfaceId, params, projectSlug, askH264);
+    /** Each connection asks again whether H.264 is still wanted. */
+    const askH264 = () => acceptH264 && !liveSurfaceH264Declines.has(targetKey);
+    const urlFor = (h264: boolean) =>
+      streamUrl(apiBase, surfaceId, params, projectSlug, h264);
 
     const scheduleReconnect = () => {
       if (stopped || generation !== targetGenerationRef.current) return;
@@ -361,6 +383,8 @@ export function useLiveSurface(
 
     let releaseSlot: (() => void) | null = null;
     const connect = async () => {
+      const h264 = askH264();
+      const url = urlFor(h264);
       const release = await admissionRef.current.admit(
         url,
         abort.signal,
@@ -376,14 +400,14 @@ export function useLiveSurface(
       setStatus((current) => (current === 'queued' ? 'connecting' : current));
       releaseSlot = release;
       try {
-        await stream();
+        await stream(url, h264);
       } finally {
         release();
         if (releaseSlot === release) releaseSlot = null;
       }
     };
 
-    const stream = async () => {
+    const stream = async (url: string, h264: boolean) => {
       let response: Response;
       try {
         response = await transportRef.current(url, {
@@ -396,18 +420,23 @@ export function useLiveSurface(
         return;
       }
       if (stopped || generation !== targetGenerationRef.current) return;
-      if (response.status === 400 && askH264) {
-        // A host older than `?codec=` refuses the unknown key as
-        // `invalid-request`; it cannot name the key, so that code is the
-        // signal. Ask again for images (this effect re-runs without the
-        // key), never retry the refused request. Any other 400 is not about
-        // the codec and reconnects as before.
+      if (response.status === 400 && h264) {
+        // A refusal of the codec itself declines H.264 for this target: the
+        // host names the refused key (`field: 'codec'`). A host older than
+        // `?codec=` refuses it as an unknown key but names nothing, so an
+        // `invalid-request` naming no key is taken as that host too. A 400
+        // naming any other key is not about the codec: it reconnects as
+        // before. Never retry the refused request as it was.
         const envelope = (await response.json().catch(() => {
           void response.body?.cancel().catch(() => {});
           return null;
-        })) as { code?: unknown } | null;
+        })) as { code?: unknown; field?: unknown } | null;
         if (stopped || generation !== targetGenerationRef.current) return;
-        if (envelope?.code === 'invalid-request') setH264DeclinedFor(targetKey);
+        if (
+          envelope?.code === 'invalid-request' &&
+          (envelope.field === 'codec' || envelope.field === undefined)
+        )
+          declineH264For(targetKey);
         else scheduleReconnect();
         return;
       }
@@ -425,6 +454,7 @@ export function useLiveSurface(
       }
       const reader = response.body.getReader();
       const decoder = new LiveSurfaceRecordDecoder();
+      let receivedH264 = false;
       try {
         while (!stopped) {
           const chunk = await reader.read();
@@ -474,6 +504,10 @@ export function useLiveSurface(
               observeEpoch(record.header.epoch);
               setLastFrameAt(receivedAt);
               setActiveCodec(record.header.codec);
+              // Images after H.264 on one stream: the hub switched this
+              // viewer down. Remember it, so reconnects ask for images.
+              if (record.header.codec === 'h264') receivedH264 = true;
+              else if (receivedH264) declineH264For(targetKey, false);
               onFrameRef.current({
                 header: record.header,
                 body: record.body,
@@ -507,15 +541,17 @@ export function useLiveSurface(
     projectSlug,
     visible,
     retryToken,
-    askH264,
+    acceptH264,
+    declineVersion,
     targetKey,
+    declineH264For,
     adoptLease,
     observeEpoch,
   ]);
 
   const declineH264 = useCallback(
-    () => setH264DeclinedFor(targetKey),
-    [targetKey],
+    () => declineH264For(targetKey),
+    [declineH264For, targetKey],
   );
 
   // ---- input -------------------------------------------------------------

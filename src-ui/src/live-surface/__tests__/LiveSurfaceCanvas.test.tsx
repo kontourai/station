@@ -32,6 +32,7 @@ import {
   LiveSurfaceCanvas,
   type LiveSurfaceControlState,
 } from '../LiveSurfaceCanvas';
+import { liveSurfaceH264Declines } from '../useLiveSurface';
 
 const SURFACE = 'browser:session-1';
 const API = 'http://127.0.0.1:3999';
@@ -231,6 +232,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  liveSurfaceH264Declines.clear();
   cleanup();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -1672,6 +1674,36 @@ describe('LiveSurfaceCanvas: client H.264 (#4418)', () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
     expect(h.streams).toHaveLength(2);
+  });
+
+  test('a 400 naming the codec declines H.264; one naming another key does not', async () => {
+    webCodecs(true);
+    for (const [field, declined] of [
+      ['codec', true],
+      ['stream-params', false],
+    ] as const) {
+      const h = harness({
+        framesStatus: (url) =>
+          new URL(url).searchParams.has('codec') ? 400 : undefined,
+        framesBody: { success: false, code: 'invalid-request', field },
+      });
+      const view = render(
+        <LiveSurfaceCanvas
+          apiBase={API}
+          surfaceId={SURFACE}
+          label="Device: emulator"
+          transport={h.transport as never}
+        />,
+      );
+      await flush();
+      await flush();
+      expect(
+        h.streams.map((s) => new URL(s.url).searchParams.has('codec')),
+        field,
+      ).toEqual(declined ? [true, false] : [true]);
+      view.unmount();
+      liveSurfaceH264Declines.clear();
+    }
   });
 
   test('a 400 that is not the unknown-key refusal does not switch to images', async () => {

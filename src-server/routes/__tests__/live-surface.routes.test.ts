@@ -274,21 +274,23 @@ describe('live surface routes through runtime authentication', () => {
 
   test('stream params outside their bounds or unknown query keys are refused', async () => {
     const h = harness();
-    for (const query of [
-      'maxFps=0',
-      'maxFps=31',
-      'quality=abc',
-      'maxWidth=99999',
-      'fps=10',
-      'maxFps=5&maxFps=6',
-      'codec=vp9',
-      'codec=h264&codec=h264',
+    // Each refusal names the key it was refused for (#4418).
+    for (const [query, field] of [
+      ['maxFps=0', 'stream-params'],
+      ['maxFps=31', 'stream-params'],
+      ['quality=abc', 'stream-params'],
+      ['maxWidth=99999', 'stream-params'],
+      ['fps=10', 'fps'],
+      ['maxFps=5&maxFps=6', 'maxFps'],
+      ['codec=vp9', 'codec'],
+      ['codec=h264&codec=h264', 'codec'],
     ]) {
       const response = await h.request(`${base}/frames?${query}`, 'operator');
       expect(response.status, query).toBe(400);
-      expect(await response.json()).toEqual({
+      expect(await response.json(), query).toEqual({
         success: false,
         code: 'invalid-request',
+        field,
       });
     }
     expect(h.registry.get(SURFACE)!.hub.viewerCount).toBe(0);

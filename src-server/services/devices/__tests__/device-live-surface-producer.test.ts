@@ -988,6 +988,83 @@ describe('Android', () => {
       });
     }
 
+    test('a polled PNG at another size than the SPS still maps taps like H.264 (encoder downscales)', async () => {
+      const h = android();
+      // The encoder sends 1080x2400; the screenshot is the full 1440x3200.
+      (
+        h.producer as unknown as {
+          options: { hub: { screenshot: () => Promise<unknown> } };
+        }
+      ).options.hub.screenshot = async () => ({
+        png: PNG,
+        width: 1440,
+        height: 3200,
+      });
+      const input = await openInput(h);
+      h.producer.setCodecDemand({ image: true, h264: true });
+      // A max size larger than the SPS: nothing is fitted down.
+      await h.producer.start(
+        { ...PARAMS, maxWidth: 4096, maxHeight: 4096 },
+        (header, body) => {
+          h.frames.push({ header, body });
+          if (header.codec !== 'h264') h.producer.ack(header.seq);
+        },
+      );
+      await until(() => h.sockets.length === 2, 'video socket');
+      const video = h.sockets[1]!;
+      video.opened();
+      video.emit('message', semuUnit(true, sps, pps, idr), true);
+      const polledAfterSps = () => {
+        const firstUnit = h.frames.findIndex(
+          (frame) => frame.header.codec === 'h264',
+        );
+        return (
+          firstUnit >= 0 &&
+          h.frames.some(
+            (frame, index) => index > firstUnit && frame.header.codec === 'png',
+          )
+        );
+      };
+      await until(polledAfterSps, 'a polled frame after the SPS');
+      const png = [...h.frames]
+        .reverse()
+        .find((frame) => frame.header.codec === 'png')!.header;
+      const unit = h.frames.find(
+        (frame) => frame.header.codec === 'h264',
+      )!.header;
+      expect([png.width, png.height]).toEqual([unit.width, unit.height]);
+      expect([unit.width, unit.height]).toEqual([1080, 2400]);
+      const tap = async (header: LiveSurfaceFrameHeader) => {
+        const at = { x: header.width * 0.75, y: header.height * 0.25 };
+        await h.producer.dispatch({
+          kind: 'pointer',
+          type: 'down',
+          ...at,
+          button: 'left',
+          clickCount: 1,
+        });
+        await h.producer.dispatch({
+          kind: 'pointer',
+          type: 'up',
+          ...at,
+          button: 'left',
+          clickCount: 1,
+        });
+        return input
+          .packets()
+          .filter(
+            (packet) =>
+              (packet as { type?: string }).type === 'touch' &&
+              (packet as { action?: string }).action === 'down',
+          )
+          .at(-1) as { x: number; y: number };
+      };
+      for (const point of [await tap(png), await tap(unit)]) {
+        expect(point.x).toBeCloseTo(0.75, 2);
+        expect(point.y).toBeCloseTo(0.25, 2);
+      }
+    });
+
     test('a new encoder session forgets the old parameter sets', async () => {
       const h = android();
       h.producer.setCodecDemand({ image: false, h264: true });

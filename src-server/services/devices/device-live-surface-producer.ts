@@ -1085,19 +1085,16 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
   /**
    * The size an image frame declares. iOS has one video path, so its frames
    * keep their own size. Android frames declare the shared fitted box of the
-   * device picture: the SPS size when known (an ffmpeg JPEG is that picture,
-   * scaled), else the image's own (a polled PNG is the full screen).
+   * encoded picture: the SPS size whenever it is known, for an ffmpeg JPEG and
+   * a polled PNG alike (the encoder may downscale, so the screenshot's size
+   * can differ), else the image's own.
    */
   private declaredSize(
     run: VideoRun,
     frame: PendingFrame,
   ): { width: number; height: number } {
     if (!run.android) return { width: frame.width, height: frame.height };
-    const native =
-      frame.codec === 'jpeg' && run.android.sequence
-        ? run.android.sequence
-        : frame;
-    return fittedVideoSize(native, run.params);
+    return fittedVideoSize(run.android.sequence ?? frame, run.params);
   }
 
   ack(seq: number): void {
