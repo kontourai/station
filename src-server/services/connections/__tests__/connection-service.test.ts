@@ -4004,8 +4004,14 @@ describe('ConnectionService', () => {
             signal: new AbortController().signal,
           },
         });
-      await expect(recover(same)).resolves.toEqual({ kind: 'unavailable' });
-      await expect(recover(other)).resolves.toEqual({ kind: 'unavailable' });
+      await expect(recover(same)).resolves.toEqual({
+        kind: 'unavailable',
+        reason: 'reconciliation-indeterminate',
+      });
+      await expect(recover(other)).resolves.toEqual({
+        kind: 'unavailable',
+        reason: 'reconciliation-indeterminate',
+      });
       expect(stage).not.toHaveBeenCalled();
       expect(application.claim.settle('rolled-back', at)).toEqual({
         kind: 'applied',
