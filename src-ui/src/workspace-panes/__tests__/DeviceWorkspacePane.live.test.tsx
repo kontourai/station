@@ -31,6 +31,7 @@ vi.mock('../../contexts/ApiBaseContext', () => ({
   useHostRequestAuthorityScope: () => ({
     apiBase: 'http://station.test',
     authorityKey: 'authority-1',
+    isCurrent: () => true,
   }),
 }));
 vi.mock('../../contexts/ProjectsContext', async (importOriginal) => ({
@@ -47,6 +48,7 @@ vi.mock('../../contexts/ProjectsContext', async (importOriginal) => ({
 import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { deviceFloatSourceKey } from '../../float-over-chat/floatSource';
 import {
+  promoteClosedDevicePane,
   registerFloatHost,
   resetFloatStoreForTests,
   takeFloatRequest,
@@ -103,6 +105,25 @@ async function openFirst(name: string) {
 }
 
 describe('opening a device', () => {
+  test('a closed Device pane requests its host-qualified source as a float when the preview is on', async () => {
+    activeProject.slug = 'project-one';
+    stubDeviceFetch({
+      inventory: readyInventory([ANDROID_DEVICE]),
+      deviceLoopPreview: true,
+    });
+    const release = registerFloatHost();
+    renderInQueryClient(<DeviceWorkspacePane />);
+    await openFirst('Open Pixel 10 Pro XL');
+    await screen.findByRole('button', { name: 'Record to Task' });
+    act(() => promoteClosedDevicePane());
+    expect(takeFloatRequest()?.source).toMatchObject({
+      kind: 'device',
+      hostId: 'local',
+      deviceId: ANDROID_DEVICE.deviceId,
+      projectSlug: 'project-one',
+    });
+    release();
+  });
   test('starts and stops a Task recording for the selected host-qualified session', async () => {
     activeProject.slug = 'project-one';
     const log = stubDeviceFetch({

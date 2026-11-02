@@ -283,6 +283,19 @@ let pendingRequest: {
   at: number;
 } | null = null;
 let mountedHosts = 0;
+let devicePanePromotion: (() => void) | undefined;
+
+/** Register the mounted Device pane's source for an explicit pane close. */
+export function registerDevicePanePromotion(promote: () => void): () => void {
+  devicePanePromotion = promote;
+  return () => {
+    if (devicePanePromotion === promote) devicePanePromotion = undefined;
+  };
+}
+
+export function promoteClosedDevicePane(): void {
+  devicePanePromotion?.();
+}
 
 /** A chat's floater is mounted and can take a request; returns its release. */
 export function registerFloatHost(): () => void {
@@ -433,6 +446,7 @@ export function resetFloatStoreForTests(): void {
   floating.clear();
   handoffs.clear();
   pendingRequest = null;
+  devicePanePromotion = undefined;
   mountedHosts = 0;
   notices.clear();
   generations.clear();

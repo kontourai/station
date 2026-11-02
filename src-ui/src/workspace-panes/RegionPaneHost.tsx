@@ -24,6 +24,7 @@ import { navigationStore } from '../contexts/navigation-store';
 import { usePaneRelations } from '../contexts/PaneRelationsContext';
 import { useRegionModelOptional } from '../contexts/RegionModelContext';
 import { UnsavedGuardOwnerContext } from '../contexts/UnsavedGuardOwnerContext';
+import { promoteClosedDevicePane } from '../float-over-chat/floatStore';
 import type { DockShellChrome } from '../hooks/useDockShellChrome';
 import { reportRegionClearance } from '../regions/region-clearance';
 import {
@@ -717,6 +718,7 @@ export function RegionPaneHost({
       navigationStore.runNavigationGuards(
         () => {
           if (!model.removePane(regionId, surfaceId)) return;
+          if (surfaceId === 'device') promoteClosedDevicePane();
           const related = relations.relationOf(surfaceId) !== undefined;
           if (forgetState || related) forgetRegionPaneState(surfaceId);
           if (related) void relations.forget(surfaceId);

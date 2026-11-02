@@ -438,6 +438,7 @@
     "sqlite-vec": "0.1.9",
     "web-push": "3.6.7",
     "ws": "^8.22.0",
+    "yauzl": "^3.4.0",
     "zod": "^4.6.6",
     "zod-to-json-schema": "^3.25.2",
     "@better-auth/passkey": "1.7.13",
@@ -497,7 +498,6 @@
     "vite": "^7.3.7",
     "vitest": "4.1.12",
     "yaml": "2.9.1",
-    "yauzl": "^3.4.0",
     "yazl": "^3.3.1",
     "oxlint": "1.89.0"
   },

@@ -45,6 +45,7 @@ import {
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import { deviceFloatSourceKey } from '../float-over-chat/floatSource';
 import {
+  registerDevicePanePromotion,
   requestFloat,
   useFloatHostAvailable,
 } from '../float-over-chat/floatStore';
@@ -263,7 +264,7 @@ type Pending = {
 function DeviceWorkspacePaneSurface({
   requestScope,
 }: {
-  requestScope: { apiBase: string; authorityKey: string };
+  requestScope: NonNullable<ReturnType<typeof useHostRequestAuthorityScope>>;
 }) {
   // D12: device shares are per Project. Every device request names the
   // Project this pane is in, so a Project admin reaches the devices the
@@ -878,7 +879,7 @@ function DeviceStage({
   onPowerOff,
   onReconnect,
 }: {
-  requestScope: { apiBase: string; authorityKey: string };
+  requestScope: NonNullable<ReturnType<typeof useHostRequestAuthorityScope>>;
   /** The device host's display name (#1973). */
   hostLabel: string;
   projectSlug: string | null;
@@ -909,11 +910,13 @@ function DeviceStage({
   const [streamLive, setStreamLive] = useState(false);
   const [captureError, setCaptureError] = useState(false);
   const previews = useFeaturePreviewsQuery(requestScope.apiBase);
-  const canRecord =
-    !!projectSlug &&
+  const deviceLoopEnabled =
     previews.data?.some(
       (preview) => preview.id === 'device-developer-loop' && preview.enabled,
-    ) === true &&
+    ) === true;
+  const canRecord =
+    !!projectSlug &&
+    deviceLoopEnabled &&
     previews.data?.some(
       (preview) => preview.id === 'walkthroughs' && preview.enabled,
     ) === true;
@@ -1018,6 +1021,21 @@ function DeviceStage({
   // it (only this viewer's view — the session stays open), so the float,
   // hidden while a pane shows the device, appears.
   const floatAvailable = useFloatHostAvailable();
+  useEffect(() => {
+    if (!deviceLoopEnabled) return;
+    return registerDevicePanePromotion(() => {
+      if (!requestScope.isCurrent()) return;
+      requestFloat({
+        kind: 'device',
+        hostId: session.hostId,
+        platform,
+        deviceId: session.deviceId,
+        surfaceId: session.surfaceId,
+        projectSlug,
+        name: session.name,
+      });
+    });
+  }, [deviceLoopEnabled, requestScope, session, platform, projectSlug]);
   // Let go only once a chat has TAKEN it: until then this pane keeps
   // showing the device. The float reads it under this pane's Project (the
   // one the person is viewing it from), and says so in the chat if it
