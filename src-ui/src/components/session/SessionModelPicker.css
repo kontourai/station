@@ -413,12 +413,6 @@
   margin: 0;
 }
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
-  .session-model-picker > .responsive-dialog-header {
-    position: sticky;
-    top: 0;
-    z-index: 1;
-    background: var(--k-bg);
-  }
   .session-model-picker__footer {
     position: sticky;
     bottom: 0;
