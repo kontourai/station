@@ -5978,6 +5978,13 @@ export function configureRuntimeRoutes(
         }
       },
       readAgentAnswers: (input) => roomConversation.answers(input),
+      onAnswerUnavailable: (error, taskId) =>
+        context.logger.warn('Task room answer recovery deferred', {
+          taskId,
+          sessionId: error.sessionId,
+          turnId: error.turnId,
+          error: error.message,
+        }),
       readAgentLifecycle: async ({ sessionId }) => {
         const detail = await context.orchestrationService.readSession(
           sessionId,

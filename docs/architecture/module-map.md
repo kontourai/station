@@ -3496,8 +3496,13 @@ they do not qualify native image insertion or real-provider image understanding.
 composes request publication, todo/ready to in_progress transitions, exact-session
 thread replies, and canonical completed-answer reads. Turn events and startup
 reconcile the existing agent-publish text append path; no new history body or
-storage worker is needed. Browser records add optional timestamps, opaque actor
-identity and execution/thread correlation. Older records remain readable;
+storage worker is needed.
+An unavailable canonical answer remains visibly blocked and is logged with its
+Task, Session, and turn identity. Lifecycle reconciliation continues with other
+Sessions so that answer cannot prevent startup; later reconciliation retries
+publication without restarting the provider. Other recovery errors still propagate.
+Browser records add optional timestamps, opaque actor identity and
+execution/thread correlation. Older records remain readable;
 older closed DTO readers reject the additive fields. Full runs open in the dock. Idle, resumable room-bound Sessions are parked
 under the lifecycle lock at shutdown so replies retain their raw Session identity
 after restart; authority is revoked before cleanup and rechecked before a new
