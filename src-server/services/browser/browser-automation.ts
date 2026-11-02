@@ -54,7 +54,10 @@ import {
   type LiveSurfaceRegistry,
   releaseAgentControl,
 } from '../live-surface/registry.js';
-import type { BrowserAgentAuthority } from './browser-agent-authority.js';
+import {
+  type BrowserAgentAuthority,
+  browserAgentGrantCurrent,
+} from './browser-agent-authority.js';
 import type { BrowserViewport } from './browser-host.js';
 import { jsStringLiteral } from './browser-js-literal.js';
 import {
@@ -826,6 +829,11 @@ export class BrowserAutomation {
     const first = this.select(authority, browserSessionId);
     if ('ok' in first) return Promise.resolve(first);
     return this.serial(first.browserSessionId, async () => {
+      if (!browserAgentGrantCurrent(authority.grant))
+        return refuse(
+          'not-authorized',
+          'The calling Session is no longer authorized.',
+        );
       const selected = this.selectLive(authority, first.browserSessionId);
       if ('ok' in selected) return selected;
       if (this.deps.dialogWaitingForPerson?.(first.browserSessionId))
@@ -933,7 +941,8 @@ export class BrowserAutomation {
     const fence = claim.lease.fence;
     const check = () => {
       const current = entry.lease.isCurrent(fence, agent);
-      if (!current.ok) throw new Interrupted(current.lease);
+      if (!current.ok || !browserAgentGrantCurrent(authority.grant))
+        throw new Interrupted(current.lease);
     };
     const control: Control = {
       send: async <R>(method: string, params?: object, deadlineMs?: number) => {
@@ -1504,6 +1513,11 @@ export class BrowserAutomation {
     const first = this.select(authority, browserSessionId);
     if ('ok' in first) return first;
     return this.serial(first.browserSessionId, async () => {
+      if (!browserAgentGrantCurrent(authority.grant))
+        return refuse(
+          'not-authorized',
+          'The calling Session is no longer authorized.',
+        );
       const current = this.deps.sessions.getSession(first.browserSessionId);
       if (!current || !this.owns(authority, current)) return NOT_FOUND();
       if (!authority.threadId || current.threadId !== authority.threadId)
@@ -1565,10 +1579,20 @@ export class BrowserAutomation {
     BrowserToolResult<{ session: BrowserSessionRecord; reused: boolean }>
   > {
     try {
+      if (!browserAgentGrantCurrent(authority.grant))
+        return refuse(
+          'not-authorized',
+          'The calling Session is no longer authorized.',
+        );
       if (input.browserSessionId !== undefined) {
         const record = this.select(authority, input.browserSessionId);
         if ('ok' in record) return record;
         return await this.serial(record.browserSessionId, async () => {
+          if (!browserAgentGrantCurrent(authority.grant))
+            return refuse(
+              'not-authorized',
+              'The calling Session is no longer authorized.',
+            );
           let current = this.deps.sessions.getSession(record.browserSessionId)!;
           if (current.state === 'needs-reopen')
             current = await this.deps.sessions.reopenSession(
@@ -1754,6 +1778,11 @@ export class BrowserAutomation {
         after,
         limit,
       );
+      if (!browserAgentGrantCurrent(authority.grant))
+        return refuse(
+          'not-authorized',
+          'The calling Session is no longer authorized.',
+        );
       if (!this.deps.networkPreviewEnabled?.())
         return refuse(
           'not-permitted',
