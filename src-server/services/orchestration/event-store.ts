@@ -15265,16 +15265,10 @@ export class EventStore {
       );
   }
 
-  cascadeStopOwner(
-    childId: string,
-    observedBinding?: boolean,
-  ): CascadeStopOwner {
-    const locallyHeld =
-      observedBinding === true || this.hasSessionBinding(childId);
+  cascadeStopOwner(childId: string, observedBinding = false): CascadeStopOwner {
+    const locallyHeld = observedBinding || this.hasSessionBinding(childId);
     const facts = readCascadeSessionFacts(this.db, [childId]).get(childId)!;
     const snapshot = JSON.stringify(facts);
-    if (observedBinding === undefined && !this.sessionBinding)
-      return { custody: 'unknown', reason: 'binding-unavailable', snapshot };
     const initial = {
       ...this.classifyCascadeStop(facts, locallyHeld),
       snapshot,

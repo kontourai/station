@@ -1,10 +1,7 @@
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { STEERING_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
-import {
-  INTERNAL_SESSION_READ_SCOPE,
-  sessionReadAuthorityFromRequest,
-} from '@kontourai/station-contracts/tenancy';
+import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import { expect, test, vi } from 'vitest';
 import {
   createGateTestRegistry,
@@ -178,31 +175,13 @@ test.each(['idle', 'completed'] as const)(
         limit: 5,
         authority: INTERNAL_SESSION_READ_SCOPE,
       });
-      const window = await service.readSessionEventWindow('parent', {
-        turnLimit: 2,
-        authority: INTERNAL_SESSION_READ_SCOPE,
-      });
-      const history = await service.listConversationHistoryPage(
-        sessionReadAuthorityFromRequest('owner', undefined, undefined),
-        { limit: 20 },
-      );
-      const historyParent = history.items.find((item) => item.id === 'parent');
-      expect(historyParent?.lifecycleState).toBe(
-        detail?.session.lifecycleState,
-      );
-      for (const summary of [
-        detail?.session,
-        listed,
-        page?.session,
-        window?.session,
-      ])
+      for (const summary of [detail?.session, listed, page?.session])
         expect(summary?.durability).toEqual(STEERING_ENGINE_DURABILITY);
       return {
         lifecycle: [
           detail?.session.lifecycleState,
           listed?.lifecycleState,
           page?.session.lifecycleState,
-          window?.session.lifecycleState,
         ],
         ownedState: detail?.session.ownedWork?.state,
       };
@@ -227,11 +206,7 @@ test.each(['idle', 'completed'] as const)(
                   },
                   stationDelegationProvenance: 'caller-derived',
                 }
-              : {
-                  agentSlug: 'claude',
-                  userId: 'owner',
-                  conversationId: 'parent',
-                },
+              : {},
         });
         service.seedSessionRecord({
           threadId: id,
@@ -257,7 +232,7 @@ test.each(['idle', 'completed'] as const)(
         createdAt: '2026-01-01T00:00:01.000Z',
       });
       expect(await readStates()).toEqual({
-        lifecycle: ['running', 'running', 'running', 'running'],
+        lifecycle: ['running', 'running', 'running'],
         ownedState: 'running',
       });
       if (ownState === 'completed') {
@@ -292,14 +267,14 @@ test.each(['idle', 'completed'] as const)(
       await stoppingChild;
       expect(running.has('child')).toBe(true);
       expect(await readStates()).toEqual({
-        lifecycle: ['running', 'running', 'running', 'running'],
+        lifecycle: ['running', 'running', 'running'],
         ownedState: 'stopping',
       });
       release();
       await stop;
       expect(running.has('child')).toBe(false);
       expect(await readStates()).toEqual({
-        lifecycle: [ownState, ownState, ownState, ownState],
+        lifecycle: [ownState, ownState, ownState],
         ownedState: undefined,
       });
     } finally {

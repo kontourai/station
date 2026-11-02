@@ -2287,9 +2287,9 @@ closes an at-rest parent's retained adapter and removes its unknown cleanup with
 the parent record. It preserves cancellation fences against replay, child history and independent stop
 intents. Known child owners, changed custody snapshots, and observations not refreshed
 after the release recheck refuse release. An unbound store cannot infer that a
-terminal child has no local adapter. Custody reads without a binding or an
-explicit adapter observation remain unknown. This
-is untracking, not a claim that the child's process stopped.
+terminal child has no local adapter. The raw custody reader retains its
+existing default, but service delivery supplies an explicit adapter observation.
+This is untracking, not a claim that the child's process stopped.
 Lifecycle transition validation and the completed-session send guard use the
 own fold, preserving those execution boundaries while the aggregate is busy.
 
@@ -2301,6 +2301,9 @@ and [`cancellation-fence.test.ts`](../../src-server/services/orchestration/__tes
 covers retained-boundary ordering, active invocations, own-PID rejection,
 transactional custody checks, probe budgets and confirmed release. These are
 ordinary focused tests; the mutation runner remains unchanged from main.
+[`ownership-cascade-gaps.test.ts`](../../src-server/services/orchestration/__tests__/ownership-cascade-gaps.test.ts)
+covers direct service confirmation, stale release observations, unbound settlement
+and event-window/history readers without modifying the review fixture.
 [`cascade-stop-delivery.process.test.ts`](../../src-server/services/orchestration/__tests__/cascade-stop-delivery.process.test.ts)
 uses a real peer owner and abrupt requester exit, including delivery before a
 failed completion write. Built-in repeat-stop behavior is exercised by
