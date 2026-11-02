@@ -34,7 +34,10 @@ export function BrowserAnnotationFlow({
       sessionId={record.browserSessionId}
       api={api}
       pending={pending}
-      onCancel={onClose}
+      onCancel={() => {
+        mounted.current = false;
+        onClose();
+      }}
       onAttach={(annotation) => {
         setPending(true);
         void (async () => {

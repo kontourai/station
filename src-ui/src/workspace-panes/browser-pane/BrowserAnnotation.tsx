@@ -149,7 +149,7 @@ export function BrowserAnnotation({
           setTool(keys[key]);
         } else if (key === 'escape') {
           event.preventDefault();
-          if (!pending) onCancel();
+          onCancel();
         } else if (key === 'enter' && event.target === event.currentTarget) {
           event.preventDefault();
           attach();
@@ -181,7 +181,7 @@ export function BrowserAnnotation({
         >
           Attach
         </Button>
-        <Button size="sm" disabled={pending} onClick={onCancel}>
+        <Button size="sm" onClick={onCancel}>
           Cancel
         </Button>
       </div>
