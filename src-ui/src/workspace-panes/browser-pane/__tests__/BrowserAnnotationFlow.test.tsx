@@ -65,7 +65,10 @@ it('invalidates a pending handoff when the annotation is cancelled', async () =>
     viewport: { width: 800, height: 600, deviceScaleFactor: 1 },
   } as BrowserSessionView;
   const api = {
-    screenshot,
+    annotationScreenshot: async () => ({
+      blob: await screenshot(),
+      scroll: { x: 0, y: 0 },
+    }),
     sessionSummary: vi.fn().mockResolvedValue(record),
   } as unknown as BrowserPaneApi;
   const close = vi.fn();
@@ -109,7 +112,9 @@ it('hands the image and its structured viewport marks to the same conversation i
     viewport: { width: 800, height: 600, deviceScaleFactor: 1 },
   } as BrowserSessionView;
   const api = {
-    screenshot: vi.fn().mockResolvedValue(blob),
+    annotationScreenshot: vi
+      .fn()
+      .mockResolvedValue({ blob, scroll: { x: 0, y: 0 } }),
     sessionSummary: vi.fn().mockResolvedValue(record),
   } as unknown as BrowserPaneApi;
   const close = vi.fn();
@@ -193,9 +198,12 @@ it('captures the viewport before marking and includes it alongside an element cr
     viewport: { width: 800, height: 600, deviceScaleFactor: 1 },
   } as BrowserSessionView;
   const api = {
-    screenshot: vi
+    annotationScreenshot: vi
       .fn()
-      .mockResolvedValue(new Blob([bytes], { type: 'image/png' })),
+      .mockResolvedValue({
+        blob: new Blob([bytes], { type: 'image/png' }),
+        scroll: { x: 0, y: 0 },
+      }),
     sessionSummary: vi.fn().mockResolvedValue(record),
   } as unknown as BrowserPaneApi;
   render(
@@ -210,7 +218,7 @@ it('captures the viewport before marking and includes it alongside an element cr
     </QueryClientProvider>,
   );
   const attach = await screen.findByRole('button', { name: 'Attach' });
-  expect(api.screenshot).toHaveBeenCalledOnce();
+  expect(api.annotationScreenshot).toHaveBeenCalledOnce();
   fireEvent.click(attach);
   await waitFor(() => expect(accepted).toHaveBeenCalledOnce());
   const files = accepted.mock.calls[0]![0] as File[];

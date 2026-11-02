@@ -353,13 +353,12 @@ cancels and Enter attaches. Select inspects an element on the server. Selecting
 elements inside iframes, including same-origin iframes, is not supported. Box and
 Draw marks use target viewport coordinates; Erase removes a mark under the
 pointer. Opening annotation captures a target viewport screenshot before marks
-can be made. Attach sends an image and a JSON description to the active chat's
+can be made. Select is refused if the page scrolls away from the captured viewport. Attach sends an image and a JSON description to the active chat's
 composer. A selected element supplies its target PNG crop; marks also include
 the viewport screenshot captured on opening. Marks are described in JSON, not
 burned into the image. The files must be supported by the conversation's engine. The
 description and image can expose page content; attaching is an explicit share.
-The picker redacts URL credentials, queries and fragments in `href`, `src` and
-`action` attributes and known secret patterns in `data-*` values. This is a
+The picker redacts URL credentials, queries and fragments in URL-bearing attributes and known secret patterns in `data-*` values. This is a
 bounded heuristic, not a guarantee that an image or excerpt contains no secrets.
 
 **Screenshot** (in **⋯**) captures the page's viewport as PNG (JPEG over

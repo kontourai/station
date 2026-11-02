@@ -43,6 +43,7 @@ export interface BrowserAnnotationValue {
 export function BrowserAnnotation({
   stageRef,
   screenshot,
+  scroll,
   viewport,
   generation,
   sessionId,
@@ -53,6 +54,7 @@ export function BrowserAnnotation({
 }: {
   stageRef: RefObject<HTMLDivElement | null>;
   screenshot: Blob;
+  scroll: { x: number; y: number };
   viewport: BrowserViewportView;
   generation: number;
   sessionId: string;
@@ -208,7 +210,7 @@ export function BrowserAnnotation({
             if (tool === 'select') {
               setError(null);
               const sequence = ++pickSequence.current;
-              void api.pick(sessionId, at, generation, true).then(
+              void api.pick(sessionId, at, generation, true, scroll).then(
                 (result) => {
                   if (alive.current && sequence === pickSequence.current)
                     setPicked(result);

@@ -28,7 +28,9 @@ export function BrowserAnnotationFlow({
   const started = useRef(false);
   const capture = useMutation({
     mutationFn: async () => {
-      const blob = await api.screenshot(record.browserSessionId);
+      const { blob, scroll } = await api.annotationScreenshot(
+        record.browserSessionId,
+      );
       const capturedAt = new Date().toISOString();
       const current = await api.sessionSummary(record.browserSessionId);
       if (
@@ -39,7 +41,7 @@ export function BrowserAnnotationFlow({
         current.viewport.height !== record.viewport.height
       )
         throw new Error('The page changed during capture.');
-      return { blob, capturedAt };
+      return { blob, scroll, capturedAt };
     },
   });
   useEffect(() => {
@@ -79,6 +81,7 @@ export function BrowserAnnotationFlow({
     <BrowserAnnotation
       stageRef={stageRef}
       screenshot={capture.data.blob}
+      scroll={capture.data.scroll}
       viewport={record.viewport}
       generation={record.generation}
       sessionId={record.browserSessionId}

@@ -40,15 +40,19 @@ function htmlExcerpt(
         ))
     )
       safe = '[redacted]';
-    else if (/^(href|src|action|formaction|poster|xlink:href)$/i.test(key))
+    else if (
+      /^(href|src|action|formaction|poster|xlink:href|data|cite|background|longdesc|codebase)$/i.test(
+        key,
+      )
+    )
       safe = safeUrl(value);
     else if (/^ping$/i.test(key))
       safe = value.trim().split(/\s+/).map(safeUrl).join(' ');
-    else if (/^srcset$/i.test(key))
+    else if (/^(srcset|imagesrcset)$/i.test(key))
       safe = /data:/i.test(value)
         ? '[redacted]'
         : value
-            .split(',')
+            .split(/,(?=\s)/)
             .map((entry) => {
               const [url, ...descriptor] = entry.trim().split(/\s+/);
               return [
@@ -59,7 +63,13 @@ function htmlExcerpt(
               ].join(' ');
             })
             .join(', ');
-    else if (/^style$/i.test(key)) safe = '[redacted]';
+    else if (
+      /^style$/i.test(key) ||
+      (tagName.toLowerCase() === 'meta' &&
+        /^content$/i.test(key) &&
+        /url\s*=/i.test(value))
+    )
+      safe = '[redacted]';
     return `${key}="${escapeAttribute(safe)}"`;
   });
   return `<${tagName}${attrs.length ? ` ${attrs.join(' ')}` : ''}>`.slice(
@@ -74,6 +84,7 @@ export async function pickBrowserElement(
   viewport: { width: number; height: number },
   point: { x: number; y: number },
   includeScreenshot = true,
+  expectedScroll?: { x: number; y: number },
 ) {
   const cdp = live.host.cdp();
   let sessions = active.get(cdp);
@@ -85,7 +96,14 @@ export async function pickBrowserElement(
   if (sessions.has(session)) throw new Error('Pick is busy.');
   sessions.add(session);
   try {
-    return await pick(cdp, live, viewport, point, includeScreenshot);
+    return await pick(
+      cdp,
+      live,
+      viewport,
+      point,
+      includeScreenshot,
+      expectedScroll,
+    );
   } finally {
     sessions.delete(session);
   }
@@ -97,6 +115,7 @@ async function pick(
   viewport: { width: number; height: number },
   point: { x: number; y: number },
   includeScreenshot: boolean,
+  expectedScroll?: { x: number; y: number },
 ) {
   if (
     !Number.isFinite(viewport.width) ||
@@ -153,8 +172,20 @@ async function pick(
       throw new Error('Page identity unavailable.');
     return value;
   };
+  const verifyScroll = async () => {
+    if (!expectedScroll) return;
+    const metrics = await send<{
+      cssVisualViewport?: { pageX?: number; pageY?: number };
+    }>('Page.getLayoutMetrics');
+    if (
+      metrics.cssVisualViewport?.pageX !== expectedScroll.x ||
+      metrics.cssVisualViewport?.pageY !== expectedScroll.y
+    )
+      throw new Error('Page scroll changed during annotation.');
+  };
   try {
     const before = await frame();
+    await verifyScroll();
     const node = await send<{ backendNodeId?: number }>(
       'DOM.getNodeForLocation',
       {
@@ -334,6 +365,7 @@ async function pick(
       screenshot = image.toString('base64');
       digest = createHash('sha256').update(image).digest('hex');
     }
+    await verifyScroll();
     const after = await frame();
     if (
       before.id !== after.id ||
@@ -358,5 +390,41 @@ async function pick(
     void cdp
       .send('Runtime.releaseObjectGroup', { objectGroup }, session)
       .catch(() => {});
+  }
+}
+
+/** Read the viewport origin for a person-owned annotation capture. */
+export async function readBrowserViewportOffset(
+  live: BrowserLiveTarget,
+): Promise<{ x: number; y: number }> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const metrics = await Promise.race([
+      live.host
+        .cdp()
+        .send<{ cssVisualViewport?: { pageX?: number; pageY?: number } }>(
+          'Page.getLayoutMetrics',
+          {},
+          live.target.cdpSessionId,
+        ),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error('Viewport metrics unavailable.')),
+          DEADLINE_MS,
+        );
+      }),
+    ]);
+    const x = metrics.cssVisualViewport?.pageX;
+    const y = metrics.cssVisualViewport?.pageY;
+    if (
+      typeof x !== 'number' ||
+      typeof y !== 'number' ||
+      !Number.isFinite(x) ||
+      !Number.isFinite(y)
+    )
+      throw new Error('Viewport metrics unavailable.');
+    return { x, y };
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }

@@ -84,6 +84,7 @@ export interface BrowserRoutesDeps {
     | 'setViewport'
     | 'getSessionSummary'
     | 'captureScreenshot'
+    | 'captureAnnotationScreenshot'
   > &
     Partial<Pick<BrowserSessionRegistry, 'liveTarget'>>;
   /**
@@ -806,6 +807,7 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
       'y',
       'generation',
       'screenshot',
+      'expectedScroll',
     ]);
     if (
       !body ||
@@ -814,6 +816,19 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
       typeof body.generation !== 'number' ||
       !Number.isSafeInteger(body.generation) ||
       (body.screenshot !== undefined && typeof body.screenshot !== 'boolean')
+    )
+      return c.json(invalid, 400);
+    const scroll = body.expectedScroll;
+    if (
+      scroll !== undefined &&
+      (!scroll ||
+        typeof scroll !== 'object' ||
+        Array.isArray(scroll) ||
+        Object.keys(scroll).some((key) => key !== 'x' && key !== 'y') ||
+        typeof (scroll as { x?: unknown }).x !== 'number' ||
+        typeof (scroll as { y?: unknown }).y !== 'number' ||
+        !Number.isFinite((scroll as { x: number }).x) ||
+        !Number.isFinite((scroll as { y: number }).y))
     )
       return c.json(invalid, 400);
     if (found.session.generation !== body.generation)
@@ -827,6 +842,7 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
         found.session.viewport,
         { x: body.x, y: body.y },
         body.screenshot !== false,
+        scroll as { x: number; y: number } | undefined,
       );
       const current = await sessionFor(
         c.req.raw,
@@ -873,6 +889,40 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
     );
     if (found.status !== 200) return c.json(refuse(found.status), found.status);
     if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);
+    if (c.req.query('annotation') === '1') {
+      if (
+        !deps.networkPreviewEnabled?.() ||
+        !deps.isAgentRequest ||
+        deps.isAgentRequest(c.req.raw)
+      )
+        return c.json(denied, 403);
+      const shot = await deps.registry.captureAnnotationScreenshot(
+        found.session.browserSessionId,
+      );
+      const current = await sessionFor(
+        c.req.raw,
+        c.req.param('browserSessionId'),
+        'view',
+      );
+      if (current.status !== 200)
+        return c.json(refuse(current.status), current.status);
+      if (
+        !deps.isRequestPrincipalCurrent(c.req.raw) ||
+        !deps.networkPreviewEnabled?.() ||
+        current.session.generation !== found.session.generation ||
+        current.session.viewport.width !== found.session.viewport.width ||
+        current.session.viewport.height !== found.session.viewport.height
+      )
+        return c.json({ success: false, code: 'stale-generation' }, 409);
+      return c.json({
+        success: true,
+        data: {
+          image: shot.data.toString('base64'),
+          mimeType: shot.mimeType,
+          scroll: shot.scroll,
+        },
+      });
+    }
     const shot = await deps.registry.captureScreenshot(
       found.session.browserSessionId,
     );
