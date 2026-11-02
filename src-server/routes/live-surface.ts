@@ -113,6 +113,13 @@ const STREAM_QUERY_KEYS: readonly (keyof LiveSurfaceStreamParams)[] = [
   'maxHeight',
 ];
 
+/** The frames query keys a refusal may name; anything else is `unknown`. */
+const KNOWN_FRAMES_QUERY_KEYS: ReadonlySet<string> = new Set([
+  ...STREAM_QUERY_KEYS,
+  AUTHORIZATION_CONTEXT_QUERY_KEY,
+  CODEC_QUERY_KEY,
+]);
+
 function failure(
   c: Context,
   code: LiveSurfaceRouteErrorCode,
@@ -216,6 +223,8 @@ export function createLiveSurfaceRoutes(
     const human = caller.value;
     // A refused frames request names the key it was refused for, so a
     // client can tell a codec it may not ask for from any other mistake.
+    // Only keys this route knows are echoed; anything else is `unknown`, so
+    // a caller's query text never comes back in a response.
     const refusedKey = Object.keys(c.req.queries()).find(
       (key) =>
         (!STREAM_QUERY_KEYS.includes(key as keyof LiveSurfaceStreamParams) &&
@@ -224,7 +233,12 @@ export function createLiveSurfaceRoutes(
         (c.req.queries(key)?.length ?? 0) > 1,
     );
     if (refusedKey !== undefined)
-      return failure(c, 'invalid-request', 400, refusedKey);
+      return failure(
+        c,
+        'invalid-request',
+        400,
+        KNOWN_FRAMES_QUERY_KEYS.has(refusedKey) ? refusedKey : 'unknown',
+      );
     const parsed = parseLiveSurfaceStreamParams({
       maxFps: c.req.query('maxFps'),
       quality: c.req.query('quality'),

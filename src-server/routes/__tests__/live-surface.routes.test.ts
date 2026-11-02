@@ -280,7 +280,9 @@ describe('live surface routes through runtime authentication', () => {
       ['maxFps=31', 'stream-params'],
       ['quality=abc', 'stream-params'],
       ['maxWidth=99999', 'stream-params'],
-      ['fps=10', 'fps'],
+      // An unknown key is never echoed back.
+      ['fps=10', 'unknown'],
+      ['%3Cscript%3E=1', 'unknown'],
       ['maxFps=5&maxFps=6', 'maxFps'],
       ['codec=vp9', 'codec'],
       ['codec=h264&codec=h264', 'codec'],

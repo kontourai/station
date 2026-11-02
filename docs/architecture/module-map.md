@@ -5261,7 +5261,8 @@ principal or client-supplied object cannot authorize a surface.
 `routes/live-surface.ts` serves one authenticated frame response per viewer and
 separate input/lease requests. `?codec=h264` asks for access units; a producer
 without them sends images. A refused frames request names the key it was
-refused for (`field`). It rechecks stream authorization; a transient
+refused for (`field`): a key the route knows, `stream-params`, or `unknown`,
+never the caller's own query text. It rechecks stream authorization; a transient
 busy authorizer is distinct from denial and retains a prior allow only within
 a bounded grace. `useLiveSurface.ts` suspends hidden viewers, reconnects, and
 coalesces input through one in-flight POST. It opens a frame stream only with a

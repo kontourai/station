@@ -1034,8 +1034,17 @@ describe('Android', () => {
       )!.header;
       expect([png.width, png.height]).toEqual([unit.width, unit.height]);
       expect([unit.width, unit.height]).toEqual([1080, 2400]);
-      const tap = async (header: LiveSurfaceFrameHeader) => {
-        const at = { x: header.width * 0.75, y: header.height * 0.25 };
+      // Stop polling so the frame input maps against stays the PNG for the
+      // first tap; then an H.264 unit becomes it for the second.
+      h.producer.setCodecDemand({ image: false, h264: true });
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      expect(h.frames.at(-1)!.header.codec).toBe('png');
+      // One fixed pixel, as each viewer would send it from the frame it was
+      // shown: it must land on the same device point from both. Were the PNG
+      // to declare its own 1440x3200, this pixel would land at 810/1440.
+      const pixel = { x: 810, y: 600 };
+      const tap = async () => {
+        const at = pixel;
         await h.producer.dispatch({
           kind: 'pointer',
           type: 'down',
@@ -1059,9 +1068,13 @@ describe('Android', () => {
           )
           .at(-1) as { x: number; y: number };
       };
-      for (const point of [await tap(png), await tap(unit)]) {
-        expect(point.x).toBeCloseTo(0.75, 2);
-        expect(point.y).toBeCloseTo(0.25, 2);
+      const fromPng = await tap();
+      video.emit('message', semuUnit(false, delta1), true);
+      expect(h.frames.at(-1)!.header.codec).toBe('h264');
+      const fromVideo = await tap();
+      for (const point of [fromPng, fromVideo]) {
+        expect(point.x).toBeCloseTo(810 / 1080, 3);
+        expect(point.y).toBeCloseTo(600 / 2400, 3);
       }
     });
 
