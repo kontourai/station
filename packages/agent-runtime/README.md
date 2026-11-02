@@ -289,7 +289,7 @@ Writer 10 stores only complete 128-entry partial groups as immutable bodies. An 
 
 Large request/result bodies share immutable fragments of at most 16,384 UTF-16 code units behind a physical `agent-body/2` descriptor. The reconstructed logical wire keeps its original digest and byte length, including Unicode across fragment boundaries. Migration validates the frozen writer-9 schema and records before creating the chunk table and physical version-3 effect headers. Existing bodies and turn records remain retained; migration does not reclaim historical garbage.
 
-Change tracking keeps the newest receipt for every turn/kind/id. A receipt can be deleted only when a newer receipt for that same key exists. Sequence numbers never decrease, and any connection whose cursor predates a change still sees the newer receipt. The final receipt, including a deletion tombstone, remains protected. Pure custom clocks take the incremental path; clock callbacks that write rows are refused and rolled back.
+Change tracking keeps the newest receipt for every turn/kind/id. A receipt can be deleted only when a newer receipt for that same key exists. The covering per-record change index serves selected-turn validation; a redundant turn-only index is removed. Sequence numbers never decrease, and any connection whose cursor predates a change still sees the newer receipt. The final receipt, including a deletion tombstone, remains protected. Pure custom clocks take the incremental path; clock callbacks that write rows are refused and rolled back.
 
 The chat projection commits bounded batches before displaying any frame. Each frame keeps its own ID, wire and position; transaction grouping does not merge identities. Control events share ordered batches with text; error and terminal events flush pending output first, and cleanup waits for both the publication drain and owner completion. The frame ceiling is 1,048,576 per turn, leaving margin above the default 200-step workload at 400 chunks per answer. Text processing retains provider chunk boundaries. New turns record `input-chunks/1`; recovery of older descriptors retains their original character-frame layout.
 
@@ -298,8 +298,7 @@ The benchmark includes the actual in-process chat/SSE route and `projectFrame`/`
 
 Writer 11 appends foreground frames to bounded compressed tail blocks across commits while preserving every
 frame's original ID, wire, timestamp, digest and position. A compressed timestamp vector preserves the time of each committed frame. Nonterminal controls share ordered batches. An indexed group and
-ordinal locate individual frames without scanning previous blocks. Legacy frame
-rows remain readable. The 1,048,576-frame ceiling remains reachable: compression
+ordinal locate individual frames without scanning previous blocks. Migration validates and packs legacy frame rows, preserving their IDs, wires, positions and timestamps before removing the legacy frame table. The 1,048,576-frame ceiling remains reachable: compression
 reduces storage, not logical frame counts. Two reserved positions carry a typed
 `DURABLE_AGENT_FRAME_CAPACITY` error and the terminal marker. The chat route shows
 the fixed output-limit message and the owner settles the turn blocked.

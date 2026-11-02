@@ -1,6 +1,9 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { afterEach, expect, it } from 'vitest';
+import { canonical } from '../encoding.js';
+import { readSqliteAgentFrames } from '../internal.js';
 import { bodyDefinitions } from '../turn-bodies.js';
+import { framesDefinition } from '../turn-projection.js';
 import { turnFixture } from './turn-fixture.js';
 
 function removeChangeTracking(database: DatabaseSync) {
@@ -14,6 +17,7 @@ function removeChangeTracking(database: DatabaseSync) {
   database.exec('DROP TABLE agent_steps_body_nodes');
   database.exec('DROP TABLE agent_steps_body_chunks');
   database.exec('DROP TABLE agent_steps_frame_blocks');
+  database.exec(framesDefinition);
   database.exec(
     'DROP TABLE agent_steps_retained; DROP INDEX agent_steps_terminal_age',
   );
@@ -59,14 +63,25 @@ it('migration from the ownership writer preserves original turn bytes and future
 it('writer-5 migration retains the original turn bytes', async () => {
   const f = await turnFixture();
   cleanup.push(() => f.close());
+  await f.lease.frame('prefix:0', 'data: first\n\n');
+  f.advance(20);
+  await f.lease.frame('prefix:1', 'data: second\n\n');
+  const frames = readSqliteAgentFrames({ database: f.database, key: f.key });
   const before = f.database
     .prepare('SELECT record FROM agent_steps_turns')
     .get()?.record;
   removeChangeTracking(f.database);
+  for (const frame of frames)
+    f.database
+      .prepare('INSERT INTO agent_steps_frames VALUES(?,?,?,?)')
+      .run(canonical(f.key), frame.id, frame.position, canonical(frame));
   f.database.exec(
     "DROP INDEX agent_steps_effect_states; DROP TABLE agent_steps_bodies; DROP TABLE agent_steps_meta; CREATE TABLE agent_steps_meta(id INTEGER PRIMARY KEY CHECK(id=1), writer_format TEXT NOT NULL CHECK(writer_format='agent-steps/5')) STRICT; INSERT INTO agent_steps_meta VALUES(1,'agent-steps/5');",
   );
   await f.crash.reopen();
+  expect(readSqliteAgentFrames({ database: f.database, key: f.key })).toEqual(
+    frames,
+  );
   expect(
     f.database.prepare('SELECT record FROM agent_steps_turns').get()?.record,
   ).toBe(before);

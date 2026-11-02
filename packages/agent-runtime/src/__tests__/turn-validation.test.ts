@@ -18,6 +18,7 @@ import {
   readAgentBodyChunk,
 } from '../turn-bodies.js';
 import { changeDefinitions } from '../turn-changes.js';
+import { framesDefinition } from '../turn-projection.js';
 import { finish, key, owner } from './fixture.js';
 import { turnFixture } from './turn-fixture.js';
 
@@ -32,6 +33,7 @@ function removeChangeTracking(database: DatabaseSync) {
   database.exec('DROP TABLE agent_steps_body_nodes');
   database.exec('DROP TABLE agent_steps_body_chunks');
   database.exec('DROP TABLE agent_steps_frame_blocks');
+  database.exec(framesDefinition);
   database.exec(
     'DROP TABLE agent_steps_retained; DROP INDEX agent_steps_terminal_age',
   );

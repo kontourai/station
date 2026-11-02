@@ -64,6 +64,7 @@ import {
   frameBlockDefinitions,
   frameCommand,
   framesDefinition,
+  migrateAgentFrameBlocks,
   projectAgentFrame,
   projectAgentFrames,
   readAgentFrame,
@@ -279,6 +280,11 @@ const currentDefinitions = [
   writer10Definitions[0]!.replaceAll('agent-steps/10', 'agent-steps/11'),
   ...writer10Definitions
     .slice(1)
+    .filter(
+      (sql) =>
+        sql !== framesDefinition &&
+        !sql.startsWith('CREATE INDEX agent_steps_changes_turn'),
+    )
     .map((sql) =>
       sql.startsWith('CREATE TRIGGER agent_steps_bodies_no_delete')
         ? retainedBodyDefinitions[0]!
@@ -640,10 +646,6 @@ export function auditSqliteAgentJournal({
       agentStatement(
         database,
         'PRAGMA foreign_key_check(agent_steps_retained)',
-      ).all().length ||
-      agentStatement(
-        database,
-        'PRAGMA foreign_key_check(agent_steps_frames)',
       ).all().length ||
       agentStatement(
         database,
@@ -1068,6 +1070,8 @@ export function openSqliteAgentJournal(options: {
     database.exec('BEGIN IMMEDIATE');
     try {
       for (const sql of frameBlockDefinitions) database.exec(sql);
+      migrateAgentFrameBlocks(database);
+      database.exec('DROP INDEX agent_steps_changes_turn');
       for (const sql of bodyNodeDefinitions) database.exec(sql);
       for (const sql of retentionDefinitions) database.exec(sql);
       database.exec(

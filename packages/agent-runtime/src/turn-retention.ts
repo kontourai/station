@@ -65,10 +65,6 @@ export function retainAgentTurns(database: DatabaseSync, now: number) {
     ).run(id);
     agentStatement(
       database,
-      'DELETE FROM agent_steps_frames WHERE turn_id=?',
-    ).run(id);
-    agentStatement(
-      database,
       'DELETE FROM agent_steps_frame_blocks WHERE turn_id=?',
     ).run(id);
     projectAgentFrames(

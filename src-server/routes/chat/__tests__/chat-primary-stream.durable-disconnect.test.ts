@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
+import { deflateSync } from 'node:zlib';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -529,20 +530,44 @@ it.each([65_536, 1_048_576, 1_048_573])(
       const first = Number(
         db
           .prepare(
-            'SELECT coalesce(max(position),-1)+1 AS n FROM agent_steps_frames WHERE turn_id=?',
+            'SELECT coalesce(max(last_position),-1)+1 AS n FROM agent_steps_frame_blocks WHERE turn_id=?',
           )
           .get(turn.id)?.n,
       );
-      const retained = 'data: {"type":"retained-prefix"}\n\n';
-      const digest = `sha256:${createHash('sha256').update(JSON.stringify(retained)).digest('hex')}`;
-      db.prepare(`WITH RECURSIVE positions(n) AS (SELECT ? UNION ALL SELECT n+1 FROM positions WHERE n<?)
-      INSERT INTO agent_steps_frames SELECT ?, 'prefix:'||n, n, json_object('version',1,'id','prefix:'||n,'position',n,'wire',?,'digest',?,'createdAt','2026-01-01T00:00:00.000Z') FROM positions`).run(
-        first,
-        limit - 1,
-        turn.id,
-        retained,
-        digest,
+      const wire = 'data: {"type":"retained-prefix"}\n\n';
+      const insert = db.prepare(
+        'INSERT INTO agent_steps_frame_blocks VALUES(?,?,?,?,?,?,?)',
       );
+      db.exec('BEGIN IMMEDIATE');
+      for (let start = first; start < limit; start += 128) {
+        const end = Math.min(limit - 1, start + 127);
+        const raw = {
+          at: '2026-01-01T00:00:00.000Z',
+          wires: Array.from({ length: end - start + 1 }, () => wire),
+        };
+        const checked = JSON.stringify([
+          turn.id,
+          start,
+          end,
+          'ordinal:prefix',
+          start,
+          end,
+          raw,
+        ]);
+        const digest = createHash('sha256')
+          .update(JSON.stringify(checked))
+          .digest('hex');
+        insert.run(
+          turn.id,
+          start,
+          end,
+          'ordinal:prefix',
+          start,
+          end,
+          `${digest} ${deflateSync(JSON.stringify(raw)).toString('base64')}`,
+        );
+      }
+      db.exec('COMMIT');
     } finally {
       db.close();
     }

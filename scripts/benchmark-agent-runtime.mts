@@ -389,13 +389,8 @@ async function run(
             'SELECT coalesce(sum(last_position-position+1),0) AS n,coalesce(sum(length(CAST(record AS BLOB))),0) AS bytes FROM agent_steps_frame_blocks',
           )
           .get();
-        const projected = database
-          .prepare(
-            'SELECT count(*) AS n,coalesce(sum(length(CAST(record AS BLOB))),0) AS bytes FROM agent_steps_frames',
-          )
-          .get();
-        frames = Number(projected?.n) + Number(blocks?.n);
-        framesBytes = Number(projected?.bytes) + Number(blocks?.bytes);
+        frames = Number(blocks?.n);
+        framesBytes = Number(blocks?.bytes);
         tables = database
           .prepare(
             'SELECT name,sum(pgsize) AS bytes FROM dbstat GROUP BY name ORDER BY name',

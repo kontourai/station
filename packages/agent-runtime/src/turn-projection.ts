@@ -120,7 +120,7 @@ function parseBlock(row: Record<string, unknown>): AgentFrame[] {
     .parse(
       JSON.parse(
         inflateSync(Buffer.from(envelope.payload, 'base64'), {
-          maxOutputLength: 64 * 1024 * 1024,
+          maxOutputLength: 256 * 1024 * 1024,
         }).toString('utf8'),
       ),
     );
@@ -166,7 +166,7 @@ function putBlock(
   ).get(turnId);
   const incoming = frames[0]!;
   const incomingAddress = frameAddress(incoming.id);
-  const append =
+  let append =
     previous &&
     previous.group_id === incomingAddress.group &&
     Number(previous.last_position) + 1 === incoming.position &&
@@ -176,7 +176,18 @@ function putBlock(
       1 +
       frames.length <=
       128;
-  if (append) frames = [...parseBlock(previous), ...frames];
+  if (append) {
+    const prior = parseBlock(previous);
+    if (
+      [...prior, ...frames].reduce(
+        (sum, frame) => sum + Buffer.byteLength(frame.wire),
+        0,
+      ) >
+      64 * 1024
+    )
+      append = false;
+    else frames = [...prior, ...frames];
+  }
   const first = frames[0]!;
   const last = frames.at(-1)!;
   const address = frameAddress(first.id);
@@ -242,12 +253,13 @@ export function readAgentFrame(
   turnId: string,
   id: string,
 ) {
-  const row = agentStatement(
-    database,
-    'SELECT * FROM agent_steps_frames WHERE turn_id=? AND id=?',
-  ).get(turnId, id);
-  if (row) return parseFrame(row);
-  if (!blockFormat(database)) return undefined;
+  if (!blockFormat(database)) {
+    const row = agentStatement(
+      database,
+      'SELECT * FROM agent_steps_frames WHERE turn_id=? AND id=?',
+    ).get(turnId, id);
+    return row ? parseFrame(row) : undefined;
+  }
   const address = frameAddress(id);
   const block = agentStatement(
     database,
@@ -261,12 +273,14 @@ export function readAgentFrames(
   database: DatabaseSync,
   turnId: string,
 ): AgentFrame[] {
-  const frames = agentStatement(
-    database,
-    'SELECT * FROM agent_steps_frames WHERE turn_id=? ORDER BY position',
-  )
-    .all(turnId)
-    .map(parseFrame);
+  const frames: AgentFrame[] = blockFormat(database)
+    ? []
+    : agentStatement(
+        database,
+        'SELECT * FROM agent_steps_frames WHERE turn_id=? ORDER BY position',
+      )
+        .all(turnId)
+        .map(parseFrame);
   if (blockFormat(database)) {
     for (const row of agentStatement(
       database,
@@ -290,13 +304,14 @@ export function projectAgentFrames(
   now: number,
 ): AgentFrame[] {
   const compact = blockFormat(database);
-  let position =
-    Number(
-      agentStatement(
-        database,
-        'SELECT max(position) AS n FROM agent_steps_frames WHERE turn_id=?',
-      ).get(turnId)?.n ?? -1,
-    ) + 1;
+  let position = compact
+    ? 0
+    : Number(
+        agentStatement(
+          database,
+          'SELECT max(position) AS n FROM agent_steps_frames WHERE turn_id=?',
+        ).get(turnId)?.n ?? -1,
+      ) + 1;
   if (compact)
     position = Math.max(
       position,
@@ -373,4 +388,39 @@ export function projectAgentFrame(
     kind: 'frame',
     frame: projectAgentFrames(database, turnId, [command], now)[0]!,
   };
+}
+
+export function migrateAgentFrameBlocks(database: DatabaseSync) {
+  let pending: AgentFrame[] = [];
+  let turnId = '';
+  let bytes = 0;
+  const flush = () => {
+    if (pending.length) putBlock(database, turnId, pending);
+    pending = [];
+    bytes = 0;
+  };
+  for (const row of agentStatement(
+    database,
+    'SELECT * FROM agent_steps_frames ORDER BY turn_id,position',
+  ).iterate()) {
+    const frame = parseFrame(row);
+    const previous = pending.at(-1);
+    const address = frameAddress(frame.id);
+    if (
+      pending.length &&
+      (row.turn_id !== turnId ||
+        pending.length === 128 ||
+        bytes + Buffer.byteLength(frame.wire) > 64 * 1024 ||
+        (previous &&
+          (frameAddress(previous.id).group !== address.group ||
+            frameAddress(previous.id).ordinal + 1 !== address.ordinal ||
+            previous.position + 1 !== frame.position)))
+    )
+      flush();
+    turnId = String(row.turn_id);
+    pending.push(frame);
+    bytes += Buffer.byteLength(frame.wire);
+  }
+  flush();
+  database.exec('DROP TABLE agent_steps_frames');
 }
