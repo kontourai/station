@@ -73,8 +73,9 @@ replays a sequence.
   accepted bytes ([Device guide](../guides/mobile-device-workspace.md#view-control-and-end-a-session)).
 - **"Replay" already means something else.** [Session tape replay](session-tape-replay.md)
   re-folds recorded chat events into a read-only view and runs no actions. The
-  glossary calls that view **History**. Task captures and
-  [Task clips](walkthroughs.md) are evidence, not executable steps.
+  glossary calls that view **History**. Task captures, Browser
+  [Task clips](walkthroughs.md) and Device `device_record_to_task` clips are
+  video or image evidence, not executable steps.
 
 Two existing rules already constrain any replay. The
 [capabilities proposal](agent-interaction-capabilities.md#backend-resolution)
@@ -290,7 +291,9 @@ elements, so every device action would be a point target, which is a gap above.
 Binding point targets safely would need host, device, orientation and
 application build identity. The Device guide states that a visible screen does
 not identify the foreground application or its build, and an accepted input
-write does not prove the device applied it. Revisit this after device input
+write does not prove the device applied it. Device Task clips now save the app
+observed when recording starts; that observation might later help bind a
+recording to an app ID, but it does not identify the build. Revisit this after device input
 can target elements from the accessibility tree.
 
 ## Out of scope
