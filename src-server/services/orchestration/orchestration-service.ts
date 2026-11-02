@@ -12644,7 +12644,17 @@ export class OrchestrationService {
     try {
       for (const delayMs of [...OBSERVED_EVENT_RETRY_DELAYS_MS, undefined]) {
         try {
-          return this.offerOrPublishEvent(attempt);
+          if (retrying && this.options.eventStore) {
+            await this.options.eventStore.waitForPublicationWrite(
+              admitted.threadId,
+              controller.signal,
+            );
+            attempt = renormalize(admitted);
+          }
+          const publish = () => this.offerOrPublishEvent(attempt);
+          return this.options.eventStore
+            ? this.options.eventStore.withImmediateWriteAttempt(publish)
+            : publish();
         } catch (error) {
           if (error instanceof EventStoreIngressError)
             return await this.publishResidualRefusal(attempt, adapter, error);
@@ -12669,8 +12679,8 @@ export class OrchestrationService {
               (this.observedRetryThreads.get(admitted.threadId) ?? 0) + 1,
             );
           }
-          // node:sqlite is synchronous: each failed attempt may already have
-          // blocked the whole process for busy_timeout. Only this sleep yields.
+          // Leave the loop free for room-worker authorization. The next attempt
+          // waits asynchronously for write availability before publishing.
           await new Promise((resolve) => setTimeout(resolve, delayMs));
           if (controller.signal.aborted || !this.isAdapterCurrent(adapter))
             throw error;

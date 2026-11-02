@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import { parseProjectTaskRoomBrowserHistory } from '@kontourai/station-contracts/project-task-room-browser';
 import type { ProviderSession } from '@kontourai/station-contracts/provider';
@@ -31,6 +32,7 @@ import {
   continueDelegatedTask,
   delegateTask,
 } from '../../../tools/station-control-delegation.js';
+import { isSqliteContentionError } from '../../../utils/sqlite-wal.js';
 import { EventBus } from '../../orchestration/event-bus.js';
 import { EventStore } from '../../orchestration/event-store.js';
 import { OrchestrationService } from '../../orchestration/orchestration-service.js';
@@ -253,6 +255,22 @@ async function fixture(observe = true) {
   )!;
   let room: ProjectTaskRoomRuntime;
   const historyOpens = vi.fn();
+  let heldMessageWrite: { entered(): void; wait: Promise<void> } | undefined;
+  let releaseMessageWrite = () => {};
+  const holdNextMessageWrite = () => {
+    let enter!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      enter = resolve;
+    });
+    let release!: () => void;
+    const wait = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    releaseMessageWrite = release;
+    heldMessageWrite = { entered: enter, wait };
+    return { entered, release };
+  };
+
   const conversation = new TaskRoomConversationModule({
     graph,
     work,
@@ -268,7 +286,40 @@ async function fixture(observe = true) {
     taskGraph: graph,
     projectForId: (id) => ({ id, slug: id }),
     history: (authority) => {
-      const history = store.createProjectTaskRoomHistory(authority);
+      const history = store.createProjectTaskRoomHistory({
+        ...authority,
+        capabilities: {
+          resolve: async (input) => {
+            const resolution = await authority.capabilities.resolve(input);
+            if (
+              heldMessageWrite &&
+              input.required === 'message-write' &&
+              resolution.kind === 'granted'
+            ) {
+              const probe = new DatabaseSync(join(directory, 'events.sqlite'), {
+                timeout: 0,
+              });
+              let locked = false;
+              try {
+                probe.exec('BEGIN IMMEDIATE');
+                probe.exec('ROLLBACK');
+              } catch (error) {
+                if (!isSqliteContentionError(error)) throw error;
+                locked = true;
+              } finally {
+                probe.close();
+              }
+              if (locked) {
+                const held = heldMessageWrite;
+                heldMessageWrite = undefined;
+                held.entered();
+                await held.wait;
+              }
+            }
+            return resolution;
+          },
+        },
+      });
       return {
         ...history,
         open: (input) => {
@@ -437,6 +488,7 @@ async function fixture(observe = true) {
     conversation,
     workFile: join(directory, 'work.json'),
     historyOpens,
+    holdNextMessageWrite,
     history,
     failures,
     agentCount: async () => {
@@ -459,6 +511,7 @@ async function fixture(observe = true) {
       revokeAtProjectRead = true;
     },
     close: async () => {
+      releaseMessageWrite();
       unsubscribe();
       await Promise.all(publications);
       await room.close();
@@ -1459,3 +1512,79 @@ test('unavailable reply attachments release publication before the hold expires'
     await f.close();
   }
 });
+
+test('an image reply remains durably posted when its room write overlaps provider turn-start publication', async () => {
+  const f = await fixture();
+  let releaseWrite = () => {};
+  let deliverStart: (() => boolean) | undefined;
+  let pending: Promise<Response> | undefined;
+  let releaseTimer: ReturnType<typeof setTimeout> | undefined;
+  const push = f.adapter.events.push.bind(f.adapter.events);
+  const events = vi.spyOn(f.adapter.events, 'push');
+  try {
+    const sessionId = await requestAgent(f);
+    await f.complete(sessionId, 'turn-1', 'Initial answer');
+    await f.conversation.reconcile(f.task.id);
+    const image = {
+      kind: 'image' as const,
+      name: 'screen.png',
+      mimeType: 'image/png' as const,
+      size: 8,
+      dataUrl: 'data:image/png;base64,iVBORw0KGgo=',
+    };
+    const attachments = await f.room.storeAttachments({
+      taskId: f.task.id,
+      taskCreatedAt: f.task.createdAt,
+      request: new Request('http://station.test'),
+      attachments: [image],
+    });
+    if (!attachments) throw Error('Image binding prerequisite');
+    const commit = f.holdNextMessageWrite();
+    releaseWrite = commit.release;
+    events.mockImplementation((event) => {
+      if (event.method === 'turn.started' && event.turnId === 'turn-2')
+        deliverStart = () => push(event);
+      else return push(event);
+      return true;
+    });
+    pending = Promise.resolve(
+      f.post(`/delegations/${sessionId}/continue`, {
+        message: 'Look again',
+        taskRoomReply: {
+          taskId: f.task.id,
+          taskCreatedAt: f.task.createdAt,
+          operationId: 'overlapping-image-reply',
+          attachBrief: false,
+          attachments,
+        },
+      }),
+    );
+    await commit.entered;
+    // A blocking main-thread writer prevents this authorization release from running.
+    releaseTimer = setTimeout(commit.release, 0);
+    if (!deliverStart) throw Error('Provider start prerequisite');
+    deliverStart();
+    deliverStart = undefined;
+    const response = await pending;
+    expect(response.status).toBe(200);
+    expect(await readJson(response)).toMatchObject({
+      data: { taskRoomReplyDelivery: 'posted' },
+    });
+    await f.started(sessionId, 'turn-2');
+    expect(f.adapter.turns[1]?.attachments).toEqual([image]);
+    expect(await f.history()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          body: { kind: 'human-message', text: 'Look again', attachments },
+        }),
+      ]),
+    );
+  } finally {
+    if (releaseTimer) clearTimeout(releaseTimer);
+    releaseWrite();
+    deliverStart?.();
+    await pending?.catch(() => {});
+    events.mockRestore();
+    await f.close();
+  }
+}, 20_000);
