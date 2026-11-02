@@ -1879,7 +1879,8 @@ test('a phone draft dismissed from a half sheet restores the half sheet', async 
     new URLSearchParams(window.location.search).get('maximize'),
   ).toBeNull();
 
-  // Started: the new chat opens at the half sheet it had, as any chat.
+  // Started: a phone keeps the new chat full screen (#4391); only the
+  // dismissed draft above returned to the half sheet.
   act(() => {
     dispatchNewChatIntent({});
   });
@@ -1897,11 +1898,10 @@ test('a phone draft dismissed from a half sheet restores the half sheet', async 
   });
   await act(async () => {});
   expect(createChatSession).toHaveBeenCalledTimes(1);
-  await waitFor(() =>
-    expect(regionModel!.regions.bottom.maximized).toBe(false),
-  );
+  await waitFor(() => expect(regionModel!.regions.bottom.maximized).toBe(true));
   expect(regionModel!.regions.bottom.visible).toBe(true);
-  expect(navigationStore.lastDockMaximized).toBe(false);
+  // The full-screen chat is also what the dock remembers on a phone.
+  expect(navigationStore.lastDockMaximized).toBe(true);
 });
 
 // On a phone the header's project switcher comes back with the draft gone,
@@ -1965,7 +1965,7 @@ test('a phone draft left for another chat keeps the dock open on that chat', asy
 // that navigation collapses the entry through the draft's own close. The
 // draft has already started by then, so the close must not restore the
 // phone dock's earlier (closed) size or tell the requester 'dismissed'.
-test('a phone draft started from a closed dock opens its chat at its earlier size', async () => {
+test('a phone draft started from a closed dock opens its chat full screen', async () => {
   dockProbe.mobile = true;
   dockProbe.sessions = [chatSession('new-session')];
   navigationStore.navigate('/', { dock: null });
@@ -2001,9 +2001,9 @@ test('a phone draft started from a closed dock opens its chat at its earlier siz
   await act(async () => {});
   expect(outcomes).toEqual(['started']);
   expect(regionModel!.regions.bottom.visible).toBe(true);
-  // At the size the dock had, as opening any chat does: the full height
-  // was the draft's.
-  expect(regionModel!.regions.bottom.maximized).toBe(false);
+  // A phone keeps the started chat full screen (#4391), whatever size the
+  // closed dock remembered.
+  expect(regionModel!.regions.bottom.maximized).toBe(true);
   expect(new URL(window.location.href).searchParams.get('chat')).toBe(
     'new-session',
   );

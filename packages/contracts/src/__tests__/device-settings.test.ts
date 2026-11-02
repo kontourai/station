@@ -214,7 +214,8 @@ describe('DEVICE_SETTINGS_REGISTRY completeness', () => {
         definition.defaultValue,
       ]),
     );
-    expect(byKey.get('theme')).toBe('dark');
+    // #4407: no saved mode follows the device.
+    expect(byKey.get('theme')).toBe('system');
     expect(byKey.get('accentColor')).toBeNull();
     // `station` is today's look: an absent selection changes nothing.
     expect(byKey.get('colorTheme')).toBe('station');

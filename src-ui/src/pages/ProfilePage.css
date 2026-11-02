@@ -116,7 +116,7 @@
 
 .profile-card__title {
   font-family: var(--font-mono);
-  font-size: 0.7rem;
+  font-size: var(--k-text-sm);
   font-weight: 500;
   letter-spacing: 0.04em;
   color: var(--text-muted);
@@ -137,7 +137,7 @@
 
 .profile-card__section-title {
   font-family: var(--font-mono);
-  font-size: 0.6rem;
+  font-size: var(--k-text-sm);
   font-weight: 600;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -171,7 +171,7 @@
 }
 
 .profile-usage-graph__caption {
-  font-size: 0.72rem;
+  font-size: var(--k-text-sm);
   color: var(--text-muted);
   font-family: var(--font-mono);
 }

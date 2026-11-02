@@ -247,6 +247,20 @@ vi.mock('@kontourai/station-sdk', () => {
           notify();
         });
       },
+      // #4405 (A28): a new Board's first name re-addresses it. Same refusal
+      // switch; resolves once the row is listed.
+      mutateAsync: async (input: { slug: string; name: string }) => {
+        calls.create.push(input);
+        if (createOutcome.rejects)
+          throw new Error('Board storage is unavailable');
+        boards.push({
+          id: boardId(input.slug),
+          slug: input.slug,
+          name: input.name,
+        });
+        notify();
+        return { slug: input.slug };
+      },
     }),
     useUpdatePersonalLayoutMutation: () => ({
       mutate: (input: { layoutSlug: string; update: { name?: string } }) => {
@@ -279,7 +293,10 @@ vi.mock('@kontourai/station-sdk', () => {
 
 import * as React from 'react';
 import { ProjectSidebar } from '../components/project-sidebar/ProjectSidebar';
-import { nextBoardSlug } from '../components/project-sidebar/ProjectSidebarBoards';
+import {
+  boardSlugFromName,
+  nextBoardSlug,
+} from '../components/project-sidebar/ProjectSidebarBoards';
 import { AuthorityPersistenceContext } from '../contexts/AuthorityPersistenceContext';
 import { KeyboardShortcutsProvider } from '../contexts/KeyboardShortcutsContext';
 import { deviceSettingsStore } from '../lib/device-settings-store';
@@ -481,13 +498,17 @@ describe('collapsed Personal Boards navigation', () => {
       screen.getByRole('dialog', { name: 'Personal Boards' }).contains(input),
     ).toBe(true);
     fireEvent.change(input, { target: { value: 'My desk' } });
-    fireEvent.keyDown(input, { key: 'Enter' });
-    expect(calls.update).toEqual([
-      { layoutSlug: 'untitled-board', update: { name: 'My desk' } },
-    ]);
-    // #4405 (A28): naming finishes the gesture, so the new Board opens and
-    // the popup that created it closes.
-    expect(navigate).toHaveBeenCalledWith('/boards/untitled-board');
+    await act(async () => {
+      fireEvent.keyDown(input, { key: 'Enter' });
+    });
+    // #4405 (A28): the new Board's first name is its address; the
+    // placeholder it was made under is gone, not renamed.
+    expect(calls.create.at(-1)).toEqual({ slug: 'my-desk', name: 'My desk' });
+    expect(calls.update).toEqual([]);
+    expect(calls.remove).toEqual(['untitled-board']);
+    // Naming finishes the gesture, so the new Board opens and the popup that
+    // created it closes.
+    expect(navigate).toHaveBeenCalledWith('/boards/my-desk');
     expect(
       screen.queryByRole('dialog', { name: 'Personal Boards' }),
     ).toBeNull();
@@ -824,11 +845,65 @@ describe('creating a Board from the panel', () => {
       name: 'Rename Untitled Board',
     });
     fireEvent.change(input, { target: { value: 'UX audit board' } });
-    fireEvent.keyDown(input, { key: 'Enter' });
+    await act(async () => {
+      fireEvent.keyDown(input, { key: 'Enter' });
+    });
+    // Its address comes from the first name, and the placeholder goes.
+    expect(calls.create.at(-1)).toEqual({
+      slug: 'ux-audit-board',
+      name: 'UX audit board',
+    });
+    expect(calls.remove).toEqual(['untitled-board']);
+    expect(navigate).toHaveBeenCalledWith('/boards/ux-audit-board');
+    expect(boards.map((board) => board.slug)).toEqual(['ux-audit-board']);
+  });
+
+  test('#4405 (A28): a refused re-address keeps the placeholder and renames it', async () => {
+    await renderSidebar(<ProjectSidebar />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'New Board' }));
+    });
+    createOutcome.rejects = true;
+    const input = screen.getByRole('textbox', {
+      name: 'Rename Untitled Board',
+    });
+    fireEvent.change(input, { target: { value: 'UX audit board' } });
+    await act(async () => {
+      fireEvent.keyDown(input, { key: 'Enter' });
+    });
     expect(calls.update).toEqual([
       { layoutSlug: 'untitled-board', update: { name: 'UX audit board' } },
     ]);
+    expect(calls.remove).toEqual([]);
     expect(navigate).toHaveBeenCalledWith('/boards/untitled-board');
+  });
+
+  test('#4405 (A28): renaming an existing Board keeps its address', async () => {
+    boards.push({ id: boardId('daily'), slug: 'daily', name: 'Daily brief' });
+    await renderSidebar(<ProjectSidebar />);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Daily brief actions' }),
+    );
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename' }));
+    const input = screen.getByRole('textbox', { name: 'Rename Daily brief' });
+    fireEvent.change(input, { target: { value: 'Morning brief' } });
+    await act(async () => {
+      fireEvent.keyDown(input, { key: 'Enter' });
+    });
+    expect(calls.update).toEqual([
+      { layoutSlug: 'daily', update: { name: 'Morning brief' } },
+    ]);
+    expect(calls.create).toEqual([]);
+    expect(calls.remove).toEqual([]);
+  });
+
+  test('#4405 (A28): a first name becomes a server-valid, free address', () => {
+    expect(boardSlugFromName('UX audit board', [])).toBe('ux-audit-board');
+    expect(boardSlugFromName('Café  Plans!', [])).toBe('cafe-plans');
+    expect(boardSlugFromName('2027 roadmap', [])).toBe('board-2027-roadmap');
+    expect(boardSlugFromName('Daily', ['daily'])).toBe('daily-2');
+    expect(boardSlugFromName('!!!', [])).toBeUndefined();
+    expect(boardSlugFromName('x'.repeat(80), [])).toHaveLength(56);
   });
 
   test('+ on an existing section creates the next free slug and enters rename', async () => {

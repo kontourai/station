@@ -1,17 +1,16 @@
 import { useCallback, useLayoutEffect } from 'react';
-import {
-  useDeviceSettings,
-  useDeviceSettingsActions,
-} from '../../contexts/DeviceSettingsContext';
+import { useDeviceSettingsActions } from '../../contexts/DeviceSettingsContext';
 import { withShortcutHint } from '../../contexts/KeyboardShortcutsContext';
 import {
   useKeyboardShortcut,
   useShortcutDisplay,
 } from '../../hooks/useKeyboardShortcut';
+import { useResolvedThemeMode } from '../../hooks/useResolvedThemeMode';
 import { MoonGlyph, SunGlyph } from '../icons/Glyph';
 
 export function ThemeToggle() {
-  const { theme } = useDeviceSettings();
+  // The mode on screen, which System takes from the device (#4407).
+  const theme = useResolvedThemeMode();
   const { setDeviceSetting } = useDeviceSettingsActions();
 
   // `main.tsx`'s pre-render fast path already sets `data-theme` before first
@@ -21,6 +20,7 @@ export function ThemeToggle() {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
 
+  // The toggle is an explicit choice of the other mode, which leaves System.
   const toggleTheme = useCallback(() => {
     setDeviceSetting('theme', theme === 'dark' ? 'light' : 'dark');
   }, [theme, setDeviceSetting]);

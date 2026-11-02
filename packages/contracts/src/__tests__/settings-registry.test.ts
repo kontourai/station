@@ -309,6 +309,9 @@ describe('APP_SETTINGS_REGISTRY completeness', () => {
         'knowledgeStores',
         'lanDiscoveryEnabled',
         'mcpUiHost',
+        // #4389: confirmed against `OrchestrationService.noProjectChatFolder`
+        // (`?? DEFAULT_NO_PROJECT_CHAT_FOLDER`) — absent is 'private'.
+        'noProjectChatFolder',
         // Guide runtime wiring reads enabled === true: absent is off.
         'reviewGuidesEnabled',
         'runtime',

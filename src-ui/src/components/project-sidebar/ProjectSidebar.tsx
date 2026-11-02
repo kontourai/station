@@ -43,6 +43,11 @@ const loadProjectSidebarFooter = () =>
     default: module.ProjectSidebarFooter,
   }));
 
+const loadProjectSidebarRecentChats = () =>
+  import('./ProjectSidebarRecentChats').then((module) => ({
+    default: module.ProjectSidebarRecentChats,
+  }));
+
 const loadProjectSidebarBoards = () =>
   import('./ProjectSidebarBoards').then((module) => ({
     default: module.ProjectSidebarBoards,
@@ -290,6 +295,18 @@ function ProjectSidebarImpl() {
             activePath={pathname}
             onAfterNavigate={() => setMobileOpen(false)}
           />
+          {/* #4397: the phone drawer lists recent chats. Loaded with the
+              open drawer only, so the closed drawer reads nothing. */}
+          {isMobile && mobileOpen ? (
+            <LazyBoundary
+              key={`recent-chats:${durableAuthorityNamespace ?? ''}`}
+              load={loadProjectSidebarRecentChats}
+              pending={null}
+              componentProps={{
+                onAfterNavigate: () => setMobileOpen(false),
+              }}
+            />
+          ) : null}
           <div className="sidebar__section-label sidebar__section-label--projects">
             <span className="sidebar__section-label-text">Projects</span>
             <button

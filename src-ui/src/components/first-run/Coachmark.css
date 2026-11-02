@@ -33,7 +33,7 @@
 }
 
 .first-run-coachmark__progress {
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--color-text-secondary);

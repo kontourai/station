@@ -9,8 +9,8 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { type ReactNode, useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
-import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
 import { useOptionalPreview } from '../../contexts/PreviewContext';
+import { useResolvedThemeMode } from '../../hooks/useResolvedThemeMode';
 import { Button } from '../Button';
 import { ArrowDownGlyph, ArrowRightGlyph, WarningGlyph } from '../icons/Glyph';
 import { SkeletonBlock } from '../state';
@@ -138,7 +138,7 @@ export function WorkspaceFileReply({
 }) {
   const link = useMarkdownLinkContext();
   const scope = useHostRequestAuthorityScope();
-  const { theme } = useDeviceSettings();
+  const theme = useResolvedThemeMode();
   const inspector = useOptionalPreview();
   const [visible, setVisible] = useState(true);
   const query = useQuery({

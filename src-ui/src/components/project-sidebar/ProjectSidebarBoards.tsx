@@ -89,6 +89,33 @@ export function nextBoardSlug(taken: readonly string[]): string {
 }
 
 /**
+ * #4405 (A28): the address a new Board's first name gives it — lowercase
+ * words joined by `-`, starting with a letter, at most 64 characters (the
+ * server's slug rule) — made free among `taken` the way `nextBoardSlug` is.
+ * `undefined` when the name has nothing an address can use.
+ */
+export function boardSlugFromName(
+  name: string,
+  taken: readonly string[],
+): string | undefined {
+  const words = name
+    .normalize('NFKD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  if (!words) return undefined;
+  const base = (/^[a-z]/.test(words) ? words : `board-${words}`)
+    .slice(0, 56)
+    .replace(/-+$/, '');
+  if (!taken.includes(base)) return base;
+  for (let suffix = 2; ; suffix += 1) {
+    const candidate = `${base}-${suffix}`;
+    if (!taken.includes(candidate)) return candidate;
+  }
+}
+
+/**
  * One of the row's three `role="menu"` surfaces (#2083).
  *
  * WHAT THIS DOES NOT DO is the point. #2083 found this menu declaring
@@ -448,6 +475,8 @@ export function ProjectSidebarBoards({
     },
   });
   const renameBoard = useUpdatePersonalLayoutMutation();
+  // A second create: the `+` one's `onSuccess` enters naming, this one must not.
+  const readdressBoard = useCreatePersonalLayoutMutation();
   const deleteBoard = useDeletePersonalLayoutMutation();
   const promoteBoard = usePromotePersonalLayoutMutation();
 
@@ -485,13 +514,59 @@ export function ProjectSidebarBoards({
     return () => window.removeEventListener(NEW_BOARD_REQUEST_EVENT, handle);
   }, []);
 
-  const commitRename = (slug: string, name: string) => {
+  const openBoard = (slug: string) => {
+    closeNavigator();
+    navigate(boardPath(slug));
+    if (isMobile) onAfterNavigate?.();
+  };
+
+  /**
+   * #4405 (A28): a Board's address never changes once it is in use, so a
+   * rename keeps it. A Board `+` just made is not in use yet: nothing has
+   * opened it and its name is still being typed. Its first name therefore
+   * gets an address of its own — a Board created at that address, and the
+   * placeholder removed — instead of `untitled-board` forever. When that
+   * create is refused, the placeholder is renamed as before.
+   */
+  const readdressNewBoard = async (
+    placeholder: string,
+    address: string,
+    name: string,
+    open: boolean,
+  ) => {
+    try {
+      await readdressBoard.mutateAsync({ slug: address, name });
+    } catch {
+      renameBoard.mutate({ layoutSlug: placeholder, update: { name } });
+      if (open) openBoard(placeholder);
+      return;
+    }
+    if (open) openBoard(address);
+    deleteBoard.mutate(placeholder);
+  };
+
+  const commitRename = (slug: string, name: string, open = false) => {
     setMode({ kind: 'rest' });
+    const naming = namingCreatedBoard.current === slug;
     namingCreatedBoard.current = null;
     const trimmed = name.trim();
     const current = rows.find((row) => row.slug === slug)?.name;
-    if (!trimmed || trimmed === current) return;
+    if (!trimmed || trimmed === current) {
+      if (open) openBoard(slug);
+      return;
+    }
+    const address = naming
+      ? boardSlugFromName(
+          trimmed,
+          rows.map((row) => row.slug).filter((taken) => taken !== slug),
+        )
+      : undefined;
+    if (address && address !== slug) {
+      void readdressNewBoard(slug, address, trimmed, open);
+      return;
+    }
     renameBoard.mutate({ layoutSlug: slug, update: { name: trimmed } });
+    if (open) openBoard(slug);
   };
 
   const content = (
@@ -585,14 +660,11 @@ export function ProjectSidebarBoards({
                   onKeyDown={(event) => {
                     if (event.key === 'Enter') {
                       event.preventDefault();
-                      const opensCreated =
-                        namingCreatedBoard.current === board.slug;
-                      commitRename(board.slug, event.currentTarget.value);
-                      if (opensCreated) {
-                        closeNavigator();
-                        navigate(path);
-                        if (isMobile) onAfterNavigate?.();
-                      }
+                      commitRename(
+                        board.slug,
+                        event.currentTarget.value,
+                        namingCreatedBoard.current === board.slug,
+                      );
                     } else if (event.key === 'Escape') {
                       event.preventDefault();
                       // Discards the edit. Clearing the mode UNMOUNTS this

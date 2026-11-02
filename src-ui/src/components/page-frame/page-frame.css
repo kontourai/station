@@ -73,7 +73,7 @@
 
 .page__label {
   font-family: var(--font-mono);
-  font-size: 0.65rem;
+  font-size: var(--k-text-sm);
   font-weight: 500;
   letter-spacing: 0.15em;
   text-transform: uppercase;
