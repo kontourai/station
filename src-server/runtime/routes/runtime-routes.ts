@@ -205,7 +205,10 @@ import { TaskBrowserRecording } from '../../services/projects/task-browser-recor
 import { createTaskCaptureBlobStoreFactory } from '../../services/projects/task-capture-blob-store-factory.js';
 import { TaskRoomAttachments } from '../../services/projects/task-room-attachments.js';
 import { createTaskRoomContext } from '../../services/projects/task-room-context.js';
-import { TaskRoomConversationModule } from '../../services/projects/task-room-conversation-module.js';
+import {
+  TaskRoomAnswerUnavailableError,
+  TaskRoomConversationModule,
+} from '../../services/projects/task-room-conversation-module.js';
 import { PullRequestReviewGuideService } from '../../services/pull-requests/pull-request-review-guide.js';
 import { ReviewGuideError } from '../../services/pull-requests/pull-request-review-guide-errors.js';
 import {
@@ -6068,7 +6071,21 @@ export function configureRuntimeRoutes(
     })
       .then(() =>
         Promise.all([
-          roomRuntime.reconcileAgentLifecycles(roomTaskIds),
+          (async () => {
+            for (const taskId of roomTaskIds) {
+              try {
+                await roomRuntime.reconcileAgentLifecycles([taskId]);
+              } catch (error) {
+                if (!(error instanceof TaskRoomAnswerUnavailableError))
+                  throw error;
+                // Publication retains blocked presence and the original request.
+                // A later room read can retry without restarting the provider.
+                context.logger.warn('Task room answer recovery deferred', {
+                  taskId,
+                });
+              }
+            }
+          })(),
           roomRuntime.reconcileRevisionPublications(roomTaskIds),
         ]),
       )
