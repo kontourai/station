@@ -6,8 +6,8 @@ import {
 import type {
   SessionTurnBoundaryAuthority,
   SessionTurnBoundaryClaim,
-} from './session-turn-boundary.js';
-import { createInMemorySessionTurnBoundaryAuthority } from './session-turn-boundary.js';
+} from './session-turn-boundary-binding.js';
+import { createInMemorySessionTurnBoundaryAuthority } from './session-turn-boundary-binding.js';
 import { WorkspaceExecutionBarrier } from './workspace-execution-barrier.js';
 
 type ThreadState = {

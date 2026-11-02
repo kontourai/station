@@ -653,6 +653,8 @@ test.each([
       undefined,
     );
     await service.readSession(THREAD, owner);
+    // Finish this runtime's startup repair before counting resume transactions.
+    await service.whenSessionAttachmentSettled();
     const db = new DatabaseSync(path, { readOnly: true });
     const boundary = () =>
       db

@@ -42,6 +42,16 @@ export {
   type FakeProcessTable,
 } from './process-table.js';
 export {
+  type RecoveryConformanceCase,
+  type RecoveryConformanceHarness,
+  type RecoveryConformanceIntent,
+  type RecoveryConformanceSession,
+  type RecoveryConformanceStorage,
+  recoveryConformanceCases,
+  registerRecoveryConformance,
+} from './recovery-conformance.js';
+export { createRecoveryHarness } from './recovery-harness.js';
+export {
   createSqliteKernelHarness,
   createSqliteKernelLocation,
   type SqliteKernelHarnessOptions,

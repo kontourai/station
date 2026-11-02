@@ -4,6 +4,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -1560,7 +1561,9 @@ describe('hosted mapped tests beside broad deferred obligations', () => {
   test.each([false, true])(
     'keeps mapped caller feedback and defers resolved global triggers, custom=%s',
     async (custom) => {
-      const directory = makeTempDir('station-hosted-mixed-deferral-');
+      const directory = realpathSync(
+        makeTempDir('station-hosted-mixed-deferral-'),
+      );
       mkdirSync(join(directory, 'src-ui/src/__tests__'), { recursive: true });
       mkdirSync(join(directory, 'src-ui/src/components'), { recursive: true });
       mkdirSync(join(directory, 'packages/shared/src'), { recursive: true });
