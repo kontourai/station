@@ -361,7 +361,7 @@ export function registerBrowserTools(registry: StationControlToolRegistry) {
 
   registry.tool(
     'browser_network',
-    'Read a bounded page of redacted network metadata for a Browser session. Requires page diagnostics permission.',
+    "Read a bounded page of redacted network metadata for a Browser session. Requires Let agents run JavaScript in this Project's pages (browserEvaluate).",
     {
       browserSessionId: sessionId,
       after: z.number().int().min(0).optional(),

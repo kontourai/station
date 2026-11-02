@@ -22,6 +22,13 @@ function htmlExcerpt(
       /[&"<>]/g,
       (c) => ({ '&': '&amp;', '"': '&quot;', '<': '&lt;', '>': '&gt;' })[c]!,
     );
+  const safeUrl = (value: string) => {
+    try {
+      return redactNetworkUrl(new URL(value, pageUrl).href);
+    } catch {
+      return '[invalid URL]';
+    }
+  };
   const attrs = attributes.slice(0, 20).map(({ name, value }) => {
     const key = name.slice(0, 100);
     let safe = value.slice(0, 100);
@@ -33,13 +40,26 @@ function htmlExcerpt(
         ))
     )
       safe = '[redacted]';
-    else if (/^(href|src|action)$/i.test(key)) {
-      try {
-        safe = redactNetworkUrl(new URL(value, pageUrl).href);
-      } catch {
-        safe = '[invalid URL]';
-      }
-    }
+    else if (/^(href|src|action|formaction|poster|xlink:href)$/i.test(key))
+      safe = safeUrl(value);
+    else if (/^ping$/i.test(key))
+      safe = value.trim().split(/\s+/).map(safeUrl).join(' ');
+    else if (/^srcset$/i.test(key))
+      safe = /data:/i.test(value)
+        ? '[redacted]'
+        : value
+            .split(',')
+            .map((entry) => {
+              const [url, ...descriptor] = entry.trim().split(/\s+/);
+              return [
+                safeUrl(url ?? ''),
+                ...descriptor.filter((part) =>
+                  /^(?:\d+(?:\.\d+)?x|\d+[wh])$/.test(part),
+                ),
+              ].join(' ');
+            })
+            .join(', ');
+    else if (/^style$/i.test(key)) safe = '[redacted]';
     return `${key}="${escapeAttribute(safe)}"`;
   });
   return `<${tagName}${attrs.length ? ` ${attrs.join(' ')}` : ''}>`.slice(
@@ -170,14 +190,41 @@ async function pick(
       bySession.set(session, cached);
       if (bySession.size > 32) bySession.delete(bySession.keys().next().value!);
     }
-    const resolved = await send<{ object?: { objectId?: string } }>(
-      'DOM.resolveNode',
-      {
+    const resolve = (contextId: number) =>
+      send<{ object?: { objectId?: string } }>('DOM.resolveNode', {
         backendNodeId: node.backendNodeId,
-        executionContextId: cached.contextId,
+        executionContextId: contextId,
         objectGroup,
-      },
-    );
+      });
+    let resolved: { object?: { objectId?: string } };
+    try {
+      resolved = await resolve(cached.contextId);
+    } catch (error) {
+      if (
+        !(error instanceof Error) ||
+        !/context.*(destroyed|not found|cannot find)|(?:cannot|could not) find.*context/i.test(
+          error.message,
+        )
+      )
+        throw error;
+      bySession.delete(session);
+      const world = await send<{ executionContextId?: number }>(
+        'Page.createIsolatedWorld',
+        {
+          frameId: before.id,
+          worldName: 'station-browser-pick',
+        },
+      );
+      if (!world.executionContextId)
+        throw new Error('Page context unavailable.');
+      cached = {
+        frameId: before.id!,
+        loaderId: before.loaderId!,
+        contextId: world.executionContextId,
+      };
+      bySession.set(session, cached);
+      resolved = await resolve(cached.contextId);
+    }
     if (!resolved.object?.objectId) throw new Error('Element unavailable.');
     const result = await send<{
       result?: { value?: unknown };

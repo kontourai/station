@@ -137,7 +137,10 @@ it('hands the image and its structured viewport marks to the same conversation i
     reader.onerror = () => reject(reader.error);
     reader.readAsText(files[1]!);
   });
-  expect(JSON.parse(text)).toMatchObject({
+  const json = JSON.parse(text);
+  expect(json).not.toHaveProperty('url');
+  expect(json).not.toHaveProperty('picked');
+  expect(json).toMatchObject({
     browserSessionId: 'bs_test',
     generation: 1,
     coordinateSpace: 'viewport',
@@ -222,7 +225,10 @@ it('captures the viewport before marking and includes it alongside an element cr
     reader.onerror = () => reject(reader.error);
     reader.readAsText(files[2]!);
   });
-  expect(JSON.parse(text)).toMatchObject({
+  const json = JSON.parse(text);
+  expect(json).not.toHaveProperty('url');
+  expect(json).not.toHaveProperty('picked');
+  expect(json).toMatchObject({
     coordinateSpace: 'viewport',
     cropOrigin: { x: 12, y: 20 },
     untrustedPageContent: {
