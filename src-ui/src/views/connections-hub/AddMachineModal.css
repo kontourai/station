@@ -42,12 +42,12 @@
 }
 
 .add-machine-modal__option-detail {
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   color: var(--text-secondary);
 }
 
 .add-machine-modal__option-unlocks {
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   font-weight: 600;
   color: var(--accent-primary);
 }
@@ -55,6 +55,6 @@
 .add-machine-modal__learn-more {
   align-self: flex-start;
   justify-content: flex-start;
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   color: var(--accent-primary);
 }

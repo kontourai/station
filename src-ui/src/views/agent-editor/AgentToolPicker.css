@@ -69,7 +69,7 @@
 }
 .agent-tool-picker__category {
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 
 .agent-tool-picker__navigation,

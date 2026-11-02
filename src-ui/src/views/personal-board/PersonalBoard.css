@@ -35,7 +35,7 @@
   gap: var(--k-space-2);
 }
 .personal-board__eyebrow {
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--k-text-muted);
@@ -72,7 +72,7 @@
 }
 .personal-board__source {
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 .personal-board__rows {
   padding: 0;
@@ -101,7 +101,7 @@
 }
 .personal-board__rows li > span,
 .personal-board__rows time {
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   color: var(--k-text-muted);
   flex-shrink: 0;
 }

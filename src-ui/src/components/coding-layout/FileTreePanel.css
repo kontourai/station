@@ -11,7 +11,7 @@
   justify-content: space-between;
   gap: 8px;
   padding: 6px 8px 4px;
-  font-size: 11px;
+  font-size: var(--k-text-sm);
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -131,7 +131,7 @@
 .file-tree-row__chevron,
 .file-tree-row__bullet {
   flex: 0 0 auto;
-  font-size: 10px;
+  font-size: var(--k-text-sm);
   color: var(--text-muted);
 }
 
@@ -147,7 +147,7 @@
   flex: 0 0 auto;
   margin-left: auto;
   padding-left: 6px;
-  font-size: 9px;
+  font-size: var(--k-text-sm);
   color: var(--accent-primary, var(--color-brand, #34d399));
 }
 

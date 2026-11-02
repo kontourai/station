@@ -107,7 +107,7 @@
   border-bottom: 1px solid var(--border-primary);
   color: var(--text-secondary);
   font-family: var(--font-mono);
-  font-size: 0.72rem;
+  font-size: var(--k-text-sm);
   text-transform: uppercase;
   letter-spacing: 0.1em;
 }

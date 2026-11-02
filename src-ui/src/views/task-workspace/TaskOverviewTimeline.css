@@ -57,7 +57,7 @@
 .task-timeline time,
 .task-timeline__metadata {
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 .task-timeline__metadata {
   flex-wrap: wrap;

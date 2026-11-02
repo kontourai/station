@@ -29,7 +29,7 @@
 }
 .task-room-composer .task-room-message-label {
   grid-column: 1 / -1;
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   color: var(--k-text-faint);
 }
 .task-room-composer .task-room-agent-action,
@@ -42,7 +42,7 @@
   align-items: center;
   flex-wrap: wrap;
   gap: var(--k-space-1);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 .task-room-composer .task-room-brief-choice {
   flex: 1;
@@ -52,7 +52,7 @@
   min-width: max-content;
   gap: var(--k-space-2);
   margin: 0;
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   color: var(--k-text-muted);
 }
 .task-room-composer .task-room-send {

@@ -75,7 +75,7 @@
 
 .workspace-pane-failure__subject-label {
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   letter-spacing: 0.02em;
   text-transform: uppercase;
 }
@@ -163,7 +163,7 @@
   background: var(--k-panel);
   color: var(--k-text);
   font-family: var(--k-font-mono);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   user-select: text;

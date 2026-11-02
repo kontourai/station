@@ -44,7 +44,7 @@
 }
 
 .first-run-engines__note {
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   line-height: 1.5;
   font-weight: 400;
   color: var(--color-text-secondary);
@@ -52,7 +52,7 @@
 
 .first-run-engines__more {
   margin: 0 0 var(--space-4, 16px);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   color: var(--color-text-secondary);
 }
 
@@ -68,7 +68,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-1, 4px);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   line-height: 1.5;
 }
 
@@ -113,7 +113,7 @@
 /* Batch progress / summary live region. */
 .first-run-engines__status {
   margin: 0;
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   line-height: 1.5;
   color: var(--color-text-secondary);
 }

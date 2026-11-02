@@ -9,7 +9,7 @@
 
 .claude-artifact-card__kind {
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 
 .claude-artifact-card__link {
@@ -51,7 +51,7 @@
   min-width: 0;
   color: var(--k-text-muted);
   font-family: var(--k-font-mono);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   overflow-wrap: anywhere;
 }
 

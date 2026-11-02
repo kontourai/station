@@ -24,7 +24,7 @@
 .plugin-draft-pane__status,
 .plugin-draft-pane__note {
   color: var(--text-secondary);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
 }
 
 .plugin-draft-pane__status {
@@ -41,7 +41,7 @@
   border: 1px solid var(--border-primary);
   border-radius: var(--radius-md);
   color: var(--warning-text);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   margin: 0;
   overflow-wrap: anywhere;
   padding: 0.5rem 0.75rem 0.5rem 1.5rem;

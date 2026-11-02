@@ -94,7 +94,7 @@
   margin: 0 0 0.45rem;
   color: var(--accent-primary);
   font-family: var(--font-mono);
-  font-size: 0.72rem;
+  font-size: var(--k-text-sm);
   font-weight: 600;
   letter-spacing: 0.16em;
   text-transform: uppercase;

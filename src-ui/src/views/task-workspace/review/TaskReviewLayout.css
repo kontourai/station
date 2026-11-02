@@ -110,7 +110,7 @@
   justify-content: space-between;
   text-align: left;
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   padding: var(--k-space-1) var(--k-space-2);
 }
 .review-outline button span:first-child {
@@ -144,7 +144,7 @@
   padding: 0 var(--k-space-1);
   border: var(--k-border-thin) solid var(--k-line-strong);
   border-radius: var(--k-radius-sm);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   line-height: var(--k-leading-loose);
   color: var(--k-text-muted);
   overflow-wrap: anywhere;
@@ -240,7 +240,7 @@
   margin-left: auto;
 }
 .review-rail__controls .button {
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 .review-filters {
   display: flex;
@@ -287,7 +287,7 @@
   flex-wrap: wrap;
   gap: var(--k-space-1);
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   margin-block: var(--k-space-1);
 }
 .review-rail__threads {
@@ -318,7 +318,7 @@
   display: flex;
   align-items: center;
   gap: var(--k-space-2);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 .review-thread__header strong {
   min-width: 0;
@@ -405,7 +405,7 @@
 }
 .review-quote-label {
   display: block;
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   color: var(--k-text-faint);
 }
 .review-thread__footer {
@@ -537,7 +537,7 @@
 .review-draft-status {
   margin-right: auto;
   color: var(--k-text-faint);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 .review-composer {
   position: fixed;
@@ -639,7 +639,7 @@
   width: calc(var(--k-space-4) + var(--k-space-1));
   height: var(--k-space-5);
   color: var(--k-status-contrast);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   font-weight: 600;
 }
 .review-image__marker svg {
@@ -670,7 +670,7 @@
 .review-image__hint {
   visibility: hidden;
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   margin-block: var(--k-space-1);
 }
 .review-image:has(.review-image__target:focus) .review-image__hint {
@@ -684,7 +684,7 @@
   padding: var(--k-space-2) var(--k-space-3);
   border-top: var(--k-border-thin) solid var(--k-line);
   color: var(--k-text-faint);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 .review-rail:is(:hover, :focus-within) .review-hotkeys {
   visibility: visible;
@@ -852,7 +852,7 @@
   gap: var(--k-space-2);
   padding: var(--k-space-2);
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 .review-clip__item small,
 .review-clip__title {
@@ -862,7 +862,7 @@
 }
 .review-clip__item small {
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 .review-clip__video {
   display: block;
@@ -900,7 +900,7 @@
   display: none;
   margin: var(--k-space-1) 0 0;
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 .task-review[data-mobile] .review-image {
   height: 100%;

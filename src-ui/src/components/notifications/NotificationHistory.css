@@ -174,7 +174,7 @@
 .notification-history__eyebrow,
 .notification-history__time {
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 
 .notification-history__eyebrow {
@@ -204,7 +204,7 @@
 .notification-history__detail {
   margin-top: var(--k-space-1);
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   line-height: 1.4;
   white-space: pre-line;
   overflow-wrap: anywhere;
@@ -305,7 +305,7 @@
   color: var(--k-text);
   cursor: pointer;
   font: inherit;
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   font-weight: 600;
   text-decoration: none;
 }
@@ -336,7 +336,7 @@
   padding: var(--k-space-3) var(--k-space-4);
   border-top: 1px solid var(--k-line);
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 
 .notification-history__more .notification-history__link {

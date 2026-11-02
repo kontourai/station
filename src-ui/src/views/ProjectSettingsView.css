@@ -18,7 +18,7 @@
 }
 
 .knowledge-section__stat {
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   color: var(--text-muted);
 }
 
@@ -50,7 +50,7 @@
   border: 1px solid var(--border-primary);
   border-radius: 5px;
   padding: 4px 10px;
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   color: var(--text-secondary);
   cursor: pointer;
 }
@@ -100,7 +100,7 @@
 
 .knowledge-section__source-path {
   display: block;
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   color: var(--text-muted);
   font-family: var(--font-mono);
   overflow: hidden;
@@ -204,7 +204,7 @@
   );
   color: var(--text-secondary);
   font-family: var(--font-mono);
-  font-size: 0.72rem;
+  font-size: var(--k-text-sm);
 }
 .project-settings__path-pill code {
   min-width: 0;
@@ -299,7 +299,7 @@
   margin-bottom: 0.6rem;
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: var(--k-text-sm);
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
@@ -501,7 +501,7 @@
 }
 
 .resources-section__slot-label {
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   font-weight: 600;
   color: var(--text-muted);
   text-transform: none;
@@ -509,7 +509,7 @@
 
 .resources-section__slot-value {
   font-family: var(--font-mono, monospace);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   color: var(--text-primary);
   overflow-wrap: anywhere;
 }
@@ -541,7 +541,7 @@
 .resources-section__gap {
   margin: 0;
   color: var(--text-secondary);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   overflow-wrap: anywhere;
 }
 

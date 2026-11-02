@@ -44,7 +44,7 @@ button.pull-request-row__open:hover {
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2) var(--space-4);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   color: var(--text-secondary);
   min-width: 0;
 }
@@ -67,7 +67,7 @@ button.pull-request-row__open:hover {
   grid-column: 1 / -1;
   margin: 0;
   padding: 0 0 var(--space-2);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   color: var(--text-secondary);
   overflow-wrap: anywhere;
 }

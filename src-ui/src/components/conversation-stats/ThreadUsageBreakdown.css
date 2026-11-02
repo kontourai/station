@@ -29,7 +29,7 @@
   border: var(--k-border-thin) solid var(--k-caution);
   border-radius: var(--k-radius-sm);
   color: var(--k-caution);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   font-weight: 600;
 }
 
@@ -37,7 +37,7 @@
   margin: var(--k-space-2) 0 0;
   padding-inline-start: var(--k-space-4);
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   line-height: var(--k-leading-normal);
 }
 
@@ -78,7 +78,7 @@
 
 .thread-usage-breakdown__kind {
   color: var(--k-text-faint);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 
 .thread-usage-breakdown__figures {
@@ -88,7 +88,7 @@
 .thread-usage-breakdown__relation,
 .thread-usage-breakdown__note {
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   line-height: var(--k-leading-normal);
 }
 

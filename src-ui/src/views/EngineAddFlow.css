@@ -49,7 +49,7 @@
 
 .engine-catalog__detail {
   color: var(--text-secondary);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   overflow-wrap: anywhere;
 }
 

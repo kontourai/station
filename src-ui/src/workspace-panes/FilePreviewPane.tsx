@@ -964,7 +964,9 @@ function BoundedPngImage({
         name={`Preview of ${path}`}
         errorMessage="This image passed the bounded preview checks but could not be decoded."
       />
-      <figcaption style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+      <figcaption
+        style={{ fontSize: 'var(--k-text-xs)', color: 'var(--text-muted)' }}
+      >
         PNG · {sizeBytes ?? 0} bytes
       </figcaption>
     </figure>
