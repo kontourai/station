@@ -290,8 +290,16 @@ export type ColorThemeId = (typeof COLOR_THEME_IDS)[number];
  */
 export const COLOR_THEME_ID_PATTERN = '^[a-z][a-z0-9-]{0,47}$';
 
+/**
+ * The appearance mode a person chose. `system` follows the device's
+ * `prefers-color-scheme` and is the default (#4407). It is never stored:
+ * choosing it clears a saved light/dark choice, so an older client or server,
+ * which knows only light and dark, reads it as "no choice".
+ */
+export type ThemePreference = 'light' | 'dark' | 'system';
+
 export interface DeviceSettings {
-  theme: 'light' | 'dark';
+  theme: ThemePreference;
   accentColor: string | null;
   /**
    * The color-theme family. Values arrive from storage, imports and the
@@ -694,14 +702,13 @@ export const DEVICE_SETTINGS_REGISTRY = [
   defineDeviceSetting({
     key: 'theme',
     scope: 'account',
-    descriptor: { kind: 'enum', values: ['light', 'dark'] },
+    descriptor: { kind: 'enum', values: ['light', 'dark', 'system'] },
     label: 'Theme',
-    help: 'The interface renders in this color scheme in your interface.',
-    description: 'Light or dark interface theme.',
+    help: 'The interface renders light, dark, or follows this device’s appearance.',
+    description: 'Light, dark, or System (follows the device) interface theme.',
     priorStorageKey: 'theme',
-    // Confirmed against index.css: no `data-theme` attribute resolves the
-    // dark skin (ThemeToggle.tsx's own in-code default already agreed).
-    defaultValue: 'dark',
+    // #4407: unset follows the device. A saved light or dark choice is kept.
+    defaultValue: 'system',
   }),
   defineDeviceSetting({
     key: 'accentColor',

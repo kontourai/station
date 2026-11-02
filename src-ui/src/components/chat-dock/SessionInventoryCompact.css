@@ -23,7 +23,7 @@
 }
 .session-inventory-compact__heading p {
   color: var(--text-muted);
-  font-size: var(--text-2xs);
+  font-size: var(--k-text-sm);
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -32,7 +32,7 @@
   display: -webkit-box;
   margin-top: 0.25rem;
   color: var(--text-secondary);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   overflow: hidden;
   overflow-wrap: anywhere;
   -webkit-box-orient: vertical;
@@ -70,7 +70,7 @@
 .session-inventory-compact__live {
   margin: 0;
   color: var(--text-secondary);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
 }
 .session-inventory-compact__highlights {
   display: flex;

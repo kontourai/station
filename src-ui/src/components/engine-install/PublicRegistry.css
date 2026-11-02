@@ -19,7 +19,7 @@
 .public-registry__notice,
 .public-registry__reason {
   margin: 0;
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   line-height: 1.5;
   color: var(--color-text-secondary);
   overflow-wrap: anywhere;
@@ -30,7 +30,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2, 8px);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   color: var(--color-text-secondary);
 }
 
@@ -41,14 +41,14 @@
 }
 
 .public-registry__facts {
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   color: var(--color-text-secondary);
   overflow-wrap: anywhere;
 }
 
 .public-registry__details {
   margin-top: var(--space-2, 8px);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   color: var(--color-text-secondary);
 }
 
@@ -82,7 +82,7 @@
   padding: var(--space-2, 8px) var(--space-3, 12px);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm, 6px);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   color: var(--color-text-secondary);
   overflow-wrap: anywhere;
 }

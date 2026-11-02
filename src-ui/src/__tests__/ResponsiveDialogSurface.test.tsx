@@ -98,6 +98,43 @@ describe('ResponsiveDialogSurface', () => {
     expect(onClick).toHaveBeenCalledOnce();
   });
 
+  test('#4403: a closed surface keeps its content but is no dialog', () => {
+    setMobileViewport(true);
+    function Sheet() {
+      const [open, setOpen] = useState(false);
+      return (
+        <>
+          <button type="button" onClick={() => setOpen(true)}>
+            Open tools
+          </button>
+          <ResponsiveDialogSurface
+            open={open}
+            layer="dialog"
+            ariaLabel="Tools"
+            onClose={() => setOpen(false)}
+          >
+            <input aria-label="Kept draft" defaultValue="" />
+          </ResponsiveDialogSurface>
+        </>
+      );
+    }
+    render(<Sheet />);
+
+    // `hidden: true` also counts what aria-hidden or display:none hides: the
+    // closed sheet must not be a dialog at all, not merely a hidden one.
+    expect(screen.queryAllByRole('dialog', { hidden: true })).toHaveLength(0);
+    const draft = screen.getByLabelText('Kept draft') as HTMLInputElement;
+    expect(draft.closest('[inert]')).not.toBeNull();
+    fireEvent.change(draft, { target: { value: 'half typed' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open tools' }));
+    const dialog = screen.getByRole('dialog', { name: 'Tools' });
+    // The same node, so the content's state survived the open.
+    expect(dialog.contains(draft)).toBe(true);
+    expect(draft.value).toBe('half typed');
+    expect(draft.closest('[inert]')).toBeNull();
+  });
+
   test('contains a phone dialog in the visual viewport without focusing its input', async () => {
     const viewport = setMobileViewport(true);
     const initialFocusRef = { current: null as HTMLInputElement | null };

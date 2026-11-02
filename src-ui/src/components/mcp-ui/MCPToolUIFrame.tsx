@@ -58,7 +58,7 @@ import {
   useHostRequestAuthorityScope,
 } from '../../contexts/ApiBaseContext';
 import { useConfig } from '../../contexts/ConfigContext';
-import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
+import { useResolvedThemeMode } from '../../hooks/useResolvedThemeMode';
 import { useRootThemeVersion } from '../../lib/root-theme';
 import { openNativeExternalLink } from '../../platform/openExternalLink';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
@@ -635,7 +635,7 @@ function MCPToolUISandbox({
   openExternalLink: NonNullable<MCPToolUIFrameProps['openExternalLink']>;
 }) {
   const isTranscript = !!transcriptResult;
-  const { theme } = useDeviceSettings();
+  const theme = useResolvedThemeMode();
   // The host styles are resolved token values, so they are re-sent after any
   // root theme change (palette, accent, branding), not only light/dark.
   const rootThemeVersion = useRootThemeVersion();

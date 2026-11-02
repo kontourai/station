@@ -603,7 +603,7 @@
     {
       "id": "theme",
       "label": "Theme",
-      "help": "The interface renders in this color scheme in your interface.",
+      "help": "The interface renders light, dark, or follows this device’s appearance.",
       "scope": "account",
       "section": "appearance",
       "route": "/settings?view=appearance&highlight=theme",

@@ -815,6 +815,7 @@ export function ChatInputArea({
   if (!queuedRetryText && queuedDiscard.open) queuedDiscard.close();
   const queuedRetryDescriptionId = React.useId();
   const modelResetReasonId = React.useId();
+  const modelPickerTitleId = React.useId();
   const composerRootRef = useRef<HTMLDivElement | null>(null);
   // The draft's two-line floor, written by the per-keystroke sizing below and
   // read by the reservation.
@@ -1049,6 +1050,7 @@ export function ChatInputArea({
         <ResponsiveDialogSurface
           layer="popover"
           ariaLabel="Model"
+          ariaLabelledBy={modelPickerTitleId}
           onClose={onModelClose}
           historyMode="entry"
           anchorRef={modelButtonRef}
@@ -1087,6 +1089,7 @@ export function ChatInputArea({
               }
             >
               <SessionModelPicker
+                hostTitleId={modelPickerTitleId}
                 models={pickerModels ?? availableModels}
                 stale={modelsStale}
                 providers={modelProviders}
@@ -1432,6 +1435,9 @@ export function ChatInputArea({
           )}
           <textarea
             ref={textareaRef}
+            // The placeholder changes with the turn and is empty while
+            // sending is refused, so it cannot be the field's name (#4403).
+            aria-label="Message"
             aria-autocomplete={
               mentionAutocompleteAvailable ? 'list' : undefined
             }

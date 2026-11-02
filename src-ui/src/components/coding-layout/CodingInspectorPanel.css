@@ -28,7 +28,7 @@
 .coding-inspector__cta-note {
   margin: 0;
   color: var(--text-secondary);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   line-height: 1.5;
 }
 
@@ -62,7 +62,7 @@
 
 .coding-inspector__cta-link {
   color: var(--text-secondary);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   text-decoration: underline;
 }
 
@@ -78,12 +78,12 @@
   border: 1px solid var(--border-primary);
   color: var(--text-primary);
   font-family: var(--font-mono);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   word-break: break-all;
 }
 
 .coding-inspector__cta-error {
   margin: 0;
   color: var(--error-text);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
 }

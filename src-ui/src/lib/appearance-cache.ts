@@ -58,7 +58,9 @@ export function parseAppearanceCache(
     if (
       value?.version !== 1 ||
       (value.source !== 'account' && value.source !== 'device') ||
-      (value.theme !== 'light' && value.theme !== 'dark') ||
+      (value.theme !== 'light' &&
+        value.theme !== 'dark' &&
+        value.theme !== 'system') ||
       !id(value.colorTheme) ||
       !optionalId(value.colorThemeFlavor) ||
       !optionalId(value.colorThemeAccent)

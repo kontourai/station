@@ -98,6 +98,7 @@ import {
 } from './src-ui/src/lib/color-theme-apply';
 import { applyBrandingTheme } from './src-ui/src/lib/branding-theme';
 import { applyAccentColor } from './src-ui/src/lib/accent-contrast';
+import { applyThemeMode } from './src-ui/src/lib/theme-mode';
 window.harness = {
   store: deviceSettingsStore,
   applyBrandingTheme,
@@ -109,7 +110,7 @@ window.harness = {
   boot() {
     const root = document.documentElement;
     const mode = () =>
-      root.setAttribute('data-theme', deviceSettingsStore.getSnapshot().theme);
+      applyThemeMode(root, deviceSettingsStore.getSnapshot().theme);
     mode();
     deviceSettingsStore.subscribe(mode);
     bindColorThemeToSettings(root, deviceSettingsStore);
@@ -163,6 +164,12 @@ describe('color theme cascade', () => {
     sheetFailures?: number;
     /** Return before a slow family sheet has arrived. */
     early?: boolean;
+    /**
+     * The device's `prefers-color-scheme`. Dark by default: with no saved
+     * mode the page follows the device (System, #4407), and these tests were
+     * written against the dark default.
+     */
+    colorScheme?: 'light' | 'dark';
   }
 
   /**
@@ -171,7 +178,9 @@ describe('color theme cascade', () => {
    * public files served.
    */
   async function open(head: string, options: OpenOptions = {}) {
-    const page = await browser.newPage();
+    const page = await browser.newPage({
+      colorScheme: options.colorScheme ?? 'dark',
+    });
     const requested: string[] = [];
     if (options.init) await page.addInitScript(options.init);
     await page.route(`${ORIGIN}/**`, async (route) => {
@@ -270,6 +279,36 @@ describe('color theme cascade', () => {
     const HEAD = (css: string) =>
       `<script src="/startup-theme.js"></script><script>window.atParse = { attrs: [...document.documentElement.attributes].map(a => a.name + '=' + a.value).sort(), themeColor: document.querySelector('meta[name="theme-color"]')?.content ?? null, sheets: [...document.querySelectorAll('link[rel="stylesheet"]')].map(l => l.getAttribute('href')) };</script><style>${css}</style>`;
     const SPLASH = '<div class="station-startup" id="splash"></div>';
+
+    test('#4407: with no saved mode the first paint follows the device; a saved mode does not', async () => {
+      const cases = [
+        { colorScheme: 'light', values: {}, expected: 'data-theme=light' },
+        { colorScheme: 'dark', values: {}, expected: 'data-theme=dark' },
+        {
+          colorScheme: 'light',
+          values: { theme: 'dark' },
+          expected: 'data-theme=dark',
+        },
+        {
+          colorScheme: 'dark',
+          values: { theme: 'light' },
+          expected: 'data-theme=light',
+        },
+      ] as const;
+      for (const { colorScheme, values, expected } of cases) {
+        const page = await open(HEAD(startupCss), { values, colorScheme });
+        try {
+          const { attrs } = await page.evaluate((): { attrs: string[] } =>
+            Reflect.get(window, 'atParse'),
+          );
+          expect(
+            attrs.filter((attr) => attr.startsWith('data-theme=')),
+          ).toEqual([expected]);
+        } finally {
+          await page.close();
+        }
+      }
+    });
 
     test('a saved family, flavor and accent are stamped, its sheet requested, and the splash painted', async () => {
       const page = await open(HEAD(startupCss), {

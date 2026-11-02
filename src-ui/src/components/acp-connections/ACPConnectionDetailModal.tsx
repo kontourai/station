@@ -166,7 +166,7 @@ export function ACPConnectionDetailModal({
   };
 
   const sectionLabel: CSSProperties = {
-    fontSize: '11px',
+    fontSize: 'var(--k-text-sm)',
     fontWeight: 600,
     color: 'var(--text-muted)',
     textTransform: 'uppercase',
@@ -359,7 +359,7 @@ export function ACPConnectionDetailModal({
                         {disabledForSecrets && (
                           <div
                             style={{
-                              fontSize: '11px',
+                              fontSize: 'var(--k-text-sm)',
                               color: 'var(--text-muted)',
                               marginLeft: '28px',
                             }}
@@ -411,7 +411,7 @@ export function ACPConnectionDetailModal({
                           style={{
                             color: 'var(--text-muted)',
                             fontFamily: 'monospace',
-                            fontSize: '11px',
+                            fontSize: 'var(--k-text-sm)',
                             overflowWrap: 'anywhere',
                           }}
                         >
@@ -528,7 +528,7 @@ export function ACPConnectionDetailModal({
                 <div style={sectionLabel}>Session</div>
                 <code
                   style={{
-                    fontSize: '11px',
+                    fontSize: 'var(--k-text-sm)',
                     color: 'var(--text-muted)',
                     fontFamily: 'monospace',
                     overflowWrap: 'anywhere',

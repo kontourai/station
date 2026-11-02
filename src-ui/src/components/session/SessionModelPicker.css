@@ -22,7 +22,7 @@
 .session-model-picker__models small,
 .session-model-picker__providers small {
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 
 .session-model-picker__reset,
@@ -135,7 +135,7 @@
 .session-model-picker__model-group-name {
   padding: var(--k-space-2) var(--k-space-3) 0;
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   font-weight: 600;
   letter-spacing: 0.02em;
   text-transform: uppercase;

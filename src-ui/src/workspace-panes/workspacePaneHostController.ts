@@ -123,6 +123,12 @@ export interface WorkspacePaneHostController {
   state: WorkspacePaneHostState;
   persistenceStatus: WorkspacePaneHostPersistenceStatus;
   canPersist: boolean;
+  /**
+   * While another tab holds the lease ('contended'), take it for this tab:
+   * this tab restores the saved views and saves from now on, and the other
+   * tab becomes the contended one (#4407). A no-op in any other state.
+   */
+  takeOver(): void;
   tabRefs: React.MutableRefObject<Map<string, HTMLButtonElement>>;
   closeConfirmation: {
     instanceId: WorkspacePaneInstanceId;
@@ -238,6 +244,8 @@ export function useWorkspacePaneHostController({
   const mountedRef = useRef(false);
   const persistenceStatusRef =
     useRef<WorkspacePaneHostPersistenceStatus>('unavailable');
+  /** Set by the lease effect while another tab holds the lease (#4407). */
+  const takeOverRef = useRef<(() => void) | null>(null);
   const operationalTrackerRef =
     useRef<WorkspacePaneOperationalEventTracker | null>(null);
   const availabilityRef = useRef(new Map<string, WorkspacePaneAvailability>());
@@ -327,11 +335,12 @@ export function useWorkspacePaneHostController({
     () => persistenceStatusRef.current === 'owned',
     [],
   );
+  const takeOver = useCallback(() => takeOverRef.current?.(), []);
 
   useLayoutEffect(() => {
     let active = true;
     let releaseLease: (() => void) | null = null;
-    const waitAbortController = new AbortController();
+    let waitAbortController = new AbortController();
     const setStatus = (status: WorkspacePaneHostPersistenceStatus) => {
       persistenceStatusRef.current = status;
       if (active) setPersistenceStatus(status);
@@ -392,31 +401,54 @@ export function useWorkspacePaneHostController({
       });
     };
 
-    const queueLease = () =>
-      resolvedLockManager
-        .request(
-          lockName,
-          { mode: 'exclusive', signal: waitAbortController.signal },
-          acquireLease,
-        )
-        .catch(() => {
-          if (active && !waitAbortController.signal.aborted)
-            setStatus('unavailable');
-        });
+    // A held lease ends early only when another tab takes it with "Use here"
+    // (Web Locks `steal`): the request that held it rejects with AbortError.
+    // This tab is then the one whose views are open elsewhere, and waits to
+    // be given the lease back, exactly as a tab that never had it does.
+    const settleRequest = (signal: AbortSignal | null) => (error: unknown) => {
+      if (!active || signal?.aborted) return;
+      const stolen =
+        error instanceof DOMException && error.name === 'AbortError';
+      if (!stolen) {
+        setStatus('unavailable');
+        return;
+      }
+      releaseLease?.();
+      releaseLease = null;
+      setStatus('contended');
+      queueLease();
+    };
+
+    const queueLease = () => {
+      const { signal } = waitAbortController;
+      void resolvedLockManager
+        .request(lockName, { mode: 'exclusive', signal }, acquireLease)
+        .catch(settleRequest(signal));
+    };
 
     void resolvedLockManager
       .request(lockName, { mode: 'exclusive', ifAvailable: true }, (lock) => {
         if (lock) return acquireLease(lock);
         setStatus('contended');
-        void queueLease();
+        queueLease();
       })
-      .catch(() => {
-        if (active) setStatus('unavailable');
-      });
+      .catch(settleRequest(null));
+
+    takeOverRef.current = () => {
+      if (!active || persistenceStatusRef.current !== 'contended') return;
+      // Withdraw this tab's queued wait, then take the lease from the tab
+      // holding it. Its saved document is restored before this tab writes.
+      waitAbortController.abort();
+      waitAbortController = new AbortController();
+      void resolvedLockManager
+        .request(lockName, { mode: 'exclusive', steal: true }, acquireLease)
+        .catch(settleRequest(null));
+    };
 
     return () => {
       flushResizePublication.current?.();
       active = false;
+      takeOverRef.current = null;
       persistenceStatusRef.current = 'unavailable';
       waitAbortController.abort();
       releaseLease?.();
@@ -994,6 +1026,7 @@ export function useWorkspacePaneHostController({
     state,
     persistenceStatus,
     canPersist: persistenceStatus === 'owned',
+    takeOver,
     tabRefs,
     closeConfirmation,
     select,

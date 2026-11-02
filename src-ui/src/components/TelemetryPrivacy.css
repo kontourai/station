@@ -62,7 +62,7 @@
   line-height: var(--k-leading-normal);
 }
 .telemetry-outbox pre {
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 .telemetry-publisher {
   min-width: 0;

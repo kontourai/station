@@ -357,7 +357,7 @@
 
 .inbox-row__actions .chat-dock-inbox__snooze-menu-trigger {
   width: 18px;
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
 }
 
 /* ── Slim: one line for snoozed and settled work ───────────────────────── */
@@ -530,7 +530,7 @@
 .identity-marks__more {
   margin-left: var(--k-space-1);
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   font-variant-numeric: tabular-nums;
 }
 
@@ -596,7 +596,7 @@
   border-radius: 0;
   background: transparent;
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 .inbox-row__swipe-actions > button::after {
   content: none;

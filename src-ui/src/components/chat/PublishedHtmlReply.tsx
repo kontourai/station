@@ -8,7 +8,7 @@ import {
   useApiBase,
   useHostRequestAuthorityScope,
 } from '../../contexts/ApiBaseContext';
-import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
+import { useResolvedThemeMode } from '../../hooks/useResolvedThemeMode';
 import { SkeletonBlock } from '../state';
 import { HtmlReply } from './HtmlReply';
 
@@ -19,7 +19,7 @@ export function PublishedHtmlReply({
 }) {
   const { apiBase } = useApiBase();
   const authority = useHostRequestAuthorityScope();
-  const { theme } = useDeviceSettings();
+  const theme = useResolvedThemeMode();
   const query = useQuery({
     queryKey: [
       'html-reply',

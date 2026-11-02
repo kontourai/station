@@ -1500,7 +1500,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                     page); color themes and accents live on Appearance. */}
                     <PageRow
                       {...settingsRow('theme')}
-                      description="Switch light and dark here. Color themes are on the Appearance page."
+                      description="Switch light and dark here. System mode and color themes are on the Appearance page."
                       control={
                         <span className="settings__appearance-controls">
                           <ThemeToggle />

@@ -6,7 +6,7 @@
   align-items: center;
   gap: var(--k-space-2);
   margin: var(--k-space-2) 0;
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   color: var(--k-text-faint);
 }
 

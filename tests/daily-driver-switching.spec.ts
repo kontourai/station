@@ -18,6 +18,7 @@ import {
 } from './helpers/daily-driver-shell';
 import { foregroundMessageReceipt } from './helpers/execution-receipt';
 import { test } from './helpers/fixture-audit';
+import { MODEL_PICKER_NAME } from './helpers/model-picker';
 import {
   dismissSetupLauncher,
   waitForMockOrchestrationSse,
@@ -148,7 +149,7 @@ async function selectComposerModel(page: Page, optionName: RegExp) {
   const modelButton = page.getByRole('button', { name: /^Model:/ });
   await expect(modelButton).toBeEnabled({ timeout: 10_000 });
   await modelButton.click();
-  const picker = page.getByRole('dialog', { name: 'Choose model' });
+  const picker = page.getByRole('dialog', { name: MODEL_PICKER_NAME });
   await expect(picker).toBeVisible({ timeout: 5_000 });
   await picker.getByRole('option', { name: optionName }).click();
   await expect(picker).toBeHidden({ timeout: 5_000 });

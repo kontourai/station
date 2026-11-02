@@ -204,7 +204,7 @@
   border-radius: var(--k-radius-sm);
   border: 1px solid var(--k-active);
   color: var(--k-active);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   line-height: 1.6;
   white-space: nowrap;
 }

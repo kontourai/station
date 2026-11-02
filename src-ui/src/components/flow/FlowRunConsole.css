@@ -80,7 +80,7 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--k-space-2);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   color: var(--k-text-faint);
 }
 
@@ -197,7 +197,7 @@
 }
 
 .flow-run-console__evidence-meta {
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   color: var(--k-text-faint);
 }
 

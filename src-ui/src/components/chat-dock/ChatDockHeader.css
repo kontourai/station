@@ -62,7 +62,7 @@
      on-colour was not a pair (an accent override changed one side only). */
   background: var(--k-panel-raised);
   color: var(--k-positive);
-  font-size: var(--text-2xs);
+  font-size: var(--k-text-sm);
   font-weight: 600;
   line-height: 1;
   animation: chat-dock-status-arrive var(--motion-base) var(--ease-spring);

@@ -320,7 +320,7 @@
      did not reach it). --error-fill is 4.98:1 in both themes. */
   background: var(--error-fill);
   color: white;
-  font-size: var(--text-xs);
+  font-size: var(--k-text-xs);
   font-weight: 700;
   line-height: 1;
 }
@@ -358,7 +358,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
   font-weight: 600;
 }
 
@@ -447,7 +447,7 @@
   margin-left: auto;
   padding-left: var(--k-space-2);
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 
 /* The profile entry's initials chip inside the ⋯ overflow menu. */
@@ -722,7 +722,7 @@
 
 .message__rating-reason {
   width: 150px;
-  font-size: 0.7rem;
+  font-size: var(--k-text-sm);
   background: var(--bg-secondary);
   border: 1px solid var(--border-primary);
   color: var(--text-primary);
@@ -737,7 +737,7 @@
 }
 
 .message__rating-reason-label {
-  font-size: 0.65rem;
+  font-size: var(--k-text-sm);
   color: var(--text-muted);
   font-style: italic;
   max-width: 150px;
@@ -863,7 +863,7 @@
 }
 
 .message-attribution__agent-name {
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
   font-weight: 600;
   color: var(--text-muted);
 }
@@ -926,7 +926,7 @@
   gap: var(--k-space-1);
   margin-bottom: var(--k-space-1);
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 .message__station-glyph {
   width: 14px;
@@ -955,7 +955,7 @@
 .message-delivery {
   display: grid;
   color: var(--text-secondary);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   line-height: 1.4;
 }
 /* The glyph sits just outside the bubble's start edge, out of the text's way
@@ -1123,7 +1123,7 @@
   min-width: 0;
   margin: 0;
   color: var(--k-text-muted);
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
 }
 
 /* Why Station or the engine stopped it, when the person did not. */
@@ -1147,7 +1147,7 @@
      bottom-right corner (`.message__copy-btn`), which is where this last line
      ends; the same clearance is harmless where the button sits outside. */
   padding-inline-end: 32px;
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
   opacity: 0.85;
 }
 
@@ -1199,7 +1199,7 @@
   max-width: min(260px, 80vw);
   padding: 2px 2px 2px var(--space-1);
   color: var(--text-secondary);
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
   background: var(--bg-tertiary);
   border: 1px solid var(--border-primary);
   border-radius: 6px;
@@ -1341,7 +1341,7 @@
   flex: 0 0 auto;
   padding: 0 var(--space-1);
   color: var(--text-tertiary);
-  font-size: var(--text-2xs);
+  font-size: var(--k-text-sm);
   white-space: nowrap;
   background: var(--bg-secondary);
   border: 1px solid var(--border-primary);
@@ -1354,7 +1354,7 @@
   height: 20px;
   padding: 0;
   color: var(--text-secondary);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   line-height: 1;
   background: none;
   border: none;
@@ -1372,7 +1372,7 @@
   align-items: center;
   gap: 0.35rem;
   overflow: hidden;
-  font-size: var(--text-2xs);
+  font-size: var(--k-text-sm);
   color: var(--text-muted);
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -1596,7 +1596,7 @@
 .chat-input__send-failure {
   display: none;
   padding: 0 var(--space-2);
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
   line-height: 1.25;
   color: var(--error-text);
   white-space: nowrap;
@@ -1664,7 +1664,7 @@
 .chat-input__attachment-error,
 .chat-input__attachment-notice {
   padding: 0 var(--space-2);
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
   line-height: 1.25;
   overflow-wrap: anywhere;
 }
@@ -1816,7 +1816,7 @@
   margin: 0;
   padding-inline: var(--k-space-1);
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   overflow-wrap: anywhere;
 }
 
@@ -1834,7 +1834,7 @@
 .chat-error-details summary {
   cursor: pointer;
   color: var(--text-secondary);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   min-height: 44px;
   display: flex;
   align-items: center;
@@ -1846,7 +1846,7 @@
   overflow-x: auto;
   white-space: pre-wrap;
   word-break: break-word;
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
   font-family: var(--font-mono, ui-monospace, monospace);
   color: var(--text-secondary);
   background: var(--bg-tertiary);
@@ -1855,7 +1855,7 @@
 
 .chat-controls-row
   :is(.chat-input__drafts-button, .chat-input__clear, .chat-input__queue-btn) {
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   font-weight: 500;
 }
 
@@ -1883,7 +1883,7 @@
   background: var(--bg-tertiary);
   color: var(--text-secondary);
   cursor: pointer;
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
   white-space: nowrap;
 }
 
@@ -2110,7 +2110,7 @@
   cursor: not-allowed;
 }
 .composer-actions-menu__item-hint {
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
   color: var(--text-muted);
 }
 
@@ -2156,7 +2156,7 @@
 }
 
 .ui-block__field dt {
-  font-size: 0.72rem;
+  font-size: var(--k-text-sm);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-tertiary);
@@ -2197,7 +2197,7 @@
 }
 
 .ui-block__table th {
-  font-size: 0.72rem;
+  font-size: var(--k-text-sm);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-tertiary);
@@ -2213,7 +2213,7 @@
 
 .ui-block__code-lang {
   margin-left: auto;
-  font-size: 0.68rem;
+  font-size: var(--k-text-sm);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-tertiary);
@@ -2318,7 +2318,7 @@
   background: var(--bg-primary);
   color: var(--text-secondary);
   cursor: pointer;
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
   font-style: normal;
 }
 
@@ -2405,7 +2405,7 @@
   background: transparent;
   color: var(--text-secondary);
   font: inherit;
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   line-height: 1;
   white-space: nowrap;
   cursor: pointer;
@@ -2907,7 +2907,7 @@
   color: var(--k-text);
 }
 .station-switcher__status {
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   color: var(--k-text-muted);
 }
 /* Over the row's trailing edge, so the row keeps its full hit area. */
@@ -3147,7 +3147,7 @@
 
   .chat-dock__header-actions button {
     padding: 6px 8px;
-    font-size: var(--text-sm);
+    font-size: var(--k-text-sm);
   }
 
   .chat-input textarea {

@@ -1,10 +1,14 @@
 // Runs before first paint without loading the application module graph.
 // Keep the precedence aligned with resolveBootTheme and the settings store
 // (lib/appearance-cache.ts): the account appearance this device last
-// rendered, then the device envelope, then the legacy theme key.
+// rendered, then the device envelope, then the legacy theme key. With no
+// saved light or dark choice the mode is System and follows the device
+// (#4407; lib/theme-mode.ts).
 (() => {
   const root = document.documentElement;
-  let theme = 'dark';
+  const known = (value) =>
+    value === 'light' || value === 'dark' || value === 'system';
+  let theme = 'system';
   let saved = null;
   try {
     const prior = localStorage.getItem('theme');
@@ -13,8 +17,7 @@
       saved = JSON.parse(
         localStorage.getItem('station-device-settings-v1'),
       )?.values;
-      if (saved?.theme === 'light' || saved?.theme === 'dark')
-        theme = saved.theme;
+      if (known(saved?.theme)) theme = saved.theme;
     } catch {
       // A malformed envelope still permits the legacy theme preference.
     }
@@ -26,7 +29,7 @@
       if (
         cached?.version === 1 &&
         cached.source === 'account' &&
-        (cached.theme === 'light' || cached.theme === 'dark')
+        known(cached.theme)
       ) {
         theme = cached.theme;
         saved = cached;
@@ -36,6 +39,15 @@
     }
   } catch {
     // Storage can be unavailable in a WebView; retain Station's default.
+  }
+  if (theme === 'system') {
+    try {
+      theme = window.matchMedia('(prefers-color-scheme: light)').matches
+        ? 'light'
+        : 'dark';
+    } catch {
+      theme = 'dark';
+    }
   }
   root.dataset.theme = theme;
 

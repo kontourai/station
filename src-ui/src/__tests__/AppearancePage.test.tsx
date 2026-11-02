@@ -230,7 +230,14 @@ describe('Appearance page', () => {
     seed({ colorTheme: 'catppuccin' });
     renderPage();
     const mode = screen.getByRole('radiogroup', { name: 'Mode' });
-    expect(within(mode).getByRole('radio', { name: 'Dark' })).toHaveProperty(
+    // #4407: no saved mode is System, which follows the device (dark here:
+    // jsdom's device states no preference).
+    expect(
+      within(mode)
+        .getAllByRole('radio')
+        .map((radio) => radio.closest('label')?.textContent),
+    ).toEqual(['System', 'Light', 'Dark']);
+    expect(within(mode).getByRole('radio', { name: 'System' })).toHaveProperty(
       'checked',
       true,
     );
@@ -246,6 +253,68 @@ describe('Appearance page', () => {
     ).toBe('CatppuccinLatte');
     // The dark flavor stays what it was; light mode does not touch it.
     expect(attributes().flavor).toBe('mocha');
+  });
+
+  test('#4407: System follows the device, live, and choosing it clears a saved mode', () => {
+    const listeners = new Set<() => void>();
+    let prefersLight = true;
+    const query = {
+      get matches() {
+        return prefersLight;
+      },
+      media: '(prefers-color-scheme: light)',
+      addEventListener: (_type: string, listener: () => void) =>
+        listeners.add(listener),
+      removeEventListener: (_type: string, listener: () => void) =>
+        listeners.delete(listener),
+    };
+    const original = Object.getOwnPropertyDescriptor(window, 'matchMedia');
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: (media: string) =>
+        media === query.media
+          ? query
+          : {
+              matches: false,
+              media,
+              addEventListener() {},
+              removeEventListener() {},
+            },
+    });
+    try {
+      // The binder installed in beforeEach read no device preference; this
+      // one is what main.tsx installs on a device that has one.
+      unbind();
+      unbind = bindColorThemeToSettings(root, deviceSettingsStore);
+      seed({ theme: 'dark' });
+      renderPage();
+      const mode = screen.getByRole('radiogroup', { name: 'Mode' });
+      expect(root.getAttribute('data-theme')).toBe('dark');
+
+      fireEvent.click(within(mode).getByRole('radio', { name: 'System' }));
+      expect(deviceSettingsStore.getSnapshot().theme).toBe('system');
+      expect(root.getAttribute('data-theme')).toBe('light');
+      expect(screen.getByText('Previews show light mode.')).toBeTruthy();
+
+      // The device switches to dark: the page follows without a reload.
+      act(() => {
+        prefersLight = false;
+        for (const listener of listeners) listener();
+      });
+      expect(root.getAttribute('data-theme')).toBe('dark');
+      expect(screen.getByText('Previews show dark mode.')).toBeTruthy();
+
+      // An explicit choice stops following the device.
+      fireEvent.click(within(mode).getByRole('radio', { name: 'Light' }));
+      act(() => {
+        prefersLight = false;
+        for (const listener of listeners) listener();
+      });
+      expect(root.getAttribute('data-theme')).toBe('light');
+    } finally {
+      if (original) Object.defineProperty(window, 'matchMedia', original);
+      else Reflect.deleteProperty(window, 'matchMedia');
+    }
   });
 });
 

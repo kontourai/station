@@ -136,7 +136,7 @@
   grid-column: 1 / -1;
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: var(--k-text-sm);
   overflow-wrap: anywhere;
 }
 
@@ -149,7 +149,7 @@
   color: var(--text-muted);
   background: var(--bg-tertiary);
   font-family: var(--font-mono);
-  font-size: 0.58rem;
+  font-size: var(--k-text-sm);
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -262,7 +262,7 @@
 .task-workspace__reference-kind {
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: var(--k-text-sm);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -382,7 +382,7 @@
   /* Identity remains compact, but must meet AA on both row backgrounds. */
   color: var(--text-primary);
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: var(--k-text-sm);
 }
 
 .task-workspace__answer-reference:focus-visible {
@@ -508,7 +508,7 @@
 .task-workspace__answer-support-selector legend {
   color: var(--text-secondary);
   font-family: var(--font-mono);
-  font-size: 0.65rem;
+  font-size: var(--k-text-sm);
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -551,7 +551,7 @@
   margin: 0.45rem 0 0;
   padding-left: 1.1rem;
   color: var(--text-secondary);
-  font-size: 0.74rem;
+  font-size: var(--k-text-sm);
   line-height: 1.45;
 }
 
@@ -559,7 +559,7 @@
   margin: 0;
   overflow-wrap: anywhere;
   color: var(--text-muted);
-  font-size: 0.74rem;
+  font-size: var(--k-text-sm);
   line-height: 1.45;
 }
 
@@ -578,7 +578,7 @@
 .task-workspace__surface-answer-evidence dt {
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 0.62rem;
+  font-size: var(--k-text-sm);
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
@@ -604,7 +604,7 @@
 .task-workspace__support-choice code {
   overflow-wrap: anywhere;
   font-family: var(--font-mono);
-  font-size: 0.72rem;
+  font-size: var(--k-text-sm);
 }
 
 .task-workspace__answer-support-dialog-error {
@@ -713,7 +713,7 @@
   overflow-wrap: anywhere;
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 0.72rem;
+  font-size: var(--k-text-sm);
 }
 
 .task-outputs__feedback,
@@ -787,7 +787,7 @@
 .task-outputs__summary time {
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 0.7rem;
+  font-size: var(--k-text-sm);
   line-height: 1.4;
 }
 
@@ -1146,7 +1146,7 @@
   padding: 0 var(--k-space-2);
   border: var(--k-border-thin) solid var(--k-line);
   border-radius: var(--k-radius-sm);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 
 .task-memory__tier[data-tier="standing"] {
@@ -1155,7 +1155,7 @@
 
 .task-memory__key {
   font-family: var(--k-font-mono);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   overflow-wrap: anywhere;
 }
 
@@ -1369,7 +1369,7 @@
   overflow-wrap: anywhere;
 }
 .task-room-rail-content > section > h3 {
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   color: var(--k-text-faint);
   text-transform: uppercase;
   letter-spacing: var(--k-tracking-wide);
@@ -1513,7 +1513,7 @@
   flex-wrap: wrap;
 }
 .task-room-agent-badge {
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   color: var(--k-text-muted);
   border: 1px solid var(--k-line);
   padding: 0 var(--k-space-1);
@@ -1713,7 +1713,7 @@
 }
 .task-room-result-kind {
   color: var(--k-text-faint);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   min-width: calc(var(--k-space-6) * 2);
 }
 .task-workspace :is(button, select, input, textarea):focus-visible {
@@ -1969,7 +1969,7 @@
   display: none;
 }
 .task-room-answer .code-block-actions > span {
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   font-weight: 900;
   text-transform: uppercase;
 }

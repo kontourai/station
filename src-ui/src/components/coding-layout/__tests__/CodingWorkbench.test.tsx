@@ -689,8 +689,10 @@ describe('CodingWorkbench — the Coding layout as a navigation stack', () => {
   });
 
   test('persistence is said only when it is a problem', async () => {
-    const view = renderStatic({ persistence: 'owned' });
+    const onUseHere = vi.fn();
+    const view = renderStatic({ persistence: 'owned', onUseHere });
     expect(screen.queryByRole('status')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Use here' })).toBeNull();
     view.rerender(
       <NavigationProvider>
         <CodingWorkbench
@@ -707,6 +709,7 @@ describe('CodingWorkbench — the Coding layout as a navigation stack', () => {
           hostOpen={null}
           onOpenCatalog={vi.fn()}
           persistence="contended"
+          onUseHere={onUseHere}
         >
           <div />
         </CodingWorkbench>
@@ -714,6 +717,9 @@ describe('CodingWorkbench — the Coding layout as a navigation stack', () => {
     );
     await act(async () => undefined);
     expect(screen.getByRole('status').textContent).toMatch(/another tab/);
+    // #4407: the banner offers to take the views over in this tab.
+    fireEvent.click(screen.getByRole('button', { name: 'Use here' }));
+    expect(onUseHere).toHaveBeenCalledOnce();
   });
 
   test('the chords stand down only in an editor that owns the keys, and decline when there is nowhere to go', async () => {

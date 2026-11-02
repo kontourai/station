@@ -975,7 +975,7 @@ button:hover {
 
 .responsive-dialog-header span {
   color: var(--text-muted);
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
 }
 
 /* ═══ station-dialog — the one Station dialog chrome (SHELL-02) ═══════════
@@ -1058,7 +1058,7 @@ button:hover {
   margin: 0 0 0.45rem;
   color: var(--accent-primary);
   font-family: var(--font-mono);
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
   font-weight: 600;
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -1140,7 +1140,7 @@ button:hover {
   background: var(--bg-primary);
   box-shadow: var(--shadow-lg);
   color: var(--text-muted);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
 }
 
 /* Shared modal/drawer geometry. Surfaces opt in without changing their desktop
@@ -1930,7 +1930,7 @@ button:hover {
 .menu-group__label {
   padding: var(--space-2) var(--space-6) var(--space-1);
   color: var(--text-tertiary);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   font-weight: var(--weight-semibold);
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -2094,7 +2094,7 @@ button:hover {
   border-radius: var(--radius-pill);
   background: var(--accent-primary);
   color: var(--text-on-accent);
-  font-size: var(--text-2xs);
+  font-size: var(--k-text-xs);
   line-height: 1;
 }
 
@@ -2249,7 +2249,7 @@ button:hover {
   background: var(--bg-tertiary);
   color: var(--text-tertiary);
   font-family: var(--font-mono);
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
   font-weight: 500;
   line-height: 1.5;
 }
@@ -2331,7 +2331,7 @@ button:hover {
   align-items: center;
   gap: 6px;
   padding: 4px 12px;
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   color: var(--text-muted);
   background: color-mix(in srgb, var(--accent-primary) 4%, var(--bg-primary));
   border-bottom: 1px solid var(--border-primary);
@@ -2365,7 +2365,7 @@ button:hover {
   color: var(--text-secondary);
   cursor: pointer;
   font-family: inherit;
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   font-weight: 500;
 }
 .chat-dock__project-badge:hover,
@@ -2398,7 +2398,7 @@ button:hover {
   padding: 0 4px;
   background: none;
   color: var(--text-muted);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   line-height: 1.4;
   cursor: pointer;
 }
@@ -2660,7 +2660,7 @@ button:hover {
 
 .active-work-frame__eyebrow {
   color: var(--accent-primary);
-  font-size: var(--text-2xs);
+  font-size: var(--k-text-sm);
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -2693,7 +2693,7 @@ button:hover {
   color: var(--text-secondary);
   cursor: pointer;
   font-family: var(--font-mono);
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
   text-align: left;
 }
 
@@ -2724,7 +2724,7 @@ button:hover {
   margin: 0;
   padding: 16px;
   color: var(--text-muted);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
 }
 
 .active-work-frame__context {
@@ -2746,14 +2746,14 @@ button:hover {
 
 .active-work-frame__facts dt {
   color: var(--text-muted);
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
 }
 
 .active-work-frame__facts dd {
   min-width: 0;
   margin: 0;
   overflow-wrap: anywhere;
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
 }
 
 .active-work-frame__attachments {
@@ -2770,7 +2770,7 @@ button:hover {
 .active-work-frame__attachments li {
   padding: 4px 0;
   overflow-wrap: anywhere;
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
 }
 
 .active-work-frame__project-link {
@@ -2857,7 +2857,7 @@ button:hover {
 
 .command-launcher__eyebrow {
   color: var(--accent-primary);
-  font-size: var(--text-2xs);
+  font-size: var(--k-text-sm);
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -2872,7 +2872,7 @@ button:hover {
 }
 
 .command-launcher__body > label {
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   font-weight: 600;
 }
 
@@ -2934,14 +2934,14 @@ button:hover {
 
 .command-launcher__preview dt {
   color: var(--text-muted);
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
 }
 
 .command-launcher__preview dd {
   min-width: 0;
   margin: 0;
   overflow-wrap: anywhere;
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
 }
 
 .command-launcher__footer {
@@ -3010,7 +3010,7 @@ button:hover {
 .delegation-launcher__header p,
 .delegation-launcher__hint {
   color: var(--text-muted);
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
 }
 
 .delegation-launcher__body {
@@ -3048,7 +3048,7 @@ button:hover {
   gap: 6px;
   min-width: 0;
   color: var(--text-secondary);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   font-weight: 600;
 }
 
@@ -3107,7 +3107,7 @@ button:hover {
 .delegation-launcher__routing-summary small {
   overflow: hidden;
   color: var(--text-muted);
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -3115,7 +3115,7 @@ button:hover {
 .delegation-launcher__routing-summary strong {
   overflow: hidden;
   color: var(--text-primary);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -3143,7 +3143,7 @@ button:hover {
 .delegation-launcher__error {
   margin: 0;
   color: var(--color-error, #ef4444);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
 }
 
 .delegation-launcher__discovery-error {
@@ -3155,7 +3155,7 @@ button:hover {
   border: 1px solid var(--color-error, #ef4444);
   border-radius: 8px;
   color: var(--color-error, #ef4444);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
 }
 
 .delegation-launcher__discovery-error button {
@@ -3174,7 +3174,7 @@ button:hover {
   border: 1px solid var(--border-primary);
   border-radius: 8px;
   color: var(--text-muted);
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
 }
 
 .delegation-launcher__unavailable summary {
@@ -3225,7 +3225,7 @@ button:hover {
   align-items: center;
   gap: 4px;
   font-family: var(--font-mono);
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
   /* The branch glyph and the branch name are one token; without this the
      header squeezed "main" onto a second line under the branch glyph, and a
      long branch name broke across three. A squeezed badge ellipsises
@@ -3265,7 +3265,7 @@ button:hover {
   min-width: 240px;
   max-width: 320px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   color: var(--text-primary);
 }
 .git-tooltip__section {
@@ -3277,7 +3277,7 @@ button:hover {
   padding-top: 8px;
 }
 .git-tooltip__label {
-  font-size: var(--text-2xs);
+  font-size: var(--k-text-sm);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--text-muted);
@@ -3290,7 +3290,7 @@ button:hover {
   text-overflow: ellipsis;
 }
 .git-tooltip__commit-meta {
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
   color: var(--text-muted);
   margin-top: 2px;
   font-family: var(--font-mono);
@@ -3302,7 +3302,7 @@ button:hover {
 }
 .git-tooltip__stat {
   font-family: var(--font-mono);
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
   color: var(--text-secondary);
 }
 .git-tooltip__stat--staged {
@@ -3316,7 +3316,7 @@ button:hover {
 }
 .git-tooltip__clean {
   color: var(--success-text);
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
 }
 
 .chat-dock__new {
@@ -3331,7 +3331,7 @@ button:hover {
   color: var(--text-secondary);
   cursor: pointer;
   min-height: 32px;
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   font-weight: 500;
   line-height: 1;
   white-space: nowrap;
@@ -3402,7 +3402,7 @@ button:hover {
   border-radius: 8px;
   background: var(--bg-tertiary);
   color: var(--text-secondary);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
 }
 
 .chat-dock__history-elided {
@@ -3432,7 +3432,7 @@ button:hover {
   border-radius: 8px;
   background: var(--bg-secondary);
   color: var(--status-error, var(--text-primary));
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
 }
 
 /* Wrap/clamp policy, archive#3427 — adopted from
@@ -3490,7 +3490,7 @@ button:hover {
   justify-content: center;
   gap: var(--space-2);
   min-height: 32px;
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   font-weight: 500;
   line-height: 1;
   white-space: nowrap;
@@ -3566,7 +3566,7 @@ button:hover {
   overflow: hidden;
   line-height: 1.3;
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   font-weight: normal;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -5355,7 +5355,7 @@ button.tool-call__line:hover {
   background: var(--bg-secondary);
   color: var(--text-primary);
   font-family: inherit;
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   font-weight: 500;
   cursor: pointer;
 }
@@ -5535,7 +5535,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
 /* Usage telemetry disclosure */
 .usage-telemetry-disclosure__eyebrow {
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   font-weight: 700;
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -5741,7 +5741,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   border-bottom: 1px solid var(--border-primary);
   background: var(--bg-secondary);
   color: var(--text-secondary);
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
 }
 
 .conversation-history__clear-btn {
@@ -5809,7 +5809,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 }
 
 .session-item__id {
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
   color: var(--text-muted);
   font-weight: 400;
   font-family: var(--font-mono);
@@ -5825,7 +5825,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 }
 
 .session-item__badge {
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
   padding: 1px 5px;
   border-radius: 3px;
   font-weight: 500;
@@ -5864,7 +5864,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 }
 
 .session-item__context {
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
   color: var(--text-muted);
   display: flex;
   align-items: center;
@@ -5890,7 +5890,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   gap: 4px 6px;
   margin-top: 4px;
   color: var(--text-muted);
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
 }
 
 .session-item__provenance-link {
@@ -5920,7 +5920,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 .session-item__action-error {
   grid-column: 1 / -1;
   color: var(--color-error);
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
 }
 
 .session-item__actions {
@@ -6038,7 +6038,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   border-radius: 50%;
   width: 14px;
   height: 14px;
-  font-size: var(--text-2xs);
+  font-size: var(--k-text-xs);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -6164,7 +6164,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 }
 
 .attachment-menu__size {
-  font-size: var(--text-xs);
+  font-size: var(--k-text-xs);
   color: var(--text-muted);
 }
 
@@ -6192,7 +6192,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   background: none !important;
   border: none !important;
   cursor: pointer;
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   color: var(--color-primary);
   font-weight: 600;
   padding: 2px 4px;
@@ -7125,7 +7125,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   flex-shrink: 0;
 }
 .user-detail-badge-pill {
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
   padding: 1px 8px;
   border-radius: 10px;
   /* Was white text with no fill of its own, so it vanished on the light
@@ -7193,7 +7193,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   margin-top: 0.25rem;
 }
 .user-detail-tag {
-  font-size: 0.7rem;
+  font-size: var(--k-text-sm);
   padding: 0.15rem 0.5rem;
   border-radius: 2rem;
   background: var(--bg-tertiary);
@@ -7244,7 +7244,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   padding: 4px 8px;
   border-radius: 4px;
   cursor: pointer;
@@ -7286,7 +7286,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 /* ── Knowledge Section ──────────────────────────────────────────── */
 
 .knowledge-section__badge {
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
   padding: 1px 6px;
   border-radius: 3px;
   background: var(--bg-tertiary, rgba(0, 0, 0, 0.06));
@@ -7374,7 +7374,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   color: var(--text-muted);
   padding-top: 4px;
 }
@@ -7384,7 +7384,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   border: none;
   color: var(--error-text);
   cursor: pointer;
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   padding: 2px 6px;
 }
 
@@ -7407,7 +7407,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 .knowledge-section__migrate-errors {
   margin: 6px 0 0;
   padding-left: 18px;
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   color: var(--error-text);
 }
 
@@ -7427,7 +7427,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   border: 1px solid var(--border-primary);
   border-radius: 12px;
   padding: 2px 10px;
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   color: var(--text-muted);
   cursor: pointer;
   white-space: nowrap;
@@ -7471,7 +7471,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   gap: 8px;
   padding: 4px 12px;
   border-bottom: 1px solid var(--border-primary);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   color: var(--text-muted);
   flex-shrink: 0;
 }
@@ -7830,7 +7830,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     > :is([data-region="left"], [data-region="right"])
     .chat-dock__session-info {
     padding: 2px 8px;
-    font-size: var(--text-xs);
+    font-size: var(--k-text-sm);
   }
 
   /* Side-mode project filter pills */
@@ -7844,7 +7844,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     > :is([data-region="left"], [data-region="right"])
     .chat-dock__filter-pill {
     padding: 1px 6px;
-    font-size: var(--text-xs);
+    font-size: var(--k-text-sm);
   }
 
   /* Side-mode messages: compact conversation flow.
@@ -8019,7 +8019,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 }
 
 .provider-overview__group-label {
-  font-size: 0.72rem;
+  font-size: var(--k-text-sm);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -8115,7 +8115,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 }
 
 .provider-overview__quickstart-meta {
-  font-size: 0.72rem;
+  font-size: var(--k-text-sm);
   color: var(--text-muted);
   margin-top: 1px;
 }
@@ -8150,7 +8150,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 .provider-detail__summary strong {
   overflow: hidden;
   color: var(--text-primary);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   font-weight: 650;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -8171,7 +8171,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 .provider-detail__models p,
 .provider-detail__model-row small {
   color: var(--text-muted);
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
 }
 
 .provider-detail__model-list {
@@ -8236,7 +8236,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     color-mix(in srgb, var(--warning-text, #f59e0b) 24%, var(--border-primary));
   border-radius: 9px;
   color: var(--text-secondary);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
 }
 
 /*
@@ -8266,7 +8266,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   margin: 8px 0 0;
   max-width: 62ch;
   color: var(--text-muted);
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
   line-height: 1.5;
 }
 
@@ -8287,7 +8287,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   overflow-wrap: anywhere;
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
 }
 
 .provider-detail__capabilities {
@@ -8301,7 +8301,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   background: var(--bg-tertiary);
   border-radius: 4px;
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: var(--k-text-sm);
   font-weight: 650;
 }
 
@@ -8364,7 +8364,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
 .new-chat-modal__context-label-text {
   display: block;
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -8409,7 +8409,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 .new-chat-modal__context-dir {
   display: flex;
   font-family: var(--font-mono);
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
   opacity: 0.6;
   overflow: hidden;
   white-space: nowrap;
@@ -8542,7 +8542,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 .new-chat-modal__dropdown-item-dir {
   display: flex;
   font-family: var(--font-mono);
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
   opacity: 0.5;
   overflow: hidden;
   white-space: nowrap;
@@ -8550,7 +8550,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 }
 
 .new-chat-modal__no-cwd-badge {
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
   color: var(--text-muted);
   background: var(--bg-tertiary, var(--bg-secondary));
   padding: 1px 6px;
@@ -8668,7 +8668,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   align-items: center;
   gap: 6px;
   padding: 10px 20px 4px;
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -8687,14 +8687,14 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
 .new-chat-modal__loading {
   padding: 24px 20px;
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   color: var(--text-muted);
   text-align: center;
 }
 
 .new-chat-modal__compat-warning {
   padding: 6px 20px;
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
   /* --warning-text is the accessible warning foreground (contrast-measured
      per theme); the previous --color-warning was defined nowhere, so this
      always fell through to #f59e0b (~2.2:1 on light surfaces). */
@@ -8750,7 +8750,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
    dialog, and at the shared 13px they crowd the name out of its column. */
 .new-chat-modal__agent-side .button--link {
   padding: 4px 6px;
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
 }
 
 .new-chat-modal__model-trigger {
@@ -8768,7 +8768,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   background: var(--bg-tertiary);
   color: var(--text-secondary);
   font: inherit;
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   text-overflow: ellipsis;
   white-space: nowrap;
   cursor: pointer;
@@ -8859,7 +8859,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
    DOM, so the row's aria-describedby target is still the whole sentence. */
 .new-chat-modal__agent-reason {
   margin-top: 2px;
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   color: var(--warning-text);
   letter-spacing: 0.01em;
   white-space: nowrap;
@@ -9012,7 +9012,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
    Measured in real Chromium with the app's self-hosted DM Sans, the widest
    short form, "Waiting", renders at ~38px; 44px is that plus headroom. */
 .chat-dock__mobile-conn-label {
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
   font-weight: 600;
   white-space: nowrap;
   max-width: 44px;
@@ -9163,7 +9163,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   max-width: 100%;
   overflow: hidden;
   color: var(--accent-primary);
-  font-size: var(--text-2xs);
+  font-size: var(--k-text-sm);
   font-weight: 600;
   letter-spacing: 0.02em;
   line-height: 1.2;
@@ -9613,7 +9613,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     max-width: 100%;
     margin: 0;
     overflow: hidden;
-    font-size: var(--text-sm);
+    font-size: var(--k-text-sm);
     line-height: 1.2;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -9701,7 +9701,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
 .composer-mode-sheet__option-body small {
   color: var(--text-muted);
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
   line-height: 1.35;
 }
 
@@ -9739,7 +9739,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 .composer-mode-sheet__confirm-body {
   margin: 0;
   color: var(--text-muted);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   line-height: 1.4;
 }
 
@@ -9755,7 +9755,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 .composer-mode-sheet__disclosure p {
   margin: 0;
   color: var(--text-muted);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   line-height: 1.4;
 }
 
@@ -9842,7 +9842,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   /* Smaller than a primary action: this is a "there is more above" affordance,
      not something the reader came here to press. Still clears the 44px touch
      floor via .button. */
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
   padding: 0 var(--space-4);
 }
 
@@ -9861,7 +9861,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
      large for a secondary affordance inside a compact alert. Matches
      `.session-history-controls__more`'s own override of the same base. */
   padding: 6px 12px;
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
 }
 
 .elapsed-wait {
