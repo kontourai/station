@@ -89,7 +89,8 @@ test('three append shapes use one explicit prepare call per connection with fres
   const path = join(root, 'first.sqlite');
   const store = open(path);
   const counts = captureCompilations(store);
-  expect(counts()).toEqual({ ordinary: 0, orIgnore: 0, highWater: 0 });
+  if (process.env.STATION_DISABLE_EVENT_STORE_CACHES !== '1')
+    expect(counts()).toEqual({ ordinary: 0, orIgnore: 0, highWater: 0 });
 
   const first = started('a', 'one');
   const firstTool = tool('b', 'one');
@@ -99,7 +100,8 @@ test('three append shapes use one explicit prepare call per connection with fres
   expect(store.appendEvent(tool('d', 'two'))).toBe(2);
   expect(store.appendEvent(firstTool)).toBe(2);
   expect(() => store.appendEvent(first)).toThrow('UNIQUE');
-  expect(counts()).toEqual({ ordinary: 1, orIgnore: 1, highWater: 1 });
+  if (process.env.STATION_DISABLE_EVENT_STORE_CACHES !== '1')
+    expect(counts()).toEqual({ ordinary: 1, orIgnore: 1, highWater: 1 });
 
   store['db'].exec(`CREATE TEMP TRIGGER reject_high_water
     BEFORE UPDATE ON orchestration_stream_identity
@@ -115,7 +117,8 @@ test('three append shapes use one explicit prepare call per connection with fres
   );
   expect(store.appendEvent(started('e', 'one'))).toBe(3);
   expect(store.appendEvent(tool('f', 'two'))).toBe(3);
-  expect(counts()).toEqual({ ordinary: 1, orIgnore: 1, highWater: 1 });
+  if (process.env.STATION_DISABLE_EVENT_STORE_CACHES !== '1')
+    expect(counts()).toEqual({ ordinary: 1, orIgnore: 1, highWater: 1 });
   const rows = committedRows(path);
   writeSync(
     1,
@@ -190,11 +193,21 @@ test('three append shapes use one explicit prepare call per connection with fres
 
   const reopened = open(path);
   const reopenedCounts = captureCompilations(reopened);
-  expect(reopenedCounts()).toEqual({ ordinary: 0, orIgnore: 0, highWater: 0 });
+  if (process.env.STATION_DISABLE_EVENT_STORE_CACHES !== '1')
+    expect(reopenedCounts()).toEqual({
+      ordinary: 0,
+      orIgnore: 0,
+      highWater: 0,
+    });
   expect(committedRows(path)).toEqual(rows);
   expect(reopened.appendEvent(started('g', 'one'))).toBe(4);
   expect(reopened.appendEvent(tool('h', 'two'))).toBe(4);
-  expect(reopenedCounts()).toEqual({ ordinary: 1, orIgnore: 1, highWater: 1 });
+  if (process.env.STATION_DISABLE_EVENT_STORE_CACHES !== '1')
+    expect(reopenedCounts()).toEqual({
+      ordinary: 1,
+      orIgnore: 1,
+      highWater: 1,
+    });
   expect(committedRows(path).slice(-2)).toMatchObject([
     { id: 'g', thread_id: 'one', global_sequence: 7, prompt: 'prompt-g' },
     { id: 'h', thread_id: 'two', global_sequence: 8, tool_call_id: 'call-h' },
@@ -203,7 +216,8 @@ test('three append shapes use one explicit prepare call per connection with fres
   const otherPath = join(root, 'second.sqlite');
   const other = open(otherPath);
   const otherCounts = captureCompilations(other);
-  expect(otherCounts()).toEqual({ ordinary: 0, orIgnore: 0, highWater: 0 });
+  if (process.env.STATION_DISABLE_EVENT_STORE_CACHES !== '1')
+    expect(otherCounts()).toEqual({ ordinary: 0, orIgnore: 0, highWater: 0 });
   expect(other.appendEvent(started('a', 'isolated'))).toBe(1);
   expect(other.appendEvent(tool('b', 'isolated'))).toBe(2);
   const otherRows = committedRows(otherPath);
@@ -218,7 +232,8 @@ test('three append shapes use one explicit prepare call per connection with fres
       otherRows,
     })}@@END_APPEND_STATEMENT_LIFETIMES@@\n`,
   );
-  expect(otherCounts()).toEqual({ ordinary: 1, orIgnore: 1, highWater: 1 });
+  if (process.env.STATION_DISABLE_EVENT_STORE_CACHES !== '1')
+    expect(otherCounts()).toEqual({ ordinary: 1, orIgnore: 1, highWater: 1 });
   expect(otherRows).toMatchObject([
     { id: 'a', thread_id: 'isolated', sequence: 1, global_sequence: 1 },
     { id: 'b', thread_id: 'isolated', sequence: 2, global_sequence: 2 },

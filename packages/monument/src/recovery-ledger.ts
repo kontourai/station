@@ -1,48 +1,65 @@
 import { randomUUID } from 'node:crypto';
-import type {
-  ConnectionRecoveryIntent,
-  ConnectionRecoveryOutcome,
-  ConnectionRecoveryOutcomeReason,
-  ConnectionRecoveryProjection,
-} from '@kontourai/station-contracts/connection-recovery';
 import {
-  exactProcessIdentity,
-  probeExactProcessIdentity,
-} from '@kontourai/station-shared/process-identity';
+  decideRecoveryTransition,
+  type RecoveryTransition,
+  type RecoveryTransitionIntent,
+} from './decisions/recovery.js';
 
-/** Input accepted when a runtime error arms one durable recovery decision. */
-export type RecoveryIntentInput = Omit<
-  ConnectionRecoveryIntent,
+export type { RecoveryTransition } from './decisions/recovery.js';
+export {
+  MemoryRecoveryVolume,
+  openMemoryRecoveryStorage,
+} from './memory-recovery.js';
+export {
+  createSqliteRecoveryStorage,
+  type RecoveryExecuteOptions,
+  type RecoverySqlIntent,
+  type RecoveryStorageCommand,
+  type RecoveryStoragePort,
+  type RecoveryStorageResult,
+} from './sqlite-recovery.js';
+
+import { ownerLivenessFromProbe } from './owner.js';
+
+/** Minimal durable fields the recovery protocol needs from its host record. */
+export interface RecoveryIntentShape {
+  fingerprint: string;
+  provider: string;
+  outcome:
+    | 'armed'
+    | 'manual'
+    | 'resumed'
+    | 'compensation-required'
+    | 'succeeded'
+    | 'failed'
+    | 'canceled'
+    | 'unsupported'
+    | 'indeterminate';
+  dispatchSettlement?: 'prepared' | 'accepted';
+}
+export type RecoveryIntentInput<I extends RecoveryIntentShape> = Omit<
+  I,
   'attempts' | 'resumedTurnId'
 >;
-
-/** Caller-visible state deliberately excludes settlement credentials. */
-type RecoveryIntentSnapshot = Readonly<ConnectionRecoveryIntent>;
-
-/** Private SQLite record; opaque dispatch identities never cross the Interface. */
-type RecoveryIntentRecord = ConnectionRecoveryIntent & {
+type RecoveryIntentRecord<I extends RecoveryIntentShape> = I & {
   dispatchAttemptId?: string;
   recoveryCorrelationId?: string;
 };
-
-/** Every durable compare-and-set reports whether it changed storage. */
-export type RecoveryTransition =
-  | { kind: 'applied' }
-  | { kind: 'stale' }
-  | { kind: 'invalid' }
-  | { kind: 'unavailable' };
+type RecoveryIntentSnapshot<I extends RecoveryIntentShape> = Readonly<
+  Omit<RecoveryIntentRecord<I>, 'dispatchAttemptId' | 'recoveryCorrelationId'>
+>;
 
 /**
  * One startup obligation read. `available` with no obligations proves storage
  * holds none; `unavailable` proves nothing, so a caller must never treat it as
  * an empty sweep (#2823). For the two credential scans, rows already fenced
  * before a mid-scan failure stay durable and are read again by the next scan.
- * The due scan selects only still-prepared rows, so a due row fenced before
- * the failure is not returned again.
+ * A partial scan carries any already-fenced due rows so their outcomes can be
+ * recorded even though the remainder must be retried.
  */
 export type RecoveryObligationScan<T> =
   | { kind: 'available'; obligations: T[] }
-  | { kind: 'unavailable' };
+  | { kind: 'unavailable'; obligations?: T[] };
 
 /**
  * The recovery state machine at the orchestration Seam.
@@ -53,12 +70,16 @@ export type RecoveryObligationScan<T> =
  * reconciliation makes abandoned prepared claims non-retryable. SQLite,
  * settlement credentials, and compare-and-set keys stay inside this Module.
  */
-export interface RecoveryLedger {
-  arm(input: RecoveryIntentInput): RecoveryIntentSnapshot;
-  find(fingerprint: string): RecoveryIntentSnapshot | null;
-  latestProjection(threadId: string): ConnectionRecoveryProjection | undefined;
-  pending(): RecoveryIntentSnapshot[];
-  compensationSnapshot(): RecoveryIntentSnapshot[];
+export interface RecoveryLedger<
+  I extends RecoveryIntentShape,
+  P,
+  Reason extends string,
+> {
+  arm(input: RecoveryIntentInput<I>): RecoveryIntentSnapshot<I>;
+  find(fingerprint: string): RecoveryIntentSnapshot<I> | null;
+  latestProjection(threadId: string): P | undefined;
+  pending(): RecoveryIntentSnapshot<I>[];
+  compensationSnapshot(): RecoveryIntentSnapshot<I>[];
   claim(input: {
     fingerprint: string;
     kind: 'due' | 'profile';
@@ -70,14 +91,14 @@ export interface RecoveryLedger {
     recoveryCorrelationId: string;
     turnId: string;
     now: string;
-  }): RecoveryIntentSnapshot | null;
+  }): RecoveryIntentSnapshot<I> | null;
   /** Changes only still-prepared attempts and returns exactly those winners. */
   reconcilePrepared(
     now: string,
     kind?: 'due' | 'profile',
     /** Legacy profile rows have no exact credential receipt authority. */
     unlinkedOnly?: boolean,
-  ): RecoveryObligationScan<RecoveryIntentSnapshot>;
+  ): RecoveryObligationScan<RecoveryIntentSnapshot<I>>;
   /**
    * Startup-only exact credential settlement work. Prepared rows are changed
    * to indeterminate before returning; accepted rows retain their provider
@@ -85,13 +106,10 @@ export interface RecoveryLedger {
    */
   reconcilePreparedCredentials(
     now: string,
-  ): RecoveryObligationScan<RecoveryCredentialStartupHandle>;
+  ): RecoveryObligationScan<RecoveryCredentialStartupHandle<I>>;
   terminal(
     fingerprint: string,
-    outcome: Extract<
-      ConnectionRecoveryOutcome,
-      'succeeded' | 'failed' | 'canceled'
-    >,
+    outcome: Extract<I['outcome'], 'succeeded' | 'failed' | 'canceled'>,
     now: string,
   ): RecoveryTransition;
   compensationRequired(
@@ -100,11 +118,7 @@ export interface RecoveryLedger {
     expectedOutcome?: 'resumed' | 'canceled' | 'indeterminate',
   ): RecoveryTransition;
   resolveCompensation(fingerprint: string, now: string): RecoveryTransition;
-  cancel(
-    fingerprint: string,
-    now: string,
-    reason?: ConnectionRecoveryOutcomeReason,
-  ): RecoveryTransition;
+  cancel(fingerprint: string, now: string, reason?: Reason): RecoveryTransition;
   /**
    * #3157: settles a still-waiting intent (armed, or a usage-limit intent left
    * to the user as `manual`; never claimed) without a dispatch, recording
@@ -113,11 +127,11 @@ export interface RecoveryLedger {
   retireWaiting(input: {
     fingerprint: string;
     outcome: 'manual' | 'canceled';
-    reason: ConnectionRecoveryOutcomeReason;
+    reason: Reason;
     now: string;
   }): RecoveryTransition;
   /** #3157: usage-limit intents left to the user (`manual`), never claimed. */
-  awaitingUser(): RecoveryIntentSnapshot[];
+  awaitingUser(): RecoveryIntentSnapshot<I>[];
   /** Startup repair: source-terminal events remain authoritative after a canceled write fault. */
   cancelSourceTerminated(now: string): RecoveryTransition;
   /**
@@ -136,8 +150,8 @@ export interface RecoveryLedger {
  * attempt key stays in this closure; the credential Adapter may use it only
  * while executing the supplied exact operation.
  */
-interface RecoveryCredentialStartupHandle {
-  readonly intent: RecoveryIntentSnapshot;
+interface RecoveryCredentialStartupHandle<I extends RecoveryIntentShape> {
+  readonly intent: RecoveryIntentSnapshot<I>;
   inspect(): Promise<RecoveryCredentialReceiptOutcome>;
   settle(
     action: 'commit' | 'rollback',
@@ -194,12 +208,16 @@ export interface RecoveryClaim {
   indeterminate(now: string): RecoveryTransition;
 }
 
-interface RecoveryLedgerCoordinator {
-  arm(input: RecoveryIntentInput): RecoveryIntentRecord;
-  find(fingerprint: string): RecoveryIntentRecord | null;
-  latestProjection(threadId: string): ConnectionRecoveryProjection | undefined;
-  pending(): RecoveryIntentRecord[];
-  compensationSnapshot(): RecoveryIntentRecord[];
+export interface RecoveryLedgerCoordinator<
+  I extends RecoveryIntentShape,
+  P,
+  Reason extends string,
+> {
+  arm(input: RecoveryIntentInput<I>): RecoveryIntentRecord<I>;
+  find(fingerprint: string): RecoveryIntentRecord<I> | null;
+  latestProjection(threadId: string): P | undefined;
+  pending(): RecoveryIntentRecord<I>[];
+  compensationSnapshot(): RecoveryIntentRecord<I>[];
   claim(input: {
     fingerprint: string;
     kind: 'due' | 'profile';
@@ -208,7 +226,7 @@ interface RecoveryLedgerCoordinator {
     recoveryCorrelationId: string;
     owner: RecoveryOwner;
     now: string;
-  }): RecoveryIntentRecord | null;
+  }): RecoveryIntentRecord<I> | null;
   release(input: {
     fingerprint: string;
     dispatchAttemptId: string;
@@ -225,7 +243,7 @@ interface RecoveryLedgerCoordinator {
     recoveryCorrelationId: string,
     turnId: string,
     now: string,
-  ): RecoveryIntentRecord | null;
+  ): RecoveryIntentRecord<I> | null;
   indeterminate(
     fingerprint: string,
     dispatchAttemptId: string,
@@ -241,7 +259,7 @@ interface RecoveryLedgerCoordinator {
     kind?: 'due' | 'profile',
     unlinkedOnly?: boolean,
   ): Array<{
-    intent: RecoveryIntentRecord;
+    intent: RecoveryIntentRecord<I>;
     ownerId: string | null;
     ownerPid: number | null;
     ownerBirth: string | null;
@@ -255,13 +273,10 @@ interface RecoveryLedgerCoordinator {
     ownerId: string | null;
     ownerPid: number | null;
     now: string;
-  }): RecoveryIntentRecord | null;
+  }): RecoveryIntentRecord<I> | null;
   terminal(
     fingerprint: string,
-    outcome: Extract<
-      ConnectionRecoveryOutcome,
-      'succeeded' | 'failed' | 'canceled'
-    >,
+    outcome: Extract<I['outcome'], 'succeeded' | 'failed' | 'canceled'>,
     now: string,
   ): RecoveryTransition;
   compensationRequired(
@@ -270,18 +285,14 @@ interface RecoveryLedgerCoordinator {
     expectedOutcome: 'resumed' | 'canceled' | 'indeterminate',
   ): RecoveryTransition;
   resolveCompensation(fingerprint: string, now: string): RecoveryTransition;
-  cancel(
-    fingerprint: string,
-    now: string,
-    reason?: ConnectionRecoveryOutcomeReason,
-  ): RecoveryTransition;
+  cancel(fingerprint: string, now: string, reason?: Reason): RecoveryTransition;
   retireWaiting(input: {
     fingerprint: string;
     outcome: 'manual' | 'canceled';
-    reason: ConnectionRecoveryOutcomeReason;
+    reason: Reason;
     now: string;
   }): RecoveryTransition;
-  awaitingUser(): RecoveryIntentRecord[];
+  awaitingUser(): RecoveryIntentRecord<I>[];
   cancelSourceTerminated(now: string): RecoveryTransition;
   cancelIfSourceTerminated(
     fingerprint: string,
@@ -304,12 +315,9 @@ export interface RecoveryLedgerProcessIdentity {
     | { state: 'exact'; identity: { pid: number; start: string } };
 }
 
-const defaultProcessIdentity: RecoveryLedgerProcessIdentity = {
-  exact: exactProcessIdentity,
-  probe: probeExactProcessIdentity,
-};
-
-function snapshot(intent: RecoveryIntentRecord): RecoveryIntentSnapshot {
+function snapshot<I extends RecoveryIntentShape>(
+  intent: RecoveryIntentRecord<I>,
+): RecoveryIntentSnapshot<I> {
   const {
     dispatchAttemptId: _attempt,
     recoveryCorrelationId: _correlation,
@@ -322,15 +330,19 @@ function unavailable(): RecoveryTransition {
   return { kind: 'unavailable' };
 }
 
-export function createRecoveryLedger(options: {
-  coordinator: RecoveryLedgerCoordinator;
+export function createRecoveryLedger<
+  I extends RecoveryIntentShape,
+  P,
+  Reason extends string,
+>(options: {
+  coordinator: RecoveryLedgerCoordinator<I, P, Reason>;
   /** Process identity fences startup reconciliation from a still-live owner. */
-  processIdentity?: RecoveryLedgerProcessIdentity;
+  processIdentity: RecoveryLedgerProcessIdentity;
   /** EventStore owns one stable process owner across its ledger views. */
   owner?: RecoveryOwner;
   credentialStartup?: RecoveryCredentialStartupOperations;
-}): RecoveryLedger {
-  const processIdentity = options.processIdentity ?? defaultProcessIdentity;
+}): RecoveryLedger<I, P, Reason> {
+  const processIdentity = options.processIdentity;
   const identity = processIdentity.exact(process.pid);
   const owner: RecoveryOwner =
     options.owner ??
@@ -357,7 +369,7 @@ export function createRecoveryLedger(options: {
     claim: ({ fingerprint, kind, immediate, now }) => {
       const id = randomUUID();
       const correlationId = randomUUID();
-      let claimed: ConnectionRecoveryIntent | null;
+      let claimed: I | null;
       try {
         claimed = options.coordinator.claim({
           fingerprint,
@@ -372,11 +384,7 @@ export function createRecoveryLedger(options: {
         return { kind: 'unavailable' };
       }
       if (!claimed) return { kind: 'unavailable' };
-      let intent:
-        | { kind: 'release'; outcome: 'armed' | 'manual'; now: string }
-        | { kind: 'accept'; turnId: string; now: string }
-        | { kind: 'indeterminate'; now: string }
-        | undefined;
+      let intent: RecoveryTransitionIntent | undefined;
       let settled: RecoveryTransition | undefined;
       let credential:
         | { attemptId: string; now: string; linked: boolean }
@@ -385,9 +393,8 @@ export function createRecoveryLedger(options: {
         next: NonNullable<typeof intent>,
         apply: () => RecoveryTransition,
       ): RecoveryTransition => {
-        if (intent && JSON.stringify(intent) !== JSON.stringify(next))
-          return { kind: 'invalid' };
-        if (settled) return settled;
+        const decision = decideRecoveryTransition(intent, next, settled);
+        if (decision.kind === 'return') return decision.result;
         intent = next;
         try {
           const result = apply();
@@ -490,8 +497,8 @@ export function createRecoveryLedger(options: {
       }
     },
     reconcilePrepared: (now, kind, unlinkedOnly = false) => {
+      const reconciled: RecoveryIntentSnapshot<I>[] = [];
       try {
-        const reconciled: RecoveryIntentSnapshot[] = [];
         for (const prepared of options.coordinator.reconcilePrepared(
           kind,
           unlinkedOnly,
@@ -529,12 +536,15 @@ export function createRecoveryLedger(options: {
         }
         return { kind: 'available', obligations: reconciled };
       } catch {
-        return { kind: 'unavailable' };
+        return {
+          kind: 'unavailable',
+          ...(reconciled.length ? { obligations: reconciled } : {}),
+        };
       }
     },
     reconcilePreparedCredentials: (now) => {
       try {
-        const reconciled: RecoveryCredentialStartupHandle[] = [];
+        const reconciled: RecoveryCredentialStartupHandle<I>[] = [];
         for (const prepared of options.coordinator.reconcilePrepared(
           'profile',
         )) {
@@ -682,15 +692,19 @@ function ownerIsLive(
   processIdentity: RecoveryLedgerProcessIdentity,
 ): boolean {
   if (!ownerId || !ownerPid) return false;
-  if (releasedOwners.has(ownerId)) return false;
-  if (ownerPid === process.pid && activeOwners.has(ownerId)) return true;
-  const observed = processIdentity.probe(ownerPid);
-  if (observed.state === 'dead') return false;
-  if (observed.state === 'unavailable') return true;
-  // An unverified owner cannot safely be reclaimed while its PID is live.
+  const owner =
+    ownerIdentityKind === 'exact' && ownerBirth
+      ? {
+          id: ownerId,
+          pid: ownerPid,
+          identityKind: 'exact' as const,
+          birth: ownerBirth,
+        }
+      : { id: ownerId, pid: ownerPid, identityKind: 'unverified' as const };
   return (
-    ownerIdentityKind !== 'exact' ||
-    !ownerBirth ||
-    observed.identity.start === ownerBirth
+    ownerLivenessFromProbe((pid) => processIdentity.probe(pid), {
+      isReleased: (id) => releasedOwners.has(id),
+      isLocallyLive: (id) => ownerPid === process.pid && activeOwners.has(id),
+    })(owner) !== 'dead'
   );
 }

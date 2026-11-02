@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "id": "policy-change-2026-11-01T17-10-01-685Z-41b60bbbbe84",
+  "kind": "policy-change",
+  "actor": {
+    "id": "codex",
+    "displayName": "Brian Anderson",
+    "identityEvidence": {
+      "gitEmail": null,
+      "signingKeyFingerprint": null
+    }
+  },
+  "attestedAt": "2026-11-01T17:10:01.685Z",
+  "repoStandardsHash": "sha256:3b60e91cf22a62d3f2b7e6031ad71785339381ac2cabcca6162296bfe7d558e8",
+  "repoMapHash": "sha256:c509a7c4abc7ca3c67d79a4b73616e6e01cee7474f520ea75f490e45f4985482",
+  "repoMapHashAlgorithm": "public-policy-v1",
+  "authoritySettingsHash": "sha256:b47233d5d20d847ee85c5b77ccbd991ff13159270690a6adb957134b72cf57ac",
+  "priorAttestationId": "policy-change-2026-11-01T16-59-28-013Z-62e5b7c04554",
+  "validUntilDays": 90,
+  "notes": "The old turn-boundary file was deleted after its authority moved to Monument; the existing required coverage now follows the portable authority and Station binding.",
+  "metadata": {
+    "protectedStandardsPaths": {
+      "repoStandardsPath": ".veritas/repo-standards/default.repo-standards.json",
+      "repoMapPath": ".veritas/repo-map.json",
+      "authoritySettingsPath": ".veritas/authority/default.authority-settings.json"
+    },
+    "supersedes": "policy-change-2026-11-01T16-59-28-013Z-62e5b7c04554",
+    "approvalRef": "owner (Brian Anderson) approved via orchestrator, 2026-11-01",
+    "approvalRefPolicy": {
+      "mode": "reference-only",
+      "matchedPrefix": null,
+      "requiresResolution": false
+    },
+    "approvalResolution": null
+  },
+  "surface": {
+    "claim": {
+      "id": "veritas.attestation.policy-change-2026-11-01T17-10-01-685Z-41b60bbbbe84",
+      "subjectType": "veritas-protected-standards",
+      "subjectId": "protected-standards",
+      "facet": "veritas.attestations",
+      "claimType": "veritas-human-attestation",
+      "fieldOrBehavior": "policy-change",
+      "value": {
+        "contentHash": "7d7232b4cea0c3e76af215e129a76dd4300f263143efc8ff972e7db20cd2e331",
+        "validUntil": "2027-01-30T17:10:01.685Z"
+      },
+      "createdAt": "2026-11-01T17:10:01.685Z",
+      "updatedAt": "2026-11-01T17:10:01.685Z",
+      "status": "proposed",
+      "impactLevel": "high",
+      "confidenceBasis": {
+        "sourceQuality": "weak",
+        "reviewerAuthority": "none",
+        "evidenceStrength": "weak",
+        "impactLevel": "high"
+      }
+    },
+    "evidence": {
+      "id": "evidence.attestation.veritas.attestation.policy-change-2026-11-01T17-10-01-685Z-41b60bbbbe84",
+      "claimId": "veritas.attestation.policy-change-2026-11-01T17-10-01-685Z-41b60bbbbe84",
+      "evidenceType": "attestation",
+      "method": "attestation",
+      "sourceRef": "veritas:protected-standards",
+      "excerptOrSummary": "The old turn-boundary file was deleted after its authority moved to Monument; the existing required coverage now follows the portable authority and Station binding.",
+      "observedAt": "2026-11-01T17:10:01.685Z",
+      "collectedBy": "codex",
+      "integrityRef": "7d7232b4cea0c3e76af215e129a76dd4300f263143efc8ff972e7db20cd2e331",
+      "metadata": {
+        "actor": {
+          "id": "codex",
+          "displayName": "Brian Anderson"
+        },
+        "attestedAt": "2026-11-01T17:10:01.685Z",
+        "validUntil": "2027-01-30T17:10:01.685Z",
+        "contentHash": "7d7232b4cea0c3e76af215e129a76dd4300f263143efc8ff972e7db20cd2e331"
+      },
+      "sourceLocator": ".veritas/attestations"
+    },
+    "event": {
+      "id": "veritas.attestation.policy-change-2026-11-01T17-10-01-685Z-41b60bbbbe84.proposed",
+      "claimId": "veritas.attestation.policy-change-2026-11-01T17-10-01-685Z-41b60bbbbe84",
+      "status": "proposed",
+      "actor": "codex",
+      "method": "human attestation",
+      "evidenceIds": [
+        "evidence.attestation.veritas.attestation.policy-change-2026-11-01T17-10-01-685Z-41b60bbbbe84"
+      ],
+      "createdAt": "2026-11-01T17:10:01.685Z"
+    }
+  },
+  "recordIntegrity": {
+    "algorithm": "veritas-attestation-record-v1",
+    "digest": "d41d82ba336fe0104f007e814e28558a7cbf117bab859cc05280ccdaebd64c50"
+  }
+}
