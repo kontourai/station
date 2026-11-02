@@ -132,7 +132,7 @@ owns limits, theme variables, Chromium prerequisites and page deletion semantics
   a person controls it; the lease is held for the operation.
 - `device_install_app {deviceSessionId, workspacePath?, artifactHandle?}` with
   exactly one Project-relative path or staged upload handle; `device_launch_app`,
-  `device_terminate_app`, and `device_open_url` operate the selected host's app.
+  `device_terminate_app`, and `device_open_url` operate the selected host's app. URL schemes must be declared by the installed app; Android also permits HTTP and HTTPS. Telephone, SMS, mail, preferences and web-search schemes are refused.
   They claim the device lease and report an unknown install effect if it cannot
   be confirmed. URL foreground observation does not prove delivery.
 - config and navigation tools for steering the workspace

@@ -256,12 +256,13 @@ function wipe(payload: Payload): void {
   else for (const file of payload.files) file.bytes.fill(0);
 }
 
-/** Bounded staging; UNWIRED(#1970): install still needs the host protocol. */
+/** Bounded Project-scoped artifact staging. */
 export class DeviceArtifactStaging {
   private readonly entries = new Map<string, Entry>();
   private readonly shutdown = new AbortController();
-  private active = 0;
-  private activeDone: Promise<void> | undefined;
+  private readonly active = new Map<string, Promise<void>>();
+  private readonly running = new Set<Promise<void>>();
+  private readonly runningByProject = new Map<string, number>();
   private disposed = false;
   private prune() {
     const now = Date.now();
@@ -273,26 +274,26 @@ export class DeviceArtifactStaging {
       }
   }
   private async reserve<T>(
+    projectId: string,
     run: (signal: AbortSignal) => Promise<T>,
     signal?: AbortSignal,
   ): Promise<T> {
-    if (this.disposed || this.active >= 1)
+    if (this.disposed || this.active.has(projectId))
       throw new DeviceArtifactError('artifact-capacity');
     const combined = signal
       ? AbortSignal.any([signal, this.shutdown.signal])
       : this.shutdown.signal;
     if (combined.aborted) throw new DeviceArtifactError('cancelled');
-    this.active += 1;
     let finish!: () => void;
-    this.activeDone = new Promise<void>((resolve) => {
+    const done = new Promise<void>((resolve) => {
       finish = resolve;
     });
+    this.active.set(projectId, done);
     try {
       return await run(combined);
     } finally {
-      this.active -= 1;
+      this.active.delete(projectId);
       finish();
-      this.activeDone = undefined;
     }
   }
   private async publish(
@@ -312,10 +313,12 @@ export class DeviceArtifactStaging {
     if (!(await authorize()) || this.disposed || signal.aborted)
       throw new DeviceArtifactError('not-authorized');
     this.prune();
+    const projectEntries = [...this.entries.values()].filter(
+      (entry) => entry.projectId === projectId,
+    );
     if (
-      this.entries.size >= MAX_ARTIFACTS ||
-      [...this.entries.values()].reduce((sum, entry) => sum + entry.bytes, 0) +
-        bytes >
+      projectEntries.length >= MAX_ARTIFACTS ||
+      projectEntries.reduce((sum, entry) => sum + entry.bytes, 0) + bytes >
         MAX_STORED_BYTES
     )
       throw new DeviceArtifactError('artifact-capacity');
@@ -354,42 +357,47 @@ export class DeviceArtifactStaging {
     authorize: () => Promise<boolean>,
     signal?: AbortSignal,
   ): Promise<StagedDeviceArtifact> {
-    return this.reserve(async (activeSignal) => {
-      if (!(await authorize())) throw new DeviceArtifactError('not-authorized');
-      let archive: Awaited<ReturnType<typeof inspectDeviceArchive>>;
-      try {
-        archive = await inspectDeviceArchive(bytes, platform, activeSignal);
-      } catch {
-        if (activeSignal.aborted) throw new DeviceArtifactError('cancelled');
-        throw new DeviceArtifactError('invalid-artifact');
-      }
-      const payload: Payload =
-        platform === 'android'
-          ? { platform, apk: Buffer.from(bytes) }
-          : {
-              platform,
-              files: archive.map((entry) => {
-                if (!entry.bytes)
-                  throw new DeviceArtifactError('invalid-artifact');
-                return {
-                  path: entry.path,
-                  executable: entry.executable,
-                  bytes: entry.bytes,
-                };
-              }),
-            };
-      try {
-        return await this.publish(
-          projectId,
-          payload,
-          'upload',
-          authorize,
-          activeSignal,
-        );
-      } finally {
-        wipe(payload);
-      }
-    }, signal);
+    return this.reserve(
+      projectId,
+      async (activeSignal) => {
+        if (!(await authorize()))
+          throw new DeviceArtifactError('not-authorized');
+        let archive: Awaited<ReturnType<typeof inspectDeviceArchive>>;
+        try {
+          archive = await inspectDeviceArchive(bytes, platform, activeSignal);
+        } catch {
+          if (activeSignal.aborted) throw new DeviceArtifactError('cancelled');
+          throw new DeviceArtifactError('invalid-artifact');
+        }
+        const payload: Payload =
+          platform === 'android'
+            ? { platform, apk: bytes }
+            : {
+                platform,
+                files: archive.map((entry) => {
+                  if (!entry.bytes)
+                    throw new DeviceArtifactError('invalid-artifact');
+                  return {
+                    path: entry.path,
+                    executable: entry.executable,
+                    bytes: entry.bytes,
+                  };
+                }),
+              };
+        try {
+          return await this.publish(
+            projectId,
+            payload,
+            'upload',
+            authorize,
+            activeSignal,
+          );
+        } finally {
+          if (platform === 'ios') wipe(payload);
+        }
+      },
+      signal,
+    );
   }
   async stageWorkspace(
     projectId: string,
@@ -399,93 +407,103 @@ export class DeviceArtifactStaging {
     authorize: () => Promise<boolean>,
     signal?: AbortSignal,
   ): Promise<StagedDeviceArtifact> {
-    return this.reserve(async (activeSignal) => {
-      if (!(await authorize())) throw new DeviceArtifactError('not-authorized');
-      if (
-        !validRelative(relativePath) ||
-        !root ||
-        (platform !== 'ios' && platform !== 'android')
-      )
-        throw new DeviceArtifactError('invalid-source');
-      if (process.platform === 'win32')
-        throw new DeviceArtifactError('workspace-snapshot-unavailable');
-      let output: string;
-      try {
-        output = await runBoundedToolCapture(
-          '/usr/bin/python3',
-          ['-I', '-c', WORKSPACE_SNAPSHOT],
-          {
-            stdin: JSON.stringify({ root, relativePath, platform }),
-            timeoutMs: 120_000,
-            maxBuffer: Math.ceil(MAX_BYTES / 3) * 4 + 16 * 1024 * 1024,
-            signal: activeSignal,
-          },
-        );
-      } catch {
-        if (activeSignal.aborted) throw new DeviceArtifactError('cancelled');
-        throw new DeviceArtifactError('workspace-snapshot-unavailable');
-      }
-      let value: unknown;
-      try {
-        value = JSON.parse(output);
-      } catch {
-        throw new DeviceArtifactError('invalid-source');
-      }
-      if (
-        !plainRecord(value) ||
-        value.ok !== true ||
-        !Array.isArray(value.files) ||
-        value.files.length === 0 ||
-        value.files.length > 10000
-      )
-        throw new DeviceArtifactError('invalid-source');
-      let total = 0;
-      const files: AppFile[] = value.files.map((item: unknown) => {
+    return this.reserve(
+      projectId,
+      async (activeSignal) => {
+        if (!(await authorize()))
+          throw new DeviceArtifactError('not-authorized');
         if (
-          !plainRecord(item) ||
-          typeof item.path !== 'string' ||
-          !validRelative(item.path) ||
-          typeof item.executable !== 'boolean' ||
-          typeof item.data !== 'string' ||
-          !BASE64.test(item.data)
+          !validRelative(relativePath) ||
+          !root ||
+          (platform !== 'ios' && platform !== 'android')
         )
           throw new DeviceArtifactError('invalid-source');
-        const bytes = Buffer.from(item.data, 'base64');
-        if (bytes.toString('base64') !== item.data)
-          throw new DeviceArtifactError('invalid-source');
-        total += bytes.length;
-        if (total > MAX_BYTES)
-          throw new DeviceArtifactError('invalid-artifact');
-        return { path: item.path, executable: item.executable, bytes };
-      });
-      let payload: Payload;
-      if (platform === 'ios') {
-        if (!files.some((file) => file.path === 'Info.plist'))
-          throw new DeviceArtifactError('invalid-artifact');
-        payload = { platform, files };
-      } else {
-        if (files.length !== 1)
-          throw new DeviceArtifactError('invalid-artifact');
+        if (process.platform === 'win32')
+          throw new DeviceArtifactError('workspace-snapshot-unavailable');
+        let output: string;
         try {
-          await inspectDeviceArchive(files[0]!.bytes, 'android', activeSignal);
+          output = await runBoundedToolCapture(
+            '/usr/bin/python3',
+            ['-I', '-c', WORKSPACE_SNAPSHOT],
+            {
+              stdin: JSON.stringify({ root, relativePath, platform }),
+              timeoutMs: 120_000,
+              maxBuffer: Math.ceil(MAX_BYTES / 3) * 4 + 16 * 1024 * 1024,
+              signal: activeSignal,
+            },
+          );
         } catch {
           if (activeSignal.aborted) throw new DeviceArtifactError('cancelled');
-          throw new DeviceArtifactError('invalid-artifact');
+          throw new DeviceArtifactError('workspace-snapshot-unavailable');
         }
-        payload = { platform, apk: files[0]!.bytes };
-      }
-      try {
-        return await this.publish(
-          projectId,
-          payload,
-          'workspace',
-          authorize,
-          activeSignal,
-        );
-      } finally {
-        wipe(payload);
-      }
-    }, signal);
+        let value: unknown;
+        try {
+          value = JSON.parse(output);
+        } catch {
+          throw new DeviceArtifactError('invalid-source');
+        }
+        if (
+          !plainRecord(value) ||
+          value.ok !== true ||
+          !Array.isArray(value.files) ||
+          value.files.length === 0 ||
+          value.files.length > 10000
+        )
+          throw new DeviceArtifactError('invalid-source');
+        let total = 0;
+        const files: AppFile[] = value.files.map((item: unknown) => {
+          if (
+            !plainRecord(item) ||
+            typeof item.path !== 'string' ||
+            !validRelative(item.path) ||
+            typeof item.executable !== 'boolean' ||
+            typeof item.data !== 'string' ||
+            !BASE64.test(item.data)
+          )
+            throw new DeviceArtifactError('invalid-source');
+          const bytes = Buffer.from(item.data, 'base64');
+          if (bytes.toString('base64') !== item.data)
+            throw new DeviceArtifactError('invalid-source');
+          total += bytes.length;
+          if (total > MAX_BYTES)
+            throw new DeviceArtifactError('invalid-artifact');
+          return { path: item.path, executable: item.executable, bytes };
+        });
+        let payload: Payload;
+        if (platform === 'ios') {
+          if (!files.some((file) => file.path === 'Info.plist'))
+            throw new DeviceArtifactError('invalid-artifact');
+          payload = { platform, files };
+        } else {
+          if (files.length !== 1)
+            throw new DeviceArtifactError('invalid-artifact');
+          try {
+            await inspectDeviceArchive(
+              files[0]!.bytes,
+              'android',
+              activeSignal,
+            );
+          } catch {
+            if (activeSignal.aborted)
+              throw new DeviceArtifactError('cancelled');
+            throw new DeviceArtifactError('invalid-artifact');
+          }
+          payload = { platform, apk: files[0]!.bytes };
+        }
+        try {
+          return await this.publish(
+            projectId,
+            payload,
+            'workspace',
+            authorize,
+            activeSignal,
+          );
+        } finally {
+          wipe(payload);
+        }
+      },
+      signal,
+    );
   }
   async withArtifact<T>(
     projectId: string,
@@ -499,56 +517,79 @@ export class DeviceArtifactStaging {
     ) => Promise<T>,
     signal?: AbortSignal,
   ): Promise<T> {
-    return this.reserve(async (activeSignal) => {
-      if (!(await authorize())) throw new DeviceArtifactError('not-authorized');
-      this.prune();
-      const entry = this.entries.get(handle);
-      if (!entry || entry.projectId !== projectId)
-        throw new DeviceArtifactError('artifact-unavailable');
-      const payload = copy(entry.payload);
-      const current = async () =>
-        !activeSignal.aborted &&
-        !this.disposed &&
-        this.entries.get(handle) === entry &&
-        (await authorize()) &&
-        !this.disposed &&
-        !activeSignal.aborted &&
-        this.entries.get(handle) === entry;
-      try {
-        if (
-          (await digest(payload, activeSignal)) !== entry.receipt.digest ||
-          !(await current())
-        )
+    const activeSignal = signal
+      ? AbortSignal.any([signal, this.shutdown.signal])
+      : this.shutdown.signal;
+    const selected = await this.reserve(
+      projectId,
+      async () => {
+        if (!(await authorize()))
+          throw new DeviceArtifactError('not-authorized');
+        this.prune();
+        const entry = this.entries.get(handle);
+        if (!entry || entry.projectId !== projectId)
           throw new DeviceArtifactError('artifact-unavailable');
-        const result = await run(
-          { ...entry.receipt },
-          payload,
-          current,
-          activeSignal,
-        );
-        if (!(await current())) throw new DeviceArtifactError('not-authorized');
-        return result;
-      } finally {
-        wipe(payload);
-      }
-    }, signal);
+        const count = this.runningByProject.get(projectId) ?? 0;
+        if (count >= 2) throw new DeviceArtifactError('artifact-capacity');
+        const payload = copy(entry.payload);
+        this.runningByProject.set(projectId, count + 1);
+        return { entry, payload };
+      },
+      activeSignal,
+    );
+    const { entry, payload } = selected;
+    const current = async () =>
+      !activeSignal.aborted &&
+      !this.disposed &&
+      this.entries.get(handle) === entry &&
+      (await authorize()) &&
+      !this.disposed &&
+      !activeSignal.aborted &&
+      this.entries.get(handle) === entry;
+    let finish!: () => void;
+    const done = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    this.running.add(done);
+    try {
+      if (
+        (await digest(payload, activeSignal)) !== entry.receipt.digest ||
+        !(await current())
+      )
+        throw new DeviceArtifactError('artifact-unavailable');
+      const result = await run(
+        { ...entry.receipt },
+        payload,
+        current,
+        activeSignal,
+      );
+      if (!(await current())) throw new DeviceArtifactError('not-authorized');
+      return result;
+    } finally {
+      wipe(payload);
+      this.running.delete(done);
+      const remaining = (this.runningByProject.get(projectId) ?? 1) - 1;
+      if (remaining) this.runningByProject.set(projectId, remaining);
+      else this.runningByProject.delete(projectId);
+      finish();
+    }
   }
+
   async dispose(): Promise<void> {
     this.disposed = true;
     this.shutdown.abort();
-    const active = this.activeDone;
+    const active = Promise.all([...this.active.values(), ...this.running]);
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      if (active)
-        await Promise.race([
-          active,
-          new Promise<never>((_, reject) => {
-            timer = setTimeout(
-              () => reject(new Error('Device artifact cleanup timed out.')),
-              10_000,
-            );
-          }),
-        ]);
+      await Promise.race([
+        active,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error('Device artifact cleanup timed out.')),
+            10_000,
+          );
+        }),
+      ]);
     } finally {
       clearTimeout(timer);
       for (const entry of this.entries.values()) {

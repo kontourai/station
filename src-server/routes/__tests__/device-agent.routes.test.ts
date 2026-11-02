@@ -289,6 +289,7 @@ function harness(
           version: '1',
           build: '1',
           revision: null,
+          urlSchemes: [],
         },
       };
     },

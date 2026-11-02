@@ -5073,6 +5073,19 @@ export function configureRuntimeRoutes(
               ? { sessionId: session.sessionId, entries }
               : undefined;
           },
+          installed: (target) => {
+            const sessions =
+              target.hostId === LOCAL_DEVICE_HOST_ID
+                ? toolSessions
+                : remoteDeviceHosts?.get(target.hostId)?.sessions;
+            const session = sessions?.forDevice(
+              target.platform,
+              target.deviceId,
+            );
+            return session
+              ? sessions?.latestInstallation(session.sessionId)
+              : undefined;
+          },
           installation: (target, value) => {
             const sessions =
               target.hostId === LOCAL_DEVICE_HOST_ID

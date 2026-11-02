@@ -20,8 +20,7 @@ export function createDeviceArtifactRoutes(deps: {
 }) {
   const app = new Hono();
   const shutdown = new AbortController();
-  let receiving = false;
-  let receiveDone: Promise<void> | undefined;
+  const receiving = new Map<string, Promise<void>>();
   app.post('/projects/:slug/device-artifacts/:source', async (c) => {
     c.header('Cache-Control', 'no-store');
     if (!deps.enabled() || shutdown.signal.aborted)
@@ -101,18 +100,22 @@ export function createDeviceArtifactRoutes(deps: {
         (platform !== 'ios' && platform !== 'android')
       )
         return c.json({ success: false, code: 'invalid-source' }, 400);
-      if (receiving)
+      if (receiving.has(project.id))
         return c.json({ success: false, code: 'artifact-capacity' }, 503);
-      receiving = true;
       let finish!: () => void;
-      receiveDone = new Promise<void>((resolve) => {
+      const done = new Promise<void>((resolve) => {
         finish = resolve;
       });
+      receiving.set(project.id, done);
       let bytes: Buffer | undefined;
       try {
         bytes = await readUpload(
           c.req.raw,
-          AbortSignal.any([c.req.raw.signal, shutdown.signal]),
+          AbortSignal.any([
+            c.req.raw.signal,
+            shutdown.signal,
+            AbortSignal.timeout(10 * 60_000),
+          ]),
         );
         const receipt = await deps.staging.stageUpload(
           project.id,
@@ -124,9 +127,8 @@ export function createDeviceArtifactRoutes(deps: {
         return c.json({ success: true, data: receipt }, 201);
       } finally {
         bytes?.fill(0);
-        receiving = false;
+        receiving.delete(project.id);
         finish();
-        receiveDone = undefined;
       }
     } catch (error) {
       if (error instanceof DeviceArtifactError) {
@@ -145,7 +147,7 @@ export function createDeviceArtifactRoutes(deps: {
   return Object.assign(app, {
     async dispose() {
       shutdown.abort();
-      await receiveDone;
+      await Promise.all(receiving.values());
       await deps.staging.dispose();
     },
   });
@@ -166,7 +168,7 @@ async function readUpload(
     throw new DeviceArtifactError('cancelled');
   const capacity =
     declared === null ? DEVICE_ARTIFACT_UPLOAD_MAX_BYTES : Number(declared);
-  const buffer = Buffer.allocUnsafe(capacity);
+  let buffer = Buffer.allocUnsafe(Math.min(capacity, 64 * 1024));
   const reader = request.body.getReader();
   let total = 0;
   const abort = () => {
@@ -181,8 +183,17 @@ async function readUpload(
       if (part.done) break;
       if (part.value.byteLength > capacity - total)
         throw new DeviceArtifactError('invalid-artifact');
+      const needed = total + part.value.byteLength;
+      if (needed > buffer.length) {
+        const next = Buffer.allocUnsafe(
+          Math.min(capacity, Math.max(needed, buffer.length * 2)),
+        );
+        buffer.copy(next, 0, 0, total);
+        buffer.fill(0, 0, total);
+        buffer = next;
+      }
       buffer.set(part.value, total);
-      total += part.value.byteLength;
+      total = needed;
     }
     if (!total || (declared !== null && total !== capacity))
       throw new DeviceArtifactError('invalid-artifact');

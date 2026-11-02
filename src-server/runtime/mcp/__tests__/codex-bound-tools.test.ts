@@ -367,6 +367,13 @@ test('bound catalog dispatches device logs and Task recording through their auth
       return { ok: true, ...(await publish({ marker: 'device-source' })) };
     },
   );
+  const installApp = vi.fn(async () => ({ ok: true }));
+  const appAction = vi.fn(async (_access, authority, id, action) => ({
+    ok: true,
+    id,
+    action,
+    principal: authority.principalId,
+  }));
   const resolveRecord = () => ({
     principal: { id: 'operator', source: 'session-owner' as const },
     localProjectId: 'project',
@@ -382,7 +389,7 @@ test('bound catalog dispatches device logs and Task recording through their auth
     agentAccessEnabled: () => true,
     deviceLoopEnabled: () => true,
     shares: { list: () => [] } as never,
-    automation: { logs, recordToTask } as never,
+    automation: { logs, recordToTask, installApp, appAction } as never,
     taskCapture: () => ({
       runtime: {
         sessionTaskReviewAccess: async (sessionId: string) =>
@@ -416,7 +423,14 @@ test('bound catalog dispatches device logs and Task recording through their auth
   });
   try {
     expect(server.tools.map((tool) => tool.name)).toEqual(
-      expect.arrayContaining(['device_logs', 'device_record_to_task']),
+      expect.arrayContaining([
+        'device_logs',
+        'device_record_to_task',
+        'device_install_app',
+        'device_launch_app',
+        'device_terminate_app',
+        'device_open_url',
+      ]),
     );
     const logResult = (await server.call(
       'device_logs',
@@ -450,6 +464,40 @@ test('bound catalog dispatches device logs and Task recording through their auth
       }),
       expect.any(Function),
     );
+    const cases = [
+      [
+        'device_install_app',
+        { deviceSessionId: 'device-session', workspacePath: 'build/app.apk' },
+      ],
+      [
+        'device_launch_app',
+        { deviceSessionId: 'device-session', appId: 'com.example.app' },
+      ],
+      [
+        'device_terminate_app',
+        { deviceSessionId: 'device-session', appId: 'com.example.app' },
+      ],
+      [
+        'device_open_url',
+        {
+          deviceSessionId: 'device-session',
+          appId: 'com.example.app',
+          url: 'https://example.test/',
+        },
+      ],
+    ] as const;
+    for (const [name, args] of cases) {
+      const response = (await server.call(name, args, () => current)) as {
+        content: { text: string }[];
+      };
+      expect(JSON.parse(response.content[0]!.text)).toMatchObject({ ok: true });
+    }
+    expect(installApp).toHaveBeenCalledOnce();
+    expect(appAction.mock.calls.map((call) => call[3].type)).toEqual([
+      'launch',
+      'terminate',
+      'open-url',
+    ]);
     current = false;
     await expect(
       server.call(
@@ -458,6 +506,12 @@ test('bound catalog dispatches device logs and Task recording through their auth
         () => current,
       ),
     ).rejects.toThrow('bound-tool-refused');
+    for (const [name, args] of cases)
+      await expect(server.call(name, args, () => current)).rejects.toThrow(
+        'bound-tool-refused',
+      );
+    expect(installApp).toHaveBeenCalledOnce();
+    expect(appAction).toHaveBeenCalledTimes(3);
     expect(logs).toHaveBeenCalledOnce();
     expect(recordToTask).toHaveBeenCalledOnce();
   } finally {

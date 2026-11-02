@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { Writable } from 'node:stream';
 import { spawnOwnedChild } from '../../infra/process-utils.js';
+import { locateExecutable, standardAdbDirs } from '../device-host-tools.js';
 import type { DeviceAppInstallParams } from './device-app-install-program.js';
 import { runSshDeviceScript, type SpawnSsh } from './ssh-device-session.js';
 import { REMOTE_LOADER_JS, type SshDeviceTarget } from './ssh-device-target.js';
@@ -22,6 +23,7 @@ export type DeviceInstallOutcome =
         version: string | null;
         build: string;
         revision: null;
+        urlSchemes: string[];
       };
     }
   | { ok: false; code: string; effect: 'none' | 'unknown' };
@@ -42,7 +44,28 @@ export async function runDeviceAppInstall(input: {
   const files = [...input.files].sort((a, b) =>
     Buffer.compare(Buffer.from(a.path), Buffer.from(b.path)),
   );
+  const local = input.spawn === spawnLocalDeviceInstall;
+  const executable = local
+    ? await locateExecutable(
+        input.platform === 'ios' ? 'xcrun' : 'adb',
+        input.platform === 'ios' ? ['/usr/bin'] : standardAdbDirs(),
+      )
+    : null;
+  const plutil =
+    local && input.platform === 'ios'
+      ? await locateExecutable('plutil', ['/usr/bin'])
+      : null;
+  if (local && (!executable || (input.platform === 'ios' && !plutil)))
+    return { ok: false, code: 'tool-unavailable', effect: 'none' };
   const params: DeviceAppInstallParams = {
+    ...(local
+      ? {
+          executables: {
+            [input.platform === 'ios' ? 'xcrun' : 'adb']: executable!,
+            ...(plutil ? { plutil } : {}),
+          },
+        }
+      : {}),
     platform: input.platform,
     deviceId: input.deviceId,
     digest: input.digest,
@@ -64,7 +87,12 @@ export async function runDeviceAppInstall(input: {
     target: input.target,
     program: 'device-app-install',
     params,
-    timeoutMs: 120_000,
+    timeoutMs:
+      240_000 +
+      Math.ceil(
+        files.reduce((sum, file) => sum + file.bytes.length, 0) / (128 * 1024),
+      ) *
+        1000,
     maxStdoutBytes: 16 * 1024,
     holdStdin: true,
     ...(input.signal ? { signal: input.signal } : {}),
@@ -113,7 +141,13 @@ export async function runDeviceAppInstall(input: {
     typeof m.appId !== 'string' ||
     (m.version !== null && typeof m.version !== 'string') ||
     typeof m.build !== 'string' ||
-    m.revision !== null
+    m.revision !== null ||
+    !Array.isArray(m.urlSchemes) ||
+    m.urlSchemes.length > 100 ||
+    m.urlSchemes.some(
+      (scheme: unknown) =>
+        typeof scheme !== 'string' || !/^[a-z][a-z0-9+.-]{0,31}$/.test(scheme),
+    )
   )
     return unknown;
   return {
@@ -126,6 +160,7 @@ export async function runDeviceAppInstall(input: {
       version: m.version as string | null,
       build: m.build,
       revision: null,
+      urlSchemes: m.urlSchemes as string[],
     },
   };
 }

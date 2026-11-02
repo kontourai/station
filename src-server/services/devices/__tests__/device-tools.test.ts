@@ -59,11 +59,15 @@ test('typed iOS app actions require the observed app state', async () => {
     service.appAction(IOS, { type: 'launch', appId: app }),
   ).resolves.toMatchObject({ observed: 'foreground', appId: app });
   await expect(
-    service.appAction(IOS, {
-      type: 'open-url',
-      appId: app,
-      url: 'example://page',
-    }),
+    service.appAction(
+      IOS,
+      {
+        type: 'open-url',
+        appId: app,
+        url: 'example://page',
+      },
+      { declaredSchemes: ['example'] },
+    ),
   ).resolves.toMatchObject({ observed: 'foreground' });
   await expect(
     service.appAction(IOS, { type: 'terminate', appId: app }),
@@ -957,3 +961,66 @@ describe('a device on another host (#1973)', () => {
     expect(runner.calls).toEqual([]);
   });
 });
+
+test('open URL requires an allowed scheme owned by the target app', async () => {
+  const service = new DeviceToolsService({
+    runner: fakeRunner({}),
+    hub: hubAnswering(),
+  });
+  for (const url of [
+    'tel:123',
+    'sms:123',
+    'mailto:x@example.test',
+    'prefs:root',
+    'x-web-search:query',
+    'other://page',
+  ]) {
+    await expect(
+      service.appAction(
+        IOS,
+        { type: 'open-url', appId: 'com.example.app', url },
+        { declaredSchemes: ['example'] },
+      ),
+    ).rejects.toMatchObject({ code: 'invalid-request' });
+  }
+});
+
+test('iOS terminate accepts a failed command only when the app is absent', async () => {
+  const app = 'com.example.app';
+  const service = new DeviceToolsService({
+    runner: fakeRunner({
+      [`xcrun simctl terminate ${UDID} ${app}`]: new DeviceToolError(
+        'tool-failed',
+        'not running',
+      ),
+      [`xcrun simctl spawn ${UDID} launchctl list`]:
+        'PID Status Label\n- 0 other\n',
+    }),
+    hub: hubAnswering(),
+  });
+  await expect(
+    service.appAction(IOS, { type: 'terminate', appId: app }),
+  ).resolves.toMatchObject({ observed: 'not-running' });
+});
+
+test.each([
+  ["https://example.test/'", 'https://example.test/%27'],
+  ["https://example.test/';id;'", 'https://example.test/%27;id;%27'],
+  ['https://example.test/$(id)', 'https://example.test/$(id)'],
+  ['https://example.test/`id`', 'https://example.test/%60id%60'],
+])(
+  'Android quotes the URL %s as one inert shell argument',
+  async (input, expected) => {
+    const app = 'com.example.app';
+    const runner = fakeRunner({
+      [`adb -s ${SERIAL} shell am start -W -a android.intent.action.VIEW -d '${expected}' -p ${app}`]:
+        'Status: ok',
+      [`adb -s ${SERIAL} shell dumpsys window`]: `mCurrentFocus=Window{1 u0 ${app}/.Main}`,
+    });
+    const service = new DeviceToolsService({ runner, hub: hubAnswering() });
+    await expect(
+      service.appAction(ANDROID, { type: 'open-url', appId: app, url: input }),
+    ).resolves.toMatchObject({ observed: 'foreground' });
+    expect(runner.calls[0]?.args).toContain(`'${expected}'`);
+  },
+);

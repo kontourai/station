@@ -1,8 +1,10 @@
 import type { MobileDeviceSession } from '@kontourai/station-contracts/mobile-device';
 import type { TaskReviewCreateCaptureRequest } from '@kontourai/station-contracts/task-review';
+import { redactSecrets } from '@kontourai/station-shared/redaction';
 import type { DeviceAccess } from '../devices/device-access.js';
 import type { DeviceSessionService } from '../devices/device-session-service.js';
 import {
+  DeviceToolsError,
   type DeviceToolsService,
   isDeviceAppId,
 } from '../devices/device-tools.js';
@@ -206,13 +208,23 @@ export class TaskDeviceCapture {
         );
     };
     await beforeRun();
-    const sample = await logs.call(
-      selected.services.tools,
-      selected.session,
-      appId,
-      beforeRun,
-      request.signal,
-    );
+    let sample: Awaited<ReturnType<typeof logs>> | null;
+    try {
+      sample = await logs.call(
+        selected.services.tools,
+        selected.session,
+        appId,
+        beforeRun,
+        request.signal,
+      );
+    } catch (error) {
+      if (
+        !(error instanceof DeviceToolsError) ||
+        error.code !== 'app-not-running'
+      )
+        throw error;
+      sample = null;
+    }
     await beforeRun();
     const shot = await selected.services.host.capture(selected.session);
     await beforeRun();
@@ -257,11 +269,14 @@ export class TaskDeviceCapture {
           })(),
           revision: null,
         },
-        logs: {
-          output: sample.output,
-          processId: sample.processId,
-          truncated: sample.truncated,
-        },
+        logs: sample
+          ? {
+              state: 'sampled',
+              output: redactSecrets(sample.output),
+              processId: sample.processId,
+              truncated: sample.truncated,
+            }
+          : { state: 'app-not-running' },
         screenshot: { mimeType: 'image/png', data: bytes.toString('base64') },
         actions: history,
       },

@@ -702,7 +702,14 @@ export class DeviceHostRegistry {
       return unavailable;
     const target = host.sshTarget;
     const generation = this.#generation(hostId);
-    const deadlineAt = Date.now() + 120_000;
+    const deadlineAt =
+      Date.now() +
+      240_000 +
+      Math.ceil(
+        input.files.reduce((sum, file) => sum + file.bytes.length, 0) /
+          (128 * 1024),
+      ) *
+        1000;
     const slot = await this.#hostSlot(hostId, 'tool', {
       signal: input.signal,
       deadlineAt,

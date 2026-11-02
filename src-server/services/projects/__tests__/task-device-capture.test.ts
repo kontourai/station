@@ -1,7 +1,10 @@
 import { expect, test, vi } from 'vitest';
 import type { DeviceAccess } from '../../devices/device-access.js';
 import type { DeviceSessionService } from '../../devices/device-session-service.js';
-import type { DeviceToolsService } from '../../devices/device-tools.js';
+import {
+  DeviceToolsError,
+  type DeviceToolsService,
+} from '../../devices/device-tools.js';
 import { LiveSurfaceRegistry } from '../../live-surface/registry.js';
 import type { LocalMobileDeviceHost } from '../../mobile-device/mobile-device-host.js';
 import type { TaskReviewAccess } from '../../orchestration/project-task-room-runtime.js';
@@ -198,4 +201,30 @@ test('reproduction captures only the selected host and refuses a revoked log sam
       'com.example.app',
     ),
   ).rejects.toThrow();
+});
+
+test('reproduction retains a crash report and redacts secrets from sampled logs', async () => {
+  const f = fixture();
+  f.logs.mockResolvedValueOnce({
+    output: 'api_key=sk-12345678901234567890123456789012',
+    processId: '42',
+    truncated: false,
+  });
+  const sampled = await f.service.reproduction(
+    request,
+    access,
+    input.sourceSessionId,
+    'com.example.app',
+  );
+  expect(JSON.stringify(sampled.data.logs)).not.toContain(
+    'sk-12345678901234567890123456789012',
+  );
+  f.logs.mockRejectedValueOnce(new DeviceToolsError('app-not-running'));
+  const crashed = await f.service.reproduction(
+    request,
+    access,
+    input.sourceSessionId,
+    'com.example.app',
+  );
+  expect(crashed.data.logs).toEqual({ state: 'app-not-running' });
 });

@@ -1,4 +1,11 @@
-import { mkdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import {
+  link,
+  mkdir,
+  realpath,
+  rm,
+  symlink,
+  writeFile,
+} from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, test, vi } from 'vitest';
 import { ZipFile } from 'yazl';
@@ -73,7 +80,7 @@ test.skipIf(process.platform === 'win32')(
   async () => {
     const root = await workspace();
     const outside = await realpath(makeTempDir('station-device-outside-'));
-    await writeFile(join(outside, 'secret'), 'private');
+    await writeFile(join(outside, 'secret.apk'), 'private');
     await symlink(outside, join(root, 'escape'));
     const store = new DeviceArtifactStaging();
     const allowed = async () => true;
@@ -95,11 +102,22 @@ test.skipIf(process.platform === 'win32')(
         allowed,
       ),
     ).rejects.toMatchObject({ code: 'invalid-source' });
-    await symlink(join(outside, 'secret'), join(root, 'Sample.app', 'link'));
+    await symlink(
+      join(outside, 'secret.apk'),
+      join(root, 'Sample.app', 'link'),
+    );
     await expect(
       store.stageWorkspace('project', root, 'Sample.app', 'ios', allowed),
     ).rejects.toMatchObject({ code: 'invalid-source' });
     await rm(join(root, 'Sample.app', 'link'));
+    await link(
+      join(outside, 'secret.apk'),
+      join(root, 'Sample.app', 'hardlink'),
+    );
+    await expect(
+      store.stageWorkspace('project', root, 'Sample.app', 'ios', allowed),
+    ).rejects.toMatchObject({ code: 'invalid-source' });
+    await rm(join(root, 'Sample.app', 'hardlink'));
     const staged = await store.stageWorkspace(
       'project',
       root,
@@ -215,4 +233,46 @@ test('shutdown cancels an in-flight artifact use and waits for it to settle', as
   await store.dispose();
   expect(cancelled).toBe(true);
   expect(await observed).toBe('cancelled');
+});
+
+test('Project quotas are independent and an install does not block new staging', async () => {
+  const store = new DeviceArtifactStaging();
+  const bytes = await apk();
+  const allowed = async () => true;
+  const first = await store.stageUpload('a', bytes, 'android', allowed);
+  let started!: () => void, release!: () => void;
+  const ready = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  const wait = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const install = store.withArtifact('a', first.handle, allowed, async () => {
+    started();
+    await wait;
+  });
+  await ready;
+  let startedSecond!: () => void;
+  const secondReady = new Promise<void>((resolve) => {
+    startedSecond = resolve;
+  });
+  const second = store.withArtifact('a', first.handle, allowed, async () => {
+    startedSecond();
+    await wait;
+  });
+  await secondReady;
+  await expect(
+    store.withArtifact('a', first.handle, allowed, async () => true),
+  ).rejects.toMatchObject({ code: 'artifact-capacity' });
+  for (let i = 1; i < 10; i++)
+    await store.stageUpload('a', bytes, 'android', allowed);
+  await expect(
+    store.stageUpload('a', bytes, 'android', allowed),
+  ).rejects.toMatchObject({ code: 'artifact-capacity' });
+  await expect(
+    store.stageUpload('b', bytes, 'android', allowed),
+  ).resolves.toMatchObject({ state: 'staged' });
+  release();
+  await Promise.all([install, second]);
+  await store.dispose();
 });

@@ -1,6 +1,6 @@
 import { realpath, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import { ZipFile } from 'yazl';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { DeviceArtifactStaging } from '../../services/devices/device-app-artifacts.js';
@@ -32,7 +32,11 @@ function fixture(root: string | null, decide?: () => Promise<boolean>) {
     current: () => true,
     human: (c) => c.req.header('x-human') === 'yes',
     project: (slug) =>
-      slug === 'demo' ? { id: 'project-id', root } : undefined,
+      slug === 'demo'
+        ? { id: 'project-id', root }
+        : slug === 'other'
+          ? { id: 'other-project', root }
+          : undefined,
     authorize: async () => allowed && (decide ? await decide() : true),
   });
   disposals.push(() => routes.dispose());
@@ -206,4 +210,41 @@ test('shutdown cancels an incomplete upload and joins its cleanup', async () => 
   await h.dispose();
   expect((await pending).status).toBe(400);
   expect(cancelled).toBe(true);
+});
+
+test('a stalled upload has a ten-minute deadline and does not block another Project', async () => {
+  const timeout = new AbortController();
+  let started!: () => void;
+  const reading = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  const spy = vi.spyOn(AbortSignal, 'timeout').mockImplementation(() => {
+    started();
+    return timeout.signal;
+  });
+  const h = fixture(null);
+  const stream = new ReadableStream<Uint8Array>({ pull() {} });
+  const request = new Request(
+    'http://station.test/projects/demo/device-artifacts/upload?platform=android',
+    {
+      method: 'POST',
+      headers: { 'x-human': 'yes' },
+      body: stream,
+      duplex: 'half',
+    } as RequestInit,
+  );
+  try {
+    const pending = h.app.request(request);
+    await reading;
+    expect(spy).toHaveBeenCalledWith(600_000);
+    const response = await h.app.request(
+      '/projects/other/device-artifacts/upload?platform=android',
+      { method: 'POST', headers: { 'x-human': 'yes' }, body: await apk() },
+    );
+    expect(response.status).toBe(201);
+    timeout.abort();
+    expect((await pending).status).toBe(400);
+  } finally {
+    spy.mockRestore();
+  }
 });

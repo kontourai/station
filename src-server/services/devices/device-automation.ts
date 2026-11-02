@@ -29,7 +29,12 @@ import type {
   DeviceHistoryAction,
   DeviceSessionService,
 } from './device-session-service.js';
-import type { DeviceToolsService } from './device-tools.js';
+import { DeviceHostBusyError } from './device-shares.js';
+import {
+  DeviceToolsAdmissionError,
+  DeviceToolsError,
+  type DeviceToolsService,
+} from './device-tools.js';
 import type {
   DeviceInstallFile,
   DeviceInstallOutcome,
@@ -343,15 +348,20 @@ export class DeviceAutomation {
             id,
             action,
             'agent',
-            [
-              'input',
-              'install-app',
-              'launch',
-              'terminate',
-              'open-url',
-            ].includes(action)
-              ? 'unknown'
-              : 'failed',
+            error instanceof DeviceToolsAdmissionError ||
+              error instanceof DeviceHostBusyError ||
+              (error instanceof DeviceToolsError &&
+                error.code === 'invalid-request')
+              ? 'failed'
+              : [
+                    'input',
+                    'install-app',
+                    'launch',
+                    'terminate',
+                    'open-url',
+                  ].includes(action)
+                ? 'unknown'
+                : 'failed',
           );
         throw error;
       }
@@ -824,6 +834,13 @@ export class DeviceAutomation {
             action,
             {
               beforeRun,
+              declaredSchemes: (() => {
+                const receipt =
+                  selected.services.sessions.latestInstallation(id);
+                return receipt?.metadata.appId === action.appId
+                  ? receipt.metadata.urlSchemes
+                  : undefined;
+              })(),
               signal: signal
                 ? AbortSignal.any([signal, abort.signal])
                 : abort.signal,

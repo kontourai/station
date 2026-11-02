@@ -1437,6 +1437,7 @@ test('install requires current Project and device authority before invoking the 
           version: '1',
           build: '1',
           revision: null,
+          urlSchemes: [],
         },
       };
     },
@@ -1450,6 +1451,13 @@ test('install requires current Project and device authority before invoking the 
   const path =
     '/hosts/local/devices/android/emulator-5554/tools/install?projectSlug=demo';
   const body = { artifactHandle: receipt.handle };
+  const missing = await call('POST', path, 'operator', {
+    artifactHandle: '00000000-0000-4000-8000-000000000000',
+  });
+  expect(await missing.json()).toMatchObject({
+    code: 'artifact-unavailable',
+    effect: 'none',
+  });
   expect((await call('POST', path, 'contributor', body)).status).toBe(403);
   allowed = false;
   expect((await call('POST', path, 'operator', body)).status).toBe(409);
@@ -1494,4 +1502,29 @@ test('session history records human actions without their payload and requires d
     },
   });
   expect(JSON.stringify(history)).not.toContain('dark');
+});
+
+test('history marks pre-execution busy and invalid app actions as failed', async () => {
+  const env = setup(() => true, {
+    run: async () => {
+      throw new DeviceHostBusyError();
+    },
+  });
+  const session = await env.sessions.open({
+    hostId: 'local',
+    platform: 'ios',
+    deviceId: IOS,
+  });
+  await env.call('POST', actionPath(), 'operator', DARK);
+  await env.call('POST', `${toolsPath()}/app-actions`, 'operator', {
+    type: 'open-url',
+    appId: 'com.example.app',
+    url: 'unregistered://item',
+  });
+  expect(env.sessions.actionHistory(session.sessionId)).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ action: 'tool-action', outcome: 'failed' }),
+      expect.objectContaining({ action: 'open-url', outcome: 'failed' }),
+    ]),
+  );
 });

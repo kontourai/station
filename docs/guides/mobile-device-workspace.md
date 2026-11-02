@@ -203,7 +203,7 @@ macOS, `/private/tmp` rather than the `/tmp` symlink). Windows workspace
 snapshots currently refuse; an upload is the available intake path there.
 Archive traversal, symlinks, collisions, excess size and incompatible platform,
 ABI or minimum OS are refused. Staging is bounded and its Project-scoped handle
-expires; staging alone does not establish compatibility or installation.
+expires; staging alone does not establish compatibility or installation. Each Project has its own staging quota; uploads must finish within ten minutes.
 
 Station checks the artifact on the selected host, rechecks Project and device
 authority immediately before installation, and verifies the installed app ID,
@@ -215,7 +215,7 @@ check the device before retrying. Local and enabled SSH hosts use fixed
 
 The App section can launch, terminate, or open a URL. Launch and URL actions
 report only that the requested app was observed in the foreground; they do not
-prove URL delivery. iOS can show a first-use confirmation, in which case Station
+prove URL delivery. Android permits HTTP and HTTPS, plus schemes found in the installed app's intent filters. iOS permits schemes declared by the target app in its installation receipt; an unobserved scheme is refused. Telephone, SMS, mail, preferences and web-search schemes are refused. iOS can show a first-use confirmation, in which case Station
 reports the unconfirmed postcondition until the person acts. Termination checks
 that the app process is absent. The agent equivalents are `device_install_app`
 (with exactly one of `workspacePath` or a staged `artifactHandle`),
@@ -228,7 +228,7 @@ without input text, URLs or notification payloads. It is in memory and ends with
 the session; it is not a complete device audit or a record of every human touch.
 **Save reproduction to Task** stores a JSON attachment in the Task room with the
 selected app's bounded log sample, screenshot, device identity, available install
-receipt and session history. The screenshot and logs may contain private data.
+receipt and session history. If the app has stopped, the bundle records that state instead of refusing the capture. Log samples pass through secret redaction, but the screenshot and logs may still contain private data.
 If publication cannot be confirmed, check the Task before retrying.
 
 With the preview on and a chat floater available, closing the Device stage,

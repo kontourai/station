@@ -12,7 +12,10 @@ import { type Context, Hono } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { readBoundedRequestBody } from '../security/bounded-request-body.js';
 import type { DeviceAccess } from '../services/devices/device-access.js';
-import type { DeviceArtifactStaging } from '../services/devices/device-app-artifacts.js';
+import {
+  DeviceArtifactError,
+  type DeviceArtifactStaging,
+} from '../services/devices/device-app-artifacts.js';
 import type {
   DeviceHistoryAction,
   DeviceHistoryEntry,
@@ -75,6 +78,11 @@ export interface DeviceToolsRouteOptions {
       platform: MobileDevicePlatform;
       deviceId: string;
     }): { sessionId: string; entries: DeviceHistoryEntry[] } | undefined;
+    installed?(target: {
+      hostId: string;
+      platform: MobileDevicePlatform;
+      deviceId: string;
+    }): DeviceInstallation | undefined;
     installation(
       target: {
         hostId: string;
@@ -617,7 +625,7 @@ export function createDeviceToolsRoutes(options: DeviceToolsRouteOptions) {
         return result.ok
           ? publish(c, result)
           : c.json({ success: false, ...result }, 409);
-      } catch {
+      } catch (error) {
         options.actionHistory?.note(
           target,
           'install-app',
@@ -626,7 +634,10 @@ export function createDeviceToolsRoutes(options: DeviceToolsRouteOptions) {
         return c.json(
           {
             success: false,
-            code: 'interrupted',
+            code:
+              !started && error instanceof DeviceArtifactError
+                ? error.code
+                : 'interrupted',
             effect:
               started &&
               (!outcome || outcome.ok || outcome.effect === 'unknown')
@@ -697,17 +708,32 @@ export function createDeviceToolsRoutes(options: DeviceToolsRouteOptions) {
           });
       };
       return run(c, async () => {
-        await readmit();
         try {
+          await readmit();
           const result = await service.appAction(target, action, {
             beforeRun: readmit,
+            declaredSchemes: (() => {
+              const receipt = options.actionHistory?.installed?.(target);
+              return receipt?.metadata.appId === action.appId
+                ? receipt.metadata.urlSchemes
+                : undefined;
+            })(),
             signal: c.req.raw.signal,
           });
           await readmit();
           options.actionHistory?.note(target, action.type, 'success');
           return publish(c, result);
         } catch (error) {
-          options.actionHistory?.note(target, action.type, 'unknown');
+          options.actionHistory?.note(
+            target,
+            action.type,
+            error instanceof DeviceToolsAdmissionError ||
+              error instanceof DeviceHostBusyError ||
+              (error instanceof DeviceToolsError &&
+                error.code === 'invalid-request')
+              ? 'failed'
+              : 'unknown',
+          );
           throw error;
         }
       });
@@ -792,7 +818,12 @@ export function createDeviceToolsRoutes(options: DeviceToolsRouteOptions) {
           options.actionHistory?.note(
             admitted.target,
             'tool-action',
-            'unknown',
+            error instanceof DeviceToolsAdmissionError ||
+              error instanceof DeviceHostBusyError ||
+              (error instanceof DeviceToolsError &&
+                error.code === 'invalid-request')
+              ? 'failed'
+              : 'unknown',
           );
           throw error;
         }

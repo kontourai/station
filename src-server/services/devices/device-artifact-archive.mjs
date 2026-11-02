@@ -45,7 +45,8 @@ export async function inspectDeviceArchive(bytes, kind, signal) {
         validateEntrySizes: true,
         strictFileNames: true,
       },
-      (error, value) => (error ? reject(error) : resolve(value)),
+      (error, value) =>
+        error ? reject(new Error('invalid-artifact')) : resolve(value),
     ),
   );
   return await new Promise((resolve, reject) => {

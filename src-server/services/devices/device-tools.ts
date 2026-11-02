@@ -283,6 +283,11 @@ export function deviceAppUrl(value: unknown): string | null {
         'about:',
         'intent:',
         'content:',
+        'tel:',
+        'sms:',
+        'mailto:',
+        'prefs:',
+        'x-web-search:',
       ].includes(parsed.protocol)
     )
       return null;
@@ -1156,7 +1161,11 @@ export class DeviceToolsService {
   async appAction(
     target: DeviceToolsTarget,
     action: DeviceAppAction,
-    options: { beforeRun?: () => Promise<void>; signal?: AbortSignal } = {},
+    options: {
+      beforeRun?: () => Promise<void>;
+      signal?: AbortSignal;
+      declaredSchemes?: readonly string[];
+    } = {},
   ): Promise<DeviceAppActionResult> {
     this.assertOwnHost(target);
     assertTarget(target.platform, target.deviceId);
@@ -1164,8 +1173,16 @@ export class DeviceToolsService {
     if (!['launch', 'terminate', 'open-url'].includes(action.type))
       throw new DeviceToolsError('invalid-request');
     const url = action.type === 'open-url' ? deviceAppUrl(action.url) : null;
-    if (action.type === 'open-url' && !url)
-      throw new DeviceToolsError('invalid-request');
+    if (action.type === 'open-url') {
+      if (!url) throw new DeviceToolsError('invalid-request');
+      const scheme = new URL(url).protocol.slice(0, -1).toLowerCase();
+      if (
+        (target.platform === 'ios' ||
+          (scheme !== 'http' && scheme !== 'https')) &&
+        !options.declaredSchemes?.includes(scheme)
+      )
+        throw new DeviceToolsError('invalid-request');
+    }
     const key = this.key(target);
     if (this.activeAppActions.has(key)) throw new DeviceHostBusyError();
     this.activeAppActions.add(key);
@@ -1213,7 +1230,19 @@ export class DeviceToolsService {
                   '-p',
                   action.appId,
                 ];
-      await this.exec(ios ? 'xcrun' : 'adb', args, runOptions);
+      try {
+        await this.exec(ios ? 'xcrun' : 'adb', args, runOptions);
+      } catch (error) {
+        if (
+          !(
+            ios &&
+            action.type === 'terminate' &&
+            error instanceof DeviceToolsError &&
+            error.code === 'tool-failed'
+          )
+        )
+          throw error;
+      }
       for (let attempt = 0; attempt < 10; attempt++) {
         await check();
         let observed = false;

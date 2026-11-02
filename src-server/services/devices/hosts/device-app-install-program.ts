@@ -3,6 +3,7 @@ export interface DeviceAppInstallParams {
   platform: 'ios' | 'android';
   deviceId: string;
   digest: string;
+  executables?: { adb?: string; xcrun?: string; plutil?: string };
   files: Array<{
     path: string;
     size: number;
@@ -63,8 +64,9 @@ const finish = (result) => {
   } else cleanup();
 };
 const cancel = () => finish({ ok: false, code: 'interrupted', effect: actionStarted ? 'unknown' : 'none' });
-const deadline = setTimeout(() => finish({ ok: false, code: 'tool-timeout', effect: actionStarted ? 'unknown' : 'none' }), 120000);
+let deadline = setTimeout(() => finish({ ok: false, code: 'tool-timeout', effect: actionStarted ? 'unknown' : 'none' }), 120000 + Math.ceil(total / (128 * 1024)) * 1000);
 const run = (command, args) => new Promise((resolve, reject) => {
+  if (p.executables && p.executables[command]) command = p.executables[command];
   if (done) return reject(new Error('interrupted'));
   let child;
   try { child = spawn(command, args, { shell: false, windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] }); } catch { return reject(new Error('tool-unavailable')); }
@@ -117,7 +119,8 @@ async function ios() {
     }
   }
   if (!runtime || !atLeast(runtime, minimum)) throw new Error('incompatible-artifact');
-  const metadata = { platform: 'ios', abi: hostArch, appId, version: versionName, build, revision: null };
+  const urlSchemes = Array.isArray(info.CFBundleURLTypes) ? [...new Set(info.CFBundleURLTypes.flatMap((item) => Array.isArray(item?.CFBundleURLSchemes) ? item.CFBundleURLSchemes : []).filter((scheme) => typeof scheme === 'string' && /^[A-Za-z][A-Za-z0-9+.-]{0,31}$/.test(scheme)).map((scheme) => scheme.toLowerCase()))] : [];
+  const metadata = { platform: 'ios', abi: hostArch, appId, version: versionName, build, revision: null, urlSchemes };
   return { metadata, install: async () => {
     actionStarted = true;
     await run('xcrun', ['simctl', 'install', p.deviceId, root]);
@@ -150,7 +153,15 @@ async function android() {
   if (!deviceAbis.length || deviceAbis.some((abi) => !/^[A-Za-z0-9_-]{1,64}$/.test(abi)) || (abis.length && !abis.some((abi) => deviceAbis.includes(abi)))) throw new Error('incompatible-artifact');
   const min = /^sdkVersion:'(\d+)'/m.exec(badging), sdk = (await run('adb', ['-s', p.deviceId, 'shell', 'getprop', 'ro.build.version.sdk'])).trim();
   if (!min || !/^\d+$/.test(sdk) || Number(sdk) < Number(min[1])) throw new Error('incompatible-artifact');
-  const metadata = { platform: 'android', abi: abis.length ? abis.join(',') : 'universal', appId, version: versionName, build, revision: null };
+  const manifest = await run(aapt(), ['dump', 'xmltree', apk, 'AndroidManifest.xml']);
+  const urlSchemes = []; let intentIndent = -1;
+  for (const line of manifest.split(/\r?\n/)) {
+    const element = /^(\s*)E: ([^ ]+)/.exec(line);
+    if (element) { const indent = element[1].length; if (intentIndent >= 0 && indent <= intentIndent) intentIndent = -1; if (element[2] === 'intent-filter') intentIndent = indent; }
+    const scheme = /android:scheme(?:\([^)]*\))?=\"([^\"]+)\"/.exec(line);
+    if (intentIndent >= 0 && scheme && /^[A-Za-z][A-Za-z0-9+.-]{0,31}$/.test(scheme[1])) urlSchemes.push(scheme[1].toLowerCase());
+  }
+  const metadata = { platform: 'android', abi: abis.length ? abis.join(',') : 'universal', appId, version: versionName, build, revision: null, urlSchemes: [...new Set(urlSchemes)] };
   return { metadata, install: async () => {
     actionStarted = true;
     const result = await run('adb', ['-s', p.deviceId, 'install', '-r', apk]);
@@ -225,6 +236,7 @@ function consume(chunk) {
   if (!current) openNext();
   if (!current && index === p.files.length) {
     if ('sha256:' + overall.digest('hex') !== p.digest) throw new Error('mismatch');
+    clearTimeout(deadline); deadline = setTimeout(() => finish({ ok: false, code: 'tool-timeout', effect: actionStarted ? 'unknown' : 'none' }), 120000);
     phase = 'inspecting'; void work();
   }
 }

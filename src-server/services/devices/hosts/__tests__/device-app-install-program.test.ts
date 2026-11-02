@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   chmodSync,
+  copyFileSync,
   existsSync,
   mkdirSync,
   readdirSync,
@@ -10,7 +11,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../../__test-utils__/temp-dirs.js';
 import {
   DEVICE_APP_INSTALL_SCRIPT,
@@ -32,7 +33,11 @@ function fixture() {
   };
   executable(
     join(tools, 'aapt'),
-    `printf "package: name='com.example.app' versionCode='12' versionName='1.2'\\nsdkVersion:'24'\\nnative-code: 'arm64-v8a'\\n"`,
+    `if [ "$2" = xmltree ]; then
+  printf 'E: manifest\\n  E: application\\n    E: activity\\n      E: intent-filter\\n        E: data\\n          A: android:scheme(0x01010027)="sample"\\n    E: meta-data\\n      A: android:scheme(0x01010027)="outside"\\n'
+else
+  printf "package: name='com.example.app' versionCode='12' versionName='1.2'\\nsdkVersion:'24'\\nnative-code: 'arm64-v8a'\\n"
+fi`,
   );
   executable(
     join(bin, 'adb'),
@@ -145,6 +150,7 @@ test('installs only after admission and verifies the installed package', async (
         appId: 'com.example.app',
         build: '12',
         revision: null,
+        urlSchemes: ['sample'],
       }),
     }),
     expect.objectContaining({
@@ -359,5 +365,49 @@ test('SSH registry enforces host consent and rechecks it before installation', a
     ).toHaveLength(before);
   } finally {
     await registry.shutdown();
+  }
+});
+
+test('host program uses the resolved executable when PATH cannot locate adb', async () => {
+  const { home, bin } = fixture();
+  const bytes = Buffer.from('apk fixture');
+  const result = await run(
+    home,
+    '/usr/bin',
+    { ...request(bytes), executables: { adb: join(bin, 'adb') } },
+    bytes,
+    true,
+  );
+  expect(result.events.at(-1)).toMatchObject({ ok: true });
+  expect(readFileSync(join(home, 'calls'), 'utf8')).toContain('install -r');
+});
+
+test('local install resolves SDK adb without PATH and uses it throughout the host protocol', async () => {
+  const { home, bin } = fixture();
+  const platformTools = join(home, 'sdk', 'platform-tools');
+  mkdirSync(platformTools, { recursive: true });
+  copyFileSync(join(bin, 'adb'), join(platformTools, 'adb'));
+  vi.stubEnv('HOME', home);
+  vi.stubEnv('TMPDIR', home);
+  vi.stubEnv('ANDROID_HOME', join(home, 'sdk'));
+  vi.stubEnv('PATH', '/usr/bin:/bin');
+  try {
+    const { runDeviceAppInstall, spawnLocalDeviceInstall } = await import(
+      '../device-app-install.js'
+    );
+    const bytes = Buffer.from('apk fixture');
+    const result = await runDeviceAppInstall({
+      target: { host: 'local.invalid' },
+      platform: 'android',
+      deviceId: 'emulator-5554',
+      digest: request(bytes).digest,
+      files: [{ path: 'Application.apk', executable: false, bytes }],
+      spawn: spawnLocalDeviceInstall,
+      beforeInstall: async () => true,
+    });
+    expect(result).toMatchObject({ ok: true });
+    expect(readFileSync(join(home, 'calls'), 'utf8')).toContain('install -r');
+  } finally {
+    vi.unstubAllEnvs();
   }
 });
