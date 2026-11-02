@@ -15089,19 +15089,22 @@ export class EventStore {
     );
   }
 
-  private sessionBinding?: (threadId: string) => boolean;
+  private readonly sessionBindings = new Set<{
+    hasSession: (threadId: string) => boolean;
+  }>();
 
   bindSessionActivity(binding: (threadId: string) => boolean): () => void {
-    if (this.sessionBinding)
-      throw new Error('Session activity is already bound.');
-    this.sessionBinding = binding;
+    const registration = { hasSession: binding };
+    this.sessionBindings.add(registration);
     return () => {
-      if (this.sessionBinding === binding) this.sessionBinding = undefined;
+      this.sessionBindings.delete(registration);
     };
   }
 
   private hasSessionBinding(threadId: string): boolean {
-    return this.sessionBinding?.(threadId) === true;
+    for (const binding of this.sessionBindings)
+      if (binding.hasSession(threadId)) return true;
+    return false;
   }
 
   private isCascadeSessionSettled(childId: string): boolean {
@@ -15246,10 +15249,8 @@ export class EventStore {
       );
   }
 
-  cascadeStopOwner(
-    childId: string,
-    locallyHeld = this.hasSessionBinding(childId),
-  ): CascadeStopOwner {
+  cascadeStopOwner(childId: string, observedBinding = false): CascadeStopOwner {
+    const locallyHeld = observedBinding || this.hasSessionBinding(childId);
     const facts = readCascadeSessionFacts(this.db, [childId]).get(childId)!;
     const snapshot = JSON.stringify(facts);
     const initial = {

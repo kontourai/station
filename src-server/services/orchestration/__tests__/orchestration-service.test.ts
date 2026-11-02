@@ -11455,11 +11455,11 @@ describe('OrchestrationService', () => {
             ).sort(),
           ] as const,
       );
-      expect(docblockRows).toHaveLength(7);
-      expect(sites).toHaveLength(7);
+      expect(docblockRows).toHaveLength(8);
+      expect(sites).toHaveLength(8);
       // Unique keys on both sides, so the maps below cannot merge two sites.
-      expect(new Set(sites.map(([caller]) => caller)).size).toBe(7);
-      expect(new Set(docblockRows.map(([caller]) => caller)).size).toBe(7);
+      expect(new Set(sites.map(([caller]) => caller)).size).toBe(8);
+      expect(new Set(docblockRows.map(([caller]) => caller)).size).toBe(8);
       expect(Object.fromEntries(sites)).toEqual(
         Object.fromEntries(docblockRows),
       );

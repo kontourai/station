@@ -350,21 +350,33 @@ test.each(['owner', 'revision'] as const)(
   },
 );
 
-test('one explicit binding provider remains authoritative after an old disposer repeats', () => {
+test('explicit local bindings cannot hide or release another registration’s custody', () => {
   const store = new EventStore(
     join(makeTempDir('cascade-binding-owner-'), 'events.sqlite'),
   );
   try {
-    const first = store.bindSessionActivity(() => false);
-    expect(() => store.bindSessionActivity(() => true)).toThrow(
-      'already bound',
-    );
+    store.appendEvent({
+      eventId: 'child-exited',
+      threadId: 'child',
+      sessionId: 'child',
+      provider: 'claude',
+      method: 'session.exited',
+      createdAt: '2026-01-01T00:00:00Z',
+    });
+    expect(store.cascadeStopOwner('child').custody).toBe('settled');
+    const held = () => true;
+    const first = store.bindSessionActivity(held);
+    const idle = store.bindSessionActivity(() => false);
+    expect(store.cascadeStopOwner('child').custody).toBe('local');
+    expect(store.cascadeStopOwner('child', false).custody).toBe('local');
+    const second = store.bindSessionActivity(held);
     first();
-    const second = store.bindSessionActivity(() => true);
     first();
     expect(store.cascadeStopOwner('child').custody).toBe('local');
+    idle();
+    expect(store.cascadeStopOwner('child').custody).toBe('local');
     second();
-    expect(store.cascadeStopOwner('child').custody).toBe('unknown');
+    expect(store.cascadeStopOwner('child').custody).toBe('settled');
   } finally {
     store.close();
   }

@@ -2229,10 +2229,12 @@ or newer admission has nothing left to stop. Delivery and deletion share that
 rule. A child stop whose invocation remains unresolved stays pending and is
 surfaced as unknown rather than acknowledged complete.
 
-Appending the intent uses SQL facts and the single explicit binding dependency;
-it performs no process probe in the writer transaction. Delivery probes outside
-that transaction, rereads the boundary afterward, and compares its snapshot
-again while recording custody. Completion and release recheck durable facts
+Appending the intent uses SQL facts and one explicit local-binding registry.
+Services sharing an EventStore register independently: any held binding prevents
+settlement until that registration is released. Commit observers supply no
+binding authority. Append performs no process probe in the writer transaction.
+Delivery probes outside that transaction, rereads the boundary afterward, and
+compares its snapshot again while recording custody. Completion and release recheck durable facts
 under the writer lock.
 
 Open reconstructs edges through the naming index and derives stop obligations

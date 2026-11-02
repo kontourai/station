@@ -13147,6 +13147,7 @@ export class OrchestrationService {
    * |---|---|---|---|---|
    * | CredentialProfileRecovery.quarantineSession | yes | yes | — | — |
    * | CooperativeStop.forgetLiveUserSession | yes | — | — | yes |
+   * | dispatchWithReceipt.releaseUnknownOwnedWork | yes | yes | yes | yes |
    * | discardDraftSession | yes | yes | yes | yes |
    * | finalizeStoppedAdapterSessions | yes | yes | — | — |
    * | clearAbandonedAdoptionMemory | — | — | yes | — |
