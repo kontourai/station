@@ -1578,8 +1578,6 @@
 
     "src-ui/src/__tests__/ConversationInboxMessages.geometry.test.tsx",
 
-    "packages/monument/src/recovery-ledger.ts",
-
     "packages/monument/src/session-control.ts",
 
     "src-server/services/orchestration/recovery-ledger-binding.ts",
