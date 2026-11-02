@@ -40,9 +40,16 @@
 }
 
 .code-block-actions > span {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* #4407: soft wrap. Shiki keeps each line's text, newlines included, inside
+   the one <pre>, so wrapping is only a white-space change. */
+.code-block-frame[data-wrap] .code-block-body :is(pre, code) {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .code-block-actions .button {
   flex-shrink: 0;
