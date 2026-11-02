@@ -1451,6 +1451,11 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
         method: 'POST',
         prefix: '/api/projects/:slug/terminal-sessions/:terminalId/resize',
       },
+      // Restart ends and relaunches the shell (#3994): an operate action.
+      {
+        method: 'POST',
+        prefix: '/api/projects/:slug/terminal-sessions/:terminalId/restart',
+      },
       {
         method: 'DELETE',
         prefix: '/api/projects/:slug/terminal-sessions/:terminalId',

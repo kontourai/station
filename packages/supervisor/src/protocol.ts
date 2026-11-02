@@ -625,6 +625,8 @@ export interface WorkloadExit {
   outputIncomplete: boolean;
   /** The journal failed; its directory is not a complete record. */
   journalFailed: boolean;
+  /** `command` only: its output passed `outputCapBytes` and it was ended. */
+  outputCapped?: boolean;
 }
 
 export interface WorkloadInfo {

@@ -5558,6 +5558,12 @@ accounts, agents and plugins cannot use it. The Coding UI uses the
   `POST /:terminalId/resize` takes `{cols, rows, bindingKey?}`. Dimensions must be
   integers from 1 through 1,000. `DELETE /:terminalId?bindingKey=project` ends
   the shell and retains its record/journal. Ended sessions never auto-restart.
+- `POST /:terminalId/restart` takes `{bindingKey?, subdirectory?}` and is the
+  explicit restart the socket's `restart` command performs: same id, a new
+  journal segment, a directory confined to the binding. It returns the record
+  with `restart: {count, afterSeq, at}` and the journal's `lastSeq`. Agent
+  command sessions (`kind: "command"`) and server-owned launches are refused
+  (403).
 
 Ingress explicitly requires `terminal:observe` for GET/HEAD list and journal
 reads, and `terminal:operate` for POST/DELETE operations. Operate also satisfies
@@ -5650,7 +5656,15 @@ Project/binding authority through TerminalSessions.
   `records`. `resize` takes `{type, requestId, channel, cols, rows}`; `close`
   and `detach` take `{type, requestId, channel}`. They return `done`; an adjacent
   queued resize replaced by a newer resize returns `superseded`. Close ends
-  the shell; detach and socket loss leave it running. Restart is not admitted.
+  the shell; detach and socket loss leave it running.
+- `restart`: `{type, requestId, channel, subdirectory?}` requires operate
+  authority. It ends the attached session's program and starts it again under
+  the same `terminalId`; the journal continues in a new segment and earlier
+  output stays readable on the same channel. `subdirectory` (relative, at most
+  4,096 characters) moves it within the binding's root, refused like `open`'s;
+  without it the current directory is kept if it is still inside that root.
+  It returns `done` with `restartedAfterSeq`, the last sequence before the new
+  run. Server-owned launches and command sessions are refused.
 - `cwd`: `{type, requestId, channel}` returns `{type: "cwd", requestId,
   channel, cwd}` with the shell's current directory, or `null` when the host
   cannot tell. It requires operate authority.
@@ -5699,7 +5713,8 @@ before publication. Invalid frames return `invalid-frame`, authority/session
 refusals return generic `terminal-refused`, without exception details.
 
 `@kontourai/station-contracts/terminal-transport` exports the binary codec, the
-ticket and subprotocol constants, launch profiles and the scope predicate.
+ticket and subprotocol constants, launch profiles, the `restart` request shape
+and the scope predicate.
 `terminal:observe` is explicitly promotable and read-only; existing
 scopes/defaults/presets are unchanged. The SDK's `TerminalSessionStore` is the
 client for this protocol. A browser broker (DataChannel) route has no socket

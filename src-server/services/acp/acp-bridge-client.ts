@@ -28,6 +28,10 @@ import type {
   ExtendedRequestPermissionRequest,
   ManagedTerminal,
 } from './acp-bridge-types.js';
+import {
+  type AcpSessionTerminals,
+  limitAcpOutput,
+} from './acp-session-terminals.js';
 
 type ACPStreamWriter = (chunk: any) => Promise<void>;
 
@@ -83,6 +87,13 @@ export function createACPClientApp(callbacks: ACPClientCallbacks) {
 interface ACPBridgeClientContext {
   cwd: string;
   terminals: Map<string, ManagedTerminal>;
+  /**
+   * #3994: when present, terminals are command sessions in the core's
+   * `TerminalSessions` (journaled, confined to `cwd`, visible to the user).
+   * Absent where a host has no terminal sessions (hosted mode): `terminals`
+   * holds plain child processes instead.
+   */
+  sessionTerminals?: AcpSessionTerminals;
   approvalRegistry: ApprovalRegistry;
   getActiveWriter: () => ACPStreamWriter | null;
   nextTerminalId: () => string;
@@ -198,6 +209,9 @@ export function createACPBridgeClient(
           cwd: context.cwd,
           terminals: context.terminals,
           nextTerminalId: context.nextTerminalId,
+          ...(context.sessionTerminals && {
+            sessionTerminals: context.sessionTerminals,
+          }),
         },
       );
     },
@@ -205,6 +219,8 @@ export function createACPBridgeClient(
     terminalOutput: async (
       params: TerminalOutputRequest,
     ): Promise<TerminalOutputResponse> => {
+      if (context.sessionTerminals?.has(params.terminalId))
+        return context.sessionTerminals.output(params.terminalId);
       const term = context.terminals.get(params.terminalId);
       if (!term) {
         // Same class as the inbound-extension fabrication this change
@@ -221,9 +237,10 @@ export function createACPBridgeClient(
           `unknown terminal '${params.terminalId}'`,
         );
       }
+      const limited = limitAcpOutput(term.output, term.outputByteLimit);
       return {
-        output: term.output,
-        truncated: false,
+        output: limited.output,
+        truncated: limited.truncated,
         // `exited` — not `exitCode !== null` — decides whether an exit status
         // exists. A child killed by a signal has a null exitCode and HAS
         // exited; the old test reported it as still running.
@@ -234,6 +251,10 @@ export function createACPBridgeClient(
     },
 
     releaseTerminal: async (params: ReleaseTerminalRequest) => {
+      if (context.sessionTerminals?.has(params.terminalId)) {
+        await context.sessionTerminals.release(params.terminalId);
+        return;
+      }
       const term = context.terminals.get(params.terminalId);
       if (term) {
         term.process.kill();
@@ -244,6 +265,8 @@ export function createACPBridgeClient(
     waitForTerminalExit: async (
       params: WaitForTerminalExitRequest,
     ): Promise<WaitForTerminalExitResponse> => {
+      if (context.sessionTerminals?.has(params.terminalId))
+        return context.sessionTerminals.waitForExit(params.terminalId);
       const term = context.terminals.get(params.terminalId);
       if (!term) {
         // Was `{ exitCode: -1 }` — a fabricated exit status for a terminal
@@ -281,6 +304,10 @@ export function createACPBridgeClient(
     },
 
     killTerminal: async (params: KillTerminalRequest) => {
+      if (context.sessionTerminals?.has(params.terminalId)) {
+        await context.sessionTerminals.kill(params.terminalId);
+        return;
+      }
       const term = context.terminals.get(params.terminalId);
       if (term) term.process.kill();
     },
@@ -350,6 +377,7 @@ interface ACPBridgeTerminalContext {
   cwd: string;
   terminals: Map<string, ManagedTerminal>;
   nextTerminalId: () => string;
+  sessionTerminals?: AcpSessionTerminals;
 }
 
 /**
@@ -425,19 +453,20 @@ export function splitComposedShellLine(
   return tokens as [string, ...string[]];
 }
 
-export async function handleACPBridgeCreateTerminal(
+/**
+ * The executable and arguments of a create request. Real engines compose
+ * shell one-liners into `command` with empty `args` — 2026-09-18 live
+ * incident: the grok CLI sent `bash -lc 'pwd && …'` and the WHOLE string
+ * became the executable path. When the command names no real file and
+ * carries whitespace, read it the way a shell would. A command that names a
+ * file (a path containing spaces, say) is passed through untouched, so
+ * legitimate space-bearing executables keep working.
+ */
+async function resolveCreateTerminalCommand(
   params: ExtendedCreateTerminalRequest,
-  context: ACPBridgeTerminalContext,
-): Promise<CreateTerminalResponse> {
-  const id = context.nextTerminalId();
+): Promise<{ command: string; args: string[] }> {
   let command = params.command;
   let args = params.args ?? [];
-  // Real engines compose shell one-liners into `command` with empty `args` —
-  // 2026-09-18 live incident: the grok CLI sent `bash -lc 'pwd && …'` and the
-  // WHOLE string became the executable path. When the command names no real
-  // file and carries whitespace, read it the way a shell would. A command
-  // that names a file (a path containing spaces, say) is passed through
-  // untouched, so legitimate space-bearing executables keep working.
   if (args.length === 0 && /\s/.test(command)) {
     const namesRealFile = await stat(command)
       .then((info) => info.isFile())
@@ -449,21 +478,40 @@ export async function handleACPBridgeCreateTerminal(
       }
     }
   }
+  return { command, args };
+}
+
+export async function handleACPBridgeCreateTerminal(
+  params: ExtendedCreateTerminalRequest,
+  context: ACPBridgeTerminalContext,
+): Promise<CreateTerminalResponse> {
+  const id = context.nextTerminalId();
+  const { command, args } = await resolveCreateTerminalCommand(params);
+  const env = params.env
+    ? Object.fromEntries(params.env.map((entry) => [entry.name, entry.value]))
+    : undefined;
+  if (context.sessionTerminals) {
+    await context.sessionTerminals.create(id, {
+      command,
+      args,
+      cwd: params.cwd,
+      ...(env && { env }),
+      outputByteLimit: params.outputByteLimit,
+    });
+    return { terminalId: id };
+  }
   const proc = spawn(command, args, {
     cwd: params.cwd || context.cwd,
-    env: childProcessEnvironment(
-      params.env
-        ? Object.fromEntries(
-            params.env.map((entry) => [entry.name, entry.value]),
-          )
-        : undefined,
-    ),
+    env: childProcessEnvironment(env),
     windowsHide: true,
   });
 
   const term: ManagedTerminal = {
     process: proc,
     output: '',
+    ...(typeof params.outputByteLimit === 'number' && {
+      outputByteLimit: params.outputByteLimit,
+    }),
     exitCode: null,
     signal: null,
     exited: false,
