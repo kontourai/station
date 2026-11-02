@@ -18,11 +18,16 @@ import {
   BUILTIN_STATION_DOCS_TOOL_SERVER_ID,
   BUILTIN_STATION_KNOWLEDGE_TOOL_SERVER_ID,
 } from '../bootstrap/station-control-runtime-env.js';
+import { directModelImplementationBinding } from '../frameworks/model-generation-identity.js';
 import type { MCPToolNameMappingEntry } from '../tools/mcp-tool-names.js';
 import type { IAgentFramework } from '../types.js';
 import type { WorkItemCapture } from '../work-item-capture.js';
 import type { AgentHooksDeps } from './agent-hooks.js';
 import { createAgentHooks } from './agent-hooks.js';
+import {
+  bindDurableAgent,
+  durableAgentDefinition,
+} from './durable-agent-invocation.js';
 import { STATION_CAPABILITY_DISCOVERY_GUIDANCE } from './station-capability-discovery.js';
 
 interface RuntimeDefaultAgentContext {
@@ -344,6 +349,16 @@ export async function bootstrapRuntimeDefaultAgent(
     logger: context.logger,
   });
 
+  const durable = {
+    home: context.configLoader.getProjectHomeDir(),
+    slug: 'station',
+    definition: durableAgentDefinition({
+      spec: defaultSpec,
+      binding: directModelImplementationBinding(defaultModel),
+      runtime: context.appConfig.runtime ?? 'voltagent',
+    }),
+  };
+
   const defaultAgent = await context.framework.createTempAgent({
     agentId: 'station',
     name: 'default',
@@ -358,7 +373,9 @@ export async function bootstrapRuntimeDefaultAgent(
     tools: defaultTools,
     memoryAdapter: defaultMemoryAdapter,
     hooks: defaultHooks,
+    durable,
   });
+  bindDurableAgent(defaultAgent, durable);
 
   context.agentHooksMap?.set('default', defaultHooks);
   context.activeAgents.set('default', defaultAgent as any);

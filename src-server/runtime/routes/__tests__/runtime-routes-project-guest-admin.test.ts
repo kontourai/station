@@ -241,6 +241,40 @@ async function drainGuardedBody(response: Response) {
   };
 }
 
+/**
+ * Read a Project Room `/room/events` stream until a `changed` frame reports at
+ * least `lastSeq`: the commit notification the Room store raises when a message
+ * lands. No timer of its own; the scaled test timeout bounds a publication that
+ * never happens.
+ */
+async function readRoomChangedAtLeast(response: Response, lastSeq: number) {
+  expect(response.status).toBe(200);
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffered = '';
+  try {
+    for (;;) {
+      const next = await reader.read();
+      if (next.done) throw new Error(`Room stream ended: ${buffered}`);
+      buffered += decoder.decode(next.value, { stream: true });
+      const frames = buffered.split('\n\n');
+      buffered = frames.pop()!;
+      for (const frame of frames) {
+        const event = /^event: (.*)$/m.exec(frame)?.[1];
+        const data = /^data: (.*)$/m.exec(frame)?.[1];
+        if (event === 'revoked') throw new Error(`Room stream ${frame}`);
+        if (
+          event === 'changed' &&
+          (JSON.parse(data!) as { lastSeq: number }).lastSeq >= lastSeq
+        )
+          return;
+      }
+    }
+  } finally {
+    await reader.cancel().catch(() => {});
+  }
+}
+
 function expectDeliveryDenied(drained: { bytes: Buffer; error: unknown }) {
   expect(String(drained.error)).toContain(
     'Project authorization ended before response delivery.',
@@ -1706,6 +1740,12 @@ describe('project guest administration over the production composition', () => {
       createdAt: new Date().toISOString(),
       turnId: 'turn-1',
     };
+    // The answer is published by the Room's publication watcher once the
+    // persisted turn.completed reaches the event bus, not by the explicit
+    // reconcile below. Await the Room's own commit notification rather than
+    // polling reconcile under vitest's 1 s waitFor default: one reconcile
+    // request alone can outlast that on a loaded CI runner.
+    const roomEvents = await h.request(`${base}/events`, guest());
     h.adapter.events.push({
       ...events,
       eventId: crypto.randomUUID(),
@@ -1726,16 +1766,15 @@ describe('project guest administration over the production composition', () => {
       finishReason: 'stop',
       outputText: 'Selected shared answer',
     });
-    await vi.waitFor(async () => {
-      const reconciled = await h.request(
-        `${base}/agents/${handle.requestId}/reconcile`,
-        post(guard),
-      );
-      expect(reconciled.status, await reconciled.clone().text()).toBe(200);
-      expect(
-        (await readJson<{ data: { state: string } }>(reconciled)).data.state,
-      ).toBe('published');
-    });
+    await readRoomChangedAtLeast(roomEvents, 1);
+    const reconciled = await h.request(
+      `${base}/agents/${handle.requestId}/reconcile`,
+      post(guard),
+    );
+    expect(reconciled.status, await reconciled.clone().text()).toBe(200);
+    expect(
+      (await readJson<{ data: { state: string } }>(reconciled)).data.state,
+    ).toBe('published');
     const history = (
       await readJson<{ data: { messages: { text: string }[] } }>(
         await h.request(`${base}/messages`, guest()),
@@ -1782,6 +1821,13 @@ describe('project guest administration over the production composition', () => {
     const readAnswer = h.sessions!.sessionQueries.readAssistantTurn.bind(
       h.sessions!.sessionQueries,
     );
+    // The publication watcher reads the selected answer once turn.completed is
+    // persisted; that read narrows the compute grant mid-publication. Await
+    // that exact point instead of polling reconcile under a 1 s default.
+    let markNarrowed!: () => void;
+    const answerReadAndNarrowed = new Promise<void>((resolve) => {
+      markNarrowed = resolve;
+    });
     const selectedRead = vi
       .spyOn(h.sessions!.sessionQueries, 'readAssistantTurn')
       .mockImplementation(async (...args) => {
@@ -1796,16 +1842,16 @@ describe('project guest administration over the production composition', () => {
             }),
           );
           expect(narrowed.status).toBe(200);
+          markNarrowed();
         }
         return answer;
       });
-    await vi.waitFor(async () => {
-      const denied = await h.request(
-        `${base}/agents/${pendingHandle.requestId}/reconcile`,
-        post(guard),
-      );
-      expect(denied.status, await denied.clone().text()).toBe(403);
-    });
+    await answerReadAndNarrowed;
+    const denied = await h.request(
+      `${base}/agents/${pendingHandle.requestId}/reconcile`,
+      post(guard),
+    );
+    expect(denied.status, await denied.clone().text()).toBe(403);
     expect(selectedRead).toHaveBeenCalled();
     selectedRead.mockRestore();
     const repromoted = await h.request(

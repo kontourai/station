@@ -1,3 +1,4 @@
+import { currentAgentTurn } from '@kontourai/agent-runtime';
 import {
   AfterInvocationEvent,
   AfterToolCallEvent,
@@ -79,6 +80,7 @@ export function wireStrandsToolGate(options: {
   invocationCtx: InvocationContext;
   purposeEnabledToolNames?: ReadonlySet<string>;
   findBuiltinToolIdentity?: (runtimeName: string) => string | undefined;
+  findToolReplay?: (runtimeName: string) => 'safe' | 'unsafe';
 }): void {
   const {
     strandsAgent,
@@ -104,6 +106,9 @@ export function wireStrandsToolGate(options: {
     const approved = await hooks.beforeToolCall!(
       {
         toolName: event.toolUse.name,
+        ...(currentAgentTurn()
+          ? { replay: options.findToolReplay?.(event.toolUse.name) ?? 'unsafe' }
+          : {}),
         toolCallId: event.toolUse.toolUseId,
         toolArgs: purposeful.input,
         purpose: purposeful.purpose,
@@ -147,6 +152,7 @@ export function wireStrandsAgentHooks(options: {
   ) => MCPToolLoaderProvenance | undefined;
   purposeEnabledToolNames?: ReadonlySet<string>;
   findBuiltinToolIdentity?: (runtimeName: string) => string | undefined;
+  findToolReplay?: (runtimeName: string) => 'safe' | 'unsafe';
 }): void {
   const {
     strandsAgent,
@@ -165,6 +171,7 @@ export function wireStrandsAgentHooks(options: {
   let toolCallCount = 0;
 
   wireStrandsToolGate({
+    findToolReplay: options.findToolReplay,
     strandsAgent,
     hooks,
     deniedToolCalls,

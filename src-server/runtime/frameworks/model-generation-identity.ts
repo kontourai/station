@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { currentAuthorizedTurnCorrelation } from '../conversation/authorized-turn-correlation.js';
 import type { InvocationContext } from '../types.js';
 
-interface Binding {
+export interface Binding {
   connectionId: string;
   modelId: string;
   providerType: string;
@@ -20,6 +20,20 @@ const bindings = new WeakMap<
 >();
 const coordinate = (account: string, session: string, turn: string) =>
   JSON.stringify([account, session, turn]);
+export function inheritDirectModelIdentity<T extends object>(
+  model: object,
+  wrapper: T,
+): T {
+  const observed = bindings.get(model);
+  if (observed) bindings.set(wrapper, observed);
+  return wrapper;
+}
+export function directModelImplementationBinding(
+  model: object,
+): Readonly<Binding> | undefined {
+  const binding = bindings.get(model)?.binding;
+  return binding ? Object.freeze({ ...binding }) : undefined;
+}
 const text = (value: unknown) =>
   typeof value === 'string' && value.length > 0 && value.length <= 512
     ? value
