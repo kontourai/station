@@ -16,6 +16,13 @@
  * closed, or between reconnect attempts). Nothing polls; a waiter is woken
  * by a release.
  *
+ * The browser's pool is per origin across every tab, so the slots are too:
+ * with the Web Locks API each slot is a named lock
+ * (`station-live-surface-frames:<origin>:<n>`), held for a stream's life, so
+ * two tabs share the same two slots. Without Web Locks (an older WebView),
+ * the cap is per page. Each tab still opens its own always-on event streams,
+ * which admission does not count (ADR 0018's amendment lists that gap).
+ *
  * Origins are counted apart. Admission only counts streams; it never shares
  * or reuses one, so nothing crosses a credential or Project context. A
  * transport that does not use the browser's pool (a native or relay
@@ -45,17 +52,113 @@ interface OriginSlots {
   waiting: (() => void)[];
 }
 
+function originOf(url: string): string {
+  try {
+    return new URL(url, globalThis.location?.href).origin;
+  } catch {
+    return url;
+  }
+}
+
+/** The part of the Web Locks API admission uses. */
+export type LiveSurfaceLockManager = Pick<LockManager, 'request'>;
+
+/**
+ * Take one lock, resolving its release (or null when `ifAvailable` found it
+ * held). The lock is held until the release runs.
+ */
+function hold(
+  locks: LiveSurfaceLockManager,
+  name: string,
+  options: LockOptions,
+  onGranted: (release: () => void) => void,
+  onDenied: () => void,
+): Promise<unknown> {
+  return locks.request(name, options, (lock) => {
+    if (!lock) {
+      onDenied();
+      return undefined;
+    }
+    return new Promise<void>((done) => {
+      let released = false;
+      onGranted(() => {
+        if (released) return;
+        released = true;
+        done();
+      });
+    });
+  });
+}
+
+function lockAdmission(
+  locks: LiveSurfaceLockManager,
+  limit: number,
+): LiveSurfaceStreamAdmission {
+  return {
+    async admit(url, signal, onQueued) {
+      if (signal.aborted) return null;
+      const names = Array.from(
+        { length: limit },
+        (_, n) => `station-live-surface-frames:${originOf(url)}:${n}`,
+      );
+      // A free slot, if any, without queueing on one.
+      for (const name of names) {
+        const release = await new Promise<(() => void) | null>((resolve) => {
+          hold(locks, name, { ifAvailable: true }, resolve, () =>
+            resolve(null),
+          ).catch(() => resolve(null));
+        });
+        if (release) {
+          if (!signal.aborted) return release;
+          release();
+          return null;
+        }
+      }
+      if (signal.aborted) return null;
+      onQueued?.();
+      // Queue on every slot; the first granted wins and the rest withdraw.
+      const withdraw = new AbortController();
+      const onAbort = () => withdraw.abort();
+      signal.addEventListener('abort', onAbort, { once: true });
+      return new Promise((resolve) => {
+        let won = false;
+        let settled = 0;
+        for (const name of names) {
+          hold(
+            locks,
+            name,
+            { signal: withdraw.signal },
+            (release) => {
+              if (won || signal.aborted) {
+                release();
+                return;
+              }
+              won = true;
+              withdraw.abort();
+              signal.removeEventListener('abort', onAbort);
+              resolve(release);
+            },
+            () => {},
+          )
+            .catch(() => {})
+            .finally(() => {
+              settled += 1;
+              if (settled === names.length && !won) resolve(null);
+            });
+        }
+      });
+    },
+  };
+}
+
 export function createLiveSurfaceStreamAdmission(
   limit = LIVE_SURFACE_FRAME_STREAMS_PER_ORIGIN,
+  /** The Web Locks API, or null for a per-page counter (no Web Locks). */
+  locks: LiveSurfaceLockManager | null = globalThis.navigator?.locks ?? null,
 ): LiveSurfaceStreamAdmission {
+  if (locks && Number.isFinite(limit)) return lockAdmission(locks, limit);
   const origins = new Map<string, OriginSlots>();
-  const keyOf = (url: string) => {
-    try {
-      return new URL(url, globalThis.location?.href).origin;
-    } catch {
-      return url;
-    }
-  };
+  const keyOf = originOf;
   return {
     admit(url, signal, onQueued) {
       const key = keyOf(url);

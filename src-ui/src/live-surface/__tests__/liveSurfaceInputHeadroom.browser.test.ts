@@ -320,6 +320,43 @@ describe.skipIf(!chromiumIsInstalled(REPO_ROOT))(
       await page.close();
     }, 60_000);
 
+    test('two tabs of one origin share the two slots, so input still arrives', async () => {
+      // One context is one browser profile: one connection pool, one set of
+      // Web Locks. Each tab holds one event stream and mounts two viewers.
+      fixture = startServer(bundle);
+      const origin = await fixture.listen();
+      const context = await browser.newContext();
+      const tabA = await context.newPage();
+      await tabA.goto(`${origin}/?cap=2&events=1&surfaces=a,b`);
+      await until(() => fixture!.framesOpen.size === 2, 'tab A streams');
+      const tabB = await context.newPage();
+      await tabB.goto(`${origin}/?cap=2&events=1&surfaces=c,d`);
+      await tabB.waitForFunction(
+        () =>
+          Object.values(window.liveSurfaces).filter(
+            (s) => s.status === 'queued',
+          ).length === 2,
+      );
+      expect(fixture.framesOpen.size).toBe(2);
+      const before = fixture.receipts.length;
+      const sentAt = await sendTap(tabB, 'c');
+      await until(
+        () => fixture!.receipts.length > before,
+        'input from the second tab',
+        NOT_QUEUED_WITHIN_MS,
+      );
+      report(
+        `[headroom] two tabs, cap=2 shared by Web Locks: tap from the queued tab received in ${fixture.receipts.at(-1)!.at - sentAt} ms; 2 event + 2 frame streams open across tabs`,
+      );
+      // Closing tab A frees its slots for tab B's viewers.
+      await tabA.close();
+      await until(
+        () => fixture!.framesOpen.has('c') && fixture!.framesOpen.has('d'),
+        'tab B admitted',
+      );
+      await context.close();
+    }, 30_000);
+
     test('hiding a pane ends its stream and admits a queued viewer, once', async () => {
       const { page, fixture } = await openPage('cap=2&events=2&surfaces=a,b,c');
       await until(() => fixture.framesOpen.size === 2, 'two frame streams');
